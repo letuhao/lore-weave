@@ -1,0 +1,136 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Catalog API
+  version: 1.2.1
+  description: |
+    Module 02 — public book catalog list/get (gateway paths).
+    Only books that are public and lifecycle active appear in catalog. Trashed or purge_pending books are excluded
+    (404 on get by id if not eligible). Implementation must consume book lifecycle from book-service or replicated projection.
+
+servers:
+  - url: http://localhost:3000
+    description: API Gateway (BFF)
+
+tags:
+  - name: catalog
+
+paths:
+  /v1/catalog/books:
+    get:
+      tags: [catalog]
+      summary: List public books
+      operationId: listPublicBooks
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: q
+          in: query
+          description: Optional search string (product-defined semantics).
+          schema:
+            type: string
+            maxLength: 200
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicBookListResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/catalog/books/{book_id}:
+    get:
+      tags: [catalog]
+      summary: Get public book by id
+      operationId: getPublicBook
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicBook'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+components:
+  responses:
+    ErrorResponse:
+      description: Error envelope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+
+  schemas:
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+
+    PublicBook:
+      type: object
+      required: [book_id, title, visibility, created_at]
+      properties:
+        book_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        original_language:
+          type: string
+          description: BCP-47; same as books API (replaces primary_language).
+        summary_excerpt:
+          type: string
+          description: Short public synopsis; not necessarily full summary field.
+        has_cover:
+          type: boolean
+        cover_url:
+          type: string
+          description: Signed or public-read URL per deployment policy.
+        chapter_count:
+          type: integer
+          minimum: 0
+        visibility:
+          type: string
+          enum: [public]
+        created_at:
+          type: string
+          format: date-time
+
+    PublicBookListResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicBook'
+        total:
+          type: integer
+          minimum: 0

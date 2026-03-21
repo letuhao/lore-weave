@@ -2,7 +2,7 @@
 
 ## Document Metadata
 - Document ID: LW-M01-11
-- Version: 1.4.0
+- Version: 1.5.0
 - Status: Approved
 - Owner: Product Manager + Solution Architect
 - Last Updated: 2026-03-21
@@ -13,6 +13,7 @@
 ## Change History
 | Version | Date | Change | Author |
 |---|---|---|---|
+| 1.5.0 | 2026-03-21 | Downstream pointer to Module 02 execution pack (doc 24) | Assistant |
 | 1.4.0 | 2026-03-21 | Added Gate F (implementation readiness) and doc 22 reference before code start | Assistant |
 | 1.3.0 | 2026-03-21 | Aligned Module 01 execution governance with authoritative monorepo model and path-based gates | Assistant |
 | 1.2.0 | 2026-03-21 | Added downstream deep-design pack references (17-21) for pre-implementation readiness | Assistant |
@@ -132,3 +133,5 @@ The following documents are required before implementation starts:
 - `21_MODULE01_INTEGRATION_SEQUENCE_DIAGRAMS.md`
 
 After deep-design baselines are satisfied, complete **`22_MODULE01_IMPLEMENTATION_READINESS_GATE.md`** (GO / NO-GO / GO with conditions) before any implementation work begins.
+
+**Downstream (platform core):** Module 02 Books & sharing planning pack starts at **`24_PHASE1_MODULE02_BOOKS_SHARING_EXECUTION_PACK.md`** (LW-M02-24).

@@ -3,7 +3,7 @@
 ## Document Metadata
 
 - Document ID: LW-00
-- Version: 1.8.1
+- Version: 1.14.0
 - Status: Approved
 - Owner: Decision Authority + Execution Authority
 - Last Updated: 2026-03-21
@@ -16,6 +16,13 @@
 
 | Version | Date       | Change                                                        | Author    |
 | ------- | ---------- | ------------------------------------------------------------- | --------- |
+| 1.14.0 | 2026-03-21 | M02 **recycle bin**: **`lifecycle_state`**, trash/restore/purge, **`GET /v1/books/trash`**; books OpenAPI **1.4.0**; sharing/catalog **1.2.1**; `25` **1.4.0** + cascade 24/26–29/31–33/35 | Assistant |
+| 1.13.0 | 2026-03-21 | `30` §5: baseline **Postgres database per microservice** (book / sharing / catalog) | Assistant |
+| 1.12.0 | 2026-03-21 | M02 multilingual: **`GET …/chapters`** query **`original_language`**, **`sort_order`**; books OpenAPI **1.3.0**; `25` §7; cascaded 24/26/27/29/31–33/35 | Assistant |
+| 1.11.0 | 2026-03-21 | M02: **`original_language`** (book+chapter), chapter **draft + revision** APIs, Postgres VC (not Gitea); OpenAPI **v1.2.0**; planning 24–35 bumped | Assistant |
+| 1.10.0 | 2026-03-21 | M02 docs expanded — chapters (txt MVP), cover, summary, object storage/quota; OpenAPI books/sharing/catalog v1.1.0 narrative aligned | Assistant |
+| 1.9.0 | 2026-03-21 | Registered Phase 1 Module 02 planning pack (24–35, LW-M02-24..35) and contract paths `contracts/api/{books,sharing,catalog}/v1/` | Assistant |
+| 1.8.2 | 2026-03-21 | Registered `MODULE01_DEFERRED_FOLLOWUPS.md` (LW-IMPL-M01-01); noted smoke vs formal acceptance | Assistant |
 | 1.8.1 | 2026-03-21 | Noted LW-M01-23 Active: approved UI stack (Tailwind, shadcn/ui, RHF, zod) | Assistant |
 | 1.8.0 | 2026-03-21 | Registered Module 01 GUI visual improvement plan (23, LW-M01-23) | Assistant |
 | 1.7.1 | 2026-03-21 | Noted Module 01 implementation readiness gate (22) Approved with GO | Assistant |
@@ -101,6 +108,14 @@ Use these values consistently in every document metadata block:
   - `22_MODULE01_IMPLEMENTATION_READINESS_GATE.md`
 8. Phase 1 module UI improvement (post-baseline implementation plan):
   - `23_MODULE01_GUI_VISUAL_IMPROVEMENT_PLAN.md`
+9. Module 01 implementation notes (runbook + deferred backlog):
+  - `docs/implementation/MODULE01_LOCAL_DEV.md`
+  - `docs/implementation/MODULE01_DEFERRED_FOLLOWUPS.md`
+10. Phase 1 Module 02 — Books & sharing (planning pack **Draft**): book shell + **summary**, **cover** (object storage), **chapters** (`.txt` only MVP), **per-user quota**, sharing/catalog.
+  - `24_PHASE1_MODULE02_BOOKS_SHARING_EXECUTION_PACK.md` through `29_GOVERNANCE_BOARD_REVIEW_CHECKLIST_MODULE02.md`
+  - OpenAPI: `contracts/api/books/v1/`, `contracts/api/sharing/v1/`, `contracts/api/catalog/v1/`
+11. Phase 1 Module 02 — deep-design + readiness gate (**Draft**): MinIO/S3 path, BE/FE tabs, sequences for upload/download.
+  - `30_MODULE02_MICROSERVICE_SOURCE_STRUCTURE_AMENDMENT.md` through `35_MODULE02_IMPLEMENTATION_READINESS_GATE.md`
 
 ## Folder Structure
 
@@ -137,6 +152,28 @@ Use these values consistently in every document metadata block:
 | M01-14 | `14_MODULE01_ACCEPTANCE_TEST_PLAN.md` | `03_planning` | Acceptance matrix, pass criteria, and evidence checklist |
 | M01-15 | `15_MODULE01_RISK_DEPENDENCY_ROLLOUT.md` | `03_planning` | Dependency graph, risk controls, rollout and rollback plan |
 
+## Phase 1 Module 02 Packs (Books & sharing) — Draft baseline
+
+| Pack Seq | File | Folder | Purpose |
+| --- | --- | --- | --- |
+| M02-24 | `24_PHASE1_MODULE02_BOOKS_SHARING_EXECUTION_PACK.md` | `03_planning` | Module 02 charter, DoR/DoD, gates |
+| M02-25 | `25_MODULE02_API_CONTRACT_DRAFT.md` | `03_planning` | Contract narrative + links to OpenAPI |
+| M02-26 | `26_MODULE02_FRONTEND_FLOW_SPEC.md` | `03_planning` | FE journeys and API mapping |
+| M02-27 | `27_MODULE02_ACCEPTANCE_TEST_PLAN.md` | `03_planning` | Acceptance matrix M02-AT-* |
+| M02-28 | `28_MODULE02_RISK_DEPENDENCY_ROLLOUT.md` | `03_planning` | Dependencies, risks, rollout |
+| M02-29 | `29_GOVERNANCE_BOARD_REVIEW_CHECKLIST_MODULE02.md` | `03_planning` | Governance Board one-session checklist |
+
+## Phase 1 Module 02 Deep-Design + Gate — Draft baseline
+
+| Pack Seq | File | Folder | Purpose |
+| --- | --- | --- | --- |
+| M02-30 | `30_MODULE02_MICROSERVICE_SOURCE_STRUCTURE_AMENDMENT.md` | `03_planning` | Extends `17` for book/sharing/catalog services, routes, MinIO; **one DB per service** |
+| M02-31 | `31_MODULE02_BACKEND_DETAILED_DESIGN.md` | `03_planning` | Book, Chapter, cover asset, quota, usecase ↔ endpoint mapping |
+| M02-32 | `32_MODULE02_FRONTEND_DETAILED_DESIGN.md` | `03_planning` | Screens, routes, state |
+| M02-33 | `33_MODULE02_UI_UX_WIREFRAME_SPEC.md` | `03_planning` | Wireframes and UI states |
+| M02-34 | `34_MODULE02_INTEGRATION_SEQUENCE_DIAGRAMS.md` | `03_planning` | E2E and failure sequences |
+| M02-35 | `35_MODULE02_IMPLEMENTATION_READINESS_GATE.md` | `03_planning` | GO/NO-GO before M02 implementation |
+
 ## Phase 1 Module Deep-Design Packs
 
 | Pack Seq | File | Folder | Purpose |
@@ -159,6 +196,13 @@ Use these values consistently in every document metadata block:
 | --- | --- | --- | --- |
 | M01-23 | `23_MODULE01_GUI_VISUAL_IMPROVEMENT_PLAN.md` | `03_planning` | GUI visual improvement (**Active**): Tailwind + shadcn/ui + Radix + lucide-react + react-hook-form + zod; aligns with 19/20 |
 
+## Module 01 implementation adjunct (runbook + backlog)
+
+| Doc ID | File | Folder | Purpose |
+| --- | --- | --- | --- |
+| (runbook) | `MODULE01_LOCAL_DEV.md` | `docs/implementation` | Local ports, stack startup, smoke checklist |
+| LW-IMPL-M01-01 | `MODULE01_DEFERRED_FOLLOWUPS.md` | `docs/implementation` | Deferred acceptance and follow-ups before formal M01 closure |
+
 ## Module 01 Monorepo Governance Note
 
 - Repository model for Module 01 planning series is **single-repo polyglot monorepo**.
@@ -170,6 +214,7 @@ Use these values consistently in every document metadata block:
 - `11`-`16` and `18`-`21` must remain consistent with this model and must not introduce multi-repo assumptions.
 - `22_MODULE01_IMPLEMENTATION_READINESS_GATE.md` records explicit approval to begin implementation while preserving this monorepo baseline.
 - `23_MODULE01_GUI_VISUAL_IMPROVEMENT_PLAN.md` records an **approved** UI stack (see LW-M01-23); it does not supersede contract or readiness gate baselines. Implementation follows that document without changing API contracts.
+- Module 02 (**Draft**): planning pack `24`–`35` and `contracts/api/{books,sharing,catalog}/v1/` extend platform core after Module 01 (chapters, **`original_language`**, cover, summary, **draft/revisions**, MinIO/S3 raw files, quota); `35` is the implementation readiness gate before M02 code start.
 - This governance note is planning-only and does not imply implementation of live CI configuration in this phase.
 
 

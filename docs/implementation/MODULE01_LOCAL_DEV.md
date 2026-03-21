@@ -89,11 +89,15 @@ PUBLIC_APP_URL=http://localhost:5173
 
 **Without SMTP** (`SMTP_HOST` empty): no email is sent; with `DEV_LOG_EMAIL_TOKENS=1` (default), tokens still print to **auth-service stdout** for the Verify and Reset pages.
 
+## Module 02 prep (object storage — planning)
+
+Module 02 will store book **covers** and chapter **`.txt`** files in **S3-compatible** object storage. **Dev** is expected to use **MinIO** (see `docs/01_foundation/04_TECHSTACK_SERVICE_MATRIX.md` and `docs/03_planning/30_MODULE02_MICROSERVICE_SOURCE_STRUCTURE_AMENDMENT.md`). Typical MinIO ports are API **9000** and console **9001**; **verify against `infra/docker-compose.yml`** when MinIO is added to Compose. `book-service` should read `BOOKS_STORAGE_BUCKET`, endpoint, and credentials from env **inside the private network** only (never exposed to the browser).
+
 ## Contract lint
 
 ```bash
 cd contracts
-npx @stoplight/spectral-cli lint api/identity/v1/openapi.yaml
+npx @stoplight/spectral-cli lint api/identity/v1/openapi.yaml api/books/v1/openapi.yaml api/sharing/v1/openapi.yaml api/catalog/v1/openapi.yaml
 ```
 
 ## Unit tests (no running services required)
@@ -115,6 +119,8 @@ On Windows, from repo root: `pwsh -File scripts/test-module01.ps1` (runs the sam
 3. Refresh: expire access (wait) or delete from localStorage access only — Profile should trigger refresh flow when implemented client-side.
 4. Logout → session revoked server-side.
 
+**Status (2026-03-21):** A **lightweight smoke** of the above was run on **dev/local** after the Tailwind + shadcn/ui UI rollout (navigation, register/login, profile). This does **not** replace the full acceptance matrix.
+
 ## Acceptance mapping
 
-Critical scenarios **M01-AT-01 … M01-AT-10** can be exercised through the UI plus browser devtools network captures as evidence (see planning doc `14_MODULE01_ACCEPTANCE_TEST_PLAN.md`).
+Critical scenarios **M01-AT-01 … M01-AT-10** can be exercised through the UI plus browser devtools network captures as evidence (see planning doc `14_MODULE01_ACCEPTANCE_TEST_PLAN.md`). **Formal execution** of that matrix with evidence artifacts is **deferred**; see `docs/implementation/MODULE01_DEFERRED_FOLLOWUPS.md` (LW-IMPL-M01-01).

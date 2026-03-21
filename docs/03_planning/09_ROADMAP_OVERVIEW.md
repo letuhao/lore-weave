@@ -2,7 +2,7 @@
 
 ## Document Metadata
 - Document ID: LW-09
-- Version: 1.2.0
+- Version: 1.3.0
 - Status: Approved
 - Owner: Product Manager + Solution Architect
 - Last Updated: 2026-03-21
@@ -13,6 +13,7 @@
 ## Change History
 | Version | Date | Change | Author |
 |---|---|---|---|
+| 1.3.0 | 2026-03-21 | Added Phase 1 Module 02 (Books & sharing) planning checkpoint and doc references 24–35 | Assistant |
 | 1.2.0 | 2026-03-21 | Added Phase 1 Module 01 identity planning checkpoint and pack references | Assistant |
 | 1.1.0 | 2026-03-21 | Added governance metadata header and migrated to numbered docs structure | Assistant |
 | 1.0.0 | 2026-03-21 | Baseline content established before docs reorganization | Assistant |
@@ -90,6 +91,19 @@ Establish planning readiness for identity, book lifecycle, sharing, and discover
   - `15_MODULE01_RISK_DEPENDENCY_ROLLOUT.md`
 - Contract-first rule applies: API draft is frozen before frontend flow freeze.
 - Module closure requires Decision Authority gate outcome based on DoR/DoD evidence.
+
+### Phase 1 Module 02 Checkpoint (Books & sharing)
+
+- **Objective:** Second vertical slice for platform core: owned books, visibility/share policy, public catalog browse — see `03_V1_BOUNDARIES.md` (Platform Core).
+- **Planning pack (Draft):**
+  - `24_PHASE1_MODULE02_BOOKS_SHARING_EXECUTION_PACK.md`
+  - `25_MODULE02_API_CONTRACT_DRAFT.md` and OpenAPI under `contracts/api/books/v1/`, `contracts/api/sharing/v1/`, `contracts/api/catalog/v1/`
+  - `26_MODULE02_FRONTEND_FLOW_SPEC.md`
+  - `27_MODULE02_ACCEPTANCE_TEST_PLAN.md`
+  - `28_MODULE02_RISK_DEPENDENCY_ROLLOUT.md`
+  - `29_GOVERNANCE_BOARD_REVIEW_CHECKLIST_MODULE02.md`
+- **Deep-design + readiness (Draft):** `30_MODULE02_MICROSERVICE_SOURCE_STRUCTURE_AMENDMENT.md` through `35_MODULE02_IMPLEMENTATION_READINESS_GATE.md`.
+- **Prerequisite:** Module 01 identity operational baseline (access tokens); contract-first and gate `35` GO before M02 implementation start.
 
 ### Major Dependencies
 - Phase 0 governance baseline.

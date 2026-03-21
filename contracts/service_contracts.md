@@ -1,5 +1,7 @@
 # LoreWeave Service Contracts (V1)
 
+**Module 02 governed OpenAPI (authoritative for gateway paths `/v1/books`, `/v1/sharing`, `/v1/catalog`):** `contracts/api/books/v1/openapi.yaml` (**info.version 1.4.0** — **`lifecycle_state`**, recycle bin **`GET /v1/books/trash`**, **`DELETE`** trash / **`POST …/restore`** / **`DELETE …/purge`**, list chapters optional **`lifecycle_state`** / **`original_language`** / **`sort_order`**), `contracts/api/sharing/v1/openapi.yaml`, `contracts/api/catalog/v1/openapi.yaml` (**info.version 1.2.1** — trashed/**purge_pending** books invisible to readers). Books: **`original_language`**, **summary**, **cover**, **chapters** (`.txt` MVP), **canonical draft**, **revisions**, **`GET …/content`** (raw upload), **quota**. Sharing/catalog: **`original_language`**, excerpts/cover policy; reader surfaces exclude non-**active** lifecycles. Narrative JSON below is historical; align with OpenAPI and `docs/03_planning/25_MODULE02_API_CONTRACT_DRAFT.md`.
+
 ## 1) Shared Data Types
 
 ### User

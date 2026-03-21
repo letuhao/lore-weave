@@ -3,7 +3,7 @@
 ## Document Metadata
 
 - Document ID: LW-M01-23
-- Version: 1.1.0
+- Version: 1.2.0
 - Status: Active
 - Owner: Product Manager + Execution Authority
 - Last Updated: 2026-03-21
@@ -16,6 +16,7 @@
 
 | Version | Date       | Change                                            | Author    |
 | ------- | ---------- | ------------------------------------------------- | --------- |
+| 1.2.0   | 2026-03-21 | §4 split: historical vs current snapshot; §12 notes smoke vs formal acceptance; pointer to `MODULE01_DEFERRED_FOLLOWUPS.md` | Assistant |
 | 1.1.0   | 2026-03-21 | Decision Authority approved stack: Tailwind + shadcn/ui + Radix + lucide-react + react-hook-form + zod; status Active | Assistant |
 | 1.0.0   | 2026-03-21 | Initial GUI improvement and library strategy plan | Assistant |
 
@@ -46,12 +47,21 @@ Implementation work **may proceed** under this baseline; track concrete tasks in
 | Global nav/home | 4 (navigation)                   | layout / shell         | Cross-cutting        |
 
 
-## 4) Current state (as-is)
+## 4) Current state
+
+### 4.1) Historical baseline (pre–GUI refresh)
+
+Before the approved stack rollout, the Module 01 UI used:
 
 - **Global styling** in `frontend/src/styles.css`: minimal tokens, system font, single `.layout` card pattern.
 - **Per-page** React components under `frontend/src/pages/`: duplicated structure, inline nav, limited loading/empty/error differentiation.
 - **No shared shell** (header, consistent spacing scale, or component primitives).
-- **Tests** (Vitest) exist; any UI stack must keep `npm test` and `npm run build` viable in CI and Docker frontend builds.
+
+### 4.2) Implementation snapshot (2026-03-21)
+
+- **Stack in repo:** Tailwind CSS, shadcn/ui (Radix), lucide-react, react-hook-form, zod — per §5.3; global CSS via `frontend/src/index.css`; shared **AppLayout** / **AppNav**; screens under `frontend/src/pages/` migrated to the new primitives.
+- **Automated checks:** `npm test` and `npm run build` (and Docker frontend image build) remain required quality gates.
+- **Manual verification:** **Smoke test** (register, login, profile/navigation) completed on dev/local after the refresh. **Formal acceptance** scenarios and evidence per `14_MODULE01_ACCEPTANCE_TEST_PLAN.md` are **deferred**; backlog in `docs/implementation/MODULE01_DEFERRED_FOLLOWUPS.md` (LW-IMPL-M01-01).
 
 ## 5) Strategy: use existing themes / component libraries
 
@@ -181,6 +191,8 @@ Accessibility goals (implementation must verify):
 - Flows remain demonstrable per `14_MODULE01_ACCEPTANCE_TEST_PLAN.md` (screenshots or recordings as evidence).
 - **CI:** `npm ci`, `npm test`, `npm run build` succeed for `frontend/`.
 - **Stack decision** recorded in this document (section 5.3); a short ADR is optional if the team wants a separate decision log.
+
+**Interim note (2026-03-21):** Implementation and **smoke** verification are sufficient to **proceed with Module 02 planning** from an execution standpoint. **Full** completion against the bullets above (especially formal `14` execution with evidence) remains **open** — tracked in `docs/implementation/MODULE01_DEFERRED_FOLLOWUPS.md`.
 
 ## 13) Out of scope (for this plan)
 

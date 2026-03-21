@@ -1,0 +1,1103 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Books API
+  version: 1.4.0
+  description: |
+    Module 02 — books, chapters (MVP text/plain .txt uploads), editable chapter draft (UTF-8) with revision history,
+    cover image, summary, and per-user storage usage. Multilingual: each locale is a separate chapter row with
+    original_language; list chapters supports optional query filters original_language and/or sort_order.
+    Logical delete: DELETE book/chapter moves to recycle bin (trashed); DELETE …/purge from bin marks purge_pending for
+    future garbage collection (blobs + DB rows removed later by a batch job, not in this API). GET /v1/books lists active
+    books only; GET /v1/books/trash lists trashed books. Trashed or purge_pending books must not appear in catalog/unlisted/public.
+    Raw upload bytes remain in S3-compatible storage (e.g. MinIO); draft/revisions in Postgres until purged. Gateway-facing REST only.
+
+servers:
+  - url: http://localhost:3000
+    description: API Gateway (BFF)
+
+tags:
+  - name: books
+  - name: chapters
+
+paths:
+  /v1/books/storage-usage:
+    get:
+      tags: [books]
+      summary: Storage used vs free tier quota for current user (book assets)
+      operationId: getMyBookStorageUsage
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StorageUsageResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/books:
+    post:
+      tags: [books]
+      summary: Create book (shell — add chapters and cover separately)
+      operationId: createBook
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+    get:
+      tags: [books]
+      summary: List active books for current user (excludes trashed and purge_pending)
+      operationId: listMyBooks
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookListResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/books/trash:
+    get:
+      tags: [books]
+      summary: List books in recycle bin (lifecycle trashed only; not purge_pending)
+      operationId: listTrashedBooks
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookListResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/books/{book_id}:
+    get:
+      tags: [books]
+      summary: Get book (owner) — active or trashed; purge_pending returns 404 until GC completes
+      operationId: getBook
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+    patch:
+      tags: [books]
+      summary: Patch book metadata (owner) — title, description, original_language, summary
+      operationId: patchBook
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchBookRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          description: Book is not active (e.g. trashed); restore before patching
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+    delete:
+      tags: [books]
+      summary: Move book to recycle bin (logical delete stage 1); cascades all chapters to trashed
+      operationId: trashBook
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      responses:
+        '204':
+          description: No Content — book and chapters are now trashed
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          description: Invalid lifecycle (e.g. already trashed or purge_pending)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /v1/books/{book_id}/restore:
+    post:
+      tags: [books]
+      summary: Restore book from recycle bin to active; cascades chapters to active
+      operationId: restoreBook
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          description: Book is not in trashed state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /v1/books/{book_id}/purge:
+    delete:
+      tags: [books]
+      summary: Mark book for physical deletion (logical stage 2); cascades chapters to purge_pending; hidden from recycle bin UI
+      operationId: purgeBook
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      responses:
+        '204':
+          description: No Content — eligible for future garbage collector
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          description: Book must be trashed before purge
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /v1/books/{book_id}/cover:
+    post:
+      tags: [books]
+      summary: Upload or replace book cover image (owner)
+      operationId: uploadBookCover
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Image file (e.g. image/jpeg, image/png); max size enforced by gateway.
+      responses:
+        '200':
+          description: OK — cover replaced
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '413':
+          $ref: '#/components/responses/ErrorResponse'
+        '415':
+          $ref: '#/components/responses/ErrorResponse'
+        '507':
+          description: Insufficient storage / quota exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+    delete:
+      tags: [books]
+      summary: Remove book cover (owner)
+      operationId: deleteBookCover
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/books/{book_id}/chapters:
+    get:
+      tags: [chapters]
+      summary: List chapters for book (owner); optional filters by lifecycle_state, original_language, sort_order
+      operationId: listChapters
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - name: lifecycle_state
+          in: query
+          required: false
+          description: >
+            Filter by chapter lifecycle. Default active when parent book is active.
+            When parent book is trashed, use trashed to list chapters in recycle-bin detail (all chapters are trashed with the book).
+          schema:
+            $ref: '#/components/schemas/LifecycleState'
+          example: active
+        - name: original_language
+          in: query
+          required: false
+          description: Exact BCP-47 tag match; only chapters with this original_language are returned.
+          schema:
+            type: string
+            maxLength: 35
+        - name: sort_order
+          in: query
+          required: false
+          description: Exact ordering slot; use with original_language to fetch one variant (e.g. chapter 1 in en).
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChapterListResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+    post:
+      tags: [chapters]
+      summary: Create chapter with raw file upload — MVP only text/plain (.txt); seeds draft from file (UTF-8)
+      operationId: createChapter
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, original_language]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Must be .txt with Content-Type text/plain (enforced server-side).
+                original_language:
+                  type: string
+                  maxLength: 35
+                  description: BCP-47 tag for this chapter file (e.g. vi, zh-Hans); required for future translate workflows.
+                title:
+                  type: string
+                  maxLength: 500
+                sort_order:
+                  type: integer
+                  description: Optional ordering hint; default append to end.
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Chapter'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '413':
+          $ref: '#/components/responses/ErrorResponse'
+        '415':
+          $ref: '#/components/responses/ErrorResponse'
+        '507':
+          description: Quota exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '409':
+          description: Parent book is not active (e.g. trashed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /v1/books/{book_id}/chapters/{chapter_id}:
+    get:
+      tags: [chapters]
+      summary: Get chapter metadata (owner)
+      operationId: getChapter
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/ChapterId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Chapter'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+    patch:
+      tags: [chapters]
+      summary: Patch chapter metadata (title, sort_order, original_language) — owner
+      operationId: patchChapter
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/ChapterId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchChapterRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Chapter'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          description: Parent book not active or chapter not in a patchable state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+    delete:
+      tags: [chapters]
+      summary: Move chapter to recycle bin (logical delete stage 1); retains MinIO object, draft, and revisions until GC after purge
+      operationId: trashChapter
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/ChapterId'
+      responses:
+        '204':
+          description: No Content
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          description: Invalid lifecycle or parent book not active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /v1/books/{book_id}/chapters/{chapter_id}/restore:
+    post:
+      tags: [chapters]
+      summary: Restore chapter from recycle bin (parent book must be active)
+      operationId: restoreChapter
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/ChapterId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Chapter'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          description: Chapter not trashed or parent book not active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /v1/books/{book_id}/chapters/{chapter_id}/purge:
+    delete:
+      tags: [chapters]
+      summary: Mark chapter for physical deletion (stage 2); hidden from recycle bin; GC removes blobs and rows later
+      operationId: purgeChapter
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/ChapterId'
+      responses:
+        '204':
+          description: No Content
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          description: Chapter must be trashed before purge
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /v1/books/{book_id}/chapters/{chapter_id}/content:
+    get:
+      tags: [chapters]
+      summary: Download original uploaded file bytes (owner) — not the edited draft; octet-stream or negotiated
+      operationId: downloadChapterContent
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/ChapterId'
+      responses:
+        '200':
+          description: Raw file body
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+            text/plain:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/books/{book_id}/chapters/{chapter_id}/draft:
+    get:
+      tags: [chapters]
+      summary: Get canonical chapter draft for editor (owner) — UTF-8 working copy
+      operationId: getChapterDraft
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/ChapterId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChapterDraftResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+    patch:
+      tags: [chapters]
+      summary: Update chapter draft and append a revision snapshot (owner)
+      operationId: patchChapterDraft
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/ChapterId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchChapterDraftRequest'
+      responses:
+        '200':
+          description: OK — returns updated draft metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChapterDraftResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          description: Draft conflict (e.g. optimistic concurrency) — optional
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '413':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/books/{book_id}/chapters/{chapter_id}/revisions:
+    get:
+      tags: [chapters]
+      summary: List chapter revision history (owner)
+      operationId: listChapterRevisions
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/ChapterId'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChapterRevisionListResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/books/{book_id}/chapters/{chapter_id}/revisions/{revision_id}:
+    get:
+      tags: [chapters]
+      summary: Get one revision snapshot including body (owner)
+      operationId: getChapterRevision
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/ChapterId'
+        - $ref: '#/components/parameters/RevisionId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChapterRevisionDetail'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/books/{book_id}/chapters/{chapter_id}/revisions/{revision_id}/restore:
+    post:
+      tags: [chapters]
+      summary: Restore current draft from a past revision (owner); creates a new revision capturing prior draft
+      operationId: restoreChapterRevision
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/ChapterId'
+        - $ref: '#/components/parameters/RevisionId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChapterDraftResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    BookId:
+      name: book_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ChapterId:
+      name: chapter_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RevisionId:
+      name: revision_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    ErrorResponse:
+      description: Error envelope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+
+  schemas:
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+
+    LifecycleState:
+      type: string
+      enum: [active, trashed, purge_pending]
+      description: >
+        active — normal workspace; trashed — recycle bin (logical delete stage 1);
+        purge_pending — user removed from bin (stage 2); data kept until garbage collector deletes storage and rows.
+
+    StorageUsageResponse:
+      type: object
+      required: [used_bytes, quota_bytes]
+      properties:
+        used_bytes:
+          type: integer
+          minimum: 0
+          description: Bytes used by this user's book covers and chapter uploads.
+        quota_bytes:
+          type: integer
+          minimum: 0
+          description: Free-tier quota; paid tiers are future roadmap.
+
+    BookCover:
+      type: object
+      required: [content_type, byte_size, download_url]
+      properties:
+        content_type:
+          type: string
+          example: image/jpeg
+        byte_size:
+          type: integer
+          minimum: 0
+        download_url:
+          type: string
+          description: Time-limited signed URL or gateway path for owner/catalog as policy allows.
+
+    CreateBookRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        description:
+          type: string
+          maxLength: 8000
+        original_language:
+          type: string
+          maxLength: 35
+          description: BCP-47 source language for the work (translate/RAG defaults); replaces former primary_language.
+        summary:
+          type: string
+          maxLength: 32000
+          description: User-authored synopsis; AI-assisted generation is out of scope for MVP.
+
+    PatchBookRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        description:
+          type: string
+          maxLength: 8000
+        original_language:
+          type: string
+          maxLength: 35
+        summary:
+          type: string
+          maxLength: 32000
+
+    Book:
+      type: object
+      required: [book_id, owner_user_id, title, lifecycle_state, created_at, updated_at]
+      properties:
+        book_id:
+          type: string
+          format: uuid
+        owner_user_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        original_language:
+          type: string
+          description: BCP-47; same semantics as former primary_language field.
+        summary:
+          type: string
+        cover:
+          allOf:
+            - $ref: '#/components/schemas/BookCover'
+          nullable: true
+        chapter_count:
+          type: integer
+          minimum: 0
+        lifecycle_state:
+          $ref: '#/components/schemas/LifecycleState'
+        trashed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the book entered the recycle bin; null when active.
+        purge_eligible_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the user requested permanent deletion from the bin; GC uses this; null until stage 2.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Chapter:
+      type: object
+      required:
+        - chapter_id
+        - book_id
+        - original_filename
+        - original_language
+        - content_type
+        - byte_size
+        - sort_order
+        - lifecycle_state
+        - created_at
+        - updated_at
+      properties:
+        chapter_id:
+          type: string
+          format: uuid
+        book_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        original_filename:
+          type: string
+        original_language:
+          type: string
+          maxLength: 35
+          description: BCP-47 for this chapter's uploaded/edited content; user may upload another chapter row per language.
+        content_type:
+          type: string
+          example: text/plain
+        byte_size:
+          type: integer
+          minimum: 0
+          description: Size of original uploaded object in storage (not draft text length).
+        sort_order:
+          type: integer
+        draft_updated_at:
+          type: string
+          format: date-time
+          description: When canonical draft text was last saved (if applicable).
+        draft_revision_count:
+          type: integer
+          minimum: 0
+          description: Number of stored revision snapshots for this chapter.
+        lifecycle_state:
+          $ref: '#/components/schemas/LifecycleState'
+        trashed_at:
+          type: string
+          format: date-time
+          nullable: true
+        purge_eligible_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PatchChapterRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 500
+        sort_order:
+          type: integer
+        original_language:
+          type: string
+          maxLength: 35
+
+    ChapterDraftResponse:
+      type: object
+      required: [chapter_id, body, draft_format, draft_updated_at]
+      properties:
+        chapter_id:
+          type: string
+          format: uuid
+        body:
+          type: string
+          description: Canonical UTF-8 draft text for the editor.
+        draft_format:
+          type: string
+          enum: [plain, markdown]
+          description: MVP default plain; markdown is optional product toggle.
+        draft_updated_at:
+          type: string
+          format: date-time
+        draft_version:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Optional monotonic token for optimistic concurrency; null if server does not expose it.
+
+    PatchChapterDraftRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          description: Full replacement UTF-8 draft body.
+        commit_message:
+          type: string
+          maxLength: 500
+          description: Optional revision label shown in history.
+        expected_draft_version:
+          type: integer
+          minimum: 0
+          description: If provided and stale, server may respond 409 CHAPTER_DRAFT_CONFLICT.
+
+    ChapterRevisionSummary:
+      type: object
+      required: [revision_id, chapter_id, created_at]
+      properties:
+        revision_id:
+          type: string
+          format: uuid
+        chapter_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        author_user_id:
+          type: string
+          format: uuid
+        message:
+          type: string
+        body_byte_length:
+          type: integer
+          minimum: 0
+
+    ChapterRevisionDetail:
+      type: object
+      required: [revision_id, chapter_id, created_at, body]
+      properties:
+        revision_id:
+          type: string
+          format: uuid
+        chapter_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        author_user_id:
+          type: string
+          format: uuid
+        message:
+          type: string
+        body:
+          type: string
+          description: Snapshot of draft at revision time (UTF-8).
+
+    ChapterRevisionListResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChapterRevisionSummary'
+        total:
+          type: integer
+          minimum: 0
+
+    ChapterListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Chapter'
+
+    BookListResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Book'
+        total:
+          type: integer
+          minimum: 0

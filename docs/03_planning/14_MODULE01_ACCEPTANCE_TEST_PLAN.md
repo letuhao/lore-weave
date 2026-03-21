@@ -3,7 +3,7 @@
 ## Document Metadata
 
 - Document ID: LW-M01-14
-- Version: 1.2.0
+- Version: 1.3.0
 - Status: Approved
 - Owner: QA Lead
 - Last Updated: 2026-03-21
@@ -16,6 +16,7 @@
 
 | Version | Date       | Change                                                              | Author    |
 | ------- | ---------- | ------------------------------------------------------------------- | --------- |
+| 1.3.0   | 2026-03-21 | Recorded interim **smoke test** complete; full scenario execution and evidence deferred — see `docs/implementation/MODULE01_DEFERRED_FOLLOWUPS.md` | Assistant |
 | 1.2.0   | 2026-03-21 | Added monorepo path-scoped CI evidence requirements for acceptance gates | Assistant |
 | 1.1.0   | 2026-03-21 | Updated document status to Approved after Governance Board review   | Assistant |
 | 1.0.0   | 2026-03-21 | Initial Module 01 acceptance scenario matrix and evidence checklist | Assistant |
@@ -83,6 +84,8 @@ Out of scope:
 - Contract conformance checks have no blocking mismatch.
 - Required evidence artifacts are complete and reviewable by QA/SA/PM.
 
+These criteria remain the **formal target** for Module 01 closure; they are **not** satisfied by smoke testing alone (see §9).
+
 ## 7) Defect Severity Policy (Module-Level)
 
 
@@ -102,4 +105,10 @@ Out of scope:
 - Defect log with severity, owner, and disposition
 - QA sign-off note referencing pass criteria
 - Path-based pipeline result evidence aligned to changed monorepo domains
+
+## 9) Execution status (interim — 2026-03-21)
+
+- **Smoke testing (manual, dev/local):** Core UI flows were exercised at a **lightweight** level after the Tailwind + shadcn/ui rollout (e.g. register, login, profile/navigation). This is **not** a substitute for the scenario matrix or evidence artifacts in §3 and §8.
+- **Formal acceptance:** Execution of **M01-AT-01 … M01-AT-12** with full evidence, contract checks (§4), and QA sign-off per §6–§8 is **deferred** to a later pass before formal module closure.
+- **Backlog pointer:** Deferred and follow-up items are listed in `docs/implementation/MODULE01_DEFERRED_FOLLOWUPS.md` (LW-IMPL-M01-01).
 

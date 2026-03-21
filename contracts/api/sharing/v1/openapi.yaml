@@ -1,0 +1,184 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Sharing API
+  version: 1.2.1
+  description: |
+    Module 02 — book visibility and unlisted access token (gateway paths).
+    Books with lifecycle trashed or purge_pending (recycle bin / awaiting GC) must not be readable via catalog,
+    unlisted, or public surfaces — treat as not found (404). Owner sharing policy GET/PATCH applies only to books
+    that still exist for the owner workflow; implementation aligns with book-service lifecycle (see OQ-M02-15 in planning).
+
+servers:
+  - url: http://localhost:3000
+    description: API Gateway (BFF)
+
+tags:
+  - name: sharing
+
+paths:
+  /v1/sharing/books/{book_id}:
+    get:
+      tags: [sharing]
+      summary: Get sharing policy (owner)
+      operationId: getSharingPolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharingPolicy'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+    patch:
+      tags: [sharing]
+      summary: Update visibility policy (owner)
+      operationId: patchSharingPolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchSharingPolicyRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharingPolicy'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/sharing/unlisted/{access_token}:
+    get:
+      tags: [sharing]
+      summary: Resolve unlisted book by opaque access token
+      operationId: getUnlistedBook
+      parameters:
+        - name: access_token
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 256
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnlistedBookPayload'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    BookId:
+      name: book_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    ErrorResponse:
+      description: Error envelope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+
+  schemas:
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+
+    Visibility:
+      type: string
+      enum: [private, unlisted, public]
+
+    SharingPolicy:
+      type: object
+      required: [book_id, visibility, updated_at]
+      properties:
+        book_id:
+          type: string
+          format: uuid
+        visibility:
+          $ref: '#/components/schemas/Visibility'
+        unlisted_access_token:
+          type: string
+          description: Present when visibility is unlisted (or after rotation).
+        updated_at:
+          type: string
+          format: date-time
+
+    PatchSharingPolicyRequest:
+      type: object
+      properties:
+        visibility:
+          $ref: '#/components/schemas/Visibility'
+        rotate_unlisted_token:
+          type: boolean
+          description: If true and visibility is unlisted, issue a new access token.
+
+    UnlistedBookPayload:
+      type: object
+      required: [book_id, title, visibility]
+      properties:
+        book_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        original_language:
+          type: string
+          description: BCP-47; same as books API (replaces primary_language).
+        summary_excerpt:
+          type: string
+          description: Truncated summary safe for unlisted preview; full summary optional elsewhere.
+        has_cover:
+          type: boolean
+        cover_url:
+          type: string
+          description: Optional time-limited URL when policy exposes cover for unlisted readers.
+        chapter_count:
+          type: integer
+          minimum: 0
+        visibility:
+          type: string
+          enum: [unlisted]
