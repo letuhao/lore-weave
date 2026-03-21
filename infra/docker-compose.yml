@@ -1,0 +1,25 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: loreweave
+      POSTGRES_PASSWORD: loreweave_dev
+      POSTGRES_DB: loreweave
+    ports:
+      - "5432:5432"
+    volumes:
+      - loreweave_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loreweave -d loreweave"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  loreweave_pg:

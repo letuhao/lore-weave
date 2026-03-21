@@ -205,3 +205,13 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+frontend/node_modules/
+
+services/api-gateway-bff/node_modules/
+
+frontend/package-lock.json
+
+services/api-gateway-bff/package-lock.json
+
+services/auth-service/tmp/

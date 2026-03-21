@@ -64,7 +64,7 @@ This document freezes V1 scope for the microservices rewrite so the team can shi
 
 - Deployment target: single-machine Docker Compose
 - Architecture: microservices with clear API boundaries
-- Source of truth: new services and contracts in `novel_analyzer/`
+- Source of truth: new services and contracts in **this monorepo** (repository root: `services/`, `contracts/`, etc.)
 - Legacy scripts are domain reference only; no runtime coupling
 
 ## V1 Exit Criteria

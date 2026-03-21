@@ -2,7 +2,7 @@
 
 ## Document Metadata
 - Document ID: LW-M01-16
-- Version: 1.2.0
+- Version: 1.3.0
 - Status: Approved
 - Owner: Product Manager + Solution Architect
 - Last Updated: 2026-03-21
@@ -13,6 +13,7 @@
 ## Change History
 | Version | Date | Change | Author |
 |---|---|---|---|
+| 1.3.0 | 2026-03-21 | Added implementation readiness gate (22) to scope and Gate G | Assistant |
 | 1.2.0 | 2026-03-21 | Expanded checklist with monorepo governance checks and deep-design document alignment | Assistant |
 | 1.1.0 | 2026-03-21 | Updated document status to Approved after Governance Board review | Assistant |
 | 1.0.0 | 2026-03-21 | Initial one-page Governance Board review checklist for Module 01 | Assistant |
@@ -29,6 +30,7 @@
 - `19_MODULE01_FRONTEND_DETAILED_DESIGN.md`
 - `20_MODULE01_UI_UX_WIREFRAME_SPEC.md`
 - `21_MODULE01_INTEGRATION_SEQUENCE_DIAGRAMS.md`
+- `22_MODULE01_IMPLEMENTATION_READINESS_GATE.md` (complete before code start)
 
 ## Session Goal
 
@@ -66,6 +68,11 @@ Approve or return with conditions the full Module 01 planning pack in one meetin
 - [ ] `17_MODULE01_MICROSERVICE_SOURCE_STRUCTURE.md` is used as authoritative reference for root layout and ownership.
 - [ ] Contract path and impact policy (`contracts/`) is consistent across contract, backend, frontend, and acceptance docs.
 - [ ] Path-scoped CI evidence and branch/release controls are included in governance checks.
+
+### Gate G - Implementation Readiness (Before Code)
+- [ ] `22_MODULE01_IMPLEMENTATION_READINESS_GATE.md` preconditions and tick-based checklist reviewed.
+- [ ] GO / NO-GO / GO with conditions recorded with Decision Authority and Execution Authority sign-off.
+- [ ] Any deferred contract or design items have named owners and dates.
 
 ## Decision Record (Fill During Review)
 

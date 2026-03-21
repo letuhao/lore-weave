@@ -1,0 +1,441 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Identity API
+  version: 1.0.0
+  description: Module 01 identity contract (register, session, profile, verify, reset).
+servers:
+  - url: http://localhost:3000
+    description: API Gateway (BFF) — client entry
+  - url: http://localhost:8081
+    description: Auth service (internal; use only for direct integration tests)
+
+tags:
+  - name: auth
+  - name: account
+
+paths:
+  /v1/auth/register:
+    post:
+      tags: [auth]
+      summary: Create account
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/auth/login:
+    post:
+      tags: [auth]
+      summary: Sign in
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/auth/refresh:
+    post:
+      tags: [auth]
+      summary: Rotate tokens
+      operationId: refresh
+      security:
+        - refreshToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/auth/logout:
+    post:
+      tags: [auth]
+      summary: Invalidate session
+      operationId: logout
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: No content
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/account/profile:
+    get:
+      tags: [account]
+      summary: Read profile
+      operationId: getProfile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountProfile'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+    patch:
+      tags: [account]
+      summary: Update profile
+      operationId: patchProfile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchProfileRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountProfile'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/auth/verify-email/request:
+    post:
+      tags: [auth]
+      summary: Request verification email
+      operationId: verifyEmailRequest
+      security:
+        - bearerAuth: []
+      responses:
+        '202':
+          description: Accepted
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/auth/verify-email/confirm:
+    post:
+      tags: [auth]
+      summary: Confirm verification token
+      operationId: verifyEmailConfirm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyConfirmRequest'
+      responses:
+        '200':
+          description: OK
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/auth/password-reset/request:
+    post:
+      tags: [auth]
+      summary: Request password reset
+      operationId: passwordResetRequest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequestRequest'
+      responses:
+        '202':
+          description: Accepted (generic)
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/auth/password-reset/confirm:
+    post:
+      tags: [auth]
+      summary: Confirm reset with new password
+      operationId: passwordResetConfirm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirmRequest'
+      responses:
+        '200':
+          description: OK
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/account/security/preferences:
+    get:
+      tags: [account]
+      summary: Read security preferences
+      operationId: getSecurityPreferences
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityPreferences'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+    patch:
+      tags: [account]
+      summary: Update security preferences
+      operationId: patchSecurityPreferences
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchSecurityPreferencesRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityPreferences'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    refreshToken:
+      type: http
+      scheme: bearer
+      description: Use refresh token in Authorization Bearer for refresh endpoint (Module 01 baseline).
+
+  responses:
+    ErrorResponse:
+      description: Error envelope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+
+  schemas:
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: AUTH_VALIDATION_ERROR
+        message:
+          type: string
+
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        display_name:
+          type: string
+        locale:
+          type: string
+
+    RegisterResponse:
+      type: object
+      required: [user_id, email, email_verified, created_at, verification_required]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        email_verified:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        verification_required:
+          type: boolean
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+
+    UserProfileMinimal:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        display_name:
+          type: string
+        email_verified:
+          type: boolean
+
+    LoginResponse:
+      type: object
+      required: [access_token, refresh_token, expires_in_seconds, user_profile]
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in_seconds:
+          type: integer
+        user_profile:
+          $ref: '#/components/schemas/UserProfileMinimal'
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
+    RefreshResponse:
+      type: object
+      required: [access_token, refresh_token, expires_in_seconds]
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in_seconds:
+          type: integer
+
+    AccountProfile:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        display_name:
+          type: string
+        locale:
+          type: string
+        avatar_url:
+          type: string
+        email_verified:
+          type: boolean
+        updated_at:
+          type: string
+          format: date-time
+
+    PatchProfileRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+        avatar_url:
+          type: string
+        locale:
+          type: string
+
+    SecurityPreferences:
+      type: object
+      properties:
+        email_verification_required:
+          type: boolean
+        password_reset_method:
+          type: string
+          enum: [email_link, email_code]
+        session_alerts_enabled:
+          type: boolean
+
+    PatchSecurityPreferencesRequest:
+      type: object
+      properties:
+        email_verification_required:
+          type: boolean
+        password_reset_method:
+          type: string
+          enum: [email_link, email_code]
+        session_alerts_enabled:
+          type: boolean
+
+    VerifyConfirmRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+
+    PasswordResetRequestRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    PasswordResetConfirmRequest:
+      type: object
+      required: [token, new_password]
+      properties:
+        token:
+          type: string
+        new_password:
+          type: string

@@ -2,7 +2,7 @@
 
 ## Document Metadata
 - Document ID: LW-M01-11
-- Version: 1.3.0
+- Version: 1.4.0
 - Status: Approved
 - Owner: Product Manager + Solution Architect
 - Last Updated: 2026-03-21
@@ -13,6 +13,7 @@
 ## Change History
 | Version | Date | Change | Author |
 |---|---|---|---|
+| 1.4.0 | 2026-03-21 | Added Gate F (implementation readiness) and doc 22 reference before code start | Assistant |
 | 1.3.0 | 2026-03-21 | Aligned Module 01 execution governance with authoritative monorepo model and path-based gates | Assistant |
 | 1.2.0 | 2026-03-21 | Added downstream deep-design pack references (17-21) for pre-implementation readiness | Assistant |
 | 1.1.0 | 2026-03-21 | Updated document status to Approved after Governance Board review | Assistant |
@@ -90,6 +91,7 @@ Establish the first frontend-backend vertical slice for user identity so subsequ
 | Gate C - Acceptance Gate | test plan complete | scenario matrix, pass criteria, evidence checklist | QAL |
 | Gate D - Rollout Gate | risk/rollout plan complete | risk register, rollback policy, escalation path | SRE + Decision Authority |
 | Gate E - Monorepo Governance Gate | cross-doc alignment review complete | path ownership map, CI evidence policy, branch/release control notes | PM + SA |
+| Gate F - Implementation Readiness | deep-design pack `17`–`21` satisfied | completed `22_MODULE01_IMPLEMENTATION_READINESS_GATE.md` with GO decision | Decision Authority |
 
 ## 7) Dependencies
 
@@ -128,3 +130,5 @@ The following documents are required before implementation starts:
 - `19_MODULE01_FRONTEND_DETAILED_DESIGN.md`
 - `20_MODULE01_UI_UX_WIREFRAME_SPEC.md`
 - `21_MODULE01_INTEGRATION_SEQUENCE_DIAGRAMS.md`
+
+After deep-design baselines are satisfied, complete **`22_MODULE01_IMPLEMENTATION_READINESS_GATE.md`** (GO / NO-GO / GO with conditions) before any implementation work begins.
