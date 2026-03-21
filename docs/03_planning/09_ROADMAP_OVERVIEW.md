@@ -2,7 +2,7 @@
 
 ## Document Metadata
 - Document ID: LW-09
-- Version: 1.3.0
+- Version: 1.4.0
 - Status: Approved
 - Owner: Product Manager + Solution Architect
 - Last Updated: 2026-03-21
@@ -13,6 +13,7 @@
 ## Change History
 | Version | Date | Change | Author |
 |---|---|---|---|
+| 1.4.0 | 2026-03-21 | Added Phase 1 Module 03 (provider registry + model billing) planning checkpoint and doc references 44-55 | Assistant |
 | 1.3.0 | 2026-03-21 | Added Phase 1 Module 02 (Books & sharing) planning checkpoint and doc references 24–35 | Assistant |
 | 1.2.0 | 2026-03-21 | Added Phase 1 Module 01 identity planning checkpoint and pack references | Assistant |
 | 1.1.0 | 2026-03-21 | Added governance metadata header and migrated to numbered docs structure | Assistant |
@@ -104,6 +105,25 @@ Establish planning readiness for identity, book lifecycle, sharing, and discover
   - `29_GOVERNANCE_BOARD_REVIEW_CHECKLIST_MODULE02.md`
 - **Deep-design + readiness (Draft):** `30_MODULE02_MICROSERVICE_SOURCE_STRUCTURE_AMENDMENT.md` through `35_MODULE02_IMPLEMENTATION_READINESS_GATE.md`.
 - **Prerequisite:** Module 01 identity operational baseline (access tokens); contract-first and gate `35` GO before M02 implementation start.
+
+### Phase 1 Module 03 Checkpoint (Provider registry + model billing)
+
+- **Objective:** Third vertical slice for platform core control plane: user BYOK provider registration, platform-managed model catalog, usage metering, and billing policy (`tier quota + credits overage`).
+- **Planning pack (Draft):**
+  - `44_PHASE1_MODULE03_PROVIDER_REGISTRY_EXECUTION_PACK.md`
+  - `45_MODULE03_API_CONTRACT_DRAFT.md`
+  - `46_MODULE03_FRONTEND_FLOW_SPEC.md`
+  - `47_MODULE03_ACCEPTANCE_TEST_PLAN.md`
+  - `48_MODULE03_RISK_DEPENDENCY_ROLLOUT.md`
+  - `49_GOVERNANCE_BOARD_REVIEW_CHECKLIST_MODULE03.md`
+- **Deep-design + readiness (Draft):**
+  - `50_MODULE03_MICROSERVICE_SOURCE_STRUCTURE_AMENDMENT.md`
+  - `51_MODULE03_BACKEND_DETAILED_DESIGN.md`
+  - `52_MODULE03_FRONTEND_DETAILED_DESIGN.md`
+  - `53_MODULE03_UI_UX_WIREFRAME_SPEC.md`
+  - `54_MODULE03_INTEGRATION_SEQUENCE_DIAGRAMS.md`
+  - `55_MODULE03_IMPLEMENTATION_READINESS_GATE.md`
+- **Prerequisite:** Module 01 auth baseline and Module 02 ownership/visibility baselines are available; contract-first and gate `55` GO before M03 implementation start.
 
 ### Major Dependencies
 - Phase 0 governance baseline.

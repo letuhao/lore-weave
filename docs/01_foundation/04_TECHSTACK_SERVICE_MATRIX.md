@@ -3,7 +3,7 @@
 ## Document Metadata
 
 - Document ID: LW-04
-- Version: 1.2.0
+- Version: 1.3.0
 - Status: Approved
 - Owner: Solution Architect
 - Last Updated: 2026-03-21
@@ -16,6 +16,7 @@
 
 | Version | Date       | Change                                                                   | Author    |
 | ------- | ---------- | ------------------------------------------------------------------------ | --------- |
+| 1.3.0 | 2026-03-21 | Added planned Module 03 services for provider registry and usage/billing accounting in Go | Assistant |
 | 1.2.0 | 2026-03-21 | Updated approval metadata to Approved with Governance Board sign-off | Assistant |
 | 1.1.0   | 2026-03-21 | Added governance metadata header and migrated to numbered docs structure | Assistant |
 | 1.0.0   | 2026-03-21 | Baseline content established before docs reorganization                  | Assistant |
@@ -41,6 +42,8 @@ Lock language assignment, ownership, and runtime boundaries for each microservic
 | `book-service`          | Go         | Chi (or Fiber)      | Book CRUD, ownership, language metadata, status model         | Core platform team    |
 | `sharing-service`       | Go         | Chi (or Fiber)      | Visibility and share policy model (`private/unlisted/public`) | Core platform team    |
 | `catalog-service`       | Go         | Chi (or Fiber)      | Browsing and query/filter endpoints for public/allowed books  | Core platform team    |
+| `provider-registry-service` | Go    | Chi (or Fiber)      | BYOK credentials metadata, provider health, user/platform model registry | Core platform team |
+| `usage-billing-service` | Go         | Chi (or Fiber)      | Usage logs, quota tracking, credits overage accounting, reconciliation | Core platform team |
 | `workflow-job-service`  | Go         | Chi (or Fiber)      | Job creation, lifecycle states, retries, history              | Workflow infra team   |
 | `orchestrator-service`  | Python     | FastAPI + LangGraph | State machine orchestration for AI workflows                  | AI orchestration team |
 | `rag-index-service`     | Python     | FastAPI             | Ingestion, indexing, retrieval, provenance envelopes          | AI knowledge team     |

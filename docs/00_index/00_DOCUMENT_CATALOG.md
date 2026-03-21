@@ -3,7 +3,7 @@
 ## Document Metadata
 
 - Document ID: LW-00
-- Version: 1.18.0
+- Version: 1.19.0
 - Status: Approved
 - Owner: Decision Authority + Execution Authority
 - Last Updated: 2026-03-21
@@ -16,6 +16,7 @@
 
 | Version | Date       | Change                                                        | Author    |
 | ------- | ---------- | ------------------------------------------------------------- | --------- |
+| 1.19.0 | 2026-03-21 | Registered Module 03 planning pack `44`-`55` (provider registry, model billing, deep-design, readiness gate) and linked proposed contract domains for model registry/billing | Assistant |
 | 1.18.0 | 2026-03-21 | Status governance update: approved Module 02 UI/UX planning documents `36`-`43` by Decision Authority | Assistant |
 | 1.17.0 | 2026-03-21 | Registered Module 02 responsive desktop scaling addendum `43_MODULE02_RESPONSIVE_DESKTOP_SCALING_ADDENDUM.md` as planning extension for UI/UX wave `36`-`42` | Assistant |
 | 1.16.0 | 2026-03-21 | Registered Module 02 UI/UX improve wave planning pack `37`-`42` (technical decisions, contract amendment, impact, acceptance supplement, risk/rollout update, readiness gate) | Assistant |
@@ -126,6 +127,10 @@ Use these values consistently in every document metadata block:
   - `37_MODULE02_ADR_UI_UX_WAVE_TECHNICAL_DECISIONS.md` through `42_MODULE02_UI_UX_WAVE_IMPLEMENTATION_READINESS_GATE.md`
 14. Phase 1 Module 02 — responsive desktop scaling addendum (planning extension).
   - `43_MODULE02_RESPONSIVE_DESKTOP_SCALING_ADDENDUM.md`
+15. Phase 1 Module 03 — provider registry + model billing planning pack (draft baseline).
+  - `44_PHASE1_MODULE03_PROVIDER_REGISTRY_EXECUTION_PACK.md` through `49_GOVERNANCE_BOARD_REVIEW_CHECKLIST_MODULE03.md`
+16. Phase 1 Module 03 — deep-design + readiness gate (draft baseline).
+  - `50_MODULE03_MICROSERVICE_SOURCE_STRUCTURE_AMENDMENT.md` through `55_MODULE03_IMPLEMENTATION_READINESS_GATE.md`
 
 ## Folder Structure
 
@@ -192,6 +197,23 @@ Use these values consistently in every document metadata block:
 | M02-42 | `42_MODULE02_UI_UX_WAVE_IMPLEMENTATION_READINESS_GATE.md` | `03_planning` | GO/NO-GO gate for starting UI/UX wave implementation |
 | M02-43 | `43_MODULE02_RESPONSIVE_DESKTOP_SCALING_ADDENDUM.md` | `03_planning` | Responsive desktop and viewport scaling addendum for Module 02 UI/UX wave |
 
+## Phase 1 Module 03 Packs (Provider registry + model billing) — Draft baseline
+
+| Pack Seq | File | Folder | Purpose |
+| --- | --- | --- | --- |
+| M03-44 | `44_PHASE1_MODULE03_PROVIDER_REGISTRY_EXECUTION_PACK.md` | `03_planning` | Module 03 charter, market-informed policy lock, DoR/DoD, governance gates |
+| M03-45 | `45_MODULE03_API_CONTRACT_DRAFT.md` | `03_planning` | Contract draft for provider registry, platform models, usage and billing APIs |
+| M03-46 | `46_MODULE03_FRONTEND_FLOW_SPEC.md` | `03_planning` | User/admin frontend journeys and validation/error flow expectations |
+| M03-47 | `47_MODULE03_ACCEPTANCE_TEST_PLAN.md` | `03_planning` | Acceptance matrix for metering correctness and quota/credit billing behavior |
+| M03-48 | `48_MODULE03_RISK_DEPENDENCY_ROLLOUT.md` | `03_planning` | Risk register, dependency map, rollout and rollback controls |
+| M03-49 | `49_GOVERNANCE_BOARD_REVIEW_CHECKLIST_MODULE03.md` | `03_planning` | Governance Board review checklist and decision log template |
+| M03-50 | `50_MODULE03_MICROSERVICE_SOURCE_STRUCTURE_AMENDMENT.md` | `03_planning` | Source-structure amendment for registry and billing bounded contexts |
+| M03-51 | `51_MODULE03_BACKEND_DETAILED_DESIGN.md` | `03_planning` | Backend domain/adapters/vaulting/metering detailed design |
+| M03-52 | `52_MODULE03_FRONTEND_DETAILED_DESIGN.md` | `03_planning` | Frontend route/component/state design for Module 03 surfaces |
+| M03-53 | `53_MODULE03_UI_UX_WIREFRAME_SPEC.md` | `03_planning` | Wireframe-level layout and state behavior specification |
+| M03-54 | `54_MODULE03_INTEGRATION_SEQUENCE_DIAGRAMS.md` | `03_planning` | BYOK and platform-managed model integration sequence diagrams |
+| M03-55 | `55_MODULE03_IMPLEMENTATION_READINESS_GATE.md` | `03_planning` | GO/NO-GO gate before starting Module 03 implementation |
+
 ## Phase 1 Module Deep-Design Packs
 
 | Pack Seq | File | Folder | Purpose |
@@ -233,6 +255,7 @@ Use these values consistently in every document metadata block:
 - `22_MODULE01_IMPLEMENTATION_READINESS_GATE.md` records explicit approval to begin implementation while preserving this monorepo baseline.
 - `23_MODULE01_GUI_VISUAL_IMPROVEMENT_PLAN.md` records an **approved** UI stack (see LW-M01-23); it does not supersede contract or readiness gate baselines. Implementation follows that document without changing API contracts.
 - Module 02 (**Draft**): planning pack `24`–`35` and `contracts/api/{books,sharing,catalog}/v1/` extend platform core after Module 01 (chapters, **`original_language`**, cover, summary, **draft/revisions**, MinIO/S3 raw files, quota); `35` is the implementation readiness gate before M02 code start.
+- Module 03 (**Draft**): planning pack `44`–`55` extends platform core control plane with provider registry, model catalog, usage metering, and billing policy (`tier quota + credits overage`); proposed contract domains: `contracts/api/model-registry/v1/` and `contracts/api/model-billing/v1/`.
 - This governance note is planning-only and does not imply implementation of live CI configuration in this phase.
 
 
