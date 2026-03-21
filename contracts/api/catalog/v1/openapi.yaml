@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: LoreWeave Catalog API
-  version: 1.2.1
+  version: 1.3.0
   description: |
     Module 02 — public book catalog list/get (gateway paths).
     Only books that are public and lifecycle active appear in catalog. Trashed or purge_pending books are excluded
@@ -72,6 +72,71 @@ paths:
         '404':
           $ref: '#/components/responses/ErrorResponse'
 
+  /v1/catalog/books/{book_id}/chapters:
+    get:
+      tags: [catalog]
+      summary: List reader chapters for a public book
+      operationId: listPublicBookChapters
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicChapterListResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/catalog/books/{book_id}/chapters/{chapter_id}:
+    get:
+      tags: [catalog]
+      summary: Get chapter detail for a public book
+      operationId: getPublicBookChapter
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: chapter_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicChapterDetail'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
 components:
   responses:
     ErrorResponse:
@@ -134,3 +199,49 @@ components:
         total:
           type: integer
           minimum: 0
+
+    PublicChapter:
+      type: object
+      required: [chapter_id, sort_order, original_language]
+      properties:
+        chapter_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        sort_order:
+          type: integer
+        original_language:
+          type: string
+        draft_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    PublicChapterListResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicChapter'
+        total:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        offset:
+          type: integer
+          minimum: 0
+
+    PublicChapterDetail:
+      allOf:
+        - $ref: '#/components/schemas/PublicChapter'
+        - type: object
+          required: [body]
+          properties:
+            body:
+              type: string
+              description: Canonical reader body from active chapter draft.

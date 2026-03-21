@@ -1,27 +1,44 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/auth';
 import { m02Api, type Book, type Chapter } from '@/m02/api';
+import { LanguagePicker } from '@/components/m02/LanguagePicker';
+import { PaginationBar } from '@/components/m02/PaginationBar';
+import { VisibilityBadge } from '@/components/m02/VisibilityBadge';
 
 export function BookDetailPage() {
   const { accessToken } = useAuth();
+  const navigate = useNavigate();
   const { bookId = '' } = useParams();
   const [book, setBook] = useState<Book | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [total, setTotal] = useState(0);
+  const [limit] = useState(10);
+  const [offset, setOffset] = useState(0);
   const [error, setError] = useState('');
   const [langFilter, setLangFilter] = useState('');
+  const [sortOrderFilter, setSortOrderFilter] = useState('');
+  const [lifecycleFilter, setLifecycleFilter] = useState('active');
   const [newTitle, setNewTitle] = useState('');
   const [newLang, setNewLang] = useState('');
   const [newFile, setNewFile] = useState<File | null>(null);
+  const [editorBody, setEditorBody] = useState('');
+  const [downloadBusy, setDownloadBusy] = useState<string | null>(null);
 
   const load = async () => {
     if (!accessToken || !bookId) return;
     try {
       const b = await m02Api.getBook(accessToken, bookId);
       setBook(b);
-      const query = langFilter ? `?original_language=${encodeURIComponent(langFilter)}` : '';
-      const ch = await m02Api.listChapters(accessToken, bookId, query);
+      const ch = await m02Api.listChapters(accessToken, bookId, {
+        original_language: langFilter || undefined,
+        sort_order: sortOrderFilter ? Number(sortOrderFilter) : undefined,
+        lifecycle_state: lifecycleFilter || undefined,
+        limit,
+        offset,
+      });
       setChapters(ch.items);
+      setTotal(ch.total);
       setError('');
     } catch (e) {
       setError((e as Error).message);
@@ -30,13 +47,13 @@ export function BookDetailPage() {
 
   useEffect(() => {
     void load();
-  }, [accessToken, bookId, langFilter]);
+  }, [accessToken, bookId, langFilter, sortOrderFilter, lifecycleFilter, limit, offset]);
 
   const uploadChapter = async (e: FormEvent) => {
     e.preventDefault();
     if (!accessToken || !bookId || !newFile || !newLang) return;
     try {
-      await m02Api.createChapter(accessToken, bookId, {
+      await m02Api.createChapterUpload(accessToken, bookId, {
         file: newFile,
         original_language: newLang,
         title: newTitle || undefined,
@@ -44,7 +61,23 @@ export function BookDetailPage() {
       setNewFile(null);
       setNewLang('');
       setNewTitle('');
+      setOffset(0);
       await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const createFromEditor = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!accessToken || !bookId || !newLang) return;
+    try {
+      const created = await m02Api.createChapterEditor(accessToken, bookId, {
+        title: newTitle || undefined,
+        original_language: newLang,
+        body: editorBody || undefined,
+      });
+      navigate(`/books/${bookId}/chapters/${created.chapter_id}/edit`);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -62,16 +95,35 @@ export function BookDetailPage() {
     await load();
   };
 
+  const downloadRaw = async (chapterId: string) => {
+    if (!accessToken || !bookId) return;
+    setDownloadBusy(chapterId);
+    try {
+      const blob = await m02Api.downloadRaw(accessToken, bookId, chapterId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `chapter-${chapterId}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setDownloadBusy(null);
+    }
+  };
+
   if (!book) return <p className="text-sm text-muted-foreground">{error || 'Loading...'}</p>;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="space-y-1">
-        <h1 className="text-xl font-semibold">{book.title}</h1>
-        <p className="text-xs text-muted-foreground">
-          state: {book.lifecycle_state} | language: {book.original_language || 'n/a'}
-        </p>
-        <div className="flex gap-3 text-sm">
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-semibold">{book.title}</h1>
+          <VisibilityBadge visibility={book.visibility} />
+        </div>
+        <p className="text-xs text-muted-foreground">state: {book.lifecycle_state} | language: {book.original_language || 'n/a'}</p>
+        <div className="flex flex-wrap gap-3 text-sm">
           <Link to={`/books/${bookId}/sharing`} className="underline">
             Sharing
           </Link>
@@ -81,41 +133,84 @@ export function BookDetailPage() {
         </div>
       </div>
 
-      <div className="space-y-2 rounded border p-3">
-        <h2 className="font-medium">Add chapter</h2>
-        <form className="space-y-2" onSubmit={uploadChapter}>
-          <input
-            className="w-full rounded border px-2 py-1"
-            placeholder="Chapter title"
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-          />
-          <input
-            className="w-full rounded border px-2 py-1"
-            placeholder="Language (required)"
-            value={newLang}
-            onChange={(e) => setNewLang(e.target.value)}
-            required
-          />
-          <input
-            type="file"
-            accept=".txt,text/plain"
-            onChange={(e) => setNewFile(e.target.files?.[0] ?? null)}
-            required
-          />
-          <button className="rounded bg-primary px-3 py-1 text-primary-foreground">Upload</button>
-        </form>
+      <div className="grid gap-5 xl:grid-cols-2">
+        <div className="space-y-2 rounded border p-4">
+          <h2 className="font-medium">Create chapter in editor</h2>
+          <form className="space-y-2" onSubmit={createFromEditor}>
+            <input
+              className="w-full rounded border px-2 py-2"
+              placeholder="Chapter title"
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+            />
+            <LanguagePicker value={newLang} onChange={setNewLang} label="Original language" required />
+            <textarea
+              className="min-h-[140px] w-full rounded border px-2 py-2 text-sm"
+              placeholder="Initial draft (optional)"
+              value={editorBody}
+              onChange={(e) => setEditorBody(e.target.value)}
+            />
+            <button className="rounded bg-primary px-3 py-1.5 text-primary-foreground">Create in editor</button>
+          </form>
+        </div>
+
+        <div className="space-y-2 rounded border p-4">
+          <h2 className="font-medium">Upload chapter (.txt)</h2>
+          <form className="space-y-2" onSubmit={uploadChapter}>
+            <input
+              className="w-full rounded border px-2 py-2"
+              placeholder="Chapter title"
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+            />
+            <LanguagePicker value={newLang} onChange={setNewLang} label="Original language" required />
+            <input
+              className="w-full rounded border px-2 py-2"
+              type="file"
+              accept=".txt,text/plain"
+              onChange={(e) => setNewFile(e.target.files?.[0] ?? null)}
+              required
+            />
+            <button className="rounded bg-primary px-3 py-1.5 text-primary-foreground">Upload file</button>
+          </form>
+        </div>
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-medium">Chapters</h2>
-          <input
-            className="rounded border px-2 py-1 text-sm"
-            placeholder="Filter language"
-            value={langFilter}
-            onChange={(e) => setLangFilter(e.target.value)}
-          />
+          <div className="grid w-full gap-2 sm:grid-cols-3 lg:w-auto">
+            <input
+              className="rounded border px-2 py-1 text-sm"
+              placeholder="Filter language"
+              value={langFilter}
+              onChange={(e) => {
+                setOffset(0);
+                setLangFilter(e.target.value);
+              }}
+            />
+            <input
+              className="rounded border px-2 py-1 text-sm"
+              placeholder="Sort order"
+              value={sortOrderFilter}
+              onChange={(e) => {
+                setOffset(0);
+                setSortOrderFilter(e.target.value);
+              }}
+            />
+            <select
+              className="rounded border px-2 py-1 text-sm"
+              value={lifecycleFilter}
+              onChange={(e) => {
+                setOffset(0);
+                setLifecycleFilter(e.target.value);
+              }}
+            >
+              <option value="active">active</option>
+              <option value="trashed">trashed</option>
+              <option value="purge_pending">purge_pending</option>
+            </select>
+          </div>
         </div>
         <ul className="space-y-2">
           {chapters.map((c) => (
@@ -128,14 +223,9 @@ export function BookDetailPage() {
                 <Link to={`/books/${bookId}/chapters/${c.chapter_id}/edit`} className="underline">
                   Edit draft
                 </Link>
-                <a
-                  href={`${import.meta.env.VITE_API_BASE || 'http://localhost:3000'}/v1/books/${bookId}/chapters/${c.chapter_id}/content`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline"
-                >
-                  Download raw
-                </a>
+                <button className="underline" onClick={() => void downloadRaw(c.chapter_id)} disabled={downloadBusy === c.chapter_id}>
+                  {downloadBusy === c.chapter_id ? 'Downloading…' : 'Download raw'}
+                </button>
                 <button className="underline" onClick={() => void trashChapter(c.chapter_id)}>
                   Trash
                 </button>
@@ -143,6 +233,7 @@ export function BookDetailPage() {
             </li>
           ))}
         </ul>
+        <PaginationBar total={total} limit={limit} offset={offset} onChange={setOffset} />
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
     </div>

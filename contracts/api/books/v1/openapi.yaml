@@ -1,11 +1,12 @@
 openapi: 3.0.3
 info:
   title: LoreWeave Books API
-  version: 1.4.0
+  version: 1.5.0
   description: |
     Module 02 — books, chapters (MVP text/plain .txt uploads), editable chapter draft (UTF-8) with revision history,
     cover image, summary, and per-user storage usage. Multilingual: each locale is a separate chapter row with
-    original_language; list chapters supports optional query filters original_language and/or sort_order.
+    original_language; list chapters supports optional query filters original_language and/or sort_order and
+    pagination (limit/offset/total). Owner list includes visibility for direct badge rendering in workspace.
     Logical delete: DELETE book/chapter moves to recycle bin (trashed); DELETE …/purge from bin marks purge_pending for
     future garbage collection (blobs + DB rows removed later by a batch job, not in this API). GET /v1/books lists active
     books only; GET /v1/books/trash lists trashed books. Trashed or purge_pending books must not appear in catalog/unlisted/public.
@@ -328,12 +329,27 @@ paths:
   /v1/books/{book_id}/chapters:
     get:
       tags: [chapters]
-      summary: List chapters for book (owner); optional filters by lifecycle_state, original_language, sort_order
+      summary: List chapters for book (owner); optional filters by lifecycle_state, original_language, sort_order plus pagination
       operationId: listChapters
       security:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/BookId'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
         - name: lifecycle_state
           in: query
           required: false
@@ -371,7 +387,7 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
     post:
       tags: [chapters]
-      summary: Create chapter with raw file upload — MVP only text/plain (.txt); seeds draft from file (UTF-8)
+      summary: Create chapter by upload import (multipart) or editor-first JSON create
       operationId: createChapter
       security:
         - bearerAuth: []
@@ -399,6 +415,9 @@ paths:
                 sort_order:
                   type: integer
                   description: Optional ordering hint; default append to end.
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateChapterFromEditorRequest'
       responses:
         '201':
           description: Created
@@ -893,6 +912,10 @@ components:
         chapter_count:
           type: integer
           minimum: 0
+        visibility:
+          type: string
+          enum: [private, unlisted, public]
+          description: Owner-facing sharing state for list/detail rendering convenience.
         lifecycle_state:
           $ref: '#/components/schemas/LifecycleState'
         trashed_at:
@@ -1083,12 +1106,39 @@ components:
 
     ChapterListResponse:
       type: object
-      required: [items]
+      required: [items, total]
       properties:
         items:
           type: array
           items:
             $ref: '#/components/schemas/Chapter'
+        total:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        offset:
+          type: integer
+          minimum: 0
+
+    CreateChapterFromEditorRequest:
+      type: object
+      required: [original_language]
+      properties:
+        title:
+          type: string
+          maxLength: 500
+        original_language:
+          type: string
+          maxLength: 35
+          description: BCP-47 tag; required for editor-first chapter creation.
+        sort_order:
+          type: integer
+          description: Optional ordering hint; default append to end.
+        body:
+          type: string
+          description: Optional initial draft body for editor-first flow; defaults to empty string when omitted.
 
     BookListResponse:
       type: object

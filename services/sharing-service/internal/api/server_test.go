@@ -107,3 +107,51 @@ func TestFetchBookProjectionHandlesBadJSON(t *testing.T) {
 		t.Fatalf("expected 502 for bad json, got proj=%v status=%d", proj, status)
 	}
 }
+
+func TestFetchBookChaptersInternal(t *testing.T) {
+	t.Parallel()
+
+	bookID := uuid.New()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "/internal/books/"+bookID.String()+"/chapters") {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"items": []map[string]any{
+				{"chapter_id": uuid.New(), "sort_order": 1},
+			},
+			"total": 1,
+		})
+	}))
+	defer upstream.Close()
+
+	srv := &Server{cfg: &config.Config{BookServiceInternalURL: upstream.URL}}
+	out, status := srv.fetchBookChaptersInternal(bookID, 20, 0)
+	if status != http.StatusOK || out == nil {
+		t.Fatalf("expected status 200 with payload, got status=%d out=%v", status, out)
+	}
+}
+
+func TestFetchBookChapterInternal(t *testing.T) {
+	t.Parallel()
+
+	bookID := uuid.New()
+	chapterID := uuid.New()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wantPath := "/internal/books/" + bookID.String() + "/chapters/" + chapterID.String()
+		if r.URL.Path != wantPath {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"chapter_id": chapterID,
+			"body":       "hello world",
+		})
+	}))
+	defer upstream.Close()
+
+	srv := &Server{cfg: &config.Config{BookServiceInternalURL: upstream.URL}}
+	out, status := srv.fetchBookChapterInternal(bookID, chapterID)
+	if status != http.StatusOK || out == nil {
+		t.Fatalf("expected status 200 with payload, got status=%d out=%v", status, out)
+	}
+}

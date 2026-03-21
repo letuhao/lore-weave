@@ -5,10 +5,10 @@ import { Card, CardContent } from '@/components/ui/card';
 export function AppLayout() {
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto w-full max-w-lg px-4 py-8">
+      <div className="mx-auto w-full max-w-screen-2xl px-4 py-6 sm:px-6 lg:px-8 xl:px-10">
         <AppNav />
-        <Card className="mt-6 shadow-sm">
-          <CardContent className="pt-6">
+        <Card className="mt-4 shadow-sm lg:mt-6">
+          <CardContent className="pt-5 lg:pt-6">
             <Outlet />
           </CardContent>
         </Card>

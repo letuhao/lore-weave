@@ -43,6 +43,8 @@ func (s *Server) Router() http.Handler {
 
 	r.Route("/internal", func(r chi.Router) {
 		r.Get("/books/{book_id}/projection", s.getBookProjection)
+		r.Get("/books/{book_id}/chapters", s.getInternalBookChapters)
+		r.Get("/books/{book_id}/chapters/{chapter_id}", s.getInternalBookChapter)
 	})
 
 	r.Route("/v1/books", func(r chi.Router) {
@@ -145,6 +147,36 @@ func (s *Server) ensureOwnerBook(ctx context.Context, bookID, ownerID uuid.UUID)
 		return "", false, http.StatusInternalServerError
 	}
 	return lifecycle, true, http.StatusOK
+}
+
+func (s *Server) fetchSharingVisibility(ctx context.Context, bookID uuid.UUID) string {
+	if strings.TrimSpace(s.cfg.SharingInternalURL) == "" {
+		return "private"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/internal/sharing/books/%s/visibility", strings.TrimRight(s.cfg.SharingInternalURL, "/"), bookID), nil)
+	if err != nil {
+		return "private"
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "private"
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "private"
+	}
+	var out struct {
+		Visibility string `json:"visibility"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "private"
+	}
+	switch out.Visibility {
+	case "private", "unlisted", "public":
+		return out.Visibility
+	default:
+		return "private"
+	}
 }
 
 func parseLimitOffset(r *http.Request) (limit, offset int) {
@@ -282,6 +314,7 @@ LIMIT $3 OFFSET $4
 		var trashedAt, purgeAt, createdAt, updatedAt *time.Time
 		var chapterCount int
 		if err := rows.Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &chapterCount); err == nil {
+			visibility := s.fetchSharingVisibility(ctx, id)
 			items = append(items, map[string]any{
 				"book_id":           id,
 				"owner_user_id":     owner,
@@ -293,6 +326,7 @@ LIMIT $3 OFFSET $4
 				"trashed_at":        trashedAt,
 				"purge_eligible_at": purgeAt,
 				"chapter_count":     chapterCount,
+				"visibility":        visibility,
 				"created_at":        createdAt,
 				"updated_at":        updatedAt,
 			})
@@ -363,6 +397,7 @@ WHERE b.id=$1 AND b.owner_user_id=$2
 		"summary":           nullableString(summary),
 		"cover":             cover,
 		"chapter_count":     chapterCount,
+		"visibility":        s.fetchSharingVisibility(ctx, id),
 		"lifecycle_state":   state,
 		"trashed_at":        trashedAt,
 		"purge_eligible_at": purgeAt,
@@ -581,6 +616,7 @@ func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
 			lifecycle = "active"
 		}
 	}
+	limit, offset := parseLimitOffset(r)
 	args := []any{bookID, lifecycle}
 	where := `book_id=$1 AND lifecycle_state=$2`
 	if v := r.URL.Query().Get("original_language"); v != "" {
@@ -593,7 +629,11 @@ func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
 			where += fmt.Sprintf(" AND sort_order=$%d", len(args))
 		}
 	}
-	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at FROM chapters WHERE `+where+` ORDER BY sort_order, created_at`, args...)
+	countArgs := append([]any{}, args...)
+	var total int
+	_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM chapters WHERE `+where, countArgs...).Scan(&total)
+	args = append(args, limit, offset)
+	rows, err := s.pool.Query(r.Context(), `SELECT id,book_id,title,original_filename,original_language,content_type,byte_size,sort_order,draft_updated_at,draft_revision_count,lifecycle_state,trashed_at,purge_eligible_at,created_at,updated_at FROM chapters WHERE `+where+` ORDER BY sort_order, created_at LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to list chapters")
 		return
@@ -609,24 +649,29 @@ func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
 		var revCount int
 		_ = rows.Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &lstate, &trashedAt, &purgeAt, &createdAt, &updatedAt)
 		items = append(items, map[string]any{
-			"chapter_id":          id,
-			"book_id":             bid,
-			"title":               nullableString(title),
-			"original_filename":   fn,
-			"original_language":   lang,
-			"content_type":        ctype,
-			"byte_size":           size,
-			"sort_order":          order,
-			"draft_updated_at":    draftUpdated,
+			"chapter_id":           id,
+			"book_id":              bid,
+			"title":                nullableString(title),
+			"original_filename":    fn,
+			"original_language":    lang,
+			"content_type":         ctype,
+			"byte_size":            size,
+			"sort_order":           order,
+			"draft_updated_at":     draftUpdated,
 			"draft_revision_count": revCount,
-			"lifecycle_state":     lstate,
-			"trashed_at":          trashedAt,
-			"purge_eligible_at":   purgeAt,
-			"created_at":          createdAt,
-			"updated_at":          updatedAt,
+			"lifecycle_state":      lstate,
+			"trashed_at":           trashedAt,
+			"purge_eligible_at":    purgeAt,
+			"created_at":           createdAt,
+			"updated_at":           updatedAt,
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items":  items,
+		"total":  total,
+		"limit":  limit,
+		"offset": offset,
+	})
 }
 
 func (s *Server) createChapter(w http.ResponseWriter, r *http.Request) {
@@ -648,40 +693,77 @@ func (s *Server) createChapter(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "CHAPTER_INVALID_LIFECYCLE", "parent book is not active")
 		return
 	}
-	if err := r.ParseMultipartForm(50 << 20); err != nil {
-		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid multipart")
+	contentType := strings.ToLower(r.Header.Get("Content-Type"))
+	switch {
+	case strings.HasPrefix(contentType, "application/json"):
+		var in struct {
+			Title            string `json:"title"`
+			OriginalLanguage string `json:"original_language"`
+			SortOrder        int    `json:"sort_order"`
+			Body             string `json:"body"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid payload")
+			return
+		}
+		if strings.TrimSpace(in.OriginalLanguage) == "" {
+			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "original_language is required")
+			return
+		}
+		filename := fmt.Sprintf("editor-%s.txt", uuid.NewString())
+		s.createChapterRecord(w, r.Context(), ownerID, bookID, in.Title, filename, in.OriginalLanguage, in.SortOrder, in.Body, "seed from editor", true)
 		return
+	default:
+		if err := r.ParseMultipartForm(50 << 20); err != nil {
+			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid multipart")
+			return
+		}
+		lang := r.FormValue("original_language")
+		if lang == "" {
+			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "original_language is required")
+			return
+		}
+		f, fh, err := r.FormFile("file")
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "file is required")
+			return
+		}
+		defer f.Close()
+		if ct := fh.Header.Get("Content-Type"); !strings.Contains(ct, "text/plain") {
+			writeError(w, http.StatusUnsupportedMediaType, "UNSUPPORTED_MEDIA_TYPE", "chapter must be text/plain")
+			return
+		}
+		data, _ := io.ReadAll(f)
+		title := r.FormValue("title")
+		sortOrder := 0
+		if v := r.FormValue("sort_order"); v != "" {
+			sortOrder, _ = strconv.Atoi(v)
+		}
+		s.createChapterRecord(w, r.Context(), ownerID, bookID, title, fh.Filename, lang, sortOrder, string(data), "seed from upload", true)
 	}
-	lang := r.FormValue("original_language")
-	if lang == "" {
-		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "original_language is required")
-		return
-	}
-	f, fh, err := r.FormFile("file")
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "file is required")
-		return
-	}
-	defer f.Close()
-	if ct := fh.Header.Get("Content-Type"); !strings.Contains(ct, "text/plain") {
-		writeError(w, http.StatusUnsupportedMediaType, "UNSUPPORTED_MEDIA_TYPE", "chapter must be text/plain")
-		return
-	}
-	data, _ := io.ReadAll(f)
-	title := r.FormValue("title")
-	sortOrder := 0
-	if v := r.FormValue("sort_order"); v != "" {
-		sortOrder, _ = strconv.Atoi(v)
-	}
+}
+
+func (s *Server) createChapterRecord(
+	w http.ResponseWriter,
+	ctx context.Context,
+	ownerID uuid.UUID,
+	bookID uuid.UUID,
+	title string,
+	originalFilename string,
+	lang string,
+	sortOrder int,
+	body string,
+	revisionMessage string,
+	includeRaw bool,
+) {
 	if sortOrder == 0 {
-		_ = s.pool.QueryRow(r.Context(), `SELECT COALESCE(MAX(sort_order),0)+1 FROM chapters WHERE book_id=$1`, bookID).Scan(&sortOrder)
+		_ = s.pool.QueryRow(ctx, `SELECT COALESCE(MAX(sort_order),0)+1 FROM chapters WHERE book_id=$1`, bookID).Scan(&sortOrder)
 	}
-	ctx := r.Context()
 	_ = s.ensureQuotaRow(ctx, ownerID)
 	var used, quota int64
 	_ = s.recalcQuota(ctx, ownerID)
 	_ = s.pool.QueryRow(ctx, `SELECT used_bytes, quota_bytes FROM user_storage_quota WHERE owner_user_id=$1`, ownerID).Scan(&used, &quota)
-	if used+int64(len(data)) > quota {
+	if used+int64(len(body)) > quota {
 		writeError(w, http.StatusInsufficientStorage, "STORAGE_QUOTA_EXCEEDED", "quota exceeded")
 		return
 	}
@@ -696,15 +778,16 @@ func (s *Server) createChapter(w http.ResponseWriter, r *http.Request) {
 INSERT INTO chapters(book_id,title,original_filename,original_language,content_type,byte_size,sort_order,storage_key,lifecycle_state,draft_updated_at,updated_at)
 VALUES($1,$2,$3,$4,'text/plain',$5,$6,$7,'active',now(),now())
 RETURNING id
-`, bookID, nullIfEmpty(title), fh.Filename, lang, int64(len(data)), sortOrder, fmt.Sprintf("chapters/%s/%s", bookID, uuid.New())).Scan(&chapterID)
+`, bookID, nullIfEmpty(title), originalFilename, lang, int64(len(body)), sortOrder, fmt.Sprintf("chapters/%s/%s", bookID, uuid.New())).Scan(&chapterID)
 	if err != nil {
 		writeError(w, http.StatusConflict, "BOOK_CONFLICT", "duplicate sort/language or invalid chapter")
 		return
 	}
-	body := string(data)
-	_, _ = tx.Exec(ctx, `INSERT INTO chapter_raw_objects(chapter_id, body_text) VALUES($1,$2)`, chapterID, body)
+	if includeRaw {
+		_, _ = tx.Exec(ctx, `INSERT INTO chapter_raw_objects(chapter_id, body_text) VALUES($1,$2)`, chapterID, body)
+	}
 	_, _ = tx.Exec(ctx, `INSERT INTO chapter_drafts(chapter_id, body, draft_format, draft_updated_at, draft_version) VALUES($1,$2,'plain',now(),1)`, chapterID, body)
-	_, _ = tx.Exec(ctx, `INSERT INTO chapter_revisions(chapter_id, body, message, author_user_id) VALUES($1,$2,$3,$4)`, chapterID, body, "seed from upload", ownerID)
+	_, _ = tx.Exec(ctx, `INSERT INTO chapter_revisions(chapter_id, body, message, author_user_id) VALUES($1,$2,$3,$4)`, chapterID, body, revisionMessage, ownerID)
 	_, _ = tx.Exec(ctx, `UPDATE chapters SET draft_revision_count=1 WHERE id=$1`, chapterID)
 	if err := tx.Commit(ctx); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to commit chapter")
@@ -970,11 +1053,11 @@ WHERE d.chapter_id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"chapter_id":      chapterID,
-		"body":            body,
-		"draft_format":    format,
+		"chapter_id":       chapterID,
+		"body":             body,
+		"draft_format":     format,
 		"draft_updated_at": updated,
-		"draft_version":   version,
+		"draft_version":    version,
 	})
 }
 
@@ -1075,11 +1158,11 @@ LIMIT $4 OFFSET $5
 		var n int
 		_ = rows.Scan(&rid, &cid, &at, &uid, &msg, &n)
 		items = append(items, map[string]any{
-			"revision_id":       rid,
-			"chapter_id":        cid,
-			"created_at":        at,
-			"author_user_id":    uid,
-			"message":           msg,
+			"revision_id":      rid,
+			"chapter_id":       cid,
+			"created_at":       at,
+			"author_user_id":   uid,
+			"message":          msg,
 			"body_byte_length": n,
 		})
 	}
@@ -1235,6 +1318,99 @@ FROM books b WHERE b.id=$1
 		"chapter_count":     chapterCount,
 		"lifecycle_state":   state,
 		"created_at":        createdAt,
+	})
+}
+
+func (s *Server) getInternalBookChapters(w http.ResponseWriter, r *http.Request) {
+	bookID, err := uuid.Parse(chi.URLParam(r, "book_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid book id")
+		return
+	}
+	var lifecycle string
+	if err := s.pool.QueryRow(r.Context(), `SELECT lifecycle_state FROM books WHERE id=$1`, bookID).Scan(&lifecycle); errors.Is(err, pgx.ErrNoRows) || lifecycle != "active" {
+		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
+		return
+	}
+	limit, offset := parseLimitOffset(r)
+	var total int
+	_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM chapters WHERE book_id=$1 AND lifecycle_state='active'`, bookID).Scan(&total)
+	rows, err := s.pool.Query(r.Context(), `
+SELECT id,title,sort_order,original_language,draft_updated_at
+FROM chapters
+WHERE book_id=$1 AND lifecycle_state='active'
+ORDER BY sort_order, created_at
+LIMIT $2 OFFSET $3
+`, bookID, limit, offset)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list chapters")
+		return
+	}
+	defer rows.Close()
+	items := make([]map[string]any, 0)
+	for rows.Next() {
+		var chapterID uuid.UUID
+		var title, lang string
+		var sortOrder int
+		var draftUpdated *time.Time
+		if err := rows.Scan(&chapterID, &title, &sortOrder, &lang, &draftUpdated); err == nil {
+			items = append(items, map[string]any{
+				"chapter_id":        chapterID,
+				"title":             nullableString(title),
+				"sort_order":        sortOrder,
+				"original_language": lang,
+				"draft_updated_at":  draftUpdated,
+			})
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items":  items,
+		"total":  total,
+		"limit":  limit,
+		"offset": offset,
+	})
+}
+
+func (s *Server) getInternalBookChapter(w http.ResponseWriter, r *http.Request) {
+	bookID, err := uuid.Parse(chi.URLParam(r, "book_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid book id")
+		return
+	}
+	chapterID, err := uuid.Parse(chi.URLParam(r, "chapter_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid chapter id")
+		return
+	}
+	var lifecycle string
+	if err := s.pool.QueryRow(r.Context(), `SELECT lifecycle_state FROM books WHERE id=$1`, bookID).Scan(&lifecycle); errors.Is(err, pgx.ErrNoRows) || lifecycle != "active" {
+		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
+		return
+	}
+	var title, lang, body string
+	var sortOrder int
+	var draftUpdated *time.Time
+	err = s.pool.QueryRow(r.Context(), `
+SELECT c.title,c.sort_order,c.original_language,c.draft_updated_at,d.body
+FROM chapters c
+JOIN chapter_drafts d ON d.chapter_id=c.id
+WHERE c.id=$1 AND c.book_id=$2 AND c.lifecycle_state='active'
+`, chapterID, bookID).Scan(&title, &sortOrder, &lang, &draftUpdated, &body)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to load chapter")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"chapter_id":        chapterID,
+		"title":             nullableString(title),
+		"sort_order":        sortOrder,
+		"original_language": lang,
+		"draft_updated_at":  draftUpdated,
+		"body":              body,
 	})
 }
 

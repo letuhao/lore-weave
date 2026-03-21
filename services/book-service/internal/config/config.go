@@ -7,11 +7,12 @@ import (
 )
 
 type Config struct {
-	HTTPAddr          string
-	DatabaseURL       string
-	JWTSecret         string
+	HTTPAddr           string
+	DatabaseURL        string
+	JWTSecret          string
 	BooksStorageBucket string
-	QuotaBytesDefault int64
+	QuotaBytesDefault  int64
+	SharingInternalURL string
 }
 
 func Load() (*Config, error) {
@@ -21,6 +22,7 @@ func Load() (*Config, error) {
 		JWTSecret:          os.Getenv("JWT_SECRET"),
 		BooksStorageBucket: getEnv("BOOKS_STORAGE_BUCKET", "loreweave-dev-books"),
 		QuotaBytesDefault:  getInt64("QUOTA_BYTES_DEFAULT", 100*1024*1024),
+		SharingInternalURL: getEnv("SHARING_INTERNAL_URL", "http://localhost:8083"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

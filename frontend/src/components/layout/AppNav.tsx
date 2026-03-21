@@ -20,66 +20,65 @@ export function AppNav() {
   const linkClass = cn(buttonVariants({ variant: 'link' }), 'h-auto p-0 text-foreground');
 
   return (
-    <nav className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border pb-4">
-      <Link to="/" className={linkClass}>
-        Home
-      </Link>
-      {!accessToken && (
-        <Link to="/register" className={linkClass}>
-          Register
-        </Link>
-      )}
-      {!accessToken && (
-        <Link to="/login" className={linkClass}>
-          Login
-        </Link>
-      )}
-      {accessToken && (
-        <Link to="/profile" className={linkClass}>
-          Profile
-        </Link>
-      )}
-      {accessToken && (
-        <Link to="/books" className={linkClass}>
-          My books
-        </Link>
-      )}
-      {accessToken && (
-        <Link to="/books/trash" className={linkClass}>
-          Recycle bin
-        </Link>
-      )}
-      <Link to="/browse" className={linkClass}>
-        Browse
-      </Link>
-      {accessToken && (
-        <Link to="/security" className={linkClass}>
-          Security
-        </Link>
-      )}
-      {accessToken && (
-        <Link to="/verify" className={linkClass}>
-          Verify email
-        </Link>
-      )}
-      {!accessToken && (
-        <Link to="/forgot" className={linkClass}>
-          Forgot password
-        </Link>
-      )}
-      {!accessToken && (
-        <Link to="/reset" className={linkClass}>
-          Reset password
-        </Link>
-      )}
-      {accessToken && (
-        <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={() => void serverLogout()}>
-          Log out
-        </Button>
-      )}
-      {refreshToken && !accessToken && (
-        <span className="w-full text-xs text-muted-foreground md:w-auto md:ml-auto">Has refresh token only</span>
-      )}
+    <nav className="border-b border-border pb-4">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <Link to="/" className={linkClass}>
+            Home
+          </Link>
+          {accessToken && (
+            <>
+              <Link to="/books" className={linkClass}>
+                Workspace
+              </Link>
+              <Link to="/books/trash" className={linkClass}>
+                Recycle bin
+              </Link>
+            </>
+          )}
+          <Link to="/browse" className={linkClass}>
+            Browse
+          </Link>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 lg:ml-auto">
+          {accessToken && (
+            <>
+              <Link to="/profile" className={linkClass}>
+                Profile
+              </Link>
+              <Link to="/security" className={linkClass}>
+                Security
+              </Link>
+              <Link to="/verify" className={linkClass}>
+                Verify email
+              </Link>
+            </>
+          )}
+          {!accessToken && (
+            <>
+              <Link to="/register" className={linkClass}>
+                Register
+              </Link>
+              <Link to="/login" className={linkClass}>
+                Login
+              </Link>
+              <Link to="/forgot" className={linkClass}>
+                Forgot password
+              </Link>
+              <Link to="/reset" className={linkClass}>
+                Reset password
+              </Link>
+            </>
+          )}
+          {accessToken && (
+            <Button type="button" variant="outline" size="sm" onClick={() => void serverLogout()}>
+              Log out
+            </Button>
+          )}
+        </div>
+      </div>
+      {refreshToken && !accessToken && <p className="mt-2 text-xs text-muted-foreground">Has refresh token only</p>}
     </nav>
   );
 }

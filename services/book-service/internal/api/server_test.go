@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +11,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+
+	"github.com/loreweave/book-service/internal/config"
 )
 
 func TestParseLimitOffset(t *testing.T) {
@@ -130,4 +133,42 @@ func TestParseUUIDParam(t *testing.T) {
 
 func contextWithChi(req *http.Request, rctx *chi.Context) context.Context {
 	return context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
+}
+
+func TestFetchSharingVisibility(t *testing.T) {
+	t.Parallel()
+
+	bookID := uuid.New()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/internal/sharing/books/"+bookID.String()+"/visibility" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"book_id":    bookID,
+			"visibility": "public",
+		})
+	}))
+	defer upstream.Close()
+
+	srv := &Server{cfg: &config.Config{SharingInternalURL: upstream.URL}}
+	got := srv.fetchSharingVisibility(context.Background(), bookID)
+	if got != "public" {
+		t.Fatalf("expected public visibility, got %q", got)
+	}
+}
+
+func TestFetchSharingVisibilityFallsBackToPrivate(t *testing.T) {
+	t.Parallel()
+
+	bookID := uuid.New()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer upstream.Close()
+
+	srv := &Server{cfg: &config.Config{SharingInternalURL: upstream.URL}}
+	got := srv.fetchSharingVisibility(context.Background(), bookID)
+	if got != "private" {
+		t.Fatalf("expected private fallback on upstream error, got %q", got)
+	}
 }

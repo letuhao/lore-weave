@@ -38,6 +38,8 @@ func (s *Server) Router() http.Handler {
 	r.Route("/v1/catalog", func(r chi.Router) {
 		r.Get("/books", s.listPublicBooks)
 		r.Get("/books/{book_id}", s.getPublicBook)
+		r.Get("/books/{book_id}/chapters", s.listPublicBookChapters)
+		r.Get("/books/{book_id}/chapters/{chapter_id}", s.getPublicBookChapter)
 	})
 	return r
 }
@@ -107,6 +109,38 @@ func (s *Server) fetchProjection(id uuid.UUID) (*bookProjection, int) {
 		return nil, http.StatusBadGateway
 	}
 	return &out, http.StatusOK
+}
+
+func (s *Server) fetchPublicChapterList(bookID uuid.UUID, limit, offset int) (map[string]any, int) {
+	res, err := http.Get(fmt.Sprintf("%s/internal/books/%s/chapters?limit=%d&offset=%d", strings.TrimRight(s.cfg.BookServiceInternalURL, "/"), bookID, limit, offset))
+	if err != nil {
+		return nil, http.StatusBadGateway
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, res.StatusCode
+	}
+	var out map[string]any
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return nil, http.StatusBadGateway
+	}
+	return out, http.StatusOK
+}
+
+func (s *Server) fetchPublicChapterDetail(bookID, chapterID uuid.UUID) (map[string]any, int) {
+	res, err := http.Get(fmt.Sprintf("%s/internal/books/%s/chapters/%s", strings.TrimRight(s.cfg.BookServiceInternalURL, "/"), bookID, chapterID))
+	if err != nil {
+		return nil, http.StatusBadGateway
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, res.StatusCode
+	}
+	var out map[string]any
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return nil, http.StatusBadGateway
+	}
+	return out, http.StatusOK
 }
 
 func (s *Server) listPublicBooks(w http.ResponseWriter, r *http.Request) {
@@ -184,4 +218,65 @@ func (s *Server) getPublicBook(w http.ResponseWriter, r *http.Request) {
 		"visibility":        "public",
 		"created_at":        p.CreatedAt,
 	})
+}
+
+func (s *Server) listPublicBookChapters(w http.ResponseWriter, r *http.Request) {
+	bookID, err := uuid.Parse(chi.URLParam(r, "book_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "CATALOG_INVALID_QUERY", "invalid book id")
+		return
+	}
+	res, err := http.Get(fmt.Sprintf("%s/internal/sharing/public/%s", strings.TrimRight(s.cfg.SharingServiceInternalURL, "/"), bookID))
+	if err != nil || res.StatusCode != http.StatusOK {
+		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
+		return
+	}
+	if res != nil {
+		res.Body.Close()
+	}
+	limit := 20
+	offset := 0
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			offset = n
+		}
+	}
+	out, status := s.fetchPublicChapterList(bookID, limit, offset)
+	if status != http.StatusOK {
+		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) getPublicBookChapter(w http.ResponseWriter, r *http.Request) {
+	bookID, err := uuid.Parse(chi.URLParam(r, "book_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "CATALOG_INVALID_QUERY", "invalid book id")
+		return
+	}
+	chapterID, err := uuid.Parse(chi.URLParam(r, "chapter_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "CATALOG_INVALID_QUERY", "invalid chapter id")
+		return
+	}
+	res, err := http.Get(fmt.Sprintf("%s/internal/sharing/public/%s", strings.TrimRight(s.cfg.SharingServiceInternalURL, "/"), bookID))
+	if err != nil || res.StatusCode != http.StatusOK {
+		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
+		return
+	}
+	if res != nil {
+		res.Body.Close()
+	}
+	out, status := s.fetchPublicChapterDetail(bookID, chapterID)
+	if status != http.StatusOK {
+		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }

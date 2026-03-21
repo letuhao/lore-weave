@@ -58,4 +58,67 @@ describe('m02Api', () => {
       code: 'BOOK_CONFLICT',
     });
   });
+
+  it('createChapterEditor delegates JSON payload via apiJson', async () => {
+    vi.mocked(apiJson).mockResolvedValueOnce({
+      chapter_id: 'c1',
+      book_id: 'b1',
+      original_filename: 'editor-1.txt',
+      original_language: 'vi',
+      content_type: 'text/plain',
+      byte_size: 0,
+      sort_order: 1,
+      lifecycle_state: 'active',
+    } as never);
+
+    await m02Api.createChapterEditor('tok', 'book-1', {
+      original_language: 'vi',
+      title: 'Editor chapter',
+      body: 'hello',
+    });
+
+    expect(apiJson).toHaveBeenCalledWith('/v1/books/book-1/chapters', {
+      method: 'POST',
+      token: 'tok',
+      body: JSON.stringify({
+        original_language: 'vi',
+        title: 'Editor chapter',
+        body: 'hello',
+      }),
+    });
+  });
+
+  it('listChapters builds query string for filters and pagination', async () => {
+    vi.mocked(apiJson).mockResolvedValueOnce({ items: [], total: 0 } as never);
+    await m02Api.listChapters('tok', 'book-1', {
+      original_language: 'en',
+      sort_order: 3,
+      limit: 5,
+      offset: 10,
+      lifecycle_state: 'active',
+    });
+    expect(apiJson).toHaveBeenCalledWith(
+      '/v1/books/book-1/chapters?lifecycle_state=active&original_language=en&sort_order=3&limit=5&offset=10',
+      { token: 'tok' },
+    );
+  });
+
+  it('downloadRaw sends authorized request and returns blob', async () => {
+    const blob = new Blob(['raw-data'], { type: 'text/plain' });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: async () => blob,
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const got = await m02Api.downloadRaw('tok', 'book-1', 'chapter-1');
+    expect(got).toBe(blob);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/v1/books/book-1/chapters/chapter-1/content'),
+      expect.objectContaining({
+        method: 'GET',
+        headers: { Authorization: 'Bearer tok' },
+      }),
+    );
+  });
 });

@@ -16,6 +16,7 @@ import { RecycleBinPage } from './pages/RecycleBinPage';
 import { SharingPage } from './pages/SharingPage';
 import { BrowsePage } from './pages/BrowsePage';
 import { UnlistedPage } from './pages/UnlistedPage';
+import { PublicBookPage } from './pages/PublicBookPage';
 
 function Home() {
   const { accessToken } = useAuth();
@@ -112,6 +113,7 @@ function AppRoutes() {
           }
         />
         <Route path="/browse" element={<BrowsePage />} />
+        <Route path="/browse/:bookId" element={<PublicBookPage />} />
         <Route path="/s/:accessToken" element={<UnlistedPage />} />
       </Route>
     </Routes>

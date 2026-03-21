@@ -3,7 +3,7 @@
 ## Document Metadata
 
 - Document ID: LW-00
-- Version: 1.14.0
+- Version: 1.18.0
 - Status: Approved
 - Owner: Decision Authority + Execution Authority
 - Last Updated: 2026-03-21
@@ -16,6 +16,10 @@
 
 | Version | Date       | Change                                                        | Author    |
 | ------- | ---------- | ------------------------------------------------------------- | --------- |
+| 1.18.0 | 2026-03-21 | Status governance update: approved Module 02 UI/UX planning documents `36`-`43` by Decision Authority | Assistant |
+| 1.17.0 | 2026-03-21 | Registered Module 02 responsive desktop scaling addendum `43_MODULE02_RESPONSIVE_DESKTOP_SCALING_ADDENDUM.md` as planning extension for UI/UX wave `36`-`42` | Assistant |
+| 1.16.0 | 2026-03-21 | Registered Module 02 UI/UX improve wave planning pack `37`-`42` (technical decisions, contract amendment, impact, acceptance supplement, risk/rollout update, readiness gate) | Assistant |
+| 1.15.0 | 2026-03-21 | Registered docs-only Module 02 UI/UX improvement implementation plan `36_MODULE02_UI_UX_IMPROVEMENT_IMPLEMENTATION_PLAN.md` (planning artifact, no source-code execution) | Assistant |
 | 1.14.0 | 2026-03-21 | M02 **recycle bin**: **`lifecycle_state`**, trash/restore/purge, **`GET /v1/books/trash`**; books OpenAPI **1.4.0**; sharing/catalog **1.2.1**; `25` **1.4.0** + cascade 24/26–29/31–33/35 | Assistant |
 | 1.13.0 | 2026-03-21 | `30` §5: baseline **Postgres database per microservice** (book / sharing / catalog) | Assistant |
 | 1.12.0 | 2026-03-21 | M02 multilingual: **`GET …/chapters`** query **`original_language`**, **`sort_order`**; books OpenAPI **1.3.0**; `25` §7; cascaded 24/26/27/29/31–33/35 | Assistant |
@@ -116,6 +120,12 @@ Use these values consistently in every document metadata block:
   - OpenAPI: `contracts/api/books/v1/`, `contracts/api/sharing/v1/`, `contracts/api/catalog/v1/`
 11. Phase 1 Module 02 — deep-design + readiness gate (**Draft**): MinIO/S3 path, BE/FE tabs, sequences for upload/download.
   - `30_MODULE02_MICROSERVICE_SOURCE_STRUCTURE_AMENDMENT.md` through `35_MODULE02_IMPLEMENTATION_READINESS_GATE.md`
+12. Phase 1 Module 02 — UI/UX improvement docs-only implementation plan (planning boundary: markdown-only).
+  - `36_MODULE02_UI_UX_IMPROVEMENT_IMPLEMENTATION_PLAN.md`
+13. Phase 1 Module 02 — UI/UX improve wave execution-planning pack (docs-only phase complete).
+  - `37_MODULE02_ADR_UI_UX_WAVE_TECHNICAL_DECISIONS.md` through `42_MODULE02_UI_UX_WAVE_IMPLEMENTATION_READINESS_GATE.md`
+14. Phase 1 Module 02 — responsive desktop scaling addendum (planning extension).
+  - `43_MODULE02_RESPONSIVE_DESKTOP_SCALING_ADDENDUM.md`
 
 ## Folder Structure
 
@@ -173,6 +183,14 @@ Use these values consistently in every document metadata block:
 | M02-33 | `33_MODULE02_UI_UX_WIREFRAME_SPEC.md` | `03_planning` | Wireframes and UI states |
 | M02-34 | `34_MODULE02_INTEGRATION_SEQUENCE_DIAGRAMS.md` | `03_planning` | E2E and failure sequences |
 | M02-35 | `35_MODULE02_IMPLEMENTATION_READINESS_GATE.md` | `03_planning` | GO/NO-GO before M02 implementation |
+| M02-36 | `36_MODULE02_UI_UX_IMPROVEMENT_IMPLEMENTATION_PLAN.md` | `03_planning` | Docs-only UI/UX improvement implementation plan; execution boundary excludes source-code changes in this step |
+| M02-37 | `37_MODULE02_ADR_UI_UX_WAVE_TECHNICAL_DECISIONS.md` | `03_planning` | Wave technical decisions set (Lexical, editor-first, visibility/download/public boundaries) |
+| M02-38 | `38_MODULE02_API_CONTRACT_UI_UX_WAVE_AMENDMENT.md` | `03_planning` | Planning-level API contract deltas for UI/UX wave |
+| M02-39 | `39_MODULE02_UI_UX_WAVE_CHANGE_IMPACT_AND_COMPATIBILITY.md` | `03_planning` | Cross-stack impact, compatibility policy, and rollout ordering |
+| M02-40 | `40_MODULE02_ACCEPTANCE_TEST_PLAN_UI_UX_WAVE_SUPPLEMENT.md` | `03_planning` | Wave-specific acceptance scenarios and evidence supplement |
+| M02-41 | `41_MODULE02_RISK_ROLLOUT_GOVERNANCE_UI_UX_WAVE_UPDATE.md` | `03_planning` | Wave risk register, rollout slicing, rollback and governance checkpoints |
+| M02-42 | `42_MODULE02_UI_UX_WAVE_IMPLEMENTATION_READINESS_GATE.md` | `03_planning` | GO/NO-GO gate for starting UI/UX wave implementation |
+| M02-43 | `43_MODULE02_RESPONSIVE_DESKTOP_SCALING_ADDENDUM.md` | `03_planning` | Responsive desktop and viewport scaling addendum for Module 02 UI/UX wave |
 
 ## Phase 1 Module Deep-Design Packs
 

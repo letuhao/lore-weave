@@ -1,5 +1,7 @@
 import { apiJson } from '@/api';
 
+export type Visibility = 'private' | 'unlisted' | 'public';
+
 export type Book = {
   book_id: string;
   owner_user_id: string;
@@ -8,6 +10,7 @@ export type Book = {
   original_language?: string | null;
   summary?: string | null;
   chapter_count: number;
+  visibility?: Visibility;
   lifecycle_state: 'active' | 'trashed' | 'purge_pending';
   created_at?: string;
   updated_at?: string;
@@ -29,6 +32,13 @@ export type Chapter = {
 
 const base = () => import.meta.env.VITE_API_BASE || 'http://localhost:3000';
 
+export type ChapterListResponse = {
+  items: Chapter[];
+  total: number;
+  limit?: number;
+  offset?: number;
+};
+
 async function apiForm<T>(path: string, form: FormData, token: string): Promise<T> {
   const res = await fetch(`${base()}${path}`, {
     method: 'POST',
@@ -47,9 +57,20 @@ async function apiForm<T>(path: string, form: FormData, token: string): Promise<
   return body as T;
 }
 
+async function apiAuthedFetch(path: string, token: string): Promise<Response> {
+  return fetch(`${base()}${path}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
 export const m02Api = {
-  listBooks(token: string) {
-    return apiJson<{ items: Book[]; total: number }>('/v1/books', { token });
+  listBooks(token: string, params?: { limit?: number; offset?: number }) {
+    const qs = new URLSearchParams();
+    if (params?.limit) qs.set('limit', String(params.limit));
+    if (params?.offset) qs.set('offset', String(params.offset));
+    const query = qs.toString();
+    return apiJson<{ items: Book[]; total: number }>(`/v1/books${query ? `?${query}` : ''}`, { token });
   },
   listTrash(token: string) {
     return apiJson<{ items: Book[]; total: number }>('/v1/books/trash', { token });
@@ -75,10 +96,26 @@ export const m02Api = {
   purgeBook(token: string, bookId: string) {
     return apiJson<void>(`/v1/books/${bookId}/purge`, { method: 'DELETE', token });
   },
-  listChapters(token: string, bookId: string, query = '') {
-    return apiJson<{ items: Chapter[] }>(`/v1/books/${bookId}/chapters${query}`, { token });
+  uploadCover(token: string, bookId: string, file: File) {
+    const form = new FormData();
+    form.append('file', file);
+    return apiForm<Book>(`/v1/books/${bookId}/cover`, form, token);
   },
-  createChapter(
+  listChapters(
+    token: string,
+    bookId: string,
+    params?: { lifecycle_state?: string; original_language?: string; sort_order?: number; limit?: number; offset?: number },
+  ) {
+    const qs = new URLSearchParams();
+    if (params?.lifecycle_state) qs.set('lifecycle_state', params.lifecycle_state);
+    if (params?.original_language) qs.set('original_language', params.original_language);
+    if (params?.sort_order !== undefined) qs.set('sort_order', String(params.sort_order));
+    if (params?.limit !== undefined) qs.set('limit', String(params.limit));
+    if (params?.offset !== undefined) qs.set('offset', String(params.offset));
+    const query = qs.toString();
+    return apiJson<ChapterListResponse>(`/v1/books/${bookId}/chapters${query ? `?${query}` : ''}`, { token });
+  },
+  createChapterUpload(
     token: string,
     bookId: string,
     payload: { file: File; original_language: string; title?: string; sort_order?: number },
@@ -89,6 +126,35 @@ export const m02Api = {
     if (payload.title) form.append('title', payload.title);
     if (payload.sort_order !== undefined) form.append('sort_order', String(payload.sort_order));
     return apiForm<Chapter>(`/v1/books/${bookId}/chapters`, form, token);
+  },
+  createChapter(token: string, bookId: string, payload: { file: File; original_language: string; title?: string; sort_order?: number }) {
+    return this.createChapterUpload(token, bookId, payload);
+  },
+  createChapterEditor(
+    token: string,
+    bookId: string,
+    payload: { original_language: string; title?: string; sort_order?: number; body?: string },
+  ) {
+    return apiJson<Chapter>(`/v1/books/${bookId}/chapters`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
+  async downloadRaw(token: string, bookId: string, chapterId: string) {
+    const res = await apiAuthedFetch(`/v1/books/${bookId}/chapters/${chapterId}/content`, token);
+    if (!res.ok) {
+      const text = await res.text();
+      let message = res.statusText;
+      try {
+        const body = JSON.parse(text) as { message?: string };
+        message = body.message || message;
+      } catch {
+        // keep status text fallback
+      }
+      throw new Error(message);
+    }
+    return res.blob();
   },
   patchChapter(token: string, bookId: string, chapterId: string, payload: Record<string, unknown>) {
     return apiJson<Chapter>(`/v1/books/${bookId}/chapters/${chapterId}`, {
@@ -127,9 +193,19 @@ export const m02Api = {
       body: JSON.stringify(payload),
     });
   },
-  listRevisions(token: string, bookId: string, chapterId: string) {
+  listRevisions(token: string, bookId: string, chapterId: string, params?: { limit?: number; offset?: number }) {
+    const qs = new URLSearchParams();
+    if (params?.limit !== undefined) qs.set('limit', String(params.limit));
+    if (params?.offset !== undefined) qs.set('offset', String(params.offset));
+    const query = qs.toString();
     return apiJson<{ items: Array<{ revision_id: string; created_at: string; message?: string }>; total: number }>(
-      `/v1/books/${bookId}/chapters/${chapterId}/revisions`,
+      `/v1/books/${bookId}/chapters/${chapterId}/revisions${query ? `?${query}` : ''}`,
+      { token },
+    );
+  },
+  getRevision(token: string, bookId: string, chapterId: string, revisionId: string) {
+    return apiJson<{ revision_id: string; created_at: string; message?: string; body: string }>(
+      `/v1/books/${bookId}/chapters/${chapterId}/revisions/${revisionId}`,
       { token },
     );
   },
@@ -152,14 +228,55 @@ export const m02Api = {
   ) {
     return apiJson(`/v1/sharing/books/${bookId}`, { method: 'PATCH', token, body: JSON.stringify(payload) });
   },
-  listCatalog() {
-    return apiJson<{ items: Array<{ book_id: string; title: string; summary_excerpt?: string; original_language?: string }>; total: number }>(
-      '/v1/catalog/books',
+  listCatalog(params?: { limit?: number; offset?: number; q?: string }) {
+    const qs = new URLSearchParams();
+    if (params?.limit !== undefined) qs.set('limit', String(params.limit));
+    if (params?.offset !== undefined) qs.set('offset', String(params.offset));
+    if (params?.q) qs.set('q', params.q);
+    const query = qs.toString();
+    return apiJson<{
+      items: Array<{ book_id: string; title: string; summary_excerpt?: string; original_language?: string; chapter_count?: number }>;
+      total: number;
+    }>(
+      `/v1/catalog/books${query ? `?${query}` : ''}`,
+    );
+  },
+  getCatalogBook(bookId: string) {
+    return apiJson<{ book_id: string; title: string; summary_excerpt?: string; original_language?: string; chapter_count?: number }>(
+      `/v1/catalog/books/${bookId}`,
+    );
+  },
+  listCatalogChapters(bookId: string, params?: { limit?: number; offset?: number }) {
+    const qs = new URLSearchParams();
+    if (params?.limit) qs.set('limit', String(params.limit));
+    if (params?.offset) qs.set('offset', String(params.offset));
+    const query = qs.toString();
+    return apiJson<{ items: Array<{ chapter_id: string; title?: string | null; sort_order: number; original_language: string }>; total: number; limit?: number; offset?: number }>(
+      `/v1/catalog/books/${bookId}/chapters${query ? `?${query}` : ''}`,
+    );
+  },
+  getCatalogChapter(bookId: string, chapterId: string) {
+    return apiJson<{ chapter_id: string; title?: string | null; sort_order: number; original_language: string; body: string }>(
+      `/v1/catalog/books/${bookId}/chapters/${chapterId}`,
     );
   },
   getUnlisted(accessToken: string) {
-    return apiJson<{ book_id: string; title: string; summary_excerpt?: string; original_language?: string }>(
+    return apiJson<{ book_id: string; title: string; summary_excerpt?: string; original_language?: string; chapter_count?: number }>(
       `/v1/sharing/unlisted/${accessToken}`,
+    );
+  },
+  listUnlistedChapters(accessToken: string, params?: { limit?: number; offset?: number }) {
+    const qs = new URLSearchParams();
+    if (params?.limit) qs.set('limit', String(params.limit));
+    if (params?.offset) qs.set('offset', String(params.offset));
+    const query = qs.toString();
+    return apiJson<{ items: Array<{ chapter_id: string; title?: string | null; sort_order: number; original_language: string }>; total: number; limit?: number; offset?: number }>(
+      `/v1/sharing/unlisted/${accessToken}/chapters${query ? `?${query}` : ''}`,
+    );
+  },
+  getUnlistedChapter(accessToken: string, chapterId: string) {
+    return apiJson<{ chapter_id: string; title?: string | null; sort_order: number; original_language: string; body: string }>(
+      `/v1/sharing/unlisted/${accessToken}/chapters/${chapterId}`,
     );
   },
 };

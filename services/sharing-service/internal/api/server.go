@@ -42,12 +42,15 @@ func (s *Server) Router() http.Handler {
 	r.Route("/internal/sharing", func(r chi.Router) {
 		r.Get("/public", s.listPublicInternal)
 		r.Get("/public/{book_id}", s.getPublicInternal)
+		r.Get("/books/{book_id}/visibility", s.getBookVisibilityInternal)
 	})
 
 	r.Route("/v1/sharing", func(r chi.Router) {
 		r.Get("/books/{book_id}", s.getSharingPolicy)
 		r.Patch("/books/{book_id}", s.patchSharingPolicy)
 		r.Get("/unlisted/{access_token}", s.getUnlistedBook)
+		r.Get("/unlisted/{access_token}/chapters", s.listUnlistedChapters)
+		r.Get("/unlisted/{access_token}/chapters/{chapter_id}", s.getUnlistedChapter)
 	})
 	return r
 }
@@ -284,6 +287,119 @@ func (s *Server) getUnlistedBook(w http.ResponseWriter, r *http.Request) {
 		"cover_url":         p.CoverURL,
 		"chapter_count":     p.ChapterCount,
 		"visibility":        "unlisted",
+	})
+}
+
+func (s *Server) resolveUnlistedBookID(ctx context.Context, tokenValue string) (uuid.UUID, bool) {
+	var bookID uuid.UUID
+	err := s.pool.QueryRow(ctx, `SELECT book_id FROM sharing_policies WHERE visibility='unlisted' AND unlisted_access_token=$1`, tokenValue).Scan(&bookID)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return bookID, true
+}
+
+func (s *Server) fetchBookChaptersInternal(bookID uuid.UUID, limit, offset int) (map[string]any, int) {
+	res, err := http.Get(fmt.Sprintf("%s/internal/books/%s/chapters?limit=%d&offset=%d", strings.TrimRight(s.cfg.BookServiceInternalURL, "/"), bookID, limit, offset))
+	if err != nil {
+		return nil, http.StatusBadGateway
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, res.StatusCode
+	}
+	var out map[string]any
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return nil, http.StatusBadGateway
+	}
+	return out, http.StatusOK
+}
+
+func (s *Server) fetchBookChapterInternal(bookID, chapterID uuid.UUID) (map[string]any, int) {
+	res, err := http.Get(fmt.Sprintf("%s/internal/books/%s/chapters/%s", strings.TrimRight(s.cfg.BookServiceInternalURL, "/"), bookID, chapterID))
+	if err != nil {
+		return nil, http.StatusBadGateway
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, res.StatusCode
+	}
+	var out map[string]any
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return nil, http.StatusBadGateway
+	}
+	return out, http.StatusOK
+}
+
+func (s *Server) listUnlistedChapters(w http.ResponseWriter, r *http.Request) {
+	tokenValue := chi.URLParam(r, "access_token")
+	bookID, ok := s.resolveUnlistedBookID(r.Context(), tokenValue)
+	if !ok {
+		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "not found")
+		return
+	}
+	limit := 20
+	offset := 0
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			offset = n
+		}
+	}
+	out, status := s.fetchBookChaptersInternal(bookID, limit, offset)
+	if status != http.StatusOK {
+		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) getUnlistedChapter(w http.ResponseWriter, r *http.Request) {
+	tokenValue := chi.URLParam(r, "access_token")
+	bookID, ok := s.resolveUnlistedBookID(r.Context(), tokenValue)
+	if !ok {
+		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "not found")
+		return
+	}
+	chapterID, err := uuid.Parse(chi.URLParam(r, "chapter_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid chapter_id")
+		return
+	}
+	out, status := s.fetchBookChapterInternal(bookID, chapterID)
+	if status != http.StatusOK {
+		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) getBookVisibilityInternal(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseBookID(w, r)
+	if !ok {
+		return
+	}
+	var visibility string
+	err := s.pool.QueryRow(r.Context(), `SELECT visibility FROM sharing_policies WHERE book_id=$1`, bookID).Scan(&visibility)
+	if err == pgx.ErrNoRows {
+		// Default is private when no row exists yet.
+		writeJSON(w, http.StatusOK, map[string]any{
+			"book_id":    bookID,
+			"visibility": "private",
+		})
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to load visibility")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"book_id":    bookID,
+		"visibility": visibility,
 	})
 }
 
