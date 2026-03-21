@@ -14,7 +14,9 @@ export function ForgotPage() {
         method: 'POST',
         body: JSON.stringify({ email }),
       });
-      setMsg('If the account exists, a reset was triggered (see dev server log).');
+      setMsg(
+        'If the account exists, a reset was triggered. Check Mailhog at http://localhost:8025 or auth-service logs for the token.',
+      );
     } catch {
       setMsg('Request accepted.');
     }

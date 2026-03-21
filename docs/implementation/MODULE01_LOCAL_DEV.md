@@ -19,10 +19,25 @@
 
 ## Start infrastructure
 
+**Postgres only** (run gateway/auth/FE on the host):
+
 ```bash
 cd infra
 docker compose up -d postgres
 ```
+
+## Full stack (Docker Compose)
+
+Builds and runs Postgres, Mailhog, `auth-service`, `api-gateway-bff`, and the frontend (static build behind nginx). From `infra/`:
+
+```bash
+docker compose up --build
+```
+
+Open **http://localhost:5173** (UI). Gateway **http://localhost:3000**, auth **http://localhost:8081**, Mailhog UI **http://localhost:8025**.
+
+- Default `JWT_SECRET` is suitable for local dev only; override with env `JWT_SECRET` (≥ 32 chars) or `infra/.env` (see `infra/.env.example`).
+- `VITE_API_BASE` is baked in at **image build** time (default `http://localhost:3000`). If the browser must use another host/port, rebuild with e.g. `VITE_API_BASE=http://192.168.1.10:3000 docker compose build frontend`.
 
 ## Auth service
 
@@ -57,9 +72,20 @@ npm run dev
 
 Open `http://localhost:5173`. All API calls go to `VITE_API_BASE` (gateway).
 
-## Dev email / tokens
+## Email (Mailhog + SMTP)
 
-With `DEV_LOG_EMAIL_TOKENS=1` (default in `.env.example`), verification and password-reset tokens print to **auth-service stdout**. Use those strings in the Verify and Reset pages.
+**Docker full stack** (`docker compose up` from `infra/`): Mailhog runs on **SMTP `:1025`**, web UI **http://localhost:8025**. `auth-service` is configured to send verification and password-reset messages there. On **register**, a verification email is sent when `SMTP_HOST` is set. **Mailhog only captures mail** — nothing is delivered to Gmail or the public internet.
+
+**Hybrid (auth on host, Mailhog in Docker):** `docker compose up -d mailhog` then in `services/auth-service/.env` set:
+
+```env
+SMTP_HOST=localhost
+SMTP_PORT=1025
+SMTP_FROM=LoreWeave <noreply@loreweave.local>
+PUBLIC_APP_URL=http://localhost:5173
+```
+
+**Without SMTP** (`SMTP_HOST` empty): no email is sent; with `DEV_LOG_EMAIL_TOKENS=1` (default), tokens still print to **auth-service stdout** for the Verify and Reset pages.
 
 ## Contract lint
 

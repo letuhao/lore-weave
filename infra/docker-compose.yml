@@ -1,3 +1,8 @@
+# Full stack: Postgres, Mailhog, auth-service, api-gateway-bff, frontend (nginx static build).
+# From this directory: docker compose up --build
+# Browser: http://localhost:5173  |  Gateway: http://localhost:3000  |  Auth: http://localhost:8081
+# Optional env file: copy .env.example to .env and set JWT_SECRET (>= 32 chars) for production-like secrets.
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -20,6 +25,51 @@ services:
     ports:
       - "1025:1025"
       - "8025:8025"
+
+  auth-service:
+    build:
+      context: ../services/auth-service
+      dockerfile: Dockerfile
+    environment:
+      HTTP_ADDR: ":8081"
+      DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      DEV_LOG_EMAIL_TOKENS: "1"
+      SMTP_HOST: mailhog
+      SMTP_PORT: "1025"
+      SMTP_FROM: "LoreWeave <noreply@loreweave.local>"
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:5173}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+    ports:
+      - "8081:8081"
+
+  api-gateway-bff:
+    build:
+      context: ../services/api-gateway-bff
+      dockerfile: Dockerfile
+    environment:
+      PORT: "3000"
+      AUTH_SERVICE_URL: http://auth-service:8081
+    depends_on:
+      auth-service:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:3000}
+    depends_on:
+      - api-gateway-bff
+    ports:
+      - "5173:80"
 
 volumes:
   loreweave_pg:

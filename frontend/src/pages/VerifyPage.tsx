@@ -17,7 +17,9 @@ export function VerifyPage() {
         method: 'POST',
         token: accessToken,
       });
-      setMsg('Verification requested — check server console for dev token.');
+      setMsg(
+        'Verification email sent (if SMTP is configured). Check Mailhog at http://localhost:8025 or the auth-service logs for the token.',
+      );
     } catch (e: unknown) {
       setErr((e as Error).message);
     }
@@ -49,7 +51,7 @@ export function VerifyPage() {
       </button>
       <form onSubmit={confirm}>
         <label>
-          Token (from dev log)
+          Token (from email or server log)
           <input value={token} onChange={(e) => setToken(e.target.value)} />
         </label>
         {err && <div className="error">{err}</div>}

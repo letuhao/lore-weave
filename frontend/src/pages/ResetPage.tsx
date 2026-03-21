@@ -31,7 +31,7 @@ export function ResetPage() {
       <h2>Reset password</h2>
       <form onSubmit={submit}>
         <label>
-          Token (from dev log)
+          Token (from email or server log)
           <input value={token} onChange={(e) => setToken(e.target.value)} required />
         </label>
         <label>

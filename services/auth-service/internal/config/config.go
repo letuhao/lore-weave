@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -17,6 +18,14 @@ type Config struct {
 	RateLimitWindow       time.Duration
 	RateLimitMax          int
 	DevLogEmailTokens     bool
+	// Optional SMTP (e.g. Mailhog: host localhost, port 1025). If SMTPHost is empty, no email is sent.
+	SMTPHost     string
+	SMTPPort     int
+	SMTPUser     string
+	SMTPPassword string
+	SMTPFrom     string
+	// Browser base URL for links in emails (e.g. http://localhost:5173).
+	PublicAppURL string
 }
 
 func Load() (*Config, error) {
@@ -27,6 +36,12 @@ func Load() (*Config, error) {
 		PasswordMinLength: getInt("PASSWORD_MIN_LENGTH", 8),
 		RateLimitMax:      getInt("RATE_LIMIT_MAX_REQUESTS", 60),
 		DevLogEmailTokens: getBool("DEV_LOG_EMAIL_TOKENS", true),
+		SMTPHost:          os.Getenv("SMTP_HOST"),
+		SMTPPort:          getInt("SMTP_PORT", 1025),
+		SMTPUser:          os.Getenv("SMTP_USER"),
+		SMTPPassword:      os.Getenv("SMTP_PASSWORD"),
+		SMTPFrom:          getEnv("SMTP_FROM", ""),
+		PublicAppURL:      getEnv("PUBLIC_APP_URL", ""),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
@@ -40,6 +55,9 @@ func Load() (*Config, error) {
 	c.RefreshTokenTTL = time.Duration(refSec) * time.Second
 	rlWin := getInt("RATE_LIMIT_WINDOW_SECONDS", 60)
 	c.RateLimitWindow = time.Duration(rlWin) * time.Second
+	if c.SMTPHost != "" && strings.TrimSpace(c.SMTPFrom) == "" {
+		return nil, fmt.Errorf("SMTP_FROM is required when SMTP_HOST is set")
+	}
 	return c, nil
 }
 

@@ -10,9 +10,20 @@ Polyglot monorepo for **Identity** (register, session, profile, verify, reset).
 | `services/auth-service/` | Go | Domain + persistence |
 | `services/api-gateway-bff/` | NestJS | Client-facing proxy (no direct auth from browser) |
 | `frontend/` | Vite + React + TS | Identity UI |
-| `infra/` | Docker Compose | Postgres + Mailhog (dev) |
+| `infra/` | Docker Compose | Postgres, Mailhog, optional **full stack** (auth + gateway + FE) |
 
 ## Quick start (local)
+
+**Option A — everything in Docker** (from `infra/`):
+
+```bash
+cd infra
+docker compose up --build
+```
+
+Then open http://localhost:5173 (see [`docs/implementation/MODULE01_LOCAL_DEV.md`](docs/implementation/MODULE01_LOCAL_DEV.md) for ports and env).
+
+**Option B — hybrid** (DB in Docker, apps on host):
 
 1. **Postgres + Mailhog**
 

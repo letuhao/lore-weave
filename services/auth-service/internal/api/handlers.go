@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/loreweave/auth-service/internal/authjwt"
 	"github.com/loreweave/auth-service/internal/authpwd"
+	"github.com/loreweave/auth-service/internal/mail"
 )
 
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
@@ -63,6 +65,23 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	_, _ = s.pool.Exec(ctx, `
 		INSERT INTO security_preferences (user_id) VALUES ($1)
 		ON CONFLICT (user_id) DO NOTHING`, uid)
+
+	emailNorm := strings.ToLower(strings.TrimSpace(body.Email))
+	if s.cfg.SMTPHost != "" {
+		token, err := s.insertVerificationTicket(ctx, uid)
+		if err != nil {
+			log.Printf("register: verification ticket: %v", err)
+		} else {
+			subject := "Verify your LoreWeave email"
+			bodyText := verifyEmailPlainBody(token, s.cfg.PublicAppURL)
+			if err := s.smtpSend(emailNorm, subject, bodyText); err != nil {
+				log.Printf("register: verify email smtp: %v", err)
+			}
+			if s.cfg.DevLogEmailTokens {
+				fmt.Printf("[dev email] verify token for user %s (%s): %s\n", uid.String(), emailNorm, token)
+			}
+		}
+	}
 
 	verificationRequired := true
 	writeJSON(w, http.StatusCreated, map[string]any{
@@ -437,23 +456,26 @@ func (s *Server) verifyEmailRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
-		writeErr(w, http.StatusInternalServerError, "AUTH_VALIDATION_ERROR", "rng error")
+	var email string
+	err = s.pool.QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, uid).Scan(&email)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "AUTH_VALIDATION_ERROR", "user lookup failed")
 		return
 	}
-	token := base64.RawURLEncoding.EncodeToString(raw)
-	th := hashOpaque(token)
-	exp := time.Now().UTC().Add(24 * time.Hour)
-	_, err = s.pool.Exec(ctx, `
-		INSERT INTO verification_tickets (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
-		uid, th, exp)
+	token, err := s.insertVerificationTicket(ctx, uid)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "AUTH_VALIDATION_ERROR", "ticket error")
 		return
 	}
+	if s.cfg.SMTPHost != "" {
+		if err := s.smtpSend(email, "Verify your LoreWeave email", verifyEmailPlainBody(token, s.cfg.PublicAppURL)); err != nil {
+			log.Printf("verify email smtp: %v", err)
+			writeErr(w, http.StatusBadGateway, "AUTH_EMAIL_SEND_FAILED", "could not send verification email")
+			return
+		}
+	}
 	if s.cfg.DevLogEmailTokens {
-		fmt.Printf("[dev email] verify token for user %s: %s\n", uid.String(), token)
+		fmt.Printf("[dev email] verify token for user %s (%s): %s\n", uid.String(), email, token)
 	}
 	w.WriteHeader(http.StatusAccepted)
 }
@@ -539,8 +561,16 @@ func (s *Server) passwordResetRequest(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 		return
 	}
+	emailNorm := strings.TrimSpace(body.Email)
+	if s.cfg.SMTPHost != "" {
+		subject := "Reset your LoreWeave password"
+		bodyText := passwordResetPlainBody(token, s.cfg.PublicAppURL)
+		if err := s.smtpSend(emailNorm, subject, bodyText); err != nil {
+			log.Printf("password reset smtp: %v", err)
+		}
+	}
 	if s.cfg.DevLogEmailTokens {
-		fmt.Printf("[dev email] password reset for user %s: %s\n", uid.String(), token)
+		fmt.Printf("[dev email] password reset for user %s (%s): %s\n", uid.String(), emailNorm, token)
 	}
 	w.WriteHeader(http.StatusAccepted)
 }
@@ -607,4 +637,59 @@ func (s *Server) passwordResetConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "password_updated"})
+}
+
+func (s *Server) insertVerificationTicket(ctx context.Context, uid uuid.UUID) (token string, err error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	token = base64.RawURLEncoding.EncodeToString(raw)
+	th := hashOpaque(token)
+	exp := time.Now().UTC().Add(24 * time.Hour)
+	_, err = s.pool.Exec(ctx, `
+		INSERT INTO verification_tickets (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
+		uid, th, exp)
+	return token, err
+}
+
+func (s *Server) smtpSend(to, subject, body string) error {
+	return mail.SendPlain(
+		s.cfg.SMTPHost,
+		s.cfg.SMTPPort,
+		s.cfg.SMTPUser,
+		s.cfg.SMTPPassword,
+		s.cfg.SMTPFrom,
+		to,
+		subject,
+		body,
+	)
+}
+
+func verifyEmailPlainBody(token, publicBase string) string {
+	var b strings.Builder
+	b.WriteString("Your LoreWeave email verification token is:\n\n")
+	b.WriteString(token)
+	b.WriteString("\n\nPaste it on the Verify page in the app. This token expires in 24 hours.\n")
+	if publicBase != "" {
+		base := strings.TrimRight(publicBase, "/")
+		b.WriteString("\nOpen the app: ")
+		b.WriteString(base)
+		b.WriteString("/verify\n")
+	}
+	return b.String()
+}
+
+func passwordResetPlainBody(token, publicBase string) string {
+	var b strings.Builder
+	b.WriteString("Your LoreWeave password reset token is:\n\n")
+	b.WriteString(token)
+	b.WriteString("\n\nPaste it on the Reset password page. This token expires in one hour.\n")
+	if publicBase != "" {
+		base := strings.TrimRight(publicBase, "/")
+		b.WriteString("\nOpen the app: ")
+		b.WriteString(base)
+		b.WriteString("/reset\n")
+	}
+	return b.String()
 }
