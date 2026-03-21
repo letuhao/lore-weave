@@ -3,18 +3,19 @@
 ## Document Metadata
 
 - Document ID: LW-M03-44
-- Version: 0.2.0
-- Status: Draft
+- Version: 0.3.0
+- Status: Approved
 - Owner: Product Manager + Solution Architect
 - Last Updated: 2026-03-21
-- Approved By: Pending
-- Approved Date: N/A
+- Approved By: Decision Authority
+- Approved Date: 2026-03-21
 - Summary: Execution governance pack for Module 03: user/provider model registration, platform-managed models, usage metering, and billing via subscription tier quota plus credits overage.
 
 ## Change History
 
 | Version | Date       | Change                                | Author    |
 | ------- | ---------- | ------------------------------------- | --------- |
+| 0.3.0   | 2026-03-21 | Approved by Decision Authority (status governance update) | Assistant |
 | 0.2.0   | 2026-03-21 | Added strict provider-gateway policy and full encrypted interaction-log policy with owner-only detail decryption UX baseline | Assistant |
 | 0.1.0   | 2026-03-21 | Initial Module 03 execution charter   | Assistant |
 

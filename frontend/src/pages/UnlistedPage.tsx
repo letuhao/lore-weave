@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { m02Api } from '@/m02/api';
-import { PaginationBar } from '@/components/m02/PaginationBar';
+import { booksApi } from '@/features/books/api';
+import { PaginationBar } from '@/components/books/PaginationBar';
 
 export function UnlistedPage() {
   const { accessToken = '' } = useParams();
@@ -16,8 +16,8 @@ export function UnlistedPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const res = await m02Api.getUnlisted(accessToken);
-        const chapters = await m02Api.listUnlistedChapters(accessToken, { limit, offset });
+        const res = await booksApi.getUnlisted(accessToken);
+        const chapters = await booksApi.listUnlistedChapters(accessToken, { limit, offset });
         setData(res);
         setItems(chapters.items);
         setTotal(chapters.total);
@@ -42,7 +42,7 @@ export function UnlistedPage() {
               <button
                 className="text-left underline"
                 onClick={async () => {
-                  const detail = await m02Api.getUnlistedChapter(accessToken, item.chapter_id);
+                  const detail = await booksApi.getUnlistedChapter(accessToken, item.chapter_id);
                   setSelected({ chapter_id: item.chapter_id, title: item.title, body: detail.body });
                 }}
               >

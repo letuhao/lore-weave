@@ -8,7 +8,14 @@ import type { Request, Response, NextFunction } from 'express';
  */
 export function configureGatewayApp(
   app: INestApplication,
-  urls: { authUrl: string; bookUrl: string; sharingUrl: string; catalogUrl: string },
+  urls: {
+    authUrl: string;
+    bookUrl: string;
+    sharingUrl: string;
+    catalogUrl: string;
+    providerRegistryUrl: string;
+    usageBillingUrl: string;
+  },
 ): void {
   app.enableCors({
     origin: true,
@@ -37,6 +44,16 @@ export function configureGatewayApp(
     changeOrigin: true,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/catalog'),
   });
+  const providerRegistryProxy = createProxyMiddleware({
+    target: urls.providerRegistryUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/model-registry'),
+  });
+  const usageBillingProxy = createProxyMiddleware({
+    target: urls.usageBillingUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/model-billing'),
+  });
 
   const httpAdapter = app.getHttpAdapter();
   const instance = httpAdapter.getInstance();
@@ -60,6 +77,16 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const providerRegistryProxyFn = providerRegistryProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
+  const usageBillingProxyFn = usageBillingProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
 
   instance.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account')) {
@@ -73,6 +100,12 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/catalog')) {
       return catalogProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/model-registry')) {
+      return providerRegistryProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/model-billing')) {
+      return usageBillingProxyFn(req, res, next);
     }
     return next();
   });

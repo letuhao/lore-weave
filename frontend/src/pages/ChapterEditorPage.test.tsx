@@ -12,8 +12,8 @@ vi.mock('@/auth', () => ({
   useAuth: () => ({ accessToken: 'token-1' }),
 }));
 
-vi.mock('@/m02/api', () => ({
-  m02Api: {
+vi.mock('@/features/books/api', () => ({
+  booksApi: {
     getDraft: (...args: unknown[]) => getDraft(...args),
     listRevisions: (...args: unknown[]) => listRevisions(...args),
     patchDraft: (...args: unknown[]) => patchDraft(...args),

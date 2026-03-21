@@ -10,8 +10,8 @@ vi.mock('@/auth', () => ({
   useAuth: () => ({ accessToken: 'token-1' }),
 }));
 
-vi.mock('@/m02/api', () => ({
-  m02Api: {
+vi.mock('@/features/books/api', () => ({
+  booksApi: {
     listBooks: (...args: unknown[]) => listBooks(...args),
     createBook: (...args: unknown[]) => createBook(...args),
   },

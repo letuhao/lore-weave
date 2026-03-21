@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/auth';
-import { m02Api } from '@/m02/api';
+import { booksApi } from '@/features/books/api';
 
 export function SharingPage() {
   const { accessToken } = useAuth();
@@ -15,7 +15,7 @@ export function SharingPage() {
   const load = async () => {
     if (!accessToken || !bookId) return;
     try {
-      const res = await m02Api.getSharing(accessToken, bookId);
+      const res = await booksApi.getSharing(accessToken, bookId);
       setVisibility(res.visibility);
       setToken(res.unlisted_access_token);
       setError('');
@@ -33,7 +33,7 @@ export function SharingPage() {
     if (!accessToken || !bookId) return;
     setSaving(true);
     try {
-      const res = await m02Api.patchSharing(accessToken, bookId, { visibility });
+      const res = await booksApi.patchSharing(accessToken, bookId, { visibility });
       setVisibility((res as { visibility: 'private' | 'unlisted' | 'public' }).visibility);
       setToken((res as { unlisted_access_token?: string }).unlisted_access_token);
       navigate(`/books/${bookId}`);

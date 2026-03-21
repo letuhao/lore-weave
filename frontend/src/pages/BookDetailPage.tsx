@@ -1,10 +1,10 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/auth';
-import { m02Api, type Book, type Chapter } from '@/m02/api';
-import { LanguagePicker } from '@/components/m02/LanguagePicker';
-import { PaginationBar } from '@/components/m02/PaginationBar';
-import { VisibilityBadge } from '@/components/m02/VisibilityBadge';
+import { booksApi, type Book, type Chapter } from '@/features/books/api';
+import { LanguagePicker } from '@/components/books/LanguagePicker';
+import { PaginationBar } from '@/components/books/PaginationBar';
+import { VisibilityBadge } from '@/components/books/VisibilityBadge';
 
 export function BookDetailPage() {
   const { accessToken } = useAuth();
@@ -28,9 +28,9 @@ export function BookDetailPage() {
   const load = async () => {
     if (!accessToken || !bookId) return;
     try {
-      const b = await m02Api.getBook(accessToken, bookId);
+      const b = await booksApi.getBook(accessToken, bookId);
       setBook(b);
-      const ch = await m02Api.listChapters(accessToken, bookId, {
+      const ch = await booksApi.listChapters(accessToken, bookId, {
         original_language: langFilter || undefined,
         sort_order: sortOrderFilter ? Number(sortOrderFilter) : undefined,
         lifecycle_state: lifecycleFilter || undefined,
@@ -53,7 +53,7 @@ export function BookDetailPage() {
     e.preventDefault();
     if (!accessToken || !bookId || !newFile || !newLang) return;
     try {
-      await m02Api.createChapterUpload(accessToken, bookId, {
+      await booksApi.createChapterUpload(accessToken, bookId, {
         file: newFile,
         original_language: newLang,
         title: newTitle || undefined,
@@ -72,7 +72,7 @@ export function BookDetailPage() {
     e.preventDefault();
     if (!accessToken || !bookId || !newLang) return;
     try {
-      const created = await m02Api.createChapterEditor(accessToken, bookId, {
+      const created = await booksApi.createChapterEditor(accessToken, bookId, {
         title: newTitle || undefined,
         original_language: newLang,
         body: editorBody || undefined,
@@ -85,13 +85,13 @@ export function BookDetailPage() {
 
   const trashChapter = async (chapterId: string) => {
     if (!accessToken || !bookId) return;
-    await m02Api.trashChapter(accessToken, bookId, chapterId);
+    await booksApi.trashChapter(accessToken, bookId, chapterId);
     await load();
   };
 
   const trashBook = async () => {
     if (!accessToken || !bookId) return;
-    await m02Api.trashBook(accessToken, bookId);
+    await booksApi.trashBook(accessToken, bookId);
     await load();
   };
 
@@ -99,7 +99,7 @@ export function BookDetailPage() {
     if (!accessToken || !bookId) return;
     setDownloadBusy(chapterId);
     try {
-      const blob = await m02Api.downloadRaw(accessToken, bookId, chapterId);
+      const blob = await booksApi.downloadRaw(accessToken, bookId, chapterId);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

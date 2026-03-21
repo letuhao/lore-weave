@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { m02Api } from '@/m02/api';
-import { PaginationBar } from '@/components/m02/PaginationBar';
+import { booksApi } from '@/features/books/api';
+import { PaginationBar } from '@/components/books/PaginationBar';
 
 export function BrowsePage() {
   const [items, setItems] = useState<Array<{ book_id: string; title: string; summary_excerpt?: string; original_language?: string; chapter_count?: number }>>([]);
@@ -13,7 +13,7 @@ export function BrowsePage() {
   useEffect(() => {
     void (async () => {
       try {
-        const res = await m02Api.listCatalog({ limit, offset });
+        const res = await booksApi.listCatalog({ limit, offset });
         setItems(res.items);
         setTotal(res.total);
       } catch (e) {

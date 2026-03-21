@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/auth';
-import { m02Api, type Book } from '@/m02/api';
+import { booksApi, type Book } from '@/features/books/api';
 
 export function RecycleBinPage() {
   const { accessToken } = useAuth();
@@ -11,7 +11,7 @@ export function RecycleBinPage() {
   const load = async () => {
     if (!accessToken) return;
     try {
-      const res = await m02Api.listTrash(accessToken);
+      const res = await booksApi.listTrash(accessToken);
       setItems(res.items);
       setError('');
     } catch (e) {
@@ -25,12 +25,12 @@ export function RecycleBinPage() {
 
   const restore = async (bookId: string) => {
     if (!accessToken) return;
-    await m02Api.restoreBook(accessToken, bookId);
+    await booksApi.restoreBook(accessToken, bookId);
     await load();
   };
   const purge = async (bookId: string) => {
     if (!accessToken) return;
-    await m02Api.purgeBook(accessToken, bookId);
+    await booksApi.purgeBook(accessToken, bookId);
     await load();
   };
 

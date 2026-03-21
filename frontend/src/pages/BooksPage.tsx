@@ -1,10 +1,10 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/auth';
-import { m02Api, type Book } from '@/m02/api';
-import { LanguagePicker } from '@/components/m02/LanguagePicker';
-import { PaginationBar } from '@/components/m02/PaginationBar';
-import { VisibilityBadge } from '@/components/m02/VisibilityBadge';
+import { booksApi, type Book } from '@/features/books/api';
+import { LanguagePicker } from '@/components/books/LanguagePicker';
+import { PaginationBar } from '@/components/books/PaginationBar';
+import { VisibilityBadge } from '@/components/books/VisibilityBadge';
 
 export function BooksPage() {
   const { accessToken } = useAuth();
@@ -19,7 +19,7 @@ export function BooksPage() {
   const load = async () => {
     if (!accessToken) return;
     try {
-      const res = await m02Api.listBooks(accessToken);
+      const res = await booksApi.listBooks(accessToken);
       setItems(res.items);
       setTotal(res.total || res.items.length);
       setError('');
@@ -36,13 +36,13 @@ export function BooksPage() {
     e.preventDefault();
     if (!accessToken) return;
     try {
-      const created = await m02Api.createBook(accessToken, {
+      const created = await booksApi.createBook(accessToken, {
         title,
         description: description || undefined,
         original_language: originalLanguage || undefined,
       });
       if (coverFile) {
-        await m02Api.uploadCover(accessToken, created.book_id, coverFile);
+        await booksApi.uploadCover(accessToken, created.book_id, coverFile);
       }
       setTitle('');
       setDescription('');

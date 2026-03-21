@@ -2,7 +2,7 @@
 
 ## Document Metadata
 - Document ID: LW-09
-- Version: 1.4.0
+- Version: 1.5.0
 - Status: Approved
 - Owner: Product Manager + Solution Architect
 - Last Updated: 2026-03-21
@@ -13,6 +13,7 @@
 ## Change History
 | Version | Date | Change | Author |
 |---|---|---|---|
+| 1.5.0 | 2026-03-21 | Status governance update: Module 03 planning checkpoint docs `44`-`55` approved by Decision Authority | Assistant |
 | 1.4.0 | 2026-03-21 | Added Phase 1 Module 03 (provider registry + model billing) planning checkpoint and doc references 44-55 | Assistant |
 | 1.3.0 | 2026-03-21 | Added Phase 1 Module 02 (Books & sharing) planning checkpoint and doc references 24–35 | Assistant |
 | 1.2.0 | 2026-03-21 | Added Phase 1 Module 01 identity planning checkpoint and pack references | Assistant |
@@ -96,7 +97,7 @@ Establish planning readiness for identity, book lifecycle, sharing, and discover
 ### Phase 1 Module 02 Checkpoint (Books & sharing)
 
 - **Objective:** Second vertical slice for platform core: owned books, visibility/share policy, public catalog browse — see `03_V1_BOUNDARIES.md` (Platform Core).
-- **Planning pack (Draft):**
+- **Planning pack (Approved):**
   - `24_PHASE1_MODULE02_BOOKS_SHARING_EXECUTION_PACK.md`
   - `25_MODULE02_API_CONTRACT_DRAFT.md` and OpenAPI under `contracts/api/books/v1/`, `contracts/api/sharing/v1/`, `contracts/api/catalog/v1/`
   - `26_MODULE02_FRONTEND_FLOW_SPEC.md`
@@ -116,7 +117,7 @@ Establish planning readiness for identity, book lifecycle, sharing, and discover
   - `47_MODULE03_ACCEPTANCE_TEST_PLAN.md`
   - `48_MODULE03_RISK_DEPENDENCY_ROLLOUT.md`
   - `49_GOVERNANCE_BOARD_REVIEW_CHECKLIST_MODULE03.md`
-- **Deep-design + readiness (Draft):**
+- **Deep-design + readiness (Approved):**
   - `50_MODULE03_MICROSERVICE_SOURCE_STRUCTURE_AMENDMENT.md`
   - `51_MODULE03_BACKEND_DETAILED_DESIGN.md`
   - `52_MODULE03_FRONTEND_DETAILED_DESIGN.md`

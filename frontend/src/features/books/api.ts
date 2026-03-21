@@ -64,7 +64,7 @@ async function apiAuthedFetch(path: string, token: string): Promise<Response> {
   });
 }
 
-export const m02Api = {
+export const booksApi = {
   listBooks(token: string, params?: { limit?: number; offset?: number }) {
     const qs = new URLSearchParams();
     if (params?.limit) qs.set('limit', String(params.limit));

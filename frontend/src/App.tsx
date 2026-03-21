@@ -17,12 +17,16 @@ import { SharingPage } from './pages/SharingPage';
 import { BrowsePage } from './pages/BrowsePage';
 import { UnlistedPage } from './pages/UnlistedPage';
 import { PublicBookPage } from './pages/PublicBookPage';
+import { UserModelsPage } from './pages/UserModelsPage';
+import { PlatformModelsPage } from './pages/PlatformModelsPage';
+import { UsageLogsPage } from './pages/UsageLogsPage';
+import { UsageDetailPage } from './pages/UsageDetailPage';
 
 function Home() {
   const { accessToken } = useAuth();
   return (
     <>
-      <h1 className="text-2xl font-semibold tracking-tight">LoreWeave — Modules 01 + 02</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">LoreWeave Workspace</h1>
       <p className="mt-4 text-sm text-muted-foreground">
         API base: {import.meta.env.VITE_API_BASE || 'http://localhost:3000'}
       </p>
@@ -115,6 +119,39 @@ function AppRoutes() {
         <Route path="/browse" element={<BrowsePage />} />
         <Route path="/browse/:bookId" element={<PublicBookPage />} />
         <Route path="/s/:accessToken" element={<UnlistedPage />} />
+        <Route path="/m03/providers" element={<Navigate to="/m03/models" replace />} />
+        <Route
+          path="/m03/models"
+          element={
+            <RequireAuth>
+              <UserModelsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/m03/platform-models"
+          element={
+            <RequireAuth>
+              <PlatformModelsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/m03/usage"
+          element={
+            <RequireAuth>
+              <UsageLogsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/m03/usage/:usageLogId"
+          element={
+            <RequireAuth>
+              <UsageDetailPage />
+            </RequireAuth>
+          }
+        />
       </Route>
     </Routes>
   );

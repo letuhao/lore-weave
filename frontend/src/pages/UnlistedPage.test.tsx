@@ -7,8 +7,8 @@ const getUnlisted = vi.fn();
 const listUnlistedChapters = vi.fn();
 const getUnlistedChapter = vi.fn();
 
-vi.mock('@/m02/api', () => ({
-  m02Api: {
+vi.mock('@/features/books/api', () => ({
+  booksApi: {
     getUnlisted: (...args: unknown[]) => getUnlisted(...args),
     listUnlistedChapters: (...args: unknown[]) => listUnlistedChapters(...args),
     getUnlistedChapter: (...args: unknown[]) => getUnlistedChapter(...args),

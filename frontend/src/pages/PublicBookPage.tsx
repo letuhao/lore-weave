@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { m02Api } from '@/m02/api';
-import { PaginationBar } from '@/components/m02/PaginationBar';
+import { booksApi } from '@/features/books/api';
+import { PaginationBar } from '@/components/books/PaginationBar';
 
 type ChapterItem = {
   chapter_id: string;
@@ -24,8 +24,8 @@ export function PublicBookPage() {
     void (async () => {
       if (!bookId) return;
       try {
-        const b = await m02Api.getCatalogBook(bookId);
-        const list = await m02Api.listCatalogChapters(bookId, { limit, offset });
+        const b = await booksApi.getCatalogBook(bookId);
+        const list = await booksApi.listCatalogChapters(bookId, { limit, offset });
         setBook(b);
         setItems(list.items);
         setTotal(list.total);
@@ -51,7 +51,7 @@ export function PublicBookPage() {
               <button
                 className="text-left underline"
                 onClick={async () => {
-                  const detail = await m02Api.getCatalogChapter(bookId, item.chapter_id);
+                  const detail = await booksApi.getCatalogChapter(bookId, item.chapter_id);
                   setSelected({
                     chapter_id: item.chapter_id,
                     title: item.title,

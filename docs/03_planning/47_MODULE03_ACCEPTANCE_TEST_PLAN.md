@@ -3,12 +3,12 @@
 ## Document Metadata
 
 - Document ID: LW-M03-47
-- Version: 0.2.0
-- Status: Draft
+- Version: 0.3.0
+- Status: Approved
 - Owner: QA Lead
 - Last Updated: 2026-03-21
-- Approved By: Pending
-- Approved Date: N/A
+- Approved By: Decision Authority
+- Approved Date: 2026-03-21
 - Summary: Acceptance matrix for Module 03 provider registry, model catalog, usage accounting, and tier-plus-credits billing behavior.
 
 ## Change History
@@ -16,6 +16,7 @@
 
 | Version | Date       | Change                            | Author    |
 | ------- | ---------- | --------------------------------- | --------- |
+| 0.3.0   | 2026-03-21 | Approved by Decision Authority (status governance update) | Assistant |
 | 0.2.0   | 2026-03-21 | Added acceptance coverage for full encrypted interaction logs, owner-only detail decryption, and strict provider-gateway routing invariant | Assistant |
 | 0.1.0   | 2026-03-21 | Initial Module 03 acceptance plan | Assistant |
 

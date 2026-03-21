@@ -3,18 +3,19 @@
 ## Document Metadata
 
 - Document ID: LW-M03-52
-- Version: 0.2.0
-- Status: Draft
+- Version: 0.3.0
+- Status: Approved
 - Owner: Frontend Lead
 - Last Updated: 2026-03-21
-- Approved By: Pending
-- Approved Date: N/A
+- Approved By: Decision Authority
+- Approved Date: 2026-03-21
 - Summary: Frontend architecture and component-level design for Module 03 provider/model management and usage billing views.
 
 ## Change History
 
 | Version | Date       | Change                              | Author    |
 | ------- | ---------- | ----------------------------------- | --------- |
+| 0.3.0   | 2026-03-21 | Approved by Decision Authority (status governance update) | Assistant |
 | 0.2.0   | 2026-03-21 | Added provider-specific model registration component design, favorites/tags UX state, and API surface alignment | Assistant |
 | 0.1.0   | 2026-03-21 | Initial Module 03 frontend design   | Assistant |
 

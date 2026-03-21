@@ -3,18 +3,19 @@
 ## Document Metadata
 
 - Document ID: LW-M03-50
-- Version: 0.1.0
-- Status: Draft
+- Version: 0.2.0
+- Status: Approved
 - Owner: Solution Architect
 - Last Updated: 2026-03-21
-- Approved By: Pending
-- Approved Date: N/A
+- Approved By: Decision Authority
+- Approved Date: 2026-03-21
 - Summary: Source-structure amendment for Module 03 services handling provider credentials, model registry, and usage/billing accounting.
 
 ## Change History
 
 | Version | Date       | Change                                     | Author    |
 | ------- | ---------- | ------------------------------------------ | --------- |
+| 0.2.0   | 2026-03-21 | Approved by Decision Authority (status governance update) | Assistant |
 | 0.1.0   | 2026-03-21 | Initial Module 03 source structure amendment | Assistant |
 
 ## 1) Purpose

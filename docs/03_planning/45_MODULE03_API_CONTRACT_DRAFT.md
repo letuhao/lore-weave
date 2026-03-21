@@ -3,12 +3,12 @@
 ## Document Metadata
 
 - Document ID: LW-M03-45
-- Version: 0.3.0
-- Status: Draft
+- Version: 0.4.0
+- Status: Approved
 - Owner: Solution Architect
 - Last Updated: 2026-03-21
-- Approved By: Pending
-- Approved Date: N/A
+- Approved By: Decision Authority
+- Approved Date: 2026-03-21
 - Summary: Contract-first draft for Module 03 APIs covering BYOK provider credentials, strict provider-gateway invocation, user/admin model management, and full encrypted interaction logs with tier quota plus credit overage accounting.
 
 ## Change History
@@ -16,6 +16,7 @@
 
 | Version | Date       | Change                           | Author    |
 | ------- | ---------- | -------------------------------- | --------- |
+| 0.4.0   | 2026-03-21 | Approved by Decision Authority (status governance update) | Assistant |
 | 0.3.0   | 2026-03-21 | Added provider-specific model registration semantics (LM/Ollama context length, OpenAI/Anthropic model inventory sync, active/inactive toggles, favorites, tags with notes) | Assistant |
 | 0.2.0   | 2026-03-21 | Added strict provider-gateway invocation contract and full encrypted interaction-log list/detail semantics with owner-only decryption access | Assistant |
 | 0.1.0   | 2026-03-21 | Initial Module 03 contract draft | Assistant |

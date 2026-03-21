@@ -28,13 +28,17 @@ describe('Gateway proxy routing', () => {
   let bookServer: http.Server;
   let sharingServer: http.Server;
   let catalogServer: http.Server;
+  let providerRegistryServer: http.Server;
+  let usageBillingServer: http.Server;
 
   beforeAll(async () => {
-    [authServer, bookServer, sharingServer, catalogServer] = await Promise.all([
+    [authServer, bookServer, sharingServer, catalogServer, providerRegistryServer, usageBillingServer] = await Promise.all([
       startUpstream('auth'),
       startUpstream('books'),
       startUpstream('sharing'),
       startUpstream('catalog'),
+      startUpstream('provider-registry'),
+      startUpstream('usage-billing'),
     ]);
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -46,6 +50,8 @@ describe('Gateway proxy routing', () => {
       bookUrl: urlOf(bookServer),
       sharingUrl: urlOf(sharingServer),
       catalogUrl: urlOf(catalogServer),
+      providerRegistryUrl: urlOf(providerRegistryServer),
+      usageBillingUrl: urlOf(usageBillingServer),
     });
     await app.init();
   });
@@ -57,6 +63,8 @@ describe('Gateway proxy routing', () => {
       new Promise((resolve) => bookServer.close(resolve)),
       new Promise((resolve) => sharingServer.close(resolve)),
       new Promise((resolve) => catalogServer.close(resolve)),
+      new Promise((resolve) => providerRegistryServer.close(resolve)),
+      new Promise((resolve) => usageBillingServer.close(resolve)),
     ]);
   });
 
@@ -69,9 +77,17 @@ describe('Gateway proxy routing', () => {
     await request(app.getHttpServer()).get('/v1/books').expect(200).expect('books');
     await request(app.getHttpServer()).get('/v1/sharing/books/1').expect(200).expect('sharing');
     await request(app.getHttpServer()).get('/v1/catalog/books').expect(200).expect('catalog');
+    await request(app.getHttpServer()).get('/v1/model-registry/providers').expect(200).expect('provider-registry');
+    await request(app.getHttpServer()).get('/v1/model-billing/usage-logs').expect(200).expect('usage-billing');
   });
 
   it('returns 404 for unmatched path', async () => {
     await request(app.getHttpServer()).get('/v1/unknown').expect(404);
+    await request(app.getHttpServer()).get('/v1/modelregistry/providers').expect(404);
+    await request(app.getHttpServer()).get('/v1/modelbilling/usage-logs').expect(404);
+  });
+
+  it('keeps gateway health endpoint stable', async () => {
+    await request(app.getHttpServer()).get('/health').expect(200).expect('gateway ok');
   });
 });

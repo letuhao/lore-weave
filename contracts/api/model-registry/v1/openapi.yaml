@@ -1,0 +1,881 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Model Registry API
+  version: 1.0.0
+  description: |
+    Module 03 registry contract for provider credentials, provider model inventory, user model preferences
+    (activation/favorite/tags), platform model catalog, and strict runtime invocation routing.
+
+servers:
+  - url: http://localhost:3000
+    description: API Gateway (BFF)
+
+tags:
+  - name: provider-credentials
+  - name: provider-inventory
+  - name: user-models
+  - name: platform-models
+  - name: invoke
+
+paths:
+  /v1/model-registry/providers:
+    post:
+      tags: [provider-credentials]
+      summary: Register provider credential or local provider endpoint
+      operationId: createProviderCredential
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProviderCredentialRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderCredential'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+    get:
+      tags: [provider-credentials]
+      summary: List provider credentials for current user
+      operationId: listProviderCredentials
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderCredentialListResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/model-registry/providers/{provider_credential_id}:
+    patch:
+      tags: [provider-credentials]
+      summary: Update provider credential metadata or active status
+      operationId: patchProviderCredential
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProviderCredentialId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchProviderCredentialRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderCredential'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+    delete:
+      tags: [provider-credentials]
+      summary: Archive provider credential
+      operationId: deleteProviderCredential
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProviderCredentialId'
+      responses:
+        '204':
+          description: No Content
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/model-registry/providers/{provider_credential_id}/health:
+    post:
+      tags: [provider-credentials]
+      summary: Validate provider credential and endpoint reachability
+      operationId: testProviderCredentialHealth
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProviderCredentialId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderHealthResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/model-registry/providers/{provider_credential_id}/models:
+    get:
+      tags: [provider-inventory]
+      summary: List provider model inventory (sync on demand)
+      operationId: listProviderInventoryModels
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProviderCredentialId'
+        - name: refresh
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderInventoryListResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/model-registry/user-models:
+    post:
+      tags: [user-models]
+      summary: Register user model
+      operationId: createUserModel
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserModelRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserModel'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+    get:
+      tags: [user-models]
+      summary: List user models
+      operationId: listUserModels
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: provider_kind
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ProviderKind'
+        - name: only_favorites
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - name: include_inactive
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserModelListResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/model-registry/user-models/{user_model_id}:
+    patch:
+      tags: [user-models]
+      summary: Update user model alias and capability metadata
+      operationId: patchUserModel
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserModelId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchUserModelRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserModel'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+    delete:
+      tags: [user-models]
+      summary: Archive user model
+      operationId: deleteUserModel
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserModelId'
+      responses:
+        '204':
+          description: No Content
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/model-registry/user-models/{user_model_id}/activation:
+    patch:
+      tags: [user-models]
+      summary: Set user model active or inactive
+      operationId: patchUserModelActivation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserModelId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchUserModelActivationRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserModel'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/model-registry/user-models/{user_model_id}/favorite:
+    patch:
+      tags: [user-models]
+      summary: Set user model favorite or non-favorite
+      operationId: patchUserModelFavorite
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserModelId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchUserModelFavoriteRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserModel'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/model-registry/user-models/{user_model_id}/tags:
+    put:
+      tags: [user-models]
+      summary: Replace tags and notes for a user model
+      operationId: putUserModelTags
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserModelId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutUserModelTagsRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserModel'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/model-registry/platform-models:
+    post:
+      tags: [platform-models]
+      summary: Create platform managed model (admin)
+      operationId: createPlatformModel
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlatformModelRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformModel'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+    get:
+      tags: [platform-models]
+      summary: List platform managed models
+      operationId: listPlatformModels
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformModelListResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/model-registry/platform-models/{platform_model_id}:
+    patch:
+      tags: [platform-models]
+      summary: Update platform model status or pricing metadata (admin)
+      operationId: patchPlatformModel
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformModelId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchPlatformModelRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformModel'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+    delete:
+      tags: [platform-models]
+      summary: Archive platform model (admin)
+      operationId: deletePlatformModel
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformModelId'
+      responses:
+        '204':
+          description: No Content
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/model-registry/invoke:
+    post:
+      tags: [invoke]
+      summary: Invoke model through strict provider gateway route
+      operationId: invokeModel
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvokeModelRequest'
+      responses:
+        '200':
+          description: Invocation result accepted for caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvokeModelResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '402':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ProviderCredentialId:
+      name: provider_credential_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    UserModelId:
+      name: user_model_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PlatformModelId:
+      name: platform_model_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    ErrorResponse:
+      description: Error envelope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+
+  schemas:
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+
+    ProviderKind:
+      type: string
+      enum: [openai, anthropic, ollama, lm_studio]
+
+    ProviderCredentialStatus:
+      type: string
+      enum: [active, invalid, disabled, archived]
+
+    ModelCapabilityFlags:
+      type: object
+      properties:
+        chat:
+          type: boolean
+          default: true
+        embedding:
+          type: boolean
+          default: false
+        tool_calling:
+          type: boolean
+          default: false
+
+    ModelTag:
+      type: object
+      required: [tag_name]
+      properties:
+        tag_name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        note:
+          type: string
+          maxLength: 300
+
+    ProviderCredential:
+      type: object
+      required:
+        - provider_credential_id
+        - provider_kind
+        - display_name
+        - status
+        - created_at
+        - updated_at
+      properties:
+        provider_credential_id:
+          type: string
+          format: uuid
+        provider_kind:
+          $ref: '#/components/schemas/ProviderKind'
+        display_name:
+          type: string
+        endpoint_base_url:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/ProviderCredentialStatus'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ProviderCredentialListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderCredential'
+
+    CreateProviderCredentialRequest:
+      type: object
+      required: [provider_kind, display_name]
+      properties:
+        provider_kind:
+          $ref: '#/components/schemas/ProviderKind'
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        secret:
+          type: string
+          description: API key or token (write-only, never returned)
+        endpoint_base_url:
+          type: string
+          description: Required for local providers (ollama, lm_studio)
+        active:
+          type: boolean
+          default: true
+
+    PatchProviderCredentialRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        secret:
+          type: string
+          description: Rotate provider secret
+        endpoint_base_url:
+          type: string
+        active:
+          type: boolean
+
+    ProviderHealthResponse:
+      type: object
+      required: [provider_credential_id, healthy]
+      properties:
+        provider_credential_id:
+          type: string
+          format: uuid
+        healthy:
+          type: boolean
+        message:
+          type: string
+
+    ProviderInventoryModel:
+      type: object
+      required: [provider_model_name]
+      properties:
+        provider_model_name:
+          type: string
+        context_length:
+          type: integer
+          minimum: 1
+          nullable: true
+        capability_flags:
+          $ref: '#/components/schemas/ModelCapabilityFlags'
+
+    ProviderInventoryListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderInventoryModel'
+        synced_at:
+          type: string
+          format: date-time
+
+    UserModel:
+      type: object
+      required:
+        - user_model_id
+        - provider_credential_id
+        - provider_kind
+        - provider_model_name
+        - is_active
+        - is_favorite
+        - created_at
+        - updated_at
+      properties:
+        user_model_id:
+          type: string
+          format: uuid
+        provider_credential_id:
+          type: string
+          format: uuid
+        provider_kind:
+          $ref: '#/components/schemas/ProviderKind'
+        provider_model_name:
+          type: string
+        context_length:
+          type: integer
+          minimum: 1
+          nullable: true
+        alias:
+          type: string
+        is_active:
+          type: boolean
+        is_favorite:
+          type: boolean
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelTag'
+        capability_flags:
+          $ref: '#/components/schemas/ModelCapabilityFlags'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    UserModelListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserModel'
+
+    CreateUserModelRequest:
+      type: object
+      required: [provider_credential_id, provider_model_name]
+      properties:
+        provider_credential_id:
+          type: string
+          format: uuid
+        provider_model_name:
+          type: string
+        context_length:
+          type: integer
+          minimum: 1
+          description: Required by policy for LM Studio/Ollama
+        alias:
+          type: string
+          maxLength: 120
+        capability_flags:
+          $ref: '#/components/schemas/ModelCapabilityFlags'
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelTag'
+
+    PatchUserModelRequest:
+      type: object
+      properties:
+        alias:
+          type: string
+          maxLength: 120
+        capability_flags:
+          $ref: '#/components/schemas/ModelCapabilityFlags'
+
+    PatchUserModelActivationRequest:
+      type: object
+      required: [is_active]
+      properties:
+        is_active:
+          type: boolean
+
+    PatchUserModelFavoriteRequest:
+      type: object
+      required: [is_favorite]
+      properties:
+        is_favorite:
+          type: boolean
+
+    PutUserModelTagsRequest:
+      type: object
+      required: [tags]
+      properties:
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelTag'
+
+    PlatformModel:
+      type: object
+      required:
+        - platform_model_id
+        - provider_kind
+        - provider_model_name
+        - display_name
+        - status
+      properties:
+        platform_model_id:
+          type: string
+          format: uuid
+        provider_kind:
+          $ref: '#/components/schemas/ProviderKind'
+        provider_model_name:
+          type: string
+        display_name:
+          type: string
+        status:
+          type: string
+          enum: [active, maintenance, retired]
+        pricing_policy:
+          type: object
+          additionalProperties: true
+        quota_policy_ref:
+          type: string
+        capability_flags:
+          $ref: '#/components/schemas/ModelCapabilityFlags'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PlatformModelListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformModel'
+
+    CreatePlatformModelRequest:
+      type: object
+      required: [provider_kind, provider_model_name, display_name, status]
+      properties:
+        provider_kind:
+          $ref: '#/components/schemas/ProviderKind'
+        provider_model_name:
+          type: string
+        display_name:
+          type: string
+        status:
+          type: string
+          enum: [active, maintenance, retired]
+        pricing_policy:
+          type: object
+          additionalProperties: true
+        quota_policy_ref:
+          type: string
+        capability_flags:
+          $ref: '#/components/schemas/ModelCapabilityFlags'
+
+    PatchPlatformModelRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+        status:
+          type: string
+          enum: [active, maintenance, retired]
+        pricing_policy:
+          type: object
+          additionalProperties: true
+        quota_policy_ref:
+          type: string
+        capability_flags:
+          $ref: '#/components/schemas/ModelCapabilityFlags'
+
+    InvokeModelRequest:
+      type: object
+      required: [model_source, model_ref, input]
+      properties:
+        model_source:
+          type: string
+          enum: [user_model, platform_model]
+        model_ref:
+          type: string
+          format: uuid
+        input:
+          type: object
+          additionalProperties: true
+        trace_context:
+          type: object
+          additionalProperties: true
+
+    InvokeModelResponse:
+      type: object
+      required: [request_id, usage_log_id, output]
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        usage_log_id:
+          type: string
+          format: uuid
+        output:
+          type: object
+          additionalProperties: true

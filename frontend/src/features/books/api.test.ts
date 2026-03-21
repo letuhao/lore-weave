@@ -1,19 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { m02Api } from './api';
+import { booksApi } from './api';
 import { apiJson } from '@/api';
 
 vi.mock('@/api', () => ({
   apiJson: vi.fn(),
 }));
 
-describe('m02Api', () => {
+describe('booksApi', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it('delegates listBooks to apiJson with token', async () => {
     vi.mocked(apiJson).mockResolvedValueOnce({ items: [], total: 0 });
-    await m02Api.listBooks('tok');
+    await booksApi.listBooks('tok');
     expect(apiJson).toHaveBeenCalledWith('/v1/books', { token: 'tok' });
   });
 
@@ -26,7 +26,7 @@ describe('m02Api', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const file = new File(['hello'], 'chapter.txt', { type: 'text/plain' });
-    await m02Api.createChapter('tok', 'book-1', {
+    await booksApi.createChapter('tok', 'book-1', {
       file,
       original_language: 'en',
       title: 'Chapter 1',
@@ -51,7 +51,7 @@ describe('m02Api', () => {
     const file = new File(['hello'], 'chapter.txt', { type: 'text/plain' });
 
     await expect(
-      m02Api.createChapter('tok', 'book-1', { file, original_language: 'en' }),
+      booksApi.createChapter('tok', 'book-1', { file, original_language: 'en' }),
     ).rejects.toMatchObject({
       message: 'failed',
       status: 409,
@@ -71,7 +71,7 @@ describe('m02Api', () => {
       lifecycle_state: 'active',
     } as never);
 
-    await m02Api.createChapterEditor('tok', 'book-1', {
+    await booksApi.createChapterEditor('tok', 'book-1', {
       original_language: 'vi',
       title: 'Editor chapter',
       body: 'hello',
@@ -90,7 +90,7 @@ describe('m02Api', () => {
 
   it('listChapters builds query string for filters and pagination', async () => {
     vi.mocked(apiJson).mockResolvedValueOnce({ items: [], total: 0 } as never);
-    await m02Api.listChapters('tok', 'book-1', {
+    await booksApi.listChapters('tok', 'book-1', {
       original_language: 'en',
       sort_order: 3,
       limit: 5,
@@ -111,7 +111,7 @@ describe('m02Api', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const got = await m02Api.downloadRaw('tok', 'book-1', 'chapter-1');
+    const got = await booksApi.downloadRaw('tok', 'book-1', 'chapter-1');
     expect(got).toBe(blob);
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/v1/books/book-1/chapters/chapter-1/content'),

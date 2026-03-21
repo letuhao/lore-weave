@@ -1,14 +1,14 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '@/auth';
-import { m02Api } from '@/m02/api';
+import { booksApi } from '@/features/books/api';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 import { $createParagraphNode, $createTextNode, $getRoot, EditorState } from 'lexical';
-import { PaginationBar } from '@/components/m02/PaginationBar';
+import { PaginationBar } from '@/components/books/PaginationBar';
 
 export function ChapterEditorPage() {
   const { accessToken } = useAuth();
@@ -27,11 +27,11 @@ export function ChapterEditorPage() {
   const load = async () => {
     if (!accessToken || !bookId || !chapterId) return;
     try {
-      const d = await m02Api.getDraft(accessToken, bookId, chapterId);
+      const d = await booksApi.getDraft(accessToken, bookId, chapterId);
       setBody(d.body);
       setEditorKey((v) => v + 1);
       setVersion(d.draft_version);
-      const rev = await m02Api.listRevisions(accessToken, bookId, chapterId, {
+      const rev = await booksApi.listRevisions(accessToken, bookId, chapterId, {
         limit: revisionLimit,
         offset: revisionOffset,
       });
@@ -51,7 +51,7 @@ export function ChapterEditorPage() {
     e.preventDefault();
     if (!accessToken || !bookId || !chapterId) return;
     try {
-      await m02Api.patchDraft(accessToken, bookId, chapterId, {
+      await booksApi.patchDraft(accessToken, bookId, chapterId, {
         body,
         commit_message: message || undefined,
         expected_draft_version: version,
@@ -65,7 +65,7 @@ export function ChapterEditorPage() {
 
   const restore = async (revisionId: string) => {
     if (!accessToken || !bookId || !chapterId) return;
-    await m02Api.restoreRevision(accessToken, bookId, chapterId, revisionId);
+    await booksApi.restoreRevision(accessToken, bookId, chapterId, revisionId);
     setPreview(null);
     await load();
   };
@@ -97,7 +97,7 @@ export function ChapterEditorPage() {
                   className="underline"
                   onClick={async () => {
                     if (!accessToken || !bookId || !chapterId) return;
-                    const detail = await m02Api.getRevision(accessToken, bookId, chapterId, r.revision_id);
+                    const detail = await booksApi.getRevision(accessToken, bookId, chapterId, r.revision_id);
                     setPreview({
                       revision_id: r.revision_id,
                       message: detail.message,

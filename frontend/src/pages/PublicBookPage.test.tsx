@@ -7,8 +7,8 @@ const getCatalogBook = vi.fn();
 const listCatalogChapters = vi.fn();
 const getCatalogChapter = vi.fn();
 
-vi.mock('@/m02/api', () => ({
-  m02Api: {
+vi.mock('@/features/books/api', () => ({
+  booksApi: {
     getCatalogBook: (...args: unknown[]) => getCatalogBook(...args),
     listCatalogChapters: (...args: unknown[]) => listCatalogChapters(...args),
     getCatalogChapter: (...args: unknown[]) => getCatalogChapter(...args),

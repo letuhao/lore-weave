@@ -11,7 +11,7 @@ describe('App', () => {
       </MemoryRouter>,
     );
     expect(
-      screen.getByRole('heading', { name: /LoreWeave — Modules 01 \+ 02/i }),
+      screen.getByRole('heading', { name: /LoreWeave Workspace/i }),
     ).toBeInTheDocument();
   });
 });

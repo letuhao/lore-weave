@@ -32,10 +32,12 @@ services:
     command: >
       set -e;
       until pg_isready -h postgres -U loreweave -d postgres; do sleep 1; done;
-      psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "SELECT 'CREATE DATABASE loreweave_auth' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_auth')\gexec";
-      psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "SELECT 'CREATE DATABASE loreweave_book' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_book')\gexec";
-      psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "SELECT 'CREATE DATABASE loreweave_sharing' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_sharing')\gexec";
-      psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "SELECT 'CREATE DATABASE loreweave_catalog' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_catalog')\gexec";
+      psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_auth'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_auth";
+      psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_book'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_book";
+      psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_sharing'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_sharing";
+      psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_catalog'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_catalog";
+      psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_provider_registry'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_provider_registry";
+      psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_usage_billing'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_usage_billing";
     restart: "no"
 
   minio:
@@ -138,6 +140,41 @@ services:
     ports:
       - "8084:8084"
 
+  provider-registry-service:
+    build:
+      context: ../services/provider-registry-service
+      dockerfile: Dockerfile
+    environment:
+      HTTP_ADDR: ":8085"
+      DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_provider_registry?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-db-bootstrap:
+        condition: service_completed_successfully
+      usage-billing-service:
+        condition: service_healthy
+    ports:
+      - "8085:8085"
+
+  usage-billing-service:
+    build:
+      context: ../services/usage-billing-service
+      dockerfile: Dockerfile
+    environment:
+      HTTP_ADDR: ":8086"
+      DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_usage_billing?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-db-bootstrap:
+        condition: service_completed_successfully
+    ports:
+      - "8086:8086"
+
   api-gateway-bff:
     build:
       context: ../services/api-gateway-bff
@@ -148,6 +185,8 @@ services:
       BOOK_SERVICE_URL: http://book-service:8082
       SHARING_SERVICE_URL: http://sharing-service:8083
       CATALOG_SERVICE_URL: http://catalog-service:8084
+      PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
+      USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
     depends_on:
       auth-service:
         condition: service_healthy
@@ -156,6 +195,10 @@ services:
       sharing-service:
         condition: service_healthy
       catalog-service:
+        condition: service_healthy
+      provider-registry-service:
+        condition: service_healthy
+      usage-billing-service:
         condition: service_healthy
     ports:
       - "3000:3000"

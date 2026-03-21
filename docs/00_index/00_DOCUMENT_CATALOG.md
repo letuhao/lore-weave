@@ -3,7 +3,7 @@
 ## Document Metadata
 
 - Document ID: LW-00
-- Version: 1.19.0
+- Version: 1.20.0
 - Status: Approved
 - Owner: Decision Authority + Execution Authority
 - Last Updated: 2026-03-21
@@ -16,6 +16,7 @@
 
 | Version | Date       | Change                                                        | Author    |
 | ------- | ---------- | ------------------------------------------------------------- | --------- |
+| 1.20.0 | 2026-03-21 | Status governance update: approved Module 03 planning documents `44`-`55` by Decision Authority | Assistant |
 | 1.19.0 | 2026-03-21 | Registered Module 03 planning pack `44`-`55` (provider registry, model billing, deep-design, readiness gate) and linked proposed contract domains for model registry/billing | Assistant |
 | 1.18.0 | 2026-03-21 | Status governance update: approved Module 02 UI/UX planning documents `36`-`43` by Decision Authority | Assistant |
 | 1.17.0 | 2026-03-21 | Registered Module 02 responsive desktop scaling addendum `43_MODULE02_RESPONSIVE_DESKTOP_SCALING_ADDENDUM.md` as planning extension for UI/UX wave `36`-`42` | Assistant |
@@ -127,9 +128,9 @@ Use these values consistently in every document metadata block:
   - `37_MODULE02_ADR_UI_UX_WAVE_TECHNICAL_DECISIONS.md` through `42_MODULE02_UI_UX_WAVE_IMPLEMENTATION_READINESS_GATE.md`
 14. Phase 1 Module 02 — responsive desktop scaling addendum (planning extension).
   - `43_MODULE02_RESPONSIVE_DESKTOP_SCALING_ADDENDUM.md`
-15. Phase 1 Module 03 — provider registry + model billing planning pack (draft baseline).
+15. Phase 1 Module 03 — provider registry + model billing planning pack (approved baseline).
   - `44_PHASE1_MODULE03_PROVIDER_REGISTRY_EXECUTION_PACK.md` through `49_GOVERNANCE_BOARD_REVIEW_CHECKLIST_MODULE03.md`
-16. Phase 1 Module 03 — deep-design + readiness gate (draft baseline).
+16. Phase 1 Module 03 — deep-design + readiness gate (approved baseline).
   - `50_MODULE03_MICROSERVICE_SOURCE_STRUCTURE_AMENDMENT.md` through `55_MODULE03_IMPLEMENTATION_READINESS_GATE.md`
 
 ## Folder Structure
@@ -197,7 +198,7 @@ Use these values consistently in every document metadata block:
 | M02-42 | `42_MODULE02_UI_UX_WAVE_IMPLEMENTATION_READINESS_GATE.md` | `03_planning` | GO/NO-GO gate for starting UI/UX wave implementation |
 | M02-43 | `43_MODULE02_RESPONSIVE_DESKTOP_SCALING_ADDENDUM.md` | `03_planning` | Responsive desktop and viewport scaling addendum for Module 02 UI/UX wave |
 
-## Phase 1 Module 03 Packs (Provider registry + model billing) — Draft baseline
+## Phase 1 Module 03 Packs (Provider registry + model billing) — Approved baseline
 
 | Pack Seq | File | Folder | Purpose |
 | --- | --- | --- | --- |
@@ -255,7 +256,7 @@ Use these values consistently in every document metadata block:
 - `22_MODULE01_IMPLEMENTATION_READINESS_GATE.md` records explicit approval to begin implementation while preserving this monorepo baseline.
 - `23_MODULE01_GUI_VISUAL_IMPROVEMENT_PLAN.md` records an **approved** UI stack (see LW-M01-23); it does not supersede contract or readiness gate baselines. Implementation follows that document without changing API contracts.
 - Module 02 (**Draft**): planning pack `24`–`35` and `contracts/api/{books,sharing,catalog}/v1/` extend platform core after Module 01 (chapters, **`original_language`**, cover, summary, **draft/revisions**, MinIO/S3 raw files, quota); `35` is the implementation readiness gate before M02 code start.
-- Module 03 (**Draft**): planning pack `44`–`55` extends platform core control plane with provider registry, model catalog, usage metering, and billing policy (`tier quota + credits overage`); proposed contract domains: `contracts/api/model-registry/v1/` and `contracts/api/model-billing/v1/`.
+- Module 03 (**Approved**): planning pack `44`–`55` extends platform core control plane with provider registry, model catalog, usage metering, and billing policy (`tier quota + credits overage`); proposed contract domains: `contracts/api/model-registry/v1/` and `contracts/api/model-billing/v1/`.
 - This governance note is planning-only and does not imply implementation of live CI configuration in this phase.
 
 

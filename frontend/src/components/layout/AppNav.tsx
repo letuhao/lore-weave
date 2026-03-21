@@ -34,6 +34,15 @@ export function AppNav() {
               <Link to="/books/trash" className={linkClass}>
                 Recycle bin
               </Link>
+              <Link to="/m03/models" className={linkClass}>
+                AI Models
+              </Link>
+              <Link to="/m03/platform-models" className={linkClass}>
+                Platform models
+              </Link>
+              <Link to="/m03/usage" className={linkClass}>
+                Usage logs
+              </Link>
             </>
           )}
           <Link to="/browse" className={linkClass}>

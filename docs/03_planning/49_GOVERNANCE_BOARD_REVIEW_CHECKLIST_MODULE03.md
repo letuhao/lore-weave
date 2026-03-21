@@ -3,18 +3,19 @@
 ## Document Metadata
 
 - Document ID: LW-M03-49
-- Version: 0.1.0
-- Status: Draft
+- Version: 0.2.0
+- Status: Approved
 - Owner: Decision Authority + Governance Board
 - Last Updated: 2026-03-21
-- Approved By: Pending
-- Approved Date: N/A
+- Approved By: Decision Authority
+- Approved Date: 2026-03-21
 - Summary: Governance session checklist to review and approve Module 03 planning artifacts before implementation.
 
 ## Change History
 
 | Version | Date       | Change                             | Author    |
 | ------- | ---------- | ---------------------------------- | --------- |
+| 0.2.0   | 2026-03-21 | Approved by Decision Authority (status governance update) | Assistant |
 | 0.1.0   | 2026-03-21 | Initial Module 03 governance checklist | Assistant |
 
 ## 1) Review Inputs

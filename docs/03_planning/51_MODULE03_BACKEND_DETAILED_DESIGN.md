@@ -3,18 +3,19 @@
 ## Document Metadata
 
 - Document ID: LW-M03-51
-- Version: 0.3.0
-- Status: Draft
+- Version: 0.4.0
+- Status: Approved
 - Owner: Solution Architect + Backend Lead
 - Last Updated: 2026-03-21
-- Approved By: Pending
-- Approved Date: N/A
+- Approved By: Decision Authority
+- Approved Date: 2026-03-21
 - Summary: Detailed backend design for provider adapters, credential vaulting references, model registry workflows, usage metering, and quota-plus-credit billing.
 
 ## Change History
 
 | Version | Date       | Change                            | Author    |
 | ------- | ---------- | --------------------------------- | --------- |
+| 0.4.0   | 2026-03-21 | Approved by Decision Authority (status governance update) | Assistant |
 | 0.3.0   | 2026-03-21 | Added backend model-registration details for provider inventory sync, active/favorite state, and tag+note persistence constraints | Assistant |
 | 0.2.0   | 2026-03-21 | Added strict provider-gateway invariant and encrypted full interaction-log storage/decryption design | Assistant |
 | 0.1.0   | 2026-03-21 | Initial Module 03 backend design  | Assistant |

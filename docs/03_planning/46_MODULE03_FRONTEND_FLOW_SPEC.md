@@ -3,18 +3,19 @@
 ## Document Metadata
 
 - Document ID: LW-M03-46
-- Version: 0.3.0
-- Status: Draft
+- Version: 0.4.0
+- Status: Approved
 - Owner: Product Manager + Frontend Lead
 - Last Updated: 2026-03-21
-- Approved By: Pending
-- Approved Date: N/A
+- Approved By: Decision Authority
+- Approved Date: 2026-03-21
 - Summary: Frontend user/admin journeys for Module 03 provider registration, model management, and usage/cost visibility.
 
 ## Change History
 
 | Version | Date       | Change                           | Author    |
 | ------- | ---------- | -------------------------------- | --------- |
+| 0.4.0   | 2026-03-21 | Approved by Decision Authority (status governance update) | Assistant |
 | 0.3.0   | 2026-03-21 | Added provider-specific model registration flow details, model active/inactive controls, favorites, and custom tags with notes | Assistant |
 | 0.2.0   | 2026-03-21 | Added usage-log detail UX (decrypted owner view) and strict provider-gateway invocation flow requirements | Assistant |
 | 0.1.0   | 2026-03-21 | Initial Module 03 FE flow spec   | Assistant |
