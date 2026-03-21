@@ -3,29 +3,79 @@ import { createProxyMiddleware } from 'http-proxy-middleware';
 import type { Request, Response, NextFunction } from 'express';
 
 /**
- * CORS, /v1 proxy to auth (streaming body), and GET /health.
+ * CORS, /v1 proxy by domain, and GET /health.
  * Shared by main bootstrap and tests.
  */
-export function configureGatewayApp(app: INestApplication, authUrl: string): void {
+export function configureGatewayApp(
+  app: INestApplication,
+  urls: { authUrl: string; bookUrl: string; sharingUrl: string; catalogUrl: string },
+): void {
   app.enableCors({
     origin: true,
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
-  // Mount at `/` with a filter — if we used `use('/v1', proxy)`, Express would strip
-  // `/v1` from req.url and the auth-service would receive `/auth/register` → 404.
-  const proxy = createProxyMiddleware({
-    target: authUrl,
+  const authProxy = createProxyMiddleware({
+    target: urls.authUrl,
     changeOrigin: true,
-    pathFilter: (pathname: string) => pathname.startsWith('/v1'),
+    pathFilter: (pathname: string) =>
+      pathname.startsWith('/v1/auth') || pathname.startsWith('/v1/account'),
+  });
+  const bookProxy = createProxyMiddleware({
+    target: urls.bookUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/books'),
+  });
+  const sharingProxy = createProxyMiddleware({
+    target: urls.sharingUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/sharing'),
+  });
+  const catalogProxy = createProxyMiddleware({
+    target: urls.catalogUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/catalog'),
   });
 
   const httpAdapter = app.getHttpAdapter();
   const instance = httpAdapter.getInstance();
-  instance.use((req: Request, res: Response, next: NextFunction) =>
-    (proxy as (req: Request, res: Response, next: NextFunction) => void)(req, res, next),
-  );
+  const authProxyFn = authProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
+  const bookProxyFn = bookProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
+  const sharingProxyFn = sharingProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
+  const catalogProxyFn = catalogProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
+
+  instance.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account')) {
+      return authProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/books')) {
+      return bookProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/sharing')) {
+      return sharingProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/catalog')) {
+      return catalogProxyFn(req, res, next);
+    }
+    return next();
+  });
 
   instance.get('/health', (_req: Request, res: Response) => {
     res.status(200).send('gateway ok');

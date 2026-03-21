@@ -40,6 +40,19 @@ export function AppNav() {
         </Link>
       )}
       {accessToken && (
+        <Link to="/books" className={linkClass}>
+          My books
+        </Link>
+      )}
+      {accessToken && (
+        <Link to="/books/trash" className={linkClass}>
+          Recycle bin
+        </Link>
+      )}
+      <Link to="/browse" className={linkClass}>
+        Browse
+      </Link>
+      {accessToken && (
         <Link to="/security" className={linkClass}>
           Security
         </Link>

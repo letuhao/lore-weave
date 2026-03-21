@@ -13,7 +13,12 @@ describe('Gateway (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication({ bodyParser: false });
-    configureGatewayApp(app, 'http://127.0.0.1:9');
+    configureGatewayApp(app, {
+      authUrl: 'http://127.0.0.1:9',
+      bookUrl: 'http://127.0.0.1:9',
+      sharingUrl: 'http://127.0.0.1:9',
+      catalogUrl: 'http://127.0.0.1:9',
+    });
     await app.init();
   });
 

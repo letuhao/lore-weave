@@ -9,12 +9,19 @@ import { SecurityPage } from './pages/SecurityPage';
 import { VerifyPage } from './pages/VerifyPage';
 import { ForgotPage } from './pages/ForgotPage';
 import { ResetPage } from './pages/ResetPage';
+import { BooksPage } from './pages/BooksPage';
+import { BookDetailPage } from './pages/BookDetailPage';
+import { ChapterEditorPage } from './pages/ChapterEditorPage';
+import { RecycleBinPage } from './pages/RecycleBinPage';
+import { SharingPage } from './pages/SharingPage';
+import { BrowsePage } from './pages/BrowsePage';
+import { UnlistedPage } from './pages/UnlistedPage';
 
 function Home() {
   const { accessToken } = useAuth();
   return (
     <>
-      <h1 className="text-2xl font-semibold tracking-tight">LoreWeave — Module 01</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">LoreWeave — Modules 01 + 02</h1>
       <p className="mt-4 text-sm text-muted-foreground">
         API base: {import.meta.env.VITE_API_BASE || 'http://localhost:3000'}
       </p>
@@ -64,6 +71,48 @@ function AppRoutes() {
         />
         <Route path="/forgot" element={<ForgotPage />} />
         <Route path="/reset" element={<ResetPage />} />
+        <Route
+          path="/books"
+          element={
+            <RequireAuth>
+              <BooksPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/books/trash"
+          element={
+            <RequireAuth>
+              <RecycleBinPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/books/:bookId"
+          element={
+            <RequireAuth>
+              <BookDetailPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/books/:bookId/sharing"
+          element={
+            <RequireAuth>
+              <SharingPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/books/:bookId/chapters/:chapterId/edit"
+          element={
+            <RequireAuth>
+              <ChapterEditorPage />
+            </RequireAuth>
+          }
+        />
+        <Route path="/browse" element={<BrowsePage />} />
+        <Route path="/s/:accessToken" element={<UnlistedPage />} />
       </Route>
     </Routes>
   );
