@@ -2,7 +2,7 @@
 
 ## Document Metadata
 - Document ID: LW-09
-- Version: 1.1.0
+- Version: 1.2.0
 - Status: Approved
 - Owner: Product Manager + Solution Architect
 - Last Updated: 2026-03-21
@@ -13,6 +13,7 @@
 ## Change History
 | Version | Date | Change | Author |
 |---|---|---|---|
+| 1.2.0 | 2026-03-21 | Added Phase 1 Module 01 identity planning checkpoint and pack references | Assistant |
 | 1.1.0 | 2026-03-21 | Added governance metadata header and migrated to numbered docs structure | Assistant |
 | 1.0.0 | 2026-03-21 | Baseline content established before docs reorganization | Assistant |
 
@@ -79,6 +80,16 @@ Establish planning readiness for identity, book lifecycle, sharing, and discover
 
 ### Module Output
 - Identity and book lifecycle module package with synchronized UI flow expectations, API contracts, and governance acceptance criteria.
+
+### Phase 1 Module 01 Checkpoint (Identity Foundation)
+- Module 01 planning pack must be complete before implementation:
+  - `11_PHASE1_MODULE01_IDENTITY_EXECUTION_PACK.md`
+  - `12_MODULE01_API_CONTRACT_DRAFT.md`
+  - `13_MODULE01_FRONTEND_FLOW_SPEC.md`
+  - `14_MODULE01_ACCEPTANCE_TEST_PLAN.md`
+  - `15_MODULE01_RISK_DEPENDENCY_ROLLOUT.md`
+- Contract-first rule applies: API draft is frozen before frontend flow freeze.
+- Module closure requires Decision Authority gate outcome based on DoR/DoD evidence.
 
 ### Major Dependencies
 - Phase 0 governance baseline.

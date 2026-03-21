@@ -3,12 +3,12 @@
 ## Document Metadata
 
 - Document ID: LW-04
-- Version: 1.1.0
-- Status: Draft
+- Version: 1.2.0
+- Status: Approved
 - Owner: Solution Architect
 - Last Updated: 2026-03-21
-- Approved By: Pending
-- Approved Date: N/A
+- Approved By: Governance Board
+- Approved Date: 2026-03-21
 - Summary: Service ownership, language policy, and runtime boundary matrix.
 
 ## Change History
@@ -16,6 +16,7 @@
 
 | Version | Date       | Change                                                                   | Author    |
 | ------- | ---------- | ------------------------------------------------------------------------ | --------- |
+| 1.2.0 | 2026-03-21 | Updated approval metadata to Approved with Governance Board sign-off | Assistant |
 | 1.1.0   | 2026-03-21 | Added governance metadata header and migrated to numbered docs structure | Assistant |
 | 1.0.0   | 2026-03-21 | Baseline content established before docs reorganization                  | Assistant |
 
@@ -74,5 +75,7 @@ Any service that violates this matrix needs:
 1. architecture review,
 2. contract impact assessment,
 3. updated matrix proposal approved before merge.
+
+
 
 

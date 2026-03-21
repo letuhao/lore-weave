@@ -2,17 +2,18 @@
 
 ## Document Metadata
 - Document ID: LW-03
-- Version: 1.1.0
-- Status: Draft
+- Version: 1.2.0
+- Status: Approved
 - Owner: Product Manager + Solution Architect
 - Last Updated: 2026-03-21
-- Approved By: Pending
-- Approved Date: N/A
+- Approved By: Governance Board
+- Approved Date: 2026-03-21
 - Summary: V1 in-scope/out-of-scope boundaries and non-functional constraints.
 
 ## Change History
 | Version | Date | Change | Author |
 |---|---|---|---|
+| 1.2.0 | 2026-03-21 | Updated approval metadata to Approved with Governance Board sign-off | Assistant |
 | 1.1.0 | 2026-03-21 | Added governance metadata header and migrated to numbered docs structure | Assistant |
 | 1.0.0 | 2026-03-21 | Baseline content established before docs reorganization | Assistant |
 
@@ -74,6 +75,8 @@ This document freezes V1 scope for the microservices rewrite so the team can shi
 - Jobs can be created and tracked through lifecycle states.
 - Retrieval endpoint returns evidence-backed results.
 - Wiki, QA/extraction, and continuation endpoints are callable in the same platform environment.
+
+
 
 
 

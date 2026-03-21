@@ -2,7 +2,7 @@
 
 ## Document Metadata
 - Document ID: LW-10
-- Version: 1.1.0
+- Version: 1.3.0
 - Status: Approved
 - Owner: Product Manager
 - Last Updated: 2026-03-21
@@ -13,6 +13,8 @@
 ## Change History
 | Version | Date | Change | Author |
 |---|---|---|---|
+| 1.3.0 | 2026-03-21 | Added Module 01 deep-design checklist items (17-21) before implementation start | Assistant |
+| 1.2.0 | 2026-03-21 | Added Phase 1 Module 01 identity planning tasks for contract, frontend flow, acceptance, and rollout gates | Assistant |
 | 1.1.0 | 2026-03-21 | Added governance metadata header and migrated to numbered docs structure | Assistant |
 | 1.0.0 | 2026-03-21 | Baseline content established before docs reorganization | Assistant |
 
@@ -69,6 +71,28 @@ Usage notes:
 
 - [ ] Finalize identity/auth planning scope and ownership model.  
   `Owner: PCL | Priority: High | DependsOn: V1 scope freeze`
+- [ ] Complete Module 01 identity execution pack (`11_PHASE1_MODULE01_IDENTITY_EXECUTION_PACK.md`).  
+  `Owner: PM | Priority: High | DependsOn: identity/auth planning scope`
+- [ ] Freeze Module 01 API contract draft (`12_MODULE01_API_CONTRACT_DRAFT.md`) before UI flow freeze.  
+  `Owner: SA | Priority: High | DependsOn: module 01 execution pack`
+- [ ] Finalize Module 01 frontend flow spec (`13_MODULE01_FRONTEND_FLOW_SPEC.md`) with endpoint mapping.  
+  `Owner: BA | Priority: High | DependsOn: module 01 API contract draft`
+- [ ] Complete Module 01 acceptance test plan (`14_MODULE01_ACCEPTANCE_TEST_PLAN.md`).  
+  `Owner: QAL | Priority: High | DependsOn: module 01 frontend flow spec`
+- [ ] Complete Module 01 risk/dependency/rollout plan (`15_MODULE01_RISK_DEPENDENCY_ROLLOUT.md`).  
+  `Owner: SRE | Priority: High | DependsOn: module 01 acceptance test plan`
+- [ ] Run Module 01 gate review and capture Decision Authority outcome.  
+  `Owner: PM | Priority: High | DependsOn: module 01 risk/dependency/rollout plan`
+- [ ] Complete Module 01 microservice source-structure spec (`17_MODULE01_MICROSERVICE_SOURCE_STRUCTURE.md`).  
+  `Owner: SA | Priority: High | DependsOn: module 01 gate review`
+- [ ] Complete Module 01 backend detailed design (`18_MODULE01_BACKEND_DETAILED_DESIGN.md`).  
+  `Owner: SA | Priority: High | DependsOn: module 01 source-structure spec`
+- [ ] Complete Module 01 frontend detailed design (`19_MODULE01_FRONTEND_DETAILED_DESIGN.md`).  
+  `Owner: BA | Priority: High | DependsOn: module 01 backend detailed design`
+- [ ] Complete Module 01 UI/UX wireframe spec (`20_MODULE01_UI_UX_WIREFRAME_SPEC.md`).  
+  `Owner: BA | Priority: High | DependsOn: module 01 frontend detailed design`
+- [ ] Complete Module 01 integration sequence diagrams (`21_MODULE01_INTEGRATION_SEQUENCE_DIAGRAMS.md`).  
+  `Owner: QAL | Priority: High | DependsOn: module 01 UI/UX wireframe spec`
 - [ ] Finalize book lifecycle planning scope and ownership model.  
   `Owner: PCL | Priority: High | DependsOn: V1 scope freeze`
 - [ ] Finalize sharing/discovery planning scope and policy baseline.  

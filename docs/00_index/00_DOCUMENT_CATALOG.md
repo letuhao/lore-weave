@@ -3,12 +3,12 @@
 ## Document Metadata
 
 - Document ID: LW-00
-- Version: 1.2.0
-- Status: Draft
+- Version: 1.6.0
+- Status: Approved
 - Owner: Decision Authority + Execution Authority
 - Last Updated: 2026-03-21
-- Approved By: Pending
-- Approved Date: N/A
+- Approved By: Governance Board
+- Approved Date: 2026-03-21
 - Summary: Entry point for documentation navigation, reading order, and migration mapping.
 
 ## Change History
@@ -16,6 +16,10 @@
 
 | Version | Date       | Change                                                        | Author    |
 | ------- | ---------- | ------------------------------------------------------------- | --------- |
+| 1.6.0 | 2026-03-21 | Added Module 01 monorepo governance note and authoritative document mapping | Assistant |
+| 1.5.0 | 2026-03-21 | Added Module 01 deep-design planning references (17-21) | Assistant |
+| 1.4.0 | 2026-03-21 | Added Phase 1 Module 01 planning pack references and reading path | Assistant |
+| 1.3.0 | 2026-03-21 | Updated approval metadata to Approved with Governance Board sign-off | Assistant |
 | 1.2.0   | 2026-03-21 | Standardized metadata policy for Last Updated date format     | Assistant |
 | 1.1.0   | 2026-03-21 | Standardized metadata taxonomy for Status, Owner, Approved By | Assistant |
 | 1.0.0   | 2026-03-21 | Initial catalog with global numbering and folder organization | Assistant |
@@ -77,6 +81,18 @@ Use these values consistently in every document metadata block:
   - `10_BASIC_TASK_CHECKLIST.md`
 4. Market context:
   - `11_LOREWEAVE_MARKET_ANALYSIS.md`
+5. Phase 1 module planning pack:
+  - `11_PHASE1_MODULE01_IDENTITY_EXECUTION_PACK.md`
+  - `12_MODULE01_API_CONTRACT_DRAFT.md`
+  - `13_MODULE01_FRONTEND_FLOW_SPEC.md`
+  - `14_MODULE01_ACCEPTANCE_TEST_PLAN.md`
+  - `15_MODULE01_RISK_DEPENDENCY_ROLLOUT.md`
+6. Phase 1 module deep-design pack:
+  - `17_MODULE01_MICROSERVICE_SOURCE_STRUCTURE.md`
+  - `18_MODULE01_BACKEND_DETAILED_DESIGN.md`
+  - `19_MODULE01_FRONTEND_DETAILED_DESIGN.md`
+  - `20_MODULE01_UI_UX_WIREFRAME_SPEC.md`
+  - `21_MODULE01_INTEGRATION_SEQUENCE_DIAGRAMS.md`
 
 ## Folder Structure
 
@@ -103,6 +119,37 @@ Use these values consistently in every document metadata block:
 | 10  | `10_BASIC_TASK_CHECKLIST.md`                         | `03_planning`   | Baseline planning checklist by workstream                  |
 | 11  | `11_LOREWEAVE_MARKET_ANALYSIS.md`                    | `04_analysis`   | Market comparison and strategic context                    |
 
+## Phase 1 Module Packs (Planning Series)
+
+| Pack Seq | File | Folder | Purpose |
+| --- | --- | --- | --- |
+| M01-11 | `11_PHASE1_MODULE01_IDENTITY_EXECUTION_PACK.md` | `03_planning` | Module 01 charter, DoR/DoD, governance gates, and sign-off |
+| M01-12 | `12_MODULE01_API_CONTRACT_DRAFT.md` | `03_planning` | Contract-first API baseline for identity flows |
+| M01-13 | `13_MODULE01_FRONTEND_FLOW_SPEC.md` | `03_planning` | Frontend journeys, state model, validation, and API mapping |
+| M01-14 | `14_MODULE01_ACCEPTANCE_TEST_PLAN.md` | `03_planning` | Acceptance matrix, pass criteria, and evidence checklist |
+| M01-15 | `15_MODULE01_RISK_DEPENDENCY_ROLLOUT.md` | `03_planning` | Dependency graph, risk controls, rollout and rollback plan |
+
+## Phase 1 Module Deep-Design Packs
+
+| Pack Seq | File | Folder | Purpose |
+| --- | --- | --- | --- |
+| M01-17 | `17_MODULE01_MICROSERVICE_SOURCE_STRUCTURE.md` | `03_planning` | Service boundary and source folder/package strategy |
+| M01-18 | `18_MODULE01_BACKEND_DETAILED_DESIGN.md` | `03_planning` | Backend domain model, lifecycle, and endpoint mapping design |
+| M01-19 | `19_MODULE01_FRONTEND_DETAILED_DESIGN.md` | `03_planning` | Frontend architecture, state boundaries, and integration strategy |
+| M01-20 | `20_MODULE01_UI_UX_WIREFRAME_SPEC.md` | `03_planning` | Low-fidelity wireframe and state behavior specification |
+| M01-21 | `21_MODULE01_INTEGRATION_SEQUENCE_DIAGRAMS.md` | `03_planning` | End-to-end sequence diagrams for core and failure flows |
+
+## Module 01 Monorepo Governance Note
+
+- Repository model for Module 01 planning series is **single-repo polyglot monorepo**.
+- `17_MODULE01_MICROSERVICE_SOURCE_STRUCTURE.md` is authoritative for:
+  - monorepo root layout,
+  - ownership boundaries,
+  - path-based CI/CD governance,
+  - branch and release controls.
+- `11`-`16` and `18`-`21` must remain consistent with this model and must not introduce multi-repo assumptions.
+- This governance note is planning-only and does not imply implementation of live CI configuration in this phase.
+
 
 ## Migration Map (Old Name -> New Name)
 
@@ -120,6 +167,8 @@ Use these values consistently in every document metadata block:
 | `ROADMAP_OVERVIEW.md`                             | `09_ROADMAP_OVERVIEW.md`                             |
 | `BASIC_TASK_CHECKLIST.md`                         | `10_BASIC_TASK_CHECKLIST.md`                         |
 | `loreweave_market_analysis.md`                    | `11_LOREWEAVE_MARKET_ANALYSIS.md`                    |
+
+
 
 
 

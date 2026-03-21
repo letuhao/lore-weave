@@ -2,7 +2,7 @@
 
 ## Document Metadata
 - Document ID: LW-05
-- Version: 1.1.0
+- Version: 1.2.0
 - Status: Approved
 - Owner: Decision Authority + Execution Authority
 - Last Updated: 2026-03-21
@@ -13,6 +13,7 @@
 ## Change History
 | Version | Date | Change | Author |
 |---|---|---|---|
+| 1.2.0 | 2026-03-21 | Added Module 01 identity planning pack as first formal vertical-slice reference | Assistant |
 | 1.1.0 | 2026-03-21 | Added governance metadata header and migrated to numbered docs structure | Assistant |
 | 1.0.0 | 2026-03-21 | Baseline content established before docs reorganization | Assistant |
 
@@ -63,6 +64,14 @@ Examples of module slices:
 - public browsing flow,
 - QA query flow,
 - continuation request flow.
+
+### Module 01 Reference Baseline
+The first formal vertical-slice planning package is Module 01 (Identity):
+- `11_PHASE1_MODULE01_IDENTITY_EXECUTION_PACK.md`
+- `12_MODULE01_API_CONTRACT_DRAFT.md`
+- `13_MODULE01_FRONTEND_FLOW_SPEC.md`
+- `14_MODULE01_ACCEPTANCE_TEST_PLAN.md`
+- `15_MODULE01_RISK_DEPENDENCY_ROLLOUT.md`
 
 ## 5) Weekly Scrumban Cadence
 
