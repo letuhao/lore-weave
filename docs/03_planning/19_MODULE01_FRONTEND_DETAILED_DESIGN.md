@@ -2,17 +2,18 @@
 
 ## Document Metadata
 - Document ID: LW-M01-19
-- Version: 1.1.0
+- Version: 1.2.0
 - Status: Draft
 - Owner: Product Manager + Platform Core Lead
 - Last Updated: 2026-03-21
 - Approved By: Pending
 - Approved Date: N/A
-- Summary: Detailed frontend architecture design for Module 01 identity screens, state boundaries, and API integration strategy.
+- Summary: Detailed frontend architecture design for Module 01 identity screens, state boundaries, and API integration strategy. UI implementation stack is governed by `23_MODULE01_GUI_VISUAL_IMPROVEMENT_PLAN.md` (Tailwind, shadcn/ui, RHF, zod).
 
 ## Change History
 | Version | Date | Change | Author |
 |---|---|---|---|
+| 1.2.0 | 2026-03-21 | Aligned with LW-M01-23 approved stack (Tailwind, shadcn/ui, Radix, lucide-react, react-hook-form, zod) | Assistant |
 | 1.1.0 | 2026-03-21 | Added monorepo frontend path and contract-governance assumptions | Assistant |
 | 1.0.0 | 2026-03-21 | Initial frontend detailed design baseline for Module 01 | Assistant |
 
@@ -22,6 +23,7 @@ Frontend design assumptions:
 - identity UI implementation lives under `frontend/` path domains.
 - integrations target gateway interfaces defined by `12_MODULE01_API_CONTRACT_DRAFT.md` and governed contract paths `contracts/api/identity/v1/`.
 - ownership and path-based governance are authoritative in `17_MODULE01_MICROSERVICE_SOURCE_STRUCTURE.md`.
+- **UI component stack** (approved under Decision Authority, 2026-03-21): **Tailwind CSS**, **shadcn/ui** (built on **Radix UI**), **lucide-react**, **react-hook-form**, **zod** — see `23_MODULE01_GUI_VISUAL_IMPROVEMENT_PLAN.md` section 5.3. Implement `identity/components` using those primitives rather than ad-hoc HTML/CSS alone.
 
 ## 1) Module Architecture (Frontend)
 

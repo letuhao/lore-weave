@@ -3,7 +3,7 @@
 ## Document Metadata
 
 - Document ID: LW-00
-- Version: 1.7.1
+- Version: 1.8.1
 - Status: Approved
 - Owner: Decision Authority + Execution Authority
 - Last Updated: 2026-03-21
@@ -16,6 +16,8 @@
 
 | Version | Date       | Change                                                        | Author    |
 | ------- | ---------- | ------------------------------------------------------------- | --------- |
+| 1.8.1 | 2026-03-21 | Noted LW-M01-23 Active: approved UI stack (Tailwind, shadcn/ui, RHF, zod) | Assistant |
+| 1.8.0 | 2026-03-21 | Registered Module 01 GUI visual improvement plan (23, LW-M01-23) | Assistant |
 | 1.7.1 | 2026-03-21 | Noted Module 01 implementation readiness gate (22) Approved with GO | Assistant |
 | 1.7.0 | 2026-03-21 | Registered Module 01 implementation readiness gate document (22) | Assistant |
 | 1.6.0 | 2026-03-21 | Added Module 01 monorepo governance note and authoritative document mapping | Assistant |
@@ -97,6 +99,8 @@ Use these values consistently in every document metadata block:
   - `21_MODULE01_INTEGRATION_SEQUENCE_DIAGRAMS.md`
 7. Phase 1 module implementation readiness (before code):
   - `22_MODULE01_IMPLEMENTATION_READINESS_GATE.md`
+8. Phase 1 module UI improvement (post-baseline implementation plan):
+  - `23_MODULE01_GUI_VISUAL_IMPROVEMENT_PLAN.md`
 
 ## Folder Structure
 
@@ -149,6 +153,12 @@ Use these values consistently in every document metadata block:
 | --- | --- | --- | --- |
 | M01-22 | `22_MODULE01_IMPLEMENTATION_READINESS_GATE.md` | `03_planning` | Single-page GO/NO-GO gate before starting Module 01 implementation (**Approved**, GO 2026-03-21) |
 
+## Phase 1 Module UI improvement plan
+
+| Pack Seq | File | Folder | Purpose |
+| --- | --- | --- | --- |
+| M01-23 | `23_MODULE01_GUI_VISUAL_IMPROVEMENT_PLAN.md` | `03_planning` | GUI visual improvement (**Active**): Tailwind + shadcn/ui + Radix + lucide-react + react-hook-form + zod; aligns with 19/20 |
+
 ## Module 01 Monorepo Governance Note
 
 - Repository model for Module 01 planning series is **single-repo polyglot monorepo**.
@@ -159,6 +169,7 @@ Use these values consistently in every document metadata block:
   - branch and release controls.
 - `11`-`16` and `18`-`21` must remain consistent with this model and must not introduce multi-repo assumptions.
 - `22_MODULE01_IMPLEMENTATION_READINESS_GATE.md` records explicit approval to begin implementation while preserving this monorepo baseline.
+- `23_MODULE01_GUI_VISUAL_IMPROVEMENT_PLAN.md` records an **approved** UI stack (see LW-M01-23); it does not supersede contract or readiness gate baselines. Implementation follows that document without changing API contracts.
 - This governance note is planning-only and does not imply implementation of live CI configuration in this phase.
 
 

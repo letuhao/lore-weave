@@ -72,6 +72,8 @@ npm run dev
 
 Open `http://localhost:5173`. All API calls go to `VITE_API_BASE` (gateway).
 
+**UI stack:** The Vite app uses **Tailwind CSS**, **shadcn/ui** (Radix), **lucide-react**, **react-hook-form**, and **zod** — see `docs/03_planning/23_MODULE01_GUI_VISUAL_IMPROVEMENT_PLAN.md`. Global styles live in `src/index.css`. After pulling dependency changes, run **`npm ci`** in `frontend/` so the lockfile matches `package.json`.
+
 ## Email (Mailhog + SMTP)
 
 **Docker full stack** (`docker compose up` from `infra/`): Mailhog runs on **SMTP `:1025`**, web UI **http://localhost:8025**. `auth-service` is configured to send verification and password-reset messages there. On **register**, a verification email is sent when `SMTP_HOST` is set. **Mailhog only captures mail** — nothing is delivered to Gmail or the public internet.

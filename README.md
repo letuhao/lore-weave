@@ -9,7 +9,7 @@ Polyglot monorepo for **Identity** (register, session, profile, verify, reset).
 | `contracts/api/identity/v1/` | OpenAPI | Contract-first API |
 | `services/auth-service/` | Go | Domain + persistence |
 | `services/api-gateway-bff/` | NestJS | Client-facing proxy (no direct auth from browser) |
-| `frontend/` | Vite + React + TS | Identity UI |
+| `frontend/` | Vite + React + TS | Identity UI (visual refresh: **Tailwind + shadcn/ui** per [`23_MODULE01_GUI_VISUAL_IMPROVEMENT_PLAN.md`](docs/03_planning/23_MODULE01_GUI_VISUAL_IMPROVEMENT_PLAN.md)) |
 | `infra/` | Docker Compose | Postgres, Mailhog, optional **full stack** (auth + gateway + FE) |
 
 ## Quick start (local)
@@ -64,4 +64,4 @@ Token / crypto decisions: [`docs/implementation/ADR-001-module01-identity-tokens
 
 Optional smoke (PowerShell, gateway on `:3000`): `scripts/smoke-module01.ps1`.
 
-Planning / governance docs live in [`docs/`](docs/).
+Planning / governance docs live in [`docs/`](docs/). Approved Module 01 UI stack (LW-M01-23): Tailwind CSS, shadcn/ui (Radix), lucide-react, react-hook-form, zod.
