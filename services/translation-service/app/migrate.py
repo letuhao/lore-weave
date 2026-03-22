@@ -100,6 +100,37 @@ CREATE TABLE IF NOT EXISTS chapter_translation_chunks (
   UNIQUE (chapter_translation_id, chunk_index)
 );
 CREATE INDEX IF NOT EXISTS idx_ctc_ct ON chapter_translation_chunks(chapter_translation_id);
+
+-- UX Wave (LW-72): version tracking
+ALTER TABLE chapter_translations
+  ADD COLUMN IF NOT EXISTS version_num INT NOT NULL DEFAULT 1;
+
+-- Backfill: assign sequential version_num per (chapter_id, target_language)
+-- ordered by created_at so existing rows don't violate the unique index.
+-- Safe to re-run (idempotent — ROW_NUMBER is deterministic by created_at).
+UPDATE chapter_translations ct
+SET version_num = sub.rn
+FROM (
+  SELECT id,
+         ROW_NUMBER() OVER (
+           PARTITION BY chapter_id, target_language
+           ORDER BY created_at
+         ) AS rn
+  FROM chapter_translations
+) sub
+WHERE ct.id = sub.id;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ct_version
+  ON chapter_translations(chapter_id, target_language, version_num);
+
+CREATE TABLE IF NOT EXISTS active_chapter_translation_versions (
+  chapter_id              UUID NOT NULL,
+  target_language         TEXT NOT NULL,
+  chapter_translation_id  UUID NOT NULL REFERENCES chapter_translations(id) ON DELETE CASCADE,
+  set_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  set_by_user_id          UUID NOT NULL,
+  PRIMARY KEY (chapter_id, target_language)
+);
 """
 
 

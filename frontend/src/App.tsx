@@ -19,6 +19,7 @@ import { UsageLogsPage } from './pages/UsageLogsPage';
 import { UsageDetailPage } from './pages/UsageDetailPage';
 import { UserSettingsPage } from './pages/UserSettingsPage';
 import BookTranslationPage from './pages/BookTranslationPage';
+import ChapterTranslationsPage from './pages/ChapterTranslationsPage';
 
 function Home() {
   const { accessToken } = useAuth();
@@ -139,6 +140,14 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <BookTranslationPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/books/:bookId/chapters/:chapterId/translations"
+          element={
+            <RequireAuth>
+              <ChapterTranslationsPage />
             </RequireAuth>
           }
         />

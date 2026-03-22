@@ -1,5 +1,22 @@
 # Translation Pipeline V2 — Chunking, Session Context & Compact Logic
-<!-- STATUS: APPROVED — implementation in progress -->
+
+## Document Metadata
+- Document ID: LW-71
+- Version: 1.1.0
+- Status: Approved
+- Owner: Backend Lead
+- Last Updated: 2026-03-23
+- Approved By: Decision Authority
+- Approved Date: 2026-03-23
+- Summary: Chunk-based translation pipeline with persistent in-session conversation history and AI-driven compaction to prevent context window overflow.
+
+## Change History
+| Version | Date | Change | Author |
+|---|---|---|---|
+| 1.1.0 | 2026-03-23 | Approved; implementation in progress | Decision Authority |
+| 1.0.0 | 2026-03-23 | Initial draft | Assistant |
+
+---
 
 ## Context
 

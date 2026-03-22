@@ -125,3 +125,54 @@ class TranslationJob(BaseModel):
 class ErrorResponse(BaseModel):
     code: str
     message: str
+
+
+# ── Version / Coverage (LW-72) ─────────────────────────────────────────────────
+
+class VersionSummary(BaseModel):
+    id: UUID
+    version_num: int
+    job_id: UUID
+    status: str
+    is_active: bool
+    model_source: str
+    model_ref: Optional[UUID]
+    input_tokens: Optional[int]
+    output_tokens: Optional[int]
+    created_at: datetime
+
+
+class LanguageVersionGroup(BaseModel):
+    target_language: str
+    active_id: Optional[UUID]
+    versions: list[VersionSummary]
+
+
+class ChapterVersionsResponse(BaseModel):
+    chapter_id: UUID
+    languages: list[LanguageVersionGroup]
+
+
+class ActiveVersionResponse(BaseModel):
+    chapter_id: UUID
+    target_language: str
+    active_id: UUID
+
+
+class CoverageCell(BaseModel):
+    has_active: bool
+    active_version_num: Optional[int]
+    latest_version_num: Optional[int]
+    latest_status: Optional[str]
+    version_count: int
+
+
+class ChapterCoverage(BaseModel):
+    chapter_id: UUID
+    languages: dict[str, CoverageCell]
+
+
+class BookCoverageResponse(BaseModel):
+    book_id: UUID
+    coverage: list[ChapterCoverage]
+    known_languages: list[str]

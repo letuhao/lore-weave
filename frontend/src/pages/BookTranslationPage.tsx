@@ -2,367 +2,218 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '@/auth';
 import { useJobEvents, type JobEvent } from '@/hooks/useJobEvents';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { LanguagePicker } from '@/components/books/LanguagePicker';
-import { ModelSelector } from '@/components/translation/ModelSelector';
-import { PromptEditor } from '@/components/translation/PromptEditor';
-import { TranslateButton } from '@/components/translation/TranslateButton';
-import { ChapterTranslationPanel } from '@/components/translation/ChapterTranslationPanel';
-import { AdvancedTranslationSettings } from '@/components/translation/AdvancedTranslationSettings';
-import { translationApi, type BookTranslationSettings, type TranslationJob, type ModelSource } from '@/features/translation/api';
+import { TranslationMatrix } from '@/components/translation/TranslationMatrix';
+import { FloatingActionBar } from '@/components/translation/FloatingActionBar';
+import { TranslateModal } from '@/components/translation/TranslateModal';
+import { SettingsDrawer } from '@/components/translation/SettingsDrawer';
+import { JobsDrawer } from '@/components/translation/JobsDrawer';
+import { translationApi, type BookTranslationSettings, type TranslationJob } from '@/features/translation/api';
+import { versionsApi, type ChapterCoverage, type BookCoverageResponse } from '@/features/translation/versionsApi';
 import { booksApi, type Chapter } from '@/features/books/api';
-
-type FormState = {
-  target_language: string;
-  model_source: ModelSource;
-  model_ref: string | null;
-  system_prompt: string;
-  user_prompt_tpl: string;
-  compact_model_source: ModelSource | null;
-  compact_model_ref: string | null;
-  chunk_size_tokens: number;
-  invoke_timeout_secs: number;
-};
-
-function settingsToForm(s: BookTranslationSettings): FormState {
-  return {
-    target_language:      s.target_language,
-    model_source:         s.model_source,
-    model_ref:            s.model_ref,
-    system_prompt:        s.system_prompt,
-    user_prompt_tpl:      s.user_prompt_tpl,
-    compact_model_source: s.compact_model_source,
-    compact_model_ref:    s.compact_model_ref,
-    chunk_size_tokens:    s.chunk_size_tokens ?? 2000,
-    invoke_timeout_secs:  s.invoke_timeout_secs ?? 300,
-  };
-}
 
 export default function BookTranslationPage() {
   const { bookId } = useParams<{ bookId: string }>();
   const { accessToken } = useAuth();
   const token = accessToken!;
 
-  const [loadingSettings, setLoadingSettings] = useState(true);
-  const [loadingChapters, setLoadingChapters] = useState(true);
-  const [loadingJobs, setLoadingJobs] = useState(true);
-
-  const [settings, setSettings] = useState<BookTranslationSettings | null>(null);
-  const [form, setForm] = useState<FormState | null>(null);
+  const [loading, setLoading] = useState(true);
   const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [settings, setSettings] = useState<BookTranslationSettings | null>(null);
   const [jobs, setJobs] = useState<TranslationJob[]>([]);
+  const [coverageData, setCoverageData] = useState<BookCoverageResponse | null>(null);
 
-  // Pre-select all chapters that have no completed translation
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [langFilter, setLangFilter] = useState('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [jobsOpen, setJobsOpen] = useState(false);
+  const [translateOpen, setTranslateOpen] = useState(false);
 
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
-  const [saveSuccess, setSaveSuccess] = useState('');
+  const preselectedRef = useRef(false);
 
-  useEffect(() => {
+  const loadAll = useCallback(async () => {
     if (!bookId) return;
-
-    translationApi.getBookSettings(token, bookId)
-      .then((s) => { setSettings(s); setForm(settingsToForm(s)); })
-      .finally(() => setLoadingSettings(false));
-
-    booksApi.listChapters(token, bookId, { lifecycle_state: 'active', limit: 100 })
-      .then((r) => setChapters(r.items))
-      .finally(() => setLoadingChapters(false));
-
-    translationApi.listJobs(token, bookId, { limit: 5 })
-      .then(setJobs)
-      .finally(() => setLoadingJobs(false));
+    setLoading(true);
+    try {
+      const [chaptersResp, settingsResp, jobsResp, coverageResp] = await Promise.all([
+        booksApi.listChapters(token, bookId, { lifecycle_state: 'active', limit: 100 }),
+        translationApi.getBookSettings(token, bookId),
+        translationApi.listJobs(token, bookId, { limit: 10 }),
+        versionsApi.getBookCoverage(token, bookId),
+      ]);
+      setChapters(chaptersResp.items);
+      setSettings(settingsResp);
+      setJobs(jobsResp);
+      setCoverageData(coverageResp);
+    } finally {
+      setLoading(false);
+    }
   }, [token, bookId]);
 
-  // Pre-select untranslated chapters — runs exactly once after initial load.
-  // B1 fix: preselectedRef guards against re-firing when jobs update via WS events.
-  const preselectedRef = useRef(false);
+  useEffect(() => { void loadAll(); }, [loadAll]);
+
+  // Pre-select untranslated chapters — one-shot after load
   useEffect(() => {
-    if (loadingChapters || loadingJobs) return;
-    if (preselectedRef.current) return;
+    if (loading || preselectedRef.current || coverageData === null) return;
     preselectedRef.current = true;
 
-    const translatedIds = new Set(
-      jobs
-        .filter((j) => j.status === 'completed' || j.status === 'partial')
-        .flatMap((j) => j.chapter_ids),
+    const coveredIds = new Set(
+      coverageData.coverage
+        .filter((c) => Object.values(c.languages).some((cell) => cell?.has_active))
+        .map((c) => c.chapter_id)
     );
     const untranslated = chapters
-      .filter((c) => !translatedIds.has(c.chapter_id))
+      .filter((c) => !coveredIds.has(c.chapter_id))
       .map((c) => c.chapter_id);
     setSelectedIds(untranslated.length > 0 ? untranslated : chapters.map((c) => c.chapter_id));
-  }, [loadingChapters, loadingJobs]); // chapters + jobs intentionally excluded — pre-selection is one-shot
+  }, [loading, coverageData, chapters]);
 
-  // Page-level WS subscription keeps Recent Jobs list live for in-progress jobs
+  // WebSocket live-update
   const handleJobEvent = useCallback((e: JobEvent) => {
     if (e.job_type !== 'translation') return;
     if (e.event === 'job.status_changed' || e.event === 'job.chapter_done') {
       setJobs((prev) =>
         prev.map((j) =>
-          j.job_id === e.job_id
-            ? { ...j, ...(e.payload as Partial<TranslationJob>) }
-            : j,
-        ),
+          j.job_id === e.job_id ? { ...j, ...(e.payload as Partial<TranslationJob>) } : j
+        )
       );
-    }
-    if (e.event === 'job.created') {
-      // new job from another tab/device — refresh list
-      if (bookId) {
-        translationApi.listJobs(token, bookId, { limit: 5 }).then(setJobs).catch(() => {});
+      // Refresh coverage on chapter completion
+      if (e.event === 'job.chapter_done' && bookId) {
+        versionsApi.getBookCoverage(token, bookId).then(setCoverageData).catch(() => {});
       }
     }
+    if (e.event === 'job.created' && bookId) {
+      translationApi.listJobs(token, bookId, { limit: 10 }).then(setJobs).catch(() => {});
+    }
   }, [token, bookId]);
 
-  const handlePageReconnect = useCallback(() => {
-    // WS reconnected — re-fetch jobs to fill any gap
+  const handleReconnect = useCallback(() => {
     if (bookId) {
-      translationApi.listJobs(token, bookId, { limit: 5 }).then(setJobs).catch(() => {});
+      void Promise.all([
+        translationApi.listJobs(token, bookId, { limit: 10 }).then(setJobs),
+        versionsApi.getBookCoverage(token, bookId).then(setCoverageData),
+      ]);
     }
   }, [token, bookId]);
 
-  useJobEvents({ onEvent: handleJobEvent, onReconnect: handlePageReconnect });
-
-  function toggleChapter(id: string) {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-  }
-
-  async function handleSave() {
-    if (!form || !bookId) return;
-    if (!form.model_ref) { setSaveError('Please select a model.'); return; }
-    if (!form.user_prompt_tpl.includes('{chapter_text}')) {
-      setSaveError('User prompt template must contain {chapter_text}.');
-      return;
-    }
-    setSaving(true); setSaveError(''); setSaveSuccess('');
-    try {
-      const saved = await translationApi.putBookSettings(token, bookId, {
-        target_language:      form.target_language,
-        model_source:         form.model_source,
-        model_ref:            form.model_ref,
-        system_prompt:        form.system_prompt,
-        user_prompt_tpl:      form.user_prompt_tpl,
-        compact_model_source: form.compact_model_source,
-        compact_model_ref:    form.compact_model_ref,
-        chunk_size_tokens:    form.chunk_size_tokens,
-        invoke_timeout_secs:  form.invoke_timeout_secs,
-      });
-      setSettings(saved);
-      setSaveSuccess('Book translation settings saved');
-    } catch (e: unknown) {
-      setSaveError((e as { message?: string })?.message || 'Failed to save');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleResetToDefaults() {
-    const prefs = await translationApi.getPreferences(token);
-    setForm(settingsToForm({ ...prefs, book_id: bookId!, owner_user_id: prefs.user_id, is_default: true }));
-  }
+  useJobEvents({ onEvent: handleJobEvent, onReconnect: handleReconnect });
 
   function handleJobCreated(job: TranslationJob) {
     setJobs((prev) => [job, ...prev]);
+    setTranslateOpen(false);
+    setSelectedIds([]);
   }
 
+  const runningCount = jobs.filter((j) => j.status === 'pending' || j.status === 'running').length;
+
   return (
-    <div className="space-y-6">
-      {/* Section 1 — Settings */}
-      <section className="space-y-4 rounded border p-4">
-        <h2 className="font-medium">Translation settings for this book</h2>
+    <div className="space-y-4">
+      {/* Page header */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-lg font-semibold">Translation Dashboard</h1>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setJobsOpen(true)}
+            className="rounded border px-3 py-1.5 text-sm hover:bg-muted"
+          >
+            Jobs {runningCount > 0 && <span className="ml-1 text-amber-600">({runningCount} active)</span>}
+          </button>
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="rounded border px-3 py-1.5 text-sm hover:bg-muted"
+          >
+            ⚙ Settings
+          </button>
+        </div>
+      </div>
 
-        {loadingSettings ? (
-          <div className="space-y-3">
-            <Skeleton className="h-9 w-full" />
-            <Skeleton className="h-9 w-full" />
-            <Skeleton className="h-24 w-full" />
-            <Skeleton className="h-32 w-full" />
-          </div>
-        ) : (
-          <>
-            {settings?.is_default && (
-              <Alert>
-                <AlertDescription>
-                  Using your default settings. Save below to override for this book.
-                </AlertDescription>
-              </Alert>
-            )}
-            {form && (
-              <div className="space-y-4">
-                <LanguagePicker
-                  label="Target language"
-                  value={form.target_language}
-                  onChange={(v) => setForm({ ...form, target_language: v })}
-                />
-                <ModelSelector
-                  token={token}
-                  value={{ model_source: form.model_source, model_ref: form.model_ref }}
-                  onChange={(v) => setForm({ ...form, model_source: v.model_source, model_ref: v.model_ref })}
-                  disabled={saving}
-                />
-                <PromptEditor
-                  systemPrompt={form.system_prompt}
-                  userPromptTpl={form.user_prompt_tpl}
-                  onSystemPromptChange={(v) => setForm({ ...form, system_prompt: v })}
-                  onUserPromptTplChange={(v) => setForm({ ...form, user_prompt_tpl: v })}
-                  disabled={saving}
-                />
-                <AdvancedTranslationSettings
-                  token={token}
-                  value={{
-                    compact_model_source: form.compact_model_source,
-                    compact_model_ref:    form.compact_model_ref,
-                    chunk_size_tokens:    form.chunk_size_tokens,
-                    invoke_timeout_secs:  form.invoke_timeout_secs,
-                  }}
-                  onChange={(v) => setForm({ ...form, ...v })}
-                  disabled={saving}
-                />
-                {saveError && <Alert variant="destructive"><AlertDescription>{saveError}</AlertDescription></Alert>}
-                {saveSuccess && <p className="text-sm text-green-600">{saveSuccess}</p>}
-                <div className="flex gap-2">
-                  <Button onClick={handleSave} disabled={saving}>
-                    {saving ? 'Saving…' : 'Save for this book'}
-                  </Button>
-                  <Button variant="outline" onClick={handleResetToDefaults} disabled={saving}>
-                    Reset to my defaults
-                  </Button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </section>
-
-      {/* Section 2 — Translate */}
-      <section className="space-y-4 rounded border p-4">
-        <h2 className="font-medium">Translate chapters</h2>
-
-        {loadingChapters ? (
-          <div className="space-y-2">
-            <Skeleton className="h-5 w-full" />
-            <Skeleton className="h-5 w-full" />
-            <Skeleton className="h-5 w-2/3" />
-          </div>
-        ) : (
-          <>
-            <div className="flex gap-2">
-              <button
-                className="text-sm underline"
-                onClick={() => setSelectedIds(chapters.map((c) => c.chapter_id))}
-              >
-                Select all
-              </button>
-              <button
-                className="text-sm underline"
-                onClick={() => setSelectedIds([])}
-              >
-                Deselect all
-              </button>
-            </div>
-            <div className="space-y-1">
-              {chapters.map((c) => (
-                <label key={c.chapter_id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.includes(c.chapter_id)}
-                    onChange={() => toggleChapter(c.chapter_id)}
-                  />
-                  {c.title || `Chapter ${c.sort_order}`}
-                </label>
+      {/* Translation matrix */}
+      <div className="rounded border">
+        {!loading && (coverageData?.known_languages?.length ?? 0) > 0 && (
+          <div className="flex items-center gap-2 border-b px-3 py-2">
+            <label className="text-xs text-muted-foreground">Filter language:</label>
+            <select
+              className="rounded border px-2 py-1 text-xs"
+              value={langFilter}
+              onChange={(e) => setLangFilter(e.target.value)}
+            >
+              <option value="">All</option>
+              {(coverageData?.known_languages ?? []).map((lang) => (
+                <option key={lang} value={lang}>{lang}</option>
               ))}
-            </div>
-          </>
+            </select>
+            {langFilter && (
+              <button
+                className="text-xs text-muted-foreground hover:underline"
+                onClick={() => setLangFilter('')}
+              >
+                Clear
+              </button>
+            )}
+          </div>
         )}
-
-        {!loadingSettings && !loadingChapters && bookId && (
-          <TranslateButton
-            token={token}
-            bookId={bookId}
-            chapterIds={selectedIds}
-            onJobCreated={handleJobCreated}
-            disabled={!form?.model_ref}
+        {loading ? (
+          <div className="space-y-2 p-4">
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-3/4" />
+          </div>
+        ) : (
+          <TranslationMatrix
+            bookId={bookId!}
+            chapters={chapters}
+            coverage={coverageData?.coverage ?? []}
+            knownLanguages={langFilter ? [langFilter] : (coverageData?.known_languages ?? [])}
+            selectedIds={selectedIds}
+            onToggle={(id) =>
+              setSelectedIds((prev) =>
+                prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+              )
+            }
+            onSelectAll={() => setSelectedIds(chapters.map((c) => c.chapter_id))}
+            onDeselectAll={() => setSelectedIds([])}
           />
         )}
-        {!form?.model_ref && !loadingSettings && (
-          <p className="text-sm text-amber-600">
-            No model configured — go to{' '}
-            <a href="/settings/translation" className="underline">Translation Settings</a>
-            {' '}to set a default model.
-          </p>
-        )}
-      </section>
+      </div>
 
-      {/* Section 3 — Recent jobs */}
-      <section className="space-y-3 rounded border p-4">
-        <h2 className="font-medium">Recent translation jobs</h2>
+      {/* Floating action bar */}
+      <FloatingActionBar
+        selectedCount={selectedIds.length}
+        onTranslate={() => setTranslateOpen(true)}
+        onClear={() => setSelectedIds([])}
+      />
 
-        {loadingJobs ? (
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-          </div>
-        ) : jobs.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No translation jobs yet. Click Translate above to get started.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {jobs.map((job) => (
-              <details key={job.job_id} className="rounded border">
-                <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm">
-                  <StatusBadge status={job.status} />
-                  <span>{new Date(job.created_at).toLocaleDateString()}</span>
-                  <span className="text-muted-foreground">
-                    {job.completed_chapters}/{job.total_chapters} → {job.target_language}
-                  </span>
-                </summary>
-                <div className="space-y-2 px-3 pb-3">
-                  {job.chapter_ids.map((cid) => {
-                    const chapter = chapters.find((c) => c.chapter_id === cid);
-                    return (
-                      <ChapterTranslationPanel
-                        key={cid}
-                        token={token}
-                        jobId={job.job_id}
-                        chapterId={cid}
-                        chapterTitle={chapter?.title || `Chapter ${chapter?.sort_order ?? ''}`}
-                        refreshKey={(job.completed_chapters ?? 0) + (job.failed_chapters ?? 0)}
-                      />
-                    );
-                  })}
-                </div>
-              </details>
-            ))}
-          </div>
-        )}
-      </section>
+      {/* Drawers & modals */}
+      {settingsOpen && settings && (
+        <SettingsDrawer
+          token={token}
+          bookId={bookId!}
+          settings={settings}
+          onClose={() => setSettingsOpen(false)}
+          onSaved={(updated) => { setSettings(updated); setSettingsOpen(false); }}
+        />
+      )}
+
+      {jobsOpen && (
+        <JobsDrawer
+          token={token}
+          bookId={bookId!}
+          jobs={jobs}
+          onClose={() => setJobsOpen(false)}
+          onJobsChange={setJobs}
+        />
+      )}
+
+      {translateOpen && settings && (
+        <TranslateModal
+          token={token}
+          bookId={bookId!}
+          chapterIds={selectedIds}
+          settings={settings}
+          onClose={() => setTranslateOpen(false)}
+          onJobCreated={handleJobCreated}
+        />
+      )}
     </div>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    completed: '✓',
-    partial: '⚠',
-    failed: '✗',
-    running: '◌',
-    pending: '◌',
-    cancelled: '—',
-  };
-  const colorMap: Record<string, string> = {
-    completed: 'text-green-600',
-    partial: 'text-amber-600',
-    failed: 'text-red-600',
-    cancelled: 'text-muted-foreground',
-  };
-  return (
-    <span className={colorMap[status] || 'text-muted-foreground'}>
-      {map[status] || status}
-    </span>
   );
 }

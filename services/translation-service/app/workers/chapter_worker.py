@@ -140,6 +140,18 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             "UPDATE translation_jobs SET completed_chapters=completed_chapters+1 WHERE job_id=$1",
             job_id,
         )
+        # Auto-set active: insert only if no active version exists yet for (chapter_id, target_language)
+        await db.execute(
+            """
+            INSERT INTO active_chapter_translation_versions
+              (chapter_id, target_language, chapter_translation_id, set_by_user_id)
+            SELECT $1, ct.target_language, $2, ct.owner_user_id
+            FROM chapter_translations ct
+            WHERE ct.id = $2
+            ON CONFLICT (chapter_id, target_language) DO NOTHING
+            """,
+            chapter_id, chapter_translation_id,
+        )
     log.info("chapter %s: DB persist complete", chapter_id)
 
     await _emit_chapter_done(publish_event, user_id, msg, "completed", None)

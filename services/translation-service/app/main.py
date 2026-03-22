@@ -8,6 +8,8 @@ from .migrate import run_migrations
 from .broker import connect_broker, close_broker
 from .routers import settings as settings_router
 from .routers import jobs as jobs_router
+from .routers import versions as versions_router
+from .routers import coverage as coverage_router
 
 
 @asynccontextmanager
@@ -35,6 +37,8 @@ app = FastAPI(title="translation-service", lifespan=lifespan)
 
 app.include_router(settings_router.router)
 app.include_router(jobs_router.router)
+app.include_router(versions_router.router)
+app.include_router(coverage_router.router)
 
 
 @app.get("/health", response_class=PlainTextResponse)

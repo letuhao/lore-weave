@@ -5,6 +5,8 @@ import { booksApi, type Book, type Chapter } from '@/features/books/api';
 import { LanguagePicker } from '@/components/books/LanguagePicker';
 import { PaginationBar } from '@/components/books/PaginationBar';
 import { VisibilityBadge } from '@/components/books/VisibilityBadge';
+import { LanguageStatusDots } from '@/components/translation/LanguageStatusDots';
+import { versionsApi, type ChapterCoverage } from '@/features/translation/versionsApi';
 
 export function BookDetailPage() {
   const { accessToken } = useAuth();
@@ -24,6 +26,7 @@ export function BookDetailPage() {
   const [newFile, setNewFile] = useState<File | null>(null);
   const [editorBody, setEditorBody] = useState('');
   const [downloadBusy, setDownloadBusy] = useState<string | null>(null);
+  const [coverage, setCoverage] = useState<ChapterCoverage[]>([]);
 
   const load = async () => {
     if (!accessToken || !bookId) return;
@@ -40,6 +43,8 @@ export function BookDetailPage() {
       setChapters(ch.items);
       setTotal(ch.total);
       setError('');
+      // Load translation coverage (best-effort — don't block chapter list on failure)
+      versionsApi.getBookCoverage(accessToken!, bookId).then((r) => setCoverage(r.coverage)).catch(() => {});
     } catch (e) {
       setError((e as Error).message);
     }
@@ -216,25 +221,40 @@ export function BookDetailPage() {
           </div>
         </div>
         <ul className="space-y-2">
-          {chapters.map((c) => (
-            <li key={c.chapter_id} className="rounded border p-3 text-sm">
-              <p className="font-medium">{c.title || c.original_filename}</p>
-              <p className="text-xs text-muted-foreground">
-                order={c.sort_order} | lang={c.original_language} | state={c.lifecycle_state}
-              </p>
-              <div className="mt-2 flex gap-3">
-                <Link to={`/books/${bookId}/chapters/${c.chapter_id}/edit`} className="underline">
-                  Edit draft
-                </Link>
-                <button className="underline" onClick={() => void downloadRaw(c.chapter_id)} disabled={downloadBusy === c.chapter_id}>
-                  {downloadBusy === c.chapter_id ? 'Downloading…' : 'Download raw'}
-                </button>
-                <button className="underline" onClick={() => void trashChapter(c.chapter_id)}>
-                  Trash
-                </button>
-              </div>
-            </li>
-          ))}
+          {chapters.map((c) => {
+            const chapterCoverage = coverage.find((cv) => cv.chapter_id === c.chapter_id);
+            return (
+              <li key={c.chapter_id} className="rounded border p-3 text-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-medium">{c.title || c.original_filename}</p>
+                  {chapterCoverage && (
+                    <LanguageStatusDots
+                      bookId={bookId}
+                      chapterId={c.chapter_id}
+                      coverage={chapterCoverage.languages}
+                    />
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  order={c.sort_order} | lang={c.original_language} | state={c.lifecycle_state}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-3">
+                  <Link to={`/books/${bookId}/chapters/${c.chapter_id}/edit`} className="underline">
+                    Edit draft
+                  </Link>
+                  <Link to={`/books/${bookId}/chapters/${c.chapter_id}/translations`} className="underline">
+                    Translations
+                  </Link>
+                  <button className="underline" onClick={() => void downloadRaw(c.chapter_id)} disabled={downloadBusy === c.chapter_id}>
+                    {downloadBusy === c.chapter_id ? 'Downloading…' : 'Download raw'}
+                  </button>
+                  <button className="underline" onClick={() => void trashChapter(c.chapter_id)}>
+                    Trash
+                  </button>
+                </div>
+              </li>
+            );
+          })}
         </ul>
         <PaginationBar total={total} limit={limit} offset={offset} onChange={setOffset} />
       </div>

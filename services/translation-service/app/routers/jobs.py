@@ -115,8 +115,10 @@ async def create_job(
         await db.execute(
             """
             INSERT INTO chapter_translations
-              (job_id, chapter_id, book_id, owner_user_id, status, target_language)
-            VALUES ($1,$2,$3,$4,'pending',$5)
+              (job_id, chapter_id, book_id, owner_user_id, status, target_language, version_num)
+            VALUES ($1, $2, $3, $4, 'pending', $5,
+                    COALESCE((SELECT MAX(version_num) FROM chapter_translations
+                              WHERE chapter_id=$2 AND target_language=$5), 0) + 1)
             """,
             job_id, chapter_id, book_id, uid, eff["target_language"],
         )
