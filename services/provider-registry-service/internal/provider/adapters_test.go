@@ -1,19 +1,20 @@
 package provider
 
 import (
-	"context"
+	"net/http"
 	"testing"
 )
 
 func TestResolveAdapter(t *testing.T) {
 	t.Parallel()
 
+	client := &http.Client{}
 	kinds := []string{"openai", "anthropic", "ollama", "lm_studio"}
 	for _, kind := range kinds {
 		kind := kind
 		t.Run(kind, func(t *testing.T) {
 			t.Parallel()
-			adapter, err := ResolveAdapter(kind)
+			adapter, err := ResolveAdapter(kind, client)
 			if err != nil {
 				t.Fatalf("expected adapter for %s, got error: %v", kind, err)
 			}
@@ -27,7 +28,7 @@ func TestResolveAdapter(t *testing.T) {
 func TestResolveAdapterUnknown(t *testing.T) {
 	t.Parallel()
 
-	adapter, err := ResolveAdapter("unknown")
+	adapter, err := ResolveAdapter("unknown", &http.Client{})
 	if err == nil {
 		t.Fatal("expected error for unknown provider kind")
 	}
@@ -36,41 +37,39 @@ func TestResolveAdapterUnknown(t *testing.T) {
 	}
 }
 
-func TestStaticAdapterInvokePromptFallback(t *testing.T) {
+func TestExtractMessages_ExplicitMessages(t *testing.T) {
 	t.Parallel()
 
-	adapter := OpenAIAdapter()
-	output, usage, err := adapter.Invoke(context.Background(), "", "", "gpt-4o-mini", map[string]any{
-		"prompt": "hello world",
+	msgs := extractMessages(map[string]any{
+		"messages": []map[string]any{{"role": "user", "content": "hello"}},
 	})
-	if err != nil {
-		t.Fatalf("invoke failed: %v", err)
-	}
-	if output["model"] != "gpt-4o-mini" {
-		t.Fatalf("unexpected model in output: %v", output["model"])
-	}
-	if usage.InputTokens != 2 {
-		t.Fatalf("expected input tokens=2, got %d", usage.InputTokens)
-	}
-	if usage.OutputTokens != 10 {
-		t.Fatalf("expected output tokens=10, got %d", usage.OutputTokens)
+	if len(msgs) != 1 || msgs[0]["content"] != "hello" {
+		t.Fatalf("unexpected messages: %v", msgs)
 	}
 }
 
-func TestStaticAdapterInvokeInputFallbackAndMinToken(t *testing.T) {
+func TestExtractMessages_Fallback(t *testing.T) {
 	t.Parallel()
 
-	adapter := AnthropicAdapter()
-	_, usage, err := adapter.Invoke(context.Background(), "", "", "claude-3-5-sonnet", map[string]any{
-		"input": "",
-	})
-	if err != nil {
-		t.Fatalf("invoke failed: %v", err)
+	msgs := extractMessages(map[string]any{})
+	if len(msgs) != 1 || msgs[0]["role"] != "user" {
+		t.Fatalf("expected fallback message, got: %v", msgs)
 	}
-	if usage.InputTokens != 1 {
-		t.Fatalf("expected min input tokens=1, got %d", usage.InputTokens)
+}
+
+func TestToFloat(t *testing.T) {
+	t.Parallel()
+
+	if toFloat(float64(3.5)) != 3.5 {
+		t.Fatal("float64")
 	}
-	if usage.OutputTokens != 9 {
-		t.Fatalf("expected output tokens=9, got %d", usage.OutputTokens)
+	if toFloat(int(5)) != 5 {
+		t.Fatal("int")
+	}
+	if toFloat(int64(7)) != 7 {
+		t.Fatal("int64")
+	}
+	if toFloat(nil) != 0 {
+		t.Fatal("nil")
 	}
 }

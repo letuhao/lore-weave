@@ -26,7 +26,7 @@ function prefsToForm(p: UserTranslationPreferences): FormState {
   };
 }
 
-export default function TranslationSettingsPage() {
+export function TranslationSection() {
   const { accessToken } = useAuth();
   const token = accessToken!;
 
@@ -73,10 +73,15 @@ export default function TranslationSettingsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Translation Settings</h1>
+      <div>
+        <h2 className="text-lg font-semibold">Translation</h2>
+        <p className="text-sm text-muted-foreground">
+          These defaults apply to all books unless overridden from a book's translation page.
+        </p>
+      </div>
 
       <section className="space-y-4 rounded border p-4">
-        <h2 className="font-medium">Default translation settings</h2>
+        <h3 className="font-medium">Default translation settings</h3>
 
         {loading && (
           <div className="space-y-3">

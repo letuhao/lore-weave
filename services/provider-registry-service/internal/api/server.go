@@ -77,6 +77,7 @@ func (s *Server) Router() http.Handler {
 		r.Patch("/user-models/{user_model_id}/activation", s.patchUserModelActivation)
 		r.Patch("/user-models/{user_model_id}/favorite", s.patchUserModelFavorite)
 		r.Put("/user-models/{user_model_id}/tags", s.putUserModelTags)
+		r.Post("/user-models/{user_model_id}/verify", s.verifyUserModel)
 
 		r.Get("/platform-models", s.listPlatformModels)
 		r.Post("/platform-models", s.createPlatformModel)
@@ -268,7 +269,8 @@ func (s *Server) listProviderCredentials(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	rows, err := s.pool.Query(r.Context(), `
-SELECT provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at
+SELECT provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at,
+       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret
 FROM provider_credentials
 WHERE owner_user_id=$1 AND status <> 'archived'
 ORDER BY created_at DESC
@@ -286,11 +288,12 @@ ORDER BY created_at DESC
 		Status               string    `json:"status"`
 		CreatedAt            time.Time `json:"created_at"`
 		UpdatedAt            time.Time `json:"updated_at"`
+		HasSecret            bool      `json:"has_secret"`
 	}
 	items := make([]row, 0)
 	for rows.Next() {
 		var item row
-		if err := rows.Scan(&item.ProviderCredentialID, &item.ProviderKind, &item.DisplayName, &item.EndpointBaseURL, &item.Status, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(&item.ProviderCredentialID, &item.ProviderKind, &item.DisplayName, &item.EndpointBaseURL, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.HasSecret); err != nil {
 			writeError(w, http.StatusInternalServerError, "M03_PROVIDER_QUERY_FAILED", "failed to parse provider row")
 			return
 		}
@@ -369,12 +372,14 @@ func (s *Server) getProviderCredentialByID(w http.ResponseWriter, r *http.Reques
 		Status               string    `json:"status"`
 		CreatedAt            time.Time `json:"created_at"`
 		UpdatedAt            time.Time `json:"updated_at"`
+		HasSecret            bool      `json:"has_secret"`
 	}
 	err := s.pool.QueryRow(r.Context(), `
-SELECT provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at
+SELECT provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at,
+       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret
 FROM provider_credentials
 WHERE provider_credential_id=$1 AND owner_user_id=$2
-`, id, userID).Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt)
+`, id, userID).Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.HasSecret)
 	if err == pgx.ErrNoRows {
 		writeError(w, http.StatusNotFound, "M03_PROVIDER_NOT_FOUND", "provider credential not found")
 		return
@@ -422,7 +427,7 @@ func (s *Server) providerHealth(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	adapter, err := provider.ResolveAdapter(cred.ProviderKind)
+	adapter, err := provider.ResolveAdapter(cred.ProviderKind, s.client)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "M03_PROVIDER_KIND_UNSUPPORTED", "unsupported provider kind")
 		return
@@ -530,7 +535,7 @@ ORDER BY provider_model_name ASC
 }
 
 func (s *Server) syncInventory(ctx context.Context, cred *credentialRow) error {
-	adapter, err := provider.ResolveAdapter(cred.ProviderKind)
+	adapter, err := provider.ResolveAdapter(cred.ProviderKind, s.client)
 	if err != nil {
 		return err
 	}
@@ -759,6 +764,7 @@ func (s *Server) patchUserModel(w http.ResponseWriter, r *http.Request) {
 	}
 	var in struct {
 		Alias           *string        `json:"alias"`
+		ContextLength   *int           `json:"context_length"`
 		CapabilityFlags map[string]any `json:"capability_flags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -769,10 +775,11 @@ func (s *Server) patchUserModel(w http.ResponseWriter, r *http.Request) {
 	cmd, err := s.pool.Exec(r.Context(), `
 UPDATE user_models
 SET alias=COALESCE($3, alias),
-    capability_flags=CASE WHEN $4::jsonb IS NULL THEN capability_flags ELSE $4 END,
+    context_length=COALESCE($4, context_length),
+    capability_flags=CASE WHEN $5::jsonb IS NULL THEN capability_flags ELSE $5 END,
     updated_at=now()
 WHERE user_model_id=$1 AND owner_user_id=$2
-`, id, userID, in.Alias, nullJSON(flagsBytes, in.CapabilityFlags != nil))
+`, id, userID, in.Alias, in.ContextLength, nullJSON(flagsBytes, in.CapabilityFlags != nil))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_UPDATE_FAILED", "failed to patch user model")
 		return
@@ -1149,7 +1156,7 @@ WHERE platform_model_id=$1 AND status='active'
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid model_source")
 		return
 	}
-	adapter, err := provider.ResolveAdapter(providerKind)
+	adapter, err := provider.ResolveAdapter(providerKind, s.client)
 	if err != nil {
 		writeError(w, http.StatusConflict, "M03_PROVIDER_ROUTE_VIOLATION", "model route violation")
 		return
@@ -1187,6 +1194,89 @@ WHERE platform_model_id=$1 AND status='active'
 		"billing_cost":  billedCost,
 		"billing_mode":  decision,
 		"provider_kind": providerKind,
+	})
+}
+
+func (s *Server) verifyUserModel(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := s.auth(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	modelID, ok := parseUUIDParam(w, r, "user_model_id")
+	if !ok {
+		return
+	}
+
+	var providerKind, providerModelName, endpointBaseURL, secretCipher string
+	err := s.pool.QueryRow(r.Context(), `
+SELECT um.provider_kind, um.provider_model_name,
+       COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,'')
+FROM user_models um
+JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
+WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
+`, modelID, userID).Scan(&providerKind, &providerModelName, &endpointBaseURL, &secretCipher)
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusNotFound, "M03_MODEL_NOT_FOUND", "user model not found or inactive")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_MODEL_QUERY_FAILED", "failed to resolve user model")
+		return
+	}
+
+	secret, err := s.decryptSecret(secretCipher)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_SECRET_DECRYPT_FAILED", "failed to decrypt provider secret")
+		return
+	}
+
+	verifyClient := &http.Client{Timeout: 5 * time.Minute}
+	adapter, err := provider.ResolveAdapter(providerKind, verifyClient)
+	if err != nil {
+		writeError(w, http.StatusConflict, "M03_PROVIDER_ROUTE_VIOLATION", "unsupported provider kind")
+		return
+	}
+
+	pingInput := map[string]any{
+		"messages": []map[string]any{
+			{"role": "user", "content": "Hi"},
+		},
+	}
+
+	// Give the model up to 5 minutes to respond.
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
+
+	start := time.Now()
+	output, _, invokeErr := adapter.Invoke(ctx, endpointBaseURL, secret, providerModelName, pingInput)
+
+	latencyMs := time.Since(start).Milliseconds()
+
+	if invokeErr != nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"verified":   false,
+			"latency_ms": latencyMs,
+			"error":      invokeErr.Error(),
+		})
+		return
+	}
+
+	// Extract a short preview from the output.
+	preview := ""
+	if content, ok := output["content"]; ok {
+		preview = fmt.Sprintf("%v", content)
+	} else if choices, ok := output["choices"]; ok {
+		preview = fmt.Sprintf("%v", choices)
+	}
+	if len(preview) > 200 {
+		preview = preview[:200] + "…"
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"verified":         true,
+		"latency_ms":       latencyMs,
+		"response_preview": preview,
 	})
 }
 

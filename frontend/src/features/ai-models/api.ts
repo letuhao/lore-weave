@@ -8,6 +8,7 @@ export type ProviderCredential = {
   display_name: string;
   endpoint_base_url?: string | null;
   status: 'active' | 'invalid' | 'disabled' | 'archived';
+  has_secret: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -120,12 +121,46 @@ export const aiModelsApi = {
       body: JSON.stringify({ is_favorite: isFavorite }),
     });
   },
+  patchProvider(
+    token: string,
+    providerId: string,
+    payload: { display_name?: string; secret?: string; endpoint_base_url?: string; active?: boolean },
+  ) {
+    return apiJson<ProviderCredential>(`/v1/model-registry/providers/${providerId}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
+  deleteProvider(token: string, providerId: string) {
+    return apiJson<void>(`/v1/model-registry/providers/${providerId}`, { method: 'DELETE', token });
+  },
+  patchUserModel(
+    token: string,
+    userModelId: string,
+    payload: { alias?: string; context_length?: number | null; capability_flags?: Record<string, boolean> },
+  ) {
+    return apiJson<UserModel>(`/v1/model-registry/user-models/${userModelId}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
+  deleteUserModel(token: string, userModelId: string) {
+    return apiJson<void>(`/v1/model-registry/user-models/${userModelId}`, { method: 'DELETE', token });
+  },
   putUserModelTags(token: string, userModelId: string, tags: ModelTag[]) {
     return apiJson<UserModel>(`/v1/model-registry/user-models/${userModelId}/tags`, {
       method: 'PUT',
       token,
       body: JSON.stringify({ tags }),
     });
+  },
+  verifyUserModel(token: string, userModelId: string) {
+    return apiJson<{ verified: boolean; latency_ms: number; response_preview?: string; error?: string }>(
+      `/v1/model-registry/user-models/${userModelId}/verify`,
+      { method: 'POST', token },
+    );
   },
   listPlatformModels(token: string) {
     return apiJson<{ items: PlatformModel[] }>('/v1/model-registry/platform-models', { token });

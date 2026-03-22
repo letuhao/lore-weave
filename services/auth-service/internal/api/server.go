@@ -53,6 +53,8 @@ func (s *Server) Router() http.Handler {
 		})
 		r.Post("/auth/password-reset/confirm", http.HandlerFunc(s.passwordResetConfirm))
 
+		r.Post("/auth/change-password", http.HandlerFunc(s.changePassword))
+
 		r.Get("/account/profile", http.HandlerFunc(s.getProfile))
 		r.Patch("/account/profile", http.HandlerFunc(s.patchProfile))
 		r.Get("/account/security/preferences", http.HandlerFunc(s.getSecurityPrefs))

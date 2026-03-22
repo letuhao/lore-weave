@@ -232,7 +232,7 @@ export default function BookTranslationPage() {
         {!form?.model_ref && !loadingSettings && (
           <p className="text-sm text-amber-600">
             No model configured — go to{' '}
-            <a href="/translation/settings" className="underline">Translation Settings</a>
+            <a href="/settings/translation" className="underline">Translation Settings</a>
             {' '}to set a default model.
           </p>
         )}

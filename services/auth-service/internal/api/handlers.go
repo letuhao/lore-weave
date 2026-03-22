@@ -639,6 +639,71 @@ func (s *Server) passwordResetConfirm(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "password_updated"})
 }
 
+func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
+	claims, err := s.parseAccess(r)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, jwtErrorCode(err), "invalid access token")
+		return
+	}
+	uid, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, "AUTH_TOKEN_INVALID", "invalid subject")
+		return
+	}
+	var body struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "invalid json")
+		return
+	}
+	if body.CurrentPassword == "" || !validPassword(body.NewPassword, s.cfg.PasswordMinLength) {
+		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "current_password required and new_password must meet policy")
+		return
+	}
+	ctx := r.Context()
+	var currentHash string
+	err = s.pool.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, uid).Scan(&currentHash)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, "AUTH_TOKEN_INVALID", "user not found")
+		return
+	}
+	ok, err := authpwd.Verify(body.CurrentPassword, currentHash)
+	if err != nil || !ok {
+		writeErr(w, http.StatusUnauthorized, "AUTH_INVALID_CREDENTIALS", "current password is incorrect")
+		return
+	}
+	newHash, err := authpwd.Hash(body.NewPassword)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "AUTH_VALIDATION_ERROR", "hash error")
+		return
+	}
+	sid, _ := uuid.Parse(claims.SessionID)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "AUTH_VALIDATION_ERROR", "tx error")
+		return
+	}
+	defer tx.Rollback(ctx)
+	_, err = tx.Exec(ctx, `UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1`, uid, newHash)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "AUTH_VALIDATION_ERROR", "update password")
+		return
+	}
+	// Revoke all sessions except the current one
+	_, err = tx.Exec(ctx, `UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND id != $2 AND revoked_at IS NULL`, uid, sid)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "AUTH_VALIDATION_ERROR", "revoke sessions")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		writeErr(w, http.StatusInternalServerError, "AUTH_VALIDATION_ERROR", "commit")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "password_changed"})
+}
+
 func (s *Server) insertVerificationTicket(ctx context.Context, uid uuid.UUID) (token string, err error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {

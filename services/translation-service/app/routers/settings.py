@@ -85,7 +85,8 @@ async def get_book_settings(
         book_id, UUID(user_id),
     )
     if row:
-        return BookTranslationSettings(**dict(row), is_default=False)
+        d = dict(row)
+        return BookTranslationSettings(**d, user_id=UUID(user_id), is_default=False)
 
     # Fall back to user preferences
     pref_row = await db.fetchrow(
@@ -96,6 +97,7 @@ async def get_book_settings(
         d = dict(pref_row)
         return BookTranslationSettings(
             book_id=book_id,
+            user_id=UUID(user_id),
             owner_user_id=UUID(user_id),
             is_default=True,
             **{k: d[k] for k in ("target_language", "model_source", "model_ref",
@@ -106,6 +108,7 @@ async def get_book_settings(
     import datetime
     return BookTranslationSettings(
         book_id=book_id,
+        user_id=UUID(user_id),
         owner_user_id=UUID(user_id),
         target_language="en",
         model_source="platform_model",
@@ -147,4 +150,5 @@ async def put_book_settings(
         payload.system_prompt,
         payload.user_prompt_tpl,
     )
-    return BookTranslationSettings(**dict(row), is_default=False)
+    d = dict(row)
+    return BookTranslationSettings(**d, user_id=UUID(user_id), is_default=False)

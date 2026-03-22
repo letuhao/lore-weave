@@ -34,17 +34,8 @@ export function AppNav() {
               <Link to="/books/trash" className={linkClass}>
                 Recycle bin
               </Link>
-              <Link to="/m03/models" className={linkClass}>
-                AI Models
-              </Link>
-              <Link to="/m03/platform-models" className={linkClass}>
-                Platform models
-              </Link>
               <Link to="/m03/usage" className={linkClass}>
                 Usage logs
-              </Link>
-              <Link to="/translation/settings" className={linkClass}>
-                Translation
               </Link>
             </>
           )}
@@ -55,17 +46,9 @@ export function AppNav() {
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 lg:ml-auto">
           {accessToken && (
-            <>
-              <Link to="/profile" className={linkClass}>
-                Profile
-              </Link>
-              <Link to="/security" className={linkClass}>
-                Security
-              </Link>
-              <Link to="/verify" className={linkClass}>
-                Verify email
-              </Link>
-            </>
+            <Link to="/settings" className={linkClass}>
+              Settings
+            </Link>
           )}
           {!accessToken && (
             <>

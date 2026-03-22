@@ -4,9 +4,6 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { AuthProvider, useAuth } from './auth';
 import { RegisterPage } from './pages/RegisterPage';
 import { LoginPage } from './pages/LoginPage';
-import { ProfilePage } from './pages/ProfilePage';
-import { SecurityPage } from './pages/SecurityPage';
-import { VerifyPage } from './pages/VerifyPage';
 import { ForgotPage } from './pages/ForgotPage';
 import { ResetPage } from './pages/ResetPage';
 import { BooksPage } from './pages/BooksPage';
@@ -17,11 +14,10 @@ import { SharingPage } from './pages/SharingPage';
 import { BrowsePage } from './pages/BrowsePage';
 import { UnlistedPage } from './pages/UnlistedPage';
 import { PublicBookPage } from './pages/PublicBookPage';
-import { UserModelsPage } from './pages/UserModelsPage';
 import { PlatformModelsPage } from './pages/PlatformModelsPage';
 import { UsageLogsPage } from './pages/UsageLogsPage';
 import { UsageDetailPage } from './pages/UsageDetailPage';
-import TranslationSettingsPage from './pages/TranslationSettingsPage';
+import { UserSettingsPage } from './pages/UserSettingsPage';
 import BookTranslationPage from './pages/BookTranslationPage';
 
 function Home() {
@@ -52,30 +48,22 @@ function AppRoutes() {
         <Route path="/" element={<Home />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/login" element={<LoginPage />} />
+        {/* Settings — unified user settings page */}
+        <Route path="/settings" element={<Navigate to="/settings/account" replace />} />
         <Route
-          path="/profile"
+          path="/settings/:tab"
           element={
             <RequireAuth>
-              <ProfilePage />
+              <UserSettingsPage />
             </RequireAuth>
           }
         />
-        <Route
-          path="/security"
-          element={
-            <RequireAuth>
-              <SecurityPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/verify"
-          element={
-            <RequireAuth>
-              <VerifyPage />
-            </RequireAuth>
-          }
-        />
+        {/* Compat redirects for old URLs */}
+        <Route path="/profile" element={<Navigate to="/settings/account" replace />} />
+        <Route path="/security" element={<Navigate to="/settings/account" replace />} />
+        <Route path="/verify" element={<Navigate to="/settings/account" replace />} />
+        <Route path="/m03/models" element={<Navigate to="/settings/providers" replace />} />
+        <Route path="/translation/settings" element={<Navigate to="/settings/translation" replace />} />
         <Route path="/forgot" element={<ForgotPage />} />
         <Route path="/reset" element={<ResetPage />} />
         <Route
@@ -121,15 +109,7 @@ function AppRoutes() {
         <Route path="/browse" element={<BrowsePage />} />
         <Route path="/browse/:bookId" element={<PublicBookPage />} />
         <Route path="/s/:accessToken" element={<UnlistedPage />} />
-        <Route path="/m03/providers" element={<Navigate to="/m03/models" replace />} />
-        <Route
-          path="/m03/models"
-          element={
-            <RequireAuth>
-              <UserModelsPage />
-            </RequireAuth>
-          }
-        />
+        <Route path="/m03/providers" element={<Navigate to="/settings/providers" replace />} />
         <Route
           path="/m03/platform-models"
           element={
@@ -151,14 +131,6 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <UsageDetailPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/translation/settings"
-          element={
-            <RequireAuth>
-              <TranslationSettingsPage />
             </RequireAuth>
           }
         />
