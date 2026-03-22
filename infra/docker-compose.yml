@@ -38,6 +38,7 @@ services:
       psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_catalog'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_catalog";
       psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_provider_registry'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_provider_registry";
       psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_usage_billing'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_usage_billing";
+      psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_translation'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_translation";
     restart: "no"
 
   minio:
@@ -175,6 +176,28 @@ services:
     ports:
       - "8086:8086"
 
+  translation-service:
+    build:
+      context: ../services/translation-service
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_translation
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
+      PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
+      PORT: "8087"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-db-bootstrap:
+        condition: service_completed_successfully
+      book-service:
+        condition: service_healthy
+      provider-registry-service:
+        condition: service_healthy
+    ports:
+      - "8087:8087"
+
   api-gateway-bff:
     build:
       context: ../services/api-gateway-bff
@@ -187,6 +210,7 @@ services:
       CATALOG_SERVICE_URL: http://catalog-service:8084
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
+      TRANSLATION_SERVICE_URL: http://translation-service:8087
     depends_on:
       auth-service:
         condition: service_healthy
@@ -199,6 +223,8 @@ services:
       provider-registry-service:
         condition: service_healthy
       usage-billing-service:
+        condition: service_healthy
+      translation-service:
         condition: service_healthy
     ports:
       - "3000:3000"

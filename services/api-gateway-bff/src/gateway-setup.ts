@@ -15,6 +15,7 @@ export function configureGatewayApp(
     catalogUrl: string;
     providerRegistryUrl: string;
     usageBillingUrl: string;
+    translationUrl: string;
   },
 ): void {
   app.enableCors({
@@ -54,6 +55,11 @@ export function configureGatewayApp(
     changeOrigin: true,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/model-billing'),
   });
+  const translationProxy = createProxyMiddleware({
+    target: urls.translationUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/translation'),
+  });
 
   const httpAdapter = app.getHttpAdapter();
   const instance = httpAdapter.getInstance();
@@ -87,6 +93,11 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const translationProxyFn = translationProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
 
   instance.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account')) {
@@ -106,6 +117,9 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/model-billing')) {
       return usageBillingProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/translation')) {
+      return translationProxyFn(req, res, next);
     }
     return next();
   });

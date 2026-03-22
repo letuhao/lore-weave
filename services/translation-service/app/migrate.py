@@ -1,0 +1,73 @@
+import asyncpg
+
+DDL = """
+CREATE TABLE IF NOT EXISTS user_translation_preferences (
+  user_id         UUID PRIMARY KEY,
+  target_language TEXT NOT NULL DEFAULT 'en',
+  model_source    TEXT NOT NULL DEFAULT 'platform_model',
+  model_ref       UUID,
+  system_prompt   TEXT NOT NULL DEFAULT '',
+  user_prompt_tpl TEXT NOT NULL DEFAULT '',
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS book_translation_settings (
+  book_id         UUID PRIMARY KEY,
+  owner_user_id   UUID NOT NULL,
+  target_language TEXT NOT NULL DEFAULT 'en',
+  model_source    TEXT NOT NULL DEFAULT 'platform_model',
+  model_ref       UUID,
+  system_prompt   TEXT NOT NULL DEFAULT '',
+  user_prompt_tpl TEXT NOT NULL DEFAULT '',
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_bts_owner ON book_translation_settings(owner_user_id);
+
+CREATE TABLE IF NOT EXISTS translation_jobs (
+  job_id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  book_id            UUID NOT NULL,
+  owner_user_id      UUID NOT NULL,
+  status             TEXT NOT NULL DEFAULT 'pending',
+  target_language    TEXT NOT NULL,
+  model_source       TEXT NOT NULL,
+  model_ref          UUID NOT NULL,
+  system_prompt      TEXT NOT NULL,
+  user_prompt_tpl    TEXT NOT NULL,
+  chapter_ids        UUID[] NOT NULL,
+  total_chapters     INT NOT NULL DEFAULT 0,
+  completed_chapters INT NOT NULL DEFAULT 0,
+  failed_chapters    INT NOT NULL DEFAULT 0,
+  error_message      TEXT,
+  started_at         TIMESTAMPTZ,
+  finished_at        TIMESTAMPTZ,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_tj_owner ON translation_jobs(owner_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tj_book  ON translation_jobs(book_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS chapter_translations (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id          UUID NOT NULL REFERENCES translation_jobs(job_id) ON DELETE CASCADE,
+  chapter_id      UUID NOT NULL,
+  book_id         UUID NOT NULL,
+  owner_user_id   UUID NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'pending',
+  translated_body TEXT,
+  source_language TEXT,
+  target_language TEXT NOT NULL,
+  input_tokens    INT,
+  output_tokens   INT,
+  usage_log_id    UUID,
+  error_message   TEXT,
+  started_at      TIMESTAMPTZ,
+  finished_at     TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ct_job     ON chapter_translations(job_id, chapter_id);
+CREATE INDEX IF NOT EXISTS idx_ct_chapter ON chapter_translations(chapter_id, created_at DESC);
+"""
+
+
+async def run_migrations(pool: asyncpg.Pool) -> None:
+    async with pool.acquire() as conn:
+        await conn.execute(DDL)

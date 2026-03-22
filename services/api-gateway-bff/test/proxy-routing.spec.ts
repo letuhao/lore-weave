@@ -30,15 +30,17 @@ describe('Gateway proxy routing', () => {
   let catalogServer: http.Server;
   let providerRegistryServer: http.Server;
   let usageBillingServer: http.Server;
+  let translationServer: http.Server;
 
   beforeAll(async () => {
-    [authServer, bookServer, sharingServer, catalogServer, providerRegistryServer, usageBillingServer] = await Promise.all([
+    [authServer, bookServer, sharingServer, catalogServer, providerRegistryServer, usageBillingServer, translationServer] = await Promise.all([
       startUpstream('auth'),
       startUpstream('books'),
       startUpstream('sharing'),
       startUpstream('catalog'),
       startUpstream('provider-registry'),
       startUpstream('usage-billing'),
+      startUpstream('translation'),
     ]);
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -52,6 +54,7 @@ describe('Gateway proxy routing', () => {
       catalogUrl: urlOf(catalogServer),
       providerRegistryUrl: urlOf(providerRegistryServer),
       usageBillingUrl: urlOf(usageBillingServer),
+      translationUrl: urlOf(translationServer),
     });
     await app.init();
   });
@@ -65,6 +68,7 @@ describe('Gateway proxy routing', () => {
       new Promise((resolve) => catalogServer.close(resolve)),
       new Promise((resolve) => providerRegistryServer.close(resolve)),
       new Promise((resolve) => usageBillingServer.close(resolve)),
+      new Promise((resolve) => translationServer.close(resolve)),
     ]);
   });
 
@@ -79,6 +83,14 @@ describe('Gateway proxy routing', () => {
     await request(app.getHttpServer()).get('/v1/catalog/books').expect(200).expect('catalog');
     await request(app.getHttpServer()).get('/v1/model-registry/providers').expect(200).expect('provider-registry');
     await request(app.getHttpServer()).get('/v1/model-billing/usage-logs').expect(200).expect('usage-billing');
+  });
+
+  it('routes /v1/translation/* paths to translation service', async () => {
+    await request(app.getHttpServer()).get('/v1/translation/preferences').expect(200).expect('translation');
+    await request(app.getHttpServer()).get('/v1/translation/books/book-1/settings').expect(200).expect('translation');
+    await request(app.getHttpServer()).get('/v1/translation/jobs/job-1').expect(200).expect('translation');
+    await request(app.getHttpServer()).post('/v1/translation/books/book-1/jobs').expect(200).expect('translation');
+    await request(app.getHttpServer()).post('/v1/translation/jobs/job-1/cancel').expect(200).expect('translation');
   });
 
   it('returns 404 for unmatched path', async () => {

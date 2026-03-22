@@ -127,6 +127,9 @@ export function BookDetailPage() {
           <Link to={`/books/${bookId}/sharing`} className="underline">
             Sharing
           </Link>
+          <Link to={`/books/${bookId}/translation`} className="underline">
+            Translation
+          </Link>
           <button onClick={() => void trashBook()} className="underline">
             Move book to trash
           </button>

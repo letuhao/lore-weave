@@ -43,6 +43,9 @@ export function AppNav() {
               <Link to="/m03/usage" className={linkClass}>
                 Usage logs
               </Link>
+              <Link to="/translation/settings" className={linkClass}>
+                Translation
+              </Link>
             </>
           )}
           <Link to="/browse" className={linkClass}>

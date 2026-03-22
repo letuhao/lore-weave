@@ -11,12 +11,13 @@ async function bootstrap() {
   const catalogUrl = process.env.CATALOG_SERVICE_URL || 'http://localhost:8084';
   const providerRegistryUrl = process.env.PROVIDER_REGISTRY_SERVICE_URL || 'http://localhost:8085';
   const usageBillingUrl = process.env.USAGE_BILLING_SERVICE_URL || 'http://localhost:8086';
-  configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl });
+  const translationUrl = process.env.TRANSLATION_SERVICE_URL || 'http://localhost:8087';
+  configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl });
 
   const port = parseInt(process.env.PORT || '3000', 10);
   await app.listen(port);
   console.log(
-    `api-gateway-bff listening on :${port} auth=${authUrl} books=${bookUrl} sharing=${sharingUrl} catalog=${catalogUrl} provider_registry=${providerRegistryUrl} usage_billing=${usageBillingUrl}`,
+    `api-gateway-bff listening on :${port} auth=${authUrl} books=${bookUrl} sharing=${sharingUrl} catalog=${catalogUrl} provider_registry=${providerRegistryUrl} usage_billing=${usageBillingUrl} translation=${translationUrl}`,
   );
 }
 bootstrap();

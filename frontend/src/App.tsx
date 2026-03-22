@@ -21,6 +21,8 @@ import { UserModelsPage } from './pages/UserModelsPage';
 import { PlatformModelsPage } from './pages/PlatformModelsPage';
 import { UsageLogsPage } from './pages/UsageLogsPage';
 import { UsageDetailPage } from './pages/UsageDetailPage';
+import TranslationSettingsPage from './pages/TranslationSettingsPage';
+import BookTranslationPage from './pages/BookTranslationPage';
 
 function Home() {
   const { accessToken } = useAuth();
@@ -149,6 +151,22 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <UsageDetailPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/translation/settings"
+          element={
+            <RequireAuth>
+              <TranslationSettingsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/books/:bookId/translation"
+          element={
+            <RequireAuth>
+              <BookTranslationPage />
             </RequireAuth>
           }
         />
