@@ -1,18 +1,5 @@
-import { useMemo } from 'react';
-
-type LanguageOption = {
-  code: string;
-  label: string;
-};
-
-const PRESET_LANGUAGES: LanguageOption[] = [
-  { code: 'en', label: 'English (en)' },
-  { code: 'vi', label: 'Vietnamese (vi)' },
-  { code: 'ja', label: 'Japanese (ja)' },
-  { code: 'zh-Hans', label: 'Chinese Simplified (zh-Hans)' },
-  { code: 'zh-Hant', label: 'Chinese Traditional (zh-Hant)' },
-  { code: 'ko', label: 'Korean (ko)' },
-];
+import { useId } from 'react';
+import { LANGUAGE_CODES } from '@/data/languageCodes';
 
 type Props = {
   value: string;
@@ -27,12 +14,10 @@ export function LanguagePicker({
   onChange,
   label = 'Language',
   required,
-  placeholder = 'Original language (e.g. en)',
+  placeholder = 'e.g. en, vi, zh-Hans',
 }: Props) {
-  const selected = useMemo(
-    () => PRESET_LANGUAGES.find((o) => o.code.toLowerCase() === value.toLowerCase()),
-    [value],
-  );
+  const uid = useId();
+  const datalistId = `language-picker-list-${uid}`;
 
   return (
     <div className="space-y-2">
@@ -40,25 +25,21 @@ export function LanguagePicker({
         {label}
         {required ? ' *' : ''}
       </label>
-      <select
-        className="w-full rounded border px-2 py-2 text-sm"
-        value={selected?.code || ''}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        <option value="">Select language</option>
-        {PRESET_LANGUAGES.map((item) => (
-          <option key={item.code} value={item.code}>
-            {item.label}
-          </option>
-        ))}
-      </select>
       <input
         className="w-full rounded border px-2 py-2 text-sm"
+        list={datalistId}
         placeholder={placeholder}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
         required={required}
+        onChange={(e) => onChange(e.target.value)}
       />
+      <datalist id={datalistId}>
+        {LANGUAGE_CODES.map((entry) => (
+          <option key={entry.code} value={entry.code}>
+            {entry.name} ({entry.code})
+          </option>
+        ))}
+      </datalist>
     </div>
   );
 }

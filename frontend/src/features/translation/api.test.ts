@@ -33,6 +33,8 @@ describe('translationApi', () => {
       user_prompt_tpl: 'Translate {chapter_text}',
       compact_model_source: null,
       compact_model_ref: null,
+      compact_system_prompt: '',
+      compact_user_prompt_tpl: '',
       chunk_size_tokens: 2000,
       invoke_timeout_secs: 300,
     };
@@ -62,6 +64,8 @@ describe('translationApi', () => {
       user_prompt_tpl: 'Custom: {chapter_text}',
       compact_model_source: null,
       compact_model_ref: null,
+      compact_system_prompt: '',
+      compact_user_prompt_tpl: '',
       chunk_size_tokens: 2000,
       invoke_timeout_secs: 300,
     };

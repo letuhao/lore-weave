@@ -16,21 +16,25 @@ type FormState = {
   user_prompt_tpl: string;
   compact_model_source: ModelSource | null;
   compact_model_ref: string | null;
+  compact_system_prompt: string;
+  compact_user_prompt_tpl: string;
   chunk_size_tokens: number;
   invoke_timeout_secs: number;
 };
 
 function settingsToForm(s: BookTranslationSettings): FormState {
   return {
-    target_language:      s.target_language,
-    model_source:         s.model_source,
-    model_ref:            s.model_ref,
-    system_prompt:        s.system_prompt,
-    user_prompt_tpl:      s.user_prompt_tpl,
-    compact_model_source: s.compact_model_source,
-    compact_model_ref:    s.compact_model_ref,
-    chunk_size_tokens:    s.chunk_size_tokens ?? 2000,
-    invoke_timeout_secs:  s.invoke_timeout_secs ?? 300,
+    target_language:         s.target_language,
+    model_source:            s.model_source,
+    model_ref:               s.model_ref,
+    system_prompt:           s.system_prompt,
+    user_prompt_tpl:         s.user_prompt_tpl,
+    compact_model_source:    s.compact_model_source,
+    compact_model_ref:       s.compact_model_ref,
+    compact_system_prompt:   s.compact_system_prompt ?? '',
+    compact_user_prompt_tpl: s.compact_user_prompt_tpl ?? '',
+    chunk_size_tokens:       s.chunk_size_tokens ?? 2000,
+    invoke_timeout_secs:     s.invoke_timeout_secs ?? 300,
   };
 }
 
@@ -108,10 +112,12 @@ export function SettingsDrawer({ token, bookId, settings, onClose, onSaved }: Pr
           <AdvancedTranslationSettings
             token={token}
             value={{
-              compact_model_source: form.compact_model_source,
-              compact_model_ref:    form.compact_model_ref,
-              chunk_size_tokens:    form.chunk_size_tokens,
-              invoke_timeout_secs:  form.invoke_timeout_secs,
+              compact_model_source:    form.compact_model_source,
+              compact_model_ref:       form.compact_model_ref,
+              compact_system_prompt:   form.compact_system_prompt,
+              compact_user_prompt_tpl: form.compact_user_prompt_tpl,
+              chunk_size_tokens:       form.chunk_size_tokens,
+              invoke_timeout_secs:     form.invoke_timeout_secs,
             }}
             onChange={(v) => setForm({ ...form, ...v })}
             disabled={saving}

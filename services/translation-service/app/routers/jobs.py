@@ -4,7 +4,7 @@ import asyncpg
 import httpx
 
 from ..deps import get_current_user, get_db
-from ..config import settings as app_settings, DEFAULT_SYSTEM_PROMPT, DEFAULT_USER_PROMPT_TPL
+from ..config import settings as app_settings, DEFAULT_SYSTEM_PROMPT, DEFAULT_USER_PROMPT_TPL, DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_USER_PROMPT_TPL
 from ..models import CreateJobPayload, TranslationJob, ChapterTranslation, ErrorResponse
 from ..broker import publish, publish_event
 
@@ -27,15 +27,17 @@ async def _resolve_effective_settings(user_id: UUID, book_id: UUID, db: asyncpg.
         return dict(row), True
 
     return {
-        "target_language":     "en",
-        "model_source":        "platform_model",
-        "model_ref":           None,
-        "system_prompt":       DEFAULT_SYSTEM_PROMPT,
-        "user_prompt_tpl":     DEFAULT_USER_PROMPT_TPL,
-        "compact_model_source": None,
-        "compact_model_ref":   None,
-        "chunk_size_tokens":   2000,
-        "invoke_timeout_secs": 300,
+        "target_language":       "en",
+        "model_source":          "platform_model",
+        "model_ref":             None,
+        "system_prompt":         DEFAULT_SYSTEM_PROMPT,
+        "user_prompt_tpl":       DEFAULT_USER_PROMPT_TPL,
+        "compact_model_source":  None,
+        "compact_model_ref":     None,
+        "compact_system_prompt": DEFAULT_COMPACT_SYSTEM_PROMPT,
+        "compact_user_prompt_tpl": DEFAULT_COMPACT_USER_PROMPT_TPL,
+        "chunk_size_tokens":     2000,
+        "invoke_timeout_secs":   300,
     }, True
 
 
@@ -96,15 +98,18 @@ async def create_job(
           (book_id, owner_user_id, status, target_language, model_source, model_ref,
            system_prompt, user_prompt_tpl,
            compact_model_source, compact_model_ref,
+           compact_system_prompt, compact_user_prompt_tpl,
            chunk_size_tokens, invoke_timeout_secs,
            chapter_ids, total_chapters)
-        VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
         RETURNING *
         """,
         book_id, uid,
         eff["target_language"], eff["model_source"], eff["model_ref"],
         eff["system_prompt"], eff["user_prompt_tpl"],
         eff.get("compact_model_source"), eff.get("compact_model_ref"),
+        eff.get("compact_system_prompt", DEFAULT_COMPACT_SYSTEM_PROMPT),
+        eff.get("compact_user_prompt_tpl", DEFAULT_COMPACT_USER_PROMPT_TPL),
         eff.get("chunk_size_tokens", 2000), eff.get("invoke_timeout_secs", 300),
         chapter_ids, len(chapter_ids),
     )
@@ -125,19 +130,21 @@ async def create_job(
 
     # Publish job to RabbitMQ — worker fans out chapter messages
     await publish("translation.job", {
-        "job_id":               str(job_id),
-        "user_id":              user_id,
-        "book_id":              str(book_id),
-        "chapter_ids":          [str(c) for c in chapter_ids],
-        "model_source":         eff["model_source"],
-        "model_ref":            str(eff["model_ref"]),
-        "system_prompt":        eff["system_prompt"],
-        "user_prompt_tpl":      eff["user_prompt_tpl"],
-        "target_language":      eff["target_language"],
-        "compact_model_source": eff.get("compact_model_source"),
-        "compact_model_ref":    str(eff["compact_model_ref"]) if eff.get("compact_model_ref") else None,
-        "chunk_size_tokens":    eff.get("chunk_size_tokens", 2000),
-        "invoke_timeout_secs":  eff.get("invoke_timeout_secs", 300),
+        "job_id":                  str(job_id),
+        "user_id":                 user_id,
+        "book_id":                 str(book_id),
+        "chapter_ids":             [str(c) for c in chapter_ids],
+        "model_source":            eff["model_source"],
+        "model_ref":               str(eff["model_ref"]),
+        "system_prompt":           eff["system_prompt"],
+        "user_prompt_tpl":         eff["user_prompt_tpl"],
+        "target_language":         eff["target_language"],
+        "compact_model_source":    eff.get("compact_model_source"),
+        "compact_model_ref":       str(eff["compact_model_ref"]) if eff.get("compact_model_ref") else None,
+        "compact_system_prompt":   eff.get("compact_system_prompt", DEFAULT_COMPACT_SYSTEM_PROMPT),
+        "compact_user_prompt_tpl": eff.get("compact_user_prompt_tpl", DEFAULT_COMPACT_USER_PROMPT_TPL),
+        "chunk_size_tokens":       eff.get("chunk_size_tokens", 2000),
+        "invoke_timeout_secs":     eff.get("invoke_timeout_secs", 300),
     })
     await publish_event(user_id, {
         "event":    "job.created",

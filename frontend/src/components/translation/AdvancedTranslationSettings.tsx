@@ -1,11 +1,14 @@
 import { type ModelSource } from '../../features/translation/api';
 import { ModelSelector } from './ModelSelector';
+import { PromptEditor } from './PromptEditor';
 
 export type AdvancedSettings = {
-  compact_model_source: ModelSource | null;
-  compact_model_ref: string | null;
-  chunk_size_tokens: number;
-  invoke_timeout_secs: number;
+  compact_model_source:    ModelSource | null;
+  compact_model_ref:       string | null;
+  compact_system_prompt:   string;
+  compact_user_prompt_tpl: string;
+  chunk_size_tokens:       number;
+  invoke_timeout_secs:     number;
 };
 
 type Props = {
@@ -67,6 +70,26 @@ export function AdvancedTranslationSettings({ token, value, onChange, disabled }
               disabled={disabled}
             />
           )}
+          <details className="rounded border mt-2">
+            <summary className="cursor-pointer px-2 py-1 text-xs text-muted-foreground select-none">
+              Compact model prompts (optional)
+            </summary>
+            <div className="pt-2">
+              <PromptEditor
+                systemPrompt={value.compact_system_prompt}
+                userPromptTpl={value.compact_user_prompt_tpl}
+                onSystemPromptChange={(v) => onChange({ ...value, compact_system_prompt: v })}
+                onUserPromptTplChange={(v) => onChange({ ...value, compact_user_prompt_tpl: v })}
+                disabled={disabled}
+                hintOverride={
+                  <p className="text-xs text-muted-foreground">
+                    Variable: {'{history_text}'} (required in user prompt — the session transcript).
+                    Leave both blank to use built-in defaults.
+                  </p>
+                }
+              />
+            </div>
+          </details>
         </fieldset>
 
         {/* Chunk size */}

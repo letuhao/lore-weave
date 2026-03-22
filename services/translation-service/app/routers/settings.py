@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 import asyncpg
 
 from ..deps import get_current_user, get_db
-from ..config import settings as app_settings, DEFAULT_SYSTEM_PROMPT, DEFAULT_USER_PROMPT_TPL
+from ..config import settings as app_settings, DEFAULT_SYSTEM_PROMPT, DEFAULT_USER_PROMPT_TPL, DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_USER_PROMPT_TPL
 from ..models import (
     PreferencesPayload,
     UserTranslationPreferences,
@@ -52,20 +52,23 @@ async def put_preferences(
           (user_id, target_language, model_source, model_ref,
            system_prompt, user_prompt_tpl,
            compact_model_source, compact_model_ref,
+           compact_system_prompt, compact_user_prompt_tpl,
            chunk_size_tokens, invoke_timeout_secs,
            updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
         ON CONFLICT (user_id) DO UPDATE SET
-          target_language      = EXCLUDED.target_language,
-          model_source         = EXCLUDED.model_source,
-          model_ref            = EXCLUDED.model_ref,
-          system_prompt        = EXCLUDED.system_prompt,
-          user_prompt_tpl      = EXCLUDED.user_prompt_tpl,
-          compact_model_source = EXCLUDED.compact_model_source,
-          compact_model_ref    = EXCLUDED.compact_model_ref,
-          chunk_size_tokens    = EXCLUDED.chunk_size_tokens,
-          invoke_timeout_secs  = EXCLUDED.invoke_timeout_secs,
-          updated_at           = now()
+          target_language          = EXCLUDED.target_language,
+          model_source             = EXCLUDED.model_source,
+          model_ref                = EXCLUDED.model_ref,
+          system_prompt            = EXCLUDED.system_prompt,
+          user_prompt_tpl          = EXCLUDED.user_prompt_tpl,
+          compact_model_source     = EXCLUDED.compact_model_source,
+          compact_model_ref        = EXCLUDED.compact_model_ref,
+          compact_system_prompt    = EXCLUDED.compact_system_prompt,
+          compact_user_prompt_tpl  = EXCLUDED.compact_user_prompt_tpl,
+          chunk_size_tokens        = EXCLUDED.chunk_size_tokens,
+          invoke_timeout_secs      = EXCLUDED.invoke_timeout_secs,
+          updated_at               = now()
         RETURNING *
         """,
         UUID(user_id),
@@ -76,6 +79,8 @@ async def put_preferences(
         payload.user_prompt_tpl,
         payload.compact_model_source,
         payload.compact_model_ref,
+        payload.compact_system_prompt,
+        payload.compact_user_prompt_tpl,
         payload.chunk_size_tokens,
         payload.invoke_timeout_secs,
     )
@@ -118,6 +123,8 @@ async def get_book_settings(
             user_prompt_tpl=d["user_prompt_tpl"],
             compact_model_source=d.get("compact_model_source"),
             compact_model_ref=d.get("compact_model_ref"),
+            compact_system_prompt=d.get("compact_system_prompt", ''),
+            compact_user_prompt_tpl=d.get("compact_user_prompt_tpl", ''),
             chunk_size_tokens=d.get("chunk_size_tokens", 2000),
             invoke_timeout_secs=d.get("invoke_timeout_secs", 300),
             updated_at=d["updated_at"],
@@ -152,20 +159,23 @@ async def put_book_settings(
           (book_id, owner_user_id, target_language, model_source, model_ref,
            system_prompt, user_prompt_tpl,
            compact_model_source, compact_model_ref,
+           compact_system_prompt, compact_user_prompt_tpl,
            chunk_size_tokens, invoke_timeout_secs,
            updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now())
         ON CONFLICT (book_id) DO UPDATE SET
-          target_language      = EXCLUDED.target_language,
-          model_source         = EXCLUDED.model_source,
-          model_ref            = EXCLUDED.model_ref,
-          system_prompt        = EXCLUDED.system_prompt,
-          user_prompt_tpl      = EXCLUDED.user_prompt_tpl,
-          compact_model_source = EXCLUDED.compact_model_source,
-          compact_model_ref    = EXCLUDED.compact_model_ref,
-          chunk_size_tokens    = EXCLUDED.chunk_size_tokens,
-          invoke_timeout_secs  = EXCLUDED.invoke_timeout_secs,
-          updated_at           = now()
+          target_language          = EXCLUDED.target_language,
+          model_source             = EXCLUDED.model_source,
+          model_ref                = EXCLUDED.model_ref,
+          system_prompt            = EXCLUDED.system_prompt,
+          user_prompt_tpl          = EXCLUDED.user_prompt_tpl,
+          compact_model_source     = EXCLUDED.compact_model_source,
+          compact_model_ref        = EXCLUDED.compact_model_ref,
+          compact_system_prompt    = EXCLUDED.compact_system_prompt,
+          compact_user_prompt_tpl  = EXCLUDED.compact_user_prompt_tpl,
+          chunk_size_tokens        = EXCLUDED.chunk_size_tokens,
+          invoke_timeout_secs      = EXCLUDED.invoke_timeout_secs,
+          updated_at               = now()
         RETURNING *
         """,
         book_id,
@@ -177,6 +187,8 @@ async def put_book_settings(
         payload.user_prompt_tpl,
         payload.compact_model_source,
         payload.compact_model_ref,
+        payload.compact_system_prompt,
+        payload.compact_user_prompt_tpl,
         payload.chunk_size_tokens,
         payload.invoke_timeout_secs,
     )

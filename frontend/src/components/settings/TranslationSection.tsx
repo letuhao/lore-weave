@@ -17,21 +17,25 @@ type FormState = {
   user_prompt_tpl: string;
   compact_model_source: ModelSource | null;
   compact_model_ref: string | null;
+  compact_system_prompt: string;
+  compact_user_prompt_tpl: string;
   chunk_size_tokens: number;
   invoke_timeout_secs: number;
 };
 
 function prefsToForm(p: UserTranslationPreferences): FormState {
   return {
-    target_language:      p.target_language,
-    model_source:         p.model_source,
-    model_ref:            p.model_ref,
-    system_prompt:        p.system_prompt,
-    user_prompt_tpl:      p.user_prompt_tpl,
-    compact_model_source: p.compact_model_source,
-    compact_model_ref:    p.compact_model_ref,
-    chunk_size_tokens:    p.chunk_size_tokens ?? 2000,
-    invoke_timeout_secs:  p.invoke_timeout_secs ?? 300,
+    target_language:         p.target_language,
+    model_source:            p.model_source,
+    model_ref:               p.model_ref,
+    system_prompt:           p.system_prompt,
+    user_prompt_tpl:         p.user_prompt_tpl,
+    compact_model_source:    p.compact_model_source,
+    compact_model_ref:       p.compact_model_ref,
+    compact_system_prompt:   p.compact_system_prompt ?? '',
+    compact_user_prompt_tpl: p.compact_user_prompt_tpl ?? '',
+    chunk_size_tokens:       p.chunk_size_tokens ?? 2000,
+    invoke_timeout_secs:     p.invoke_timeout_secs ?? 300,
   };
 }
 
@@ -66,15 +70,17 @@ export function TranslationSection() {
     setSuccessMsg('');
     try {
       await translationApi.putPreferences(token, {
-        target_language:      form.target_language,
-        model_source:         form.model_source,
-        model_ref:            form.model_ref,
-        system_prompt:        form.system_prompt,
-        user_prompt_tpl:      form.user_prompt_tpl,
-        compact_model_source: form.compact_model_source,
-        compact_model_ref:    form.compact_model_ref,
-        chunk_size_tokens:    form.chunk_size_tokens,
-        invoke_timeout_secs:  form.invoke_timeout_secs,
+        target_language:         form.target_language,
+        model_source:            form.model_source,
+        model_ref:               form.model_ref,
+        system_prompt:           form.system_prompt,
+        user_prompt_tpl:         form.user_prompt_tpl,
+        compact_model_source:    form.compact_model_source,
+        compact_model_ref:       form.compact_model_ref,
+        compact_system_prompt:   form.compact_system_prompt,
+        compact_user_prompt_tpl: form.compact_user_prompt_tpl,
+        chunk_size_tokens:       form.chunk_size_tokens,
+        invoke_timeout_secs:     form.invoke_timeout_secs,
       });
       setSuccessMsg('Defaults saved');
     } catch (e: unknown) {
@@ -129,10 +135,12 @@ export function TranslationSection() {
             <AdvancedTranslationSettings
               token={token}
               value={{
-                compact_model_source: form.compact_model_source,
-                compact_model_ref:    form.compact_model_ref,
-                chunk_size_tokens:    form.chunk_size_tokens,
-                invoke_timeout_secs:  form.invoke_timeout_secs,
+                compact_model_source:    form.compact_model_source,
+                compact_model_ref:       form.compact_model_ref,
+                compact_system_prompt:   form.compact_system_prompt,
+                compact_user_prompt_tpl: form.compact_user_prompt_tpl,
+                chunk_size_tokens:       form.chunk_size_tokens,
+                invoke_timeout_secs:     form.invoke_timeout_secs,
               }}
               onChange={(v) => setForm({ ...form, ...v })}
               disabled={saving}

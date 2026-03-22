@@ -15,6 +15,8 @@ class PreferencesPayload(BaseModel):
     user_prompt_tpl: str
     compact_model_source: Optional[str] = None
     compact_model_ref: Optional[UUID] = None
+    compact_system_prompt: str = ''
+    compact_user_prompt_tpl: str = ''
     chunk_size_tokens: int = 2000
     invoke_timeout_secs: int = 300
 
@@ -35,6 +37,8 @@ class UserTranslationPreferences(BaseModel):
     user_prompt_tpl: str
     compact_model_source: Optional[str] = None
     compact_model_ref: Optional[UUID] = None
+    compact_system_prompt: str = ''
+    compact_user_prompt_tpl: str = ''
     chunk_size_tokens: int = 2000
     invoke_timeout_secs: int = 300
     updated_at: datetime
@@ -109,6 +113,8 @@ class TranslationJob(BaseModel):
     user_prompt_tpl: str
     compact_model_source: Optional[str] = None
     compact_model_ref: Optional[UUID] = None
+    compact_system_prompt: str = ''
+    compact_user_prompt_tpl: str = ''
     chunk_size_tokens: int = 2000
     invoke_timeout_secs: int = 300
     chapter_ids: list[UUID]

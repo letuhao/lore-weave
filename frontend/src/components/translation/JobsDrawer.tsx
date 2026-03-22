@@ -53,7 +53,7 @@ export function JobsDrawer({ token, jobs, onClose, onJobsChange }: Props) {
                   {STATUS_ICON[job.status] ?? job.status} {job.status}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {new Date(job.created_at).toLocaleDateString()}
+                  {new Date(job.created_at).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
               <p className="text-xs text-muted-foreground">

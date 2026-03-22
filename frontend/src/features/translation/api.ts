@@ -11,6 +11,8 @@ export type UserTranslationPreferences = {
   user_prompt_tpl: string;
   compact_model_source: ModelSource | null;
   compact_model_ref: string | null;
+  compact_system_prompt: string;
+  compact_user_prompt_tpl: string;
   chunk_size_tokens: number;
   invoke_timeout_secs: number;
   updated_at: string;
@@ -59,6 +61,8 @@ export type TranslationJob = {
   user_prompt_tpl: string;
   compact_model_source: ModelSource | null;
   compact_model_ref: string | null;
+  compact_system_prompt: string;
+  compact_user_prompt_tpl: string;
   chunk_size_tokens: number;
   invoke_timeout_secs: number;
   chapter_ids: string[];
@@ -80,6 +84,8 @@ type PreferencesPayload = {
   user_prompt_tpl: string;
   compact_model_source: ModelSource | null;
   compact_model_ref: string | null;
+  compact_system_prompt: string;
+  compact_user_prompt_tpl: string;
   chunk_size_tokens: number;
   invoke_timeout_secs: number;
 };

@@ -131,6 +131,19 @@ CREATE TABLE IF NOT EXISTS active_chapter_translation_versions (
   set_by_user_id          UUID NOT NULL,
   PRIMARY KEY (chapter_id, target_language)
 );
+
+-- V3: compact model prompt customisation (LW-73)
+ALTER TABLE user_translation_preferences
+  ADD COLUMN IF NOT EXISTS compact_system_prompt   TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS compact_user_prompt_tpl TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE book_translation_settings
+  ADD COLUMN IF NOT EXISTS compact_system_prompt   TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS compact_user_prompt_tpl TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE translation_jobs
+  ADD COLUMN IF NOT EXISTS compact_system_prompt   TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS compact_user_prompt_tpl TEXT NOT NULL DEFAULT '';
 """
 
 

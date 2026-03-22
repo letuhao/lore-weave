@@ -11,6 +11,14 @@ DEFAULT_USER_PROMPT_TPL = (
     "into {target_lang} ({target_code}):\n\n{chapter_text}"
 )
 
+DEFAULT_COMPACT_SYSTEM_PROMPT = (
+    "You are a translation assistant. Summarise the following translation session history "
+    "into a concise Translation Memo (200 words max). Include: key character names and "
+    "their translations, recurring terminology, tone/style notes. "
+    "Output ONLY the memo, no other text."
+)
+DEFAULT_COMPACT_USER_PROMPT_TPL = "{history_text}"
+
 
 class Settings(BaseSettings):
     database_url: str

@@ -1,9 +1,12 @@
+import type { ReactNode } from 'react';
+
 type Props = {
   systemPrompt: string;
   userPromptTpl: string;
   onSystemPromptChange: (v: string) => void;
   onUserPromptTplChange: (v: string) => void;
   disabled?: boolean;
+  hintOverride?: ReactNode;
 };
 
 export function PromptEditor({
@@ -12,6 +15,7 @@ export function PromptEditor({
   onSystemPromptChange,
   onUserPromptTplChange,
   disabled,
+  hintOverride,
 }: Props) {
   return (
     <div className="space-y-3">
@@ -34,11 +38,13 @@ export function PromptEditor({
           onChange={(e) => onUserPromptTplChange(e.target.value)}
           disabled={disabled}
         />
-        <p className="text-xs text-muted-foreground">
-          Variables (both prompts): {'{source_lang}'} · {'{source_code}'} · {'{target_lang}'} · {'{target_code}'}
-          <br />
-          User prompt only: {'{chapter_text}'} (required)
-        </p>
+        {hintOverride ?? (
+          <p className="text-xs text-muted-foreground">
+            Variables (both prompts): {'{source_lang}'} · {'{source_code}'} · {'{target_lang}'} · {'{target_code}'}
+            <br />
+            User prompt only: {'{chapter_text}'} (required)
+          </p>
+        )}
       </div>
     </div>
   );

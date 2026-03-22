@@ -39,6 +39,8 @@ export function TranslateModal({ token, bookId, chapterIds, settings, onClose, o
         user_prompt_tpl: settings.user_prompt_tpl,
         compact_model_source: settings.compact_model_source,
         compact_model_ref: settings.compact_model_ref,
+        compact_system_prompt: settings.compact_system_prompt,
+        compact_user_prompt_tpl: settings.compact_user_prompt_tpl,
         chunk_size_tokens: settings.chunk_size_tokens,
         invoke_timeout_secs: settings.invoke_timeout_secs,
       });
