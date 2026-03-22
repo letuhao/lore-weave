@@ -3,7 +3,7 @@
 ## Document Metadata
 
 - Document ID: LW-00
-- Version: 1.21.0
+- Version: 1.23.0
 - Status: Approved
 - Owner: Decision Authority + Execution Authority
 - Last Updated: 2026-03-22
@@ -16,6 +16,8 @@
 
 | Version | Date       | Change                                                        | Author    |
 | ------- | ---------- | ------------------------------------------------------------- | --------- |
+| 1.23.0 | 2026-03-22 | Status governance update: approved Module 04 planning documents `56`–`67` by Decision Authority | Assistant |
+| 1.22.0 | 2026-03-22 | Registered Module 04 planning pack `56`–`67` (raw translation pipeline — execution pack, API contract, frontend flow, AT plan, risk/rollout, governance checklist, microservice structure, backend design, frontend design, wireframe spec, integration sequences, readiness gate) | Assistant |
 | 1.21.0 | 2026-03-22 | Registered `MODULE03_SITUATION_AND_TODO.md` (LW-IMPL-M03-01) — M03 smoke complete, implementation situation and todo backlog | Assistant |
 | 1.20.0 | 2026-03-21 | Status governance update: approved Module 03 planning documents `44`-`55` by Decision Authority | Assistant |
 | 1.19.0 | 2026-03-21 | Registered Module 03 planning pack `44`-`55` (provider registry, model billing, deep-design, readiness gate) and linked proposed contract domains for model registry/billing | Assistant |
@@ -215,6 +217,23 @@ Use these values consistently in every document metadata block:
 | M03-53 | `53_MODULE03_UI_UX_WIREFRAME_SPEC.md` | `03_planning` | Wireframe-level layout and state behavior specification |
 | M03-54 | `54_MODULE03_INTEGRATION_SEQUENCE_DIAGRAMS.md` | `03_planning` | BYOK and platform-managed model integration sequence diagrams |
 | M03-55 | `55_MODULE03_IMPLEMENTATION_READINESS_GATE.md` | `03_planning` | GO/NO-GO gate before starting Module 03 implementation |
+
+## Phase 2 Module 04 Planning Pack (Approved)
+
+| Pack Seq | File | Folder | Purpose |
+| --- | --- | --- | --- |
+| M04-56 | `56_PHASE1_MODULE04_RAW_TRANSLATION_EXECUTION_PACK.md` | `03_planning` | Module 04 charter, scope, accountability, DoR/DoD, governance gates |
+| M04-57 | `57_MODULE04_API_CONTRACT_DRAFT.md` | `03_planning` | REST API contract for translation settings, jobs, and chapter results |
+| M04-58 | `58_MODULE04_FRONTEND_FLOW_SPEC.md` | `03_planning` | Routes, components, state machine, and API mapping for M04 frontend |
+| M04-59 | `59_MODULE04_ACCEPTANCE_TEST_PLAN.md` | `03_planning` | 21-scenario AT matrix for translation pipeline (P0/P1/P2) |
+| M04-60 | `60_MODULE04_RISK_DEPENDENCY_ROLLOUT.md` | `03_planning` | Risk register, rollout sequence, and rollback plan for M04 |
+| M04-61 | `61_GOVERNANCE_BOARD_REVIEW_CHECKLIST_MODULE04.md` | `03_planning` | Governance board review checklist for M04 planning pack gate |
+| M04-62 | `62_MODULE04_MICROSERVICE_SOURCE_STRUCTURE_AMENDMENT.md` | `03_planning` | New translation-service source layout and integration boundaries |
+| M04-63 | `63_MODULE04_BACKEND_DETAILED_DESIGN.md` | `03_planning` | DB schema, settings merge, JWT minting, job execution flow design |
+| M04-64 | `64_MODULE04_FRONTEND_DETAILED_DESIGN.md` | `03_planning` | Frontend types, API functions, component specs, page designs, zod schemas |
+| M04-65 | `65_MODULE04_UI_UX_WIREFRAME_SPEC.md` | `03_planning` | ASCII wireframes and UI state tables for translation pages |
+| M04-66 | `66_MODULE04_INTEGRATION_SEQUENCE_DIAGRAMS.md` | `03_planning` | Cross-service sequence diagrams for settings, job creation, execution, and failures |
+| M04-67 | `67_MODULE04_IMPLEMENTATION_READINESS_GATE.md` | `03_planning` | GO/NO-GO gate before starting Module 04 implementation (Pending) |
 
 ## Phase 1 Module Deep-Design Packs
 

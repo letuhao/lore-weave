@@ -2,10 +2,10 @@
 
 ## Document Metadata
 - Document ID: LW-09
-- Version: 1.5.0
+- Version: 1.7.0
 - Status: Approved
 - Owner: Product Manager + Solution Architect
-- Last Updated: 2026-03-21
+- Last Updated: 2026-03-22
 - Approved By: Decision Authority
 - Approved Date: 2026-03-21
 - Summary: Phase roadmap with frontend-backend module delivery principles.
@@ -13,6 +13,8 @@
 ## Change History
 | Version | Date | Change | Author |
 |---|---|---|---|
+| 1.7.0 | 2026-03-22 | Status governance update: approved Module 04 planning pack `56`–`67` by Decision Authority | Assistant |
+| 1.6.0 | 2026-03-22 | Added Phase 2 Module 04 (raw translation pipeline) planning checkpoint and doc references 56-67 | Assistant |
 | 1.5.0 | 2026-03-21 | Status governance update: Module 03 planning checkpoint docs `44`-`55` approved by Decision Authority | Assistant |
 | 1.4.0 | 2026-03-21 | Added Phase 1 Module 03 (provider registry + model billing) planning checkpoint and doc references 44-55 | Assistant |
 | 1.3.0 | 2026-03-21 | Added Phase 1 Module 02 (Books & sharing) planning checkpoint and doc references 24–35 | Assistant |
@@ -134,6 +136,25 @@ Establish planning readiness for identity, book lifecycle, sharing, and discover
 - Platform-core planning package is approved.
 - Core domain dependencies and handoffs are explicit.
 - Release-readiness criteria for platform core are approved.
+
+### Phase 2 Module 04 Checkpoint (Raw translation pipeline)
+
+- **Objective:** First Phase 2 vertical slice: per-user and per-book translation settings, async translation job lifecycle, chapter result storage — uses M03 provider gateway as the only model invocation path.
+- **Planning pack (Approved):**
+  - `56_PHASE1_MODULE04_RAW_TRANSLATION_EXECUTION_PACK.md`
+  - `57_MODULE04_API_CONTRACT_DRAFT.md`
+  - `58_MODULE04_FRONTEND_FLOW_SPEC.md`
+  - `59_MODULE04_ACCEPTANCE_TEST_PLAN.md`
+  - `60_MODULE04_RISK_DEPENDENCY_ROLLOUT.md`
+  - `61_GOVERNANCE_BOARD_REVIEW_CHECKLIST_MODULE04.md`
+- **Deep-design + readiness (Approved):**
+  - `62_MODULE04_MICROSERVICE_SOURCE_STRUCTURE_AMENDMENT.md`
+  - `63_MODULE04_BACKEND_DETAILED_DESIGN.md`
+  - `64_MODULE04_FRONTEND_DETAILED_DESIGN.md`
+  - `65_MODULE04_UI_UX_WIREFRAME_SPEC.md`
+  - `66_MODULE04_INTEGRATION_SEQUENCE_DIAGRAMS.md`
+  - `67_MODULE04_IMPLEMENTATION_READINESS_GATE.md`
+- **Prerequisite:** M01 auth, M02 book ownership, M03 provider-registry-service operational; gate `67` GO before M04 implementation start.
 
 ## Phase 2: Workflow and RAG Foundation
 
