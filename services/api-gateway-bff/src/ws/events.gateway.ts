@@ -32,13 +32,14 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     if (!token) {
+      this.logger.warn('WS rejected: missing_token');
       socket.close(4001, 'missing_token');
       return;
     }
 
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) {
-      this.logger.error('JWT_SECRET not configured');
+      this.logger.error('WS rejected: JWT_SECRET not configured');
       socket.close(4500, 'server_error');
       return;
     }
@@ -47,7 +48,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     try {
       const decoded = jwt.verify(token, jwtSecret) as { sub: string };
       userId = decoded.sub;
-    } catch {
+    } catch (err) {
+      this.logger.warn(`WS rejected: invalid_token — ${(err as Error).message}`);
       socket.close(4001, 'invalid_token');
       return;
     }
@@ -59,7 +61,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
 
     this.unsubs.set(socket, unsub);
-    this.logger.debug(`WS connected: user ${userId}`);
+    this.logger.log(`WS connected: user ${userId} (total=${this.unsubs.size})`);
   }
 
   handleDisconnect(socket: WebSocket): void {
@@ -67,6 +69,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (unsub) {
       unsub();
       this.unsubs.delete(socket);
+      this.logger.log(`WS disconnected (total=${this.unsubs.size})`);
     }
   }
 }

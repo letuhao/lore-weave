@@ -331,6 +331,7 @@ export default function BookTranslationPage() {
                         jobId={job.job_id}
                         chapterId={cid}
                         chapterTitle={chapter?.title || `Chapter ${chapter?.sort_order ?? ''}`}
+                        refreshKey={(job.completed_chapters ?? 0) + (job.failed_chapters ?? 0)}
                       />
                     );
                   })}

@@ -8,19 +8,23 @@ type Props = {
   jobId: string;
   chapterId: string;
   chapterTitle?: string;
+  /** Increment to trigger a re-fetch (e.g. when a WS event signals completion). */
+  refreshKey?: number;
 };
 
-export function ChapterTranslationPanel({ token, jobId, chapterId, chapterTitle }: Props) {
+export function ChapterTranslationPanel({ token, jobId, chapterId, chapterTitle, refreshKey }: Props) {
   const [ct, setCt] = useState<ChapterTranslation | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
+    setLoading(true);
+    setError('');
     translationApi.getChapterTranslation(token, jobId, chapterId)
       .then(setCt)
       .catch((e) => setError(e.message || 'Failed to load'))
       .finally(() => setLoading(false));
-  }, [token, jobId, chapterId]);
+  }, [token, jobId, chapterId, refreshKey]);
 
   const title = chapterTitle || `Chapter ${chapterId.slice(0, 8)}`;
 
