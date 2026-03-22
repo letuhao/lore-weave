@@ -1,14 +1,14 @@
 from pydantic_settings import BaseSettings
 
 DEFAULT_SYSTEM_PROMPT = (
-    "You are a professional literary translator. "
-    "Preserve the style, tone, pacing, and voice of the original text. "
-    "Do not add commentary, explanations, or translator notes. "
-    "Translate faithfully and naturally."
+    "You are a professional {source_lang} ({source_code}) to {target_lang} ({target_code}) translator. "
+    "Your goal is to accurately convey the meaning and nuances of the original {source_lang} text "
+    "while adhering to {target_lang} grammar, vocabulary, and cultural sensitivities. "
+    "Produce only the {target_lang} translation, without any additional explanations or commentary."
 )
 DEFAULT_USER_PROMPT_TPL = (
-    "Translate the following {source_language} text into {target_language}. "
-    "Output only the translated text, nothing else.\n\n{chapter_text}"
+    "Please translate the following {source_lang} ({source_code}) text "
+    "into {target_lang} ({target_code}):\n\n{chapter_text}"
 )
 
 

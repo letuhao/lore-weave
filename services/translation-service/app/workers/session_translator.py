@@ -29,6 +29,65 @@ log = logging.getLogger(__name__)
 
 _JWT_TTL = 4 * 3600  # 4 hours — covers very long chapter translation sessions
 
+# BCP-47 code → human-readable language name (lowercase key lookup)
+_LANG_NAMES: dict[str, str] = {
+    "en":       "English",
+    "vi":       "Vietnamese",
+    "ja":       "Japanese",
+    "zh":       "Chinese",
+    "zh-hans":  "Chinese Simplified",
+    "zh-hant":  "Chinese Traditional",
+    "ko":       "Korean",
+    "fr":       "French",
+    "de":       "German",
+    "es":       "Spanish",
+    "pt":       "Portuguese",
+    "pt-br":    "Portuguese Brazilian",
+    "it":       "Italian",
+    "ru":       "Russian",
+    "ar":       "Arabic",
+    "th":       "Thai",
+    "id":       "Indonesian",
+    "ms":       "Malay",
+    "hi":       "Hindi",
+    "tr":       "Turkish",
+    "pl":       "Polish",
+    "nl":       "Dutch",
+    "sv":       "Swedish",
+    "no":       "Norwegian",
+    "da":       "Danish",
+    "fi":       "Finnish",
+    "cs":       "Czech",
+    "hu":       "Hungarian",
+    "ro":       "Romanian",
+    "uk":       "Ukrainian",
+    "bg":       "Bulgarian",
+    "hr":       "Croatian",
+    "sk":       "Slovak",
+    "el":       "Greek",
+    "he":       "Hebrew",
+    "fa":       "Persian",
+    "bn":       "Bengali",
+    "ur":       "Urdu",
+    "ta":       "Tamil",
+    "te":       "Telugu",
+    "ml":       "Malayalam",
+    "my":       "Burmese",
+    "km":       "Khmer",
+    "lo":       "Lao",
+}
+
+
+def _lang_name(code: str) -> str:
+    """Return the human-readable name for a BCP-47 language code, or the code itself."""
+    return _LANG_NAMES.get(code.lower(), code)
+
+
+class _SafeFormatMap(dict):
+    """format_map helper: leaves {unknown_key} intact instead of raising KeyError."""
+    def __missing__(self, key: str) -> str:
+        return f"{{{key}}}"
+
 _DEFAULT_COMPACT_SYSTEM = (
     "You are a translation assistant. Summarise the following translation session history "
     "into a concise Translation Memo (200 words max). Include: key character names and "
@@ -147,16 +206,22 @@ def _build_user_content(
     total_chunks: int,
 ) -> str:
     """Render the user-facing content for one chunk using the job's prompt template."""
-    tpl = msg.get("user_prompt_tpl") or (
-        "Translate the following {source_language} text into {target_language}. "
-        "Output only the translated text, nothing else.\n\n{chapter_text}"
-    )
+    from ..config import DEFAULT_USER_PROMPT_TPL
+    tpl = msg.get("user_prompt_tpl") or DEFAULT_USER_PROMPT_TPL
+    target_code = msg.get("target_language", "")
     part_note = f"[Part {chunk_idx + 1}/{total_chunks}]\n" if total_chunks > 1 else ""
-    return part_note + tpl.format_map({
+    return part_note + tpl.format_map(_SafeFormatMap({
+        # New canonical variables
+        "source_lang":     _lang_name(source_lang),
+        "source_code":     source_lang,
+        "target_lang":     _lang_name(target_code),
+        "target_code":     target_code,
+        # Backward-compat aliases (point to codes, same as before)
         "source_language": source_lang,
-        "target_language": msg.get("target_language", ""),
+        "target_language": target_code,
+        # Chapter content
         "chapter_text":    chunk,
-    })
+    }))
 
 
 def _build_messages(
@@ -177,12 +242,17 @@ def _build_messages(
       [*session_history alternating user/assistant]
       [user: current chunk]
     """
-    system_content = msg.get("system_prompt") or (
-        "You are a professional literary translator. "
-        "Preserve the style, tone, pacing, and voice of the original text. "
-        "Do not add commentary, explanations, or translator notes. "
-        "Translate faithfully and naturally."
-    )
+    from ..config import DEFAULT_SYSTEM_PROMPT
+    target_code = msg.get("target_language", "")
+    sys_tpl = msg.get("system_prompt") or DEFAULT_SYSTEM_PROMPT
+    system_content = sys_tpl.format_map(_SafeFormatMap({
+        "source_lang":     _lang_name(source_lang),
+        "source_code":     source_lang,
+        "target_lang":     _lang_name(target_code),
+        "target_code":     target_code,
+        "source_language": source_lang,
+        "target_language": target_code,
+    }))
     messages: list[dict] = [{"role": "system", "content": system_content}]
 
     # Inject compact memo as the first assistant turn so the model "remembers" context

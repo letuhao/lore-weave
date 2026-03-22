@@ -35,7 +35,9 @@ export function PromptEditor({
           disabled={disabled}
         />
         <p className="text-xs text-muted-foreground">
-          Variables: {'{source_language}'}, {'{target_language}'}, {'{chapter_text}'}
+          Variables (both prompts): {'{source_lang}'} · {'{source_code}'} · {'{target_lang}'} · {'{target_code}'}
+          <br />
+          User prompt only: {'{chapter_text}'} (required)
         </p>
       </div>
     </div>
