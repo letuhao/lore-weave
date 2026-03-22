@@ -1,13 +1,12 @@
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
+from fastapi import APIRouter, Depends, HTTPException, status
 import asyncpg
 import httpx
 
 from ..deps import get_current_user, get_db
 from ..config import settings as app_settings, DEFAULT_SYSTEM_PROMPT, DEFAULT_USER_PROMPT_TPL
 from ..models import CreateJobPayload, TranslationJob, ChapterTranslation, ErrorResponse
-from ..services.translation_runner import run_translation_job
-from ..database import get_pool
+from ..broker import publish, publish_event
 
 router = APIRouter(prefix="/v1/translation", tags=["translation-jobs"])
 
@@ -28,11 +27,15 @@ async def _resolve_effective_settings(user_id: UUID, book_id: UUID, db: asyncpg.
         return dict(row), True
 
     return {
-        "target_language": "en",
-        "model_source": "platform_model",
-        "model_ref": None,
-        "system_prompt": DEFAULT_SYSTEM_PROMPT,
-        "user_prompt_tpl": DEFAULT_USER_PROMPT_TPL,
+        "target_language":     "en",
+        "model_source":        "platform_model",
+        "model_ref":           None,
+        "system_prompt":       DEFAULT_SYSTEM_PROMPT,
+        "user_prompt_tpl":     DEFAULT_USER_PROMPT_TPL,
+        "compact_model_source": None,
+        "compact_model_ref":   None,
+        "chunk_size_tokens":   2000,
+        "invoke_timeout_secs": 300,
     }, True
 
 
@@ -53,7 +56,6 @@ def _job_row_to_model(row, chapter_rows=None) -> TranslationJob:
 async def create_job(
     book_id: UUID,
     payload: CreateJobPayload,
-    background_tasks: BackgroundTasks,
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
 ):
@@ -92,13 +94,18 @@ async def create_job(
         """
         INSERT INTO translation_jobs
           (book_id, owner_user_id, status, target_language, model_source, model_ref,
-           system_prompt, user_prompt_tpl, chapter_ids, total_chapters)
-        VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9)
+           system_prompt, user_prompt_tpl,
+           compact_model_source, compact_model_ref,
+           chunk_size_tokens, invoke_timeout_secs,
+           chapter_ids, total_chapters)
+        VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
         RETURNING *
         """,
         book_id, uid,
         eff["target_language"], eff["model_source"], eff["model_ref"],
         eff["system_prompt"], eff["user_prompt_tpl"],
+        eff.get("compact_model_source"), eff.get("compact_model_ref"),
+        eff.get("chunk_size_tokens", 2000), eff.get("invoke_timeout_secs", 300),
         chapter_ids, len(chapter_ids),
     )
 
@@ -114,7 +121,32 @@ async def create_job(
             job_id, chapter_id, book_id, uid, eff["target_language"],
         )
 
-    background_tasks.add_task(run_translation_job, job_id, user_id, get_pool())
+    # Publish job to RabbitMQ — worker fans out chapter messages
+    await publish("translation.job", {
+        "job_id":               str(job_id),
+        "user_id":              user_id,
+        "book_id":              str(book_id),
+        "chapter_ids":          [str(c) for c in chapter_ids],
+        "model_source":         eff["model_source"],
+        "model_ref":            str(eff["model_ref"]),
+        "system_prompt":        eff["system_prompt"],
+        "user_prompt_tpl":      eff["user_prompt_tpl"],
+        "target_language":      eff["target_language"],
+        "compact_model_source": eff.get("compact_model_source"),
+        "compact_model_ref":    str(eff["compact_model_ref"]) if eff.get("compact_model_ref") else None,
+        "chunk_size_tokens":    eff.get("chunk_size_tokens", 2000),
+        "invoke_timeout_secs":  eff.get("invoke_timeout_secs", 300),
+    })
+    await publish_event(user_id, {
+        "event":    "job.created",
+        "job_id":   str(job_id),
+        "job_type": "translation",
+        "payload":  {
+            "book_id":        str(book_id),
+            "total_chapters": len(chapter_ids),
+            "status":         "pending",
+        },
+    })
 
     return _job_row_to_model(job_row)
 

@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { translationApi, type TranslationJob } from '../../features/translation/api';
+import { useJobEvents, type JobEvent } from '../../hooks/useJobEvents';
 import { Button } from '../ui/button';
 import { Alert, AlertDescription } from '../ui/alert';
 
-type Phase = 'idle' | 'submitting' | 'polling' | 'done' | 'partial' | 'error';
+type Phase = 'idle' | 'submitting' | 'listening' | 'done' | 'partial' | 'error';
 
 type Props = {
   token: string;
@@ -15,59 +16,70 @@ type Props = {
 
 export function TranslateButton({ token, bookId, chapterIds, onJobCreated, disabled }: Props) {
   const [phase, setPhase] = useState<Phase>('idle');
-  const [job, setJob] = useState<TranslationJob | null>(null);
-  const [error, setError] = useState<string>('');
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const networkErrorsRef = useRef(0);
+  const [job,   setJob]   = useState<TranslationJob | null>(null);
+  const [error, setError] = useState('');
+  const jobIdRef = useRef<string | null>(null);
 
-  function stopPolling() {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
+  const handleEvent = useCallback((e: JobEvent) => {
+    if (!jobIdRef.current || e.job_id !== jobIdRef.current) return;
+
+    if (e.event === 'job.status_changed') {
+      const p = e.payload as {
+        status: TranslationJob['status'];
+        completed_chapters: number;
+        failed_chapters: number;
+      };
+      setJob((prev) => prev ? { ...prev, ...p } : prev);
+
+      if      (p.status === 'completed') setPhase('done');
+      else if (p.status === 'partial')   setPhase('partial');
+      else if (p.status === 'failed' || p.status === 'cancelled') {
+        setError(p.status);
+        setPhase('error');
+      }
     }
-  }
 
-  useEffect(() => () => stopPolling(), []);
+    if (e.event === 'job.chapter_done') {
+      const p = e.payload as { completed_chapters?: number; failed_chapters?: number };
+      setJob((prev) => prev ? { ...prev, ...p } : prev);
+    }
+  }, []);
+
+  // Poll once on reconnect to fill any state gap that occurred while disconnected
+  const handleReconnect = useCallback(async () => {
+    if (!jobIdRef.current) return;
+    try {
+      const latest = await translationApi.getJob(token, jobIdRef.current);
+      setJob(latest);
+      if      (latest.status === 'completed') setPhase('done');
+      else if (latest.status === 'partial')   setPhase('partial');
+      else if (latest.status === 'failed' || latest.status === 'cancelled') {
+        setError(latest.status);
+        setPhase('error');
+      }
+    } catch {
+      // best-effort — WS will continue delivering future events
+    }
+  }, [token]);
+
+  useJobEvents({
+    onEvent:      handleEvent,
+    onReconnect:  handleReconnect,
+    enabled:      phase === 'listening',
+  });
 
   async function handleClick() {
     if (chapterIds.length === 0) return;
     setPhase('submitting');
     setError('');
     try {
-      const created = await translationApi.createJob(token, bookId, { chapter_ids: chapterIds });
+      const created    = await translationApi.createJob(token, bookId, { chapter_ids: chapterIds });
+      jobIdRef.current = created.job_id;
       setJob(created);
       onJobCreated?.(created);
-      setPhase('polling');
-      networkErrorsRef.current = 0;
-
-      intervalRef.current = setInterval(async () => {
-        try {
-          const updated = await translationApi.getJob(token, created.job_id);
-          setJob(updated);
-          networkErrorsRef.current = 0;
-          if (updated.status === 'completed') {
-            stopPolling();
-            setPhase('done');
-          } else if (updated.status === 'partial') {
-            stopPolling();
-            setPhase('partial');
-          } else if (updated.status === 'failed' || updated.status === 'cancelled') {
-            stopPolling();
-            setError(updated.error_message || updated.status);
-            setPhase('error');
-          }
-        } catch {
-          networkErrorsRef.current += 1;
-          if (networkErrorsRef.current >= 3) {
-            stopPolling();
-            setError('Lost connection while polling job status');
-            setPhase('error');
-          }
-        }
-      }, 5000);
+      setPhase('listening');
     } catch (err: unknown) {
-      const msg = (err as { message?: string })?.message || 'Failed to start translation';
-      setError(msg);
+      setError((err as { message?: string })?.message || 'Failed to start translation');
       setPhase('error');
     }
   }
@@ -84,9 +96,9 @@ export function TranslateButton({ token, bookId, chapterIds, onJobCreated, disab
     return <Button disabled>Translating…</Button>;
   }
 
-  if (phase === 'polling' && job) {
+  if (phase === 'listening' && job) {
     const pct = job.total_chapters > 0
-      ? Math.round((job.completed_chapters / job.total_chapters) * 100)
+      ? Math.round(((job.completed_chapters + job.failed_chapters) / job.total_chapters) * 100)
       : 0;
     return (
       <div className="space-y-2" aria-live="polite">
@@ -122,7 +134,7 @@ export function TranslateButton({ token, bookId, chapterIds, onJobCreated, disab
       <Alert variant="destructive">
         <AlertDescription>{error}</AlertDescription>
       </Alert>
-      <Button variant="outline" onClick={() => setPhase('idle')}>
+      <Button variant="outline" onClick={() => { setPhase('idle'); jobIdRef.current = null; }}>
         Retry
       </Button>
     </div>

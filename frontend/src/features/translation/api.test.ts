@@ -31,6 +31,10 @@ describe('translationApi', () => {
       model_ref: null,
       system_prompt: 'Translate.',
       user_prompt_tpl: 'Translate {chapter_text}',
+      compact_model_source: null,
+      compact_model_ref: null,
+      chunk_size_tokens: 2000,
+      invoke_timeout_secs: 300,
     };
     vi.mocked(apiJson).mockResolvedValueOnce({});
     await translationApi.putPreferences(TOKEN, payload);
@@ -56,6 +60,10 @@ describe('translationApi', () => {
       model_ref: 'model-uuid',
       system_prompt: 'Custom.',
       user_prompt_tpl: 'Custom: {chapter_text}',
+      compact_model_source: null,
+      compact_model_ref: null,
+      chunk_size_tokens: 2000,
+      invoke_timeout_secs: 300,
     };
     vi.mocked(apiJson).mockResolvedValueOnce({});
     await translationApi.putBookSettings(TOKEN, BOOK_ID, payload);

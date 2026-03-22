@@ -127,8 +127,7 @@ def test_create_job_returns_201_and_creates_rows(client, fake_pool):
         _JOB_ROW,             # INSERT translation_jobs RETURNING *
     ]
 
-    with patch("app.routers.jobs.httpx.AsyncClient") as mock_client_cls, \
-         patch("app.routers.jobs.BackgroundTasks") as _mock_bg:
+    with patch("app.routers.jobs.httpx.AsyncClient") as mock_client_cls:
         mock_http = AsyncMock()
         mock_client_cls.return_value.__aenter__.return_value = mock_http
         mock_http.get.return_value = _mock_book_service_response()
@@ -143,6 +142,33 @@ def test_create_job_returns_201_and_creates_rows(client, fake_pool):
     assert data["status"] == "pending"
     assert data["total_chapters"] == 1
     assert data["book_id"] == BOOK_ID
+
+
+def test_create_job_publishes_to_broker_not_background_tasks(client, fake_pool):
+    """Plan §6.1: job creation must publish to RabbitMQ, NOT use BackgroundTasks."""
+    fake_pool.fetchrow.side_effect = [_BOOK_SETTINGS_ROW, _JOB_ROW]
+
+    with patch("app.routers.jobs.httpx.AsyncClient") as mock_client_cls, \
+         patch("app.routers.jobs.publish", new_callable=AsyncMock) as mock_publish, \
+         patch("app.routers.jobs.publish_event", new_callable=AsyncMock) as mock_publish_event:
+        mock_http = AsyncMock()
+        mock_client_cls.return_value.__aenter__.return_value = mock_http
+        mock_http.get.return_value = _mock_book_service_response()
+
+        resp = client.post(
+            f"/v1/translation/books/{BOOK_ID}/jobs",
+            json={"chapter_ids": [CHAPTER_ID]},
+        )
+
+    assert resp.status_code == 201
+    # Broker publish must have been called with the correct routing key
+    mock_publish.assert_called_once()
+    routing_key = mock_publish.call_args.args[0]
+    assert routing_key == "translation.job"
+    # Event publish must also have been called
+    mock_publish_event.assert_called_once()
+    event_body = mock_publish_event.call_args.args[1]
+    assert event_body["event"] == "job.created"
 
 
 # ── GET /v1/translation/books/{book_id}/jobs ─────────────────────────────────

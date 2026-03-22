@@ -6,6 +6,7 @@ pydantic-settings>=2.2
 httpx>=0.27
 PyJWT>=2.8
 python-dotenv>=1.0
+aio-pika>=9.4
 
 # test
 pytest>=8.0

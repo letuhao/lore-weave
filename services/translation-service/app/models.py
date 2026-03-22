@@ -13,6 +13,10 @@ class PreferencesPayload(BaseModel):
     model_ref: Optional[UUID] = None
     system_prompt: str
     user_prompt_tpl: str
+    compact_model_source: Optional[str] = None
+    compact_model_ref: Optional[UUID] = None
+    chunk_size_tokens: int = 2000
+    invoke_timeout_secs: int = 300
 
     @field_validator("user_prompt_tpl")
     @classmethod
@@ -29,6 +33,10 @@ class UserTranslationPreferences(BaseModel):
     model_ref: Optional[UUID]
     system_prompt: str
     user_prompt_tpl: str
+    compact_model_source: Optional[str] = None
+    compact_model_ref: Optional[UUID] = None
+    chunk_size_tokens: int = 2000
+    invoke_timeout_secs: int = 300
     updated_at: datetime
 
 
@@ -40,6 +48,21 @@ class BookTranslationSettings(UserTranslationPreferences):
     book_id: UUID
     owner_user_id: UUID
     is_default: bool
+
+
+# ── Chunk ──────────────────────────────────────────────────────────────────────
+
+class ChapterTranslationChunk(BaseModel):
+    id: UUID
+    chapter_translation_id: UUID
+    chunk_index: int
+    chunk_text: str
+    translated_text: Optional[str]
+    compact_memo_applied: Optional[str]
+    status: str
+    input_tokens: Optional[int]
+    output_tokens: Optional[int]
+    created_at: datetime
 
 
 # ── Jobs ──────────────────────────────────────────────────────────────────────
@@ -84,6 +107,10 @@ class TranslationJob(BaseModel):
     model_ref: UUID
     system_prompt: str
     user_prompt_tpl: str
+    compact_model_source: Optional[str] = None
+    compact_model_ref: Optional[UUID] = None
+    chunk_size_tokens: int = 2000
+    invoke_timeout_secs: int = 300
     chapter_ids: list[UUID]
     total_chapters: int
     completed_chapters: int

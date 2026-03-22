@@ -1,10 +1,16 @@
 """
-Tests for translation_runner.py.
-
-Critical invariant (from design doc §6):
-  translation-service must not import any provider SDK directly.
-  All model invocations go through provider-registry-service via httpx.
+OBSOLETE: translation_runner.py was the old BackgroundTasks-based runner (pre-M04 async rewrite).
+It has been superseded by:
+  - app/workers/coordinator.py  (Plan §4.1 — job fan-out)
+  - app/workers/chapter_worker.py  (Plan §4.2 — per-chapter AI call)
+These tests are kept for historical reference but skipped in CI.
+New tests live in:
+  - tests/test_coordinator.py
+  - tests/test_chapter_worker.py
 """
+import pytest
+pytestmark = pytest.mark.skip(reason="OBSOLETE: translation_runner.py replaced by worker architecture (see Plan LW-70 §4)")
+
 import ast
 import datetime
 import pathlib

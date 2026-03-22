@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { LanguagePicker } from '@/components/books/LanguagePicker';
 import { ModelSelector } from '@/components/translation/ModelSelector';
 import { PromptEditor } from '@/components/translation/PromptEditor';
+import { AdvancedTranslationSettings } from '@/components/translation/AdvancedTranslationSettings';
 import { translationApi, type UserTranslationPreferences, type ModelSource } from '@/features/translation/api';
 
 type FormState = {
@@ -14,15 +15,23 @@ type FormState = {
   model_ref: string | null;
   system_prompt: string;
   user_prompt_tpl: string;
+  compact_model_source: ModelSource | null;
+  compact_model_ref: string | null;
+  chunk_size_tokens: number;
+  invoke_timeout_secs: number;
 };
 
 function prefsToForm(p: UserTranslationPreferences): FormState {
   return {
-    target_language: p.target_language,
-    model_source: p.model_source,
-    model_ref: p.model_ref,
-    system_prompt: p.system_prompt,
-    user_prompt_tpl: p.user_prompt_tpl,
+    target_language:      p.target_language,
+    model_source:         p.model_source,
+    model_ref:            p.model_ref,
+    system_prompt:        p.system_prompt,
+    user_prompt_tpl:      p.user_prompt_tpl,
+    compact_model_source: p.compact_model_source,
+    compact_model_ref:    p.compact_model_ref,
+    chunk_size_tokens:    p.chunk_size_tokens ?? 2000,
+    invoke_timeout_secs:  p.invoke_timeout_secs ?? 300,
   };
 }
 
@@ -57,11 +66,15 @@ export function TranslationSection() {
     setSuccessMsg('');
     try {
       await translationApi.putPreferences(token, {
-        target_language: form.target_language,
-        model_source: form.model_source,
-        model_ref: form.model_ref,
-        system_prompt: form.system_prompt,
-        user_prompt_tpl: form.user_prompt_tpl,
+        target_language:      form.target_language,
+        model_source:         form.model_source,
+        model_ref:            form.model_ref,
+        system_prompt:        form.system_prompt,
+        user_prompt_tpl:      form.user_prompt_tpl,
+        compact_model_source: form.compact_model_source,
+        compact_model_ref:    form.compact_model_ref,
+        chunk_size_tokens:    form.chunk_size_tokens,
+        invoke_timeout_secs:  form.invoke_timeout_secs,
       });
       setSuccessMsg('Defaults saved');
     } catch (e: unknown) {
@@ -111,6 +124,17 @@ export function TranslationSection() {
               userPromptTpl={form.user_prompt_tpl}
               onSystemPromptChange={(v) => setForm({ ...form, system_prompt: v })}
               onUserPromptTplChange={(v) => setForm({ ...form, user_prompt_tpl: v })}
+              disabled={saving}
+            />
+            <AdvancedTranslationSettings
+              token={token}
+              value={{
+                compact_model_source: form.compact_model_source,
+                compact_model_ref:    form.compact_model_ref,
+                chunk_size_tokens:    form.chunk_size_tokens,
+                invoke_timeout_secs:  form.invoke_timeout_secs,
+              }}
+              onChange={(v) => setForm({ ...form, ...v })}
               disabled={saving}
             />
 

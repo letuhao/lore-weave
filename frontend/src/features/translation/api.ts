@@ -9,6 +9,10 @@ export type UserTranslationPreferences = {
   model_ref: string | null;
   system_prompt: string;
   user_prompt_tpl: string;
+  compact_model_source: ModelSource | null;
+  compact_model_ref: string | null;
+  chunk_size_tokens: number;
+  invoke_timeout_secs: number;
   updated_at: string;
 };
 
@@ -53,6 +57,10 @@ export type TranslationJob = {
   model_ref: string;
   system_prompt: string;
   user_prompt_tpl: string;
+  compact_model_source: ModelSource | null;
+  compact_model_ref: string | null;
+  chunk_size_tokens: number;
+  invoke_timeout_secs: number;
   chapter_ids: string[];
   total_chapters: number;
   completed_chapters: number;
@@ -70,6 +78,10 @@ type PreferencesPayload = {
   model_ref: string | null;
   system_prompt: string;
   user_prompt_tpl: string;
+  compact_model_source: ModelSource | null;
+  compact_model_ref: string | null;
+  chunk_size_tokens: number;
+  invoke_timeout_secs: number;
 };
 
 export const translationApi = {

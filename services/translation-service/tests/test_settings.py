@@ -53,7 +53,7 @@ def test_get_preferences_returns_saved_row(client, fake_pool):
 
 
 def test_get_preferences_requires_auth(fake_pool):
-    """No auth token should return 403."""
+    """No auth token should return 401 (Unauthorized — missing credential per RFC 7235)."""
     from fastapi.testclient import TestClient
     from unittest.mock import AsyncMock, patch
 
@@ -62,12 +62,14 @@ def test_get_preferences_requires_auth(fake_pool):
         patch("app.database.close_pool", new_callable=AsyncMock),
         patch("app.database.get_pool", return_value=fake_pool),
         patch("app.migrate.run_migrations", new_callable=AsyncMock),
+        patch("app.broker.connect_broker", new_callable=AsyncMock),
+        patch("app.broker.close_broker", new_callable=AsyncMock),
     ):
         from app.main import app as _app
         # No dependency overrides — real JWT check applies
         with TestClient(_app, raise_server_exceptions=False) as c:
             resp = c.get("/v1/translation/preferences")
-        assert resp.status_code == 403
+        assert resp.status_code == 401
 
 
 # ── PUT /v1/translation/preferences ──────────────────────────────────────────

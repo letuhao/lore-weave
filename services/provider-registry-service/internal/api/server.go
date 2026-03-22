@@ -25,11 +25,12 @@ import (
 )
 
 type Server struct {
-	pool      *pgxpool.Pool
-	cfg       *config.Config
-	secret    []byte
-	secretKey []byte
-	client    *http.Client
+	pool         *pgxpool.Pool
+	cfg          *config.Config
+	secret       []byte
+	secretKey    []byte
+	client       *http.Client // short-timeout: sync/billing calls (15s)
+	invokeClient *http.Client // no timeout: AI generation can take minutes
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
@@ -43,11 +44,12 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 		key = padded
 	}
 	return &Server{
-		pool:      pool,
-		cfg:       cfg,
-		secret:    []byte(cfg.JWTSecret),
-		secretKey: key,
-		client:    &http.Client{Timeout: 15 * time.Second},
+		pool:         pool,
+		cfg:          cfg,
+		secret:       []byte(cfg.JWTSecret),
+		secretKey:    key,
+		client:       &http.Client{Timeout: 15 * time.Second},
+		invokeClient: &http.Client{}, // no Timeout — context deadline from request controls cancellation
 	}
 }
 
@@ -85,6 +87,7 @@ func (s *Server) Router() http.Handler {
 		r.Delete("/platform-models/{platform_model_id}", s.deletePlatformModel)
 
 		r.Post("/invoke", s.invokeModel)
+		r.Get("/models/{model_ref}/context-window", s.getModelContextWindow)
 	})
 
 	return r
@@ -1156,7 +1159,7 @@ WHERE platform_model_id=$1 AND status='active'
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid model_source")
 		return
 	}
-	adapter, err := provider.ResolveAdapter(providerKind, s.client)
+	adapter, err := provider.ResolveAdapter(providerKind, s.invokeClient)
 	if err != nil {
 		writeError(w, http.StatusConflict, "M03_PROVIDER_ROUTE_VIOLATION", "model route violation")
 		return
@@ -1278,6 +1281,63 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		"latency_ms":       latencyMs,
 		"response_preview": preview,
 	})
+}
+
+// getModelContextWindow returns the context window size (in tokens) for a given model.
+// Called internally by the translation-worker before chunking a chapter.
+// No auth required — this endpoint is internal only and returns a safe fallback on any error.
+func (s *Server) getModelContextWindow(w http.ResponseWriter, r *http.Request) {
+	modelRefStr := chi.URLParam(r, "model_ref")
+	modelRef, err := uuid.Parse(modelRefStr)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"context_window": 8192})
+		return
+	}
+	modelSource := r.URL.Query().Get("model_source")
+
+	const fallback = 8192
+
+	if modelSource == "platform_model" {
+		var providerKind, providerModelName string
+		err = s.pool.QueryRow(r.Context(),
+			"SELECT provider_kind, provider_model_name FROM platform_models WHERE platform_model_id=$1 AND status='active'",
+			modelRef,
+		).Scan(&providerKind, &providerModelName)
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"context_window": fallback})
+			return
+		}
+		adapter, err := provider.ResolveAdapter(providerKind, s.client)
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"context_window": fallback})
+			return
+		}
+		models, err := adapter.ListModels(r.Context(), "", "")
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"context_window": fallback})
+			return
+		}
+		for _, m := range models {
+			if m.ProviderModelName == providerModelName && m.ContextLength != nil {
+				writeJSON(w, http.StatusOK, map[string]any{"context_window": *m.ContextLength})
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"context_window": fallback})
+		return
+	}
+
+	// user_model — look up context_length stored during inventory sync
+	var contextLength *int
+	err = s.pool.QueryRow(r.Context(),
+		"SELECT context_length FROM user_models WHERE user_model_id=$1 AND is_active=true",
+		modelRef,
+	).Scan(&contextLength)
+	if err != nil || contextLength == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"context_window": fallback})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"context_window": *contextLength})
 }
 
 func (s *Server) recordInvocation(ctx context.Context, payload map[string]any) (uuid.UUID, string, float64, error) {

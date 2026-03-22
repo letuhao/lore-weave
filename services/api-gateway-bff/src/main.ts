@@ -1,10 +1,12 @@
 import { NestFactory } from '@nestjs/core';
+import { WsAdapter } from '@nestjs/platform-ws';
 import { AppModule } from './app.module';
 import { configureGatewayApp } from './gateway-setup';
 
 async function bootstrap() {
   // Body must stream to auth-service; default JSON parser would consume /v1 bodies.
   const app = await NestFactory.create(AppModule, { bodyParser: false });
+  app.useWebSocketAdapter(new WsAdapter(app));
   const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:8081';
   const bookUrl = process.env.BOOK_SERVICE_URL || 'http://localhost:8082';
   const sharingUrl = process.env.SHARING_SERVICE_URL || 'http://localhost:8083';

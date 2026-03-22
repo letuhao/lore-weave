@@ -37,6 +37,10 @@ def client(fake_pool):
         patch("app.database.close_pool", new_callable=AsyncMock),
         patch("app.database.get_pool", return_value=fake_pool),
         patch("app.migrate.run_migrations", new_callable=AsyncMock),
+        patch("app.broker.connect_broker", new_callable=AsyncMock),
+        patch("app.broker.close_broker", new_callable=AsyncMock),
+        patch("app.routers.jobs.publish", new_callable=AsyncMock),
+        patch("app.routers.jobs.publish_event", new_callable=AsyncMock),
     ):
         from app.main import app
         # Override get_db to return our fake pool directly

@@ -217,3 +217,5 @@ services/api-gateway-bff/package-lock.json
 services/auth-service/tmp/
 
 .claude/settings.local.json
+
+.claude/worktrees/romantic-franklin

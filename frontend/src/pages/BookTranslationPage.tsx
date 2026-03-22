@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '@/auth';
+import { useJobEvents, type JobEvent } from '@/hooks/useJobEvents';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -9,6 +10,7 @@ import { ModelSelector } from '@/components/translation/ModelSelector';
 import { PromptEditor } from '@/components/translation/PromptEditor';
 import { TranslateButton } from '@/components/translation/TranslateButton';
 import { ChapterTranslationPanel } from '@/components/translation/ChapterTranslationPanel';
+import { AdvancedTranslationSettings } from '@/components/translation/AdvancedTranslationSettings';
 import { translationApi, type BookTranslationSettings, type TranslationJob, type ModelSource } from '@/features/translation/api';
 import { booksApi, type Chapter } from '@/features/books/api';
 
@@ -18,15 +20,23 @@ type FormState = {
   model_ref: string | null;
   system_prompt: string;
   user_prompt_tpl: string;
+  compact_model_source: ModelSource | null;
+  compact_model_ref: string | null;
+  chunk_size_tokens: number;
+  invoke_timeout_secs: number;
 };
 
 function settingsToForm(s: BookTranslationSettings): FormState {
   return {
-    target_language: s.target_language,
-    model_source: s.model_source,
-    model_ref: s.model_ref,
-    system_prompt: s.system_prompt,
-    user_prompt_tpl: s.user_prompt_tpl,
+    target_language:      s.target_language,
+    model_source:         s.model_source,
+    model_ref:            s.model_ref,
+    system_prompt:        s.system_prompt,
+    user_prompt_tpl:      s.user_prompt_tpl,
+    compact_model_source: s.compact_model_source,
+    compact_model_ref:    s.compact_model_ref,
+    chunk_size_tokens:    s.chunk_size_tokens ?? 2000,
+    invoke_timeout_secs:  s.invoke_timeout_secs ?? 300,
   };
 }
 
@@ -67,9 +77,14 @@ export default function BookTranslationPage() {
       .finally(() => setLoadingJobs(false));
   }, [token, bookId]);
 
-  // Pre-select untranslated chapters once chapters + jobs are loaded
+  // Pre-select untranslated chapters — runs exactly once after initial load.
+  // B1 fix: preselectedRef guards against re-firing when jobs update via WS events.
+  const preselectedRef = useRef(false);
   useEffect(() => {
     if (loadingChapters || loadingJobs) return;
+    if (preselectedRef.current) return;
+    preselectedRef.current = true;
+
     const translatedIds = new Set(
       jobs
         .filter((j) => j.status === 'completed' || j.status === 'partial')
@@ -79,7 +94,36 @@ export default function BookTranslationPage() {
       .filter((c) => !translatedIds.has(c.chapter_id))
       .map((c) => c.chapter_id);
     setSelectedIds(untranslated.length > 0 ? untranslated : chapters.map((c) => c.chapter_id));
-  }, [loadingChapters, loadingJobs, chapters, jobs]);
+  }, [loadingChapters, loadingJobs]); // chapters + jobs intentionally excluded — pre-selection is one-shot
+
+  // Page-level WS subscription keeps Recent Jobs list live for in-progress jobs
+  const handleJobEvent = useCallback((e: JobEvent) => {
+    if (e.job_type !== 'translation') return;
+    if (e.event === 'job.status_changed' || e.event === 'job.chapter_done') {
+      setJobs((prev) =>
+        prev.map((j) =>
+          j.job_id === e.job_id
+            ? { ...j, ...(e.payload as Partial<TranslationJob>) }
+            : j,
+        ),
+      );
+    }
+    if (e.event === 'job.created') {
+      // new job from another tab/device — refresh list
+      if (bookId) {
+        translationApi.listJobs(token, bookId, { limit: 5 }).then(setJobs).catch(() => {});
+      }
+    }
+  }, [token, bookId]);
+
+  const handlePageReconnect = useCallback(() => {
+    // WS reconnected — re-fetch jobs to fill any gap
+    if (bookId) {
+      translationApi.listJobs(token, bookId, { limit: 5 }).then(setJobs).catch(() => {});
+    }
+  }, [token, bookId]);
+
+  useJobEvents({ onEvent: handleJobEvent, onReconnect: handlePageReconnect });
 
   function toggleChapter(id: string) {
     setSelectedIds((prev) =>
@@ -97,11 +141,15 @@ export default function BookTranslationPage() {
     setSaving(true); setSaveError(''); setSaveSuccess('');
     try {
       const saved = await translationApi.putBookSettings(token, bookId, {
-        target_language: form.target_language,
-        model_source: form.model_source,
-        model_ref: form.model_ref,
-        system_prompt: form.system_prompt,
-        user_prompt_tpl: form.user_prompt_tpl,
+        target_language:      form.target_language,
+        model_source:         form.model_source,
+        model_ref:            form.model_ref,
+        system_prompt:        form.system_prompt,
+        user_prompt_tpl:      form.user_prompt_tpl,
+        compact_model_source: form.compact_model_source,
+        compact_model_ref:    form.compact_model_ref,
+        chunk_size_tokens:    form.chunk_size_tokens,
+        invoke_timeout_secs:  form.invoke_timeout_secs,
       });
       setSettings(saved);
       setSaveSuccess('Book translation settings saved');
@@ -161,6 +209,17 @@ export default function BookTranslationPage() {
                   userPromptTpl={form.user_prompt_tpl}
                   onSystemPromptChange={(v) => setForm({ ...form, system_prompt: v })}
                   onUserPromptTplChange={(v) => setForm({ ...form, user_prompt_tpl: v })}
+                  disabled={saving}
+                />
+                <AdvancedTranslationSettings
+                  token={token}
+                  value={{
+                    compact_model_source: form.compact_model_source,
+                    compact_model_ref:    form.compact_model_ref,
+                    chunk_size_tokens:    form.chunk_size_tokens,
+                    invoke_timeout_secs:  form.invoke_timeout_secs,
+                  }}
+                  onChange={(v) => setForm({ ...form, ...v })}
                   disabled={saving}
                 />
                 {saveError && <Alert variant="destructive"><AlertDescription>{saveError}</AlertDescription></Alert>}

@@ -50,15 +50,22 @@ async def put_preferences(
         """
         INSERT INTO user_translation_preferences
           (user_id, target_language, model_source, model_ref,
-           system_prompt, user_prompt_tpl, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, now())
+           system_prompt, user_prompt_tpl,
+           compact_model_source, compact_model_ref,
+           chunk_size_tokens, invoke_timeout_secs,
+           updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
         ON CONFLICT (user_id) DO UPDATE SET
-          target_language = EXCLUDED.target_language,
-          model_source    = EXCLUDED.model_source,
-          model_ref       = EXCLUDED.model_ref,
-          system_prompt   = EXCLUDED.system_prompt,
-          user_prompt_tpl = EXCLUDED.user_prompt_tpl,
-          updated_at      = now()
+          target_language      = EXCLUDED.target_language,
+          model_source         = EXCLUDED.model_source,
+          model_ref            = EXCLUDED.model_ref,
+          system_prompt        = EXCLUDED.system_prompt,
+          user_prompt_tpl      = EXCLUDED.user_prompt_tpl,
+          compact_model_source = EXCLUDED.compact_model_source,
+          compact_model_ref    = EXCLUDED.compact_model_ref,
+          chunk_size_tokens    = EXCLUDED.chunk_size_tokens,
+          invoke_timeout_secs  = EXCLUDED.invoke_timeout_secs,
+          updated_at           = now()
         RETURNING *
         """,
         UUID(user_id),
@@ -67,6 +74,10 @@ async def put_preferences(
         payload.model_ref,
         payload.system_prompt,
         payload.user_prompt_tpl,
+        payload.compact_model_source,
+        payload.compact_model_ref,
+        payload.chunk_size_tokens,
+        payload.invoke_timeout_secs,
     )
     return UserTranslationPreferences(**dict(row))
 
@@ -100,8 +111,16 @@ async def get_book_settings(
             user_id=UUID(user_id),
             owner_user_id=UUID(user_id),
             is_default=True,
-            **{k: d[k] for k in ("target_language", "model_source", "model_ref",
-                                  "system_prompt", "user_prompt_tpl", "updated_at")},
+            target_language=d["target_language"],
+            model_source=d["model_source"],
+            model_ref=d["model_ref"],
+            system_prompt=d["system_prompt"],
+            user_prompt_tpl=d["user_prompt_tpl"],
+            compact_model_source=d.get("compact_model_source"),
+            compact_model_ref=d.get("compact_model_ref"),
+            chunk_size_tokens=d.get("chunk_size_tokens", 2000),
+            invoke_timeout_secs=d.get("invoke_timeout_secs", 300),
+            updated_at=d["updated_at"],
         )
 
     # Fall back to hard-coded defaults
@@ -131,15 +150,22 @@ async def put_book_settings(
         """
         INSERT INTO book_translation_settings
           (book_id, owner_user_id, target_language, model_source, model_ref,
-           system_prompt, user_prompt_tpl, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+           system_prompt, user_prompt_tpl,
+           compact_model_source, compact_model_ref,
+           chunk_size_tokens, invoke_timeout_secs,
+           updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
         ON CONFLICT (book_id) DO UPDATE SET
-          target_language = EXCLUDED.target_language,
-          model_source    = EXCLUDED.model_source,
-          model_ref       = EXCLUDED.model_ref,
-          system_prompt   = EXCLUDED.system_prompt,
-          user_prompt_tpl = EXCLUDED.user_prompt_tpl,
-          updated_at      = now()
+          target_language      = EXCLUDED.target_language,
+          model_source         = EXCLUDED.model_source,
+          model_ref            = EXCLUDED.model_ref,
+          system_prompt        = EXCLUDED.system_prompt,
+          user_prompt_tpl      = EXCLUDED.user_prompt_tpl,
+          compact_model_source = EXCLUDED.compact_model_source,
+          compact_model_ref    = EXCLUDED.compact_model_ref,
+          chunk_size_tokens    = EXCLUDED.chunk_size_tokens,
+          invoke_timeout_secs  = EXCLUDED.invoke_timeout_secs,
+          updated_at           = now()
         RETURNING *
         """,
         book_id,
@@ -149,6 +175,10 @@ async def put_book_settings(
         payload.model_ref,
         payload.system_prompt,
         payload.user_prompt_tpl,
+        payload.compact_model_source,
+        payload.compact_model_ref,
+        payload.chunk_size_tokens,
+        payload.invoke_timeout_secs,
     )
     d = dict(row)
     return BookTranslationSettings(**d, user_id=UUID(user_id), is_default=False)

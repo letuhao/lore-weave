@@ -105,7 +105,7 @@ func (a *openaiAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, mod
 	payload := map[string]any{
 		"model":      modelName,
 		"messages":   extractMessages(input),
-		"max_tokens": 512,
+		"max_tokens": 8192,
 	}
 	out, err := postJSON(ctx, a.client, base+"/v1/chat/completions",
 		map[string]string{"Authorization": "Bearer " + secret},
@@ -149,7 +149,7 @@ func (a *anthropicAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, 
 	payload := map[string]any{
 		"model":      modelName,
 		"messages":   extractMessages(input),
-		"max_tokens": 512,
+		"max_tokens": 8192,
 	}
 	out, err := postJSON(ctx, a.client, base+"/v1/messages",
 		map[string]string{
@@ -233,7 +233,7 @@ func (a *lmStudioAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, m
 	payload := map[string]any{
 		"model":      modelName,
 		"messages":   extractMessages(input),
-		"max_tokens": 512,
+		"max_tokens": 8192,
 	}
 	headers := map[string]string{}
 	if secret != "" {

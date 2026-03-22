@@ -176,6 +176,22 @@ services:
     ports:
       - "8086:8086"
 
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: loreweave
+      RABBITMQ_DEFAULT_PASS: loreweave_dev
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - loreweave_rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+
   translation-service:
     build:
       context: ../services/translation-service
@@ -185,18 +201,43 @@ services:
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
+      RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       PORT: "8087"
     depends_on:
       postgres:
         condition: service_healthy
       postgres-db-bootstrap:
         condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
       book-service:
         condition: service_healthy
       provider-registry-service:
         condition: service_healthy
     ports:
       - "8087:8087"
+
+  translation-worker:
+    build:
+      context: ../services/translation-service
+      dockerfile: Dockerfile.worker
+    environment:
+      DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_translation
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
+      PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
+      RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-db-bootstrap:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      book-service:
+        condition: service_healthy
+      provider-registry-service:
+        condition: service_healthy
 
   api-gateway-bff:
     build:
@@ -211,6 +252,8 @@ services:
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       TRANSLATION_SERVICE_URL: http://translation-service:8087
+      RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
     depends_on:
       auth-service:
         condition: service_healthy
@@ -225,6 +268,8 @@ services:
       usage-billing-service:
         condition: service_healthy
       translation-service:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     ports:
       - "3000:3000"
@@ -243,3 +288,4 @@ services:
 volumes:
   loreweave_pg:
   loreweave_minio:
+  loreweave_rabbitmq:

@@ -65,6 +65,41 @@ CREATE TABLE IF NOT EXISTS chapter_translations (
 );
 CREATE INDEX IF NOT EXISTS idx_ct_job     ON chapter_translations(job_id, chapter_id);
 CREATE INDEX IF NOT EXISTS idx_ct_chapter ON chapter_translations(chapter_id, created_at DESC);
+
+-- V2: chunk + session config columns
+ALTER TABLE user_translation_preferences
+  ADD COLUMN IF NOT EXISTS compact_model_source TEXT,
+  ADD COLUMN IF NOT EXISTS compact_model_ref     UUID,
+  ADD COLUMN IF NOT EXISTS chunk_size_tokens     INT  NOT NULL DEFAULT 2000,
+  ADD COLUMN IF NOT EXISTS invoke_timeout_secs   INT  NOT NULL DEFAULT 300;
+
+ALTER TABLE book_translation_settings
+  ADD COLUMN IF NOT EXISTS compact_model_source TEXT,
+  ADD COLUMN IF NOT EXISTS compact_model_ref     UUID,
+  ADD COLUMN IF NOT EXISTS chunk_size_tokens     INT  NOT NULL DEFAULT 2000,
+  ADD COLUMN IF NOT EXISTS invoke_timeout_secs   INT  NOT NULL DEFAULT 300;
+
+ALTER TABLE translation_jobs
+  ADD COLUMN IF NOT EXISTS compact_model_source TEXT,
+  ADD COLUMN IF NOT EXISTS compact_model_ref     UUID,
+  ADD COLUMN IF NOT EXISTS chunk_size_tokens     INT  NOT NULL DEFAULT 2000,
+  ADD COLUMN IF NOT EXISTS invoke_timeout_secs   INT  NOT NULL DEFAULT 300;
+
+-- Per-chapter chunk rows (observability; recovery restarts chapter from scratch)
+CREATE TABLE IF NOT EXISTS chapter_translation_chunks (
+  id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  chapter_translation_id  UUID NOT NULL REFERENCES chapter_translations(id) ON DELETE CASCADE,
+  chunk_index             INT  NOT NULL,
+  chunk_text              TEXT NOT NULL,
+  translated_text         TEXT,
+  compact_memo_applied    TEXT,
+  status                  TEXT NOT NULL DEFAULT 'pending',
+  input_tokens            INT,
+  output_tokens           INT,
+  created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (chapter_translation_id, chunk_index)
+);
+CREATE INDEX IF NOT EXISTS idx_ctc_ct ON chapter_translation_chunks(chapter_translation_id);
 """
 
 
