@@ -3,10 +3,10 @@
 ## Document Metadata
 
 - Document ID: LW-00
-- Version: 1.20.0
+- Version: 1.21.0
 - Status: Approved
 - Owner: Decision Authority + Execution Authority
-- Last Updated: 2026-03-21
+- Last Updated: 2026-03-22
 - Approved By: Governance Board
 - Approved Date: 2026-03-21
 - Summary: Entry point for documentation navigation, reading order, and migration mapping.
@@ -16,6 +16,7 @@
 
 | Version | Date       | Change                                                        | Author    |
 | ------- | ---------- | ------------------------------------------------------------- | --------- |
+| 1.21.0 | 2026-03-22 | Registered `MODULE03_SITUATION_AND_TODO.md` (LW-IMPL-M03-01) — M03 smoke complete, implementation situation and todo backlog | Assistant |
 | 1.20.0 | 2026-03-21 | Status governance update: approved Module 03 planning documents `44`-`55` by Decision Authority | Assistant |
 | 1.19.0 | 2026-03-21 | Registered Module 03 planning pack `44`-`55` (provider registry, model billing, deep-design, readiness gate) and linked proposed contract domains for model registry/billing | Assistant |
 | 1.18.0 | 2026-03-21 | Status governance update: approved Module 02 UI/UX planning documents `36`-`43` by Decision Authority | Assistant |
@@ -243,6 +244,18 @@ Use these values consistently in every document metadata block:
 | --- | --- | --- | --- |
 | (runbook) | `MODULE01_LOCAL_DEV.md` | `docs/implementation` | Local ports, stack startup, smoke checklist |
 | LW-IMPL-M01-01 | `MODULE01_DEFERRED_FOLLOWUPS.md` | `docs/implementation` | Deferred acceptance and follow-ups before formal M01 closure |
+
+## Module 02 implementation adjunct (backlog)
+
+| Doc ID | File | Folder | Purpose |
+| --- | --- | --- | --- |
+| LW-IMPL-M02-01 | `MODULE02_SITUATION_AND_TODO.md` | `docs/implementation` | M02 implementation situation, explicitly-not-implemented inventory, and todo backlog |
+
+## Module 03 implementation adjunct (backlog)
+
+| Doc ID | File | Folder | Purpose |
+| --- | --- | --- | --- |
+| LW-IMPL-M03-01 | `MODULE03_SITUATION_AND_TODO.md` | `docs/implementation` | M03 smoke complete; implementation situation, explicitly-not-implemented inventory, and todo backlog |
 
 ## Module 01 Monorepo Governance Note
 
