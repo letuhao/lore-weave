@@ -38,10 +38,11 @@ func (s *Server) listKinds(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// Fetch all kinds ordered by sort_order
+	// Fetch all visible kinds ordered by sort_order
 	kindRows, err := s.pool.Query(ctx, `
 		SELECT kind_id, code, name, icon, color, is_default, is_hidden, sort_order, genre_tags
 		FROM entity_kinds
+		WHERE is_hidden = false
 		ORDER BY sort_order`)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to query kinds")

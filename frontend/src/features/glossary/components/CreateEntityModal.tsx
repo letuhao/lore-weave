@@ -5,44 +5,29 @@ type Props = {
   onSelect: (kind: EntityKind) => void;
   onClose: () => void;
   isCreating?: boolean;
+  createError?: string;
 };
-
-// Group kind codes by genre for visual separation.
-const GENRE_ORDER: { label: string; tags: string[] }[] = [
-  { label: 'Universal', tags: ['universal'] },
-  { label: 'Fantasy', tags: ['fantasy'] },
-  { label: 'Romance / Drama', tags: ['romance', 'drama', 'historical'] },
-];
-
-function groupKinds(kinds: EntityKind[]) {
-  return GENRE_ORDER.map(({ label, tags }) => ({
-    label,
-    kinds: kinds.filter((k) =>
-      k.genre_tags.some((t) => tags.includes(t)) &&
-      !kinds
-        .filter((k2) =>
-          GENRE_ORDER.slice(0, GENRE_ORDER.findIndex((g) => g.tags.includes(tags[0])))
-            .flatMap((g) => g.tags)
-            .some((t) => k2.genre_tags.includes(t))
-        )
-        .includes(k),
-    ),
-  })).filter((g) => g.kinds.length > 0);
-}
 
 /**
  * Modal presenting the 12 default entity kinds as a clickable grid.
- * In SP-1 the onSelect callback is wired but creation is a no-op until SP-2.
+ * In SP-2 onSelect triggers entity creation in the parent (GlossaryPage).
  */
-export function CreateEntityModal({ kinds, onSelect, onClose, isCreating = false }: Props) {
-  // Simple grouping: universal first, then fantasy, then romance/drama
+export function CreateEntityModal({
+  kinds,
+  onSelect,
+  onClose,
+  isCreating = false,
+  createError = '',
+}: Props) {
   const universal = kinds.filter((k) => k.genre_tags.includes('universal'));
   const fantasy = kinds.filter(
     (k) => k.genre_tags.includes('fantasy') && !k.genre_tags.includes('universal'),
   );
   const romance = kinds.filter(
     (k) =>
-      (k.genre_tags.includes('romance') || k.genre_tags.includes('drama') || k.genre_tags.includes('historical')) &&
+      (k.genre_tags.includes('romance') ||
+        k.genre_tags.includes('drama') ||
+        k.genre_tags.includes('historical')) &&
       !k.genre_tags.includes('universal') &&
       !k.genre_tags.includes('fantasy'),
   );
@@ -60,17 +45,30 @@ export function CreateEntityModal({ kinds, onSelect, onClose, isCreating = false
           <h2 className="text-base font-semibold">Choose entity type</h2>
           <button
             onClick={onClose}
-            className="text-muted-foreground hover:text-foreground"
+            disabled={isCreating}
+            className="text-muted-foreground hover:text-foreground disabled:opacity-50"
             aria-label="Close"
           >
             ✕
           </button>
         </div>
 
+        {createError && (
+          <p className="mb-3 rounded border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {createError}
+          </p>
+        )}
+
+        {isCreating && (
+          <div className="mb-3 text-center text-sm text-muted-foreground">
+            Creating entity…
+          </div>
+        )}
+
         <div className="space-y-4">
           {groups.map((group) => (
             <div key={group.label}>
-              <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {group.label}
               </p>
               <div className="grid grid-cols-3 gap-2">
@@ -83,7 +81,10 @@ export function CreateEntityModal({ kinds, onSelect, onClose, isCreating = false
                     style={{ borderColor: kind.color + '40' }}
                   >
                     <span className="text-2xl">{kind.icon}</span>
-                    <span className="text-xs font-medium leading-tight" style={{ color: kind.color }}>
+                    <span
+                      className="text-xs font-medium leading-tight"
+                      style={{ color: kind.color }}
+                    >
                       {kind.name}
                     </span>
                   </button>

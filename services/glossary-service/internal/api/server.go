@@ -39,6 +39,18 @@ func (s *Server) Router() http.Handler {
 
 	r.Route("/v1/glossary", func(r chi.Router) {
 		r.Get("/kinds", s.listKinds)
+
+		r.Route("/books/{book_id}", func(r chi.Router) {
+			r.Route("/entities", func(r chi.Router) {
+				r.Get("/", s.listEntities)
+				r.Post("/", s.createEntity)
+				r.Route("/{entity_id}", func(r chi.Router) {
+					r.Get("/", s.getEntityDetail)
+					r.Patch("/", s.patchEntity)
+					r.Delete("/", s.deleteEntity)
+				})
+			})
+		})
 	})
 
 	return r

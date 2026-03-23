@@ -1,6 +1,10 @@
-// Module 05 — Glossary & Lore Management types (SP-1 foundation)
+// Module 05 — Glossary & Lore Management types
 
 export type FieldType = 'text' | 'textarea' | 'select' | 'number' | 'date' | 'tags' | 'url' | 'boolean';
+export type EntityStatus = 'draft' | 'active' | 'inactive';
+export type Confidence = 'verified' | 'draft' | 'machine';
+export type Relevance = 'major' | 'appears' | 'mentioned';
+export type EvidenceType = 'quote' | 'summary' | 'reference';
 
 export type AttributeDefinition = {
   attr_def_id: string;
@@ -25,9 +29,10 @@ export type EntityKind = {
   default_attributes: AttributeDefinition[];
 };
 
-// ── Entity (added in SP-2) ───────────────────────────────────────────────────
+// Compact kind embedded in entity list/detail responses
+export type KindSummary = Pick<EntityKind, 'kind_id' | 'code' | 'name' | 'icon' | 'color'>;
 
-export type EntityStatus = 'draft' | 'active' | 'inactive';
+// ── Entity ────────────────────────────────────────────────────────────────────
 
 export type ChapterLink = {
   link_id: string;
@@ -35,12 +40,10 @@ export type ChapterLink = {
   chapter_id: string;
   chapter_title: string | null;
   chapter_index: number | null;
-  relevance: 'major' | 'appears' | 'mentioned';
+  relevance: Relevance;
   note: string | null;
   added_at: string;
 };
-
-export type Confidence = 'verified' | 'draft' | 'machine';
 
 export type Translation = {
   translation_id: string;
@@ -66,7 +69,7 @@ export type Evidence = {
   chapter_id: string | null;
   chapter_title: string | null;
   block_or_line: string;
-  evidence_type: 'quote' | 'summary' | 'reference';
+  evidence_type: EvidenceType;
   original_language: string;
   original_text: string;
   note: string | null;
@@ -89,7 +92,7 @@ export type GlossaryEntitySummary = {
   entity_id: string;
   book_id: string;
   kind_id: string;
-  kind: EntityKind;
+  kind: KindSummary;
   display_name: string;
   display_name_translation: string | null;
   status: EntityStatus;
@@ -106,7 +109,14 @@ export type GlossaryEntity = GlossaryEntitySummary & {
   attribute_values: AttributeValue[];
 };
 
-// ── Filter state ─────────────────────────────────────────────────────────────
+export type GlossaryEntityListResponse = {
+  items: GlossaryEntitySummary[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+// ── Filter state ──────────────────────────────────────────────────────────────
 
 export type FilterState = {
   kindCodes: string[];
@@ -114,4 +124,12 @@ export type FilterState = {
   chapterIds: string[] | 'unlinked';
   searchQuery: string;
   tags: string[];
+};
+
+export const defaultFilters: FilterState = {
+  kindCodes: [],
+  status: 'all',
+  chapterIds: [],
+  searchQuery: '',
+  tags: [],
 };

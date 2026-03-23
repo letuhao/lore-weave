@@ -197,3 +197,64 @@ func TestSortOrderUnique(t *testing.T) {
 		seen[k.SortOrder] = k.Code
 	}
 }
+
+// ── entity endpoint auth tests (no DB required) ───────────────────────────────
+
+// TestEntityEndpointsRequireAuth verifies all 5 entity endpoints return 401 without a token.
+func TestEntityEndpointsRequireAuth(t *testing.T) {
+	srv := newTestServer(t, nil)
+	fakeBook := "00000000-0000-0000-0000-000000000001"
+	fakeEntity := "00000000-0000-0000-0000-000000000002"
+
+	cases := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, "/v1/glossary/books/" + fakeBook + "/entities"},
+		{http.MethodGet, "/v1/glossary/books/" + fakeBook + "/entities"},
+		{http.MethodGet, "/v1/glossary/books/" + fakeBook + "/entities/" + fakeEntity},
+		{http.MethodPatch, "/v1/glossary/books/" + fakeBook + "/entities/" + fakeEntity},
+		{http.MethodDelete, "/v1/glossary/books/" + fakeBook + "/entities/" + fakeEntity},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			w := httptest.NewRecorder()
+			srv.Router().ServeHTTP(w, req)
+			if w.Code != http.StatusUnauthorized {
+				t.Errorf("expected 401, got %d", w.Code)
+			}
+		})
+	}
+}
+
+// TestEntityEndpointsRejectBadToken verifies all 5 entity endpoints return 401 for an invalid token.
+func TestEntityEndpointsRejectBadToken(t *testing.T) {
+	srv := newTestServer(t, nil)
+	fakeBook := "00000000-0000-0000-0000-000000000001"
+	fakeEntity := "00000000-0000-0000-0000-000000000002"
+
+	cases := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, "/v1/glossary/books/" + fakeBook + "/entities"},
+		{http.MethodGet, "/v1/glossary/books/" + fakeBook + "/entities"},
+		{http.MethodGet, "/v1/glossary/books/" + fakeBook + "/entities/" + fakeEntity},
+		{http.MethodPatch, "/v1/glossary/books/" + fakeBook + "/entities/" + fakeEntity},
+		{http.MethodDelete, "/v1/glossary/books/" + fakeBook + "/entities/" + fakeEntity},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			req.Header.Set("Authorization", "Bearer not.a.valid.token")
+			w := httptest.NewRecorder()
+			srv.Router().ServeHTTP(w, req)
+			if w.Code != http.StatusUnauthorized {
+				t.Errorf("expected 401, got %d", w.Code)
+			}
+		})
+	}
+}
