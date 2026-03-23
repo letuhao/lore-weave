@@ -102,11 +102,16 @@ interface EntityKind {
   id: string;
   code: string;              // "character", "location", "item", etc.
   name: string;
+  description?: string;      // what this kind represents
   icon: string;              // emoji or icon identifier
   color: string;             // tag/badge color
   defaultAttributes: AttributeDefinition[];
   isDefault: boolean;        // system-provided vs user-created
+  isHidden: boolean;         // hidden kinds don't appear in pickers/filters
   sortOrder: number;
+  clonedFromKindId?: string; // if created by cloning another kind
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ─── Chapter Link (many-to-many join) ─────────────────
@@ -307,24 +312,59 @@ Below is the recommended set of default entity kinds for a novel glossary system
 │       ├── <TagEditor>
 │       ├── <CreatedAt / UpdatedAt>
 │       └── <SaveButton>
-├── <KindManagerModal>                     ← CRUD for entity kinds
-│   ├── <KindList>
-│   │   └── <KindRow>[]
-│   │       ├── <IconPicker>
-│   │       ├── <ColorPicker>
-│   │       ├── <NameEditor>
-│   │       └── <DefaultAttributeEditor>
-│   └── <AddKindButton>
-└── <AttributeSchemaEditor>                ← manage attribute definitions per kind
-    ├── <AttributeDefinitionRow>[]
-    │   ├── <CodeInput>
-    │   ├── <NameInput>
-    │   ├── <DescriptionInput>
-    │   ├── <FieldTypePicker>
-    │   ├── <RequiredToggle>
-    │   ├── <ActiveToggle>
-    │   └── <DragHandle>                   ← reorder
-    └── <AddAttributeDefinitionButton>
+├── <KindManager>                          ← full CRUD for entity kinds (modal or page)
+│   ├── <KindListPanel>                    ← left: scrollable list of all kinds
+│   │   ├── <KindSearchInput>
+│   │   ├── <KindGroup label="Default">
+│   │   │   └── <KindRow>[]               ← draggable, clickable rows
+│   │   │       ├── <DragHandle>
+│   │   │       ├── <KindIcon>             ← emoji icon
+│   │   │       ├── <KindName>
+│   │   │       ├── <AttrCount>
+│   │   │       ├── <EntityCount>
+│   │   │       └── <StatusDot>            ← active / hidden
+│   │   ├── <KindGroup label="Custom">
+│   │   │   └── <KindRow>[]
+│   │   └── <AddCustomKindButton>
+│   ├── <KindDetailPanel>                  ← right: edit selected kind
+│   │   ├── <KindIdentitySection>
+│   │   │   ├── <EmojiPicker>
+│   │   │   ├── <ColorPicker>
+│   │   │   ├── <NameInput>
+│   │   │   ├── <CodeInput>                ← auto-slug, read-only after entities exist
+│   │   │   ├── <DescriptionInput>
+│   │   │   ├── <StatusToggle>             ← active / hidden
+│   │   │   └── <ImpactWarning>            ← "34 entities use this kind"
+│   │   ├── <AttributeSchemaSection>
+│   │   │   ├── <AttributeDefinitionRow>[] ← draggable, inline-editable
+│   │   │   │   ├── <DragHandle>
+│   │   │   │   ├── <VisibilityCheckbox>   ← show/hide attribute
+│   │   │   │   ├── <CodeLabel>
+│   │   │   │   ├── <NameLabel>
+│   │   │   │   ├── <FieldTypeBadge>
+│   │   │   │   ├── <RequiredToggle>
+│   │   │   │   ├── <OriginBadge>          ← 🔒 Default / ✏ Custom
+│   │   │   │   └── <DeleteButton>         ← custom attrs only
+│   │   │   ├── <AddCustomAttributeForm>   ← inline expandable form
+│   │   │   │   ├── <CodeInput>            ← auto-slug from name
+│   │   │   │   ├── <NameInput>
+│   │   │   │   ├── <DescriptionInput>
+│   │   │   │   ├── <FieldTypePicker>
+│   │   │   │   ├── <RequiredToggle>
+│   │   │   │   ├── <SelectOptionEditor>   ← shown only for select type
+│   │   │   │   └── <TranslationList>      ← translate attribute name
+│   │   │   └── <ResetToDefaultsButton>
+│   │   └── <KindDetailFooter>
+│   │       ├── <DeleteKindButton>         ← custom kinds only
+│   │       └── <SaveChangesButton>
+│   └── <CreateKindPanel>                  ← replaces detail panel during creation
+│       ├── <KindIdentitySection>          ← same as above but empty
+│       ├── <StartFromSelector>            ← blank / clone from existing
+│       ├── <AttributeSchemaSection>       ← empty or cloned
+│       └── <CreateKindButton>
+└── <DeleteKindDialog>                     ← confirmation with reassign option
+    ├── <ReassignKindPicker>
+    └── <ConfirmDeleteButton>
 ```
 
 ### 3.2 State Management Approach
@@ -350,16 +390,30 @@ glossaryStore
 │   selectedEntityId: string | null
 │   isDetailPanelOpen: boolean
 │   isKindManagerOpen: boolean
+│   selectedKindId: string | null        ← which kind is selected in KindManager
+│   isCreatingKind: boolean              ← shows CreateKindPanel instead of detail
 │   sortField: string
 │   sortDirection: "asc" | "desc"
 │ }
 └── actions: {
+    // Entity CRUD
     createEntity, updateEntity, deleteEntity,
-    addAttribute, removeAttribute, reorderAttributes,
+    toggleEntityStatus, updateFilters,
+    // Chapter linking
+    linkChapter, unlinkChapter, updateChapterLink,
+    // Attribute values (on entities)
     setAttributeValue, addTranslation, removeTranslation,
     addEvidence, updateEvidence, removeEvidence,
-    linkChapter, unlinkChapter, updateChapterLink,
-    toggleEntityStatus, updateFilters, ...
+    // Kind CRUD
+    createKind, updateKind, deleteKind,
+    hideKind, showKind,
+    reorderKinds,
+    reassignEntitiesKind,
+    // Attribute definitions (on kinds)
+    addAttributeDef, updateAttributeDef, removeAttributeDef,
+    reorderAttributeDefs, toggleAttributeDefVisibility,
+    resetAttributeDefsToDefault,
+    ...
   }
 ```
 
@@ -592,28 +646,272 @@ This is the most complex component. Each row represents one attribute and its va
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### 4.9 KindManagerModal
+### 4.9 KindManager (Full CRUD)
 
-**Purpose**: CRUD for entity kinds themselves.
+**Purpose**: Let users view, create, edit, reorder, and delete entity kinds. Each kind has its own identity (icon, color, name, code) and a configurable attribute schema. Default kinds cannot be deleted but can be hidden; custom kinds are fully editable.
+
+**Layout**: Full-width modal (or dedicated settings page) with a **two-panel layout**: kind list on the left, kind detail/editor on the right. This mirrors the entity list ↔ detail panel pattern from the main glossary view, giving users a consistent mental model.
+
+#### 4.9.1 Kind List Panel (left side)
+
+Shows all kinds in two groups: Default (system-provided) and Custom (user-created), separated by a visual divider. Each kind row is clickable to open its detail editor.
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│  Manage Entity Kinds                                       │
-│                                                            │
-│  👤  Character        12 attrs   34 entities   🔒 Default  │
-│  📍  Location          7 attrs   18 entities   🔒 Default  │
-│  ⚔️  Item              8 attrs    9 entities   🔒 Default  │
-│  ✨  Power System      8 attrs   22 entities   🔒 Default  │
-│  🏛  Organization      8 attrs    6 entities   🔒 Default  │
-│  📅  Event             7 attrs   11 entities   🔒 Default  │
-│  📖  Terminology       4 attrs   45 entities   🔒 Default  │
-│  🧬  Species           7 attrs    3 entities   🔒 Default  │
-│  ─────────────────────────────────────────────────────────  │
-│  🎵  Music / Song      5 attrs    2 entities   ✕ Custom    │
-│  🗺  Map Feature       3 attrs    7 entities   ✕ Custom    │
-│                                                            │
-│  [+ Add Custom Kind]                                       │
-└────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│  ⚙ Manage Entity Kinds                                                    [✕ Close]│
+│─────────────────────────────────────────────────────────────────────────────────────│
+│                                    │                                               │
+│  🔍 Search kinds…                  │  (Kind Detail — see 4.9.2)                    │
+│                                    │                                               │
+│  DEFAULT KINDS                     │                                               │
+│  ┌──────────────────────────────┐  │                                               │
+│  │ ≡ 👤 Character    12 attrs  │◀─│─── selected                                   │
+│  │      34 entities  ● active  │  │                                               │
+│  ├──────────────────────────────┤  │                                               │
+│  │ ≡ 📍 Location      7 attrs  │  │                                               │
+│  │      18 entities  ● active  │  │                                               │
+│  ├──────────────────────────────┤  │                                               │
+│  │ ≡ ⚔️ Item           8 attrs  │  │                                               │
+│  │       9 entities  ● active  │  │                                               │
+│  ├──────────────────────────────┤  │                                               │
+│  │ ≡ ✨ Power System   8 attrs  │  │                                               │
+│  │      22 entities  ● active  │  │                                               │
+│  ├──────────────────────────────┤  │                                               │
+│  │ ≡ 🏛 Organization   8 attrs  │  │                                               │
+│  │       6 entities  ● active  │  │                                               │
+│  ├──────────────────────────────┤  │                                               │
+│  │ ≡ 📅 Event          7 attrs  │  │                                               │
+│  │      11 entities  ● active  │  │                                               │
+│  ├──────────────────────────────┤  │                                               │
+│  │ ≡ 📖 Terminology    4 attrs  │  │                                               │
+│  │      45 entities  ● active  │  │                                               │
+│  ├──────────────────────────────┤  │                                               │
+│  │ ≡ 🧬 Species        7 attrs  │  │                                               │
+│  │       3 entities  ● active  │  │                                               │
+│  └──────────────────────────────┘  │                                               │
+│                                    │                                               │
+│  CUSTOM KINDS                      │                                               │
+│  ┌──────────────────────────────┐  │                                               │
+│  │ ≡ 🎵 Music / Song   5 attrs  │  │                                               │
+│  │       2 entities  ● active  │  │                                               │
+│  ├──────────────────────────────┤  │                                               │
+│  │ ≡ 🗺 Map Feature    3 attrs  │  │                                               │
+│  │       7 entities  ○ hidden  │  │                                               │
+│  └──────────────────────────────┘  │                                               │
+│                                    │                                               │
+│  [+ Add Custom Kind]               │                                               │
+│                                    │                                               │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Kind row elements**:
+- **Drag handle** (≡): Reorder within its group (default kinds reorder among defaults; custom among customs). Default kinds always appear above custom kinds.
+- **Icon**: The kind's emoji icon (editable on the detail panel).
+- **Name**: Display name.
+- **Attr count**: Number of active attributes.
+- **Entity count**: How many glossary entities use this kind. Shown to help user understand impact of changes.
+- **Status dot**: ● active / ○ hidden. Hidden kinds don't appear in the "New Entity" kind picker or the filter bar, but existing entities of that kind remain accessible.
+
+**Kind row interactions**:
+- Click → loads the kind in the detail panel on the right.
+- Drag → reorder within group.
+- The selected kind has a highlighted border (like entity card selection).
+
+#### 4.9.2 Kind Detail Panel (right side)
+
+When a kind is selected from the list, the right panel shows its full editable configuration. This has two sections: **Kind Identity** and **Attribute Schema**.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  👤 Character                                  🔒 Default Kind  │
+│─────────────────────────────────────────────────────────────────│
+│                                                                 │
+│  KIND IDENTITY                                                  │
+│                                                                 │
+│  Icon          [👤]  ← click to open emoji picker               │
+│  Color         [■ #6366f1]  ← click to open color picker        │
+│  Name          [Character          ]                            │
+│  Code          [character          ]  ← auto-generated from     │
+│                                        name, editable for       │
+│                                        custom kinds only        │
+│  Description   [People and beings in the story    ]             │
+│  Status        ◉ Active  ○ Hidden                               │
+│                                                                 │
+│  ⚠ 34 entities use this kind. Changes to identity affect        │
+│    all of them.                                                 │
+│                                                                 │
+│─────────────────────────────────────────────────────────────────│
+│                                                                 │
+│  ATTRIBUTE SCHEMA                                               │
+│                                                                 │
+│  Define which fields appear when creating or editing entities   │
+│  of this kind. Drag to reorder. Default attributes can be       │
+│  hidden but not deleted.                                        │
+│                                                                 │
+│  ≡  ☑ name         Name              text     ✱ req  🔒 Default│
+│  ≡  ☑ aliases      Aliases           tags            🔒 Default│
+│  ≡  ☑ gender       Gender            select          🔒 Default│
+│  ≡  ☐ age          Age               text            🔒 Default│
+│  ≡  ☑ role         Role              select          🔒 Default│
+│  ≡  ☑ affiliation  Affiliation       text            🔒 Default│
+│  ≡  ☐ cultivation  Power Level       text            🔒 Default│
+│  ≡  ☑ appearance   Appearance        textarea        🔒 Default│
+│  ≡  ☑ personality  Personality       textarea        🔒 Default│
+│  ≡  ☐ relationships Relationships    textarea        🔒 Default│
+│  ≡  ☑ description  Description       textarea        🔒 Default│
+│  ──────────────────────────────────────────────────────────────  │
+│  ≡  ☑ blood_type   Blood Type        select          ✏ ✕      │
+│  ≡  ☑ zodiac       Zodiac Sign       select          ✏ ✕      │
+│                                                                 │
+│  [+ Add Custom Attribute]                                       │
+│                                                                 │
+│          [Reset to Defaults]              [Save Changes]        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Kind Identity section — field rules**:
+
+| Field | Default Kind | Custom Kind |
+|---|---|---|
+| Icon | Editable | Editable |
+| Color | Editable | Editable |
+| Name | Editable (display only, code stays) | Editable |
+| Code | Read-only (system-defined) | Auto-generated from name on creation, editable before first save, read-only after entities exist |
+| Description | Editable | Editable |
+| Status | Active / Hidden (cannot delete) | Active / Hidden / **Delete** (only if 0 entities) |
+
+**Attribute Schema section** — follows the same pattern as §4.8 ManageAttributes but is embedded directly in the kind detail panel:
+
+Each attribute row shows:
+- **Drag handle** (≡): Reorder via drag or keyboard (↑↓ buttons on focus).
+- **Visibility checkbox** (☑/☐): Toggle whether this attribute is shown in the entity detail panel. Unchecked = hidden (data preserved, just not displayed).
+- **Code**: Machine key (read-only for defaults, editable for custom).
+- **Name**: Display label (always editable).
+- **Field type**: text / textarea / select / number / date / tags / url / boolean. For default attributes, type is read-only. For custom, editable until entities have data in this field.
+- **Required marker** (✱ req): Whether this attribute must have a value. Togglable for custom attributes; some defaults are locked as required (e.g., `name`).
+- **Origin badge**: 🔒 Default (cannot delete, can hide) or ✏ ✕ Custom (can edit and delete).
+
+#### 4.9.3 Add Custom Attribute (inline form)
+
+Clicking **"+ Add Custom Attribute"** expands an inline form below the attribute list:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  New Attribute                                               │
+│                                                              │
+│  Code     [             ]  ← auto-slugified from name        │
+│  Name     [             ]  ← display label                   │
+│  Description [                                      ]        │
+│                                                              │
+│  Field Type   [▾ text       ]    Required  ☐                 │
+│                                                              │
+│  ┌─ If field type = "select" ──────────────────────────────┐ │
+│  │  Options (one per line):                                │ │
+│  │  ┌──────────────────────────────────────────────────┐   │ │
+│  │  │ Option A                                         │   │ │
+│  │  │ Option B                                         │   │ │
+│  │  │ Option C                                         │   │ │
+│  │  └──────────────────────────────────────────────────┘   │ │
+│  └─────────────────────────────────────────────────────────┘ │
+│                                                              │
+│  Translations (for the attribute name itself):               │
+│  🌐 No translations yet  [+ Add]                            │
+│                                                              │
+│          [Cancel]                    [Add Attribute]          │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Code auto-generation**: As the user types the Name, the Code field auto-fills with a slugified version (lowercase, underscores, no special chars). User can override before saving. Once saved with entities using it, the code becomes read-only.
+
+**Field type determines input behavior**:
+| Type | UI in entity editor | Notes |
+|---|---|---|
+| text | Single-line input | General purpose |
+| textarea | Multi-line expandable | For descriptions, notes |
+| select | Dropdown with predefined options | Options defined here |
+| number | Number input with optional min/max | For ages, quantities |
+| date | Date picker | For in-story or real dates |
+| tags | Comma-separated tag input | Renders as badges |
+| url | URL input with link preview | For references, images |
+| boolean | Toggle switch | Yes/no fields |
+
+#### 4.9.4 Add Custom Kind (creation flow)
+
+Clicking **"+ Add Custom Kind"** at the bottom of the kind list opens the right panel with an empty kind creation form:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  ✚ New Custom Kind                                              │
+│─────────────────────────────────────────────────────────────────│
+│                                                                 │
+│  KIND IDENTITY                                                  │
+│                                                                 │
+│  Icon          [😀]  ← click to open emoji picker               │
+│  Color         [■ #6366f1]  ← click to open color picker        │
+│  Name          [                    ]  ← required               │
+│  Code          [                    ]  ← auto-generated from    │
+│                                         name, editable          │
+│  Description   [                                        ]       │
+│                                                                 │
+│  ───────── Start from ─────────                                 │
+│                                                                 │
+│  ◉ Blank (no default attributes)                                │
+│  ○ Clone from existing kind: [Select kind ▾]                    │
+│                                                                 │
+│  If "Clone" is selected, all attributes from the source kind    │
+│  are copied as defaults for the new kind. User can then         │
+│  modify, add, or remove them.                                   │
+│                                                                 │
+│─────────────────────────────────────────────────────────────────│
+│                                                                 │
+│  ATTRIBUTE SCHEMA                                               │
+│                                                                 │
+│  (empty — or cloned from source kind)                           │
+│                                                                 │
+│  The "name" attribute (text, required) is auto-added as the     │
+│  first attribute. Every kind needs at least one identifier.     │
+│                                                                 │
+│  ≡  ☑ name         Name              text     ✱ req   🔒 Auto  │
+│                                                                 │
+│  [+ Add Custom Attribute]                                       │
+│                                                                 │
+│                                                                 │
+│          [Cancel]                     [Create Kind]             │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Creation rules**:
+- **Name** is required. Code auto-generates. Icon defaults to a generic emoji (😀) until user picks one.
+- **"name" attribute is auto-added**: Every kind must have at least one identifier field. The system auto-creates a `name` attribute (text, required) that cannot be removed. User can rename its display label (e.g., "Term" for Terminology) but the code stays `name`.
+- **Clone from existing**: Copies all attribute definitions (both default and custom) from the source kind. Cloned attributes become "default" for the new kind. User can then add, hide, reorder, or add more custom fields on top.
+- **Blank start**: Only the auto-added `name` attribute. User builds the schema from scratch.
+
+#### 4.9.5 Delete / Hide Kind
+
+**Hiding** (available for all kinds):
+- Sets the kind to "hidden" status. Hidden kinds don't appear in the "New Entity" kind picker or the filter bar.
+- Existing entities of that kind remain intact and accessible. They show a subtle "hidden kind" indicator in the entity list.
+- User can un-hide at any time.
+
+**Deleting** (custom kinds only):
+- Only available when 0 entities use this kind.
+- If entities exist, the delete button is disabled with a tooltip: "Cannot delete: 5 entities use this kind. Reassign or delete them first."
+- Alternatively, offer a **"Delete & Reassign"** flow: user picks another kind to reassign all entities to before deleting. Attributes that don't exist in the target kind are preserved as custom attributes on each entity.
+- Confirmation dialog: "Delete 'Music / Song' kind? This cannot be undone."
+
+```
+┌──────────────────────────────────────────────────────┐
+│  Delete Kind                                         │
+│                                                      │
+│  ⚠ "Music / Song" has 2 entities.                    │
+│                                                      │
+│  ○ Delete kind only (entities become "untyped")      │
+│  ◉ Reassign entities to: [Select kind ▾]             │
+│    Attributes that don't match the new kind will     │
+│    be kept as custom attributes on each entity.      │
+│                                                      │
+│          [Cancel]         [Delete Kind]               │
+└──────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -671,12 +969,65 @@ This is the most complex component. Each row represents one attribute and its va
 5. List updates immediately. Active chapter filters appear as removable chips.
 6. Filters combine with AND logic across different filter types (chapters AND kind AND status).
 
-### 5.7 Manage Attributes for a Kind
+### 5.7 Manage Kinds — Overview
 
-1. User opens KindManagerModal → clicks a kind → clicks "Edit Attributes".
-2. AttributeSchemaEditor opens.
-3. User can drag-reorder attributes, toggle active/inactive, add new custom attributes (with code, name, description, field type), or remove custom ones.
-4. Changes apply to all future entities of that kind. Existing entities retain their data but hidden attributes won't display in the detail panel.
+1. User clicks **"⚙ Manage Kinds"** from the toolbar (or settings gear).
+2. KindManager opens as a full modal with two panels: kind list (left) and kind detail (right).
+3. Default kinds appear first, then custom kinds below a separator.
+4. User clicks a kind to select it and view/edit its configuration in the right panel.
+
+### 5.8 Create Custom Kind
+
+1. User clicks **"+ Add Custom Kind"** at the bottom of the kind list.
+2. The right panel switches to the **CreateKindPanel** with an empty form.
+3. User fills in identity: name (required), icon (emoji picker), color (color picker). Code auto-generates from name as a slug.
+4. User chooses **"Start from"**: Blank (only auto-added `name` attribute) or Clone from existing kind (copies all attribute definitions).
+5. If cloning, the attribute schema section populates with the source kind's attributes. User can immediately modify, add, hide, or remove them.
+6. User adds custom attributes as needed via the inline form.
+7. User clicks **"Create Kind"**. The new kind appears in the Custom section of the kind list and becomes available in the "New Entity" kind picker.
+
+### 5.9 Edit Kind Identity
+
+1. User selects a kind from the list.
+2. Kind detail panel loads with current identity and attribute schema.
+3. User edits name, icon, color, description. For custom kinds, code is also editable if no entities use this kind yet.
+4. If entities exist, an impact warning shows: "34 entities use this kind."
+5. User clicks **"Save Changes"**. All entities of this kind reflect the updated icon, color, and name immediately.
+
+### 5.10 Add Custom Attribute to a Kind
+
+1. In the kind detail panel's Attribute Schema section, user clicks **"+ Add Custom Attribute"**.
+2. An inline form expands below the attribute list.
+3. User enters name (required) — code auto-generates as a slug. User can override code before saving.
+4. User selects field type. If "select" is chosen, an options editor appears (one option per line).
+5. User optionally toggles "required" and adds translations for the attribute name.
+6. User clicks **"Add Attribute"**. The new attribute appears at the bottom of the attribute list with a "Custom" badge.
+7. **Effect on existing entities**: Existing entities of this kind gain a new empty attribute value for this field. It appears in their detail panel the next time they're opened.
+
+### 5.11 Edit / Reorder / Hide Attributes in a Kind
+
+1. **Reorder**: User drags an attribute row via the handle (≡) or uses ↑↓ keyboard buttons. Order is saved and applies to all entity detail panels of this kind.
+2. **Hide**: User unchecks the visibility checkbox (☑→☐) on an attribute row. The attribute is hidden from entity detail panels but data is preserved. User can re-show at any time.
+3. **Edit custom attribute**: User clicks the edit (✏) icon on a custom attribute row. The row expands into an inline editor (same fields as the add form). User modifies and saves.
+4. **Delete custom attribute**: User clicks ✕ on a custom attribute. If entities have data in this field, a confirmation dialog warns: "3 entities have values for this attribute. Deleting will remove their data." User confirms or cancels.
+5. **Default attributes**: Cannot be deleted (🔒). Can be hidden, reordered, and have their display name edited. Code and field type are read-only.
+6. User clicks **"Save Changes"** to persist all modifications. **"Reset to Defaults"** reverts the attribute schema to the kind's original default state (only affects order and visibility; does not delete custom attributes).
+
+### 5.12 Hide / Delete Kind
+
+**Hide a kind**:
+1. In the kind detail panel, user sets Status to "Hidden".
+2. The kind disappears from the "New Entity" kind picker and the filter bar.
+3. Existing entities of this kind remain accessible and show a subtle "hidden kind" indicator.
+4. User can un-hide at any time by setting status back to "Active".
+
+**Delete a custom kind**:
+1. User clicks **"Delete Kind"** in the kind detail footer (only available for custom kinds).
+2. If 0 entities use this kind: confirmation dialog → kind is deleted.
+3. If entities exist: the DeleteKindDialog opens with two options:
+   - **"Delete kind only"**: Entities become "untyped" (their kind reference is cleared; they retain all attribute data and can be reassigned later).
+   - **"Reassign entities to [kind]"**: User picks a target kind. Entities are moved to that kind. Attributes that exist in both kinds map automatically. Attributes unique to the deleted kind are preserved as custom attributes on each reassigned entity.
+4. User confirms. Kind is removed from the list.
 
 ---
 

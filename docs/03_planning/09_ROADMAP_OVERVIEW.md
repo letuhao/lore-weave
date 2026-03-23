@@ -2,10 +2,10 @@
 
 ## Document Metadata
 - Document ID: LW-09
-- Version: 1.7.0
+- Version: 1.8.0
 - Status: Approved
 - Owner: Product Manager + Solution Architect
-- Last Updated: 2026-03-22
+- Last Updated: 2026-03-23
 - Approved By: Decision Authority
 - Approved Date: 2026-03-21
 - Summary: Phase roadmap with frontend-backend module delivery principles.
@@ -13,6 +13,7 @@
 ## Change History
 | Version | Date | Change | Author |
 |---|---|---|---|
+| 1.8.0 | 2026-03-23 | Added Phase 3 Module 05 (glossary & lore management) planning checkpoint and doc references 75-86 | Assistant |
 | 1.7.0 | 2026-03-22 | Status governance update: approved Module 04 planning pack `56`–`67` by Decision Authority | Assistant |
 | 1.6.0 | 2026-03-22 | Added Phase 2 Module 04 (raw translation pipeline) planning checkpoint and doc references 56-67 | Assistant |
 | 1.5.0 | 2026-03-21 | Status governance update: Module 03 planning checkpoint docs `44`-`55` approved by Decision Authority | Assistant |
@@ -177,6 +178,25 @@ Establish planning readiness for workflow lifecycle and evidence-grounded retrie
 - Workflow and retrieval operating model is approved.
 - Domain handoffs between platform-core and AI workflow are explicit.
 - Phase-level quality and reliability gates are defined.
+
+### Phase 3 Module 05 Checkpoint (Glossary & Lore Management)
+
+- **Objective:** First Phase 3 vertical slice: book-level lore entity management with multilingual attributes, evidence tracking, chapter M:N linking, and RAG-ready export for AI translation context.
+- **Planning pack (Draft):**
+  - `75_PHASE3_MODULE05_GLOSSARY_LORE_EXECUTION_PACK.md`
+  - `76_MODULE05_API_CONTRACT_DRAFT.md`
+  - `77_MODULE05_FRONTEND_FLOW_SPEC.md`
+  - `78_MODULE05_ACCEPTANCE_TEST_PLAN.md`
+  - `79_MODULE05_RISK_DEPENDENCY_ROLLOUT.md`
+  - `80_GOVERNANCE_BOARD_REVIEW_CHECKLIST_MODULE05.md`
+- **Deep-design + readiness (Draft):**
+  - `81_MODULE05_MICROSERVICE_SOURCE_STRUCTURE_AMENDMENT.md`
+  - `82_MODULE05_BACKEND_DETAILED_DESIGN.md`
+  - `83_MODULE05_FRONTEND_DETAILED_DESIGN.md`
+  - `84_MODULE05_UI_UX_WIREFRAME_SPEC.md`
+  - `85_MODULE05_INTEGRATION_SEQUENCE_DIAGRAMS.md`
+  - `86_MODULE05_IMPLEMENTATION_READINESS_GATE.md`
+- **Prerequisite:** M01 auth, M02 book-service (projection + chapters internal endpoints) operational; gate `86` GO before M05 implementation start.
 
 ## Phase 3: Knowledge Services
 
