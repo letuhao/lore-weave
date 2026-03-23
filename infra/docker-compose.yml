@@ -39,6 +39,7 @@ services:
       psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_provider_registry'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_provider_registry";
       psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_usage_billing'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_usage_billing";
       psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_translation'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_translation";
+      psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_glossary'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_glossary";
     restart: "no"
 
   minio:
@@ -239,6 +240,26 @@ services:
       provider-registry-service:
         condition: service_healthy
 
+  glossary-service:
+    build:
+      context: ../services/glossary-service
+      dockerfile: Dockerfile
+    environment:
+      HTTP_ADDR: ":8088"
+      DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      AUTH_SERVICE_URL: http://auth-service:8081
+      BOOK_SERVICE_URL: http://book-service:8082
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-db-bootstrap:
+        condition: service_completed_successfully
+      book-service:
+        condition: service_healthy
+    ports:
+      - "8088:8088"
+
   api-gateway-bff:
     build:
       context: ../services/api-gateway-bff
@@ -252,6 +273,7 @@ services:
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       TRANSLATION_SERVICE_URL: http://translation-service:8087
+      GLOSSARY_SERVICE_URL: http://glossary-service:8088
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
     depends_on:
@@ -268,6 +290,8 @@ services:
       usage-billing-service:
         condition: service_healthy
       translation-service:
+        condition: service_healthy
+      glossary-service:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy

@@ -16,6 +16,7 @@ export function configureGatewayApp(
     providerRegistryUrl: string;
     usageBillingUrl: string;
     translationUrl: string;
+    glossaryUrl: string;
   },
 ): void {
   app.enableCors({
@@ -60,6 +61,11 @@ export function configureGatewayApp(
     changeOrigin: true,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/translation'),
   });
+  const glossaryProxy = createProxyMiddleware({
+    target: urls.glossaryUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/glossary'),
+  });
 
   const httpAdapter = app.getHttpAdapter();
   const instance = httpAdapter.getInstance();
@@ -98,6 +104,11 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const glossaryProxyFn = glossaryProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
 
   instance.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account')) {
@@ -120,6 +131,9 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/translation')) {
       return translationProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/glossary')) {
+      return glossaryProxyFn(req, res, next);
     }
     return next();
   });

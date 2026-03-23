@@ -4,7 +4,7 @@
 
 - Document ID: LW-M05-83
 - Version: 0.1.0
-- Status: Draft
+- Status: Approved
 - Owner: Frontend Lead
 - Last Updated: 2026-03-23
 - Approved By: —

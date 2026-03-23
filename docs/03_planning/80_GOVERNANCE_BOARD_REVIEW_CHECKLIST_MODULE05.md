@@ -4,7 +4,7 @@
 
 - Document ID: LW-M05-80
 - Version: 0.1.0
-- Status: Draft
+- Status: Approved
 - Owner: Decision Authority + Execution Authority
 - Last Updated: 2026-03-23
 - Approved By: —

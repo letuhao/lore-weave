@@ -4,7 +4,7 @@
 
 - Document ID: LW-M05-87
 - Version: 0.1.0
-- Status: Draft (Informational — feature is OUT OF SCOPE for Module 05)
+- Status: Approved (Informational — feature is OUT OF SCOPE for Module 05)
 - Owner: Solution Architect + Product Manager
 - Last Updated: 2026-03-23
 - Approved By: —

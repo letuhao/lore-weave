@@ -1,0 +1,95 @@
+package api
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/loreweave/glossary-service/internal/config"
+)
+
+// Server holds shared dependencies for all handlers.
+type Server struct {
+	pool   *pgxpool.Pool
+	cfg    *config.Config
+	secret []byte
+}
+
+func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
+	return &Server{pool: pool, cfg: cfg, secret: []byte(cfg.JWTSecret)}
+}
+
+func (s *Server) Router() http.Handler {
+	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Recoverer)
+
+	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	r.Route("/v1/glossary", func(r chi.Router) {
+		r.Get("/kinds", s.listKinds)
+	})
+
+	return r
+}
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+type errorBody struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeError(w http.ResponseWriter, status int, code, message string) {
+	writeJSON(w, status, errorBody{Code: code, Message: message})
+}
+
+// ── auth ─────────────────────────────────────────────────────────────────────
+
+type accessClaims struct {
+	jwt.RegisteredClaims
+}
+
+// requireUserID extracts and validates the Bearer JWT, returning the user UUID.
+func (s *Server) requireUserID(r *http.Request) (uuid.UUID, bool) {
+	auth := r.Header.Get("Authorization")
+	if !strings.HasPrefix(auth, "Bearer ") {
+		return uuid.Nil, false
+	}
+	tokenStr := strings.TrimPrefix(auth, "Bearer ")
+	tok, err := jwt.ParseWithClaims(tokenStr, &accessClaims{}, func(t *jwt.Token) (any, error) {
+		if t.Method != jwt.SigningMethodHS256 {
+			return nil, fmt.Errorf("unexpected signing method")
+		}
+		return s.secret, nil
+	})
+	if err != nil || !tok.Valid {
+		return uuid.Nil, false
+	}
+	claims, ok := tok.Claims.(*accessClaims)
+	if !ok {
+		return uuid.Nil, false
+	}
+	id, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return id, true
+}
