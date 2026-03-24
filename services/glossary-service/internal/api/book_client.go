@@ -20,6 +20,12 @@ type bookProjection struct {
 	OwnerUserID uuid.UUID `json:"owner_user_id"`
 }
 
+type chapterSummary struct {
+	ChapterID uuid.UUID `json:"chapter_id"`
+	Title     *string   `json:"title"`
+	SortOrder int       `json:"sort_order"`
+}
+
 // fetchBookProjection calls the book-service internal projection endpoint.
 // Returns (nil, 503) if unreachable; (nil, 404) if the book does not exist.
 func (s *Server) fetchBookProjection(ctx context.Context, bookID uuid.UUID) (*bookProjection, int) {
@@ -42,4 +48,30 @@ func (s *Server) fetchBookProjection(ctx context.Context, bookID uuid.UUID) (*bo
 		return nil, http.StatusServiceUnavailable
 	}
 	return &p, http.StatusOK
+}
+
+// fetchBookChapters calls the book-service internal chapters endpoint.
+// Returns (nil, 503) if unreachable; (nil, 404) if the book does not exist.
+func (s *Server) fetchBookChapters(ctx context.Context, bookID uuid.UUID) ([]chapterSummary, int) {
+	url := fmt.Sprintf("%s/internal/books/%s/chapters",
+		strings.TrimRight(s.cfg.BookServiceURL, "/"), bookID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, http.StatusInternalServerError
+	}
+	res, err := bookHTTPClient.Do(req)
+	if err != nil {
+		return nil, http.StatusServiceUnavailable
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, res.StatusCode
+	}
+	var cr struct {
+		Items []chapterSummary `json:"items"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&cr); err != nil {
+		return nil, http.StatusServiceUnavailable
+	}
+	return cr.Items, http.StatusOK
 }

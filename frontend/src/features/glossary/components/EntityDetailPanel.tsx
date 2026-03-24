@@ -1,18 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 import { KindBadge } from './KindBadge';
+import { ChapterLinkEditor } from './ChapterLinkEditor';
 import type { GlossaryEntity } from '../types';
 
 type Props = {
   entity: GlossaryEntity | null;
+  bookId: string;
+  token: string;
   isLoading: boolean;
   isSaving: boolean;
   onClose: () => void;
   onPatch: (changes: { status?: string; tags?: string[] }) => Promise<void>;
+  onRefresh: () => void;
 };
 
 const STATUS_OPTIONS = ['draft', 'active', 'inactive'] as const;
 
-export function EntityDetailPanel({ entity, isLoading, isSaving, onClose, onPatch }: Props) {
+export function EntityDetailPanel({ entity, bookId, token, isLoading, isSaving, onClose, onPatch, onRefresh }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [tagInput, setTagInput] = useState('');
   const [localTags, setLocalTags] = useState<string[]>([]);
@@ -114,27 +118,17 @@ export function EntityDetailPanel({ entity, isLoading, isSaving, onClose, onPatc
 
           {entity && !isLoading && (
             <div className="divide-y">
-              {/* Chapter Links section — placeholder until SP-3 */}
+              {/* Chapter Links section */}
               <section className="p-4">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Chapter Links
                 </p>
-                {entity.chapter_links.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    No chapter links yet. (Chapter link editor added in SP-3.)
-                  </p>
-                ) : (
-                  <ul className="space-y-1">
-                    {entity.chapter_links.map((cl) => (
-                      <li key={cl.link_id} className="flex items-center gap-2 text-xs">
-                        <span className="rounded bg-muted px-1.5 py-0.5">{cl.relevance}</span>
-                        <span className="text-muted-foreground">
-                          {cl.chapter_title ?? cl.chapter_id}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <ChapterLinkEditor
+                  entity={entity}
+                  bookId={bookId}
+                  token={token}
+                  onRefresh={onRefresh}
+                />
               </section>
 
               {/* Attributes section — placeholder until SP-4 */}

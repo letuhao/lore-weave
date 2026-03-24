@@ -43,6 +43,7 @@ export function GlossaryPage() {
     isLoading: detailLoading,
     isSaving,
     patch,
+    refetch: refetchDetail,
   } = useEntityDetail(bookId, selectedEntityId);
 
   async function handleKindSelect(kind: EntityKind) {
@@ -167,10 +168,13 @@ export function GlossaryPage() {
       {selectedEntityId && (
         <EntityDetailPanel
           entity={detailEntity}
+          bookId={bookId}
+          token={accessToken ?? ''}
           isLoading={detailLoading}
           isSaving={isSaving}
           onClose={() => setSelectedEntityId(null)}
           onPatch={patch}
+          onRefresh={refetchDetail}
         />
       )}
     </div>

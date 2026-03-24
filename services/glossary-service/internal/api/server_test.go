@@ -200,6 +200,67 @@ func TestSortOrderUnique(t *testing.T) {
 
 // ── entity endpoint auth tests (no DB required) ───────────────────────────────
 
+// TestChapterLinkEndpointsRequireAuth verifies all 4 chapter-link endpoints return 401 without a token.
+func TestChapterLinkEndpointsRequireAuth(t *testing.T) {
+	srv := newTestServer(t, nil)
+	fakeBook := "00000000-0000-0000-0000-000000000001"
+	fakeEntity := "00000000-0000-0000-0000-000000000002"
+	fakeLink := "00000000-0000-0000-0000-000000000003"
+	base := "/v1/glossary/books/" + fakeBook + "/entities/" + fakeEntity + "/chapter-links"
+
+	cases := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, base},
+		{http.MethodPost, base},
+		{http.MethodPatch, base + "/" + fakeLink},
+		{http.MethodDelete, base + "/" + fakeLink},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			w := httptest.NewRecorder()
+			srv.Router().ServeHTTP(w, req)
+			if w.Code != http.StatusUnauthorized {
+				t.Errorf("expected 401, got %d", w.Code)
+			}
+		})
+	}
+}
+
+// TestChapterLinkEndpointsRejectBadToken verifies all 4 chapter-link endpoints return 401 for an invalid token.
+func TestChapterLinkEndpointsRejectBadToken(t *testing.T) {
+	srv := newTestServer(t, nil)
+	fakeBook := "00000000-0000-0000-0000-000000000001"
+	fakeEntity := "00000000-0000-0000-0000-000000000002"
+	fakeLink := "00000000-0000-0000-0000-000000000003"
+	base := "/v1/glossary/books/" + fakeBook + "/entities/" + fakeEntity + "/chapter-links"
+
+	cases := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, base},
+		{http.MethodPost, base},
+		{http.MethodPatch, base + "/" + fakeLink},
+		{http.MethodDelete, base + "/" + fakeLink},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			req.Header.Set("Authorization", "Bearer not.a.valid.token")
+			w := httptest.NewRecorder()
+			srv.Router().ServeHTTP(w, req)
+			if w.Code != http.StatusUnauthorized {
+				t.Errorf("expected 401, got %d", w.Code)
+			}
+		})
+	}
+}
+
 // TestEntityEndpointsRequireAuth verifies all 5 entity endpoints return 401 without a token.
 func TestEntityEndpointsRequireAuth(t *testing.T) {
 	srv := newTestServer(t, nil)

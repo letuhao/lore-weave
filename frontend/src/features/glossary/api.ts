@@ -4,6 +4,7 @@ import type {
   GlossaryEntity,
   GlossaryEntityListResponse,
   FilterState,
+  ChapterLink,
   Relevance,
   Confidence,
 } from './types';
@@ -89,8 +90,8 @@ export const glossaryApi = {
     entityId: string,
     body: { chapter_id: string; relevance: Relevance; note?: string },
     token: string,
-  ) {
-    return apiJson(`${BASE}/books/${bookId}/entities/${entityId}/chapter-links`, {
+  ): Promise<ChapterLink> {
+    return apiJson<ChapterLink>(`${BASE}/books/${bookId}/entities/${entityId}/chapter-links`, {
       method: 'POST',
       body: JSON.stringify(body),
       token,
@@ -103,8 +104,8 @@ export const glossaryApi = {
     linkId: string,
     changes: { relevance?: Relevance; note?: string },
     token: string,
-  ) {
-    return apiJson(
+  ): Promise<ChapterLink> {
+    return apiJson<ChapterLink>(
       `${BASE}/books/${bookId}/entities/${entityId}/chapter-links/${linkId}`,
       { method: 'PATCH', body: JSON.stringify(changes), token },
     );

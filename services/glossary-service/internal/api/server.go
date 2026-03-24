@@ -48,6 +48,14 @@ func (s *Server) Router() http.Handler {
 					r.Get("/", s.getEntityDetail)
 					r.Patch("/", s.patchEntity)
 					r.Delete("/", s.deleteEntity)
+					r.Route("/chapter-links", func(r chi.Router) {
+						r.Get("/", s.listChapterLinks)
+						r.Post("/", s.createChapterLink)
+						r.Route("/{link_id}", func(r chi.Router) {
+							r.Patch("/", s.updateChapterLink)
+							r.Delete("/", s.deleteChapterLink)
+						})
+					})
 				})
 			})
 		})
