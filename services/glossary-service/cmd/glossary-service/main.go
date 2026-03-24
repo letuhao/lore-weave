@@ -35,6 +35,12 @@ func main() {
 	if err := migrate.Seed(ctx, pool); err != nil {
 		log.Fatalf("seed: %v", err)
 	}
+	if err := migrate.UpSnapshot(ctx, pool); err != nil {
+		log.Fatalf("migrate snapshot: %v", err)
+	}
+	if err := migrate.BackfillSnapshots(ctx, pool); err != nil {
+		log.Fatalf("backfill snapshots: %v", err)
+	}
 
 	srv := api.NewServer(pool, cfg)
 	httpSrv := &http.Server{
