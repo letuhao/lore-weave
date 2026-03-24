@@ -353,6 +353,92 @@ func TestAttributeEndpointsRejectBadToken(t *testing.T) {
 	}
 }
 
+// TestEvidenceEndpointsRequireAuth verifies evidence endpoints return 401 without a token.
+func TestEvidenceEndpointsRequireAuth(t *testing.T) {
+	srv := newTestServer(t, nil)
+	fakeBook := "00000000-0000-0000-0000-000000000001"
+	fakeEntity := "00000000-0000-0000-0000-000000000002"
+	fakeAttr := "00000000-0000-0000-0000-000000000004"
+	fakeEvidence := "00000000-0000-0000-0000-000000000006"
+	evidBase := "/v1/glossary/books/" + fakeBook + "/entities/" + fakeEntity + "/attributes/" + fakeAttr + "/evidences"
+
+	cases := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, evidBase},
+		{http.MethodPatch, evidBase + "/" + fakeEvidence},
+		{http.MethodDelete, evidBase + "/" + fakeEvidence},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			w := httptest.NewRecorder()
+			srv.Router().ServeHTTP(w, req)
+			if w.Code != http.StatusUnauthorized {
+				t.Errorf("expected 401, got %d", w.Code)
+			}
+		})
+	}
+}
+
+// TestEvidenceEndpointsRejectBadToken verifies evidence endpoints return 401 for an invalid token.
+func TestEvidenceEndpointsRejectBadToken(t *testing.T) {
+	srv := newTestServer(t, nil)
+	fakeBook := "00000000-0000-0000-0000-000000000001"
+	fakeEntity := "00000000-0000-0000-0000-000000000002"
+	fakeAttr := "00000000-0000-0000-0000-000000000004"
+	fakeEvidence := "00000000-0000-0000-0000-000000000006"
+	evidBase := "/v1/glossary/books/" + fakeBook + "/entities/" + fakeEntity + "/attributes/" + fakeAttr + "/evidences"
+
+	cases := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, evidBase},
+		{http.MethodPatch, evidBase + "/" + fakeEvidence},
+		{http.MethodDelete, evidBase + "/" + fakeEvidence},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			req.Header.Set("Authorization", "Bearer not.a.valid.token")
+			w := httptest.NewRecorder()
+			srv.Router().ServeHTTP(w, req)
+			if w.Code != http.StatusUnauthorized {
+				t.Errorf("expected 401, got %d", w.Code)
+			}
+		})
+	}
+}
+
+// TestExportEndpointRequiresAuth verifies GET /export returns 401 without a token.
+func TestExportEndpointRequiresAuth(t *testing.T) {
+	srv := newTestServer(t, nil)
+	fakeBook := "00000000-0000-0000-0000-000000000001"
+	req := httptest.NewRequest(http.MethodGet, "/v1/glossary/books/"+fakeBook+"/export", nil)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+// TestExportEndpointRejectsBadToken verifies GET /export returns 401 for an invalid token.
+func TestExportEndpointRejectsBadToken(t *testing.T) {
+	srv := newTestServer(t, nil)
+	fakeBook := "00000000-0000-0000-0000-000000000001"
+	req := httptest.NewRequest(http.MethodGet, "/v1/glossary/books/"+fakeBook+"/export", nil)
+	req.Header.Set("Authorization", "Bearer not.a.valid.token")
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
 // TestEntityEndpointsRejectBadToken verifies all 5 entity endpoints return 401 for an invalid token.
 func TestEntityEndpointsRejectBadToken(t *testing.T) {
 	srv := newTestServer(t, nil)

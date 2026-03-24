@@ -7,7 +7,19 @@ import type {
   ChapterLink,
   Relevance,
   Confidence,
+  Evidence,
+  EvidenceType,
 } from './types';
+
+export type CreateEvidenceBody = {
+  evidence_type?: EvidenceType;
+  original_text: string;
+  original_language?: string;
+  chapter_id?: string;
+  chapter_title?: string;
+  block_or_line?: string;
+  note?: string;
+};
 
 const BASE = '/v1/glossary';
 
@@ -181,10 +193,10 @@ export const glossaryApi = {
     bookId: string,
     entityId: string,
     attrValueId: string,
-    body: object,
+    body: CreateEvidenceBody,
     token: string,
   ) {
-    return apiJson(
+    return apiJson<Evidence>(
       `${BASE}/books/${bookId}/entities/${entityId}/attributes/${attrValueId}/evidences`,
       { method: 'POST', body: JSON.stringify(body), token },
     );

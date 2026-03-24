@@ -41,6 +41,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/kinds", s.listKinds)
 
 		r.Route("/books/{book_id}", func(r chi.Router) {
+			r.Get("/export", s.exportGlossary)
 			r.Route("/entities", func(r chi.Router) {
 				r.Get("/", s.listEntities)
 				r.Post("/", s.createEntity)
@@ -63,6 +64,13 @@ func (s *Server) Router() http.Handler {
 							r.Route("/{translation_id}", func(r chi.Router) {
 								r.Patch("/", s.updateTranslation)
 								r.Delete("/", s.deleteTranslation)
+							})
+						})
+						r.Route("/evidences", func(r chi.Router) {
+							r.Post("/", s.createEvidence)
+							r.Route("/{evidence_id}", func(r chi.Router) {
+								r.Patch("/", s.updateEvidence)
+								r.Delete("/", s.deleteEvidence)
 							})
 						})
 					})

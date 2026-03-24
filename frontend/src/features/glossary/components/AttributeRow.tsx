@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { glossaryApi } from '../api';
+import type { CreateEvidenceBody } from '../api';
 import type { AttributeValue, Confidence } from '../types';
 import { AttributeValueInput } from './AttributeValueInput';
 import { TranslationList } from './TranslationList';
+import { EvidenceList } from './EvidenceList';
 
 // Common BCP-47 codes for original language picker.
 const LANG_OPTIONS = [
@@ -66,6 +68,16 @@ export function AttributeRow({ av, bookId, entityId, token, onRefresh }: Props) 
 
   async function handleDeleteTranslation(translationId: string) {
     await glossaryApi.deleteTranslation(bookId, entityId, av.attr_value_id, translationId, token);
+    onRefresh();
+  }
+
+  async function handleAddEvidence(body: CreateEvidenceBody) {
+    await glossaryApi.createEvidence(bookId, entityId, av.attr_value_id, body, token);
+    onRefresh();
+  }
+
+  async function handleDeleteEvidence(evidenceId: string) {
+    await glossaryApi.deleteEvidence(bookId, entityId, av.attr_value_id, evidenceId, token);
     onRefresh();
   }
 
@@ -151,11 +163,17 @@ export function AttributeRow({ av, bookId, entityId, token, onRefresh }: Props) 
             />
           </div>
 
-          {/* Evidences placeholder — SP-5 */}
+          {/* Evidences */}
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Evidences ({av.evidences.length}) — editing in SP-5
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Evidences ({av.evidences.length})
             </p>
+            <EvidenceList
+              evidences={av.evidences}
+              defaultLanguage={localLang}
+              onAdd={handleAddEvidence}
+              onDelete={handleDeleteEvidence}
+            />
           </div>
         </div>
       )}
