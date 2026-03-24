@@ -1,6 +1,7 @@
 import { apiJson } from '@/api';
 import type {
   EntityKind,
+  EntityTrashItem,
   GlossaryEntity,
   GlossaryEntityListResponse,
   FilterState,
@@ -220,5 +221,33 @@ export const glossaryApi = {
   exportGlossary(bookId: string, token: string, chapterId?: string) {
     const qs = chapterId ? `?chapter_id=${chapterId}` : '';
     return apiJson<object>(`${BASE}/books/${bookId}/export${qs}`, { token });
+  },
+
+  // ── Recycle bin (SS-2) ──────────────────────────────────────────────────────
+
+  listEntityTrash(
+    bookId: string,
+    token: string,
+    params: { limit?: number; offset?: number } = {},
+  ): Promise<{ items: EntityTrashItem[]; total: number; limit: number; offset: number }> {
+    const qs = new URLSearchParams();
+    if (params.limit)  qs.set('limit',  String(params.limit));
+    if (params.offset) qs.set('offset', String(params.offset));
+    const q = qs.toString();
+    return apiJson(`${BASE}/books/${bookId}/recycle-bin${q ? '?' + q : ''}`, { token });
+  },
+
+  restoreEntity(bookId: string, entityId: string, token: string): Promise<void> {
+    return apiJson<void>(`${BASE}/books/${bookId}/recycle-bin/${entityId}/restore`, {
+      method: 'POST',
+      token,
+    });
+  },
+
+  purgeEntity(bookId: string, entityId: string, token: string): Promise<void> {
+    return apiJson<void>(`${BASE}/books/${bookId}/recycle-bin/${entityId}`, {
+      method: 'DELETE',
+      token,
+    });
   },
 };

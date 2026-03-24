@@ -211,7 +211,8 @@ func (s *Server) exportGlossary(w http.ResponseWriter, r *http.Request) {
 		FROM glossary_entities
 		WHERE book_id = $1
 		  AND status  = 'active'
-		  AND entity_snapshot IS NOT NULL`
+		  AND entity_snapshot IS NOT NULL
+		  AND deleted_at IS NULL`
 
 	var rows pgx.Rows
 	var err error

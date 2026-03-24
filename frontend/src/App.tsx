@@ -21,6 +21,7 @@ import { UserSettingsPage } from './pages/UserSettingsPage';
 import BookTranslationPage from './pages/BookTranslationPage';
 import ChapterTranslationsPage from './pages/ChapterTranslationsPage';
 import { GlossaryPage } from './pages/GlossaryPage';
+import { GlossaryTrashPage } from './pages/GlossaryTrashPage';
 
 function Home() {
   const { accessToken } = useAuth();
@@ -157,6 +158,14 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <GlossaryPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/books/:bookId/glossary/trash"
+          element={
+            <RequireAuth>
+              <GlossaryTrashPage />
             </RequireAuth>
           }
         />

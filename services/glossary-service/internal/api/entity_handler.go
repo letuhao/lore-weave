@@ -172,7 +172,7 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 				WHERE eav3.entity_id = e.entity_id) AS evidence_count
 		FROM glossary_entities e
 		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
-		WHERE e.entity_id = $1 AND e.book_id = $2`,
+		WHERE e.entity_id = $1 AND e.book_id = $2 AND e.deleted_at IS NULL`,
 		entityID, bookID,
 	).Scan(
 		&d.EntityID, &d.BookID, &d.KindID, &d.Status, &d.Tags, &d.CreatedAt, &d.UpdatedAt,
@@ -447,7 +447,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 	// Build dynamic WHERE clause
 	args := []any{bookID}
 	n := 1
-	where := []string{"e.book_id = $1"}
+	where := []string{"e.book_id = $1", "e.deleted_at IS NULL"}
 
 	// Filter: kind_codes
 	if kc := q.Get("kind_codes"); kc != "" {
@@ -753,7 +753,10 @@ func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	tag, err := s.pool.Exec(ctx,
-		`DELETE FROM glossary_entities WHERE entity_id=$1 AND book_id=$2`, entityID, bookID)
+		`UPDATE glossary_entities
+	 SET deleted_at = now(), updated_at = now()
+	 WHERE entity_id = $1 AND book_id = $2 AND deleted_at IS NULL`,
+		entityID, bookID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "delete failed")
 		return

@@ -42,6 +42,11 @@ func (s *Server) Router() http.Handler {
 
 		r.Route("/books/{book_id}", func(r chi.Router) {
 			r.Get("/export", s.exportGlossary)
+			r.Route("/recycle-bin", func(r chi.Router) {
+				r.Get("/", s.listEntityTrash)
+				r.Post("/{entity_id}/restore", s.restoreEntity)
+				r.Delete("/{entity_id}", s.purgeEntity)
+			})
 			r.Route("/entities", func(r chi.Router) {
 				r.Get("/", s.listEntities)
 				r.Post("/", s.createEntity)

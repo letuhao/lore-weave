@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '@/auth';
 import { useEntityKinds } from '@/features/glossary/hooks/useEntityKinds';
 import { useGlossaryEntities } from '@/features/glossary/hooks/useGlossaryEntities';
@@ -152,6 +152,16 @@ export function GlossaryPage() {
           )}
         </>
       )}
+
+      {/* ── Trash link ────────────────────────────────────────────────────────── */}
+      <div className="flex justify-end">
+        <Link
+          to={`/books/${bookId}/glossary/trash`}
+          className="text-xs text-muted-foreground underline hover:text-foreground"
+        >
+          View trash
+        </Link>
+      </div>
 
       {/* ── Create entity modal ───────────────────────────────────────────────── */}
       {isCreateOpen && (

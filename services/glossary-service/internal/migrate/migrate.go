@@ -375,6 +375,40 @@ func BackfillSnapshots(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
+// softDeleteSQL adds deleted_at and permanently_deleted_at columns plus
+// partial indexes for the live-query and recycle-bin query paths.
+// All statements are idempotent (IF NOT EXISTS).
+const softDeleteSQL = `
+ALTER TABLE glossary_entities
+  ADD COLUMN IF NOT EXISTS deleted_at             TIMESTAMPTZ DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS permanently_deleted_at TIMESTAMPTZ DEFAULT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_ge_live_book_kind
+  ON glossary_entities(book_id, kind_id)
+  WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_ge_live_book_status
+  ON glossary_entities(book_id, status)
+  WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_ge_live_book_updated
+  ON glossary_entities(book_id, updated_at DESC)
+  WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_ge_trash_book
+  ON glossary_entities(book_id, deleted_at DESC)
+  WHERE deleted_at IS NOT NULL AND permanently_deleted_at IS NULL;
+`
+
+// UpSoftDelete adds soft-delete columns and supporting partial indexes.
+// Safe to call on every startup (idempotent).
+func UpSoftDelete(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, softDeleteSQL); err != nil {
+		return fmt.Errorf("migrate soft-delete: %w", err)
+	}
+	return nil
+}
+
 // Seed inserts the 12 default entity kinds and their attribute definitions if the
 // entity_kinds table is empty. Safe to call on every startup (idempotent).
 func Seed(ctx context.Context, pool *pgxpool.Pool) error {

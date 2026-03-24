@@ -116,6 +116,20 @@ export type GlossaryEntityListResponse = {
   offset: number;
 };
 
+// ── Recycle bin ───────────────────────────────────────────────────────────────
+
+export type EntityTrashItem = {
+  entity_id: string;
+  book_id: string;
+  deleted_at: string; // ISO timestamp
+  status: string;
+  kind_code: string;
+  kind_name: string;
+  kind_icon: string;
+  kind_color: string;
+  display_name: string;
+};
+
 // ── Filter state ──────────────────────────────────────────────────────────────
 
 export type FilterState = {

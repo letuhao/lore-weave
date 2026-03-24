@@ -141,7 +141,7 @@ export function GlossaryEntityCard({
               onClick={handleDelete}
               className="block w-full px-3 py-1.5 text-left text-xs text-destructive hover:bg-muted"
             >
-              {confirmDelete ? 'Confirm Delete' : 'Delete'}
+              {confirmDelete ? 'Confirm move to trash' : 'Move to trash'}
             </button>
             {confirmDelete && (
               <button

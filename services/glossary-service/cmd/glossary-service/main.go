@@ -41,6 +41,9 @@ func main() {
 	if err := migrate.BackfillSnapshots(ctx, pool); err != nil {
 		log.Fatalf("backfill snapshots: %v", err)
 	}
+	if err := migrate.UpSoftDelete(ctx, pool); err != nil {
+		log.Fatalf("migrate soft-delete: %v", err)
+	}
 
 	srv := api.NewServer(pool, cfg)
 	httpSrv := &http.Server{

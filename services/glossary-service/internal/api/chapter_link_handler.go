@@ -19,7 +19,7 @@ import (
 func (s *Server) verifyEntityInBook(w http.ResponseWriter, ctx context.Context, entityID, bookID uuid.UUID) bool {
 	var exists bool
 	if err := s.pool.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM glossary_entities WHERE entity_id=$1 AND book_id=$2)`,
+		`SELECT EXISTS(SELECT 1 FROM glossary_entities WHERE entity_id=$1 AND book_id=$2 AND deleted_at IS NULL)`,
 		entityID, bookID,
 	).Scan(&exists); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "db error")
