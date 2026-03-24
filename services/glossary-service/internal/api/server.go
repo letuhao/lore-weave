@@ -56,6 +56,16 @@ func (s *Server) Router() http.Handler {
 							r.Delete("/", s.deleteChapterLink)
 						})
 					})
+					r.Route("/attributes/{attr_value_id}", func(r chi.Router) {
+						r.Patch("/", s.patchAttributeValue)
+						r.Route("/translations", func(r chi.Router) {
+							r.Post("/", s.createTranslation)
+							r.Route("/{translation_id}", func(r chi.Router) {
+								r.Patch("/", s.updateTranslation)
+								r.Delete("/", s.deleteTranslation)
+							})
+						})
+					})
 				})
 			})
 		})

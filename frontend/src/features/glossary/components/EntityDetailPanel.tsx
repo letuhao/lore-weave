@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { KindBadge } from './KindBadge';
 import { ChapterLinkEditor } from './ChapterLinkEditor';
+import { AttributeRow } from './AttributeRow';
 import type { GlossaryEntity } from '../types';
 
 type Props = {
@@ -131,28 +132,22 @@ export function EntityDetailPanel({ entity, bookId, token, isLoading, isSaving, 
                 />
               </section>
 
-              {/* Attributes section — placeholder until SP-4 */}
+              {/* Attributes section */}
               <section className="p-4">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Attributes ({entity.attribute_values.length})
                 </p>
-                <div className="space-y-1">
-                  {entity.attribute_values.slice(0, 5).map((av) => (
-                    <div key={av.attr_value_id} className="flex items-center gap-2 text-xs">
-                      <span className="w-28 shrink-0 text-muted-foreground">
-                        {av.attribute_def.name}
-                        {av.attribute_def.is_required && (
-                          <span className="ml-0.5 text-destructive">*</span>
-                        )}
-                      </span>
-                      <span className="truncate">{av.original_value || '—'}</span>
-                    </div>
+                <div>
+                  {entity.attribute_values.map((av) => (
+                    <AttributeRow
+                      key={av.attr_value_id}
+                      av={av}
+                      bookId={bookId}
+                      entityId={entity.entity_id}
+                      token={token}
+                      onRefresh={onRefresh}
+                    />
                   ))}
-                  {entity.attribute_values.length > 5 && (
-                    <p className="text-xs text-muted-foreground">
-                      +{entity.attribute_values.length - 5} more attributes (inline editor in SP-4)
-                    </p>
-                  )}
                 </div>
               </section>
             </div>

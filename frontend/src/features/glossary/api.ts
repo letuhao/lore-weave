@@ -148,6 +148,20 @@ export const glossaryApi = {
     );
   },
 
+  patchTranslation(
+    bookId: string,
+    entityId: string,
+    attrValueId: string,
+    translationId: string,
+    changes: { value?: string; confidence?: string; translator?: string | null },
+    token: string,
+  ) {
+    return apiJson<import('./types').Translation>(
+      `${BASE}/books/${bookId}/entities/${entityId}/attributes/${attrValueId}/translations/${translationId}`,
+      { method: 'PATCH', body: JSON.stringify(changes), token },
+    );
+  },
+
   deleteTranslation(
     bookId: string,
     entityId: string,
