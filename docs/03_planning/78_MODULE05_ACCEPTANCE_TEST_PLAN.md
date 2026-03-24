@@ -7,8 +7,8 @@
 - Status: Approved
 - Owner: QA Lead
 - Last Updated: 2026-03-23
-- Approved By: —
-- Approved Date: —
+- Approved By: Decision Authority
+- Approved Date: 2026-03-24
 - Summary: Acceptance matrix for Module 05 glossary and lore management covering entity CRUD, chapter linking, attribute values, translations, evidences, filter logic, and RAG export.
 
 ## Change History

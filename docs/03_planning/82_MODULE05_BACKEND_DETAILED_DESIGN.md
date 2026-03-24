@@ -5,15 +5,15 @@
 - Document ID: LW-M05-82
 - Version: 0.1.0
 - Status: Approved
-- Owner: Solution Architect + Backend Lead
+- Owner: Solution Architect + BE Lead
 - Last Updated: 2026-03-23
-- Approved By: —
-- Approved Date: —
+- Approved By: Decision Authority
+- Approved Date: 2026-03-24
 - Summary: Detailed backend design for glossary-service including domain model, DB schema, seeded kind data, service logic, handler behavior, and failure handling.
 
 ## Change History
 
-| Version | Date       | Change                                    | Author    |
+| Version | Date | Change | Author |
 | ------- | ---------- | ----------------------------------------- | --------- |
 | 0.2.0   | 2026-03-23 | Add `genre_tags` column to `entity_kinds`; expand seed to 12 kinds (4 romance/drama + updated Character attrs) | Assistant |
 | 0.1.0   | 2026-03-23 | Initial Module 05 backend detailed design | Assistant |

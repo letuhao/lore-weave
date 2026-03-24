@@ -7,8 +7,8 @@
 - Status: Approved
 - Owner: Solution Architect
 - Last Updated: 2026-03-23
-- Approved By: —
-- Approved Date: —
+- Approved By: Decision Authority
+- Approved Date: 2026-03-24
 - Summary: Source-structure amendment for Module 05 introducing glossary-service (Go/Gin) and the associated contract path, plus frontend feature module structure.
 
 ## Change History

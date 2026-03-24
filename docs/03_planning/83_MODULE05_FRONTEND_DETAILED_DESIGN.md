@@ -7,8 +7,8 @@
 - Status: Approved
 - Owner: Frontend Lead
 - Last Updated: 2026-03-23
-- Approved By: —
-- Approved Date: —
+- Approved By: Decision Authority
+- Approved Date: 2026-03-24
 - Summary: Component design, state management, API layer, TypeScript types, and routing integration for Module 05 glossary and lore management frontend.
 
 ## Change History

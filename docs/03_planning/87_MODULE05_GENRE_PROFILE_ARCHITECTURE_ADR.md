@@ -7,7 +7,8 @@
 - Status: Approved (Informational — feature is OUT OF SCOPE for Module 05)
 - Owner: Solution Architect + Product Manager
 - Last Updated: 2026-03-23
-- Approved By: —
+- Approved By: Decision Authority
+- Approved Date: 2026-03-24
 - Summary: Architecture Decision Record for the Genre Profile feature — a configurable system that lets admin or users define genre presets controlling which glossary entity kinds and attributes are visible for a book. This feature is intentionally deferred from Module 05 but the data model foundation is included in the MVP.
 
 ## Change History

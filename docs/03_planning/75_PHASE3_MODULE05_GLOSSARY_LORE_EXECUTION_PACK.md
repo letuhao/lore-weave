@@ -7,8 +7,8 @@
 - Status: Approved
 - Owner: Product Manager + Solution Architect
 - Last Updated: 2026-03-23
-- Approved By: —
-- Approved Date: —
+- Approved By: Decision Authority
+- Approved Date: 2026-03-24
 - Summary: Execution governance pack for Module 05: book-level glossary and lore entity management with multilingual attribute values, evidence tracking, chapter-linking, and RAG-ready export.
 
 ## Change History

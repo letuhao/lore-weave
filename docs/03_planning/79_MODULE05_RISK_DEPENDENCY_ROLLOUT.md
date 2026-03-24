@@ -5,10 +5,10 @@
 - Document ID: LW-M05-79
 - Version: 0.1.0
 - Status: Approved
-- Owner: SRE + Solution Architect
+- Owner: SRE / Platform Engineer
 - Last Updated: 2026-03-23
-- Approved By: —
-- Approved Date: —
+- Approved By: Decision Authority
+- Approved Date: 2026-03-24
 - Summary: Risk register, dependency map, and rollout/rollback controls for Module 05 glossary and lore management.
 
 ## Change History

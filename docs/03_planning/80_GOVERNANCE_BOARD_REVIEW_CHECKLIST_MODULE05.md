@@ -5,10 +5,10 @@
 - Document ID: LW-M05-80
 - Version: 0.1.0
 - Status: Approved
-- Owner: Decision Authority + Execution Authority
+- Owner: Decision Authority
 - Last Updated: 2026-03-23
-- Approved By: —
-- Approved Date: —
+- Approved By: Decision Authority
+- Approved Date: 2026-03-24
 - Summary: One-session governance board review checklist for Module 05 planning pack gate.
 
 ## Change History

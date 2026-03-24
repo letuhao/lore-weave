@@ -5,10 +5,10 @@
 - Document ID: LW-M05-77
 - Version: 0.1.0
 - Status: Approved
-- Owner: Product Manager + Frontend Lead
+- Owner: Product Manager
 - Last Updated: 2026-03-23
-- Approved By: —
-- Approved Date: —
+- Approved By: Decision Authority
+- Approved Date: 2026-03-24
 - Summary: Frontend user journeys, page routes, state model, component map, and API mapping for Module 05 glossary and lore management.
 
 ## Change History

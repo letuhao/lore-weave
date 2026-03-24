@@ -7,8 +7,8 @@
 - Status: Approved
 - Owner: Solution Architect
 - Last Updated: 2026-03-23
-- Approved By: —
-- Approved Date: —
+- Approved By: Decision Authority
+- Approved Date: 2026-03-24
 - Summary: Contract-first draft for Module 05 APIs covering glossary entity CRUD, entity kind enumeration, chapter-entity link management, attribute values, translations, evidences, and RAG-ready export.
 
 ## Change History

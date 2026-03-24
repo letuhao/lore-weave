@@ -7,8 +7,8 @@
 - Status: Approved
 - Owner: Product Manager + Frontend Lead
 - Last Updated: 2026-03-23
-- Approved By: —
-- Approved Date: —
+- Approved By: Decision Authority
+- Approved Date: 2026-03-24
 - Summary: Low-fidelity wireframe and UI state behavior specification for Module 05 glossary page, entity detail panel, and associated modals.
 
 ## Change History

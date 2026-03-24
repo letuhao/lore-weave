@@ -7,8 +7,8 @@
 - Status: Approved
 - Owner: Solution Architect
 - Last Updated: 2026-03-23
-- Approved By: —
-- Approved Date: —
+- Approved By: Decision Authority
+- Approved Date: 2026-03-24
 - Summary: Cross-service sequence diagrams for M05 glossary service covering entity creation, chapter link validation, list with filters, evidence add with auto-suggest, and RAG export.
 
 ## Change History
