@@ -67,7 +67,7 @@ describe('BooksPage', () => {
     fireEvent.change(screen.getByPlaceholderText('Title'), {
       target: { value: 'New Book' },
     });
-    fireEvent.change(screen.getByPlaceholderText('Original language (e.g. en)'), {
+    fireEvent.change(screen.getByPlaceholderText('e.g. en, vi, zh-Hans'), {
       target: { value: 'vi' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
