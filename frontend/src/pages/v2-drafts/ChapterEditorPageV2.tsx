@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
-import { ChevronRight, Download, Languages, RotateCcw, Save } from 'lucide-react';
+import { AlignLeft, ChevronRight, Download, Languages, Layers, RotateCcw, Save } from 'lucide-react';
+import { ChunkEditor } from '@/components/chunk-editor';
 import { useAuth } from '@/auth';
 import { booksApi, type Book, type Chapter } from '@/features/books/api';
 import {
@@ -213,6 +214,7 @@ function DraftTab({
   const [isDirty, setIsDirty] = useState(false);
   const [savedOk, setSavedOk] = useState(false);
   const [error, setError] = useState('');
+  const [draftView, setDraftView] = useState<'editor' | 'chunks'>('editor');
   const savedBodyRef = useRef('');
 
   useEffect(() => {
@@ -269,11 +271,62 @@ function DraftTab({
     );
   }
 
+  function switchView(next: 'editor' | 'chunks') {
+    if (next === 'editor') {
+      // Bump key so Lexical re-reads the current body (which may include chunk edits)
+      setEditorKey((k) => k + 1);
+    }
+    setDraftView(next);
+  }
+
   return (
     <form onSubmit={(e) => void save(e)} className="flex h-full flex-col">
-      {/* Editor area */}
-      <div className="flex-1 overflow-auto p-4">
-        <LexicalPlainEditor key={editorKey} initialValue={body} onChange={handleChange} />
+      {/* View toggle bar */}
+      <div className="flex shrink-0 items-center justify-end gap-1 border-b px-4 py-1.5">
+        <span className="mr-auto text-xs text-muted-foreground">
+          {draftView === 'chunks' ? 'Chunk view — paragraph-level editing' : 'Full editor'}
+        </span>
+        <div className="inline-flex rounded-md border">
+          <button
+            type="button"
+            onClick={() => switchView('editor')}
+            title="Full editor"
+            className={[
+              'flex items-center gap-1.5 rounded-l-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+              draftView === 'editor'
+                ? 'bg-accent text-accent-foreground'
+                : 'text-muted-foreground hover:bg-muted',
+            ].join(' ')}
+          >
+            <AlignLeft className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Editor</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => switchView('chunks')}
+            title="Chunk view"
+            className={[
+              'flex items-center gap-1.5 rounded-r-md border-l px-2.5 py-1.5 text-xs font-medium transition-colors',
+              draftView === 'chunks'
+                ? 'bg-accent text-accent-foreground'
+                : 'text-muted-foreground hover:bg-muted',
+            ].join(' ')}
+          >
+            <Layers className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Chunks</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Content area */}
+      <div className="flex-1 overflow-hidden">
+        {draftView === 'editor' ? (
+          <div className="h-full overflow-auto p-4">
+            <LexicalPlainEditor key={editorKey} initialValue={body} onChange={handleChange} />
+          </div>
+        ) : (
+          <ChunkEditor text={body} onChange={handleChange} />
+        )}
       </div>
 
       {/* Footer bar */}
