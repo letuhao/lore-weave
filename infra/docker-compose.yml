@@ -1,6 +1,6 @@
 # Full stack: Postgres, Mailhog, auth-service, api-gateway-bff, frontend (nginx static build).
 # From this directory: docker compose up --build
-# Browser: http://localhost:5173  |  Gateway: http://localhost:3000  |  Auth: http://localhost:8081
+# Browser: http://localhost:5296  |  Gateway: http://localhost:3123  |  Auth: http://localhost:8204
 # Optional env file: copy .env.example to .env and set JWT_SECRET (>= 32 chars) for production-like secrets.
 
 services:
@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: loreweave_dev
       POSTGRES_DB: loreweave_auth
     ports:
-      - "5432:5432"
+      - "5555:5432"
     volumes:
       - loreweave_pg:/var/lib/postgresql/data
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
@@ -49,16 +49,16 @@ services:
       MINIO_ROOT_USER: loreweave
       MINIO_ROOT_PASSWORD: loreweave_dev_minio_secret
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "9123:9000"
+      - "9124:9001"
     volumes:
       - loreweave_minio:/data
 
   mailhog:
     image: mailhog/mailhog:latest
     ports:
-      - "1025:1025"
-      - "8025:8025"
+      - "1148:1025"
+      - "8148:8025"
 
   auth-service:
     build:
@@ -72,7 +72,7 @@ services:
       SMTP_HOST: mailhog
       SMTP_PORT: "1025"
       SMTP_FROM: "LoreWeave <noreply@loreweave.local>"
-      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:5173}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:5296}
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,7 +81,7 @@ services:
       mailhog:
         condition: service_started
     ports:
-      - "8081:8081"
+      - "8204:8081"
 
   book-service:
     build:
@@ -100,7 +100,7 @@ services:
       minio:
         condition: service_started
     ports:
-      - "8082:8082"
+      - "8205:8082"
 
   sharing-service:
     build:
@@ -119,7 +119,7 @@ services:
       book-service:
         condition: service_healthy
     ports:
-      - "8083:8083"
+      - "8206:8083"
 
   catalog-service:
     build:
@@ -140,7 +140,7 @@ services:
       sharing-service:
         condition: service_healthy
     ports:
-      - "8084:8084"
+      - "8207:8084"
 
   provider-registry-service:
     build:
@@ -159,7 +159,7 @@ services:
       usage-billing-service:
         condition: service_healthy
     ports:
-      - "8085:8085"
+      - "8208:8085"
 
   usage-billing-service:
     build:
@@ -175,7 +175,7 @@ services:
       postgres-db-bootstrap:
         condition: service_completed_successfully
     ports:
-      - "8086:8086"
+      - "8209:8086"
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
@@ -183,8 +183,8 @@ services:
       RABBITMQ_DEFAULT_USER: loreweave
       RABBITMQ_DEFAULT_PASS: loreweave_dev
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "5795:5672"
+      - "15795:15672"
     volumes:
       - loreweave_rabbitmq:/var/lib/rabbitmq
     healthcheck:
@@ -216,7 +216,7 @@ services:
       provider-registry-service:
         condition: service_healthy
     ports:
-      - "8087:8087"
+      - "8210:8087"
 
   translation-worker:
     build:
@@ -258,7 +258,7 @@ services:
       book-service:
         condition: service_healthy
     ports:
-      - "8088:8088"
+      - "8211:8088"
 
   api-gateway-bff:
     build:
@@ -296,18 +296,18 @@ services:
       rabbitmq:
         condition: service_healthy
     ports:
-      - "3000:3000"
+      - "3123:3000"
 
   frontend:
     build:
       context: ../frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:3000}
+        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:3123}
     depends_on:
       - api-gateway-bff
     ports:
-      - "5173:80"
+      - "5296:80"
 
 volumes:
   loreweave_pg:

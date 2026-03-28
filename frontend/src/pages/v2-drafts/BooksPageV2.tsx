@@ -7,15 +7,61 @@ import { LanguagePicker } from '@/components/books/LanguagePicker';
 import { VisibilityBadge } from '@/components/books/VisibilityBadge';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { DataTable, FilterToolbar, Pagination, SortDropdown, EmptyState } from '@/components/data';
-import type { ColumnDef, SortState } from '@/components/data';
+import { DataTable, FilterToolbar, Pagination, SortDropdown, EmptyState, ViewToggle } from '@/components/data';
+import type { ColumnDef, SortState, ViewMode } from '@/components/data';
+
+/**
+ * Lazily fetches a book cover with auth and renders it as a blob URL.
+ * Falls back to a placeholder when no cover exists or while loading.
+ */
+function BookCover({ bookId, hasCover, token }: { bookId: string; hasCover?: boolean; token: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!hasCover) return;
+    setLoading(true);
+    let cancelled = false;
+    let url = '';
+
+    booksApi
+      .getCover(token, bookId)
+      .then((blob) => {
+        url = URL.createObjectURL(blob);
+        if (!cancelled) setSrc(url);
+        else URL.revokeObjectURL(url);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [bookId, hasCover, token]);
+
+  if (loading) return <Skeleton className="aspect-[2/3] w-full rounded-sm" />;
+
+  if (!src) {
+    return (
+      <div className="flex aspect-[2/3] w-full items-center justify-center rounded-sm bg-muted">
+        <BookOpen className="h-8 w-8 text-muted-foreground/30" />
+      </div>
+    );
+  }
+
+  return <img src={src} alt="" className="aspect-[2/3] w-full rounded-sm object-cover" />;
+}
 
 /**
  * V2 BooksPage — Redesigned:
  * - "Create book" moved to a modal dialog (content-first layout)
  * - Full DataTable with search, sort, pagination
- * - Clean toolbar with consistent filter patterns
+ * - Table / Grid view toggle (grid shows cover + description)
  */
 export function BooksPageV2() {
   const { accessToken } = useAuth();
@@ -37,13 +83,22 @@ export function BooksPageV2() {
   const [sort, setSort] = useState<SortState | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [view, setView] = useState<ViewMode>('table');
 
   const load = async () => {
     if (!accessToken) return;
     setIsLoading(true);
     try {
       const res = await booksApi.listBooks(accessToken);
-      setItems(res.items);
+      // visibility lives in the sharing service, not the book list — fetch in parallel
+      const sharingResults = await Promise.allSettled(
+        res.items.map((b) => booksApi.getSharing(accessToken, b.book_id)),
+      );
+      const enriched = res.items.map((b, i) => {
+        const r = sharingResults[i];
+        return r.status === 'fulfilled' ? { ...b, visibility: r.value.visibility } : b;
+      });
+      setItems(enriched);
       setTotal(res.total || res.items.length);
       setError('');
     } catch (e) {
@@ -61,7 +116,6 @@ export function BooksPageV2() {
   const filtered = useMemo(() => {
     let result = items;
 
-    // Search
     if (search) {
       const q = search.toLowerCase();
       result = result.filter(
@@ -69,7 +123,6 @@ export function BooksPageV2() {
       );
     }
 
-    // Sort
     if (sort) {
       result = [...result].sort((a, b) => {
         let cmp = 0;
@@ -93,7 +146,6 @@ export function BooksPageV2() {
     return result;
   }, [items, search, sort]);
 
-  // Paginate
   const pageData = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   const handleSort = (field: string) => {
@@ -131,7 +183,7 @@ export function BooksPageV2() {
     }
   };
 
-  // Column definitions
+  // Column definitions (table view)
   const columns: ColumnDef<Book>[] = [
     {
       key: 'title',
@@ -187,6 +239,8 @@ export function BooksPageV2() {
     { field: 'original_language', label: 'Language' },
   ];
 
+  const isEmpty = !isLoading && pageData.length === 0;
+
   return (
     <div className="space-y-4">
       {/* ── Page header ───────────────────────────────────────────────────────── */}
@@ -221,6 +275,7 @@ export function BooksPageV2() {
         searchPlaceholder="Search books…"
       >
         <SortDropdown sort={sort} options={sortOptions} onSortChange={setSort} />
+        <ViewToggle view={view} onViewChange={setView} />
       </FilterToolbar>
 
       {/* ── Error ─────────────────────────────────────────────────────────────── */}
@@ -230,8 +285,8 @@ export function BooksPageV2() {
         </p>
       )}
 
-      {/* ── Table ─────────────────────────────────────────────────────────────── */}
-      {!isLoading && pageData.length === 0 ? (
+      {/* ── Content ───────────────────────────────────────────────────────────── */}
+      {isEmpty ? (
         <EmptyState
           icon={<BookOpen className="h-10 w-10 text-muted-foreground/50" />}
           title={search ? 'No books match your search' : 'No books yet'}
@@ -241,7 +296,7 @@ export function BooksPageV2() {
             !search ? { label: 'Create Book', onClick: () => setCreateOpen(true) } : undefined
           }
         />
-      ) : (
+      ) : view === 'table' ? (
         <DataTable
           columns={columns}
           data={pageData}
@@ -250,6 +305,45 @@ export function BooksPageV2() {
           sort={sort}
           onSort={handleSort}
         />
+      ) : (
+        /* ── Grid view ── */
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          {isLoading
+            ? Array.from({ length: 10 }).map((_, i) => (
+                <div key={i} className="space-y-2">
+                  <Skeleton className="aspect-[2/3] w-full rounded" />
+                  <Skeleton className="h-4 w-3/4 rounded" />
+                  <Skeleton className="h-3 w-full rounded" />
+                </div>
+              ))
+            : pageData.map((b) => (
+                <div key={b.book_id} className="group flex flex-col overflow-hidden rounded-lg border bg-card transition-shadow hover:shadow-md">
+                  <Link to={`/books/${b.book_id}`} className="block p-2">
+                    <BookCover bookId={b.book_id} hasCover={b.has_cover} token={accessToken!} />
+                  </Link>
+                  <div className="flex flex-1 flex-col gap-1 p-2 pt-0">
+                    <Link
+                      to={`/books/${b.book_id}`}
+                      className="text-sm font-medium leading-snug group-hover:underline"
+                    >
+                      {b.title}
+                    </Link>
+                    {b.description && (
+                      <p className="line-clamp-2 text-xs text-muted-foreground">{b.description}</p>
+                    )}
+                    <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-1">
+                      <VisibilityBadge visibility={b.visibility} />
+                      {b.original_language && (
+                        <span className="text-xs text-muted-foreground">{b.original_language}</span>
+                      )}
+                      <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                        {b.chapter_count} ch
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+        </div>
       )}
 
       {/* ── Pagination ────────────────────────────────────────────────────────── */}

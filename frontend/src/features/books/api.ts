@@ -10,6 +10,7 @@ export type Book = {
   original_language?: string | null;
   summary?: string | null;
   chapter_count: number;
+  has_cover?: boolean;
   visibility?: Visibility;
   lifecycle_state: 'active' | 'trashed' | 'purge_pending';
   created_at?: string;
@@ -213,6 +214,14 @@ export const booksApi = {
     return apiJson(`/v1/books/${bookId}/chapters/${chapterId}/revisions/${revisionId}/restore`, {
       method: 'POST',
       token,
+    });
+  },
+  getCover(token: string, bookId: string): Promise<Blob> {
+    return fetch(`${base()}/v1/books/${bookId}/cover`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((r) => {
+      if (!r.ok) throw new Error('cover not found');
+      return r.blob();
     });
   },
   getSharing(token: string, bookId: string) {

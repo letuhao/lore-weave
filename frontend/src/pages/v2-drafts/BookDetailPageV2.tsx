@@ -20,6 +20,7 @@ import { LanguageStatusDots } from '@/components/translation/LanguageStatusDots'
 import { versionsApi, type ChapterCoverage } from '@/features/translation/versionsApi';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select } from '@/components/ui/select';
@@ -30,8 +31,8 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { DataTable, FilterToolbar, Pagination, SortDropdown, EmptyState } from '@/components/data';
-import type { ColumnDef, SortState } from '@/components/data';
+import { DataTable, FilterToolbar, Pagination, SortDropdown, EmptyState, ViewToggle } from '@/components/data';
+import type { ColumnDef, SortState, ViewMode } from '@/components/data';
 
 /**
  * V2 BookDetailPage — Redesigned:
@@ -60,6 +61,7 @@ export function BookDetailPageV2() {
   const [sort, setSort] = useState<SortState | null>({ field: 'sort_order', direction: 'asc' });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [view, setView] = useState<ViewMode>('table');
 
   // Create modal state
   const [createMode, setCreateMode] = useState<'editor' | 'upload' | null>(null);
@@ -424,6 +426,7 @@ export function BookDetailPageV2() {
               </Select>
 
               <SortDropdown sort={sort} options={sortOptions} onSortChange={setSort} />
+              <ViewToggle view={view} onViewChange={setView} />
             </FilterToolbar>
 
             {/* Add chapter button */}
@@ -442,7 +445,7 @@ export function BookDetailPageV2() {
             </DropdownMenu>
           </div>
 
-          {/* Chapter table */}
+          {/* Chapter content */}
           {!isLoading && pageData.length === 0 ? (
             <EmptyState
               title={search || langFilter ? 'No chapters match your filters' : 'No chapters yet'}
@@ -458,7 +461,7 @@ export function BookDetailPageV2() {
                   : undefined
               }
             />
-          ) : (
+          ) : view === 'table' ? (
             <DataTable
               columns={columns}
               data={pageData}
@@ -467,6 +470,104 @@ export function BookDetailPageV2() {
               sort={sort}
               onSort={handleSort}
             />
+          ) : (
+            /* ── Grid view ── */
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {isLoading
+                ? Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="space-y-3 rounded-lg border p-4">
+                      <Skeleton className="h-3 w-10 rounded" />
+                      <Skeleton className="h-4 w-3/4 rounded" />
+                      <Skeleton className="h-3 w-1/2 rounded" />
+                    </div>
+                  ))
+                : pageData.map((c) => {
+                    const chapterCoverage = coverage.find((cv) => cv.chapter_id === c.chapter_id);
+                    return (
+                      <div
+                        key={c.chapter_id}
+                        className="group flex flex-col gap-2 rounded-lg border bg-card p-4 transition-shadow hover:shadow-md"
+                      >
+                        {/* Top row: order + state + actions */}
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                            #{c.sort_order}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <Badge
+                              variant={c.lifecycle_state === 'active' ? 'success' : 'muted'}
+                              className="text-[10px]"
+                            >
+                              {c.lifecycle_state}
+                            </Badge>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger
+                                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                aria-label="Chapter actions"
+                              >
+                                <MoreHorizontal className="h-3.5 w-3.5" />
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    navigate(`/books/${bookId}/chapters/${c.chapter_id}/edit`)
+                                  }
+                                >
+                                  <Pencil className="mr-2 h-3.5 w-3.5" /> Edit draft
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    navigate(
+                                      `/books/${bookId}/chapters/${c.chapter_id}/translations`,
+                                    )
+                                  }
+                                >
+                                  <Languages className="mr-2 h-3.5 w-3.5" /> Translations
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => void downloadRaw(c.chapter_id)}
+                                  disabled={downloadBusy === c.chapter_id}
+                                >
+                                  <Download className="mr-2 h-3.5 w-3.5" />
+                                  {downloadBusy === c.chapter_id ? 'Downloading…' : 'Download raw'}
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => void trashChapter(c.chapter_id)}
+                                  className="text-destructive"
+                                >
+                                  <Trash2 className="mr-2 h-3.5 w-3.5" /> Move to trash
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </div>
+
+                        {/* Title */}
+                        <Link
+                          to={`/books/${bookId}/chapters/${c.chapter_id}/edit`}
+                          className="text-sm font-medium leading-snug group-hover:underline"
+                        >
+                          {c.title || c.original_filename}
+                        </Link>
+
+                        {/* Bottom row: language + translation coverage */}
+                        <div className="mt-auto flex items-center justify-between pt-1">
+                          <span className="text-xs text-muted-foreground">
+                            {c.original_language}
+                          </span>
+                          {chapterCoverage && (
+                            <LanguageStatusDots
+                              bookId={bookId}
+                              chapterId={c.chapter_id}
+                              coverage={chapterCoverage.languages}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+            </div>
           )}
 
           {filtered.length > 0 && (

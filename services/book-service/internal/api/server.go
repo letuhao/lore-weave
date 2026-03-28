@@ -60,6 +60,7 @@ func (s *Server) Router() http.Handler {
 			r.Post("/restore", s.restoreBook)
 			r.Delete("/purge", s.purgeBook)
 
+			r.Get("/cover", s.getCover)
 			r.Post("/cover", s.uploadCover)
 			r.Delete("/cover", s.deleteCover)
 
@@ -295,7 +296,8 @@ func (s *Server) listBooksByLifecycle(w http.ResponseWriter, r *http.Request, li
 	ctx := r.Context()
 	rows, err := s.pool.Query(ctx, `
 SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,b.lifecycle_state,b.trashed_at,b.purge_eligible_at,b.created_at,b.updated_at,
-  COALESCE((SELECT COUNT(*) FROM chapters c WHERE c.book_id=b.id AND c.lifecycle_state='active'),0) AS chapter_count
+  COALESCE((SELECT COUNT(*) FROM chapters c WHERE c.book_id=b.id AND c.lifecycle_state='active'),0) AS chapter_count,
+  EXISTS(SELECT 1 FROM book_cover_assets a WHERE a.book_id=b.id) AS has_cover
 FROM books b
 WHERE b.owner_user_id=$1 AND b.lifecycle_state=$2
 ORDER BY b.created_at DESC
@@ -313,7 +315,8 @@ LIMIT $3 OFFSET $4
 		var desc, lang, summary, state string
 		var trashedAt, purgeAt, createdAt, updatedAt *time.Time
 		var chapterCount int
-		if err := rows.Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &chapterCount); err == nil {
+		var hasCover bool
+		if err := rows.Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &chapterCount, &hasCover); err == nil {
 			visibility := s.fetchSharingVisibility(ctx, id)
 			items = append(items, map[string]any{
 				"book_id":           id,
@@ -326,6 +329,7 @@ LIMIT $3 OFFSET $4
 				"trashed_at":        trashedAt,
 				"purge_eligible_at": purgeAt,
 				"chapter_count":     chapterCount,
+				"has_cover":         hasCover,
 				"visibility":        visibility,
 				"created_at":        createdAt,
 				"updated_at":        updatedAt,
@@ -562,10 +566,10 @@ func (s *Server) uploadCover(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, err = s.pool.Exec(ctx, `
-INSERT INTO book_cover_assets(book_id, content_type, byte_size, storage_key, updated_at)
-VALUES($1,$2,$3,$4,now())
-ON CONFLICT(book_id) DO UPDATE SET content_type=EXCLUDED.content_type, byte_size=EXCLUDED.byte_size, storage_key=EXCLUDED.storage_key, updated_at=now()
-`, bookID, contentType, int64(len(data)), fmt.Sprintf("covers/%s", bookID))
+INSERT INTO book_cover_assets(book_id, content_type, byte_size, storage_key, data, updated_at)
+VALUES($1,$2,$3,$4,$5,now())
+ON CONFLICT(book_id) DO UPDATE SET content_type=EXCLUDED.content_type, byte_size=EXCLUDED.byte_size, storage_key=EXCLUDED.storage_key, data=EXCLUDED.data, updated_at=now()
+`, bookID, contentType, int64(len(data)), fmt.Sprintf("covers/%s", bookID), data)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to save cover")
 		return
@@ -591,6 +595,33 @@ func (s *Server) deleteCover(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.recalcQuota(r.Context(), ownerID)
 	s.getBookByID(w, r.Context(), bookID, ownerID, http.StatusOK)
+}
+
+func (s *Server) getCover(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
+		return
+	}
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	var contentType string
+	var data []byte
+	err := s.pool.QueryRow(r.Context(), `
+SELECT a.content_type, a.data
+FROM book_cover_assets a
+JOIN books b ON b.id=a.book_id
+WHERE a.book_id=$1 AND b.owner_user_id=$2
+`, bookID, ownerID).Scan(&contentType, &data)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "COVER_NOT_FOUND", "cover not found")
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	_, _ = w.Write(data)
 }
 
 func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {

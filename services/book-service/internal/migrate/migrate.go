@@ -29,8 +29,10 @@ CREATE TABLE IF NOT EXISTS book_cover_assets (
   content_type TEXT NOT NULL,
   byte_size BIGINT NOT NULL DEFAULT 0,
   storage_key TEXT NOT NULL,
+  data BYTEA,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE book_cover_assets ADD COLUMN IF NOT EXISTS data BYTEA;
 
 CREATE TABLE IF NOT EXISTS chapters (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
