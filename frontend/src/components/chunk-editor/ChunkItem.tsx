@@ -8,26 +8,15 @@ interface ChunkItemProps {
   text: string;
   isDirty: boolean;
   originalText: string;
-  /** Text of the preceding chunk — included in "Copy with context" for AI. */
   prevText: string | undefined;
-  /** Text of the following chunk — included in "Copy with context" for AI. */
   nextText: string | undefined;
   isSelected: boolean;
-  onSelect: () => void;
+  /** shiftKey = true triggers range selection in the parent */
+  onSelect: (shiftKey: boolean) => void;
   onEdit: (value: string) => void;
   onReset: () => void;
 }
 
-/**
- * Single paragraph chunk — three interaction modes:
- *
- *  idle    → hover reveals action bar (Copy / Copy-with-context / Edit / Reset)
- *  editing → inline textarea with Accept / Discard controls
- *  copied  → brief check-mark flash on the relevant copy button
- *
- * Dirty chunks receive an amber left-border and background tint so the user can
- * see at a glance which chunks have been modified.
- */
 export function ChunkItem({
   index,
   total,
@@ -46,7 +35,6 @@ export function ChunkItem({
   const [copied, setCopied] = useState<'chunk' | 'context' | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-grow textarea on mount
   useEffect(() => {
     if (isEditing && textareaRef.current) {
       const el = textareaRef.current;
@@ -78,80 +66,72 @@ export function ChunkItem({
     });
   }
 
-  /**
-   * Builds a context-rich block for pasting into an AI agent:
-   *
-   *   [Chunk 3 of 47]
-   *
-   *   [Previous]
-   *   ...prev paragraph...
-   *
-   *   [Current]
-   *   ...this paragraph...
-   *
-   *   [Following]
-   *   ...next paragraph...
-   */
   function copyWithContext() {
     const parts: string[] = [`[Chunk ${index + 1} of ${total}]`];
     if (prevText) parts.push(`\n[Previous]\n${prevText}`);
     parts.push(`\n[Current]\n${text}`);
     if (nextText) parts.push(`\n[Following]\n${nextText}`);
-
     void navigator.clipboard.writeText(parts.join('\n')).then(() => {
       setCopied('context');
       setTimeout(() => setCopied(null), 1500);
     });
   }
 
+  // Derive border + bg from selection/dirty state
+  const containerClass = [
+    'group relative flex cursor-pointer rounded-md border transition-colors select-none',
+    isSelected
+      ? 'border-primary/40 bg-primary/5 dark:bg-primary/10'
+      : isDirty
+      ? 'border-amber-200 bg-amber-50/40 dark:border-amber-700/40 dark:bg-amber-900/10'
+      : 'border-transparent hover:border-border',
+  ].join(' ');
+
   return (
     <div
-      onClick={() => { if (!isEditing) onSelect(); }}
-      className={[
-        'group relative rounded-md border transition-colors',
-        isDirty
-          ? 'border-amber-300 bg-amber-50/40 dark:border-amber-700/50 dark:bg-amber-900/10'
-          : isSelected
-          ? 'border-border bg-muted/30'
-          : 'border-transparent hover:border-border',
-      ].join(' ')}
+      onClick={(e) => { if (!isEditing) onSelect(e.shiftKey); }}
+      className={containerClass}
     >
-      {/* Dirty stripe */}
+      {/* Amber dirty stripe — absolute on left edge, always shown when dirty */}
       {isDirty && (
         <div className="absolute inset-y-0 left-0 w-0.5 rounded-l-md bg-amber-400 dark:bg-amber-500" />
       )}
 
-      {/* Chunk index — subtle, top-left */}
-      <span className="absolute left-2 top-2.5 select-none font-mono text-[10px] tabular-nums text-muted-foreground/35">
-        {index + 1}
-      </span>
+      {/* ── Left gutter: chunk number ──────────────────────────────────────── */}
+      <div className="flex w-10 shrink-0 flex-col items-center gap-1 pt-3 pb-2">
+        <span
+          className={[
+            'font-mono text-xs tabular-nums font-medium transition-colors',
+            isSelected ? 'text-primary' : 'text-muted-foreground/50',
+          ].join(' ')}
+        >
+          {index + 1}
+        </span>
+        {/* Selection dot */}
+        {isSelected && (
+          <div className="h-1 w-1 rounded-full bg-primary/60" />
+        )}
+      </div>
 
-      <div className="px-6 py-3">
+      {/* ── Content ────────────────────────────────────────────────────────── */}
+      <div className="min-w-0 flex-1 py-3 pr-10">
         {isEditing ? (
-          /* ── Edit mode ──────────────────────────────────────────────────── */
-          <div className="space-y-2">
+          <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
             <textarea
               ref={textareaRef}
               value={editValue}
               onChange={(e) => {
                 setEditValue(e.target.value);
-                // auto-grow
                 e.currentTarget.style.height = 'auto';
                 e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
               }}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') discardEdit();
-              }}
+              onKeyDown={(e) => { if (e.key === 'Escape') discardEdit(); }}
               className="w-full resize-none overflow-hidden rounded border border-input bg-background px-3 py-2 text-sm leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               rows={Math.max(3, editValue.split('\n').length)}
             />
             <div className="flex items-center gap-2">
-              <Button size="sm" onClick={acceptEdit} className="h-7 px-2.5 text-xs">
-                Accept
-              </Button>
-              <Button size="sm" variant="ghost" onClick={discardEdit} className="h-7 px-2.5 text-xs">
-                Discard
-              </Button>
+              <Button size="sm" onClick={acceptEdit} className="h-7 px-2.5 text-xs">Accept</Button>
+              <Button size="sm" variant="ghost" onClick={discardEdit} className="h-7 px-2.5 text-xs">Discard</Button>
               {isDirty && (
                 <button
                   onClick={() => { onReset(); setIsEditing(false); }}
@@ -163,46 +143,34 @@ export function ChunkItem({
             </div>
           </div>
         ) : (
-          /* ── Read mode ──────────────────────────────────────────────────── */
           <p className="whitespace-pre-wrap text-sm leading-relaxed">{text}</p>
         )}
       </div>
 
-      {/* Hover action bar — hidden while editing */}
+      {/* ── Hover action bar ───────────────────────────────────────────────── */}
       {!isEditing && (
         <div className="absolute right-2 top-2 hidden items-center gap-0.5 rounded-md border bg-background shadow-sm group-hover:flex">
-          {/* Copy chunk */}
           <button
             title="Copy chunk"
             onClick={(e) => { e.stopPropagation(); copyChunk(); }}
             className="rounded-l-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
           >
-            {copied === 'chunk'
-              ? <Check className="h-3.5 w-3.5 text-emerald-500" />
-              : <Copy className="h-3.5 w-3.5" />}
+            {copied === 'chunk' ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
           </button>
-
-          {/* Copy with context (for AI agent) */}
           <button
-            title={`Copy chunk ${index + 1} with surrounding context (prev + current + next)`}
+            title={`Copy chunk ${index + 1} with surrounding context`}
             onClick={(e) => { e.stopPropagation(); copyWithContext(); }}
             className="border-l p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
           >
-            {copied === 'context'
-              ? <Check className="h-3.5 w-3.5 text-emerald-500" />
-              : <Bot className="h-3.5 w-3.5" />}
+            {copied === 'context' ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Bot className="h-3.5 w-3.5" />}
           </button>
-
-          {/* Edit */}
           <button
             title="Edit this chunk"
-            onClick={(e) => { e.stopPropagation(); onSelect(); startEdit(); }}
+            onClick={(e) => { e.stopPropagation(); onSelect(false); startEdit(); }}
             className="border-l p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <Pencil className="h-3.5 w-3.5" />
           </button>
-
-          {/* Reset — only shown when dirty */}
           {isDirty && (
             <button
               title="Reset to original"
@@ -215,7 +183,7 @@ export function ChunkItem({
         </div>
       )}
 
-      {/* Dirty label — bottom-right of chunk when not hovering */}
+      {/* Dirty label — visible at rest, hidden on hover (action bar takes over) */}
       {isDirty && !isEditing && (
         <span className="absolute bottom-1.5 right-2 text-[9px] text-amber-500/70 group-hover:hidden dark:text-amber-400/60">
           edited

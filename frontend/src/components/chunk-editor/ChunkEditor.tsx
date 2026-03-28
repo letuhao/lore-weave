@@ -1,32 +1,101 @@
 import { useState } from 'react';
-import { RotateCcw } from 'lucide-react';
+import { Bot, Check, RotateCcw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useChunks } from './useChunks';
 import { ChunkItem } from './ChunkItem';
 
 interface ChunkEditorProps {
-  /** Source text — updated externally (e.g. on initial API load). */
   text: string;
-  /** Called whenever any chunk edit is accepted, with the fully reassembled text. */
   onChange: (value: string) => void;
 }
 
 /**
  * Chunk-based view of a text document.
  *
- * Paragraphs are rendered as individually addressable chunks. Each chunk can be:
- *  - Copied as plain text
- *  - Copied with surrounding context (prev + current + next) for pasting into an AI agent
- *  - Edited inline — the edit is merged back into the full text via `onChange`
- *  - Reset to its original value
+ * Selection model:
+ *  - Click       → select that chunk only (set as range anchor)
+ *  - Shift+click → extend/shrink selection from anchor to clicked chunk
+ *  - Click same  → deselect when it was the only selection
  *
- * Position and sibling awareness is built in: the chunk index (1-of-N) and the
- * surrounding paragraphs are always available, giving AI agents the context they
- * need to understand where in the document a passage sits.
+ * When ≥1 chunk is selected, a selection bar appears with:
+ *  - "N chunks selected (range: X–Y)"
+ *  - Copy with context (prev + all selected + following)
+ *  - Deselect all
  */
 export function ChunkEditor({ text, onChange }: ChunkEditorProps) {
   const { chunks, dirtyCount, applyEdit, resetEdit, resetAll } = useChunks(text, onChange);
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+
+  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
+  const [anchorIndex, setAnchorIndex] = useState<number | null>(null);
+  const [copyDone, setCopyDone] = useState(false);
+
+  function handleSelect(index: number, shiftKey: boolean) {
+    if (shiftKey && anchorIndex !== null) {
+      // Range select from anchor → index (replaces current selection)
+      const lo = Math.min(anchorIndex, index);
+      const hi = Math.max(anchorIndex, index);
+      const range = new Set<number>();
+      for (let i = lo; i <= hi; i++) range.add(i);
+      setSelectedIndices(range);
+    } else {
+      // Single click — toggle if already sole selection, otherwise narrow to this one
+      setSelectedIndices((prev) => {
+        if (prev.size === 1 && prev.has(index)) return new Set(); // deselect
+        return new Set([index]);
+      });
+      setAnchorIndex(index);
+    }
+  }
+
+  function clearSelection() {
+    setSelectedIndices(new Set());
+    setAnchorIndex(null);
+  }
+
+  /**
+   * Copy all selected chunks with surrounding context for AI agents.
+   * Format:
+   *   [Chunks 3–5 of 47]
+   *   [Previous]  chunk before selection
+   *   [Chunk 3]   selected chunk text
+   *   [Chunk 4]   ...
+   *   [Chunk 5]   ...
+   *   [Following] chunk after selection
+   */
+  function copySelection() {
+    const sorted = [...selectedIndices].sort((a, b) => a - b);
+    if (sorted.length === 0) return;
+
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    const total = chunks.length;
+
+    const isSingle = sorted.length === 1;
+    const header = isSingle
+      ? `[Chunk ${first + 1} of ${total}]`
+      : `[Chunks ${first + 1}–${last + 1} of ${total}]`;
+
+    const parts: string[] = [header];
+    if (first > 0) parts.push(`\n[Previous]\n${chunks[first - 1].text}`);
+
+    if (isSingle) {
+      parts.push(`\n[Current]\n${chunks[first].text}`);
+    } else {
+      for (const i of sorted) {
+        parts.push(`\n[Chunk ${i + 1}]\n${chunks[i].text}`);
+      }
+    }
+
+    if (last < total - 1) parts.push(`\n[Following]\n${chunks[last + 1].text}`);
+
+    void navigator.clipboard.writeText(parts.join('\n')).then(() => {
+      setCopyDone(true);
+      setTimeout(() => setCopyDone(false), 1500);
+    });
+  }
+
+  const selectionCount = selectedIndices.size;
+  const sortedSel = selectionCount > 0 ? [...selectedIndices].sort((a, b) => a - b) : null;
 
   if (chunks.length === 0) {
     return (
@@ -38,7 +107,7 @@ export function ChunkEditor({ text, onChange }: ChunkEditorProps) {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* ── Dirty summary bar ─────────────────────────────────────────────── */}
+      {/* ── Dirty bar ─────────────────────────────────────────────────────── */}
       {dirtyCount > 0 && (
         <div className="flex shrink-0 items-center gap-3 border-b bg-amber-50/60 px-4 py-1.5 text-xs dark:bg-amber-900/10">
           <span className="text-amber-600 dark:text-amber-400">
@@ -53,14 +122,51 @@ export function ChunkEditor({ text, onChange }: ChunkEditorProps) {
             <RotateCcw className="h-3 w-3" />
             Reset all
           </Button>
-          <span className="ml-auto text-muted-foreground/60">
-            Save draft to persist changes
+          <span className="ml-auto text-muted-foreground/60">Save draft to persist changes</span>
+        </div>
+      )}
+
+      {/* ── Selection bar ─────────────────────────────────────────────────── */}
+      {selectionCount > 0 && sortedSel && (
+        <div className="flex shrink-0 items-center gap-3 border-b bg-primary/5 px-4 py-1.5 text-xs dark:bg-primary/10">
+          <span className="font-medium text-primary">
+            {selectionCount} chunk{selectionCount !== 1 ? 's' : ''} selected
           </span>
+          {selectionCount > 1 && (
+            <span className="text-muted-foreground">
+              {sortedSel[0] + 1}–{sortedSel[sortedSel.length - 1] + 1} of {chunks.length}
+            </span>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 gap-1 px-2 text-xs text-primary/80 hover:text-primary"
+            onClick={copySelection}
+          >
+            {copyDone
+              ? <><Check className="h-3 w-3" /> Copied</>
+              : <><Bot className="h-3 w-3" /> Copy with context</>
+            }
+          </Button>
+          <button
+            onClick={clearSelection}
+            className="ml-auto rounded p-0.5 text-muted-foreground hover:text-foreground"
+            title="Deselect all"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* ── Hint (first load) ─────────────────────────────────────────────── */}
+      {selectionCount === 0 && dirtyCount === 0 && (
+        <div className="shrink-0 border-b px-4 py-1.5 text-xs text-muted-foreground/60">
+          Click to select · Shift+click to select a range · Hover a chunk for edit / copy actions
         </div>
       )}
 
       {/* ── Chunk list ────────────────────────────────────────────────────── */}
-      <div className="flex-1 space-y-1 overflow-y-auto px-4 py-3">
+      <div className="flex-1 space-y-0.5 overflow-y-auto px-4 py-3">
         {chunks.map((chunk) => (
           <ChunkItem
             key={chunk.index}
@@ -71,8 +177,8 @@ export function ChunkEditor({ text, onChange }: ChunkEditorProps) {
             originalText={chunk.original}
             prevText={chunk.index > 0 ? chunks[chunk.index - 1].text : undefined}
             nextText={chunk.index < chunks.length - 1 ? chunks[chunk.index + 1].text : undefined}
-            isSelected={selectedIndex === chunk.index}
-            onSelect={() => setSelectedIndex(chunk.index)}
+            isSelected={selectedIndices.has(chunk.index)}
+            onSelect={(shiftKey) => handleSelect(chunk.index, shiftKey)}
             onEdit={(value) => applyEdit(chunk.index, value)}
             onReset={() => resetEdit(chunk.index)}
           />
