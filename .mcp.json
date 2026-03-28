@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "contexthub": {
+      "type": "http",
+      "url": "http://localhost:3000/mcp",
+      "env": {
+        "MCP_AUTH_ENABLED": "false",
+        "CONTEXT_HUB_WORKSPACE_TOKEN": "change-me"
+      }
+    }
+  }
+}
