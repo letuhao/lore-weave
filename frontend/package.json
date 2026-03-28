@@ -10,10 +10,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ai-sdk/react": "^3.0.143",
     "@hookform/resolvers": "^5.2.2",
     "@lexical/react": "^0.42.0",
     "@radix-ui/react-label": "^2.1.8",
     "@radix-ui/react-slot": "^1.2.4",
+    "@tailwindcss/typography": "^0.5.19",
+    "ai": "^6.0.141",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lexical": "^0.42.0",
@@ -21,7 +24,11 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.71.2",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^6.26.1",
+    "react-textarea-autosize": "^8.5.9",
+    "rehype-highlight": "^7.0.2",
+    "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "zod": "^4.3.6"
   },

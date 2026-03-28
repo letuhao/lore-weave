@@ -10,6 +10,7 @@ type Config struct {
 	DatabaseURL            string
 	JWTSecret              string
 	UsageBillingServiceURL string
+	InternalServiceToken   string
 }
 
 func Load() (*Config, error) {
@@ -18,6 +19,7 @@ func Load() (*Config, error) {
 		DatabaseURL:            os.Getenv("DATABASE_URL"),
 		JWTSecret:              os.Getenv("JWT_SECRET"),
 		UsageBillingServiceURL: getEnv("USAGE_BILLING_SERVICE_URL", "http://localhost:8086"),
+		InternalServiceToken:   getEnv("INTERNAL_SERVICE_TOKEN", "dev_internal_token"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

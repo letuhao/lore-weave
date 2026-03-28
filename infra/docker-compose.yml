@@ -40,6 +40,7 @@ services:
       psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_usage_billing'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_usage_billing";
       psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_translation'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_translation";
       psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_glossary'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_glossary";
+      psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_chat'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_chat";
     restart: "no"
 
   minio:
@@ -151,6 +152,7 @@ services:
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_provider_registry?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
     depends_on:
       postgres:
         condition: service_healthy
@@ -260,6 +262,42 @@ services:
     ports:
       - "8211:8088"
 
+  chat-service:
+    build:
+      context: ../services/chat-service
+      dockerfile: Dockerfile
+    environment:
+      PORT: "8090"
+      DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_chat
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
+      USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: loreweave
+      MINIO_SECRET_KEY: loreweave_dev_minio_secret
+      MINIO_BUCKET: lw-chat
+      MINIO_USE_SSL: "false"
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-db-bootstrap:
+        condition: service_completed_successfully
+      provider-registry-service:
+        condition: service_healthy
+      usage-billing-service:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    ports:
+      - "8212:8090"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health')\" || exit 1"]
+      interval: 5s
+      timeout: 3s
+      start_period: 20s
+      retries: 5
+
   api-gateway-bff:
     build:
       context: ../services/api-gateway-bff
@@ -274,8 +312,10 @@ services:
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       TRANSLATION_SERVICE_URL: http://translation-service:8087
       GLOSSARY_SERVICE_URL: http://glossary-service:8088
+      CHAT_SERVICE_URL: http://chat-service:8090
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
     depends_on:
       auth-service:
         condition: service_healthy
@@ -292,6 +332,8 @@ services:
       translation-service:
         condition: service_healthy
       glossary-service:
+        condition: service_healthy
+      chat-service:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy

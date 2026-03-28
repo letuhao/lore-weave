@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { Toaster } from 'sonner';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { AuthProvider, useAuth } from './auth';
 import { RegisterPage } from './pages/RegisterPage';
@@ -23,6 +24,7 @@ import { UserSettingsPage } from './pages/UserSettingsPage';
 import BookTranslationPage from './pages/BookTranslationPage';
 import { GlossaryPage } from './pages/GlossaryPage';
 import { GlossaryTrashPage } from './pages/GlossaryTrashPage';
+import ChatPage from './pages/ChatPage';
 
 function Home() {
   const { accessToken } = useAuth();
@@ -170,6 +172,14 @@ function AppRoutes() {
             </RequireAuth>
           }
         />
+        <Route
+          path="/chat"
+          element={
+            <RequireAuth>
+              <ChatPage />
+            </RequireAuth>
+          }
+        />
       </Route>
     </Routes>
   );
@@ -179,6 +189,7 @@ export function App() {
   return (
     <AuthProvider>
       <AppRoutes />
+      <Toaster richColors position="bottom-right" />
     </AuthProvider>
   );
 }

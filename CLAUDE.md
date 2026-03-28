@@ -14,11 +14,12 @@ Source of truth for architecture: `WHITEPAPER.md`. Source of truth for current s
 
 Run these steps in order at the start of EVERY session:
 
-1. **Call** `help` → learn tool parameters + sample workflows (1-time per environment)
-2. **Call** `get_context` (with `task.intent` + optional `task.query/path_glob`) → bootstrap minimal refs + suggested next calls
-3. **Call** `search_lessons` → load relevant prior decisions/preferences/guardrails for the task
-4. **Call** `search_code` → find relevant code locations by intent
-5. **Read** the relevant module brief from `docs/context/modules/` ONLY if patching that module
+1. **Read** `docs/sessions/SESSION_PATCH.md` → orient to current module state, active work, and open blockers
+2. **Call** `help` → learn tool parameters + sample workflows (1-time per environment)
+3. **Call** `get_context` (with `task.intent` + optional `task.query/path_glob`) → bootstrap minimal refs + suggested next calls
+4. **Call** `search_lessons` → load relevant prior decisions/preferences/guardrails for the task
+5. **Call** `search_code` → find relevant code locations by intent
+6. **Read** the relevant module brief from `docs/context/modules/` ONLY if patching that module
 
 Do NOT load `WHITEPAPER.md` unless there is an architectural question not answered by the docs above.
 
@@ -104,6 +105,23 @@ At the end of each session, update `docs/sessions/SESSION_PATCH.md` with:
 - Any new open blockers
 
 If any architectural decisions were made during the session, call `add_lesson` BEFORE updating the patch.
+
+---
+
+## Phase Checkpoint Protocol (update SESSION_PATCH at each phase)
+
+Update `docs/sessions/SESSION_PATCH.md` whenever a meaningful phase boundary is crossed — not only at session end:
+
+| Trigger | What to update in SESSION_PATCH |
+|---|---|
+| A sub-phase (SP-N) completes | Mark sub-phase as done in the M05 roadmap table |
+| A module backend is finished | Flip Backend column to ✅ in Module Status Matrix |
+| A module frontend is finished | Flip Frontend column to ✅ |
+| A new blocker is discovered | Add row to Open Blockers table |
+| A blocker is resolved | Remove or mark resolved in Open Blockers |
+| A commit batch closes a named work item | Add row to Session History and update "Current Active Work" |
+
+**Rule:** if you complete more than one commit's worth of work, update SESSION_PATCH before moving to the next phase — do not batch all updates to session end.
 
 ---
 

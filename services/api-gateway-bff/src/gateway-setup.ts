@@ -17,6 +17,7 @@ export function configureGatewayApp(
     usageBillingUrl: string;
     translationUrl: string;
     glossaryUrl: string;
+    chatUrl: string;
   },
 ): void {
   app.enableCors({
@@ -66,6 +67,13 @@ export function configureGatewayApp(
     changeOrigin: true,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/glossary'),
   });
+  const chatProxy = createProxyMiddleware({
+    target: urls.chatUrl,
+    changeOrigin: true,
+    // Disable body buffering so SSE streams pass through immediately
+    selfHandleResponse: false,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/chat'),
+  });
 
   const httpAdapter = app.getHttpAdapter();
   const instance = httpAdapter.getInstance();
@@ -109,6 +117,11 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const chatProxyFn = chatProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
 
   instance.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account')) {
@@ -134,6 +147,9 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/glossary')) {
       return glossaryProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/chat')) {
+      return chatProxyFn(req, res, next);
     }
     return next();
   });

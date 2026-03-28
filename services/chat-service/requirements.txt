@@ -1,0 +1,11 @@
+fastapi>=0.111
+uvicorn[standard]>=0.29
+asyncpg>=0.29
+pydantic>=2.6
+pydantic-settings>=2.2
+httpx>=0.27
+PyJWT>=2.8
+python-dotenv>=1.0
+litellm>=1.40
+boto3>=1.34
+aiofiles>=23.0

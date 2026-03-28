@@ -16,6 +16,7 @@
 
 | Version | Date       | Change                                                        | Author    |
 | ------- | ---------- | ------------------------------------------------------------- | --------- |
+| 1.24.0 | 2026-03-29 | Registered `98_CHAT_SERVICE_DESIGN.md` (LW-PLAN-98) — Chat Service end-to-end design (streaming chat UI, session management, universal output storage, LiteLLM + FastAPI + fetchEventSource) | Assistant |
 | 1.23.0 | 2026-03-22 | Status governance update: approved Module 04 planning documents `56`–`67` by Decision Authority | Assistant |
 | 1.22.0 | 2026-03-22 | Registered Module 04 planning pack `56`–`67` (raw translation pipeline — execution pack, API contract, frontend flow, AT plan, risk/rollout, governance checklist, microservice structure, backend design, frontend design, wireframe spec, integration sequences, readiness gate) | Assistant |
 | 1.21.0 | 2026-03-22 | Registered `MODULE03_SITUATION_AND_TODO.md` (LW-IMPL-M03-01) — M03 smoke complete, implementation situation and todo backlog | Assistant |

@@ -90,7 +90,95 @@ func (s *Server) Router() http.Handler {
 		r.Get("/models/{model_ref}/context-window", s.getModelContextWindow)
 	})
 
+	// Internal service-to-service routes — NOT proxied by api-gateway-bff.
+	// Protected by X-Internal-Token header instead of user JWT.
+	r.Route("/internal", func(r chi.Router) {
+		r.Get("/credentials/{model_source}/{model_ref}", s.getInternalCredentials)
+	})
+
 	return r
+}
+
+func (s *Server) getInternalCredentials(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("X-Internal-Token") != s.cfg.InternalServiceToken {
+		writeError(w, http.StatusUnauthorized, "INTERNAL_UNAUTHORIZED", "invalid internal token")
+		return
+	}
+
+	userIDStr := r.URL.Query().Get("user_id")
+	if userIDStr == "" {
+		writeError(w, http.StatusBadRequest, "INTERNAL_VALIDATION_ERROR", "user_id query param required")
+		return
+	}
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INTERNAL_VALIDATION_ERROR", "invalid user_id")
+		return
+	}
+
+	modelSource := chi.URLParam(r, "model_source")
+	modelRefStr := chi.URLParam(r, "model_ref")
+	modelRef, err := uuid.Parse(modelRefStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INTERNAL_VALIDATION_ERROR", "invalid model_ref")
+		return
+	}
+
+	type credResponse struct {
+		ProviderKind      string  `json:"provider_kind"`
+		ProviderModelName string  `json:"provider_model_name"`
+		BaseURL           string  `json:"base_url"`
+		APIKey            string  `json:"api_key"`
+		ContextLength     *int    `json:"context_length"`
+	}
+
+	var out credResponse
+
+	if modelSource == "user_model" {
+		var secretCipher string
+		var contextLength *int
+		err = s.pool.QueryRow(r.Context(), `
+SELECT um.provider_kind, um.provider_model_name, um.context_length,
+       COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,'')
+FROM user_models um
+JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
+WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
+`, modelRef, userID).Scan(&out.ProviderKind, &out.ProviderModelName, &contextLength, &out.BaseURL, &secretCipher)
+		if err == pgx.ErrNoRows {
+			writeError(w, http.StatusNotFound, "INTERNAL_MODEL_NOT_FOUND", "user model not found or inactive")
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "INTERNAL_QUERY_FAILED", "failed to resolve user model")
+			return
+		}
+		secret, err := s.decryptSecret(secretCipher)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "INTERNAL_DECRYPT_FAILED", "failed to decrypt secret")
+			return
+		}
+		out.APIKey = secret
+		out.ContextLength = contextLength
+	} else if modelSource == "platform_model" {
+		err = s.pool.QueryRow(r.Context(), `
+SELECT provider_kind, provider_model_name
+FROM platform_models
+WHERE platform_model_id=$1 AND status='active'
+`, modelRef).Scan(&out.ProviderKind, &out.ProviderModelName)
+		if err == pgx.ErrNoRows {
+			writeError(w, http.StatusNotFound, "INTERNAL_MODEL_NOT_FOUND", "platform model not found or inactive")
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "INTERNAL_QUERY_FAILED", "failed to resolve platform model")
+			return
+		}
+	} else {
+		writeError(w, http.StatusBadRequest, "INTERNAL_VALIDATION_ERROR", "invalid model_source")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, out)
 }
 
 type errorBody struct {
