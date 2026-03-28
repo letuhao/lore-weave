@@ -6,8 +6,11 @@ import { RegisterPage } from './pages/RegisterPage';
 import { LoginPage } from './pages/LoginPage';
 import { ForgotPage } from './pages/ForgotPage';
 import { ResetPage } from './pages/ResetPage';
-import { BooksPageV2 as BooksPage, BookDetailPageV2 as BookDetailPage } from '@/pages/v2-drafts';
-import { ChapterEditorPage } from './pages/ChapterEditorPage';
+import {
+  BooksPageV2 as BooksPage,
+  BookDetailPageV2 as BookDetailPage,
+  ChapterEditorPageV2 as ChapterEditorPage,
+} from '@/pages/v2-drafts';
 import { RecycleBinPage } from './pages/RecycleBinPage';
 import { SharingPage } from './pages/SharingPage';
 import { BrowsePage } from './pages/BrowsePage';
@@ -18,7 +21,6 @@ import { UsageLogsPage } from './pages/UsageLogsPage';
 import { UsageDetailPage } from './pages/UsageDetailPage';
 import { UserSettingsPage } from './pages/UserSettingsPage';
 import BookTranslationPage from './pages/BookTranslationPage';
-import ChapterTranslationsPage from './pages/ChapterTranslationsPage';
 import { GlossaryPage } from './pages/GlossaryPage';
 import { GlossaryTrashPage } from './pages/GlossaryTrashPage';
 
@@ -148,7 +150,7 @@ function AppRoutes() {
           path="/books/:bookId/chapters/:chapterId/translations"
           element={
             <RequireAuth>
-              <ChapterTranslationsPage />
+              <ChapterEditorPage />
             </RequireAuth>
           }
         />

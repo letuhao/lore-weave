@@ -13,4 +13,5 @@
 
 export { BooksPageV2 } from './BooksPageV2';
 export { BookDetailPageV2 } from './BookDetailPageV2';
+export { ChapterEditorPageV2 } from './ChapterEditorPageV2';
 export { GlossaryPageV2 } from './GlossaryPageV2';

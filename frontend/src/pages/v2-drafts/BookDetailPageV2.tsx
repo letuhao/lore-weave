@@ -6,11 +6,9 @@ import {
   FileText,
   Pencil,
   Languages,
-  Download,
   Trash2,
   BookOpen,
   Share2,
-  MoreHorizontal,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Book, type Chapter } from '@/features/books/api';
@@ -29,7 +27,6 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { DataTable, FilterToolbar, Pagination, SortDropdown, EmptyState, ViewToggle } from '@/components/data';
 import type { ColumnDef, SortState, ViewMode } from '@/components/data';
@@ -69,20 +66,20 @@ export function BookDetailPageV2() {
   const [newLang, setNewLang] = useState('');
   const [newFile, setNewFile] = useState<File | null>(null);
   const [editorBody, setEditorBody] = useState('');
-  const [downloadBusy, setDownloadBusy] = useState<string | null>(null);
 
   const load = async () => {
     if (!accessToken || !bookId) return;
     setIsLoading(true);
     try {
-      const [b, ch] = await Promise.all([
+      const [b, ch, sharing] = await Promise.all([
         booksApi.getBook(accessToken, bookId),
         booksApi.listChapters(accessToken, bookId, {
           lifecycle_state: lifecycleFilter || undefined,
           limit: 200,
         }),
+        booksApi.getSharing(accessToken, bookId).catch(() => null),
       ]);
-      setBook(b);
+      setBook(sharing ? { ...b, visibility: sharing.visibility } : b);
       setChapters(ch.items);
       setTotal(ch.total);
       setError('');
@@ -212,21 +209,25 @@ export function BookDetailPageV2() {
     await load();
   }
 
-  async function downloadRaw(chapterId: string) {
+  async function handleToggleLifecycle(chapterId: string, currentState: Chapter['lifecycle_state']) {
     if (!accessToken || !bookId) return;
-    setDownloadBusy(chapterId);
+    // Optimistic update
+    setChapters((prev) =>
+      prev.map((c) =>
+        c.chapter_id === chapterId
+          ? { ...c, lifecycle_state: currentState === 'active' ? 'trashed' : 'active' }
+          : c,
+      ),
+    );
     try {
-      const blob = await booksApi.downloadRaw(accessToken, bookId, chapterId);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `chapter-${chapterId}.txt`;
-      a.click();
-      URL.revokeObjectURL(url);
+      if (currentState === 'active') {
+        await booksApi.trashChapter(accessToken, bookId, chapterId);
+      } else {
+        await booksApi.restoreChapter(accessToken, bookId, chapterId);
+      }
     } catch (err) {
       setError((err as Error).message);
-    } finally {
-      setDownloadBusy(null);
+      await load(); // revert on failure
     }
   }
 
@@ -273,53 +274,49 @@ export function BookDetailPageV2() {
       render: (c) => <span className="text-xs">{c.original_language}</span>,
     },
     {
-      key: 'lifecycle_state',
-      header: 'State',
-      widthClass: 'w-24',
-      hideBelow: 'md',
-      render: (c) => (
-        <Badge variant={c.lifecycle_state === 'active' ? 'success' : 'muted'} className="text-[10px]">
-          {c.lifecycle_state}
-        </Badge>
-      ),
-    },
-    {
       key: 'actions',
       header: '',
-      widthClass: 'w-10',
+      widthClass: 'w-36',
       render: (c) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label="Chapter actions"
+        <div className="flex items-center justify-end gap-1">
+          {/* Active toggle */}
+          <button
+            onClick={() => void handleToggleLifecycle(c.chapter_id, c.lifecycle_state)}
+            title={c.lifecycle_state === 'active' ? 'Click to archive' : 'Click to restore'}
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+              c.lifecycle_state === 'active'
+                ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400'
+                : 'bg-muted text-muted-foreground hover:bg-muted/80'
+            }`}
           >
-            <MoreHorizontal className="h-4 w-4" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => navigate(`/books/${bookId}/chapters/${c.chapter_id}/edit`)}>
-              <Pencil className="mr-2 h-3.5 w-3.5" /> Edit draft
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => navigate(`/books/${bookId}/chapters/${c.chapter_id}/translations`)}
-            >
-              <Languages className="mr-2 h-3.5 w-3.5" /> Translations
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => void downloadRaw(c.chapter_id)}
-              disabled={downloadBusy === c.chapter_id}
-            >
-              <Download className="mr-2 h-3.5 w-3.5" />{' '}
-              {downloadBusy === c.chapter_id ? 'Downloading…' : 'Download raw'}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => void trashChapter(c.chapter_id)}
-              className="text-destructive"
-            >
-              <Trash2 className="mr-2 h-3.5 w-3.5" /> Move to trash
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                c.lifecycle_state === 'active' ? 'bg-emerald-500' : 'bg-muted-foreground/50'
+              }`}
+            />
+            {c.lifecycle_state === 'active' ? 'active' : c.lifecycle_state}
+          </button>
+          {/* Edit */}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 w-7 p-0"
+            title="Edit chapter"
+            onClick={() => navigate(`/books/${bookId}/chapters/${c.chapter_id}/edit`)}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          {/* Delete */}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+            title="Move to trash"
+            onClick={() => void trashChapter(c.chapter_id)}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       ),
     },
   ];
@@ -493,53 +490,44 @@ export function BookDetailPageV2() {
                           <span className="font-mono text-xs tabular-nums text-muted-foreground">
                             #{c.sort_order}
                           </span>
-                          <div className="flex items-center gap-1.5">
-                            <Badge
-                              variant={c.lifecycle_state === 'active' ? 'success' : 'muted'}
-                              className="text-[10px]"
+                          <div className="flex items-center gap-1">
+                            {/* Active toggle */}
+                            <button
+                              onClick={() => void handleToggleLifecycle(c.chapter_id, c.lifecycle_state)}
+                              title={c.lifecycle_state === 'active' ? 'Click to archive' : 'Click to restore'}
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                                c.lifecycle_state === 'active'
+                                  ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                              }`}
                             >
-                              {c.lifecycle_state}
-                            </Badge>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger
-                                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                                aria-label="Chapter actions"
-                              >
-                                <MoreHorizontal className="h-3.5 w-3.5" />
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    navigate(`/books/${bookId}/chapters/${c.chapter_id}/edit`)
-                                  }
-                                >
-                                  <Pencil className="mr-2 h-3.5 w-3.5" /> Edit draft
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    navigate(
-                                      `/books/${bookId}/chapters/${c.chapter_id}/translations`,
-                                    )
-                                  }
-                                >
-                                  <Languages className="mr-2 h-3.5 w-3.5" /> Translations
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => void downloadRaw(c.chapter_id)}
-                                  disabled={downloadBusy === c.chapter_id}
-                                >
-                                  <Download className="mr-2 h-3.5 w-3.5" />
-                                  {downloadBusy === c.chapter_id ? 'Downloading…' : 'Download raw'}
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  onClick={() => void trashChapter(c.chapter_id)}
-                                  className="text-destructive"
-                                >
-                                  <Trash2 className="mr-2 h-3.5 w-3.5" /> Move to trash
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full ${
+                                  c.lifecycle_state === 'active' ? 'bg-emerald-500' : 'bg-muted-foreground/50'
+                                }`}
+                              />
+                              {c.lifecycle_state === 'active' ? 'active' : c.lifecycle_state}
+                            </button>
+                            {/* Edit */}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0"
+                              title="Edit chapter"
+                              onClick={() => navigate(`/books/${bookId}/chapters/${c.chapter_id}/edit`)}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                            {/* Delete */}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                              title="Move to trash"
+                              onClick={() => void trashChapter(c.chapter_id)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
                           </div>
                         </div>
 
