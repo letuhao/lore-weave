@@ -221,3 +221,5 @@ services/auth-service/tmp/
 .claude/worktrees/romantic-franklin
 
 .claude/worktrees/cranky-margulis
+
+.claude/settings.json
