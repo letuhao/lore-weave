@@ -30,15 +30,17 @@ async def ensure_bucket() -> None:
     client = _s3_client()
     loop = asyncio.get_running_loop()
     try:
-        await loop.run_in_executor(None, client.head_bucket, Bucket=settings.minio_bucket)
+        await loop.run_in_executor(
+            None, lambda: client.head_bucket(Bucket=settings.minio_bucket),
+        )
     except client.exceptions.NoSuchBucket:
         await loop.run_in_executor(
-            None, client.create_bucket, Bucket=settings.minio_bucket,
+            None, lambda: client.create_bucket(Bucket=settings.minio_bucket),
         )
     except Exception:
         # ClientError for 404 varies between MinIO and AWS
         await loop.run_in_executor(
-            None, client.create_bucket, Bucket=settings.minio_bucket,
+            None, lambda: client.create_bucket(Bucket=settings.minio_bucket),
         )
 
 

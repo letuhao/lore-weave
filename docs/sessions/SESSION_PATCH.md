@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-03-29 (session 4)
-- Updated By: Assistant (Chat Phase 2 — output portability + MinIO)
+- Last Updated: 2026-03-29 (session 5)
+- Updated By: Assistant (Chat service unit tests)
 - Active Branch: `main`
-- HEAD: pending commit — Chat Phase 2 implementation
+- HEAD: pending commit — chat-service unit tests + MinIO bugfix
 
 ---
 
@@ -77,6 +77,23 @@
 | Binary download via MinIO presigned URLs | `app/routers/outputs.py` | pending |
 | MinIO bucket auto-creation on startup | `app/main.py` | pending |
 
+**What was done in this session (2026-03-29, session 5):**
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| Chat-service full unit test suite (68 tests) | `tests/` (7 new files), `pytest.ini`, `requirements-test.txt` | pending |
+| Fix `ensure_bucket` bug — `run_in_executor` keyword arg misuse | `app/storage/minio_client.py` | pending |
+
+**Test coverage:**
+- `test_output_extractor.py` — 8 tests (pure function, code block extraction)
+- `test_auth.py` — 5 tests (JWT validation, expiry, wrong secret)
+- `test_sessions_router.py` — 10 tests (CRUD, 404s, validation)
+- `test_outputs_router.py` — 14 tests (CRUD, download, export, MinIO redirect)
+- `test_messages_router.py` — 5 tests (list, send, streaming, archived, provider 404)
+- `test_stream_service.py` — 6 tests (text deltas, persistence, artifacts, errors, model strings, history)
+- `test_minio_client.py` — 5 tests (upload, presigned, delete, bucket create/noop)
+- `test_clients.py` — 4 tests (provider resolve, billing log, error swallowing)
+
 **ChunkEditor component system (created this session):**
 ```
 frontend/src/components/chunk-editor/
@@ -123,7 +140,7 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 | Priority | Item | Notes |
 | -------- | ---- | ----- |
 | P1 | Chat Phase 3 — Message editing + branch history | Next chat service phase |
-| P1 | Chat service unit tests | Phase 1+2 implemented but no unit tests yet |
+| ~~P1~~ | ~~Chat service unit tests~~ | ✅ **Done** — 68 tests, all passing |
 | P2 | ChunkEditor: AI agent integration | User noted "add later" — send chunk to AI model, receive edited text |
 | P2 | ChunkEditor: per-chunk translation | Translate individual paragraphs via M04 translation API |
 | P3 | Full acceptance evidence pack for M01–M05 | Currently smoke only; needed before any production release |
