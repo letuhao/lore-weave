@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { WsAdapter } from '@nestjs/platform-ws';
 import * as request from 'supertest';
 import * as http from 'http';
 import { AddressInfo } from 'net';
@@ -31,9 +32,11 @@ describe('Gateway proxy routing', () => {
   let providerRegistryServer: http.Server;
   let usageBillingServer: http.Server;
   let translationServer: http.Server;
+  let glossaryServer: http.Server;
+  let chatServer: http.Server;
 
   beforeAll(async () => {
-    [authServer, bookServer, sharingServer, catalogServer, providerRegistryServer, usageBillingServer, translationServer] = await Promise.all([
+    [authServer, bookServer, sharingServer, catalogServer, providerRegistryServer, usageBillingServer, translationServer, glossaryServer, chatServer] = await Promise.all([
       startUpstream('auth'),
       startUpstream('books'),
       startUpstream('sharing'),
@@ -41,12 +44,15 @@ describe('Gateway proxy routing', () => {
       startUpstream('provider-registry'),
       startUpstream('usage-billing'),
       startUpstream('translation'),
+      startUpstream('glossary'),
+      startUpstream('chat'),
     ]);
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
     app = moduleFixture.createNestApplication({ bodyParser: false });
+    app.useWebSocketAdapter(new WsAdapter(app));
     configureGatewayApp(app, {
       authUrl: urlOf(authServer),
       bookUrl: urlOf(bookServer),
@@ -55,6 +61,8 @@ describe('Gateway proxy routing', () => {
       providerRegistryUrl: urlOf(providerRegistryServer),
       usageBillingUrl: urlOf(usageBillingServer),
       translationUrl: urlOf(translationServer),
+      glossaryUrl: urlOf(glossaryServer),
+      chatUrl: urlOf(chatServer),
     });
     await app.init();
   });
@@ -69,6 +77,8 @@ describe('Gateway proxy routing', () => {
       new Promise((resolve) => providerRegistryServer.close(resolve)),
       new Promise((resolve) => usageBillingServer.close(resolve)),
       new Promise((resolve) => translationServer.close(resolve)),
+      new Promise((resolve) => glossaryServer.close(resolve)),
+      new Promise((resolve) => chatServer.close(resolve)),
     ]);
   });
 
@@ -91,6 +101,14 @@ describe('Gateway proxy routing', () => {
     await request(app.getHttpServer()).get('/v1/translation/jobs/job-1').expect(200).expect('translation');
     await request(app.getHttpServer()).post('/v1/translation/books/book-1/jobs').expect(200).expect('translation');
     await request(app.getHttpServer()).post('/v1/translation/jobs/job-1/cancel').expect(200).expect('translation');
+  });
+
+  it('routes /v1/glossary/* paths to glossary service', async () => {
+    await request(app.getHttpServer()).get('/v1/glossary/entities').expect(200).expect('glossary');
+  });
+
+  it('routes /v1/chat/* paths to chat service', async () => {
+    await request(app.getHttpServer()).get('/v1/chat/sessions').expect(200).expect('chat');
   });
 
   it('returns 404 for unmatched path', async () => {

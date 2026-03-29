@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
+import { WsAdapter } from '@nestjs/platform-ws';
 import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureGatewayApp } from '../src/gateway-setup';
@@ -13,11 +14,17 @@ describe('Gateway (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication({ bodyParser: false });
+    app.useWebSocketAdapter(new WsAdapter(app));
     configureGatewayApp(app, {
       authUrl: 'http://127.0.0.1:9',
       bookUrl: 'http://127.0.0.1:9',
       sharingUrl: 'http://127.0.0.1:9',
       catalogUrl: 'http://127.0.0.1:9',
+      providerRegistryUrl: 'http://127.0.0.1:9',
+      usageBillingUrl: 'http://127.0.0.1:9',
+      translationUrl: 'http://127.0.0.1:9',
+      glossaryUrl: 'http://127.0.0.1:9',
+      chatUrl: 'http://127.0.0.1:9',
     });
     await app.init();
   });
