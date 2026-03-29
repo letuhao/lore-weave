@@ -1,6 +1,8 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { AlignLeft, ChevronRight, Download, Languages, Layers, RotateCcw, Save } from 'lucide-react';
+import { onPasteToEditor } from '@/features/chat/utils/pasteToEditor';
 import { ChunkEditor } from '@/components/chunk-editor';
 import { useAuth } from '@/auth';
 import { booksApi, type Book, type Chapter } from '@/features/books/api';
@@ -236,6 +238,17 @@ function DraftTab({
     setBody(newBody);
     setIsDirty(newBody !== savedBodyRef.current);
   };
+
+  // Listen for "Paste to Editor" events from chat OutputCard
+  useEffect(() => {
+    return onPasteToEditor(({ text }) => {
+      if (!text) return;
+      const updated = body ? `${body}\n\n${text}` : text;
+      handleChange(updated);
+      setEditorKey((k) => k + 1);
+      toast.success('Content pasted into draft');
+    });
+  }); // intentionally no deps — always uses latest body
 
   const save = async (e: FormEvent) => {
     e.preventDefault();

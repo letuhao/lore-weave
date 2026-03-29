@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { Check, Code2, Copy, Download, FileText } from 'lucide-react';
+import { Check, ClipboardPaste, Code2, Copy, Download, FileText } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useOutputActions } from '../hooks/useOutputActions';
+import { firePasteToEditor } from '../utils/pasteToEditor';
 import type { ChatOutput } from '../types';
 
 const TYPE_ICON: Record<string, React.ReactNode> = {
@@ -21,6 +23,15 @@ export function OutputCard({ output }: OutputCardProps) {
     await copyToClipboard(output);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  }
+
+  function handlePasteToEditor() {
+    firePasteToEditor({
+      text: output.content_text ?? '',
+      language: output.language,
+      sourceOutputId: output.output_id,
+    });
+    toast.success('Sent to editor');
   }
 
   const icon = TYPE_ICON[output.output_type] ?? <FileText className="h-3.5 w-3.5" />;
@@ -45,6 +56,15 @@ export function OutputCard({ output }: OutputCardProps) {
           >
             {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
             {copied ? 'Copied' : 'Copy'}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-5 gap-1 px-1.5 text-[10px]"
+            onClick={handlePasteToEditor}
+          >
+            <ClipboardPaste className="h-3 w-3" />
+            To Editor
           </Button>
           <Button
             size="sm"

@@ -1,6 +1,10 @@
+import { useMemo } from 'react';
 import type { UIMessage } from '@ai-sdk/react';
 import { AssistantMessage } from './AssistantMessage';
 import { UserMessage } from './UserMessage';
+import { OutputCard } from './OutputCard';
+import { extractCodeBlocks } from '../utils/extractCodeBlocks';
+import type { ChatOutput } from '../types';
 
 interface MessageBubbleProps {
   message: UIMessage;
@@ -18,6 +22,12 @@ function extractText(message: UIMessage): string {
 export function MessageBubble({ message, isLastAssistant, isStreaming }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const text = extractText(message);
+
+  // Extract code blocks from assistant messages to show as OutputCards
+  const codeOutputs = useMemo<ChatOutput[]>(() => {
+    if (isUser) return [];
+    return extractCodeBlocks(text, message.id);
+  }, [isUser, text, message.id]);
 
   return (
     <div className={['flex gap-3', isUser ? 'justify-end' : 'justify-start'].join(' ')}>
@@ -38,10 +48,19 @@ export function MessageBubble({ message, isLastAssistant, isStreaming }: Message
         {isUser ? (
           <UserMessage content={text} />
         ) : (
-          <AssistantMessage
-            content={text}
-            isStreaming={isLastAssistant && isStreaming}
-          />
+          <>
+            <AssistantMessage
+              content={text}
+              isStreaming={isLastAssistant && isStreaming}
+            />
+            {codeOutputs.length > 0 && !isStreaming && (
+              <div className="mt-2 space-y-1.5">
+                {codeOutputs.map((output) => (
+                  <OutputCard key={output.output_id} output={output} />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 

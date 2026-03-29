@@ -8,12 +8,17 @@ from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool, get_pool
 from app.routers import messages, outputs, sessions
+from app.storage.minio_client import ensure_bucket
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     pool = await create_pool(settings.database_url)
     await run_migrations(pool)
+    try:
+        await ensure_bucket()
+    except Exception:
+        pass  # MinIO may not be running in dev; don't block startup
     yield
     await close_pool()
 

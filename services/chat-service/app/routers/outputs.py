@@ -2,10 +2,11 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 
 from app.deps import get_current_user, get_db
 from app.models import ChatOutput, OutputListResponse, PatchOutputRequest
+from app.storage.minio_client import generate_presigned_url
 
 router = APIRouter(prefix="/v1/chat", tags=["outputs"])
 
@@ -125,20 +126,25 @@ async def download_output(
     output_id: UUID,
     user_id: str = Depends(get_current_user),
     pool: asyncpg.Pool = Depends(get_db),
-) -> PlainTextResponse:
+):
     row = await pool.fetchrow(
         "SELECT * FROM chat_outputs WHERE output_id=$1 AND owner_user_id=$2",
         str(output_id), user_id,
     )
     if not row:
         raise HTTPException(status_code=404, detail="output not found")
+    # Text/code outputs — return inline
     if row["content_text"] is not None:
         filename = row["file_name"] or "output.txt"
         return PlainTextResponse(
             content=row["content_text"],
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
-    raise HTTPException(status_code=501, detail="binary download not implemented in phase 1")
+    # Binary outputs stored in MinIO — redirect to presigned URL
+    if row["storage_key"]:
+        url = await generate_presigned_url(row["storage_key"])
+        return RedirectResponse(url=url, status_code=302)
+    raise HTTPException(status_code=404, detail="output has no downloadable content")
 
 
 @router.get("/sessions/{session_id}/export")
