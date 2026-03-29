@@ -10,7 +10,7 @@
 - Last Updated: 2026-03-30 (session 8)
 - Updated By: Assistant (Code review + hardening pass)
 - Active Branch: `main`
-- HEAD: pending commit — review fixes + hardening
+- HEAD: `b7dcc4c` — Phase 3 + per-chunk translation + hardening
 
 ---
 
@@ -70,12 +70,12 @@
 | Work item | Files touched | Commit |
 | --------- | ------------- | ------ |
 | Run M05 glossary-service tests — all 22 pass, 16 DB tests skip (expected) | — | — |
-| Wire OutputCards into assistant MessageBubble (code block extraction) | `MessageBubble.tsx`, new `utils/extractCodeBlocks.ts` | pending |
-| Add session export button to ChatHeader | `ChatHeader.tsx` | pending |
-| Add "Paste to Editor" integration via custom DOM event | New `utils/pasteToEditor.ts`, `OutputCard.tsx`, `ChapterEditorPageV2.tsx` | pending |
-| MinIO storage client skeleton (upload, presigned URL, delete) | New `app/storage/minio_client.py`, `__init__.py` | pending |
-| Binary download via MinIO presigned URLs | `app/routers/outputs.py` | pending |
-| MinIO bucket auto-creation on startup | `app/main.py` | pending |
+| Wire OutputCards into assistant MessageBubble (code block extraction) | `MessageBubble.tsx`, new `utils/extractCodeBlocks.ts` | `b7dcc4c` |
+| Add session export button to ChatHeader | `ChatHeader.tsx` | `b7dcc4c` |
+| Add "Paste to Editor" integration via custom DOM event | New `utils/pasteToEditor.ts`, `OutputCard.tsx`, `ChapterEditorPageV2.tsx` | `b7dcc4c` |
+| MinIO storage client skeleton (upload, presigned URL, delete) | New `app/storage/minio_client.py`, `__init__.py` | `b7dcc4c` |
+| Binary download via MinIO presigned URLs | `app/routers/outputs.py` | `b7dcc4c` |
+| MinIO bucket auto-creation on startup | `app/main.py` | `b7dcc4c` |
 
 **What was done in this session (2026-03-29, session 5):**
 
@@ -88,31 +88,31 @@
 
 | Work item | Files touched | Commit |
 | --------- | ------------- | ------ |
-| Backend: wire `parent_message_id` on edit_from_sequence | `app/routers/messages.py`, `app/services/stream_service.py` | pending |
-| Frontend: `useStreamingEdit` hook — manual SSE for edit/regenerate | `hooks/useStreamingEdit.ts` (new) | pending |
-| Frontend: edit mode on user messages (pencil icon → inline textarea) | `UserMessage.tsx` | pending |
-| Frontend: regenerate button on assistant messages (RefreshCw icon) | `AssistantMessage.tsx` | pending |
-| Frontend: wire edit/regenerate through MessageBubble → MessageList → ChatWindow | `MessageBubble.tsx`, `MessageList.tsx`, `ChatWindow.tsx` | pending |
-| Backend: Phase 3 unit tests (3 new, total 71) | `test_messages_router.py`, `test_stream_service.py` | pending |
+| Backend: wire `parent_message_id` on edit_from_sequence | `app/routers/messages.py`, `app/services/stream_service.py` | `b7dcc4c` |
+| Frontend: `useStreamingEdit` hook — manual SSE for edit/regenerate | `hooks/useStreamingEdit.ts` (new) | `b7dcc4c` |
+| Frontend: edit mode on user messages (pencil icon → inline textarea) | `UserMessage.tsx` | `b7dcc4c` |
+| Frontend: regenerate button on assistant messages (RefreshCw icon) | `AssistantMessage.tsx` | `b7dcc4c` |
+| Frontend: wire edit/regenerate through MessageBubble → MessageList → ChatWindow | `MessageBubble.tsx`, `MessageList.tsx`, `ChatWindow.tsx` | `b7dcc4c` |
+| Backend: Phase 3 unit tests (3 new, total 71) | `test_messages_router.py`, `test_stream_service.py` | `b7dcc4c` |
 
 **What was done in this session (2026-03-29, session 7):**
 
 | Work item | Files touched | Commit |
 | --------- | ------------- | ------ |
-| Fix: `message_count` drift on edit (deleted msgs not decremented) | `app/routers/messages.py` | pending |
-| Fix: duplicate user message in LLM context (Phase 1 bug) | `app/services/stream_service.py` | pending |
-| Fix: wrap edit flow in DB transaction for atomicity | `app/routers/messages.py` | pending |
-| Fix: conftest mock_pool supports `pool.acquire()` + `conn.transaction()` | `tests/conftest.py` | pending |
-| Update tests for all 3 bugfixes | `test_messages_router.py`, `test_stream_service.py` | pending |
-| Backend: `POST /v1/translation/translate-text` sync endpoint | `translation-service/app/routers/translate.py` (new) | pending |
-| New model: `TranslateTextRequest` + `TranslateTextResponse` | `translation-service/app/models.py` | pending |
-| Register translate router in translation-service | `translation-service/app/main.py` | pending |
-| Backend: translate-text unit tests (6 tests) | `tests/test_translate.py` (new) | pending |
-| Frontend: `translateText()` in translation API client | `features/translation/api.ts` | pending |
-| Frontend: per-chunk translate button in ChunkItem hover bar | `components/chunk-editor/ChunkItem.tsx` | pending |
-| Frontend: "Translate N chunks" in ChunkEditor selection bar | `components/chunk-editor/ChunkEditor.tsx` | pending |
-| Frontend: translating overlay + loading state per-chunk | `ChunkItem.tsx`, `ChunkEditor.tsx` | pending |
-| Frontend: wire `onTranslateChunk` in ChapterEditorPageV2 | `pages/v2-drafts/ChapterEditorPageV2.tsx` | pending |
+| Fix: `message_count` drift on edit (deleted msgs not decremented) | `app/routers/messages.py` | `b7dcc4c` |
+| Fix: duplicate user message in LLM context (Phase 1 bug) | `app/services/stream_service.py` | `b7dcc4c` |
+| Fix: wrap edit flow in DB transaction for atomicity | `app/routers/messages.py` | `b7dcc4c` |
+| Fix: conftest mock_pool supports `pool.acquire()` + `conn.transaction()` | `tests/conftest.py` | `b7dcc4c` |
+| Update tests for all 3 bugfixes | `test_messages_router.py`, `test_stream_service.py` | `b7dcc4c` |
+| Backend: `POST /v1/translation/translate-text` sync endpoint | `translation-service/app/routers/translate.py` (new) | `b7dcc4c` |
+| New model: `TranslateTextRequest` + `TranslateTextResponse` | `translation-service/app/models.py` | `b7dcc4c` |
+| Register translate router in translation-service | `translation-service/app/main.py` | `b7dcc4c` |
+| Backend: translate-text unit tests (6 tests) | `tests/test_translate.py` (new) | `b7dcc4c` |
+| Frontend: `translateText()` in translation API client | `features/translation/api.ts` | `b7dcc4c` |
+| Frontend: per-chunk translate button in ChunkItem hover bar | `components/chunk-editor/ChunkItem.tsx` | `b7dcc4c` |
+| Frontend: "Translate N chunks" in ChunkEditor selection bar | `components/chunk-editor/ChunkEditor.tsx` | `b7dcc4c` |
+| Frontend: translating overlay + loading state per-chunk | `ChunkItem.tsx`, `ChunkEditor.tsx` | `b7dcc4c` |
+| Frontend: wire `onTranslateChunk` in ChapterEditorPageV2 | `pages/v2-drafts/ChapterEditorPageV2.tsx` | `b7dcc4c` |
 
 **What was done in this session (2026-03-30, session 8):**
 
@@ -120,19 +120,19 @@ Code review + hardening pass across chat-service, translation-service, and front
 
 | Work item | Files touched | Commit |
 | --------- | ------------- | ------ |
-| Fix: entire edit flow (DELETE + INSERT + UPDATE) in single transaction | `chat-service/app/routers/messages.py` | pending |
-| Fix: safe format_map — unknown `{placeholders}` pass through unchanged | `translation-service/app/routers/translate.py` | pending |
-| Fix: add `min_length=1, max_length=30000` to TranslateTextRequest.text | `translation-service/app/models.py` | pending |
-| Fix: "auto" source_language now returns "auto-detect" (better prompt text) | `translation-service/app/routers/translate.py` | pending |
-| Fix: handle malformed provider response (JSON parse + missing keys → 502) | `translation-service/app/routers/translate.py` | pending |
-| Fix: use user's `invoke_timeout_secs` preference instead of hard-coded 120 | `translation-service/app/routers/translate.py` | pending |
-| Add: structured logging in translate endpoint | `translation-service/app/routers/translate.py` | pending |
-| Fix: stale closure in ChunkEditor translateChunk (remove translatingIndices dep) | `frontend/src/components/chunk-editor/ChunkEditor.tsx` | pending |
-| Fix: bulk translate shows toast on partial failures | `frontend/src/components/chunk-editor/ChunkEditor.tsx` | pending |
-| Fix: per-chunk translate passes book's target_language to API | `frontend/src/pages/v2-drafts/ChapterEditorPageV2.tsx` | pending |
-| Test: malformed provider response → 502 | `translation-service/tests/test_translate.py` | pending |
-| Test: user timeout preference used in httpx client | `translation-service/tests/test_translate.py` | pending |
-| Update: chat-service tests for new transaction boundary | `chat-service/tests/test_messages_router.py` | pending |
+| Fix: entire edit flow (DELETE + INSERT + UPDATE) in single transaction | `chat-service/app/routers/messages.py` | `b7dcc4c` |
+| Fix: safe format_map — unknown `{placeholders}` pass through unchanged | `translation-service/app/routers/translate.py` | `b7dcc4c` |
+| Fix: add `min_length=1, max_length=30000` to TranslateTextRequest.text | `translation-service/app/models.py` | `b7dcc4c` |
+| Fix: "auto" source_language now returns "auto-detect" (better prompt text) | `translation-service/app/routers/translate.py` | `b7dcc4c` |
+| Fix: handle malformed provider response (JSON parse + missing keys → 502) | `translation-service/app/routers/translate.py` | `b7dcc4c` |
+| Fix: use user's `invoke_timeout_secs` preference instead of hard-coded 120 | `translation-service/app/routers/translate.py` | `b7dcc4c` |
+| Add: structured logging in translate endpoint | `translation-service/app/routers/translate.py` | `b7dcc4c` |
+| Fix: stale closure in ChunkEditor translateChunk (remove translatingIndices dep) | `frontend/src/components/chunk-editor/ChunkEditor.tsx` | `b7dcc4c` |
+| Fix: bulk translate shows toast on partial failures | `frontend/src/components/chunk-editor/ChunkEditor.tsx` | `b7dcc4c` |
+| Fix: per-chunk translate passes book's target_language to API | `frontend/src/pages/v2-drafts/ChapterEditorPageV2.tsx` | `b7dcc4c` |
+| Test: malformed provider response → 502 | `translation-service/tests/test_translate.py` | `b7dcc4c` |
+| Test: user timeout preference used in httpx client | `translation-service/tests/test_translate.py` | `b7dcc4c` |
+| Update: chat-service tests for new transaction boundary | `chat-service/tests/test_messages_router.py` | `b7dcc4c` |
 
 **Test coverage:**
 - `test_output_extractor.py` — 8 tests (pure function, code block extraction)
@@ -221,7 +221,7 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Date       | What happened | Key commits |
 | ---------- | ------------- | ----------- |
-| 2026-03-30 | Code review hardening: transaction fix, safe format_map, response validation, stale closure fix, bulk error UX | pending |
+| 2026-03-30 | Code review hardening: transaction fix, safe format_map, response validation, stale closure fix, bulk error UX | `b7dcc4c` |
 | 2026-03-29 | Visibility fix, unified chapter editor, ChunkEditor system + selection, chat service, test fixes | `bf17136`, `e9d1c29`, `23bad63`, `fd4a5ea`, `3cb8e4c`, `2f47c89`, `b32f415` |
 | 2026-03-23 | M04 translation pipeline implementation (backend + frontend) | — |
 | 2026-03-22 | M03 provider registry implementation (backend + frontend) | — |
