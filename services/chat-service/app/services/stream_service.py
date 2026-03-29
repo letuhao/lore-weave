@@ -23,6 +23,7 @@ async def stream_response(
     creds: ProviderCredentials,
     pool: asyncpg.Pool,
     billing: BillingClient,
+    parent_message_id: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields AI SDK data stream protocol v1 SSE lines."""
 
@@ -37,7 +38,6 @@ async def stream_response(
         session_id,
     )
     messages = [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
-    messages.append({"role": "user", "content": user_message_content})
 
     # LiteLLM model string
     if creds.provider_kind == "lm_studio":
@@ -83,11 +83,11 @@ async def stream_response(
                 """
                 INSERT INTO chat_messages
                   (message_id, session_id, owner_user_id, role, content, sequence_num,
-                   input_tokens, output_tokens, model_ref)
-                VALUES ($1,$2,$3,'assistant',$4,$5,$6,$7,$8)
+                   input_tokens, output_tokens, model_ref, parent_message_id)
+                VALUES ($1,$2,$3,'assistant',$4,$5,$6,$7,$8,$9)
                 """,
                 msg_id, session_id, user_id, final_text, seq,
-                input_tok, output_tok, model_ref,
+                input_tok, output_tok, model_ref, parent_message_id,
             )
 
             # Extract and persist output artifacts

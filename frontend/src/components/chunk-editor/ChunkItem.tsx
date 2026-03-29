@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bot, Check, Copy, Pencil, RotateCcw } from 'lucide-react';
+import { Bot, Check, Copy, Languages, Loader2, Pencil, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface ChunkItemProps {
@@ -11,10 +11,12 @@ interface ChunkItemProps {
   prevText: string | undefined;
   nextText: string | undefined;
   isSelected: boolean;
+  isTranslating?: boolean;
   /** shiftKey = true triggers range selection in the parent */
   onSelect: (shiftKey: boolean) => void;
   onEdit: (value: string) => void;
   onReset: () => void;
+  onTranslate?: () => void;
 }
 
 export function ChunkItem({
@@ -26,9 +28,11 @@ export function ChunkItem({
   prevText,
   nextText,
   isSelected,
+  isTranslating,
   onSelect,
   onEdit,
   onReset,
+  onTranslate,
 }: ChunkItemProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
@@ -143,7 +147,20 @@ export function ChunkItem({
             </div>
           </div>
         ) : (
-          <p className="whitespace-pre-wrap text-sm leading-relaxed">{text}</p>
+          <div className="relative">
+            <p className={[
+              'whitespace-pre-wrap text-sm leading-relaxed transition-opacity',
+              isTranslating ? 'opacity-40' : '',
+            ].join(' ')}>{text}</p>
+            {isTranslating && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="flex items-center gap-1.5 rounded-md bg-background/90 px-2 py-1 text-xs text-muted-foreground shadow-sm">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Translating…
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -164,6 +181,19 @@ export function ChunkItem({
           >
             {copied === 'context' ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Bot className="h-3.5 w-3.5" />}
           </button>
+          {onTranslate && (
+            <button
+              title="Translate this chunk"
+              onClick={(e) => { e.stopPropagation(); onTranslate(); }}
+              disabled={isTranslating}
+              className="border-l p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+            >
+              {isTranslating
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <Languages className="h-3.5 w-3.5" />
+              }
+            </button>
+          )}
           <button
             title="Edit this chunk"
             onClick={(e) => { e.stopPropagation(); onSelect(false); startEdit(); }}

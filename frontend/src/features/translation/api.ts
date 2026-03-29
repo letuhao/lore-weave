@@ -90,6 +90,14 @@ type PreferencesPayload = {
   invoke_timeout_secs: number;
 };
 
+export type TranslateTextResponse = {
+  translated_text: string;
+  source_language: string;
+  target_language: string;
+  input_tokens: number | null;
+  output_tokens: number | null;
+};
+
 export const translationApi = {
   getPreferences(token: string): Promise<UserTranslationPreferences> {
     return apiJson('/v1/translation/preferences', { token });
@@ -141,5 +149,16 @@ export const translationApi = {
 
   getChapterTranslation(token: string, jobId: string, chapterId: string): Promise<ChapterTranslation> {
     return apiJson(`/v1/translation/jobs/${jobId}/chapters/${chapterId}`, { token });
+  },
+
+  translateText(
+    token: string,
+    payload: { text: string; source_language?: string; target_language?: string },
+  ): Promise<TranslateTextResponse> {
+    return apiJson('/v1/translation/translate-text', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      token,
+    });
   },
 };

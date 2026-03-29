@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-03-29 (session 5)
-- Updated By: Assistant (Chat service unit tests)
+- Last Updated: 2026-03-30 (session 8)
+- Updated By: Assistant (Code review + hardening pass)
 - Active Branch: `main`
-- HEAD: pending commit — chat-service unit tests + MinIO bugfix
+- HEAD: pending commit — review fixes + hardening
 
 ---
 
@@ -30,7 +30,7 @@
 
 ## Current Active Work
 
-**Phase:** Chat Service — Phase 2 (output portability + MinIO storage)
+**Phase:** Chat Service — Phase 3 (message editing + regenerate)
 
 **What was done in this session (2026-03-29, session 1):**
 
@@ -81,18 +81,69 @@
 
 | Work item | Files touched | Commit |
 | --------- | ------------- | ------ |
-| Chat-service full unit test suite (68 tests) | `tests/` (7 new files), `pytest.ini`, `requirements-test.txt` | pending |
-| Fix `ensure_bucket` bug — `run_in_executor` keyword arg misuse | `app/storage/minio_client.py` | pending |
+| Chat-service full unit test suite (68 tests) | `tests/` (7 new files), `pytest.ini`, `requirements-test.txt` | `6847a85` |
+| Fix `ensure_bucket` bug — `run_in_executor` keyword arg misuse | `app/storage/minio_client.py` | `6847a85` |
+
+**What was done in this session (2026-03-29, session 6):**
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| Backend: wire `parent_message_id` on edit_from_sequence | `app/routers/messages.py`, `app/services/stream_service.py` | pending |
+| Frontend: `useStreamingEdit` hook — manual SSE for edit/regenerate | `hooks/useStreamingEdit.ts` (new) | pending |
+| Frontend: edit mode on user messages (pencil icon → inline textarea) | `UserMessage.tsx` | pending |
+| Frontend: regenerate button on assistant messages (RefreshCw icon) | `AssistantMessage.tsx` | pending |
+| Frontend: wire edit/regenerate through MessageBubble → MessageList → ChatWindow | `MessageBubble.tsx`, `MessageList.tsx`, `ChatWindow.tsx` | pending |
+| Backend: Phase 3 unit tests (3 new, total 71) | `test_messages_router.py`, `test_stream_service.py` | pending |
+
+**What was done in this session (2026-03-29, session 7):**
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| Fix: `message_count` drift on edit (deleted msgs not decremented) | `app/routers/messages.py` | pending |
+| Fix: duplicate user message in LLM context (Phase 1 bug) | `app/services/stream_service.py` | pending |
+| Fix: wrap edit flow in DB transaction for atomicity | `app/routers/messages.py` | pending |
+| Fix: conftest mock_pool supports `pool.acquire()` + `conn.transaction()` | `tests/conftest.py` | pending |
+| Update tests for all 3 bugfixes | `test_messages_router.py`, `test_stream_service.py` | pending |
+| Backend: `POST /v1/translation/translate-text` sync endpoint | `translation-service/app/routers/translate.py` (new) | pending |
+| New model: `TranslateTextRequest` + `TranslateTextResponse` | `translation-service/app/models.py` | pending |
+| Register translate router in translation-service | `translation-service/app/main.py` | pending |
+| Backend: translate-text unit tests (6 tests) | `tests/test_translate.py` (new) | pending |
+| Frontend: `translateText()` in translation API client | `features/translation/api.ts` | pending |
+| Frontend: per-chunk translate button in ChunkItem hover bar | `components/chunk-editor/ChunkItem.tsx` | pending |
+| Frontend: "Translate N chunks" in ChunkEditor selection bar | `components/chunk-editor/ChunkEditor.tsx` | pending |
+| Frontend: translating overlay + loading state per-chunk | `ChunkItem.tsx`, `ChunkEditor.tsx` | pending |
+| Frontend: wire `onTranslateChunk` in ChapterEditorPageV2 | `pages/v2-drafts/ChapterEditorPageV2.tsx` | pending |
+
+**What was done in this session (2026-03-30, session 8):**
+
+Code review + hardening pass across chat-service, translation-service, and frontend.
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| Fix: entire edit flow (DELETE + INSERT + UPDATE) in single transaction | `chat-service/app/routers/messages.py` | pending |
+| Fix: safe format_map — unknown `{placeholders}` pass through unchanged | `translation-service/app/routers/translate.py` | pending |
+| Fix: add `min_length=1, max_length=30000` to TranslateTextRequest.text | `translation-service/app/models.py` | pending |
+| Fix: "auto" source_language now returns "auto-detect" (better prompt text) | `translation-service/app/routers/translate.py` | pending |
+| Fix: handle malformed provider response (JSON parse + missing keys → 502) | `translation-service/app/routers/translate.py` | pending |
+| Fix: use user's `invoke_timeout_secs` preference instead of hard-coded 120 | `translation-service/app/routers/translate.py` | pending |
+| Add: structured logging in translate endpoint | `translation-service/app/routers/translate.py` | pending |
+| Fix: stale closure in ChunkEditor translateChunk (remove translatingIndices dep) | `frontend/src/components/chunk-editor/ChunkEditor.tsx` | pending |
+| Fix: bulk translate shows toast on partial failures | `frontend/src/components/chunk-editor/ChunkEditor.tsx` | pending |
+| Fix: per-chunk translate passes book's target_language to API | `frontend/src/pages/v2-drafts/ChapterEditorPageV2.tsx` | pending |
+| Test: malformed provider response → 502 | `translation-service/tests/test_translate.py` | pending |
+| Test: user timeout preference used in httpx client | `translation-service/tests/test_translate.py` | pending |
+| Update: chat-service tests for new transaction boundary | `chat-service/tests/test_messages_router.py` | pending |
 
 **Test coverage:**
 - `test_output_extractor.py` — 8 tests (pure function, code block extraction)
 - `test_auth.py` — 5 tests (JWT validation, expiry, wrong secret)
 - `test_sessions_router.py` — 10 tests (CRUD, 404s, validation)
 - `test_outputs_router.py` — 14 tests (CRUD, download, export, MinIO redirect)
-- `test_messages_router.py` — 5 tests (list, send, streaming, archived, provider 404)
-- `test_stream_service.py` — 6 tests (text deltas, persistence, artifacts, errors, model strings, history)
+- `test_messages_router.py` — 11 tests (list, send, streaming, archived, provider 404, edit, normal parent)
+- `test_stream_service.py` — 7 tests (text deltas, persistence, artifacts, errors, model strings, history, parent_message_id)
 - `test_minio_client.py` — 5 tests (upload, presigned, delete, bucket create/noop)
 - `test_clients.py` — 4 tests (provider resolve, billing log, error swallowing)
+- `test_translate.py` — 8 tests (success, override lang, 402, 500→502, no model, missing text, malformed response, user timeout)
 
 **ChunkEditor component system (created this session):**
 ```
@@ -115,7 +166,7 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 | ----- | ----- | ------ |
 | Phase 1 | chat-service skeleton + session CRUD + LiteLLM streaming + frontend chat UI | ✅ **Committed** (`23bad63`) |
 | Phase 2 | Output storage (MinIO) + OutputCard portability + session export | ✅ **Implemented** (pending commit) |
-| Phase 3 | Message editing + branch history | ❌ Planned |
+| Phase 3 | Message editing + branch history | ✅ **Implemented** (pending commit) |
 | Phase 4 | File attachments + multi-modal | ❌ Planned |
 
 **Phase 1 notes:**
@@ -139,10 +190,10 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Priority | Item | Notes |
 | -------- | ---- | ----- |
-| P1 | Chat Phase 3 — Message editing + branch history | Next chat service phase |
+| ~~P1~~ | ~~Chat Phase 3 — Message editing + branch history~~ | ✅ **Done** — edit + regenerate, parent_message_id tracking |
 | ~~P1~~ | ~~Chat service unit tests~~ | ✅ **Done** — 68 tests, all passing |
 | P2 | ChunkEditor: AI agent integration | User noted "add later" — send chunk to AI model, receive edited text |
-| P2 | ChunkEditor: per-chunk translation | Translate individual paragraphs via M04 translation API |
+| ~~P2~~ | ~~ChunkEditor: per-chunk translation~~ | ✅ **Done** — sync endpoint + per-chunk & bulk translate UI |
 | P3 | Full acceptance evidence pack for M01–M05 | Currently smoke only; needed before any production release |
 
 ### M05 Sub-Phase Roadmap (all complete)
@@ -170,6 +221,7 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Date       | What happened | Key commits |
 | ---------- | ------------- | ----------- |
+| 2026-03-30 | Code review hardening: transaction fix, safe format_map, response validation, stale closure fix, bulk error UX | pending |
 | 2026-03-29 | Visibility fix, unified chapter editor, ChunkEditor system + selection, chat service, test fixes | `bf17136`, `e9d1c29`, `23bad63`, `fd4a5ea`, `3cb8e4c`, `2f47c89`, `b32f415` |
 | 2026-03-23 | M04 translation pipeline implementation (backend + frontend) | — |
 | 2026-03-22 | M03 provider registry implementation (backend + frontend) | — |

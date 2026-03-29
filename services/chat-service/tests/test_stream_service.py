@@ -214,15 +214,52 @@ class TestStreamResponse:
         assert captured_model[0] == "openai/local-model"
 
     @pytest.mark.asyncio
+    async def test_parent_message_id_in_assistant_insert(self):
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 2
+
+        billing = AsyncMock()
+        parent_id = str(uuid4())
+
+        async def fake_acompletion(**kwargs):
+            yield _make_chunk("Response")
+
+        with patch("app.services.stream_service.acompletion", return_value=fake_acompletion()):
+            events = []
+            async for event in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="Edited msg",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(),
+                pool=pool,
+                billing=billing,
+                parent_message_id=parent_id,
+            ):
+                events.append(event)
+
+        # Verify assistant INSERT includes parent_message_id
+        insert_calls = [
+            c for c in conn.execute.call_args_list
+            if "INSERT INTO chat_messages" in str(c) and "parent_message_id" in str(c)
+        ]
+        assert len(insert_calls) == 1
+        assert parent_id in insert_calls[0].args
+
+    @pytest.mark.asyncio
     async def test_builds_message_history(self):
         pool, conn = _make_pool_with_conn()
-        # The query is ORDER BY sequence_num DESC, then reversed() in code
-        # So return in DESC order (reversed in mock means newest first)
+        # The query is ORDER BY sequence_num DESC, then reversed() in code.
+        # The user message is already persisted in DB before stream_response runs,
+        # so it appears in the history fetch (newest first in DESC order).
         pool.fetch.return_value = [
+            {"role": "user", "content": "new msg"},
             {"role": "assistant", "content": "reply"},
             {"role": "user", "content": "first"},
         ]
-        conn.fetchval.return_value = 3
+        conn.fetchval.return_value = 4
 
         billing = AsyncMock()
         captured_messages = []
@@ -244,7 +281,7 @@ class TestStreamResponse:
             ):
                 pass
 
-        # Should include history (reversed back to ASC) + new message
+        # History reversed back to ASC — user message is from DB, not appended
         assert len(captured_messages) == 3
         assert captured_messages[0]["content"] == "first"
         assert captured_messages[1]["content"] == "reply"

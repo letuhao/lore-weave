@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 # ── Settings ──────────────────────────────────────────────────────────────────
@@ -126,6 +126,20 @@ class TranslationJob(BaseModel):
     finished_at: Optional[datetime]
     created_at: datetime
     chapter_translations: Optional[list[ChapterTranslation]] = None
+
+
+class TranslateTextRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=30_000)
+    source_language: str = "auto"
+    target_language: str | None = None  # None = use user's preference
+
+
+class TranslateTextResponse(BaseModel):
+    translated_text: str
+    source_language: str
+    target_language: str
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
 
 class ErrorResponse(BaseModel):

@@ -170,7 +170,7 @@ export function ChapterEditorPageV2() {
         </TabsList>
 
         <TabsContent value="draft" className="mt-0 flex-1 overflow-hidden">
-          <DraftTab token={accessToken!} bookId={bookId} chapterId={chapterId} />
+          <DraftTab token={accessToken!} bookId={bookId} chapterId={chapterId} targetLanguage={settings?.target_language} />
         </TabsContent>
 
         <TabsContent value="translations" className="mt-0 flex-1 overflow-hidden">
@@ -202,10 +202,12 @@ function DraftTab({
   token,
   bookId,
   chapterId,
+  targetLanguage,
 }: {
   token: string;
   bookId: string;
   chapterId: string;
+  targetLanguage?: string;
 }) {
   const [body, setBody] = useState('');
   const [editorKey, setEditorKey] = useState(0);
@@ -238,6 +240,22 @@ function DraftTab({
     setBody(newBody);
     setIsDirty(newBody !== savedBodyRef.current);
   };
+
+  const handleTranslateChunk = useCallback(
+    async (chunkText: string): Promise<string> => {
+      try {
+        const result = await translationApi.translateText(token, {
+          text: chunkText,
+          ...(targetLanguage ? { target_language: targetLanguage } : {}),
+        });
+        return result.translated_text;
+      } catch (err) {
+        toast.error(`Translation failed: ${(err as Error).message}`);
+        throw err;
+      }
+    },
+    [token, targetLanguage],
+  );
 
   // Listen for "Paste to Editor" events from chat OutputCard
   useEffect(() => {
@@ -338,7 +356,7 @@ function DraftTab({
             <LexicalPlainEditor key={editorKey} initialValue={body} onChange={handleChange} />
           </div>
         ) : (
-          <ChunkEditor text={body} onChange={handleChange} />
+          <ChunkEditor text={body} onChange={handleChange} onTranslateChunk={handleTranslateChunk} />
         )}
       </div>
 

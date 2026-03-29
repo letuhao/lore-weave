@@ -10,6 +10,9 @@ interface MessageBubbleProps {
   message: UIMessage;
   isLastAssistant?: boolean;
   isStreaming?: boolean;
+  onEdit?: (newContent: string) => void;
+  onRegenerate?: () => void;
+  disabled?: boolean;
 }
 
 function extractText(message: UIMessage): string {
@@ -19,7 +22,14 @@ function extractText(message: UIMessage): string {
     .join('');
 }
 
-export function MessageBubble({ message, isLastAssistant, isStreaming }: MessageBubbleProps) {
+export function MessageBubble({
+  message,
+  isLastAssistant,
+  isStreaming,
+  onEdit,
+  onRegenerate,
+  disabled,
+}: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const text = extractText(message);
 
@@ -46,12 +56,14 @@ export function MessageBubble({ message, isLastAssistant, isStreaming }: Message
         ].join(' ')}
       >
         {isUser ? (
-          <UserMessage content={text} />
+          <UserMessage content={text} onEdit={onEdit} disabled={disabled} />
         ) : (
           <>
             <AssistantMessage
               content={text}
               isStreaming={isLastAssistant && isStreaming}
+              onRegenerate={onRegenerate}
+              disabled={disabled}
             />
             {codeOutputs.length > 0 && !isStreaming && (
               <div className="mt-2 space-y-1.5">

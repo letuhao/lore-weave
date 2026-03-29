@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, PropertyMock
 from uuid import uuid4
 
 import pytest
@@ -31,10 +31,20 @@ def user_id():
 def mock_pool():
     """Async mock that acts like an asyncpg.Pool."""
     pool = AsyncMock()
-    # Make pool usable as async context manager (pool.acquire())
     conn = AsyncMock()
-    pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
-    pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    # pool.acquire() returns an async context manager (not a coroutine)
+    acquire_cm = MagicMock()
+    acquire_cm.__aenter__ = AsyncMock(return_value=conn)
+    acquire_cm.__aexit__ = AsyncMock(return_value=False)
+    pool.acquire = MagicMock(return_value=acquire_cm)
+
+    # conn.transaction() returns an async context manager
+    txn_cm = MagicMock()
+    txn_cm.__aenter__ = AsyncMock(return_value=txn_cm)
+    txn_cm.__aexit__ = AsyncMock(return_value=False)
+    conn.transaction = MagicMock(return_value=txn_cm)
+
     pool._conn = conn  # expose for test assertions
     return pool
 

@@ -92,37 +92,51 @@ async def send_message(
     model_source = session["model_source"]
     model_ref = str(session["model_ref"])
 
-    # If edit_from_sequence: soft-delete messages after that point
-    if body.edit_from_sequence is not None:
-        await pool.execute(
-            """
-            DELETE FROM chat_messages
-            WHERE session_id=$1 AND sequence_num > $2
-            """,
-            str(session_id), body.edit_from_sequence,
-        )
+    # Edit flow: delete branched messages + insert replacement + update count — all atomic.
+    # Non-edit flow: simple insert + increment.
+    parent_message_id: str | None = None
+    deleted_count = 0
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            if body.edit_from_sequence is not None:
+                parent_message_id = await conn.fetchval(
+                    """
+                    SELECT message_id::text FROM chat_messages
+                    WHERE session_id=$1 AND sequence_num=$2
+                    """,
+                    str(session_id), body.edit_from_sequence,
+                )
+                # asyncpg execute returns "DELETE N" — parse count from status string
+                result = await conn.execute(
+                    """
+                    DELETE FROM chat_messages
+                    WHERE session_id=$1 AND sequence_num > $2
+                    """,
+                    str(session_id), body.edit_from_sequence,
+                )
+                deleted_count = int(result.split()[-1])
 
-    # Persist user message
-    seq = await pool.fetchval(
-        "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM chat_messages WHERE session_id=$1",
-        str(session_id),
-    )
-    await pool.execute(
-        """
-        INSERT INTO chat_messages
-          (session_id, owner_user_id, role, content, sequence_num)
-        VALUES ($1,$2,'user',$3,$4)
-        """,
-        str(session_id), user_id, body.content, seq,
-    )
-    await pool.execute(
-        """
-        UPDATE chat_sessions
-        SET message_count = message_count + 1, updated_at = now()
-        WHERE session_id = $1
-        """,
-        str(session_id),
-    )
+            seq = await conn.fetchval(
+                "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM chat_messages WHERE session_id=$1",
+                str(session_id),
+            )
+            await conn.execute(
+                """
+                INSERT INTO chat_messages
+                  (session_id, owner_user_id, role, content, sequence_num, parent_message_id)
+                VALUES ($1,$2,'user',$3,$4,$5)
+                """,
+                str(session_id), user_id, body.content, seq, parent_message_id,
+            )
+            # deleted_count=0 on non-edit path → GREATEST(count - 0 + 1, 0) = count + 1
+            await conn.execute(
+                """
+                UPDATE chat_sessions
+                SET message_count = GREATEST(message_count - $2 + 1, 0), updated_at = now()
+                WHERE session_id = $1
+                """,
+                str(session_id), deleted_count,
+            )
 
     # Resolve credentials
     try:
@@ -149,6 +163,7 @@ async def send_message(
             creds=creds,
             pool=pool,
             billing=billing,
+            parent_message_id=parent_message_id,
         ),
         media_type="text/event-stream",
         headers=headers,

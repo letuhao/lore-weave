@@ -5,9 +5,18 @@ import { MessageBubble } from './MessageBubble';
 interface MessageListProps {
   messages: UIMessage[];
   isStreaming: boolean;
+  onEditMessage?: (index: number, newContent: string) => void;
+  onRegenerateMessage?: (index: number) => void;
+  disabled?: boolean;
 }
 
-export function MessageList({ messages, isStreaming }: MessageListProps) {
+export function MessageList({
+  messages,
+  isStreaming,
+  onEditMessage,
+  onRegenerateMessage,
+  disabled,
+}: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,6 +41,17 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
             message={msg}
             isLastAssistant={isLast && msg.role === 'assistant'}
             isStreaming={isStreaming}
+            onEdit={
+              msg.role === 'user' && onEditMessage
+                ? (newContent: string) => onEditMessage(i, newContent)
+                : undefined
+            }
+            onRegenerate={
+              msg.role === 'assistant' && onRegenerateMessage
+                ? () => onRegenerateMessage(i)
+                : undefined
+            }
+            disabled={disabled}
           />
         );
       })}

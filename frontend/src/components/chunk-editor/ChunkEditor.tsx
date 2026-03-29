@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Bot, Check, RotateCcw, X } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { toast } from 'sonner';
+import { Bot, Check, Languages, Loader2, RotateCcw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useChunks } from './useChunks';
 import { ChunkItem } from './ChunkItem';
@@ -7,6 +8,8 @@ import { ChunkItem } from './ChunkItem';
 interface ChunkEditorProps {
   text: string;
   onChange: (value: string) => void;
+  /** Translate a chunk's text. Returns the translated text. */
+  onTranslateChunk?: (text: string) => Promise<string>;
 }
 
 /**
@@ -22,12 +25,13 @@ interface ChunkEditorProps {
  *  - Copy with context (prev + all selected + following)
  *  - Deselect all
  */
-export function ChunkEditor({ text, onChange }: ChunkEditorProps) {
+export function ChunkEditor({ text, onChange, onTranslateChunk }: ChunkEditorProps) {
   const { chunks, dirtyCount, applyEdit, resetEdit, resetAll } = useChunks(text, onChange);
 
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [anchorIndex, setAnchorIndex] = useState<number | null>(null);
   const [copyDone, setCopyDone] = useState(false);
+  const [translatingIndices, setTranslatingIndices] = useState<Set<number>>(new Set());
 
   function handleSelect(index: number, shiftKey: boolean) {
     if (shiftKey && anchorIndex !== null) {
@@ -94,6 +98,65 @@ export function ChunkEditor({ text, onChange }: ChunkEditorProps) {
     });
   }
 
+  const translateChunk = useCallback(
+    async (index: number) => {
+      if (!onTranslateChunk) return;
+      // Guard against double-fire via setState (avoids stale closure on translatingIndices)
+      let alreadyTranslating = false;
+      setTranslatingIndices((prev) => {
+        if (prev.has(index)) { alreadyTranslating = true; return prev; }
+        return new Set(prev).add(index);
+      });
+      if (alreadyTranslating) return;
+      try {
+        const translated = await onTranslateChunk(chunks[index].text);
+        applyEdit(index, translated);
+      } finally {
+        setTranslatingIndices((prev) => {
+          const next = new Set(prev);
+          next.delete(index);
+          return next;
+        });
+      }
+    },
+    [onTranslateChunk, chunks, applyEdit],
+  );
+
+  const translateSelected = useCallback(async () => {
+    if (!onTranslateChunk || selectedIndices.size === 0) return;
+    const indices = [...selectedIndices].sort((a, b) => a - b);
+    // Mark all as translating
+    setTranslatingIndices((prev) => {
+      const next = new Set(prev);
+      for (const i of indices) next.add(i);
+      return next;
+    });
+    // Translate in parallel
+    const results = await Promise.allSettled(
+      indices.map((i) => onTranslateChunk(chunks[i].text)),
+    );
+    let failCount = 0;
+    for (let j = 0; j < indices.length; j++) {
+      const result = results[j];
+      if (result.status === 'fulfilled') {
+        applyEdit(indices[j], result.value);
+      } else {
+        failCount++;
+      }
+    }
+    if (failCount > 0) {
+      const ok = indices.length - failCount;
+      toast.error(`${failCount} of ${indices.length} chunks failed to translate${ok > 0 ? ` (${ok} succeeded)` : ''}`);
+    }
+    setTranslatingIndices((prev) => {
+      const next = new Set(prev);
+      for (const i of indices) next.delete(i);
+      return next;
+    });
+  }, [onTranslateChunk, selectedIndices, chunks, applyEdit]);
+
+  const isTranslatingAny = translatingIndices.size > 0;
+
   const selectionCount = selectedIndices.size;
   const sortedSel = selectionCount > 0 ? [...selectedIndices].sort((a, b) => a - b) : null;
 
@@ -148,6 +211,20 @@ export function ChunkEditor({ text, onChange }: ChunkEditorProps) {
               : <><Bot className="h-3 w-3" /> Copy with context</>
             }
           </Button>
+          {onTranslateChunk && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 gap-1 px-2 text-xs text-primary/80 hover:text-primary"
+              onClick={translateSelected}
+              disabled={isTranslatingAny}
+            >
+              {isTranslatingAny
+                ? <><Loader2 className="h-3 w-3 animate-spin" /> Translating…</>
+                : <><Languages className="h-3 w-3" /> Translate {selectionCount > 1 ? `${selectionCount} chunks` : 'chunk'}</>
+              }
+            </Button>
+          )}
           <button
             onClick={clearSelection}
             className="ml-auto rounded p-0.5 text-muted-foreground hover:text-foreground"
@@ -178,9 +255,11 @@ export function ChunkEditor({ text, onChange }: ChunkEditorProps) {
             prevText={chunk.index > 0 ? chunks[chunk.index - 1].text : undefined}
             nextText={chunk.index < chunks.length - 1 ? chunks[chunk.index + 1].text : undefined}
             isSelected={selectedIndices.has(chunk.index)}
+            isTranslating={translatingIndices.has(chunk.index)}
             onSelect={(shiftKey) => handleSelect(chunk.index, shiftKey)}
             onEdit={(value) => applyEdit(chunk.index, value)}
             onReset={() => resetEdit(chunk.index)}
+            onTranslate={onTranslateChunk ? () => translateChunk(chunk.index) : undefined}
           />
         ))}
       </div>
