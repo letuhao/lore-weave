@@ -9,6 +9,7 @@ import { LoginPage } from '@/pages/auth/LoginPage';
 import { RegisterPage } from '@/pages/auth/RegisterPage';
 import { ForgotPage } from '@/pages/auth/ForgotPage';
 import { ResetPage } from '@/pages/auth/ResetPage';
+import { HomePage } from '@/pages/HomePage';
 
 export function App() {
   return (
@@ -16,6 +17,11 @@ export function App() {
     <ModeProvider>
       <BrowserRouter>
         <Routes>
+          {/* ── Public routes (no auth required) ── */}
+
+          {/* Landing / home */}
+          <Route path="/" element={<HomePage />} />
+
           {/* Auth pages (centered, no sidebar) */}
           <Route element={<FullBleedLayout />}>
             <Route path="/login" element={<LoginPage />} />
@@ -24,16 +30,28 @@ export function App() {
             <Route path="/reset" element={<ResetPage />} />
           </Route>
 
-          {/* Editor (collapsed sidebar, auth required) */}
+          {/* Public browse (catalog) — readers can browse without login */}
+          <Route element={<DashboardLayout />}>
+            <Route path="/browse" element={<PlaceholderPage title="Browse" description="Public book catalog — coming in P4-09." />} />
+            <Route path="/browse/:bookId" element={<PlaceholderPage title="Public Book" />} />
+            <Route path="/leaderboard" element={<PlaceholderPage title="Leaderboard" description="Top books, authors, translators — coming in P4-11." />} />
+            <Route path="/users/:userId" element={<PlaceholderPage title="User Profile" />} />
+          </Route>
+
+          {/* Public reader — unlisted/public books readable without login */}
+          <Route element={<FullBleedLayout />}>
+            <Route path="/s/:accessToken" element={<PlaceholderPage title="Shared Book" description="Unlisted access — coming in P4." />} />
+          </Route>
+
+          {/* ── Protected routes (auth required) ── */}
+
+          {/* Editor (collapsed sidebar) */}
           <Route element={<RequireAuth><EditorLayout /></RequireAuth>}>
             <Route path="/books/:bookId/chapters/:chapterId/edit" element={<PlaceholderPage title="Chapter Editor" description="3-panel workbench — coming in P2-05." />} />
           </Route>
 
-          {/* Dashboard pages (full sidebar, auth required) */}
+          {/* Dashboard pages (full sidebar) */}
           <Route element={<RequireAuth><DashboardLayout /></RequireAuth>}>
-            {/* Redirect root to workspace */}
-            <Route path="/" element={<Navigate to="/books" replace />} />
-
             {/* Workspace */}
             <Route path="/books" element={<PlaceholderPage title="Workspace" description="Book list with search, filter, create — coming in P2-02." />} />
             <Route path="/books/trash" element={<PlaceholderPage title="Trash" description="Recycle bin for deleted books." />} />
@@ -47,14 +65,9 @@ export function App() {
             {/* Chat */}
             <Route path="/chat" element={<PlaceholderPage title="Chat" description="AI chat with session sidebar — coming in P3-18." />} />
 
-            {/* Browse */}
-            <Route path="/browse" element={<PlaceholderPage title="Browse" description="Public book catalog — coming in P4-09." />} />
-            <Route path="/browse/:bookId" element={<PlaceholderPage title="Public Book" />} />
-
             {/* Manage */}
             <Route path="/usage" element={<PlaceholderPage title="Usage" description="AI usage monitor — coming in P4-06." />} />
             <Route path="/usage/:logId" element={<PlaceholderPage title="Usage Detail" />} />
-            <Route path="/leaderboard" element={<PlaceholderPage title="Leaderboard" description="Top books, authors, translators — coming in P4-11." />} />
 
             {/* Settings */}
             <Route path="/settings" element={<Navigate to="/settings/account" replace />} />
@@ -62,11 +75,10 @@ export function App() {
 
             {/* Notifications */}
             <Route path="/notifications" element={<PlaceholderPage title="Notifications" description="Notification center — coming in P2-09." />} />
+          </Route>
 
-            {/* Profile */}
-            <Route path="/users/:userId" element={<PlaceholderPage title="User Profile" />} />
-
-            {/* 404 */}
+          {/* 404 */}
+          <Route path="*" element={<FullBleedLayout />}>
             <Route path="*" element={<PlaceholderPage title="404" description="Page not found." />} />
           </Route>
         </Routes>
