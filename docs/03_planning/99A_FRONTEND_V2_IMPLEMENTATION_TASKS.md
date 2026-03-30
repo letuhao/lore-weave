@@ -232,7 +232,7 @@ AC:
 
 ### P2-05: Chapter Editor — Workbench [FE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P2-04
 Sub-tasks (break into 4 tickets):
 
@@ -267,7 +267,7 @@ Sub-tasks (break into 4 tickets):
 
 ### P2-06: Split-View Translation [FE]
 ```
-Status: [ ]
+Status: [ ] (deferred — needs translation API wired first, moved to P3)
 Deps:   P2-05a
 Scope:  Source + translation side-by-side, accept/reject per chunk
 AC:
@@ -279,7 +279,7 @@ AC:
 
 ### P2-07: Reading Mode [FE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P1-06
 Scope:  Clean reader, chapter nav, TOC (uses existing booksApi)
 AC:
@@ -291,7 +291,7 @@ AC:
 
 ### P2-08: Reader Theme System [FE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P1-02
 Scope:  ReaderThemeProvider, 6 presets, customizer panel
 AC:
@@ -302,7 +302,7 @@ AC:
 
 ### P2-09: Notification System — Frontend Shell [FE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P1-07
 Scope:  Bell icon + notification center (mock data for now)
 AC:
@@ -357,7 +357,7 @@ AC:
 
 ### P2-10: Onboarding Wizard [FE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P2-02
 Scope:  3-step first-time guide
 AC:
@@ -368,7 +368,7 @@ AC:
 
 ### P2-11a: Import — Frontend [FE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P2-02
 Scope:  Upload dialog with format detection, chapter preview
 AC:

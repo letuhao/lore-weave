@@ -7,6 +7,9 @@ import { EditorLayout } from '@/layouts/EditorLayout';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
 import { BooksPage } from '@/pages/BooksPage';
 import { BookDetailPage } from '@/pages/BookDetailPage';
+import { ChapterEditorPage } from '@/pages/ChapterEditorPage';
+import { ReaderPage } from '@/pages/ReaderPage';
+import { ReaderThemeProvider } from '@/providers/ReaderThemeProvider';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { RegisterPage } from '@/pages/auth/RegisterPage';
 import { ForgotPage } from '@/pages/auth/ForgotPage';
@@ -17,6 +20,7 @@ export function App() {
   return (
     <AuthProvider>
     <ModeProvider>
+    <ReaderThemeProvider>
       <BrowserRouter>
         <Routes>
           {/* ── Public routes (no auth required) ── */}
@@ -40,6 +44,9 @@ export function App() {
             <Route path="/users/:userId" element={<PlaceholderPage title="User Profile" />} />
           </Route>
 
+          {/* Reader — full screen, no sidebar */}
+          <Route path="/books/:bookId/chapters/:chapterId/read" element={<ReaderPage />} />
+
           {/* Public reader — unlisted/public books readable without login */}
           <Route element={<FullBleedLayout />}>
             <Route path="/s/:accessToken" element={<PlaceholderPage title="Shared Book" description="Unlisted access — coming in P4." />} />
@@ -49,7 +56,7 @@ export function App() {
 
           {/* Editor (collapsed sidebar) */}
           <Route element={<RequireAuth><EditorLayout /></RequireAuth>}>
-            <Route path="/books/:bookId/chapters/:chapterId/edit" element={<PlaceholderPage title="Chapter Editor" description="3-panel workbench — coming in P2-05." />} />
+            <Route path="/books/:bookId/chapters/:chapterId/edit" element={<ChapterEditorPage />} />
           </Route>
 
           {/* Dashboard pages (full sidebar) */}
@@ -85,6 +92,7 @@ export function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+    </ReaderThemeProvider>
     </ModeProvider>
     </AuthProvider>
   );

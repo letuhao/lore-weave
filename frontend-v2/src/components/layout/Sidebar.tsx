@@ -14,6 +14,7 @@ import {
 import { useAuth } from '@/auth';
 import { cn } from '@/lib/utils';
 import { apiJson } from '@/api';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 
 type NavItem = { to: string; icon: React.ElementType; labelKey: string; auth?: boolean };
 
@@ -82,13 +83,7 @@ export function Sidebar() {
         {accessToken ? (
           <>
             {/* Notification bell */}
-            <Link
-              to="/notifications"
-              className="mb-2 flex items-center gap-3 rounded-md px-2 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            >
-              <Bell className="h-4 w-4" />
-              <span>{t('nav.notifications')}</span>
-            </Link>
+            <NotificationBell />
 
             {/* Logged-in user */}
             <div className="flex items-center gap-3 rounded-md px-2 py-2">
