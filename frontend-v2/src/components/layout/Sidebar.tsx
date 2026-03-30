@@ -11,7 +11,6 @@ import {
   Trophy,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
-import { useMode } from '@/providers/ModeProvider';
 import { cn } from '@/lib/utils';
 import { apiJson } from '@/api';
 
@@ -23,7 +22,7 @@ const mainNav = [
 
 const manageNav = [
   { to: '/usage', icon: BarChart3, labelKey: 'nav.usage' },
-  { to: '/leaderboard', icon: Trophy, labelKey: 'nav.leaderboard', platformOnly: true },
+  { to: '/leaderboard', icon: Trophy, labelKey: 'nav.leaderboard' },
   { to: '/settings/account', icon: Settings, labelKey: 'nav.settings' },
 ];
 
@@ -31,7 +30,6 @@ export function Sidebar() {
   const location = useLocation();
   const { t } = useTranslation();
   const { accessToken, logoutLocal } = useAuth();
-  const { isPlatform } = useMode();
 
   const handleLogout = async () => {
     if (accessToken) {
@@ -66,7 +64,7 @@ export function Sidebar() {
         <p className="px-3 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {t('nav.manage')}
         </p>
-        {manageNav.filter((item) => !item.platformOnly || isPlatform).map((item) => (
+        {manageNav.map((item) => (
           <NavLink key={item.to} item={item} label={t(item.labelKey)} currentPath={location.pathname} />
         ))}
       </nav>

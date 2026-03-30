@@ -1,34 +1,16 @@
 import { Navigate, Link } from 'react-router-dom';
 import { useAuth } from '@/auth';
-import { useMode } from '@/providers/ModeProvider';
 import { BookOpen, LogIn, UserPlus } from 'lucide-react';
 
-/**
- * Home page logic:
- *
- * Workbench mode:
- *   Logged in  → redirect to /books (workspace)
- *   Not logged → redirect to /login
- *
- * Platform mode:
- *   Logged in  → redirect to /books (workspace)
- *   Not logged → show landing page with "Browse" + "Sign in"
- */
 export function HomePage() {
   const { accessToken } = useAuth();
-  const { isWorkbench } = useMode();
 
-  // Logged in → workspace
+  // Logged in → go straight to workspace
   if (accessToken) {
     return <Navigate to="/books" replace />;
   }
 
-  // Workbench mode, not logged in → login
-  if (isWorkbench) {
-    return <Navigate to="/login" replace />;
-  }
-
-  // Platform mode, not logged in → landing page
+  // Not logged in → landing page
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
       <div className="space-y-6 text-center">
