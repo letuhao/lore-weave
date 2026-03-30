@@ -33,7 +33,7 @@ const manageNav: NavItem[] = [
 export function Sidebar() {
   const location = useLocation();
   const { t } = useTranslation();
-  const { accessToken, logoutLocal } = useAuth();
+  const { accessToken, user, logoutLocal } = useAuth();
   const isLoggedIn = !!accessToken;
 
   const handleLogout = async () => {
@@ -93,10 +93,10 @@ export function Sidebar() {
             {/* Logged-in user */}
             <div className="flex items-center gap-3 rounded-md px-2 py-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/20 text-xs font-medium text-primary">
-                U
+                {(user?.display_name ?? user?.email ?? 'U').charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium">User</p>
+                <p className="truncate text-xs font-medium">{user?.display_name ?? user?.email ?? 'User'}</p>
               </div>
               <button
                 onClick={() => void handleLogout()}
