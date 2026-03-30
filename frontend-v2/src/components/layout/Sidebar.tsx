@@ -1,0 +1,129 @@
+import { Link, useLocation } from 'react-router-dom';
+import {
+  BookOpen,
+  MessageCircle,
+  Search,
+  BarChart3,
+  Settings,
+  LogOut,
+  Bell,
+  Trophy,
+} from 'lucide-react';
+import { useAuth } from '@/auth';
+import { cn } from '@/lib/utils';
+import { apiJson } from '@/api';
+
+const mainNav = [
+  { to: '/books', icon: BookOpen, label: 'Workspace' },
+  { to: '/chat', icon: MessageCircle, label: 'Chat' },
+  { to: '/browse', icon: Search, label: 'Browse' },
+];
+
+const manageNav = [
+  { to: '/usage', icon: BarChart3, label: 'Usage' },
+  { to: '/leaderboard', icon: Trophy, label: 'Leaderboard', platformOnly: true },
+  { to: '/settings/account', icon: Settings, label: 'Settings' },
+];
+
+export function Sidebar() {
+  const location = useLocation();
+  const { accessToken, logoutLocal } = useAuth();
+
+  const handleLogout = async () => {
+    if (accessToken) {
+      try {
+        await apiJson('/v1/auth/logout', { method: 'POST', token: accessToken });
+      } catch { /* still clear local */ }
+    }
+    logoutLocal();
+  };
+
+  return (
+    <aside className="flex w-[240px] flex-col border-r bg-background">
+      {/* Logo */}
+      <div className="flex items-center gap-2.5 px-4 py-5">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
+          L
+        </div>
+        <span className="font-serif text-base font-semibold tracking-tight">
+          LoreWeave
+        </span>
+      </div>
+
+      {/* Main nav */}
+      <nav className="flex-1 space-y-1 px-2">
+        <p className="px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Main
+        </p>
+        {mainNav.map((item) => (
+          <NavLink key={item.to} item={item} currentPath={location.pathname} />
+        ))}
+
+        <p className="px-3 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Manage
+        </p>
+        {manageNav.map((item) => (
+          <NavLink key={item.to} item={item} currentPath={location.pathname} />
+        ))}
+      </nav>
+
+      {/* Notification + User footer */}
+      <div className="border-t p-3">
+        {/* Notification bell */}
+        <Link
+          to="/notifications"
+          className="mb-2 flex items-center gap-3 rounded-md px-2 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        >
+          <Bell className="h-4 w-4" />
+          <span>Notifications</span>
+        </Link>
+
+        {/* User */}
+        <div className="flex items-center gap-3 rounded-md px-2 py-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/20 text-xs font-medium text-primary">
+            U
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-medium">User</p>
+          </div>
+          {accessToken && (
+            <button
+              onClick={() => void handleLogout()}
+              className="rounded p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              title="Log out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function NavLink({
+  item,
+  currentPath,
+}: {
+  item: { to: string; icon: React.ElementType; label: string };
+  currentPath: string;
+}) {
+  const isActive =
+    currentPath === item.to || currentPath.startsWith(item.to + '/');
+  const Icon = item.icon;
+
+  return (
+    <Link
+      to={item.to}
+      className={cn(
+        'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+        isActive
+          ? 'bg-primary/15 text-primary'
+          : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+      )}
+    >
+      <Icon className="h-4 w-4" />
+      {item.label}
+    </Link>
+  );
+}
