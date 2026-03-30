@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-03-30 (session 8)
-- Updated By: Assistant (Code review + hardening pass)
+- Last Updated: 2026-03-30 (session 9)
+- Updated By: Assistant (Frontend V2 planning + CI cleanup)
 - Active Branch: `main`
-- HEAD: `b7dcc4c` — Phase 3 + per-chunk translation + hardening
+- HEAD: `6f14c26` — remove stale CI workflow
 
 ---
 
@@ -30,7 +30,7 @@
 
 ## Current Active Work
 
-**Phase:** Chat Service — Phase 3 (message editing + regenerate)
+**Phase:** Frontend V2 Rebuild — Phase 1 (Foundation)
 
 **What was done in this session (2026-03-29, session 1):**
 
@@ -114,6 +114,21 @@
 | Frontend: translating overlay + loading state per-chunk | `ChunkItem.tsx`, `ChunkEditor.tsx` | `b7dcc4c` |
 | Frontend: wire `onTranslateChunk` in ChapterEditorPageV2 | `pages/v2-drafts/ChapterEditorPageV2.tsx` | `b7dcc4c` |
 
+**What was done in this session (2026-03-30, session 9):**
+
+Frontend V2 planning + CI cleanup + branch hygiene.
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| Remove stale Module 01 CI workflow (was spamming email on every push) | `.github/workflows/loreweave-module01.yml` (deleted) | `6f14c26` (PR #2) |
+| Review all git branches — all local branches merged into main, safe to clean | — | — |
+| Full GUI audit: identified 10 structural issues (layout, nav, components, forms) | — | — |
+| Design navigation architecture: sidebar, 3 layout types, breadcrumbs, route map | — | — |
+| Create component catalog HTML draft (cold zinc theme) | `design-drafts/components-v2.html` | — |
+| Create warm literary theme draft (amber/teal, Lora serif, approved) | `design-drafts/components-v2-warm.html` | — |
+| Fix Tailwind CDN color rendering (HSL → CSS variables + hex) | `design-drafts/components-v2-warm.html` | — |
+| Write Frontend V2 Rebuild Plan (full planning doc) | `docs/03_planning/99_FRONTEND_V2_REBUILD_PLAN.md` | — |
+
 **What was done in this session (2026-03-30, session 8):**
 
 Code review + hardening pass across chat-service, translation-service, and frontend.
@@ -158,43 +173,37 @@ frontend/src/components/chunk-editor/
 
 ## What Is Next
 
-### Chat Service
+### Frontend V2 Rebuild
+
+Design document: `docs/03_planning/99_FRONTEND_V2_REBUILD_PLAN.md`
+Visual drafts: `design-drafts/components-v2-warm.html` (approved)
+
+| Phase | Scope | Status |
+| ----- | ----- | ------ |
+| Phase 1 | Scaffold, layout shell, sidebar, routing, auth pages, copy API layer | **Up next** |
+| Phase 2 | Core screens: Books list, Book Detail (tabs), Chapter Editor | Planned |
+| Phase 3 | Feature screens: Translation, Glossary, Chat, Sharing | Planned |
+| Phase 4 | Secondary: Settings, Usage, Browse + polish (dark/light, shortcuts) | Planned |
+
+### Chat Service (paused — frontend rebuild takes priority)
 
 Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Phase | Scope | Status |
 | ----- | ----- | ------ |
-| Phase 1 | chat-service skeleton + session CRUD + LiteLLM streaming + frontend chat UI | ✅ **Committed** (`23bad63`) |
-| Phase 2 | Output storage (MinIO) + OutputCard portability + session export | ✅ **Implemented** (pending commit) |
-| Phase 3 | Message editing + branch history | ✅ **Implemented** (pending commit) |
-| Phase 4 | File attachments + multi-modal | ❌ Planned |
-
-**Phase 1 notes:**
-- Backend route: `POST /v1/chat/sessions/{id}/messages` → StreamingResponse (AI SDK data stream v1)
-- Frontend uses `@ai-sdk/react` v3 `useChat` with `DefaultChatTransport` (v5 API)
-- Provider credentials resolved via `GET /internal/credentials/{source}/{ref}?user_id=...` on provider-registry (X-Internal-Token auth)
-- New DB: `loreweave_chat` (3 tables). MinIO bucket `lw-chat` is pre-configured in docker-compose
-- Chat route: `/chat` (protected, requires auth)
-
-**Key technology decisions (locked):**
-- Backend: Python/FastAPI + **LiteLLM** (unified provider streaming)
-- Frontend SSE: `@microsoft/fetch-event-source` (POST + auth headers)
-- Markdown rendering: `react-markdown` + `rehype-highlight`
-- File storage: MinIO (S3-compatible, self-hosted)
-- New DB: `loreweave_chat` (chat_sessions, chat_messages, chat_outputs)
-- New service port: 8090; provider-registry internal port: 8082
-
-**Open questions (see doc §13):** MinIO as new dep (Q1), "Paste to Editor" mechanism (Q2), chat route location (Q3)
+| Phase 1-3 | Backend + frontend chat (sessions, streaming, editing) | ✅ Done |
+| Phase 4 | File attachments + multi-modal | Planned (after frontend-v2 Phase 3) |
 
 ### Immediate candidates
 
 | Priority | Item | Notes |
 | -------- | ---- | ----- |
-| ~~P1~~ | ~~Chat Phase 3 — Message editing + branch history~~ | ✅ **Done** — edit + regenerate, parent_message_id tracking |
-| ~~P1~~ | ~~Chat service unit tests~~ | ✅ **Done** — 68 tests, all passing |
-| P2 | ChunkEditor: AI agent integration | User noted "add later" — send chunk to AI model, receive edited text |
-| ~~P2~~ | ~~ChunkEditor: per-chunk translation~~ | ✅ **Done** — sync endpoint + per-chunk & bulk translate UI |
-| P3 | Full acceptance evidence pack for M01–M05 | Currently smoke only; needed before any production release |
+| **P0** | **Frontend V2 Phase 1 — Foundation** | Scaffold, layouts, sidebar, routing, auth |
+| P1 | Frontend V2 Phase 2 — Core screens | Books, Book Detail, Editor |
+| P2 | Frontend V2 Phase 3 — Feature screens | Translation, Glossary, Chat |
+| P2 | ChunkEditor: AI agent integration | Migrate to frontend-v2 during Phase 2 |
+| P3 | Chat Phase 4 — File attachments | After frontend-v2 is stable |
+| P3 | Full acceptance evidence pack for M01-M05 | Currently smoke only |
 
 ### M05 Sub-Phase Roadmap (all complete)
 
@@ -212,8 +221,10 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | ID | Blocker | Severity | Owner |
 | -- | ------- | -------- | ----- |
-| BLK-01 | Formal acceptance evidence packs not produced for M01–M04 | Medium | QA |
-| BLK-02 | M05 not started — glossary-service Go project doesn't exist yet | Low (planned) | Tech Lead |
+| BLK-01 | Formal acceptance evidence packs not produced for M01-M05 | Medium | QA |
+| ~~BLK-02~~ | ~~M05 not started~~ | ~~Resolved~~ | ~~Tech Lead~~ |
+
+> BLK-02 resolved: M05 Glossary & Lore Management is complete (closed smoke).
 
 ---
 
@@ -221,6 +232,7 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Date       | What happened | Key commits |
 | ---------- | ------------- | ----------- |
+| 2026-03-30 | Frontend V2 planning: GUI audit, design drafts (warm literary theme), rebuild plan, CI cleanup | `6f14c26` (PR #2) |
 | 2026-03-30 | Code review hardening: transaction fix, safe format_map, response validation, stale closure fix, bulk error UX | `b7dcc4c` |
 | 2026-03-29 | Visibility fix, unified chapter editor, ChunkEditor system + selection, chat service, test fixes | `bf17136`, `e9d1c29`, `23bad63`, `fd4a5ea`, `3cb8e4c`, `2f47c89`, `b32f415` |
 | 2026-03-23 | M04 translation pipeline implementation (backend + frontend) | — |

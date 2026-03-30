@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Warm Literary Theme</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ── CSS Variables (the source of truth) ── */
+    :root {
+      --background:       #181412;
+      --background-alt:   #1e1a17;
+      --foreground:        #f5efe8;
+      --card:              #1e1a17;
+      --card-hover:        #272220;
+      --border:            #332d28;
+      --border-hover:      #4a423b;
+      --input:             #242019;
+      --ring:              #d4952a;
+
+      --primary:           #e8a832;
+      --primary-fg:        #141010;
+      --primary-muted:     #3d2e12;
+
+      --secondary:         #282320;
+      --secondary-fg:      #e0d8cc;
+
+      --muted:             #282320;
+      --muted-fg:          #9e9488;
+
+      --accent:            #3da692;
+      --accent-muted:      #1a2e2a;
+      --accent-fg:         #c8ede6;
+
+      --destructive:       #dc4e4e;
+      --destructive-fg:    #f8f2ec;
+      --success:           #3dba6a;
+      --warning:           #e8a832;
+      --info:              #5496e8;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background-color: var(--background);
+      color: var(--foreground);
+      -webkit-font-smoothing: antialiased;
+    }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    code, .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+    * { border-color: var(--border); }
+    ::selection { background: rgba(232, 168, 50, 0.25); }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    /* ── Utility classes (since Tailwind CDN won't handle our vars) ── */
+    .bg-bg        { background-color: var(--background) !important; }
+    .bg-card      { background-color: var(--card) !important; }
+    .bg-card-h    { background-color: var(--card-hover) !important; }
+    .bg-secondary { background-color: var(--secondary) !important; }
+    .bg-muted     { background-color: var(--muted) !important; }
+    .bg-primary   { background-color: var(--primary) !important; }
+    .bg-accent    { background-color: var(--accent) !important; }
+    .bg-destructive { background-color: var(--destructive) !important; }
+    .bg-primary-muted { background-color: var(--primary-muted) !important; }
+    .bg-accent-muted  { background-color: var(--accent-muted) !important; }
+
+    .text-fg      { color: var(--foreground) !important; }
+    .text-muted   { color: var(--muted-fg) !important; }
+    .text-primary-c { color: var(--primary) !important; }
+    .text-primary-fg { color: var(--primary-fg) !important; }
+    .text-accent-c { color: var(--accent) !important; }
+    .text-accent-fg { color: var(--accent-fg) !important; }
+    .text-destructive { color: var(--destructive) !important; }
+    .text-success  { color: var(--success) !important; }
+    .text-warning  { color: var(--warning) !important; }
+    .text-info     { color: var(--info) !important; }
+    .text-secondary-fg { color: var(--secondary-fg) !important; }
+
+    .border-c     { border-color: var(--border) !important; }
+    .border-hover { border-color: var(--border-hover) !important; }
+
+    /* ── Interactive elements ── */
+    .sidebar-link { transition: background 150ms, color 150ms; }
+    .sidebar-link:hover { background: var(--secondary); }
+    .sidebar-link.active { background: var(--primary-muted); color: var(--primary); }
+
+    .showcase-section { border-top: 1px solid var(--border); padding-top: 3rem; margin-top: 3rem; }
+    .showcase-section:first-child { border-top: none; margin-top: 0; padding-top: 0; }
+
+    /* Buttons */
+    .btn-primary {
+      background-color: var(--primary) !important;
+      color: var(--primary-fg) !important;
+      box-shadow: 0 0 24px rgba(232, 168, 50, 0.15);
+    }
+    .btn-primary:hover {
+      filter: brightness(1.1);
+      box-shadow: 0 0 32px rgba(232, 168, 50, 0.25);
+    }
+    .btn-secondary {
+      background-color: transparent;
+      border: 1px solid var(--border);
+      color: var(--foreground);
+    }
+    .btn-secondary:hover { background-color: var(--secondary); }
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted-fg);
+    }
+    .btn-ghost:hover { background-color: var(--secondary); color: var(--foreground); }
+    .btn-destructive {
+      background-color: var(--destructive) !important;
+      color: var(--destructive-fg) !important;
+    }
+    .btn-destructive:hover { filter: brightness(1.1); }
+    .btn-accent {
+      background-color: var(--accent) !important;
+      color: #f0faf8 !important;
+    }
+    .btn-accent:hover { filter: brightness(1.1); }
+
+    /* Card hover effect */
+    .card-interactive { background-color: var(--card); border-color: var(--border); transition: all 150ms; }
+    .card-interactive:hover { background-color: var(--card-hover); border-color: var(--border-hover); }
+
+    /* Form inputs */
+    .input-field {
+      background-color: var(--background);
+      border: 1px solid var(--border);
+      color: var(--foreground);
+      transition: border-color 150ms, box-shadow 150ms;
+    }
+    .input-field:focus {
+      outline: none;
+      border-color: var(--ring);
+      box-shadow: 0 0 0 3px rgba(212, 149, 42, 0.2);
+    }
+    .input-field::placeholder { color: rgba(158, 148, 136, 0.5); }
+
+    /* Badges */
+    .badge { display: inline-flex; align-items: center; gap: 0.375rem; border-radius: 9999px; padding: 0.125rem 0.625rem; font-size: 11px; font-weight: 500; }
+    .badge-default { background: var(--secondary); color: var(--muted-fg); }
+    .badge-success { background: rgba(61, 186, 106, 0.12); color: #5dd88a; }
+    .badge-warning { background: rgba(232, 168, 50, 0.12); color: #f0be54; }
+    .badge-danger  { background: rgba(220, 78, 78, 0.12); color: #e87272; }
+    .badge-info    { background: rgba(84, 150, 232, 0.12); color: #7ab4f0; }
+
+    /* Tab active */
+    .tab-active { border-bottom: 2px solid var(--primary); color: var(--primary); }
+    .tab-inactive { border-bottom: 2px solid transparent; color: var(--muted-fg); }
+    .tab-inactive:hover { color: var(--foreground); }
+
+    @keyframes skeleton-pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.7; } }
+    .skeleton { animation: skeleton-pulse 2s ease-in-out infinite; background-color: var(--muted); }
+
+    @keyframes slide-up { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    .animate-slide-up { animation: slide-up 200ms ease-out; }
+
+    .cover-glow { box-shadow: inset 0 0 20px rgba(0,0,0,0.5); }
+
+    /* Hover states (Tailwind CDN can't resolve custom hover colors) */
+    .hover-secondary:hover { background-color: var(--secondary) !important; }
+    .hover-fg:hover { color: var(--foreground) !important; }
+    .hover-card:hover { background-color: var(--card-hover) !important; }
+    .hover-border:hover { border-color: var(--border-hover) !important; }
+    .hover-destructive:hover { background-color: rgba(220, 78, 78, 0.1) !important; color: var(--destructive) !important; }
+
+    /* Focus ring for inputs */
+    .focus-ring:focus { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px rgba(212, 149, 42, 0.2); }
+  </style>
+</head>
+
+<body class="min-h-screen">
+
+<div class="flex min-h-screen">
+
+  <!-- ── Sidebar ───────────────────────────────────────────────── -->
+  <aside class="flex w-[240px] flex-col border-r bg-bg">
+    <!-- Logo -->
+    <div class="flex items-center gap-2.5 px-4 py-5">
+      <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-fg text-sm font-bold">L</div>
+      <span class="font-serif text-base font-semibold tracking-tight" style="color: #f5efe8">LoreWeave</span>
+    </div>
+
+    <nav class="flex-1 space-y-1 px-2">
+      <p class="px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-wider text-muted">Main</p>
+      <a href="#" class="sidebar-link active flex items-center gap-3 rounded-md px-3 py-2 text-sm">
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+        Workspace
+      </a>
+      <a href="#" class="sidebar-link flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted">
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        Chat
+      </a>
+      <a href="#" class="sidebar-link flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted">
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        Browse
+      </a>
+
+      <p class="px-3 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-wider text-muted">Manage</p>
+      <a href="#" class="sidebar-link flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted">
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        Usage
+      </a>
+      <a href="#" class="sidebar-link flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted">
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
+        Settings
+      </a>
+    </nav>
+
+    <div class="border-t p-3">
+      <div class="flex items-center gap-3 rounded-md px-2 py-2">
+        <div class="flex h-7 w-7 items-center justify-center rounded-full bg-primary-muted text-xs font-medium" style="color: #f0c050">NS</div>
+        <div class="flex-1 min-w-0">
+          <p class="truncate text-xs font-medium">NeneScarlet</p>
+          <p class="truncate text-[10px] text-muted">nene@example.com</p>
+        </div>
+        <button class="rounded p-1 text-muted hover-secondary hover-fg" title="Log out">
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main ──────────────────────────────────────────────────── -->
+  <main class="flex-1 overflow-y-auto" style="background: #181412">
+    <div class="mx-auto max-w-6xl px-6 py-6 lg:px-10 lg:py-8 space-y-16">
+
+      <!-- Header -->
+      <div class="text-center space-y-3 py-10">
+        <h1 class="font-serif text-3xl font-semibold">LoreWeave v2 — Warm Literary Theme</h1>
+        <p class="text-sm text-muted">Amber gold primary, warm stone background, serif headings, literary feel</p>
+        <div class="flex items-center justify-center gap-4 pt-2">
+          <div class="flex items-center gap-2">
+            <span class="h-4 w-4 rounded" style="background: #e8a832"></span>
+            <span class="text-xs text-muted">Primary (amber)</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-4 w-4 rounded" style="background: #3da692"></span>
+            <span class="text-xs text-muted">Accent (teal)</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-4 w-4 rounded" style="background: #181412"></span>
+            <span class="h-4 w-4 rounded border" style="background: #1e1a17"></span>
+            <span class="text-xs text-muted">Background / Card</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ PAGE HEADER + BREADCRUMB ═══════════ -->
+      <section class="showcase-section space-y-8">
+        <p class="text-xs font-semibold uppercase tracking-wider text-muted">Page Header + Breadcrumb</p>
+
+        <!-- Simple page header -->
+        <div class="rounded-lg border bg-card p-6 space-y-4">
+          <p class="text-[10px] font-mono text-muted mb-2">variant: workspace list</p>
+          <nav class="flex items-center gap-1.5 text-sm text-muted">
+            <a href="#" class="hover-fg transition-colors">Workspace</a>
+          </nav>
+          <div class="flex items-center justify-between">
+            <h1 class="font-serif text-xl font-semibold">My Books</h1>
+            <button class="btn-primary inline-flex items-center gap-2 rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-fg hover:brightness-110 transition-all">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+              New Book
+            </button>
+          </div>
+        </div>
+
+        <!-- Book detail header with tabs -->
+        <div class="rounded-lg border bg-card p-6 space-y-4">
+          <p class="text-[10px] font-mono text-muted mb-2">variant: book detail with tabs</p>
+          <nav class="flex items-center gap-1.5 text-sm text-muted">
+            <a href="#" class="hover-fg transition-colors">Workspace</a>
+            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+            <span class="text-fg font-medium">The Demon Lord's Duty</span>
+          </nav>
+          <div class="flex items-center justify-between">
+            <div class="space-y-1.5">
+              <div class="flex items-center gap-3">
+                <h1 class="font-serif text-xl font-semibold">The Demon Lord's Duty</h1>
+                <span class="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted">
+                  <svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                  Private
+                </span>
+              </div>
+              <p class="flex items-center gap-2 text-xs text-muted">
+                <span class="font-mono">ja</span>
+                <span style="color: #5c524a">·</span>
+                <span>24 chapters</span>
+                <span style="color: #5c524a">·</span>
+                <span>Updated 2 hours ago</span>
+              </p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button class="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted hover-secondary hover-fg transition-colors">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
+                Settings
+              </button>
+              <button class="btn-primary inline-flex items-center gap-2 rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-fg hover:brightness-110 transition-all">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+                New Chapter
+              </button>
+            </div>
+          </div>
+          <!-- Tabs with amber active indicator -->
+          <div class="flex gap-1 border-b -mx-6 px-6">
+            <button class="border-b-2 px-4 py-2.5 text-sm font-medium" style="border-color: #e8a832; color: #f0c050">Chapters</button>
+            <button class="border-b-2 border-transparent px-4 py-2.5 text-sm text-muted hover-fg transition-colors">Translation</button>
+            <button class="border-b-2 border-transparent px-4 py-2.5 text-sm text-muted hover-fg transition-colors">Glossary</button>
+            <button class="border-b-2 border-transparent px-4 py-2.5 text-sm text-muted hover-fg transition-colors">Sharing</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ BUTTONS ═══════════ -->
+      <section class="showcase-section space-y-6">
+        <p class="text-xs font-semibold uppercase tracking-wider text-muted">Buttons</p>
+
+        <div class="rounded-lg border bg-card p-6 space-y-5">
+          <div class="flex flex-wrap items-center gap-3">
+            <button class="btn-primary inline-flex items-center gap-2 rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-fg hover:brightness-110 transition-all">
+              Primary
+            </button>
+            <button class="inline-flex items-center gap-2 rounded-md border px-3.5 py-2 text-sm font-medium text-fg hover-secondary transition-colors">
+              Secondary
+            </button>
+            <button class="inline-flex items-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium text-muted hover-secondary hover-fg transition-colors">
+              Ghost
+            </button>
+            <button class="inline-flex items-center gap-2 rounded-md bg-destructive px-3.5 py-2 text-sm font-medium text-destructive-fg hover:brightness-110 transition-all">
+              Destructive
+            </button>
+            <!-- Accent button -->
+            <button class="inline-flex items-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-all" style="background: #3da692; color: #f2fcfa">
+              Accent (Teal)
+            </button>
+            <button class="inline-flex items-center gap-2 rounded-md border px-3.5 py-2 text-sm font-medium text-muted opacity-50 cursor-not-allowed">
+              Disabled
+            </button>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <button class="btn-primary inline-flex items-center gap-2 rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-fg">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+              Create
+            </button>
+            <button class="inline-flex items-center gap-2 rounded-md border px-3.5 py-2 text-sm text-fg">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/></svg>
+              Translate
+            </button>
+            <button class="inline-flex items-center gap-2 rounded-md border px-3.5 py-2 text-sm text-muted">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              Download
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ STATUS BADGES ═══════════ -->
+      <section class="showcase-section space-y-6">
+        <p class="text-xs font-semibold uppercase tracking-wider text-muted">Status Badges</p>
+
+        <div class="rounded-lg border bg-card p-6 space-y-4">
+          <div class="space-y-2">
+            <p class="text-[10px] font-mono text-muted">Visibility</p>
+            <div class="flex flex-wrap gap-2">
+              <span class="inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-0.5 text-[11px] font-medium text-muted">
+                <svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                Private
+              </span>
+              <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium" style="background: rgba(84,150,232,0.12); color: #7ab4f0">
+                <svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                Unlisted
+              </span>
+              <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium" style="background: rgba(61,186,106,0.12); color: #5dd88a">
+                <svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064"/></svg>
+                Public
+              </span>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <p class="text-[10px] font-mono text-muted">Lifecycle</p>
+            <div class="flex flex-wrap gap-2">
+              <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium" style="background: rgba(61,186,106,0.12); color: #5dd88a">
+                <span class="h-1.5 w-1.5 rounded-full" style="background: #3dba6a"></span>Active
+              </span>
+              <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium" style="background: rgba(232,168,50,0.12); color: #f0be54">
+                <span class="h-1.5 w-1.5 rounded-full" style="background: #e8a832"></span>Trashed
+              </span>
+              <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium" style="background: rgba(220,78,78,0.12); color: #e87272">
+                <span class="h-1.5 w-1.5 rounded-full" style="background: #dc4e4e"></span>Purge pending
+              </span>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <p class="text-[10px] font-mono text-muted">Translation progress</p>
+            <div class="flex flex-wrap gap-2">
+              <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium" style="background: rgba(84,150,232,0.12); color: #7ab4f0">
+                <svg class="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                Translating...
+              </span>
+              <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium" style="background: rgba(61,186,106,0.12); color: #5dd88a">
+                <svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+                Translated
+              </span>
+              <span class="inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-0.5 text-[11px] font-medium text-muted">
+                <span class="h-1.5 w-1.5 rounded-full bg-muted-fg"></span>Not started
+              </span>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <p class="text-[10px] font-mono text-muted">Language tags</p>
+            <div class="flex flex-wrap gap-1.5">
+              <span class="rounded border px-2 py-0.5 text-[11px] font-mono text-muted">ja</span>
+              <span class="rounded border px-2 py-0.5 text-[11px] font-mono text-muted">en</span>
+              <span class="rounded border px-2 py-0.5 text-[11px] font-mono text-muted">vi</span>
+              <span class="rounded border px-2 py-0.5 text-[11px] font-mono text-muted">zh-TW</span>
+              <span class="rounded border border-dashed px-2 py-0.5 text-[11px] font-mono" style="color: rgba(232,168,50,0.6); border-color: rgba(232,168,50,0.3)">+ Add</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ BOOK CARDS ═══════════ -->
+      <section class="showcase-section space-y-6">
+        <p class="text-xs font-semibold uppercase tracking-wider text-muted">Book Cards — List View</p>
+
+        <div class="rounded-lg border bg-card p-6 space-y-4">
+          <!-- Filter toolbar -->
+          <div class="flex flex-wrap items-center gap-3">
+            <div class="relative flex-1 min-w-[200px] max-w-sm">
+              <svg class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              <input type="text" placeholder="Search books..." class="w-full rounded-md border bg-bg py-2 pl-9 pr-3 text-sm placeholder:text-muted/50 focus:outline-none focus:ring-2 focus:ring-ring/40 transition-colors" />
+            </div>
+            <select class="appearance-none rounded-md border bg-bg px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-ring/40">
+              <option>All languages</option>
+              <option>Japanese</option>
+              <option>English</option>
+            </select>
+            <p class="text-xs text-muted ml-auto">3 books</p>
+          </div>
+
+          <!-- Cards -->
+          <div class="space-y-2">
+            <!-- Book 1 -->
+            <div class="group flex items-center gap-4 rounded-lg border p-4 hover-card hover-border transition-colors cursor-pointer">
+              <div class="h-16 w-11 flex-shrink-0 rounded overflow-hidden border border-border-hover cover-glow" style="background: linear-gradient(135deg, #2d1740, #282244)">
+                <div class="h-full w-full flex items-end p-1">
+                  <p class="text-[6px] font-serif leading-tight" style="color: #c4a0d8">The Demon Lord's Duty</p>
+                </div>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <p class="font-serif font-medium truncate">The Demon Lord's Duty</p>
+                  <span class="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted flex-shrink-0">Private</span>
+                </div>
+                <div class="mt-1 flex items-center gap-2 text-xs text-muted">
+                  <span class="font-mono text-[11px]">ja</span>
+                  <span style="color: #5c524a">·</span>
+                  <span>24 chapters</span>
+                  <span style="color: #5c524a">·</span>
+                  <span>2h ago</span>
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="flex gap-1" title="Translation: ja done, en in progress, vi not started">
+                  <span class="h-2 w-2 rounded-full" style="background: #3dba6a"></span>
+                  <span class="h-2 w-2 rounded-full" style="background: #e8a832"></span>
+                  <span class="h-2 w-2 rounded-full bg-secondary"></span>
+                </div>
+                <svg class="h-4 w-4 text-muted/30 group-hover:text-muted transition-colors" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+              </div>
+            </div>
+
+            <!-- Book 2 -->
+            <div class="group flex items-center gap-4 rounded-lg border p-4 hover-card hover-border transition-colors cursor-pointer">
+              <div class="h-16 w-11 flex-shrink-0 rounded overflow-hidden border border-border-hover cover-glow" style="background: linear-gradient(135deg, #162824, #223828)">
+                <div class="h-full w-full flex items-end p-1">
+                  <p class="text-[6px] font-serif leading-tight" style="color: #8cd4c0">Slime Chef</p>
+                </div>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <p class="font-serif font-medium truncate">Reincarnated as a Slime Chef</p>
+                  <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium flex-shrink-0" style="background: rgba(61,186,106,0.12); color: #5dd88a">Public</span>
+                </div>
+                <div class="mt-1 flex items-center gap-2 text-xs text-muted">
+                  <span class="font-mono text-[11px]">ja</span>
+                  <span style="color: #5c524a">·</span>
+                  <span>8 chapters</span>
+                  <span style="color: #5c524a">·</span>
+                  <span>1d ago</span>
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="flex gap-1">
+                  <span class="h-2 w-2 rounded-full" style="background: #3dba6a"></span>
+                </div>
+                <svg class="h-4 w-4 text-muted/30 group-hover:text-muted transition-colors" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+              </div>
+            </div>
+
+            <!-- Book 3 -->
+            <div class="group flex items-center gap-4 rounded-lg border p-4 hover-card hover-border transition-colors cursor-pointer">
+              <div class="h-16 w-11 flex-shrink-0 rounded overflow-hidden border border-border-hover cover-glow" style="background: linear-gradient(135deg, #302018, #3a2420)">
+                <div class="h-full w-full flex items-end p-1">
+                  <p class="text-[6px] font-serif leading-tight" style="color: #d4b498">Moonlit</p>
+                </div>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <p class="font-serif font-medium truncate">Moonlit Cultivation Manual</p>
+                  <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium flex-shrink-0" style="background: rgba(84,150,232,0.12); color: #7ab4f0">Unlisted</span>
+                </div>
+                <div class="mt-1 flex items-center gap-2 text-xs text-muted">
+                  <span class="font-mono text-[11px]">zh-TW</span>
+                  <span style="color: #5c524a">·</span>
+                  <span>42 chapters</span>
+                  <span style="color: #5c524a">·</span>
+                  <span>5d ago</span>
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="flex gap-1">
+                  <span class="h-2 w-2 rounded-full" style="background: #3dba6a"></span>
+                  <span class="h-2 w-2 rounded-full" style="background: #3dba6a"></span>
+                </div>
+                <svg class="h-4 w-4 text-muted/30 group-hover:text-muted transition-colors" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ DIALOGS ═══════════ -->
+      <section class="showcase-section space-y-6">
+        <p class="text-xs font-semibold uppercase tracking-wider text-muted">Dialogs</p>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <!-- Destructive -->
+          <div class="rounded-lg border bg-card p-6">
+            <p class="text-[10px] font-mono text-muted mb-4">ConfirmDialog: destructive</p>
+            <div class="rounded-lg border bg-bg p-6 space-y-4 animate-slide-up">
+              <div class="flex items-start gap-4">
+                <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full" style="background: rgba(220,78,78,0.1)">
+                  <svg class="h-5 w-5 text-destructive" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                </div>
+                <div>
+                  <h3 class="font-semibold">Move to trash?</h3>
+                  <p class="mt-1 text-sm text-muted">"The Demon Lord's Duty" and all 24 chapters will be moved to trash. You can restore within 30 days.</p>
+                </div>
+              </div>
+              <div class="flex justify-end gap-2">
+                <button class="rounded-md border px-3.5 py-2 text-sm font-medium hover-secondary transition-colors">Cancel</button>
+                <button class="rounded-md bg-destructive px-3.5 py-2 text-sm font-medium text-destructive-fg hover:brightness-110 transition-all">Move to Trash</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Create form -->
+          <div class="rounded-lg border bg-card p-6">
+            <p class="text-[10px] font-mono text-muted mb-4">FormDialog: create book</p>
+            <div class="rounded-lg border bg-bg p-6 space-y-4 animate-slide-up">
+              <div>
+                <h3 class="font-serif font-semibold">New Book</h3>
+                <p class="mt-0.5 text-xs text-muted">Create a new book to start adding chapters.</p>
+              </div>
+              <div class="space-y-3">
+                <div class="space-y-1.5">
+                  <label class="text-sm font-medium">Title</label>
+                  <input type="text" placeholder="Book title" class="w-full rounded-md border bg-card px-3 py-2 text-sm placeholder:text-muted/50 focus:outline-none focus:ring-2 focus:ring-ring/40" />
+                </div>
+                <div class="space-y-1.5">
+                  <label class="text-sm font-medium">Original language</label>
+                  <select class="w-full rounded-md border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring/40">
+                    <option>Japanese (ja)</option>
+                    <option>English (en)</option>
+                    <option>Chinese Traditional (zh-TW)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="flex justify-end gap-2">
+                <button class="rounded-md border px-3.5 py-2 text-sm font-medium hover-secondary transition-colors">Cancel</button>
+                <button class="btn-primary rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-fg hover:brightness-110 transition-all">Create Book</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ EMPTY STATES ═══════════ -->
+      <section class="showcase-section space-y-6">
+        <p class="text-xs font-semibold uppercase tracking-wider text-muted">Empty States</p>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div class="rounded-lg border bg-card p-10 text-center">
+            <div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary-muted">
+              <svg class="h-6 w-6" style="color: #f0c050" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+            </div>
+            <p class="font-serif text-sm font-medium">No books yet</p>
+            <p class="mt-1 text-xs text-muted">Start your literary journey — create your first book.</p>
+            <button class="btn-primary mt-4 inline-flex items-center gap-2 rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-fg">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+              New Book
+            </button>
+          </div>
+
+          <div class="rounded-lg border bg-card p-10 text-center">
+            <div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full" style="background: #1a2e2a">
+              <svg class="h-6 w-6" style="color: #5dd8c4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+            </div>
+            <p class="font-serif text-sm font-medium">No conversations</p>
+            <p class="mt-1 text-xs text-muted">Chat with AI about your stories, characters, or worldbuilding.</p>
+            <button class="mt-4 inline-flex items-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium" style="background: #3da692; color: #f2fcfa">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+              New Chat
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ TOAST ═══════════ -->
+      <section class="showcase-section space-y-6">
+        <p class="text-xs font-semibold uppercase tracking-wider text-muted">Toasts</p>
+
+        <div class="flex flex-wrap gap-3">
+          <div class="flex items-center gap-3 rounded-lg border bg-bg px-4 py-3 shadow-lg animate-slide-up" style="box-shadow: 0 4px 24px rgba(0,0,0,0.5)">
+            <svg class="h-4 w-4 flex-shrink-0" style="color: #3dba6a" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+            <p class="text-sm">Book created successfully</p>
+          </div>
+
+          <div class="flex items-center gap-3 rounded-lg border bg-bg px-4 py-3 shadow-lg animate-slide-up" style="border-color: rgba(220,78,78,0.3); box-shadow: 0 4px 24px rgba(0,0,0,0.5)">
+            <svg class="h-4 w-4 text-destructive flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+            <p class="text-sm">Translation failed</p>
+          </div>
+
+          <div class="flex items-center gap-3 rounded-lg border bg-bg px-4 py-3 shadow-lg animate-slide-up" style="box-shadow: 0 4px 24px rgba(0,0,0,0.5)">
+            <svg class="h-4 w-4 flex-shrink-0 animate-spin" style="color: #e8a832" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            <p class="text-sm">Translating 3 chapters...</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ AUTH ═══════════ -->
+      <section class="showcase-section space-y-6">
+        <p class="text-xs font-semibold uppercase tracking-wider text-muted">Auth — Login</p>
+
+        <div class="rounded-lg border p-10" style="background: #181412">
+          <div class="mx-auto max-w-sm space-y-6">
+            <div class="text-center space-y-2">
+              <div class="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-fg text-sm font-bold">L</div>
+              <h1 class="font-serif text-xl font-semibold">Welcome back</h1>
+              <p class="text-sm text-muted">Sign in to continue your writing</p>
+            </div>
+            <div class="space-y-3">
+              <div class="space-y-1.5">
+                <label class="text-sm font-medium">Email</label>
+                <input type="email" placeholder="you@example.com" class="w-full rounded-md border bg-card px-3 py-2 text-sm placeholder:text-muted/50 focus:outline-none focus:ring-2 focus:ring-ring/40" />
+              </div>
+              <div class="space-y-1.5">
+                <div class="flex items-center justify-between">
+                  <label class="text-sm font-medium">Password</label>
+                  <a href="#" class="text-xs text-muted hover-fg transition-colors">Forgot password?</a>
+                </div>
+                <input type="password" placeholder="••••••••" class="w-full rounded-md border bg-card px-3 py-2 text-sm placeholder:text-muted/50 focus:outline-none focus:ring-2 focus:ring-ring/40" />
+              </div>
+              <button class="btn-primary w-full rounded-md bg-primary py-2.5 text-sm font-medium text-primary-fg hover:brightness-110 transition-all">Sign In</button>
+            </div>
+            <p class="text-center text-xs text-muted">
+              Don't have an account? <a href="#" style="color: #f0c050" class="hover:underline">Sign up</a>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ FLOATING ACTION BAR ═══════════ -->
+      <section class="showcase-section space-y-6">
+        <p class="text-xs font-semibold uppercase tracking-wider text-muted">Floating Action Bar</p>
+
+        <div class="rounded-lg border bg-card p-6">
+          <div class="relative h-20">
+            <div class="absolute bottom-0 left-1/2 -translate-x-1/2 animate-slide-up">
+              <div class="flex items-center gap-3 rounded-full border bg-bg px-5 py-2.5" style="box-shadow: 0 4px 32px rgba(0,0,0,0.6), 0 0 0 1px #332d28">
+                <span class="text-sm font-medium">3 chapters selected</span>
+                <div class="h-4 w-px" style="background: #3a3430"></div>
+                <button class="btn-primary inline-flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-xs font-medium text-primary-fg">
+                  <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/></svg>
+                  Translate
+                </button>
+                <button class="text-xs text-muted hover-fg transition-colors">Clear</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ COLOR PALETTE REFERENCE ═══════════ -->
+      <section class="showcase-section space-y-6">
+        <p class="text-xs font-semibold uppercase tracking-wider text-muted">Color Palette Reference</p>
+
+        <div class="rounded-lg border bg-card p-6 space-y-4">
+          <div class="grid gap-3 sm:grid-cols-4">
+            <div class="space-y-2">
+              <p class="text-[10px] font-mono text-muted">Backgrounds</p>
+              <div class="space-y-1">
+                <div class="flex items-center gap-2"><span class="h-6 w-6 rounded border" style="background: #181412"></span><span class="text-xs text-muted">Background</span></div>
+                <div class="flex items-center gap-2"><span class="h-6 w-6 rounded border" style="background: #1e1a17"></span><span class="text-xs text-muted">Card</span></div>
+                <div class="flex items-center gap-2"><span class="h-6 w-6 rounded border" style="background: hsl(25 7% 14%)"></span><span class="text-xs text-muted">Card hover</span></div>
+                <div class="flex items-center gap-2"><span class="h-6 w-6 rounded border" style="background: hsl(25 6% 16%)"></span><span class="text-xs text-muted">Secondary</span></div>
+              </div>
+            </div>
+            <div class="space-y-2">
+              <p class="text-[10px] font-mono text-muted">Primary & Accent</p>
+              <div class="space-y-1">
+                <div class="flex items-center gap-2"><span class="h-6 w-6 rounded" style="background: hsl(35 90% 58%)"></span><span class="text-xs text-muted">Primary (amber)</span></div>
+                <div class="flex items-center gap-2"><span class="h-6 w-6 rounded" style="background: hsl(35 50% 18%)"></span><span class="text-xs text-muted">Primary muted</span></div>
+                <div class="flex items-center gap-2"><span class="h-6 w-6 rounded" style="background: #3da692"></span><span class="text-xs text-muted">Accent (teal)</span></div>
+                <div class="flex items-center gap-2"><span class="h-6 w-6 rounded" style="background: #1a2e2a"></span><span class="text-xs text-muted">Accent muted</span></div>
+              </div>
+            </div>
+            <div class="space-y-2">
+              <p class="text-[10px] font-mono text-muted">Text</p>
+              <div class="space-y-1">
+                <div class="flex items-center gap-2"><span class="h-6 w-6 rounded border" style="background: hsl(40 20% 92%)"></span><span class="text-xs text-muted">Foreground</span></div>
+                <div class="flex items-center gap-2"><span class="h-6 w-6 rounded border" style="background: hsl(30 8% 62%)"></span><span class="text-xs text-muted">Muted</span></div>
+                <div class="flex items-center gap-2"><span class="h-6 w-6 rounded border" style="background: hsl(35 90% 72%)"></span><span class="text-xs text-muted">Primary text</span></div>
+                <div class="flex items-center gap-2"><span class="h-6 w-6 rounded border" style="background: hsl(170 40% 85%)"></span><span class="text-xs text-muted">Accent text</span></div>
+              </div>
+            </div>
+            <div class="space-y-2">
+              <p class="text-[10px] font-mono text-muted">Semantic</p>
+              <div class="space-y-1">
+                <div class="flex items-center gap-2"><span class="h-6 w-6 rounded" style="background: #3dba6a"></span><span class="text-xs text-muted">Success</span></div>
+                <div class="flex items-center gap-2"><span class="h-6 w-6 rounded" style="background: #e8a832"></span><span class="text-xs text-muted">Warning</span></div>
+                <div class="flex items-center gap-2"><span class="h-6 w-6 rounded" style="background: #dc4e4e"></span><span class="text-xs text-muted">Destructive</span></div>
+                <div class="flex items-center gap-2"><span class="h-6 w-6 rounded" style="background: hsl(210 70% 55%)"></span><span class="text-xs text-muted">Info</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="border-t pt-4 space-y-2">
+            <p class="text-[10px] font-mono text-muted">Typography</p>
+            <div class="space-y-1.5">
+              <p class="font-serif text-lg">Lora — for headings, book titles, literary elements</p>
+              <p class="text-sm">Inter — for body text, UI labels, navigation</p>
+              <p class="font-mono text-sm text-muted">JetBrains Mono — for language codes, IDs, technical data</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Footer -->
+      <div class="border-t pt-8 pb-12 text-center text-xs text-muted">
+        LoreWeave v2 — Warm Literary Theme Draft
+      </div>
+
+    </div>
+  </main>
+</div>
+
+</body>
+</html>
