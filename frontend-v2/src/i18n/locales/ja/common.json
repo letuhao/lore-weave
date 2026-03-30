@@ -1,0 +1,36 @@
+{
+  "nav": {
+    "workspace": "ワークスペース",
+    "chat": "チャット",
+    "browse": "閲覧",
+    "usage": "使用量",
+    "leaderboard": "ランキング",
+    "settings": "設定",
+    "notifications": "通知",
+    "logout": "ログアウト",
+    "main": "メイン",
+    "manage": "管理"
+  },
+  "common": {
+    "save": "保存",
+    "cancel": "キャンセル",
+    "delete": "削除",
+    "create": "作成",
+    "edit": "編集",
+    "search": "検索",
+    "loading": "読み込み中...",
+    "error": "エラーが発生しました",
+    "confirm": "確認",
+    "back": "戻る",
+    "next": "次へ",
+    "previous": "前へ",
+    "close": "閉じる",
+    "showing_of": "{{total}}件中 {{from}}-{{to}}件",
+    "no_results": "結果が見つかりません",
+    "not_found": "ページが見つかりません"
+  },
+  "placeholder": {
+    "coming_soon": "{{title}} — 近日公開。",
+    "phase": "{{phase}}で実装予定。"
+  }
+}

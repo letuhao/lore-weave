@@ -1,0 +1,36 @@
+{
+  "nav": {
+    "workspace": "Workspace",
+    "chat": "Chat",
+    "browse": "Browse",
+    "usage": "Usage",
+    "leaderboard": "Leaderboard",
+    "settings": "Settings",
+    "notifications": "Notifications",
+    "logout": "Log out",
+    "main": "Main",
+    "manage": "Manage"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "create": "Create",
+    "edit": "Edit",
+    "search": "Search",
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "confirm": "Confirm",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "close": "Close",
+    "showing_of": "Showing {{from}}-{{to}} of {{total}}",
+    "no_results": "No results found",
+    "not_found": "Page not found"
+  },
+  "placeholder": {
+    "coming_soon": "{{title}} — coming soon.",
+    "phase": "Coming in {{phase}}."
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "nav": {
+    "workspace": "工作區",
+    "chat": "聊天",
+    "browse": "瀏覽",
+    "usage": "使用量",
+    "leaderboard": "排行榜",
+    "settings": "設定",
+    "notifications": "通知",
+    "logout": "登出",
+    "main": "主要",
+    "manage": "管理"
+  },
+  "common": {
+    "save": "儲存",
+    "cancel": "取消",
+    "delete": "刪除",
+    "create": "建立",
+    "edit": "編輯",
+    "search": "搜尋",
+    "loading": "載入中...",
+    "error": "發生錯誤",
+    "confirm": "確認",
+    "back": "返回",
+    "next": "下一步",
+    "previous": "上一步",
+    "close": "關閉",
+    "showing_of": "顯示 {{from}}-{{to}}，共 {{total}} 筆",
+    "no_results": "未找到結果",
+    "not_found": "找不到頁面"
+  },
+  "placeholder": {
+    "coming_soon": "{{title}} — 即將推出。",
+    "phase": "將在{{phase}}實作。"
+  }
+}

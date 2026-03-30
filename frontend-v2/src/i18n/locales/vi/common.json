@@ -1,0 +1,36 @@
+{
+  "nav": {
+    "workspace": "Không gian làm việc",
+    "chat": "Trò chuyện",
+    "browse": "Khám phá",
+    "usage": "Sử dụng",
+    "leaderboard": "Bảng xếp hạng",
+    "settings": "Cài đặt",
+    "notifications": "Thông báo",
+    "logout": "Đăng xuất",
+    "main": "Chính",
+    "manage": "Quản lý"
+  },
+  "common": {
+    "save": "Lưu",
+    "cancel": "Hủy",
+    "delete": "Xóa",
+    "create": "Tạo mới",
+    "edit": "Chỉnh sửa",
+    "search": "Tìm kiếm",
+    "loading": "Đang tải...",
+    "error": "Đã xảy ra lỗi",
+    "confirm": "Xác nhận",
+    "back": "Quay lại",
+    "next": "Tiếp theo",
+    "previous": "Trước đó",
+    "close": "Đóng",
+    "showing_of": "Hiển thị {{from}}-{{to}} của {{total}}",
+    "no_results": "Không tìm thấy kết quả",
+    "not_found": "Không tìm thấy trang"
+  },
+  "placeholder": {
+    "coming_soon": "{{title}} — sắp ra mắt.",
+    "phase": "Sẽ có trong {{phase}}."
+  }
+}

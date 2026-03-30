@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from '@/auth';
+import { ModeProvider } from '@/providers/ModeProvider';
 import { DashboardLayout } from '@/layouts/DashboardLayout';
 import { FullBleedLayout } from '@/layouts/FullBleedLayout';
 import { EditorLayout } from '@/layouts/EditorLayout';
@@ -8,6 +9,7 @@ import { PlaceholderPage } from '@/pages/PlaceholderPage';
 export function App() {
   return (
     <AuthProvider>
+    <ModeProvider>
       <BrowserRouter>
         <Routes>
           {/* Auth pages (centered, no sidebar) */}
@@ -65,6 +67,7 @@ export function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+    </ModeProvider>
     </AuthProvider>
   );
 }

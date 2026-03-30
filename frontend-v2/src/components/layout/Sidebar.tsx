@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   BookOpen,
   MessageCircle,
@@ -10,24 +11,27 @@ import {
   Trophy,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
+import { useMode } from '@/providers/ModeProvider';
 import { cn } from '@/lib/utils';
 import { apiJson } from '@/api';
 
 const mainNav = [
-  { to: '/books', icon: BookOpen, label: 'Workspace' },
-  { to: '/chat', icon: MessageCircle, label: 'Chat' },
-  { to: '/browse', icon: Search, label: 'Browse' },
+  { to: '/books', icon: BookOpen, labelKey: 'nav.workspace' },
+  { to: '/chat', icon: MessageCircle, labelKey: 'nav.chat' },
+  { to: '/browse', icon: Search, labelKey: 'nav.browse' },
 ];
 
 const manageNav = [
-  { to: '/usage', icon: BarChart3, label: 'Usage' },
-  { to: '/leaderboard', icon: Trophy, label: 'Leaderboard', platformOnly: true },
-  { to: '/settings/account', icon: Settings, label: 'Settings' },
+  { to: '/usage', icon: BarChart3, labelKey: 'nav.usage' },
+  { to: '/leaderboard', icon: Trophy, labelKey: 'nav.leaderboard', platformOnly: true },
+  { to: '/settings/account', icon: Settings, labelKey: 'nav.settings' },
 ];
 
 export function Sidebar() {
   const location = useLocation();
+  const { t } = useTranslation();
   const { accessToken, logoutLocal } = useAuth();
+  const { isPlatform } = useMode();
 
   const handleLogout = async () => {
     if (accessToken) {
@@ -53,17 +57,17 @@ export function Sidebar() {
       {/* Main nav */}
       <nav className="flex-1 space-y-1 px-2">
         <p className="px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Main
+          {t('nav.main')}
         </p>
         {mainNav.map((item) => (
-          <NavLink key={item.to} item={item} currentPath={location.pathname} />
+          <NavLink key={item.to} item={item} label={t(item.labelKey)} currentPath={location.pathname} />
         ))}
 
         <p className="px-3 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Manage
+          {t('nav.manage')}
         </p>
-        {manageNav.map((item) => (
-          <NavLink key={item.to} item={item} currentPath={location.pathname} />
+        {manageNav.filter((item) => !item.platformOnly || isPlatform).map((item) => (
+          <NavLink key={item.to} item={item} label={t(item.labelKey)} currentPath={location.pathname} />
         ))}
       </nav>
 
@@ -75,7 +79,7 @@ export function Sidebar() {
           className="mb-2 flex items-center gap-3 rounded-md px-2 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
         >
           <Bell className="h-4 w-4" />
-          <span>Notifications</span>
+          <span>{t('nav.notifications')}</span>
         </Link>
 
         {/* User */}
@@ -103,9 +107,11 @@ export function Sidebar() {
 
 function NavLink({
   item,
+  label,
   currentPath,
 }: {
-  item: { to: string; icon: React.ElementType; label: string };
+  item: { to: string; icon: React.ElementType };
+  label: string;
   currentPath: string;
 }) {
   const isActive =
@@ -123,7 +129,7 @@ function NavLink({
       )}
     >
       <Icon className="h-4 w-4" />
-      {item.label}
+      {label}
     </Link>
   );
 }

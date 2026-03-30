@@ -81,7 +81,7 @@ AC:
 
 ### P1-02: Tailwind + shadcn/ui + Theme [FE]
 ```
-Status: [B]
+Status: [✓]
 Deps:   P1-01
 Scope:  CSS variables from warm literary theme, shadcn init, core components
 AC:
@@ -92,7 +92,7 @@ AC:
 
 ### P1-03: i18n Framework [FE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P1-01
 Scope:  react-i18next with en/vi/ja/zh-TW, common namespace
 AC:
@@ -102,7 +102,7 @@ AC:
 
 ### P1-04: Copy API Layer + Auth [FE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P1-01
 Scope:  Copy api/, auth/, features/ (api+hooks+types), hooks/ from frontend/
 AC:
@@ -112,7 +112,7 @@ AC:
 
 ### P1-05: Mode Detection [FE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P1-04
 Scope:  ModeProvider context: workbench vs platform
 AC:
@@ -122,7 +122,7 @@ AC:
 
 ### P1-06: Router + 3 Layouts [FE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P1-01, P1-04
 Scope:  React Router with all routes, DashboardLayout, EditorLayout, FullBleedLayout
 AC:
@@ -133,7 +133,7 @@ AC:
 
 ### P1-07: Sidebar [FE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P1-02, P1-03, P1-05, P1-06
 Scope:  Nav sidebar (expanded + collapsed), user footer, bell placeholder
 AC:
@@ -145,7 +145,7 @@ AC:
 
 ### P1-08: PageHeader + Breadcrumb [FE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P1-02, P1-03
 Scope:  Reusable header with breadcrumbs, title, action slots, tab variant
 AC:
@@ -155,7 +155,7 @@ AC:
 
 ### P1-09: LanguageDisplay [FE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P1-02
 Scope:  Language name + code component (compact + stacked)
 AC:
@@ -176,7 +176,7 @@ AC:
 
 ### P1-11: Language Selector [FE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P1-03
 Scope:  GUI language switcher (button group)
 AC:
