@@ -30,11 +30,11 @@ export function App() {
             <Route path="/reset" element={<ResetPage />} />
           </Route>
 
-          {/* Public browse (catalog) — readers can browse without login */}
+          {/* Public pages with sidebar — no auth required */}
           <Route element={<DashboardLayout />}>
-            <Route path="/browse" element={<PlaceholderPage title="Browse" description="Public book catalog — coming in P4-09." />} />
+            <Route path="/browse" element={<PlaceholderPage title="Browse" description="Discover stories across languages and genres." />} />
             <Route path="/browse/:bookId" element={<PlaceholderPage title="Public Book" />} />
-            <Route path="/leaderboard" element={<PlaceholderPage title="Leaderboard" description="Top books, authors, translators — coming in P4-11." />} />
+            <Route path="/leaderboard" element={<PlaceholderPage title="Leaderboard" description="Top books, authors, and translators." />} />
             <Route path="/users/:userId" element={<PlaceholderPage title="User Profile" />} />
           </Route>
 
