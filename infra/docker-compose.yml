@@ -5,7 +5,7 @@
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: loreweave
       POSTGRES_PASSWORD: loreweave_dev
@@ -15,33 +15,15 @@ services:
     volumes:
       - loreweave_pg:/var/lib/postgresql/data
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
+      - ./db-ensure.sh:/usr/local/bin/db-ensure.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U loreweave -d loreweave_auth"]
-      interval: 3s
-      timeout: 5s
-      retries: 10
-
-  postgres-db-bootstrap:
-    image: postgres:16-alpine
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      PGPASSWORD: loreweave_dev
-    entrypoint: ["/bin/sh", "-c"]
-    command: >
-      set -e;
-      until pg_isready -h postgres -U loreweave -d postgres; do sleep 1; done;
-      psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_auth'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_auth";
-      psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_book'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_book";
-      psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_sharing'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_sharing";
-      psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_catalog'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_catalog";
-      psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_provider_registry'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_provider_registry";
-      psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_usage_billing'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_usage_billing";
-      psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_translation'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_translation";
-      psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_glossary'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_glossary";
-      psql -h postgres -U loreweave -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='loreweave_chat'" | grep -q 1 || psql -h postgres -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_chat";
-    restart: "no"
+      # Healthcheck creates missing databases on EVERY start, then verifies readiness.
+      # This replaces the old postgres-db-bootstrap container.
+      test: ["CMD-SHELL", "sh /usr/local/bin/db-ensure.sh && pg_isready -U loreweave -d loreweave_auth"]
+      interval: 5s
+      timeout: 10s
+      retries: 15
+      start_period: 10s
 
   minio:
     image: minio/minio:RELEASE.2024-08-03T04-33-23Z
@@ -340,19 +322,19 @@ services:
     ports:
       - "3123:3000"
 
-  frontend:
-    build:
-      context: ../frontend
-      dockerfile: Dockerfile
-      args:
-        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:3123}
-    depends_on:
-      - api-gateway-bff
-    ports:
-      - "5296:80"
+  # frontend:
+  #   build:
+  #     context: ../frontend
+  #     dockerfile: Dockerfile
+  #     args:
+  #       VITE_API_BASE: ${VITE_API_BASE:-http://localhost:3123}
+  #   depends_on:
+  #     - api-gateway-bff
+  #   ports:
+  #     - "5296:80"
 
   # Frontend V2 — run with: docker compose --profile v2 up frontend-v2
-  frontend-v2:
+  frontend:
     build:
       context: ../frontend-v2
       dockerfile: Dockerfile
@@ -362,8 +344,8 @@ services:
       - api-gateway-bff
     ports:
       - "5174:80"
-    profiles:
-      - v2
+    # profiles:
+    #   - v2
 
 volumes:
   loreweave_pg:
