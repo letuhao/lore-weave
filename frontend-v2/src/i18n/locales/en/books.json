@@ -1,0 +1,31 @@
+{
+  "workspace": "My Books",
+  "new_book": "New Book",
+  "search_placeholder": "Search books...",
+  "all_languages": "All languages",
+  "all_states": "All states",
+  "create": {
+    "title": "New Book",
+    "description": "Create a new book to start adding chapters.",
+    "book_title": "Title",
+    "book_title_placeholder": "Book title",
+    "language": "Original language",
+    "book_description": "Description",
+    "book_description_placeholder": "What is this book about?",
+    "cover": "Cover image",
+    "cover_hint": "PNG, JPG up to 5MB",
+    "submit": "Create Book"
+  },
+  "empty": {
+    "title": "No books yet",
+    "description": "Create your first book to start writing, translating, and building your story world."
+  },
+  "card": {
+    "chapters": "{{count}} chapters",
+    "no_language": "No language set"
+  },
+  "trash": {
+    "title": "Recycle Bin",
+    "empty": "Trash is empty"
+  }
+}

@@ -5,6 +5,7 @@ import { DashboardLayout } from '@/layouts/DashboardLayout';
 import { FullBleedLayout } from '@/layouts/FullBleedLayout';
 import { EditorLayout } from '@/layouts/EditorLayout';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
+import { BooksPage } from '@/pages/BooksPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { RegisterPage } from '@/pages/auth/RegisterPage';
 import { ForgotPage } from '@/pages/auth/ForgotPage';
@@ -53,7 +54,7 @@ export function App() {
           {/* Dashboard pages (full sidebar) */}
           <Route element={<RequireAuth><DashboardLayout /></RequireAuth>}>
             {/* Workspace */}
-            <Route path="/books" element={<PlaceholderPage title="Workspace" description="Book list with search, filter, create — coming in P2-02." />} />
+            <Route path="/books" element={<BooksPage />} />
             <Route path="/books/trash" element={<PlaceholderPage title="Trash" description="Recycle bin for deleted books." />} />
             <Route path="/books/:bookId" element={<PlaceholderPage title="Book Detail" description="Tabs: Chapters, Translation, Glossary, Sharing, Settings — coming in P2-03." />} />
             <Route path="/books/:bookId/translation" element={<PlaceholderPage title="Translation" />} />

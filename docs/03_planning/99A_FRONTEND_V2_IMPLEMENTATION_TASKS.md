@@ -201,7 +201,7 @@ AC:
 
 ### P2-02: BooksPage [FE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P2-01, P1-07, P1-08
 Scope:  Book list + search + filter + create dialog (uses existing booksApi)
 AC:

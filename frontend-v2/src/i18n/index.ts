@@ -4,6 +4,7 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 
 import enCommon from './locales/en/common.json';
 import enAuth from './locales/en/auth.json';
+import enBooks from './locales/en/books.json';
 import viCommon from './locales/vi/common.json';
 import viAuth from './locales/vi/auth.json';
 import jaCommon from './locales/ja/common.json';
@@ -16,7 +17,7 @@ i18n
   .use(initReactI18next)
   .init({
     resources: {
-      en: { common: enCommon, auth: enAuth },
+      en: { common: enCommon, auth: enAuth, books: enBooks },
       vi: { common: viCommon, auth: viAuth },
       ja: { common: jaCommon, auth: jaAuth },
       'zh-TW': { common: zhTWCommon, auth: zhTWAuth },
