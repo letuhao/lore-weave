@@ -5,6 +5,10 @@ import { DashboardLayout } from '@/layouts/DashboardLayout';
 import { FullBleedLayout } from '@/layouts/FullBleedLayout';
 import { EditorLayout } from '@/layouts/EditorLayout';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
+import { LoginPage } from '@/pages/auth/LoginPage';
+import { RegisterPage } from '@/pages/auth/RegisterPage';
+import { ForgotPage } from '@/pages/auth/ForgotPage';
+import { ResetPage } from '@/pages/auth/ResetPage';
 
 export function App() {
   return (
@@ -14,10 +18,10 @@ export function App() {
         <Routes>
           {/* Auth pages (centered, no sidebar) */}
           <Route element={<FullBleedLayout />}>
-            <Route path="/login" element={<PlaceholderPage title="Login" description="Auth pages — coming in P1-10." />} />
-            <Route path="/register" element={<PlaceholderPage title="Register" />} />
-            <Route path="/forgot" element={<PlaceholderPage title="Forgot Password" />} />
-            <Route path="/reset" element={<PlaceholderPage title="Reset Password" />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/forgot" element={<ForgotPage />} />
+            <Route path="/reset" element={<ResetPage />} />
           </Route>
 
           {/* Editor (collapsed sidebar) */}

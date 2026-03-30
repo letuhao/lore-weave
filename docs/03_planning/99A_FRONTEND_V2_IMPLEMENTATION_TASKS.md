@@ -165,7 +165,7 @@ AC:
 
 ### P1-10: Auth Pages [FE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P1-02, P1-03, P1-06
 Scope:  Login, Register, Forgot, Reset (all use existing auth-service API)
 AC:
