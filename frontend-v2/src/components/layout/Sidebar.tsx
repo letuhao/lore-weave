@@ -15,22 +15,26 @@ import { useAuth } from '@/auth';
 import { cn } from '@/lib/utils';
 import { apiJson } from '@/api';
 
-const mainNav = [
-  { to: '/books', icon: BookOpen, labelKey: 'nav.workspace' },
-  { to: '/chat', icon: MessageCircle, labelKey: 'nav.chat' },
+type NavItem = { to: string; icon: React.ElementType; labelKey: string; auth?: boolean };
+
+// auth: true = only show when logged in, undefined = always show
+const mainNav: NavItem[] = [
+  { to: '/books', icon: BookOpen, labelKey: 'nav.workspace', auth: true },
+  { to: '/chat', icon: MessageCircle, labelKey: 'nav.chat', auth: true },
   { to: '/browse', icon: Search, labelKey: 'nav.browse' },
 ];
 
-const manageNav = [
-  { to: '/usage', icon: BarChart3, labelKey: 'nav.usage' },
+const manageNav: NavItem[] = [
+  { to: '/usage', icon: BarChart3, labelKey: 'nav.usage', auth: true },
   { to: '/leaderboard', icon: Trophy, labelKey: 'nav.leaderboard' },
-  { to: '/settings/account', icon: Settings, labelKey: 'nav.settings' },
+  { to: '/settings/account', icon: Settings, labelKey: 'nav.settings', auth: true },
 ];
 
 export function Sidebar() {
   const location = useLocation();
   const { t } = useTranslation();
   const { accessToken, logoutLocal } = useAuth();
+  const isLoggedIn = !!accessToken;
 
   const handleLogout = async () => {
     if (accessToken) {
@@ -58,14 +62,17 @@ export function Sidebar() {
         <p className="px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {t('nav.main')}
         </p>
-        {mainNav.map((item) => (
+        {mainNav.filter((i) => !i.auth || isLoggedIn).map((item) => (
           <NavLink key={item.to} item={item} label={t(item.labelKey)} currentPath={location.pathname} />
         ))}
 
-        <p className="px-3 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {t('nav.manage')}
-        </p>
-        {manageNav.map((item) => (
+        {/* Only show Manage section if at least one item is visible */}
+        {manageNav.some((i) => !i.auth || isLoggedIn) && (
+          <p className="px-3 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {t('nav.manage')}
+          </p>
+        )}
+        {manageNav.filter((i) => !i.auth || isLoggedIn).map((item) => (
           <NavLink key={item.to} item={item} label={t(item.labelKey)} currentPath={location.pathname} />
         ))}
       </nav>

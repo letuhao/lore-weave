@@ -17,11 +17,11 @@ export default defineConfig({
     port: 5174,
     proxy: {
       '/v1': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:3123',
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://localhost:3001',
+        target: 'ws://localhost:3123',
         ws: true,
         changeOrigin: true,
       },

@@ -1,4 +1,7 @@
-const base = () => import.meta.env.VITE_API_BASE || 'http://localhost:3000';
+// In dev: Vite proxy handles /v1 → localhost:3001 (gateway)
+// In Docker: nginx proxy handles /v1 → api-gateway-bff:3000
+// VITE_API_BASE override for custom setups
+const base = () => import.meta.env.VITE_API_BASE || '';
 
 export type ApiError = { code: string; message: string };
 
