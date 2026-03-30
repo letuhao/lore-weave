@@ -351,6 +351,20 @@ services:
     ports:
       - "5296:80"
 
+  # Frontend V2 — run with: docker compose --profile v2 up frontend-v2
+  frontend-v2:
+    build:
+      context: ../frontend-v2
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:3123}
+    depends_on:
+      - api-gateway-bff
+    ports:
+      - "5174:80"
+    profiles:
+      - v2
+
 volumes:
   loreweave_pg:
   loreweave_minio:

@@ -207,10 +207,12 @@ marimo/_lsp/
 __marimo__/
 
 frontend/node_modules/
+frontend-v2/node_modules/
 
 services/api-gateway-bff/node_modules/
 
 frontend/package-lock.json
+frontend-v2/package-lock.json
 
 services/api-gateway-bff/package-lock.json
 
@@ -223,3 +225,5 @@ services/auth-service/tmp/
 .claude/worktrees/cranky-margulis
 
 .claude/settings.json
+
+.claude/worktrees/strange-gagarin
