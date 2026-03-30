@@ -190,7 +190,7 @@ AC:
 
 ### P2-01: Shared UI Components [FE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P1-02
 Scope:  StatusBadge, ConfirmDialog, FormDialog, EmptyState, Skeleton,
         CopyButton, FilterToolbar, Pagination

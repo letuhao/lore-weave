@@ -1,7 +1,4 @@
-FROM node:20-alpine AS build
-
-# Fix DNS resolution issues in Docker Alpine
-RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf
+FROM node:25-alpine AS build
 
 WORKDIR /app
 ARG VITE_API_BASE=http://localhost:3000
