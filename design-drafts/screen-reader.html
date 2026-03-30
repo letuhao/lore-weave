@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Chapter Reader (Clean Reading Mode)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Noto+Serif+JP:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --success: #3dba6a;
+      /* Reader theme (customizable) */
+      --reader-bg: #181412; --reader-fg: #f5efe8;
+      --reader-font: 'Lora', Georgia, serif; --reader-size: 17px;
+      --reader-line: 1.85; --reader-width: 680px; --reader-spacing: 1.4em;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; height: 100vh; overflow: hidden; }
+    ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 2px; }
+    ::selection { background: rgba(232,168,50,0.25); }
+
+    .btn-icon { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: none; cursor: pointer; background: transparent; color: var(--muted-fg); transition: all 120ms; }
+    .btn-icon:hover { background: var(--secondary); color: var(--foreground); }
+
+    /* Top bar — minimal, fades on scroll */
+    .reader-topbar { position: fixed; top: 0; left: 0; right: 0; height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; background: linear-gradient(var(--background), transparent); z-index: 20; transition: opacity 300ms; }
+
+    /* TOC sidebar */
+    .toc-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 30; }
+    .toc-panel { position: fixed; top: 0; left: 0; bottom: 0; width: 320px; background: var(--card); border-right: 1px solid var(--border); z-index: 31; display: flex; flex-direction: column; box-shadow: 8px 0 32px rgba(0,0,0,0.4); }
+    .toc-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; font-size: 13px; color: var(--muted-fg); cursor: pointer; transition: all 120ms; border-left: 2px solid transparent; }
+    .toc-item:hover { background: var(--card-hover); color: var(--foreground); }
+    .toc-item.current { background: var(--primary-muted); color: var(--primary); border-left-color: var(--primary); font-weight: 500; }
+    .toc-item.read { color: var(--muted-fg); }
+    .toc-item .ch-num { width: 24px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; flex-shrink: 0; }
+
+    /* Progress bar */
+    .progress-track { height: 2px; background: var(--secondary); position: fixed; top: 0; left: 0; right: 0; z-index: 21; }
+    .progress-fill { height: 100%; background: var(--primary); transition: width 150ms; }
+
+    /* Bottom nav */
+    .reader-bottombar { position: fixed; bottom: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; padding: 12px 24px; background: linear-gradient(transparent, var(--background)); z-index: 20; }
+    .nav-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; font-size: 13px; border: 1px solid var(--border); background: var(--card); color: var(--foreground); cursor: pointer; transition: all 120ms; }
+    .nav-btn:hover { border-color: var(--border-hover); background: var(--card-hover); }
+    .nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .nav-btn-primary { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
+    .nav-btn-primary:hover { filter: brightness(1.1); }
+  </style>
+</head>
+<body>
+
+<!-- Reading progress bar -->
+<div class="progress-track">
+  <div class="progress-fill" style="width: 42%;"></div>
+</div>
+
+<!-- Top bar (minimal) -->
+<div class="reader-topbar">
+  <div style="display: flex; align-items: center; gap: 8px;">
+    <div class="btn-icon" id="toc-toggle" title="Table of Contents">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </div>
+    <div style="font-size: 12px; color: var(--muted-fg);">
+      <span style="color: var(--foreground); font-weight: 500;">The Demon Lord's Duty</span>
+      <span style="margin: 0 6px; color: var(--border);">/</span>
+      <span>Chapter 3 of 24</span>
+    </div>
+  </div>
+  <div style="display: flex; align-items: center; gap: 4px;">
+    <!-- Theme quick toggle -->
+    <div class="btn-icon" title="Reading theme">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+    </div>
+    <!-- Font size -->
+    <div class="btn-icon" title="Font size">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 7V5h14v2M10 5v14m-4 0h8M19 17V5m0 12h-4"/></svg>
+    </div>
+    <!-- Edit chapter (if owner) -->
+    <div class="btn-icon" title="Edit this chapter">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+    </div>
+    <!-- Close / back -->
+    <div class="btn-icon" title="Back to book">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+    </div>
+  </div>
+</div>
+
+<!-- TOC Sidebar (shown) -->
+<div class="toc-overlay" style="display: block;"></div>
+<div class="toc-panel">
+  <div style="padding: 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+    <div>
+      <h2 class="font-serif" style="font-family: 'Lora', serif; font-size: 15px; font-weight: 600;">The Demon Lord's Duty</h2>
+      <p style="font-size: 11px; color: var(--muted-fg); margin-top: 2px;">日本語 (ja) · 24 chapters · 45,200 words</p>
+    </div>
+    <div class="btn-icon">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+    </div>
+  </div>
+
+  <!-- Reading progress summary -->
+  <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px;">
+    <div style="flex: 1; height: 4px; background: var(--secondary); border-radius: 2px; overflow: hidden;">
+      <div style="width: 12.5%; height: 100%; background: var(--primary); border-radius: 2px;"></div>
+    </div>
+    <span style="font-size: 10px; color: var(--muted-fg); flex-shrink: 0;">3 / 24</span>
+  </div>
+
+  <!-- Chapter list -->
+  <div style="flex: 1; overflow-y: auto;">
+    <div class="toc-item read">
+      <span class="ch-num">1</span>
+      <span style="flex: 1;">Prologue — The Summoning</span>
+      <svg width="12" height="12" fill="none" stroke="var(--success)" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+    </div>
+    <div class="toc-item read">
+      <span class="ch-num">2</span>
+      <span style="flex: 1;">A New Responsibility</span>
+      <svg width="12" height="12" fill="none" stroke="var(--success)" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+    </div>
+    <div class="toc-item current">
+      <span class="ch-num">3</span>
+      <span style="flex: 1;">The Hero's Complaint</span>
+      <span style="font-size: 9px; color: var(--primary);">reading</span>
+    </div>
+    <div class="toc-item">
+      <span class="ch-num">4</span>
+      <span>Tea and Negotiations</span>
+    </div>
+    <div class="toc-item">
+      <span class="ch-num">5</span>
+      <span>The Parchwork of Laws</span>
+    </div>
+    <div class="toc-item">
+      <span class="ch-num">6</span>
+      <span>A Brief History of Complaints</span>
+    </div>
+    <div class="toc-item">
+      <span class="ch-num">7</span>
+      <span>The Minister's Proposal</span>
+    </div>
+    <div class="toc-item">
+      <span class="ch-num">8</span>
+      <span>Sword and Quill</span>
+    </div>
+    <div class="toc-item" style="opacity: 0.4;">
+      <span class="ch-num">9</span>
+      <span>...</span>
+    </div>
+    <div class="toc-item" style="opacity: 0.4;">
+      <span class="ch-num">24</span>
+      <span>Epilogue — The Next Filing</span>
+    </div>
+  </div>
+
+  <!-- Language selector at bottom -->
+  <div style="padding: 12px 16px; border-top: 1px solid var(--border);">
+    <span style="font-size: 10px; color: var(--muted-fg); display: block; margin-bottom: 6px;">Reading language</span>
+    <div style="display: flex; gap: 4px;">
+      <button style="flex: 1; padding: 6px; border-radius: 5px; border: 1px solid var(--primary); background: var(--primary-muted); color: var(--primary); font-size: 11px; font-weight: 500; cursor: pointer;">日本語 (ja)</button>
+      <button style="flex: 1; padding: 6px; border-radius: 5px; border: 1px solid var(--border); background: transparent; color: var(--muted-fg); font-size: 11px; cursor: pointer;">English (en)</button>
+      <button style="flex: 1; padding: 6px; border-radius: 5px; border: 1px solid var(--border); background: transparent; color: var(--muted-fg); font-size: 11px; cursor: pointer;">Tiếng Việt (vi)</button>
+    </div>
+  </div>
+</div>
+
+<!-- Main reading area -->
+<div style="height: 100vh; overflow-y: auto; display: flex; justify-content: center; padding: 64px 24px 120px; background: var(--reader-bg);">
+  <article style="max-width: var(--reader-width); width: 100%; color: var(--reader-fg); font-family: var(--reader-font); font-size: var(--reader-size); line-height: var(--reader-line);">
+
+    <!-- Chapter header -->
+    <header style="margin-bottom: 40px; text-align: center;">
+      <p style="font-size: 12px; color: var(--muted-fg); font-family: 'Inter', sans-serif; margin-bottom: 8px; letter-spacing: 0.05em; text-transform: uppercase;">Chapter 3</p>
+      <h1 style="font-family: var(--reader-font); font-size: calc(var(--reader-size) * 1.8); font-weight: 600; margin-bottom: 12px; line-height: 1.3;">The Hero's Complaint</h1>
+      <div style="width: 40px; height: 2px; background: var(--primary); margin: 0 auto; opacity: 0.5; border-radius: 1px;"></div>
+    </header>
+
+    <!-- Chapter text -->
+    <div style="display: flex; flex-direction: column; gap: var(--reader-spacing);">
+      <p>The throne room was silent except for the gentle hiss of magical torches. The Demon Lord sat with one leg crossed over the other, examining a scroll that detailed the latest territorial dispute with the neighboring kingdom of Aeloria.</p>
+
+      <p>"Your Majesty, the Hero has arrived," announced the chamberlain, his voice echoing against the obsidian walls. The words carried an undertone of anxiety that even centuries of service could not fully mask.</p>
+
+      <p>The Demon Lord sighed — a sound that caused the torches to flicker. "Send him in. And prepare the tea. The good one, not the cursed variety." A pause. "Actually, prepare both. Let's see what kind of mood he's in."</p>
+
+      <p>The doors burst open with theatrical force. The Hero strode in, armor gleaming, cape billowing despite the notable absence of wind. His sword was drawn, pointed directly at the ceiling in what was clearly a rehearsed pose.</p>
+
+      <p>"Demon Lord!" he bellowed. "I have come to lodge a formal complaint!" The Hero reached into his breastplate and produced a crumpled piece of parchment. "Subsection 7, paragraph 3 of the Hero-Demon Lord Engagement Protocol clearly states—"</p>
+
+      <p>"Sit down, Aldric." The Demon Lord gestured to a chair that materialized from shadow. "Tea?"</p>
+
+      <p>The Hero's dramatic stance faltered. His sword arm drooped slightly. "Is it the Aeloran blend? The one with the mint?"</p>
+
+      <p>"It is."</p>
+
+      <p>Aldric sheathed his sword with practiced fluidity and sat down, his armor clanking against the conjured chair. He placed the crumpled parchment on the table between them, smoothing it with the care of a man who believed deeply in proper documentation.</p>
+
+      <p>"Now then," the Demon Lord said, pouring two cups with a silver teapot that floated at exactly the right height. "What seems to be the problem this time?"</p>
+
+      <p>"This time?" Aldric's eyes narrowed. "You say that as if my complaints are trivial."</p>
+
+      <p>"I say it as someone who has received forty-seven formal complaints in the past year alone. Thirteen of which concerned the font size on your copies of the Engagement Protocol."</p>
+
+      <p>Aldric took a measured sip of tea. "Legibility is not trivial."</p>
+    </div>
+
+    <!-- End of chapter marker -->
+    <div style="text-align: center; margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--border);">
+      <p style="font-size: 12px; color: var(--muted-fg); font-family: 'Inter', sans-serif;">End of Chapter 3</p>
+    </div>
+  </article>
+</div>
+
+<!-- Bottom navigation -->
+<div class="reader-bottombar">
+  <button class="nav-btn">
+    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"/></svg>
+    Ch.2 — A New Responsibility
+  </button>
+  <div style="text-align: center;">
+    <span style="font-size: 11px; color: var(--muted-fg);">Chapter 3 of 24 · 42% complete</span>
+  </div>
+  <button class="nav-btn nav-btn-primary">
+    Ch.4 — Tea and Negotiations
+    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+  </button>
+</div>
+
+</body>
+</html>

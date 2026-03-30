@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Settings (Providers + Account)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --input: #242019; --ring: #d4952a;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a;
+      --destructive: #dc4e4e; --success: #3dba6a; --info: #5496e8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; font-family: inherit; }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+    .btn-outline:hover { background: var(--secondary); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-danger { background: transparent; color: var(--destructive); border: 1px solid rgba(220,78,78,0.3); }
+    .btn-danger:hover { background: rgba(220,78,78,0.08); }
+    .btn-success { background: rgba(61,186,106,0.12); color: #5dd88a; border: none; }
+    .btn-sm { padding: 4px 10px; font-size: 11px; }
+
+    .input-field { background: var(--background); border: 1px solid var(--border); color: var(--foreground); border-radius: 6px; padding: 8px 12px; font-size: 13px; font-family: inherit; width: 100%; transition: all 150ms; }
+    .input-field:focus { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px rgba(212,149,42,0.15); }
+    .input-field::placeholder { color: rgba(158,148,136,0.4); }
+    .input-password { font-family: 'JetBrains Mono', monospace; letter-spacing: 2px; }
+
+    .badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 500; }
+    .badge-success { background: rgba(61,186,106,0.12); color: #5dd88a; }
+    .badge-danger { background: rgba(220,78,78,0.12); color: #e87272; }
+    .badge-muted { background: var(--secondary); color: var(--muted-fg); }
+    .badge-info { background: rgba(84,150,232,0.12); color: #7ab4f0; }
+
+    .toggle { width: 36px; height: 20px; border-radius: 10px; background: var(--secondary); position: relative; cursor: pointer; transition: all 150ms; flex-shrink: 0; }
+    .toggle.on { background: var(--success); }
+    .toggle::after { content: ''; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: var(--foreground); top: 2px; left: 2px; transition: all 150ms; }
+    .toggle.on::after { left: 18px; }
+
+    .sidebar { width: 240px; flex-shrink: 0; background: var(--background); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+    .sidebar-link { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; font-size: 13px; color: var(--muted-fg); text-decoration: none; transition: all 120ms; }
+    .sidebar-link:hover { background: var(--secondary); }
+    .sidebar-link.active { background: var(--primary-muted); color: var(--primary); }
+
+    .tab { padding: 10px 16px; font-size: 13px; font-weight: 500; border-bottom: 2px solid transparent; color: var(--muted-fg); cursor: pointer; transition: all 120ms; background: none; border-top: none; border-left: none; border-right: none; }
+    .tab:hover { color: var(--foreground); }
+    .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+    .section { padding: 20px 0; border-bottom: 1px solid var(--border); }
+    .section:last-child { border-bottom: none; }
+    .section-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .section-desc { font-size: 12px; color: var(--muted-fg); margin-bottom: 16px; }
+    .field-label { font-size: 12px; font-weight: 500; margin-bottom: 4px; display: block; }
+    .field-hint { font-size: 11px; color: var(--muted-fg); margin-top: 4px; }
+
+    .provider-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; transition: all 150ms; }
+    .provider-card:hover { border-color: var(--border-hover); }
+
+    .model-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); transition: background 100ms; }
+    .model-row:last-child { border-bottom: none; }
+    .model-row:hover { background: var(--card-hover); }
+  </style>
+</head>
+<body>
+
+<div style="display: flex; min-height: 100vh;">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 16px 16px 12px;">
+      <div style="width: 28px; height: 28px; border-radius: 6px; background: var(--primary); color: var(--primary-fg); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;">L</div>
+      <span class="font-serif" style="font-size: 14px; font-weight: 600;">LoreWeave</span>
+    </div>
+    <nav style="padding: 0 8px; display: flex; flex-direction: column; gap: 2px;">
+      <p style="padding: 12px 12px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg);">Main</p>
+      <a href="#" class="sidebar-link"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13"/></svg>Workspace</a>
+      <a href="#" class="sidebar-link"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01"/></svg>Chat</a>
+      <p style="padding: 16px 12px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg);">Manage</p>
+      <a href="#" class="sidebar-link"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5"/></svg>Usage</a>
+      <a href="#" class="sidebar-link active"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0"/><circle cx="12" cy="12" r="3"/></svg>Settings</a>
+    </nav>
+    <div style="flex: 1;"></div>
+    <div style="border-top: 1px solid var(--border); padding: 12px;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 6px;">
+        <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--primary-muted); color: var(--primary); font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center;">NS</div>
+        <p style="font-size: 12px; font-weight: 500;">NeneScarlet</p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main style="flex: 1; overflow-y: auto;">
+    <div style="max-width: 800px; margin: 0 auto; padding: 24px 32px;">
+
+      <h1 class="font-serif" style="font-size: 20px; font-weight: 600; margin-bottom: 20px;">Settings</h1>
+
+      <!-- Tabs -->
+      <div style="display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 24px;">
+        <button class="tab">Account</button>
+        <button class="tab active">Model Providers</button>
+        <button class="tab">Translation</button>
+        <button class="tab">Reading</button>
+        <button class="tab">Language</button>
+      </div>
+
+      <!-- ═══ PROVIDERS TAB ═══ -->
+
+      <!-- Provider cards -->
+      <div class="section" style="border-bottom: none; padding-top: 0;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+          <div>
+            <h2 class="section-title">AI Model Providers</h2>
+            <p class="section-desc" style="margin-bottom: 0;">Bring your own API keys. Your keys are encrypted and never shared.</p>
+          </div>
+          <button class="btn btn-primary">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+            Add Provider
+          </button>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+
+          <!-- Anthropic (configured, active) -->
+          <div class="provider-card">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 32px; height: 32px; border-radius: 6px; background: #d4a574; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; color: #1a1008;">A</div>
+                <div>
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 14px; font-weight: 600;">Anthropic</span>
+                    <span class="badge badge-success">
+                      <span style="width: 5px; height: 5px; border-radius: 50%; background: #3dba6a;"></span>
+                      Connected
+                    </span>
+                  </div>
+                  <span style="font-size: 11px; color: var(--muted-fg);">API key ending in ...x4Kp · Added 2 weeks ago</span>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <button class="btn btn-success btn-sm">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+                  Test
+                </button>
+                <button class="btn btn-outline btn-sm">Edit Key</button>
+                <button class="btn btn-ghost btn-sm" style="color: var(--destructive);">Remove</button>
+              </div>
+            </div>
+
+            <!-- Models under this provider -->
+            <div style="border: 1px solid var(--border); border-radius: 6px; overflow: hidden;">
+              <div style="padding: 8px 14px; background: rgba(24,20,18,0.4); display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-size: 11px; font-weight: 600; color: var(--muted-fg);">Models (2 configured)</span>
+                <button class="btn btn-ghost btn-sm">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+                  Add Model
+                </button>
+              </div>
+              <div class="model-row">
+                <div style="flex: 1;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 13px; font-weight: 500;">Claude Sonnet 4.6</span>
+                    <span class="badge badge-muted" style="font-size: 9px;">Default</span>
+                  </div>
+                  <span class="font-mono" style="font-size: 10px; color: var(--muted-fg);">claude-sonnet-4-6-20260301</span>
+                </div>
+                <span style="font-size: 11px; color: var(--muted-fg);">Translation, Chat</span>
+                <div class="toggle on"></div>
+                <button class="btn btn-ghost btn-sm">Edit</button>
+              </div>
+              <div class="model-row">
+                <div style="flex: 1;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 13px; font-weight: 500;">Claude Haiku 4.5</span>
+                  </div>
+                  <span class="font-mono" style="font-size: 10px; color: var(--muted-fg);">claude-haiku-4-5-20251001</span>
+                </div>
+                <span style="font-size: 11px; color: var(--muted-fg);">Chunk Edit</span>
+                <div class="toggle on"></div>
+                <button class="btn btn-ghost btn-sm">Edit</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- OpenAI (configured, active) -->
+          <div class="provider-card">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 32px; height: 32px; border-radius: 6px; background: #74c0a4; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; color: #0a1a14;">O</div>
+                <div>
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 14px; font-weight: 600;">OpenAI</span>
+                    <span class="badge badge-success">
+                      <span style="width: 5px; height: 5px; border-radius: 50%; background: #3dba6a;"></span>
+                      Connected
+                    </span>
+                  </div>
+                  <span style="font-size: 11px; color: var(--muted-fg);">API key ending in ...m9Rz · Added 1 month ago</span>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <button class="btn btn-success btn-sm">Test</button>
+                <button class="btn btn-outline btn-sm">Edit Key</button>
+                <button class="btn btn-ghost btn-sm" style="color: var(--destructive);">Remove</button>
+              </div>
+            </div>
+            <div style="border: 1px solid var(--border); border-radius: 6px; overflow: hidden;">
+              <div style="padding: 8px 14px; background: rgba(24,20,18,0.4); display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-size: 11px; font-weight: 600; color: var(--muted-fg);">Models (1 configured)</span>
+                <button class="btn btn-ghost btn-sm">Add Model</button>
+              </div>
+              <div class="model-row">
+                <div style="flex: 1;">
+                  <span style="font-size: 13px; font-weight: 500;">GPT-4o</span>
+                  <span class="font-mono" style="font-size: 10px; color: var(--muted-fg); display: block;">gpt-4o</span>
+                </div>
+                <span style="font-size: 11px; color: var(--muted-fg);">Backup translation</span>
+                <div class="toggle on"></div>
+                <button class="btn btn-ghost btn-sm">Edit</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Google (not configured yet) -->
+          <div class="provider-card" style="border-style: dashed; opacity: 0.7;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 32px; height: 32px; border-radius: 6px; background: var(--secondary); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; color: #7ab4f0;">G</div>
+                <div>
+                  <span style="font-size: 14px; font-weight: 600;">Google AI</span>
+                  <span class="badge badge-muted" style="margin-left: 6px;">Not configured</span>
+                  <div style="font-size: 11px; color: var(--muted-fg); margin-top: 2px;">Gemini models — fast and cost-effective for translation</div>
+                </div>
+              </div>
+              <button class="btn btn-outline">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+                Configure
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ Divider: other tabs preview ═══ -->
+      <div style="border-top: 2px solid var(--border); margin: 32px 0; padding-top: 24px;">
+        <p style="font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg); margin-bottom: 16px;">Other Settings Tabs (preview)</p>
+      </div>
+
+      <!-- Account section preview -->
+      <div class="section">
+        <h2 class="section-title">Account</h2>
+        <p class="section-desc">Manage your profile and login credentials.</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div>
+            <label class="field-label">Display Name</label>
+            <input class="input-field" value="NeneScarlet" />
+          </div>
+          <div>
+            <label class="field-label">Email</label>
+            <input class="input-field" value="nene@example.com" />
+          </div>
+        </div>
+        <div style="margin-top: 16px; display: flex; align-items: center; justify-content: space-between;">
+          <button class="btn btn-outline">Change Password</button>
+          <button class="btn btn-primary">Save Changes</button>
+        </div>
+      </div>
+
+      <!-- Language section preview -->
+      <div class="section">
+        <h2 class="section-title">GUI Language</h2>
+        <p class="section-desc">Change the interface language. Content (books, chapters) is not affected.</p>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button style="padding: 8px 16px; border-radius: 6px; border: 1px solid var(--primary); background: var(--primary-muted); color: var(--primary); font-size: 13px; font-weight: 500; cursor: pointer;">English</button>
+          <button style="padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--foreground); font-size: 13px; cursor: pointer;">Tiếng Việt</button>
+          <button style="padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--foreground); font-size: 13px; cursor: pointer;">日本語</button>
+          <button style="padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--foreground); font-size: 13px; cursor: pointer;">繁體中文</button>
+        </div>
+      </div>
+
+      <!-- Translation defaults preview -->
+      <div class="section">
+        <h2 class="section-title">Translation Defaults</h2>
+        <p class="section-desc">Default settings for new translation jobs.</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div>
+            <label class="field-label">Default Target Language</label>
+            <select class="input-field">
+              <option>English (en)</option>
+              <option>Tiếng Việt (vi)</option>
+              <option>日本語 (ja)</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label">Default Model</label>
+            <select class="input-field">
+              <option>Claude Sonnet 4.6 (Anthropic)</option>
+              <option>GPT-4o (OpenAI)</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top: 12px;">
+          <label class="field-label">System Prompt Template</label>
+          <textarea class="input-field" rows="3" style="resize: vertical; font-size: 12px;">You are a professional {source_language}-to-{target_language} translator for light novels. Maintain the original tone, character voice, and cultural nuances.</textarea>
+          <p class="field-hint">Variables: {source_language}, {target_language}, {book_title}, {glossary_context}</p>
+        </div>
+      </div>
+
+      <!-- Danger zone -->
+      <div class="section" style="padding-top: 24px;">
+        <h2 class="section-title" style="color: var(--destructive);">Danger Zone</h2>
+        <p class="section-desc">Irreversible actions. Be careful.</p>
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border: 1px solid rgba(220,78,78,0.2); border-radius: 6px;">
+          <div>
+            <span style="font-size: 13px; font-weight: 500;">Delete Account</span>
+            <p style="font-size: 11px; color: var(--muted-fg); margin-top: 2px;">Permanently delete your account and all data. This cannot be undone.</p>
+          </div>
+          <button class="btn btn-danger">Delete Account</button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+</body>
+</html>

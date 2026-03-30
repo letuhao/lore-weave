@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Leaderboard & Rankings</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a;
+      --destructive: #dc4e4e; --success: #3dba6a; --info: #5496e8;
+      --heart: #e85d75;
+      --gold: #e8a832; --silver: #b0b0b0; --bronze: #cd7f32;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; font-family: inherit; }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+    .btn-outline:hover { background: var(--secondary); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+
+    .badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 500; }
+    .badge-success { background: rgba(61,186,106,0.12); color: #5dd88a; }
+    .badge-muted { background: var(--secondary); color: var(--muted-fg); }
+
+    .sidebar { width: 240px; flex-shrink: 0; background: var(--background); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+    .sidebar-link { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; font-size: 13px; color: var(--muted-fg); text-decoration: none; transition: all 120ms; }
+    .sidebar-link:hover { background: var(--secondary); }
+    .sidebar-link.active { background: var(--primary-muted); color: var(--primary); }
+
+    .panel { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--card); }
+
+    /* Tabs */
+    .tab { padding: 10px 16px; font-size: 13px; font-weight: 500; border-bottom: 2px solid transparent; color: var(--muted-fg); cursor: pointer; transition: all 120ms; background: none; border-top: none; border-left: none; border-right: none; }
+    .tab:hover { color: var(--foreground); }
+    .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+    /* Rank medal */
+    .rank-medal { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+    .rank-1 { background: linear-gradient(135deg, #e8a832, #d4952a); color: #1a1008; box-shadow: 0 0 12px rgba(232,168,50,0.3); }
+    .rank-2 { background: linear-gradient(135deg, #c0c0c0, #a0a0a0); color: #1a1a1a; }
+    .rank-3 { background: linear-gradient(135deg, #cd7f32, #b06828); color: #1a1008; }
+    .rank-num { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: var(--muted-fg); font-family: 'JetBrains Mono', monospace; flex-shrink: 0; }
+
+    /* Leaderboard row */
+    .lb-row { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-bottom: 1px solid var(--border); transition: background 120ms; }
+    .lb-row:last-child { border-bottom: none; }
+    .lb-row:hover { background: var(--card-hover); }
+    .lb-row.highlighted { background: var(--primary-muted); border-left: 2px solid var(--primary); }
+
+    /* User avatar */
+    .avatar { border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; flex-shrink: 0; }
+    .avatar-sm { width: 32px; height: 32px; font-size: 11px; }
+    .avatar-lg { width: 48px; height: 48px; font-size: 16px; }
+
+    /* Cover mini */
+    .cover-mini { width: 32px; height: 46px; border-radius: 4px; flex-shrink: 0; border: 1px solid var(--border); overflow: hidden; }
+
+    /* Star */
+    .star-sm { width: 12px; height: 12px; color: var(--primary); }
+
+    /* Podium */
+    .podium { display: flex; align-items: flex-end; justify-content: center; gap: 8px; padding: 24px 0 0; }
+    .podium-slot { display: flex; flex-direction: column; align-items: center; }
+    .podium-bar { width: 120px; border-radius: 8px 8px 0 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 16px; }
+    .podium-avatar { border: 3px solid; border-radius: 50%; margin-top: -30px; }
+
+    /* Trend arrow */
+    .trend-up { color: var(--success); font-size: 10px; display: inline-flex; align-items: center; gap: 2px; }
+    .trend-down { color: var(--destructive); font-size: 10px; display: inline-flex; align-items: center; gap: 2px; }
+    .trend-same { color: var(--muted-fg); font-size: 10px; }
+
+    /* Stats pill */
+    .stat-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 4px; font-size: 10px; background: var(--secondary); color: var(--muted-fg); }
+
+    /* Period selector */
+    .period-btn { padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; background: transparent; color: var(--muted-fg); }
+    .period-btn:hover { color: var(--foreground); }
+    .period-btn.active { background: var(--primary-muted); color: var(--primary); }
+
+    /* Category filter */
+    .cat-chip { padding: 5px 14px; border-radius: 999px; font-size: 12px; border: 1px solid var(--border); color: var(--muted-fg); cursor: pointer; transition: all 120ms; background: transparent; }
+    .cat-chip:hover { border-color: var(--border-hover); color: var(--foreground); }
+    .cat-chip.active { border-color: var(--primary); background: var(--primary-muted); color: var(--primary); }
+  </style>
+</head>
+<body>
+
+<div style="display: flex; min-height: 100vh;">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 16px 16px 12px;">
+      <div style="width: 28px; height: 28px; border-radius: 6px; background: var(--primary); color: var(--primary-fg); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;">L</div>
+      <span class="font-serif" style="font-size: 14px; font-weight: 600;">LoreWeave</span>
+    </div>
+    <nav style="padding: 0 8px; display: flex; flex-direction: column; gap: 2px;">
+      <p style="padding: 12px 12px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg);">Main</p>
+      <a href="#" class="sidebar-link"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13"/></svg>Workspace</a>
+      <a href="#" class="sidebar-link"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01"/></svg>Chat</a>
+      <a href="#" class="sidebar-link"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>Browse</a>
+      <a href="#" class="sidebar-link active">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+        Leaderboard
+      </a>
+    </nav>
+    <div style="flex: 1;"></div>
+    <div style="border-top: 1px solid var(--border); padding: 12px;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 6px;">
+        <div class="avatar avatar-sm" style="background: var(--primary-muted); color: var(--primary);">NS</div>
+        <p style="font-size: 12px; font-weight: 500;">NeneScarlet</p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main style="flex: 1; overflow-y: auto;">
+    <div style="max-width: 1000px; margin: 0 auto; padding: 24px 32px;">
+
+      <!-- Page header -->
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+        <div>
+          <h1 class="font-serif" style="font-size: 22px; font-weight: 600;">Leaderboard</h1>
+          <p style="font-size: 12px; color: var(--muted-fg); margin-top: 2px;">Discover top books, authors, and translators in the community.</p>
+        </div>
+        <!-- Period selector -->
+        <div style="display: flex; gap: 2px; background: var(--secondary); border-radius: 6px; padding: 2px;">
+          <button class="period-btn">This Week</button>
+          <button class="period-btn active">This Month</button>
+          <button class="period-btn">All Time</button>
+        </div>
+      </div>
+
+      <!-- Category tabs -->
+      <div style="display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 24px;">
+        <button class="tab active">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: -2px; margin-right: 4px;"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253"/></svg>
+          Top Books
+        </button>
+        <button class="tab">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: -2px; margin-right: 4px;"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+          Authors
+        </button>
+        <button class="tab">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: -2px; margin-right: 4px;"><path d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10"/></svg>
+          Translators
+        </button>
+        <button class="tab">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: -2px; margin-right: 4px;"><path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+          Trending
+        </button>
+      </div>
+
+      <!-- ═══ TOP BOOKS — PODIUM + LIST ═══ -->
+
+      <!-- Sub-filter chips -->
+      <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px;">
+        <span class="cat-chip active">All Genres</span>
+        <span class="cat-chip">Fantasy</span>
+        <span class="cat-chip">Romance</span>
+        <span class="cat-chip">Sci-Fi</span>
+        <span class="cat-chip">Drama</span>
+        <span class="cat-chip">Historical</span>
+        <span style="width: 1px; background: var(--border); margin: 0 4px;"></span>
+        <span class="cat-chip">All Languages</span>
+        <span class="cat-chip">日本語</span>
+        <span class="cat-chip">English</span>
+        <span class="cat-chip">Tiếng Việt</span>
+      </div>
+
+      <!-- Podium (top 3) -->
+      <div class="panel" style="margin-bottom: 16px; padding-bottom: 0;">
+        <div class="podium">
+          <!-- #2 Silver -->
+          <div class="podium-slot">
+            <div class="avatar avatar-lg podium-avatar" style="background: linear-gradient(135deg, #162824, #0a1a14); border-color: var(--silver); width: 52px; height: 52px;">
+              <span class="font-serif" style="font-size: 9px; color: #8cd4c0; text-align: center; line-height: 1.1;">SC</span>
+            </div>
+            <span style="font-size: 12px; font-weight: 600; margin-top: 8px;">Slime Chef</span>
+            <span style="font-size: 10px; color: var(--muted-fg);">by TofuMaster</span>
+            <div style="display: flex; gap: 2px; margin-top: 4px;">
+              <svg class="star-sm" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <span style="font-size: 12px; font-weight: 600;">4.5</span>
+            </div>
+            <div class="podium-bar" style="height: 80px; background: linear-gradient(180deg, rgba(176,176,176,0.15), rgba(176,176,176,0.05));">
+              <span style="font-size: 20px; font-weight: 700; color: var(--silver);">2</span>
+              <span style="font-size: 10px; color: var(--muted-fg); margin-top: 4px;">1.8K readers</span>
+            </div>
+          </div>
+
+          <!-- #1 Gold -->
+          <div class="podium-slot">
+            <div class="avatar avatar-lg podium-avatar" style="background: linear-gradient(135deg, #2d1740, #1a1030); border-color: var(--gold); width: 60px; height: 60px;">
+              <span class="font-serif" style="font-size: 10px; color: #c4a0d8; text-align: center; line-height: 1.1;">DL</span>
+            </div>
+            <span style="font-size: 14px; font-weight: 600; margin-top: 8px;">The Demon Lord's Duty</span>
+            <span style="font-size: 10px; color: var(--muted-fg);">by NeneScarlet</span>
+            <div style="display: flex; align-items: center; gap: 4px; margin-top: 4px;">
+              <svg class="star-sm" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <span style="font-size: 13px; font-weight: 700;">4.2</span>
+              <span class="trend-up" style="margin-left: 4px;">
+                <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 15l7-7 7 7"/></svg>
+                +3
+              </span>
+            </div>
+            <div class="podium-bar" style="height: 110px; background: linear-gradient(180deg, rgba(232,168,50,0.15), rgba(232,168,50,0.03)); border: 1px solid rgba(232,168,50,0.15); border-bottom: none;">
+              <span style="font-size: 24px; font-weight: 700; color: var(--gold);">1</span>
+              <span style="font-size: 10px; color: var(--muted-fg); margin-top: 4px;">2.4K readers</span>
+              <span style="font-size: 9px; color: var(--primary); margin-top: 2px;">156 favorites</span>
+            </div>
+          </div>
+
+          <!-- #3 Bronze -->
+          <div class="podium-slot">
+            <div class="avatar avatar-lg podium-avatar" style="background: linear-gradient(135deg, #302018, #1a100c); border-color: var(--bronze); width: 52px; height: 52px;">
+              <span class="font-serif" style="font-size: 9px; color: #d4b498; text-align: center; line-height: 1.1;">MC</span>
+            </div>
+            <span style="font-size: 12px; font-weight: 600; margin-top: 8px;">Moonlit Cultivation</span>
+            <span style="font-size: 10px; color: var(--muted-fg);">by JadePeak</span>
+            <div style="display: flex; gap: 2px; margin-top: 4px;">
+              <svg class="star-sm" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <span style="font-size: 12px; font-weight: 600;">3.8</span>
+            </div>
+            <div class="podium-bar" style="height: 60px; background: linear-gradient(180deg, rgba(205,127,50,0.12), rgba(205,127,50,0.04));">
+              <span style="font-size: 20px; font-weight: 700; color: var(--bronze);">3</span>
+              <span style="font-size: 10px; color: var(--muted-fg); margin-top: 4px;">1.2K readers</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Full ranking list (4th onward, plus the top 3 for completeness) -->
+      <div class="panel">
+        <div style="padding: 10px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-size: 12px; font-weight: 600;">Full Rankings — Top Books</span>
+          <div style="display: flex; gap: 4px;">
+            <button class="btn btn-ghost" style="font-size: 10px;">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"/></svg>
+              Sort by Rating
+            </button>
+            <button class="btn btn-ghost" style="font-size: 10px;">Readers</button>
+            <button class="btn btn-ghost" style="font-size: 10px;">Favorites</button>
+          </div>
+        </div>
+
+        <!-- Rank #1 -->
+        <div class="lb-row highlighted">
+          <div class="rank-medal rank-1">1</div>
+          <div class="cover-mini" style="background: linear-gradient(135deg, #2d1740, #1a1030);"></div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="font-serif" style="font-size: 13px; font-weight: 600;">The Demon Lord's Duty</span>
+              <span style="padding: 1px 6px; border-radius: 3px; font-size: 9px; background: rgba(139,92,246,0.12); color: #c4b5fd;">Fantasy</span>
+              <span class="badge-muted badge" style="font-size: 9px;">日本語 (ja)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 3px;">
+              <span style="font-size: 11px; color: var(--muted-fg);">by NeneScarlet</span>
+              <span style="color: var(--border);">·</span>
+              <span style="font-size: 11px; color: var(--muted-fg);">24 chapters</span>
+              <span style="color: var(--border);">·</span>
+              <span style="font-size: 11px; color: var(--muted-fg);">3 translations</span>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px; flex-shrink: 0;">
+            <div style="text-align: center;">
+              <div style="display: flex; align-items: center; gap: 2px;">
+                <svg class="star-sm" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                <span style="font-size: 14px; font-weight: 700;">4.2</span>
+              </div>
+              <span style="font-size: 9px; color: var(--muted-fg);">28 ratings</span>
+            </div>
+            <div style="text-align: center;">
+              <span style="font-size: 14px; font-weight: 600; color: var(--heart);">156</span>
+              <svg width="10" height="10" fill="var(--heart)" viewBox="0 0 24 24" style="vertical-align: -1px;"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+              <br><span style="font-size: 9px; color: var(--muted-fg);">favorites</span>
+            </div>
+            <div style="text-align: center;">
+              <span style="font-size: 14px; font-weight: 600;">2.4K</span>
+              <br><span style="font-size: 9px; color: var(--muted-fg);">readers</span>
+            </div>
+            <span class="trend-up">
+              <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 15l7-7 7 7"/></svg>
+              +3
+            </span>
+          </div>
+        </div>
+
+        <!-- Rank #2 -->
+        <div class="lb-row">
+          <div class="rank-medal rank-2">2</div>
+          <div class="cover-mini" style="background: linear-gradient(135deg, #162824, #0a1a14);"></div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="font-serif" style="font-size: 13px; font-weight: 600;">Reincarnated as a Slime Chef</span>
+              <span style="padding: 1px 6px; border-radius: 3px; font-size: 9px; background: rgba(61,186,106,0.12); color: #86efac;">Isekai</span>
+            </div>
+            <span style="font-size: 11px; color: var(--muted-fg);">by TofuMaster · 8 chapters · 2 translations</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px; flex-shrink: 0;">
+            <div style="text-align: center;"><div style="display: flex; align-items: center; gap: 2px;"><svg class="star-sm" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg><span style="font-size: 14px; font-weight: 700;">4.5</span></div><span style="font-size: 9px; color: var(--muted-fg);">42 ratings</span></div>
+            <div style="text-align: center;"><span style="font-size: 14px; font-weight: 600; color: var(--heart);">203</span><br><span style="font-size: 9px; color: var(--muted-fg);">favorites</span></div>
+            <div style="text-align: center;"><span style="font-size: 14px; font-weight: 600;">1.8K</span><br><span style="font-size: 9px; color: var(--muted-fg);">readers</span></div>
+            <span class="trend-down"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>-1</span>
+          </div>
+        </div>
+
+        <!-- Rank #3 -->
+        <div class="lb-row">
+          <div class="rank-medal rank-3">3</div>
+          <div class="cover-mini" style="background: linear-gradient(135deg, #302018, #1a100c);"></div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="font-serif" style="font-size: 13px; font-weight: 600;">Moonlit Cultivation Manual</span>
+              <span style="padding: 1px 6px; border-radius: 3px; font-size: 9px; background: rgba(232,168,50,0.12); color: #fcd34d;">Cultivation</span>
+            </div>
+            <span style="font-size: 11px; color: var(--muted-fg);">by JadePeak · 42 chapters · 3 translations</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px; flex-shrink: 0;">
+            <div style="text-align: center;"><div style="display: flex; align-items: center; gap: 2px;"><svg class="star-sm" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg><span style="font-size: 14px; font-weight: 700;">3.8</span></div><span style="font-size: 9px; color: var(--muted-fg);">18 ratings</span></div>
+            <div style="text-align: center;"><span style="font-size: 14px; font-weight: 600; color: var(--heart);">89</span><br><span style="font-size: 9px; color: var(--muted-fg);">favorites</span></div>
+            <div style="text-align: center;"><span style="font-size: 14px; font-weight: 600;">1.2K</span><br><span style="font-size: 9px; color: var(--muted-fg);">readers</span></div>
+            <span class="trend-same">—</span>
+          </div>
+        </div>
+
+        <!-- Rank #4 -->
+        <div class="lb-row">
+          <span class="rank-num">4</span>
+          <div class="cover-mini" style="background: linear-gradient(135deg, #1a1828, #100e20);"></div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="font-serif" style="font-size: 13px; font-weight: 600;">Letters to the Moon</span>
+              <span style="padding: 1px 6px; border-radius: 3px; font-size: 9px; background: rgba(236,72,153,0.12); color: #f9a8d4;">Romance</span>
+            </div>
+            <span style="font-size: 11px; color: var(--muted-fg);">by SakuraPen · 16 chapters · 1 translation</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px; flex-shrink: 0;">
+            <div style="text-align: center;"><div style="display: flex; align-items: center; gap: 2px;"><svg class="star-sm" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg><span style="font-size: 14px; font-weight: 700;">4.7</span></div><span style="font-size: 9px; color: var(--muted-fg);">15 ratings</span></div>
+            <div style="text-align: center;"><span style="font-size: 14px; font-weight: 600; color: var(--heart);">72</span><br><span style="font-size: 9px; color: var(--muted-fg);">favorites</span></div>
+            <div style="text-align: center;"><span style="font-size: 14px; font-weight: 600;">890</span><br><span style="font-size: 9px; color: var(--muted-fg);">readers</span></div>
+            <span class="trend-up"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 15l7-7 7 7"/></svg>+5</span>
+          </div>
+        </div>
+
+        <!-- Rank #5 -->
+        <div class="lb-row">
+          <span class="rank-num">5</span>
+          <div class="cover-mini" style="background: linear-gradient(135deg, #1c2830, #0e1820);"></div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="font-serif" style="font-size: 13px; font-weight: 600;">Neural Garden Protocol</span>
+              <span style="padding: 1px 6px; border-radius: 3px; font-size: 9px; background: rgba(6,182,212,0.12); color: #67e8f9;">Sci-Fi</span>
+            </div>
+            <span style="font-size: 11px; color: var(--muted-fg);">by CyberInk · 31 chapters · 2 translations</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px; flex-shrink: 0;">
+            <div style="text-align: center;"><div style="display: flex; align-items: center; gap: 2px;"><svg class="star-sm" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg><span style="font-size: 14px; font-weight: 700;">4.0</span></div><span style="font-size: 9px; color: var(--muted-fg);">22 ratings</span></div>
+            <div style="text-align: center;"><span style="font-size: 14px; font-weight: 600; color: var(--heart);">65</span><br><span style="font-size: 9px; color: var(--muted-fg);">favorites</span></div>
+            <div style="text-align: center;"><span style="font-size: 14px; font-weight: 600;">780</span><br><span style="font-size: 9px; color: var(--muted-fg);">readers</span></div>
+            <span class="trend-up"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 15l7-7 7 7"/></svg>+2</span>
+          </div>
+        </div>
+
+        <!-- Rank #6 -->
+        <div class="lb-row">
+          <span class="rank-num">6</span>
+          <div class="cover-mini" style="background: linear-gradient(135deg, #2a1a18, #1a0e0c);"></div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="font-serif" style="font-size: 13px; font-weight: 600;">Tiếng Vọng Cố Đô</span>
+              <span style="padding: 1px 6px; border-radius: 3px; font-size: 9px; background: rgba(249,115,22,0.12); color: #fdba74;">Historical</span>
+            </div>
+            <span style="font-size: 11px; color: var(--muted-fg);">by HoangLong · 18 chapters · 2 translations</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px; flex-shrink: 0;">
+            <div style="text-align: center;"><div style="display: flex; align-items: center; gap: 2px;"><svg class="star-sm" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg><span style="font-size: 14px; font-weight: 700;">4.3</span></div><span style="font-size: 9px; color: var(--muted-fg);">12 ratings</span></div>
+            <div style="text-align: center;"><span style="font-size: 14px; font-weight: 600; color: var(--heart);">48</span><br><span style="font-size: 9px; color: var(--muted-fg);">favorites</span></div>
+            <div style="text-align: center;"><span style="font-size: 14px; font-weight: 600;">520</span><br><span style="font-size: 9px; color: var(--muted-fg);">readers</span></div>
+            <span class="trend-down"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>-2</span>
+          </div>
+        </div>
+
+        <!-- Load more -->
+        <div style="padding: 12px 16px; text-align: center; border-top: 1px solid var(--border);">
+          <button class="btn btn-outline" style="font-size: 12px;">Show more rankings</button>
+        </div>
+      </div>
+
+      <!-- ═══ QUICK STATS CARDS (Authors + Translators preview) ═══ -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 24px;">
+
+        <!-- Top Authors (preview) -->
+        <div class="panel">
+          <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 13px; font-weight: 600;">Top Authors</span>
+            <button class="btn btn-ghost" style="font-size: 10px;">View all →</button>
+          </div>
+          <!-- Author #1 -->
+          <div class="lb-row">
+            <div class="rank-medal rank-1" style="width: 22px; height: 22px; font-size: 10px;">1</div>
+            <div class="avatar avatar-sm" style="background: var(--primary-muted); color: var(--primary);">NS</div>
+            <div style="flex: 1;">
+              <span style="font-size: 13px; font-weight: 500;">NeneScarlet</span>
+              <div style="display: flex; gap: 6px; margin-top: 2px;">
+                <span class="stat-pill">3 books</span>
+                <span class="stat-pill">2.4K readers</span>
+                <span class="stat-pill">
+                  <svg class="star-sm" style="width: 10px; height: 10px;" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                  4.2 avg
+                </span>
+              </div>
+            </div>
+          </div>
+          <!-- Author #2 -->
+          <div class="lb-row">
+            <div class="rank-medal rank-2" style="width: 22px; height: 22px; font-size: 10px;">2</div>
+            <div class="avatar avatar-sm" style="background: #1a2e2a; color: var(--accent);">TM</div>
+            <div style="flex: 1;">
+              <span style="font-size: 13px; font-weight: 500;">TofuMaster</span>
+              <div style="display: flex; gap: 6px; margin-top: 2px;">
+                <span class="stat-pill">2 books</span>
+                <span class="stat-pill">1.8K readers</span>
+              </div>
+            </div>
+          </div>
+          <!-- Author #3 -->
+          <div class="lb-row">
+            <div class="rank-medal rank-3" style="width: 22px; height: 22px; font-size: 10px;">3</div>
+            <div class="avatar avatar-sm" style="background: #2a1a18; color: #d4b498;">JP</div>
+            <div style="flex: 1;">
+              <span style="font-size: 13px; font-weight: 500;">JadePeak</span>
+              <div style="display: flex; gap: 6px; margin-top: 2px;">
+                <span class="stat-pill">1 book</span>
+                <span class="stat-pill">1.2K readers</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Top Translators (preview) -->
+        <div class="panel">
+          <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 13px; font-weight: 600;">Top Translators</span>
+            <button class="btn btn-ghost" style="font-size: 10px;">View all →</button>
+          </div>
+          <!-- Translator #1 -->
+          <div class="lb-row">
+            <div class="rank-medal rank-1" style="width: 22px; height: 22px; font-size: 10px;">1</div>
+            <div class="avatar avatar-sm" style="background: var(--primary-muted); color: var(--primary);">NS</div>
+            <div style="flex: 1;">
+              <span style="font-size: 13px; font-weight: 500;">NeneScarlet</span>
+              <div style="display: flex; gap: 6px; margin-top: 2px;">
+                <span class="stat-pill">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 5h12M9 3v2"/></svg>
+                  48 chapters
+                </span>
+                <span class="stat-pill">3 languages</span>
+                <span class="stat-pill" style="background: rgba(61,186,106,0.1); color: #5dd88a;">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/></svg>
+                  96% quality
+                </span>
+              </div>
+            </div>
+          </div>
+          <!-- Translator #2 -->
+          <div class="lb-row">
+            <div class="rank-medal rank-2" style="width: 22px; height: 22px; font-size: 10px;">2</div>
+            <div class="avatar avatar-sm" style="background: #2a1a2e; color: #c4b5fd;">LW</div>
+            <div style="flex: 1;">
+              <span style="font-size: 13px; font-weight: 500;">LunaWriter</span>
+              <div style="display: flex; gap: 6px; margin-top: 2px;">
+                <span class="stat-pill">32 chapters</span>
+                <span class="stat-pill">2 languages</span>
+                <span class="stat-pill" style="background: rgba(61,186,106,0.1); color: #5dd88a;">92% quality</span>
+              </div>
+            </div>
+          </div>
+          <!-- Translator #3 -->
+          <div class="lb-row">
+            <div class="rank-medal rank-3" style="width: 22px; height: 22px; font-size: 10px;">3</div>
+            <div class="avatar avatar-sm" style="background: #1c2830; color: #67e8f9;">CI</div>
+            <div style="flex: 1;">
+              <span style="font-size: 13px; font-weight: 500;">CyberInk</span>
+              <div style="display: flex; gap: 6px; margin-top: 2px;">
+                <span class="stat-pill">28 chapters</span>
+                <span class="stat-pill">1 language</span>
+                <span class="stat-pill" style="background: rgba(61,186,106,0.1); color: #5dd88a;">88% quality</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+</body>
+</html>

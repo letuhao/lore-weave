@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Glossary Kind, Attribute & Genre Management</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --input: #242019; --ring: #d4952a;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --secondary-fg: #e0d8cc;
+      --muted: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --destructive: #dc4e4e; --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+      --system: #7c6cd4; --system-muted: #2a2540;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; font-family: inherit; }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+    .btn-outline:hover { background: var(--secondary); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); padding: 4px 8px; }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-danger { background: transparent; color: var(--destructive); }
+    .btn-danger:hover { background: rgba(220,78,78,0.1); }
+    .btn-sm { padding: 3px 8px; font-size: 11px; border-radius: 4px; }
+    .btn-icon { width: 26px; height: 26px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 5px; border: none; cursor: pointer; background: transparent; color: var(--muted-fg); transition: all 120ms; }
+    .btn-icon:hover { background: var(--secondary); color: var(--foreground); }
+
+    .input-field { background: var(--background); border: 1px solid var(--border); color: var(--foreground); border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: inherit; width: 100%; transition: border-color 150ms; }
+    .input-field:focus { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px rgba(212,149,42,0.15); }
+    .input-field::placeholder { color: rgba(158,148,136,0.5); }
+
+    /* Badges */
+    .badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 500; }
+    .badge-system { background: var(--system-muted); color: var(--system); }
+    .badge-user { background: var(--primary-muted); color: var(--primary); }
+    .badge-success { background: rgba(61,186,106,0.12); color: #5dd88a; }
+    .badge-muted { background: var(--secondary); color: var(--muted-fg); }
+
+    /* Toggle switch */
+    .toggle { width: 32px; height: 18px; border-radius: 9px; background: var(--secondary); position: relative; cursor: pointer; transition: all 150ms; flex-shrink: 0; }
+    .toggle.on { background: var(--success); }
+    .toggle::after { content: ''; position: absolute; width: 14px; height: 14px; border-radius: 50%; background: var(--foreground); top: 2px; left: 2px; transition: all 150ms; }
+    .toggle.on::after { left: 16px; }
+    .toggle.off { background: var(--secondary); }
+    .toggle.off::after { background: var(--muted-fg); }
+
+    /* List items */
+    .list-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); transition: background 120ms; cursor: pointer; }
+    .list-item:hover { background: var(--card-hover); }
+    .list-item:last-child { border-bottom: none; }
+    .list-item.selected { background: var(--primary-muted); border-left: 2px solid var(--primary); }
+    .list-item.dragging { opacity: 0.5; }
+
+    /* System indicator */
+    .system-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--system); flex-shrink: 0; }
+    .user-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); flex-shrink: 0; }
+
+    /* Revert button */
+    .btn-revert { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 500; border: 1px dashed var(--system); color: var(--system); background: transparent; cursor: pointer; transition: all 120ms; }
+    .btn-revert:hover { background: var(--system-muted); }
+
+    /* Section headers */
+    .section-header { padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); background: rgba(24,20,18,0.5); }
+    .section-title { font-size: 12px; font-weight: 600; }
+
+    /* Showcase wrapper */
+    .showcase { max-width: 1400px; margin: 0 auto; padding: 32px 24px; }
+    .showcase h1 { font-family: 'Lora', serif; font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+    .showcase-subtitle { font-size: 13px; color: var(--muted-fg); margin-bottom: 32px; }
+    .showcase-section { margin-bottom: 48px; }
+    .showcase-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .showcase-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* Panel */
+    .panel { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--card); }
+    .panel-header { padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
+    .panel-title { font-size: 13px; font-weight: 600; }
+
+    /* Attribute row */
+    .attr-row { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .attr-row:last-child { border-bottom: none; }
+    .attr-row:hover { background: var(--card-hover); }
+    .attr-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+    .attr-type { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--muted-fg); padding: 1px 6px; background: var(--secondary); border-radius: 3px; }
+    .attr-modified { font-size: 9px; color: var(--warning); font-style: italic; }
+
+    /* Genre matrix */
+    .genre-matrix { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .genre-matrix th { padding: 8px 10px; text-align: center; font-weight: 500; color: var(--muted-fg); font-size: 11px; border-bottom: 1px solid var(--border); }
+    .genre-matrix th:first-child { text-align: left; }
+    .genre-matrix td { padding: 6px 10px; text-align: center; border-bottom: 1px solid var(--border); }
+    .genre-matrix td:first-child { text-align: left; font-size: 12px; }
+    .genre-matrix tr:hover { background: var(--card-hover); }
+    .genre-matrix .section-row { background: rgba(24,20,18,0.4); font-weight: 600; font-size: 11px; color: var(--muted-fg); text-transform: uppercase; letter-spacing: 0.03em; }
+
+    /* Drag handle */
+    .drag-handle { color: var(--muted-fg); opacity: 0.3; cursor: grab; flex-shrink: 0; }
+    .list-item:hover .drag-handle { opacity: 0.7; }
+
+    /* Editable inline */
+    .editable { padding: 2px 4px; border-radius: 3px; transition: background 120ms; }
+    .editable:hover { background: rgba(255,255,255,0.04); }
+    .editable:focus { outline: none; background: var(--input); box-shadow: 0 0 0 2px rgba(212,149,42,0.15); }
+  </style>
+</head>
+<body>
+
+<div class="showcase">
+
+  <h1>Glossary Management</h1>
+  <p class="showcase-subtitle">Kind editor, attribute editor, genre groups, and entity editor — all components for the glossary system.</p>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 1: KIND EDITOR
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">1. Kind Editor — manage entity types</div>
+
+    <div style="display: grid; grid-template-columns: 340px 1fr; gap: 16px;">
+
+      <!-- Kind list -->
+      <div class="panel">
+        <div class="panel-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="panel-title">Entity Kinds</span>
+            <span class="badge badge-muted">8 kinds</span>
+          </div>
+          <button class="btn btn-primary btn-sm">
+            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+            New Kind
+          </button>
+        </div>
+        <div>
+          <!-- System kinds -->
+          <div class="section-header">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="system-dot"></span>
+              <span style="font-size: 10px; font-weight: 600; color: var(--system); text-transform: uppercase; letter-spacing: 0.05em;">System Kinds</span>
+            </div>
+            <span style="font-size: 10px; color: var(--muted-fg);">5 built-in</span>
+          </div>
+
+          <div class="list-item selected">
+            <svg class="drag-handle" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+            <div style="flex: 1;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 13px; font-weight: 500;">Character</span>
+                <span class="badge badge-system" style="font-size: 9px;">
+                  <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                  System
+                </span>
+                <span class="attr-modified">modified</span>
+              </div>
+              <span style="font-size: 10px; color: var(--muted-fg);">12 attributes · 45 entities</span>
+            </div>
+          </div>
+
+          <div class="list-item">
+            <svg class="drag-handle" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+            <div style="flex: 1;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 13px; font-weight: 500;">Location</span>
+                <span class="badge badge-system" style="font-size: 9px;">
+                  <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                  System
+                </span>
+              </div>
+              <span style="font-size: 10px; color: var(--muted-fg);">8 attributes · 12 entities</span>
+            </div>
+          </div>
+
+          <div class="list-item">
+            <svg class="drag-handle" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+            <div style="flex: 1;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 13px; font-weight: 500;">Item / Object</span>
+                <span class="badge badge-system" style="font-size: 9px;">System</span>
+              </div>
+              <span style="font-size: 10px; color: var(--muted-fg);">6 attributes · 8 entities</span>
+            </div>
+          </div>
+
+          <div class="list-item">
+            <svg class="drag-handle" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+            <div style="flex: 1;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 13px; font-weight: 500;">Organization</span>
+                <span class="badge badge-system" style="font-size: 9px;">System</span>
+              </div>
+              <span style="font-size: 10px; color: var(--muted-fg);">7 attributes · 3 entities</span>
+            </div>
+          </div>
+
+          <div class="list-item">
+            <svg class="drag-handle" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+            <div style="flex: 1;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 13px; font-weight: 500;">Event / Arc</span>
+                <span class="badge badge-system" style="font-size: 9px;">System</span>
+              </div>
+              <span style="font-size: 10px; color: var(--muted-fg);">5 attributes · 6 entities</span>
+            </div>
+          </div>
+
+          <!-- User kinds -->
+          <div class="section-header">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="user-dot"></span>
+              <span style="font-size: 10px; font-weight: 600; color: var(--primary); text-transform: uppercase; letter-spacing: 0.05em;">User Kinds</span>
+            </div>
+            <span style="font-size: 10px; color: var(--muted-fg);">3 custom</span>
+          </div>
+
+          <div class="list-item">
+            <svg class="drag-handle" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+            <div style="flex: 1;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 13px; font-weight: 500;">Magic System</span>
+                <span class="badge badge-user" style="font-size: 9px;">Custom</span>
+              </div>
+              <span style="font-size: 10px; color: var(--muted-fg);">4 attributes · 5 entities</span>
+            </div>
+          </div>
+
+          <div class="list-item">
+            <svg class="drag-handle" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+            <div style="flex: 1;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 13px; font-weight: 500;">Political Faction</span>
+                <span class="badge badge-user" style="font-size: 9px;">Custom</span>
+              </div>
+              <span style="font-size: 10px; color: var(--muted-fg);">5 attributes · 4 entities</span>
+            </div>
+          </div>
+
+          <div class="list-item">
+            <svg class="drag-handle" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+            <div style="flex: 1;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 13px; font-weight: 500;">Prophecy</span>
+                <span class="badge badge-user" style="font-size: 9px;">Custom</span>
+              </div>
+              <span style="font-size: 10px; color: var(--muted-fg);">3 attributes · 2 entities</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Kind detail / Attribute editor (right side) -->
+      <div class="panel">
+        <div class="panel-header">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span class="panel-title">Character</span>
+            <span class="badge badge-system">
+              <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+              System Kind
+            </span>
+            <span class="attr-modified">2 attributes modified</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <button class="btn-revert" title="Revert all changes to system defaults">
+              <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 10h10a5 5 0 010 10H9m-6-10l4-4m-4 4l4 4"/></svg>
+              Revert to Default
+            </button>
+            <button class="btn btn-outline btn-sm">
+              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+              Edit Kind
+            </button>
+          </div>
+        </div>
+
+        <!-- Kind metadata -->
+        <div style="padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 24px;">
+          <div>
+            <span style="font-size: 10px; color: var(--muted-fg); display: block; margin-bottom: 2px;">Display Name</span>
+            <span style="font-size: 13px;">Character</span>
+          </div>
+          <div>
+            <span style="font-size: 10px; color: var(--muted-fg); display: block; margin-bottom: 2px;">Internal ID</span>
+            <span class="font-mono" style="font-size: 11px; color: var(--muted-fg);">character</span>
+          </div>
+          <div>
+            <span style="font-size: 10px; color: var(--muted-fg); display: block; margin-bottom: 2px;">Entities</span>
+            <span style="font-size: 13px;">45</span>
+          </div>
+          <div>
+            <span style="font-size: 10px; color: var(--muted-fg); display: block; margin-bottom: 2px;">Description</span>
+            <span style="font-size: 13px;">Named characters in the story with personality, appearance, and relationships.</span>
+          </div>
+        </div>
+
+        <!-- Attributes list -->
+        <div class="section-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 12px; font-weight: 600;">Attributes</span>
+            <span class="badge badge-muted">12 total</span>
+          </div>
+          <button class="btn btn-primary btn-sm">
+            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+            Add Attribute
+          </button>
+        </div>
+
+        <div style="max-height: 500px; overflow-y: auto;">
+          <!-- System attributes section -->
+          <div style="padding: 6px 14px; background: rgba(24,20,18,0.3);">
+            <span style="font-size: 10px; font-weight: 600; color: var(--system); text-transform: uppercase; letter-spacing: 0.04em;">
+              <span class="system-dot" style="display: inline-block; vertical-align: middle; margin-right: 4px;"></span>
+              System Attributes
+            </span>
+          </div>
+
+          <!-- Name (system, not modified) -->
+          <div class="attr-row">
+            <svg class="drag-handle" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/></svg>
+            <div class="attr-name">
+              <span>Name</span>
+              <span class="attr-type">text</span>
+              <span class="badge badge-system" style="font-size: 8px;">SYS</span>
+            </div>
+            <span style="font-size: 10px; color: var(--muted-fg);">required</span>
+            <div class="toggle on" title="Active"></div>
+            <div class="btn-icon" title="Edit"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></div>
+          </div>
+
+          <!-- Aliases (system, not modified) -->
+          <div class="attr-row">
+            <svg class="drag-handle" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/></svg>
+            <div class="attr-name">
+              <span>Aliases</span>
+              <span class="attr-type">list&lt;text&gt;</span>
+              <span class="badge badge-system" style="font-size: 8px;">SYS</span>
+            </div>
+            <span style="font-size: 10px; color: var(--muted-fg);">optional</span>
+            <div class="toggle on"></div>
+            <div class="btn-icon"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></div>
+          </div>
+
+          <!-- Description (system, modified — user changed the label) -->
+          <div class="attr-row" style="background: rgba(232,168,50,0.02);">
+            <svg class="drag-handle" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/></svg>
+            <div class="attr-name">
+              <span>Bio / Description</span>
+              <span class="attr-type">long_text</span>
+              <span class="badge badge-system" style="font-size: 8px;">SYS</span>
+              <span class="attr-modified">modified</span>
+            </div>
+            <span style="font-size: 10px; color: var(--muted-fg);">optional</span>
+            <div class="toggle on"></div>
+            <button class="btn-revert" title="Revert to default label 'Description'">
+              <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 10h10a5 5 0 010 10H9m-6-10l4-4m-4 4l4 4"/></svg>
+            </button>
+            <div class="btn-icon"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></div>
+          </div>
+
+          <!-- Appearance (system) -->
+          <div class="attr-row">
+            <svg class="drag-handle" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/></svg>
+            <div class="attr-name">
+              <span>Appearance</span>
+              <span class="attr-type">long_text</span>
+              <span class="badge badge-system" style="font-size: 8px;">SYS</span>
+            </div>
+            <span style="font-size: 10px; color: var(--muted-fg);">optional</span>
+            <div class="toggle on"></div>
+            <div class="btn-icon"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5"/></svg></div>
+          </div>
+
+          <!-- Personality (system) -->
+          <div class="attr-row">
+            <svg class="drag-handle" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/></svg>
+            <div class="attr-name">
+              <span>Personality</span>
+              <span class="attr-type">long_text</span>
+              <span class="badge badge-system" style="font-size: 8px;">SYS</span>
+            </div>
+            <span style="font-size: 10px; color: var(--muted-fg);">optional</span>
+            <div class="toggle on"></div>
+            <div class="btn-icon"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11"/></svg></div>
+          </div>
+
+          <!-- Relationships (system) -->
+          <div class="attr-row">
+            <svg class="drag-handle" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/></svg>
+            <div class="attr-name">
+              <span>Relationships</span>
+              <span class="attr-type">list&lt;ref&gt;</span>
+              <span class="badge badge-system" style="font-size: 8px;">SYS</span>
+            </div>
+            <span style="font-size: 10px; color: var(--muted-fg);">optional</span>
+            <div class="toggle on"></div>
+            <div class="btn-icon"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11"/></svg></div>
+          </div>
+
+          <!-- Age (system, DEACTIVATED — user turned off for this genre) -->
+          <div class="attr-row" style="opacity: 0.5;">
+            <svg class="drag-handle" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/></svg>
+            <div class="attr-name">
+              <span style="text-decoration: line-through;">Age</span>
+              <span class="attr-type">text</span>
+              <span class="badge badge-system" style="font-size: 8px;">SYS</span>
+            </div>
+            <span style="font-size: 10px; color: var(--muted-fg);">optional</span>
+            <div class="toggle off" title="Disabled by genre: Fantasy"></div>
+            <div class="btn-icon"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11"/></svg></div>
+          </div>
+
+          <!-- User attributes section -->
+          <div style="padding: 6px 14px; background: rgba(24,20,18,0.3); margin-top: 4px;">
+            <span style="font-size: 10px; font-weight: 600; color: var(--primary); text-transform: uppercase; letter-spacing: 0.04em;">
+              <span class="user-dot" style="display: inline-block; vertical-align: middle; margin-right: 4px;"></span>
+              User Attributes
+            </span>
+          </div>
+
+          <!-- Power Level (user, active) -->
+          <div class="attr-row">
+            <svg class="drag-handle" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/></svg>
+            <div class="attr-name">
+              <span>Power Level</span>
+              <span class="attr-type">number</span>
+              <span class="badge badge-user" style="font-size: 8px;">USR</span>
+              <span class="badge badge-success" style="font-size: 8px;">Fantasy only</span>
+            </div>
+            <span style="font-size: 10px; color: var(--muted-fg);">optional</span>
+            <div class="toggle on"></div>
+            <div class="btn-icon"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></div>
+            <div class="btn-icon" style="color: var(--destructive);" title="Delete"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></div>
+          </div>
+
+          <!-- Magic Skills (user, active) -->
+          <div class="attr-row">
+            <svg class="drag-handle" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/></svg>
+            <div class="attr-name">
+              <span>Magic Skills</span>
+              <span class="attr-type">list&lt;text&gt;</span>
+              <span class="badge badge-user" style="font-size: 8px;">USR</span>
+              <span class="badge badge-success" style="font-size: 8px;">Fantasy only</span>
+            </div>
+            <span style="font-size: 10px; color: var(--muted-fg);">optional</span>
+            <div class="toggle on"></div>
+            <div class="btn-icon"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5"/></svg></div>
+            <div class="btn-icon" style="color: var(--destructive);"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></div>
+          </div>
+
+          <!-- Combat Style (user) -->
+          <div class="attr-row">
+            <svg class="drag-handle" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/></svg>
+            <div class="attr-name">
+              <span>Combat Style</span>
+              <span class="attr-type">text</span>
+              <span class="badge badge-user" style="font-size: 8px;">USR</span>
+            </div>
+            <span style="font-size: 10px; color: var(--muted-fg);">optional</span>
+            <div class="toggle on"></div>
+            <div class="btn-icon"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5"/></svg></div>
+            <div class="btn-icon" style="color: var(--destructive);"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142"/></svg></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 2: GENRE GROUP EDITOR + ACTIVATION MATRIX
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">2. Genre Group Editor — control which kinds/attributes are active per genre</div>
+
+    <div style="display: grid; grid-template-columns: 280px 1fr; gap: 16px;">
+
+      <!-- Genre list -->
+      <div class="panel">
+        <div class="panel-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="panel-title">Genre Groups</span>
+            <span class="badge badge-muted">4 genres</span>
+          </div>
+          <button class="btn btn-primary btn-sm">
+            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+            New
+          </button>
+        </div>
+        <div>
+          <div class="list-item selected">
+            <div style="width: 8px; height: 8px; border-radius: 2px; background: #8b5cf6; flex-shrink: 0;"></div>
+            <div style="flex: 1;">
+              <span style="font-size: 13px; font-weight: 500;">Fantasy</span>
+              <div style="font-size: 10px; color: var(--muted-fg); margin-top: 1px;">8 kinds · 3 custom attrs active</div>
+            </div>
+            <span class="badge badge-success" style="font-size: 9px;">Active</span>
+          </div>
+          <div class="list-item">
+            <div style="width: 8px; height: 8px; border-radius: 2px; background: #ec4899; flex-shrink: 0;"></div>
+            <div style="flex: 1;">
+              <span style="font-size: 13px; font-weight: 500;">Drama</span>
+              <div style="font-size: 10px; color: var(--muted-fg); margin-top: 1px;">6 kinds · no magic attrs</div>
+            </div>
+            <span class="badge badge-muted" style="font-size: 9px;">Inactive</span>
+          </div>
+          <div class="list-item">
+            <div style="width: 8px; height: 8px; border-radius: 2px; background: #06b6d4; flex-shrink: 0;"></div>
+            <div style="flex: 1;">
+              <span style="font-size: 13px; font-weight: 500;">Sci-Fi</span>
+              <div style="font-size: 10px; color: var(--muted-fg); margin-top: 1px;">7 kinds · tech attrs active</div>
+            </div>
+            <span class="badge badge-muted" style="font-size: 9px;">Inactive</span>
+          </div>
+          <div class="list-item">
+            <div style="width: 8px; height: 8px; border-radius: 2px; background: #f97316; flex-shrink: 0;"></div>
+            <div style="flex: 1;">
+              <span style="font-size: 13px; font-weight: 500;">Historical</span>
+              <div style="font-size: 10px; color: var(--muted-fg); margin-top: 1px;">6 kinds · era attrs active</div>
+            </div>
+            <span class="badge badge-muted" style="font-size: 9px;">Inactive</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Genre activation matrix -->
+      <div class="panel">
+        <div class="panel-header">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 10px; height: 10px; border-radius: 2px; background: #8b5cf6;"></div>
+            <span class="panel-title">Fantasy — Attribute Activation</span>
+            <span class="badge badge-success">Active Genre</span>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn btn-outline btn-sm">
+              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5"/></svg>
+              Edit Genre
+            </button>
+            <button class="btn btn-danger btn-sm">Delete</button>
+          </div>
+        </div>
+
+        <!-- Info bar -->
+        <div style="padding: 8px 14px; border-bottom: 1px solid var(--border); background: rgba(139,92,246,0.04); display: flex; align-items: center; gap: 16px; font-size: 11px;">
+          <span style="color: var(--muted-fg);">When this genre is active, the following attributes are enabled/disabled for each kind.</span>
+        </div>
+
+        <!-- Matrix table -->
+        <div style="overflow-x: auto;">
+          <table class="genre-matrix">
+            <thead>
+              <tr>
+                <th style="width: 200px;">Attribute</th>
+                <th style="width: 60px;">Type</th>
+                <th style="width: 70px;">Origin</th>
+                <th style="width: 90px;">
+                  <div>Fantasy</div>
+                  <div style="font-size: 9px; opacity: 0.6; font-weight: 400;">active</div>
+                </th>
+                <th style="width: 90px;">
+                  <div>Drama</div>
+                  <div style="font-size: 9px; opacity: 0.6; font-weight: 400;">compare</div>
+                </th>
+                <th style="width: 90px;">
+                  <div>Sci-Fi</div>
+                  <div style="font-size: 9px; opacity: 0.6; font-weight: 400;">compare</div>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Character section -->
+              <tr class="section-row">
+                <td colspan="6" style="padding: 8px 14px;">
+                  <span style="display: inline-flex; align-items: center; gap: 6px;">
+                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                    Character
+                  </span>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding-left: 28px;">Name</td>
+                <td><span class="attr-type">text</span></td>
+                <td><span class="badge badge-system" style="font-size: 8px;">SYS</span></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+              </tr>
+              <tr>
+                <td style="padding-left: 28px;">Aliases</td>
+                <td><span class="attr-type">list</span></td>
+                <td><span class="badge badge-system" style="font-size: 8px;">SYS</span></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+              </tr>
+              <tr>
+                <td style="padding-left: 28px;">Description</td>
+                <td><span class="attr-type">long_text</span></td>
+                <td><span class="badge badge-system" style="font-size: 8px;">SYS</span></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+              </tr>
+              <tr>
+                <td style="padding-left: 28px; color: var(--primary);">Power Level</td>
+                <td><span class="attr-type">number</span></td>
+                <td><span class="badge badge-user" style="font-size: 8px;">USR</span></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle off" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle off" style="margin: 0 auto;"></div></td>
+              </tr>
+              <tr>
+                <td style="padding-left: 28px; color: var(--primary);">Magic Skills</td>
+                <td><span class="attr-type">list</span></td>
+                <td><span class="badge badge-user" style="font-size: 8px;">USR</span></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle off" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+              </tr>
+              <tr>
+                <td style="padding-left: 28px; color: var(--primary);">Combat Style</td>
+                <td><span class="attr-type">text</span></td>
+                <td><span class="badge badge-user" style="font-size: 8px;">USR</span></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle off" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+              </tr>
+              <tr>
+                <td style="padding-left: 28px; opacity: 0.5;">Age</td>
+                <td><span class="attr-type">text</span></td>
+                <td><span class="badge badge-system" style="font-size: 8px;">SYS</span></td>
+                <td><div class="toggle off" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+              </tr>
+
+              <!-- Location section -->
+              <tr class="section-row">
+                <td colspan="6" style="padding: 8px 14px;">
+                  <span style="display: inline-flex; align-items: center; gap: 6px;">
+                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    Location
+                  </span>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding-left: 28px;">Name</td>
+                <td><span class="attr-type">text</span></td>
+                <td><span class="badge badge-system" style="font-size: 8px;">SYS</span></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+              </tr>
+              <tr>
+                <td style="padding-left: 28px;">Description</td>
+                <td><span class="attr-type">long_text</span></td>
+                <td><span class="badge badge-system" style="font-size: 8px;">SYS</span></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+              </tr>
+              <tr>
+                <td style="padding-left: 28px; color: var(--primary);">Mana Density</td>
+                <td><span class="attr-type">number</span></td>
+                <td><span class="badge badge-user" style="font-size: 8px;">USR</span></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle off" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle off" style="margin: 0 auto;"></div></td>
+              </tr>
+
+              <!-- Magic System section -->
+              <tr class="section-row">
+                <td colspan="6" style="padding: 8px 14px;">
+                  <span style="display: inline-flex; align-items: center; gap: 6px;">
+                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    Magic System
+                    <span class="badge badge-user" style="font-size: 8px;">Custom Kind</span>
+                  </span>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding-left: 28px;">Name</td>
+                <td><span class="attr-type">text</span></td>
+                <td><span class="badge badge-user" style="font-size: 8px;">USR</span></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle off" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+              </tr>
+              <tr>
+                <td style="padding-left: 28px;">Rules</td>
+                <td><span class="attr-type">long_text</span></td>
+                <td><span class="badge badge-user" style="font-size: 8px;">USR</span></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle off" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+              </tr>
+              <tr>
+                <td style="padding-left: 28px;">Cost / Mana</td>
+                <td><span class="attr-type">text</span></td>
+                <td><span class="badge badge-user" style="font-size: 8px;">USR</span></td>
+                <td><div class="toggle on" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle off" style="margin: 0 auto;"></div></td>
+                <td><div class="toggle off" style="margin: 0 auto;"></div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 3: GLOSSARY ENTITY EDITOR
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">3. Glossary Entity Editor — editing a specific character with active genre attributes</div>
+
+    <div class="panel" style="max-width: 800px;">
+      <div class="panel-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span class="panel-title font-serif" style="font-size: 15px;">Aldric — The Hero</span>
+          <span class="badge badge-system">Character</span>
+          <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: #8b5cf6;">
+            <div style="width: 6px; height: 6px; border-radius: 2px; background: #8b5cf6;"></div>
+            Fantasy genre
+          </span>
+        </div>
+        <div style="display: flex; gap: 6px;">
+          <span class="badge badge-success">Active</span>
+          <button class="btn btn-outline btn-sm">
+            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+            Close
+          </button>
+        </div>
+      </div>
+
+      <div style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+        <!-- Name (system attr) -->
+        <div>
+          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+            <label style="font-size: 12px; font-weight: 500;">Name</label>
+            <span class="badge badge-system" style="font-size: 8px;">SYS</span>
+            <span style="font-size: 10px; color: var(--destructive);">*required</span>
+          </div>
+          <input class="input-field" value="Aldric" />
+        </div>
+
+        <!-- Aliases (system attr) -->
+        <div>
+          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+            <label style="font-size: 12px; font-weight: 500;">Aliases</label>
+            <span class="badge badge-system" style="font-size: 8px;">SYS</span>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; background: var(--background); border: 1px solid var(--border); border-radius: 6px;">
+            <span style="display: inline-flex; align-items: center; gap: 4px; background: var(--secondary); padding: 3px 8px; border-radius: 4px; font-size: 12px;">
+              The Hero
+              <button class="btn-icon" style="width: 16px; height: 16px;"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
+            </span>
+            <span style="display: inline-flex; align-items: center; gap: 4px; background: var(--secondary); padding: 3px 8px; border-radius: 4px; font-size: 12px;">
+              Ser Aldric of Brighthollow
+              <button class="btn-icon" style="width: 16px; height: 16px;"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
+            </span>
+            <span style="display: inline-flex; align-items: center; gap: 4px; background: var(--secondary); padding: 3px 8px; border-radius: 4px; font-size: 12px;">
+              勇者アルドリック
+              <button class="btn-icon" style="width: 16px; height: 16px;"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
+            </span>
+            <input type="text" placeholder="+ Add alias" style="background: transparent; border: none; color: var(--foreground); font-size: 12px; outline: none; width: 100px; padding: 3px 4px;" />
+          </div>
+        </div>
+
+        <!-- Description (system attr, modified label) -->
+        <div>
+          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+            <label style="font-size: 12px; font-weight: 500;">Bio / Description</label>
+            <span class="badge badge-system" style="font-size: 8px;">SYS</span>
+            <span class="attr-modified">label modified</span>
+          </div>
+          <textarea class="input-field" rows="3" style="resize: vertical;">The chosen hero of the kingdom of Brighthollow. Graduated from both the Royal Academy of Heroes and the Clerk's Guild. Known for his bureaucratic approach to heroism and his legendary sword "Precedent."</textarea>
+        </div>
+
+        <!-- Two-column for shorter fields -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <!-- Power Level (user attr, Fantasy-only) -->
+          <div>
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+              <label style="font-size: 12px; font-weight: 500;">Power Level</label>
+              <span class="badge badge-user" style="font-size: 8px;">USR</span>
+              <span class="badge badge-success" style="font-size: 8px;">Fantasy</span>
+            </div>
+            <input class="input-field" type="number" value="85" />
+          </div>
+
+          <!-- Combat Style (user attr) -->
+          <div>
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+              <label style="font-size: 12px; font-weight: 500;">Combat Style</label>
+              <span class="badge badge-user" style="font-size: 8px;">USR</span>
+            </div>
+            <input class="input-field" value="Sword + bureaucratic intimidation" />
+          </div>
+        </div>
+
+        <!-- Magic Skills (user attr, Fantasy-only) -->
+        <div>
+          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+            <label style="font-size: 12px; font-weight: 500;">Magic Skills</label>
+            <span class="badge badge-user" style="font-size: 8px;">USR</span>
+            <span class="badge badge-success" style="font-size: 8px;">Fantasy</span>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; background: var(--background); border: 1px solid var(--border); border-radius: 6px;">
+            <span style="display: inline-flex; align-items: center; gap: 4px; background: rgba(139,92,246,0.12); color: #a78bfa; padding: 3px 8px; border-radius: 4px; font-size: 12px;">
+              Holy Slash
+              <button class="btn-icon" style="width: 16px; height: 16px; color: #a78bfa;"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
+            </span>
+            <span style="display: inline-flex; align-items: center; gap: 4px; background: rgba(139,92,246,0.12); color: #a78bfa; padding: 3px 8px; border-radius: 4px; font-size: 12px;">
+              Legal Barrier (shield)
+              <button class="btn-icon" style="width: 16px; height: 16px; color: #a78bfa;"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
+            </span>
+            <span style="display: inline-flex; align-items: center; gap: 4px; background: rgba(139,92,246,0.12); color: #a78bfa; padding: 3px 8px; border-radius: 4px; font-size: 12px;">
+              Subpoena Summon
+              <button class="btn-icon" style="width: 16px; height: 16px; color: #a78bfa;"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
+            </span>
+            <input type="text" placeholder="+ Add skill" style="background: transparent; border: none; color: var(--foreground); font-size: 12px; outline: none; width: 100px; padding: 3px 4px;" />
+          </div>
+        </div>
+
+        <!-- Relationships (system attr) -->
+        <div>
+          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+            <label style="font-size: 12px; font-weight: 500;">Relationships</label>
+            <span class="badge badge-system" style="font-size: 8px;">SYS</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--background); border: 1px solid var(--border); border-radius: 6px;">
+              <span style="font-size: 12px; font-weight: 500;">Demon Lord</span>
+              <span style="font-size: 10px; color: var(--muted-fg);">—</span>
+              <span style="font-size: 11px; color: var(--accent);">Rival / Reluctant friend</span>
+              <div style="flex: 1;"></div>
+              <button class="btn-icon" style="width: 20px; height: 20px;"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--background); border: 1px solid var(--border); border-radius: 6px;">
+              <span style="font-size: 12px; font-weight: 500;">Chamberlain</span>
+              <span style="font-size: 10px; color: var(--muted-fg);">—</span>
+              <span style="font-size: 11px; color: var(--accent);">Acquaintance</span>
+              <div style="flex: 1;"></div>
+              <button class="btn-icon" style="width: 20px; height: 20px;"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
+            </div>
+            <button class="btn btn-ghost btn-sm" style="align-self: flex-start;">
+              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+              Add Relationship
+            </button>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 12px; border-top: 1px solid var(--border);">
+          <button class="btn btn-danger btn-sm">
+            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            Move to Trash
+          </button>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-outline">Cancel</button>
+            <button class="btn btn-primary">
+              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+              Save Entity
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div style="padding: 20px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); margin-top: 32px;">
+    <div style="font-size: 12px; font-weight: 600; margin-bottom: 12px;">Visual Legend</div>
+    <div style="display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px;">
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span class="badge badge-system">SYS</span>
+        <span style="color: var(--muted-fg);">System (built-in, revertible)</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span class="badge badge-user">USR</span>
+        <span style="color: var(--muted-fg);">User (custom, deletable)</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span class="attr-modified" style="font-size: 11px;">modified</span>
+        <span style="color: var(--muted-fg);">System default was changed by user</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <button class="btn-revert" style="font-size: 10px;">
+          <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 10h10a5 5 0 010 10H9m-6-10l4-4m-4 4l4 4"/></svg>
+          Revert
+        </button>
+        <span style="color: var(--muted-fg);">Reset modified item to system default</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <div class="toggle on" style="width: 28px; height: 16px;"></div>
+        <span style="color: var(--muted-fg);">Active in this genre</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <div class="toggle off" style="width: 28px; height: 16px;"></div>
+        <span style="color: var(--muted-fg);">Disabled in this genre</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

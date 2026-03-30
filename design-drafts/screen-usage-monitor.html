@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — AI Usage Monitor</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --input: #242019; --ring: #d4952a;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --secondary-fg: #e0d8cc;
+      --muted: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a;
+      --destructive: #dc4e4e; --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+      --system: #7c6cd4;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 5px; height: 5px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; font-family: inherit; }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+    .btn-outline:hover { background: var(--secondary); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-sm { padding: 3px 8px; font-size: 11px; border-radius: 4px; }
+    .btn-icon { width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 5px; border: none; cursor: pointer; background: transparent; color: var(--muted-fg); transition: all 120ms; }
+    .btn-icon:hover { background: var(--secondary); color: var(--foreground); }
+
+    .input-field { background: var(--background); border: 1px solid var(--border); color: var(--foreground); border-radius: 6px; padding: 6px 10px; font-size: 12px; font-family: inherit; transition: border-color 150ms; }
+    .input-field:focus { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px rgba(212,149,42,0.15); }
+    .input-field::placeholder { color: rgba(158,148,136,0.4); }
+
+    .badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 500; }
+    .badge-success { background: rgba(61,186,106,0.12); color: #5dd88a; }
+    .badge-danger { background: rgba(220,78,78,0.12); color: #e87272; }
+    .badge-warning { background: rgba(232,168,50,0.12); color: #f0be54; }
+    .badge-info { background: rgba(84,150,232,0.12); color: #7ab4f0; }
+    .badge-muted { background: var(--secondary); color: var(--muted-fg); }
+
+    /* Nav sidebar */
+    .sidebar { width: 240px; flex-shrink: 0; background: var(--background); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+    .sidebar-link { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; font-size: 13px; color: var(--muted-fg); text-decoration: none; transition: all 120ms; }
+    .sidebar-link:hover { background: var(--secondary); }
+    .sidebar-link.active { background: var(--primary-muted); color: var(--primary); }
+
+    /* Stat cards */
+    .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; transition: all 150ms; }
+    .stat-card:hover { border-color: var(--border-hover); }
+    .stat-label { font-size: 11px; color: var(--muted-fg); margin-bottom: 6px; }
+    .stat-value { font-size: 22px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    .stat-change { font-size: 10px; margin-top: 4px; display: flex; align-items: center; gap: 3px; }
+    .stat-up { color: var(--destructive); }
+    .stat-down { color: var(--success); }
+
+    /* Mini bar chart */
+    .bar-chart { display: flex; align-items: flex-end; gap: 2px; height: 48px; }
+    .bar { flex: 1; border-radius: 2px 2px 0 0; transition: all 150ms; min-width: 4px; cursor: pointer; position: relative; }
+    .bar:hover { filter: brightness(1.3); }
+    .bar-tooltip { display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: var(--background); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 10px; white-space: nowrap; z-index: 10; }
+    .bar:hover .bar-tooltip { display: block; }
+
+    /* Table */
+    .table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .table th { padding: 8px 12px; text-align: left; font-weight: 500; color: var(--muted-fg); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--border); background: rgba(24,20,18,0.4); cursor: pointer; user-select: none; }
+    .table th:hover { color: var(--foreground); }
+    .table th .sort-icon { opacity: 0; margin-left: 2px; transition: opacity 120ms; }
+    .table th:hover .sort-icon { opacity: 0.5; }
+    .table th.sorted { color: var(--primary); }
+    .table th.sorted .sort-icon { opacity: 1; color: var(--primary); }
+    .table td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .table tr { transition: background 100ms; }
+    .table tr:hover { background: var(--card-hover); }
+    .table tr.expanded { background: var(--primary-muted); }
+
+    /* Expand row */
+    .expand-content { background: var(--background); border: 1px solid var(--border); border-radius: 6px; margin: 8px 0; }
+    .expand-section { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+    .expand-section:last-child { border-bottom: none; }
+    .expand-label { font-size: 10px; font-weight: 600; color: var(--muted-fg); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+    .expand-code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 10px 12px; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.6; overflow-x: auto; white-space: pre-wrap; word-break: break-all; color: var(--secondary-fg); max-height: 200px; overflow-y: auto; }
+
+    /* Model color coding */
+    .model-claude { color: #d4a574; }
+    .model-gpt { color: #74c0a4; }
+    .model-gemini { color: #7ab4f0; }
+
+    /* Purpose badges */
+    .purpose-translation { background: rgba(61,186,106,0.1); color: #5dd88a; border: 1px solid rgba(61,186,106,0.15); }
+    .purpose-chat { background: rgba(61,166,146,0.1); color: var(--accent); border: 1px solid rgba(61,166,146,0.15); }
+    .purpose-chunk { background: rgba(124,108,212,0.1); color: #a78bfa; border: 1px solid rgba(124,108,212,0.15); }
+
+    /* Filter chips */
+    .filter-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; font-size: 11px; border: 1px solid var(--border); color: var(--muted-fg); cursor: pointer; transition: all 120ms; }
+    .filter-chip:hover { border-color: var(--border-hover); color: var(--foreground); }
+    .filter-chip.active { border-color: var(--primary); background: var(--primary-muted); color: var(--primary); }
+    .filter-chip .close { width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: rgba(232,168,50,0.2); }
+
+    /* Pagination */
+    .page-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 4px; border: 1px solid var(--border); font-size: 11px; cursor: pointer; background: transparent; color: var(--muted-fg); transition: all 120ms; }
+    .page-btn:hover { background: var(--secondary); color: var(--foreground); }
+    .page-btn.active { background: var(--primary-muted); border-color: var(--primary); color: var(--primary); }
+    .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    /* Tabs */
+    .tab { padding: 8px 14px; font-size: 12px; font-weight: 500; border-bottom: 2px solid transparent; color: var(--muted-fg); cursor: pointer; transition: all 120ms; background: none; border-top: none; border-left: none; border-right: none; }
+    .tab:hover { color: var(--foreground); }
+    .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+    .panel { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--card); }
+  </style>
+</head>
+<body>
+
+<div style="display: flex; min-height: 100vh;">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 16px 16px 12px;">
+      <div style="width: 28px; height: 28px; border-radius: 6px; background: var(--primary); color: var(--primary-fg); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;">L</div>
+      <span class="font-serif" style="font-size: 14px; font-weight: 600;">LoreWeave</span>
+    </div>
+    <nav style="padding: 0 8px; display: flex; flex-direction: column; gap: 2px;">
+      <p style="padding: 12px 12px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg);">Main</p>
+      <a href="#" class="sidebar-link"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>Workspace</a>
+      <a href="#" class="sidebar-link"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>Chat</a>
+      <p style="padding: 16px 12px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg);">Manage</p>
+      <a href="#" class="sidebar-link active"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>Usage</a>
+      <a href="#" class="sidebar-link"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0"/><circle cx="12" cy="12" r="3"/></svg>Settings</a>
+    </nav>
+    <div style="flex: 1;"></div>
+    <div style="border-top: 1px solid var(--border); padding: 12px;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 6px;">
+        <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--primary-muted); color: var(--primary); font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center;">NS</div>
+        <p style="font-size: 12px; font-weight: 500;">NeneScarlet</p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main style="flex: 1; overflow-y: auto;">
+    <div style="max-width: 1200px; margin: 0 auto; padding: 24px 32px;">
+
+      <!-- Page header -->
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px;">
+        <div>
+          <h1 class="font-serif" style="font-size: 20px; font-weight: 600;">AI Usage Monitor</h1>
+          <p style="font-size: 12px; color: var(--muted-fg); margin-top: 2px;">Track token usage, costs, and performance across all AI operations.</p>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <!-- Date range selector -->
+          <div style="display: flex; align-items: center; gap: 4px; background: var(--secondary); border-radius: 6px; padding: 2px;">
+            <button class="btn btn-sm btn-ghost">24h</button>
+            <button class="btn btn-sm" style="background: var(--primary-muted); color: var(--primary); border-radius: 4px;">7d</button>
+            <button class="btn btn-sm btn-ghost">30d</button>
+            <button class="btn btn-sm btn-ghost">90d</button>
+          </div>
+          <button class="btn btn-outline btn-sm">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            Export CSV
+          </button>
+        </div>
+      </div>
+
+      <!-- ═══ STAT CARDS ═══ -->
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px;">
+
+        <div class="stat-card">
+          <div class="stat-label">Total Tokens (7d)</div>
+          <div class="stat-value" style="color: var(--primary);">1.24M</div>
+          <div class="stat-change stat-up">
+            <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 15l7-7 7 7"/></svg>
+            +18% vs last week
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">Estimated Cost (7d)</div>
+          <div class="stat-value" style="color: var(--foreground);">$4.82</div>
+          <div class="stat-change stat-down">
+            <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>
+            -7% vs last week
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">API Calls (7d)</div>
+          <div class="stat-value" style="color: var(--accent);">342</div>
+          <div class="stat-change" style="color: var(--muted-fg);">
+            avg 49/day
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">Error Rate (7d)</div>
+          <div class="stat-value" style="color: var(--success);">1.2%</div>
+          <div class="stat-change stat-down">
+            <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>
+            -3.1% vs last week
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ BREAKDOWN CARDS ═══ -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px;">
+
+        <!-- By Model -->
+        <div class="panel">
+          <div style="padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 13px; font-weight: 600;">Tokens by Model</span>
+            <span style="font-size: 10px; color: var(--muted-fg);">Last 7 days</span>
+          </div>
+          <div style="padding: 16px;">
+            <!-- Model bars -->
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="model-claude" style="font-size: 12px; width: 140px; display: flex; align-items: center; gap: 6px;">
+                  <span style="width: 8px; height: 8px; border-radius: 2px; background: #d4a574;"></span>
+                  Claude Sonnet 4.6
+                </span>
+                <div style="flex: 1; height: 20px; background: var(--secondary); border-radius: 3px; overflow: hidden;">
+                  <div style="width: 62%; height: 100%; background: linear-gradient(90deg, #d4a574, #c89460); border-radius: 3px;"></div>
+                </div>
+                <span class="font-mono" style="font-size: 11px; color: var(--muted-fg); width: 80px; text-align: right;">768K</span>
+                <span class="font-mono" style="font-size: 10px; color: var(--muted-fg); width: 50px; text-align: right;">$3.12</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="model-gpt" style="font-size: 12px; width: 140px; display: flex; align-items: center; gap: 6px;">
+                  <span style="width: 8px; height: 8px; border-radius: 2px; background: #74c0a4;"></span>
+                  GPT-4o
+                </span>
+                <div style="flex: 1; height: 20px; background: var(--secondary); border-radius: 3px; overflow: hidden;">
+                  <div style="width: 28%; height: 100%; background: linear-gradient(90deg, #74c0a4, #5aaa8a); border-radius: 3px;"></div>
+                </div>
+                <span class="font-mono" style="font-size: 11px; color: var(--muted-fg); width: 80px; text-align: right;">346K</span>
+                <span class="font-mono" style="font-size: 10px; color: var(--muted-fg); width: 50px; text-align: right;">$1.38</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="model-gemini" style="font-size: 12px; width: 140px; display: flex; align-items: center; gap: 6px;">
+                  <span style="width: 8px; height: 8px; border-radius: 2px; background: #7ab4f0;"></span>
+                  Gemini 2.5 Flash
+                </span>
+                <div style="flex: 1; height: 20px; background: var(--secondary); border-radius: 3px; overflow: hidden;">
+                  <div style="width: 10%; height: 100%; background: linear-gradient(90deg, #7ab4f0, #5a9ad0); border-radius: 3px;"></div>
+                </div>
+                <span class="font-mono" style="font-size: 11px; color: var(--muted-fg); width: 80px; text-align: right;">126K</span>
+                <span class="font-mono" style="font-size: 10px; color: var(--muted-fg); width: 50px; text-align: right;">$0.32</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- By Purpose -->
+        <div class="panel">
+          <div style="padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 13px; font-weight: 600;">Tokens by Purpose</span>
+            <span style="font-size: 10px; color: var(--muted-fg);">Last 7 days</span>
+          </div>
+          <div style="padding: 16px;">
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 12px; width: 120px; display: flex; align-items: center; gap: 6px;">
+                  <span style="width: 8px; height: 8px; border-radius: 2px; background: var(--success);"></span>
+                  Translation
+                </span>
+                <div style="flex: 1; height: 20px; background: var(--secondary); border-radius: 3px; overflow: hidden;">
+                  <div style="width: 55%; height: 100%; background: var(--success); border-radius: 3px; opacity: 0.7;"></div>
+                </div>
+                <span class="font-mono" style="font-size: 11px; color: var(--muted-fg); width: 80px; text-align: right;">682K</span>
+                <span style="font-size: 10px; color: var(--muted-fg); width: 50px; text-align: right;">198 calls</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 12px; width: 120px; display: flex; align-items: center; gap: 6px;">
+                  <span style="width: 8px; height: 8px; border-radius: 2px; background: var(--accent);"></span>
+                  Chat
+                </span>
+                <div style="flex: 1; height: 20px; background: var(--secondary); border-radius: 3px; overflow: hidden;">
+                  <div style="width: 35%; height: 100%; background: var(--accent); border-radius: 3px; opacity: 0.7;"></div>
+                </div>
+                <span class="font-mono" style="font-size: 11px; color: var(--muted-fg); width: 80px; text-align: right;">434K</span>
+                <span style="font-size: 10px; color: var(--muted-fg); width: 50px; text-align: right;">112 calls</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 12px; width: 120px; display: flex; align-items: center; gap: 6px;">
+                  <span style="width: 8px; height: 8px; border-radius: 2px; background: #a78bfa;"></span>
+                  Chunk Edit
+                </span>
+                <div style="flex: 1; height: 20px; background: var(--secondary); border-radius: 3px; overflow: hidden;">
+                  <div style="width: 10%; height: 100%; background: #a78bfa; border-radius: 3px; opacity: 0.7;"></div>
+                </div>
+                <span class="font-mono" style="font-size: 11px; color: var(--muted-fg); width: 80px; text-align: right;">124K</span>
+                <span style="font-size: 10px; color: var(--muted-fg); width: 50px; text-align: right;">32 calls</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ DAILY CHART ═══ -->
+      <div class="panel" style="margin-bottom: 24px;">
+        <div style="padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-size: 13px; font-weight: 600;">Daily Token Usage</span>
+          <div style="display: flex; gap: 12px; font-size: 10px;">
+            <span style="display: flex; align-items: center; gap: 4px; color: var(--muted-fg);"><span style="width: 8px; height: 3px; border-radius: 1px; background: var(--success);"></span>Input</span>
+            <span style="display: flex; align-items: center; gap: 4px; color: var(--muted-fg);"><span style="width: 8px; height: 3px; border-radius: 1px; background: var(--primary);"></span>Output</span>
+          </div>
+        </div>
+        <div style="padding: 20px 16px 12px;">
+          <div class="bar-chart">
+            <!-- Each day is two stacked bars (input + output) -->
+            <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0;">
+              <div class="bar" style="width: 100%; height: 12px; background: var(--primary); border-radius: 2px 2px 0 0;"><div class="bar-tooltip">Mon: 28K out</div></div>
+              <div class="bar" style="width: 100%; height: 20px; background: var(--success); border-radius: 0;"><div class="bar-tooltip">Mon: 45K in</div></div>
+              <span style="font-size: 9px; color: var(--muted-fg); margin-top: 4px;">Mon</span>
+            </div>
+            <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0;">
+              <div class="bar" style="width: 100%; height: 18px; background: var(--primary);"></div>
+              <div class="bar" style="width: 100%; height: 30px; background: var(--success);"></div>
+              <span style="font-size: 9px; color: var(--muted-fg); margin-top: 4px;">Tue</span>
+            </div>
+            <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0;">
+              <div class="bar" style="width: 100%; height: 8px; background: var(--primary);"></div>
+              <div class="bar" style="width: 100%; height: 14px; background: var(--success);"></div>
+              <span style="font-size: 9px; color: var(--muted-fg); margin-top: 4px;">Wed</span>
+            </div>
+            <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0;">
+              <div class="bar" style="width: 100%; height: 22px; background: var(--primary);"></div>
+              <div class="bar" style="width: 100%; height: 38px; background: var(--success);"></div>
+              <span style="font-size: 9px; color: var(--muted-fg); margin-top: 4px;">Thu</span>
+            </div>
+            <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0;">
+              <div class="bar" style="width: 100%; height: 30px; background: var(--primary);"></div>
+              <div class="bar" style="width: 100%; height: 48px; background: var(--success);"></div>
+              <span style="font-size: 9px; color: var(--muted-fg); margin-top: 4px;">Fri</span>
+            </div>
+            <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0;">
+              <div class="bar" style="width: 100%; height: 14px; background: var(--primary);"></div>
+              <div class="bar" style="width: 100%; height: 22px; background: var(--success);"></div>
+              <span style="font-size: 9px; color: var(--muted-fg); margin-top: 4px;">Sat</span>
+            </div>
+            <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0;">
+              <div class="bar" style="width: 100%; height: 10px; background: var(--primary); opacity: 0.5;"></div>
+              <div class="bar" style="width: 100%; height: 16px; background: var(--success); opacity: 0.5;"></div>
+              <span style="font-size: 9px; color: var(--primary); margin-top: 4px; font-weight: 500;">Today</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ LOG TABLE ═══ -->
+      <div class="panel">
+        <div style="padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 13px; font-weight: 600;">Request Log</span>
+            <span class="badge badge-muted">342 requests</span>
+          </div>
+        </div>
+
+        <!-- Filters bar -->
+        <div style="padding: 10px 16px; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+          <!-- Search -->
+          <div style="position: relative; flex: 1; min-width: 200px; max-width: 280px;">
+            <svg style="position: absolute; left: 8px; top: 50%; transform: translateY(-50%); color: var(--muted-fg);" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <input class="input-field" placeholder="Search by book, chapter, content..." style="width: 100%; padding-left: 28px; font-size: 11px; height: 30px;" />
+          </div>
+
+          <!-- Filter chips -->
+          <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+            <select class="input-field" style="height: 30px; font-size: 11px; padding: 0 8px; min-width: 130px;">
+              <option>All Models</option>
+              <option>Claude Sonnet 4.6</option>
+              <option>GPT-4o</option>
+              <option>Gemini 2.5 Flash</option>
+            </select>
+            <select class="input-field" style="height: 30px; font-size: 11px; padding: 0 8px; min-width: 120px;">
+              <option>All Purposes</option>
+              <option>Translation</option>
+              <option>Chat</option>
+              <option>Chunk Edit</option>
+            </select>
+            <select class="input-field" style="height: 30px; font-size: 11px; padding: 0 8px; min-width: 100px;">
+              <option>All Status</option>
+              <option>Success</option>
+              <option>Failed</option>
+              <option>Timeout</option>
+            </select>
+            <select class="input-field" style="height: 30px; font-size: 11px; padding: 0 8px; min-width: 120px;">
+              <option>All Books</option>
+              <option>The Demon Lord's Duty</option>
+              <option>Slime Chef</option>
+              <option>Moonlit Cultivation</option>
+            </select>
+          </div>
+
+          <!-- Active filter chips -->
+          <div style="display: flex; gap: 4px;">
+            <span class="filter-chip active">
+              Claude Sonnet 4.6
+              <span class="close"><svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></span>
+            </span>
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div style="overflow-x: auto;">
+          <table class="table">
+            <thead>
+              <tr>
+                <th style="width: 140px;" class="sorted">
+                  Time
+                  <svg class="sort-icon" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>
+                </th>
+                <th style="width: 80px;">Status</th>
+                <th style="width: 80px;">Purpose</th>
+                <th>Context</th>
+                <th style="width: 130px;">Model</th>
+                <th style="width: 80px; text-align: right;">
+                  Input
+                  <svg class="sort-icon" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 15l7-7 7 7"/></svg>
+                </th>
+                <th style="width: 80px; text-align: right;">Output</th>
+                <th style="width: 70px; text-align: right;">Cost</th>
+                <th style="width: 70px; text-align: right;">Latency</th>
+                <th style="width: 36px;"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Row 1: Expanded -->
+              <tr class="expanded" style="cursor: pointer;">
+                <td class="font-mono" style="font-size: 11px; color: var(--muted-fg);">Mar 30, 14:23</td>
+                <td><span class="badge badge-success">200 OK</span></td>
+                <td><span class="badge purpose-translation" style="border-radius: 4px; font-size: 10px;">Translation</span></td>
+                <td>
+                  <span style="font-size: 12px;">The Demon Lord's Duty</span>
+                  <span style="color: var(--muted-fg); margin: 0 4px;">→</span>
+                  <span style="font-size: 11px; color: var(--muted-fg);">Ch.3</span>
+                  <span style="color: var(--muted-fg); margin: 0 4px;">→</span>
+                  <span style="font-size: 10px; color: var(--accent);">日本語 (ja) → English (en)</span>
+                </td>
+                <td><span class="model-claude" style="font-size: 11px;">Claude Sonnet 4.6</span></td>
+                <td class="font-mono" style="font-size: 11px; text-align: right;">2,847</td>
+                <td class="font-mono" style="font-size: 11px; text-align: right;">1,204</td>
+                <td class="font-mono" style="font-size: 11px; text-align: right; color: var(--muted-fg);">$0.016</td>
+                <td class="font-mono" style="font-size: 11px; text-align: right; color: var(--muted-fg);">3.2s</td>
+                <td>
+                  <div class="btn-icon" style="width: 20px; height: 20px; transform: rotate(180deg);">
+                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Expanded detail row -->
+              <tr>
+                <td colspan="10" style="padding: 0 12px 12px; background: rgba(232,168,50,0.02);">
+                  <div class="expand-content">
+                    <!-- Request info -->
+                    <div class="expand-section">
+                      <div style="display: flex; gap: 24px; font-size: 11px;">
+                        <div>
+                          <span style="color: var(--muted-fg);">Request ID:</span>
+                          <span class="font-mono" style="color: var(--muted-fg);">req_a3f8c91b</span>
+                        </div>
+                        <div>
+                          <span style="color: var(--muted-fg);">Provider:</span>
+                          <span>Anthropic</span>
+                        </div>
+                        <div>
+                          <span style="color: var(--muted-fg);">Model ID:</span>
+                          <span class="font-mono" style="color: var(--muted-fg);">claude-sonnet-4-6-20260301</span>
+                        </div>
+                        <div>
+                          <span style="color: var(--muted-fg);">Temperature:</span>
+                          <span class="font-mono">0.3</span>
+                        </div>
+                        <div>
+                          <span style="color: var(--muted-fg);">Max tokens:</span>
+                          <span class="font-mono">4096</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Input/Output tabs -->
+                    <div class="expand-section" style="padding-bottom: 0; border-bottom: none;">
+                      <div style="display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 0;">
+                        <button class="tab active">Input (System + User)</button>
+                        <button class="tab">Output</button>
+                        <button class="tab">Raw JSON</button>
+                      </div>
+                    </div>
+                    <div class="expand-section" style="padding-top: 8px;">
+                      <div class="expand-code">
+<span style="color: #a78bfa;">[system]</span>
+You are a professional Japanese-to-English translator for light novels.
+Maintain the original tone, character voice, and cultural nuances.
+Use the following glossary for consistent translation:
+- 魔王 → "Demon Lord" (not "Maou" or "Devil King")
+- 勇者 → "The Hero" (capitalize as title)
+- アルドリック → "Aldric"
+
+<span style="color: #7ab4f0;">[user]</span>
+Translate the following Japanese text to English:
+
+玉座の間は魔法の松明の静かな音を除いて沈黙していた。
+魔王は脚を組んで座り、隣国アエロリアとの最新の領土紛争を
+詳述した巻物を吟味していた。</div>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Row 2: Normal -->
+              <tr style="cursor: pointer;">
+                <td class="font-mono" style="font-size: 11px; color: var(--muted-fg);">Mar 30, 14:18</td>
+                <td><span class="badge badge-success">200 OK</span></td>
+                <td><span class="badge purpose-chat" style="border-radius: 4px; font-size: 10px;">Chat</span></td>
+                <td>
+                  <span style="font-size: 12px;">Character development — Aldric</span>
+                </td>
+                <td><span class="model-claude" style="font-size: 11px;">Claude Sonnet 4.6</span></td>
+                <td class="font-mono" style="font-size: 11px; text-align: right;">4,521</td>
+                <td class="font-mono" style="font-size: 11px; text-align: right;">892</td>
+                <td class="font-mono" style="font-size: 11px; text-align: right; color: var(--muted-fg);">$0.022</td>
+                <td class="font-mono" style="font-size: 11px; text-align: right; color: var(--muted-fg);">5.1s</td>
+                <td>
+                  <div class="btn-icon" style="width: 20px; height: 20px;">
+                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Row 3: Failed -->
+              <tr style="cursor: pointer;">
+                <td class="font-mono" style="font-size: 11px; color: var(--muted-fg);">Mar 30, 13:42</td>
+                <td><span class="badge badge-danger">502 Error</span></td>
+                <td><span class="badge purpose-translation" style="border-radius: 4px; font-size: 10px;">Translation</span></td>
+                <td>
+                  <span style="font-size: 12px;">Moonlit Cultivation</span>
+                  <span style="color: var(--muted-fg); margin: 0 4px;">→</span>
+                  <span style="font-size: 11px; color: var(--muted-fg);">Ch.12</span>
+                  <span style="color: var(--muted-fg); margin: 0 4px;">→</span>
+                  <span style="font-size: 10px; color: var(--destructive);">Provider timeout</span>
+                </td>
+                <td><span class="model-gpt" style="font-size: 11px;">GPT-4o</span></td>
+                <td class="font-mono" style="font-size: 11px; text-align: right;">6,120</td>
+                <td class="font-mono" style="font-size: 11px; text-align: right; color: var(--destructive);">0</td>
+                <td class="font-mono" style="font-size: 11px; text-align: right; color: var(--muted-fg);">$0.00</td>
+                <td class="font-mono" style="font-size: 11px; text-align: right; color: var(--destructive);">120s</td>
+                <td>
+                  <div class="btn-icon" style="width: 20px; height: 20px;">
+                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Row 4 -->
+              <tr style="cursor: pointer;">
+                <td class="font-mono" style="font-size: 11px; color: var(--muted-fg);">Mar 30, 13:15</td>
+                <td><span class="badge badge-success">200 OK</span></td>
+                <td><span class="badge purpose-chunk" style="border-radius: 4px; font-size: 10px;">Chunk Edit</span></td>
+                <td>
+                  <span style="font-size: 12px;">The Demon Lord's Duty</span>
+                  <span style="color: var(--muted-fg); margin: 0 4px;">→</span>
+                  <span style="font-size: 11px; color: var(--muted-fg);">Ch.3, Chunk #1</span>
+                </td>
+                <td><span class="model-claude" style="font-size: 11px;">Claude Sonnet 4.6</span></td>
+                <td class="font-mono" style="font-size: 11px; text-align: right;">1,842</td>
+                <td class="font-mono" style="font-size: 11px; text-align: right;">456</td>
+                <td class="font-mono" style="font-size: 11px; text-align: right; color: var(--muted-fg);">$0.009</td>
+                <td class="font-mono" style="font-size: 11px; text-align: right; color: var(--muted-fg);">2.8s</td>
+                <td>
+                  <div class="btn-icon" style="width: 20px; height: 20px;">
+                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Row 5 -->
+              <tr style="cursor: pointer;">
+                <td class="font-mono" style="font-size: 11px; color: var(--muted-fg);">Mar 30, 12:58</td>
+                <td><span class="badge badge-success">200 OK</span></td>
+                <td><span class="badge purpose-translation" style="border-radius: 4px; font-size: 10px;">Translation</span></td>
+                <td>
+                  <span style="font-size: 12px;">Slime Chef</span>
+                  <span style="color: var(--muted-fg); margin: 0 4px;">→</span>
+                  <span style="font-size: 11px; color: var(--muted-fg);">Ch.8 (batch: 5 chunks)</span>
+                  <span style="color: var(--muted-fg); margin: 0 4px;">→</span>
+                  <span style="font-size: 10px; color: var(--accent);">日本語 (ja) → Tiếng Việt (vi)</span>
+                </td>
+                <td><span class="model-gemini" style="font-size: 11px;">Gemini 2.5 Flash</span></td>
+                <td class="font-mono" style="font-size: 11px; text-align: right;">8,340</td>
+                <td class="font-mono" style="font-size: 11px; text-align: right;">3,120</td>
+                <td class="font-mono" style="font-size: 11px; text-align: right; color: var(--muted-fg);">$0.028</td>
+                <td class="font-mono" style="font-size: 11px; text-align: right; color: var(--muted-fg);">8.4s</td>
+                <td>
+                  <div class="btn-icon" style="width: 20px; height: 20px;">
+                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div style="padding: 12px 16px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 11px; color: var(--muted-fg);">Show</span>
+            <select class="input-field" style="height: 26px; font-size: 11px; padding: 0 6px; width: 60px;">
+              <option>25</option>
+              <option>50</option>
+              <option>100</option>
+            </select>
+            <span style="font-size: 11px; color: var(--muted-fg);">of 342 results</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <button class="page-btn" disabled>
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <button class="page-btn active">1</button>
+            <button class="page-btn">2</button>
+            <button class="page-btn">3</button>
+            <span style="font-size: 11px; color: var(--muted-fg); padding: 0 4px;">...</span>
+            <button class="page-btn">14</button>
+            <button class="page-btn">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+</body>
+</html>

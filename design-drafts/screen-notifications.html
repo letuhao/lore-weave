@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Notification System</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a;
+      --destructive: #dc4e4e; --success: #3dba6a; --info: #5496e8;
+      --heart: #e85d75;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; font-family: inherit; }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+    .btn-outline:hover { background: var(--secondary); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); padding: 4px 8px; }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-sm { padding: 3px 8px; font-size: 11px; }
+
+    .badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 500; }
+
+    .panel { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--card); }
+
+    .showcase { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+    .showcase h1 { font-family: 'Lora', serif; font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+    .showcase-subtitle { font-size: 13px; color: var(--muted-fg); margin-bottom: 32px; }
+    .showcase-section { margin-bottom: 48px; }
+    .showcase-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .showcase-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* Notification items */
+    .notif { display: flex; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); transition: background 120ms; cursor: pointer; }
+    .notif:hover { background: var(--card-hover); }
+    .notif:last-child { border-bottom: none; }
+    .notif.unread { background: rgba(232,168,50,0.03); border-left: 2px solid var(--primary); }
+    .notif.unread .notif-time { color: var(--primary); }
+    .notif-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .notif-body { flex: 1; min-width: 0; }
+    .notif-title { font-size: 13px; line-height: 1.4; }
+    .notif-title strong { font-weight: 600; }
+    .notif-meta { font-size: 11px; color: var(--muted-fg); margin-top: 3px; display: flex; align-items: center; gap: 6px; }
+    .notif-time { font-size: 11px; color: var(--muted-fg); flex-shrink: 0; }
+    .notif-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--primary); flex-shrink: 0; }
+
+    /* Bell icon with badge */
+    .bell-wrapper { position: relative; }
+    .bell-badge { position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px; border-radius: 8px; background: var(--destructive); color: #fff; font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 4px; border: 2px solid var(--background); }
+
+    /* Filter tabs */
+    .filter-tab { padding: 6px 12px; font-size: 12px; font-weight: 500; border-radius: 4px; color: var(--muted-fg); cursor: pointer; transition: all 120ms; background: transparent; border: none; }
+    .filter-tab:hover { color: var(--foreground); }
+    .filter-tab.active { background: var(--primary-muted); color: var(--primary); }
+
+    /* Settings toggle row */
+    .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .setting-row:last-child { border-bottom: none; }
+    .toggle { width: 36px; height: 20px; border-radius: 10px; background: var(--secondary); position: relative; cursor: pointer; transition: all 150ms; flex-shrink: 0; }
+    .toggle.on { background: var(--success); }
+    .toggle::after { content: ''; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: var(--foreground); top: 2px; left: 2px; transition: all 150ms; }
+    .toggle.on::after { left: 18px; }
+  </style>
+</head>
+<body>
+
+<div class="showcase">
+  <h1>Notification System</h1>
+  <p class="showcase-subtitle">Bell icon, notification center, toast alerts, and email notification preferences.</p>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 1: SIDEBAR BELL ICON (3 states)
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">1. Sidebar Bell Icon — 3 states</div>
+
+    <div style="display: flex; gap: 32px; align-items: flex-start;">
+      <!-- State: No notifications -->
+      <div style="text-align: center;">
+        <div style="width: 48px; height: 48px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 0 auto 8px;">
+          <svg width="20" height="20" fill="none" stroke="var(--muted-fg)" stroke-width="2" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+        </div>
+        <span style="font-size: 10px; color: var(--muted-fg);">No notifications</span>
+      </div>
+
+      <!-- State: Has unread -->
+      <div style="text-align: center;">
+        <div style="width: 48px; height: 48px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 0 auto 8px;">
+          <div class="bell-wrapper">
+            <svg width="20" height="20" fill="none" stroke="var(--foreground)" stroke-width="2" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+            <span class="bell-badge">3</span>
+          </div>
+        </div>
+        <span style="font-size: 10px; color: var(--primary);">3 unread</span>
+      </div>
+
+      <!-- State: Many unread -->
+      <div style="text-align: center;">
+        <div style="width: 48px; height: 48px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 0 auto 8px;">
+          <div class="bell-wrapper">
+            <svg width="20" height="20" fill="none" stroke="var(--foreground)" stroke-width="2" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+            <span class="bell-badge">12+</span>
+          </div>
+        </div>
+        <span style="font-size: 10px; color: var(--destructive);">12+ unread</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 2: NOTIFICATION CENTER (dropdown panel)
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">2. Notification Center — dropdown from bell icon</div>
+
+    <div class="panel" style="max-width: 420px;">
+      <!-- Header -->
+      <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+        <span style="font-size: 14px; font-weight: 600;">Notifications</span>
+        <div style="display: flex; gap: 6px;">
+          <button class="btn btn-ghost btn-sm">Mark all read</button>
+          <button class="btn btn-ghost btn-sm">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Filter tabs -->
+      <div style="padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 4px;">
+        <button class="filter-tab active">All</button>
+        <button class="filter-tab">Translation</button>
+        <button class="filter-tab">Social</button>
+        <button class="filter-tab">Wiki</button>
+        <button class="filter-tab">System</button>
+      </div>
+
+      <!-- Notification list -->
+      <div style="max-height: 500px; overflow-y: auto;">
+
+        <!-- Unread: Translation complete -->
+        <div class="notif unread">
+          <div class="notif-icon" style="background: rgba(61,186,106,0.1);">
+            <svg width="16" height="16" fill="none" stroke="var(--success)" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+          </div>
+          <div class="notif-body">
+            <p class="notif-title"><strong>Translation complete</strong> — 5 chapters of "The Demon Lord's Duty" translated to English</p>
+            <div class="notif-meta">
+              <span>Claude Sonnet 4.6 · $0.12 total</span>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+            <span class="notif-time">2m ago</span>
+            <span class="notif-dot"></span>
+          </div>
+        </div>
+
+        <!-- Unread: New comment -->
+        <div class="notif unread">
+          <div class="notif-icon" style="background: rgba(84,150,232,0.1);">
+            <svg width="16" height="16" fill="none" stroke="var(--info)" stroke-width="2" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+          </div>
+          <div class="notif-body">
+            <p class="notif-title"><strong>SakuraPen</strong> commented on Ch.3 — "Legibility is not trivial. I'm dying..."</p>
+            <div class="notif-meta">
+              <span>The Demon Lord's Duty · Chapter 3</span>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+            <span class="notif-time">15m ago</span>
+            <span class="notif-dot"></span>
+          </div>
+        </div>
+
+        <!-- Unread: Wiki PR -->
+        <div class="notif unread">
+          <div class="notif-icon" style="background: rgba(61,166,146,0.1);">
+            <svg width="16" height="16" fill="none" stroke="var(--accent)" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+          </div>
+          <div class="notif-body">
+            <p class="notif-title"><strong>TofuMaster</strong> suggested a wiki edit on <strong>Aldric</strong></p>
+            <div class="notif-meta">
+              <span>Wiki · Pending your review</span>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+            <span class="notif-time">1h ago</span>
+            <span class="notif-dot"></span>
+          </div>
+        </div>
+
+        <!-- Read: New follower -->
+        <div class="notif">
+          <div class="notif-icon" style="background: rgba(232,93,117,0.1);">
+            <svg width="16" height="16" fill="var(--heart)" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+          </div>
+          <div class="notif-body">
+            <p class="notif-title"><strong>JadePeak</strong> started following you</p>
+            <div class="notif-meta">
+              <span>You now have 42 followers</span>
+            </div>
+          </div>
+          <span class="notif-time">3h ago</span>
+        </div>
+
+        <!-- Read: New review -->
+        <div class="notif">
+          <div class="notif-icon" style="background: rgba(232,168,50,0.1);">
+            <svg width="16" height="16" fill="var(--primary)" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          </div>
+          <div class="notif-body">
+            <p class="notif-title"><strong>TofuMaster</strong> left a 5-star review on "The Demon Lord's Duty"</p>
+            <div class="notif-meta">
+              <span>"Best bureaucratic fantasy I've ever read"</span>
+            </div>
+          </div>
+          <span class="notif-time">Yesterday</span>
+        </div>
+
+        <!-- Read: Translation failed -->
+        <div class="notif">
+          <div class="notif-icon" style="background: rgba(220,78,78,0.1);">
+            <svg width="16" height="16" fill="none" stroke="var(--destructive)" stroke-width="2" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          </div>
+          <div class="notif-body">
+            <p class="notif-title"><strong>Translation failed</strong> — Ch.12 of "Moonlit Cultivation" (GPT-4o timeout)</p>
+            <div class="notif-meta">
+              <span>No tokens charged · <a href="#" style="color: var(--primary); text-decoration: none;">Retry</a></span>
+            </div>
+          </div>
+          <span class="notif-time">Yesterday</span>
+        </div>
+
+        <!-- Read: Milestone -->
+        <div class="notif">
+          <div class="notif-icon" style="background: rgba(232,168,50,0.1);">
+            <svg width="16" height="16" fill="none" stroke="var(--primary)" stroke-width="2" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+          </div>
+          <div class="notif-body">
+            <p class="notif-title">Your book reached <strong>100 favorites</strong>!</p>
+            <div class="notif-meta">
+              <span>The Demon Lord's Duty · Keep writing!</span>
+            </div>
+          </div>
+          <span class="notif-time">2 days ago</span>
+        </div>
+
+        <!-- Read: New chapter from followed author -->
+        <div class="notif">
+          <div class="notif-icon" style="background: rgba(124,108,212,0.1);">
+            <svg width="16" height="16" fill="none" stroke="#a78bfa" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253"/></svg>
+          </div>
+          <div class="notif-body">
+            <p class="notif-title"><strong>TofuMaster</strong> published a new chapter — "Slime Chef Ch.9: The Royal Kitchen"</p>
+            <div class="notif-meta">
+              <span>Author you follow · <a href="#" style="color: var(--primary); text-decoration: none;">Read now</a></span>
+            </div>
+          </div>
+          <span class="notif-time">3 days ago</span>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding: 10px 16px; border-top: 1px solid var(--border); text-align: center;">
+        <a href="#" style="font-size: 12px; color: var(--primary); text-decoration: none;">View all notifications</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 3: EMAIL NOTIFICATION PREFERENCES
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">3. Email Notification Preferences — in Settings</div>
+
+    <div class="panel" style="max-width: 600px; padding: 20px;">
+      <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">Notification Preferences</h3>
+      <p style="font-size: 12px; color: var(--muted-fg); margin-bottom: 20px;">Choose which events send you email notifications. In-app notifications are always on.</p>
+
+      <!-- Translation events -->
+      <div style="margin-bottom: 16px;">
+        <p style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted-fg); margin-bottom: 8px;">Translation</p>
+        <div class="setting-row">
+          <div>
+            <span style="font-size: 13px;">Translation job completes</span>
+            <p style="font-size: 11px; color: var(--muted-fg);">When batch translation finishes successfully</p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 10px; color: var(--muted-fg);">Email</span>
+            <div class="toggle on"></div>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div>
+            <span style="font-size: 13px;">Translation fails</span>
+            <p style="font-size: 11px; color: var(--muted-fg);">When a translation job encounters an error</p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 10px; color: var(--muted-fg);">Email</span>
+            <div class="toggle on"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Social events -->
+      <div style="margin-bottom: 16px;">
+        <p style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted-fg); margin-bottom: 8px;">Social (Platform mode only)</p>
+        <div class="setting-row">
+          <div>
+            <span style="font-size: 13px;">New comment on your chapters</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 10px; color: var(--muted-fg);">Email</span>
+            <div class="toggle on"></div>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div>
+            <span style="font-size: 13px;">New review on your books</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 10px; color: var(--muted-fg);">Email</span>
+            <div class="toggle on"></div>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div>
+            <span style="font-size: 13px;">New follower</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 10px; color: var(--muted-fg);">Email</span>
+            <div class="toggle"></div>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div>
+            <span style="font-size: 13px;">Followed author publishes new chapter</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 10px; color: var(--muted-fg);">Email</span>
+            <div class="toggle on"></div>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div>
+            <span style="font-size: 13px;">Milestone reached (favorites, readers)</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 10px; color: var(--muted-fg);">Email</span>
+            <div class="toggle"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Wiki events -->
+      <div>
+        <p style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted-fg); margin-bottom: 8px;">Wiki</p>
+        <div class="setting-row">
+          <div>
+            <span style="font-size: 13px;">New wiki suggestion / PR on your book</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 10px; color: var(--muted-fg);">Email</span>
+            <div class="toggle on"></div>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div>
+            <span style="font-size: 13px;">Your wiki suggestion was accepted/rejected</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 10px; color: var(--muted-fg);">Email</span>
+            <div class="toggle on"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

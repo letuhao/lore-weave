@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Browse / Public Catalog</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a;
+      --success: #3dba6a; --info: #5496e8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; font-family: inherit; }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+    .btn-outline:hover { background: var(--secondary); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+    .input-field { background: var(--background); border: 1px solid var(--border); color: var(--foreground); border-radius: 6px; padding: 8px 12px; font-size: 13px; font-family: inherit; }
+    .input-field:focus { outline: none; border-color: var(--ring); }
+    .input-field::placeholder { color: rgba(158,148,136,0.4); }
+    .badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 500; }
+
+    .sidebar { width: 240px; flex-shrink: 0; background: var(--background); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+    .sidebar-link { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; font-size: 13px; color: var(--muted-fg); text-decoration: none; transition: all 120ms; }
+    .sidebar-link:hover { background: var(--secondary); }
+    .sidebar-link.active { background: var(--primary-muted); color: var(--primary); }
+
+    /* Book card (cover-focused) */
+    .book-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; transition: all 200ms; cursor: pointer; }
+    .book-card:hover { border-color: var(--border-hover); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+    .book-cover { aspect-ratio: 2/3; position: relative; overflow: hidden; }
+    .book-cover-img { width: 100%; height: 100%; object-fit: cover; }
+    .book-cover-gradient { position: absolute; bottom: 0; left: 0; right: 0; height: 60%; background: linear-gradient(transparent, rgba(0,0,0,0.7)); }
+    .book-info { padding: 12px 14px; }
+
+    /* Genre tag */
+    .genre-tag { padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 500; }
+
+    /* Filter chip */
+    .filter-chip { display: inline-flex; align-items: center; gap: 4px; padding: 5px 12px; border-radius: 999px; font-size: 12px; border: 1px solid var(--border); color: var(--muted-fg); cursor: pointer; transition: all 120ms; }
+    .filter-chip:hover { border-color: var(--border-hover); color: var(--foreground); }
+    .filter-chip.active { border-color: var(--primary); background: var(--primary-muted); color: var(--primary); }
+  </style>
+</head>
+<body>
+
+<div style="display: flex; min-height: 100vh;">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 16px 16px 12px;">
+      <div style="width: 28px; height: 28px; border-radius: 6px; background: var(--primary); color: var(--primary-fg); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;">L</div>
+      <span class="font-serif" style="font-size: 14px; font-weight: 600;">LoreWeave</span>
+    </div>
+    <nav style="padding: 0 8px; display: flex; flex-direction: column; gap: 2px;">
+      <p style="padding: 12px 12px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg);">Main</p>
+      <a href="#" class="sidebar-link"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>Workspace</a>
+      <a href="#" class="sidebar-link"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>Chat</a>
+      <a href="#" class="sidebar-link active"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>Browse</a>
+    </nav>
+    <div style="flex: 1;"></div>
+    <div style="border-top: 1px solid var(--border); padding: 12px;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 6px;">
+        <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--primary-muted); color: var(--primary); font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center;">NS</div>
+        <p style="font-size: 12px; font-weight: 500;">NeneScarlet</p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main style="flex: 1; overflow-y: auto;">
+    <div style="max-width: 1100px; margin: 0 auto; padding: 24px 32px;">
+
+      <!-- Hero section -->
+      <div style="text-align: center; padding: 32px 0 24px;">
+        <h1 class="font-serif" style="font-size: 26px; font-weight: 600; margin-bottom: 8px;">Discover Stories</h1>
+        <p style="font-size: 14px; color: var(--muted-fg); max-width: 480px; margin: 0 auto;">Browse public novels from the LoreWeave community. Read, translate, and explore stories across languages.</p>
+      </div>
+
+      <!-- Search -->
+      <div style="max-width: 500px; margin: 0 auto 24px; position: relative;">
+        <svg style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted-fg);" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <input class="input-field" placeholder="Search by title, author, or language..." style="width: 100%; padding-left: 40px; height: 42px; border-radius: 10px; font-size: 14px;" />
+      </div>
+
+      <!-- Filter chips -->
+      <div style="display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 28px;">
+        <span class="filter-chip active">All</span>
+        <span class="filter-chip">
+          <span class="genre-tag" style="background: rgba(139,92,246,0.15); color: #a78bfa; padding: 0;">Fantasy</span>
+        </span>
+        <span class="filter-chip">Drama</span>
+        <span class="filter-chip">Romance</span>
+        <span class="filter-chip">Sci-Fi</span>
+        <span class="filter-chip">Historical</span>
+        <span class="filter-chip" style="border-style: dashed;">
+          <span style="color: var(--border);">|</span>
+          日本語 (ja)
+        </span>
+        <span class="filter-chip">English (en)</span>
+        <span class="filter-chip">Tiếng Việt (vi)</span>
+        <span class="filter-chip">繁體中文 (zh-TW)</span>
+      </div>
+
+      <!-- Results count + sort -->
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+        <span style="font-size: 13px; color: var(--muted-fg);">12 books found</span>
+        <select class="input-field" style="height: 32px; font-size: 12px; padding: 0 10px; width: 150px;">
+          <option>Most recent</option>
+          <option>Most chapters</option>
+          <option>Alphabetical</option>
+          <option>Most translations</option>
+        </select>
+      </div>
+
+      <!-- Book grid -->
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;">
+
+        <!-- Book 1 -->
+        <div class="book-card">
+          <div class="book-cover" style="background: linear-gradient(135deg, #2d1740, #1a1030);">
+            <div class="book-cover-gradient"></div>
+            <div style="position: absolute; bottom: 10px; left: 10px; right: 10px;">
+              <span class="genre-tag" style="background: rgba(139,92,246,0.3); color: #c4b5fd;">Fantasy</span>
+            </div>
+          </div>
+          <div class="book-info">
+            <h3 class="font-serif" style="font-size: 14px; font-weight: 600; margin-bottom: 4px; line-height: 1.3;">The Demon Lord's Duty</h3>
+            <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 6px;">by NeneScarlet</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-size: 10px; color: var(--muted-fg);">24 chapters</span>
+              <div style="display: flex; gap: 3px;">
+                <span style="padding: 1px 5px; border-radius: 3px; font-size: 9px; font-family: 'JetBrains Mono', monospace; background: var(--secondary); color: var(--muted-fg);">ja</span>
+                <span style="padding: 1px 5px; border-radius: 3px; font-size: 9px; font-family: 'JetBrains Mono', monospace; background: var(--secondary); color: var(--muted-fg);">en</span>
+                <span style="padding: 1px 5px; border-radius: 3px; font-size: 9px; font-family: 'JetBrains Mono', monospace; background: var(--secondary); color: var(--muted-fg);">vi</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Book 2 -->
+        <div class="book-card">
+          <div class="book-cover" style="background: linear-gradient(135deg, #162824, #0a1a14);">
+            <div class="book-cover-gradient"></div>
+            <div style="position: absolute; bottom: 10px; left: 10px; right: 10px;">
+              <span class="genre-tag" style="background: rgba(61,186,106,0.3); color: #86efac;">Isekai</span>
+            </div>
+          </div>
+          <div class="book-info">
+            <h3 class="font-serif" style="font-size: 14px; font-weight: 600; margin-bottom: 4px; line-height: 1.3;">Reincarnated as a Slime Chef</h3>
+            <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 6px;">by TofuMaster</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-size: 10px; color: var(--muted-fg);">8 chapters</span>
+              <div style="display: flex; gap: 3px;">
+                <span style="padding: 1px 5px; border-radius: 3px; font-size: 9px; font-family: 'JetBrains Mono', monospace; background: var(--secondary); color: var(--muted-fg);">ja</span>
+                <span style="padding: 1px 5px; border-radius: 3px; font-size: 9px; font-family: 'JetBrains Mono', monospace; background: var(--secondary); color: var(--muted-fg);">en</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Book 3 -->
+        <div class="book-card">
+          <div class="book-cover" style="background: linear-gradient(135deg, #302018, #1a100c);">
+            <div class="book-cover-gradient"></div>
+            <div style="position: absolute; bottom: 10px; left: 10px; right: 10px;">
+              <span class="genre-tag" style="background: rgba(232,168,50,0.3); color: #fcd34d;">Cultivation</span>
+            </div>
+          </div>
+          <div class="book-info">
+            <h3 class="font-serif" style="font-size: 14px; font-weight: 600; margin-bottom: 4px; line-height: 1.3;">Moonlit Cultivation Manual</h3>
+            <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 6px;">by JadePeak</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-size: 10px; color: var(--muted-fg);">42 chapters</span>
+              <div style="display: flex; gap: 3px;">
+                <span style="padding: 1px 5px; border-radius: 3px; font-size: 9px; font-family: 'JetBrains Mono', monospace; background: var(--secondary); color: var(--muted-fg);">zh-TW</span>
+                <span style="padding: 1px 5px; border-radius: 3px; font-size: 9px; font-family: 'JetBrains Mono', monospace; background: var(--secondary); color: var(--muted-fg);">en</span>
+                <span style="padding: 1px 5px; border-radius: 3px; font-size: 9px; font-family: 'JetBrains Mono', monospace; background: var(--secondary); color: var(--muted-fg);">ja</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Book 4 -->
+        <div class="book-card">
+          <div class="book-cover" style="background: linear-gradient(135deg, #1a1828, #100e20);">
+            <div class="book-cover-gradient"></div>
+            <div style="position: absolute; bottom: 10px; left: 10px; right: 10px;">
+              <span class="genre-tag" style="background: rgba(236,72,153,0.3); color: #f9a8d4;">Romance</span>
+            </div>
+          </div>
+          <div class="book-info">
+            <h3 class="font-serif" style="font-size: 14px; font-weight: 600; margin-bottom: 4px; line-height: 1.3;">Letters to the Moon</h3>
+            <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 6px;">by SakuraPen</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-size: 10px; color: var(--muted-fg);">16 chapters</span>
+              <div style="display: flex; gap: 3px;">
+                <span style="padding: 1px 5px; border-radius: 3px; font-size: 9px; font-family: 'JetBrains Mono', monospace; background: var(--secondary); color: var(--muted-fg);">ja</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Book 5 -->
+        <div class="book-card">
+          <div class="book-cover" style="background: linear-gradient(135deg, #1c2830, #0e1820);">
+            <div class="book-cover-gradient"></div>
+            <div style="position: absolute; bottom: 10px; left: 10px; right: 10px;">
+              <span class="genre-tag" style="background: rgba(6,182,212,0.3); color: #67e8f9;">Sci-Fi</span>
+            </div>
+          </div>
+          <div class="book-info">
+            <h3 class="font-serif" style="font-size: 14px; font-weight: 600; margin-bottom: 4px; line-height: 1.3;">Neural Garden Protocol</h3>
+            <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 6px;">by CyberInk</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-size: 10px; color: var(--muted-fg);">31 chapters</span>
+              <div style="display: flex; gap: 3px;">
+                <span style="padding: 1px 5px; border-radius: 3px; font-size: 9px; font-family: 'JetBrains Mono', monospace; background: var(--secondary); color: var(--muted-fg);">en</span>
+                <span style="padding: 1px 5px; border-radius: 3px; font-size: 9px; font-family: 'JetBrains Mono', monospace; background: var(--secondary); color: var(--muted-fg);">ja</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Book 6 -->
+        <div class="book-card">
+          <div class="book-cover" style="background: linear-gradient(135deg, #2a1a18, #1a0e0c);">
+            <div class="book-cover-gradient"></div>
+            <div style="position: absolute; bottom: 10px; left: 10px; right: 10px;">
+              <span class="genre-tag" style="background: rgba(249,115,22,0.3); color: #fdba74;">Historical</span>
+            </div>
+          </div>
+          <div class="book-info">
+            <h3 class="font-serif" style="font-size: 14px; font-weight: 600; margin-bottom: 4px; line-height: 1.3;">Tiếng Vọng Cố Đô</h3>
+            <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 6px;">by HoangLong</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-size: 10px; color: var(--muted-fg);">18 chapters</span>
+              <div style="display: flex; gap: 3px;">
+                <span style="padding: 1px 5px; border-radius: 3px; font-size: 9px; font-family: 'JetBrains Mono', monospace; background: var(--secondary); color: var(--muted-fg);">vi</span>
+                <span style="padding: 1px 5px; border-radius: 3px; font-size: 9px; font-family: 'JetBrains Mono', monospace; background: var(--secondary); color: var(--muted-fg);">en</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Book 7 -->
+        <div class="book-card">
+          <div class="book-cover" style="background: linear-gradient(135deg, #201830, #100c20);">
+            <div class="book-cover-gradient"></div>
+            <div style="position: absolute; bottom: 10px; left: 10px; right: 10px;">
+              <span class="genre-tag" style="background: rgba(139,92,246,0.3); color: #c4b5fd;">Fantasy</span>
+            </div>
+          </div>
+          <div class="book-info">
+            <h3 class="font-serif" style="font-size: 14px; font-weight: 600; margin-bottom: 4px; line-height: 1.3;">The Witch's Ledger</h3>
+            <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 6px;">by InkSpell</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-size: 10px; color: var(--muted-fg);">6 chapters</span>
+              <div style="display: flex; gap: 3px;">
+                <span style="padding: 1px 5px; border-radius: 3px; font-size: 9px; font-family: 'JetBrains Mono', monospace; background: var(--secondary); color: var(--muted-fg);">en</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Book 8 -->
+        <div class="book-card">
+          <div class="book-cover" style="background: linear-gradient(135deg, #182028, #0c1018);">
+            <div class="book-cover-gradient"></div>
+            <div style="position: absolute; bottom: 10px; left: 10px; right: 10px;">
+              <span class="genre-tag" style="background: rgba(236,72,153,0.3); color: #f9a8d4;">Drama</span>
+            </div>
+          </div>
+          <div class="book-info">
+            <h3 class="font-serif" style="font-size: 14px; font-weight: 600; margin-bottom: 4px; line-height: 1.3;">夜明けのカフェにて</h3>
+            <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 6px;">by AoiMizuki</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-size: 10px; color: var(--muted-fg);">12 chapters</span>
+              <div style="display: flex; gap: 3px;">
+                <span style="padding: 1px 5px; border-radius: 3px; font-size: 9px; font-family: 'JetBrains Mono', monospace; background: var(--secondary); color: var(--muted-fg);">ja</span>
+                <span style="padding: 1px 5px; border-radius: 3px; font-size: 9px; font-family: 'JetBrains Mono', monospace; background: var(--secondary); color: var(--muted-fg);">vi</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Pagination -->
+      <div style="display: flex; justify-content: center; padding: 32px 0;">
+        <div style="display: flex; align-items: center; gap: 4px;">
+          <button style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--muted-fg); cursor: pointer; opacity: 0.3;">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"/></svg>
+          </button>
+          <button style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid var(--primary); background: var(--primary-muted); color: var(--primary); font-size: 12px; font-weight: 500; cursor: pointer;">1</button>
+          <button style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--muted-fg); font-size: 12px; cursor: pointer;">2</button>
+          <button style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--muted-fg); cursor: pointer;">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+</body>
+</html>

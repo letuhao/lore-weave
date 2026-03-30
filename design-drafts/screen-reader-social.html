@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Reader Social Features (Comments, Rating, Library)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a;
+      --destructive: #dc4e4e; --success: #3dba6a; --info: #5496e8;
+      --heart: #e85d75;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; font-family: inherit; }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+    .btn-outline:hover { background: var(--secondary); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); padding: 4px 8px; }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-sm { padding: 4px 10px; font-size: 11px; }
+    .btn-heart { background: transparent; border: 1px solid var(--border); color: var(--muted-fg); padding: 6px 14px; border-radius: 6px; }
+    .btn-heart.liked { border-color: var(--heart); color: var(--heart); background: rgba(232,93,117,0.08); }
+
+    .input-field { background: var(--background); border: 1px solid var(--border); color: var(--foreground); border-radius: 6px; padding: 8px 12px; font-size: 13px; font-family: inherit; width: 100%; }
+    .input-field:focus { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px rgba(212,149,42,0.15); }
+    .input-field::placeholder { color: rgba(158,148,136,0.4); }
+
+    .badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 500; }
+    .badge-success { background: rgba(61,186,106,0.12); color: #5dd88a; }
+    .badge-muted { background: var(--secondary); color: var(--muted-fg); }
+
+    .panel { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--card); }
+
+    .showcase { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+    .showcase h1 { font-family: 'Lora', serif; font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+    .showcase-subtitle { font-size: 13px; color: var(--muted-fg); margin-bottom: 32px; }
+    .showcase-section { margin-bottom: 48px; }
+    .showcase-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .showcase-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* Stars */
+    .star { width: 20px; height: 20px; cursor: pointer; transition: all 100ms; }
+    .star.filled { color: var(--primary); }
+    .star.empty { color: var(--border-hover); }
+    .star:hover { transform: scale(1.15); }
+    .star-sm { width: 14px; height: 14px; }
+
+    /* Comment */
+    .comment { padding: 16px; border-bottom: 1px solid var(--border); }
+    .comment:last-child { border-bottom: none; }
+    .comment-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--secondary); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+    .comment-body { font-size: 13px; line-height: 1.6; margin: 6px 0; }
+    .comment-actions { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted-fg); }
+    .comment-like { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: all 120ms; }
+    .comment-like:hover { background: var(--secondary); color: var(--foreground); }
+    .comment-like.liked { color: var(--heart); }
+
+    /* Review card */
+    .review-card { padding: 16px; border-bottom: 1px solid var(--border); }
+    .review-card:last-child { border-bottom: none; }
+
+    /* Reading list item */
+    .list-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border); transition: background 120ms; cursor: pointer; }
+    .list-item:hover { background: var(--card-hover); }
+    .list-item:last-child { border-bottom: none; }
+
+    /* Progress bar */
+    .progress-bar { height: 4px; background: var(--secondary); border-radius: 2px; overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 2px; background: var(--primary); }
+
+    /* Translation quality vote */
+    .vote-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 500; border: 1px solid var(--border); background: transparent; color: var(--muted-fg); cursor: pointer; transition: all 120ms; }
+    .vote-btn:hover { border-color: var(--border-hover); color: var(--foreground); }
+    .vote-btn.upvoted { border-color: var(--success); color: var(--success); background: rgba(61,186,106,0.08); }
+    .vote-btn.downvoted { border-color: var(--destructive); color: var(--destructive); background: rgba(220,78,78,0.06); }
+  </style>
+</head>
+<body>
+
+<div class="showcase">
+  <h1>Reader Social Features</h1>
+  <p class="showcase-subtitle">Library, ratings, comments, reviews, translation votes, reading lists — everything readers need to engage.</p>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 1: BOOK DETAIL — PUBLIC VIEW (with social features)
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">1. Book Detail — Public View (reader sees this)</div>
+
+    <div class="panel" style="max-width: 800px;">
+      <!-- Book header -->
+      <div style="display: flex; gap: 20px; padding: 24px;">
+        <!-- Cover -->
+        <div style="width: 120px; height: 180px; border-radius: 8px; flex-shrink: 0; overflow: hidden; background: linear-gradient(135deg, #2d1740, #1a1030); border: 1px solid var(--border);">
+          <div style="height: 100%; display: flex; align-items: flex-end; padding: 10px;">
+            <span class="font-serif" style="font-size: 11px; color: rgba(196,160,216,0.8); line-height: 1.3;">The Demon Lord's Duty</span>
+          </div>
+        </div>
+
+        <!-- Info -->
+        <div style="flex: 1;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span style="padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 500; background: rgba(139,92,246,0.15); color: #c4b5fd;">Fantasy</span>
+            <span class="badge badge-success" style="font-size: 9px;">Complete</span>
+          </div>
+          <h2 class="font-serif" style="font-size: 22px; font-weight: 600; margin-bottom: 6px;">The Demon Lord's Duty</h2>
+          <p style="font-size: 13px; color: var(--muted-fg); margin-bottom: 12px;">by <a href="#" style="color: var(--accent); text-decoration: none;">NeneScarlet</a></p>
+
+          <!-- Rating summary -->
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+            <div style="display: flex; gap: 2px;">
+              <svg class="star star-sm filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg class="star star-sm filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg class="star star-sm filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg class="star star-sm filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg class="star star-sm empty" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            </div>
+            <span style="font-size: 14px; font-weight: 600;">4.2</span>
+            <span style="font-size: 12px; color: var(--muted-fg);">· 28 ratings · 12 reviews</span>
+          </div>
+
+          <!-- Stats row -->
+          <div style="display: flex; gap: 16px; font-size: 12px; color: var(--muted-fg); margin-bottom: 16px;">
+            <span>24 chapters</span>
+            <span style="color: var(--border);">|</span>
+            <span>日本語 (ja)</span>
+            <span style="color: var(--border);">|</span>
+            <span>3 translations</span>
+            <span style="color: var(--border);">|</span>
+            <span>
+              <svg width="12" height="12" fill="var(--heart)" viewBox="0 0 24 24" style="vertical-align: -1px;"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+              156 favorites
+            </span>
+            <span style="color: var(--border);">|</span>
+            <span>
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: -1px;"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+              2.4K readers
+            </span>
+          </div>
+
+          <!-- Action buttons -->
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-primary" style="padding: 8px 20px;">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13"/></svg>
+              Start Reading
+            </button>
+            <button class="btn-heart liked" style="cursor: pointer; font-size: 12px; font-weight: 500; font-family: inherit;">
+              <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+              Favorited
+            </button>
+            <button class="btn btn-outline">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+              Add to List
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Description -->
+      <div style="padding: 0 24px 20px;">
+        <p style="font-size: 14px; line-height: 1.7; color: var(--secondary-fg);">A comedic fantasy about the unlikely friendship between a bureaucratic Hero and a tea-loving Demon Lord, set in a world where heroic quests require formal paperwork and complaints are filed in triplicate.</p>
+      </div>
+
+      <!-- Available translations -->
+      <div style="padding: 0 24px 20px; display: flex; gap: 6px;">
+        <span style="padding: 4px 10px; border-radius: 5px; font-size: 11px; background: var(--primary-muted); color: var(--primary); border: 1px solid rgba(232,168,50,0.2);">日本語 (ja) — Original</span>
+        <span style="padding: 4px 10px; border-radius: 5px; font-size: 11px; background: var(--secondary); color: var(--foreground); border: 1px solid var(--border);">English (en)</span>
+        <span style="padding: 4px 10px; border-radius: 5px; font-size: 11px; background: var(--secondary); color: var(--foreground); border: 1px solid var(--border);">Tiếng Việt (vi)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 2: RATING + REVIEW SYSTEM
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">2. Rating & Reviews</div>
+
+    <div style="display: grid; grid-template-columns: 260px 1fr; gap: 16px; max-width: 800px;">
+      <!-- Rating summary card -->
+      <div class="panel" style="padding: 20px; text-align: center;">
+        <div style="font-size: 48px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--primary); line-height: 1;">4.2</div>
+        <div style="display: flex; justify-content: center; gap: 3px; margin: 8px 0;">
+          <svg class="star filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          <svg class="star filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          <svg class="star filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          <svg class="star filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          <svg class="star empty" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        </div>
+        <p style="font-size: 12px; color: var(--muted-fg); margin-bottom: 16px;">28 ratings</p>
+
+        <!-- Rating distribution -->
+        <div style="display: flex; flex-direction: column; gap: 4px; text-align: left;">
+          <div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+            <span style="width: 12px; color: var(--muted-fg);">5</span>
+            <div style="flex: 1; height: 6px; background: var(--secondary); border-radius: 3px; overflow: hidden;"><div style="width: 45%; height: 100%; background: var(--primary); border-radius: 3px;"></div></div>
+            <span style="width: 16px; color: var(--muted-fg); text-align: right;">12</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+            <span style="width: 12px; color: var(--muted-fg);">4</span>
+            <div style="flex: 1; height: 6px; background: var(--secondary); border-radius: 3px; overflow: hidden;"><div style="width: 32%; height: 100%; background: var(--primary); border-radius: 3px;"></div></div>
+            <span style="width: 16px; color: var(--muted-fg); text-align: right;">9</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+            <span style="width: 12px; color: var(--muted-fg);">3</span>
+            <div style="flex: 1; height: 6px; background: var(--secondary); border-radius: 3px; overflow: hidden;"><div style="width: 18%; height: 100%; background: var(--primary); border-radius: 3px;"></div></div>
+            <span style="width: 16px; color: var(--muted-fg); text-align: right;">5</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+            <span style="width: 12px; color: var(--muted-fg);">2</span>
+            <div style="flex: 1; height: 6px; background: var(--secondary); border-radius: 3px; overflow: hidden;"><div style="width: 5%; height: 100%; background: var(--muted-fg); border-radius: 3px;"></div></div>
+            <span style="width: 16px; color: var(--muted-fg); text-align: right;">1</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+            <span style="width: 12px; color: var(--muted-fg);">1</span>
+            <div style="flex: 1; height: 6px; background: var(--secondary); border-radius: 3px; overflow: hidden;"><div style="width: 4%; height: 100%; background: var(--muted-fg); border-radius: 3px;"></div></div>
+            <span style="width: 16px; color: var(--muted-fg); text-align: right;">1</span>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" style="width: 100%; justify-content: center; margin-top: 16px;">Write a Review</button>
+      </div>
+
+      <!-- Reviews list -->
+      <div class="panel">
+        <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-size: 13px; font-weight: 600;">Reviews (12)</span>
+          <select style="background: var(--background); border: 1px solid var(--border); color: var(--foreground); border-radius: 4px; padding: 3px 8px; font-size: 11px;">
+            <option>Most helpful</option>
+            <option>Most recent</option>
+            <option>Highest rated</option>
+          </select>
+        </div>
+
+        <!-- Review 1 -->
+        <div class="review-card">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <div class="comment-avatar" style="background: #3d2e12; color: var(--primary);">TM</div>
+            <div style="flex: 1;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 13px; font-weight: 500;">TofuMaster</span>
+                <div style="display: flex; gap: 1px;">
+                  <svg class="star star-sm filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                  <svg class="star star-sm filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                  <svg class="star star-sm filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                  <svg class="star star-sm filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                  <svg class="star star-sm filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                </div>
+              </div>
+              <span style="font-size: 10px; color: var(--muted-fg);">2 days ago · Read in English</span>
+            </div>
+          </div>
+          <p class="font-serif" style="font-size: 14px; font-weight: 500; margin-bottom: 4px;">"Best bureaucratic fantasy I've ever read"</p>
+          <p style="font-size: 13px; line-height: 1.6; color: var(--secondary-fg); margin-bottom: 8px;">The concept of a hero who files formal complaints is hilarious and surprisingly deep. Aldric and the Demon Lord's dynamic is chef's kiss. The tea scenes alone are worth the read.</p>
+          <div class="comment-actions">
+            <span class="comment-like liked">
+              <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+              24 helpful
+            </span>
+            <span style="color: var(--border);">·</span>
+            <span class="comment-like">Reply</span>
+          </div>
+        </div>
+
+        <!-- Review 2 -->
+        <div class="review-card">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <div class="comment-avatar" style="background: var(--accent-muted); color: var(--accent);">JP</div>
+            <div style="flex: 1;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 13px; font-weight: 500;">JadePeak</span>
+                <div style="display: flex; gap: 1px;">
+                  <svg class="star star-sm filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                  <svg class="star star-sm filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                  <svg class="star star-sm filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                  <svg class="star star-sm filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                  <svg class="star star-sm empty" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                </div>
+              </div>
+              <span style="font-size: 10px; color: var(--muted-fg);">1 week ago · Read in 日本語</span>
+            </div>
+          </div>
+          <p style="font-size: 13px; line-height: 1.6; color: var(--secondary-fg); margin-bottom: 8px;">Very enjoyable read. The world-building is light but effective. Lost one star because some middle chapters drag a bit, but the ending is worth it.</p>
+          <div class="comment-actions">
+            <span class="comment-like">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+              8 helpful
+            </span>
+            <span style="color: var(--border);">·</span>
+            <span class="comment-like">Reply</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 3: CHAPTER COMMENTS
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">3. Chapter Comments (below reading area)</div>
+
+    <div class="panel" style="max-width: 700px;">
+      <div style="padding: 16px; border-bottom: 1px solid var(--border);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+          <span style="font-size: 14px; font-weight: 600;">Comments on Chapter 3 (7)</span>
+          <span style="font-size: 11px; color: var(--muted-fg);">⚠ Spoilers may be present</span>
+        </div>
+        <!-- Comment input -->
+        <div style="display: flex; gap: 10px;">
+          <div class="comment-avatar" style="background: var(--primary-muted); color: var(--primary);">NS</div>
+          <div style="flex: 1;">
+            <textarea class="input-field" rows="2" placeholder="Share your thoughts on this chapter..." style="resize: none; font-size: 13px;"></textarea>
+            <div style="display: flex; justify-content: flex-end; margin-top: 6px;">
+              <button class="btn btn-primary btn-sm">Post Comment</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Comments -->
+      <div class="comment">
+        <div style="display: flex; gap: 10px;">
+          <div class="comment-avatar" style="background: #2a1a2e; color: #c4b5fd;">SP</div>
+          <div style="flex: 1;">
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
+              <span style="font-size: 13px; font-weight: 500;">SakuraPen</span>
+              <span style="font-size: 10px; color: var(--muted-fg);">3 hours ago</span>
+            </div>
+            <p class="comment-body">"Legibility is not trivial." I'm dying 😂 Aldric is the most relatable hero I've ever seen. We all have that one coworker who complains about font sizes.</p>
+            <div class="comment-actions">
+              <span class="comment-like liked">
+                <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+                12
+              </span>
+              <span class="comment-like">Reply</span>
+              <span class="comment-like">Report</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="comment">
+        <div style="display: flex; gap: 10px;">
+          <div class="comment-avatar" style="background: #1a2e2a; color: var(--accent);">CI</div>
+          <div style="flex: 1;">
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
+              <span style="font-size: 13px; font-weight: 500;">CyberInk</span>
+              <span style="font-size: 10px; color: var(--muted-fg);">Yesterday</span>
+            </div>
+            <p class="comment-body">The detail about the cape billowing "despite the notable absence of wind" is such good writing. It tells you everything about Aldric's personality in one sentence.</p>
+            <div class="comment-actions">
+              <span class="comment-like">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+                5
+              </span>
+              <span class="comment-like">Reply</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 4: TRANSLATION QUALITY VOTE
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">4. Translation Quality Vote (shown in reader when reading a translation)</div>
+
+    <div class="panel" style="max-width: 600px; padding: 16px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--background); border: 1px solid var(--border); border-radius: 8px;">
+        <div>
+          <span style="font-size: 12px; font-weight: 500;">How is this translation?</span>
+          <span style="font-size: 11px; color: var(--muted-fg); margin-left: 6px;">日本語 → English · AI translated</span>
+        </div>
+        <div style="display: flex; gap: 6px;">
+          <button class="vote-btn upvoted">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/></svg>
+            Good (23)
+          </button>
+          <button class="vote-btn">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10 15v3.586a2 2 0 01-.586 1.414l-1.828 1.828A2 2 0 014.828 21H4a2 2 0 01-2-2v-4.172a2 2 0 01.586-1.414l6-6A2 2 0 0110 7V3.172a2 2 0 012.586-.586l1.828 1.828A2 2 0 0115.586 6L16 6.414A2 2 0 0117.414 6l.172-.172A2 2 0 0120 6.414V11a2 2 0 01-2 2h-3"/></svg>
+            Needs work (2)
+          </button>
+          <button class="btn btn-ghost btn-sm" style="font-size: 10px;">Report issue</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 5: USER TAGS WITH VOTING
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">5. Community Tags with Voting (shown on book detail)</div>
+
+    <div class="panel" style="max-width: 700px; padding: 20px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+        <span style="font-size: 13px; font-weight: 600;">Community Tags</span>
+        <button class="btn btn-outline btn-sm">
+          <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+          Suggest Tag
+        </button>
+      </div>
+
+      <!-- Tags with vote counts and confidence -->
+      <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px;">
+        <!-- High confidence, user voted up -->
+        <span style="display: inline-flex; align-items: center; gap: 0; border-radius: 6px; overflow: hidden; border: 1px solid rgba(61,186,106,0.25); font-size: 12px;">
+          <span style="padding: 4px 10px; background: rgba(61,186,106,0.06); color: var(--foreground); font-weight: 500;">Comedy</span>
+          <span style="padding: 4px 6px; background: rgba(61,186,106,0.12); color: #5dd88a; font-size: 10px; font-weight: 600; border-left: 1px solid rgba(61,186,106,0.2); cursor: pointer;" title="You agreed · 34 of 36 agree">▲ 94%</span>
+        </span>
+
+        <!-- High confidence -->
+        <span style="display: inline-flex; align-items: center; gap: 0; border-radius: 6px; overflow: hidden; border: 1px solid rgba(61,186,106,0.25); font-size: 12px;">
+          <span style="padding: 4px 10px; background: rgba(61,186,106,0.06); color: var(--foreground); font-weight: 500;">Bureaucratic Hero</span>
+          <span style="padding: 4px 6px; background: rgba(61,186,106,0.12); color: #5dd88a; font-size: 10px; font-weight: 600; border-left: 1px solid rgba(61,186,106,0.2); cursor: pointer;">▲ 92%</span>
+        </span>
+
+        <span style="display: inline-flex; align-items: center; gap: 0; border-radius: 6px; overflow: hidden; border: 1px solid rgba(61,186,106,0.25); font-size: 12px;">
+          <span style="padding: 4px 10px; background: rgba(61,186,106,0.06); color: var(--foreground); font-weight: 500;">Fantasy</span>
+          <span style="padding: 4px 6px; background: rgba(61,186,106,0.12); color: #5dd88a; font-size: 10px; font-weight: 600; border-left: 1px solid rgba(61,186,106,0.2); cursor: pointer;">▲ 89%</span>
+        </span>
+
+        <span style="display: inline-flex; align-items: center; gap: 0; border-radius: 6px; overflow: hidden; border: 1px solid rgba(232,168,50,0.25); font-size: 12px;">
+          <span style="padding: 4px 10px; background: rgba(232,168,50,0.04); color: var(--foreground); font-weight: 500;">Found Family</span>
+          <span style="padding: 4px 6px; background: rgba(232,168,50,0.1); color: #f0be54; font-size: 10px; font-weight: 600; border-left: 1px solid rgba(232,168,50,0.2); cursor: pointer;" title="15 of 20 agree">▲ 75%</span>
+        </span>
+
+        <span style="display: inline-flex; align-items: center; gap: 0; border-radius: 6px; overflow: hidden; border: 1px solid rgba(232,168,50,0.25); font-size: 12px;">
+          <span style="padding: 4px 10px; background: rgba(232,168,50,0.04); color: var(--foreground); font-weight: 500;">Slow Burn</span>
+          <span style="padding: 4px 6px; background: rgba(232,168,50,0.1); color: #f0be54; font-size: 10px; font-weight: 600; border-left: 1px solid rgba(232,168,50,0.2); cursor: pointer;">▲ 71%</span>
+        </span>
+
+        <span style="display: inline-flex; align-items: center; gap: 0; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); font-size: 12px;">
+          <span style="padding: 4px 10px; color: var(--muted-fg); font-weight: 500;">Parody</span>
+          <span style="padding: 4px 6px; background: var(--secondary); color: var(--muted-fg); font-size: 10px; font-weight: 600; border-left: 1px solid var(--border); cursor: pointer;" title="8 of 14 agree — borderline">≈ 57%</span>
+        </span>
+
+        <!-- Low confidence — shown dimmed, about to be hidden -->
+        <span style="display: inline-flex; align-items: center; gap: 0; border-radius: 6px; overflow: hidden; border: 1px solid rgba(220,78,78,0.15); font-size: 12px; opacity: 0.5;">
+          <span style="padding: 4px 10px; color: var(--muted-fg); font-weight: 500; text-decoration: line-through;">Isekai</span>
+          <span style="padding: 4px 6px; background: rgba(220,78,78,0.06); color: #e87272; font-size: 10px; font-weight: 600; border-left: 1px solid rgba(220,78,78,0.15); cursor: pointer;" title="Only 2 of 18 agree — will be hidden soon">▼ 12%</span>
+        </span>
+      </div>
+
+      <!-- Tag voting explanation -->
+      <div style="padding: 10px 14px; background: var(--background); border: 1px solid var(--border); border-radius: 6px; font-size: 11px; color: var(--muted-fg); line-height: 1.5;">
+        <strong style="color: var(--foreground);">How tags work:</strong> Anyone can suggest a tag. Other readers vote ▲ agree or ▼ disagree. Tags are shown when they have 5+ votes and >50% agreement.
+        <span style="display: flex; gap: 12px; margin-top: 6px;">
+          <span style="color: #5dd88a;">▲ 75%+ = high confidence (green)</span>
+          <span style="color: #f0be54;">▲ 50-74% = moderate (amber)</span>
+          <span style="color: #e87272;">▼ below 50% = hidden</span>
+        </span>
+      </div>
+
+      <!-- Suggest tag dialog (inline) -->
+      <div style="margin-top: 16px; padding: 14px; background: var(--background); border: 1px solid var(--border); border-radius: 8px;">
+        <span style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 8px;">Suggest a new tag</span>
+        <div style="display: flex; gap: 8px;">
+          <input class="input-field" placeholder="e.g., Tea Diplomacy, Anti-Hero, Political Intrigue..." style="flex: 1; height: 34px; font-size: 12px;" />
+          <button class="btn btn-primary" style="flex-shrink: 0;">Submit</button>
+        </div>
+        <div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px;">
+          <span style="font-size: 10px; color: var(--muted-fg); margin-right: 4px;">Popular suggestions:</span>
+          <span style="padding: 2px 6px; border-radius: 3px; font-size: 10px; background: var(--secondary); color: var(--muted-fg); cursor: pointer;">Tea Diplomacy</span>
+          <span style="padding: 2px 6px; border-radius: 3px; font-size: 10px; background: var(--secondary); color: var(--muted-fg); cursor: pointer;">Anti-Hero</span>
+          <span style="padding: 2px 6px; border-radius: 3px; font-size: 10px; background: var(--secondary); color: var(--muted-fg); cursor: pointer;">Political Intrigue</span>
+          <span style="padding: 2px 6px; border-radius: 3px; font-size: 10px; background: var(--secondary); color: var(--muted-fg); cursor: pointer;">Unique Magic System</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 6: READING LIST / LIBRARY
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">5. My Library — Reading Lists, Favorites, History</div>
+
+    <div class="panel" style="max-width: 700px;">
+      <!-- Tabs -->
+      <div style="display: flex; border-bottom: 1px solid var(--border);">
+        <button style="padding: 10px 16px; font-size: 12px; font-weight: 500; border-bottom: 2px solid var(--primary); color: var(--primary); background: none; border-top: none; border-left: none; border-right: none; cursor: pointer;">
+          <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24" style="vertical-align: -1px; margin-right: 4px;"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+          Favorites (6)
+        </button>
+        <button style="padding: 10px 16px; font-size: 12px; font-weight: 500; border-bottom: 2px solid transparent; color: var(--muted-fg); background: none; border-top: none; border-left: none; border-right: none; cursor: pointer;">Currently Reading (3)</button>
+        <button style="padding: 10px 16px; font-size: 12px; font-weight: 500; border-bottom: 2px solid transparent; color: var(--muted-fg); background: none; border-top: none; border-left: none; border-right: none; cursor: pointer;">Reading History</button>
+        <button style="padding: 10px 16px; font-size: 12px; font-weight: 500; border-bottom: 2px solid transparent; color: var(--muted-fg); background: none; border-top: none; border-left: none; border-right: none; cursor: pointer;">Custom Lists (2)</button>
+      </div>
+
+      <!-- Favorites list -->
+      <div class="list-item">
+        <div style="width: 36px; height: 52px; border-radius: 4px; background: linear-gradient(135deg, #2d1740, #1a1030); flex-shrink: 0; border: 1px solid var(--border);"></div>
+        <div style="flex: 1; min-width: 0;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="font-serif" style="font-size: 13px; font-weight: 500;">The Demon Lord's Duty</span>
+            <span style="font-size: 10px; color: var(--muted-fg);">by NeneScarlet</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+            <div class="progress-bar" style="width: 80px;"><div class="progress-fill" style="width: 42%;"></div></div>
+            <span style="font-size: 10px; color: var(--muted-fg);">Ch.3 / 24</span>
+            <span style="font-size: 10px; color: var(--muted-fg);">· Reading in English</span>
+          </div>
+        </div>
+        <div style="display: flex; gap: 3px;">
+          <svg class="star star-sm filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          <span style="font-size: 11px; font-weight: 500;">4.2</span>
+        </div>
+        <button class="btn btn-primary btn-sm">Continue</button>
+      </div>
+
+      <div class="list-item">
+        <div style="width: 36px; height: 52px; border-radius: 4px; background: linear-gradient(135deg, #162824, #0a1a14); flex-shrink: 0; border: 1px solid var(--border);"></div>
+        <div style="flex: 1; min-width: 0;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="font-serif" style="font-size: 13px; font-weight: 500;">Reincarnated as a Slime Chef</span>
+            <span style="font-size: 10px; color: var(--muted-fg);">by TofuMaster</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+            <div class="progress-bar" style="width: 80px;"><div class="progress-fill" style="width: 100%;"></div></div>
+            <span style="font-size: 10px; color: var(--success);">Completed</span>
+            <span style="font-size: 10px; color: var(--muted-fg);">· Read in 日本語</span>
+          </div>
+        </div>
+        <div style="display: flex; gap: 3px;">
+          <svg class="star star-sm filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          <span style="font-size: 11px; font-weight: 500;">4.5</span>
+        </div>
+        <button class="btn btn-outline btn-sm">Re-read</button>
+      </div>
+
+      <div class="list-item">
+        <div style="width: 36px; height: 52px; border-radius: 4px; background: linear-gradient(135deg, #302018, #1a100c); flex-shrink: 0; border: 1px solid var(--border);"></div>
+        <div style="flex: 1; min-width: 0;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="font-serif" style="font-size: 13px; font-weight: 500;">Moonlit Cultivation Manual</span>
+            <span style="font-size: 10px; color: var(--muted-fg);">by JadePeak</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+            <span style="font-size: 10px; color: var(--muted-fg);">Not started yet</span>
+          </div>
+        </div>
+        <div style="display: flex; gap: 3px;">
+          <svg class="star star-sm filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          <span style="font-size: 11px; font-weight: 500;">3.8</span>
+        </div>
+        <button class="btn btn-primary btn-sm">Start</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

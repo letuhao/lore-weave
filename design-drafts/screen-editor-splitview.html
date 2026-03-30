@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Split-View Translation Editing</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Noto+Serif+JP:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a;
+      --success: #3dba6a; --info: #5496e8; --destructive: #dc4e4e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; height: 100vh; overflow: hidden; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 2px; }
+
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 5px; font-size: 11px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; font-family: inherit; }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+    .btn-outline:hover { background: var(--secondary); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-icon { width: 26px; height: 26px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 5px; border: none; cursor: pointer; background: transparent; color: var(--muted-fg); transition: all 120ms; }
+    .btn-icon:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-icon.active { background: var(--primary-muted); color: var(--primary); }
+    .kbd { background: var(--secondary); border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; font-size: 9px; font-family: 'JetBrains Mono', monospace; color: var(--muted-fg); }
+    .badge { display: inline-flex; align-items: center; gap: 3px; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 500; }
+    .badge-success { background: rgba(61,186,106,0.12); color: #5dd88a; }
+
+    /* Nav rail */
+    .nav-rail { width: 48px; flex-shrink: 0; background: var(--background); border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 2px; }
+    .nav-icon { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--muted-fg); cursor: pointer; transition: all 120ms; }
+    .nav-icon:hover { background: var(--secondary); color: var(--foreground); }
+    .nav-icon.active { background: var(--primary-muted); color: var(--primary); }
+
+    .toolbar { height: 42px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid var(--border); background: var(--card); }
+    .toolbar-group { display: flex; align-items: center; gap: 6px; }
+    .toolbar-divider { width: 1px; height: 18px; background: var(--border); margin: 0 2px; }
+
+    /* Panel headers */
+    .panel-header { height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid var(--border); background: rgba(24,20,18,0.5); font-size: 11px; }
+    .panel-label { font-weight: 600; color: var(--muted-fg); display: flex; align-items: center; gap: 6px; }
+
+    /* Chunk pairs */
+    .chunk-pair { display: flex; border-bottom: 1px solid var(--border); }
+    .chunk-pair:hover { background: rgba(255,255,255,0.005); }
+    .chunk-pair.active { background: rgba(232,168,50,0.02); }
+
+    .chunk-side { flex: 1; padding: 10px 16px; font-size: 14px; line-height: 1.8; border-right: 1px solid var(--border); position: relative; }
+    .chunk-side:last-child { border-right: none; }
+    .chunk-side.source { color: var(--muted-fg); font-family: 'Noto Serif JP', serif; }
+    .chunk-side.target { color: var(--foreground); font-family: 'Lora', Georgia, serif; }
+    .chunk-side.target:focus-within { background: rgba(232,168,50,0.015); }
+    .chunk-num { position: absolute; left: 4px; top: 10px; font-size: 9px; font-family: 'JetBrains Mono', monospace; color: var(--muted-fg); opacity: 0.4; }
+
+    /* Chunk status indicators */
+    .chunk-status { position: absolute; right: 6px; top: 10px; display: flex; gap: 3px; opacity: 0; transition: opacity 120ms; }
+    .chunk-pair:hover .chunk-status { opacity: 1; }
+
+    /* Diff highlights */
+    .diff-added { background: rgba(61,186,106,0.1); border-bottom: 1px dashed rgba(61,186,106,0.3); }
+    .diff-removed { background: rgba(220,78,78,0.08); text-decoration: line-through; color: var(--destructive); opacity: 0.5; }
+
+    /* Accept/reject buttons */
+    .chunk-actions { display: flex; gap: 2px; }
+    .action-accept { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 4px; border: none; cursor: pointer; background: rgba(61,186,106,0.1); color: #5dd88a; transition: all 100ms; }
+    .action-accept:hover { background: rgba(61,186,106,0.2); }
+    .action-reject { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 4px; border: none; cursor: pointer; background: rgba(220,78,78,0.08); color: #e87272; transition: all 100ms; }
+    .action-reject:hover { background: rgba(220,78,78,0.15); }
+    .action-edit { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 4px; border: none; cursor: pointer; background: var(--secondary); color: var(--muted-fg); transition: all 100ms; }
+    .action-edit:hover { background: var(--card-hover); color: var(--foreground); }
+
+    /* Status bar */
+    .status-bar { height: 24px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-top: 1px solid var(--border); background: rgba(24,20,18,0.6); font-size: 10px; color: var(--muted-fg); }
+  </style>
+</head>
+<body>
+
+<div style="display: flex; height: 100vh;">
+
+  <!-- Nav rail -->
+  <div class="nav-rail">
+    <div style="width: 28px; height: 28px; border-radius: 6px; background: var(--primary); color: var(--primary-fg); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;">L</div>
+    <div class="nav-icon active"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13"/></svg></div>
+    <div class="nav-icon"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01"/></svg></div>
+    <div style="flex: 1;"></div>
+    <div class="nav-icon"><svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0"/><circle cx="12" cy="12" r="3"/></svg></div>
+  </div>
+
+  <!-- Main -->
+  <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="toolbar-group">
+        <span style="font-size: 12px; color: var(--muted-fg);">Workspace</span>
+        <svg width="12" height="12" fill="none" stroke="var(--muted-fg)" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+        <span style="font-size: 12px; color: var(--muted-fg);">The Demon Lord's Duty</span>
+        <svg width="12" height="12" fill="none" stroke="var(--muted-fg)" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+        <span style="font-size: 12px; font-weight: 500;">Ch.3 — Translation Review</span>
+      </div>
+      <div class="toolbar-group">
+        <!-- View mode toggles -->
+        <span style="font-size: 10px; color: var(--muted-fg);">View:</span>
+        <div class="btn-icon" title="Editor mode"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5"/></svg></div>
+        <div class="btn-icon active" title="Split view (current)">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 3v18M3 3h18v18H3z"/></svg>
+        </div>
+        <div class="btn-icon" title="Diff view"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></div>
+
+        <div class="toolbar-divider"></div>
+
+        <span class="badge badge-success" style="font-size: 9px;">
+          <span style="width: 5px; height: 5px; border-radius: 50%; background: #3dba6a;"></span>
+          4/6 accepted
+        </span>
+
+        <div class="toolbar-divider"></div>
+
+        <button class="btn btn-outline" style="gap: 4px;">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+          Accept All
+        </button>
+        <button class="btn btn-primary" style="gap: 4px;">
+          Save <span class="kbd">Ctrl+S</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Split-view content -->
+    <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+
+      <!-- Panel headers -->
+      <div style="display: flex; flex-shrink: 0;">
+        <div class="panel-header" style="flex: 1; border-right: 1px solid var(--border);">
+          <div class="panel-label">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            Source — 日本語 (ja)
+          </div>
+          <span style="font-size: 10px; color: var(--muted-fg);">read-only</span>
+        </div>
+        <div class="panel-header" style="flex: 1;">
+          <div class="panel-label" style="color: var(--primary);">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10"/></svg>
+            Translation — English (en)
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 10px; color: var(--muted-fg);">AI · Claude Sonnet 4.6</span>
+            <button class="btn btn-ghost" style="font-size: 10px; padding: 2px 6px;">Re-translate</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chunk pairs (scrollable) -->
+      <div style="flex: 1; overflow-y: auto;">
+
+        <!-- Chunk 1: Accepted -->
+        <div class="chunk-pair" style="opacity: 0.7;">
+          <div class="chunk-side source" style="padding-left: 24px;">
+            <span class="chunk-num">1</span>
+            玉座の間は魔法の松明の静かな音を除いて沈黙していた。魔王は脚を組んで座り、隣国アエロリアとの最新の領土紛争を詳述した巻物を吟味していた。
+          </div>
+          <div class="chunk-side target" style="padding-left: 24px;">
+            <span class="chunk-num">1</span>
+            The throne room was silent except for the gentle hiss of magical torches. The Demon Lord sat with one leg crossed over the other, examining a scroll that detailed the latest territorial dispute with the neighboring kingdom of Aeloria.
+            <div class="chunk-status" style="opacity: 1;">
+              <span class="badge badge-success" style="font-size: 8px; padding: 1px 6px;">
+                <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+                Accepted
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chunk 2: Accepted -->
+        <div class="chunk-pair" style="opacity: 0.7;">
+          <div class="chunk-side source" style="padding-left: 24px;">
+            <span class="chunk-num">2</span>
+            「陛下、勇者が到着いたしました」侍従長が告げた。その声は黒曜石の壁に反響した。何世紀もの奉仕でも完全に隠しきれない不安の色が滲んでいた。
+          </div>
+          <div class="chunk-side target" style="padding-left: 24px;">
+            <span class="chunk-num">2</span>
+            "Your Majesty, the Hero has arrived," announced the chamberlain, his voice echoing against the obsidian walls. The words carried an undertone of anxiety that even centuries of service could not fully mask.
+            <div class="chunk-status" style="opacity: 1;">
+              <span class="badge badge-success" style="font-size: 8px; padding: 1px 6px;">
+                <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+                Accepted
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chunk 3: Active / being reviewed (editable) -->
+        <div class="chunk-pair active">
+          <div class="chunk-side source" style="padding-left: 24px;">
+            <span class="chunk-num" style="opacity: 0.8;">3</span>
+            魔王はため息をついた——松明の炎が揺れるほどの。「通せ。茶を用意しろ。良い方だ、呪いの方じゃない」間を置いて。「やっぱり両方用意しろ。あいつの機嫌次第だ」
+          </div>
+          <div class="chunk-side target" style="padding-left: 24px;">
+            <span class="chunk-num" style="opacity: 0.8;">3</span>
+            <div contenteditable="true" style="outline: none;">The Demon Lord sighed — a sound that caused the torches to flicker. "Send him in. And prepare the tea. The good one, not the cursed variety." A pause. "Actually, prepare both. Let's see what kind of mood he's in."</div>
+            <div class="chunk-status" style="opacity: 1;">
+              <div class="chunk-actions">
+                <button class="action-accept" title="Accept translation">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+                </button>
+                <button class="action-reject" title="Reject — re-translate">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+                <button class="action-edit" title="Edit manually">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chunk 4: Pending review -->
+        <div class="chunk-pair">
+          <div class="chunk-side source" style="padding-left: 24px;">
+            <span class="chunk-num">4</span>
+            扉が芝居がかった勢いで開かれた。勇者が大股で入ってきた。鎧は輝き、マントは風もないのにたなびいていた。剣は天井に向けられ——明らかにリハーサル済みのポーズだった。
+          </div>
+          <div class="chunk-side target" style="padding-left: 24px;">
+            <span class="chunk-num">4</span>
+            The doors burst open with theatrical force. The Hero strode in, armor gleaming, cape billowing despite the notable absence of wind. His sword was drawn, pointed directly at the ceiling in what was clearly a rehearsed pose.
+            <div class="chunk-status">
+              <div class="chunk-actions">
+                <button class="action-accept" title="Accept"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></button>
+                <button class="action-reject" title="Reject"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
+                <button class="action-edit" title="Edit"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11"/></svg></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chunk 5: Pending -->
+        <div class="chunk-pair">
+          <div class="chunk-side source" style="padding-left: 24px;">
+            <span class="chunk-num">5</span>
+            「魔王！」勇者は叫んだ。「正式な苦情を申し立てに来た！」勇者は胸当ての中からくしゃくしゃの羊皮紙を取り出した。「勇者・魔王交戦規定第7条第3項には明確に——」
+          </div>
+          <div class="chunk-side target" style="padding-left: 24px;">
+            <span class="chunk-num">5</span>
+            "Demon Lord!" he bellowed. "I have come to lodge a formal complaint!" The Hero reached into his breastplate and produced a crumpled piece of parchment. "Subsection 7, paragraph 3 of the Hero-Demon Lord Engagement Protocol clearly states—"
+            <div class="chunk-status">
+              <div class="chunk-actions">
+                <button class="action-accept"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></button>
+                <button class="action-reject"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
+                <button class="action-edit"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11"/></svg></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chunk 6: Not yet translated -->
+        <div class="chunk-pair">
+          <div class="chunk-side source" style="padding-left: 24px;">
+            <span class="chunk-num">6</span>
+            「座れ、アルドリック」魔王は影から実体化した椅子を指し示した。「茶は？」
+          </div>
+          <div class="chunk-side target" style="padding-left: 24px; color: var(--muted-fg); font-style: italic;">
+            <span class="chunk-num">6</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 13px;">Not yet translated</span>
+              <button class="btn btn-outline" style="font-size: 10px; padding: 2px 8px;">
+                <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 5h12M9 3v2"/></svg>
+                Translate
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Status bar -->
+    <div class="status-bar">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span>日本語 (ja) → English (en)</span>
+        <span style="color: var(--border);">|</span>
+        <span>4 accepted · 1 pending · 1 untranslated</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span><span class="kbd">↑↓</span> Navigate chunks</span>
+        <span><span class="kbd">Enter</span> Accept</span>
+        <span><span class="kbd">E</span> Edit</span>
+        <span><span class="kbd">R</span> Re-translate</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

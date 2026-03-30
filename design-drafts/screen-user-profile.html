@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — User Profile (Author + Translator)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a;
+      --destructive: #dc4e4e; --success: #3dba6a; --info: #5496e8;
+      --heart: #e85d75;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; font-family: inherit; }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+    .btn-outline:hover { background: var(--secondary); }
+
+    .badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 500; }
+    .badge-success { background: rgba(61,186,106,0.12); color: #5dd88a; }
+    .badge-muted { background: var(--secondary); color: var(--muted-fg); }
+
+    .panel { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--card); }
+    .sidebar { width: 240px; flex-shrink: 0; background: var(--background); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+    .sidebar-link { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; font-size: 13px; color: var(--muted-fg); text-decoration: none; transition: all 120ms; }
+    .sidebar-link:hover { background: var(--secondary); }
+    .sidebar-link.active { background: var(--primary-muted); color: var(--primary); }
+
+    .tab { padding: 10px 16px; font-size: 13px; font-weight: 500; border-bottom: 2px solid transparent; color: var(--muted-fg); cursor: pointer; transition: all 120ms; background: none; border-top: none; border-left: none; border-right: none; }
+    .tab:hover { color: var(--foreground); }
+    .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+    .stat-box { text-align: center; padding: 12px; }
+    .stat-value { font-size: 20px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    .stat-label { font-size: 10px; color: var(--muted-fg); margin-top: 2px; }
+
+    .book-card { display: flex; gap: 14px; padding: 14px; border-bottom: 1px solid var(--border); transition: background 120ms; cursor: pointer; }
+    .book-card:hover { background: var(--card-hover); }
+    .book-card:last-child { border-bottom: none; }
+
+    .achievement { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); font-size: 11px; transition: all 120ms; }
+    .achievement:hover { border-color: var(--border-hover); background: var(--card-hover); }
+
+    .star-sm { width: 12px; height: 12px; color: var(--primary); }
+  </style>
+</head>
+<body>
+
+<div style="display: flex; min-height: 100vh;">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 16px 16px 12px;">
+      <div style="width: 28px; height: 28px; border-radius: 6px; background: var(--primary); color: var(--primary-fg); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;">L</div>
+      <span class="font-serif" style="font-size: 14px; font-weight: 600;">LoreWeave</span>
+    </div>
+    <nav style="padding: 0 8px; display: flex; flex-direction: column; gap: 2px;">
+      <p style="padding: 12px 12px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg);">Main</p>
+      <a href="#" class="sidebar-link"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13"/></svg>Workspace</a>
+      <a href="#" class="sidebar-link"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01"/></svg>Chat</a>
+      <a href="#" class="sidebar-link"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>Browse</a>
+    </nav>
+    <div style="flex: 1;"></div>
+    <div style="border-top: 1px solid var(--border); padding: 12px;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 6px;">
+        <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--primary-muted); color: var(--primary); font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center;">NS</div>
+        <p style="font-size: 12px; font-weight: 500;">NeneScarlet</p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main style="flex: 1; overflow-y: auto;">
+    <div style="max-width: 900px; margin: 0 auto; padding: 24px 32px;">
+
+      <!-- Profile header -->
+      <div style="display: flex; gap: 24px; margin-bottom: 24px;">
+        <!-- Avatar -->
+        <div style="width: 80px; height: 80px; border-radius: 50%; background: var(--primary-muted); color: var(--primary); font-size: 28px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 3px solid var(--primary);">NS</div>
+
+        <div style="flex: 1;">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+            <h1 style="font-size: 22px; font-weight: 700;">NeneScarlet</h1>
+            <span class="badge badge-success">
+              <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+              Author
+            </span>
+            <span class="badge" style="background: rgba(61,166,146,0.12); color: var(--accent);">
+              <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 5h12M9 3v2"/></svg>
+              Translator
+            </span>
+          </div>
+          <p style="font-size: 13px; color: var(--muted-fg); margin-bottom: 10px; line-height: 1.5;">Fantasy writer and Japanese→Vietnamese translator. I write stories about bureaucratic heroes and tea-loving demon lords. Believes legibility is not trivial.</p>
+          <div style="display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--muted-fg);">
+            <span>
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: -1px;"><path d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9"/></svg>
+              日本語, Tiếng Việt, English
+            </span>
+            <span style="color: var(--border);">·</span>
+            <span>Joined March 2026</span>
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-top: 12px;">
+            <button class="btn btn-primary">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+              Follow
+            </button>
+            <button class="btn btn-outline">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+              Message
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats row -->
+      <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 24px;">
+        <div class="stat-box" style="background: var(--card);">
+          <div class="stat-value" style="color: var(--primary);">3</div>
+          <div class="stat-label">Books</div>
+        </div>
+        <div class="stat-box" style="background: var(--card);">
+          <div class="stat-value">48</div>
+          <div class="stat-label">Chapters translated</div>
+        </div>
+        <div class="stat-box" style="background: var(--card);">
+          <div class="stat-value" style="color: var(--heart);">312</div>
+          <div class="stat-label">Total favorites</div>
+        </div>
+        <div class="stat-box" style="background: var(--card);">
+          <div class="stat-value">4.2K</div>
+          <div class="stat-label">Total readers</div>
+        </div>
+        <div class="stat-box" style="background: var(--card);">
+          <div class="stat-value">42</div>
+          <div class="stat-label">Followers</div>
+        </div>
+      </div>
+
+      <!-- Achievements -->
+      <div style="margin-bottom: 24px;">
+        <h3 style="font-size: 13px; font-weight: 600; margin-bottom: 10px;">Achievements</h3>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+          <div class="achievement">
+            <span style="font-size: 14px;">🏆</span>
+            <div>
+              <span style="font-weight: 500;">#1 Author — March 2026</span>
+            </div>
+          </div>
+          <div class="achievement">
+            <span style="font-size: 14px;">📚</span>
+            <div>
+              <span style="font-weight: 500;">100+ Favorites</span>
+            </div>
+          </div>
+          <div class="achievement">
+            <span style="font-size: 14px;">🌐</span>
+            <div>
+              <span style="font-weight: 500;">3-Language Translator</span>
+            </div>
+          </div>
+          <div class="achievement" style="border-color: rgba(232,168,50,0.3); background: var(--primary-muted);">
+            <span style="font-size: 14px;">✍️</span>
+            <div>
+              <span style="font-weight: 500; color: var(--primary);">50 Wiki Contributions</span>
+            </div>
+          </div>
+          <div class="achievement">
+            <span style="font-size: 14px;">📖</span>
+            <div>
+              <span style="font-weight: 500;">1000+ Readers</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Content tabs -->
+      <div style="display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px;">
+        <button class="tab active">Books (3)</button>
+        <button class="tab">Translations (48 ch.)</button>
+        <button class="tab">Wiki Contributions (12)</button>
+        <button class="tab">Reviews (8)</button>
+      </div>
+
+      <!-- Books list -->
+      <div class="panel">
+        <div class="book-card">
+          <div style="width: 48px; height: 68px; border-radius: 6px; background: linear-gradient(135deg, #2d1740, #1a1030); flex-shrink: 0; border: 1px solid var(--border);"></div>
+          <div style="flex: 1;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+              <span class="font-serif" style="font-size: 15px; font-weight: 600;">The Demon Lord's Duty</span>
+              <span style="padding: 1px 6px; border-radius: 3px; font-size: 9px; background: rgba(139,92,246,0.12); color: #c4b5fd;">Fantasy</span>
+              <span class="badge badge-success" style="font-size: 9px;">Complete</span>
+            </div>
+            <p style="font-size: 12px; color: var(--muted-fg); line-height: 1.5; margin-bottom: 6px;">A comedic fantasy about the unlikely friendship between a bureaucratic Hero and a tea-loving Demon Lord.</p>
+            <div style="display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--muted-fg);">
+              <span>24 chapters</span>
+              <span style="display: flex; align-items: center; gap: 2px;">
+                <svg class="star-sm" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                4.2 (28)
+              </span>
+              <span style="display: flex; align-items: center; gap: 2px;">
+                <svg width="12" height="12" fill="var(--heart)" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+                156
+              </span>
+              <span>2.4K readers</span>
+              <span style="display: flex; gap: 3px;">
+                <span style="padding: 1px 4px; border-radius: 2px; font-size: 9px; font-family: 'JetBrains Mono', monospace; background: var(--secondary); color: var(--muted-fg);">ja</span>
+                <span style="padding: 1px 4px; border-radius: 2px; font-size: 9px; font-family: 'JetBrains Mono', monospace; background: var(--secondary); color: var(--muted-fg);">en</span>
+                <span style="padding: 1px 4px; border-radius: 2px; font-size: 9px; font-family: 'JetBrains Mono', monospace; background: var(--secondary); color: var(--muted-fg);">vi</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="book-card">
+          <div style="width: 48px; height: 68px; border-radius: 6px; background: linear-gradient(135deg, #1a2828, #0e1818); flex-shrink: 0; border: 1px solid var(--border);"></div>
+          <div style="flex: 1;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+              <span class="font-serif" style="font-size: 15px; font-weight: 600;">The Clerk's Grimoire</span>
+              <span style="padding: 1px 6px; border-radius: 3px; font-size: 9px; background: rgba(139,92,246,0.12); color: #c4b5fd;">Fantasy</span>
+              <span class="badge-muted badge" style="font-size: 9px;">Ongoing</span>
+            </div>
+            <p style="font-size: 12px; color: var(--muted-fg); line-height: 1.5; margin-bottom: 6px;">Spin-off following the Clerk's Guild archivists who discover that every legal document ever filed contains hidden magical formulas.</p>
+            <div style="display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--muted-fg);">
+              <span>6 chapters</span>
+              <span style="display: flex; align-items: center; gap: 2px;">
+                <svg class="star-sm" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                4.0 (5)
+              </span>
+              <span style="display: flex; align-items: center; gap: 2px;">
+                <svg width="12" height="12" fill="var(--heart)" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+                28
+              </span>
+              <span>340 readers</span>
+              <span style="padding: 1px 4px; border-radius: 2px; font-size: 9px; font-family: 'JetBrains Mono', monospace; background: var(--secondary); color: var(--muted-fg);">ja</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="book-card">
+          <div style="width: 48px; height: 68px; border-radius: 6px; background: linear-gradient(135deg, #281a20, #180e14); flex-shrink: 0; border: 1px solid var(--border);"></div>
+          <div style="flex: 1;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+              <span class="font-serif" style="font-size: 15px; font-weight: 600;">Echoes of the Ancient Capital</span>
+              <span style="padding: 1px 6px; border-radius: 3px; font-size: 9px; background: rgba(249,115,22,0.12); color: #fdba74;">Historical</span>
+              <span class="badge-muted badge" style="font-size: 9px;">Draft</span>
+            </div>
+            <p style="font-size: 12px; color: var(--muted-fg); line-height: 1.5; margin-bottom: 6px;">A historical drama set in imperial Vietnam. Early draft, not yet published.</p>
+            <div style="display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--muted-fg);">
+              <span>3 chapters</span>
+              <span>Not yet published</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+</body>
+</html>
