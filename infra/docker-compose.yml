@@ -59,8 +59,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      postgres-db-bootstrap:
-        condition: service_completed_successfully
+
       mailhog:
         condition: service_started
     ports:
@@ -78,8 +77,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      postgres-db-bootstrap:
-        condition: service_completed_successfully
+
       minio:
         condition: service_started
     ports:
@@ -97,8 +95,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      postgres-db-bootstrap:
-        condition: service_completed_successfully
+
       book-service:
         condition: service_healthy
     ports:
@@ -116,8 +113,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      postgres-db-bootstrap:
-        condition: service_completed_successfully
+
       book-service:
         condition: service_healthy
       sharing-service:
@@ -138,8 +134,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      postgres-db-bootstrap:
-        condition: service_completed_successfully
+
       usage-billing-service:
         condition: service_healthy
     ports:
@@ -156,8 +151,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      postgres-db-bootstrap:
-        condition: service_completed_successfully
+
     ports:
       - "8209:8086"
 
@@ -191,8 +185,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      postgres-db-bootstrap:
-        condition: service_completed_successfully
+
       rabbitmq:
         condition: service_healthy
       book-service:
@@ -215,8 +208,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      postgres-db-bootstrap:
-        condition: service_completed_successfully
+
       rabbitmq:
         condition: service_healthy
       book-service:
@@ -237,8 +229,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      postgres-db-bootstrap:
-        condition: service_completed_successfully
+
       book-service:
         condition: service_healthy
     ports:
@@ -263,8 +254,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      postgres-db-bootstrap:
-        condition: service_completed_successfully
+
       provider-registry-service:
         condition: service_healthy
       usage-billing-service:
