@@ -5,7 +5,7 @@
 
 services:
   postgres:
-    image: postgres:18-alpine
+    image: postgres:16-alpine
     environment:
       POSTGRES_USER: loreweave
       POSTGRES_PASSWORD: loreweave_dev
