@@ -6,6 +6,7 @@ import { FullBleedLayout } from '@/layouts/FullBleedLayout';
 import { EditorLayout } from '@/layouts/EditorLayout';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
 import { BooksPage } from '@/pages/BooksPage';
+import { BookDetailPage } from '@/pages/BookDetailPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { RegisterPage } from '@/pages/auth/RegisterPage';
 import { ForgotPage } from '@/pages/auth/ForgotPage';
@@ -56,12 +57,12 @@ export function App() {
             {/* Workspace */}
             <Route path="/books" element={<BooksPage />} />
             <Route path="/books/trash" element={<PlaceholderPage title="Trash" description="Recycle bin for deleted books." />} />
-            <Route path="/books/:bookId" element={<PlaceholderPage title="Book Detail" description="Tabs: Chapters, Translation, Glossary, Sharing, Settings — coming in P2-03." />} />
-            <Route path="/books/:bookId/translation" element={<PlaceholderPage title="Translation" />} />
-            <Route path="/books/:bookId/glossary" element={<PlaceholderPage title="Glossary" />} />
-            <Route path="/books/:bookId/sharing" element={<PlaceholderPage title="Sharing" />} />
-            <Route path="/books/:bookId/settings" element={<PlaceholderPage title="Book Settings" />} />
-            <Route path="/books/:bookId/wiki" element={<PlaceholderPage title="Wiki" />} />
+            <Route path="/books/:bookId" element={<BookDetailPage />} />
+            <Route path="/books/:bookId/translation" element={<BookDetailPage />} />
+            <Route path="/books/:bookId/glossary" element={<BookDetailPage />} />
+            <Route path="/books/:bookId/sharing" element={<BookDetailPage />} />
+            <Route path="/books/:bookId/settings" element={<BookDetailPage />} />
+            <Route path="/books/:bookId/wiki" element={<BookDetailPage />} />
 
             {/* Chat */}
             <Route path="/chat" element={<PlaceholderPage title="Chat" description="AI chat with session sidebar — coming in P3-18." />} />

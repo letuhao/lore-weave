@@ -212,7 +212,7 @@ AC:
 
 ### P2-03: BookDetailPage Shell [FE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P2-02
 Scope:  Tabs: Chapters, Translation, Glossary, Sharing, Settings (stubs)
 AC:

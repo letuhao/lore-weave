@@ -6,7 +6,7 @@ type Crumb = { label: string; to?: string };
 
 interface PageHeaderProps {
   title: string;
-  subtitle?: string;
+  subtitle?: React.ReactNode;
   breadcrumbs?: Crumb[];
   actions?: ReactNode;
   tabs?: ReactNode;
