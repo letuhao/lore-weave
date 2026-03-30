@@ -1,9 +1,13 @@
 FROM node:20-alpine AS build
+
+# Fix DNS resolution issues in Docker Alpine
+RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf
+
 WORKDIR /app
 ARG VITE_API_BASE=http://localhost:3000
 ENV VITE_API_BASE=$VITE_API_BASE
 COPY package.json ./
-RUN npm install --prefer-offline --no-audit --no-fund --loglevel=warn
+RUN npm install --no-audit --no-fund --loglevel=warn
 COPY . .
 RUN npm run build
 
