@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from '@/auth';
+import { AuthProvider, RequireAuth } from '@/auth';
 import { ModeProvider } from '@/providers/ModeProvider';
 import { DashboardLayout } from '@/layouts/DashboardLayout';
 import { FullBleedLayout } from '@/layouts/FullBleedLayout';
@@ -24,13 +24,13 @@ export function App() {
             <Route path="/reset" element={<ResetPage />} />
           </Route>
 
-          {/* Editor (collapsed sidebar) */}
-          <Route element={<EditorLayout />}>
+          {/* Editor (collapsed sidebar, auth required) */}
+          <Route element={<RequireAuth><EditorLayout /></RequireAuth>}>
             <Route path="/books/:bookId/chapters/:chapterId/edit" element={<PlaceholderPage title="Chapter Editor" description="3-panel workbench — coming in P2-05." />} />
           </Route>
 
-          {/* Dashboard pages (full sidebar) */}
-          <Route element={<DashboardLayout />}>
+          {/* Dashboard pages (full sidebar, auth required) */}
+          <Route element={<RequireAuth><DashboardLayout /></RequireAuth>}>
             {/* Redirect root to workspace */}
             <Route path="/" element={<Navigate to="/books" replace />} />
 

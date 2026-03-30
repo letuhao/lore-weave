@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
+import { Navigate } from 'react-router-dom';
 
 type AuthState = {
   accessToken: string | null;
@@ -57,4 +58,12 @@ export function useAuth() {
   const x = useContext(Ctx);
   if (!x) throw new Error('useAuth outside provider');
   return x;
+}
+
+export function RequireAuth({ children }: { children: React.ReactNode }) {
+  const { accessToken } = useAuth();
+  if (!accessToken) {
+    return <Navigate to="/login" replace />;
+  }
+  return <>{children}</>;
 }
