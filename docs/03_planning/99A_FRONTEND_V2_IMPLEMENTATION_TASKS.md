@@ -71,7 +71,7 @@ All existing APIs work as-is. Pure frontend scaffold.
 
 ### P1-01: Project Scaffold [FE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   None
 Scope:  Create frontend-v2/ — Vite + React 18 + TypeScript
 AC:
@@ -81,7 +81,7 @@ AC:
 
 ### P1-02: Tailwind + shadcn/ui + Theme [FE]
 ```
-Status: [ ]
+Status: [B]
 Deps:   P1-01
 Scope:  CSS variables from warm literary theme, shadcn init, core components
 AC:
