@@ -30,6 +30,12 @@ export async function apiJson<T>(
     }
   }
   if (!res.ok) {
+    // Auto-clear auth on 401 — token expired or invalid
+    if (res.status === 401 && init.token) {
+      localStorage.removeItem('lw_auth');
+      window.location.href = '/login';
+      return undefined as T;
+    }
     const err = body as ApiError;
     throw Object.assign(new Error(err.message || res.statusText), {
       status: res.status,

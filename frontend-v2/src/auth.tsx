@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
 
 type AuthState = {
   accessToken: string | null;
@@ -12,29 +12,21 @@ const Ctx = createContext<AuthState | null>(null);
 
 const STORAGE_KEY = 'lw_auth';
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [accessToken, setAccess] = useState<string | null>(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return null;
-      const j = JSON.parse(raw);
-      return j.accessToken ?? null;
-    } catch {
-      return null;
-    }
-  });
-  const [refreshToken, setRefresh] = useState<string | null>(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return null;
-      const j = JSON.parse(raw);
-      return j.refreshToken ?? null;
-    } catch {
-      return null;
-    }
-  });
+function readToken(key: 'accessToken' | 'refreshToken'): string | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw)[key] ?? null;
+  } catch {
+    return null;
+  }
+}
 
-  const setTokens = (a: string | null, r: string | null) => {
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [accessToken, setAccess] = useState<string | null>(() => readToken('accessToken'));
+  const [refreshToken, setRefresh] = useState<string | null>(() => readToken('refreshToken'));
+
+  const setTokens = useCallback((a: string | null, r: string | null) => {
     setAccess(a);
     setRefresh(r);
     if (a || r) {
@@ -42,13 +34,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } else {
       localStorage.removeItem(STORAGE_KEY);
     }
-  };
+  }, []);
 
-  const logoutLocal = () => setTokens(null, null);
+  const logoutLocal = useCallback(() => setTokens(null, null), [setTokens]);
 
   const v = useMemo(
     () => ({ accessToken, refreshToken, setTokens, logoutLocal }),
-    [accessToken, refreshToken],
+    [accessToken, refreshToken, setTokens, logoutLocal],
   );
 
   return <Ctx.Provider value={v}>{children}</Ctx.Provider>;
@@ -60,10 +52,17 @@ export function useAuth() {
   return x;
 }
 
+/**
+ * Wraps protected routes. Redirects to /login if not authenticated.
+ * Saves the current URL so login can redirect back after success.
+ */
 export function RequireAuth({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();
+  const location = useLocation();
+
   if (!accessToken) {
-    return <Navigate to="/login" replace />;
+    // Save where the user wanted to go, so login can redirect back
+    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   }
   return <>{children}</>;
 }

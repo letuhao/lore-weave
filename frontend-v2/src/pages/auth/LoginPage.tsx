@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -13,7 +13,11 @@ export function LoginPage() {
   const { t } = useTranslation('auth');
   const { setTokens } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [error, setError] = useState('');
+
+  // Where to go after login — saved by RequireAuth, or default to /books
+  const from = (location.state as { from?: string })?.from || '/books';
 
   const schema = z.object({
     email: z.string().min(1, t('validation.email_required')).email(t('validation.email_invalid')),
@@ -32,7 +36,7 @@ export function LoginPage() {
         body: JSON.stringify(data),
       });
       setTokens(res.access_token, res.refresh_token);
-      navigate('/books');
+      navigate(from, { replace: true });
     } catch (err) {
       setError((err as Error).message);
     }
