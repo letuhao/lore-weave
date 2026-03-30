@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { StatusBadge, Skeleton, ConfirmDialog } from '@/components/shared';
 import { LanguageDisplay } from '@/components/shared/LanguageDisplay';
 import { cn } from '@/lib/utils';
+import { ChaptersTab } from '@/pages/book-tabs/ChaptersTab';
 
 const tabs = [
   { key: '', label: 'Chapters' },
@@ -150,7 +151,7 @@ function BookTabContent({ bookId, book, activeTab, onReload }: {
   };
 
   if (activeTab === '') {
-    return <ChaptersTabPlaceholder bookId={bookId} />;
+    return <ChaptersTab bookId={bookId} />;
   }
 
   return (
@@ -160,10 +161,3 @@ function BookTabContent({ bookId, book, activeTab, onReload }: {
   );
 }
 
-function ChaptersTabPlaceholder({ bookId }: { bookId: string }) {
-  return (
-    <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
-      Chapters DataTable — coming in P2-04.
-    </div>
-  );
-}

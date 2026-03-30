@@ -222,7 +222,7 @@ AC:
 
 ### P2-04: Chapters Tab [FE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P2-03
 Scope:  DataTable with chapters, create dialog (uses existing booksApi)
 AC:
