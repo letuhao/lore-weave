@@ -3,7 +3,7 @@ WORKDIR /app
 ARG VITE_API_BASE=http://localhost:3000
 ENV VITE_API_BASE=$VITE_API_BASE
 COPY package.json ./
-RUN npm install
+RUN npm install --prefer-offline --no-audit --no-fund --loglevel=warn
 COPY . .
 RUN npm run build
 
