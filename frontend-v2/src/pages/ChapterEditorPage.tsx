@@ -3,23 +3,20 @@ import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   Save, PanelLeft, PanelRight, Clock, ChevronRight, ChevronLeft, ChevronRight as ChevronRightNav, SpellCheck,
-  BookOpen, FileText, BookMarked, LayoutList, ScrollText, Scissors, Plus, X,
+  BookOpen, FileText, BookMarked, Pen, Sparkles,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
-import { useChunks } from '@/hooks/useChunks';
 import { useEditorPanels } from '@/hooks/useEditorPanels';
 import { useEditorDirty } from '@/contexts/EditorDirtyContext';
-import { ChunkItem } from '@/components/editor/ChunkItem';
-import { ChunkInsertRow } from '@/components/editor/ChunkInsertRow';
 import { RevisionHistory } from '@/components/editor/RevisionHistory';
+import { TiptapEditor, htmlToPlainText, type TiptapEditorHandle } from '@/components/editor/TiptapEditor';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { UnsavedChangesDialog } from '@/components/shared/UnsavedChangesDialog';
 import { cn } from '@/lib/utils';
-import { useGrammarEnabled, useGrammarCheck, useSourceGrammarCheck } from '@/hooks/useGrammarCheck';
-
-type ViewMode = 'chunk' | 'source';
+import { useGrammarEnabled } from '@/hooks/useGrammarCheck';
+import { useEditorMode } from '@/hooks/useEditorMode';
 
 function wordCount(text: string): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
@@ -31,7 +28,6 @@ export function ChapterEditorPage() {
   const panels = useEditorPanels();
 
   // Draft state
-  const [body, setBody] = useState('');
   const [version, setVersion] = useState<number | undefined>();
   const [saving, setSaving] = useState(false);
   const [saveNote, setSaveNote] = useState('');
@@ -40,21 +36,19 @@ export function ChapterEditorPage() {
   const [title, setTitle] = useState('');
   const [savedTitle, setSavedTitle] = useState('');
 
-  // View / panels
-  const [viewMode, setViewMode] = useState<ViewMode>('source');
-  const [sourceBody, setSourceBody] = useState('');
-
-  // Grammar check
-  const [grammarEnabled, setGrammarEnabled] = useGrammarEnabled();
-  const grammar = useGrammarCheck(grammarEnabled);
-  const sourceRef = React.useRef<HTMLTextAreaElement>(null);
-  const sourceGrammar = useSourceGrammarCheck(sourceBody, sourceRef, grammarEnabled);
+  // Editor content
   const [savedBody, setSavedBody] = useState('');
+  const [initialBody, setInitialBody] = useState('');
+  const [tiptapHtml, setTiptapHtml] = useState('');
+  const tiptapEditorRef = useRef<TiptapEditorHandle>(null);
+
+  // Editor mode + grammar
+  const [editorMode, setEditorMode] = useEditorMode();
+  const [grammarEnabled, setGrammarEnabled] = useGrammarEnabled();
+
+  // Panels
   const [rightTab, setRightTab] = useState<'history' | 'ai'>('history');
   const [revKey, setRevKey] = useState(0);
-
-  // Auto-chunk preview (source mode only)
-  const [autoChunkPreview, setAutoChunkPreview] = useState<string[] | null>(null);
 
   // Left sidebar
   const [leftTab, setLeftTab] = useState<'source' | 'chapters'>('chapters');
@@ -70,15 +64,11 @@ export function ChapterEditorPage() {
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveRef = useRef<() => Promise<void>>(async () => {});
 
-  // Newly inserted chunk index for auto-focus
-  const [focusIndex, setFocusIndex] = useState<number | null>(null);
-
-  const chunks = useChunks(body);
   const { setIsDirty, guardedNavigate, pendingNavigation, confirmNavigation, cancelNavigation } = useEditorDirty();
 
-  const isDirty = viewMode === 'source'
-    ? sourceBody !== savedBody
-    : chunks.isDirty || title !== savedTitle;
+  const bodyChanged = tiptapHtml ? htmlToPlainText(tiptapHtml) !== savedBody : false;
+  const titleChanged = title !== savedTitle;
+  const isDirty = bodyChanged || titleChanged;
 
   // Sync isDirty into context so EditorLayout sidebar can read it
   useEffect(() => {
@@ -90,10 +80,10 @@ export function ChapterEditorPage() {
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
   const discardChanges = useCallback(() => {
-    setSourceBody(savedBody);
+    setTiptapHtml('');
     setTitle(savedTitle);
-    if (viewMode === 'chunk') chunks.reset(savedBody);
-  }, [savedBody, savedTitle, viewMode, chunks]);
+    tiptapEditorRef.current?.__setContentFromPlainText(savedBody);
+  }, [savedBody, savedTitle]);
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
@@ -104,10 +94,9 @@ export function ChapterEditorPage() {
         booksApi.getDraft(accessToken, bookId, chapterId),
         booksApi.getChapter(accessToken, bookId, chapterId),
       ]);
-      setBody(draft.body);
-      setSourceBody(draft.body);
       setSavedBody(draft.body);
-      chunks.reset(draft.body);
+      setInitialBody(draft.body);
+      setTiptapHtml('');
       setVersion(draft.draft_version);
       const t = chapter.title ?? '';
       setTitle(t);
@@ -116,15 +105,6 @@ export function ChapterEditorPage() {
   }, [accessToken, bookId, chapterId]);
 
   useEffect(() => { void load(); }, [load]);
-
-  // Run grammar check on initial load
-  const initialGrammarDone = useRef(false);
-  useEffect(() => {
-    if (!grammarEnabled || !body || initialGrammarDone.current) return;
-    initialGrammarDone.current = true;
-    const paragraphs = body.split(/\n\n+/).map((t) => t.trim()).filter(Boolean);
-    void grammar.checkAll(paragraphs.map((text, i) => ({ index: i, text })));
-  }, [body, grammarEnabled, grammar]);
 
   // Load chapter list — used for prev/next nav and the Chapters sidebar tab
   useEffect(() => {
@@ -150,20 +130,6 @@ export function ChapterEditorPage() {
       .finally(() => setOriginalLoading(false));
   }, [panels.left, leftTab, accessToken, bookId, chapterId, originalContent, originalLoading]);
 
-  // ── Mode switch ───────────────────────────────────────────────────────────
-
-  const switchMode = (mode: ViewMode) => {
-    if (mode === viewMode) return;
-    if (mode === 'source') {
-      setSourceBody(chunks.reassemble());
-    } else {
-      chunks.reset(sourceBody);
-    }
-    grammar.clear();
-    sourceGrammar.clear();
-    setViewMode(mode);
-  };
-
   // ── Save ──────────────────────────────────────────────────────────────────
 
   const save = useCallback(async () => {
@@ -171,7 +137,7 @@ export function ChapterEditorPage() {
     setSaving(true);
     if (autoSaveTimer.current) { clearTimeout(autoSaveTimer.current); autoSaveTimer.current = null; }
     try {
-      const bodyToSave = viewMode === 'source' ? sourceBody : chunks.reassemble();
+      const bodyToSave = tiptapHtml ? htmlToPlainText(tiptapHtml) : savedBody;
       await booksApi.patchDraft(accessToken, bookId, chapterId, {
         body: bodyToSave,
         commit_message: saveNote || undefined,
@@ -186,12 +152,12 @@ export function ChapterEditorPage() {
       await load();
     } catch (e) { toast.error((e as Error).message); }
     setSaving(false);
-  }, [accessToken, bookId, chapterId, viewMode, sourceBody, chunks, saveNote, version, title, savedTitle, load]);
+  }, [accessToken, bookId, chapterId, tiptapHtml, savedBody, saveNote, version, title, savedTitle, load]);
 
   // Keep ref current so auto-save always calls the latest version
   useEffect(() => { saveRef.current = save; }, [save]);
 
-  // ── Auto-save (30 s after last change) ───────────────────────────────────
+  // ── Auto-save (5 minutes after last change) ─────────────────────────────
 
   useEffect(() => {
     if (!isDirty) {
@@ -199,9 +165,9 @@ export function ChapterEditorPage() {
       return;
     }
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(() => { void saveRef.current(); }, 30_000);
+    autoSaveTimer.current = setTimeout(() => { void saveRef.current(); }, 300_000);
     return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); };
-  }, [isDirty, viewMode, sourceBody, title]);
+  }, [isDirty, tiptapHtml, title]);
 
   // ── Leave-page guard ──────────────────────────────────────────────────────
 
@@ -226,20 +192,6 @@ export function ChapterEditorPage() {
     return () => window.removeEventListener('keydown', handler);
   }, [save]);
 
-  // ── Chunk insert helper ───────────────────────────────────────────────────
-
-  const handleDeleteChunk = (index: number) => {
-    chunks.deleteChunk(index);
-    grammar.clear();
-  };
-
-  const handleInsertChunk = (position: number) => {
-    chunks.insertChunk(position);
-    setFocusIndex(position);
-    grammar.clear();
-    requestAnimationFrame(() => setFocusIndex(null));
-  };
-
   // ── Chapter navigation (with unsaved-changes guard) ──────────────────────
 
   const navigateToChapter = (targetId: string) => {
@@ -247,28 +199,10 @@ export function ChapterEditorPage() {
     guardedNavigate(`/books/${bookId}/chapters/${targetId}/edit`);
   };
 
-  // ── Auto-chunk (source → chunk preview) ──────────────────────────────────
-
-  const sourceParagraphs = sourceBody.split(/\n\n+/).map((t) => t.trim()).filter(Boolean);
-
-  const openAutoChunkPreview = () => {
-    // Always open — even if only 1 paragraph, the preview explains how blank lines work
-    const paragraphs = sourceParagraphs.length > 0 ? sourceParagraphs : [''];
-    setAutoChunkPreview(paragraphs);
-  };
-
-  const applyAutoChunk = () => {
-    setAutoChunkPreview(null);
-    switchMode('chunk');   // syncs chunks.reset(sourceBody) internally
-  };
-
-  const cancelAutoChunk = () => setAutoChunkPreview(null);
-
   // ── Word count display ────────────────────────────────────────────────────
 
-  const currentBody = viewMode === 'source' ? sourceBody : chunks.reassemble();
+  const currentBody = tiptapHtml ? htmlToPlainText(tiptapHtml) : savedBody;
   const wc = wordCount(currentBody);
-  const totalGrammarIssues = viewMode === 'source' ? sourceGrammar.totalIssues : grammar.totalIssues;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -306,33 +240,33 @@ export function ChapterEditorPage() {
 
         {/* Right controls */}
         <div className="flex items-center gap-2">
-          {/* View mode toggle */}
+          {/* Editor mode toggle */}
           <div className="flex items-center rounded-md border bg-muted/30 p-0.5">
             <button
-              onClick={() => switchMode('chunk')}
+              onClick={() => setEditorMode('classic')}
               className={cn(
                 'flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors',
-                viewMode === 'chunk'
+                editorMode === 'classic'
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground',
               )}
-              title="Chunk mode — edit paragraph by paragraph"
+              title="Classic mode — focused writing"
             >
-              <LayoutList className="h-3 w-3" />
-              Chunks
+              <Pen className="h-3 w-3" />
+              Classic
             </button>
             <button
-              onClick={() => switchMode('source')}
+              onClick={() => setEditorMode('ai')}
               className={cn(
                 'flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors',
-                viewMode === 'source'
+                editorMode === 'ai'
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground',
               )}
-              title="Source mode — edit raw text directly"
+              title="AI Assistant mode — full features"
             >
-              <ScrollText className="h-3 w-3" />
-              Source
+              <Sparkles className="h-3 w-3" />
+              AI
             </button>
           </div>
 
@@ -353,11 +287,6 @@ export function ChapterEditorPage() {
               className="sr-only"
             />
             <SpellCheck className="h-3.5 w-3.5" />
-            {grammarEnabled && totalGrammarIssues > 0 && (
-              <span className="rounded-full bg-warning/20 px-1.5 py-px text-[9px] font-semibold text-warning">
-                {totalGrammarIssues}
-              </span>
-            )}
           </label>
 
           <button
@@ -523,155 +452,22 @@ export function ChapterEditorPage() {
               className="w-full bg-transparent font-serif text-xl font-semibold outline-none placeholder:text-muted-foreground/30"
               placeholder="Chapter title"
             />
-            <div className="mt-1.5 flex items-center gap-3">
-              <p className="text-[10px] text-muted-foreground">
-                {wc.toLocaleString()} words
-                {viewMode === 'chunk' && (
-                  <> · {chunks.chunks.length} paragraphs
-                    {chunks.selected.size > 0 && ` · ${chunks.selected.size} selected`}
-                  </>
-                )}
-                {' · '}
-                {isDirty ? 'unsaved changes' : 'all saved'}
-                {grammarEnabled && totalGrammarIssues > 0 && (
-                  <>
-                    {' · '}
-                    <span className="text-warning">{totalGrammarIssues} grammar issue{totalGrammarIssues !== 1 ? 's' : ''}</span>
-                  </>
-                )}
-              </p>
-
-              {/* Auto-chunk button — always visible in source mode when there's text */}
-              {viewMode === 'source' && sourceBody.trim().length > 0 && (
-                <button
-                  onClick={openAutoChunkPreview}
-                  className="inline-flex items-center gap-1 rounded border border-dashed border-border px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
-                  title="Split text into paragraph chunks using blank lines as separators"
-                >
-                  <Scissors className="h-2.5 w-2.5" />
-                  {sourceParagraphs.length > 1
-                    ? `Split into ${sourceParagraphs.length} paragraphs`
-                    : 'Split into paragraphs'}
-                </button>
-              )}
-            </div>
+            <p className="mt-1.5 text-[10px] text-muted-foreground">
+              {wc.toLocaleString()} words
+              {' · '}
+              {isDirty ? 'unsaved changes' : 'all saved'}
+            </p>
           </div>
 
-          {/* Content area */}
-          {viewMode === 'chunk' ? (
-            <div className="flex-1 overflow-y-auto px-4 py-2">
-              <div className="flex flex-col">
-                {/* Insert before first chunk */}
-                <ChunkInsertRow onInsert={() => handleInsertChunk(0)} />
-
-                {chunks.chunks.map((chunk, i) => (
-                  <div key={chunk.index}>
-                    <ChunkItem
-                      index={chunk.index}
-                      text={chunk.text}
-                      selected={chunks.selected.has(chunk.index)}
-                      autoFocus={focusIndex === chunk.index}
-                      onSelect={chunks.toggleSelect}
-                      onChange={chunks.updateChunk}
-                      onDelete={handleDeleteChunk}
-                      grammarMatches={grammar.results.get(chunk.index)}
-                      onBlurGrammar={grammar.checkChunk}
-                    />
-                    {/* Insert after this chunk */}
-                    <ChunkInsertRow onInsert={() => handleInsertChunk(i + 1)} />
-                  </div>
-                ))}
-
-                {/* Quick add at the very bottom */}
-                <button
-                  onClick={() => handleInsertChunk(chunks.chunks.length)}
-                  className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-border/50 py-2 text-[11px] text-muted-foreground/50 transition-colors hover:border-primary/40 hover:text-primary"
-                >
-                  <Plus className="h-3 w-3" />
-                  Add paragraph
-                </button>
-              </div>
-            </div>
-          ) : (
-            <textarea
-              ref={sourceRef}
-              value={sourceBody}
-              onChange={(e) => setSourceBody(e.target.value)}
-              className="flex-1 resize-none bg-transparent px-6 py-3 text-sm leading-[1.8] outline-none placeholder:text-muted-foreground/40"
-              placeholder="Start writing..."
-              spellCheck={false}
-            />
-          )}
-
-          {/* Auto-chunk preview overlay — appears over the content area */}
-          {autoChunkPreview && (
-            <div className="absolute inset-0 z-10 flex flex-col bg-background">
-              {/* Preview header */}
-              <div className="flex flex-shrink-0 items-center justify-between border-b px-6 py-3">
-                <div>
-                  <p className="text-sm font-medium">
-                    {autoChunkPreview.length > 1
-                      ? `Split into ${autoChunkPreview.length} paragraphs`
-                      : 'No paragraph breaks detected'}
-                  </p>
-                  {autoChunkPreview.length > 1 ? (
-                    <p className="text-[10px] text-muted-foreground">
-                      Review how your text will be divided. Apply to switch to chunk mode.
-                    </p>
-                  ) : (
-                    <p className="text-[10px] text-muted-foreground">
-                      Your text is one continuous block.{' '}
-                      <span className="font-medium text-foreground">
-                        Press Enter twice (blank line) between sections
-                      </span>{' '}
-                      to create paragraph boundaries, then click Split again.
-                    </p>
-                  )}
-                </div>
-                <button
-                  onClick={cancelAutoChunk}
-                  className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-                  title="Cancel"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              {/* Chunk preview list */}
-              <div className="flex-1 overflow-y-auto px-6 py-3">
-                <div className="flex flex-col gap-2">
-                  {autoChunkPreview.map((text, i) => (
-                    <div key={i} className="flex gap-3 rounded-md border border-border/40 px-3 py-2">
-                      <span className="w-5 flex-shrink-0 pt-0.5 text-right font-mono text-[10px] text-muted-foreground/40">
-                        {i + 1}
-                      </span>
-                      <p className="flex-1 text-sm leading-[1.7]" style={{ whiteSpace: 'pre-wrap' }}>
-                        {text}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex flex-shrink-0 items-center justify-end gap-2 border-t px-6 py-3">
-                <button
-                  onClick={cancelAutoChunk}
-                  className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-secondary"
-                >
-                  Cancel — stay in source
-                </button>
-                <button
-                  onClick={applyAutoChunk}
-                  disabled={autoChunkPreview.length <= 1}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <LayoutList className="h-3.5 w-3.5" />
-                  Apply — switch to chunk mode
-                </button>
-              </div>
-            </div>
-          )}
+          {/* Tiptap editor */}
+          <TiptapEditor
+            ref={tiptapEditorRef}
+            content={initialBody}
+            onUpdate={(html) => setTiptapHtml(html)}
+            grammarEnabled={grammarEnabled}
+            editorMode={editorMode}
+            className="flex-1 overflow-y-auto"
+          />
 
           {/* Save note */}
           <div className="flex-shrink-0 border-t px-4 py-2">
@@ -711,16 +507,6 @@ export function ChapterEditorPage() {
           </div>
         )}
       </div>
-
-      {/* Bottom bar — chunk selection */}
-      {viewMode === 'chunk' && chunks.selected.size > 0 && (
-        <div className="flex h-9 flex-shrink-0 items-center justify-between border-t bg-card px-4 text-xs">
-          <span className="text-muted-foreground">{chunks.selected.size} paragraph(s) selected</span>
-          <button onClick={chunks.clearSelection} className="text-muted-foreground hover:text-foreground">
-            Clear selection
-          </button>
-        </div>
-      )}
 
       {/* In-place discard confirm */}
       <ConfirmDialog

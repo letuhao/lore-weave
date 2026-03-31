@@ -98,6 +98,39 @@ Update `docs/sessions/SESSION_PATCH.md` at meaningful phase boundaries:
 
 ---
 
+## Task Workflow (9 phases per task)
+
+Every task follows this workflow. The agent plays all roles sequentially.
+
+```
+Phase     │ Role              │ What Happens
+──────────┼───────────────────┼──────────────────────────────────────
+1. PLAN   │ Architect + PO    │ Define scope, acceptance criteria, deps
+2. DESIGN │ Lead              │ API contract / component API / data flow
+3. REVIEW │ PO + Lead         │ Review design before coding
+4. BUILD  │ Developer         │ Write code (backend then frontend)
+5. TEST   │ Developer         │ Run locally, fix bugs, write unit tests
+6. REVIEW │ Lead              │ Code review (patterns, security, a11y)
+7. QC     │ QA / PO           │ Test against acceptance criteria
+8. SESSION│ Developer         │ Update SESSION_PATCH.md + task status
+9. COMMIT │ Developer         │ Git commit + push
+```
+
+**Status tracking:** `[ ]` not started · `[P]` plan · `[D]` design · `[B]` build · `[R]` review · `[Q]` QC · `[S]` session · `[✓]` done
+
+**Task types:** `[FE]` frontend only · `[BE]` backend only · `[FS]` full-stack (backend + frontend)
+
+**Role perspectives:**
+- **Architect** — scoping, dependencies, system-level impact
+- **PO (Product Owner)** — acceptance criteria, design sign-off, final QC
+- **Lead** — technical design, code review (patterns, security, a11y)
+- **Developer** — implementation, testing, session tracking, commits
+- **QA** — test against acceptance criteria, edge cases, regression
+
+When playing each role, shift perspective accordingly. Architect thinks about system boundaries. PO thinks about user value and acceptance. Lead thinks about code quality and maintainability. Developer thinks about correctness and efficiency. QA thinks about what can break.
+
+---
+
 ## Module Progression
 
 Modules are implemented in order. Each module has a full doc set in `docs/03_planning/`:

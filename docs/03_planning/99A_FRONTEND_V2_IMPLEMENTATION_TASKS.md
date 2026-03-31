@@ -774,14 +774,14 @@ P3-17a (wiki backend) blocks all wiki features
 
 | Task | Type | Scope | Deps | Est |
 |---|---|---|---|---|
-| E1-01 | FE | Install Tiptap + extensions (StarterKit, Placeholder, CodeBlockLowlight, Typography) | None | S |
-| E1-02 | FE | Replace textarea source mode with Tiptap editor (paragraph, heading, divider) | E1-01 | M |
-| E1-03 | FE | Replace ChunkItem/ChunkInsertRow with Tiptap block nodes + slash menu (/) | E1-02 | M |
-| E1-04 | FE | Callout custom node (author notes) | E1-02 | S |
-| E1-05 | FE | Grammar check as Tiptap DecorationPlugin (LanguageTool wavy underlines) | E1-02 | M |
-| E1-06 | FE | Mode toggle: Classic / AI Assistant (localStorage, toolbar) | E1-02 | S |
-| E1-07 | FE | Classic mode: minimal toolbar, text-only slash menu | E1-06 | S |
-| E1-08 | FE | Wire existing features: auto-save, Ctrl+S, dirty tracking, unsaved guard, revisions | E1-03 | M |
+| E1-01 [✓] | FE | Install Tiptap + extensions (StarterKit, Placeholder, CodeBlockLowlight, Typography) | None | S |
+| E1-02 [✓] | FE | Replace textarea source mode with Tiptap editor (paragraph, heading, divider) | E1-01 | M |
+| E1-03 [✓] | FE | Replace ChunkItem/ChunkInsertRow with Tiptap block nodes + slash menu (/) | E1-02 | M |
+| E1-04 [✓] | FE | Callout custom node (author notes) | E1-02 | S |
+| E1-05 [✓] | FE | Grammar check as Tiptap DecorationPlugin (LanguageTool wavy underlines) | E1-02 | M |
+| E1-06 [✓] | FE | Mode toggle: Classic / AI Assistant (localStorage, toolbar) | E1-02 | S |
+| E1-07 [✓] | FE | Classic mode: minimal toolbar, text-only slash menu | E1-06 | S |
+| E1-08 [✓] | FE | Wire existing features: auto-save (5m), Ctrl+S, dirty tracking, unsaved guard, revisions | E1-03 | M |
 
 ### E2: Block JSON Storage
 

@@ -7,8 +7,8 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-03-31 (session 11 end)
-- Updated By: Assistant (LanguageTool + mixed-media editor design + phase planning)
+- Last Updated: 2026-03-31 (session 12 end)
+- Updated By: Assistant (Phase 2.5 E1 — Tiptap editor migration)
 - Active Branch: `main`
 - HEAD: see latest commit — unsaved-changes guard + toast system
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
@@ -114,6 +114,30 @@
 | Frontend: "Translate N chunks" in ChunkEditor selection bar | `components/chunk-editor/ChunkEditor.tsx` | `b7dcc4c` |
 | Frontend: translating overlay + loading state per-chunk | `ChunkItem.tsx`, `ChunkEditor.tsx` | `b7dcc4c` |
 | Frontend: wire `onTranslateChunk` in ChapterEditorPageV2 | `pages/v2-drafts/ChapterEditorPageV2.tsx` | `b7dcc4c` |
+
+**What was done in this session (2026-03-31, session 12):**
+
+Phase 2.5 E1: Tiptap editor migration — replaced textarea + chunk mode with unified Tiptap/ProseMirror editor.
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| E1-01: Install Tiptap + extensions, remove Lexical | `package.json` | this session |
+| E1-02: TiptapEditor component + FormatToolbar | `components/editor/TiptapEditor.tsx` (new), `FormatToolbar.tsx` (new) | this session |
+| E1-03: Remove chunk mode, add slash menu | `components/editor/SlashMenu.tsx` (new), `pages/ChapterEditorPage.tsx` (rewrite) | this session |
+| E1-04: Callout custom node (author notes) | `components/editor/CalloutNode.tsx` (new) | this session |
+| E1-05: Grammar as Tiptap DecorationPlugin | `components/editor/GrammarPlugin.ts` (new) | this session |
+| E1-06+07: Mode toggle Classic/AI + classic constraints | `hooks/useEditorMode.ts` (new), `SlashMenu.tsx`, `FormatToolbar.tsx` | this session |
+| E1-08: Wire auto-save (5m), Ctrl+S, dirty tracking, guards, revisions | `ChapterEditorPage.tsx` | this session |
+| Tiptap editor styles | `index.css` | this session |
+| Bug fixes: content prop reactivity, Windows line endings, stale doc guard | `TiptapEditor.tsx`, `GrammarPlugin.ts` | this session |
+| CLAUDE.md: add 9-phase task workflow with roles | `CLAUDE.md` | this session |
+
+**Design decisions recorded:**
+- Tiptap replaces both textarea (source mode) and contentEditable chunks (chunk mode) — single editor
+- Plain text round-trip: backend stores plain text, HTML ↔ text conversion on load/save (until E2 block JSON)
+- Auto-save at 5 minutes (not 30s) — matches Word/Excel behavior
+- Classic mode: text-only slash menu; AI mode: full features including callouts
+- Chunk mode fully removed (useChunks, ChunkItem, ChunkInsertRow now dead code)
 
 **What was done in this session (2026-03-31, session 11):**
 
@@ -231,7 +255,7 @@ Visual drafts: `design-drafts/components-v2-warm.html` (approved)
 | ----- | ----- | ------ |
 | Phase 1 | Scaffold, layout shell, sidebar, routing, auth pages, copy API layer | **Done** |
 | Phase 2 | Core screens: Books list, Book Detail (tabs), Chapter Editor | **Done** |
-| **Phase 2.5** | **Editor Engine: Tiptap migration, block JSON, grammar, mode toggle** | **Up next** |
+| **Phase 2.5** | **Editor Engine: Tiptap migration, block JSON, grammar, mode toggle** | **E1 Done (GATE passed), E2+E3 pending** |
 | Phase 3 | Feature screens: Translation, Glossary, Chat, Sharing | After 2.5 gate |
 | **Phase 3.5** | **Media Blocks: image/video/code, AI prompt, version tracking** | After Phase 3 FE |
 | Phase 4 | Secondary: Settings, Usage, Browse + polish | Planned |
@@ -283,7 +307,8 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Date       | What happened | Key commits |
 | ---------- | ------------- | ----------- |
-| 2026-03-31 | LanguageTool integration, mixed-media editor design (4 drafts), Phase 2.5/3.5/4.5 planning | this session |
+| 2026-03-31 | Phase 2.5 E1: Tiptap editor migration (8 tasks), bug fixes, workflow update | this session |
+| 2026-03-31 | LanguageTool integration, mixed-media editor design (4 drafts), Phase 2.5/3.5/4.5 planning | session 11 |
 | 2026-03-31 | Unsaved-changes guard (EditorDirtyContext, UnsavedChangesDialog), universal ConfirmDialog, toast system (sonner) | this session |
 | 2026-03-30 | Frontend V2 planning: GUI audit, design drafts (warm literary theme), rebuild plan, CI cleanup | `6f14c26` (PR #2) |
 | 2026-03-30 | Code review hardening: transaction fix, safe format_map, response validation, stale closure fix, bulk error UX | `b7dcc4c` |
