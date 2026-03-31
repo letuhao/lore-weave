@@ -10,6 +10,7 @@ import { BookDetailPage } from '@/pages/BookDetailPage';
 import { ChapterEditorPage } from '@/pages/ChapterEditorPage';
 import { ReaderPage } from '@/pages/ReaderPage';
 import { ReaderThemeProvider } from '@/providers/ReaderThemeProvider';
+import { SidebarProvider } from '@/providers/SidebarProvider';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { RegisterPage } from '@/pages/auth/RegisterPage';
 import { ForgotPage } from '@/pages/auth/ForgotPage';
@@ -21,6 +22,7 @@ export function App() {
     <AuthProvider>
     <ModeProvider>
     <ReaderThemeProvider>
+    <SidebarProvider>
       <BrowserRouter>
         <Routes>
           {/* ── Public routes (no auth required) ── */}
@@ -92,6 +94,7 @@ export function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+    </SidebarProvider>
     </ReaderThemeProvider>
     </ModeProvider>
     </AuthProvider>

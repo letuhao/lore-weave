@@ -8,10 +8,12 @@ import {
   Settings,
   LogOut,
   LogIn,
-  Bell,
   Trophy,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
+import { useSidebar } from '@/providers/SidebarProvider';
 import { cn } from '@/lib/utils';
 import { apiJson } from '@/api';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
@@ -35,6 +37,7 @@ export function Sidebar() {
   const location = useLocation();
   const { t } = useTranslation();
   const { accessToken, user, logoutLocal } = useAuth();
+  const { collapsed, toggle } = useSidebar();
   const isLoggedIn = !!accessToken;
 
   const handleLogout = async () => {
@@ -47,34 +50,83 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="flex w-[240px] flex-col border-r bg-background">
-      {/* Logo */}
-      <div className="flex items-center gap-2.5 px-4 py-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
-          L
-        </div>
-        <span className="font-serif text-base font-semibold tracking-tight">
-          LoreWeave
-        </span>
+    <aside
+      className={cn(
+        'flex flex-col border-r bg-background transition-[width] duration-200',
+        collapsed ? 'w-[56px]' : 'w-[240px]',
+      )}
+    >
+      {/* Logo + collapse toggle */}
+      <div className={cn('flex items-center py-5', collapsed ? 'justify-center px-2' : 'px-4')}>
+        <Link to="/" className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
+            L
+          </div>
+          {!collapsed && (
+            <span className="font-serif text-base font-semibold tracking-tight">
+              LoreWeave
+            </span>
+          )}
+        </Link>
+        {!collapsed && (
+          <button
+            onClick={toggle}
+            className="ml-auto rounded p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            title={t('nav.collapse_sidebar', { defaultValue: 'Collapse sidebar' })}
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
+        )}
       </div>
+
+      {/* Expand button when collapsed */}
+      {collapsed && (
+        <div className="flex justify-center px-2 pb-2">
+          <button
+            onClick={toggle}
+            className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            title={t('nav.expand_sidebar', { defaultValue: 'Expand sidebar' })}
+          >
+            <PanelLeftOpen className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Main nav */}
       <nav className="flex-1 space-y-1 px-2">
-        <p className="px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {t('nav.main')}
-        </p>
+        {!collapsed && (
+          <p className="px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {t('nav.main')}
+          </p>
+        )}
+        {collapsed && <div className="pt-2" />}
         {mainNav.filter((i) => !i.auth || isLoggedIn).map((item) => (
-          <NavLink key={item.to} item={item} label={t(item.labelKey)} currentPath={location.pathname} />
+          <NavLink
+            key={item.to}
+            item={item}
+            label={t(item.labelKey)}
+            currentPath={location.pathname}
+            collapsed={collapsed}
+          />
         ))}
 
-        {/* Only show Manage section if at least one item is visible */}
-        {manageNav.some((i) => !i.auth || isLoggedIn) && (
+        {/* Manage section */}
+        {manageNav.some((i) => !i.auth || isLoggedIn) && !collapsed && (
           <p className="px-3 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             {t('nav.manage')}
           </p>
         )}
+        {collapsed && manageNav.some((i) => !i.auth || isLoggedIn) && (
+          <div className="mx-2 my-3 border-t" />
+        )}
         {manageNav.filter((i) => !i.auth || isLoggedIn).map((item) => (
-          <NavLink key={item.to} item={item} label={t(item.labelKey)} currentPath={location.pathname} />
+          <NavLink
+            key={item.to}
+            item={item}
+            label={t(item.labelKey)}
+            currentPath={location.pathname}
+            collapsed={collapsed}
+          />
         ))}
       </nav>
 
@@ -83,16 +135,21 @@ export function Sidebar() {
         {accessToken ? (
           <>
             {/* Notification bell */}
-            <NotificationBell />
+            {!collapsed && <NotificationBell />}
 
             {/* Logged-in user */}
-            <div className="flex items-center gap-3 rounded-md px-2 py-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/20 text-xs font-medium text-primary">
+            <div className={cn(
+              'flex items-center rounded-md',
+              collapsed ? 'flex-col gap-2 px-0 py-2' : 'gap-3 px-2 py-2',
+            )}>
+              <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-medium text-primary">
                 {(user?.display_name ?? user?.email ?? 'U').charAt(0).toUpperCase()}
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium">{user?.display_name ?? user?.email ?? 'User'}</p>
-              </div>
+              {!collapsed && (
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium">{user?.display_name ?? user?.email ?? 'User'}</p>
+                </div>
+              )}
               <button
                 onClick={() => void handleLogout()}
                 className="rounded p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
@@ -105,19 +162,31 @@ export function Sidebar() {
         ) : (
           /* Not logged in — show sign in */
           <div className="space-y-2">
-            <Link
-              to="/login"
-              className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-            >
-              <LogIn className="h-4 w-4" />
-              {t('login.submit', { ns: 'auth', defaultValue: 'Sign In' })}
-            </Link>
-            <Link
-              to="/register"
-              className="flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            >
-              {t('register.submit', { ns: 'auth', defaultValue: 'Create Account' })}
-            </Link>
+            {collapsed ? (
+              <Link
+                to="/login"
+                className="flex items-center justify-center rounded-md bg-primary p-2 text-primary-foreground transition-colors hover:bg-primary/90"
+                title={t('login.submit', { ns: 'auth', defaultValue: 'Sign In' })}
+              >
+                <LogIn className="h-4 w-4" />
+              </Link>
+            ) : (
+              <>
+                <Link
+                  to="/login"
+                  className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                >
+                  <LogIn className="h-4 w-4" />
+                  {t('login.submit', { ns: 'auth', defaultValue: 'Sign In' })}
+                </Link>
+                <Link
+                  to="/register"
+                  className="flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                >
+                  {t('register.submit', { ns: 'auth', defaultValue: 'Create Account' })}
+                </Link>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -129,10 +198,12 @@ function NavLink({
   item,
   label,
   currentPath,
+  collapsed,
 }: {
   item: { to: string; icon: React.ElementType };
   label: string;
   currentPath: string;
+  collapsed: boolean;
 }) {
   const isActive =
     currentPath === item.to || currentPath.startsWith(item.to + '/');
@@ -141,15 +212,17 @@ function NavLink({
   return (
     <Link
       to={item.to}
+      title={collapsed ? label : undefined}
       className={cn(
-        'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+        'flex items-center rounded-md text-sm transition-colors',
+        collapsed ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-2',
         isActive
           ? 'bg-primary/15 text-primary'
           : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
       )}
     >
-      <Icon className="h-4 w-4" />
-      {label}
+      <Icon className="h-4 w-4 flex-shrink-0" />
+      {!collapsed && label}
     </Link>
   );
 }
