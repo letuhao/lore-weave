@@ -3,3 +3,9 @@ dist
 .env*.local
 *.tsbuildinfo
 package-lock.json
+**/__tests__
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+vitest.setup.ts

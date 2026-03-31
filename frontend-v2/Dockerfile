@@ -4,7 +4,8 @@ WORKDIR /app
 ARG VITE_API_BASE=http://localhost:3000
 ENV VITE_API_BASE=$VITE_API_BASE
 COPY package.json ./
-RUN npm install --no-audit --no-fund --loglevel=warn
+RUN npm config set strict-ssl false && \
+    npm install --no-audit --no-fund --loglevel=warn --maxsockets=3
 COPY . .
 RUN npm run build
 
