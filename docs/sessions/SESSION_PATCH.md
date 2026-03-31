@@ -7,8 +7,8 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-03-31 (session 12 end)
-- Updated By: Assistant (Phase 2.5 E1 — Tiptap editor migration + Data Re-Engineering plan)
+- Last Updated: 2026-04-01 (session 12 end)
+- Updated By: Assistant (Phase 2.5 E1 + Data Re-Engineering plan + detailed task breakdown + architecture diagrams)
 - Active Branch: `main`
 - HEAD: see latest commit — unsaved-changes guard + toast system
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
