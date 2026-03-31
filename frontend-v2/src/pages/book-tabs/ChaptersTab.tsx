@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Plus, Pencil, Download, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Download, Trash2, Upload } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
 import { DataTable, type Column } from '@/components/data/DataTable';
 import { FormDialog, ConfirmDialog, EmptyState, Pagination, StatusBadge } from '@/components/shared';
 import { LanguageDisplay } from '@/components/shared/LanguageDisplay';
 import { Skeleton } from '@/components/shared/Skeleton';
+import { ImportDialog } from '@/components/import/ImportDialog';
 
 interface ChaptersTabProps {
   bookId: string;
@@ -29,6 +30,9 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
   const [newTitle, setNewTitle] = useState('');
   const [newLang, setNewLang] = useState('');
   const [newBody, setNewBody] = useState('');
+
+  // Import dialog
+  const [importOpen, setImportOpen] = useState(false);
 
   // Trash dialog
   const [trashTarget, setTrashTarget] = useState<Chapter | null>(null);
@@ -161,13 +165,22 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
         <span className="text-xs text-muted-foreground">
           {total} {total === 1 ? 'chapter' : 'chapters'}
         </span>
-        <button
-          onClick={() => setCreateOpen(true)}
-          className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          New Chapter
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setImportOpen(true)}
+            className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            <Upload className="h-3.5 w-3.5" />
+            Import
+          </button>
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New Chapter
+          </button>
+        </div>
       </div>
 
       {/* Loading */}
@@ -276,6 +289,14 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
         confirmLabel="Move to Trash"
         variant="destructive"
         onConfirm={() => void handleTrash()}
+      />
+
+      {/* Import dialog */}
+      <ImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        bookId={bookId}
+        onImported={() => void load()}
       />
     </div>
   );
