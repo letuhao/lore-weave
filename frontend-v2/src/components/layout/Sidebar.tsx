@@ -56,9 +56,9 @@ export function Sidebar() {
         collapsed ? 'w-[56px]' : 'w-[240px]',
       )}
     >
-      {/* Logo + collapse toggle */}
-      <div className={cn('flex items-center py-5', collapsed ? 'justify-center px-2' : 'px-4')}>
-        <Link to="/" className="flex items-center gap-2.5">
+      {/* Logo + collapse toggle — always on the same row */}
+      <div className={cn('flex items-center py-5', collapsed ? 'flex-col gap-3 px-2' : 'px-4')}>
+        <Link to="/" className={cn('flex items-center', collapsed ? '' : 'gap-2.5')}>
           <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
             L
           </div>
@@ -68,29 +68,20 @@ export function Sidebar() {
             </span>
           )}
         </Link>
-        {!collapsed && (
-          <button
-            onClick={toggle}
-            className="ml-auto rounded p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            title={t('nav.collapse_sidebar', { defaultValue: 'Collapse sidebar' })}
-          >
-            <PanelLeftClose className="h-4 w-4" />
-          </button>
-        )}
+        <button
+          onClick={toggle}
+          className={cn(
+            'rounded p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground',
+            !collapsed && 'ml-auto',
+          )}
+          title={collapsed
+            ? t('nav.expand_sidebar', { defaultValue: 'Expand sidebar' })
+            : t('nav.collapse_sidebar', { defaultValue: 'Collapse sidebar' })
+          }
+        >
+          {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+        </button>
       </div>
-
-      {/* Expand button when collapsed */}
-      {collapsed && (
-        <div className="flex justify-center px-2 pb-2">
-          <button
-            onClick={toggle}
-            className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            title={t('nav.expand_sidebar', { defaultValue: 'Expand sidebar' })}
-          >
-            <PanelLeftOpen className="h-4 w-4" />
-          </button>
-        </div>
-      )}
 
       {/* Main nav */}
       <nav className="flex-1 space-y-1 px-2">
