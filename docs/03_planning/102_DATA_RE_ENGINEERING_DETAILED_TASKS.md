@@ -43,11 +43,14 @@
 ### D0: Pre-Flight Validation
 
 ```
-D0-01  Spin up postgres:18-alpine, test uuidv7() and JSON_TABLE availability
-       Files: none (manual psql test)
-       Test: SELECT uuidv7();
-             SELECT * FROM JSON_TABLE('{"a":1}'::jsonb, '$' COLUMNS (a INT PATH '$.a')) AS jt;
-       Pass/fail gate: both must return results
+D0-01  [DONE] Spin up postgres:18-alpine, test uuidv7() and JSON_TABLE availability
+       Status: PASSED (2026-04-01)
+       Results:
+         - PostgreSQL 18.1 on x86_64-pc-linux-musl (Alpine)
+         - uuidv7(): 019d4501-2158-7607-b141-cde5ff1b7f74 ← works, no extension
+         - JSON_TABLE: 3 Tiptap blocks extracted correctly (type, _text, attrs)
+         - Virtual generated column: block_count = 3 (zero storage)
+         - pgcrypto NOT needed — confirmed safe to drop
 
 D0-02  Run ALL 9 service migrations against PG18
        Method: start PG18, create all DBs, run each service with migration-only mode
