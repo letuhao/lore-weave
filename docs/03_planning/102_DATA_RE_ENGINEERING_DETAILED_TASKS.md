@@ -66,10 +66,18 @@ D0-02  [DONE] Run ALL 9 service migrations against PG18
          9. chat-service         → loreweave_chat              PASS
        Notes: pgcrypto extension still works (backward compat), benign notices only
 
-D0-03  Test JSON_TABLE inside PL/pgSQL trigger function
-       File: create test SQL script (new file: infra/test-pg18-features.sql)
-       Test: CREATE TABLE + trigger using JSON_TABLE + INSERT + verify extracted data
-       Pass/fail: trigger fires, data extracted correctly
+D0-03  [DONE] Test JSON_TABLE inside PL/pgSQL trigger function
+       Status: PASSED (2026-04-01)
+       File: infra/test-pg18-trigger.sql
+       Results: all 7 test scenarios passed
+         T1: INSERT 3 blocks — PASS (heading_context propagates)
+         T2: UPSERT stability — PASS (id=SAME, hash/timestamp change only for modified)
+         T3: Block shrink (3→2) — PASS (excess deleted)
+         T4: Empty document — PASS (0 blocks)
+         T5: HorizontalRule — PASS (empty text, type preserved)
+         T6: Unicode — PASS (Vietnamese, Chinese, Japanese, emoji)
+         T7: CASCADE delete — PASS (0 remaining)
+       Key: UPSERT pattern confirmed — stable IDs, selective updated_at
 
 D0-04  Test pgx v5 JSONB scanning with json.RawMessage
        File: create test Go program (new file: services/book-service/cmd/pg18test/main.go)
