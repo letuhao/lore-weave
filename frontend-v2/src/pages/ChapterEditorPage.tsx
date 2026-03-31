@@ -5,12 +5,13 @@ import {
   BookOpen, FileText, BookMarked, LayoutList, ScrollText, Scissors, Plus, X,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
-import { booksApi } from '@/features/books/api';
+import { booksApi, type Chapter } from '@/features/books/api';
 import { useChunks } from '@/hooks/useChunks';
 import { useEditorPanels } from '@/hooks/useEditorPanels';
 import { ChunkItem } from '@/components/editor/ChunkItem';
 import { ChunkInsertRow } from '@/components/editor/ChunkInsertRow';
 import { RevisionHistory } from '@/components/editor/RevisionHistory';
+import { Skeleton } from '@/components/shared/Skeleton';
 import { cn } from '@/lib/utils';
 
 type ViewMode = 'chunk' | 'source';
@@ -46,6 +47,12 @@ export function ChapterEditorPage() {
 
   // Auto-chunk preview (source mode only)
   const [autoChunkPreview, setAutoChunkPreview] = useState<string[] | null>(null);
+
+  // Left sidebar
+  const [leftTab, setLeftTab] = useState<'source' | 'chapters'>('chapters');
+  const [originalContent, setOriginalContent] = useState<string | null>(null);
+  const [originalLoading, setOriginalLoading] = useState(false);
+  const [allChapters, setAllChapters] = useState<Chapter[]>([]);
 
   // Navigation
   const [prevChapterId, setPrevChapterId] = useState<string | undefined>();
@@ -87,17 +94,29 @@ export function ChapterEditorPage() {
 
   useEffect(() => { void load(); }, [load]);
 
-  // Load adjacent chapters for prev/next navigation
+  // Load chapter list — used for prev/next nav and the Chapters sidebar tab
   useEffect(() => {
     if (!accessToken || !bookId || !chapterId) return;
     booksApi.listChapters(accessToken, bookId, { lifecycle_state: 'active', limit: 200, offset: 0 })
       .then((res) => {
+        setAllChapters(res.items);
         const idx = res.items.findIndex((c) => c.chapter_id === chapterId);
         setPrevChapterId(idx > 0 ? res.items[idx - 1].chapter_id : undefined);
         setNextChapterId(idx >= 0 && idx < res.items.length - 1 ? res.items[idx + 1].chapter_id : undefined);
       })
       .catch(() => {});
   }, [accessToken, bookId, chapterId]);
+
+  // Lazy-load original source when the Source tab is opened
+  useEffect(() => {
+    if (!panels.left || leftTab !== 'source' || originalContent !== null || originalLoading) return;
+    if (!accessToken) return;
+    setOriginalLoading(true);
+    booksApi.getOriginalContent(accessToken, bookId, chapterId)
+      .then((text) => setOriginalContent(text))
+      .catch(() => setOriginalContent(''))
+      .finally(() => setOriginalLoading(false));
+  }, [panels.left, leftTab, accessToken, bookId, chapterId, originalContent, originalLoading]);
 
   // ── Mode switch ───────────────────────────────────────────────────────────
 
@@ -180,6 +199,14 @@ export function ChapterEditorPage() {
     chunks.insertChunk(position);
     setFocusIndex(position);
     requestAnimationFrame(() => setFocusIndex(null));
+  };
+
+  // ── Chapter navigation (with unsaved-changes guard) ──────────────────────
+
+  const navigateToChapter = (targetId: string) => {
+    if (targetId === chapterId) return;
+    if (isDirty && !window.confirm('You have unsaved changes. Leave without saving?')) return;
+    navigate(`/books/${bookId}/chapters/${targetId}/edit`);
   };
 
   // ── Auto-chunk (source → chunk preview) ──────────────────────────────────
@@ -321,28 +348,102 @@ export function ChapterEditorPage() {
         {/* Left panel */}
         {panels.left && (
           <div className="flex w-[300px] flex-shrink-0 flex-col border-r bg-card">
+            {/* Tab bar */}
             <div className="flex border-b">
-              <button className="flex-1 border-b-2 border-primary px-3 py-2 text-xs font-medium text-primary">
-                <FileText className="mr-1.5 inline h-3 w-3" />Source
+              <button
+                onClick={() => setLeftTab('chapters')}
+                className={cn(
+                  'flex flex-1 items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors',
+                  leftTab === 'chapters' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <BookOpen className="h-3 w-3" />Chapters
               </button>
               <button
-                className="flex-1 cursor-not-allowed px-3 py-2 text-xs text-muted-foreground/40"
-                title="Coming soon"
-                disabled
+                onClick={() => setLeftTab('source')}
+                className={cn(
+                  'flex flex-1 items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors',
+                  leftTab === 'source' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground',
+                )}
               >
-                <BookOpen className="mr-1.5 inline h-3 w-3" />Chapters
+                <FileText className="h-3 w-3" />Original
               </button>
               <button
-                className="flex-1 cursor-not-allowed px-3 py-2 text-xs text-muted-foreground/40"
-                title="Coming soon"
+                className="flex flex-1 cursor-not-allowed items-center justify-center gap-1.5 px-3 py-2 text-xs text-muted-foreground/35"
+                title="Glossary integration — coming soon"
                 disabled
               >
-                <BookMarked className="mr-1.5 inline h-3 w-3" />Glossary
+                <BookMarked className="h-3 w-3" />Glossary
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-3 text-xs text-muted-foreground">
-              <p className="italic">Original source text — coming soon.</p>
-            </div>
+
+            {/* ── Chapters tab ─────────────────────────────────────────── */}
+            {leftTab === 'chapters' && (
+              <div className="flex flex-1 flex-col overflow-hidden">
+                <div className="flex-shrink-0 border-b px-3 py-2 text-[10px] text-muted-foreground">
+                  {allChapters.length} chapter{allChapters.length !== 1 ? 's' : ''}
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                  {allChapters.length === 0 && (
+                    <div className="space-y-1.5 p-3">
+                      <Skeleton className="h-6 w-full" />
+                      <Skeleton className="h-6 w-4/5" />
+                      <Skeleton className="h-6 w-full" />
+                    </div>
+                  )}
+                  {allChapters.map((ch, i) => (
+                    <button
+                      key={ch.chapter_id}
+                      onClick={() => navigateToChapter(ch.chapter_id)}
+                      className={cn(
+                        'flex w-full items-start gap-2 border-b px-3 py-2.5 text-left transition-colors',
+                        ch.chapter_id === chapterId
+                          ? 'border-l-2 border-l-primary bg-primary/[0.07] text-primary'
+                          : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground',
+                      )}
+                    >
+                      <span className="mt-0.5 w-5 flex-shrink-0 text-right font-mono text-[10px] opacity-50">
+                        {i + 1}
+                      </span>
+                      <span className="flex-1 text-xs leading-[1.5]">
+                        {ch.title || ch.original_filename}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── Original source tab ───────────────────────────────────── */}
+            {leftTab === 'source' && (
+              <div className="flex flex-1 flex-col overflow-hidden">
+                <div className="flex-shrink-0 border-b px-3 py-2 text-[10px] text-muted-foreground">
+                  Original uploaded text — read only
+                </div>
+                <div className="flex-1 overflow-y-auto p-3">
+                  {originalLoading ? (
+                    <div className="space-y-2">
+                      <Skeleton className="h-3 w-full" />
+                      <Skeleton className="h-3 w-5/6" />
+                      <Skeleton className="h-3 w-full" />
+                      <Skeleton className="h-3 w-4/5" />
+                      <Skeleton className="h-3 w-full" />
+                    </div>
+                  ) : originalContent ? (
+                    <p
+                      className="text-xs leading-[1.75] text-foreground/70"
+                      style={{ whiteSpace: 'pre-wrap' }}
+                    >
+                      {originalContent}
+                    </p>
+                  ) : (
+                    <p className="text-[10px] italic text-muted-foreground">
+                      No original source — this chapter was created directly in the editor (no file was imported).
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

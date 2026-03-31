@@ -7,9 +7,9 @@ const STORAGE_KEY = 'lw_editor_panels';
 function readState(): PanelState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : { left: true, right: true, leftWidth: 300, rightWidth: 320 };
+    return raw ? JSON.parse(raw) : { left: false, right: true, leftWidth: 300, rightWidth: 320 };
   } catch {
-    return { left: true, right: true, leftWidth: 300, rightWidth: 320 };
+    return { left: false, right: true, leftWidth: 300, rightWidth: 320 };
   }
 }
 

@@ -160,6 +160,11 @@ export const booksApi = {
   getChapter(token: string, bookId: string, chapterId: string) {
     return apiJson<Chapter>(`/v1/books/${bookId}/chapters/${chapterId}`, { token });
   },
+  async getOriginalContent(token: string, bookId: string, chapterId: string): Promise<string> {
+    const res = await apiAuthedFetch(`/v1/books/${bookId}/chapters/${chapterId}/content`, token);
+    if (!res.ok) throw new Error('Failed to load original content');
+    return res.text();
+  },
   patchChapter(token: string, bookId: string, chapterId: string, payload: Record<string, unknown>) {
     return apiJson<Chapter>(`/v1/books/${bookId}/chapters/${chapterId}`, {
       method: 'PATCH',
