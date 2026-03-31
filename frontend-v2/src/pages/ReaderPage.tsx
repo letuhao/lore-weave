@@ -3,6 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import { Menu, X, ChevronLeft, ChevronRight, Sun, Pencil } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Book, type Chapter } from '@/features/books/api';
+import { ChapterReadView } from '@/components/shared/ChapterReadView';
 import { cn } from '@/lib/utils';
 
 export function ReaderPage() {
@@ -104,21 +105,11 @@ export function ReaderPage() {
 
       {/* Reading area */}
       <div className="flex flex-1 justify-center overflow-y-auto px-6 py-10">
-        <article className="w-full max-w-[680px]">
-          <header className="mb-10 text-center">
-            <p className="text-xs uppercase tracking-wider text-muted-foreground">Chapter {currentIdx + 1}</p>
-            <h1 className="mt-2 font-serif text-2xl font-semibold">{chapter?.title || chapter?.original_filename}</h1>
-            <div className="mx-auto mt-4 h-0.5 w-10 rounded bg-primary/40" />
-          </header>
-          <div className="space-y-[1.4em] font-serif text-[17px] leading-[1.85]">
-            {body.split(/\n\n+/).map((p, i) => (
-              <p key={i}>{p}</p>
-            ))}
-          </div>
-          <div className="mt-12 border-t pt-4 text-center text-xs text-muted-foreground">
-            End of Chapter {currentIdx + 1}
-          </div>
-        </article>
+        <ChapterReadView
+          body={body}
+          title={chapter?.title || chapter?.original_filename}
+          chapterNumber={currentIdx + 1}
+        />
       </div>
 
       {/* Bottom nav */}

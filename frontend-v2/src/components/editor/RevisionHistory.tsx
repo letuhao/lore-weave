@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, RotateCcw } from 'lucide-react';
+import { X, RotateCcw } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { ConfirmDialog } from '@/components/shared';
+import { ChapterReadView } from '@/components/shared/ChapterReadView';
 
 type Revision = { revision_id: string; created_at: string; message?: string };
 type PreviewState = { revision: Revision; body: string } | null;
@@ -58,59 +59,6 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
     );
   }
 
-  // — Preview pane —
-  if (preview) {
-    return (
-      <div className="flex h-full flex-col">
-        <div className="flex flex-shrink-0 items-center gap-2 border-b px-3 py-2">
-          <button
-            onClick={() => setPreview(null)}
-            className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
-            title="Back to history"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-          </button>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-medium">
-              {new Date(preview.revision.created_at).toLocaleString()}
-            </p>
-            {preview.revision.message && (
-              <p className="truncate text-[10px] text-muted-foreground">{preview.revision.message}</p>
-            )}
-          </div>
-          <button
-            onClick={() => setRestoreTarget(preview.revision)}
-            className="flex items-center gap-1 rounded-md border border-primary/40 px-2 py-1 text-[10px] font-medium text-primary hover:bg-primary/10"
-            title="Restore this version"
-          >
-            <RotateCcw className="h-3 w-3" />
-            Restore
-          </button>
-        </div>
-        <div className="flex-shrink-0 border-b px-3 py-1.5">
-          <span className="text-[10px] text-muted-foreground">
-            {wordCount(preview.body).toLocaleString()} words
-          </span>
-        </div>
-        <div className="flex-1 overflow-y-auto px-3 py-3">
-          <pre className="whitespace-pre-wrap font-sans text-xs leading-[1.8] text-foreground/80">
-            {preview.body || <span className="italic text-muted-foreground">Empty revision</span>}
-          </pre>
-        </div>
-
-        <ConfirmDialog
-          open={!!restoreTarget}
-          onOpenChange={(open) => { if (!open) setRestoreTarget(null); }}
-          title="Restore this revision?"
-          description="This will overwrite your current draft with this older version and create a new revision entry. This cannot be undone."
-          confirmLabel="Restore"
-          variant="destructive"
-          onConfirm={() => void handleRestore()}
-        />
-      </div>
-    );
-  }
-
   // — History list —
   return (
     <div className="flex h-full flex-col">
@@ -158,6 +106,53 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
         variant="destructive"
         onConfirm={() => void handleRestore()}
       />
+
+      {/* Full-screen preview overlay — rendered via fixed positioning so it
+          escapes the constrained 300px right panel */}
+      {preview && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-background">
+          {/* Preview toolbar */}
+          <div className="flex h-12 flex-shrink-0 items-center justify-between border-b bg-card px-4">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setPreview(null)}
+                className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                title="Close preview"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <div>
+                <p className="text-xs font-medium">
+                  Revision preview
+                  <span className="ml-2 text-muted-foreground font-normal">
+                    {new Date(preview.revision.created_at).toLocaleString()}
+                  </span>
+                </p>
+                {preview.revision.message && (
+                  <p className="text-[10px] text-muted-foreground">{preview.revision.message}</p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] text-muted-foreground">
+                {wordCount(preview.body).toLocaleString()} words
+              </span>
+              <button
+                onClick={() => setRestoreTarget(preview.revision)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Restore this version
+              </button>
+            </div>
+          </div>
+
+          {/* Reading area — same layout as ReaderPage */}
+          <div className="flex flex-1 justify-center overflow-y-auto px-6 py-10">
+            <ChapterReadView body={preview.body} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
