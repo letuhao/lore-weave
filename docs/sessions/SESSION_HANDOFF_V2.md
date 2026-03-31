@@ -1,8 +1,10 @@
-# Session Handoff — Frontend V2 Rebuild
+# Session Handoff — Data Re-Engineering Migration
 
-> **Purpose:** Give the next agent complete context to continue implementation from Phase 3 onward.
-> **Date:** 2026-03-31
-> **Last commit:** session 11 (LanguageTool + mixed-media editor design + phase planning)
+> **Purpose:** Give the next agent complete context to continue Phase D1 (Data Re-Engineering).
+> **Date:** 2026-04-01 (session 12 end)
+> **Last commit:** `54a4d1f` — schema(D1-02): uuidv7 everywhere, JSONB body, drop pgcrypto
+> **Previous focus:** Frontend V2 Phase 2.5 E1 (Tiptap editor) — DONE
+> **Current focus:** Data Re-Engineering Phase D1 — IN PROGRESS
 
 ---
 
@@ -427,3 +429,64 @@ hooks/useJobEvents.ts                → WebSocket job event listener
 - ✅ ImportDialog wired into ChaptersTab (Import button + state present)
 - ✅ Chapter export bug fixed (returns edited draft body, not original file)
 - ✅ `window.confirm/alert` fully eliminated
+- ✅ Phase 2.5 E1 (Tiptap editor) complete — editor is production-ready for text
+- ✅ Postgres 16 (not 18) decision **REVERSED** — now using Postgres 18
+
+---
+
+## 10. Current Focus: Data Re-Engineering Phase D1
+
+> **IMPORTANT:** Frontend V2 Phase 3 is PAUSED. The next agent should continue D1 (data migration), NOT frontend work.
+
+### Key Documents to Read First
+
+1. `docs/03_planning/101_DATA_RE_ENGINEERING_PLAN.md` — full architecture, schema, decisions (#1-#26)
+2. `docs/03_planning/102_DATA_RE_ENGINEERING_DETAILED_TASKS.md` — 58 sub-tasks, 8 discovery cycles
+3. `docs/sessions/SESSION_PATCH.md` — current project status
+
+### Architecture Summary (Two-Layer Data Stack)
+
+```
+PostgreSQL 18 (source of truth)          Neo4j v2026.01 (knowledge + vectors)
+├── JSONB chapter content                ├── Entities, Events, Relations
+├── chapter_blocks (trigger-extracted)   ├── Vector indexes (HNSW)
+├── outbox_events (transactional)        └── Populated by AI pipeline (future)
+├── event_log (permanent event store)
+└── All relational data (10 databases)
+
+Event pipeline: Outbox → worker-infra → Redis Streams + event_log
+Two workers: worker-infra (Go, I/O) + worker-ai (Python, LLM)
+```
+
+### D1 Progress (2 of 12 done)
+
+| Task | Status | Scope |
+|------|--------|-------|
+| D1-01 | **DONE** | Postgres 18 + Redis in docker-compose |
+| D1-02 | **DONE** | uuidv7 everywhere (30 tables), JSONB body, drop pgcrypto |
+| **D1-03** | **NEXT** | chapter_blocks table + UPSERT trigger (JSON_TABLE + _text) |
+| D1-04 | pending | outbox_events table + pg_notify trigger |
+| D1-05 | pending | loreweave_events schema (event_log, consumers, dead_letter) |
+| D1-06 | pending | book-service JSONB refactor (7 handlers + test rewrites) — L size |
+| D1-07 | pending | createChapter: plain text → Tiptap JSON at import |
+| D1-08 | pending | Internal API text_content + translation-service fix (2 lines) |
+| D1-09 | pending | worker-infra service scaffold (new Go service, 10 files) |
+| D1-10 | pending | outbox-relay + cleanup tasks |
+| D1-11 | pending | Frontend: save Tiptap JSON with _text, load JSONB, read-only reader |
+| D1-12 | pending | Integration test (16 scenarios) |
+
+### Key Things the Next Agent Must Know
+
+1. **Strict 9-phase workflow** — each task goes through PLAN→DESIGN→REVIEW→BUILD→TEST→REVIEW→QC→SESSION→COMMIT individually. See CLAUDE.md and `memory/feedback_follow_task_workflow.md`.
+
+2. **D0 pre-flight validated** — PG18 uuidv7(), JSON_TABLE, trigger+UPSERT, pgx json.RawMessage all tested and confirmed working. Test scripts in `infra/test-pg18-trigger.sql` and `infra/pg18test-go/`.
+
+3. **Docker state** — Postgres volume was deleted (clean break). Next startup creates fresh PG18 databases. All services need to rebuild against new schema.
+
+4. **book-service body column is now JSONB** — but the Go handler code still reads/writes it as `string`. D1-06 refactors all 7 handlers to use `json.RawMessage`. Until D1-06, the book-service will NOT start correctly because INSERT/UPDATE expect JSONB but pass strings.
+
+5. **Detailed sub-task specifications** in `102_DATA_RE_ENGINEERING_DETAILED_TASKS.md` — Cycle 2 has the trigger SQL, Cycle 4 has handler-by-handler changes with line numbers, Cycle 5 has translation-service impact, Cycle 6 has worker-infra project structure, Cycle 7 has frontend changes.
+
+6. **_text snapshots** — frontend adds `_text` field to each Tiptap block on save. Trigger reads `$._text` via JSON_TABLE. This eliminates complex server-side JSON parsing. See plan §3.2.1.
+
+7. **getInternalBookChapter** must add `text_content` field — translation-service reads it instead of `body` (which is now JSONB). 2 one-line Python changes in D1-08.

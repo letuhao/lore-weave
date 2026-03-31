@@ -8,9 +8,9 @@
 ## Document Metadata
 
 - Last Updated: 2026-04-01 (session 12 end)
-- Updated By: Assistant (Phase 2.5 E1 + Data Re-Engineering plan + detailed task breakdown + architecture diagrams)
+- Updated By: Assistant (Phase 2.5 E1 + Data Re-Engineering + D0 pre-flight + D1-01/D1-02 migration)
 - Active Branch: `main`
-- HEAD: see latest commit — unsaved-changes guard + toast system
+- HEAD: `54a4d1f` — schema(D1-02): uuidv7 everywhere, JSONB body, drop pgcrypto
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -115,9 +115,42 @@
 | Frontend: translating overlay + loading state per-chunk | `ChunkItem.tsx`, `ChunkEditor.tsx` | `b7dcc4c` |
 | Frontend: wire `onTranslateChunk` in ChapterEditorPageV2 | `pages/v2-drafts/ChapterEditorPageV2.tsx` | `b7dcc4c` |
 
-**What was done in this session (2026-03-31, session 12):**
+**What was done in this session (2026-03-31 to 2026-04-01, session 12):**
 
-Phase 2.5 E1: Tiptap editor migration — replaced textarea + chunk mode with unified Tiptap/ProseMirror editor.
+Part 1: Phase 2.5 E1 Tiptap editor migration. Part 2: Data Re-Engineering architecture, planning, and initial migration.
+
+**Part 2 — Data Re-Engineering (2026-04-01):**
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| Data re-engineering plan (polyglot persistence, event pipeline) | `docs/03_planning/101_DATA_RE_ENGINEERING_PLAN.md` (new) | `7d25320` |
+| Technology research: PG18 + Neo4j v2026.01, remove Qdrant | `101_DATA_RE_ENGINEERING_PLAN.md` | `c94c4e5` |
+| Data engineer review: _text snapshots, UPSERT, outbox pattern | `101_DATA_RE_ENGINEERING_PLAN.md` | `ed20495` |
+| Outbox pattern, uuidv7 everywhere, shared events DB | `101_DATA_RE_ENGINEERING_PLAN.md` | `66190da` |
+| Phase D0, pre-flight concerns, expanded D1 tasks | `101_DATA_RE_ENGINEERING_PLAN.md` | `c078343` |
+| Detailed task breakdown — 8 discovery cycles (58 sub-tasks) | `docs/03_planning/102_DATA_RE_ENGINEERING_DETAILED_TASKS.md` (new) | `f6b41a5` to `04b5e08` |
+| Architecture presentation (pipeline, event flow, workers) | `design-drafts/data-pipeline-architecture.html` (new) | `cc9658c` |
+| Architecture diagrams (C4, ERD, DFD, deployment) | `design-drafts/architecture-diagrams.html` (new) | `8abbbeb` |
+| D0-01: PG18 uuidv7() + JSON_TABLE test | manual (psql) | `6dc6a09` |
+| D0-02: All 9 service migrations on PG18 | manual (psql) | `e3cfd2e` |
+| D0-03: JSON_TABLE trigger test (7 scenarios) | `infra/test-pg18-trigger.sql` (new) | `bb196b3` |
+| D0-04: Go pgx JSONB + json.RawMessage test | `infra/pg18test-go/` (new) | `5907dce` |
+| D1-01: Postgres 16→18, add Redis, add loreweave_events | `infra/docker-compose.yml`, `infra/db-ensure.sh` | `748a519` |
+| D1-02: uuidv7 everywhere, JSONB body, drop pgcrypto | 8 migration files across all services | `54a4d1f` |
+
+**Architecture decisions recorded (session 12):**
+- Postgres 18 (JSON_TABLE, virtual columns, uuidv7, async I/O)
+- Neo4j v2026.01 for knowledge graph + vector search (no Qdrant needed)
+- Two-layer data stack: Postgres (source of truth) → Neo4j (knowledge + vectors)
+- Transactional Outbox pattern for guaranteed event delivery
+- Two-worker architecture: worker-infra (Go) + worker-ai (Python)
+- _text snapshots per Tiptap block (frontend pre-computes, trigger reads trivially)
+- UPSERT trigger for stable block IDs across saves
+- Plain text → Tiptap JSON conversion at import (no dual-mode)
+- Shared loreweave_events database for centralized event management
+- Frontend V2 Phase 3 paused until data re-engineering complete
+
+**Part 1 — Phase 2.5 E1 Tiptap editor migration (2026-03-31):**
 
 | Work item | Files touched | Commit |
 | --------- | ------------- | ------ |
@@ -318,7 +351,8 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Date       | What happened | Key commits |
 | ---------- | ------------- | ----------- |
-| 2026-03-31 | Phase 2.5 E1: Tiptap editor migration (8 tasks), bug fixes, workflow update | this session |
+| 2026-04-01 | Data re-engineering: D0 pre-flight (4/4 pass), D1-01 (PG18+Redis), D1-02 (uuidv7+JSONB) | `54a4d1f` |
+| 2026-03-31 | Phase 2.5 E1: Tiptap editor migration (8 tasks), bug fixes, workflow update | `4f39cf7` |
 | 2026-03-31 | LanguageTool integration, mixed-media editor design (4 drafts), Phase 2.5/3.5/4.5 planning | session 11 |
 | 2026-03-31 | Unsaved-changes guard (EditorDirtyContext, UnsavedChangesDialog), universal ConfirmDialog, toast system (sonner) | this session |
 | 2026-03-30 | Frontend V2 planning: GUI audit, design drafts (warm literary theme), rebuild plan, CI cleanup | `6f14c26` (PR #2) |
