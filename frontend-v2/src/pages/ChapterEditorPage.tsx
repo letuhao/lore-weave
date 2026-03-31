@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import {
   Save, Check, PanelLeft, PanelRight, Clock, ChevronRight, ChevronLeft, ChevronRight as ChevronRightNav,
-  BookOpen, FileText, BookMarked, LayoutList, ScrollText,
+  BookOpen, FileText, BookMarked, LayoutList, ScrollText, Scissors, Plus, X,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
@@ -38,11 +38,14 @@ export function ChapterEditorPage() {
   const [savedTitle, setSavedTitle] = useState('');
 
   // View / panels
-  const [viewMode, setViewMode] = useState<ViewMode>('chunk');
+  const [viewMode, setViewMode] = useState<ViewMode>('source');
   const [sourceBody, setSourceBody] = useState('');
   const [savedBody, setSavedBody] = useState('');
   const [rightTab, setRightTab] = useState<'history' | 'ai'>('history');
   const [revKey, setRevKey] = useState(0);
+
+  // Auto-chunk preview (source mode only)
+  const [autoChunkPreview, setAutoChunkPreview] = useState<string[] | null>(null);
 
   // Navigation
   const [prevChapterId, setPrevChapterId] = useState<string | undefined>();
@@ -176,9 +179,24 @@ export function ChapterEditorPage() {
   const handleInsertChunk = (position: number) => {
     chunks.insertChunk(position);
     setFocusIndex(position);
-    // clear focus flag after next render
     requestAnimationFrame(() => setFocusIndex(null));
   };
+
+  // ── Auto-chunk (source → chunk preview) ──────────────────────────────────
+
+  const sourceParagraphs = sourceBody.split(/\n\n+/).map((t) => t.trim()).filter(Boolean);
+
+  const openAutoChunkPreview = () => {
+    if (sourceParagraphs.length === 0) return;
+    setAutoChunkPreview(sourceParagraphs);
+  };
+
+  const applyAutoChunk = () => {
+    setAutoChunkPreview(null);
+    switchMode('chunk');   // syncs chunks.reset(sourceBody) internally
+  };
+
+  const cancelAutoChunk = () => setAutoChunkPreview(null);
 
   // ── Word count display ────────────────────────────────────────────────────
 
@@ -328,7 +346,7 @@ export function ChapterEditorPage() {
         )}
 
         {/* Center — editor */}
-        <div className="flex flex-1 flex-col overflow-hidden bg-background">
+        <div className="relative flex flex-1 flex-col overflow-hidden bg-background">
 
           {/* Title + metadata bar */}
           <div className="flex-shrink-0 border-b px-6 pt-4 pb-3">
@@ -339,16 +357,30 @@ export function ChapterEditorPage() {
               className="w-full bg-transparent font-serif text-xl font-semibold outline-none placeholder:text-muted-foreground/30"
               placeholder="Chapter title"
             />
-            <p className="mt-1.5 text-[10px] text-muted-foreground">
-              {wc.toLocaleString()} words
-              {viewMode === 'chunk' && (
-                <> · {chunks.chunks.length} paragraphs
-                  {chunks.selected.size > 0 && ` · ${chunks.selected.size} selected`}
-                </>
+            <div className="mt-1.5 flex items-center gap-3">
+              <p className="text-[10px] text-muted-foreground">
+                {wc.toLocaleString()} words
+                {viewMode === 'chunk' && (
+                  <> · {chunks.chunks.length} paragraphs
+                    {chunks.selected.size > 0 && ` · ${chunks.selected.size} selected`}
+                  </>
+                )}
+                {' · '}
+                {isDirty ? 'unsaved changes' : 'all saved'}
+              </p>
+
+              {/* Auto-chunk button — source mode only, only when there's splittable content */}
+              {viewMode === 'source' && sourceParagraphs.length > 1 && (
+                <button
+                  onClick={openAutoChunkPreview}
+                  className="inline-flex items-center gap-1 rounded border border-dashed border-border px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
+                  title="Preview how your text splits into paragraphs, then apply as chunks"
+                >
+                  <Scissors className="h-2.5 w-2.5" />
+                  Split into {sourceParagraphs.length} paragraphs
+                </button>
               )}
-              {' · '}
-              {isDirty ? 'unsaved changes' : 'all saved'}
-            </p>
+            </div>
           </div>
 
           {/* Content area */}
@@ -373,6 +405,15 @@ export function ChapterEditorPage() {
                     <ChunkInsertRow onInsert={() => handleInsertChunk(i + 1)} />
                   </div>
                 ))}
+
+                {/* Quick add at the very bottom */}
+                <button
+                  onClick={() => handleInsertChunk(chunks.chunks.length)}
+                  className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-border/50 py-2 text-[11px] text-muted-foreground/50 transition-colors hover:border-primary/40 hover:text-primary"
+                >
+                  <Plus className="h-3 w-3" />
+                  Add paragraph
+                </button>
               </div>
             </div>
           ) : (
@@ -383,6 +424,63 @@ export function ChapterEditorPage() {
               placeholder="Start writing..."
               spellCheck={false}
             />
+          )}
+
+          {/* Auto-chunk preview overlay — appears over the content area */}
+          {autoChunkPreview && (
+            <div className="absolute inset-0 z-10 flex flex-col bg-background">
+              {/* Preview header */}
+              <div className="flex flex-shrink-0 items-center justify-between border-b px-6 py-3">
+                <div>
+                  <p className="text-sm font-medium">
+                    Split into {autoChunkPreview.length} paragraphs
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Review how your text will be divided. Switch to chunk mode to edit each paragraph separately.
+                  </p>
+                </div>
+                <button
+                  onClick={cancelAutoChunk}
+                  className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  title="Cancel"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Chunk preview list */}
+              <div className="flex-1 overflow-y-auto px-6 py-3">
+                <div className="flex flex-col gap-2">
+                  {autoChunkPreview.map((text, i) => (
+                    <div key={i} className="flex gap-3 rounded-md border border-border/40 px-3 py-2">
+                      <span className="w-5 flex-shrink-0 pt-0.5 text-right font-mono text-[10px] text-muted-foreground/40">
+                        {i + 1}
+                      </span>
+                      <p className="flex-1 text-sm leading-[1.7]" style={{ whiteSpace: 'pre-wrap' }}>
+                        {text}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex flex-shrink-0 items-center justify-end gap-2 border-t px-6 py-3">
+                <button
+                  onClick={cancelAutoChunk}
+                  className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-secondary"
+                >
+                  Cancel — stay in source
+                </button>
+                <button
+                  onClick={applyAutoChunk}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                >
+                  <LayoutList className="h-3.5 w-3.5" />
+                  Apply — switch to chunk mode
+                </button>
+              </div>
+            </div>
           )}
 
           {/* Save note */}
