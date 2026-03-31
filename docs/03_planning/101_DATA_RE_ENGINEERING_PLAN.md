@@ -7,7 +7,7 @@
 > **Does not block:** P3-01 to P3-04 (Translation), P3-20 to P3-22 (Sharing, Settings, Trash)
 >
 > **Created:** 2026-03-31 (session 12)
-> **Updated:** 2026-03-31 (session 12 — technology research + PG18/Neo4j v2026.01 findings)
+> **Updated:** 2026-03-31 (session 12 — technology research + PG18/Neo4j v2026.01 + data engineer review)
 
 ---
 
@@ -28,6 +28,8 @@
 | **Docker breaking change** | PGDATA path changed to `/var/lib/postgresql/18/docker`. Must update volume mounts. | [Aron Schueler](https://aronschueler.de/blog/2025/10/30/fixing-postgres-18-docker-compose-startup/) |
 
 **Key insight:** `JSON_TABLE` + triggers replaces the need for a Python block extractor service. Postgres can extract Tiptap JSON blocks to `chapter_blocks` table natively in SQL, on every save, with zero latency and full ACID consistency.
+
+**Caveat (from data engineer review):** Tiptap JSON has deeply nested text nodes (paragraphs with bold/italic = multiple text nodes, lists = 3 levels deep). A simple `JSON_TABLE` path like `$.content[0].text` only gets the first text node. **Solution:** Frontend pre-computes a `_text` field on each block containing the full concatenated text. The trigger reads `$._text` — trivial extraction, handles any nesting depth. See §3.2.1 for details.
 
 ### Neo4j v2026.01 (latest, March 2026)
 
@@ -151,8 +153,8 @@ postgres:
 
 CREATE TABLE chapter_drafts (
   chapter_id UUID PRIMARY KEY REFERENCES chapters(id) ON DELETE CASCADE,
-  body JSONB NOT NULL,                      -- Tiptap doc JSON
-  body_format TEXT NOT NULL DEFAULT 'json',  -- 'json' | 'plain' (legacy compat)
+  body JSONB NOT NULL,                      -- Tiptap doc JSON (with _text snapshots per block)
+  body_format TEXT NOT NULL DEFAULT 'json',  -- always 'json' (plain text converted at import)
   draft_updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   draft_version BIGINT NOT NULL DEFAULT 1
 );
@@ -176,6 +178,100 @@ CREATE TABLE chapter_revisions (
 CREATE INDEX idx_chapter_revisions_chapter ON chapter_revisions(chapter_id, created_at DESC);
 ```
 
+> **Note:** `chapter_raw_objects` (original uploaded text) stays as `TEXT`. It preserves the
+> raw import and is never edited. No schema change needed.
+
+### 3.2.1 Tiptap JSON `_text` Snapshot Convention (Option A)
+
+The frontend adds a `_text` field to each top-level block on every save, containing the
+full concatenated plain text of that block and all its children. This eliminates complex
+server-side JSON tree walking.
+
+```json
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "_text": "Hello world and goodbye",
+      "content": [
+        { "type": "text", "text": "Hello " },
+        { "type": "text", "marks": [{"type": "bold"}], "text": "world" },
+        { "type": "text", "text": " and " },
+        { "type": "text", "marks": [{"type": "italic"}], "text": "goodbye" }
+      ]
+    },
+    {
+      "type": "heading",
+      "attrs": { "level": 2 },
+      "_text": "Chapter One",
+      "content": [{ "type": "text", "text": "Chapter One" }]
+    },
+    {
+      "type": "bulletList",
+      "_text": "Item 1\nItem 2",
+      "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Item 1" }] }] },
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Item 2" }] }] }
+      ]
+    }
+  ]
+}
+```
+
+**Frontend implementation** (5 lines in TiptapEditor):
+```typescript
+function addTextSnapshots(doc: JSONContent): JSONContent {
+  if (!doc.content) return doc;
+  return {
+    ...doc,
+    content: doc.content.map(block => ({ ...block, _text: extractText(block) })),
+  };
+}
+function extractText(node: any): string {
+  if (node.type === 'text') return node.text || '';
+  if (!node.content) return '';
+  return node.content.map(extractText).join(node.type === 'listItem' ? '\n' : '');
+}
+```
+
+**Benefits:**
+- Trigger reads `$._text` — one simple JSON_TABLE path, no recursion
+- Works for ANY nesting depth (lists, blockquotes, callouts, nested lists)
+- Every downstream consumer (Neo4j, embeddings, search) reads `_text` directly
+- ~10-15% more JSONB storage (acceptable: 50KB chapter → 57KB)
+
+### 3.2.2 Plain Text Import → Tiptap JSON Conversion
+
+Plain text is converted to Tiptap JSON **at import time** in `createChapterRecord`. The
+`body_format` column is always `'json'` — no dual-mode branching in read paths.
+
+```go
+// Go: convert plain text to Tiptap JSON on chapter import
+func plainTextToTiptapJSON(text string) ([]byte, error) {
+    paragraphs := strings.Split(
+        strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n"),
+        "\n\n",
+    )
+    content := make([]map[string]any, 0, len(paragraphs))
+    for _, p := range paragraphs {
+        p = strings.TrimSpace(p)
+        if p == "" { continue }
+        content = append(content, map[string]any{
+            "type":    "paragraph",
+            "_text":   p,
+            "content": []map[string]any{{"type": "text", "text": p}},
+        })
+    }
+    doc := map[string]any{"type": "doc", "content": content}
+    return json.Marshal(doc)
+}
+```
+
+**Result:** `body_format` is always `'json'`. No dual-mode. Trigger always fires.
+Frontend always receives JSON. The `body_format` column exists for documentation and
+future-proofing only.
+
 ### 3.3 Chapter Blocks (auto-populated via trigger)
 
 ```sql
@@ -198,45 +294,58 @@ CREATE INDEX idx_chapter_blocks_hash ON chapter_blocks(content_hash);
 CREATE INDEX idx_chapter_blocks_type ON chapter_blocks(block_type);
 ```
 
-### 3.4 Block Extraction Trigger (PG18 JSON_TABLE)
+### 3.4 Block Extraction Trigger (PG18 JSON_TABLE + UPSERT)
 
 ```sql
 -- ── Trigger function: extract Tiptap blocks on every draft save ────
+-- Uses UPSERT pattern to preserve block IDs when content is unchanged.
+-- This gives stable IDs for downstream references (Neo4j provenance, embedding cache).
+-- `updated_at` only changes when `content_hash` differs — embedding pipeline uses this.
+
 CREATE OR REPLACE FUNCTION fn_extract_chapter_blocks()
 RETURNS TRIGGER AS $$
 DECLARE
-  _heading_ctx TEXT := NULL;
+  _max_idx INT;
 BEGIN
-  -- Only process JSON format
-  IF NEW.body_format != 'json' THEN
-    RETURN NEW;
-  END IF;
-
-  -- Delete old blocks for this chapter
-  DELETE FROM chapter_blocks WHERE chapter_id = NEW.chapter_id;
-
-  -- Extract blocks using JSON_TABLE (PG18)
-  INSERT INTO chapter_blocks (chapter_id, block_index, block_type, text_content, content_hash, heading_context, attrs)
+  -- Extract blocks using JSON_TABLE, reading _text snapshot (pre-computed by frontend)
+  INSERT INTO chapter_blocks (chapter_id, block_index, block_type, text_content, content_hash, attrs)
   SELECT
     NEW.chapter_id,
     (jt.block_index - 1),  -- 0-based index
     jt.block_type,
     COALESCE(jt.text_content, ''),
     encode(sha256(COALESCE(jt.text_content, '')::bytea), 'hex'),
-    NULL,  -- heading_context filled in second pass
     jt.block_attrs
   FROM JSON_TABLE(
     NEW.body, '$.content[*]'
     COLUMNS (
       block_index FOR ORDINALITY,
       block_type TEXT PATH '$.type',
-      text_content TEXT PATH '$.content[0].text',
+      text_content TEXT PATH '$._text',        -- reads pre-computed _text snapshot
       block_attrs JSONB PATH '$.attrs'
     )
   ) AS jt
-  WHERE jt.block_type IS NOT NULL;
+  WHERE jt.block_type IS NOT NULL
+  ON CONFLICT (chapter_id, block_index)
+  DO UPDATE SET
+    block_type = EXCLUDED.block_type,
+    text_content = EXCLUDED.text_content,
+    content_hash = EXCLUDED.content_hash,
+    attrs = EXCLUDED.attrs,
+    updated_at = CASE
+      WHEN chapter_blocks.content_hash = EXCLUDED.content_hash
+      THEN chapter_blocks.updated_at    -- unchanged: keep old timestamp
+      ELSE now()                        -- changed: update timestamp
+    END;
 
-  -- Second pass: fill heading_context using window function
+  -- Delete blocks beyond the new block count (chapter shrank)
+  SELECT count(*) INTO _max_idx
+  FROM JSON_TABLE(NEW.body, '$.content[*]' COLUMNS (i FOR ORDINALITY)) AS jt;
+
+  DELETE FROM chapter_blocks
+  WHERE chapter_id = NEW.chapter_id AND block_index >= _max_idx;
+
+  -- Fill heading_context using window function
   UPDATE chapter_blocks cb SET
     heading_context = sub.ctx
   FROM (
@@ -260,10 +369,17 @@ CREATE TRIGGER trg_extract_blocks
   EXECUTE FUNCTION fn_extract_chapter_blocks();
 ```
 
+**UPSERT benefits over DELETE+INSERT:**
+- Block `id` (UUID) is stable across saves when content is unchanged
+- `updated_at` only changes when `content_hash` differs — embedding pipeline uses `WHERE updated_at > last_processed`
+- Neo4j provenance references (`block_id`) remain valid across saves
+- No unnecessary churn in downstream pipelines
+
 ### 3.5 Event Schema (Redis Streams)
 
 ```
 Stream: loreweave:events:chapter
+Retention: MAXLEN ~ 10000 (auto-trim, oldest events evicted)
 
 Event: chapter.saved
 {
@@ -283,6 +399,26 @@ Event: chapter.deleted
   "book_id": "uuid",
   "chapter_id": "uuid",
   "timestamp": "..."
+}
+```
+
+**Error handling:** Redis publish is best-effort. If Redis is down, the chapter save
+still succeeds (Postgres commit is the priority). The publish failure is logged as a
+warning. Downstream pipelines (knowledge-service) will have a "catch-up" / "full reprocess"
+command that scans `chapter_drafts` directly for chapters not yet processed, independent
+of the event stream.
+
+**Go publish pattern:**
+```go
+// After successful Postgres commit — fire-and-forget with logging
+if err := s.redis.XAdd(ctx, &redis.XAddArgs{
+    Stream: "loreweave:events:chapter",
+    MaxLen: 10000,
+    Approx: true,
+    Values: map[string]any{...},
+}).Err(); err != nil {
+    slog.Warn("failed to publish chapter.saved event", "chapter_id", chID, "err", err)
+    // Do NOT fail the HTTP response — the save succeeded
 }
 ```
 
@@ -482,12 +618,38 @@ Steps:
 | 3 | **No Qdrant** (removed from plan) | Neo4j v2026.01 covers vector search natively. Revisit only if >500K embeddings. | 2026-03-31 |
 | 4 | **Block extraction via Postgres trigger** (not Python) | PG18 JSON_TABLE runs in-database: zero latency, ACID consistent, no extra service. | 2026-03-31 |
 | 5 | **`uuidv7()`** for all new PKs | Time-ordered UUIDs: better insert perf, natural ordering, PG18 native. | 2026-03-31 |
-| 6 | **Virtual generated columns** for computed fields | block_count, word_count: zero storage, always accurate, indexable. | 2026-03-31 |
+| 6 | **Virtual generated columns** for computed fields | block_count: zero storage, always accurate, indexable. | 2026-03-31 |
 | 7 | Postgres stays as source of truth | ACID, relational queries, existing stack, now with JSON_TABLE superpowers. | 2026-03-31 |
 | 8 | Python for knowledge-service | Language rule: Python for AI/LLM services. Neo4j Python driver is mature. | 2026-03-31 |
 | 9 | Event-driven via Redis Streams | Already in stack, consumer groups, extensible pipeline architecture. | 2026-03-31 |
 | 10 | Clean schema break | No production data, simpler than migration. Drop all DBs. | 2026-03-31 |
 | 11 | Frontend V2 Phase 3 paused | Glossary/Wiki/Chat depend on knowledge layer. Building GUI first = throwaway work. | 2026-03-31 |
+| 12 | **`_text` snapshots per block** (Option A) | Frontend pre-computes text for each block. Trigger reads `$._text` — trivial, no recursive SQL. Handles any nesting depth. ~10-15% more JSONB storage (acceptable). | 2026-03-31 |
+| 13 | **UPSERT trigger** (not DELETE+INSERT) | Preserves block IDs across saves. `updated_at` only changes when `content_hash` differs. Stable references for Neo4j provenance + embedding cache. | 2026-03-31 |
+| 14 | **Plain text → Tiptap JSON at import** | All bodies are always JSON. No dual-mode branching. `body_format` is always `'json'`. Eliminates branching in every read path. | 2026-03-31 |
+| 15 | **`json.RawMessage` for JSONB in Go** | pgx scans JSONB as `[]byte`. Using `json.RawMessage` prevents base64 encoding in API responses. Critical for correct JSON serialization. | 2026-03-31 |
+| 16 | **Redis publish is best-effort** | Redis down = log warning, save still succeeds. Knowledge pipeline has catch-up/reprocess command. At-most-once delivery acceptable. | 2026-03-31 |
+| 17 | **Redis Stream `MAXLEN ~ 10000`** | Auto-trim old events. Prevents unbounded growth. Older events re-derivable from database. | 2026-03-31 |
+| 18 | **`chapter_raw_objects` unchanged** | Stays as `TEXT`. Preserves raw import, never edited. No schema change needed. | 2026-03-31 |
+
+---
+
+## 8. Data Engineer Review Notes
+
+> Review conducted 2026-03-31. All findings incorporated into the plan above.
+
+### Issues Found and Resolutions
+
+| # | Issue | Severity | Resolution |
+|---|-------|----------|------------|
+| 1 | JSON_TABLE `$.content[0].text` misses formatted text (bold/italic = multiple text nodes) and nested blocks (lists, blockquotes) | **Critical** | Frontend adds `_text` snapshot per block (Decision #12). Trigger reads `$._text` — trivial path. |
+| 2 | Go pgx scans JSONB as `[]byte` → `json.Marshal` base64-encodes it in API response | **High** | Use `json.RawMessage` for body field in all handlers (Decision #15). |
+| 3 | DELETE+INSERT trigger loses block UUIDs on every save — breaks downstream references | **Medium** | Switch to UPSERT on `(chapter_id, block_index)` — stable IDs, `updated_at` tracks changes (Decision #13). |
+| 4 | Redis publish failure = lost event, no retry | **Medium** | Best-effort publish with warning log. Knowledge pipeline has catch-up reprocess (Decision #16). |
+| 5 | Plain text in JSONB column creates dual-mode complexity in every read path | **Medium** | Convert plain text to Tiptap JSON at import time. `body_format` always `'json'` (Decision #14). |
+| 6 | No Redis Stream retention policy — unbounded growth | **Low** | `MAXLEN ~ 10000` on XADD (Decision #17). |
+| 7 | `uuidv7()` not applied to existing tables (books, chapters) | **Low** | Apply to all tables in clean break. Consistent time-ordered IDs across system. |
+| 8 | `chapter_raw_objects` not mentioned in plan | **Low** | Stays as TEXT, unchanged (Decision #18). |
 
 ---
 
