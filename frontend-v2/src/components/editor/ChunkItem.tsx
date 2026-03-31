@@ -13,19 +13,22 @@ export function ChunkItem({ index, text, selected, onSelect, onChange }: ChunkIt
   return (
     <div
       className={cn(
-        'group flex gap-3 rounded border-l-2 py-1.5 pl-3 pr-2 transition-colors',
-        selected ? 'border-l-primary bg-primary/[0.03]' : 'border-l-transparent hover:border-l-border hover:bg-card',
+        'group flex gap-3 rounded-md border py-2 pl-3 pr-2 transition-colors',
+        selected
+          ? 'border-primary/40 bg-primary/[0.04]'
+          : 'border-border/40 hover:border-border hover:bg-card',
       )}
       onClick={(e) => onSelect(index, e.shiftKey)}
     >
-      <span className="w-5 flex-shrink-0 pt-1 text-right font-mono text-[10px] text-muted-foreground opacity-40 group-hover:opacity-100">
+      <span className="w-5 flex-shrink-0 pt-1 text-right font-mono text-[10px] text-muted-foreground/40 group-hover:text-muted-foreground">
         {index + 1}
       </span>
       <div
-        className="flex-1 text-sm leading-[1.8] outline-none"
+        className="flex-1 text-sm leading-[1.8] outline-none focus:ring-0"
+        style={{ whiteSpace: 'pre-wrap' }}
         contentEditable
         suppressContentEditableWarning
-        onBlur={(e) => onChange(index, e.currentTarget.textContent ?? '')}
+        onBlur={(e) => onChange(index, e.currentTarget.innerText)}
         dangerouslySetInnerHTML={{ __html: text }}
       />
       <div className="flex flex-shrink-0 flex-col gap-1 pt-1 opacity-0 transition-opacity group-hover:opacity-60">

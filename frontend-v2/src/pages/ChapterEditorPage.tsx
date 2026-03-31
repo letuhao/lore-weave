@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   Save, Check, PanelLeft, PanelRight, Clock, ChevronRight, BookOpen, FileText, BookMarked,
+  LayoutList, ScrollText,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
@@ -10,6 +11,8 @@ import { useEditorPanels } from '@/hooks/useEditorPanels';
 import { ChunkItem } from '@/components/editor/ChunkItem';
 import { RevisionHistory } from '@/components/editor/RevisionHistory';
 import { cn } from '@/lib/utils';
+
+type ViewMode = 'chunk' | 'source';
 
 export function ChapterEditorPage() {
   const { bookId = '', chapterId = '' } = useParams();
@@ -25,6 +28,10 @@ export function ChapterEditorPage() {
   const [rightTab, setRightTab] = useState<'history' | 'ai'>('history');
   const [revKey, setRevKey] = useState(0);
 
+  const [viewMode, setViewMode] = useState<ViewMode>('chunk');
+  const [sourceBody, setSourceBody] = useState('');
+  const [savedBody, setSavedBody] = useState('');
+
   const chunks = useChunks(body);
 
   const load = useCallback(async () => {
@@ -32,6 +39,8 @@ export function ChapterEditorPage() {
     try {
       const d = await booksApi.getDraft(accessToken, bookId, chapterId);
       setBody(d.body);
+      setSourceBody(d.body);
+      setSavedBody(d.body);
       chunks.reset(d.body);
       setVersion(d.draft_version);
       setTitle((d as Record<string, unknown>).title as string ?? '');
@@ -41,12 +50,27 @@ export function ChapterEditorPage() {
 
   useEffect(() => { void load(); }, [load]);
 
+  const switchMode = (mode: ViewMode) => {
+    if (mode === viewMode) return;
+    if (mode === 'source') {
+      setSourceBody(chunks.reassemble());
+    } else {
+      chunks.reset(sourceBody);
+    }
+    setViewMode(mode);
+  };
+
+  const isDirty = viewMode === 'source'
+    ? sourceBody !== savedBody
+    : chunks.isDirty;
+
   const save = async () => {
     if (!accessToken) return;
     setSaving(true);
     try {
+      const bodyToSave = viewMode === 'source' ? sourceBody : chunks.reassemble();
       await booksApi.patchDraft(accessToken, bookId, chapterId, {
-        body: chunks.reassemble(),
+        body: bodyToSave,
         commit_message: message || undefined,
         expected_draft_version: version,
       });
@@ -69,7 +93,7 @@ export function ChapterEditorPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [chunks, version, message]);
+  }, [chunks, sourceBody, viewMode, version, message]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -83,6 +107,38 @@ export function ChapterEditorPage() {
           <span className="font-medium text-foreground">{title || 'Chapter'}</span>
         </div>
         <div className="flex items-center gap-2">
+          {/* View mode toggle */}
+          <div className="flex items-center rounded-md border bg-muted/30 p-0.5">
+            <button
+              onClick={() => switchMode('chunk')}
+              className={cn(
+                'flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors',
+                viewMode === 'chunk'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+              title="Chunk mode — edit paragraph by paragraph"
+            >
+              <LayoutList className="h-3 w-3" />
+              Chunks
+            </button>
+            <button
+              onClick={() => switchMode('source')}
+              className={cn(
+                'flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors',
+                viewMode === 'source'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+              title="Source mode — edit raw text directly"
+            >
+              <ScrollText className="h-3 w-3" />
+              Source
+            </button>
+          </div>
+
+          <div className="mx-1 h-4 w-px bg-border" />
+
           <button
             onClick={panels.toggleLeft}
             className={cn('rounded p-1.5 transition-colors', panels.left ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary')}
@@ -102,7 +158,7 @@ export function ChapterEditorPage() {
             <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">
               <Check className="h-3 w-3" /> Saved
             </span>
-          ) : chunks.isDirty ? (
+          ) : isDirty ? (
             <span className="text-[10px] text-warning">Unsaved changes</span>
           ) : (
             <span className="text-[10px] text-muted-foreground">v{version ?? '?'}</span>
@@ -154,24 +210,38 @@ export function ChapterEditorPage() {
               placeholder="Chapter title"
             />
             <p className="mt-1 text-[10px] text-muted-foreground">
-              {chunks.chunks.length} paragraphs · {chunks.selected.size > 0 && `${chunks.selected.size} selected · `}
-              {chunks.isDirty ? 'unsaved' : 'saved'}
+              {viewMode === 'chunk'
+                ? `${chunks.chunks.length} paragraphs${chunks.selected.size > 0 ? ` · ${chunks.selected.size} selected` : ''} · ${isDirty ? 'unsaved' : 'saved'}`
+                : `source mode · ${isDirty ? 'unsaved' : 'saved'}`
+              }
             </p>
           </div>
-          <div className="flex-1 overflow-y-auto px-4 py-3">
-            <div className="flex flex-col gap-1">
-              {chunks.chunks.map((chunk) => (
-                <ChunkItem
-                  key={chunk.index}
-                  index={chunk.index}
-                  text={chunk.text}
-                  selected={chunks.selected.has(chunk.index)}
-                  onSelect={chunks.toggleSelect}
-                  onChange={chunks.updateChunk}
-                />
-              ))}
+
+          {viewMode === 'chunk' ? (
+            <div className="flex-1 overflow-y-auto px-4 py-3">
+              <div className="flex flex-col gap-1.5">
+                {chunks.chunks.map((chunk) => (
+                  <ChunkItem
+                    key={chunk.index}
+                    index={chunk.index}
+                    text={chunk.text}
+                    selected={chunks.selected.has(chunk.index)}
+                    onSelect={chunks.toggleSelect}
+                    onChange={chunks.updateChunk}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
+          ) : (
+            <textarea
+              value={sourceBody}
+              onChange={(e) => setSourceBody(e.target.value)}
+              className="flex-1 resize-none bg-transparent px-6 py-3 text-sm leading-[1.8] outline-none placeholder:text-muted-foreground/40"
+              placeholder="Start writing..."
+              spellCheck={false}
+            />
+          )}
+
           {/* Commit message */}
           <div className="flex-shrink-0 border-t px-4 py-2">
             <input
@@ -211,8 +281,8 @@ export function ChapterEditorPage() {
         )}
       </div>
 
-      {/* Bottom bar */}
-      {chunks.selected.size > 0 && (
+      {/* Bottom bar — chunk selection (chunk mode only) */}
+      {viewMode === 'chunk' && chunks.selected.size > 0 && (
         <div className="flex h-9 flex-shrink-0 items-center justify-between border-t bg-card px-4 text-xs">
           <span className="text-muted-foreground">{chunks.selected.size} chunk(s) selected</span>
           <button onClick={chunks.clearSelection} className="text-muted-foreground hover:text-foreground">Clear</button>
