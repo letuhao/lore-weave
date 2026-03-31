@@ -474,12 +474,247 @@ These handlers will call `insertOutboxEvent` (done in D1-06 when we refactor han
 
 ---
 
+---
+
+## Discovery Cycle 4: D1-06 — book-service JSONB Refactor
+
+### Handler-by-Handler Change Specification
+
+All 8 handlers in `services/book-service/internal/api/server.go` that touch the `body` column.
+
+#### Handler 1: `getDraft` (L1097-1137) — READ
+
+```
+Current:  var body, format string          ← scans body as string
+          .Scan(&chapterID, &body, &format, &updated, &version)
+          writeJSON(w, 200, map[string]any{"body": body, ...})
+
+Problem:  JSONB column → pgx returns []byte → json.Marshal base64-encodes it
+
+Fix:      var body json.RawMessage          ← scans JSONB as raw JSON
+          .Scan(&chapterID, &body, &format, &updated, &version)
+          writeJSON(w, 200, map[string]any{"body": body, ...})
+          // json.RawMessage implements json.Marshaler → inlines correctly
+
+Import:   Add "encoding/json" (already imported in file)
+Lines:    L1112: change type declaration
+```
+
+#### Handler 2: `patchDraft` (L1139-1196) — WRITE
+
+```
+Current:  var in struct { Body string ... }
+          UPDATE chapter_drafts SET body=$2 WHERE chapter_id=$1
+
+Fix:      var in struct {
+              Body       json.RawMessage `json:"body"`      ← accept raw JSON
+              BodyFormat string          `json:"body_format"`← new field
+              ...
+          }
+          Validation: if in.BodyFormat == "" { in.BodyFormat = "json" }
+                      if !json.Valid(in.Body) { return 400 }
+          SQL:        UPDATE chapter_drafts SET body=$2, draft_format=$3, ... WHERE chapter_id=$1
+          Outbox:     INSERT INTO outbox_events(...) ← add before COMMIT (Cycle 3)
+          Revision:   INSERT INTO chapter_revisions(..., body, body_format, ...) ← include format
+
+Lines:    L1153-1157: change struct, L1158: validation, L1188-1189: SQL params
+```
+
+#### Handler 3: `getRevision` (L1249-1295) — READ
+
+```
+Current:  var body string
+          .Scan(&rid, &cid, &at, &uid, &msg, &body)
+          writeJSON(w, 200, map[string]any{"body": body, ...})
+
+Fix:      var body json.RawMessage
+          var bodyFormat string
+          SQL: add d.body_format to SELECT
+          .Scan(&rid, &cid, &at, &uid, &msg, &body, &bodyFormat)
+          writeJSON(w, 200, map[string]any{"body": body, "body_format": bodyFormat, ...})
+
+Lines:    L1271: type, L1273: SQL add column, L1278: scan, L1287-1294: response add field
+```
+
+#### Handler 4: `restoreRevision` (L1297-1350) — READ + WRITE
+
+```
+Current:  var currentBody string  ← reads current draft
+          var body string          ← reads revision body
+          UPDATE chapter_drafts SET body=$2 WHERE chapter_id=$1
+          INSERT INTO chapter_revisions(... body ...) ← saves "before restore"
+
+Fix:      var currentBody json.RawMessage
+          var currentFormat string
+          SELECT d.body, d.draft_format FROM chapter_drafts ...
+          var body json.RawMessage
+          var bodyFormat string
+          SELECT rv.body, rv.body_format FROM chapter_revisions ...
+          INSERT INTO chapter_revisions(... body, body_format ...) ← save current with its format
+          UPDATE chapter_drafts SET body=$2, draft_format=$3 ... ← set revision's format
+          Outbox: INSERT outbox_events (chapter.saved) ← before COMMIT
+
+Lines:    L1321-1326: scan types + add format, L1327-1333: scan + add format,
+          L1342-1343: SQL params
+```
+
+#### Handler 5: `listRevisions` (L1198-1247) — READ (metadata only)
+
+```
+Current:  SELECT ... length(rv.body) ...
+          .Scan(&rid, &cid, &at, &uid, &msg, &n)
+
+Fix:      SELECT ... octet_length(rv.body::text) ...  ← JSONB length
+          No body_format needed in list (it's metadata only)
+
+Lines:    L1214: SQL change length() → octet_length(rv.body::text)
+Note:     Minimal change — list doesn't return body content
+```
+
+#### Handler 6: `exportChapter` (L1054-1095) — READ (plain text output)
+
+```
+Current:  var body string
+          SELECT d.body FROM chapter_drafts d ...
+          w.Write([]byte(body))  ← returns raw body as text/plain
+
+Fix:      REPLACE SQL to read from chapter_blocks instead:
+          SELECT string_agg(text_content, E'\n\n' ORDER BY block_index)
+          FROM chapter_blocks WHERE chapter_id = $1
+
+          OR: scan body as json.RawMessage, extract _text fields in Go
+
+Decision: Use chapter_blocks approach — simpler, text already extracted.
+          Fallback: if no blocks exist (legacy), read body and extract in Go.
+
+Lines:    L1068-1076: replace SQL query entirely, L1033: change scan type
+```
+
+#### Handler 7: `getChapterContent` (L1019-1052) — READ (plain text output)
+
+```
+Current:  SELECT ro.body_text FROM chapter_raw_objects ...
+          w.Write([]byte(body))  ← returns raw object as text/plain
+
+Fix:      This reads from chapter_raw_objects, NOT chapter_drafts!
+          It returns the ORIGINAL uploaded text, not the edited draft.
+          → NO CHANGE NEEDED. chapter_raw_objects stays TEXT.
+
+Lines:    No changes!
+Note:     This handler is NOT affected by the JSONB migration.
+```
+
+**Important discovery:** `getChapterContent` reads from `chapter_raw_objects` (original import), not from `chapter_drafts`. It's unaffected. Only 7 handlers need changes, not 8.
+
+#### Handler 8: `getInternalBookChapter` (L1449-1490) — READ (internal API)
+
+```
+Current:  var title, lang, body string
+          SELECT c.title, ..., d.body FROM chapters c JOIN chapter_drafts d ...
+          writeJSON(w, 200, map[string]any{"body": body, ...})
+
+Fix:      var body json.RawMessage
+          Scan body as json.RawMessage
+          Add text_content from chapter_blocks:
+            SELECT string_agg(text_content, E'\n\n' ORDER BY block_index)
+            FROM chapter_blocks WHERE chapter_id = $1
+          Response: add "body": body, "text_content": textContent, "body_format": "json"
+
+Lines:    L1465: type, L1473: scan, L1482-1489: response add fields
+Note:     Translation worker reads text_content (D1-08 concern resolved here)
+```
+
+### Existing Tests Impact
+
+```
+File: services/book-service/internal/api/server_test.go
+
+Tests in this file:
+  TestParseLimitOffset          ← utility, NOT affected
+  TestHelpers                   ← utility, NOT affected
+  TestRequireUserID             ← auth, NOT affected
+  TestParseUUIDParam            ← utility, NOT affected
+  TestFetchSharingVisibility    ← sharing, NOT affected
+  TestFetchSharingVisibilityFallsBackToPrivate ← sharing, NOT affected
+
+Result: ALL existing tests pass without changes.
+No handler-level tests exist (handlers tested via manual/integration only).
+```
+
+### New Test Cases Needed
+
+```
+D1-06-test-01  Test patchDraft accepts json.RawMessage body
+D1-06-test-02  Test getDraft returns inline JSON (not base64)
+D1-06-test-03  Test getRevision returns body + body_format
+D1-06-test-04  Test restoreRevision copies body_format correctly
+D1-06-test-05  Test exportChapter returns plain text from chapter_blocks
+D1-06-test-06  Test getInternalBookChapter returns body + text_content
+D1-06-test-07  Test patchDraft rejects invalid JSON body
+```
+
+These are integration tests (need DB). Can be deferred to D1-12 or written as part of D1-06.
+
+### Sub-Tasks
+
+```
+D1-06a  getDraft: body → json.RawMessage scan + inline response
+        File: server.go L1097-1137
+        Changes: 2 lines (type declaration, already returns draft_format)
+
+D1-06b  patchDraft: accept json.RawMessage body + body_format, validate JSON, add outbox
+        File: server.go L1139-1196
+        Changes: struct fields, validation, SQL params (body + format), outbox INSERT
+        Depends on: D1-04c (outbox helper)
+
+D1-06c  getRevision: body → json.RawMessage, add body_format to response
+        File: server.go L1249-1295
+        Changes: type, SQL column, scan, response field
+
+D1-06d  restoreRevision: json.RawMessage both directions, copy body_format, add outbox
+        File: server.go L1297-1350
+        Changes: types, SQL columns, scan, outbox INSERT
+        Depends on: D1-04c (outbox helper)
+
+D1-06e  listRevisions: length(body) → octet_length(body::text)
+        File: server.go L1198-1247
+        Changes: 1 SQL line
+
+D1-06f  exportChapter: read plain text from chapter_blocks instead of draft body
+        File: server.go L1054-1095
+        Changes: replace SQL query, change scan to single string result
+        Depends on: D1-03 (chapter_blocks table exists)
+
+D1-06g  getInternalBookChapter: body → json.RawMessage, add text_content from blocks
+        File: server.go L1449-1490
+        Changes: type, add second query for text_content, response fields
+        Depends on: D1-03 (chapter_blocks table exists)
+
+D1-06h  createChapterRecord: outbox event for chapter.created
+        File: server.go L778-828
+        Changes: add outbox INSERT before tx.Commit
+        Depends on: D1-04c (outbox helper)
+        Note: body format changes handled in D1-07 (plain text → JSON import)
+```
+
+### File Impact Summary (Cycle 4)
+
+| File | Change | New? |
+|------|--------|------|
+| `services/book-service/internal/api/server.go` | 7 handlers refactored (getDraft, patchDraft, getRevision, restoreRevision, listRevisions, exportChapter, getInternalBookChapter) + createChapterRecord outbox | No (modify) |
+| `services/book-service/internal/api/server_test.go` | Existing tests unchanged. New integration tests added (optional, can defer to D1-12) | No (modify or defer) |
+
+### Correction from Cycle 3
+
+Originally counted 8 handlers. `getChapterContent` reads from `chapter_raw_objects` (TEXT, unchanged) — **only 7 handlers need JSONB refactoring** + 1 handler gets outbox event (createChapterRecord).
+
+---
+
 ## Remaining Cycles
 
 | Cycle | Focus | Tasks |
 |-------|-------|-------|
-| 4 | D1-06: book-service JSONB refactor | All 8 handlers line by line, test rewrites |
-| 5 | D1-07 + D1-08: createChapter + internal API | Plain text import, text_content field |
+| 5 | D1-07 + D1-08: createChapter import + internal API text_content | Plain text → Tiptap JSON, text_content aggregation |
 | 6 | D1-09 + D1-10: worker-infra service | Go project scaffold, task registry, relay |
 | 7 | D1-11: Frontend JSONB save/load | _text snapshots, TiptapEditor changes |
 | 8 | D1-12: Integration test | End-to-end verification |
