@@ -143,7 +143,7 @@ export const booksApi = {
     });
   },
   async downloadRaw(token: string, bookId: string, chapterId: string) {
-    const res = await apiAuthedFetch(`/v1/books/${bookId}/chapters/${chapterId}/content`, token);
+    const res = await apiAuthedFetch(`/v1/books/${bookId}/chapters/${chapterId}/export`, token);
     if (!res.ok) {
       const text = await res.text();
       let message = res.statusText;

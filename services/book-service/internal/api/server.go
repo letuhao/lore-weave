@@ -74,6 +74,7 @@ func (s *Server) Router() http.Handler {
 				r.Post("/restore", s.restoreChapter)
 				r.Delete("/purge", s.purgeChapter)
 				r.Get("/content", s.getChapterContent)
+				r.Get("/export", s.exportChapter)
 				r.Get("/draft", s.getDraft)
 				r.Patch("/draft", s.patchDraft)
 				r.Get("/revisions", s.listRevisions)
@@ -1046,6 +1047,49 @@ WHERE c.id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(body))
+}
+
+func (s *Server) exportChapter(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
+		return
+	}
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	chID, ok := parseUUIDParam(w, r, "chapter_id")
+	if !ok {
+		return
+	}
+	var body, originalFilename string
+	var title *string
+	err := s.pool.QueryRow(r.Context(), `
+SELECT d.body, c.title, c.original_filename
+FROM chapter_drafts d
+JOIN chapters c ON c.id=d.chapter_id
+JOIN books b ON b.id=c.book_id
+WHERE d.chapter_id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
+`, chID, bookID, ownerID).Scan(&body, &title, &originalFilename)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "CHAPTER_EXPORT_FAILED", "failed to fetch draft")
+		return
+	}
+	filename := "chapter.txt"
+	if title != nil && *title != "" {
+		filename = *title + ".txt"
+	} else if originalFilename != "" {
+		filename = originalFilename
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(body))
 }
