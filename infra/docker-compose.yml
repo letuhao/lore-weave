@@ -5,15 +5,16 @@
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: loreweave
       POSTGRES_PASSWORD: loreweave_dev
       POSTGRES_DB: loreweave_auth
+      PGDATA: /var/lib/postgresql/18/docker
     ports:
       - "5555:5432"
     volumes:
-      - loreweave_pg:/var/lib/postgresql/data
+      - loreweave_pg:/var/lib/postgresql
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
       - ./db-ensure.sh:/usr/local/bin/db-ensure.sh:ro
     healthcheck:
@@ -24,6 +25,18 @@ services:
       timeout: 10s
       retries: 15
       start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6399:6379"
+    volumes:
+      - loreweave_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   minio:
     image: minio/minio:RELEASE.2024-08-03T04-33-23Z
@@ -352,6 +365,7 @@ services:
 
 volumes:
   loreweave_pg:
+  loreweave_redis:
   loreweave_minio:
   loreweave_rabbitmq:
   loreweave_languagetool:

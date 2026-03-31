@@ -19,6 +19,7 @@ loreweave_usage_billing
 loreweave_translation
 loreweave_glossary
 loreweave_chat
+loreweave_events
 "
 
 for db in $DATABASES; do

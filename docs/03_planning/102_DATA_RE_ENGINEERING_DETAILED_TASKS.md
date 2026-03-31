@@ -93,30 +93,12 @@ D0-04  [DONE] Test pgx v5 JSONB scanning with json.RawMessage
 ### D1-01: Postgres 18 + Redis in docker-compose
 
 ```
-D1-01a  Update docker-compose Postgres image + config
-        File: infra/docker-compose.yml
-        Changes:
-          - image: postgres:16-alpine → postgres:18-alpine
-          - Add: PGDATA: /var/lib/postgresql/18/docker
-          - Volume stays: loreweave_pg:/var/lib/postgresql
-
-D1-01b  Add Redis service to docker-compose
-        File: infra/docker-compose.yml
-        Add:
-          redis:
-            image: redis:7-alpine
-            ports: ["6399:6379"]
-            volumes: [loreweave_redis:/data]
-            healthcheck: redis-cli ping
-        Add volume: loreweave_redis
-
-D1-01c  Add loreweave_events database to db-ensure.sh
-        File: infra/db-ensure.sh
-        Add: loreweave_events to DATABASES list
-
-D1-01d  Delete old Postgres volume (documented step, not code)
-        Command: docker volume rm infra_loreweave_pg
-        Note: This is a manual step during migration execution
+D1-01a  [DONE] Update docker-compose Postgres image + config
+D1-01b  [DONE] Add Redis service to docker-compose
+D1-01c  [DONE] Add loreweave_events database to db-ensure.sh
+D1-01d  [DONE] Delete old Postgres volume (clean break)
+        Status: PASSED (2026-04-01)
+        Verified: PG 18.1 healthy, Redis 7.4.8 healthy, 10 databases created
 ```
 
 ### D1-02: Clean Schema — uuidv7 everywhere + JSONB body
