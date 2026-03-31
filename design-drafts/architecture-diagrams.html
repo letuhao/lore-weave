@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LoreWeave — Architecture Diagrams</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Lora:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #181412; --bg-alt: #1e1a17; --fg: #f5efe8;
+      --card: #1e1a17; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --muted: #282320; --muted-fg: #9e9488;
+      --destructive: #dc4e4e; --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+      --neo4j: #4c8eda; --redis: #dc4e4e; --postgres: #336791;
+      --go: #00ADD8; --python: #3776AB; --ts: #3178C6; --react: #61DAFB;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); -webkit-font-smoothing: antialiased; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    .container { max-width: 1500px; margin: 0 auto; padding: 40px 32px; }
+    .slide { margin-bottom: 80px; page-break-after: always; }
+    .slide-title { font-family: 'Lora', Georgia, serif; font-size: 28px; font-weight: 600; color: var(--primary); margin-bottom: 6px; }
+    .slide-subtitle { font-size: 13px; color: var(--muted-fg); margin-bottom: 32px; }
+    .section-label { font-size: 10px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted-fg); margin-bottom: 12px; }
+
+    /* ── SVG shared ─────────────────────────────────── */
+    svg { width: 100%; }
+    svg text { font-family: 'Inter', system-ui, sans-serif; }
+    svg .mono { font-family: 'JetBrains Mono', monospace; }
+    svg .serif { font-family: 'Lora', Georgia, serif; }
+
+    /* ── ERD grid ───────────────────────────────────── */
+    .erd-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .erd-table { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--card); }
+    .erd-table.highlight { border-color: var(--primary); }
+    .erd-table.new { border-color: var(--accent); }
+    .erd-header { padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .erd-header .name { font-size: 13px; font-weight: 600; }
+    .erd-header .badge { font-size: 9px; font-weight: 600; padding: 2px 6px; border-radius: 4px; }
+    .erd-header .badge.existing { background: var(--muted); color: var(--muted-fg); }
+    .erd-header .badge.modified { background: var(--primary-muted); color: var(--primary); }
+    .erd-header .badge.new-tbl { background: var(--accent-muted); color: var(--accent); }
+    .erd-cols { padding: 6px 0; }
+    .erd-col { display: flex; align-items: center; gap: 8px; padding: 3px 14px; font-size: 11px; }
+    .erd-col .col-icon { width: 14px; text-align: center; flex-shrink: 0; font-size: 9px; font-weight: 700; }
+    .erd-col .col-icon.pk { color: var(--primary); }
+    .erd-col .col-icon.fk { color: var(--info); }
+    .erd-col .col-icon.idx { color: var(--accent); }
+    .erd-col .col-name { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500; }
+    .erd-col .col-type { color: var(--muted-fg); font-size: 10px; margin-left: auto; font-family: 'JetBrains Mono', monospace; }
+    .erd-col .col-new { color: var(--accent); }
+    .erd-col .col-changed { color: var(--primary); }
+    .erd-divider { height: 1px; background: var(--border); margin: 4px 14px; }
+
+    /* ── Infrastructure ────────────────────────────── */
+    .infra-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .infra-group { grid-column: span 4; margin-top: 16px; margin-bottom: 4px; }
+    .infra-group .group-title { font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--muted-fg); padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    .infra-box { border: 1px solid var(--border); border-radius: 8px; padding: 14px; background: var(--card); }
+    .infra-box.db { border-left: 3px solid var(--postgres); }
+    .infra-box.cache { border-left: 3px solid var(--redis); }
+    .infra-box.graph { border-left: 3px solid var(--neo4j); }
+    .infra-box.go-svc { border-left: 3px solid var(--go); }
+    .infra-box.py-svc { border-left: 3px solid var(--python); }
+    .infra-box.ts-svc { border-left: 3px solid var(--ts); }
+    .infra-box.fe { border-left: 3px solid var(--react); }
+    .infra-box.mq { border-left: 3px solid var(--warning); }
+    .infra-box.storage { border-left: 3px solid var(--success); }
+    .infra-box .svc-name { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+    .infra-box .svc-image { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted-fg); }
+    .infra-box .svc-port { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--accent); margin-top: 4px; }
+    .infra-box .svc-dbs { font-size: 10px; color: var(--muted-fg); margin-top: 6px; line-height: 1.6; }
+    .infra-box .svc-new { font-size: 9px; font-weight: 600; color: var(--accent); margin-top: 4px; }
+
+    /* ── Sequence diagram ──────────────────────────── */
+    .seq-container { overflow-x: auto; }
+    .seq-diagram { min-width: 900px; }
+
+    /* ── Legend ─────────────────────────────────────── */
+    .legend { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 24px; }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+    .legend-swatch { width: 14px; height: 14px; border-radius: 3px; }
+
+    .footer { text-align: center; padding: 40px 0; border-top: 1px solid var(--border); margin-top: 80px; }
+    .footer .project { font-family: 'Lora', serif; font-size: 20px; font-weight: 600; color: var(--primary); }
+    .footer .date { font-size: 11px; color: var(--muted-fg); margin-top: 4px; }
+
+    @media print { body { background: #fff; color: #1a1a1a; } }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       SLIDE 1: C4 Context Diagram
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div class="slide">
+    <p class="section-label">C4 Model &mdash; Level 1</p>
+    <h1 class="slide-title">System Context Diagram</h1>
+    <p class="slide-subtitle">LoreWeave and its external actors</p>
+
+    <svg viewBox="0 0 1000 520" xmlns="http://www.w3.org/2000/svg">
+      <!-- Actors -->
+      <g transform="translate(100,40)">
+        <circle cx="40" cy="20" r="18" fill="none" stroke="#e8a832" stroke-width="2"/>
+        <text x="40" y="24" text-anchor="middle" fill="#e8a832" font-size="14" font-weight="600">W</text>
+        <text x="40" y="56" text-anchor="middle" fill="#f5efe8" font-size="12" font-weight="500">Writer</text>
+        <text x="40" y="70" text-anchor="middle" fill="#9e9488" font-size="10">Creates, edits,</text>
+        <text x="40" y="82" text-anchor="middle" fill="#9e9488" font-size="10">translates novels</text>
+      </g>
+      <g transform="translate(400,40)">
+        <circle cx="40" cy="20" r="18" fill="none" stroke="#3da692" stroke-width="2"/>
+        <text x="40" y="24" text-anchor="middle" fill="#3da692" font-size="14" font-weight="600">R</text>
+        <text x="40" y="56" text-anchor="middle" fill="#f5efe8" font-size="12" font-weight="500">Reader</text>
+        <text x="40" y="70" text-anchor="middle" fill="#9e9488" font-size="10">Reads, reviews,</text>
+        <text x="40" y="82" text-anchor="middle" fill="#9e9488" font-size="10">browses catalog</text>
+      </g>
+      <g transform="translate(700,40)">
+        <circle cx="40" cy="20" r="18" fill="none" stroke="#5496e8" stroke-width="2"/>
+        <text x="40" y="24" text-anchor="middle" fill="#5496e8" font-size="14" font-weight="600">AI</text>
+        <text x="40" y="56" text-anchor="middle" fill="#f5efe8" font-size="12" font-weight="500">AI Providers</text>
+        <text x="40" y="70" text-anchor="middle" fill="#9e9488" font-size="10">LLM APIs via</text>
+        <text x="40" y="82" text-anchor="middle" fill="#9e9488" font-size="10">provider registry</text>
+      </g>
+
+      <!-- System box -->
+      <rect x="50" y="150" width="900" height="200" rx="16" fill="none" stroke="#e8a832" stroke-width="2" stroke-dasharray="8 4"/>
+      <text x="80" y="175" fill="#e8a832" font-size="11" font-weight="600" letter-spacing="1">LOREWEAVE PLATFORM</text>
+
+      <!-- Inner boxes -->
+      <rect x="80" y="200" width="250" height="120" rx="10" fill="#1e1a17" stroke="#332d28" stroke-width="1.5"/>
+      <text x="205" y="235" text-anchor="middle" fill="#f5efe8" font-size="14" font-weight="600">Frontend V2</text>
+      <text x="205" y="255" text-anchor="middle" fill="#9e9488" font-size="11">Vite + React + Tiptap</text>
+      <text x="205" y="275" text-anchor="middle" fill="#9e9488" font-size="11">Rich text editor, reader</text>
+      <text x="205" y="295" text-anchor="middle" fill="#61DAFB" font-size="10" font-weight="500">:5174</text>
+
+      <rect x="375" y="200" width="250" height="120" rx="10" fill="#1e1a17" stroke="#332d28" stroke-width="1.5"/>
+      <text x="500" y="235" text-anchor="middle" fill="#f5efe8" font-size="14" font-weight="600">API Gateway</text>
+      <text x="500" y="255" text-anchor="middle" fill="#9e9488" font-size="11">NestJS BFF</text>
+      <text x="500" y="275" text-anchor="middle" fill="#9e9488" font-size="11">Proxy to all services</text>
+      <text x="500" y="295" text-anchor="middle" fill="#3178C6" font-size="10" font-weight="500">:3123</text>
+
+      <rect x="670" y="200" width="250" height="120" rx="10" fill="#1e1a17" stroke="#332d28" stroke-width="1.5"/>
+      <text x="795" y="235" text-anchor="middle" fill="#f5efe8" font-size="14" font-weight="600">Microservices</text>
+      <text x="795" y="255" text-anchor="middle" fill="#9e9488" font-size="11">10 services (Go + Python)</text>
+      <text x="795" y="275" text-anchor="middle" fill="#9e9488" font-size="11">+ 2 worker services</text>
+      <text x="795" y="295" text-anchor="middle" fill="#00ADD8" font-size="10" font-weight="500">Go / Python</text>
+
+      <!-- Arrows actor → system -->
+      <line x1="140" y1="95" x2="205" y2="200" stroke="#e8a832" stroke-width="1.5" marker-end="url(#arrowGold)"/>
+      <line x1="440" y1="95" x2="440" y2="200" stroke="#3da692" stroke-width="1.5" marker-end="url(#arrowTeal)"/>
+      <line x1="740" y1="95" x2="795" y2="200" stroke="#5496e8" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
+
+      <!-- Data stores below -->
+      <g transform="translate(80,400)">
+        <rect width="200" height="70" rx="8" fill="none" stroke="#336791" stroke-width="2"/>
+        <text x="100" y="30" text-anchor="middle" fill="#6db3f2" font-size="13" font-weight="600">PostgreSQL 18</text>
+        <text x="100" y="48" text-anchor="middle" fill="#9e9488" font-size="10">Source of truth</text>
+        <text x="100" y="62" text-anchor="middle" fill="#9e9488" font-size="10">10 databases, JSONB</text>
+      </g>
+      <g transform="translate(320,400)">
+        <rect width="160" height="70" rx="8" fill="none" stroke="#dc4e4e" stroke-width="2"/>
+        <text x="80" y="30" text-anchor="middle" fill="#f08080" font-size="13" font-weight="600">Redis</text>
+        <text x="80" y="48" text-anchor="middle" fill="#9e9488" font-size="10">Event bus</text>
+        <text x="80" y="62" text-anchor="middle" fill="#9e9488" font-size="10">Streams</text>
+      </g>
+      <g transform="translate(520,400)">
+        <rect width="200" height="70" rx="8" fill="none" stroke="#4c8eda" stroke-width="2"/>
+        <text x="100" y="30" text-anchor="middle" fill="#8cc4ff" font-size="13" font-weight="600">Neo4j v2026.01</text>
+        <text x="100" y="48" text-anchor="middle" fill="#9e9488" font-size="10">Knowledge graph</text>
+        <text x="100" y="62" text-anchor="middle" fill="#9e9488" font-size="10">+ vector search</text>
+      </g>
+      <g transform="translate(760,400)">
+        <rect width="160" height="70" rx="8" fill="none" stroke="#3dba6a" stroke-width="2"/>
+        <text x="80" y="30" text-anchor="middle" fill="#3dba6a" font-size="13" font-weight="600">MinIO</text>
+        <text x="80" y="48" text-anchor="middle" fill="#9e9488" font-size="10">Object storage</text>
+        <text x="80" y="62" text-anchor="middle" fill="#9e9488" font-size="10">Chapters, media</text>
+      </g>
+
+      <!-- Arrows system → stores -->
+      <line x1="500" y1="320" x2="180" y2="400" stroke="#336791" stroke-width="1" stroke-dasharray="4 4"/>
+      <line x1="500" y1="320" x2="400" y2="400" stroke="#dc4e4e" stroke-width="1" stroke-dasharray="4 4"/>
+      <line x1="500" y1="320" x2="620" y2="400" stroke="#4c8eda" stroke-width="1" stroke-dasharray="4 4"/>
+      <line x1="500" y1="320" x2="840" y2="400" stroke="#3dba6a" stroke-width="1" stroke-dasharray="4 4"/>
+
+      <defs>
+        <marker id="arrowGold" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#e8a832"/></marker>
+        <marker id="arrowTeal" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#3da692"/></marker>
+        <marker id="arrowBlue" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#5496e8"/></marker>
+      </defs>
+    </svg>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       SLIDE 2: C4 Container Diagram
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div class="slide">
+    <p class="section-label">C4 Model &mdash; Level 2</p>
+    <h1 class="slide-title">Container Diagram</h1>
+    <p class="slide-subtitle">Services, databases, message queues, and their relationships</p>
+
+    <svg viewBox="0 0 1100 700" xmlns="http://www.w3.org/2000/svg">
+      <!-- Frontend -->
+      <rect x="20" y="20" width="160" height="60" rx="8" fill="#1e1a17" stroke="#61DAFB" stroke-width="2"/>
+      <text x="100" y="46" text-anchor="middle" fill="#61DAFB" font-size="12" font-weight="600">frontend-v2</text>
+      <text x="100" y="62" text-anchor="middle" fill="#9e9488" font-size="9">React + Tiptap :5174</text>
+
+      <!-- Gateway -->
+      <rect x="220" y="20" width="160" height="60" rx="8" fill="#1e1a17" stroke="#3178C6" stroke-width="2"/>
+      <text x="300" y="46" text-anchor="middle" fill="#3178C6" font-size="12" font-weight="600">api-gateway-bff</text>
+      <text x="300" y="62" text-anchor="middle" fill="#9e9488" font-size="9">NestJS :3123</text>
+
+      <!-- Arrow frontend → gateway -->
+      <line x1="180" y1="50" x2="220" y2="50" stroke="#9e9488" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+
+      <!-- Go Services -->
+      <g transform="translate(420,10)">
+        <rect width="660" height="80" rx="10" fill="none" stroke="#00ADD8" stroke-width="1" stroke-dasharray="6 3"/>
+        <text x="16" y="20" fill="#00ADD8" font-size="9" font-weight="600" letter-spacing="1">GO SERVICES</text>
+        <g transform="translate(10,28)">
+          <rect width="92" height="42" rx="5" fill="#1e1a17" stroke="#332d28"/>
+          <text x="46" y="18" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">auth</text>
+          <text x="46" y="32" text-anchor="middle" fill="#9e9488" font-size="8">:8204</text>
+        </g>
+        <g transform="translate(112,28)">
+          <rect width="92" height="42" rx="5" fill="#1e1a17" stroke="#e8a832" stroke-width="1.5"/>
+          <text x="46" y="18" text-anchor="middle" fill="#e8a832" font-size="9" font-weight="600">book</text>
+          <text x="46" y="32" text-anchor="middle" fill="#9e9488" font-size="8">:8205</text>
+        </g>
+        <g transform="translate(214,28)">
+          <rect width="92" height="42" rx="5" fill="#1e1a17" stroke="#332d28"/>
+          <text x="46" y="18" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">sharing</text>
+          <text x="46" y="32" text-anchor="middle" fill="#9e9488" font-size="8">:8206</text>
+        </g>
+        <g transform="translate(316,28)">
+          <rect width="92" height="42" rx="5" fill="#1e1a17" stroke="#332d28"/>
+          <text x="46" y="18" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">catalog</text>
+          <text x="46" y="32" text-anchor="middle" fill="#9e9488" font-size="8">:8207</text>
+        </g>
+        <g transform="translate(418,28)">
+          <rect width="92" height="42" rx="5" fill="#1e1a17" stroke="#332d28"/>
+          <text x="46" y="15" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">provider</text>
+          <text x="46" y="27" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">registry</text>
+          <text x="46" y="38" text-anchor="middle" fill="#9e9488" font-size="8">:8208</text>
+        </g>
+        <g transform="translate(520,28)">
+          <rect width="125" height="42" rx="5" fill="#1e1a17" stroke="#332d28"/>
+          <text x="62" y="15" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">usage-billing</text>
+          <text x="62" y="27" text-anchor="middle" fill="#9e9488" font-size="8">:8209</text>
+          <text x="62" y="38" text-anchor="middle" fill="#9e9488" font-size="8">glossary :8211</text>
+        </g>
+      </g>
+
+      <!-- Arrow gateway → services -->
+      <line x1="380" y1="50" x2="420" y2="50" stroke="#9e9488" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+
+      <!-- Python Services -->
+      <g transform="translate(420,110)">
+        <rect width="450" height="70" rx="10" fill="none" stroke="#3776AB" stroke-width="1" stroke-dasharray="6 3"/>
+        <text x="16" y="20" fill="#3776AB" font-size="9" font-weight="600" letter-spacing="1">PYTHON SERVICES</text>
+        <g transform="translate(10,28)">
+          <rect width="130" height="32" rx="5" fill="#1e1a17" stroke="#332d28"/>
+          <text x="65" y="20" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">translation :8210</text>
+        </g>
+        <g transform="translate(150,28)">
+          <rect width="130" height="32" rx="5" fill="#1e1a17" stroke="#332d28"/>
+          <text x="65" y="20" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">chat :8212</text>
+        </g>
+      </g>
+
+      <!-- Workers -->
+      <g transform="translate(20,120)">
+        <rect width="380" height="70" rx="10" fill="none" stroke="#3da692" stroke-width="1.5" stroke-dasharray="6 3"/>
+        <text x="16" y="20" fill="#3da692" font-size="9" font-weight="600" letter-spacing="1">WORKERS (NEW)</text>
+        <g transform="translate(10,28)">
+          <rect width="170" height="32" rx="5" fill="#1e1a17" stroke="#3da692" stroke-width="1.5"/>
+          <text x="85" y="14" text-anchor="middle" fill="#3da692" font-size="9" font-weight="600">worker-infra</text>
+          <text x="85" y="26" text-anchor="middle" fill="#9e9488" font-size="8">Go &middot; outbox relay</text>
+        </g>
+        <g transform="translate(190,28)">
+          <rect width="170" height="32" rx="5" fill="#1e1a17" stroke="#3da692" stroke-width="1.5"/>
+          <text x="85" y="14" text-anchor="middle" fill="#3da692" font-size="9" font-weight="600">worker-ai</text>
+          <text x="85" y="26" text-anchor="middle" fill="#9e9488" font-size="8">Python &middot; LLM tasks</text>
+        </g>
+      </g>
+
+      <!-- Data Layer -->
+      <g transform="translate(20,230)">
+        <!-- Postgres -->
+        <rect width="500" height="440" rx="12" fill="none" stroke="#336791" stroke-width="2"/>
+        <text x="20" y="28" fill="#6db3f2" font-size="12" font-weight="600">PostgreSQL 18</text>
+        <text x="20" y="44" fill="#9e9488" font-size="10">postgres:18-alpine &middot; :5555</text>
+
+        <!-- Databases grid -->
+        <g transform="translate(16,60)">
+          <rect width="110" height="36" rx="4" fill="#1e1a17" stroke="#332d28"/>
+          <text x="55" y="15" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">loreweave_auth</text>
+          <text x="55" y="28" text-anchor="middle" fill="#9e9488" font-size="8">4 tables</text>
+        </g>
+        <g transform="translate(136,60)">
+          <rect width="110" height="36" rx="4" fill="#1e1a17" stroke="#e8a832" stroke-width="1.5"/>
+          <text x="55" y="15" text-anchor="middle" fill="#e8a832" font-size="9" font-weight="600">loreweave_book</text>
+          <text x="55" y="28" text-anchor="middle" fill="#9e9488" font-size="8">7+3 tables</text>
+        </g>
+        <g transform="translate(256,60)">
+          <rect width="110" height="36" rx="4" fill="#1e1a17" stroke="#332d28"/>
+          <text x="55" y="15" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">loreweave_sharing</text>
+          <text x="55" y="28" text-anchor="middle" fill="#9e9488" font-size="8">1 table</text>
+        </g>
+        <g transform="translate(376,60)">
+          <rect width="110" height="36" rx="4" fill="#1e1a17" stroke="#332d28"/>
+          <text x="55" y="15" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">loreweave_catalog</text>
+          <text x="55" y="28" text-anchor="middle" fill="#9e9488" font-size="8">1 table</text>
+        </g>
+
+        <g transform="translate(16,106)">
+          <rect width="110" height="36" rx="4" fill="#1e1a17" stroke="#332d28"/>
+          <text x="55" y="12" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">loreweave_</text>
+          <text x="55" y="24" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">provider_reg</text>
+        </g>
+        <g transform="translate(136,106)">
+          <rect width="110" height="36" rx="4" fill="#1e1a17" stroke="#332d28"/>
+          <text x="55" y="12" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">loreweave_</text>
+          <text x="55" y="24" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">usage_billing</text>
+        </g>
+        <g transform="translate(256,106)">
+          <rect width="110" height="36" rx="4" fill="#1e1a17" stroke="#332d28"/>
+          <text x="55" y="12" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">loreweave_</text>
+          <text x="55" y="24" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">translation</text>
+        </g>
+        <g transform="translate(376,106)">
+          <rect width="110" height="36" rx="4" fill="#1e1a17" stroke="#332d28"/>
+          <text x="55" y="12" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">loreweave_</text>
+          <text x="55" y="24" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">glossary</text>
+        </g>
+
+        <g transform="translate(16,152)">
+          <rect width="110" height="36" rx="4" fill="#1e1a17" stroke="#332d28"/>
+          <text x="55" y="15" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">loreweave_chat</text>
+          <text x="55" y="28" text-anchor="middle" fill="#9e9488" font-size="8">3 tables</text>
+        </g>
+        <g transform="translate(136,152)">
+          <rect width="230" height="36" rx="4" fill="#1e1a17" stroke="#3da692" stroke-width="1.5"/>
+          <text x="115" y="15" text-anchor="middle" fill="#3da692" font-size="9" font-weight="600">loreweave_events (NEW)</text>
+          <text x="115" y="28" text-anchor="middle" fill="#9e9488" font-size="8">event_log, consumers, dead_letter</text>
+        </g>
+
+        <!-- Key tables detail (book DB) -->
+        <g transform="translate(16,210)">
+          <text x="0" y="0" fill="#e8a832" font-size="10" font-weight="600">loreweave_book key tables:</text>
+          <g transform="translate(0,12)">
+            <rect width="230" height="200" rx="6" fill="#141010" stroke="#332d28"/>
+            <text x="12" y="22" fill="#e8a832" font-size="10" class="mono" font-weight="500">chapter_drafts</text>
+            <text x="12" y="38" fill="#9e9488" font-size="9" class="mono">  body        JSONB</text>
+            <text x="12" y="52" fill="#9e9488" font-size="9" class="mono">  body_format TEXT 'json'</text>
+            <text x="12" y="66" fill="#3da692" font-size="9" class="mono">  block_count VIRTUAL</text>
+            <line x1="12" y1="74" x2="218" y2="74" stroke="#332d28"/>
+            <text x="12" y="90" fill="#3da692" font-size="10" class="mono" font-weight="500">chapter_blocks (NEW)</text>
+            <text x="12" y="106" fill="#9e9488" font-size="9" class="mono">  text_content TEXT</text>
+            <text x="12" y="120" fill="#9e9488" font-size="9" class="mono">  content_hash TEXT</text>
+            <text x="12" y="134" fill="#9e9488" font-size="9" class="mono">  heading_context TEXT</text>
+            <line x1="12" y1="142" x2="218" y2="142" stroke="#332d28"/>
+            <text x="12" y="158" fill="#3da692" font-size="10" class="mono" font-weight="500">outbox_events (NEW)</text>
+            <text x="12" y="174" fill="#9e9488" font-size="9" class="mono">  event_type TEXT</text>
+            <text x="12" y="188" fill="#9e9488" font-size="9" class="mono">  payload    JSONB</text>
+          </g>
+        </g>
+
+        <g transform="translate(260,210)">
+          <text x="0" y="0" fill="#3da692" font-size="10" font-weight="600">Trigger (PG18 JSON_TABLE):</text>
+          <g transform="translate(0,12)">
+            <rect width="226" height="100" rx="6" fill="#141010" stroke="#3da692" stroke-dasharray="4 3"/>
+            <text x="12" y="22" fill="#3da692" font-size="9" class="mono">AFTER INSERT OR UPDATE</text>
+            <text x="12" y="36" fill="#3da692" font-size="9" class="mono">ON chapter_drafts</text>
+            <text x="12" y="56" fill="#9e9488" font-size="9" class="mono">UPSERT chapter_blocks</text>
+            <text x="12" y="70" fill="#9e9488" font-size="9" class="mono">FROM JSON_TABLE($._text)</text>
+            <text x="12" y="84" fill="#9e9488" font-size="9" class="mono">+ heading_context window</text>
+          </g>
+        </g>
+      </g>
+
+      <!-- Redis -->
+      <g transform="translate(550,230)">
+        <rect width="200" height="100" rx="12" fill="none" stroke="#dc4e4e" stroke-width="2"/>
+        <text x="20" y="28" fill="#f08080" font-size="12" font-weight="600">Redis 7</text>
+        <text x="20" y="44" fill="#9e9488" font-size="10">redis:7-alpine &middot; :6399</text>
+        <text x="20" y="68" fill="#9e9488" font-size="9" class="mono">loreweave:events:chapter</text>
+        <text x="20" y="82" fill="#9e9488" font-size="9">MAXLEN ~ 10000</text>
+      </g>
+
+      <!-- Neo4j -->
+      <g transform="translate(550,360)">
+        <rect width="200" height="120" rx="12" fill="none" stroke="#4c8eda" stroke-width="2"/>
+        <text x="20" y="28" fill="#8cc4ff" font-size="12" font-weight="600">Neo4j v2026.01</text>
+        <text x="20" y="44" fill="#9e9488" font-size="10">neo4j:community &middot; :7687</text>
+        <text x="20" y="68" fill="#8cc4ff" font-size="9" class="mono">:Entity :Event</text>
+        <text x="20" y="82" fill="#8cc4ff" font-size="9" class="mono">:RELATES_TO</text>
+        <text x="20" y="96" fill="#8cc4ff" font-size="9" class="mono">VECTOR INDEX (HNSW)</text>
+        <text x="20" y="110" fill="#9e9488" font-size="8">Phase D2+ (future)</text>
+      </g>
+
+      <!-- Other infra -->
+      <g transform="translate(550,510)">
+        <rect width="95" height="60" rx="8" fill="none" stroke="#e8a832" stroke-width="1"/>
+        <text x="48" y="28" text-anchor="middle" fill="#e8a832" font-size="10" font-weight="500">RabbitMQ</text>
+        <text x="48" y="42" text-anchor="middle" fill="#9e9488" font-size="8">:5795</text>
+      </g>
+      <g transform="translate(655,510)">
+        <rect width="95" height="60" rx="8" fill="none" stroke="#3dba6a" stroke-width="1"/>
+        <text x="48" y="28" text-anchor="middle" fill="#3dba6a" font-size="10" font-weight="500">MinIO</text>
+        <text x="48" y="42" text-anchor="middle" fill="#9e9488" font-size="8">:9123</text>
+      </g>
+      <g transform="translate(760,510)">
+        <rect width="95" height="60" rx="8" fill="none" stroke="#9e9488" stroke-width="1"/>
+        <text x="48" y="22" text-anchor="middle" fill="#9e9488" font-size="10" font-weight="500">Language</text>
+        <text x="48" y="36" text-anchor="middle" fill="#9e9488" font-size="10" font-weight="500">Tool</text>
+        <text x="48" y="50" text-anchor="middle" fill="#9e9488" font-size="8">:8875</text>
+      </g>
+
+      <defs>
+        <marker id="arrowGray" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#9e9488"/></marker>
+      </defs>
+    </svg>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       SLIDE 3: ERD — book-service tables
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div class="slide">
+    <p class="section-label">Entity-Relationship Diagram</p>
+    <h1 class="slide-title">Book Service Data Model</h1>
+    <p class="slide-subtitle">Tables in loreweave_book after D1 migration. Orange = modified, teal = new.</p>
+
+    <div class="legend">
+      <div class="legend-item"><div class="legend-swatch" style="background: var(--primary-muted); border: 1px solid var(--primary);"></div> Modified table</div>
+      <div class="legend-item"><div class="legend-swatch" style="background: var(--accent-muted); border: 1px solid var(--accent);"></div> New table</div>
+      <div class="legend-item"><div class="legend-swatch" style="background: var(--muted); border: 1px solid var(--border);"></div> Unchanged</div>
+      <div class="legend-item"><span style="color: var(--primary); font-size: 11px; font-weight: 600;">PK</span> Primary key</div>
+      <div class="legend-item"><span style="color: var(--info); font-size: 11px; font-weight: 600;">FK</span> Foreign key</div>
+      <div class="legend-item"><span style="color: var(--accent); font-size: 11px; font-weight: 600;">V</span> Virtual column</div>
+    </div>
+
+    <div class="erd-grid">
+      <!-- books -->
+      <div class="erd-table highlight">
+        <div class="erd-header"><span class="name">books</span><span class="badge modified">modified</span></div>
+        <div class="erd-cols">
+          <div class="erd-col"><span class="col-icon pk">PK</span><span class="col-name col-changed">id</span><span class="col-type">UUID uuidv7()</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name">owner_user_id</span><span class="col-type">UUID</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name">title</span><span class="col-type">TEXT</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name">lifecycle_state</span><span class="col-type">TEXT</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name">...</span><span class="col-type">timestamps</span></div>
+        </div>
+      </div>
+
+      <!-- chapters -->
+      <div class="erd-table highlight">
+        <div class="erd-header"><span class="name">chapters</span><span class="badge modified">modified</span></div>
+        <div class="erd-cols">
+          <div class="erd-col"><span class="col-icon pk">PK</span><span class="col-name col-changed">id</span><span class="col-type">UUID uuidv7()</span></div>
+          <div class="erd-col"><span class="col-icon fk">FK</span><span class="col-name">book_id</span><span class="col-type">UUID → books</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name">title</span><span class="col-type">TEXT</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name">sort_order</span><span class="col-type">INT</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name">original_language</span><span class="col-type">TEXT</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name">lifecycle_state</span><span class="col-type">TEXT</span></div>
+        </div>
+      </div>
+
+      <!-- chapter_drafts -->
+      <div class="erd-table highlight">
+        <div class="erd-header"><span class="name">chapter_drafts</span><span class="badge modified">modified</span></div>
+        <div class="erd-cols">
+          <div class="erd-col"><span class="col-icon pk">PK</span><span class="col-name">chapter_id</span><span class="col-type">UUID → chapters</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name col-changed">body</span><span class="col-type col-changed">JSONB</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name">body_format</span><span class="col-type">'json'</span></div>
+          <div class="erd-col"><span class="col-icon idx">V</span><span class="col-name col-new">block_count</span><span class="col-type col-new">INT virtual</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name">draft_version</span><span class="col-type">BIGINT</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name">draft_updated_at</span><span class="col-type">TIMESTAMPTZ</span></div>
+        </div>
+      </div>
+
+      <!-- chapter_revisions -->
+      <div class="erd-table highlight">
+        <div class="erd-header"><span class="name">chapter_revisions</span><span class="badge modified">modified</span></div>
+        <div class="erd-cols">
+          <div class="erd-col"><span class="col-icon pk">PK</span><span class="col-name col-changed">id</span><span class="col-type">UUID uuidv7()</span></div>
+          <div class="erd-col"><span class="col-icon fk">FK</span><span class="col-name">chapter_id</span><span class="col-type">UUID → chapters</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name col-changed">body</span><span class="col-type col-changed">JSONB</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name col-new">body_format</span><span class="col-type col-new">TEXT 'json'</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name">message</span><span class="col-type">TEXT</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name">author_user_id</span><span class="col-type">UUID</span></div>
+        </div>
+      </div>
+
+      <!-- chapter_blocks (NEW) -->
+      <div class="erd-table new">
+        <div class="erd-header"><span class="name">chapter_blocks</span><span class="badge new-tbl">new</span></div>
+        <div class="erd-cols">
+          <div class="erd-col"><span class="col-icon pk">PK</span><span class="col-name col-new">id</span><span class="col-type">UUID uuidv7()</span></div>
+          <div class="erd-col"><span class="col-icon fk">FK</span><span class="col-name col-new">chapter_id</span><span class="col-type">UUID CASCADE</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name col-new">block_index</span><span class="col-type">INT</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name col-new">block_type</span><span class="col-type">TEXT</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name col-new">text_content</span><span class="col-type">TEXT</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name col-new">content_hash</span><span class="col-type">TEXT SHA-256</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name col-new">heading_context</span><span class="col-type">TEXT</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name col-new">attrs</span><span class="col-type">JSONB</span></div>
+          <div class="erd-divider"></div>
+          <div class="erd-col"><span class="col-icon idx">U</span><span class="col-name col-new">UNIQUE</span><span class="col-type">(chapter_id, block_index)</span></div>
+        </div>
+      </div>
+
+      <!-- outbox_events (NEW) -->
+      <div class="erd-table new">
+        <div class="erd-header"><span class="name">outbox_events</span><span class="badge new-tbl">new</span></div>
+        <div class="erd-cols">
+          <div class="erd-col"><span class="col-icon pk">PK</span><span class="col-name col-new">id</span><span class="col-type">UUID uuidv7()</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name col-new">aggregate_type</span><span class="col-type">TEXT</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name col-new">aggregate_id</span><span class="col-type">UUID</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name col-new">event_type</span><span class="col-type">TEXT</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name col-new">payload</span><span class="col-type">JSONB</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name col-new">published_at</span><span class="col-type">TIMESTAMPTZ?</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name col-new">retry_count</span><span class="col-type">INT 0</span></div>
+          <div class="erd-divider"></div>
+          <div class="erd-col"><span class="col-icon idx">I</span><span class="col-name col-new">PARTIAL</span><span class="col-type">WHERE published_at IS NULL</span></div>
+        </div>
+      </div>
+
+      <!-- chapter_raw_objects -->
+      <div class="erd-table">
+        <div class="erd-header"><span class="name">chapter_raw_objects</span><span class="badge existing">unchanged</span></div>
+        <div class="erd-cols">
+          <div class="erd-col"><span class="col-icon pk">PK</span><span class="col-name">chapter_id</span><span class="col-type">UUID → chapters</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name">body_text</span><span class="col-type">TEXT</span></div>
+        </div>
+      </div>
+
+      <!-- user_storage_quota -->
+      <div class="erd-table">
+        <div class="erd-header"><span class="name">user_storage_quota</span><span class="badge existing">unchanged</span></div>
+        <div class="erd-cols">
+          <div class="erd-col"><span class="col-icon pk">PK</span><span class="col-name">owner_user_id</span><span class="col-type">UUID</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name">used_bytes</span><span class="col-type">BIGINT</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name">quota_bytes</span><span class="col-type">BIGINT</span></div>
+        </div>
+      </div>
+
+      <!-- book_cover_assets -->
+      <div class="erd-table">
+        <div class="erd-header"><span class="name">book_cover_assets</span><span class="badge existing">unchanged</span></div>
+        <div class="erd-cols">
+          <div class="erd-col"><span class="col-icon pk">PK</span><span class="col-name">book_id</span><span class="col-type">UUID → books</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name">storage_key</span><span class="col-type">TEXT</span></div>
+          <div class="erd-col"><span class="col-icon"></span><span class="col-name">data</span><span class="col-type">BYTEA</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       SLIDE 4: Data Flow — Chapter Save
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div class="slide">
+    <p class="section-label">Data Flow Diagram</p>
+    <h1 class="slide-title">Chapter Save — Write Path</h1>
+    <p class="slide-subtitle">Step-by-step flow from user keystroke to all downstream data stores</p>
+
+    <svg viewBox="0 0 1100 460" xmlns="http://www.w3.org/2000/svg">
+      <!-- Step 1: Frontend -->
+      <rect x="20" y="20" width="180" height="90" rx="10" fill="#1e1a17" stroke="#61DAFB" stroke-width="2"/>
+      <text x="110" y="42" text-anchor="middle" fill="#61DAFB" font-size="11" font-weight="600">1. Frontend</text>
+      <text x="110" y="60" text-anchor="middle" fill="#9e9488" font-size="9">editor.getJSON()</text>
+      <text x="110" y="74" text-anchor="middle" fill="#9e9488" font-size="9">addTextSnapshots()</text>
+      <text x="110" y="88" text-anchor="middle" fill="#9e9488" font-size="9">PATCH /draft</text>
+
+      <line x1="200" y1="65" x2="240" y2="65" stroke="#e8a832" stroke-width="2" marker-end="url(#arrowGold2)"/>
+      <text x="220" y="56" text-anchor="middle" fill="#e8a832" font-size="8">JSON + _text</text>
+
+      <!-- Step 2: Gateway -->
+      <rect x="240" y="35" width="100" height="60" rx="8" fill="#1e1a17" stroke="#3178C6" stroke-width="1.5"/>
+      <text x="290" y="60" text-anchor="middle" fill="#3178C6" font-size="10" font-weight="500">2. Gateway</text>
+      <text x="290" y="74" text-anchor="middle" fill="#9e9488" font-size="8">proxy</text>
+
+      <line x1="340" y1="65" x2="380" y2="65" stroke="#9e9488" stroke-width="1.5" marker-end="url(#arrowGray2)"/>
+
+      <!-- Step 3: book-service -->
+      <rect x="380" y="10" width="200" height="110" rx="10" fill="#1e1a17" stroke="#e8a832" stroke-width="2"/>
+      <text x="480" y="32" text-anchor="middle" fill="#e8a832" font-size="11" font-weight="600">3. book-service</text>
+      <text x="480" y="50" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">BEGIN TX</text>
+      <text x="480" y="66" text-anchor="middle" fill="#9e9488" font-size="9">UPDATE chapter_drafts (JSONB)</text>
+      <text x="480" y="80" text-anchor="middle" fill="#9e9488" font-size="9">INSERT chapter_revisions</text>
+      <text x="480" y="94" text-anchor="middle" fill="#3da692" font-size="9" font-weight="500">INSERT outbox_events</text>
+      <text x="480" y="108" text-anchor="middle" fill="#f5efe8" font-size="9" font-weight="500">COMMIT</text>
+
+      <!-- Step 4: Trigger -->
+      <line x1="480" y1="120" x2="480" y2="160" stroke="#3da692" stroke-width="2" marker-end="url(#arrowTeal2)"/>
+      <text x="500" y="145" fill="#3da692" font-size="8">trigger fires</text>
+
+      <rect x="380" y="160" width="200" height="80" rx="10" fill="#1e1a17" stroke="#3da692" stroke-width="2"/>
+      <text x="480" y="185" text-anchor="middle" fill="#3da692" font-size="11" font-weight="600">4. PG Trigger</text>
+      <text x="480" y="203" text-anchor="middle" fill="#9e9488" font-size="9">JSON_TABLE($._text)</text>
+      <text x="480" y="217" text-anchor="middle" fill="#9e9488" font-size="9">UPSERT chapter_blocks</text>
+      <text x="480" y="231" text-anchor="middle" fill="#9e9488" font-size="9">heading_context window fn</text>
+
+      <!-- Outputs from trigger -->
+      <line x1="380" y1="200" x2="180" y2="200" stroke="#336791" stroke-width="1.5" marker-end="url(#arrowPg)"/>
+      <rect x="20" y="170" width="160" height="60" rx="8" fill="#1e1a17" stroke="#336791" stroke-width="1.5"/>
+      <text x="100" y="196" text-anchor="middle" fill="#6db3f2" font-size="10" font-weight="500">chapter_blocks</text>
+      <text x="100" y="212" text-anchor="middle" fill="#9e9488" font-size="8">text + hash + heading_ctx</text>
+
+      <!-- Step 5: pg_notify -->
+      <line x1="480" y1="240" x2="480" y2="270" stroke="#e8a832" stroke-width="2" marker-end="url(#arrowGold2)"/>
+      <text x="500" y="260" fill="#e8a832" font-size="8">pg_notify</text>
+
+      <!-- Step 6: worker-infra -->
+      <rect x="380" y="270" width="200" height="70" rx="10" fill="#1e1a17" stroke="#3da692" stroke-width="2"/>
+      <text x="480" y="295" text-anchor="middle" fill="#3da692" font-size="11" font-weight="600">5. worker-infra</text>
+      <text x="480" y="313" text-anchor="middle" fill="#9e9488" font-size="9">LISTEN outbox_events</text>
+      <text x="480" y="327" text-anchor="middle" fill="#9e9488" font-size="9">publish + mark done</text>
+
+      <!-- Outputs from worker -->
+      <line x1="580" y1="290" x2="680" y2="290" stroke="#dc4e4e" stroke-width="2" marker-end="url(#arrowRed)"/>
+      <rect x="680" y="265" width="180" height="50" rx="8" fill="#1e1a17" stroke="#dc4e4e" stroke-width="1.5"/>
+      <text x="770" y="288" text-anchor="middle" fill="#f08080" font-size="10" font-weight="500">Redis Stream</text>
+      <text x="770" y="303" text-anchor="middle" fill="#9e9488" font-size="8">loreweave:events:chapter</text>
+
+      <line x1="580" y1="320" x2="680" y2="370" stroke="#4c8eda" stroke-width="1.5" marker-end="url(#arrowNeo)"/>
+      <rect x="680" y="345" width="180" height="50" rx="8" fill="#1e1a17" stroke="#4c8eda" stroke-width="1.5"/>
+      <text x="770" y="368" text-anchor="middle" fill="#8cc4ff" font-size="10" font-weight="500">event_log</text>
+      <text x="770" y="383" text-anchor="middle" fill="#9e9488" font-size="8">permanent audit store</text>
+
+      <!-- Future consumers -->
+      <line x1="860" y1="290" x2="920" y2="250" stroke="#9e9488" stroke-width="1" stroke-dasharray="4 3"/>
+      <text x="940" y="248" fill="#9e9488" font-size="9" font-style="italic">knowledge-service</text>
+      <text x="940" y="262" fill="#9e9488" font-size="8">(future D3)</text>
+
+      <line x1="860" y1="290" x2="920" y2="290" stroke="#9e9488" stroke-width="1" stroke-dasharray="4 3"/>
+      <text x="940" y="290" fill="#9e9488" font-size="9" font-style="italic">embedding-pipeline</text>
+      <text x="940" y="304" fill="#9e9488" font-size="8">(future D4)</text>
+
+      <!-- Legend -->
+      <g transform="translate(20,410)">
+        <text x="0" y="12" fill="#f5efe8" font-size="10" font-weight="600">Data Stores Written:</text>
+        <rect x="150" y="0" width="10" height="14" rx="2" fill="none" stroke="#336791" stroke-width="2"/>
+        <text x="166" y="12" fill="#6db3f2" font-size="10">chapter_drafts (JSONB)</text>
+        <rect x="340" y="0" width="10" height="14" rx="2" fill="none" stroke="#336791" stroke-width="2"/>
+        <text x="356" y="12" fill="#6db3f2" font-size="10">chapter_revisions</text>
+        <rect x="500" y="0" width="10" height="14" rx="2" fill="none" stroke="#3da692" stroke-width="2"/>
+        <text x="516" y="12" fill="#3da692" font-size="10">chapter_blocks</text>
+        <rect x="636" y="0" width="10" height="14" rx="2" fill="none" stroke="#e8a832" stroke-width="2"/>
+        <text x="652" y="12" fill="#e8a832" font-size="10">outbox_events</text>
+        <rect x="768" y="0" width="10" height="14" rx="2" fill="none" stroke="#dc4e4e" stroke-width="2"/>
+        <text x="784" y="12" fill="#f08080" font-size="10">Redis Stream</text>
+        <rect x="888" y="0" width="10" height="14" rx="2" fill="none" stroke="#4c8eda" stroke-width="2"/>
+        <text x="904" y="12" fill="#8cc4ff" font-size="10">event_log</text>
+      </g>
+
+      <defs>
+        <marker id="arrowGold2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#e8a832"/></marker>
+        <marker id="arrowTeal2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#3da692"/></marker>
+        <marker id="arrowGray2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#9e9488"/></marker>
+        <marker id="arrowPg" markerWidth="8" markerHeight="6" refX="0" refY="3" orient="auto"><polygon points="8 0, 0 3, 8 6" fill="#336791"/></marker>
+        <marker id="arrowRed" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#dc4e4e"/></marker>
+        <marker id="arrowNeo" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4c8eda"/></marker>
+      </defs>
+    </svg>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       SLIDE 5: Infrastructure / Deployment
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div class="slide">
+    <p class="section-label">Deployment Diagram</p>
+    <h1 class="slide-title">Docker Compose Infrastructure</h1>
+    <p class="slide-subtitle">All containers, ports, and volumes. Teal border = new in D1 migration.</p>
+
+    <div class="infra-grid">
+      <div class="infra-group"><div class="group-title">Databases &amp; Storage</div></div>
+
+      <div class="infra-box db">
+        <div class="svc-name">postgres</div>
+        <div class="svc-image">postgres:18-alpine</div>
+        <div class="svc-port">:5555 &rarr; :5432</div>
+        <div class="svc-dbs">
+          10 databases: auth, book, sharing, catalog,<br>
+          provider_registry, usage_billing, translation,<br>
+          glossary, chat, <strong style="color:var(--accent)">events (new)</strong>
+        </div>
+      </div>
+      <div class="infra-box cache" style="border-color: var(--accent);">
+        <div class="svc-name" style="color: var(--accent);">redis <span style="font-size:9px;font-weight:400;color:var(--muted-fg);">(NEW)</span></div>
+        <div class="svc-image">redis:7-alpine</div>
+        <div class="svc-port">:6399 &rarr; :6379</div>
+        <div class="svc-new">Event bus (Streams)</div>
+      </div>
+      <div class="infra-box storage">
+        <div class="svc-name">minio</div>
+        <div class="svc-image">minio/minio</div>
+        <div class="svc-port">:9123 (API) :9124 (console)</div>
+      </div>
+      <div class="infra-box mq">
+        <div class="svc-name">rabbitmq</div>
+        <div class="svc-image">rabbitmq:3.13-mgmt-alpine</div>
+        <div class="svc-port">:5795 (AMQP) :15795 (mgmt)</div>
+      </div>
+
+      <div class="infra-group"><div class="group-title">Application Services (Go)</div></div>
+
+      <div class="infra-box go-svc">
+        <div class="svc-name">auth-service</div>
+        <div class="svc-port">:8204</div>
+      </div>
+      <div class="infra-box go-svc" style="border-color: var(--primary);">
+        <div class="svc-name" style="color: var(--primary);">book-service</div>
+        <div class="svc-port">:8205</div>
+        <div class="svc-dbs" style="color:var(--primary);">JSONB body, outbox pattern</div>
+      </div>
+      <div class="infra-box go-svc">
+        <div class="svc-name">sharing-service</div>
+        <div class="svc-port">:8206</div>
+      </div>
+      <div class="infra-box go-svc">
+        <div class="svc-name">catalog-service</div>
+        <div class="svc-port">:8207</div>
+      </div>
+      <div class="infra-box go-svc">
+        <div class="svc-name">provider-registry</div>
+        <div class="svc-port">:8208</div>
+      </div>
+      <div class="infra-box go-svc">
+        <div class="svc-name">usage-billing</div>
+        <div class="svc-port">:8209</div>
+      </div>
+      <div class="infra-box go-svc">
+        <div class="svc-name">glossary-service</div>
+        <div class="svc-port">:8211</div>
+      </div>
+      <div class="infra-box ts-svc">
+        <div class="svc-name">api-gateway-bff</div>
+        <div class="svc-port">:3123</div>
+        <div class="svc-dbs">NestJS &middot; proxies all services</div>
+      </div>
+
+      <div class="infra-group"><div class="group-title">Application Services (Python)</div></div>
+
+      <div class="infra-box py-svc">
+        <div class="svc-name">translation-service</div>
+        <div class="svc-port">:8210</div>
+      </div>
+      <div class="infra-box py-svc">
+        <div class="svc-name">chat-service</div>
+        <div class="svc-port">:8212</div>
+      </div>
+      <div class="infra-box py-svc">
+        <div class="svc-name">translation-worker</div>
+        <div class="svc-dbs">RabbitMQ consumer (legacy)</div>
+      </div>
+      <div class="infra-box" style="border-left-color: var(--muted-fg);">
+        <div class="svc-name">languagetool</div>
+        <div class="svc-port">:8875</div>
+        <div class="svc-dbs">Grammar checking (optional)</div>
+      </div>
+
+      <div class="infra-group"><div class="group-title">Workers (NEW)</div></div>
+
+      <div class="infra-box go-svc" style="border-color: var(--accent);">
+        <div class="svc-name" style="color: var(--accent);">worker-infra <span style="font-size:9px;font-weight:400;color:var(--muted-fg);">(NEW)</span></div>
+        <div class="svc-image">Go &middot; WORKER_TASKS=outbox-relay,outbox-cleanup</div>
+        <div class="svc-dbs">Reads: loreweave_book outbox<br>Writes: loreweave_events, Redis Streams</div>
+      </div>
+      <div class="infra-box py-svc" style="border-color: var(--accent);">
+        <div class="svc-name" style="color: var(--accent);">worker-ai <span style="font-size:9px;font-weight:400;color:var(--muted-fg);">(FUTURE)</span></div>
+        <div class="svc-image">Python &middot; WORKER_TASKS=knowledge-extractor,...</div>
+        <div class="svc-dbs">Absorbs translation-worker<br>LLM extraction &rarr; Neo4j</div>
+      </div>
+
+      <div class="infra-group"><div class="group-title">Frontend</div></div>
+
+      <div class="infra-box fe" style="grid-column: span 2;">
+        <div class="svc-name">frontend-v2</div>
+        <div class="svc-image">Vite + React 18 + Tiptap + Tailwind</div>
+        <div class="svc-port">:5174 (dev) &middot; nginx (docker)</div>
+        <div class="svc-dbs">Tiptap JSON save with _text snapshots, rich reader</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="project">LoreWeave</div>
+    <div class="date">Architecture Diagrams &middot; April 2026</div>
+  </div>
+
+</div>
+</body>
+</html>
