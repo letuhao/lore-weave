@@ -2,7 +2,7 @@
 
 > **Purpose:** Give the next agent complete context to continue implementation from Phase 3 onward.
 > **Date:** 2026-03-31
-> **Last commit:** `63558eb` (Phase 2 bulk)
+> **Last commit:** `2bad92f` (unsaved-changes guard + universal dialog + toast system)
 
 ---
 
@@ -35,6 +35,30 @@ LoreWeave is a multi-agent platform for multilingual novel workflows (writing, t
 | P1-09 | LanguageDisplay (native name + code) | `src/components/shared/LanguageDisplay.tsx`, `src/lib/languages.ts` |
 | P1-10 | Login, Register, Forgot, Reset pages | `src/pages/auth/` (4 pages + AuthCard) |
 | P1-11 | Language selector (GUI switching) | `src/components/shared/LanguageSelector.tsx` |
+
+### Session 10: Chapter Editor Polish + Dialog + Toast System
+
+Work done after Phase 2 was declared complete — UX hardening pass on the chapter editor.
+
+| Work | What Was Built | Key Files |
+|---|---|---|
+| Chapter export bug fix | Backend `/export` handler returns `chapter_drafts.body` instead of raw file | `services/book-service/internal/api/server.go` |
+| Comprehensive editor enhancement | Title saving via `patchChapter`, chunk insert/delete, auto-save (30s), Ctrl+S, word count | `ChapterEditorPage.tsx`, `useChunks.ts` |
+| `ChunkItem` enhancements | `innerText` (not `textContent`) preserves newlines; always-visible border; delete button; auto-focus on insert | `src/components/editor/ChunkItem.tsx` |
+| `ChunkInsertRow` | Invisible divider that reveals "+ insert" pill on hover, between every chunk pair | `src/components/editor/ChunkInsertRow.tsx` (new) |
+| `ChapterReadView` | Shared reading component (serif, 17px, 1.85 line-height, 680px max) used by ReaderPage + RevisionHistory | `src/components/shared/ChapterReadView.tsx` (new) |
+| Revision preview overlay | Full-screen `fixed inset-0 z-50` preview with `ChapterReadView`, restore from preview | `src/components/editor/RevisionHistory.tsx` |
+| Source mode default | Writer-first: source textarea loads first, chunk mode is opt-in | `ChapterEditorPage.tsx` |
+| Auto-chunk with preview | "Split into N paragraphs" — shows preview overlay, user confirms or cancels | `ChapterEditorPage.tsx` |
+| Left sidebar | Chapters tab (navigate between chapters) + Original tab (lazy-loaded raw import) | `ChapterEditorPage.tsx` |
+| `EditorLayout` sidebar | Full icon-only navigation (home, back-to-book, workspace, chat, settings, avatar, logout) | `src/layouts/EditorLayout.tsx` |
+| `EditorDirtyContext` | Owns `isDirty`, `pendingNavigation`, `guardedNavigate`, `confirmNavigation`, `cancelNavigation` — shared between editor page and layout sidebar | `src/contexts/EditorDirtyContext.tsx` (new) |
+| Universal `ConfirmDialog` | Extended: `icon` prop, `extraAction` (3rd stacked button), auto-stacks vertically when 3 actions | `src/components/shared/ConfirmDialog.tsx` |
+| `UnsavedChangesDialog` | Thin wrapper around ConfirmDialog: Save & leave / Discard & leave / Stay | `src/components/shared/UnsavedChangesDialog.tsx` (new) |
+| Navigation guard — all SPA routes | All `<Link>` in editor replaced with `guardedNavigate` buttons; logout uses `ConfirmDialog` | `ChapterEditorPage.tsx`, `EditorLayout.tsx` |
+| Discard button | Appears in toolbar when `isDirty`; resets to last-saved state via `ConfirmDialog` | `ChapterEditorPage.tsx` |
+| Toast system | Install `sonner`; `<Toaster>` at App root; replaces all inline save badges + error banners | `App.tsx`, all editor files |
+| Eliminated `window.confirm/alert` | Zero remaining in frontend-v2; all replaced with modal dialogs or toasts | All editor/layout files |
 
 ### Phase 2: Core Screens (10/11 complete, P2-06 deferred)
 
@@ -78,16 +102,21 @@ frontend-v2/
 │   ├── index.css                 # Tailwind + CSS variables (warm literary theme)
 │   ├── components/
 │   │   ├── layout/               # Sidebar, PageHeader
-│   │   ├── shared/               # StatusBadge, ConfirmDialog, FormDialog, EmptyState, Skeleton, CopyButton, FilterToolbar, Pagination, LanguageDisplay, LanguageSelector
+│   │   ├── shared/               # StatusBadge, ConfirmDialog (universal), UnsavedChangesDialog,
+│   │   │                         # FormDialog, EmptyState, Skeleton, CopyButton, FilterToolbar,
+│   │   │                         # Pagination, LanguageDisplay, LanguageSelector, ChapterReadView
 │   │   ├── data/                 # DataTable (generic)
-│   │   ├── editor/               # ChunkItem, RevisionHistory
+│   │   ├── editor/               # ChunkItem, ChunkInsertRow, RevisionHistory
 │   │   ├── notifications/        # NotificationBell (mock)
 │   │   ├── onboarding/           # OnboardingWizard
 │   │   └── import/               # ImportDialog
+│   ├── contexts/
+│   │   └── EditorDirtyContext.tsx # isDirty, pendingNavigation, guardedNavigate — shared by
+│   │                              # ChapterEditorPage + EditorLayout
 │   ├── features/
 │   │   └── books/api.ts          # booksApi (copied from v1, works with existing backend)
 │   ├── hooks/
-│   │   ├── useChunks.ts          # Chunk-based text editing state
+│   │   ├── useChunks.ts          # Chunk-based text editing (insert, delete, isDirty, reassemble)
 │   │   └── useEditorPanels.ts    # Left/right panel toggle + localStorage persist
 │   ├── i18n/
 │   │   ├── index.ts              # i18next config
@@ -324,7 +353,7 @@ hooks/useJobEvents.ts                → WebSocket job event listener
 
 ---
 
-## 8. Key Decisions Made This Session
+## 8. Key Decisions Made
 
 | Decision | Reasoning |
 |---|---|
@@ -338,6 +367,12 @@ hooks/useJobEvents.ts                → WebSocket job event listener
 | i18n from day 1 | All UI strings go through `t()`. English is fallback. Only en has all namespaces; vi/ja/zh-TW have common + auth. |
 | Reader theme scoped to content area | App chrome stays dark. Only the reader content area changes with theme presets. |
 | NotificationBell uses mock data | Real API (P2-09b) is a backend task. Frontend shell is ready to wire. |
+| Source mode as default in editor | Writers prefer typing raw text over chunked editing. Chunk mode is opt-in via toggle. |
+| No error/warning dialog component | Inline errors for form context (login, import), toast for transient feedback. Error *dialogs* block the screen for something that doesn't need a user decision. |
+| `sonner` as toast library | Matches what was already in use in the v1 chat frontend. Lightweight, works out of the box with shadcn design system. |
+| `ConfirmDialog` is the single dialog primitive | Handles 2-button (default) and 3-button (`extraAction`) cases. `UnsavedChangesDialog` is just a pre-configured wrapper. No separate error/warning dialog needed. |
+| `EditorDirtyContext` owns navigation guard logic | Both `ChapterEditorPage` (breadcrumbs, prev/next) and `EditorLayout` (sidebar links, logout) need to intercept navigation. Sharing via context avoids prop drilling and keeps `navigate()` in one place. |
+| `window.confirm/alert` fully eliminated | Replaced with `ConfirmDialog` (blocking) or `toast.error` (non-blocking). Browser default dialogs are unstyled and block the thread. |
 
 ---
 
@@ -346,10 +381,17 @@ hooks/useJobEvents.ts                → WebSocket job event listener
 | Issue | Where | Notes |
 |---|---|---|
 | OnboardingWizard not wired into App | `src/App.tsx` | Component exists but isn't rendered anywhere yet. Wire into BooksPage on first login. |
-| ImportDialog not wired into ChaptersTab | `src/pages/book-tabs/ChaptersTab.tsx` | Component exists, needs an "Import" button in the chapters toolbar. |
 | ReaderThemeProvider not applied to ReaderPage | `src/pages/ReaderPage.tsx` | Provider wraps App but reader doesn't use CSS vars yet. Apply `style={cssVars}` to reading area. |
 | LanguageSelector not shown anywhere | Component exists | Should appear in Settings → Language tab. |
 | ModeProvider unused | `src/providers/ModeProvider.tsx` | Decision made to not split modes. Can be removed or kept for future feature gating. |
 | Books i18n only in English | `src/i18n/locales/en/books.json` | vi/ja/zh-TW books.json files not created yet. |
-| ChapterEditorPage title save | `src/pages/ChapterEditorPage.tsx` | Title input exists but changes aren't persisted (API uses body + commit_message only). |
-| No tests written yet | — | Phase 2 focused on building screens. Unit tests should be added alongside Phase 3 work. |
+| BooksPage create-book error uses inline banner | `src/pages/BooksPage.tsx` | Create-book error should probably be `toast.error` instead of inline. Low priority. |
+| Glossary tab in editor left sidebar disabled | `ChapterEditorPage.tsx` | Tab exists as placeholder; needs glossary-service wired (P3-05). |
+| AI Chat tab in editor right panel disabled | `ChapterEditorPage.tsx` | Tab exists as placeholder; needs chat-service wired (P3-18/19). |
+| No tests written for frontend-v2 | — | Phase 2 + polish focused on building screens. Unit tests should be added alongside Phase 3 work. |
+
+**Items resolved since last handoff:**
+- ✅ Chapter title now saves via `patchChapter` in `save()`
+- ✅ ImportDialog wired into ChaptersTab (Import button + state present)
+- ✅ Chapter export bug fixed (returns edited draft body, not original file)
+- ✅ `window.confirm/alert` fully eliminated
