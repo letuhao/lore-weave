@@ -214,7 +214,7 @@ services/api-gateway-bff/node_modules/
 frontend/package-lock.json
 frontend-v2/package-lock.json
 
-services/api-gateway-bff/package-lock.json
+# services/api-gateway-bff/package-lock.json  # needed for Docker build
 
 services/auth-service/tmp/
 
