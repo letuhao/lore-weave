@@ -8,7 +8,7 @@
 ## Document Metadata
 
 - Last Updated: 2026-03-31 (session 12 end)
-- Updated By: Assistant (Phase 2.5 E1 — Tiptap editor migration)
+- Updated By: Assistant (Phase 2.5 E1 — Tiptap editor migration + Data Re-Engineering plan)
 - Active Branch: `main`
 - HEAD: see latest commit — unsaved-changes guard + toast system
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
@@ -255,8 +255,8 @@ Visual drafts: `design-drafts/components-v2-warm.html` (approved)
 | ----- | ----- | ------ |
 | Phase 1 | Scaffold, layout shell, sidebar, routing, auth pages, copy API layer | **Done** |
 | Phase 2 | Core screens: Books list, Book Detail (tabs), Chapter Editor | **Done** |
-| **Phase 2.5** | **Editor Engine: Tiptap migration, block JSON, grammar, mode toggle** | **E1 Done (GATE passed), E2+E3 pending** |
-| Phase 3 | Feature screens: Translation, Glossary, Chat, Sharing | After 2.5 gate |
+| **Phase 2.5** | **Editor Engine: Tiptap migration, block JSON, grammar, mode toggle** | **E1 Done (GATE passed), E2+E3 → moved to Data Re-Engineering** |
+| Phase 3 | Feature screens: Translation, Glossary, Chat, Sharing | **PAUSED — blocked by Data Re-Engineering** |
 | **Phase 3.5** | **Media Blocks: image/video/code, AI prompt, version tracking** | After Phase 3 FE |
 | Phase 4 | Secondary: Settings, Usage, Browse + polish | Planned |
 | **Phase 4.5** | **Audio/TTS: per-paragraph narration, bulk generate, audiobook export** | After Phase 4 |
@@ -274,11 +274,22 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Priority | Item | Notes |
 | -------- | ---- | ----- |
-| **P0** | **Frontend V2 Phase 3 — Feature screens** | Translation, Glossary, Chat integration |
-| P1 | Chapter editor: smoke test the full guard + toast flow | Save & leave, Discard & leave, logout dirty, download success |
-| P1 | BooksPage create-book error path: currently uses inline error in dialog — review if toast is better | `src/pages/BooksPage.tsx` |
-| P2 | Chat Phase 4 — File attachments | After frontend-v2 Phase 3 stable |
+| **P0** | **Data Re-Engineering Plan** | JSONB schema, event pipeline, chapter_blocks, knowledge-service prep |
+| P1 | Frontend V2 Phase 3 — Feature screens | **PAUSED until data re-engineering complete** |
+| P2 | Chapter editor: smoke test the full guard + toast flow | Save & leave, Discard & leave, logout dirty, download success |
+| P2 | BooksPage create-book error path: currently uses inline error in dialog — review if toast is better | `src/pages/BooksPage.tsx` |
+| P3 | Chat Phase 4 — File attachments | After frontend-v2 Phase 3 stable |
 | P3 | Full acceptance evidence pack for M01-M05 | Currently smoke only |
+
+> **Architecture decision (session 12):** Frontend V2 Phase 3 paused. The glossary/wiki/chat features
+> depend on a knowledge layer that doesn't exist yet. Building GUI against the current schema would be
+> throwaway work. Data re-engineering plan executes first:
+> - Postgres JSONB for chapter content (replaces TEXT body)
+> - Event-driven pipeline (Redis Streams) for extensible processing
+> - chapter_blocks table for RAG-ready denormalized text
+> - Neo4j knowledge graph for entities/events/relations (future knowledge-service)
+> - Qdrant vector DB for embeddings (future RAG pipeline)
+> See `docs/03_planning/101_DATA_RE_ENGINEERING_PLAN.md` for full plan.
 
 ### M05 Sub-Phase Roadmap (all complete)
 

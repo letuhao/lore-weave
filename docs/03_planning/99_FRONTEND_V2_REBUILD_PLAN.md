@@ -1,6 +1,8 @@
 # Frontend V2 Rebuild Plan
 
 > **Goal:** Rebuild the LoreWeave frontend from scratch with proper design system, consistent components, and usable navigation. Keep existing API layer and business logic; replace the UI shell entirely.
+>
+> **STATUS (session 12):** Phase 1 + Phase 2 + Phase 2.5 E1 complete. **Phase 3 PAUSED** pending Data Re-Engineering Plan (`101_DATA_RE_ENGINEERING_PLAN.md`). The glossary/wiki/chat features depend on a knowledge layer (Neo4j + event pipeline) that must be built first. Translation + Sharing + Settings screens are unblocked but deferred to keep focus on the data foundation.
 
 ---
 
