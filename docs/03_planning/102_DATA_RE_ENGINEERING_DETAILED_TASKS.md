@@ -840,10 +840,291 @@ These frontend files need changes because of the JSONB body:
 
 ---
 
+---
+
+## Discovery Cycle 6: D1-09 + D1-10 — worker-infra Service
+
+### Project Structure (new Go service)
+
+Follows the same pattern as book-service:
+
+```
+services/worker-infra/
+├── cmd/
+│   └── worker-infra/
+│       └── main.go                 # Entry point: load config, init connections, run registry
+├── internal/
+│   ├── config/
+│   │   └── config.go               # Env vars: WORKER_TASKS, DB URLs, Redis URL
+│   ├── migrate/
+│   │   └── migrate.go              # loreweave_events schema (event_log, consumers, dead_letter)
+│   ├── registry/
+│   │   ├── registry.go             # TaskRegistry: register, runSelected, graceful shutdown
+│   │   └── types.go                # Task interface, TaskType enum (Listen, Cron, Consumer)
+│   └── tasks/
+│       ├── outbox_relay.go         # ListenTask: pg_notify + poll, publish to Redis + event_log
+│       └── outbox_cleanup.go       # CronTask: delete old published events
+├── Dockerfile
+├── go.mod
+└── go.sum
+```
+
+### Go Dependencies
+
+```
+go.mod:
+  github.com/jackc/pgx/v5          # Postgres (existing pattern)
+  github.com/jackc/pgxlisten        # LISTEN/NOTIFY helper for pgx v5
+  github.com/redis/go-redis/v9      # Redis Streams XADD
+```
+
+### Config Design
+
+```go
+// internal/config/config.go
+
+type Config struct {
+    WorkerTasks    []string          // from WORKER_TASKS env: "outbox-relay,outbox-cleanup"
+    EventsDBURL    string            // EVENTS_DB_URL → loreweave_events
+    RedisURL       string            // REDIS_URL → redis://redis:6379
+    OutboxSources  []OutboxSource    // parsed from OUTBOX_SOURCES env
+    CleanupRetainDays int            // OUTBOX_CLEANUP_RETAIN_DAYS, default 7
+}
+
+type OutboxSource struct {
+    Name string                      // "book", "glossary"
+    DBURL string                     // postgres://...loreweave_book
+}
+
+// Env var format:
+// OUTBOX_SOURCES=book:postgres://loreweave:pw@postgres:5432/loreweave_book
+// Multiple sources separated by comma:
+// OUTBOX_SOURCES=book:postgres://...loreweave_book,glossary:postgres://...loreweave_glossary
+```
+
+### Task Registry Design
+
+```go
+// internal/registry/types.go
+
+type Task interface {
+    Name() string
+    Run(ctx context.Context) error   // blocks until ctx cancelled
+}
+
+// internal/registry/registry.go
+
+type Registry struct {
+    tasks map[string]Task
+}
+
+func (r *Registry) Register(name string, task Task)
+func (r *Registry) RunSelected(ctx context.Context, names []string) error
+  // Starts each selected task in a goroutine
+  // Waits for ctx.Done() (SIGINT/SIGTERM)
+  // Calls task shutdown in reverse order
+```
+
+### Outbox Relay Task Design
+
+```go
+// internal/tasks/outbox_relay.go
+
+type OutboxRelay struct {
+    sources    []OutboxSource       // multiple DBs to read outbox from
+    eventsPool *pgxpool.Pool        // loreweave_events DB
+    redis      *redis.Client
+}
+
+func (t *OutboxRelay) Run(ctx context.Context) error {
+    // For each source DB:
+    //   1. Acquire dedicated connection
+    //   2. LISTEN outbox_events
+    //   3. Spawn goroutine: wait for notification → processSource()
+    //   4. Spawn goroutine: poll every 30s → processSource() (fallback)
+    // Wait for ctx.Done()
+}
+
+func (t *OutboxRelay) processSource(ctx context.Context, sourceName string, sourcePool *pgxpool.Pool) {
+    // 1. SELECT pending events from outbox_events WHERE published_at IS NULL ORDER BY created_at LIMIT 100
+    // 2. For each event:
+    //    a. XADD to Redis Stream (loreweave:events:{aggregate_type})
+    //    b. INSERT into event_log (loreweave_events DB) — idempotent via UNIQUE(source_service, source_outbox_id)
+    //    c. UPDATE outbox_events SET published_at = now() WHERE id = $1
+    //    On failure: UPDATE retry_count, last_error
+}
+```
+
+### Outbox Cleanup Task Design
+
+```go
+// internal/tasks/outbox_cleanup.go
+
+type OutboxCleanup struct {
+    sources    []OutboxSource
+    retainDays int
+}
+
+func (t *OutboxCleanup) Run(ctx context.Context) error {
+    // Run once per day (ticker)
+    // For each source DB:
+    //   DELETE FROM outbox_events WHERE published_at < now() - $1 days
+    //   Log: "cleaned N events from {source}"
+}
+```
+
+### Docker Compose Entry
+
+```yaml
+worker-infra:
+  build:
+    context: ../services/worker-infra
+    dockerfile: Dockerfile
+  environment:
+    WORKER_TASKS: "outbox-relay,outbox-cleanup"
+    EVENTS_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_events
+    REDIS_URL: redis://redis:6379
+    OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book"
+    OUTBOX_CLEANUP_RETAIN_DAYS: "7"
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+```
+
+### Dockerfile
+
+```dockerfile
+FROM golang:1.22-alpine AS build
+WORKDIR /src
+RUN apk add --no-cache git
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/worker-infra ./cmd/worker-infra
+
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates
+COPY --from=build /out/worker-infra /worker-infra
+USER nobody
+CMD ["/worker-infra"]
+```
+
+No HEALTHCHECK or EXPOSE — worker has no HTTP server. Docker restart policy handles crashes.
+
+### main.go Design
+
+```go
+func main() {
+    cfg := config.Load()
+
+    // Connect to events DB, run migration
+    eventsPool := pgxpool.New(ctx, cfg.EventsDBURL)
+    migrate.Up(ctx, eventsPool)
+
+    // Connect to Redis
+    rdb := redis.NewClient(redis.Options{Addr: cfg.RedisURL})
+
+    // Connect to each outbox source DB
+    sourcePools := map[string]*pgxpool.Pool{}
+    for _, src := range cfg.OutboxSources {
+        sourcePools[src.Name] = pgxpool.New(ctx, src.DBURL)
+    }
+
+    // Register tasks
+    registry := registry.New()
+    registry.Register("outbox-relay", &tasks.OutboxRelay{
+        Sources: cfg.OutboxSources, SourcePools: sourcePools,
+        EventsPool: eventsPool, Redis: rdb,
+    })
+    registry.Register("outbox-cleanup", &tasks.OutboxCleanup{
+        Sources: cfg.OutboxSources, SourcePools: sourcePools,
+        RetainDays: cfg.CleanupRetainDays,
+    })
+
+    // Run selected tasks until SIGINT/SIGTERM
+    registry.RunSelected(ctx, cfg.WorkerTasks)
+}
+```
+
+### Connection Count Analysis
+
+| Connection | Target | Count | Pool Size |
+|-----------|--------|-------|-----------|
+| Events DB | `loreweave_events` | 1 pool | 5 connections |
+| Redis | `redis:6379` | 1 client | 10 connections (default) |
+| Book outbox | `loreweave_book` | 1 pool + 1 LISTEN conn | 3+1 connections |
+| Future: glossary outbox | `loreweave_glossary` | 1 pool + 1 LISTEN conn | 3+1 |
+
+**Total for D1:** ~20 connections. Well within Postgres limits.
+
+### Sub-Tasks
+
+```
+D1-09a  Create worker-infra Go project scaffold
+        Files: go.mod, cmd/worker-infra/main.go, Dockerfile
+        Dependencies: pgx/v5, pgxlisten, go-redis/v9
+
+D1-09b  Config loader: parse WORKER_TASKS, OUTBOX_SOURCES, EVENTS_DB_URL, REDIS_URL
+        File: internal/config/config.go
+        Note: OUTBOX_SOURCES format: "name:url,name:url"
+
+D1-09c  Task registry: interface, Register, RunSelected, graceful shutdown
+        Files: internal/registry/types.go, internal/registry/registry.go
+        Pattern: each task runs in goroutine, ctx cancellation stops all
+
+D1-09d  Events DB migration (loreweave_events schema)
+        File: internal/migrate/migrate.go
+        Tables: event_log, event_consumers, dead_letter_events
+        Schema defined in 101_DATA_RE_ENGINEERING_PLAN.md §3.5.2
+
+D1-10a  Outbox relay task implementation
+        File: internal/tasks/outbox_relay.go
+        Logic:
+          - Connect to each source DB
+          - LISTEN outbox_events via pgxlisten
+          - Poll fallback every 30s
+          - Read pending → XADD Redis (MAXLEN ~ 10000) → INSERT event_log → mark published
+          - Retry on failure, increment retry_count
+        Key library: github.com/jackc/pgxlisten
+
+D1-10b  Outbox cleanup task implementation
+        File: internal/tasks/outbox_cleanup.go
+        Logic: daily ticker, DELETE published events older than N days from each source DB
+
+D1-10c  Add worker-infra to docker-compose
+        File: infra/docker-compose.yml
+        Entry: worker-infra service with env vars, depends_on postgres + redis
+
+D1-10d  Add worker-infra to gateway depends_on (optional — gateway doesn't need worker)
+        Decision: NO — worker-infra is independent, doesn't block any other service
+```
+
+### File Impact Summary (Cycle 6)
+
+| File | Change | New? |
+|------|--------|------|
+| `services/worker-infra/` (entire directory) | New Go service | **Yes** |
+| `services/worker-infra/go.mod` | pgx, pgxlisten, go-redis | **Yes** |
+| `services/worker-infra/Dockerfile` | Multi-stage Go build | **Yes** |
+| `services/worker-infra/cmd/worker-infra/main.go` | Entry point | **Yes** |
+| `services/worker-infra/internal/config/config.go` | Config loader | **Yes** |
+| `services/worker-infra/internal/migrate/migrate.go` | Events DB schema | **Yes** |
+| `services/worker-infra/internal/registry/types.go` | Task interface | **Yes** |
+| `services/worker-infra/internal/registry/registry.go` | Registry implementation | **Yes** |
+| `services/worker-infra/internal/tasks/outbox_relay.go` | Relay task | **Yes** |
+| `services/worker-infra/internal/tasks/outbox_cleanup.go` | Cleanup task | **Yes** |
+| `infra/docker-compose.yml` | Add worker-infra service entry | No (modify) |
+
+**Total: 10 new files, 1 modified file.**
+
+---
+
 ## Remaining Cycles
 
 | Cycle | Focus | Tasks |
 |-------|-------|-------|
-| 6 | D1-09 + D1-10: worker-infra service | Go project scaffold, task registry, relay |
 | 7 | D1-11: Frontend JSONB save/load | _text snapshots, TiptapEditor, ReaderPage, RevisionHistory |
 | 8 | D1-12: Integration test | End-to-end verification |
