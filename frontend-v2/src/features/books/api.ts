@@ -157,6 +157,9 @@ export const booksApi = {
     }
     return res.blob();
   },
+  getChapter(token: string, bookId: string, chapterId: string) {
+    return apiJson<Chapter>(`/v1/books/${bookId}/chapters/${chapterId}`, { token });
+  },
   patchChapter(token: string, bookId: string, chapterId: string, payload: Record<string, unknown>) {
     return apiJson<Chapter>(`/v1/books/${bookId}/chapters/${chapterId}`, {
       method: 'PATCH',

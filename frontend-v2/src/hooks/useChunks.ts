@@ -12,6 +12,29 @@ export function useChunks(initialText: string) {
     ));
   }, []);
 
+  const insertChunk = useCallback((position: number) => {
+    setChunks((prev) => {
+      const next = [...prev];
+      next.splice(position, 0, { index: 0, text: '', dirty: true });
+      return next.map((c, i) => ({ ...c, index: i }));
+    });
+  }, []);
+
+  const deleteChunk = useCallback((index: number) => {
+    setChunks((prev) => {
+      if (prev.length <= 1) {
+        // keep at least one chunk, just clear it
+        return [{ index: 0, text: '', dirty: true }];
+      }
+      return prev.filter((_, i) => i !== index).map((c, i) => ({ ...c, index: i }));
+    });
+    setSelected((prev) => {
+      const next = new Set<number>();
+      prev.forEach((i) => { if (i !== index) next.add(i > index ? i - 1 : i); });
+      return next;
+    });
+  }, []);
+
   const toggleSelect = useCallback((index: number, shift: boolean) => {
     setSelected((prev) => {
       const next = new Set(shift ? prev : []);
@@ -34,7 +57,11 @@ export function useChunks(initialText: string) {
 
   const isDirty = chunks.some((c) => c.dirty);
 
-  return { chunks, selected, isDirty, updateChunk, toggleSelect, clearSelection, reassemble, reset };
+  return {
+    chunks, selected, isDirty,
+    updateChunk, insertChunk, deleteChunk,
+    toggleSelect, clearSelection, reassemble, reset,
+  };
 }
 
 function splitToChunks(text: string): Chunk[] {
