@@ -244,12 +244,14 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 ## Deferred Items (cross-module)
 
-| Item | Status | Planned direction |
-| ---- | ------ | ----------------- |
-| Physical garbage collector for purge_pending objects | Not implemented | Background GC worker |
-| Gitea integration for chapter version control | Not implemented | ADR needed first |
-| Non-text chapter formats (pdf, docx, html, OCR) | Not implemented | Future MIME extension wave |
-| Paid storage tiers / billing integration | Not implemented | Future monetization wave |
-| AI-generated summaries / covers | Not implemented | Future AI feature wave |
-| Production rollout hardening (SRE, security sign-off) | Not done | Pre-release gate wave |
-| SSE / WebSocket streaming progress for translation jobs | Not implemented | Currently polling |
+| Item | Status | Planned direction | Marker doc |
+| ---- | ------ | ----------------- | ---------- |
+| Physical garbage collector for purge_pending objects | Not implemented | Background GC worker | — |
+| Gitea integration for chapter version control | Not implemented | ADR needed first | — |
+| Non-text chapter formats (pdf, docx, html, OCR) | Not implemented | Future MIME extension wave | — |
+| Paid storage tiers / billing integration | Not implemented | Future monetization wave | — |
+| AI-generated summaries / covers | Not implemented | Future AI feature wave | — |
+| Production rollout hardening (SRE, security sign-off) | Not done | Pre-release gate wave | — |
+| SSE / WebSocket streaming progress for translation jobs | Not implemented | Currently polling | — |
+| **Structured book/chapter zip import-export** (portable bundles with metadata, revisions, assets) | Not implemented | Post-V1 feature wave | `100_FUTURE_FEATURE_STRUCTURED_IMPORT_EXPORT_MEDIA.md` |
+| **Media-rich chapters** — images and video for visual novel-style storytelling | Not implemented | Post-V1 feature wave | `100_FUTURE_FEATURE_STRUCTURED_IMPORT_EXPORT_MEDIA.md` |

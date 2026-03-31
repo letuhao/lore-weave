@@ -2,10 +2,10 @@
 
 ## Document Metadata
 - Document ID: LW-09
-- Version: 1.8.0
+- Version: 1.9.0
 - Status: Approved
 - Owner: Product Manager + Solution Architect
-- Last Updated: 2026-03-23
+- Last Updated: 2026-03-31
 - Approved By: Decision Authority
 - Approved Date: 2026-03-21
 - Summary: Phase roadmap with frontend-backend module delivery principles.
@@ -13,6 +13,7 @@
 ## Change History
 | Version | Date | Change | Author |
 |---|---|---|---|
+| 1.9.0 | 2026-03-31 | Added Deferred Future Features section; registered `100_FUTURE_FEATURE_STRUCTURED_IMPORT_EXPORT_MEDIA.md` as architectural intent marker for zip import/export and visual novel media support | Assistant |
 | 1.8.0 | 2026-03-23 | Added Phase 3 Module 05 (glossary & lore management) planning checkpoint and doc references 75-86 | Assistant |
 | 1.7.0 | 2026-03-22 | Status governance update: approved Module 04 planning pack `56`–`67` by Decision Authority | Assistant |
 | 1.6.0 | 2026-03-22 | Added Phase 2 Module 04 (raw translation pipeline) planning checkpoint and doc references 56-67 | Assistant |
@@ -270,6 +271,22 @@ Establish operating readiness for reliability, risk control, and scale-oriented 
 - Role ownership remains unambiguous across phases.
 - Quality and risk gates are consistently enforced.
 - Planning artifacts remain synchronized across strategy, organization, and RACI documents.
+
+## Deferred Future Features (Post-V1 Intent Markers)
+
+These features are **confirmed product intent** but explicitly out of scope for V1 (Phases 1–5 as defined above). They are recorded here to prevent current architectural decisions from blocking their future implementation. Each has a dedicated planning marker document.
+
+| Feature | Marker Doc | Earliest Phase |
+|---|---|---|
+| Structured book/chapter zip import-export (portable bundles with metadata, revisions, assets) | `100_FUTURE_FEATURE_STRUCTURED_IMPORT_EXPORT_MEDIA.md` | Post-V1 |
+| Media-rich chapters — embedded images and video for visual novel-style storytelling | `100_FUTURE_FEATURE_STRUCTURED_IMPORT_EXPORT_MEDIA.md` | Post-V1 |
+
+### Key architectural constraints these features impose on current work
+
+1. **`chapter_drafts.draft_format` must not be removed** — the `plain` value is the current default; `rich` will be added later as a backward-compatible extension.
+2. **MinIO asset storage pattern must remain consistent** — media assets will follow the same pattern as covers and chat attachments.
+3. **`/export` (plain text) and future `/export-zip` are separate endpoints** — do not conflate them.
+4. **ReaderPage and EditorLayout must remain isolated** — they will need independent evolution to support the rich format without breaking the dashboard layout.
 
 ## Exclusions
 
