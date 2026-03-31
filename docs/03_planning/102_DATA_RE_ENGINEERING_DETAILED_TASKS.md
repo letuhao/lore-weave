@@ -1409,8 +1409,349 @@ D1-11f  Unit test: extractText function
 
 ---
 
-## Remaining Cycles
+---
 
-| Cycle | Focus | Tasks |
-|-------|-------|-------|
-| 8 | D1-12: Integration test | End-to-end verification checklist |
+## Discovery Cycle 8: D1-12 — Integration Test
+
+### Pre-Test Setup
+
+```bash
+# 1. Stop everything, clean volumes
+docker compose down -v
+
+# 2. Rebuild all changed services
+docker compose build book-service worker-infra frontend
+
+# 3. Start infrastructure first
+docker compose up -d postgres redis
+# Wait for healthy
+
+# 4. Start all services
+docker compose up -d
+# Wait for all healthchecks to pass
+```
+
+### Test Tools
+
+| Tool | Command | Purpose |
+|------|---------|---------|
+| psql | `docker compose exec postgres psql -U loreweave -d loreweave_book` | Verify DB state |
+| redis-cli | `docker compose exec redis redis-cli` | Verify Redis events |
+| curl | `curl -s localhost:3123/v1/...` | Test API via gateway |
+| browser | `http://localhost:5174` | Test frontend |
+
+### Test Scenarios
+
+#### T01: Postgres 18 Startup + All Migrations
+
+```
+Action:   docker compose up -d postgres → wait for healthy → check all services start
+Verify:
+  □ All 10 databases created (db-ensure.sh includes loreweave_events)
+  □ All services pass healthcheck
+  □ psql: SELECT uuidv7(); returns UUID
+  □ psql: no 'pgcrypto' extension in any DB
+  □ All tables use uuidv7() defaults (spot check: books, chapters, chapter_drafts)
+```
+
+#### T02: Chapter Create (plain text → Tiptap JSON conversion)
+
+```
+Action:   Register user → create book → create chapter with plain text body
+          curl -X POST localhost:3123/v1/books/{id}/chapters \
+            -H "Authorization: Bearer {token}" \
+            -H "Content-Type: application/json" \
+            -d '{"title":"Test","original_language":"en","body":"First paragraph\n\nSecond paragraph"}'
+
+Verify:
+  □ Response: chapter created with 201
+  □ psql loreweave_book: SELECT body, draft_format FROM chapter_drafts WHERE chapter_id = '...'
+    - body is JSONB: {"type":"doc","content":[{"type":"paragraph","_text":"First paragraph",...},{"type":"paragraph","_text":"Second paragraph",...}]}
+    - draft_format = 'json'
+  □ psql: SELECT count(*) FROM chapter_blocks WHERE chapter_id = '...'
+    - Returns 2 (two paragraphs)
+  □ psql: SELECT block_type, text_content, heading_context FROM chapter_blocks ORDER BY block_index
+    - Row 0: paragraph, "First paragraph", NULL
+    - Row 1: paragraph, "Second paragraph", NULL
+  □ psql loreweave_book: SELECT event_type FROM outbox_events WHERE aggregate_id = '...'
+    - 1 row: chapter.created
+  □ psql loreweave_events: SELECT event_type FROM event_log WHERE aggregate_id = '...'
+    - 1 row: chapter.created (relayed by worker-infra)
+  □ redis-cli: XRANGE loreweave:events:chapter - +
+    - Contains chapter.created event
+```
+
+#### T03: Chapter Save (Tiptap JSON with _text snapshots)
+
+```
+Action:   From frontend editor, type content with heading + paragraph + callout.
+          Save (Ctrl+S or button).
+          Expected patchDraft payload:
+          {
+            "body": {
+              "type": "doc",
+              "content": [
+                {"type":"heading","attrs":{"level":2},"_text":"Chapter Title","content":[...]},
+                {"type":"paragraph","_text":"Some text here","content":[...]},
+                {"type":"callout","attrs":{"type":"note"},"_text":"Author note","content":[...]}
+              ]
+            },
+            "body_format": "json",
+            "expected_draft_version": 1
+          }
+
+Verify:
+  □ Save succeeds, toast "Chapter saved"
+  □ psql: chapter_drafts.body contains JSONB with _text fields
+  □ psql: chapter_blocks has 3 rows:
+    - block 0: heading, "Chapter Title", heading_context = "Chapter Title"
+    - block 1: paragraph, "Some text here", heading_context = "Chapter Title"
+    - block 2: callout, "Author note", heading_context = "Chapter Title"
+  □ psql: content_hash is SHA-256 of text_content for each block
+  □ outbox_events: chapter.saved event with draft_version = 2
+  □ event_log: chapter.saved relayed
+  □ redis: chapter.saved event in stream
+```
+
+#### T04: Chapter Save — UPSERT Block Stability
+
+```
+Action:   Edit only paragraph text (block 1), don't touch heading or callout. Save again.
+
+Verify:
+  □ psql: chapter_blocks still has 3 rows
+  □ Block 0 (heading): SAME id, SAME updated_at (content unchanged)
+  □ Block 1 (paragraph): SAME id, NEW updated_at (content changed), NEW content_hash
+  □ Block 2 (callout): SAME id, SAME updated_at (content unchanged)
+  □ This proves UPSERT preserves stable IDs for unchanged blocks
+```
+
+#### T05: Chapter Save — Block Count Shrinks
+
+```
+Action:   Delete the callout block in editor. Save.
+
+Verify:
+  □ chapter_blocks now has 2 rows (block 2 deleted by trigger)
+  □ Remaining blocks have correct block_index (0, 1)
+```
+
+#### T06: getDraft Returns JSON + text_content
+
+```
+Action:   curl GET /v1/books/{id}/chapters/{id}/draft
+
+Verify:
+  □ Response body.body is JSON object (not string, not base64)
+  □ Response body.draft_format = "json"
+  □ Response body.text_content = "Chapter Title\n\nSome text here" (aggregated from blocks)
+  □ Response body.draft_version = 3 (after 3 saves)
+```
+
+#### T07: getRevision Returns JSON + text_content
+
+```
+Action:   curl GET /v1/books/{id}/chapters/{id}/revisions/{rev_id}
+
+Verify:
+  □ Response body.body is JSON object
+  □ Response body.body_format = "json"
+  □ Response body.text_content extracted from body JSONB _text fields
+```
+
+#### T08: Restore Revision
+
+```
+Action:   Restore revision 1 (the original plain-text-converted chapter)
+
+Verify:
+  □ chapter_drafts.body restored to revision 1's JSONB content
+  □ New revision created (snapshot of "before restore")
+  □ chapter_blocks re-extracted (trigger fires on UPDATE)
+  □ outbox_events: chapter.saved event
+  □ Frontend editor shows restored content correctly
+```
+
+#### T09: Export Chapter (plain text from blocks)
+
+```
+Action:   curl GET /v1/books/{id}/chapters/{id}/export
+
+Verify:
+  □ Response Content-Type: text/plain
+  □ Response body is plain text (not JSON), paragraphs joined by \n\n
+  □ Content-Disposition header has correct filename
+```
+
+#### T10: Internal API + Translation Worker
+
+```
+Action:   curl GET /internal/books/{id}/chapters/{id} (direct to book-service:8082)
+
+Verify:
+  □ Response has "body": { JSON object }
+  □ Response has "text_content": "plain text string"
+  □ Translation worker would read text_content (verify with mock if possible)
+```
+
+#### T11: Outbox Relay + Event Log
+
+```
+Action:   After several saves, check the full event pipeline
+
+Verify:
+  □ psql loreweave_book: SELECT count(*) FROM outbox_events WHERE published_at IS NOT NULL
+    - All events published (no pending)
+  □ psql loreweave_events: SELECT count(*) FROM event_log
+    - Same count as published outbox events
+  □ psql loreweave_events: SELECT * FROM event_log ORDER BY stored_at
+    - Events in chronological order, correct source_service, event_type
+  □ redis-cli: XLEN loreweave:events:chapter
+    - Matches event count
+  □ psql loreweave_events: SELECT * FROM dead_letter_events
+    - Empty (no failures)
+```
+
+#### T12: Frontend Reader (rich content)
+
+```
+Action:   Navigate to /books/{id}/chapters/{id}/read in browser
+
+Verify:
+  □ Headings render as styled headings (not plain text "## Title")
+  □ Callouts render with colored sidebar
+  □ Bold/italic formatting preserved
+  □ Lists render with bullets/numbers
+  □ No "[object Object]" or broken rendering
+```
+
+#### T13: Frontend Revision Preview
+
+```
+Action:   Open History panel → click "View" on a revision
+
+Verify:
+  □ Preview shows plain text (text_content), not JSON
+  □ Word count is correct
+  □ Restore button works, editor updates
+```
+
+#### T14: Chapter Delete — Cascade + Event
+
+```
+Action:   Trash → purge a chapter
+
+Verify:
+  □ chapter_blocks rows CASCADE deleted
+  □ outbox_events: chapter.trashed + chapter.deleted events
+  □ event_log: both events relayed
+```
+
+#### T15: File Upload Import
+
+```
+Action:   Upload a .txt file via import dialog
+
+Verify:
+  □ Chapter created with body_format = 'json'
+  □ Body is Tiptap JSON (converted from plain text)
+  □ chapter_blocks populated correctly
+  □ Reader shows correct content
+```
+
+#### T16: uuidv7 Ordering
+
+```
+Action:   Create 3 chapters rapidly, then list revisions
+
+Verify:
+  □ All IDs are uuidv7 format (time-ordered, start with similar prefix)
+  □ chapter_revisions.id ordering matches created_at ordering
+  □ No need for explicit ORDER BY created_at — uuidv7 natural order works
+```
+
+### Sub-Tasks
+
+```
+D1-12a  Write integration test script (bash or Go test)
+        File: infra/test-integration-d1.sh (new)
+        Covers: T01 through T16
+        Method: curl + psql + redis-cli assertions
+        Requires: all services running via docker compose
+
+D1-12b  Manual browser verification checklist
+        Covers: T03 (save), T06 (load), T12 (reader), T13 (revisions), T15 (import)
+        Method: open browser, follow steps, check results
+        No automation — visual verification
+```
+
+### File Impact Summary (Cycle 8)
+
+| File | Change | New? |
+|------|--------|------|
+| `infra/test-integration-d1.sh` | Integration test script | **Yes** |
+
+### Test Dependency Map
+
+```
+T01 (infra) → T02 (create) → T03 (save) → T04 (UPSERT stability)
+                                          → T05 (shrink)
+                                          → T06 (getDraft)
+                                          → T07 (getRevision)
+                                          → T08 (restore)
+                                          → T09 (export)
+                                          → T10 (internal API)
+                                          → T11 (outbox relay)
+                                          → T12 (reader UI)
+                                          → T13 (revisions UI)
+                             → T14 (delete cascade)
+                             → T15 (file upload)
+              T16 (uuidv7) — independent, can run after T02
+```
+
+---
+
+## All Cycles Complete — Summary
+
+### Total Sub-Tasks by Phase
+
+| Phase | Cycle | Sub-tasks | New Files | Modified Files |
+|-------|-------|-----------|-----------|---------------|
+| D0 | 1 | 4 | 2 | 0 |
+| D1-01 | 1 | 4 | 0 | 2 |
+| D1-02 | 1 | 9 | 0 | 9 |
+| D1-03 | 2 | 4 | 1 | 1 |
+| D1-04 | 3 | 4 | 1 | 1 |
+| D1-05 | 3 | 2 | 1* | 1 |
+| D1-06 | 4 | 8 | 0 | 1 |
+| D1-07 | 5 | 3 | 0 | 1 |
+| D1-08 | 5 | 5 | 0 | 3 |
+| D1-09 | 6 | 4 | 10 | 0 |
+| D1-10 | 6 | 3 | 0 | 1 |
+| D1-11 | 7 | 6 | 1 | 5 |
+| D1-12 | 8 | 2 | 1 | 0 |
+| **Total** | | **58** | **17** | **25** |
+
+*D1-05 migration file is part of worker-infra (D1-09), counted once.
+
+### Execution Order (respecting dependencies)
+
+```
+Phase D0 (pre-flight):
+  D0-01 → D0-02 → D0-03 → D0-04                    GATE
+
+Phase D1 (build):
+  D1-01a,b,c,d (infra)                               parallel
+  ├── D1-02a through D1-02i (schema)                  sequential per service
+  │   ├── D1-03a,b,c,d (trigger)                      sequential
+  │   ├── D1-04a,b,c (outbox table)                   sequential
+  │   │   ├── D1-06a through D1-06h (JSONB refactor)  sequential per handler
+  │   │   │   ├── D1-07a (createChapter import)
+  │   │   │   ├── D1-08a,b,c,d,e (text_content)
+  │   │   │   └── D1-11a through D1-11f (frontend)
+  │   │   └── D1-04d (lifecycle refactor)
+  │   └── D1-05a,b (events schema)
+  │       └── D1-09a through D1-09d (worker scaffold)
+  │           └── D1-10a,b,c (relay tasks)
+  └── D1-12a,b (integration test)                     GATE
+```
