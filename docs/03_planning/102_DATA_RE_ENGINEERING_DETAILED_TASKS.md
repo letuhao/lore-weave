@@ -710,11 +710,140 @@ Originally counted 8 handlers. `getChapterContent` reads from `chapter_raw_objec
 
 ---
 
+---
+
+## Discovery Cycle 5: D1-07 + D1-08 — createChapter Import + Internal API + Downstream Consumers
+
+### Chapter Creation Entry Points
+
+Two paths into `createChapterRecord`:
+
+| Entry | Source | Body Content |
+|-------|--------|-------------|
+| JSON body (L730-747) | Editor "create chapter" button, `createChapterEditor` API | Plain text string |
+| Multipart file upload (L749-775) | Import dialog, `createChapterUpload` API | File content as string |
+
+Both pass `body string` → `createChapterRecord` → stores in `chapter_drafts.body`.
+
+**After migration:** `createChapterRecord` must convert plain text → Tiptap JSON with `_text` snapshots before storing as JSONB.
+
+### Internal API Consumers — Complete Map
+
+`getInternalBookChapter` (`/internal/books/{id}/chapters/{chapter_id}`) is consumed by:
+
+| Service | File | Line | Reads `body` as | Impact |
+|---------|------|------|-----------------|--------|
+| translation-service | `chapter_worker.py` | L94 | `chapter.get("body")` → string → LLM | **BREAKS** — gets JSON object instead of string |
+| translation-service | `translation_runner.py` | L63 | `chapter.get("body")` → string → LLM | **BREAKS** — same |
+| sharing-service | `server.go` | L319 | `map[string]any` proxy → public reader | **Transparent** — proxies JSON as-is |
+| catalog-service | `server.go` | L131 | `map[string]any` proxy → catalog reader | **Transparent** — proxies JSON as-is |
+
+**Fix for translation-service:** Both files change `chapter.get("body")` → `chapter.get("text_content")`.
+This is a 1-line change per file, no other logic changes needed.
+
+### Frontend Reader Consumers — NEWLY DISCOVERED
+
+**ReaderPage** and **RevisionHistory** both use `ChapterReadView` which expects `body: string`:
+
+| Component | File | Line | Problem |
+|-----------|------|------|---------|
+| ReaderPage | `pages/ReaderPage.tsx` | L29 | `setBody(d.body)` — d.body is now JSON object |
+| RevisionHistory | `components/editor/RevisionHistory.tsx` | L37 | `setPreview({ body: data.body })` — data.body is now JSON object |
+| ChapterReadView | `components/shared/ChapterReadView.tsx` | L12 | `body.split(/\n\n+/)` — crashes on JSON object |
+
+**Fix options:**
+
+| Option | Approach |
+|--------|----------|
+| A: getDraft returns `text_content` too | Backend adds text_content field to getDraft response (like internal API). Reader uses text_content. |
+| B: Frontend renders Tiptap JSON read-only | Use a read-only TiptapEditor in ReaderPage. Richer rendering (headings, lists, callouts styled). |
+| C: Frontend extracts text from JSON | Walk `_text` fields client-side. Simple but loses formatting. |
+
+**Recommendation: Option B (read-only Tiptap) for ReaderPage, Option A for RevisionHistory.**
+
+- ReaderPage SHOULD render rich content (headings, formatting, callouts) — that's the point of Tiptap migration
+- RevisionHistory preview can use text_content for quick diff view — full formatting not needed there
+
+This means:
+- **getDraft** adds `text_content` field (aggregated from chapter_blocks) — for reader + revisions
+- **getRevision** adds `text_content` field — for revision preview
+- **ReaderPage** renders Tiptap JSON with read-only editor
+- **RevisionHistory** uses `text_content` for preview
+- **ChapterReadView** stays as text renderer (used by RevisionHistory)
+
+### Sub-Tasks
+
+```
+D1-07a  createChapterRecord: convert plain text → Tiptap JSON with _text snapshots
+        File: services/book-service/internal/api/server.go (L778-828)
+        New function: plainTextToTiptapJSON(text string) ([]byte, error)
+        Changes: store body as json.RawMessage, body_format='json'
+
+D1-07b  createChapter JSON path: no change needed (already passes string body)
+        File: server.go L730-747
+        Note: the string body goes through createChapterRecord which converts it
+
+D1-07c  createChapter multipart path: no change needed
+        File: server.go L749-775
+        Note: same — file content goes through createChapterRecord
+
+D1-08a  getDraft: add text_content to response (from chapter_blocks)
+        File: services/book-service/internal/api/server.go (getDraft handler)
+        Change: add second query or subquery:
+          SELECT string_agg(text_content, E'\n\n' ORDER BY block_index)
+          FROM chapter_blocks WHERE chapter_id = $1
+        Response: add "text_content": textContent
+
+D1-08b  getRevision: add text_content to response
+        File: server.go (getRevision handler)
+        Problem: revisions don't have chapter_blocks — they're snapshots.
+        Solution: extract _text from revision body JSONB inline:
+          SELECT string_agg(t, E'\n\n' ORDER BY ordinality)
+          FROM jsonb_path_query(rv.body, '$.content[*]._text') WITH ORDINALITY AS x(t, ordinality)
+        Response: add "text_content": textContent
+
+D1-08c  getInternalBookChapter: add text_content (already planned in Cycle 4)
+        File: server.go L1449-1490
+        Already covered in D1-06g, just confirming scope
+
+D1-08d  translation-service: read text_content instead of body
+        File: services/translation-service/app/workers/chapter_worker.py L94
+        Change: chapter.get("body") → chapter.get("text_content")
+        File: services/translation-service/app/services/translation_runner.py L63
+        Change: chapter.get("body") → chapter.get("text_content")
+        2 one-line changes, no other logic affected
+
+D1-08e  translation-service tests: update mock response to include text_content
+        File: services/translation-service/tests/test_jobs.py (if mock returns chapter body)
+        Change: add text_content to mock response
+```
+
+### File Impact Summary (Cycle 5)
+
+| File | Change | New? |
+|------|--------|------|
+| `services/book-service/internal/api/server.go` | createChapterRecord + getDraft + getRevision add text_content | No (modify) |
+| `services/translation-service/app/workers/chapter_worker.py` | `chapter.get("body")` → `chapter.get("text_content")` | No (modify, 1 line) |
+| `services/translation-service/app/services/translation_runner.py` | Same 1-line change | No (modify, 1 line) |
+| `services/translation-service/tests/test_jobs.py` | Update mock if needed | No (modify) |
+
+### Cross-Impact on Frontend (feeds into Cycle 7)
+
+These frontend files need changes because of the JSONB body:
+
+| File | Current | After Migration |
+|------|---------|----------------|
+| `pages/ReaderPage.tsx` | `setBody(d.body)` → string → ChapterReadView | Render Tiptap JSON with read-only editor |
+| `components/editor/RevisionHistory.tsx` | `preview.body` → string → ChapterReadView | Use `text_content` from API response |
+| `components/shared/ChapterReadView.tsx` | Expects `body: string` | Unchanged — used by RevisionHistory only |
+| `features/books/api.ts` | `getDraft` returns `body: string` | Type changes: `body: any`, add `text_content: string` |
+
+---
+
 ## Remaining Cycles
 
 | Cycle | Focus | Tasks |
 |-------|-------|-------|
-| 5 | D1-07 + D1-08: createChapter import + internal API text_content | Plain text → Tiptap JSON, text_content aggregation |
 | 6 | D1-09 + D1-10: worker-infra service | Go project scaffold, task registry, relay |
-| 7 | D1-11: Frontend JSONB save/load | _text snapshots, TiptapEditor changes |
+| 7 | D1-11: Frontend JSONB save/load | _text snapshots, TiptapEditor, ReaderPage, RevisionHistory |
 | 8 | D1-12: Integration test | End-to-end verification |
