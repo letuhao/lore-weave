@@ -79,10 +79,15 @@ D0-03  [DONE] Test JSON_TABLE inside PL/pgSQL trigger function
          T7: CASCADE delete — PASS (0 remaining)
        Key: UPSERT pattern confirmed — stable IDs, selective updated_at
 
-D0-04  Test pgx v5 JSONB scanning with json.RawMessage
-       File: create test Go program (new file: services/book-service/cmd/pg18test/main.go)
-       Test: INSERT JSONB → SELECT → scan as json.RawMessage → json.Marshal → verify inline JSON
-       Pass/fail: response contains inline JSON object, not base64 string
+D0-04  [DONE] Test pgx v5 JSONB scanning with json.RawMessage
+       Status: PASSED (2026-04-01)
+       File: infra/pg18test-go/main.go
+       Results:
+         T1: INSERT json.RawMessage → JSONB column — PASS
+         T2: SELECT JSONB → scan as json.RawMessage — PASS (251 bytes)
+         T3: json.Marshal(map{body: RawMessage}) → inline JSON — PASS (not base64!)
+         T4: Round-trip data identical (key order differs — expected per JSON spec)
+       Key: json.RawMessage is the correct Go type for JSONB columns
 ```
 
 ### D1-01: Postgres 18 + Redis in docker-compose
