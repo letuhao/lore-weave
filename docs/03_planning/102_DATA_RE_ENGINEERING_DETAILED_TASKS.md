@@ -315,11 +315,169 @@ D1-03d  Write PG18 test script for the trigger
 
 ---
 
+---
+
+## Discovery Cycle 3: D1-04 + D1-05 — Outbox + Events Database
+
+### Event Source Map (book-service mutations)
+
+Every mutation handler in book-service, whether it needs an outbox event, and the transaction model:
+
+| Handler | Mutation | Has TX? | Event Type | Needed in D1? |
+|---------|----------|---------|------------|---------------|
+| `patchDraft` (L1188) | UPDATE chapter_drafts, INSERT revision | **Yes** | `chapter.saved` | **Yes** |
+| `createChapterRecord` (L821) | INSERT chapter + draft + revision | **Yes** | `chapter.created` | **Yes** |
+| `restoreRevision` (L1342) | UPDATE draft, INSERT revision | **Yes** | `chapter.saved` | **Yes** |
+| `transitionChapterLifecycle` (L1000) trash | UPDATE chapters | **No** ← needs refactor | `chapter.trashed` | **Yes** |
+| `transitionChapterLifecycle` (L1014) purge | UPDATE chapters | **No** ← needs refactor | `chapter.deleted` | **Yes** |
+| `transitionChapterLifecycle` (L1007) restore | UPDATE chapters | **No** ← needs refactor | `chapter.restored` | No (future) |
+| `createBook` | INSERT books | No | `book.created` | No (future) |
+| `patchBook` | UPDATE books | No | `book.updated` | No (future) |
+| `transitionBookLifecycle` | UPDATE books + chapters | No | `book.trashed/deleted` | No (future) |
+| `patchChapter` | UPDATE chapters (metadata) | No | — | No (metadata only) |
+| `uploadCover` / `deleteCover` | cover assets | No | — | No |
+
+**Key finding:** `transitionChapterLifecycle` uses direct `pool.Exec()` — no transaction.
+Must refactor to use BEGIN/COMMIT to include outbox INSERT atomically.
+
+### Outbox Event Types for D1
+
+```
+chapter.created   { book_id, chapter_id, body_format, user_id }
+chapter.saved     { book_id, chapter_id, draft_version, body_format, block_count, user_id }
+chapter.trashed   { book_id, chapter_id, user_id }
+chapter.deleted   { book_id, chapter_id, user_id }
+```
+
+### Outbox Write Points (5 total)
+
+| # | Handler | Line | Where to Insert Outbox |
+|---|---------|------|----------------------|
+| 1 | `patchDraft` | L1188-1191 | Inside existing tx, before COMMIT |
+| 2 | `createChapterRecord` | L821-824 | Inside existing tx, before COMMIT |
+| 3 | `restoreRevision` | L1342-1345 | Inside existing tx, before COMMIT |
+| 4 | `transitionChapterLifecycle` (trash) | L1000 | **NEW tx needed** — wrap exec + outbox |
+| 5 | `transitionChapterLifecycle` (purge) | L1014 | **NEW tx needed** — wrap exec + outbox |
+
+### Events Database: Who Manages the Schema?
+
+The `loreweave_events` database is **shared** — not owned by any single service.
+The schema must be created before any worker reads from it.
+
+**Options:**
+1. **worker-infra runs the migration** — the relay worker creates tables on startup
+2. **Standalone migration script** — run once during setup
+3. **db-ensure.sh extended** — add SQL init for events DB
+
+**Decision:** Option 1 — worker-infra owns the events DB schema. It runs migration on startup, same pattern as all other services.
+
+### Server Struct Changes
+
+```go
+// Current:
+type Server struct {
+    pool   *pgxpool.Pool    // loreweave_book database
+    cfg    *config.Config
+    secret []byte
+}
+
+// No Redis needed! Outbox pattern means book-service only writes to Postgres.
+// Redis is the worker-infra's concern.
+```
+
+**No Redis dependency in book-service.** The outbox INSERT is just a Postgres write.
+The worker-infra reads the outbox and publishes to Redis. This is the whole point of the outbox pattern — the service doesn't know about Redis.
+
+### Config Changes
+
+```go
+// No new config needed for book-service!
+// The outbox table lives in the same database (loreweave_book).
+// No new connection strings, no new environment variables.
+```
+
+### Helper Function Design
+
+To avoid duplicating outbox INSERT logic in 5 handlers:
+
+```go
+// internal/api/outbox.go (new file)
+func insertOutboxEvent(ctx context.Context, tx pgx.Tx, eventType string, aggregateID uuid.UUID, payload map[string]any) error {
+    payloadJSON, err := json.Marshal(payload)
+    if err != nil {
+        return fmt.Errorf("outbox marshal: %w", err)
+    }
+    _, err = tx.Exec(ctx, `
+        INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
+        VALUES ('chapter', $1, $2, $3)
+    `, aggregateID, eventType, payloadJSON)
+    return err
+}
+```
+
+### Sub-Tasks
+
+```
+D1-04a  Create outbox_events table DDL in book-service migration
+        File: services/book-service/internal/migrate/migrate.go
+        Schema: id (uuidv7), aggregate_type, aggregate_id, event_type,
+                payload (JSONB), created_at, published_at, retry_count, last_error
+        Index: partial index on unpublished (WHERE published_at IS NULL)
+
+D1-04b  Create pg_notify trigger on outbox_events
+        File: services/book-service/internal/migrate/migrate.go
+        Trigger: AFTER INSERT → pg_notify('outbox_events', NEW.id::text)
+
+D1-04c  Create insertOutboxEvent helper function
+        File: services/book-service/internal/api/outbox.go (new)
+        Signature: func insertOutboxEvent(ctx, tx, eventType, aggregateID, payload) error
+
+D1-04d  Refactor transitionChapterLifecycle to use transaction
+        File: services/book-service/internal/api/server.go (lines 967-1017)
+        Change: wrap trash/purge cases in BEGIN/COMMIT to include outbox atomically
+        Note: restore case (line 1007) stays non-event for now
+
+D1-05a  Create loreweave_events database migration file
+        File: services/worker-infra/internal/migrate/migrate.go (new — part of worker-infra scaffold)
+        Schema:
+          - event_log (id, source_service, source_outbox_id, event_type, aggregate_type,
+            aggregate_id, payload, created_at, stored_at, UNIQUE on source+outbox_id)
+          - event_consumers (consumer_name, stream_name, last_processed_event_id, status)
+          - dead_letter_events (id, event_id FK, consumer_name, failure_reason, retry_count)
+
+D1-05b  Add loreweave_events to db-ensure.sh
+        File: infra/db-ensure.sh
+        Change: add loreweave_events to DATABASES list
+```
+
+### File Impact Summary (Cycle 3)
+
+| File | Change | New? |
+|------|--------|------|
+| `services/book-service/internal/migrate/migrate.go` | Add outbox_events DDL + pg_notify trigger | No (modify) |
+| `services/book-service/internal/api/outbox.go` | Helper function for outbox INSERT | **Yes** |
+| `services/book-service/internal/api/server.go` | Refactor transitionChapterLifecycle to use tx | No (modify) |
+| `services/worker-infra/internal/migrate/migrate.go` | Events DB schema (event_log, consumers, dead_letter) | **Yes** (part of D1-09) |
+| `infra/db-ensure.sh` | Add loreweave_events | No (modify) |
+
+### Cross-Reference: Who Inserts Outbox Events?
+
+These handlers will call `insertOutboxEvent` (done in D1-06 when we refactor handlers):
+
+| Handler | Event | Existing TX? | Notes |
+|---------|-------|-------------|-------|
+| `patchDraft` | `chapter.saved` | Yes | Add 1 line before commit |
+| `createChapterRecord` | `chapter.created` | Yes | Add 1 line before commit |
+| `restoreRevision` | `chapter.saved` | Yes | Add 1 line before commit |
+| `transitionChapterLifecycle` (trash) | `chapter.trashed` | **Refactored** | New tx wraps both |
+| `transitionChapterLifecycle` (purge) | `chapter.deleted` | **Refactored** | New tx wraps both |
+
+---
+
 ## Remaining Cycles
 
 | Cycle | Focus | Tasks |
 |-------|-------|-------|
-| 3 | D1-04 + D1-05: outbox + events schema | outbox table, events DB schema, pg_notify |
 | 4 | D1-06: book-service JSONB refactor | All 8 handlers line by line, test rewrites |
 | 5 | D1-07 + D1-08: createChapter + internal API | Plain text import, text_content field |
 | 6 | D1-09 + D1-10: worker-infra service | Go project scaffold, task registry, relay |
