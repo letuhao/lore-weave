@@ -676,23 +676,47 @@ RETURN e.name, ch.title AS referenced_in, first_ch.title AS introduced_in
 
 ## 4. Implementation Phases
 
+### Phase D0: Pre-Flight Validation (before any code changes)
+
+> Verify assumptions before committing to the migration. Real tests, not unit tests.
+
+| Task | Type | Scope | Deps | Est |
+|---|---|---|---|---|
+| D0-01 | Infra | Spin up postgres:18-alpine, run ALL 9 service migrations, verify they pass | None | S |
+| D0-02 | Infra | Test JSON_TABLE inside PL/pgSQL trigger on PG18 (write test SQL script, run it) | D0-01 | S |
+| D0-03 | BE | Test pgx JSONB scanning with json.RawMessage (small Go test program) | D0-01 | S |
+| D0-04 | BE | Identify ALL breaking changes in PG16→18 upgrade for our SQL patterns | D0-01 | S |
+
+**GATE:** All 4 pass → proceed to D1. Any failure → fix the approach before building.
+
+If D0-01 reveals migration failures in other services, add refactor tasks to D1.
+If D0-02 reveals JSON_TABLE doesn't work in triggers, switch to application-level extraction.
+If D0-04 reveals breaking SQL patterns, document each and add refactor tasks.
+
 ### Phase D1: Schema + Event Infrastructure (blocks everything)
 
 | Task | Type | Scope | Deps | Est |
 |---|---|---|---|---|
-| D1-01 | Infra | Upgrade Postgres 16 → 18, add Redis, add `loreweave_events` DB to db-ensure.sh | None | S |
-| D1-02 | BE | Clean schema: all tables use uuidv7, chapter_drafts (JSONB), chapter_revisions (JSONB + format) | D1-01 | S |
+| D1-01 | Infra | Upgrade Postgres 16 → 18, add Redis, add `loreweave_events` DB to db-ensure.sh | D0 gate | S |
+| D1-02 | BE | Clean schema: all tables use uuidv7 (books, chapters, revisions, etc), chapter_drafts (JSONB), chapter_revisions (JSONB + format). Refactor any PG18-incompatible SQL found in D0. | D1-01 | M |
 | D1-03 | BE | Create chapter_blocks table + UPSERT extraction trigger (JSON_TABLE + `_text`) | D1-02 | M |
 | D1-04 | BE | Create outbox_events table (in loreweave_book) + pg_notify trigger | D1-02 | S |
 | D1-05 | BE | Create loreweave_events schema (event_log, event_consumers, dead_letter_events) | D1-01 | S |
-| D1-06 | BE | book-service: accept body_format in patchDraft, store JSONB, write outbox in same tx | D1-02, D1-04 | M |
-| D1-07 | BE | book-service: getDraft/getRevision/restoreRevision with json.RawMessage + body_format | D1-06 | S |
-| D1-08 | BE | book-service: createChapter converts plain text → Tiptap JSON at import | D1-06 | S |
-| D1-09 | BE | worker-infra service scaffold + task registry + outbox-relay task | D1-04, D1-05 | M |
-| D1-10 | FE | Frontend: save Tiptap JSON with `_text` snapshots, load JSONB directly | D1-07 | M |
-| D1-11 | BE+FE | Integration test: create → save → verify blocks + event_log + Redis event | D1-03, D1-09, D1-10 | S |
+| D1-06 | BE | book-service: refactor ALL 8 body-touching handlers to use json.RawMessage for JSONB. Full handler list: patchDraft, getDraft, getRevision, restoreRevision, exportChapter, getChapterContent, getInternalBookChapter, listRevisions. Rewrite broken unit tests. | D1-02, D1-04 | L |
+| D1-07 | BE | book-service: createChapter converts plain text → Tiptap JSON at import (with `_text` snapshots) | D1-06 | S |
+| D1-08 | BE | book-service: getInternalBookChapter adds `text_content` field (aggregated from chapter_blocks). Translation worker unchanged — reads `text_content` instead of `body`. | D1-03, D1-06 | S |
+| D1-09 | BE | worker-infra service scaffold: Go project, task registry (ListenTask, CronTask, ConsumerTask), Dockerfile, service discovery config for outbox source DBs | D1-04, D1-05 | M |
+| D1-10 | BE | worker-infra: outbox-relay task (LISTEN + poll, publish to Redis Stream + event_log) + outbox-cleanup task (cron daily) | D1-09 | M |
+| D1-11 | FE | Frontend: save Tiptap JSON with `_text` snapshots, load JSONB directly, remove plainTextToHtml/htmlToPlainText legacy code | D1-06 | M |
+| D1-12 | BE+FE | Integration test: create → save → verify blocks + event_log + Redis event + getInternalBookChapter text_content | D1-03, D1-08, D1-10, D1-11 | S |
 
-**GATE:** After D1-11, chapter content saves as JSONB with `_text` snapshots. Blocks auto-extracted via UPSERT trigger. Events guaranteed via outbox → worker-infra relay → Redis Stream + event_log.
+**GATE:** After D1-12, chapter content saves as JSONB with `_text` snapshots. Blocks auto-extracted via UPSERT trigger. Events guaranteed via outbox → worker-infra relay → Redis Stream + event_log. Internal API returns `text_content` for downstream services.
+
+**Notes:**
+- D1-06 is the largest task (L) — 8 handlers to refactor + test rewrites. May split into sub-tasks.
+- D1-09 includes service discovery config: `OUTBOX_SOURCES` env var lists DB connection strings.
+  Future: replace with proper service registry if scaling to many services.
+- Existing translation-worker is NOT changed in D1. It reads `text_content` from the updated internal API (D1-08).
 
 ### Phase D2: Neo4j Infrastructure (can parallel with D1-05+)
 
@@ -784,29 +808,49 @@ Steps:
 | 19 | **Shared `loreweave_events` database** | Centralized event store with permanent log, consumer tracking, dead letter queue. Each service keeps local outbox (same-tx atomicity), relay worker writes to shared events DB after publish. | 2026-03-31 |
 | 20 | **Two-worker architecture** (worker-infra + worker-ai) | Split by language (Go/Python) and resource profile (lightweight I/O vs heavy GPU). Configurable via `WORKER_TASKS` env var. Same binary scales by adding containers with different task selection. | 2026-03-31 |
 | 21 | **worker-ai absorbs translation-worker** | Existing `translation-worker` container becomes a task in worker-ai. One less Dockerfile, unified task registry. | 2026-03-31 |
+| 22 | **Phase D0 pre-flight validation** | Test PG18 compat, JSON_TABLE in triggers, pgx JSONB scanning BEFORE building. Real tests, not assumptions. Prevents days of debugging. | 2026-04-01 |
+| 23 | **Accept full refactor of book-service** | All 8 body-touching handlers refactored for JSONB. Broken tests removed and rewritten. Big change accepted. | 2026-04-01 |
+| 24 | **Internal API adds `text_content` field** (Option C) | `getInternalBookChapter` returns both JSONB `body` + plain `text_content` (from chapter_blocks). Downstream services pick what they need. Translation worker reads `text_content`, unchanged. | 2026-04-01 |
+| 25 | **Trust frontend `_text` snapshots** | No server-side validation. Frontend is authority on editor content. Add unit test on `extractText` to prevent regressions. | 2026-04-01 |
+| 26 | **Service discovery for worker-infra** | `OUTBOX_SOURCES` env var: `book:postgres://...loreweave_book,glossary:postgres://...loreweave_glossary`. Future: proper service registry when scaling beyond docker-compose. | 2026-04-01 |
 
 ---
 
-## 8. Data Engineer Review Notes
+## 8. Review Notes
 
-> Review conducted 2026-03-31. All findings incorporated into the plan above.
+> Review 1 (schema design): 2026-03-31
+> Review 2 (pre-flight concerns): 2026-04-01
+> All findings incorporated into the plan above.
 
-### Issues Found and Resolutions
+### Review 1: Schema Design Issues
 
 | # | Issue | Severity | Resolution |
 |---|-------|----------|------------|
-| 1 | JSON_TABLE `$.content[0].text` misses formatted text (bold/italic = multiple text nodes) and nested blocks (lists, blockquotes) | **Critical** | Frontend adds `_text` snapshot per block (Decision #12). Trigger reads `$._text` — trivial path. |
-| 2 | Go pgx scans JSONB as `[]byte` → `json.Marshal` base64-encodes it in API response | **High** | Use `json.RawMessage` for body field in all handlers (Decision #15). |
-| 3 | DELETE+INSERT trigger loses block UUIDs on every save — breaks downstream references | **Medium** | Switch to UPSERT on `(chapter_id, block_index)` — stable IDs, `updated_at` tracks changes (Decision #13). |
-| 4 | Redis publish failure = lost event, no retry | **Medium** | Transactional Outbox pattern: event in same Postgres tx, worker publishes to Redis, at-least-once guaranteed (Decision #16). |
-| 5 | Plain text in JSONB column creates dual-mode complexity in every read path | **Medium** | Convert plain text to Tiptap JSON at import time. `body_format` always `'json'` (Decision #14). |
-| 6 | No Redis Stream retention policy — unbounded growth | **Low** | `MAXLEN ~ 10000` on XADD (Decision #17). |
-| 7 | `uuidv7()` not applied to existing tables (books, chapters) | **Low** | Apply to all tables in clean break. Consistent time-ordered IDs across system. |
-| 8 | `chapter_raw_objects` not mentioned in plan | **Low** | Stays as TEXT, unchanged (Decision #18). |
+| 1 | JSON_TABLE `$.content[0].text` misses formatted text | **Critical** | Frontend adds `_text` snapshot per block (Decision #12). |
+| 2 | Go pgx JSONB → base64 in API response | **High** | `json.RawMessage` for body field (Decision #15). |
+| 3 | DELETE+INSERT trigger loses block IDs | **Medium** | UPSERT on `(chapter_id, block_index)` (Decision #13). |
+| 4 | Redis publish failure = lost event | **Medium** | Transactional Outbox pattern (Decision #16). |
+| 5 | Plain text dual-mode in JSONB | **Medium** | Convert to Tiptap JSON at import (Decision #14). |
+| 6 | No Redis Stream retention | **Low** | `MAXLEN ~ 10000` (Decision #17). |
+| 7 | uuidv7 not applied everywhere | **Low** | Apply to ALL tables in clean break (Decision #5). |
+| 8 | chapter_raw_objects not mentioned | **Low** | Stays TEXT, unchanged (Decision #18). |
+
+### Review 2: Pre-Flight Concerns
+
+| # | Concern | Severity | Resolution |
+|---|---------|----------|------------|
+| C1 | PG18 compat with all 9 services | **Blocker** | Phase D0: test all migrations. Accept full refactor (Decision #22, #23). |
+| C2 | JSON_TABLE in PL/pgSQL trigger untested | **High** | D0-02: write + run test SQL on PG18 before D1-03 (Decision #22). |
+| C3 | 8 handlers touch `body` — all need refactoring | **High** | D1-06 expanded to L-size. Full handler list documented (Decision #23). |
+| C4 | exportChapter + getChapterContent need plain text | **High** | Extract from chapter_blocks. Added to D1-06 scope. |
+| C5 | getInternalBookChapter — translation expects string | **High** | Add `text_content` field to response (Decision #24). D1-08. |
+| C6 | `_text` snapshot integrity | **Low** | Trust frontend. Unit test extractText (Decision #25). |
+| C7 | Worker-infra multi-DB connections | **Low** | Service discovery via `OUTBOX_SOURCES` env var (Decision #26). |
+| C8 | Existing unit tests will break | **Medium** | Remove and rewrite. Scoped into D1-06. |
 
 ---
 
-## 8. Future Considerations
+## 9. Future Considerations
 
 | Item | Trigger | Action |
 |---|---|---|
