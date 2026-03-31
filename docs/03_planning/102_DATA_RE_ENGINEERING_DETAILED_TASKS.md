@@ -52,11 +52,19 @@ D0-01  [DONE] Spin up postgres:18-alpine, test uuidv7() and JSON_TABLE availabil
          - Virtual generated column: block_count = 3 (zero storage)
          - pgcrypto NOT needed — confirmed safe to drop
 
-D0-02  Run ALL 9 service migrations against PG18
-       Method: start PG18, create all DBs, run each service with migration-only mode
-       or manually execute migration SQL from each migrate.go/migrate.py
-       Files to read: all 9 migration files listed above
-       Pass/fail: all CREATE TABLE statements succeed
+D0-02  [DONE] Run ALL 9 service migrations against PG18
+       Status: PASSED (2026-04-01)
+       Results: all 9 services PASS — zero errors
+         1. auth-service         → loreweave_auth              PASS
+         2. book-service         → loreweave_book              PASS
+         3. sharing-service      → loreweave_sharing           PASS
+         4. catalog-service      → loreweave_catalog           PASS
+         5. provider-registry    → loreweave_provider_registry PASS
+         6. usage-billing        → loreweave_usage_billing     PASS
+         7. glossary-service     → loreweave_glossary          PASS
+         8. translation-service  → loreweave_translation       PASS
+         9. chat-service         → loreweave_chat              PASS
+       Notes: pgcrypto extension still works (backward compat), benign notices only
 
 D0-03  Test JSON_TABLE inside PL/pgSQL trigger function
        File: create test SQL script (new file: infra/test-pg18-features.sql)
