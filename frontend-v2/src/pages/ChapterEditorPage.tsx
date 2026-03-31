@@ -1,17 +1,21 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import {
-  Save, Check, PanelLeft, PanelRight, Clock, ChevronRight, ChevronLeft, ChevronRight as ChevronRightNav,
+  Save, PanelLeft, PanelRight, Clock, ChevronRight, ChevronLeft, ChevronRight as ChevronRightNav,
   BookOpen, FileText, BookMarked, LayoutList, ScrollText, Scissors, Plus, X,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
 import { useChunks } from '@/hooks/useChunks';
 import { useEditorPanels } from '@/hooks/useEditorPanels';
+import { useEditorDirty } from '@/contexts/EditorDirtyContext';
 import { ChunkItem } from '@/components/editor/ChunkItem';
 import { ChunkInsertRow } from '@/components/editor/ChunkInsertRow';
 import { RevisionHistory } from '@/components/editor/RevisionHistory';
 import { Skeleton } from '@/components/shared/Skeleton';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { UnsavedChangesDialog } from '@/components/shared/UnsavedChangesDialog';
 import { cn } from '@/lib/utils';
 
 type ViewMode = 'chunk' | 'source';
@@ -23,16 +27,13 @@ function wordCount(text: string): number {
 export function ChapterEditorPage() {
   const { bookId = '', chapterId = '' } = useParams();
   const { accessToken } = useAuth();
-  const navigate = useNavigate();
   const panels = useEditorPanels();
 
   // Draft state
   const [body, setBody] = useState('');
   const [version, setVersion] = useState<number | undefined>();
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [saveNote, setSaveNote] = useState('');
-  const [error, setError] = useState('');
 
   // Chapter metadata
   const [title, setTitle] = useState('');
@@ -66,10 +67,26 @@ export function ChapterEditorPage() {
   const [focusIndex, setFocusIndex] = useState<number | null>(null);
 
   const chunks = useChunks(body);
+  const { setIsDirty, guardedNavigate, pendingNavigation, confirmNavigation, cancelNavigation } = useEditorDirty();
 
   const isDirty = viewMode === 'source'
     ? sourceBody !== savedBody
     : chunks.isDirty || title !== savedTitle;
+
+  // Sync isDirty into context so EditorLayout sidebar can read it
+  useEffect(() => {
+    setIsDirty(isDirty);
+    return () => setIsDirty(false);
+  }, [isDirty, setIsDirty]);
+
+  // Discard state for in-place cancel (no navigation)
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+
+  const discardChanges = useCallback(() => {
+    setSourceBody(savedBody);
+    setTitle(savedTitle);
+    if (viewMode === 'chunk') chunks.reset(savedBody);
+  }, [savedBody, savedTitle, viewMode, chunks]);
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
@@ -88,8 +105,7 @@ export function ChapterEditorPage() {
       const t = chapter.title ?? '';
       setTitle(t);
       setSavedTitle(t);
-      setError('');
-    } catch (e) { setError((e as Error).message); }
+    } catch (e) { toast.error((e as Error).message); }
   }, [accessToken, bookId, chapterId]);
 
   useEffect(() => { void load(); }, [load]);
@@ -147,11 +163,10 @@ export function ChapterEditorPage() {
         await booksApi.patchChapter(accessToken, bookId, chapterId, { title: title || null });
       }
       setSaveNote('');
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      toast.success('Chapter saved');
       setRevKey((k) => k + 1);
       await load();
-    } catch (e) { setError((e as Error).message); }
+    } catch (e) { toast.error((e as Error).message); }
     setSaving(false);
   }, [accessToken, bookId, chapterId, viewMode, sourceBody, chunks, saveNote, version, title, savedTitle, load]);
 
@@ -205,8 +220,7 @@ export function ChapterEditorPage() {
 
   const navigateToChapter = (targetId: string) => {
     if (targetId === chapterId) return;
-    if (isDirty && !window.confirm('You have unsaved changes. Leave without saving?')) return;
-    navigate(`/books/${bookId}/chapters/${targetId}/edit`);
+    guardedNavigate(`/books/${bookId}/chapters/${targetId}/edit`);
   };
 
   // ── Auto-chunk (source → chunk preview) ──────────────────────────────────
@@ -241,27 +255,27 @@ export function ChapterEditorPage() {
         {/* Breadcrumb + prev/next */}
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           {prevChapterId && (
-            <Link
-              to={`/books/${bookId}/chapters/${prevChapterId}/edit`}
+            <button
+              onClick={() => navigateToChapter(prevChapterId)}
               className="rounded p-1 hover:bg-secondary hover:text-foreground"
               title="Previous chapter"
             >
               <ChevronLeft className="h-3 w-3" />
-            </Link>
+            </button>
           )}
-          <Link to="/books" className="hover:text-foreground">Workspace</Link>
+          <button onClick={() => guardedNavigate('/books')} className="hover:text-foreground">Workspace</button>
           <ChevronRight className="h-3 w-3" />
-          <Link to={`/books/${bookId}`} className="hover:text-foreground">Book</Link>
+          <button onClick={() => guardedNavigate(`/books/${bookId}`)} className="hover:text-foreground">Book</button>
           <ChevronRight className="h-3 w-3" />
           <span className="font-medium text-foreground">{title || 'Chapter'}</span>
           {nextChapterId && (
-            <Link
-              to={`/books/${bookId}/chapters/${nextChapterId}/edit`}
+            <button
+              onClick={() => navigateToChapter(nextChapterId)}
               className="rounded p-1 hover:bg-secondary hover:text-foreground"
               title="Next chapter"
             >
               <ChevronRightNav className="h-3 w-3" />
-            </Link>
+            </button>
           )}
         </div>
 
@@ -316,14 +330,20 @@ export function ChapterEditorPage() {
           <div className="mx-1 h-4 w-px bg-border" />
 
           {/* Save status */}
-          {saved ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">
-              <Check className="h-3 w-3" /> Saved
-            </span>
-          ) : isDirty ? (
+          {isDirty ? (
             <span className="text-[10px] text-warning">Unsaved changes</span>
           ) : (
             <span className="text-[10px] text-muted-foreground">v{version ?? '?'}</span>
+          )}
+
+          {isDirty && (
+            <button
+              onClick={() => setShowDiscardConfirm(true)}
+              className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-destructive/50 hover:text-destructive"
+              title="Discard all unsaved changes"
+            >
+              Discard
+            </button>
           )}
 
           <button
@@ -338,9 +358,6 @@ export function ChapterEditorPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="border-b bg-destructive/5 px-4 py-2 text-xs text-destructive">{error}</div>
-      )}
 
       {/* ── Panel area ────────────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
@@ -648,6 +665,27 @@ export function ChapterEditorPage() {
           </button>
         </div>
       )}
+
+      {/* In-place discard confirm */}
+      <ConfirmDialog
+        open={showDiscardConfirm}
+        onOpenChange={setShowDiscardConfirm}
+        title="Discard changes?"
+        description="All unsaved changes will be permanently lost. This cannot be undone."
+        confirmLabel="Discard changes"
+        cancelLabel="Keep editing"
+        variant="destructive"
+        onConfirm={() => { discardChanges(); setShowDiscardConfirm(false); }}
+      />
+
+      {/* Navigation guard — shown when trying to leave with unsaved changes */}
+      <UnsavedChangesDialog
+        open={pendingNavigation !== null}
+        onOpenChange={(open) => { if (!open) cancelNavigation(); }}
+        onSave={async () => { await save(); confirmNavigation(); }}
+        onDiscard={() => { discardChanges(); confirmNavigation(); }}
+        saving={saving}
+      />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { X, RotateCcw } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -40,10 +41,15 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
 
   const handleRestore = async () => {
     if (!accessToken || !restoreTarget) return;
-    await booksApi.restoreRevision(accessToken, bookId, chapterId, restoreTarget.revision_id);
-    setRestoreTarget(null);
-    setPreview(null);
-    onRestore();
+    try {
+      await booksApi.restoreRevision(accessToken, bookId, chapterId, restoreTarget.revision_id);
+      setRestoreTarget(null);
+      setPreview(null);
+      toast.success('Revision restored');
+      onRestore();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
   };
 
   const wordCount = (text: string) =>

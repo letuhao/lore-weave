@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { Plus, Pencil, Download, Trash2, Upload } from 'lucide-react';
 import { useAuth } from '@/auth';
@@ -68,15 +69,21 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
       setNewLang('');
       setNewBody('');
       navigate(`/books/${bookId}/chapters/${created.chapter_id}/edit`);
-    } catch { /* ignore */ }
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
     setCreating(false);
   };
 
   const handleTrash = async () => {
     if (!accessToken || !trashTarget) return;
-    await booksApi.trashChapter(accessToken, bookId, trashTarget.chapter_id);
-    setTrashTarget(null);
-    await load();
+    try {
+      await booksApi.trashChapter(accessToken, bookId, trashTarget.chapter_id);
+      setTrashTarget(null);
+      await load();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
   };
 
   const handleDownload = async (ch: Chapter) => {
@@ -89,7 +96,10 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
       a.download = `${ch.title || ch.original_filename}.txt`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch { /* ignore */ }
+      toast.success('Chapter exported');
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
   };
 
   const columns: Column<Chapter>[] = [

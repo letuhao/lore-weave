@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-03-31 (session 9 end)
-- Updated By: Assistant (Frontend V2 Phase 1+2 complete)
+- Last Updated: 2026-03-31 (session 10 end)
+- Updated By: Assistant (Chapter editor guard + universal dialog + toast system)
 - Active Branch: `main`
-- HEAD: `63558eb` — Phase 2 bulk commit
+- HEAD: see latest commit — unsaved-changes guard + toast system
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -115,6 +115,27 @@
 | Frontend: translating overlay + loading state per-chunk | `ChunkItem.tsx`, `ChunkEditor.tsx` | `b7dcc4c` |
 | Frontend: wire `onTranslateChunk` in ChapterEditorPageV2 | `pages/v2-drafts/ChapterEditorPageV2.tsx` | `b7dcc4c` |
 
+**What was done in this session (2026-03-31, session 10):**
+
+Chapter editor unsaved-changes guard, universal dialog system, and toast infrastructure.
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| `EditorDirtyContext` — owns `pendingNavigation`, `guardedNavigate`, `confirmNavigation` | `src/contexts/EditorDirtyContext.tsx` (new) | this session |
+| Universal `ConfirmDialog` — icon, `extraAction` (3rd button), auto-stacked layout | `src/components/shared/ConfirmDialog.tsx` | this session |
+| `UnsavedChangesDialog` — thin wrapper: Save & leave / Discard & leave / Stay | `src/components/shared/UnsavedChangesDialog.tsx` (new) | this session |
+| `EditorLayout` — all nav links guarded via context `guardedNavigate`; logout uses `ConfirmDialog` | `src/layouts/EditorLayout.tsx` | this session |
+| `ChapterEditorPage` — breadcrumb + prev/next guard; Discard button; in-place `ConfirmDialog`; navigation `UnsavedChangesDialog` | `src/pages/ChapterEditorPage.tsx` | this session |
+| Install `sonner`; wire `<Toaster>` in `App.tsx` | `src/App.tsx`, `package.json` | this session |
+| Replace save badge + error banner with `toast.success/error` in editor | `ChapterEditorPage.tsx` | this session |
+| `RevisionHistory` — restore success/error now uses toast | `src/components/editor/RevisionHistory.tsx` | this session |
+| `ChaptersTab` — download success, download/trash/create errors now use toast (were silently swallowed) | `src/pages/book-tabs/ChaptersTab.tsx` | this session |
+
+**Design decisions recorded:**
+- Error/warning *dialogs* are NOT added — toast covers transient feedback; inline errors stay for form context (login, register, import dialog, page-load errors)
+- `ConfirmDialog` is the single universal primitive: 2-button (default) or 3-button (when `extraAction` passed) — buttons auto-stack vertically on 3-button layout
+- `window.confirm/alert` fully eliminated from frontend-v2
+
 **What was done in this session (2026-03-30, session 9):**
 
 Frontend V2 planning + CI cleanup + branch hygiene.
@@ -199,11 +220,10 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Priority | Item | Notes |
 | -------- | ---- | ----- |
-| **P0** | **Frontend V2 Phase 1 — Foundation** | Scaffold, layouts, sidebar, routing, auth |
-| P1 | Frontend V2 Phase 2 — Core screens | Books, Book Detail, Editor |
-| P2 | Frontend V2 Phase 3 — Feature screens | Translation, Glossary, Chat |
-| P2 | ChunkEditor: AI agent integration | Migrate to frontend-v2 during Phase 2 |
-| P3 | Chat Phase 4 — File attachments | After frontend-v2 is stable |
+| **P0** | **Frontend V2 Phase 3 — Feature screens** | Translation, Glossary, Chat integration |
+| P1 | Chapter editor: smoke test the full guard + toast flow | Save & leave, Discard & leave, logout dirty, download success |
+| P1 | BooksPage create-book error path: currently uses inline error in dialog — review if toast is better | `src/pages/BooksPage.tsx` |
+| P2 | Chat Phase 4 — File attachments | After frontend-v2 Phase 3 stable |
 | P3 | Full acceptance evidence pack for M01-M05 | Currently smoke only |
 
 ### M05 Sub-Phase Roadmap (all complete)
@@ -233,6 +253,7 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Date       | What happened | Key commits |
 | ---------- | ------------- | ----------- |
+| 2026-03-31 | Unsaved-changes guard (EditorDirtyContext, UnsavedChangesDialog), universal ConfirmDialog, toast system (sonner) | this session |
 | 2026-03-30 | Frontend V2 planning: GUI audit, design drafts (warm literary theme), rebuild plan, CI cleanup | `6f14c26` (PR #2) |
 | 2026-03-30 | Code review hardening: transaction fix, safe format_map, response validation, stale closure fix, bulk error UX | `b7dcc4c` |
 | 2026-03-29 | Visibility fix, unified chapter editor, ChunkEditor system + selection, chat service, test fixes | `bf17136`, `e9d1c29`, `23bad63`, `fd4a5ea`, `3cb8e4c`, `2f47c89`, `b32f415` |

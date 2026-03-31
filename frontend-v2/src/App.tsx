@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'sonner';
 import { AuthProvider, RequireAuth } from '@/auth';
 import { ModeProvider } from '@/providers/ModeProvider';
 import { DashboardLayout } from '@/layouts/DashboardLayout';
@@ -24,6 +25,7 @@ export function App() {
     <ReaderThemeProvider>
     <SidebarProvider>
       <BrowserRouter>
+        <Toaster position="bottom-right" richColors closeButton />
         <Routes>
           {/* ── Public routes (no auth required) ── */}
 
