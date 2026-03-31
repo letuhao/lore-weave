@@ -1,0 +1,5 @@
+# Force LF for files that run inside Linux containers
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.sql text eol=lf
+*.conf text eol=lf
