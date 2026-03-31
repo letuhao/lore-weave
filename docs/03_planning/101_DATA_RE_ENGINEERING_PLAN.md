@@ -461,8 +461,109 @@ Each event has a unique `id` (uuidv7). Consumers track `last_processed_event_id`
 Neo4j `MERGE` is naturally idempotent. Block extraction UPSERT is idempotent.
 
 **Outbox location:** Each microservice owns its own `outbox_events` table in its own
-database. For now only book-service needs events. When glossary-service or auth-service
-need events, they add their own outbox table — no cross-service dependency.
+database (same-transaction atomicity). A centralized `loreweave_events` database stores
+the permanent event log, consumer tracking, and dead letter queue — written by the relay
+worker after publish. See §3.5.2 for the shared events schema.
+
+### 3.5.2 Shared Events Database (`loreweave_events`)
+
+Centralized event management — all services, all events, permanent history.
+
+```sql
+-- ── Permanent event log ────────────────────────────────────────
+CREATE TABLE event_log (
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
+  source_service TEXT NOT NULL,        -- 'book-service', 'glossary-service'
+  source_outbox_id UUID NOT NULL,      -- original outbox event id (dedup key)
+  event_type TEXT NOT NULL,            -- 'chapter.saved', 'entity.created'
+  aggregate_type TEXT NOT NULL,        -- 'chapter', 'book', 'entity'
+  aggregate_id UUID NOT NULL,
+  payload JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL,     -- when the event originally occurred
+  stored_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(source_service, source_outbox_id)  -- idempotent relay
+);
+
+CREATE INDEX idx_event_log_type ON event_log (event_type, created_at DESC);
+CREATE INDEX idx_event_log_aggregate ON event_log (aggregate_type, aggregate_id);
+CREATE INDEX idx_event_log_service ON event_log (source_service, created_at DESC);
+
+-- ── Consumer tracking ──────────────────────────────────────────
+CREATE TABLE event_consumers (
+  consumer_name TEXT NOT NULL,         -- 'knowledge-pipeline', 'embedding-pipeline'
+  stream_name TEXT NOT NULL,           -- 'loreweave:events:chapter'
+  last_processed_event_id UUID,
+  last_processed_at TIMESTAMPTZ,
+  status TEXT NOT NULL DEFAULT 'active', -- 'active', 'paused', 'error'
+  error_message TEXT,
+  PRIMARY KEY (consumer_name, stream_name)
+);
+
+-- ── Dead letter queue ──────────────────────────────────────────
+CREATE TABLE dead_letter_events (
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
+  event_id UUID NOT NULL REFERENCES event_log(id),
+  consumer_name TEXT NOT NULL,
+  failure_reason TEXT NOT NULL,
+  retry_count INT NOT NULL DEFAULT 0,
+  max_retries INT NOT NULL DEFAULT 5,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resolved_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_dead_letter_unresolved ON dead_letter_events (created_at)
+  WHERE resolved_at IS NULL;
+```
+
+### 3.5.3 Two-Worker Architecture
+
+Background tasks split by language boundary and resource profile.
+
+```
+┌─ worker-infra (Go) ──────────────────────────────────────────┐
+│  Config: WORKER_TASKS env var selects active tasks            │
+│                                                               │
+│  Task Registry:                                               │
+│  ├── outbox-relay     LISTEN + poll → Redis Stream + event_log│
+│  ├── outbox-cleanup   cron daily: delete old published events │
+│  ├── event-archive    cron weekly: partition old event_log    │
+│  ├── search-indexer   future: Redis consumer → search engine │
+│  └── notifier         future: Redis consumer → push/email    │
+│                                                               │
+│  Profile: lightweight, always-on, <100ms latency, 50MB RAM   │
+│  Reads: all service outbox tables (book, glossary, auth, etc)│
+│  Writes: loreweave_events.event_log + Redis Streams          │
+└───────────────────────────────────────────────────────────────┘
+
+┌─ worker-ai (Python) ──────────────────────────────────────────┐
+│  Config: WORKER_TASKS env var selects active tasks            │
+│                                                               │
+│  Task Registry:                                               │
+│  ├── translation-worker   RabbitMQ consumer → LLM → DB       │
+│  ├── knowledge-extractor  Redis consumer → LLM → Neo4j       │
+│  ├── embedding-generator  Redis consumer → embed → Neo4j     │
+│  └── future AI tasks                                          │
+│                                                               │
+│  Profile: heavy, bursty, 2GB+ RAM, GPU optional              │
+│  Absorbs existing translation-worker container                │
+└───────────────────────────────────────────────────────────────┘
+```
+
+**Task types in the registry:**
+- **ListenTask** — triggered by pg_notify + poll fallback (outbox relay)
+- **CronTask** — runs on schedule (cleanup, archival)
+- **ConsumerTask** — reads from Redis Stream consumer group (indexing, notify)
+- **QueueTask** — reads from RabbitMQ queue (translation, legacy)
+
+**Scaling pattern:** Same binary, different `WORKER_TASKS`. No code change to scale.
+```
+Dev:    worker-infra  WORKER_TASKS=outbox-relay,outbox-cleanup
+Prod:   worker-relay  WORKER_TASKS=outbox-relay          (high priority, dedicated)
+        worker-cron   WORKER_TASKS=outbox-cleanup,event-archive
+        worker-ai-1   WORKER_TASKS=knowledge-extractor   (GPU instance)
+        worker-ai-2   WORKER_TASKS=embedding-generator   (GPU instance)
+        worker-ai-3   WORKER_TASKS=translation-worker    (scale horizontally)
+```
 
 ### 3.6 Neo4j Knowledge Graph (designed now, built in Phase D3)
 
@@ -579,18 +680,19 @@ RETURN e.name, ch.title AS referenced_in, first_ch.title AS introduced_in
 
 | Task | Type | Scope | Deps | Est |
 |---|---|---|---|---|
-| D1-01 | Infra | Upgrade Postgres 16 → 18 in docker-compose (image, PGDATA, volume), add Redis | None | S |
+| D1-01 | Infra | Upgrade Postgres 16 → 18, add Redis, add `loreweave_events` DB to db-ensure.sh | None | S |
 | D1-02 | BE | Clean schema: all tables use uuidv7, chapter_drafts (JSONB), chapter_revisions (JSONB + format) | D1-01 | S |
 | D1-03 | BE | Create chapter_blocks table + UPSERT extraction trigger (JSON_TABLE + `_text`) | D1-02 | M |
-| D1-04 | BE | Create outbox_events table + pg_notify trigger | D1-02 | S |
-| D1-05 | BE | book-service: accept body_format in patchDraft, store JSONB, write outbox event in same tx | D1-02, D1-04 | M |
-| D1-06 | BE | book-service: outbox worker (goroutine, LISTEN + poll fallback, publish to Redis Stream) | D1-04 | M |
-| D1-07 | BE | book-service: getDraft/getRevision/restoreRevision with json.RawMessage body + body_format | D1-05 | S |
-| D1-08 | BE | book-service: createChapter converts plain text to Tiptap JSON at import | D1-05 | S |
-| D1-09 | FE | Frontend: save Tiptap JSON with `_text` snapshots, load JSONB directly | D1-07 | M |
-| D1-10 | BE+FE | Integration test: create → save → verify blocks + outbox published + Redis event | D1-03, D1-06, D1-09 | S |
+| D1-04 | BE | Create outbox_events table (in loreweave_book) + pg_notify trigger | D1-02 | S |
+| D1-05 | BE | Create loreweave_events schema (event_log, event_consumers, dead_letter_events) | D1-01 | S |
+| D1-06 | BE | book-service: accept body_format in patchDraft, store JSONB, write outbox in same tx | D1-02, D1-04 | M |
+| D1-07 | BE | book-service: getDraft/getRevision/restoreRevision with json.RawMessage + body_format | D1-06 | S |
+| D1-08 | BE | book-service: createChapter converts plain text → Tiptap JSON at import | D1-06 | S |
+| D1-09 | BE | worker-infra service scaffold + task registry + outbox-relay task | D1-04, D1-05 | M |
+| D1-10 | FE | Frontend: save Tiptap JSON with `_text` snapshots, load JSONB directly | D1-07 | M |
+| D1-11 | BE+FE | Integration test: create → save → verify blocks + event_log + Redis event | D1-03, D1-09, D1-10 | S |
 
-**GATE:** After D1-10, chapter content saves as JSONB with `_text` snapshots. Blocks auto-extracted via UPSERT trigger. Events guaranteed via outbox → Redis Stream.
+**GATE:** After D1-11, chapter content saves as JSONB with `_text` snapshots. Blocks auto-extracted via UPSERT trigger. Events guaranteed via outbox → worker-infra relay → Redis Stream + event_log.
 
 ### Phase D2: Neo4j Infrastructure (can parallel with D1-05+)
 
@@ -628,9 +730,11 @@ RETURN e.name, ch.title AS referenced_in, first_ch.title AS introduced_in
 
 | Service | Changes | When |
 |---|---|---|
-| **docker-compose** | Postgres 16→18, add Redis, add Neo4j v2026.01, volume changes | Phase D1 + D2 |
-| **book-service** (Go) | JSONB body, outbox pattern, outbox worker goroutine, json.RawMessage, plain→JSON import | Phase D1 |
-| **knowledge-service** (Python, NEW) | Consumes Redis events, LLM extraction, writes Neo4j | Phase D3 |
+| **docker-compose** | Postgres 16→18, add Redis, add Neo4j v2026.01, add worker containers | Phase D1 + D2 |
+| **book-service** (Go) | JSONB body, outbox pattern, json.RawMessage, plain→JSON import | Phase D1 |
+| **worker-infra** (Go, NEW) | Task registry, outbox-relay, outbox-cleanup, future tasks | Phase D1 |
+| **worker-ai** (Python, NEW) | Absorbs translation-worker, adds knowledge + embedding tasks | Phase D2-D3 |
+| **knowledge-service** (Python, NEW) | Consumes Redis events, LLM extraction, writes Neo4j → becomes tasks in worker-ai | Phase D3 |
 | **glossary-service** (Go) | Evolves to read from Neo4j, keeps manual CRUD | Phase D3 |
 | **chat-service** (Python) | Adds RAG: hybrid graph+vector query via Neo4j | Phase D4 |
 | **frontend-v2** | Save Tiptap JSON with `_text` snapshots, load JSONB directly | Phase D1 |
@@ -677,6 +781,9 @@ Steps:
 | 16 | **Transactional Outbox pattern** (replaces best-effort) | Event written in same Postgres tx as data. Worker publishes to Redis. At-least-once delivery guaranteed. No data loss in event pipeline. Each service owns its own outbox table. | 2026-03-31 |
 | 17 | **Redis Stream `MAXLEN ~ 10000`** | Auto-trim old events. Prevents unbounded growth. Older events re-derivable from database. | 2026-03-31 |
 | 18 | **`chapter_raw_objects` unchanged** | Stays as `TEXT`. Preserves raw import, never edited. No schema change needed. | 2026-03-31 |
+| 19 | **Shared `loreweave_events` database** | Centralized event store with permanent log, consumer tracking, dead letter queue. Each service keeps local outbox (same-tx atomicity), relay worker writes to shared events DB after publish. | 2026-03-31 |
+| 20 | **Two-worker architecture** (worker-infra + worker-ai) | Split by language (Go/Python) and resource profile (lightweight I/O vs heavy GPU). Configurable via `WORKER_TASKS` env var. Same binary scales by adding containers with different task selection. | 2026-03-31 |
+| 21 | **worker-ai absorbs translation-worker** | Existing `translation-worker` container becomes a task in worker-ai. One less Dockerfile, unified task registry. | 2026-03-31 |
 
 ---
 
