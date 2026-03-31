@@ -104,46 +104,18 @@ D1-01d  [DONE] Delete old Postgres volume (clean break)
 ### D1-02: Clean Schema — uuidv7 everywhere + JSONB body
 
 ```
-D1-02a  auth-service migration: gen_random_uuid() → uuidv7(), drop pgcrypto
-        File: services/auth-service/internal/migrate/migrate.go
-        Changes: 4 table PKs, remove CREATE EXTENSION pgcrypto line
-
-D1-02b  book-service migration: gen_random_uuid() → uuidv7(), JSONB body, drop pgcrypto
-        File: services/book-service/internal/migrate/migrate.go
-        Changes:
-          - 3 table PKs → uuidv7()
-          - chapter_drafts.body: TEXT → JSONB
-          - chapter_drafts.draft_format: DEFAULT 'plain' → DEFAULT 'json'
-          - chapter_revisions: add body_format column, id → uuidv7()
-          - chapter_revisions.body: TEXT → JSONB
-          - Add virtual column: block_count
-          - Remove pgcrypto
-
-D1-02c  sharing-service migration: drop pgcrypto
-        File: services/sharing-service/internal/migrate/migrate.go
-        Changes: remove CREATE EXTENSION pgcrypto (no tables use UUID gen)
-
-D1-02d  provider-registry migration: gen_random_uuid() → uuidv7(), drop pgcrypto
-        File: services/provider-registry-service/internal/migrate/migrate.go
-        Changes: 5 table PKs, remove pgcrypto
-
-D1-02e  usage-billing migration: gen_random_uuid() → uuidv7(), drop pgcrypto
-        File: services/usage-billing-service/internal/migrate/migrate.go
-        Changes: 3 table PKs, remove pgcrypto
-
-D1-02f  glossary-service migration: gen_random_uuid() → uuidv7(), drop pgcrypto
-        File: services/glossary-service/internal/migrate/migrate.go
-        Changes: 8 table PKs, remove pgcrypto
-
-D1-02g  translation-service migration: gen_random_uuid() → uuidv7()
-        File: services/translation-service/app/migrate.py
-        Changes: 3 table PKs (no pgcrypto to remove)
-
-D1-02h  chat-service migration: gen_random_uuid() → uuidv7()
-        File: services/chat-service/app/db/migrate.py
-        Changes: 3 table PKs (no pgcrypto to remove)
-
-D1-02i  Verify: start all services, migrations run, all healthchecks pass
+D1-02a  [DONE] auth-service: 4 PKs → uuidv7(), pgcrypto removed
+D1-02b  [DONE] book-service: 3 PKs → uuidv7(), pgcrypto removed, body→JSONB, body_format, block_count virtual
+D1-02c  [DONE] sharing-service: pgcrypto removed
+D1-02d  [DONE] provider-registry: 5 PKs → uuidv7(), pgcrypto removed
+D1-02e  [DONE] usage-billing: 3 PKs → uuidv7(), pgcrypto removed
+D1-02f  [DONE] glossary-service: 11 PKs → uuidv7(), pgcrypto removed
+D1-02g  [DONE] translation-service: 4 PKs → uuidv7()
+D1-02h  [DONE] chat-service: 3 PKs → uuidv7()
+D1-02i  [DONE] All 9 migrations verified on fresh PG18 — PASS
+        Status: PASSED (2026-04-01)
+        Total: 30 uuidv7() replacements, 4 pgcrypto removals
+        book-service: body=JSONB confirmed, block_count virtual confirmed
 ```
 
 ---

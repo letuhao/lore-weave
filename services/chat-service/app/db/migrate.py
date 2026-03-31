@@ -2,7 +2,7 @@ import asyncpg
 
 DDL = """
 CREATE TABLE IF NOT EXISTS chat_sessions (
-  session_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id        UUID PRIMARY KEY DEFAULT uuidv7(),
   owner_user_id     UUID NOT NULL,
   title             VARCHAR(255) NOT NULL DEFAULT 'New Chat',
   model_source      VARCHAR(20) NOT NULL,
@@ -19,7 +19,7 @@ CREATE INDEX IF NOT EXISTS idx_chat_sessions_owner
   ON chat_sessions (owner_user_id, status, last_message_at DESC);
 
 CREATE TABLE IF NOT EXISTS chat_messages (
-  message_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  message_id        UUID PRIMARY KEY DEFAULT uuidv7(),
   session_id        UUID NOT NULL REFERENCES chat_sessions(session_id) ON DELETE CASCADE,
   owner_user_id     UUID NOT NULL,
   role              VARCHAR(20) NOT NULL,
@@ -41,7 +41,7 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_session
   ON chat_messages (session_id, sequence_num);
 
 CREATE TABLE IF NOT EXISTS chat_outputs (
-  output_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  output_id         UUID PRIMARY KEY DEFAULT uuidv7(),
   message_id        UUID NOT NULL REFERENCES chat_messages(message_id) ON DELETE CASCADE,
   session_id        UUID NOT NULL,
   owner_user_id     UUID NOT NULL,

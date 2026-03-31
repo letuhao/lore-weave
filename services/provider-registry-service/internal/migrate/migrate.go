@@ -8,10 +8,8 @@ import (
 )
 
 const schemaSQL = `
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
 CREATE TABLE IF NOT EXISTS provider_credentials (
-  provider_credential_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  provider_credential_id UUID PRIMARY KEY DEFAULT uuidv7(),
   owner_user_id UUID NOT NULL,
   provider_kind TEXT NOT NULL CHECK (provider_kind IN ('openai','anthropic','ollama','lm_studio')),
   display_name TEXT NOT NULL,
@@ -26,7 +24,7 @@ CREATE INDEX IF NOT EXISTS idx_provider_credentials_owner ON provider_credential
 CREATE INDEX IF NOT EXISTS idx_provider_credentials_owner_kind ON provider_credentials(owner_user_id, provider_kind);
 
 CREATE TABLE IF NOT EXISTS provider_inventory_models (
-  provider_inventory_model_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  provider_inventory_model_id UUID PRIMARY KEY DEFAULT uuidv7(),
   provider_credential_id UUID NOT NULL REFERENCES provider_credentials(provider_credential_id) ON DELETE CASCADE,
   provider_model_name TEXT NOT NULL,
   context_length INT,
@@ -36,7 +34,7 @@ CREATE TABLE IF NOT EXISTS provider_inventory_models (
 );
 
 CREATE TABLE IF NOT EXISTS user_models (
-  user_model_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_model_id UUID PRIMARY KEY DEFAULT uuidv7(),
   owner_user_id UUID NOT NULL,
   provider_credential_id UUID NOT NULL REFERENCES provider_credentials(provider_credential_id) ON DELETE CASCADE,
   provider_kind TEXT NOT NULL CHECK (provider_kind IN ('openai','anthropic','ollama','lm_studio')),
@@ -53,7 +51,7 @@ CREATE INDEX IF NOT EXISTS idx_user_models_owner ON user_models(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_user_models_owner_flags ON user_models(owner_user_id, is_active, is_favorite);
 
 CREATE TABLE IF NOT EXISTS user_model_tags (
-  user_model_tag_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_model_tag_id UUID PRIMARY KEY DEFAULT uuidv7(),
   user_model_id UUID NOT NULL REFERENCES user_models(user_model_id) ON DELETE CASCADE,
   tag_name TEXT NOT NULL,
   note TEXT
@@ -61,7 +59,7 @@ CREATE TABLE IF NOT EXISTS user_model_tags (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_model_tags_unique ON user_model_tags(user_model_id, tag_name);
 
 CREATE TABLE IF NOT EXISTS platform_models (
-  platform_model_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  platform_model_id UUID PRIMARY KEY DEFAULT uuidv7(),
   provider_kind TEXT NOT NULL CHECK (provider_kind IN ('openai','anthropic','ollama','lm_studio')),
   provider_model_name TEXT NOT NULL,
   display_name TEXT NOT NULL,

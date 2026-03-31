@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS book_translation_settings (
 CREATE INDEX IF NOT EXISTS idx_bts_owner ON book_translation_settings(owner_user_id);
 
 CREATE TABLE IF NOT EXISTS translation_jobs (
-  job_id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id             UUID PRIMARY KEY DEFAULT uuidv7(),
   book_id            UUID NOT NULL,
   owner_user_id      UUID NOT NULL,
   status             TEXT NOT NULL DEFAULT 'pending',
@@ -46,7 +46,7 @@ CREATE INDEX IF NOT EXISTS idx_tj_owner ON translation_jobs(owner_user_id, creat
 CREATE INDEX IF NOT EXISTS idx_tj_book  ON translation_jobs(book_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS chapter_translations (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
   job_id          UUID NOT NULL REFERENCES translation_jobs(job_id) ON DELETE CASCADE,
   chapter_id      UUID NOT NULL,
   book_id         UUID NOT NULL,
@@ -87,7 +87,7 @@ ALTER TABLE translation_jobs
 
 -- Per-chapter chunk rows (observability; recovery restarts chapter from scratch)
 CREATE TABLE IF NOT EXISTS chapter_translation_chunks (
-  id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id                      UUID PRIMARY KEY DEFAULT uuidv7(),
   chapter_translation_id  UUID NOT NULL REFERENCES chapter_translations(id) ON DELETE CASCADE,
   chunk_index             INT  NOT NULL,
   chunk_text              TEXT NOT NULL,

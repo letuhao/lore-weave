@@ -8,10 +8,8 @@ import (
 )
 
 const schemaSQL = `
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
 CREATE TABLE IF NOT EXISTS books (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   owner_user_id UUID NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
@@ -35,7 +33,7 @@ CREATE TABLE IF NOT EXISTS book_cover_assets (
 ALTER TABLE book_cover_assets ADD COLUMN IF NOT EXISTS data BYTEA;
 
 CREATE TABLE IF NOT EXISTS chapters (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   book_id UUID NOT NULL REFERENCES books(id) ON DELETE CASCADE,
   title TEXT,
   original_filename TEXT NOT NULL,
@@ -63,20 +61,23 @@ CREATE TABLE IF NOT EXISTS chapter_raw_objects (
 
 CREATE TABLE IF NOT EXISTS chapter_drafts (
   chapter_id UUID PRIMARY KEY REFERENCES chapters(id) ON DELETE CASCADE,
-  body TEXT NOT NULL,
-  draft_format TEXT NOT NULL DEFAULT 'plain',
+  body JSONB NOT NULL,
+  draft_format TEXT NOT NULL DEFAULT 'json',
   draft_updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   draft_version BIGINT NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS chapter_revisions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   chapter_id UUID NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
-  body TEXT NOT NULL,
+  body JSONB NOT NULL,
+  body_format TEXT NOT NULL DEFAULT 'json',
   message TEXT,
   author_user_id UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE INDEX IF NOT EXISTS idx_chapter_revisions_chapter
+  ON chapter_revisions(chapter_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS user_storage_quota (
   owner_user_id UUID PRIMARY KEY,
@@ -89,5 +90,15 @@ func Up(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err := pool.Exec(ctx, schemaSQL); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
+
+	// PG18: add virtual generated column for block count (idempotent)
+	_, _ = pool.Exec(ctx, `
+		DO $$ BEGIN
+			ALTER TABLE chapter_drafts ADD COLUMN block_count INT
+				GENERATED ALWAYS AS (jsonb_array_length(body -> 'content')) VIRTUAL;
+		EXCEPTION WHEN duplicate_column THEN NULL;
+		END $$;
+	`)
+
 	return nil
 }

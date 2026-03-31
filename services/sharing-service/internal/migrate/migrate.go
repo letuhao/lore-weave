@@ -8,8 +8,6 @@ import (
 )
 
 const schemaSQL = `
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
 CREATE TABLE IF NOT EXISTS sharing_policies (
   book_id UUID PRIMARY KEY,
   owner_user_id UUID NOT NULL,

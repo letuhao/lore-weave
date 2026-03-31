@@ -8,8 +8,6 @@ import (
 )
 
 const schemaSQL = `
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
 CREATE TABLE IF NOT EXISTS account_balances (
   owner_user_id UUID PRIMARY KEY,
   tier_name TEXT NOT NULL DEFAULT 'starter',
@@ -21,7 +19,7 @@ CREATE TABLE IF NOT EXISTS account_balances (
 );
 
 CREATE TABLE IF NOT EXISTS usage_logs (
-  usage_log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  usage_log_id UUID PRIMARY KEY DEFAULT uuidv7(),
   request_id UUID NOT NULL UNIQUE,
   owner_user_id UUID NOT NULL,
   provider_kind TEXT NOT NULL CHECK (provider_kind IN ('openai','anthropic','ollama','lm_studio')),
@@ -52,14 +50,14 @@ CREATE TABLE IF NOT EXISTS usage_log_details (
 );
 
 CREATE TABLE IF NOT EXISTS usage_log_decrypt_audits (
-  usage_log_decrypt_audit_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  usage_log_decrypt_audit_id UUID PRIMARY KEY DEFAULT uuidv7(),
   usage_log_id UUID NOT NULL REFERENCES usage_logs(usage_log_id) ON DELETE CASCADE,
   owner_user_id UUID NOT NULL,
   viewed_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS reconciliation_reports (
-  report_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  report_id UUID PRIMARY KEY DEFAULT uuidv7(),
   period_start TIMESTAMPTZ NOT NULL,
   period_end TIMESTAMPTZ NOT NULL,
   dry_run BOOLEAN NOT NULL DEFAULT true,

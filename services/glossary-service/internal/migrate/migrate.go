@@ -10,11 +10,9 @@ import (
 )
 
 const schemaSQL = `
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
 -- Kind catalogue (seeded on startup, read-only in MVP)
 CREATE TABLE IF NOT EXISTS entity_kinds (
-  kind_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind_id     UUID PRIMARY KEY DEFAULT uuidv7(),
   code        TEXT NOT NULL UNIQUE,
   name        TEXT NOT NULL,
   description TEXT,
@@ -28,7 +26,7 @@ CREATE TABLE IF NOT EXISTS entity_kinds (
 );
 
 CREATE TABLE IF NOT EXISTS attribute_definitions (
-  attr_def_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  attr_def_id UUID PRIMARY KEY DEFAULT uuidv7(),
   kind_id     UUID NOT NULL REFERENCES entity_kinds(kind_id) ON DELETE CASCADE,
   code        TEXT NOT NULL,
   name        TEXT NOT NULL,
@@ -43,7 +41,7 @@ CREATE INDEX IF NOT EXISTS idx_attr_def_kind ON attribute_definitions(kind_id);
 
 -- Glossary entities (book-level)
 CREATE TABLE IF NOT EXISTS glossary_entities (
-  entity_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  entity_id  UUID PRIMARY KEY DEFAULT uuidv7(),
   book_id    UUID NOT NULL,
   kind_id    UUID NOT NULL REFERENCES entity_kinds(kind_id),
   status     TEXT NOT NULL DEFAULT 'draft',
@@ -58,7 +56,7 @@ CREATE INDEX IF NOT EXISTS idx_ge_book_updated ON glossary_entities(book_id, upd
 
 -- Chapter M:N links
 CREATE TABLE IF NOT EXISTS chapter_entity_links (
-  link_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  link_id       UUID PRIMARY KEY DEFAULT uuidv7(),
   entity_id     UUID NOT NULL REFERENCES glossary_entities(entity_id) ON DELETE CASCADE,
   chapter_id    UUID NOT NULL,
   chapter_title TEXT,
@@ -73,7 +71,7 @@ CREATE INDEX IF NOT EXISTS idx_cel_chapter ON chapter_entity_links(chapter_id);
 
 -- Attribute values (one row per entity per attribute definition)
 CREATE TABLE IF NOT EXISTS entity_attribute_values (
-  attr_value_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  attr_value_id     UUID PRIMARY KEY DEFAULT uuidv7(),
   entity_id         UUID NOT NULL REFERENCES glossary_entities(entity_id) ON DELETE CASCADE,
   attr_def_id       UUID NOT NULL REFERENCES attribute_definitions(attr_def_id),
   original_language TEXT NOT NULL DEFAULT 'zh',
@@ -84,7 +82,7 @@ CREATE INDEX IF NOT EXISTS idx_eav_entity ON entity_attribute_values(entity_id);
 
 -- Per-attribute translations
 CREATE TABLE IF NOT EXISTS attribute_translations (
-  translation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  translation_id UUID PRIMARY KEY DEFAULT uuidv7(),
   attr_value_id  UUID NOT NULL REFERENCES entity_attribute_values(attr_value_id) ON DELETE CASCADE,
   language_code  TEXT NOT NULL,
   value          TEXT NOT NULL DEFAULT '',
@@ -97,7 +95,7 @@ CREATE INDEX IF NOT EXISTS idx_at_attr_value ON attribute_translations(attr_valu
 
 -- Evidence (source quotes / summaries)
 CREATE TABLE IF NOT EXISTS evidences (
-  evidence_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  evidence_id       UUID PRIMARY KEY DEFAULT uuidv7(),
   attr_value_id     UUID NOT NULL REFERENCES entity_attribute_values(attr_value_id) ON DELETE CASCADE,
   chapter_id        UUID,
   chapter_title     TEXT,
@@ -113,7 +111,7 @@ CREATE INDEX IF NOT EXISTS idx_ev_chapter    ON evidences(chapter_id);
 
 -- Evidence translations
 CREATE TABLE IF NOT EXISTS evidence_translations (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id            UUID PRIMARY KEY DEFAULT uuidv7(),
   evidence_id   UUID NOT NULL REFERENCES evidences(evidence_id) ON DELETE CASCADE,
   language_code TEXT NOT NULL,
   value         TEXT NOT NULL DEFAULT '',
