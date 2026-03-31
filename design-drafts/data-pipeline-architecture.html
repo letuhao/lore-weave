@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LoreWeave — Data Pipeline Architecture</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Lora:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #181412; --bg-alt: #1e1a17; --fg: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --muted: #282320; --muted-fg: #9e9488;
+      --destructive: #dc4e4e; --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+      --neo4j: #4c8eda; --redis: #dc4e4e; --postgres: #336791;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); -webkit-font-smoothing: antialiased; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::selection { background: rgba(232,168,50,0.25); }
+
+    /* Layout */
+    .container { max-width: 1400px; margin: 0 auto; padding: 40px 32px; }
+    .slide { margin-bottom: 80px; page-break-after: always; }
+    .slide-title { font-family: 'Lora', Georgia, serif; font-size: 32px; font-weight: 600; color: var(--primary); margin-bottom: 8px; }
+    .slide-subtitle { font-size: 14px; color: var(--muted-fg); margin-bottom: 40px; }
+    .section-label { font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted-fg); margin-bottom: 16px; }
+
+    /* Architecture diagram */
+    .arch-diagram { display: flex; flex-direction: column; gap: 24px; }
+    .arch-layer { border: 1px solid var(--border); border-radius: 12px; padding: 24px; position: relative; }
+    .arch-layer.layer-postgres { border-color: var(--postgres); background: rgba(51,103,145,0.06); }
+    .arch-layer.layer-neo4j { border-color: var(--neo4j); background: rgba(76,142,218,0.06); }
+    .arch-layer.layer-redis { border-color: var(--redis); background: rgba(220,78,78,0.06); }
+    .layer-badge { position: absolute; top: -10px; left: 20px; background: var(--bg); padding: 2px 12px; font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; border-radius: 4px; }
+    .layer-badge.pg { color: var(--postgres); border: 1px solid var(--postgres); }
+    .layer-badge.neo { color: var(--neo4j); border: 1px solid var(--neo4j); }
+    .layer-badge.rd { color: var(--redis); border: 1px solid var(--redis); }
+    .layer-title { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+    .layer-desc { font-size: 12px; color: var(--muted-fg); margin-bottom: 16px; }
+    .layer-items { display: flex; flex-wrap: wrap; gap: 10px; }
+    .layer-item { background: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 8px 14px; font-size: 12px; display: flex; align-items: center; gap: 8px; }
+    .layer-item .icon { width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; border-radius: 4px; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+    .layer-item .icon.tbl { background: var(--primary-muted); color: var(--primary); }
+    .layer-item .icon.idx { background: var(--accent-muted); color: var(--accent); }
+    .layer-item .icon.fn { background: rgba(220,78,78,0.15); color: var(--destructive); }
+    .layer-item .icon.nd { background: rgba(76,142,218,0.15); color: var(--neo4j); }
+    .layer-item-label { font-weight: 500; }
+    .layer-item-detail { color: var(--muted-fg); font-size: 10px; }
+
+    /* Flow arrow */
+    .flow-arrow { display: flex; justify-content: center; align-items: center; gap: 8px; padding: 8px 0; }
+    .flow-arrow .line { width: 2px; height: 24px; background: var(--primary); }
+    .flow-arrow .label { font-size: 10px; font-weight: 500; color: var(--primary); letter-spacing: 0.5px; }
+    .flow-arrow-h { display: flex; align-items: center; gap: 0; }
+    .flow-arrow-h .line { width: 40px; height: 2px; background: var(--primary); }
+    .flow-arrow-h .head { width: 0; height: 0; border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-left: 8px solid var(--primary); }
+
+    /* Pipeline diagram */
+    .pipeline { display: flex; gap: 16px; align-items: stretch; }
+    .pipeline-stage { flex: 1; border: 1px solid var(--border); border-radius: 10px; padding: 16px; background: var(--card); display: flex; flex-direction: column; }
+    .pipeline-stage.active { border-color: var(--primary); }
+    .pipeline-stage.future { opacity: 0.5; border-style: dashed; }
+    .stage-num { font-size: 10px; font-weight: 700; color: var(--primary); margin-bottom: 4px; }
+    .stage-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .stage-desc { font-size: 11px; color: var(--muted-fg); flex: 1; }
+    .stage-tech { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
+    .tech-badge { font-size: 9px; font-weight: 600; padding: 2px 8px; border-radius: 10px; }
+    .tech-badge.pg { background: rgba(51,103,145,0.2); color: #6db3f2; }
+    .tech-badge.neo { background: rgba(76,142,218,0.2); color: #8cc4ff; }
+    .tech-badge.rd { background: rgba(220,78,78,0.2); color: #f08080; }
+    .tech-badge.go { background: rgba(0,173,216,0.2); color: #00d4ff; }
+    .tech-badge.py { background: rgba(55,118,171,0.2); color: #6cb4ee; }
+    .tech-badge.fe { background: rgba(232,168,50,0.2); color: var(--primary); }
+    .tech-badge.trigger { background: rgba(61,186,146,0.15); color: var(--accent); }
+
+    /* Worker diagram */
+    .workers { display: flex; gap: 24px; }
+    .worker-box { flex: 1; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .worker-header { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+    .worker-header .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .worker-header .dot.go { background: #00ADD8; }
+    .worker-header .dot.py { background: #3776AB; }
+    .worker-header .title { font-size: 14px; font-weight: 600; }
+    .worker-header .lang { font-size: 10px; color: var(--muted-fg); margin-left: auto; }
+    .worker-tasks { padding: 12px 16px; }
+    .worker-task { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+    .worker-task:last-child { border-bottom: none; }
+    .task-type { font-size: 9px; font-weight: 600; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; width: 52px; text-align: center; }
+    .task-type.listen { background: rgba(61,186,146,0.15); color: var(--accent); }
+    .task-type.cron { background: rgba(84,150,232,0.15); color: var(--info); }
+    .task-type.consumer { background: rgba(232,168,50,0.15); color: var(--primary); }
+    .task-type.queue { background: rgba(220,78,78,0.15); color: var(--destructive); }
+    .task-name { font-weight: 500; }
+    .task-detail { color: var(--muted-fg); font-size: 10px; margin-left: auto; }
+    .task-status { font-size: 9px; padding: 1px 6px; border-radius: 3px; }
+    .task-status.d1 { background: var(--primary-muted); color: var(--primary); }
+    .task-status.future { background: var(--muted); color: var(--muted-fg); }
+
+    /* Event flow */
+    .event-flow { display: flex; align-items: center; gap: 0; margin: 30px 0; }
+    .event-node { border: 2px solid var(--border); border-radius: 10px; padding: 14px 18px; background: var(--card); min-width: 140px; text-align: center; }
+    .event-node.source { border-color: var(--postgres); }
+    .event-node.outbox { border-color: var(--primary); }
+    .event-node.worker { border-color: var(--accent); }
+    .event-node.redis { border-color: var(--redis); }
+    .event-node.events { border-color: var(--neo4j); }
+    .event-node .node-title { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+    .event-node .node-detail { font-size: 10px; color: var(--muted-fg); }
+    .event-connector { display: flex; align-items: center; }
+    .event-connector .line { width: 40px; height: 2px; }
+    .event-connector .head { width: 0; height: 0; border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+    .event-connector.pg .line { background: var(--postgres); }
+    .event-connector.pg .head { border-left: 8px solid var(--postgres); }
+    .event-connector.primary .line { background: var(--primary); }
+    .event-connector.primary .head { border-left: 8px solid var(--primary); }
+    .event-connector.accent .line { background: var(--accent); }
+    .event-connector.accent .head { border-left: 8px solid var(--accent); }
+    .event-connector.rd .line { background: var(--redis); }
+    .event-connector.rd .head { border-left: 8px solid var(--redis); }
+
+    /* Tech stack */
+    .tech-stack { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .tech-card { border: 1px solid var(--border); border-radius: 10px; padding: 20px; background: var(--card); }
+    .tech-card .name { font-size: 16px; font-weight: 600; margin-bottom: 2px; }
+    .tech-card .version { font-size: 11px; color: var(--primary); font-weight: 500; margin-bottom: 8px; }
+    .tech-card .desc { font-size: 11px; color: var(--muted-fg); line-height: 1.6; }
+    .tech-card .features { margin-top: 10px; list-style: none; }
+    .tech-card .features li { font-size: 11px; color: var(--muted-fg); padding: 2px 0; padding-left: 14px; position: relative; }
+    .tech-card .features li::before { content: ''; position: absolute; left: 0; top: 9px; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
+
+    /* Stats */
+    .stats { display: flex; gap: 16px; margin-top: 32px; }
+    .stat { flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 16px; text-align: center; background: var(--card); }
+    .stat .num { font-size: 28px; font-weight: 700; color: var(--primary); }
+    .stat .label { font-size: 11px; color: var(--muted-fg); margin-top: 4px; }
+
+    /* Phase timeline */
+    .timeline { display: flex; gap: 0; margin-top: 24px; }
+    .timeline-phase { flex: 1; position: relative; padding: 16px; border: 1px solid var(--border); }
+    .timeline-phase:first-child { border-radius: 8px 0 0 8px; }
+    .timeline-phase:last-child { border-radius: 0 8px 8px 0; }
+    .timeline-phase.current { background: var(--primary-muted); border-color: var(--primary); }
+    .timeline-phase .phase-name { font-size: 12px; font-weight: 600; }
+    .timeline-phase .phase-desc { font-size: 10px; color: var(--muted-fg); margin-top: 2px; }
+    .timeline-phase .phase-tasks { font-size: 18px; font-weight: 700; color: var(--primary); margin-top: 6px; }
+    .timeline-gate { position: absolute; right: -12px; top: 50%; transform: translateY(-50%); z-index: 1; width: 24px; height: 24px; border-radius: 50%; background: var(--bg); border: 2px solid var(--primary); display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 700; color: var(--primary); }
+
+    /* Print */
+    @media print {
+      body { background: #fff; color: #1a1a1a; }
+      .arch-layer, .pipeline-stage, .worker-box, .event-node, .tech-card, .stat, .timeline-phase { background: #f8f8f8; border-color: #ddd; }
+      .slide { page-break-after: always; }
+    }
+
+    /* Footer */
+    .footer { text-align: center; padding: 40px 0; border-top: 1px solid var(--border); margin-top: 80px; }
+    .footer .project { font-family: 'Lora', serif; font-size: 20px; font-weight: 600; color: var(--primary); }
+    .footer .date { font-size: 11px; color: var(--muted-fg); margin-top: 4px; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- ── Slide 1: Title ─────────────────────────────────────────────────── -->
+  <div class="slide">
+    <p class="section-label">LoreWeave Platform</p>
+    <h1 class="slide-title">Data Pipeline Architecture</h1>
+    <p class="slide-subtitle">Polyglot persistence with event-driven pipelines for AI-powered novel workflows</p>
+
+    <div class="stats">
+      <div class="stat"><div class="num">2</div><div class="label">Database Engines</div></div>
+      <div class="stat"><div class="num">2</div><div class="label">Worker Services</div></div>
+      <div class="stat"><div class="num">5</div><div class="label">Pipeline Stages</div></div>
+      <div class="stat"><div class="num">58</div><div class="label">Implementation Tasks</div></div>
+    </div>
+
+    <div class="timeline" style="margin-top: 32px;">
+      <div class="timeline-phase current">
+        <div class="phase-name">D0</div>
+        <div class="phase-desc">Pre-flight</div>
+        <div class="phase-tasks">4</div>
+        <div class="timeline-gate">G</div>
+      </div>
+      <div class="timeline-phase current">
+        <div class="phase-name">D1</div>
+        <div class="phase-desc">Schema + Events</div>
+        <div class="phase-tasks">54</div>
+        <div class="timeline-gate">G</div>
+      </div>
+      <div class="timeline-phase">
+        <div class="phase-name">D2</div>
+        <div class="phase-desc">Neo4j Infra</div>
+        <div class="phase-tasks">3</div>
+      </div>
+      <div class="timeline-phase">
+        <div class="phase-name">D3</div>
+        <div class="phase-desc">Knowledge</div>
+        <div class="phase-tasks">6</div>
+      </div>
+      <div class="timeline-phase">
+        <div class="phase-name">D4</div>
+        <div class="phase-desc">RAG</div>
+        <div class="phase-tasks">4</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Slide 2: Two-Layer Architecture ────────────────────────────────── -->
+  <div class="slide">
+    <p class="section-label">Architecture Overview</p>
+    <h1 class="slide-title">Two-Layer Data Stack</h1>
+    <p class="slide-subtitle">PostgreSQL 18 as source of truth, Neo4j v2026.01 for knowledge graph + vector search</p>
+
+    <div class="arch-diagram">
+      <div class="arch-layer layer-postgres">
+        <div class="layer-badge pg">Layer 1 &mdash; PostgreSQL 18</div>
+        <div class="layer-title">Source of Truth</div>
+        <div class="layer-desc">ACID transactions, JSONB documents, uuidv7 time-ordered keys, JSON_TABLE extraction, virtual generated columns</div>
+        <div class="layer-items">
+          <div class="layer-item"><span class="icon tbl">T</span><span><span class="layer-item-label">chapter_drafts</span> <span class="layer-item-detail">JSONB body + Tiptap doc</span></span></div>
+          <div class="layer-item"><span class="icon tbl">T</span><span><span class="layer-item-label">chapter_revisions</span> <span class="layer-item-detail">JSONB snapshots</span></span></div>
+          <div class="layer-item"><span class="icon tbl">T</span><span><span class="layer-item-label">chapter_blocks</span> <span class="layer-item-detail">RAG-ready denormalized text</span></span></div>
+          <div class="layer-item"><span class="icon fn">F</span><span><span class="layer-item-label">UPSERT trigger</span> <span class="layer-item-detail">JSON_TABLE extraction</span></span></div>
+          <div class="layer-item"><span class="icon tbl">T</span><span><span class="layer-item-label">outbox_events</span> <span class="layer-item-detail">transactional outbox</span></span></div>
+          <div class="layer-item"><span class="icon tbl">T</span><span><span class="layer-item-label">event_log</span> <span class="layer-item-detail">permanent event store</span></span></div>
+          <div class="layer-item"><span class="icon idx">V</span><span><span class="layer-item-label">block_count</span> <span class="layer-item-detail">virtual column (zero storage)</span></span></div>
+        </div>
+      </div>
+
+      <div class="flow-arrow"><div class="line"></div><span class="label">Event-driven pipeline (Redis Streams)</span><div class="line"></div></div>
+
+      <div class="arch-layer layer-neo4j">
+        <div class="layer-badge neo">Layer 2 &mdash; Neo4j v2026.01</div>
+        <div class="layer-title">Knowledge Graph + Vector Search</div>
+        <div class="layer-desc">Graph-native Cypher queries, HNSW vector indexes with filtered search, entity/event/relation traversal</div>
+        <div class="layer-items">
+          <div class="layer-item"><span class="icon nd">N</span><span><span class="layer-item-label">:Entity</span> <span class="layer-item-detail">characters, places, items, concepts</span></span></div>
+          <div class="layer-item"><span class="icon nd">N</span><span><span class="layer-item-label">:Event</span> <span class="layer-item-detail">plot events, temporal ordering</span></span></div>
+          <div class="layer-item"><span class="icon nd">R</span><span><span class="layer-item-label">:RELATES_TO</span> <span class="layer-item-detail">entity relationships</span></span></div>
+          <div class="layer-item"><span class="icon nd">R</span><span><span class="layer-item-label">:PARTICIPATES_IN</span> <span class="layer-item-detail">entity-event connections</span></span></div>
+          <div class="layer-item"><span class="icon idx">V</span><span><span class="layer-item-label">entity_embeddings</span> <span class="layer-item-detail">HNSW vector index</span></span></div>
+          <div class="layer-item"><span class="icon idx">V</span><span><span class="layer-item-label">event_embeddings</span> <span class="layer-item-detail">HNSW vector index</span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Slide 3: Event Pipeline ────────────────────────────────────────── -->
+  <div class="slide">
+    <p class="section-label">Event-Driven Architecture</p>
+    <h1 class="slide-title">Transactional Outbox Pipeline</h1>
+    <p class="slide-subtitle">Guaranteed at-least-once delivery from service mutations to downstream consumers</p>
+
+    <div class="event-flow">
+      <div class="event-node source">
+        <div class="node-title">book-service</div>
+        <div class="node-detail">patchDraft, createChapter<br>restoreRevision, delete</div>
+      </div>
+      <div class="event-connector pg"><div class="line"></div><div class="head"></div></div>
+      <div class="event-node outbox">
+        <div class="node-title">outbox_events</div>
+        <div class="node-detail">Same Postgres TX<br>pg_notify trigger</div>
+      </div>
+      <div class="event-connector primary"><div class="line"></div><div class="head"></div></div>
+      <div class="event-node worker">
+        <div class="node-title">worker-infra</div>
+        <div class="node-detail">LISTEN + poll fallback<br>at-least-once delivery</div>
+      </div>
+      <div class="event-connector accent"><div class="line"></div><div class="head"></div></div>
+      <div class="event-node redis">
+        <div class="node-title">Redis Stream</div>
+        <div class="node-detail">MAXLEN ~ 10000<br>Consumer groups</div>
+      </div>
+      <div class="event-connector rd"><div class="line"></div><div class="head"></div></div>
+      <div class="event-node events">
+        <div class="node-title">event_log</div>
+        <div class="node-detail">Permanent store<br>Audit + replay</div>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 16px; margin-top: 24px;">
+      <div style="flex:1; border: 1px solid var(--border); border-radius: 8px; padding: 16px;">
+        <p style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Event Types (D1)</p>
+        <p class="font-mono" style="font-size: 11px; color: var(--accent); line-height: 2;">
+          chapter.created<br>chapter.saved<br>chapter.trashed<br>chapter.deleted
+        </p>
+      </div>
+      <div style="flex:1; border: 1px solid var(--border); border-radius: 8px; padding: 16px;">
+        <p style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Guarantees</p>
+        <p style="font-size: 11px; color: var(--muted-fg); line-height: 2;">
+          Atomic with data change (same TX)<br>
+          At-least-once delivery<br>
+          Idempotent consumers (dedup by event ID)<br>
+          Dead letter queue for failures
+        </p>
+      </div>
+      <div style="flex:1; border: 1px solid var(--border); border-radius: 8px; padding: 16px;">
+        <p style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Centralized Monitoring</p>
+        <p style="font-size: 11px; color: var(--muted-fg); line-height: 2;">
+          loreweave_events database<br>
+          event_consumers tracking<br>
+          dead_letter_events investigation<br>
+          Full event history + replay
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Slide 4: Pipeline Stages ───────────────────────────────────────── -->
+  <div class="slide">
+    <p class="section-label">Processing Pipelines</p>
+    <h1 class="slide-title">Five-Stage Data Pipeline</h1>
+    <p class="slide-subtitle">Each stage is an independent consumer — add new stages without changing existing ones</p>
+
+    <div class="pipeline">
+      <div class="pipeline-stage active">
+        <div class="stage-num">PIPELINE 1</div>
+        <div class="stage-title">Block Extractor</div>
+        <div class="stage-desc">Tiptap JSON &rarr; denormalized text blocks. Runs as Postgres trigger (zero latency, ACID consistent).</div>
+        <div class="stage-tech">
+          <span class="tech-badge trigger">PG Trigger</span>
+          <span class="tech-badge pg">JSON_TABLE</span>
+        </div>
+      </div>
+      <div class="pipeline-stage active">
+        <div class="stage-num">PIPELINE 2</div>
+        <div class="stage-title">Outbox Relay</div>
+        <div class="stage-desc">Publish events from outbox to Redis Streams + permanent event log. LISTEN/NOTIFY driven.</div>
+        <div class="stage-tech">
+          <span class="tech-badge go">Go</span>
+          <span class="tech-badge rd">Redis</span>
+        </div>
+      </div>
+      <div class="pipeline-stage future">
+        <div class="stage-num">PIPELINE 3</div>
+        <div class="stage-title">Knowledge Builder</div>
+        <div class="stage-desc">LLM extraction: entities, events, relations, facts &rarr; Neo4j knowledge graph.</div>
+        <div class="stage-tech">
+          <span class="tech-badge py">Python</span>
+          <span class="tech-badge neo">Neo4j</span>
+        </div>
+      </div>
+      <div class="pipeline-stage future">
+        <div class="stage-num">PIPELINE 4</div>
+        <div class="stage-title">Embedding Generator</div>
+        <div class="stage-desc">Embed text chunks + entity descriptions &rarr; Neo4j HNSW vector indexes.</div>
+        <div class="stage-tech">
+          <span class="tech-badge py">Python</span>
+          <span class="tech-badge neo">Vectors</span>
+        </div>
+      </div>
+      <div class="pipeline-stage future">
+        <div class="stage-num">PIPELINE 5+</div>
+        <div class="stage-title">Extensible</div>
+        <div class="stage-desc">Search indexer, analytics, notifications. Any new consumer subscribes to the event stream.</div>
+        <div class="stage-tech">
+          <span class="tech-badge go">Any</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Slide 5: Worker Architecture ───────────────────────────────────── -->
+  <div class="slide">
+    <p class="section-label">Background Processing</p>
+    <h1 class="slide-title">Two-Worker Architecture</h1>
+    <p class="slide-subtitle">Split by language boundary and resource profile. Scale by adding containers with different WORKER_TASKS.</p>
+
+    <div class="workers">
+      <div class="worker-box">
+        <div class="worker-header">
+          <span class="dot go"></span>
+          <span class="title">worker-infra</span>
+          <span class="lang">Go &middot; lightweight &middot; always-on &middot; 50MB RAM</span>
+        </div>
+        <div class="worker-tasks">
+          <div class="worker-task">
+            <span class="task-type listen">LISTEN</span>
+            <span class="task-name">outbox-relay</span>
+            <span class="task-detail">pg_notify + poll &rarr; Redis + event_log</span>
+            <span class="task-status d1">D1</span>
+          </div>
+          <div class="worker-task">
+            <span class="task-type cron">CRON</span>
+            <span class="task-name">outbox-cleanup</span>
+            <span class="task-detail">daily: delete published events &gt; 7d</span>
+            <span class="task-status d1">D1</span>
+          </div>
+          <div class="worker-task">
+            <span class="task-type cron">CRON</span>
+            <span class="task-name">event-archive</span>
+            <span class="task-detail">weekly: partition old event_log</span>
+            <span class="task-status future">future</span>
+          </div>
+          <div class="worker-task">
+            <span class="task-type consumer">CONSUME</span>
+            <span class="task-name">search-indexer</span>
+            <span class="task-detail">Redis &rarr; Meilisearch</span>
+            <span class="task-status future">future</span>
+          </div>
+          <div class="worker-task">
+            <span class="task-type consumer">CONSUME</span>
+            <span class="task-name">notifier</span>
+            <span class="task-detail">Redis &rarr; push/email</span>
+            <span class="task-status future">future</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="worker-box">
+        <div class="worker-header">
+          <span class="dot py"></span>
+          <span class="title">worker-ai</span>
+          <span class="lang">Python &middot; heavy &middot; bursty &middot; 2GB+ RAM / GPU</span>
+        </div>
+        <div class="worker-tasks">
+          <div class="worker-task">
+            <span class="task-type queue">QUEUE</span>
+            <span class="task-name">translation-worker</span>
+            <span class="task-detail">RabbitMQ &rarr; LLM &rarr; DB</span>
+            <span class="task-status d1">existing</span>
+          </div>
+          <div class="worker-task">
+            <span class="task-type consumer">CONSUME</span>
+            <span class="task-name">knowledge-extractor</span>
+            <span class="task-detail">Redis &rarr; LLM NER &rarr; Neo4j</span>
+            <span class="task-status future">D3</span>
+          </div>
+          <div class="worker-task">
+            <span class="task-type consumer">CONSUME</span>
+            <span class="task-name">embedding-generator</span>
+            <span class="task-detail">Redis &rarr; embed &rarr; Neo4j vectors</span>
+            <span class="task-status future">D4</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top: 24px; border: 1px dashed var(--border); border-radius: 8px; padding: 16px;">
+      <p style="font-size: 12px; font-weight: 600; margin-bottom: 6px;">Scaling Pattern</p>
+      <p class="font-mono" style="font-size: 11px; color: var(--muted-fg); line-height: 1.8;">
+        Dev: &nbsp;&nbsp; worker-infra WORKER_TASKS=outbox-relay,outbox-cleanup<br>
+        Prod: &nbsp; worker-relay &nbsp;WORKER_TASKS=outbox-relay &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--accent);">// high priority, dedicated</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; worker-cron &nbsp;&nbsp;WORKER_TASKS=outbox-cleanup,event-archive<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; worker-ai-1 &nbsp;WORKER_TASKS=knowledge-extractor &nbsp;<span style="color:var(--accent);">// GPU instance</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; worker-ai-2 &nbsp;WORKER_TASKS=embedding-generator &nbsp;<span style="color:var(--accent);">// GPU instance</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; worker-ai-3 &nbsp;WORKER_TASKS=translation-worker &nbsp;&nbsp;<span style="color:var(--accent);">// scale horizontally</span>
+      </p>
+    </div>
+  </div>
+
+  <!-- ── Slide 6: Technology Stack ──────────────────────────────────────── -->
+  <div class="slide">
+    <p class="section-label">Technology Decisions</p>
+    <h1 class="slide-title">Infrastructure Stack</h1>
+    <p class="slide-subtitle">Latest versions researched 2026-03-31. Each technology chosen for specific capabilities.</p>
+
+    <div class="tech-stack">
+      <div class="tech-card">
+        <div class="name" style="color: #6db3f2;">PostgreSQL</div>
+        <div class="version">v18 (released Sep 2025)</div>
+        <div class="desc">Source of truth for all application data.</div>
+        <ul class="features">
+          <li>JSON_TABLE &mdash; query JSONB as relational rows</li>
+          <li>Virtual generated columns &mdash; zero storage cost</li>
+          <li>uuidv7() &mdash; time-ordered UUIDs, native</li>
+          <li>Async I/O &mdash; 2-3x read performance</li>
+          <li>SIMD JSON processing</li>
+        </ul>
+      </div>
+      <div class="tech-card">
+        <div class="name" style="color: #8cc4ff;">Neo4j</div>
+        <div class="version">v2026.01 (latest)</div>
+        <div class="desc">Knowledge graph + vector search in one database.</div>
+        <ul class="features">
+          <li>Native filtered vector search (HNSW)</li>
+          <li>Cypher SEARCH clause &mdash; clean syntax</li>
+          <li>Multi-label vector indexes</li>
+          <li>Eliminates need for separate Qdrant</li>
+          <li>Community Edition (free, open source)</li>
+        </ul>
+      </div>
+      <div class="tech-card">
+        <div class="name" style="color: #f08080;">Redis</div>
+        <div class="version">v7+ (Streams)</div>
+        <div class="desc">Event bus for pipeline communication.</div>
+        <ul class="features">
+          <li>Streams &mdash; persistent event log with replay</li>
+          <li>Consumer groups &mdash; parallel processing</li>
+          <li>MAXLEN auto-trim &mdash; bounded memory</li>
+          <li>Sub-millisecond pub/sub</li>
+          <li>Already in stack (lightweight addition)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Footer ─────────────────────────────────────────────────────────── -->
+  <div class="footer">
+    <div class="project">LoreWeave</div>
+    <div class="date">Data Pipeline Architecture &middot; April 2026</div>
+  </div>
+
+</div>
+</body>
+</html>
