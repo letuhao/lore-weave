@@ -1122,9 +1122,295 @@ D1-10d  Add worker-infra to gateway depends_on (optional — gateway doesn't nee
 
 ---
 
+---
+
+## Discovery Cycle 7: D1-11 — Frontend JSONB Save/Load
+
+### Current Data Flow (BEFORE migration)
+
+```
+Save: editor → getHTML() → htmlToPlainText() → patchDraft({ body: plainText })
+Load: getDraft() → { body: plainText } → plainTextToHtml() → editor.setContent(html)
+Read: getDraft() → { body: plainText } → ChapterReadView splits by \n\n
+```
+
+### Target Data Flow (AFTER migration)
+
+```
+Save: editor → getJSON() → addTextSnapshots() → patchDraft({ body: jsonDoc, body_format: 'json' })
+Load: getDraft() → { body: jsonDoc } → editor.setContent(jsonDoc)  ← direct, no conversion!
+Read: getDraft() → { text_content: plainText } → ChapterReadView (unchanged)
+```
+
+### File-by-File Change Specification
+
+#### 1. `features/books/api.ts` — API Client Types
+
+```typescript
+// CURRENT:
+getDraft → returns { body: string; draft_format: string; ... }
+patchDraft → payload: { body: string; ... }
+getRevision → returns { body: string; ... }
+
+// AFTER:
+getDraft → returns { body: any; draft_format: string; text_content: string; ... }
+patchDraft → payload: { body: any; body_format?: string; ... }
+getRevision → returns { body: any; body_format: string; text_content: string; ... }
+```
+
+Changes:
+- `getDraft` return type: `body: string` → `body: any`, add `text_content: string`
+- `patchDraft` payload: `body: string` → `body: any`, add `body_format?: string`
+- `getRevision` return type: `body: string` → `body: any`, add `body_format: string`, `text_content: string`
+
+#### 2. `components/editor/TiptapEditor.tsx` — Major Refactor
+
+```
+REMOVE:
+  - plainTextToHtml() function          ← no longer needed (body is JSON)
+  - htmlToPlainText() function          ← no longer needed
+  - escapeHtml() function              ← no longer needed
+  - HTML-based content conversion      ← replaced by direct JSON
+
+CHANGE:
+  - content prop: string → any (accepts Tiptap JSON object)
+  - onUpdate callback: (html: string) → (json: any) (returns getJSON() not getHTML())
+  - initialContent: plainTextToHtml(content) → content directly
+  - setContent: plainTextToHtml(newContent) → newContent directly
+
+ADD:
+  - addTextSnapshots(json) → adds _text to each top-level block
+  - extractText(node) → recursive text extraction
+  - onUpdate calls: addTextSnapshots(editor.getJSON()) before passing to parent
+
+NEW interface:
+  TiptapEditorHandle {
+    setContent: (json: any) => void        // was __setContentFromPlainText
+    setGrammarEnabled: (enabled: boolean) => void
+  }
+
+  TiptapEditorProps {
+    content: any                            // was string
+    onUpdate: (json: any) => void           // was (html: string)
+    editable?: boolean
+    grammarEnabled?: boolean
+    editorMode?: EditorMode
+    className?: string
+  }
+```
+
+#### 3. `pages/ChapterEditorPage.tsx` — Save/Load Flow
+
+```
+CURRENT STATE VARIABLES:
+  savedBody: string       ← plain text
+  initialBody: string     ← plain text for TiptapEditor content prop
+  tiptapHtml: string      ← HTML from onUpdate
+
+AFTER:
+  savedBody: any          ← Tiptap JSON doc from server
+  tiptapJson: any | null  ← JSON from onUpdate (null = unchanged since load)
+  textContent: string     ← plain text from getDraft().text_content (for word count)
+
+SAVE FLOW (CURRENT):
+  const bodyToSave = tiptapHtml ? htmlToPlainText(tiptapHtml) : savedBody;
+  patchDraft({ body: bodyToSave })
+
+SAVE FLOW (AFTER):
+  const bodyToSave = tiptapJson ?? savedBody;
+  patchDraft({ body: bodyToSave, body_format: 'json' })
+
+LOAD FLOW (CURRENT):
+  setSavedBody(draft.body);       ← string
+  setInitialBody(draft.body);     ← string → plainTextToHtml in TiptapEditor
+
+LOAD FLOW (AFTER):
+  setSavedBody(draft.body);       ← JSON object
+  setTextContent(draft.text_content);  ← for word count
+  // TiptapEditor receives JSON directly via content prop
+
+DIRTY CHECK (CURRENT):
+  const bodyChanged = tiptapHtml ? htmlToPlainText(tiptapHtml) !== savedBody : false;
+
+DIRTY CHECK (AFTER):
+  const bodyChanged = tiptapJson
+    ? JSON.stringify(tiptapJson) !== JSON.stringify(savedBody)
+    : false;
+
+DISCARD (CURRENT):
+  tiptapEditorRef.current?.__setContentFromPlainText(savedBody);
+
+DISCARD (AFTER):
+  tiptapEditorRef.current?.setContent(savedBody);
+
+WORD COUNT (CURRENT):
+  const currentBody = tiptapHtml ? htmlToPlainText(tiptapHtml) : savedBody;
+  wordCount(currentBody)
+
+WORD COUNT (AFTER):
+  // Use text_content from API (updated on save), or extract from tiptapJson
+  // Simpler: just use textContent state variable, update on load
+  wordCount(textContent)
+```
+
+#### 4. `pages/ReaderPage.tsx` — Read-Only Tiptap Rendering
+
+```
+CURRENT:
+  setBody(d.body);                        ← string
+  <ChapterReadView body={body} ... />     ← splits by \n\n
+
+AFTER (Option B from Cycle 5: read-only Tiptap):
+  setBody(d.body);                        ← JSON object
+  <TiptapEditor
+    content={body}
+    onUpdate={() => {}}
+    editable={false}
+    className="..."
+  />
+
+  Remove ChapterReadView from ReaderPage — replaced by read-only TiptapEditor.
+  The reader now shows rich content: headings, formatting, callouts, lists.
+  Reader theme styling applied via CSS (tiptap-content class).
+```
+
+#### 5. `components/editor/RevisionHistory.tsx` — Preview Uses text_content
+
+```
+CURRENT:
+  const data = await booksApi.getRevision(...)
+  setPreview({ revision: rev, body: data.body });     ← string
+  <ChapterReadView body={preview.body} />
+  wordCount(preview.body)
+
+AFTER:
+  const data = await booksApi.getRevision(...)
+  setPreview({ revision: rev, textContent: data.text_content });  ← plain text
+  <ChapterReadView body={preview.textContent} />
+  wordCount(preview.textContent)
+
+  RevisionHistory keeps using ChapterReadView with plain text.
+  Type changes: PreviewState { body: string } → { textContent: string }
+```
+
+#### 6. `components/shared/ChapterReadView.tsx` — NO CHANGES
+
+Stays as-is. Still receives `body: string` (plain text). Used only by RevisionHistory now.
+ReaderPage switches to read-only TiptapEditor instead.
+
+### Code to Delete (cleanup)
+
+| File | What to Remove |
+|------|---------------|
+| `TiptapEditor.tsx` | `plainTextToHtml()`, `htmlToPlainText()`, `escapeHtml()` functions |
+| `ChapterEditorPage.tsx` | `import { htmlToPlainText }` — no longer exported/used |
+| `ChapterEditorPage.tsx` | `tiptapHtml` state → replaced by `tiptapJson` |
+
+### _text Snapshot Implementation
+
+```typescript
+// Added to TiptapEditor.tsx (or a new utility file)
+
+import type { JSONContent } from '@tiptap/react';
+
+/** Add _text snapshot to each top-level block */
+function addTextSnapshots(doc: JSONContent): JSONContent {
+  if (!doc.content) return doc;
+  return {
+    ...doc,
+    content: doc.content.map(block => ({
+      ...block,
+      _text: extractText(block),
+    })),
+  };
+}
+
+/** Recursively extract plain text from a Tiptap node */
+function extractText(node: JSONContent): string {
+  if (node.type === 'text') return node.text || '';
+  if (node.type === 'hardBreak') return '\n';
+  if (!node.content) return '';
+  return node.content
+    .map(child => extractText(child))
+    .join(node.type === 'listItem' ? '\n' : '');
+}
+```
+
+### Sub-Tasks
+
+```
+D1-11a  API client type updates
+        File: frontend-v2/src/features/books/api.ts
+        Changes: getDraft, patchDraft, getRevision return/param types
+        3 type definition changes
+
+D1-11b  TiptapEditor refactor: content as JSON, onUpdate returns JSON with _text
+        File: frontend-v2/src/components/editor/TiptapEditor.tsx
+        Changes:
+          - Remove plainTextToHtml, htmlToPlainText, escapeHtml
+          - content prop: string → any
+          - onUpdate: calls addTextSnapshots(editor.getJSON())
+          - setContent handle: accepts JSON directly
+          - Add addTextSnapshots + extractText functions
+        This is the core change — all other files depend on this
+
+D1-11c  ChapterEditorPage: JSONB save/load flow
+        File: frontend-v2/src/pages/ChapterEditorPage.tsx
+        Changes:
+          - State: tiptapHtml → tiptapJson, add textContent
+          - Save: send JSON + body_format
+          - Load: pass JSON to editor directly, store text_content
+          - Dirty check: JSON.stringify comparison
+          - Discard: setContent(savedBody) not __setContentFromPlainText
+          - Word count: use textContent state
+
+D1-11d  ReaderPage: read-only TiptapEditor replaces ChapterReadView
+        File: frontend-v2/src/pages/ReaderPage.tsx
+        Changes:
+          - Import TiptapEditor instead of ChapterReadView
+          - setBody receives JSON object
+          - Render: <TiptapEditor content={body} editable={false} />
+          - Reader theme CSS applied via tiptap-content class
+
+D1-11e  RevisionHistory: use text_content from API
+        File: frontend-v2/src/components/editor/RevisionHistory.tsx
+        Changes:
+          - PreviewState type: body → textContent
+          - data.body → data.text_content
+          - wordCount uses textContent
+          - ChapterReadView stays (receives plain text)
+
+D1-11f  Unit test: extractText function
+        File: frontend-v2/src/components/editor/__tests__/extractText.test.ts (new)
+        Test cases:
+          - Simple paragraph → "Hello world"
+          - Paragraph with bold/italic → "Hello bold italic"
+          - Heading → "Chapter One"
+          - BulletList → "Item 1\nItem 2"
+          - Blockquote → "To be or not to be"
+          - HorizontalRule → ""
+          - Callout → "This is a note"
+          - Empty paragraph → ""
+          - Nested list → correct newline joining
+```
+
+### File Impact Summary (Cycle 7)
+
+| File | Change | New? |
+|------|--------|------|
+| `features/books/api.ts` | 3 type changes (getDraft, patchDraft, getRevision) | No |
+| `components/editor/TiptapEditor.tsx` | Major refactor: remove HTML functions, JSON content, _text snapshots | No |
+| `pages/ChapterEditorPage.tsx` | Save/load flow rewrite, state variables changed | No |
+| `pages/ReaderPage.tsx` | ChapterReadView → read-only TiptapEditor | No |
+| `components/editor/RevisionHistory.tsx` | body → textContent, type change | No |
+| `components/editor/__tests__/extractText.test.ts` | Unit test for extractText | **Yes** |
+
+**Total: 5 modified files, 1 new test file.**
+
+---
+
 ## Remaining Cycles
 
 | Cycle | Focus | Tasks |
 |-------|-------|-------|
-| 7 | D1-11: Frontend JSONB save/load | _text snapshots, TiptapEditor, ReaderPage, RevisionHistory |
-| 8 | D1-12: Integration test | End-to-end verification |
+| 8 | D1-12: Integration test | End-to-end verification checklist |
