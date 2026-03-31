@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Mixed Media Editor (Tiptap)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --input: #242019; --ring: #d4952a;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --secondary-fg: #e0d8cc;
+      --muted: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --destructive: #dc4e4e; --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; overflow: hidden; height: 100vh; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    .shell { display: flex; height: 100vh; }
+
+    /* Nav rail */
+    .nav-rail { width: 48px; flex-shrink: 0; background: var(--background); border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 2px; }
+    .nav-icon { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--muted-fg); cursor: pointer; transition: all 120ms; font-size: 16px; }
+    .nav-icon:hover { background: var(--secondary); color: var(--foreground); }
+    .nav-icon.active { background: var(--primary-muted); color: var(--primary); }
+    .nav-spacer { flex: 1; }
+
+    .workbench { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* Toolbar */
+    .toolbar { height: 42px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid var(--border); background: var(--card); }
+    .toolbar-group { display: flex; align-items: center; gap: 6px; }
+    .breadcrumb { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted-fg); }
+    .breadcrumb a { color: var(--muted-fg); text-decoration: none; }
+    .breadcrumb a:hover { color: var(--foreground); }
+    .breadcrumb .current { color: var(--foreground); font-weight: 500; }
+    .toolbar-divider { width: 1px; height: 18px; background: var(--border); margin: 0 2px; }
+
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 5px; font-size: 11px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); border: none; cursor: pointer; }
+    .btn-icon { width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 5px; border: none; cursor: pointer; background: transparent; color: var(--muted-fg); transition: all 120ms; }
+    .btn-icon:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-icon.active { background: var(--primary-muted); color: var(--primary); }
+    .toggle-group { display: flex; border: 1px solid var(--border); border-radius: 6px; background: var(--muted); padding: 2px; }
+    .toggle-item { padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 500; color: var(--muted-fg); cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 120ms; border: none; background: transparent; }
+    .toggle-item.active { background: var(--background); color: var(--foreground); box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+    .kbd { background: var(--secondary); border: 1px solid var(--border); border-radius: 3px; padding: 0px 4px; font-size: 9px; font-family: 'JetBrains Mono', monospace; color: var(--muted-fg); }
+    .grammar-toggle { display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 10px; font-weight: 500; padding: 3px 8px; border-radius: 4px; transition: all 120ms; border: none; background: transparent; color: var(--warning); }
+    .grammar-toggle:hover { background: var(--secondary); }
+    .grammar-badge { background: rgba(232,168,50,0.15); color: var(--warning); font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 10px; }
+
+    .panel-area { flex: 1; display: flex; overflow: hidden; }
+
+    /* Left sidebar */
+    .left-panel { width: 280px; flex-shrink: 0; border-right: 1px solid var(--border); background: var(--card); display: flex; flex-direction: column; }
+    .panel-tabs { display: flex; border-bottom: 1px solid var(--border); }
+    .panel-tab { flex: 1; padding: 8px; text-align: center; font-size: 11px; font-weight: 500; color: var(--muted-fg); cursor: pointer; border-bottom: 2px solid transparent; transition: all 120ms; display: flex; align-items: center; justify-content: center; gap: 4px; }
+    .panel-tab:hover { color: var(--foreground); }
+    .panel-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+    .panel-content { flex: 1; overflow-y: auto; }
+    .chapter-item { display: flex; align-items: flex-start; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--muted-fg); cursor: pointer; transition: all 120ms; }
+    .chapter-item:hover { background: var(--secondary); color: var(--foreground); }
+    .chapter-item.current { border-left: 2px solid var(--primary); background: rgba(232,168,50,0.04); color: var(--primary); }
+    .chapter-num { width: 20px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 10px; opacity: 0.5; padding-top: 2px; }
+    .chapter-title { flex: 1; font-size: 12px; line-height: 1.5; }
+
+    /* Center editor */
+    .editor-center { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--background); }
+    .editor-meta { flex-shrink: 0; padding: 16px 24px 12px; border-bottom: 1px solid var(--border); }
+    .editor-title { width: 100%; background: transparent; border: none; outline: none; font-family: 'Lora', Georgia, serif; font-size: 22px; font-weight: 600; color: var(--foreground); }
+    .editor-stats { margin-top: 6px; font-size: 10px; color: var(--muted-fg); display: flex; align-items: center; gap: 6px; }
+    .editor-stats .grammar-count { color: var(--warning); }
+
+    /* Format bar */
+    .format-bar { flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 4px 12px; border-bottom: 1px solid var(--border); background: var(--card); }
+    .format-btn { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 4px; border: none; background: transparent; color: var(--muted-fg); cursor: pointer; font-size: 12px; transition: all 100ms; }
+    .format-btn:hover { background: var(--secondary); color: var(--foreground); }
+    .format-btn.active { color: var(--primary); background: var(--primary-muted); }
+    .format-divider { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
+    .block-type-select { background: var(--input); border: 1px solid var(--border); border-radius: 4px; color: var(--foreground); font-size: 10px; padding: 3px 6px; outline: none; cursor: pointer; }
+
+    /* Content area */
+    .editor-content { flex: 1; overflow-y: auto; padding: 16px 0; }
+    .editor-blocks { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+
+    /* Block wrapper */
+    .block { position: relative; margin-bottom: 2px; padding: 4px 0; border-radius: 4px; transition: background 120ms; }
+    .block:hover { background: rgba(255,255,255,0.01); }
+    .block:hover .block-handle, .block:hover .block-actions { opacity: 1; }
+    .block.selected { background: rgba(232,168,50,0.04); outline: 1px solid rgba(232,168,50,0.15); outline-offset: 2px; }
+    .block-handle { position: absolute; left: -32px; top: 4px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: var(--muted-fg); opacity: 0; cursor: grab; border-radius: 3px; font-size: 11px; transition: all 120ms; }
+    .block-handle:hover { background: var(--secondary); color: var(--foreground); }
+    .block-actions { position: absolute; right: -32px; top: 4px; display: flex; flex-direction: column; gap: 2px; opacity: 0; transition: opacity 120ms; }
+    .block-action { width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; border-radius: 3px; border: none; background: transparent; color: var(--muted-fg); cursor: pointer; font-size: 10px; }
+    .block-action:hover { background: var(--secondary); color: var(--foreground); }
+    .block-action.danger:hover { color: var(--destructive); background: rgba(220,78,78,0.1); }
+
+    /* Block insert */
+    .block-insert { height: 16px; position: relative; cursor: pointer; margin: -2px 0; }
+    .block-insert .insert-line { position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: transparent; transition: all 120ms; }
+    .block-insert:hover .insert-line { background: var(--primary); opacity: 0.4; }
+    .block-insert .insert-pill { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: var(--card); border: 1px dashed var(--border); border-radius: 10px; padding: 1px 10px; font-size: 9px; color: var(--muted-fg); opacity: 0; transition: all 120ms; white-space: nowrap; }
+    .block-insert:hover .insert-pill { opacity: 1; border-color: var(--primary); color: var(--primary); background: var(--primary-muted); }
+
+    /* Text block */
+    .block-text { font-size: 14px; line-height: 1.85; color: var(--foreground); outline: none; min-height: 1.85em; }
+    .block-text:empty::before { content: attr(data-placeholder); color: rgba(158,148,136,0.3); }
+
+    /* Grammar */
+    .grammar-issue { text-decoration-line: underline; text-decoration-style: wavy; text-decoration-color: var(--warning); text-underline-offset: 3px; text-decoration-thickness: 1.5px; cursor: help; position: relative; }
+    .grammar-issue:hover { background: rgba(232,168,50,0.08); border-radius: 2px; }
+    .grammar-tooltip { position: absolute; bottom: calc(100% + 8px); left: 0; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 11px; min-width: 220px; max-width: 320px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 50; display: none; }
+    .grammar-issue:hover .grammar-tooltip { display: block; }
+    .grammar-tooltip .gt-message { color: var(--foreground); margin-bottom: 6px; line-height: 1.4; }
+    .grammar-tooltip .gt-suggestions { display: flex; flex-wrap: wrap; gap: 4px; }
+    .grammar-tooltip .gt-suggestion { background: var(--accent-muted); color: var(--accent-fg); border: 1px solid rgba(61,166,146,0.3); padding: 2px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; transition: all 100ms; }
+    .grammar-tooltip .gt-suggestion:hover { background: var(--accent); color: #fff; }
+    .grammar-tooltip .gt-rule { color: var(--muted-fg); font-size: 9px; margin-top: 6px; }
+
+    /* Heading */
+    .block-heading { font-family: 'Lora', Georgia, serif; font-size: 18px; font-weight: 600; line-height: 1.5; color: var(--foreground); outline: none; }
+    .block-heading:empty::before { content: 'Scene heading...'; color: rgba(158,148,136,0.3); }
+
+    /* Image */
+    .block-image { border-radius: 8px; overflow: hidden; background: var(--secondary); }
+    .block-image img { display: block; width: 100%; height: auto; max-height: 400px; object-fit: cover; }
+    .block-image .image-caption { padding: 8px 12px; font-size: 11px; color: var(--muted-fg); border-top: 1px solid var(--border); display: flex; align-items: center; gap: 6px; }
+    .block-image .image-caption input { flex: 1; background: transparent; border: none; outline: none; color: var(--foreground); font-size: 11px; }
+    .block-image .image-meta { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--muted-fg); opacity: 0.6; }
+    .image-upload-zone { border: 2px dashed var(--border); border-radius: 8px; padding: 32px; text-align: center; color: var(--muted-fg); cursor: pointer; transition: all 200ms; }
+    .image-upload-zone:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-muted); }
+
+    /* Video */
+    .block-video { border-radius: 8px; overflow: hidden; background: #0a0a0a; }
+    .block-video .video-placeholder { aspect-ratio: 16/9; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--muted-fg); gap: 8px; }
+    .block-video .video-play { width: 48px; height: 48px; background: rgba(232,168,50,0.2); border: 2px solid var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; color: var(--primary); }
+    .block-video .video-caption { padding: 8px 12px; font-size: 11px; color: var(--muted-fg); border-top: 1px solid var(--border); background: var(--card); }
+
+    /* Code */
+    .block-code { background: #0d0b09; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .block-code .code-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; background: var(--secondary); border-bottom: 1px solid var(--border); }
+    .block-code .code-lang select { background: var(--input); border: 1px solid var(--border); border-radius: 3px; color: var(--foreground); font-size: 10px; font-family: 'JetBrains Mono', monospace; padding: 1px 4px; outline: none; }
+    .block-code pre { padding: 12px 16px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.6; color: #c8c0b4; overflow-x: auto; outline: none; margin: 0; }
+    .tk { color: #e88e32; } .ts { color: #3dba6a; } .tc { color: #666; font-style: italic; } .tf { color: #5496e8; } .tn { color: #dc4e4e; }
+
+    /* Divider */
+    .block-divider { display: flex; align-items: center; gap: 12px; padding: 8px 0; color: var(--muted-fg); }
+    .block-divider .divider-line { flex: 1; height: 1px; background: var(--border); }
+
+    /* Callout */
+    .block-callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: 8px; border-left: 3px solid var(--info); background: rgba(84,150,232,0.05); }
+    .block-callout .callout-text { flex: 1; font-size: 13px; line-height: 1.7; outline: none; color: var(--foreground); }
+
+    /* Right panel */
+    .right-panel { width: 280px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--card); display: flex; flex-direction: column; }
+    .grammar-panel { flex: 1; overflow-y: auto; }
+    .grammar-panel-header { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: space-between; }
+    .grammar-issue-card { padding: 10px 12px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 120ms; }
+    .grammar-issue-card:hover { background: var(--secondary); }
+    .grammar-issue-card .issue-text { font-size: 12px; line-height: 1.5; margin-bottom: 4px; }
+    .grammar-issue-card .issue-text mark { background: rgba(232,168,50,0.2); color: var(--warning); border-radius: 2px; text-decoration: wavy underline; text-decoration-color: var(--warning); text-underline-offset: 2px; }
+    .grammar-issue-card .issue-message { font-size: 10px; color: var(--muted-fg); line-height: 1.4; }
+    .grammar-issue-card .issue-suggestions { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
+    .grammar-issue-card .issue-fix { background: var(--accent-muted); color: var(--accent-fg); border: 1px solid rgba(61,166,146,0.3); padding: 1px 6px; border-radius: 3px; font-size: 9px; cursor: pointer; }
+    .grammar-issue-card .issue-fix:hover { background: var(--accent); color: #fff; }
+    .grammar-issue-card .issue-rule { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--muted-fg); opacity: 0.5; margin-top: 4px; }
+
+    /* Source view */
+    .source-view pre { flex: 1; overflow: auto; padding: 16px 24px; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.7; color: #c8c0b4; margin: 0; }
+    .jk { color: #5496e8; } .js { color: #3dba6a; } .jn { color: #dc4e4e; } .jw { color: #e88e32; }
+
+    /* Add block menu */
+    .add-block-menu { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 4px; width: 200px; box-shadow: 0 8px 30px rgba(0,0,0,0.4); }
+    .menu-title { padding: 4px 8px; font-size: 9px; font-weight: 600; color: var(--muted-fg); text-transform: uppercase; letter-spacing: 0.5px; }
+    .add-block-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; color: var(--foreground); width: 100%; border: none; background: transparent; text-align: left; }
+    .add-block-item:hover { background: var(--secondary); }
+    .abi-icon { width: 28px; height: 28px; border-radius: 4px; background: var(--secondary); display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+    .abi-hint { font-size: 10px; color: var(--muted-fg); }
+    .abi-label { font-weight: 500; }
+
+    .bottom-bar { height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-top: 1px solid var(--border); background: var(--card); font-size: 10px; color: var(--muted-fg); }
+
+
+    .media-prompt { padding: 0 12px 8px; font-size: 10px; }
+    .media-prompt summary { color: var(--muted-fg); cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 4px 0; user-select: none; }
+    .media-prompt summary:hover { color: var(--foreground); }
+    .media-prompt .prompt-badge { background: rgba(84,150,232,0.12); color: var(--info); padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 600; }
+    .media-prompt .prompt-body { margin-top: 6px; }
+    .media-prompt textarea { width: 100%; min-height: 48px; background: var(--input); border: 1px solid var(--border); border-radius: 6px; color: var(--foreground); font-size: 11px; line-height: 1.5; padding: 8px 10px; resize: vertical; outline: none; font-family: inherit; }
+    .media-prompt textarea::placeholder { color: rgba(158,148,136,0.35); }
+    .media-prompt textarea:focus { border-color: var(--ring); box-shadow: 0 0 0 2px rgba(212,149,42,0.15); }
+    .media-prompt .prompt-hint { color: var(--muted-fg); font-size: 9px; margin-top: 4px; opacity: 0.7; }
+    .media-prompt .prompt-actions { display: flex; gap: 4px; margin-top: 6px; }
+    .prompt-btn { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; }
+    .prompt-btn-generate { background: var(--accent-muted); color: var(--accent-fg); border: 1px solid rgba(61,166,146,0.3); }
+    .prompt-btn-generate:hover { background: var(--accent); color: #fff; }
+    .prompt-btn-ghost { background: transparent; color: var(--muted-fg); border: none; cursor: pointer; }
+    .prompt-btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+
+    /* Audio attachment on text blocks (TTS / narration) */
+    .block-audio { margin-top: 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); overflow: hidden; }
+    .block-audio .audio-header { display: flex; align-items: center; gap: 6px; padding: 6px 10px; font-size: 10px; color: var(--muted-fg); border-bottom: 1px solid var(--border); }
+    .block-audio .audio-header .audio-label { font-weight: 600; color: var(--foreground); }
+    .block-audio .audio-player { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
+    .audio-play-btn { width: 28px; height: 28px; border-radius: 50%; background: var(--primary-muted); border: 1px solid rgba(232,168,50,0.3); color: var(--primary); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: all 120ms; }
+    .audio-play-btn:hover { background: var(--primary); color: var(--primary-fg); }
+    .audio-waveform { flex: 1; height: 28px; background: var(--secondary); border-radius: 4px; position: relative; overflow: hidden; }
+    .audio-waveform .waveform-bars { display: flex; align-items: center; height: 100%; gap: 1.5px; padding: 4px 6px; }
+    .audio-waveform .wbar { width: 2px; border-radius: 1px; background: var(--muted-fg); opacity: 0.4; }
+    .audio-waveform .wbar.played { background: var(--primary); opacity: 0.9; }
+    .audio-time { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted-fg); flex-shrink: 0; min-width: 36px; text-align: right; }
+    .audio-speed { background: var(--secondary); border: 1px solid var(--border); border-radius: 3px; font-size: 9px; font-family: 'JetBrains Mono', monospace; color: var(--foreground); padding: 1px 4px; cursor: pointer; outline: none; }
+    .block-audio .audio-meta { display: flex; align-items: center; justify-content: space-between; padding: 4px 10px 6px; font-size: 9px; color: var(--muted-fg); }
+    .block-audio .audio-meta .audio-tags { display: flex; gap: 4px; }
+    .block-audio .audio-meta .audio-tag { background: var(--secondary); padding: 1px 5px; border-radius: 3px; }
+    .block-audio .audio-meta .audio-tag.ai { background: rgba(84,150,232,0.12); color: var(--info); }
+    .audio-empty { padding: 8px 10px; display: flex; align-items: center; gap: 8px; }
+    .audio-empty .audio-empty-text { font-size: 10px; color: var(--muted-fg); flex: 1; }
+    .tab-section { display: none; }
+    .tab-section.active { display: flex; flex-direction: row; flex: 1; overflow: hidden; }
+  </style>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  <div class="shell">
+    <!-- Nav rail -->
+    <div class="nav-rail">
+      <div class="nav-icon">&#x1F3E0;</div>
+      <div class="nav-icon">&#x1F4D6;</div>
+      <div class="nav-icon active">&#x270F;&#xFE0F;</div>
+      <div class="nav-icon">&#x1F4AC;</div>
+      <div class="nav-spacer"></div>
+      <div class="nav-icon">&#x2699;&#xFE0F;</div>
+      <div class="nav-icon" style="width:28px;height:28px;border-radius:50%;background:var(--primary-muted);color:var(--primary);font-size:11px;font-weight:600;">NS</div>
+    </div>
+
+    <div class="workbench">
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <div class="toolbar-group">
+          <button class="btn-icon" style="font-size:13px;">&#x276E;</button>
+          <div class="breadcrumb">
+            <a href="#">Workspace</a> <span>&#x203A;</span>
+            <a href="#">Book</a> <span>&#x203A;</span>
+            <span class="current">Chapter 3: The Betrayal</span>
+          </div>
+          <button class="btn-icon" style="font-size:13px;">&#x276F;</button>
+        </div>
+        <div class="toolbar-group">
+          <div class="toggle-group">
+            <button class="toggle-item active" onclick="switchTab('visual')">&#x1F4DD; Visual</button>
+            <button class="toggle-item" onclick="switchTab('source')">&#x1F4CB; Source</button>
+          </div>
+          <div class="toolbar-divider"></div>
+          <button class="grammar-toggle">&#x1F50D; <span class="grammar-badge">5</span></button>
+          <div class="toolbar-divider"></div>
+          <button class="btn-icon">&#x25E7;</button>
+          <button class="btn-icon active">&#x25E8;</button>
+          <div class="toolbar-divider"></div>
+          <span style="font-size:10px;color:var(--warning);">Unsaved changes</span>
+          <button class="btn btn-outline" style="font-size:10px;">Discard</button>
+          <button class="btn btn-primary">&#x1F4BE; Save <span class="kbd">Ctrl+S</span></button>
+        </div>
+      </div>
+
+      <div class="panel-area">
+        <!-- Left sidebar -->
+        <div class="left-panel">
+          <div class="panel-tabs">
+            <div class="panel-tab active">&#x1F4D6; Chapters</div>
+            <div class="panel-tab">&#x1F4C4; Original</div>
+            <div class="panel-tab" style="opacity:0.35;">&#x1F4DA; Glossary</div>
+          </div>
+          <div class="panel-content">
+            <div class="chapter-item"><span class="chapter-num">1</span><span class="chapter-title">The Summoning Circle</span></div>
+            <div class="chapter-item"><span class="chapter-num">2</span><span class="chapter-title">First Light of Dawn</span></div>
+            <div class="chapter-item current"><span class="chapter-num">3</span><span class="chapter-title">The Betrayal</span></div>
+            <div class="chapter-item"><span class="chapter-num">4</span><span class="chapter-title">Into the Abyss</span></div>
+            <div class="chapter-item"><span class="chapter-num">5</span><span class="chapter-title">The Merchant's Gamble</span></div>
+          </div>
+        </div>
+
+        <!-- ══════════════════════════════════════════════════════════════ -->
+        <!-- VISUAL EDITOR                                                 -->
+        <!-- ══════════════════════════════════════════════════════════════ -->
+        <div class="tab-section active" id="tab-visual">
+          <div class="editor-center">
+            <div class="editor-meta">
+              <input class="editor-title" value="The Betrayal" placeholder="Chapter title" />
+              <div class="editor-stats">
+                1,247 words &middot; 9 blocks &middot; unsaved changes &middot;
+                <span class="grammar-count">5 grammar issues</span>
+              </div>
+            </div>
+
+            <!-- Format bar -->
+            <div class="format-bar">
+              <select class="block-type-select">
+                <option>Paragraph</option>
+                <option>Heading</option>
+                <option>Code Block</option>
+                <option>Callout</option>
+                <option>Divider</option>
+              </select>
+              <div class="format-divider"></div>
+              <button class="format-btn" title="Bold"><b>B</b></button>
+              <button class="format-btn" title="Italic"><i>I</i></button>
+              <button class="format-btn" title="Strikethrough"><s>S</s></button>
+              <button class="format-btn" title="Inline code" style="font-family:'JetBrains Mono',monospace;font-size:10px;">&lt;/&gt;</button>
+              <div class="format-divider"></div>
+              <button class="format-btn" title="Insert image">&#x1F5BC;</button>
+              <button class="format-btn" title="Insert video">&#x1F3AC;</button>
+              <button class="format-btn" title="Insert code block">&#x1F4BB;</button>
+              <button class="format-btn" title="Insert divider">&mdash;</button>
+              <button class="format-btn" title="Insert callout">&#x1F4E2;</button>
+              <div class="format-divider"></div>
+              <button class="format-btn" title="Translate block">&#x1F310;</button>
+              <button class="format-btn" title="Send to AI">&#x1F916;</button>
+            </div>
+
+            <!-- Content blocks -->
+            <div class="editor-content">
+              <div class="editor-blocks">
+
+                <!-- Block 1: Heading -->
+                <div class="block-insert"><div class="insert-line"></div><div class="insert-pill">+ add block</div></div>
+                <div class="block">
+                  <div class="block-handle">&#x2630;</div>
+                  <div class="block-heading" contenteditable="true">Part One &mdash; The Throne Room</div>
+                  <div class="block-actions">
+                    <button class="block-action">&#x22EF;</button>
+                    <button class="block-action danger">&#x2715;</button>
+                  </div>
+                </div>
+
+                <!-- Block 2: Text with grammar issues -->
+                <div class="block-insert"><div class="insert-line"></div><div class="insert-pill">+ add block</div></div>
+                <div class="block">
+                  <div class="block-handle">&#x2630;</div>
+                  <div class="block-text" contenteditable="true">
+                    The throne room was silent save for the crackle of dying embers. Shadows pooled in the corners where torchlight could not reach, and the air tasted of iron and <span class="grammar-issue">betrayl<div class="grammar-tooltip"><div class="gt-message">Possible spelling mistake found.</div><div class="gt-suggestions"><span class="gt-suggestion">betrayal</span><span class="gt-suggestion">betray</span></div><div class="gt-rule">MORFOLOGIK_RULE_EN_US</div></div></span>. King Aldren sat motionless on his obsidian throne, his fingers <span class="grammar-issue">gripping tightly<div class="grammar-tooltip"><div class="gt-message">"gripping" already implies force. Consider removing the adverb.</div><div class="gt-suggestions"><span class="gt-suggestion">gripping</span></div><div class="gt-rule">REDUNDANT_ADVERB</div></div></span> to the armrests as he watched the doors at the far end of the hall.
+                  </div>
+                  <div class="block-audio">
+                    <div class="audio-header">
+                      <i data-lucide="audio-lines" style="width:12px;height:12px;color:var(--primary);"></i>
+                      <span class="audio-label">Narration</span>
+                      <span style="opacity:0.5;">&middot;</span>
+                      <span>AI TTS &middot; en-US &middot; alloy</span>
+                    </div>
+                    <div class="audio-player">
+                      <div class="audio-play-btn"><i data-lucide="play" style="width:12px;height:12px;"></i></div>
+                      <div class="audio-waveform"><div class="waveform-bars"><div class="wbar played" style="height:7px;"></div><div class="wbar played" style="height:4px;"></div><div class="wbar played" style="height:12px;"></div><div class="wbar played" style="height:11px;"></div><div class="wbar played" style="height:11px;"></div><div class="wbar played" style="height:8px;"></div><div class="wbar played" style="height:7px;"></div><div class="wbar played" style="height:6px;"></div><div class="wbar played" style="height:17px;"></div><div class="wbar played" style="height:5px;"></div><div class="wbar played" style="height:4px;"></div><div class="wbar played" style="height:6px;"></div><div class="wbar played" style="height:10px;"></div><div class="wbar played" style="height:11px;"></div><div class="wbar played" style="height:20px;"></div><div class="wbar played" style="height:4px;"></div><div class="wbar played" style="height:10px;"></div><div class="wbar played" style="height:17px;"></div><div class="wbar played" style="height:11px;"></div><div class="wbar played" style="height:18px;"></div><div class="wbar played" style="height:12px;"></div><div class="wbar played" style="height:4px;"></div><div class="wbar played" style="height:9px;"></div><div class="wbar played" style="height:17px;"></div><div class="wbar played" style="height:14px;"></div><div class="wbar" style="height:12px;"></div><div class="wbar" style="height:8px;"></div><div class="wbar" style="height:10px;"></div><div class="wbar" style="height:14px;"></div><div class="wbar" style="height:7px;"></div><div class="wbar" style="height:6px;"></div><div class="wbar" style="height:16px;"></div><div class="wbar" style="height:7px;"></div><div class="wbar" style="height:15px;"></div><div class="wbar" style="height:15px;"></div><div class="wbar" style="height:12px;"></div><div class="wbar" style="height:5px;"></div><div class="wbar" style="height:18px;"></div><div class="wbar" style="height:7px;"></div><div class="wbar" style="height:16px;"></div><div class="wbar" style="height:6px;"></div><div class="wbar" style="height:13px;"></div><div class="wbar" style="height:15px;"></div><div class="wbar" style="height:10px;"></div><div class="wbar" style="height:6px;"></div><div class="wbar" style="height:5px;"></div><div class="wbar" style="height:11px;"></div><div class="wbar" style="height:13px;"></div><div class="wbar" style="height:6px;"></div><div class="wbar" style="height:11px;"></div><div class="wbar" style="height:7px;"></div><div class="wbar" style="height:16px;"></div><div class="wbar" style="height:12px;"></div><div class="wbar" style="height:18px;"></div><div class="wbar" style="height:15px;"></div><div class="wbar" style="height:9px;"></div><div class="wbar" style="height:15px;"></div><div class="wbar" style="height:15px;"></div><div class="wbar" style="height:10px;"></div><div class="wbar" style="height:12px;"></div></div></div>
+                      <span class="audio-time">0:24</span>
+                      <select class="audio-speed"><option>1x</option><option>1.25x</option><option selected>1.5x</option><option>2x</option></select>
+                    </div>
+                    <div class="audio-meta">
+                      <div class="audio-tags">
+                        <span class="audio-tag ai">AI TTS</span>
+                        <span class="audio-tag">48 kHz</span>
+                        <span class="audio-tag">142 KB</span>
+                      </div>
+                      <div style="display:flex;gap:4px;">
+                        <button class="prompt-btn prompt-btn-ghost" style="font-size:9px;"><i data-lucide="refresh-cw" style="width:9px;height:9px;"></i> Regenerate</button>
+                        <button class="prompt-btn prompt-btn-ghost" style="font-size:9px;"><i data-lucide="download" style="width:9px;height:9px;"></i></button>
+                        <button class="prompt-btn prompt-btn-ghost" style="font-size:9px;color:var(--destructive);"><i data-lucide="trash-2" style="width:9px;height:9px;"></i></button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="block-actions">
+                    <button class="block-action">&#x22EF;</button>
+                    <button class="block-action danger">&#x2715;</button>
+                  </div>
+                </div>
+
+                <!-- Block 3: Image -->
+                <div class="block-insert"><div class="insert-line"></div><div class="insert-pill">+ add block</div></div>
+                <div class="block">
+                  <div class="block-handle">&#x2630;</div>
+                  <div class="block-image">
+                    <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='720' height='280'%3E%3Crect fill='%23141010' width='720' height='280'/%3E%3Ctext fill='%23332d28' font-family='Inter' font-size='14' x='50%25' y='40%25' text-anchor='middle'%3EThrone room illustration%3C/text%3E%3Ctext fill='%23e8a832' font-size='48' x='50%25' y='55%25' text-anchor='middle'%3E%F0%9F%8F%B0%3C/text%3E%3Ctext fill='%23332d28' font-family='Inter' font-size='11' x='50%25' y='72%25' text-anchor='middle'%3E720 x 280 - throne-room-concept.png%3C/text%3E%3C/svg%3E" alt="Throne room" />
+                    <div class="image-caption">
+                      &#x1F5BC; <input value="The obsidian throne &mdash; concept art by the author" placeholder="Add a caption..." />
+                      <span class="image-meta">1.2 MB &middot; PNG</span>
+                    </div>
+                    <div class="media-prompt">
+                      <details open>
+                        <summary><i data-lucide="sparkles" style="width:11px;height:11px;"></i> AI Prompt <span class="prompt-badge">saved</span></summary>
+                        <div class="prompt-body">
+                          <textarea>A dark obsidian throne room lit by dying torchlight. 24 torches line the walls, 12 per side. The ceiling is 18m high with vaulted arches. Black marble floor reflects amber firelight. An imposing throne carved from obsidian at the far end. Mood: ominous, regal. Style: dark fantasy concept art, cinematic lighting.</textarea>
+                          <div class="prompt-hint">Stored with media for AI context and re-generation.</div>
+                          <div class="prompt-actions">
+                            <button class="prompt-btn prompt-btn-generate"><i data-lucide="wand-2" style="width:11px;height:11px;"></i> Re-generate</button>
+                            <button class="prompt-btn prompt-btn-ghost"><i data-lucide="copy" style="width:10px;height:10px;"></i> Copy prompt</button>
+                          </div>
+                        </div>
+                      </details>
+                    </div>
+                  </div>
+                  <div class="block-actions">
+                    <button class="block-action">&#x22EF;</button>
+                    <button class="block-action danger">&#x2715;</button>
+                  </div>
+                </div>
+
+                <!-- Block 4: Text -->
+                <div class="block-insert"><div class="insert-line"></div><div class="insert-pill">+ add block</div></div>
+                <div class="block">
+                  <div class="block-handle">&#x2630;</div>
+                  <div class="block-text" contenteditable="true">"You may enter," the king said, his voice carrying no warmth. The words echoed against the vaulted ceiling, each syllable a stone dropped into still water. He did not rise. He did not need to. Power, in this room, was measured not by motion but by stillness.</div>
+                  <div class="block-audio">
+                    <div class="audio-empty">
+                      <i data-lucide="audio-lines" style="width:14px;height:14px;opacity:0.3;"></i>
+                      <div class="audio-empty-text">No narration</div>
+                      <div style="display:flex;gap:4px;">
+                        <button class="prompt-btn prompt-btn-generate" style="font-size:9px;padding:2px 6px;"><i data-lucide="sparkles" style="width:10px;height:10px;"></i> Generate TTS</button>
+                        <button class="prompt-btn prompt-btn-ghost" style="font-size:9px;padding:2px 6px;"><i data-lucide="upload" style="width:10px;height:10px;"></i> Upload</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="block-actions">
+                    <button class="block-action">&#x22EF;</button>
+                    <button class="block-action danger">&#x2715;</button>
+                  </div>
+                </div>
+
+                <!-- Block 5: Video -->
+                <div class="block-insert"><div class="insert-line"></div><div class="insert-pill">+ add block</div></div>
+                <div class="block">
+                  <div class="block-handle">&#x2630;</div>
+                  <div class="block-video">
+                    <div class="video-placeholder">
+                      <div class="video-play">&#x25B6;</div>
+                      <span style="font-size:12px;">battle-scene-draft.mp4</span>
+                      <span style="font-size:10px;opacity:0.5;">2:34 &middot; 18.5 MB</span>
+                    </div>
+                    <div class="video-caption">&#x1F3AC; Battle choreography reference &mdash; motion capture draft</div>
+                    <div class="media-prompt">
+                      <details>
+                        <summary><i data-lucide="sparkles" style="width:11px;height:11px;"></i> AI Prompt <span class="prompt-badge" style="opacity:0.4;">empty</span></summary>
+                        <div class="prompt-body">
+                          <textarea placeholder="Describe this video for AI context..."></textarea>
+                          <div class="prompt-hint">Stored with media. Can generate video in the future.</div>
+                          <div class="prompt-actions">
+                            <button class="prompt-btn prompt-btn-generate" style="opacity:0.4;cursor:not-allowed;"><i data-lucide="wand-2" style="width:11px;height:11px;"></i> Generate (coming soon)</button>
+                            <button class="prompt-btn prompt-btn-ghost"><i data-lucide="brain" style="width:10px;height:10px;"></i> Auto-describe</button>
+                          </div>
+                        </div>
+                      </details>
+                    </div>
+                  </div>
+                  <div class="block-actions">
+                    <button class="block-action">&#x22EF;</button>
+                    <button class="block-action danger">&#x2715;</button>
+                  </div>
+                </div>
+
+                <!-- Block 6: Text with grammar -->
+                <div class="block-insert"><div class="insert-line"></div><div class="insert-pill">+ add block</div></div>
+                <div class="block">
+                  <div class="block-handle">&#x2630;</div>
+                  <div class="block-text" contenteditable="true">The doors groaned open and General Kira strode in, her armor still dusted with the ash of the northern campaign. She carried no weapon &mdash; a breach of protocol that <span class="grammar-issue">spoke volumes<div class="grammar-tooltip"><div class="gt-message">Consider a more specific expression instead of this cliche.</div><div class="gt-suggestions"><span class="gt-suggestion">revealed much</span><span class="gt-suggestion">was telling</span></div><div class="gt-rule">CLICHE_DETECTOR</div></div></span>. Behind her, two soldiers dragged a bound figure whose face was hidden beneath a torn hood.</div>
+                  <div class="block-audio">
+                    <div class="audio-header">
+                      <i data-lucide="mic" style="width:12px;height:12px;color:var(--accent);"></i>
+                      <span class="audio-label">Narration</span>
+                      <span style="opacity:0.5;">&middot;</span>
+                      <span>Manual recording &middot; voice actor</span>
+                    </div>
+                    <div class="audio-player">
+                      <div class="audio-play-btn"><i data-lucide="play" style="width:12px;height:12px;"></i></div>
+                      <div class="audio-waveform"><div class="waveform-bars"><div class="wbar played" style="height:16px;"></div><div class="wbar played" style="height:16px;"></div><div class="wbar played" style="height:10px;"></div><div class="wbar played" style="height:9px;"></div><div class="wbar played" style="height:11px;"></div><div class="wbar played" style="height:11px;"></div><div class="wbar played" style="height:8px;"></div><div class="wbar played" style="height:6px;"></div><div class="wbar played" style="height:12px;"></div><div class="wbar played" style="height:16px;"></div><div class="wbar played" style="height:20px;"></div><div class="wbar played" style="height:6px;"></div><div class="wbar played" style="height:19px;"></div><div class="wbar played" style="height:10px;"></div><div class="wbar played" style="height:17px;"></div><div class="wbar played" style="height:10px;"></div><div class="wbar played" style="height:15px;"></div><div class="wbar played" style="height:16px;"></div><div class="wbar played" style="height:10px;"></div><div class="wbar played" style="height:8px;"></div><div class="wbar" style="height:18px;"></div><div class="wbar" style="height:9px;"></div><div class="wbar" style="height:14px;"></div><div class="wbar" style="height:6px;"></div><div class="wbar" style="height:20px;"></div><div class="wbar" style="height:6px;"></div><div class="wbar" style="height:19px;"></div><div class="wbar" style="height:14px;"></div><div class="wbar" style="height:16px;"></div><div class="wbar" style="height:5px;"></div><div class="wbar" style="height:12px;"></div><div class="wbar" style="height:4px;"></div><div class="wbar" style="height:17px;"></div><div class="wbar" style="height:10px;"></div><div class="wbar" style="height:15px;"></div><div class="wbar" style="height:6px;"></div><div class="wbar" style="height:18px;"></div><div class="wbar" style="height:20px;"></div><div class="wbar" style="height:10px;"></div><div class="wbar" style="height:18px;"></div><div class="wbar" style="height:5px;"></div><div class="wbar" style="height:15px;"></div><div class="wbar" style="height:8px;"></div><div class="wbar" style="height:10px;"></div><div class="wbar" style="height:9px;"></div><div class="wbar" style="height:18px;"></div><div class="wbar" style="height:9px;"></div><div class="wbar" style="height:20px;"></div><div class="wbar" style="height:9px;"></div><div class="wbar" style="height:5px;"></div><div class="wbar" style="height:7px;"></div><div class="wbar" style="height:4px;"></div><div class="wbar" style="height:9px;"></div><div class="wbar" style="height:19px;"></div><div class="wbar" style="height:17px;"></div><div class="wbar" style="height:6px;"></div><div class="wbar" style="height:17px;"></div><div class="wbar" style="height:6px;"></div><div class="wbar" style="height:8px;"></div><div class="wbar" style="height:13px;"></div></div></div>
+                      <span class="audio-time">0:38</span>
+                      <select class="audio-speed"><option>1x</option><option selected>1.25x</option><option>1.5x</option><option>2x</option></select>
+                    </div>
+                    <div class="audio-meta">
+                      <div class="audio-tags">
+                        <span class="audio-tag">Manual</span>
+                        <span class="audio-tag">44.1 kHz</span>
+                        <span class="audio-tag">286 KB</span>
+                      </div>
+                      <div style="display:flex;gap:4px;">
+                        <button class="prompt-btn prompt-btn-ghost" style="font-size:9px;"><i data-lucide="replace" style="width:9px;height:9px;"></i> Replace</button>
+                        <button class="prompt-btn prompt-btn-ghost" style="font-size:9px;"><i data-lucide="download" style="width:9px;height:9px;"></i></button>
+                        <button class="prompt-btn prompt-btn-ghost" style="font-size:9px;color:var(--destructive);"><i data-lucide="trash-2" style="width:9px;height:9px;"></i></button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="block-actions">
+                    <button class="block-action">&#x22EF;</button>
+                    <button class="block-action danger">&#x2715;</button>
+                  </div>
+                </div>
+
+                <!-- Block 7: Callout -->
+                <div class="block-insert"><div class="insert-line"></div><div class="insert-pill">+ add block</div></div>
+                <div class="block">
+                  <div class="block-handle">&#x2630;</div>
+                  <div class="block-callout">
+                    <span style="font-size:16px;flex-shrink:0;">&#x1F4DD;</span>
+                    <div class="callout-text" contenteditable="true"><strong>Author's note:</strong> This scene needs a stronger transition from the hallway. Consider adding 2-3 sentences describing the sound of Kira's footsteps echoing before the doors open.</div>
+                  </div>
+                  <div class="block-actions">
+                    <button class="block-action">&#x22EF;</button>
+                    <button class="block-action danger">&#x2715;</button>
+                  </div>
+                </div>
+
+                <!-- Block 8: Code -->
+                <div class="block-insert"><div class="insert-line"></div><div class="insert-pill">+ add block</div></div>
+                <div class="block">
+                  <div class="block-handle">&#x2630;</div>
+                  <div class="block-code">
+                    <div class="code-header">
+                      <div><select style="background:var(--input);border:1px solid var(--border);border-radius:3px;color:var(--foreground);font-size:10px;font-family:'JetBrains Mono',monospace;padding:1px 4px;outline:none;"><option>python</option><option>javascript</option><option>typescript</option></select></div>
+                      <button class="block-action">&#x1F4CB;</button>
+                    </div>
+                    <pre contenteditable="true"><span class="tc"># World-building: throne room dimensions</span>
+<span class="tk">class</span> <span class="tf">ThroneRoom</span>:
+    length_meters = <span class="tn">45</span>
+    width_meters = <span class="tn">22</span>
+    ceiling_height = <span class="tn">18</span>
+    material = <span class="ts">"obsidian and black marble"</span></pre>
+                  </div>
+                  <div class="block-actions">
+                    <button class="block-action">&#x22EF;</button>
+                    <button class="block-action danger">&#x2715;</button>
+                  </div>
+                </div>
+
+                <!-- Block 9: Divider -->
+                <div class="block-insert"><div class="insert-line"></div><div class="insert-pill">+ add block</div></div>
+                <div class="block">
+                  <div class="block-handle">&#x2630;</div>
+                  <div class="block-divider"><div class="divider-line"></div><span style="font-size:10px;opacity:0.4;">&#x2726;</span><div class="divider-line"></div></div>
+                </div>
+
+                <!-- Empty image upload zone -->
+                <div class="block-insert"><div class="insert-line"></div><div class="insert-pill">+ add block</div></div>
+                <div class="block">
+                  <div class="block-handle">&#x2630;</div>
+                  <div class="image-upload-zone">
+                    <div style="font-size:28px;margin-bottom:8px;">&#x1F5BC;</div>
+                    <div style="font-size:12px;">Drop an image here, or click to upload</div>
+                    <div style="font-size:10px;margin-top:4px;opacity:0.6;">PNG, JPG, GIF, WebP &middot; Max 10 MB &middot; Ctrl+V to paste</div>
+                    <div style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px dashed rgba(51,45,40,0.6);"><span style="font-size:10px;color:var(--muted-fg);">or</span><button class="prompt-btn prompt-btn-generate" style="font-size:11px;padding:5px 12px;"><i data-lucide="sparkles" style="width:12px;height:12px;"></i> Generate with AI</button></div>
+                  </div>
+                </div>
+
+                <div class="block-insert"><div class="insert-line"></div><div class="insert-pill">+ add block</div></div>
+
+                <!-- Add block menu demo -->
+                <div style="margin-top:24px;margin-bottom:40px;">
+                  <div style="font-size:10px;color:var(--muted-fg);margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Block insert menu (click &ldquo;+&rdquo; or type /)</div>
+                  <div class="add-block-menu">
+                    <div class="menu-title">Content</div>
+                    <button class="add-block-item"><span class="abi-icon">&#x00B6;</span><div><div class="abi-label">Paragraph</div><div class="abi-hint">Plain text block</div></div></button>
+                    <button class="add-block-item"><span class="abi-icon"><i data-lucide="heading" style="width:14px;height:14px;"></i></span><div><div class="abi-label">Heading</div><div class="abi-hint">Scene or section heading</div></div></button>
+                    <button class="add-block-item"><span class="abi-icon">&#x1F5BC;</span><div><div class="abi-label">Image</div><div class="abi-hint">Upload, paste, or generate with AI</div></div></button>
+                    <button class="add-block-item"><span class="abi-icon">&#x1F3AC;</span><div><div class="abi-label">Video</div><div class="abi-hint">Upload, or describe for AI generation</div></div></button>
+                    <button class="add-block-item"><span class="abi-icon">&#x1F4BB;</span><div><div class="abi-label">Code Block</div><div class="abi-hint">Syntax highlighted code</div></div></button>
+                    <div class="menu-title" style="margin-top:4px;">Layout</div>
+                    <button class="add-block-item"><span class="abi-icon"><i data-lucide="minus" style="width:14px;height:14px;"></i></span><div><div class="abi-label">Divider</div><div class="abi-hint">Scene break separator</div></div></button>
+                    <button class="add-block-item"><span class="abi-icon">&#x1F4E2;</span><div><div class="abi-label">Callout</div><div class="abi-hint">Author note or highlight</div></div></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right panel: Grammar issues -->
+          <div class="right-panel">
+            <div class="panel-tabs">
+              <div class="panel-tab active">&#x1F50D; Grammar <span class="grammar-badge" style="margin-left:4px;">5</span></div>
+              <div class="panel-tab">&#x1F552; History</div>
+              <div class="panel-tab" style="opacity:0.35;">&#x1F916; AI</div>
+            </div>
+            <div class="grammar-panel">
+              <div class="grammar-panel-header">Issues found <span class="grammar-badge">5</span></div>
+              <div class="grammar-issue-card">
+                <div class="issue-text">&hellip;of iron and <mark>betrayl</mark>. King&hellip;</div>
+                <div class="issue-message">Possible spelling mistake found.</div>
+                <div class="issue-suggestions"><span class="issue-fix">betrayal</span><span class="issue-fix">betray</span></div>
+                <div class="issue-rule">MORFOLOGIK_RULE_EN_US &middot; Block 2</div>
+              </div>
+              <div class="grammar-issue-card">
+                <div class="issue-text">&hellip;fingers <mark>gripping tightly</mark> to&hellip;</div>
+                <div class="issue-message">"gripping" already implies force.</div>
+                <div class="issue-suggestions"><span class="issue-fix">gripping</span></div>
+                <div class="issue-rule">REDUNDANT_ADVERB &middot; Block 2</div>
+              </div>
+              <div class="grammar-issue-card">
+                <div class="issue-text">&hellip;that <mark>spoke volumes</mark>. Behind&hellip;</div>
+                <div class="issue-message">Consider a more specific expression.</div>
+                <div class="issue-suggestions"><span class="issue-fix">revealed much</span><span class="issue-fix">was telling</span></div>
+                <div class="issue-rule">CLICHE_DETECTOR &middot; Block 6</div>
+              </div>
+              <div class="grammar-issue-card">
+                <div class="issue-text">&hellip;face <mark>was hidden</mark> beneath&hellip;</div>
+                <div class="issue-message">Consider using active voice.</div>
+                <div class="issue-suggestions"><span class="issue-fix">remained hidden</span><span class="issue-fix">hid</span></div>
+                <div class="issue-rule">PASSIVE_VOICE &middot; Block 6</div>
+              </div>
+              <div class="grammar-issue-card">
+                <div class="issue-text">&hellip;the <mark>sound of</mark> Kira's&hellip;</div>
+                <div class="issue-message">Wordy. Consider concise phrasing.</div>
+                <div class="issue-suggestions"><span class="issue-fix">(remove)</span></div>
+                <div class="issue-rule">WORDINESS &middot; Block 7</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ══════════════════════════════════════════════════════════════ -->
+        <!-- SOURCE VIEW (Block JSON)                                      -->
+        <!-- ══════════════════════════════════════════════════════════════ -->
+        <div class="tab-section" id="tab-source" style="background:var(--background);">
+          <div style="padding:10px 24px 4px;font-size:10px;color:var(--muted-fg);display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);background:var(--card);">
+            <span>&#x1F4CB; Block JSON &mdash; read-only view of chapter structure</span>
+            <span style="display:flex;gap:6px;">
+              <button class="btn-ghost" style="font-size:10px;">Copy JSON</button>
+            </span>
+          </div>
+          <pre style="flex:1;overflow:auto;padding:16px 24px;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.7;color:#c8c0b4;margin:0;">[
+  {
+    <span class="jk">"type"</span>: <span class="js">"heading"</span>,
+    <span class="jk">"level"</span>: <span class="jn">2</span>,
+    <span class="jk">"content"</span>: <span class="js">"Part One - The Throne Room"</span>
+  },
+  {
+    <span class="jk">"type"</span>: <span class="js">"paragraph"</span>,
+    <span class="jk">"content"</span>: <span class="js">"The throne room was silent..."</span>
+  },
+  {
+    <span class="jk">"type"</span>: <span class="js">"image"</span>,
+    <span class="jk">"src"</span>: <span class="js">"minio://chapters/ch3/throne-room-concept.png"</span>,
+    <span class="jk">"caption"</span>: <span class="js">"The obsidian throne - concept art"</span>,
+    <span class="jk">"alt"</span>: <span class="js">"Throne room illustration"</span>,
+    <span class="jk">"width"</span>: <span class="jn">1440</span>,
+    <span class="jk">"height"</span>: <span class="jn">600</span>,
+    <span class="jk">"size_bytes"</span>: <span class="jn">1258291</span>,
+    <span class="jk">"ai_prompt"</span>: <span class="js">"A dark obsidian throne room lit by dying torchlight..."</span>
+  },
+  {
+    <span class="jk">"type"</span>: <span class="js">"paragraph"</span>,
+    <span class="jk">"content"</span>: <span class="js">"\"You may enter,\" the king said..."</span>
+  },
+  {
+    <span class="jk">"type"</span>: <span class="js">"video"</span>,
+    <span class="jk">"src"</span>: <span class="js">"minio://chapters/ch3/battle-scene-draft.mp4"</span>,
+    <span class="jk">"caption"</span>: <span class="js">"Battle choreography reference"</span>,
+    <span class="jk">"duration_seconds"</span>: <span class="jn">154</span>,
+    <span class="jk">"size_bytes"</span>: <span class="jn">19398656</span>,
+    <span class="jk">"ai_prompt"</span>: <span class="jw">null</span>
+  },
+  {
+    <span class="jk">"type"</span>: <span class="js">"paragraph"</span>,
+    <span class="jk">"content"</span>: <span class="js">"The doors groaned open..."</span>
+  },
+  {
+    <span class="jk">"type"</span>: <span class="js">"callout"</span>,
+    <span class="jk">"icon"</span>: <span class="js">"memo"</span>,
+    <span class="jk">"content"</span>: <span class="js">"**Author's note:** This scene needs..."</span>
+  },
+  {
+    <span class="jk">"type"</span>: <span class="js">"code"</span>,
+    <span class="jk">"language"</span>: <span class="js">"python"</span>,
+    <span class="jk">"content"</span>: <span class="js">"class ThroneRoom:\n    length = 45..."</span>
+  },
+  {
+    <span class="jk">"type"</span>: <span class="js">"divider"</span>
+  }
+]</pre>
+        </div>
+      </div>
+
+      <!-- Bottom bar -->
+      <div class="bottom-bar">
+        <span>Block 2 of 9 &middot; Paragraph &middot; Line 3, Col 42</span>
+        <span>English (US) &middot; LanguageTool 6.7 &middot; 2/4 paragraphs narrated</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-section').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.toggle-item').forEach(el => el.classList.remove('active'));
+      document.getElementById('tab-' + tab).classList.add('active');
+      event.target.classList.add('active');
+      setTimeout(() => lucide.createIcons(), 0);
+    }
+    lucide.createIcons();
+</script>
+</body>
+</html>

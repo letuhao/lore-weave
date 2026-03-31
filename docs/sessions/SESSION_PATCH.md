@@ -7,8 +7,8 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-03-31 (session 10 end)
-- Updated By: Assistant (Chapter editor guard + universal dialog + toast system)
+- Last Updated: 2026-03-31 (session 11 end)
+- Updated By: Assistant (LanguageTool + mixed-media editor design + phase planning)
 - Active Branch: `main`
 - HEAD: see latest commit — unsaved-changes guard + toast system
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
@@ -115,6 +115,33 @@
 | Frontend: translating overlay + loading state per-chunk | `ChunkItem.tsx`, `ChunkEditor.tsx` | `b7dcc4c` |
 | Frontend: wire `onTranslateChunk` in ChapterEditorPageV2 | `pages/v2-drafts/ChapterEditorPageV2.tsx` | `b7dcc4c` |
 
+**What was done in this session (2026-03-31, session 11):**
+
+LanguageTool grammar check integration, mixed-media editor design (4 HTML drafts), and phase planning (29 new tasks).
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| LanguageTool Docker container + proxy | `infra/docker-compose.yml`, `vite.config.ts`, `nginx.conf` | this session |
+| Grammar API client + decoration utilities | `src/features/grammar/api.ts` (new) | this session |
+| Grammar check hooks (chunk + source mode) | `src/hooks/useGrammarCheck.ts` (new) | this session |
+| ChunkItem grammar decorations (wavy underlines) | `src/components/editor/ChunkItem.tsx` | this session |
+| Grammar toggle + wiring in editor page | `src/pages/ChapterEditorPage.tsx`, `src/index.css` | this session |
+| Design: AI Assistant mode editor | `design-drafts/screen-editor-mixed-media.html` (new) | this session |
+| Design: Classic mode editor | `design-drafts/screen-editor-classic.html` (new) | this session |
+| Design: Mode spec + guards + version model | `design-drafts/screen-editor-modes.html` (new) | this session |
+| Design: Media version history UI | `design-drafts/screen-editor-version-history.html` (new) | this session |
+| Phase 2.5/3.5/4.5 planning (29 new tasks) | `docs/03_planning/99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | this session |
+
+**Design decisions recorded:**
+- Tiptap (ProseMirror) chosen as editor engine -- replaces textarea + contentEditable chunks
+- Two editor modes: Classic (pure writing, media locked) / AI Assistant (full features)
+- Block types: paragraph, heading, divider, callout, image, video, code
+- AI prompt stored on every media block (re-generation + AI context + audit trail)
+- Audio/TTS per paragraph -- AI generate or manual upload, hidden by default
+- Media version tracking with prompt snapshots + versioned MinIO paths
+- Classic mode guards protect media blocks from accidental deletion
+- Phase 2.5 (Tiptap migration) must complete before Phase 3
+
 **What was done in this session (2026-03-31, session 10):**
 
 Chapter editor unsaved-changes guard, universal dialog system, and toast infrastructure.
@@ -202,10 +229,13 @@ Visual drafts: `design-drafts/components-v2-warm.html` (approved)
 
 | Phase | Scope | Status |
 | ----- | ----- | ------ |
-| Phase 1 | Scaffold, layout shell, sidebar, routing, auth pages, copy API layer | **Up next** |
-| Phase 2 | Core screens: Books list, Book Detail (tabs), Chapter Editor | Planned |
-| Phase 3 | Feature screens: Translation, Glossary, Chat, Sharing | Planned |
-| Phase 4 | Secondary: Settings, Usage, Browse + polish (dark/light, shortcuts) | Planned |
+| Phase 1 | Scaffold, layout shell, sidebar, routing, auth pages, copy API layer | **Done** |
+| Phase 2 | Core screens: Books list, Book Detail (tabs), Chapter Editor | **Done** |
+| **Phase 2.5** | **Editor Engine: Tiptap migration, block JSON, grammar, mode toggle** | **Up next** |
+| Phase 3 | Feature screens: Translation, Glossary, Chat, Sharing | After 2.5 gate |
+| **Phase 3.5** | **Media Blocks: image/video/code, AI prompt, version tracking** | After Phase 3 FE |
+| Phase 4 | Secondary: Settings, Usage, Browse + polish | Planned |
+| **Phase 4.5** | **Audio/TTS: per-paragraph narration, bulk generate, audiobook export** | After Phase 4 |
 
 ### Chat Service (paused — frontend rebuild takes priority)
 
@@ -253,6 +283,7 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Date       | What happened | Key commits |
 | ---------- | ------------- | ----------- |
+| 2026-03-31 | LanguageTool integration, mixed-media editor design (4 drafts), Phase 2.5/3.5/4.5 planning | this session |
 | 2026-03-31 | Unsaved-changes guard (EditorDirtyContext, UnsavedChangesDialog), universal ConfirmDialog, toast system (sonner) | this session |
 | 2026-03-30 | Frontend V2 planning: GUI audit, design drafts (warm literary theme), rebuild plan, CI cleanup | `6f14c26` (PR #2) |
 | 2026-03-30 | Code review hardening: transaction fix, safe format_map, response validation, stale closure fix, bulk error UX | `b7dcc4c` |

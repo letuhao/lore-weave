@@ -325,6 +325,17 @@ services:
   #   ports:
   #     - "5296:80"
 
+
+  languagetool:
+    image: erikvl87/languagetool:latest
+    environment:
+      Java_Xms: 256m
+      Java_Xmx: 512m
+    ports:
+      - "8875:8010"
+    volumes:
+      - loreweave_languagetool:/LanguageTool/languagetool-data
+
   # Frontend V2 — run with: docker compose --profile v2 up frontend-v2
   frontend:
     build:
@@ -343,3 +354,4 @@ volumes:
   loreweave_pg:
   loreweave_minio:
   loreweave_rabbitmq:
+  loreweave_languagetool:

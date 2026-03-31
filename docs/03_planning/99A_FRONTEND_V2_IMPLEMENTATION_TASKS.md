@@ -676,7 +676,7 @@ P5-01: Translation Memory [BE + FE]
 P5-02: Collaborative Translation [BE + FE]
 P5-03: Bookmarks + Highlights [BE + FE]
 P5-04: Dictionary Lookup [FE]
-P5-05: Text-to-Speech [FE]
+P5-05: Text-to-Speech [FE]  <-- SUPERSEDED by Phase 4.5 (E6/E7)
 P5-06: Character Relationship Graph [FE]
 P5-07: AI Consistency Checker [BE + FE]
 P5-08: Monetization Hooks [BE + FE]
@@ -755,3 +755,101 @@ P3-17a (wiki backend) blocks all wiki features
 8. P4-13a  Export
 9. P4-14   Email notifications
 ```
+
+
+---
+
+## Phase 2.5: Editor Engine -- Tiptap Migration (before Phase 3)
+
+> **Why before Phase 3:** Translation split-view (P2-06), Glossary in editor (P3-05),
+> and Chat context (P3-19) all interact with the editor. Building on Tiptap avoids double work.
+>
+> **Design drafts:**
+> - `design-drafts/screen-editor-mixed-media.html` -- AI Assistant mode (full features)
+> - `design-drafts/screen-editor-classic.html` -- Classic mode (pure writing)
+> - `design-drafts/screen-editor-modes.html` -- Mode spec, guards, version data model
+> - `design-drafts/screen-editor-version-history.html` -- Media version tracking UI
+
+### E1: Tiptap Foundation + Text Blocks
+
+| Task | Type | Scope | Deps | Est |
+|---|---|---|---|---|
+| E1-01 | FE | Install Tiptap + extensions (StarterKit, Placeholder, CodeBlockLowlight, Typography) | None | S |
+| E1-02 | FE | Replace textarea source mode with Tiptap editor (paragraph, heading, divider) | E1-01 | M |
+| E1-03 | FE | Replace ChunkItem/ChunkInsertRow with Tiptap block nodes + slash menu (/) | E1-02 | M |
+| E1-04 | FE | Callout custom node (author notes) | E1-02 | S |
+| E1-05 | FE | Grammar check as Tiptap DecorationPlugin (LanguageTool wavy underlines) | E1-02 | M |
+| E1-06 | FE | Mode toggle: Classic / AI Assistant (localStorage, toolbar) | E1-02 | S |
+| E1-07 | FE | Classic mode: minimal toolbar, text-only slash menu | E1-06 | S |
+| E1-08 | FE | Wire existing features: auto-save, Ctrl+S, dirty tracking, unsaved guard, revisions | E1-03 | M |
+
+### E2: Block JSON Storage
+
+| Task | Type | Scope | Deps | Est |
+|---|---|---|---|---|
+| E2-01 | FS | Block JSON storage format (body_format column on chapter_drafts) | E1-03 | M |
+| E2-02 | FS | Auto-migration: plain text to block JSON on first save | E2-01 | S |
+| E2-03 | FE | Source view tab: read-only JSON inspector | E2-01 | S |
+
+### E3: Grammar Panel
+
+| Task | Type | Scope | Deps | Est |
+|---|---|---|---|---|
+| E3-01 | FE | Grammar issues panel in right sidebar (click to scroll to block) | E1-05 | S |
+
+**GATE:** After E1-08, editor is production-ready for text. Phase 3 can begin.
+
+---
+
+## Phase 3.5: Media Blocks (after Phase 3 FE-only tasks)
+
+### E4: Image + Video + Code Blocks
+
+| Task | Type | Scope | Deps | Est |
+|---|---|---|---|---|
+| E4-01 | FE | Image block Tiptap node (NodeView: preview, caption, resize) | E2-01 | M |
+| E4-02 | FE | Image upload: drag-drop, paste, file picker to MinIO | E4-01 | M |
+| E4-03 | FE | AI prompt field on media blocks (stored in block JSON) | E4-01 | S |
+| E4-04 | FE | Classic mode guards: media blocks locked, backspace/delete protection | E4-01, E1-06 | S |
+| E4-05 | FE | Video block (player placeholder, upload, caption) | E4-02 | M |
+| E4-06 | FE | Code block with syntax highlighting + language selector | E1-01 | S |
+
+### E5: Media Version Tracking + AI Generation
+
+| Task | Type | Scope | Deps | Est |
+|---|---|---|---|---|
+| E5-01 | FS | Media version tracking backend (block_media_versions table + API) | E4-01 | M |
+| E5-02 | FE | Version history UI: timeline, prompt diff, side-by-side comparison | E5-01 | L |
+| E5-03 | FS | AI image generation (prompt to provider-registry to MinIO) | E4-03 | L |
+| E5-04 | FE | Re-generate from prompt, version snapshot on regenerate | E5-01, E5-03 | M |
+
+---
+
+## Phase 4.5: Audio / TTS (after Phase 4)
+
+> Replaces P5-05 (Text-to-Speech) with per-paragraph narration system.
+
+| Task | Type | Scope | Deps | Est |
+|---|---|---|---|---|
+| E6-01 | FE | Audio attachment slot on text blocks (empty state + upload) | E4-02 | S |
+| E6-02 | FE | Audio player: waveform, play/pause, speed control | E6-01 | M |
+| E6-03 | FS | AI TTS generation (text to provider-registry to MinIO) | E6-01 | M |
+| E6-04 | FE | Audio visibility: hidden default, shown in AI mode or narration mode | E6-01, E1-06 | S |
+| E6-05 | FS | Audio version tracking (reuse E5-01 table) | E5-01, E6-03 | S |
+| E7-01 | FE | Bulk TTS: "Generate all narration" per chapter | E6-03 | M |
+| E7-02 | FS | Audiobook export: concatenate chapter audio to single file | E7-01, P4-13a | L |
+
+### Size Key: S = <1 session, M = 1-2 sessions, L = 2-4 sessions
+
+### Updated Total: 104 tasks (was 75)
+
+| Phase | FE | BE | FS | Total |
+|---|---|---|---|---|
+| Phase 1 | 11 | 0 | 0 | 11 |
+| Phase 2 | 13 | 2 | 1 | 16 |
+| **Phase 2.5** | **9** | **0** | **3** | **12** |
+| Phase 3 | 16 | 5 | 3 | 24 |
+| **Phase 3.5** | **6** | **0** | **4** | **10** |
+| Phase 4 | 11 | 3 | 0 | 14 |
+| **Phase 4.5** | **4** | **0** | **3** | **7** |
+| Phase 5 | 4 | 1 | 5 | 10 |

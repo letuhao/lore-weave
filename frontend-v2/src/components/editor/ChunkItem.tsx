@@ -1,25 +1,31 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { Languages, MessageCircle, Copy, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { type GrammarMatch, decorateText, escapeHtml } from '@/features/grammar/api';
 
 interface ChunkItemProps {
   index: number;
   text: string;
   selected: boolean;
   autoFocus?: boolean;
+  grammarMatches?: GrammarMatch[];
   onSelect: (index: number, shift: boolean) => void;
   onChange: (index: number, text: string) => void;
   onDelete: (index: number) => void;
+  onBlurGrammar?: (index: number, text: string) => void;
 }
 
-export function ChunkItem({ index, text, selected, autoFocus, onSelect, onChange, onDelete }: ChunkItemProps) {
+export function ChunkItem({
+  index, text, selected, autoFocus, grammarMatches,
+  onSelect, onChange, onDelete, onBlurGrammar,
+}: ChunkItemProps) {
   const editRef = useRef<HTMLDivElement>(null);
+  const [focused, setFocused] = useState(false);
 
   // Focus newly inserted empty chunks
   useEffect(() => {
     if (autoFocus && editRef.current) {
       editRef.current.focus();
-      // place cursor at end
       const range = document.createRange();
       const sel = window.getSelection();
       range.selectNodeContents(editRef.current);
@@ -28,6 +34,13 @@ export function ChunkItem({ index, text, selected, autoFocus, onSelect, onChange
       sel?.addRange(range);
     }
   }, [autoFocus]);
+
+  // Apply grammar decorations via ref when not focused
+  useEffect(() => {
+    if (!editRef.current || focused) return;
+    editRef.current.innerHTML =
+      grammarMatches?.length ? decorateText(text, grammarMatches) : escapeHtml(text);
+  }, [text, grammarMatches, focused]);
 
   return (
     <div
@@ -38,7 +51,6 @@ export function ChunkItem({ index, text, selected, autoFocus, onSelect, onChange
           : 'border-border/40 hover:border-border hover:bg-card',
       )}
       onClick={(e) => {
-        // only trigger selection when clicking outside the editable area
         if (e.target === e.currentTarget) onSelect(index, e.shiftKey);
       }}
     >
@@ -62,8 +74,33 @@ export function ChunkItem({ index, text, selected, autoFocus, onSelect, onChange
         data-placeholder="Empty paragraph — start typing..."
         contentEditable
         suppressContentEditableWarning
-        onBlur={(e) => onChange(index, e.currentTarget.innerText)}
-        dangerouslySetInnerHTML={{ __html: text }}
+        onFocus={() => {
+          setFocused(true);
+          // Strip grammar decorations for clean editing
+          if (editRef.current && grammarMatches?.length) {
+            // Save cursor position
+            const sel = window.getSelection();
+            const cursorOffset = sel?.focusOffset ?? 0;
+            editRef.current.innerHTML = escapeHtml(text);
+            // Restore cursor (best-effort)
+            try {
+              const range = document.createRange();
+              const node = editRef.current.firstChild;
+              if (node) {
+                range.setStart(node, Math.min(cursorOffset, node.textContent?.length ?? 0));
+                range.collapse(true);
+                sel?.removeAllRanges();
+                sel?.addRange(range);
+              }
+            } catch { /* cursor restore is best-effort */ }
+          }
+        }}
+        onBlur={(e) => {
+          setFocused(false);
+          const newText = e.currentTarget.innerText;
+          onChange(index, newText);
+          onBlurGrammar?.(index, newText);
+        }}
       />
 
       {/* Action buttons */}

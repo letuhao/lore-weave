@@ -25,6 +25,11 @@ export default defineConfig({
         ws: true,
         changeOrigin: true,
       },
+      '/languagetool': {
+        target: 'http://localhost:8875',
+        changeOrigin: true,
+        rewrite: (path: string) => path.replace(/^\/languagetool/, ''),
+      },
     },
   },
   test: {

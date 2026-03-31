@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  Save, PanelLeft, PanelRight, Clock, ChevronRight, ChevronLeft, ChevronRight as ChevronRightNav,
+  Save, PanelLeft, PanelRight, Clock, ChevronRight, ChevronLeft, ChevronRight as ChevronRightNav, SpellCheck,
   BookOpen, FileText, BookMarked, LayoutList, ScrollText, Scissors, Plus, X,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
@@ -17,6 +17,7 @@ import { Skeleton } from '@/components/shared/Skeleton';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { UnsavedChangesDialog } from '@/components/shared/UnsavedChangesDialog';
 import { cn } from '@/lib/utils';
+import { useGrammarEnabled, useGrammarCheck, useSourceGrammarCheck } from '@/hooks/useGrammarCheck';
 
 type ViewMode = 'chunk' | 'source';
 
@@ -42,6 +43,12 @@ export function ChapterEditorPage() {
   // View / panels
   const [viewMode, setViewMode] = useState<ViewMode>('source');
   const [sourceBody, setSourceBody] = useState('');
+
+  // Grammar check
+  const [grammarEnabled, setGrammarEnabled] = useGrammarEnabled();
+  const grammar = useGrammarCheck(grammarEnabled);
+  const sourceRef = React.useRef<HTMLTextAreaElement>(null);
+  const sourceGrammar = useSourceGrammarCheck(sourceBody, sourceRef, grammarEnabled);
   const [savedBody, setSavedBody] = useState('');
   const [rightTab, setRightTab] = useState<'history' | 'ai'>('history');
   const [revKey, setRevKey] = useState(0);
@@ -110,6 +117,15 @@ export function ChapterEditorPage() {
 
   useEffect(() => { void load(); }, [load]);
 
+  // Run grammar check on initial load
+  const initialGrammarDone = useRef(false);
+  useEffect(() => {
+    if (!grammarEnabled || !body || initialGrammarDone.current) return;
+    initialGrammarDone.current = true;
+    const paragraphs = body.split(/\n\n+/).map((t) => t.trim()).filter(Boolean);
+    void grammar.checkAll(paragraphs.map((text, i) => ({ index: i, text })));
+  }, [body, grammarEnabled, grammar]);
+
   // Load chapter list — used for prev/next nav and the Chapters sidebar tab
   useEffect(() => {
     if (!accessToken || !bookId || !chapterId) return;
@@ -143,6 +159,8 @@ export function ChapterEditorPage() {
     } else {
       chunks.reset(sourceBody);
     }
+    grammar.clear();
+    sourceGrammar.clear();
     setViewMode(mode);
   };
 
@@ -210,9 +228,15 @@ export function ChapterEditorPage() {
 
   // ── Chunk insert helper ───────────────────────────────────────────────────
 
+  const handleDeleteChunk = (index: number) => {
+    chunks.deleteChunk(index);
+    grammar.clear();
+  };
+
   const handleInsertChunk = (position: number) => {
     chunks.insertChunk(position);
     setFocusIndex(position);
+    grammar.clear();
     requestAnimationFrame(() => setFocusIndex(null));
   };
 
@@ -244,6 +268,7 @@ export function ChapterEditorPage() {
 
   const currentBody = viewMode === 'source' ? sourceBody : chunks.reassemble();
   const wc = wordCount(currentBody);
+  const totalGrammarIssues = viewMode === 'source' ? sourceGrammar.totalIssues : grammar.totalIssues;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -312,6 +337,28 @@ export function ChapterEditorPage() {
           </div>
 
           <div className="mx-1 h-4 w-px bg-border" />
+
+          {/* Grammar check toggle */}
+          <label
+            className={cn(
+              'flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-[10px] font-medium transition-colors',
+              grammarEnabled ? 'text-warning' : 'text-muted-foreground hover:text-foreground',
+            )}
+            title="Toggle grammar & spell check (LanguageTool)"
+          >
+            <input
+              type="checkbox"
+              checked={grammarEnabled}
+              onChange={(e) => setGrammarEnabled(e.target.checked)}
+              className="sr-only"
+            />
+            <SpellCheck className="h-3.5 w-3.5" />
+            {grammarEnabled && totalGrammarIssues > 0 && (
+              <span className="rounded-full bg-warning/20 px-1.5 py-px text-[9px] font-semibold text-warning">
+                {totalGrammarIssues}
+              </span>
+            )}
+          </label>
 
           <button
             onClick={panels.toggleLeft}
@@ -486,6 +533,12 @@ export function ChapterEditorPage() {
                 )}
                 {' · '}
                 {isDirty ? 'unsaved changes' : 'all saved'}
+                {grammarEnabled && totalGrammarIssues > 0 && (
+                  <>
+                    {' · '}
+                    <span className="text-warning">{totalGrammarIssues} grammar issue{totalGrammarIssues !== 1 ? 's' : ''}</span>
+                  </>
+                )}
               </p>
 
               {/* Auto-chunk button — always visible in source mode when there's text */}
@@ -520,7 +573,9 @@ export function ChapterEditorPage() {
                       autoFocus={focusIndex === chunk.index}
                       onSelect={chunks.toggleSelect}
                       onChange={chunks.updateChunk}
-                      onDelete={chunks.deleteChunk}
+                      onDelete={handleDeleteChunk}
+                      grammarMatches={grammar.results.get(chunk.index)}
+                      onBlurGrammar={grammar.checkChunk}
                     />
                     {/* Insert after this chunk */}
                     <ChunkInsertRow onInsert={() => handleInsertChunk(i + 1)} />
@@ -539,6 +594,7 @@ export function ChapterEditorPage() {
             </div>
           ) : (
             <textarea
+              ref={sourceRef}
               value={sourceBody}
               onChange={(e) => setSourceBody(e.target.value)}
               className="flex-1 resize-none bg-transparent px-6 py-3 text-sm leading-[1.8] outline-none placeholder:text-muted-foreground/40"

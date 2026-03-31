@@ -51,3 +51,13 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+/* ── Grammar check highlights ─────────────────────────────────────────────── */
+.grammar-issue {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: hsl(var(--warning));
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
+  cursor: help;
+}

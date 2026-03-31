@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Editor Modes (Classic / AI Assistant)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --input: #242019; --ring: #d4952a;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --secondary-fg: #e0d8cc;
+      --muted: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --destructive: #dc4e4e; --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; overflow-x: hidden; min-height: 100vh; padding: 24px; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    h1 { font-family: 'Lora', Georgia, serif; font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+    .subtitle { font-size: 12px; color: var(--muted-fg); margin-bottom: 32px; }
+    h2 { font-size: 16px; font-weight: 600; margin: 40px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+    h3 { font-size: 13px; font-weight: 600; margin: 24px 0 8px; color: var(--primary); }
+    p { font-size: 13px; line-height: 1.7; color: var(--secondary-fg); margin-bottom: 8px; }
+    code { font-family: 'JetBrains Mono', monospace; font-size: 11px; background: var(--secondary); padding: 1px 5px; border-radius: 3px; }
+
+    .section { max-width: 960px; margin: 0 auto; }
+
+    /* ── Demo containers ──────────────────────────────────────────────── */
+    .demo-frame { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin: 16px 0 24px; background: var(--background-alt); }
+    .demo-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted-fg); padding: 8px 16px; background: var(--card); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .demo-badge { padding: 2px 8px; border-radius: 10px; font-size: 9px; font-weight: 600; }
+    .demo-badge.classic { background: var(--secondary); color: var(--secondary-fg); }
+    .demo-badge.ai { background: var(--accent-muted); color: var(--accent-fg); }
+    .demo-body { padding: 16px; }
+
+    /* ── Mode toggle component ────────────────────────────────────────── */
+    .mode-toggle { display: flex; border: 1px solid var(--border); border-radius: 8px; background: var(--muted); padding: 3px; gap: 2px; width: fit-content; }
+    .mode-option { display: flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; transition: all 150ms; border: none; background: transparent; color: var(--muted-fg); }
+    .mode-option:hover { color: var(--foreground); }
+    .mode-option.active { background: var(--background); color: var(--foreground); box-shadow: 0 1px 4px rgba(0,0,0,0.25); }
+    .mode-option .mode-icon { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; }
+    .mode-desc { font-size: 10px; color: var(--muted-fg); font-weight: 400; }
+
+    /* ── Toolbar mockup ───────────────────────────────────────────────── */
+    .toolbar-mock { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--card); border-radius: 8px; border: 1px solid var(--border); margin: 12px 0; flex-wrap: wrap; }
+    .toolbar-divider { width: 1px; height: 18px; background: var(--border); }
+    .btn-sm { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; }
+    .btn-sm.ghost { background: transparent; color: var(--muted-fg); }
+    .btn-sm.ghost:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-sm.primary { background: var(--primary); color: var(--primary-fg); }
+    .btn-sm.accent { background: var(--accent-muted); color: var(--accent-fg); border: 1px solid rgba(61,166,146,0.3); }
+    .btn-sm.accent:hover { background: var(--accent); color: #fff; }
+    .btn-sm.disabled { opacity: 0.3; cursor: not-allowed; }
+
+    /* ── Block mockups ────────────────────────────────────────────────── */
+    .block-mock { border: 1px solid var(--border); border-radius: 8px; margin: 8px 0; overflow: hidden; }
+    .block-content { padding: 12px 16px; font-size: 14px; line-height: 1.85; }
+    .block-content.serif { font-family: 'Lora', Georgia, serif; }
+
+    /* Grammar underline */
+    .g-issue { text-decoration: wavy underline; text-decoration-color: var(--warning); text-underline-offset: 3px; text-decoration-thickness: 1.5px; }
+
+    /* Guard overlay */
+    .block-guard { position: relative; }
+    .block-guard .guard-overlay { position: absolute; inset: 0; background: rgba(24,20,18,0.7); display: flex; align-items: center; justify-content: center; border-radius: 8px; z-index: 2; }
+    .guard-message { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; text-align: center; max-width: 300px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+    .guard-message .guard-icon { margin-bottom: 6px; }
+    .guard-message .guard-text { font-size: 12px; line-height: 1.5; margin-bottom: 8px; }
+    .guard-message .guard-hint { font-size: 10px; color: var(--muted-fg); }
+
+    /* Media placeholder (simplified for classic mode) */
+    .media-locked { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--secondary); border-radius: 6px; font-size: 11px; color: var(--muted-fg); }
+    .media-locked .ml-icon { width: 20px; height: 20px; opacity: 0.4; display: flex; align-items: center; justify-content: center; }
+
+    /* Audio compact */
+    .audio-inline { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--card); border-top: 1px solid var(--border); font-size: 10px; color: var(--muted-fg); }
+    .audio-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .audio-dot.has { background: var(--primary); }
+    .audio-dot.empty { background: var(--border); }
+
+    /* ── Version history mockup ───────────────────────────────────────── */
+    .version-list { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .version-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); transition: background 120ms; cursor: pointer; }
+    .version-item:last-child { border-bottom: none; }
+    .version-item:hover { background: var(--card-hover); }
+    .version-item.current { background: rgba(232,168,50,0.04); border-left: 2px solid var(--primary); }
+    .version-num { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted-fg); min-width: 20px; padding-top: 2px; }
+    .version-body { flex: 1; }
+    .version-title { font-size: 12px; font-weight: 500; margin-bottom: 2px; }
+    .version-meta { font-size: 10px; color: var(--muted-fg); display: flex; gap: 8px; flex-wrap: wrap; }
+    .version-tag { padding: 1px 5px; border-radius: 3px; font-size: 9px; }
+    .version-tag.prompt { background: rgba(84,150,232,0.12); color: var(--info); }
+    .version-tag.media { background: rgba(232,168,50,0.12); color: var(--warning); }
+    .version-tag.caption { background: var(--secondary); color: var(--secondary-fg); }
+    .version-diff { margin-top: 6px; font-size: 10px; font-family: 'JetBrains Mono', monospace; line-height: 1.5; }
+    .diff-del { color: var(--destructive); text-decoration: line-through; opacity: 0.6; }
+    .diff-add { color: var(--success); }
+
+    /* ── Comparison table ─────────────────────────────────────────────── */
+    table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 12px 0; }
+    th { text-align: left; padding: 8px 12px; background: var(--card); border: 1px solid var(--border); font-weight: 600; font-size: 11px; }
+    td { padding: 8px 12px; border: 1px solid var(--border); vertical-align: top; }
+    td.check { color: var(--success); text-align: center; font-size: 14px; }
+    td.cross { color: var(--destructive); text-align: center; font-size: 14px; opacity: 0.5; }
+    td.muted { color: var(--muted-fg); }
+
+    .note { padding: 10px 14px; background: rgba(84,150,232,0.05); border-left: 3px solid var(--info); border-radius: 0 6px 6px 0; font-size: 11px; color: var(--secondary-fg); line-height: 1.6; margin: 12px 0; }
+  </style>
+</head>
+<body>
+
+<div class="section">
+  <h1>Editor Modes — Classic &amp; AI Assistant</h1>
+  <p class="subtitle">Design spec for the dual-mode editor system with block guards and media version tracking</p>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <h2>1. Mode Toggle</h2>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+  <p>Single toggle in the editor toolbar. Persisted per-user in <code>localStorage</code>. Default: AI Assistant for new users.</p>
+
+  <h3>Toggle Component</h3>
+  <div class="demo-frame">
+    <div class="demo-label">Mode toggle — lives in the toolbar next to the grammar toggle</div>
+    <div class="demo-body" style="display:flex;flex-direction:column;gap:16px;">
+      <div class="mode-toggle">
+        <button class="mode-option" onclick="setMode('classic', this)">
+          <span class="mode-icon"><i data-lucide="pen-line" style="width:14px;height:14px;"></i></span>
+          Classic
+        </button>
+        <button class="mode-option active" onclick="setMode('ai', this)">
+          <span class="mode-icon"><i data-lucide="sparkles" style="width:14px;height:14px;"></i></span>
+          AI Assistant
+        </button>
+      </div>
+      <div style="display:flex;gap:16px;">
+        <div style="flex:1;">
+          <div style="font-size:11px;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:4px;"><i data-lucide="pen-line" style="width:12px;height:12px;"></i> Classic Mode</div>
+          <p style="font-size:11px;">Pure writing. No AI chrome. Text blocks only visible. Media blocks shown as compact locked placeholders. Grammar check available but off by default.</p>
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:11px;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:4px;color:var(--accent);"><i data-lucide="sparkles" style="width:12px;height:12px;"></i> AI Assistant Mode</div>
+          <p style="font-size:11px;">Full features. Grammar inline, AI prompts on media, TTS/audio controls, image/video generation, format bar with insert tools. All block types editable.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <h2>2. Feature Comparison</h2>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+  <table>
+    <tr>
+      <th>Feature</th>
+      <th style="width:140px;">Classic</th>
+      <th style="width:140px;">AI Assistant</th>
+    </tr>
+    <tr><td>Paragraph blocks (write/edit)</td><td class="check">&#x2713;</td><td class="check">&#x2713;</td></tr>
+    <tr><td>Heading blocks</td><td class="check">&#x2713;</td><td class="check">&#x2713;</td></tr>
+    <tr><td>Divider blocks</td><td class="check">&#x2713;</td><td class="check">&#x2713;</td></tr>
+    <tr><td>Callout / author notes</td><td class="check">&#x2713;</td><td class="check">&#x2713;</td></tr>
+    <tr><td>Keyboard shortcuts (Ctrl+B/I/S)</td><td class="check">&#x2713;</td><td class="check">&#x2713;</td></tr>
+    <tr><td>Block insert (/ slash menu)</td><td class="muted">Text types only</td><td class="check">&#x2713; All types</td></tr>
+    <tr><td>Grammar check (LanguageTool)</td><td class="muted">Toggle available, off by default</td><td class="check">&#x2713; On by default</td></tr>
+    <tr><td>Image blocks</td><td class="muted">View only (locked)</td><td class="check">&#x2713; Full edit</td></tr>
+    <tr><td>Video blocks</td><td class="muted">View only (locked)</td><td class="check">&#x2713; Full edit</td></tr>
+    <tr><td>Code blocks</td><td class="muted">View only (locked)</td><td class="check">&#x2713; Full edit</td></tr>
+    <tr><td>AI prompt on media</td><td class="cross">&mdash;</td><td class="check">&#x2713;</td></tr>
+    <tr><td>AI image/video generation</td><td class="cross">&mdash;</td><td class="check">&#x2713;</td></tr>
+    <tr><td>Audio / TTS per paragraph</td><td class="cross">&mdash;</td><td class="check">&#x2713;</td></tr>
+    <tr><td>Format bar</td><td class="muted">Minimal (block type only)</td><td class="check">&#x2713; Full toolbar</td></tr>
+    <tr><td>Insert media blocks</td><td class="cross">&mdash;</td><td class="check">&#x2713;</td></tr>
+    <tr><td>Delete media blocks</td><td class="cross">&#x1F512; Guarded</td><td class="check">&#x2713;</td></tr>
+    <tr><td>Reorder blocks (drag)</td><td class="muted">Text blocks only</td><td class="check">&#x2713; All blocks</td></tr>
+    <tr><td>Media version history</td><td class="muted">View only</td><td class="check">&#x2713; Full access</td></tr>
+  </table>
+
+  <div class="note">
+    <strong>Switching modes does NOT delete content.</strong> A chapter with images/video/audio viewed in Classic mode simply shows those blocks as compact locked placeholders. All data is preserved. The writer can switch to AI Assistant mode anytime to edit media.
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <h2>3. Classic Mode — What It Looks Like</h2>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+  <h3>Toolbar (minimal)</h3>
+  <div class="demo-frame">
+    <div class="demo-label">Classic mode toolbar — distraction-free <span class="demo-badge classic">Classic</span></div>
+    <div class="demo-body">
+      <div class="toolbar-mock">
+        <span style="font-size:10px;color:var(--muted-fg);">Workspace &rsaquo; Book &rsaquo; <strong style="color:var(--foreground);">Chapter 3</strong></span>
+        <div class="toolbar-divider"></div>
+        <div class="mode-toggle" style="padding:2px;">
+          <button class="mode-option active" style="padding:3px 8px;font-size:10px;"><i data-lucide="pen-line" style="width:11px;height:11px;"></i> Classic</button>
+          <button class="mode-option" style="padding:3px 8px;font-size:10px;"><i data-lucide="sparkles" style="width:11px;height:11px;"></i> AI</button>
+        </div>
+        <div class="toolbar-divider"></div>
+        <button class="btn-sm ghost"><i data-lucide="spell-check" style="width:12px;height:12px;"></i></button>
+        <div class="toolbar-divider"></div>
+        <span style="font-size:10px;color:var(--muted-fg);">v12</span>
+        <button class="btn-sm primary"><i data-lucide="save" style="width:11px;height:11px;"></i> Save</button>
+      </div>
+    </div>
+  </div>
+
+  <h3>Content area — text blocks are editable, media blocks are locked</h3>
+  <div class="demo-frame">
+    <div class="demo-label">Classic mode editor view <span class="demo-badge classic">Classic</span></div>
+    <div class="demo-body" style="max-width:680px;margin:0 auto;">
+      <!-- Editable text block -->
+      <div class="block-mock">
+        <div class="block-content" contenteditable="true">The throne room was silent save for the crackle of dying embers. Shadows pooled in the corners where torchlight could not reach, and the air tasted of iron and betrayal.</div>
+      </div>
+
+      <!-- Locked image block — compact placeholder -->
+      <div class="block-mock" style="background:var(--secondary);">
+        <div class="media-locked">
+          <span class="ml-icon"><i data-lucide="image" style="width:16px;height:16px;"></i></span>
+          <span style="flex:1;">throne-room-concept.png</span>
+          <span style="font-size:9px;opacity:0.5;">1.2 MB</span>
+          <span style="font-size:9px;background:var(--card);padding:1px 5px;border-radius:3px;"><i data-lucide="lock" style="width:9px;height:9px;"></i> Switch to AI mode to edit</span>
+        </div>
+      </div>
+
+      <!-- Editable text block -->
+      <div class="block-mock">
+        <div class="block-content" contenteditable="true">"You may enter," the king said, his voice carrying no warmth. The words echoed against the vaulted ceiling, each syllable a stone dropped into still water.</div>
+      </div>
+
+      <!-- Locked video block -->
+      <div class="block-mock" style="background:var(--secondary);">
+        <div class="media-locked">
+          <span class="ml-icon"><i data-lucide="video" style="width:16px;height:16px;"></i></span>
+          <span style="flex:1;">battle-scene-draft.mp4</span>
+          <span style="font-size:9px;opacity:0.5;">18.5 MB</span>
+          <span style="font-size:9px;background:var(--card);padding:1px 5px;border-radius:3px;"><i data-lucide="lock" style="width:9px;height:9px;"></i></span>
+        </div>
+      </div>
+
+      <!-- Editable text block -->
+      <div class="block-mock">
+        <div class="block-content" contenteditable="true">The doors groaned open and General Kira strode in, her armor still dusted with the ash of the northern campaign.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <h2>4. Block Guards — Classic Mode Protection</h2>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+  <p>When a Classic mode user tries to delete or modify a media block (via keyboard backspace at block boundary, drag, or any edit action):</p>
+
+  <h3>Guard overlay — appears when Classic user tries to delete a media block</h3>
+  <div class="demo-frame">
+    <div class="demo-label">Guard overlay on attempted media deletion <span class="demo-badge classic">Classic</span></div>
+    <div class="demo-body" style="max-width:680px;margin:0 auto;">
+      <div class="block-mock block-guard" style="min-height:80px;">
+        <div class="media-locked">
+          <span class="ml-icon"><i data-lucide="image" style="width:16px;height:16px;"></i></span>
+          <span>throne-room-concept.png</span>
+        </div>
+        <div class="guard-overlay">
+          <div class="guard-message">
+            <div class="guard-icon"><i data-lucide="shield-alert" style="width:20px;height:20px;color:var(--warning);"></i></div>
+            <div class="guard-text">This is a media block. Switch to <strong>AI Assistant</strong> mode to edit or delete it.</div>
+            <div class="guard-hint">Media blocks are protected in Classic mode to prevent accidental loss.</div>
+            <div style="margin-top:10px;display:flex;gap:6px;justify-content:center;">
+              <button class="btn-sm accent"><i data-lucide="sparkles" style="width:10px;height:10px;"></i> Switch to AI mode</button>
+              <button class="btn-sm ghost">Dismiss</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Guard behaviors</h3>
+  <table>
+    <tr><th>User action in Classic mode</th><th>Behavior</th></tr>
+    <tr><td>Backspace at start of text block that follows a media block</td><td>Cursor stops. Does NOT merge into or delete the media block.</td></tr>
+    <tr><td>Delete at end of text block before a media block</td><td>Cursor stops. Media block protected.</td></tr>
+    <tr><td>Drag a media block</td><td>Drag handle hidden on media blocks. Not draggable.</td></tr>
+    <tr><td>Select-all + delete (Ctrl+A, Backspace)</td><td>Only text blocks are cleared. Media blocks survive.</td></tr>
+    <tr><td>Paste over a selection that includes media blocks</td><td>Paste replaces text blocks only. Media blocks stay in place.</td></tr>
+    <tr><td>Click on a media block</td><td>Shows compact preview. No edit controls.</td></tr>
+    <tr><td>Right-click a media block</td><td>Context menu: "View in AI mode" / "Copy filename"</td></tr>
+  </table>
+
+  <div class="note">
+    <strong>Implementation note (Tiptap):</strong> Use <code>NodeView</code> with <code>editable: false</code> for media blocks in Classic mode. The Tiptap schema stays the same — only the NodeView rendering and key bindings change per mode. The <code>handleKeyDown</code> extension intercepts backspace/delete at media boundaries.
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <h2>5. AI Assistant Mode — Full Toolbar</h2>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+  <div class="demo-frame">
+    <div class="demo-label">AI Assistant mode toolbar — full features <span class="demo-badge ai">AI Assistant</span></div>
+    <div class="demo-body">
+      <div class="toolbar-mock">
+        <span style="font-size:10px;color:var(--muted-fg);">Workspace &rsaquo; Book &rsaquo; <strong style="color:var(--foreground);">Chapter 3</strong></span>
+        <div class="toolbar-divider"></div>
+        <div class="mode-toggle" style="padding:2px;">
+          <button class="mode-option" style="padding:3px 8px;font-size:10px;"><i data-lucide="pen-line" style="width:11px;height:11px;"></i> Classic</button>
+          <button class="mode-option active" style="padding:3px 8px;font-size:10px;color:var(--accent);"><i data-lucide="sparkles" style="width:11px;height:11px;"></i> AI</button>
+        </div>
+        <div class="toolbar-divider"></div>
+        <select style="background:var(--input);border:1px solid var(--border);border-radius:4px;color:var(--foreground);font-size:10px;padding:2px 4px;outline:none;"><option>Paragraph</option></select>
+        <div class="toolbar-divider"></div>
+        <button class="btn-sm ghost"><b style="font-size:11px;">B</b></button>
+        <button class="btn-sm ghost"><i style="font-size:11px;">I</i></button>
+        <div class="toolbar-divider"></div>
+        <button class="btn-sm ghost"><i data-lucide="image" style="width:12px;height:12px;"></i></button>
+        <button class="btn-sm ghost"><i data-lucide="video" style="width:12px;height:12px;"></i></button>
+        <button class="btn-sm ghost"><i data-lucide="code-2" style="width:12px;height:12px;"></i></button>
+        <button class="btn-sm ghost"><i data-lucide="minus" style="width:12px;height:12px;"></i></button>
+        <div class="toolbar-divider"></div>
+        <button class="btn-sm ghost" style="color:var(--warning);"><i data-lucide="spell-check" style="width:12px;height:12px;"></i> <span style="background:rgba(232,168,50,0.15);padding:0 4px;border-radius:8px;font-size:9px;">3</span></button>
+        <div class="toolbar-divider"></div>
+        <button class="btn-sm ghost"><i data-lucide="panel-left" style="width:12px;height:12px;"></i></button>
+        <button class="btn-sm ghost"><i data-lucide="panel-right" style="width:12px;height:12px;"></i></button>
+        <div class="toolbar-divider"></div>
+        <button class="btn-sm primary"><i data-lucide="save" style="width:11px;height:11px;"></i> Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <h2>6. Media Version History</h2>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+  <p>Every media block tracks its own version history. Versions are created when: prompt changes, media is regenerated, media is replaced manually, or caption changes.</p>
+
+  <h3>Version list — accessed via block menu or right sidebar</h3>
+  <div class="demo-frame">
+    <div class="demo-label">Image block version history — throne-room-concept.png <span class="demo-badge ai">AI Assistant</span></div>
+    <div class="demo-body">
+      <div class="version-list">
+        <div class="version-item current">
+          <span class="version-num">v4</span>
+          <div class="version-body">
+            <div class="version-title">Re-generated with refined prompt</div>
+            <div class="version-meta">
+              <span>2 hours ago</span>
+              <span class="version-tag prompt">prompt changed</span>
+              <span class="version-tag media">image regenerated</span>
+            </div>
+            <div class="version-diff">
+              <div><span class="diff-del">- ...Black marble floor. An imposing throne.</span></div>
+              <div><span class="diff-add">+ ...Black marble floor reflects amber firelight. An imposing throne carved from a single block of obsidian sits at the far end, cracked and ancient.</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="version-item">
+          <span class="version-num">v3</span>
+          <div class="version-body">
+            <div class="version-title">Caption updated</div>
+            <div class="version-meta">
+              <span>5 hours ago</span>
+              <span class="version-tag caption">caption</span>
+            </div>
+            <div class="version-diff">
+              <div><span class="diff-del">- "Throne room concept"</span></div>
+              <div><span class="diff-add">+ "The obsidian throne &mdash; concept art by the author"</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="version-item">
+          <span class="version-num">v2</span>
+          <div class="version-body">
+            <div class="version-title">AI generated from prompt</div>
+            <div class="version-meta">
+              <span>Yesterday</span>
+              <span class="version-tag prompt">prompt</span>
+              <span class="version-tag media">first generation</span>
+            </div>
+            <div style="font-size:10px;color:var(--muted-fg);margin-top:4px;">Model: gemini-3.1-flash-image-preview &middot; 1440&times;600 &middot; 1.2 MB</div>
+          </div>
+        </div>
+        <div class="version-item">
+          <span class="version-num">v1</span>
+          <div class="version-body">
+            <div class="version-title">Block created (empty)</div>
+            <div class="version-meta">
+              <span>2 days ago</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Audio version history — same pattern</h3>
+  <div class="demo-frame">
+    <div class="demo-label">Audio narration versions for a text block <span class="demo-badge ai">AI Assistant</span></div>
+    <div class="demo-body">
+      <div class="version-list">
+        <div class="version-item current">
+          <span class="version-num">v3</span>
+          <div class="version-body">
+            <div class="version-title">Manual recording uploaded</div>
+            <div class="version-meta">
+              <span>1 hour ago</span>
+              <span class="version-tag media">manual upload</span>
+            </div>
+            <div style="font-size:10px;color:var(--muted-fg);margin-top:4px;">Voice actor recording &middot; 44.1 kHz &middot; 286 KB &middot; 0:38</div>
+          </div>
+        </div>
+        <div class="version-item">
+          <span class="version-num">v2</span>
+          <div class="version-body">
+            <div class="version-title">AI TTS re-generated (voice changed)</div>
+            <div class="version-meta">
+              <span>3 hours ago</span>
+              <span class="version-tag prompt">voice: shimmer &rarr; alloy</span>
+              <span class="version-tag media">regenerated</span>
+            </div>
+          </div>
+        </div>
+        <div class="version-item">
+          <span class="version-num">v1</span>
+          <div class="version-body">
+            <div class="version-title">AI TTS first generation</div>
+            <div class="version-meta">
+              <span>Yesterday</span>
+              <span class="version-tag prompt">voice: shimmer</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Version data model</h3>
+  <div class="demo-frame">
+    <div class="demo-label">JSON — media_versions array on each block</div>
+    <div class="demo-body">
+      <pre style="font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.6;color:#c8c0b4;">{
+  <span style="color:var(--info);">"type"</span>: <span style="color:var(--success);">"image"</span>,
+  <span style="color:var(--info);">"src"</span>: <span style="color:var(--success);">"minio://ch3/throne-v4.png"</span>,
+  <span style="color:var(--info);">"caption"</span>: <span style="color:var(--success);">"The obsidian throne"</span>,
+  <span style="color:var(--info);">"ai_prompt"</span>: <span style="color:var(--success);">"A dark obsidian throne room..."</span>,
+  <span style="color:var(--info);">"versions"</span>: [
+    {
+      <span style="color:var(--info);">"version"</span>: <span style="color:var(--destructive);">4</span>,
+      <span style="color:var(--info);">"created_at"</span>: <span style="color:var(--success);">"2026-03-31T..."</span>,
+      <span style="color:var(--info);">"action"</span>: <span style="color:var(--success);">"regenerate"</span>,
+      <span style="color:var(--info);">"changes"</span>: [<span style="color:var(--success);">"prompt"</span>, <span style="color:var(--success);">"media"</span>],
+      <span style="color:var(--info);">"prompt_snapshot"</span>: <span style="color:var(--success);">"A dark obsidian throne room..."</span>,
+      <span style="color:var(--info);">"media_ref"</span>: <span style="color:var(--success);">"minio://ch3/throne-v4.png"</span>,
+      <span style="color:var(--info);">"ai_model"</span>: <span style="color:var(--success);">"gemini-3.1-flash-image-preview"</span>
+    },
+    {
+      <span style="color:var(--info);">"version"</span>: <span style="color:var(--destructive);">3</span>,
+      <span style="color:var(--info);">"action"</span>: <span style="color:var(--success);">"caption_edit"</span>,
+      <span style="color:var(--info);">"changes"</span>: [<span style="color:var(--success);">"caption"</span>],
+      <span style="color:var(--info);">"caption_snapshot"</span>: <span style="color:var(--success);">"Throne room concept"</span>
+    }
+    <span style="color:var(--muted-fg);">// ... older versions</span>
+  ]
+}</pre>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>Storage note:</strong> Version media files (old PNGs, MP3s) are kept in MinIO with path pattern <code>chapters/{chapterId}/blocks/{blockId}/v{N}.{ext}</code>. Old versions can be garbage-collected by retention policy (e.g. keep last 10 versions, or last 30 days). The prompt snapshots are cheap text — always kept.
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <h2>7. Mode Switching Flow</h2>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+  <table>
+    <tr><th>Transition</th><th>What happens</th></tr>
+    <tr><td>Classic &rarr; AI Assistant</td><td>All blocks become fully editable. Media blocks expand from compact placeholders to full views. Audio controls appear on text blocks. Grammar auto-enables. Format bar expands. No data loss.</td></tr>
+    <tr><td>AI Assistant &rarr; Classic</td><td>Media blocks collapse to compact locked placeholders. Audio controls hide. Format bar minimizes. AI prompts, grammar panel, insert tools hide. <strong>No data is deleted.</strong> Writer can switch back anytime.</td></tr>
+    <tr><td>AI &rarr; Classic with unsaved media edits</td><td>Standard unsaved-changes dialog: "Save changes before switching?" Save / Discard / Stay.</td></tr>
+  </table>
+
+</div>
+
+<script>
+  lucide.createIcons();
+
+  function setMode(mode, btn) {
+    btn.parentElement.querySelectorAll('.mode-option').forEach(el => el.classList.remove('active'));
+    btn.classList.add('active');
+  }
+</script>
+</body>
+</html>

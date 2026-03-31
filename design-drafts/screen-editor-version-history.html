@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Media Version History</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --input: #242019; --ring: #d4952a;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --secondary-fg: #e0d8cc;
+      --muted: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --destructive: #dc4e4e; --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; overflow: hidden; height: 100vh; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    .shell { display: flex; height: 100vh; }
+
+    /* Nav rail */
+    .nav-rail { width: 48px; flex-shrink: 0; background: var(--background); border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 2px; }
+    .nav-icon { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--muted-fg); cursor: pointer; transition: all 120ms; }
+    .nav-icon:hover { background: var(--secondary); color: var(--foreground); }
+    .nav-icon.active { background: var(--primary-muted); color: var(--primary); }
+    .nav-spacer { flex: 1; }
+
+    .workbench { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* Toolbar */
+    .toolbar { height: 42px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--card); }
+    .toolbar-group { display: flex; align-items: center; gap: 8px; }
+    .toolbar-divider { width: 1px; height: 18px; background: var(--border); }
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 5px; font-size: 11px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); border: none; cursor: pointer; padding: 4px 8px; border-radius: 5px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px; }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-accent { background: var(--accent-muted); color: var(--accent-fg); border: 1px solid rgba(61,166,146,0.3); }
+    .btn-accent:hover { background: var(--accent); color: #fff; }
+    .btn-destructive { background: transparent; color: var(--destructive); border: 1px solid rgba(220,78,78,0.3); }
+    .btn-destructive:hover { background: rgba(220,78,78,0.1); }
+    .btn-icon { width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 5px; border: none; cursor: pointer; background: transparent; color: var(--muted-fg); }
+    .btn-icon:hover { background: var(--secondary); color: var(--foreground); }
+
+    .panel-area { flex: 1; display: flex; overflow: hidden; }
+
+    /* Left: image block being versioned */
+    .preview-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--background); }
+    .preview-header { padding: 12px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; font-size: 12px; }
+    .preview-header .ph-title { font-weight: 600; }
+    .preview-header .ph-meta { color: var(--muted-fg); font-size: 10px; }
+    .preview-content { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+
+    /* Image comparison */
+    .compare-area { flex: 1; display: flex; gap: 1px; background: var(--border); min-height: 300px; }
+    .compare-side { flex: 1; background: var(--background); display: flex; flex-direction: column; }
+    .compare-label { padding: 8px 14px; font-size: 10px; font-weight: 600; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .compare-label .cl-version { font-family: 'JetBrains Mono', monospace; }
+    .compare-label .cl-tag { padding: 1px 5px; border-radius: 3px; font-size: 9px; }
+    .compare-label .cl-tag.current { background: rgba(61,186,106,0.12); color: var(--success); }
+    .compare-label .cl-tag.old { background: var(--secondary); color: var(--muted-fg); }
+    .compare-img { flex: 1; display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .compare-img img { max-width: 100%; max-height: 100%; border-radius: 6px; }
+    .img-placeholder { width: 100%; aspect-ratio: 16/9; background: var(--secondary); border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--muted-fg); gap: 6px; }
+
+    /* Prompt diff */
+    .prompt-diff { padding: 16px 20px; border-top: 1px solid var(--border); }
+    .prompt-diff-header { font-size: 11px; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+    .diff-block { font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.6; background: var(--secondary); border-radius: 6px; padding: 10px 12px; }
+    .diff-line { padding: 1px 0; }
+    .diff-del { color: var(--destructive); }
+    .diff-del span { background: rgba(220,78,78,0.15); text-decoration: line-through; border-radius: 2px; padding: 0 2px; }
+    .diff-add { color: var(--success); }
+    .diff-add span { background: rgba(61,186,106,0.12); border-radius: 2px; padding: 0 2px; }
+    .diff-ctx { color: var(--muted-fg); }
+
+    /* Right: version timeline */
+    .history-panel { width: 340px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--card); display: flex; flex-direction: column; }
+    .history-header { padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .history-header .hh-title { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+    .history-header .hh-count { background: var(--secondary); padding: 1px 6px; border-radius: 8px; font-size: 10px; color: var(--muted-fg); }
+    .history-content { flex: 1; overflow-y: auto; }
+
+    /* Version timeline */
+    .version-item { position: relative; padding: 12px 14px 12px 32px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 120ms; }
+    .version-item:hover { background: var(--card-hover); }
+    .version-item.selected { background: rgba(232,168,50,0.06); }
+    .version-item.selected::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--primary); }
+
+    /* Timeline dot */
+    .version-dot { position: absolute; left: 12px; top: 16px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--border); background: var(--card); }
+    .version-item.selected .version-dot { border-color: var(--primary); background: var(--primary); }
+    .version-item:not(:last-child)::after { content: ''; position: absolute; left: 16px; top: 28px; bottom: -2px; width: 1px; background: var(--border); }
+
+    .version-title { font-size: 12px; font-weight: 500; margin-bottom: 3px; }
+    .version-meta { font-size: 10px; color: var(--muted-fg); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .version-tag { padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 500; }
+    .version-tag.prompt { background: rgba(84,150,232,0.12); color: var(--info); }
+    .version-tag.media { background: rgba(232,168,50,0.12); color: var(--warning); }
+    .version-tag.caption { background: var(--secondary); color: var(--secondary-fg); }
+    .version-tag.audio { background: rgba(61,166,146,0.12); color: var(--accent-fg); }
+    .version-tag.voice { background: rgba(168,85,247,0.12); color: rgb(192,132,252); }
+    .version-detail { font-size: 10px; color: var(--muted-fg); margin-top: 4px; line-height: 1.5; }
+    .version-model { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--muted-fg); margin-top: 3px; opacity: 0.6; }
+
+    /* Actions bar at bottom of history */
+    .history-actions { padding: 10px 14px; border-top: 1px solid var(--border); display: flex; gap: 6px; }
+
+    /* Bottom bar */
+    .bottom-bar { height: 28px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-top: 1px solid var(--border); background: var(--card); font-size: 10px; color: var(--muted-fg); }
+
+    /* Tab system for switching between image/audio history */
+    .history-tabs { display: flex; border-bottom: 1px solid var(--border); }
+    .history-tab { flex: 1; padding: 8px; text-align: center; font-size: 11px; font-weight: 500; color: var(--muted-fg); cursor: pointer; border-bottom: 2px solid transparent; display: flex; align-items: center; justify-content: center; gap: 4px; }
+    .history-tab:hover { color: var(--foreground); }
+    .history-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+    .tab-content { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+    .tab-content.active { display: flex; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+
+    <!-- Nav rail -->
+    <div class="nav-rail">
+      <div class="nav-icon"><i data-lucide="home" style="width:16px;height:16px;"></i></div>
+      <div class="nav-icon"><i data-lucide="book-open" style="width:16px;height:16px;"></i></div>
+      <div class="nav-icon active"><i data-lucide="pen-line" style="width:16px;height:16px;"></i></div>
+      <div class="nav-icon"><i data-lucide="message-circle" style="width:16px;height:16px;"></i></div>
+      <div class="nav-spacer"></div>
+      <div class="nav-icon"><i data-lucide="settings" style="width:16px;height:16px;"></i></div>
+      <div class="nav-icon" style="width:28px;height:28px;border-radius:50%;background:var(--primary-muted);color:var(--primary);font-size:11px;font-weight:600;">NS</div>
+    </div>
+
+    <div class="workbench">
+
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <div class="toolbar-group">
+          <button class="btn-icon"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i></button>
+          <span style="font-size:12px;">
+            <span style="color:var(--muted-fg);">Chapter 3 &rsaquo; Block 3 &rsaquo;</span>
+            <strong>Version History</strong>
+          </span>
+        </div>
+        <div class="toolbar-group">
+          <button class="btn btn-ghost"><i data-lucide="x" style="width:12px;height:12px;"></i> Close</button>
+        </div>
+      </div>
+
+      <div class="panel-area">
+
+        <!-- Left: preview / comparison -->
+        <div class="preview-panel">
+          <div class="preview-header">
+            <i data-lucide="image" style="width:14px;height:14px;color:var(--primary);"></i>
+            <span class="ph-title">throne-room-concept.png</span>
+            <span class="ph-meta">Comparing v3 &rarr; v4 (current)</span>
+          </div>
+
+          <!-- Side-by-side image comparison -->
+          <div class="compare-area">
+            <div class="compare-side">
+              <div class="compare-label">
+                <span><span class="cl-version">v3</span> &mdash; Previous</span>
+                <span class="cl-tag old">old</span>
+              </div>
+              <div class="compare-img">
+                <div class="img-placeholder">
+                  <i data-lucide="image" style="width:32px;height:32px;opacity:0.3;"></i>
+                  <span style="font-size:11px;">throne-room-v3.png</span>
+                  <span style="font-size:9px;opacity:0.5;">1440 &times; 600 &middot; 980 KB</span>
+                  <span style="font-size:9px;opacity:0.4;margin-top:4px;">Basic throne room, no reflections</span>
+                </div>
+              </div>
+            </div>
+            <div class="compare-side">
+              <div class="compare-label">
+                <span><span class="cl-version">v4</span> &mdash; Current</span>
+                <span class="cl-tag current">current</span>
+              </div>
+              <div class="compare-img">
+                <div class="img-placeholder" style="border:1px solid rgba(232,168,50,0.2);">
+                  <i data-lucide="image" style="width:32px;height:32px;opacity:0.3;"></i>
+                  <span style="font-size:11px;">throne-room-v4.png</span>
+                  <span style="font-size:9px;opacity:0.5;">1440 &times; 600 &middot; 1.2 MB</span>
+                  <span style="font-size:9px;color:var(--primary);margin-top:4px;">+ amber reflections, cracked obsidian</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Prompt diff -->
+          <div class="prompt-diff">
+            <div class="prompt-diff-header">
+              <i data-lucide="sparkles" style="width:12px;height:12px;color:var(--info);"></i>
+              AI Prompt Diff (v3 &rarr; v4)
+            </div>
+            <div class="diff-block">
+              <div class="diff-line diff-ctx"> A dark obsidian throne room lit by dying torchlight.</div>
+              <div class="diff-line diff-ctx"> 24 torches line the walls, 12 per side.</div>
+              <div class="diff-line diff-ctx"> The ceiling is 18m high with vaulted arches.</div>
+              <div class="diff-line diff-del">-<span>Black marble floor.</span></div>
+              <div class="diff-line diff-add">+<span>Black marble floor reflects amber firelight.</span></div>
+              <div class="diff-line diff-del">-<span>An imposing throne carved from obsidian at the far end.</span></div>
+              <div class="diff-line diff-add">+<span>An imposing throne carved from a single block of obsidian sits at the far end, cracked and ancient.</span></div>
+              <div class="diff-line diff-ctx"> Mood: ominous, regal, foreboding.</div>
+              <div class="diff-line diff-del">-<span>Style: dark fantasy concept art.</span></div>
+              <div class="diff-line diff-add">+<span>Style: dark fantasy concept art, cinematic lighting, volumetric fog.</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: version timeline -->
+        <div class="history-panel">
+          <div class="history-header">
+            <div class="hh-title"><i data-lucide="git-branch" style="width:13px;height:13px;"></i> Versions</div>
+            <span class="hh-count">6 versions</span>
+          </div>
+
+          <!-- Tabs: Image vs Audio history -->
+          <div class="history-tabs">
+            <div class="history-tab active" onclick="switchHistoryTab('image',this)"><i data-lucide="image" style="width:11px;height:11px;"></i> Image</div>
+            <div class="history-tab" onclick="switchHistoryTab('audio',this)"><i data-lucide="audio-lines" style="width:11px;height:11px;"></i> Audio</div>
+          </div>
+
+          <!-- Image version timeline -->
+          <div class="tab-content active" id="tab-image">
+            <div class="history-content">
+              <div class="version-item selected">
+                <div class="version-dot"></div>
+                <div class="version-title">Re-generated with refined prompt</div>
+                <div class="version-meta">
+                  <span>2 hours ago</span>
+                  <span class="version-tag prompt">prompt</span>
+                  <span class="version-tag media">regenerated</span>
+                </div>
+                <div class="version-detail">Added amber reflections, cracked obsidian texture, volumetric fog</div>
+                <div class="version-model">gemini-3.1-flash-image-preview &middot; 1440&times;600 &middot; 1.2 MB</div>
+              </div>
+
+              <div class="version-item">
+                <div class="version-dot"></div>
+                <div class="version-title">Caption updated</div>
+                <div class="version-meta">
+                  <span>5 hours ago</span>
+                  <span class="version-tag caption">caption</span>
+                </div>
+                <div class="version-detail">"Throne room concept" &rarr; "The obsidian throne &mdash; concept art by the author"</div>
+              </div>
+
+              <div class="version-item">
+                <div class="version-dot"></div>
+                <div class="version-title">AI generated from prompt</div>
+                <div class="version-meta">
+                  <span>Yesterday 14:22</span>
+                  <span class="version-tag prompt">prompt</span>
+                  <span class="version-tag media">first generation</span>
+                </div>
+                <div class="version-detail">Initial prompt: "A dark obsidian throne room lit by dying torchlight..."</div>
+                <div class="version-model">gemini-3.1-flash-image-preview &middot; 1440&times;600 &middot; 980 KB</div>
+              </div>
+
+              <div class="version-item">
+                <div class="version-dot"></div>
+                <div class="version-title">Prompt written (no media yet)</div>
+                <div class="version-meta">
+                  <span>Yesterday 14:20</span>
+                  <span class="version-tag prompt">prompt added</span>
+                </div>
+              </div>
+
+              <div class="version-item">
+                <div class="version-dot"></div>
+                <div class="version-title">Block created</div>
+                <div class="version-meta">
+                  <span>2 days ago</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="history-actions">
+              <button class="btn btn-accent" style="font-size:10px;flex:1;justify-content:center;">
+                <i data-lucide="rotate-ccw" style="width:11px;height:11px;"></i> Restore v3
+              </button>
+              <button class="btn btn-ghost" style="font-size:10px;">
+                <i data-lucide="download" style="width:11px;height:11px;"></i> Download v3
+              </button>
+            </div>
+          </div>
+
+          <!-- Audio version timeline -->
+          <div class="tab-content" id="tab-audio">
+            <div class="history-content">
+              <div class="version-item selected">
+                <div class="version-dot"></div>
+                <div class="version-title">Manual recording uploaded</div>
+                <div class="version-meta">
+                  <span>1 hour ago</span>
+                  <span class="version-tag audio">manual</span>
+                </div>
+                <div class="version-detail">Voice actor recording &middot; replaced AI version</div>
+                <div class="version-model">44.1 kHz &middot; WAV &rarr; MP3 &middot; 286 KB &middot; 0:38</div>
+              </div>
+
+              <div class="version-item">
+                <div class="version-dot"></div>
+                <div class="version-title">TTS re-generated (voice changed)</div>
+                <div class="version-meta">
+                  <span>3 hours ago</span>
+                  <span class="version-tag voice">shimmer &rarr; alloy</span>
+                  <span class="version-tag audio">regenerated</span>
+                </div>
+                <div class="version-model">OpenAI TTS &middot; alloy &middot; 48 kHz &middot; 142 KB &middot; 0:24</div>
+              </div>
+
+              <div class="version-item">
+                <div class="version-dot"></div>
+                <div class="version-title">TTS first generation</div>
+                <div class="version-meta">
+                  <span>Yesterday</span>
+                  <span class="version-tag voice">shimmer</span>
+                  <span class="version-tag audio">first gen</span>
+                </div>
+                <div class="version-model">OpenAI TTS &middot; shimmer &middot; 48 kHz &middot; 138 KB &middot; 0:23</div>
+              </div>
+
+              <div class="version-item">
+                <div class="version-dot"></div>
+                <div class="version-title">Audio slot created</div>
+                <div class="version-meta"><span>2 days ago</span></div>
+              </div>
+            </div>
+
+            <div class="history-actions">
+              <button class="btn btn-accent" style="font-size:10px;flex:1;justify-content:center;">
+                <i data-lucide="rotate-ccw" style="width:11px;height:11px;"></i> Restore TTS v2
+              </button>
+              <button class="btn btn-ghost" style="font-size:10px;">
+                <i data-lucide="download" style="width:11px;height:11px;"></i> Download
+              </button>
+              <button class="btn btn-destructive" style="font-size:10px;">
+                <i data-lucide="trash-2" style="width:11px;height:11px;"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom bar -->
+      <div class="bottom-bar">
+        <span>Image block &middot; throne-room-concept.png &middot; 6 versions &middot; 3.4 MB total storage</span>
+        <span>Retention: keep last 10 versions &middot; MinIO: chapters/ch3/blocks/b3/</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    lucide.createIcons();
+    function switchHistoryTab(tab, btn) {
+      document.querySelectorAll('.history-tab').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + tab).classList.add('active');
+      setTimeout(() => lucide.createIcons(), 0);
+    }
+  </script>
+</body>
+</html>

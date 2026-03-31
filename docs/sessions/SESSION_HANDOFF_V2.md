@@ -2,7 +2,7 @@
 
 > **Purpose:** Give the next agent complete context to continue implementation from Phase 3 onward.
 > **Date:** 2026-03-31
-> **Last commit:** `2bad92f` (unsaved-changes guard + universal dialog + toast system)
+> **Last commit:** session 11 (LanguageTool + mixed-media editor design + phase planning)
 
 ---
 
@@ -35,6 +35,28 @@ LoreWeave is a multi-agent platform for multilingual novel workflows (writing, t
 | P1-09 | LanguageDisplay (native name + code) | `src/components/shared/LanguageDisplay.tsx`, `src/lib/languages.ts` |
 | P1-10 | Login, Register, Forgot, Reset pages | `src/pages/auth/` (4 pages + AuthCard) |
 | P1-11 | Language selector (GUI switching) | `src/components/shared/LanguageSelector.tsx` |
+
+
+### Session 11: LanguageTool + Mixed-Media Editor Design + Phase Planning
+
+| Work | What Was Built | Key Files |
+|---|---|---|
+| LanguageTool integration | Docker container (erikvl87/languagetool), Vite/nginx proxy, grammar API client | `docker-compose.yml`, `features/grammar/api.ts`, `hooks/useGrammarCheck.ts` |
+| Grammar in chunk mode | Wavy underlines via ref injection on blur, strip on focus, tooltip via title attr | `components/editor/ChunkItem.tsx` |
+| Grammar in source mode | Debounced check (1.5s), cursor-neighborhood detection (max 3 paragraphs), count badge | `hooks/useGrammarCheck.ts` (useSourceGrammarCheck) |
+| Grammar toggle | SpellCheck icon, badge count, persisted localStorage, enabled by default | `pages/ChapterEditorPage.tsx` |
+| Design: AI Assistant mode | Full block editor with all types, grammar, audio, AI prompts, format bar | `screen-editor-mixed-media.html` |
+| Design: Classic mode | Pure writing, media as locked placeholders, minimal toolbar | `screen-editor-classic.html` |
+| Design: Mode spec | Comparison table, guard behaviors, version data model, switching flow | `screen-editor-modes.html` |
+| Design: Version history | Side-by-side comparison, prompt diff, image + audio timeline tabs | `screen-editor-version-history.html` |
+| Phase planning | 29 new tasks in Phase 2.5 (12), Phase 3.5 (10), Phase 4.5 (7) | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` |
+
+**Key decisions:**
+- Tiptap replaces textarea + contentEditable chunks (unified editor)
+- Two modes: Classic (text-only, media locked) / AI Assistant (full features)
+- AI prompt on media: re-generation + AI context (saves tokens) + audit trail
+- Audio/TTS per paragraph: hidden by default, narration mode toggle
+- Phase 2.5 before Phase 3 to avoid double work on editor-dependent features
 
 ### Session 10: Chapter Editor Polish + Dialog + Toast System
 
@@ -261,9 +283,16 @@ P3-21: Book Settings Tab FE
 P3-22: Recycle Bin FE
 ```
 
-### Recommended start order for Phase 3
+### Recommended start order
 
-**Start with FE-only tasks** (no backend changes needed):
+**Phase 2.5 first (Editor Engine)** -- must complete before Phase 3:
+1. E1-01 + E1-02 (install Tiptap, replace textarea)
+2. E1-03 (replace chunks with Tiptap nodes + slash menu)
+3. E1-05 (grammar as Tiptap decoration plugin)
+4. E1-06 + E1-07 (mode toggle: Classic/AI)
+5. E1-08 (wire auto-save, Ctrl+S, dirty tracking) -- GATE: editor production-ready
+
+**Then Phase 3 FE-only tasks** (no backend changes needed):
 1. P3-01 → P3-04 (Translation) — translation-service API exists
 2. P3-05 → P3-07 (Glossary) — glossary-service API exists
 3. P3-18 → P3-19 (Chat) — chat-service API exists
@@ -380,6 +409,9 @@ hooks/useJobEvents.ts                → WebSocket job event listener
 
 | Issue | Where | Notes |
 |---|---|---|
+| Grammar: source mode has no inline underlines (textarea limit) | useSourceGrammarCheck | Fixed by Tiptap migration (E1-05) |
+| LanguageTool container heavy (~1.5 GB RAM) | docker-compose.yml | Optional, grammar degrades gracefully |
+| useChunks/ChunkItem/ChunkInsertRow to be deleted | hooks/, components/editor/ | Replaced by Tiptap in E1-03 |
 | OnboardingWizard not wired into App | `src/App.tsx` | Component exists but isn't rendered anywhere yet. Wire into BooksPage on first login. |
 | ReaderThemeProvider not applied to ReaderPage | `src/pages/ReaderPage.tsx` | Provider wraps App but reader doesn't use CSS vars yet. Apply `style={cssVars}` to reading area. |
 | LanguageSelector not shown anywhere | Component exists | Should appear in Settings → Language tab. |

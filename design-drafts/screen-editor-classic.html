@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Classic Mode Editor</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --input: #242019; --ring: #d4952a;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --secondary-fg: #e0d8cc;
+      --muted: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --destructive: #dc4e4e; --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; overflow: hidden; height: 100vh; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    /* Layout */
+    .shell { display: flex; height: 100vh; }
+    .nav-rail { width: 48px; flex-shrink: 0; background: var(--background); border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 2px; }
+    .nav-icon { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--muted-fg); cursor: pointer; transition: all 120ms; }
+    .nav-icon:hover { background: var(--secondary); color: var(--foreground); }
+    .nav-icon.active { background: var(--primary-muted); color: var(--primary); }
+    .nav-spacer { flex: 1; }
+
+    .workbench { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* Toolbar — minimal in classic mode */
+    .toolbar { height: 42px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--card); }
+    .toolbar-group { display: flex; align-items: center; gap: 8px; }
+    .toolbar-divider { width: 1px; height: 18px; background: var(--border); }
+    .breadcrumb { font-size: 12px; color: var(--muted-fg); }
+    .breadcrumb a { color: var(--muted-fg); text-decoration: none; }
+    .breadcrumb a:hover { color: var(--foreground); }
+    .breadcrumb .current { color: var(--foreground); font-weight: 500; }
+
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 5px; font-size: 11px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); border: none; cursor: pointer; padding: 4px 8px; border-radius: 5px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px; }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-icon { width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 5px; border: none; cursor: pointer; background: transparent; color: var(--muted-fg); transition: all 120ms; }
+    .btn-icon:hover { background: var(--secondary); color: var(--foreground); }
+    .kbd { background: var(--secondary); border: 1px solid var(--border); border-radius: 3px; padding: 0px 4px; font-size: 9px; font-family: 'JetBrains Mono', monospace; color: var(--muted-fg); }
+
+    /* Mode toggle */
+    .mode-toggle { display: flex; border: 1px solid var(--border); border-radius: 6px; background: var(--muted); padding: 2px; }
+    .mode-option { padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 120ms; border: none; background: transparent; color: var(--muted-fg); }
+    .mode-option.active { background: var(--background); color: var(--foreground); box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+
+    /* Panel area */
+    .panel-area { flex: 1; display: flex; overflow: hidden; }
+
+    /* Left sidebar — chapters only */
+    .left-panel { width: 260px; flex-shrink: 0; border-right: 1px solid var(--border); background: var(--card); display: flex; flex-direction: column; }
+    .panel-header { padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+    .panel-content { flex: 1; overflow-y: auto; }
+    .chapter-item { display: flex; align-items: flex-start; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--border); color: var(--muted-fg); cursor: pointer; transition: all 120ms; font-size: 12px; }
+    .chapter-item:hover { background: var(--secondary); color: var(--foreground); }
+    .chapter-item.current { border-left: 2px solid var(--primary); background: rgba(232,168,50,0.04); color: var(--primary); }
+    .chapter-num { width: 18px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 10px; opacity: 0.5; padding-top: 2px; }
+
+    /* Center editor — clean writing area */
+    .editor-center { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--background); }
+    .editor-meta { flex-shrink: 0; padding: 20px 0 14px; max-width: 680px; width: 100%; margin: 0 auto; }
+    .editor-title { width: 100%; background: transparent; border: none; outline: none; font-family: 'Lora', Georgia, serif; font-size: 24px; font-weight: 600; color: var(--foreground); }
+    .editor-title::placeholder { color: rgba(158,148,136,0.25); }
+    .editor-stats { margin-top: 6px; font-size: 10px; color: var(--muted-fg); }
+
+    .editor-content { flex: 1; overflow-y: auto; }
+    .editor-blocks { max-width: 680px; margin: 0 auto; padding: 0 0 80px; }
+
+    /* Block wrapper — minimal in classic */
+    .block { position: relative; margin-bottom: 2px; padding: 2px 0; }
+    .block:hover .block-handle { opacity: 1; }
+    .block-handle { position: absolute; left: -28px; top: 6px; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; color: var(--muted-fg); opacity: 0; cursor: grab; border-radius: 3px; transition: opacity 120ms; }
+    .block-handle:hover { background: var(--secondary); color: var(--foreground); }
+
+    /* Text block — clean, wide, literary */
+    .block-text { font-size: 15px; line-height: 1.9; color: var(--foreground); outline: none; min-height: 1.9em; padding: 2px 0; }
+    .block-text:empty::before { content: attr(data-placeholder); color: rgba(158,148,136,0.25); }
+    .block-text:focus { background: rgba(232,168,50,0.015); border-radius: 4px; margin: 0 -8px; padding: 2px 8px; }
+
+    /* Heading block */
+    .block-heading { font-family: 'Lora', Georgia, serif; font-size: 19px; font-weight: 600; line-height: 1.5; color: var(--foreground); outline: none; padding: 4px 0; }
+
+    /* Divider */
+    .block-divider { display: flex; align-items: center; gap: 12px; padding: 12px 0; }
+    .block-divider .divider-line { flex: 1; height: 1px; background: var(--border); }
+
+    /* Block insert — subtle */
+    .block-insert { height: 12px; position: relative; cursor: pointer; }
+    .block-insert .insert-pill { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 9px; color: var(--muted-fg); opacity: 0; transition: opacity 120ms; }
+    .block-insert:hover .insert-pill { opacity: 0.5; }
+
+    /* Locked media — compact, non-intrusive */
+    .media-locked { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--secondary); border-radius: 6px; border: 1px solid var(--border); font-size: 11px; color: var(--muted-fg); margin: 4px 0; transition: background 120ms; }
+    .media-locked:hover { background: var(--card-hover); }
+    .media-locked .ml-name { flex: 1; }
+    .media-locked .ml-meta { font-size: 9px; opacity: 0.5; }
+    .media-locked .ml-lock { font-size: 9px; background: var(--card); padding: 2px 6px; border-radius: 3px; display: flex; align-items: center; gap: 3px; opacity: 0; transition: opacity 120ms; }
+    .media-locked:hover .ml-lock { opacity: 1; }
+
+    /* Callout — available in classic */
+    .block-callout { display: flex; gap: 10px; padding: 10px 12px; border-radius: 6px; border-left: 3px solid var(--info); background: rgba(84,150,232,0.04); margin: 4px 0; }
+    .block-callout .callout-text { flex: 1; font-size: 13px; line-height: 1.7; outline: none; }
+
+    /* Right panel — history only in classic */
+    .right-panel { width: 260px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--card); display: flex; flex-direction: column; }
+    .revision-item { padding: 8px 14px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 120ms; }
+    .revision-item:hover { background: var(--card-hover); }
+    .revision-num { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--primary); }
+    .revision-time { font-size: 10px; color: var(--muted-fg); margin-top: 2px; }
+    .revision-note { font-size: 11px; margin-top: 3px; }
+
+    /* Bottom bar */
+    .bottom-bar { height: 28px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-top: 1px solid var(--border); background: var(--card); font-size: 10px; color: var(--muted-fg); }
+
+    /* Save note bar */
+    .save-note-bar { flex-shrink: 0; border-top: 1px solid var(--border); padding: 6px 0; max-width: 680px; width: 100%; margin: 0 auto; }
+    .save-note-bar input { width: 100%; background: var(--input); border: 1px solid var(--border); border-radius: 5px; color: var(--foreground); font-size: 11px; padding: 6px 10px; outline: none; }
+    .save-note-bar input::placeholder { color: rgba(158,148,136,0.3); }
+    .save-note-bar input:focus { border-color: var(--ring); }
+  </style>
+</head>
+<body>
+  <div class="shell">
+
+    <!-- Nav rail -->
+    <div class="nav-rail">
+      <div class="nav-icon"><i data-lucide="home" style="width:16px;height:16px;"></i></div>
+      <div class="nav-icon"><i data-lucide="book-open" style="width:16px;height:16px;"></i></div>
+      <div class="nav-icon active"><i data-lucide="pen-line" style="width:16px;height:16px;"></i></div>
+      <div class="nav-spacer"></div>
+      <div class="nav-icon"><i data-lucide="settings" style="width:16px;height:16px;"></i></div>
+      <div class="nav-icon" style="width:28px;height:28px;border-radius:50%;background:var(--primary-muted);color:var(--primary);font-size:11px;font-weight:600;">NS</div>
+    </div>
+
+    <div class="workbench">
+
+      <!-- Toolbar — minimal -->
+      <div class="toolbar">
+        <div class="toolbar-group">
+          <button class="btn-icon"><i data-lucide="chevron-left" style="width:14px;height:14px;"></i></button>
+          <div class="breadcrumb">
+            <a href="#">Workspace</a> &rsaquo;
+            <a href="#">Book</a> &rsaquo;
+            <span class="current">Chapter 3: The Betrayal</span>
+          </div>
+          <button class="btn-icon"><i data-lucide="chevron-right" style="width:14px;height:14px;"></i></button>
+        </div>
+        <div class="toolbar-group">
+          <!-- Mode toggle -->
+          <div class="mode-toggle">
+            <button class="mode-option active"><i data-lucide="pen-line" style="width:11px;height:11px;"></i> Classic</button>
+            <button class="mode-option"><i data-lucide="sparkles" style="width:11px;height:11px;"></i> AI</button>
+          </div>
+          <div class="toolbar-divider"></div>
+          <!-- Grammar off by default in classic -->
+          <button class="btn-ghost" style="opacity:0.5;"><i data-lucide="spell-check" style="width:13px;height:13px;"></i></button>
+          <div class="toolbar-divider"></div>
+          <button class="btn-icon"><i data-lucide="panel-left" style="width:13px;height:13px;"></i></button>
+          <button class="btn-icon"><i data-lucide="panel-right" style="width:13px;height:13px;"></i></button>
+          <div class="toolbar-divider"></div>
+          <span style="font-size:10px;color:var(--muted-fg);">v12 &middot; saved</span>
+          <button class="btn btn-primary">
+            <i data-lucide="save" style="width:12px;height:12px;"></i> Save
+            <span class="kbd">Ctrl+S</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="panel-area">
+
+        <!-- Left panel — chapters -->
+        <div class="left-panel">
+          <div class="panel-header"><i data-lucide="book-open" style="width:12px;height:12px;"></i> Chapters</div>
+          <div class="panel-content">
+            <div class="chapter-item"><span class="chapter-num">1</span> The Summoning Circle</div>
+            <div class="chapter-item"><span class="chapter-num">2</span> First Light of Dawn</div>
+            <div class="chapter-item current"><span class="chapter-num">3</span> The Betrayal</div>
+            <div class="chapter-item"><span class="chapter-num">4</span> Into the Abyss</div>
+            <div class="chapter-item"><span class="chapter-num">5</span> The Merchant's Gamble</div>
+            <div class="chapter-item"><span class="chapter-num">6</span> Whispers in the Mist</div>
+            <div class="chapter-item"><span class="chapter-num">7</span> The Broken Seal</div>
+            <div class="chapter-item"><span class="chapter-num">8</span> Blood of the Covenant</div>
+          </div>
+        </div>
+
+        <!-- Center editor -->
+        <div class="editor-center">
+          <div style="flex-shrink:0;padding:0 24px;">
+            <div class="editor-meta">
+              <input class="editor-title" value="The Betrayal" placeholder="Chapter title" />
+              <div class="editor-stats">1,247 words &middot; 12 blocks &middot; all saved</div>
+            </div>
+          </div>
+
+          <div class="editor-content" style="padding: 0 24px;">
+            <div class="editor-blocks">
+
+              <!-- Heading -->
+              <div class="block">
+                <div class="block-handle"><i data-lucide="grip-vertical" style="width:11px;height:11px;"></i></div>
+                <div class="block-heading" contenteditable="true">Part One &mdash; The Throne Room</div>
+              </div>
+
+              <div class="block-insert"><span class="insert-pill">+</span></div>
+
+              <!-- Text -->
+              <div class="block">
+                <div class="block-handle"><i data-lucide="grip-vertical" style="width:11px;height:11px;"></i></div>
+                <div class="block-text" contenteditable="true">The throne room was silent save for the crackle of dying embers. Shadows pooled in the corners where torchlight could not reach, and the air tasted of iron and betrayal. King Aldren sat motionless on his obsidian throne, his fingers gripping the armrests as he watched the doors at the far end of the hall.</div>
+              </div>
+
+              <div class="block-insert"><span class="insert-pill">+</span></div>
+
+              <!-- Locked image — compact placeholder -->
+              <div class="media-locked">
+                <i data-lucide="image" style="width:14px;height:14px;opacity:0.4;"></i>
+                <span class="ml-name">throne-room-concept.png</span>
+                <span class="ml-meta">1.2 MB</span>
+                <span class="ml-lock"><i data-lucide="lock" style="width:8px;height:8px;"></i> AI mode</span>
+              </div>
+
+              <div class="block-insert"><span class="insert-pill">+</span></div>
+
+              <!-- Text -->
+              <div class="block">
+                <div class="block-handle"><i data-lucide="grip-vertical" style="width:11px;height:11px;"></i></div>
+                <div class="block-text" contenteditable="true">"You may enter," the king said, his voice carrying no warmth. The words echoed against the vaulted ceiling, each syllable a stone dropped into still water. He did not rise. He did not need to. Power, in this room, was measured not by motion but by stillness.</div>
+              </div>
+
+              <div class="block-insert"><span class="insert-pill">+</span></div>
+
+              <!-- Text -->
+              <div class="block">
+                <div class="block-handle"><i data-lucide="grip-vertical" style="width:11px;height:11px;"></i></div>
+                <div class="block-text" contenteditable="true">The massive oak doors swung inward with a groan that resonated through the chamber like the dying breath of some great beast. Light from the corridor beyond spilled across the marble floor in a sharp wedge, and within that wedge stood a silhouette.</div>
+              </div>
+
+              <div class="block-insert"><span class="insert-pill">+</span></div>
+
+              <!-- Locked video — even more compact -->
+              <div class="media-locked">
+                <i data-lucide="video" style="width:14px;height:14px;opacity:0.4;"></i>
+                <span class="ml-name">battle-scene-draft.mp4</span>
+                <span class="ml-meta">18.5 MB &middot; 2:34</span>
+                <span class="ml-lock"><i data-lucide="lock" style="width:8px;height:8px;"></i> AI mode</span>
+              </div>
+
+              <div class="block-insert"><span class="insert-pill">+</span></div>
+
+              <!-- Text -->
+              <div class="block">
+                <div class="block-handle"><i data-lucide="grip-vertical" style="width:11px;height:11px;"></i></div>
+                <div class="block-text" contenteditable="true">The doors groaned open and General Kira strode in, her armor still dusted with the ash of the northern campaign. She carried no weapon &mdash; a breach of protocol that revealed much. Behind her, two soldiers dragged a bound figure whose face remained hidden beneath a torn hood.</div>
+              </div>
+
+              <div class="block-insert"><span class="insert-pill">+</span></div>
+
+              <!-- Text -->
+              <div class="block">
+                <div class="block-handle"><i data-lucide="grip-vertical" style="width:11px;height:11px;"></i></div>
+                <div class="block-text" contenteditable="true">"Your Majesty." Kira's voice was steady, but her eyes betrayed exhaustion. She dropped to one knee, armor clanking against stone. "The northern rebellion is broken. Their leader &mdash;" she gestured to the hooded figure &mdash; "awaits your judgment."</div>
+              </div>
+
+              <div class="block-insert"><span class="insert-pill">+</span></div>
+
+              <!-- Callout — available in classic -->
+              <div class="block">
+                <div class="block-handle"><i data-lucide="grip-vertical" style="width:11px;height:11px;"></i></div>
+                <div class="block-callout">
+                  <i data-lucide="sticky-note" style="width:14px;height:14px;flex-shrink:0;color:var(--info);"></i>
+                  <div class="callout-text" contenteditable="true"><strong>Author's note:</strong> Kira's dialogue needs more edge. She should sound like someone who just won a war, not someone giving a report. Rewrite in second pass.</div>
+                </div>
+              </div>
+
+              <div class="block-insert"><span class="insert-pill">+</span></div>
+
+              <!-- Divider -->
+              <div class="block">
+                <div class="block-divider">
+                  <div class="divider-line"></div>
+                  <i data-lucide="asterisk" style="width:10px;height:10px;opacity:0.3;"></i>
+                  <div class="divider-line"></div>
+                </div>
+              </div>
+
+              <div class="block-insert"><span class="insert-pill">+</span></div>
+
+              <!-- Text -->
+              <div class="block">
+                <div class="block-handle"><i data-lucide="grip-vertical" style="width:11px;height:11px;"></i></div>
+                <div class="block-text" contenteditable="true">The king rose. It was a slow, deliberate motion &mdash; not the movement of an old man, but of a predator choosing the precise moment to strike. He descended the three steps from his throne, each footfall echoing like a hammer on an anvil.</div>
+              </div>
+
+              <div class="block-insert"><span class="insert-pill">+</span></div>
+
+              <!-- Text -->
+              <div class="block">
+                <div class="block-handle"><i data-lucide="grip-vertical" style="width:11px;height:11px;"></i></div>
+                <div class="block-text" contenteditable="true" data-placeholder="Continue writing..."></div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Save note -->
+          <div style="padding:0 24px;flex-shrink:0;border-top:1px solid var(--border);">
+            <div class="save-note-bar">
+              <input placeholder='Save note (optional) — e.g. "rewrote Kira dialogue"' />
+            </div>
+          </div>
+        </div>
+
+        <!-- Right panel — history only -->
+        <div class="right-panel">
+          <div class="panel-header"><i data-lucide="clock" style="width:12px;height:12px;"></i> Revision History</div>
+          <div class="panel-content">
+            <div class="revision-item">
+              <div class="revision-num">v12</div>
+              <div class="revision-time">2 minutes ago</div>
+              <div class="revision-note">Added Kira's dialogue</div>
+            </div>
+            <div class="revision-item">
+              <div class="revision-num">v11</div>
+              <div class="revision-time">15 minutes ago</div>
+              <div class="revision-note">Auto-save</div>
+            </div>
+            <div class="revision-item">
+              <div class="revision-num">v10</div>
+              <div class="revision-time">1 hour ago</div>
+              <div class="revision-note">Rewrote throne room opening</div>
+            </div>
+            <div class="revision-item">
+              <div class="revision-num">v9</div>
+              <div class="revision-time">3 hours ago</div>
+              <div class="revision-note">Auto-save</div>
+            </div>
+            <div class="revision-item">
+              <div class="revision-num">v8</div>
+              <div class="revision-time">Yesterday</div>
+              <div class="revision-note">First draft complete</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Bottom bar -->
+      <div class="bottom-bar">
+        <span>Block 6 of 12 &middot; Paragraph &middot; 1,247 words</span>
+        <span>Classic mode &middot; 2 media blocks (locked)</span>
+      </div>
+    </div>
+  </div>
+
+  <script>lucide.createIcons();</script>
+</body>
+</html>
