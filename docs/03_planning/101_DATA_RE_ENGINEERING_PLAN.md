@@ -402,25 +402,67 @@ Event: chapter.deleted
 }
 ```
 
-**Error handling:** Redis publish is best-effort. If Redis is down, the chapter save
-still succeeds (Postgres commit is the priority). The publish failure is logged as a
-warning. Downstream pipelines (knowledge-service) will have a "catch-up" / "full reprocess"
-command that scans `chapter_drafts` directly for chapters not yet processed, independent
-of the event stream.
+### 3.5.1 Transactional Outbox Pattern (guaranteed delivery)
 
-**Go publish pattern:**
-```go
-// After successful Postgres commit — fire-and-forget with logging
-if err := s.redis.XAdd(ctx, &redis.XAddArgs{
-    Stream: "loreweave:events:chapter",
-    MaxLen: 10000,
-    Approx: true,
-    Values: map[string]any{...},
-}).Err(); err != nil {
-    slog.Warn("failed to publish chapter.saved event", "chapter_id", chID, "err", err)
-    // Do NOT fail the HTTP response — the save succeeded
-}
+Events are written to an `outbox_events` table in the **same Postgres transaction** as the
+data change. A background worker publishes pending events to Redis Stream. This guarantees
+at-least-once delivery — no events are lost even if Redis is down.
+
+```sql
+CREATE TABLE outbox_events (
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
+  aggregate_type TEXT NOT NULL,        -- 'chapter', 'book', 'entity'
+  aggregate_id UUID NOT NULL,          -- chapter_id, book_id, etc.
+  event_type TEXT NOT NULL,            -- 'chapter.saved', 'chapter.deleted'
+  payload JSONB NOT NULL,              -- event data
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  published_at TIMESTAMPTZ,           -- NULL = pending, set when published
+  retry_count INT NOT NULL DEFAULT 0,
+  last_error TEXT                      -- last publish failure reason
+);
+
+CREATE INDEX idx_outbox_unpublished ON outbox_events (created_at)
+  WHERE published_at IS NULL;
+
+-- Instant notification to worker on new event
+CREATE OR REPLACE FUNCTION fn_outbox_notify()
+RETURNS TRIGGER AS $$
+BEGIN
+  PERFORM pg_notify('outbox_events', NEW.id::text);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_outbox_notify
+  AFTER INSERT ON outbox_events
+  FOR EACH ROW EXECUTE FUNCTION fn_outbox_notify();
 ```
+
+**Write path** (inside patchDraft transaction):
+```go
+// SAME transaction as chapter save — atomic
+_, _ = tx.Exec(ctx, `
+  INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
+  VALUES ('chapter', $1, 'chapter.saved', $2)
+`, chID, payloadJSON)
+// tx.Commit() — both data change AND event are guaranteed
+```
+
+**Outbox worker** (goroutine in book-service):
+1. `LISTEN outbox_events` — gets instant `pg_notify` notification (<100ms)
+2. On notification: read and publish all pending events to Redis Stream
+3. Fallback: poll every 30s for any missed events (restart, network glitch)
+4. On success: set `published_at = now()`
+5. On failure: increment `retry_count`, set `last_error`, retry next cycle
+6. Cleanup: daily job deletes events where `published_at < now() - 7 days`
+
+**Consumer idempotency:** At-least-once delivery means consumers may see duplicates.
+Each event has a unique `id` (uuidv7). Consumers track `last_processed_event_id`.
+Neo4j `MERGE` is naturally idempotent. Block extraction UPSERT is idempotent.
+
+**Outbox location:** Each microservice owns its own `outbox_events` table in its own
+database. For now only book-service needs events. When glossary-service or auth-service
+need events, they add their own outbox table — no cross-service dependency.
 
 ### 3.6 Neo4j Knowledge Graph (designed now, built in Phase D3)
 
@@ -537,16 +579,18 @@ RETURN e.name, ch.title AS referenced_in, first_ch.title AS introduced_in
 
 | Task | Type | Scope | Deps | Est |
 |---|---|---|---|---|
-| D1-01 | Infra | Upgrade Postgres 16 → 18 in docker-compose (image, PGDATA, volume) | None | S |
-| D1-02 | BE | Clean schema: drop + recreate chapter_drafts (JSONB), chapter_revisions (JSONB + uuidv7) | D1-01 | S |
-| D1-03 | BE | Create chapter_blocks table + extraction trigger (JSON_TABLE) | D1-02 | M |
-| D1-04 | BE | book-service: accept body_format in patchDraft, store JSONB body | D1-02 | S |
-| D1-05 | BE | book-service: publish chapter.saved/deleted events to Redis Stream | D1-04 | S |
-| D1-06 | BE | book-service: getDraft/listRevisions/restoreRevision include body_format | D1-04 | S |
-| D1-07 | FE | Frontend: save Tiptap JSON (body_format: 'json'), load JSONB directly | D1-06 | M |
-| D1-08 | BE+FE | Integration test: create chapter → save → verify chapter_blocks populated | D1-03, D1-07 | S |
+| D1-01 | Infra | Upgrade Postgres 16 → 18 in docker-compose (image, PGDATA, volume), add Redis | None | S |
+| D1-02 | BE | Clean schema: all tables use uuidv7, chapter_drafts (JSONB), chapter_revisions (JSONB + format) | D1-01 | S |
+| D1-03 | BE | Create chapter_blocks table + UPSERT extraction trigger (JSON_TABLE + `_text`) | D1-02 | M |
+| D1-04 | BE | Create outbox_events table + pg_notify trigger | D1-02 | S |
+| D1-05 | BE | book-service: accept body_format in patchDraft, store JSONB, write outbox event in same tx | D1-02, D1-04 | M |
+| D1-06 | BE | book-service: outbox worker (goroutine, LISTEN + poll fallback, publish to Redis Stream) | D1-04 | M |
+| D1-07 | BE | book-service: getDraft/getRevision/restoreRevision with json.RawMessage body + body_format | D1-05 | S |
+| D1-08 | BE | book-service: createChapter converts plain text to Tiptap JSON at import | D1-05 | S |
+| D1-09 | FE | Frontend: save Tiptap JSON with `_text` snapshots, load JSONB directly | D1-07 | M |
+| D1-10 | BE+FE | Integration test: create → save → verify blocks + outbox published + Redis event | D1-03, D1-06, D1-09 | S |
 
-**GATE:** After D1-08, chapter content saves as JSONB. Blocks auto-extracted via trigger. Events published to Redis Stream.
+**GATE:** After D1-10, chapter content saves as JSONB with `_text` snapshots. Blocks auto-extracted via UPSERT trigger. Events guaranteed via outbox → Redis Stream.
 
 ### Phase D2: Neo4j Infrastructure (can parallel with D1-05+)
 
@@ -584,12 +628,12 @@ RETURN e.name, ch.title AS referenced_in, first_ch.title AS introduced_in
 
 | Service | Changes | When |
 |---|---|---|
-| **docker-compose** | Postgres 16→18, add Neo4j v2026.01, volume changes | Phase D1 + D2 |
-| **book-service** (Go) | patchDraft accepts body_format, JSONB body, publishes Redis events | Phase D1 |
-| **knowledge-service** (Python, NEW) | Consumes events, LLM extraction, writes Neo4j | Phase D3 |
+| **docker-compose** | Postgres 16→18, add Redis, add Neo4j v2026.01, volume changes | Phase D1 + D2 |
+| **book-service** (Go) | JSONB body, outbox pattern, outbox worker goroutine, json.RawMessage, plain→JSON import | Phase D1 |
+| **knowledge-service** (Python, NEW) | Consumes Redis events, LLM extraction, writes Neo4j | Phase D3 |
 | **glossary-service** (Go) | Evolves to read from Neo4j, keeps manual CRUD | Phase D3 |
 | **chat-service** (Python) | Adds RAG: hybrid graph+vector query via Neo4j | Phase D4 |
-| **frontend-v2** | Save/load Tiptap JSON directly (no plain text round-trip) | Phase D1 |
+| **frontend-v2** | Save Tiptap JSON with `_text` snapshots, load JSONB directly | Phase D1 |
 
 ---
 
@@ -600,12 +644,14 @@ RETURN e.name, ch.title AS referenced_in, first_ch.title AS introduced_in
 Steps:
 1. Stop all services
 2. Remove old Postgres volumes (`docker volume rm ...`)
-3. Update docker-compose: Postgres 18, PGDATA, Neo4j
-4. `docker-compose up -d postgres` — creates fresh PG18 instance
-5. Run migration (all services auto-migrate on startup)
-6. Deploy updated book-service + frontend
-7. Verify: create chapter → save → check `chapter_blocks` auto-populated
-8. Verify: check Redis Stream for `chapter.saved` event
+3. Update docker-compose: Postgres 18 (PGDATA), add Redis
+4. `docker-compose up -d postgres redis` — creates fresh PG18 + Redis
+5. Run migration (all services auto-migrate on startup, all tables use uuidv7)
+6. Deploy updated book-service (outbox worker starts automatically)
+7. Deploy updated frontend (sends Tiptap JSON with `_text` snapshots)
+8. Verify: create chapter → save → check `chapter_blocks` rows (UPSERT)
+9. Verify: check `outbox_events` has row with `published_at` set
+10. Verify: `redis-cli XRANGE loreweave:events:chapter - +` shows event
 
 ---
 
@@ -628,7 +674,7 @@ Steps:
 | 13 | **UPSERT trigger** (not DELETE+INSERT) | Preserves block IDs across saves. `updated_at` only changes when `content_hash` differs. Stable references for Neo4j provenance + embedding cache. | 2026-03-31 |
 | 14 | **Plain text → Tiptap JSON at import** | All bodies are always JSON. No dual-mode branching. `body_format` is always `'json'`. Eliminates branching in every read path. | 2026-03-31 |
 | 15 | **`json.RawMessage` for JSONB in Go** | pgx scans JSONB as `[]byte`. Using `json.RawMessage` prevents base64 encoding in API responses. Critical for correct JSON serialization. | 2026-03-31 |
-| 16 | **Redis publish is best-effort** | Redis down = log warning, save still succeeds. Knowledge pipeline has catch-up/reprocess command. At-most-once delivery acceptable. | 2026-03-31 |
+| 16 | **Transactional Outbox pattern** (replaces best-effort) | Event written in same Postgres tx as data. Worker publishes to Redis. At-least-once delivery guaranteed. No data loss in event pipeline. Each service owns its own outbox table. | 2026-03-31 |
 | 17 | **Redis Stream `MAXLEN ~ 10000`** | Auto-trim old events. Prevents unbounded growth. Older events re-derivable from database. | 2026-03-31 |
 | 18 | **`chapter_raw_objects` unchanged** | Stays as `TEXT`. Preserves raw import, never edited. No schema change needed. | 2026-03-31 |
 
@@ -645,7 +691,7 @@ Steps:
 | 1 | JSON_TABLE `$.content[0].text` misses formatted text (bold/italic = multiple text nodes) and nested blocks (lists, blockquotes) | **Critical** | Frontend adds `_text` snapshot per block (Decision #12). Trigger reads `$._text` — trivial path. |
 | 2 | Go pgx scans JSONB as `[]byte` → `json.Marshal` base64-encodes it in API response | **High** | Use `json.RawMessage` for body field in all handlers (Decision #15). |
 | 3 | DELETE+INSERT trigger loses block UUIDs on every save — breaks downstream references | **Medium** | Switch to UPSERT on `(chapter_id, block_index)` — stable IDs, `updated_at` tracks changes (Decision #13). |
-| 4 | Redis publish failure = lost event, no retry | **Medium** | Best-effort publish with warning log. Knowledge pipeline has catch-up reprocess (Decision #16). |
+| 4 | Redis publish failure = lost event, no retry | **Medium** | Transactional Outbox pattern: event in same Postgres tx, worker publishes to Redis, at-least-once guaranteed (Decision #16). |
 | 5 | Plain text in JSONB column creates dual-mode complexity in every read path | **Medium** | Convert plain text to Tiptap JSON at import time. `body_format` always `'json'` (Decision #14). |
 | 6 | No Redis Stream retention policy — unbounded growth | **Low** | `MAXLEN ~ 10000` on XADD (Decision #17). |
 | 7 | `uuidv7()` not applied to existing tables (books, chapters) | **Low** | Apply to all tables in clean break. Consistent time-ordered IDs across system. |
