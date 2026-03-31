@@ -187,8 +187,9 @@ export function ChapterEditorPage() {
   const sourceParagraphs = sourceBody.split(/\n\n+/).map((t) => t.trim()).filter(Boolean);
 
   const openAutoChunkPreview = () => {
-    if (sourceParagraphs.length === 0) return;
-    setAutoChunkPreview(sourceParagraphs);
+    // Always open — even if only 1 paragraph, the preview explains how blank lines work
+    const paragraphs = sourceParagraphs.length > 0 ? sourceParagraphs : [''];
+    setAutoChunkPreview(paragraphs);
   };
 
   const applyAutoChunk = () => {
@@ -369,15 +370,17 @@ export function ChapterEditorPage() {
                 {isDirty ? 'unsaved changes' : 'all saved'}
               </p>
 
-              {/* Auto-chunk button — source mode only, only when there's splittable content */}
-              {viewMode === 'source' && sourceParagraphs.length > 1 && (
+              {/* Auto-chunk button — always visible in source mode when there's text */}
+              {viewMode === 'source' && sourceBody.trim().length > 0 && (
                 <button
                   onClick={openAutoChunkPreview}
                   className="inline-flex items-center gap-1 rounded border border-dashed border-border px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
-                  title="Preview how your text splits into paragraphs, then apply as chunks"
+                  title="Split text into paragraph chunks using blank lines as separators"
                 >
                   <Scissors className="h-2.5 w-2.5" />
-                  Split into {sourceParagraphs.length} paragraphs
+                  {sourceParagraphs.length > 1
+                    ? `Split into ${sourceParagraphs.length} paragraphs`
+                    : 'Split into paragraphs'}
                 </button>
               )}
             </div>
@@ -433,11 +436,23 @@ export function ChapterEditorPage() {
               <div className="flex flex-shrink-0 items-center justify-between border-b px-6 py-3">
                 <div>
                   <p className="text-sm font-medium">
-                    Split into {autoChunkPreview.length} paragraphs
+                    {autoChunkPreview.length > 1
+                      ? `Split into ${autoChunkPreview.length} paragraphs`
+                      : 'No paragraph breaks detected'}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">
-                    Review how your text will be divided. Switch to chunk mode to edit each paragraph separately.
-                  </p>
+                  {autoChunkPreview.length > 1 ? (
+                    <p className="text-[10px] text-muted-foreground">
+                      Review how your text will be divided. Apply to switch to chunk mode.
+                    </p>
+                  ) : (
+                    <p className="text-[10px] text-muted-foreground">
+                      Your text is one continuous block.{' '}
+                      <span className="font-medium text-foreground">
+                        Press Enter twice (blank line) between sections
+                      </span>{' '}
+                      to create paragraph boundaries, then click Split again.
+                    </p>
+                  )}
                 </div>
                 <button
                   onClick={cancelAutoChunk}
@@ -474,7 +489,8 @@ export function ChapterEditorPage() {
                 </button>
                 <button
                   onClick={applyAutoChunk}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                  disabled={autoChunkPreview.length <= 1}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <LayoutList className="h-3.5 w-3.5" />
                   Apply — switch to chunk mode
