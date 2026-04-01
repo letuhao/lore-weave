@@ -10,6 +10,7 @@ import { LanguageDisplay } from '@/components/shared/LanguageDisplay';
 import { cn } from '@/lib/utils';
 import { ChaptersTab } from '@/pages/book-tabs/ChaptersTab';
 import { TranslationTab } from '@/pages/book-tabs/TranslationTab';
+import { GlossaryTab } from '@/pages/book-tabs/GlossaryTab';
 
 const tabs = [
   { key: '', label: 'Chapters' },
@@ -143,7 +144,6 @@ function BookTabContent({ bookId, book, activeTab, onReload }: {
   bookId: string; book: Book; activeTab: string; onReload: () => void;
 }) {
   const placeholders: Record<string, string> = {
-    '/glossary': 'Glossary management — coming in P3-05.',
     '/wiki': 'Wiki — coming in P3-17.',
     '/sharing': 'Sharing settings — coming in P3-20.',
     '/settings': 'Book settings — coming in P3-21.',
@@ -154,6 +154,9 @@ function BookTabContent({ bookId, book, activeTab, onReload }: {
   }
   if (activeTab === '/translation') {
     return <TranslationTab bookId={bookId} />;
+  }
+  if (activeTab === '/glossary') {
+    return <GlossaryTab bookId={bookId} />;
   }
 
   return (
