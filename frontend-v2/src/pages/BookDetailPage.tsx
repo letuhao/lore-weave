@@ -33,7 +33,8 @@ export function BookDetailPage() {
 
   useEffect(() => {
     if (!accessToken || !bookId) return;
-    setLoading(true);
+    // Only show skeleton on first load, not on re-visits
+    if (!book) setLoading(true);
     booksApi.getBook(accessToken, bookId)
       .then((b) => { setBook(b); setError(''); })
       .catch((e) => setError((e as Error).message))
@@ -46,7 +47,7 @@ export function BookDetailPage() {
     window.location.href = '/books';
   };
 
-  if (loading) {
+  if (loading && !book) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-6 w-48" />
