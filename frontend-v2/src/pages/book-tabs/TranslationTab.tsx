@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/shared/Skeleton';
 import { EmptyState } from '@/components/shared';
 import { cn } from '@/lib/utils';
 import { getLanguageName } from '@/lib/languages';
+import { TranslateModal } from './TranslateModal';
 
 function statusIcon(cell: CoverageCell | undefined) {
   if (!cell || cell.version_count === 0) return null;
@@ -59,6 +60,8 @@ export function TranslationTab({ bookId }: { bookId: string }) {
   const [error, setError] = useState('');
   const [selectedLangs, setSelectedLangs] = useState<Set<string> | null>(null); // null = auto
   const [filterOpen, setFilterOpen] = useState(false);
+  const [translateOpen, setTranslateOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -74,7 +77,7 @@ export function TranslationTab({ bookId }: { bookId: string }) {
       })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
-  }, [accessToken, bookId]);
+  }, [accessToken, bookId, refreshKey]);
 
   // Compute visible languages: user-selected or auto (languages with data)
   const allLanguages = coverage?.known_languages ?? [];
@@ -156,12 +159,22 @@ export function TranslationTab({ bookId }: { bookId: string }) {
               {isFiltered ? `${visibleLangs.length} selected` : 'Filter'}
             </button>
           )}
-          <button className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+          <button
+            onClick={() => setTranslateOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+          >
             <Plus className="h-3.5 w-3.5" />
             Translate
           </button>
         </div>
       </div>
+
+      <TranslateModal
+        open={translateOpen}
+        onClose={() => setTranslateOpen(false)}
+        bookId={bookId}
+        onJobCreated={() => setRefreshKey((k) => k + 1)}
+      />
 
       {/* Language filter dropdown */}
       {filterOpen && (
