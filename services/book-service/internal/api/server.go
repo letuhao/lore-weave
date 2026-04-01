@@ -821,6 +821,10 @@ RETURNING id
 	_, _ = tx.Exec(ctx, `INSERT INTO chapter_drafts(chapter_id, body, draft_format, draft_updated_at, draft_version) VALUES($1,$2,'plain',now(),1)`, chapterID, body)
 	_, _ = tx.Exec(ctx, `INSERT INTO chapter_revisions(chapter_id, body, message, author_user_id) VALUES($1,$2,$3,$4)`, chapterID, body, revisionMessage, ownerID)
 	_, _ = tx.Exec(ctx, `UPDATE chapters SET draft_revision_count=1 WHERE id=$1`, chapterID)
+	if err := insertOutboxEvent(ctx, tx, "chapter.created", chapterID, map[string]any{"book_id": bookID}); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to commit chapter")
+		return
+	}
 	if err := tx.Commit(ctx); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to commit chapter")
 		return
@@ -1065,22 +1069,36 @@ func (s *Server) exportChapter(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body, originalFilename string
+	var originalFilename string
 	var title *string
 	err := s.pool.QueryRow(r.Context(), `
-SELECT d.body, c.title, c.original_filename
-FROM chapter_drafts d
-JOIN chapters c ON c.id=d.chapter_id
+SELECT c.title, c.original_filename
+FROM chapters c
 JOIN books b ON b.id=c.book_id
-WHERE d.chapter_id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
-`, chID, bookID, ownerID).Scan(&body, &title, &originalFilename)
+WHERE c.id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
+`, chID, bookID, ownerID).Scan(&title, &originalFilename)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "CHAPTER_EXPORT_FAILED", "failed to fetch draft")
+		writeError(w, http.StatusInternalServerError, "CHAPTER_EXPORT_FAILED", "failed to fetch chapter")
 		return
+	}
+	// Read plain text from chapter_blocks (trigger-extracted); fall back to draft body
+	var textContent string
+	err = s.pool.QueryRow(r.Context(), `
+SELECT string_agg(text_content, E'\n\n' ORDER BY block_index)
+FROM chapter_blocks WHERE chapter_id=$1
+`, chID).Scan(&textContent)
+	if err != nil || textContent == "" {
+		// Fallback: no blocks yet (legacy data), read raw draft body as text
+		var rawBody []byte
+		if ferr := s.pool.QueryRow(r.Context(), `SELECT d.body FROM chapter_drafts d WHERE d.chapter_id=$1`, chID).Scan(&rawBody); ferr != nil {
+			writeError(w, http.StatusInternalServerError, "CHAPTER_EXPORT_FAILED", "failed to fetch draft")
+			return
+		}
+		textContent = string(rawBody)
 	}
 	filename := "chapter.txt"
 	if title != nil && *title != "" {
@@ -1091,7 +1109,7 @@ WHERE d.chapter_id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(body))
+	_, _ = w.Write([]byte(textContent))
 }
 
 func (s *Server) getDraft(w http.ResponseWriter, r *http.Request) {
@@ -1109,7 +1127,8 @@ func (s *Server) getDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var chapterID uuid.UUID
-	var body, format string
+	var body json.RawMessage
+	var format string
 	var updated time.Time
 	var version int64
 	err := s.pool.QueryRow(r.Context(), `
@@ -1151,13 +1170,21 @@ func (s *Server) patchDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Body                 string `json:"body"`
-		CommitMessage        string `json:"commit_message"`
-		ExpectedDraftVersion *int64 `json:"expected_draft_version"`
+		Body                 json.RawMessage `json:"body"`
+		BodyFormat           string          `json:"body_format"`
+		CommitMessage        string          `json:"commit_message"`
+		ExpectedDraftVersion *int64          `json:"expected_draft_version"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Body == "" {
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || len(in.Body) == 0 {
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "body is required")
 		return
+	}
+	if !json.Valid(in.Body) {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "body must be valid JSON")
+		return
+	}
+	if in.BodyFormat == "" {
+		in.BodyFormat = "json"
 	}
 	tx, err := s.pool.Begin(r.Context())
 	if err != nil {
@@ -1185,9 +1212,13 @@ WHERE d.chapter_id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
 		writeError(w, http.StatusConflict, "CHAPTER_DRAFT_CONFLICT", "stale draft version")
 		return
 	}
-	_, _ = tx.Exec(r.Context(), `UPDATE chapter_drafts SET body=$2,draft_updated_at=now(),draft_version=draft_version+1 WHERE chapter_id=$1`, chID, in.Body)
-	_, _ = tx.Exec(r.Context(), `INSERT INTO chapter_revisions(chapter_id, body, message, author_user_id) VALUES($1,$2,$3,$4)`, chID, in.Body, nullIfEmpty(in.CommitMessage), ownerID)
+	_, _ = tx.Exec(r.Context(), `UPDATE chapter_drafts SET body=$2,draft_format=$3,draft_updated_at=now(),draft_version=draft_version+1 WHERE chapter_id=$1`, chID, in.Body, in.BodyFormat)
+	_, _ = tx.Exec(r.Context(), `INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,$3,$4,$5)`, chID, in.Body, in.BodyFormat, nullIfEmpty(in.CommitMessage), ownerID)
 	_, _ = tx.Exec(r.Context(), `UPDATE chapters SET draft_updated_at=now(), draft_revision_count=draft_revision_count+1, updated_at=now() WHERE id=$1`, chID)
+	if err := insertOutboxEvent(r.Context(), tx, "chapter.saved", chID, map[string]any{"book_id": bookID}); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to patch draft")
+		return
+	}
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to patch draft")
 		return
@@ -1211,7 +1242,7 @@ func (s *Server) listRevisions(w http.ResponseWriter, r *http.Request) {
 	}
 	limit, offset := parseLimitOffset(r)
 	rows, err := s.pool.Query(r.Context(), `
-SELECT rv.id,rv.chapter_id,rv.created_at,rv.author_user_id,rv.message,length(rv.body)
+SELECT rv.id,rv.chapter_id,rv.created_at,rv.author_user_id,rv.message,octet_length(rv.body::text)
 FROM chapter_revisions rv
 JOIN chapters c ON c.id=rv.chapter_id
 JOIN books b ON b.id=c.book_id
@@ -1268,14 +1299,15 @@ func (s *Server) getRevision(w http.ResponseWriter, r *http.Request) {
 	var at time.Time
 	var uid *uuid.UUID
 	var msg *string
-	var body string
+	var body json.RawMessage
+	var bodyFormat string
 	err := s.pool.QueryRow(r.Context(), `
-SELECT rv.id,rv.chapter_id,rv.created_at,rv.author_user_id,rv.message,rv.body
+SELECT rv.id,rv.chapter_id,rv.created_at,rv.author_user_id,rv.message,rv.body,COALESCE(rv.body_format,'plain')
 FROM chapter_revisions rv
 JOIN chapters c ON c.id=rv.chapter_id
 JOIN books b ON b.id=c.book_id
 WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3 AND b.owner_user_id=$4
-`, revID, chID, bookID, ownerID).Scan(&rid, &cid, &at, &uid, &msg, &body)
+`, revID, chID, bookID, ownerID).Scan(&rid, &cid, &at, &uid, &msg, &body, &bodyFormat)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "REVISION_NOT_FOUND", "revision not found")
 		return
@@ -1291,6 +1323,7 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3 AND b.owner_user_id=$4
 		"author_user_id": uid,
 		"message":        msg,
 		"body":           body,
+		"body_format":    bodyFormat,
 	})
 }
 
@@ -1318,19 +1351,21 @@ func (s *Server) restoreRevision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(r.Context())
-	var currentBody string
-	if err := tx.QueryRow(r.Context(), `SELECT body FROM chapter_drafts WHERE chapter_id=$1`, chID).Scan(&currentBody); err != nil {
+	var currentBody json.RawMessage
+	var currentFormat string
+	if err := tx.QueryRow(r.Context(), `SELECT body,draft_format FROM chapter_drafts WHERE chapter_id=$1`, chID).Scan(&currentBody, &currentFormat); err != nil {
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "draft not found")
 		return
 	}
-	var body string
+	var body json.RawMessage
+	var bodyFormat string
 	err = tx.QueryRow(r.Context(), `
-SELECT rv.body
+SELECT rv.body,COALESCE(rv.body_format,'plain')
 FROM chapter_revisions rv
 JOIN chapters c ON c.id=rv.chapter_id
 JOIN books b ON b.id=c.book_id
 WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3 AND b.owner_user_id=$4
-`, revID, chID, bookID, ownerID).Scan(&body)
+`, revID, chID, bookID, ownerID).Scan(&body, &bodyFormat)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "REVISION_NOT_FOUND", "revision not found")
 		return
@@ -1339,9 +1374,13 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3 AND b.owner_user_id=$4
 		writeError(w, http.StatusInternalServerError, "REVISION_NOT_FOUND", "failed to restore revision")
 		return
 	}
-	_, _ = tx.Exec(r.Context(), `INSERT INTO chapter_revisions(chapter_id, body, message, author_user_id) VALUES($1,$2,$3,$4)`, chID, currentBody, "before restore", ownerID)
-	_, _ = tx.Exec(r.Context(), `UPDATE chapter_drafts SET body=$2,draft_updated_at=now(),draft_version=draft_version+1 WHERE chapter_id=$1`, chID, body)
+	_, _ = tx.Exec(r.Context(), `INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,$3,$4,$5)`, chID, currentBody, currentFormat, "before restore", ownerID)
+	_, _ = tx.Exec(r.Context(), `UPDATE chapter_drafts SET body=$2,draft_format=$3,draft_updated_at=now(),draft_version=draft_version+1 WHERE chapter_id=$1`, chID, body, bodyFormat)
 	_, _ = tx.Exec(r.Context(), `UPDATE chapters SET draft_updated_at=now(),draft_revision_count=draft_revision_count+1,updated_at=now() WHERE id=$1`, chID)
+	if err := insertOutboxEvent(r.Context(), tx, "chapter.saved", chID, map[string]any{"book_id": bookID}); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to restore revision")
+		return
+	}
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to restore revision")
 		return
@@ -1462,7 +1501,8 @@ func (s *Server) getInternalBookChapter(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return
 	}
-	var title, lang, body string
+	var title, lang string
+	var body json.RawMessage
 	var sortOrder int
 	var draftUpdated *time.Time
 	err = s.pool.QueryRow(r.Context(), `
@@ -1479,6 +1519,12 @@ WHERE c.id=$1 AND c.book_id=$2 AND c.lifecycle_state='active'
 		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to load chapter")
 		return
 	}
+	// Aggregate plain text from chapter_blocks for translation-service consumption
+	var textContent *string
+	_ = s.pool.QueryRow(r.Context(), `
+SELECT string_agg(text_content, E'\n\n' ORDER BY block_index)
+FROM chapter_blocks WHERE chapter_id=$1
+`, chapterID).Scan(&textContent)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"chapter_id":        chapterID,
 		"title":             nullableString(title),
@@ -1486,6 +1532,8 @@ WHERE c.id=$1 AND c.book_id=$2 AND c.lifecycle_state='active'
 		"original_language": lang,
 		"draft_updated_at":  draftUpdated,
 		"body":              body,
+		"body_format":       "json",
+		"text_content":      textContent,
 	})
 }
 

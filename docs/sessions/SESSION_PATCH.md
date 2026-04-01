@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-01 (session 13 end)
-- Updated By: Assistant (Data Re-Engineering D1-03 + D1-04)
+- Last Updated: 2026-04-01 (session 14)
+- Updated By: Assistant (Data Re-Engineering D1-06)
 - Active Branch: `main`
-- HEAD: `f76539e` — schema(D1-04): outbox_events table, pg_notify trigger, insertOutboxEvent helper
+- HEAD: pending commit — schema(D1-06): book-service JSONB handler refactor
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -114,6 +114,23 @@
 | Frontend: "Translate N chunks" in ChunkEditor selection bar | `components/chunk-editor/ChunkEditor.tsx` | `b7dcc4c` |
 | Frontend: translating overlay + loading state per-chunk | `ChunkItem.tsx`, `ChunkEditor.tsx` | `b7dcc4c` |
 | Frontend: wire `onTranslateChunk` in ChapterEditorPageV2 | `pages/v2-drafts/ChapterEditorPageV2.tsx` | `b7dcc4c` |
+
+**What was done in this session (2026-04-01, session 14):**
+
+Data Re-Engineering Phase D1 continuation: book-service JSONB handler refactor (D1-06).
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| D1-06a: getDraft — body → json.RawMessage scan (inline JSON, not base64) | `services/book-service/internal/api/server.go` | this session |
+| D1-06b: patchDraft — json.RawMessage body + body_format + json.Valid + outbox event | same file | this session |
+| D1-06c: getRevision — body → json.RawMessage + body_format in response | same file | this session |
+| D1-06d: restoreRevision — json.RawMessage both directions + body_format + outbox event | same file | this session |
+| D1-06e: listRevisions — length(body) → octet_length(body::text) for JSONB | same file | this session |
+| D1-06f: exportChapter — read plain text from chapter_blocks with draft fallback | same file | this session |
+| D1-06g: getInternalBookChapter — json.RawMessage body + text_content from blocks | same file | this session |
+| D1-06h: createChapterRecord — outbox event for chapter.created | same file | this session |
+
+**9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
 **What was done in this session (2026-04-01, session 13):**
 
@@ -322,8 +339,8 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Priority | Item | Notes |
 | -------- | ---- | ----- |
-| **P0** | **Data Re-Engineering D1-06** | book-service 7 handler JSONB refactor (**critical path to unbreak system**) |
-| **P0** | **Data Re-Engineering D1-05 + D1-09** | loreweave_events schema + worker-infra scaffold (parallel with D1-06) |
+| **P0** | **Data Re-Engineering D1-07** | createChapter: plain text → Tiptap JSON at import (next on critical path) |
+| **P0** | **Data Re-Engineering D1-05 + D1-09** | loreweave_events schema + worker-infra scaffold (parallel track) |
 | P1 | Frontend V2 Phase 3 — Feature screens | **PAUSED until data re-engineering complete** |
 | P2 | Chapter editor: smoke test the full guard + toast flow | Save & leave, Discard & leave, logout dirty, download success |
 | P2 | BooksPage create-book error path: currently uses inline error in dialog — review if toast is better | `src/pages/BooksPage.tsx` |
@@ -367,6 +384,7 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Date       | What happened | Key commits |
 | ---------- | ------------- | ----------- |
+| 2026-04-01 | Data re-engineering D1-06: book-service JSONB handler refactor (7 handlers + 3 outbox events) | this session |
 | 2026-04-01 | Data re-engineering D1-03 (chapter_blocks + trigger) + D1-04 (outbox_events + pg_notify + helper) | `599721a`, `f76539e` |
 | 2026-04-01 | Data re-engineering: D0 pre-flight (4/4 pass), D1-01 (PG18+Redis), D1-02 (uuidv7+JSONB) | `54a4d1f` |
 | 2026-03-31 | Phase 2.5 E1: Tiptap editor migration (8 tasks), bug fixes, workflow update | `4f39cf7` |
