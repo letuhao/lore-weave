@@ -403,6 +403,99 @@ AC:
 
 ## Phase 3: Feature Screens + Community Backend
 
+### GUI Review Pass (all existing components)
+```
+P3-R1: GUI Review — compare all components against design drafts, fix inconsistencies
+
+Review scope (65 files, ~6,800 lines):
+
+LAYOUTS (3):
+  - DashboardLayout.tsx (15 lines)
+  - EditorLayout.tsx (153 lines)
+  - FullBleedLayout.tsx (9 lines)
+
+AUTH PAGES (5):
+  - AuthCard.tsx (25 lines)
+  - LoginPage.tsx (103 lines)
+  - RegisterPage.tsx (110 lines)
+  - ForgotPage.tsx (82 lines)
+  - ResetPage.tsx (98 lines)
+
+SHARED COMPONENTS (12):
+  - Sidebar.tsx (219 lines)
+  - PageHeader.tsx (84 lines)
+  - ConfirmDialog.tsx (111 lines)
+  - FormDialog.tsx (45 lines)
+  - EmptyState.tsx (23 lines)
+  - Skeleton.tsx (33 lines)
+  - StatusBadge.tsx (54 lines)
+  - CopyButton.tsx (33 lines)
+  - FilterToolbar.tsx (59 lines)
+  - Pagination.tsx (80 lines)
+  - LanguageDisplay.tsx (28 lines)
+  - LanguageSelector.tsx (33 lines)
+  - UnsavedChangesDialog.tsx (28 lines)
+  - ChapterReadView.tsx (42 lines)
+
+CORE PAGES (6):
+  - HomePage.tsx (14 lines)
+  - BooksPage.tsx (235 lines)
+  - BookDetailPage.tsx (168 lines)
+  - ChapterEditorPage.tsx (546 lines)
+  - ReaderPage.tsx (141 lines)
+  - PlaceholderPage.tsx (27 lines)
+
+EDITOR COMPONENTS (7):
+  - TiptapEditor.tsx (125 lines)
+  - FormatToolbar.tsx (165 lines)
+  - SlashMenu.tsx (237 lines)
+  - CalloutNode.tsx (83 lines)
+  - RevisionHistory.tsx (180 lines)
+  - ChunkItem.tsx (140 lines) — dead code? replaced by Tiptap
+  - ChunkInsertRow.tsx (24 lines) — dead code? replaced by Tiptap
+
+BOOK TAB COMPONENTS (6):
+  - ChaptersTab.tsx (313 lines)
+  - TranslationTab.tsx (285 lines)
+  - TranslateModal.tsx (195 lines)
+  - GlossaryTab.tsx (317 lines)
+  - KindEditor.tsx (430 lines)
+  - EntityEditor.tsx (325 lines)
+
+OTHER (6):
+  - ImportDialog.tsx (108 lines)
+  - NotificationBell.tsx (90 lines) — mock data
+  - OnboardingWizard.tsx (86 lines) — not wired
+  - DataTable.tsx (59 lines)
+  - EditorDirtyContext.tsx (55 lines)
+  - ModeProvider.tsx (23 lines) — unused
+
+PROVIDERS (2):
+  - ReaderThemeProvider.tsx (83 lines)
+  - SidebarProvider.tsx (38 lines)
+
+Design drafts to compare against:
+  - design-drafts/components-v2-warm.html (component catalog)
+  - design-drafts/screen-glossary-management.html (kind/entity editor)
+  - design-drafts/screen-translation-matrix.html (translation tab)
+  - design-drafts/screen-chapter-editor.html (editor)
+  - design-drafts/screen-editor-workbench.html (3-panel)
+  - design-drafts/screen-chat.html (chat)
+  - design-drafts/screen-reader.html (reader)
+  - design-drafts/screen-settings.html (settings)
+  - design-drafts/screen-browse-catalog.html (catalog)
+
+Review checklist per component:
+  [ ] Matches design draft visually
+  [ ] Loading state exists
+  [ ] Empty state exists
+  [ ] Error state exists
+  [ ] Responsive (doesn't break on narrow screens)
+  [ ] Keyboard accessible (Tab, Enter, Esc where relevant)
+  [ ] Dead code identified and marked for removal
+  [ ] Unused imports cleaned
+```
+
 ### Translation (FE — uses existing translation-service)
 ```
 P3-01: Translation Matrix Tab [FE]                    [✓] Done (session 14)
