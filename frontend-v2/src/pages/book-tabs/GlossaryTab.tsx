@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/shared/Skeleton';
 import { EmptyState, ConfirmDialog } from '@/components/shared';
 import { cn } from '@/lib/utils';
 import { KindEditor } from './KindEditor';
+import { EntityEditor } from './EntityEditor';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-amber-400/15 text-amber-400',
@@ -39,6 +40,7 @@ export function GlossaryTab({ bookId }: { bookId: string }) {
   const [deleteTarget, setDeleteTarget] = useState<GlossaryEntitySummary | null>(null);
   const [createKindOpen, setCreateKindOpen] = useState(false);
   const [showKinds, setShowKinds] = useState(false);
+  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
 
   const loadEntities = async () => {
     if (!accessToken) return;
@@ -249,7 +251,14 @@ export function GlossaryTab({ bookId }: { bookId: string }) {
       ) : (
         <div className="rounded-lg border divide-y">
           {entities.map((e) => (
-            <div key={e.entity_id} className="flex items-center gap-3 px-4 py-3 hover:bg-card/50 transition-colors group">
+            <div
+              key={e.entity_id}
+              onClick={() => setSelectedEntityId(e.entity_id)}
+              className={cn(
+                'flex items-center gap-3 px-4 py-3 hover:bg-card/50 transition-colors group cursor-pointer',
+                selectedEntityId === e.entity_id && 'bg-primary/5 border-l-2 border-l-primary',
+              )}
+            >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium truncate">
@@ -288,6 +297,21 @@ export function GlossaryTab({ bookId }: { bookId: string }) {
         variant="destructive"
         onConfirm={() => void handleDelete()}
       />
+
+      {/* Entity Editor slide-over */}
+      {selectedEntityId && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/30" onClick={() => setSelectedEntityId(null)} />
+          <div className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-lg border-l bg-background shadow-xl">
+            <EntityEditor
+              bookId={bookId}
+              entityId={selectedEntityId}
+              onClose={() => setSelectedEntityId(null)}
+              onSaved={() => void loadEntities()}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }

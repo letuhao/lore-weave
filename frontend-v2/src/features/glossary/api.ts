@@ -63,4 +63,17 @@ export const glossaryApi = {
       token,
     });
   },
+
+  patchAttributeValue(
+    bookId: string,
+    entityId: string,
+    attrValueId: string,
+    changes: { original_language?: string; original_value?: string },
+    token: string,
+  ) {
+    return apiJson(
+      `${BASE}/books/${bookId}/entities/${entityId}/attributes/${attrValueId}`,
+      { method: 'PATCH', body: JSON.stringify(changes), token },
+    );
+  },
 };
