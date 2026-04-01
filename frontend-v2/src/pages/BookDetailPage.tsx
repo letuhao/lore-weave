@@ -9,6 +9,7 @@ import { StatusBadge, Skeleton, ConfirmDialog } from '@/components/shared';
 import { LanguageDisplay } from '@/components/shared/LanguageDisplay';
 import { cn } from '@/lib/utils';
 import { ChaptersTab } from '@/pages/book-tabs/ChaptersTab';
+import { TranslationTab } from '@/pages/book-tabs/TranslationTab';
 
 const tabs = [
   { key: '', label: 'Chapters' },
@@ -141,9 +142,7 @@ export function BookDetailPage() {
 function BookTabContent({ bookId, book, activeTab, onReload }: {
   bookId: string; book: Book; activeTab: string; onReload: () => void;
 }) {
-  // For now, show placeholder for tabs we haven't built yet
   const placeholders: Record<string, string> = {
-    '/translation': 'Translation matrix — coming in P3-01.',
     '/glossary': 'Glossary management — coming in P3-05.',
     '/wiki': 'Wiki — coming in P3-17.',
     '/sharing': 'Sharing settings — coming in P3-20.',
@@ -152,6 +151,9 @@ function BookTabContent({ bookId, book, activeTab, onReload }: {
 
   if (activeTab === '') {
     return <ChaptersTab bookId={bookId} />;
+  }
+  if (activeTab === '/translation') {
+    return <TranslationTab bookId={bookId} />;
   }
 
   return (

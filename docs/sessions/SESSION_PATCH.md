@@ -31,7 +31,7 @@
 
 ## Current Active Work
 
-**Phase:** Frontend V2 Rebuild — Phase 1 (Foundation)
+**Phase:** Frontend V2 Rebuild — Phase 3 (Feature Screens)
 
 **What was done in this session (2026-03-29, session 1):**
 
@@ -148,6 +148,8 @@ Data Re-Engineering Phase D1 continuation: book-service JSONB handler refactor (
 | D1-11d: ReaderPage: read-only TiptapEditor replaces ChapterReadView | `frontend-v2/src/pages/ReaderPage.tsx` | this session |
 | D1-11e: RevisionHistory: uses text_content from API | `frontend-v2/src/components/editor/RevisionHistory.tsx` | this session |
 | D1-12a: Integration test script (T01-T16 scenarios) | `infra/test-integration-d1.sh` (new) | this session |
+| D1-04d: transitionChapterLifecycle tx + outbox (trash/purge) | `services/book-service/internal/api/server.go` | this session |
+| P3-01: Translation Matrix Tab + translation API module | `frontend-v2/src/pages/book-tabs/TranslationTab.tsx` (new), `frontend-v2/src/features/translation/api.ts` (new) | this session |
 
 **9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
@@ -358,8 +360,11 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Priority | Item | Notes |
 | -------- | ---- | ----- |
-| **P0** | **Run D1 integration tests** | `docker compose up -d` then `bash infra/test-integration-d1.sh` + manual browser checklist |
-| **P0** | **Data Re-Engineering D1 GATE review** | Verify all 12 tasks pass, update SESSION_HANDOFF_V2 |
+| **P0** | **Frontend V2 Phase 3: P3-01 Translation Matrix Tab** | FE only — uses existing translation-service |
+| P1 | P3-02→P3-04 (Translate Modal, Jobs Drawer, Translation Settings) | FE only |
+| P1 | P3-05→P3-07 (Glossary Tab, Kind Editor, Entity Editor) | FE only |
+| P2 | P3-18→P3-19 (Chat Page, Chat Context) | FE only |
+| P2 | P3-20→P3-22 (Sharing, Settings, Trash) | FE only |
 | P1 | Frontend V2 Phase 3 — Feature screens | **PAUSED until data re-engineering complete** |
 | P2 | Chapter editor: smoke test the full guard + toast flow | Save & leave, Discard & leave, logout dirty, download success |
 | P2 | BooksPage create-book error path: currently uses inline error in dialog — review if toast is better | `src/pages/BooksPage.tsx` |
