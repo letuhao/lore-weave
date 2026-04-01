@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-01 (session 14 end)
-- Updated By: Assistant (Data Re-Engineering D1-06 through D1-12)
+- Last Updated: 2026-04-02 (session 14 end)
+- Updated By: Assistant (D1 complete + Phase 3 FE + GUI review)
 - Active Branch: `main`
-- HEAD: pending commit — D1-12 integration test script
+- HEAD: `964a2ed` — entity editor v2 centered modal + attribute card system
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -371,11 +371,13 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Priority | Item | Notes |
 | -------- | ---- | ----- |
-| **P0** | **Frontend V2 Phase 3: P3-01 Translation Matrix Tab** | FE only — uses existing translation-service |
-| P1 | P3-02→P3-04 (Translate Modal, Jobs Drawer, Translation Settings) | FE only |
-| P1 | P3-05→P3-07 (Glossary Tab, Kind Editor, Entity Editor) | FE only |
-| P2 | P3-18→P3-19 (Chat Page, Chat Context) | FE only |
-| P2 | P3-20→P3-22 (Sharing, Settings, Trash) | FE only |
+| **P0** | **P3-18: Chat Page [FE]** | Uses existing chat-service — next FE task |
+| **P0** | **P3-20→P3-22: Sharing, Settings, Trash [FE]** | All APIs exist |
+| P1 | P3-03: Jobs Drawer [FE] | Deferred until after translation workbench |
+| P1 | P3-04: Translation Settings Drawer [FE] | Deferred |
+| P1 | P3-08a/b: Genre Groups [BE+FE] | Needs new backend tables |
+| P2 | GUI Review deferred items (D1-D22) | See 99A plan |
+| P2 | Platform Mode (103_PLATFORM_MODE_PLAN.md) | 35 tasks, deferred |
 | P1 | Frontend V2 Phase 3 — Feature screens | **PAUSED until data re-engineering complete** |
 | P2 | Chapter editor: smoke test the full guard + toast flow | Save & leave, Discard & leave, logout dirty, download success |
 | P2 | BooksPage create-book error path: currently uses inline error in dialog — review if toast is better | `src/pages/BooksPage.tsx` |
@@ -419,6 +421,7 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Date       | What happened | Key commits |
 | ---------- | ------------- | ----------- |
+| 2026-04-02 | Session 14: D1 complete (D1-06→D1-12), Phase 3 FE (P3-01→P3-07), GUI review (5 drafts, 41 fixes), React Query, entity editor v2, Platform Mode plan | session 14 |
 | 2026-04-01 | Data re-engineering D1-06→D1-12: JSONB handlers, Tiptap import, text_content, worker-infra, frontend JSONB, integration tests | session 14 |
 | 2026-04-01 | Data re-engineering D1-03 (chapter_blocks + trigger) + D1-04 (outbox_events + pg_notify + helper) | `599721a`, `f76539e` |
 | 2026-04-01 | Data re-engineering: D0 pre-flight (4/4 pass), D1-01 (PG18+Redis), D1-02 (uuidv7+JSONB) | `54a4d1f` |
