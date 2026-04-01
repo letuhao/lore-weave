@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { X, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
@@ -113,6 +113,9 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
         onConfirm={() => void handleRestore()}
       />
 
+      {/* Esc to close preview */}
+      {preview && <EscListener onEsc={() => setPreview(null)} />}
+
       {/* Full-screen preview overlay — rendered via fixed positioning so it
           escapes the constrained 300px right panel */}
       {preview && (
@@ -161,4 +164,17 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
       )}
     </div>
   );
+}
+
+function EscListener({ onEsc }: { onEsc: () => void }) {
+  const handler = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') onEsc();
+  }, [onEsc]);
+
+  useEffect(() => {
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [handler]);
+
+  return null;
 }
