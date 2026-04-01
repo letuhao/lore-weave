@@ -171,6 +171,82 @@ assert_eq "T7: Delete returns 204" "204" "$DEL_STATUS"
 LIST3_TOTAL=$(curl -s "$GATEWAY/v1/glossary/books/$BOOK_ID/entities" -H "$AUTH" | jv 'd.get("total",0)')
 assert_eq "T7: List shows 1 after delete" "1" "$LIST3_TOTAL"
 
+# ── T8: Create Custom Kind ─────────────────────────────────────────────────
+header "T8: Create Custom Kind"
+
+CK_RESP=$(curl -s -w "\n%{http_code}" -X POST "$GATEWAY/v1/glossary/kinds" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"code":"spell","name":"Spell","icon":"✨","color":"#a855f7"}')
+CK_STATUS=$(echo "$CK_RESP" | tail -1)
+CK_BODY=$(echo "$CK_RESP" | sed '$d')
+CK_ID=$(echo "$CK_BODY" | jv 'd.get("kind_id","")')
+
+assert_eq "T8: Create kind returns 201" "201" "$CK_STATUS"
+assert_not_empty "T8: Got custom kind_id" "$CK_ID"
+
+CK_DEFAULT=$(echo "$CK_BODY" | jv 'd.get("is_default",True)')
+assert_eq "T8: Custom kind is_default=False" "False" "$CK_DEFAULT"
+
+# ── T9: Patch Kind ────────────────────────────────────────────────────────
+header "T9: Patch Kind"
+
+PK_RESP=$(curl -s -w "\n%{http_code}" -X PATCH "$GATEWAY/v1/glossary/kinds/$CK_ID" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"name":"Magic Spell","icon":"🔮"}')
+PK_STATUS=$(echo "$PK_RESP" | tail -1)
+
+assert_eq "T9: Patch kind returns 200" "200" "$PK_STATUS"
+
+PK_NAME=$(echo "$PK_RESP" | sed '$d' | jv 'd.get("name","")')
+assert_eq "T9: Kind name updated" "Magic Spell" "$PK_NAME"
+
+# ── T10: Add Attribute to Kind ────────────────────────────────────────────
+header "T10: Add Attribute to Kind"
+
+AA_RESP=$(curl -s -w "\n%{http_code}" -X POST "$GATEWAY/v1/glossary/kinds/$CK_ID/attributes" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"code":"mana_cost","name":"Mana Cost","field_type":"number","is_required":true,"sort_order":10}')
+AA_STATUS=$(echo "$AA_RESP" | tail -1)
+AA_BODY=$(echo "$AA_RESP" | sed '$d')
+AA_ID=$(echo "$AA_BODY" | jv 'd.get("attr_def_id","")')
+
+assert_eq "T10: Create attr returns 201" "201" "$AA_STATUS"
+assert_not_empty "T10: Got attr_def_id" "$AA_ID"
+
+AA_TYPE=$(echo "$AA_BODY" | jv 'd.get("field_type","")')
+assert_eq "T10: Attr field_type=number" "number" "$AA_TYPE"
+
+# ── T11: Patch Attribute ──────────────────────────────────────────────────
+header "T11: Patch Attribute"
+
+PA_RESP=$(curl -s -w "\n%{http_code}" -X PATCH "$GATEWAY/v1/glossary/kinds/$CK_ID/attributes/$AA_ID" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"name":"MP Cost"}')
+PA_STATUS=$(echo "$PA_RESP" | tail -1)
+
+assert_eq "T11: Patch attr returns 200" "200" "$PA_STATUS"
+
+PA_NAME=$(echo "$PA_RESP" | sed '$d' | jv 'd.get("name","")')
+assert_eq "T11: Attr name updated" "MP Cost" "$PA_NAME"
+
+# ── T12: Delete Attribute ─────────────────────────────────────────────────
+header "T12: Delete Attribute"
+
+DA_STATUS=$(curl -s -w "%{http_code}" -o /dev/null -X DELETE "$GATEWAY/v1/glossary/kinds/$CK_ID/attributes/$AA_ID" -H "$AUTH")
+assert_eq "T12: Delete attr returns 204" "204" "$DA_STATUS"
+
+# ── T13: Delete Custom Kind ──────────────────────────────────────────────
+header "T13: Delete Custom Kind"
+
+DK_STATUS=$(curl -s -w "%{http_code}" -o /dev/null -X DELETE "$GATEWAY/v1/glossary/kinds/$CK_ID" -H "$AUTH")
+assert_eq "T13: Delete kind returns 204" "204" "$DK_STATUS"
+
+# ── T14: Cannot Delete System Kind ───────────────────────────────────────
+header "T14: Cannot Delete System Kind"
+
+SK_STATUS=$(curl -s -w "%{http_code}" -o /dev/null -X DELETE "$GATEWAY/v1/glossary/kinds/$KIND_ID" -H "$AUTH")
+assert_eq "T14: Delete system kind returns 403" "403" "$SK_STATUS"
+
 # ── Summary ─────────────────────────────────────────────────────────────────
 header "RESULTS"
 printf "\033[32m  PASS: %d\033[0m\n" "$PASS"

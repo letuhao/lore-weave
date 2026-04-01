@@ -154,6 +154,7 @@ Data Re-Engineering Phase D1 continuation: book-service JSONB handler refactor (
 | P3-05: Glossary Tab (entity list, filters, CRUD) | `GlossaryTab.tsx`, `features/glossary/api.ts`, `types.ts` | this session |
 | P3-06: Kind Editor (two-panel kind browser) | `KindEditor.tsx` | this session |
 | P3-07: Entity Editor (dynamic attribute form, slide-over) | `EntityEditor.tsx` | this session |
+| P3-06: Kind Editor backend (6 CRUD endpoints) + frontend (full editor) | `glossary-service/kinds_crud.go`, `KindEditor.tsx` | this session |
 
 **9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 

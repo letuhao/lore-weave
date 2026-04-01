@@ -39,6 +39,16 @@ func (s *Server) Router() http.Handler {
 
 	r.Route("/v1/glossary", func(r chi.Router) {
 		r.Get("/kinds", s.listKinds)
+		r.Post("/kinds", s.createKind)
+		r.Route("/kinds/{kind_id}", func(r chi.Router) {
+			r.Patch("/", s.patchKind)
+			r.Delete("/", s.deleteKind)
+			r.Post("/attributes", s.createAttrDef)
+			r.Route("/attributes/{attr_def_id}", func(r chi.Router) {
+				r.Patch("/", s.patchAttrDef)
+				r.Delete("/", s.deleteAttrDef)
+			})
+		})
 
 		r.Route("/books/{book_id}", func(r chi.Router) {
 			r.Get("/export", s.exportGlossary)

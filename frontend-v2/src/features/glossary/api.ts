@@ -64,6 +64,52 @@ export const glossaryApi = {
     });
   },
 
+  // ── Kind CRUD ──────────────────────────────────────────────────────────────
+
+  createKind(token: string, payload: { code: string; name: string; icon?: string; color?: string; genre_tags?: string[] }) {
+    return apiJson<import('./types').EntityKind>(`${BASE}/kinds`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      token,
+    });
+  },
+
+  patchKind(token: string, kindId: string, changes: Record<string, unknown>) {
+    return apiJson<import('./types').EntityKind>(`${BASE}/kinds/${kindId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(changes),
+      token,
+    });
+  },
+
+  deleteKind(token: string, kindId: string): Promise<void> {
+    return apiJson<void>(`${BASE}/kinds/${kindId}`, { method: 'DELETE', token });
+  },
+
+  // ── Attribute Definition CRUD ─────────────────────────────────────────────
+
+  createAttrDef(token: string, kindId: string, payload: { code: string; name: string; field_type?: string; is_required?: boolean; sort_order?: number; options?: string[] }) {
+    return apiJson<import('./types').AttributeDefinition>(`${BASE}/kinds/${kindId}/attributes`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      token,
+    });
+  },
+
+  patchAttrDef(token: string, kindId: string, attrDefId: string, changes: Record<string, unknown>) {
+    return apiJson<import('./types').AttributeDefinition>(`${BASE}/kinds/${kindId}/attributes/${attrDefId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(changes),
+      token,
+    });
+  },
+
+  deleteAttrDef(token: string, kindId: string, attrDefId: string): Promise<void> {
+    return apiJson<void>(`${BASE}/kinds/${kindId}/attributes/${attrDefId}`, { method: 'DELETE', token });
+  },
+
+  // ── Attribute Values ──────────────────────────────────────────────────────
+
   patchAttributeValue(
     bookId: string,
     entityId: string,
