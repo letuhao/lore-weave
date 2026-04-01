@@ -494,6 +494,13 @@ Review checklist per component:
   [ ] Keyboard accessible (Tab, Enter, Esc where relevant)
   [ ] Dead code identified and marked for removal
   [ ] Unused imports cleaned
+
+Deferred polish items (tracked here so they don't get lost):
+  [ ] P3-R1-D1: Editor panel drag-to-resize handles (design draft 02, resize-handle class)
+  [ ] P3-R1-D2: Dead code cleanup — ChunkItem.tsx + ChunkInsertRow.tsx (replaced by Tiptap)
+  [ ] P3-R1-D3: Wire OnboardingWizard into App (exists but not rendered)
+  [ ] P3-R1-D4: Wire NotificationBell with real data (currently mock)
+  [ ] P3-R1-D5: Remove or repurpose ModeProvider (currently unused)
 ```
 
 ### Translation (FE — uses existing translation-service)
