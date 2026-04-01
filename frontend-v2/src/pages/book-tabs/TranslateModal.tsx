@@ -3,15 +3,9 @@ import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
-import { translationApi } from '@/features/translation/api';
-import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
+import { translationApi, type BookTranslationSettings } from '@/features/translation/api';
 import { getLanguageName } from '@/lib/languages';
 import { cn } from '@/lib/utils';
-
-const POPULAR_LANGUAGES = [
-  'en', 'vi', 'ja', 'zh', 'ko', 'es', 'fr', 'de', 'pt', 'ru',
-  'it', 'th', 'id', 'ar', 'hi', 'pl', 'nl', 'tr', 'sv', 'uk',
-];
 
 interface TranslateModalProps {
   open: boolean;
@@ -23,10 +17,9 @@ interface TranslateModalProps {
 export function TranslateModal({ open, onClose, bookId, onJobCreated }: TranslateModalProps) {
   const { accessToken } = useAuth();
   const [chapters, setChapters] = useState<Chapter[]>([]);
-  const [models, setModels] = useState<UserModel[]>([]);
+  const [settings, setSettings] = useState<BookTranslationSettings | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [targetLang, setTargetLang] = useState('');
   const [selectedChapters, setSelectedChapters] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
 
@@ -35,12 +28,11 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
     setLoading(true);
     Promise.all([
       booksApi.listChapters(accessToken, bookId, { lifecycle_state: 'active', limit: 200, offset: 0 }),
-      aiModelsApi.listUserModels(accessToken),
+      translationApi.getBookSettings(accessToken, bookId).catch(() => null),
     ])
-      .then(([chs, mdls]) => {
+      .then(([chs, bkSettings]) => {
         setChapters(chs.items);
-        setModels(mdls.items.filter((m) => m.is_active));
-        // Default: select all chapters
+        setSettings(bkSettings);
         setSelectedChapters(new Set(chs.items.map((c) => c.chapter_id)));
       })
       .catch((e) => toast.error((e as Error).message))
@@ -64,8 +56,11 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
     }
   };
 
+  const targetLang = settings?.target_language;
+  const hasModel = !!settings?.model_ref;
+
   const handleSubmit = async () => {
-    if (!accessToken || !targetLang || selectedChapters.size === 0) return;
+    if (!accessToken || !targetLang || selectedChapters.size === 0 || !hasModel) return;
     setSubmitting(true);
     try {
       await translationApi.createJob(accessToken, bookId, {
@@ -107,29 +102,35 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
             </div>
           ) : (
             <div className="px-5 py-4 space-y-4">
-              {/* Target language */}
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">Target Language</label>
-                <select
-                  value={targetLang}
-                  onChange={(e) => setTargetLang(e.target.value)}
-                  className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-xs focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-                >
-                  <option value="">Select language...</option>
-                  {POPULAR_LANGUAGES.map((code) => (
-                    <option key={code} value={code}>
-                      {getLanguageName(code)} ({code})
-                    </option>
-                  ))}
-                </select>
+              {/* Translation settings summary */}
+              <div className="rounded-md border bg-card px-4 py-3 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Translation Settings</span>
+                </div>
+                <div className="flex items-center gap-4 text-xs">
+                  <span>
+                    <span className="text-muted-foreground">Language: </span>
+                    {targetLang ? (
+                      <span className="font-medium">{getLanguageName(targetLang)} ({targetLang})</span>
+                    ) : (
+                      <span className="text-amber-400">Not configured</span>
+                    )}
+                  </span>
+                  <span>
+                    <span className="text-muted-foreground">Model: </span>
+                    {hasModel ? (
+                      <span className="font-medium">{settings?.model_ref?.slice(0, 20)}</span>
+                    ) : (
+                      <span className="text-amber-400">Not configured</span>
+                    )}
+                  </span>
+                </div>
+                {(!targetLang || !hasModel) && (
+                  <p className="text-[10px] text-amber-400 mt-1">
+                    Configure target language and model in Translation Settings (P3-04) first.
+                  </p>
+                )}
               </div>
-
-              {/* Model info */}
-              {models.length === 0 && (
-                <p className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-400">
-                  No AI models configured. Add a model in Settings → Providers first.
-                </p>
-              )}
 
               {/* Chapter selection */}
               <div>
@@ -180,7 +181,7 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
             </button>
             <button
               onClick={() => void handleSubmit()}
-              disabled={submitting || !targetLang || selectedChapters.size === 0 || models.length === 0}
+              disabled={submitting || !targetLang || !hasModel || selectedChapters.size === 0}
               className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}

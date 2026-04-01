@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { BookOpen, Plus, Search, Filter, Trash2, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
@@ -42,7 +42,7 @@ export function GlossaryTab({ bookId }: { bookId: string }) {
   const [showKinds, setShowKinds] = useState(false);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
 
-  const loadEntities = async () => {
+  const loadEntities = useCallback(async () => {
     if (!accessToken) return;
     setLoading(true);
     setError('');
@@ -58,9 +58,9 @@ export function GlossaryTab({ bookId }: { bookId: string }) {
       setError((e as Error).message);
     }
     setLoading(false);
-  };
+  }, [accessToken, bookId, filters, kinds]);
 
-  useEffect(() => { void loadEntities(); }, [accessToken, bookId, filters]);
+  useEffect(() => { void loadEntities(); }, [loadEntities]);
 
   const visibleKinds = useMemo(
     () => kinds.filter((k) => !k.is_hidden).sort((a, b) => a.sort_order - b.sort_order),
