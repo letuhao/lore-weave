@@ -138,12 +138,25 @@ export function ChapterEditorPage() {
     if (autoSaveTimer.current) { clearTimeout(autoSaveTimer.current); autoSaveTimer.current = null; }
     try {
       const bodyToSave = tiptapJson ?? savedBody;
-      await booksApi.patchDraft(accessToken, bookId, chapterId, {
-        body: bodyToSave,
-        body_format: 'json',
-        commit_message: saveNote || undefined,
-        expected_draft_version: version,
-      });
+      try {
+        await booksApi.patchDraft(accessToken, bookId, chapterId, {
+          body: bodyToSave,
+          body_format: 'json',
+          commit_message: saveNote || undefined,
+          expected_draft_version: version,
+        });
+      } catch (e) {
+        // On version conflict, retry without version check (single-user, last-write-wins)
+        if ((e as Error).message?.includes('stale draft version')) {
+          await booksApi.patchDraft(accessToken, bookId, chapterId, {
+            body: bodyToSave,
+            body_format: 'json',
+            commit_message: saveNote || undefined,
+          });
+        } else {
+          throw e;
+        }
+      }
       if (title !== savedTitle) {
         await booksApi.patchChapter(accessToken, bookId, chapterId, { title: title || null });
       }
