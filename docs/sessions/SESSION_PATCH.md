@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-01 (session 14)
-- Updated By: Assistant (Data Re-Engineering D1-06)
+- Last Updated: 2026-04-01 (session 14 end)
+- Updated By: Assistant (Data Re-Engineering D1-06 through D1-12)
 - Active Branch: `main`
-- HEAD: pending commit — schema(D1-06): book-service JSONB handler refactor
+- HEAD: pending commit — D1-12 integration test script
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -147,6 +147,7 @@ Data Re-Engineering Phase D1 continuation: book-service JSONB handler refactor (
 | D1-11c: ChapterEditorPage: JSONB save/load, dirty check, discard | `frontend-v2/src/pages/ChapterEditorPage.tsx` | this session |
 | D1-11d: ReaderPage: read-only TiptapEditor replaces ChapterReadView | `frontend-v2/src/pages/ReaderPage.tsx` | this session |
 | D1-11e: RevisionHistory: uses text_content from API | `frontend-v2/src/components/editor/RevisionHistory.tsx` | this session |
+| D1-12a: Integration test script (T01-T16 scenarios) | `infra/test-integration-d1.sh` (new) | this session |
 
 **9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
@@ -357,8 +358,8 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Priority | Item | Notes |
 | -------- | ---- | ----- |
-| **P0** | **Data Re-Engineering D1-11** | Frontend: save Tiptap JSON with _text, load JSONB, read-only reader |
-| **P0** | **Data Re-Engineering D1-12** | Integration test (16 scenarios) |
+| **P0** | **Run D1 integration tests** | `docker compose up -d` then `bash infra/test-integration-d1.sh` + manual browser checklist |
+| **P0** | **Data Re-Engineering D1 GATE review** | Verify all 12 tasks pass, update SESSION_HANDOFF_V2 |
 | P1 | Frontend V2 Phase 3 — Feature screens | **PAUSED until data re-engineering complete** |
 | P2 | Chapter editor: smoke test the full guard + toast flow | Save & leave, Discard & leave, logout dirty, download success |
 | P2 | BooksPage create-book error path: currently uses inline error in dialog — review if toast is better | `src/pages/BooksPage.tsx` |
@@ -402,7 +403,7 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Date       | What happened | Key commits |
 | ---------- | ------------- | ----------- |
-| 2026-04-01 | Data re-engineering D1-06: book-service JSONB handler refactor (7 handlers + 3 outbox events) | this session |
+| 2026-04-01 | Data re-engineering D1-06→D1-12: JSONB handlers, Tiptap import, text_content, worker-infra, frontend JSONB, integration tests | session 14 |
 | 2026-04-01 | Data re-engineering D1-03 (chapter_blocks + trigger) + D1-04 (outbox_events + pg_notify + helper) | `599721a`, `f76539e` |
 | 2026-04-01 | Data re-engineering: D0 pre-flight (4/4 pass), D1-01 (PG18+Redis), D1-02 (uuidv7+JSONB) | `54a4d1f` |
 | 2026-03-31 | Phase 2.5 E1: Tiptap editor migration (8 tasks), bug fixes, workflow update | `4f39cf7` |
