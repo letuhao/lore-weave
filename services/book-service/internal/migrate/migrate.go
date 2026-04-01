@@ -100,6 +100,21 @@ CREATE TABLE IF NOT EXISTS chapter_blocks (
 );
 CREATE INDEX IF NOT EXISTS idx_chapter_blocks_chapter ON chapter_blocks(chapter_id);
 CREATE INDEX IF NOT EXISTS idx_chapter_blocks_type ON chapter_blocks(block_type);
+
+-- ── outbox_events: transactional outbox for event-driven pipeline ────────
+CREATE TABLE IF NOT EXISTS outbox_events (
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
+  aggregate_type TEXT NOT NULL DEFAULT 'chapter',
+  aggregate_id UUID NOT NULL,
+  event_type TEXT NOT NULL,
+  payload JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  published_at TIMESTAMPTZ,
+  retry_count INT NOT NULL DEFAULT 0,
+  last_error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_outbox_pending
+  ON outbox_events(created_at) WHERE published_at IS NULL;
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {
@@ -193,6 +208,23 @@ DO $$ BEGIN
     AFTER INSERT OR UPDATE OF body ON chapter_drafts
     FOR EACH ROW
     EXECUTE FUNCTION fn_extract_chapter_blocks();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- ── fn_outbox_notify: pg_notify when new outbox event inserted ───────────
+CREATE OR REPLACE FUNCTION fn_outbox_notify()
+RETURNS TRIGGER AS $fn$
+BEGIN
+  PERFORM pg_notify('outbox_events', NEW.id::text);
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $$ BEGIN
+  CREATE TRIGGER trg_outbox_notify
+    AFTER INSERT ON outbox_events
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_outbox_notify();
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 `
