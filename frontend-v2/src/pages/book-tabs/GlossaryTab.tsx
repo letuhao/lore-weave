@@ -308,6 +308,9 @@ export function GlossaryTab({ bookId }: { bookId: string }) {
               entityId={selectedEntityId}
               onClose={() => setSelectedEntityId(null)}
               onSaved={() => void loadEntities()}
+              onDelete={() => {
+                setDeleteTarget(entities.find((e) => e.entity_id === selectedEntityId) ?? null);
+              }}
             />
           </div>
         </>

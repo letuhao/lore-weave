@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { X, Save, Loader2, Link2, Tag } from 'lucide-react';
+import { X, Save, Loader2, Link2, Tag, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
@@ -12,6 +12,7 @@ interface EntityEditorProps {
   entityId: string;
   onClose: () => void;
   onSaved: () => void;
+  onDelete: () => void;
 }
 
 function FieldInput({ attr, onChange }: {
@@ -137,7 +138,7 @@ function TagsInput({ value, onChange }: { value: string; onChange: (v: string) =
   );
 }
 
-export function EntityEditor({ bookId, entityId, onClose, onSaved }: EntityEditorProps) {
+export function EntityEditor({ bookId, entityId, onClose, onSaved, onDelete }: EntityEditorProps) {
   const { accessToken } = useAuth();
   const [entity, setEntity] = useState<GlossaryEntity | null>(null);
   const [loading, setLoading] = useState(true);
@@ -252,16 +253,6 @@ export function EntityEditor({ bookId, entityId, onClose, onSaved }: EntityEdito
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
-          {isDirty && (
-            <button
-              onClick={() => void handleSave()}
-              disabled={saving}
-              className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-            >
-              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              Save
-            </button>
-          )}
           <button
             onClick={onClose}
             className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
@@ -288,37 +279,100 @@ export function EntityEditor({ bookId, entityId, onClose, onSaved }: EntityEdito
           )}
         </div>
 
-        {/* Attribute fields */}
-        {sortedAttrs.map((attr) => {
-          const def = attr.attribute_def;
-          const displayValue = getDisplayValue(attr);
-          const changed = pendingChanges.has(attr.attr_value_id);
+        {/* Attribute fields — two-column for short types, full-width for long types */}
+        {(() => {
+          const shortTypes = new Set(['text', 'number', 'date', 'select', 'boolean', 'url']);
+          const fields = sortedAttrs.map((attr) => {
+            const def = attr.attribute_def;
+            const displayValue = getDisplayValue(attr);
+            const changed = pendingChanges.has(attr.attr_value_id);
+            const isShort = shortTypes.has(def.field_type);
 
-          return (
-            <div key={attr.attr_value_id}>
-              <div className="flex items-center gap-2 mb-1.5">
-                <label className="text-xs font-medium">{def.name}</label>
-                {def.is_required && (
-                  <span className="text-[9px] text-destructive">*</span>
-                )}
-                <span className="font-mono text-[9px] text-muted-foreground">{def.code}</span>
-                {changed && (
-                  <span className="rounded bg-amber-400/15 px-1 py-0.5 text-[8px] font-medium text-amber-400">modified</span>
-                )}
-              </div>
-              <FieldInput
-                attr={{ ...attr, original_value: displayValue }}
-                onChange={(v) => handleAttrChange(attr.attr_value_id, v)}
-              />
-            </div>
-          );
-        })}
+            return {
+              key: attr.attr_value_id,
+              isShort,
+              node: (
+                <div key={attr.attr_value_id}>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <label className="text-xs font-medium">{def.name}</label>
+                    {def.is_system ? (
+                      <span className="rounded bg-blue-500/15 px-1 py-0.5 text-[8px] font-medium text-blue-400">SYS</span>
+                    ) : (
+                      <span className="rounded bg-primary/15 px-1 py-0.5 text-[8px] font-medium text-primary">USR</span>
+                    )}
+                    {def.is_required && (
+                      <span className="text-[9px] text-destructive">*required</span>
+                    )}
+                    {changed && (
+                      <span className="rounded bg-amber-400/15 px-1 py-0.5 text-[8px] font-medium text-amber-400">modified</span>
+                    )}
+                  </div>
+                  <FieldInput
+                    attr={{ ...attr, original_value: displayValue }}
+                    onChange={(v) => handleAttrChange(attr.attr_value_id, v)}
+                  />
+                </div>
+              ),
+            };
+          });
+
+          // Render: group consecutive short fields into 2-col grids
+          const rendered: React.ReactNode[] = [];
+          let shortBuffer: React.ReactNode[] = [];
+          const flushShort = () => {
+            if (shortBuffer.length > 0) {
+              rendered.push(
+                <div key={`grid-${rendered.length}`} className="grid grid-cols-2 gap-4">
+                  {shortBuffer}
+                </div>,
+              );
+              shortBuffer = [];
+            }
+          };
+          for (const f of fields) {
+            if (f.isShort) {
+              shortBuffer.push(f.node);
+            } else {
+              flushShort();
+              rendered.push(f.node);
+            }
+          }
+          flushShort();
+          return rendered;
+        })()}
 
         {sortedAttrs.length === 0 && (
           <p className="text-xs text-muted-foreground italic py-4">
             No attributes defined for this entity kind.
           </p>
         )}
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between border-t px-5 py-3 flex-shrink-0">
+        <button
+          onClick={onDelete}
+          className="inline-flex items-center gap-1.5 rounded-md border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors"
+        >
+          <Trash2 className="h-3 w-3" />
+          Move to Trash
+        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onClose}
+            className="rounded-md border px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => void handleSave()}
+            disabled={saving || !isDirty}
+            className="btn-glow inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
+          >
+            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+            Save Entity
+          </button>
+        </div>
       </div>
     </div>
   );

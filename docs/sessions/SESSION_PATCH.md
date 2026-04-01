@@ -158,6 +158,7 @@ Data Re-Engineering Phase D1 continuation: book-service JSONB handler refactor (
 | P3-R1: GUI review fixes (S1-S11) — glow, covers, filters, EmptyState, auth, FloatingActionBar | 9 files | this session |
 | P3-R1: Editor polish — saved badge, version, metadata stats, source line numbers, status bar | `ChapterEditorPage.tsx` | this session |
 | P3-R1: TranslationTab polish — checkboxes, row numbers, column headers, cell labels, summary legend, floating action bar | `TranslationTab.tsx` | this session |
+| P3-R1: Glossary polish — KindEditor section headers, EntityEditor SYS/USR badges + 2-col layout + footer | `KindEditor.tsx`, `EntityEditor.tsx`, `GlossaryTab.tsx` | this session |
 
 **9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 

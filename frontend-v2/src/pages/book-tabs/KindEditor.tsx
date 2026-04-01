@@ -19,6 +19,35 @@ const FIELD_TYPE_OPTIONS: { value: FieldType; label: string }[] = [
   { value: 'boolean', label: 'Boolean' },
 ];
 
+function AttrRow({ attr, onDelete }: { attr: import('@/features/glossary/types').AttributeDefinition; onDelete: (() => void) | undefined }) {
+  return (
+    <div className="flex items-center gap-3 border-b px-4 py-2.5 group hover:bg-card/50 transition-colors last:border-b-0">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium">{attr.name}</span>
+          <span className="rounded bg-secondary px-1.5 py-0.5 text-[9px] text-muted-foreground">{attr.field_type}</span>
+          {attr.is_required && <span className="rounded bg-amber-400/15 px-1 py-0.5 text-[9px] font-medium text-amber-400">required</span>}
+          {attr.is_system ? (
+            <span className="rounded bg-blue-500/15 px-1 py-0.5 text-[9px] font-medium text-blue-400">SYS</span>
+          ) : (
+            <span className="rounded bg-primary/15 px-1 py-0.5 text-[9px] font-medium text-primary">USR</span>
+          )}
+        </div>
+        <span className="text-[10px] text-muted-foreground font-mono">{attr.code}</span>
+      </div>
+      {onDelete && (
+        <button
+          onClick={onDelete}
+          className="opacity-0 group-hover:opacity-100 rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
+          title="Delete attribute"
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function KindEditor({ onClose }: { onClose: () => void }) {
   const { accessToken } = useAuth();
   const [kinds, setKinds] = useState<EntityKind[]>([]);
@@ -324,31 +353,41 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
                 {selected.default_attributes.length === 0 ? (
                   <p className="text-xs text-muted-foreground italic py-4">No attributes defined. Click "Add Attribute" to create one.</p>
                 ) : (
-                  <div className="rounded-lg border divide-y">
-                    {[...selected.default_attributes]
-                      .sort((a, b) => a.sort_order - b.sort_order)
-                      .map((attr) => (
-                        <div key={attr.attr_def_id} className="flex items-center gap-3 px-4 py-2.5 group hover:bg-card/50 transition-colors">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-medium">{attr.name}</span>
-                              <span className="rounded bg-secondary px-1.5 py-0.5 text-[9px] text-muted-foreground">{attr.field_type}</span>
-                              {attr.is_required && <span className="rounded bg-amber-400/15 px-1 py-0.5 text-[9px] font-medium text-amber-400">required</span>}
-                              {attr.is_system && <span className="rounded bg-blue-500/15 px-1 py-0.5 text-[9px] font-medium text-blue-400">SYS</span>}
-                            </div>
-                            <span className="text-[10px] text-muted-foreground font-mono">{attr.code}</span>
-                          </div>
-                          {!attr.is_system && (
-                            <button
-                              onClick={() => setDeleteAttrTarget(attr)}
-                              className="opacity-0 group-hover:opacity-100 rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
-                              title="Delete attribute"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          )}
+                  <div className="rounded-lg border overflow-hidden">
+                    {/* System attributes */}
+                    {selected.default_attributes.some((a) => a.is_system) && (
+                      <>
+                        <div className="px-3 py-1.5" style={{ background: 'rgba(24,20,18,0.3)' }}>
+                          <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-blue-400">
+                            <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+                            System Attributes
+                          </span>
                         </div>
-                      ))}
+                        {[...selected.default_attributes]
+                          .filter((a) => a.is_system)
+                          .sort((a, b) => a.sort_order - b.sort_order)
+                          .map((attr) => (
+                            <AttrRow key={attr.attr_def_id} attr={attr} onDelete={undefined} />
+                          ))}
+                      </>
+                    )}
+                    {/* User attributes */}
+                    {selected.default_attributes.some((a) => !a.is_system) && (
+                      <>
+                        <div className="px-3 py-1.5" style={{ background: 'rgba(24,20,18,0.3)' }}>
+                          <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
+                            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                            User Attributes
+                          </span>
+                        </div>
+                        {[...selected.default_attributes]
+                          .filter((a) => !a.is_system)
+                          .sort((a, b) => a.sort_order - b.sort_order)
+                          .map((attr) => (
+                            <AttrRow key={attr.attr_def_id} attr={attr} onDelete={() => setDeleteAttrTarget(attr)} />
+                          ))}
+                      </>
+                    )}
                   </div>
                 )}
               </div>
