@@ -2,17 +2,18 @@ interface ChapterReadViewProps {
   body: string;
   title?: string | null;
   chapterNumber?: number;
+  className?: string;
 }
 
 /**
  * Reusable reading-mode content renderer.
  * Used by ReaderPage (live draft) and RevisionHistory (revision preview).
  */
-export function ChapterReadView({ body, title, chapterNumber }: ChapterReadViewProps) {
+export function ChapterReadView({ body, title, chapterNumber, className }: ChapterReadViewProps) {
   const paragraphs = body.split(/\n\n+/).filter(Boolean);
 
   return (
-    <article className="w-full max-w-[680px]">
+    <article className={className ?? "w-full max-w-[680px]"}>
       <header className="mb-10 text-center">
         {chapterNumber !== undefined && (
           <p className="text-xs uppercase tracking-wider text-muted-foreground">

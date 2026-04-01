@@ -158,7 +158,7 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
 
           {/* Reading area — same layout as ReaderPage */}
           <div className="flex flex-1 justify-center overflow-y-auto px-6 py-10">
-            <ChapterReadView body={preview.textContent} />
+            <ChapterReadView body={preview.textContent} className="max-w-4xl" />
           </div>
         </div>
       )}
