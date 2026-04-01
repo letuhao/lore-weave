@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Plus, ChevronRight, Languages } from 'lucide-react';
+import { BookOpen, Plus, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Book } from '@/features/books/api';
 import { PageHeader } from '@/components/layout/PageHeader';

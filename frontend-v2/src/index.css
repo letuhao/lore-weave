@@ -63,6 +63,11 @@
   box-shadow: 0 0 32px hsl(var(--primary) / 0.25);
 }
 
+@keyframes float-bar-in {
+  from { transform: translateY(12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
 /* ── Grammar check highlights ─────────────────────────────────────────────── */
 .grammar-issue {
   text-decoration-line: underline;
