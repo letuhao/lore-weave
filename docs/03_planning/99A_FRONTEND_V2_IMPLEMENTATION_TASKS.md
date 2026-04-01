@@ -501,6 +501,16 @@ Deferred polish items (tracked here so they don't get lost):
   [ ] P3-R1-D3: Wire OnboardingWizard into App (exists but not rendered)
   [ ] P3-R1-D4: Wire NotificationBell with real data (currently mock)
   [ ] P3-R1-D5: Remove or repurpose ModeProvider (currently unused)
+
+Deferred glossary items (needs backend or P3-08):
+  [ ] P3-R1-D6: Attribute active toggle (is_active column, on/off per attr) [BE+FE]
+  [ ] P3-R1-D7: Kind modified tracking (compare user edits vs seed defaults) [BE+FE]
+  [ ] P3-R1-D8: Revert to default (restore system attr to original seed value) [BE+FE]
+  [ ] P3-R1-D9: Drag-to-reorder kinds + attributes (update sort_order via PATCH) [FE]
+  [ ] P3-R1-D10: Relationship field type (entity references with role labels) [BE+FE]
+  [ ] P3-R1-D11: Genre badge on attributes ("Fantasy only") — needs P3-08a
+  [ ] P3-R1-D12: Genre badge in entity editor header — needs P3-08a
+  [ ] P3-R1-D13: Attribute deactivation per genre (dimmed + strikethrough) — needs P3-08a
 ```
 
 ### Translation (FE — uses existing translation-service)
