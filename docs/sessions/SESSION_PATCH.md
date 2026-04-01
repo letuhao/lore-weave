@@ -149,7 +149,11 @@ Data Re-Engineering Phase D1 continuation: book-service JSONB handler refactor (
 | D1-11e: RevisionHistory: uses text_content from API | `frontend-v2/src/components/editor/RevisionHistory.tsx` | this session |
 | D1-12a: Integration test script (T01-T16 scenarios) | `infra/test-integration-d1.sh` (new) | this session |
 | D1-04d: transitionChapterLifecycle tx + outbox (trash/purge) | `services/book-service/internal/api/server.go` | this session |
-| P3-01: Translation Matrix Tab + translation API module | `frontend-v2/src/pages/book-tabs/TranslationTab.tsx` (new), `frontend-v2/src/features/translation/api.ts` (new) | this session |
+| P3-01: Translation Matrix Tab + translation API module | `TranslationTab.tsx`, `features/translation/api.ts` | this session |
+| P3-02: Translate Modal (AI batch) | `TranslateModal.tsx`, `features/ai-models/api.ts` | this session |
+| P3-05: Glossary Tab (entity list, filters, CRUD) | `GlossaryTab.tsx`, `features/glossary/api.ts`, `types.ts` | this session |
+| P3-06: Kind Editor (two-panel kind browser) | `KindEditor.tsx` | this session |
+| P3-07: Entity Editor (dynamic attribute form, slide-over) | `EntityEditor.tsx` | this session |
 
 **9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
