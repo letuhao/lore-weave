@@ -405,10 +405,42 @@ AC:
 
 ### Translation (FE — uses existing translation-service)
 ```
-P3-01: Translation Matrix Tab [FE]
-P3-02: Translate Modal [FE]
-P3-03: Jobs Drawer [FE]
-P3-04: Translation Settings Drawer [FE]
+P3-01: Translation Matrix Tab [FE]                    [✓] Done (session 14)
+P3-02: Translate Modal (AI batch) [FE]                [✓] Done (session 14)
+P3-03: Jobs Drawer [FE]                               [ ] (deferred — after workbench)
+P3-04: Translation Settings Drawer [FE]               [ ] (deferred — after workbench)
+```
+
+### Translation Workbench (BLOCKED — needs media blocks from Phase 3.5)
+```
+Design draft: design-drafts/screen-translation-workbench.html
+
+Architecture: Block-level translation, not chapter-level.
+  - A translation IS a chapter version in a different language
+  - Source blocks (read-only) linked 1:1 with translation blocks (editable)
+  - Each block type has its own translation UX:
+    · text (p, h, list, quote): manual textarea or AI suggest
+    · image: attach/paste/AI regenerate with translated prompt
+    · video: re-attach or AI regenerate
+    · audio/TTS: auto-regenerate from translated text
+    · code: copy as-is (editable)
+    · callout (author note): skip by default, opt-in translate
+    · divider: no translation needed
+
+Requires:
+  - Phase 3.5 media blocks (image, video, audio, code in editor)
+  - New backend: block_translations table + CRUD endpoints
+  - Translation-service extension: per-block AI translation
+
+Tasks (to be broken down when unblocked):
+  P3-T1: block_translations table + migration [BE]
+  P3-T2: Block translation CRUD endpoints [BE]
+  P3-T3: Translation Workbench page [FE]
+  P3-T4: Per-block AI suggest integration [FS]
+  P3-T5: Media block translation UX (attach, regenerate) [FE]
+  P3-T6: AI Assist All (bulk fill empty blocks) [FS]
+  P3-T7: Keyboard navigation (Tab/Shift+Tab/Ctrl+Enter) [FE]
+  P3-T8: Glossary lookup in workbench (highlight known terms) [FE]
 ```
 
 ### Glossary (mostly FE — uses existing glossary-service)
