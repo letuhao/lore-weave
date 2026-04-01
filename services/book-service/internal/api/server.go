@@ -937,12 +937,12 @@ WHERE b.id=$1 AND c.id=$2 AND b.owner_user_id=$3
 	}
 	_, err = s.pool.Exec(r.Context(), `
 UPDATE chapters
-SET title=COALESCE($4,title),
-    sort_order=COALESCE($5,sort_order),
-    original_language=COALESCE($6,original_language),
+SET title=COALESCE($3,title),
+    sort_order=COALESCE($4,sort_order),
+    original_language=COALESCE($5,original_language),
     updated_at=now()
 WHERE id=$1 AND book_id=$2
-`, chID, bookID, ownerID, stringFromAny(in["title"]), intFromAny(in["sort_order"]), stringFromAny(in["original_language"]))
+`, chID, bookID, stringFromAny(in["title"]), intFromAny(in["sort_order"]), stringFromAny(in["original_language"]))
 	if err != nil {
 		writeError(w, http.StatusConflict, "BOOK_CONFLICT", "failed to patch chapter")
 		return
