@@ -213,9 +213,12 @@ export function ChapterEditorPage() {
     guardedNavigate(`/books/${bookId}/chapters/${targetId}/edit`);
   };
 
-  // ── Word count display ────────────────────────────────────────────────────
+  // ── Stats ─────────────────────────────────────────────────────────────────
 
   const wc = wordCount(textContent);
+  const charCount = textContent.length;
+  const paraCount = textContent ? textContent.split(/\n\n+/).filter(Boolean).length : 0;
+  const chapterLang = allChapters.find((c) => c.chapter_id === chapterId)?.original_language;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -320,10 +323,17 @@ export function ChapterEditorPage() {
 
           {/* Save status */}
           {isDirty ? (
-            <span className="text-[10px] text-warning">Unsaved changes</span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/12 px-2 py-0.5 text-[10px] font-medium text-warning">
+              <span className="h-1.5 w-1.5 rounded-full bg-warning" />
+              Unsaved
+            </span>
           ) : (
-            <span className="text-[10px] text-muted-foreground">v{version ?? '?'}</span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-success/12 px-2 py-0.5 text-[10px] font-medium text-success">
+              <span className="h-1.5 w-1.5 rounded-full bg-success" />
+              Saved
+            </span>
           )}
+          <span className="text-[10px] font-mono text-muted-foreground">v{version ?? '?'}</span>
 
           {isDirty && (
             <button
@@ -436,12 +446,14 @@ export function ChapterEditorPage() {
                       <Skeleton className="h-3 w-full" />
                     </div>
                   ) : originalContent ? (
-                    <p
-                      className="text-xs leading-[1.75] text-foreground/70"
-                      style={{ whiteSpace: 'pre-wrap' }}
-                    >
-                      {originalContent}
-                    </p>
+                    <div className="space-y-0">
+                      {originalContent.split(/\n\n+/).filter(Boolean).map((line, i) => (
+                        <div key={i} className="flex gap-2 border-b border-border/30 px-3 py-1.5">
+                          <span className="w-5 flex-shrink-0 text-right font-mono text-[10px] text-muted-foreground/50">{i + 1}</span>
+                          <p className="text-xs leading-[1.75] text-foreground/70">{line}</p>
+                        </div>
+                      ))}
+                    </div>
                   ) : (
                     <p className="text-[10px] italic text-muted-foreground">
                       No original source — this chapter was created directly in the editor (no file was imported).
@@ -465,11 +477,19 @@ export function ChapterEditorPage() {
               className="w-full bg-transparent font-serif text-xl font-semibold outline-none placeholder:text-muted-foreground/30"
               placeholder="Chapter title"
             />
-            <p className="mt-1.5 text-[10px] text-muted-foreground">
-              {wc.toLocaleString()} words
-              {' · '}
-              {isDirty ? 'unsaved changes' : 'all saved'}
-            </p>
+            <div className="mt-1.5 flex items-center gap-2 text-[10px] text-muted-foreground">
+              {chapterLang && (
+                <>
+                  <span>{chapterLang} <span className="font-mono opacity-60">({chapterLang})</span></span>
+                  <span className="text-border">|</span>
+                </>
+              )}
+              <span>{charCount.toLocaleString()} chars</span>
+              <span className="text-border">|</span>
+              <span>{wc.toLocaleString()} words</span>
+              <span className="text-border">|</span>
+              <span>{paraCount} paragraph{paraCount !== 1 ? 's' : ''}</span>
+            </div>
           </div>
 
           {/* Tiptap editor */}
@@ -519,6 +539,23 @@ export function ChapterEditorPage() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── Status bar ───────────────────────────────────────────────────── */}
+      <div className="flex h-6 flex-shrink-0 items-center justify-between border-t px-3 text-[10px] text-muted-foreground" style={{ background: 'rgba(24,20,18,0.6)' }}>
+        <div className="flex items-center gap-3">
+          <span className="inline-flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-success" />
+            Connected
+          </span>
+          {chapterLang && <span>{chapterLang}</span>}
+          <span>{wc.toLocaleString()} words</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span><kbd className="rounded border border-border bg-secondary px-1 py-px font-mono text-[9px]">Ctrl+B</kbd> Left panel</span>
+          <span><kbd className="rounded border border-border bg-secondary px-1 py-px font-mono text-[9px]">Ctrl+J</kbd> Right panel</span>
+          <span><kbd className="rounded border border-border bg-secondary px-1 py-px font-mono text-[9px]">Ctrl+S</kbd> Save</span>
+        </div>
       </div>
 
       {/* In-place discard confirm */}
