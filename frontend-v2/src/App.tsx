@@ -1,6 +1,18 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, RequireAuth } from '@/auth';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 2 * 60 * 1000,  // 2 minutes — show cached data, refetch in background
+      gcTime: 10 * 60 * 1000,     // 10 minutes — keep in cache after unmount
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 import { ModeProvider } from '@/providers/ModeProvider';
 import { DashboardLayout } from '@/layouts/DashboardLayout';
 import { FullBleedLayout } from '@/layouts/FullBleedLayout';
@@ -20,6 +32,7 @@ import { HomePage } from '@/pages/HomePage';
 
 export function App() {
   return (
+    <QueryClientProvider client={queryClient}>
     <AuthProvider>
     <ModeProvider>
     <ReaderThemeProvider>
@@ -100,5 +113,6 @@ export function App() {
     </ReaderThemeProvider>
     </ModeProvider>
     </AuthProvider>
+    </QueryClientProvider>
   );
 }

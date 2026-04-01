@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Download, Trash2, Upload } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
@@ -19,9 +20,7 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
   const { t } = useTranslation();
   const { accessToken } = useAuth();
   const navigate = useNavigate();
-  const [chapters, setChapters] = useState<Chapter[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [offset, setOffset] = useState(0);
   const limit = 20;
 
@@ -38,22 +37,16 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
   // Trash dialog
   const [trashTarget, setTrashTarget] = useState<Chapter | null>(null);
 
-  const load = async () => {
-    if (!accessToken) return;
-    setLoading(true);
-    try {
-      const res = await booksApi.listChapters(accessToken, bookId, {
-        lifecycle_state: 'active',
-        limit,
-        offset,
-      });
-      setChapters(res.items);
-      setTotal(res.total);
-    } catch { /* ignore */ }
-    setLoading(false);
-  };
+  const { data, isLoading: loading } = useQuery({
+    queryKey: ['chapters', bookId, offset],
+    queryFn: () => booksApi.listChapters(accessToken!, bookId, { lifecycle_state: 'active', limit, offset }),
+    enabled: !!accessToken,
+  });
 
-  useEffect(() => { void load(); }, [accessToken, bookId, offset]);
+  const chapters = data?.items ?? [];
+  const total = data?.total ?? 0;
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['chapters', bookId] });
 
   const handleCreate = async () => {
     if (!accessToken || !newLang) return;
@@ -80,7 +73,7 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
     try {
       await booksApi.trashChapter(accessToken, bookId, trashTarget.chapter_id);
       setTrashTarget(null);
-      await load();
+      invalidate();
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -306,7 +299,7 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
         open={importOpen}
         onOpenChange={setImportOpen}
         bookId={bookId}
-        onImported={() => void load()}
+        onImported={() => invalidate()}
       />
     </div>
   );

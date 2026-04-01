@@ -1,4 +1,5 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Languages, Check, Clock, AlertCircle, Loader2, Plus, Filter, X } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
@@ -85,31 +86,30 @@ function languagesWithData(coverage: BookCoverageResponse): Set<string> {
 
 export function TranslationTab({ bookId }: { bookId: string }) {
   const { accessToken } = useAuth();
-  const [coverage, setCoverage] = useState<BookCoverageResponse | null>(null);
-  const [chapters, setChapters] = useState<Chapter[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const queryClient = useQueryClient();
   const [selectedLangs, setSelectedLangs] = useState<Set<string> | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [translateOpen, setTranslateOpen] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [selectedChapters, setSelectedChapters] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    if (!accessToken) return;
-    setLoading(true);
-    setError('');
-    Promise.all([
-      translationApi.getBookCoverage(accessToken, bookId),
-      booksApi.listChapters(accessToken, bookId, { lifecycle_state: 'active', limit: 200, offset: 0 }),
-    ])
-      .then(([cov, chs]) => {
-        setCoverage(cov);
-        setChapters(chs.items);
-      })
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setLoading(false));
-  }, [accessToken, bookId, refreshKey]);
+  const { data: coverageData, isLoading: coverageLoading, error: coverageError } = useQuery({
+    queryKey: ['translation-coverage', bookId],
+    queryFn: () => translationApi.getBookCoverage(accessToken!, bookId),
+    enabled: !!accessToken,
+  });
+
+  const { data: chaptersData } = useQuery({
+    queryKey: ['chapters', bookId, 'all'],
+    queryFn: () => booksApi.listChapters(accessToken!, bookId, { lifecycle_state: 'active', limit: 200, offset: 0 }),
+    enabled: !!accessToken,
+  });
+
+  const coverage = coverageData ?? null;
+  const chapters = chaptersData?.items ?? [];
+  const loading = coverageLoading;
+  const error = coverageError ? (coverageError as Error).message : '';
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['translation-coverage', bookId] });
 
   const allLanguages = coverage?.known_languages ?? [];
   const autoLangs = useMemo(() => coverage ? languagesWithData(coverage) : new Set<string>(), [coverage]);
@@ -213,7 +213,7 @@ export function TranslationTab({ bookId }: { bookId: string }) {
         open={translateOpen}
         onClose={() => setTranslateOpen(false)}
         bookId={bookId}
-        onJobCreated={() => { setRefreshKey((k) => k + 1); clearSelection(); }}
+        onJobCreated={() => { invalidate(); clearSelection(); }}
       />
 
       {/* Language filter */}

@@ -1,4 +1,5 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useState, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Plus, Search, Filter, Trash2, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
@@ -30,11 +31,7 @@ function KindBadge({ kind }: { kind: GlossaryEntitySummary['kind'] }) {
 
 export function GlossaryTab({ bookId }: { bookId: string }) {
   const { accessToken } = useAuth();
-  const [entities, setEntities] = useState<GlossaryEntitySummary[]>([]);
-  const [kinds, setKinds] = useState<EntityKind[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const queryClient = useQueryClient();
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
   const [filterOpen, setFilterOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<GlossaryEntitySummary | null>(null);
@@ -42,25 +39,25 @@ export function GlossaryTab({ bookId }: { bookId: string }) {
   const [showKinds, setShowKinds] = useState(false);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
 
-  const loadEntities = useCallback(async () => {
-    if (!accessToken) return;
-    setLoading(true);
-    setError('');
-    try {
-      const [res, k] = await Promise.all([
-        glossaryApi.listEntities(bookId, { ...filters, limit: 100, offset: 0 }, accessToken),
-        kinds.length === 0 ? glossaryApi.getKinds(accessToken) : Promise.resolve(kinds),
-      ]);
-      setEntities(res.items);
-      setTotal(res.total);
-      if (kinds.length === 0) setKinds(k as EntityKind[]);
-    } catch (e) {
-      setError((e as Error).message);
-    }
-    setLoading(false);
-  }, [accessToken, bookId, filters, kinds]);
+  const { data: entityData, isLoading: entitiesLoading, error: entitiesError } = useQuery({
+    queryKey: ['glossary-entities', bookId, filters],
+    queryFn: () => glossaryApi.listEntities(bookId, { ...filters, limit: 100, offset: 0 }, accessToken!),
+    enabled: !!accessToken,
+  });
 
-  useEffect(() => { void loadEntities(); }, [loadEntities]);
+  const { data: kinds = [] } = useQuery({
+    queryKey: ['glossary-kinds'],
+    queryFn: () => glossaryApi.getKinds(accessToken!),
+    enabled: !!accessToken,
+    staleTime: 10 * 60 * 1000, // kinds rarely change
+  });
+
+  const entities = entityData?.items ?? [];
+  const total = entityData?.total ?? 0;
+  const loading = entitiesLoading;
+  const error = entitiesError ? (entitiesError as Error).message : '';
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['glossary-entities', bookId] });
 
   const visibleKinds = useMemo(
     () => kinds.filter((k) => !k.is_hidden).sort((a, b) => a.sort_order - b.sort_order),
@@ -73,7 +70,7 @@ export function GlossaryTab({ bookId }: { bookId: string }) {
       await glossaryApi.createEntity(bookId, kindId, accessToken);
       toast.success('Entity created');
       setCreateKindOpen(false);
-      void loadEntities();
+      invalidate();
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -85,7 +82,7 @@ export function GlossaryTab({ bookId }: { bookId: string }) {
       await glossaryApi.deleteEntity(bookId, deleteTarget.entity_id, accessToken);
       toast.success('Entity deleted');
       setDeleteTarget(null);
-      void loadEntities();
+      invalidate();
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -307,7 +304,7 @@ export function GlossaryTab({ bookId }: { bookId: string }) {
               bookId={bookId}
               entityId={selectedEntityId}
               onClose={() => setSelectedEntityId(null)}
-              onSaved={() => void loadEntities()}
+              onSaved={() => invalidate()}
               onDelete={() => {
                 setDeleteTarget(entities.find((e) => e.entity_id === selectedEntityId) ?? null);
               }}

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
-import { Link, useParams, useLocation, Outlet } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useParams, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Settings, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Book } from '@/features/books/api';
@@ -26,20 +27,14 @@ export function BookDetailPage() {
   const { accessToken } = useAuth();
   const { t } = useTranslation('books');
   const location = useLocation();
-  const [book, setBook] = useState<Book | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const queryClient = useQueryClient();
   const [trashOpen, setTrashOpen] = useState(false);
 
-  useEffect(() => {
-    if (!accessToken || !bookId) return;
-    // Only show skeleton on first load, not on re-visits
-    if (!book) setLoading(true);
-    booksApi.getBook(accessToken, bookId)
-      .then((b) => { setBook(b); setError(''); })
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setLoading(false));
-  }, [accessToken, bookId]);
+  const { data: book, isLoading, error } = useQuery({
+    queryKey: ['book', bookId],
+    queryFn: () => booksApi.getBook(accessToken!, bookId),
+    enabled: !!accessToken && !!bookId,
+  });
 
   const handleTrash = async () => {
     if (!accessToken || !bookId) return;
@@ -47,7 +42,7 @@ export function BookDetailPage() {
     window.location.href = '/books';
   };
 
-  if (loading && !book) {
+  if (isLoading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-6 w-48" />
@@ -58,7 +53,7 @@ export function BookDetailPage() {
   }
 
   if (error || !book) {
-    return <p className="text-sm text-destructive">{error || 'Book not found'}</p>;
+    return <p className="text-sm text-destructive">{(error as Error)?.message || 'Book not found'}</p>;
   }
 
   // Determine active tab from URL
@@ -125,7 +120,7 @@ export function BookDetailPage() {
 
       {/* Tab content — render inline based on URL */}
       <BookTabContent bookId={bookId} book={book} activeTab={suffix} onReload={() => {
-        if (accessToken) booksApi.getBook(accessToken, bookId).then(setBook).catch(() => {});
+        queryClient.invalidateQueries({ queryKey: ['book', bookId] });
       }} />
 
       <ConfirmDialog
