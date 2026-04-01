@@ -1148,12 +1148,18 @@ WHERE d.chapter_id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to get draft")
 		return
 	}
+	var textContent *string
+	_ = s.pool.QueryRow(r.Context(), `
+SELECT string_agg(text_content, E'\n\n' ORDER BY block_index)
+FROM chapter_blocks WHERE chapter_id=$1
+`, chID).Scan(&textContent)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"chapter_id":       chapterID,
 		"body":             body,
 		"draft_format":     format,
 		"draft_updated_at": updated,
 		"draft_version":    version,
+		"text_content":     textContent,
 	})
 }
 
@@ -1318,6 +1324,12 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3 AND b.owner_user_id=$4
 		writeError(w, http.StatusInternalServerError, "REVISION_NOT_FOUND", "failed to get revision")
 		return
 	}
+	// Extract text_content from revision JSONB body (_text fields)
+	var textContent *string
+	_ = s.pool.QueryRow(r.Context(), `
+SELECT string_agg(t::text, E'\n\n' ORDER BY ordinality)
+FROM jsonb_path_query(($1)::jsonb, '$.content[*]._text') WITH ORDINALITY AS x(t, ordinality)
+`, body).Scan(&textContent)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"revision_id":    rid,
 		"chapter_id":     cid,
@@ -1326,6 +1338,7 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3 AND b.owner_user_id=$4
 		"message":        msg,
 		"body":           body,
 		"body_format":    bodyFormat,
+		"text_content":   textContent,
 	})
 }
 

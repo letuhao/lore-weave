@@ -91,7 +91,7 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
 
     chapter      = r.json()
     source_lang  = chapter.get("original_language") or "unknown"
-    chapter_text = chapter.get("body") or ""
+    chapter_text = chapter.get("text_content") or ""
     log.info(
         "chapter %s: fetched %d chars, source_lang=%s",
         chapter_id, len(chapter_text), source_lang,

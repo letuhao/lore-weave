@@ -143,7 +143,8 @@ def _book_chapter_response():
     r.json.return_value = {
         "chapter_id": str(CHAPTER_ID),
         "original_language": "en",
-        "body": "In the beginning...",
+        "body": {},
+        "text_content": "In the beginning...",
     }
     return r
 

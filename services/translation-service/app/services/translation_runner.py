@@ -60,7 +60,7 @@ async def run_translation_job(job_id: UUID, user_id: str, pool: asyncpg.Pool) ->
                 user_msg = job["user_prompt_tpl"].format_map({
                     "source_language": source_language,
                     "target_language": job["target_language"],
-                    "chapter_text": chapter.get("body") or "",
+                    "chapter_text": chapter.get("text_content") or "",
                 })
 
                 # Refresh JWT if expiring soon

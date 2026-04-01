@@ -82,7 +82,7 @@ def _book_resp(body="In the beginning..."):
     r.status_code = 200
     r.is_success = True
     r.raise_for_status = MagicMock()
-    r.json.return_value = {"original_language": "en", "body": body}
+    r.json.return_value = {"original_language": "en", "body": {}, "text_content": body}
     return r
 
 

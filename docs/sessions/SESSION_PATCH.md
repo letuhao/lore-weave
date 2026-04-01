@@ -132,6 +132,10 @@ Data Re-Engineering Phase D1 continuation: book-service JSONB handler refactor (
 | D1-07a: plainTextToTiptapJSON converter (pure function, _text snapshots) | `services/book-service/internal/api/tiptap.go` (new) | this session |
 | D1-07a: createChapterRecord stores Tiptap JSON body with draft_format='json' | `services/book-service/internal/api/server.go` | this session |
 | D1-07a: 5 unit tests for plainTextToTiptapJSON | `services/book-service/internal/api/server_test.go` | this session |
+| D1-08a: getDraft adds text_content from chapter_blocks | `services/book-service/internal/api/server.go` | this session |
+| D1-08b: getRevision adds text_content extracted from JSONB _text fields | same file | this session |
+| D1-08d: translation-service reads text_content instead of body (2 files) | `translation_runner.py`, `chapter_worker.py` | this session |
+| D1-08e: translation tests updated with text_content mock responses | `test_chapter_worker.py`, `test_translation_runner.py` | this session |
 
 **9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
@@ -342,7 +346,7 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Priority | Item | Notes |
 | -------- | ---- | ----- |
-| **P0** | **Data Re-Engineering D1-07** | createChapter: plain text → Tiptap JSON at import (next on critical path) |
+| **P0** | **Data Re-Engineering D1-11** | Frontend: save Tiptap JSON with _text, load JSONB, read-only reader |
 | **P0** | **Data Re-Engineering D1-05 + D1-09** | loreweave_events schema + worker-infra scaffold (parallel track) |
 | P1 | Frontend V2 Phase 3 — Feature screens | **PAUSED until data re-engineering complete** |
 | P2 | Chapter editor: smoke test the full guard + toast flow | Save & leave, Discard & leave, logout dirty, download success |
