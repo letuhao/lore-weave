@@ -26,7 +26,6 @@ function AttrRow({ attr, onDelete }: { attr: import('@/features/glossary/types')
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium">{attr.name}</span>
           <span className="rounded bg-secondary px-1.5 py-0.5 text-[9px] text-muted-foreground">{attr.field_type}</span>
-          {attr.is_required && <span className="rounded bg-amber-400/15 px-1 py-0.5 text-[9px] font-medium text-amber-400">required</span>}
           {attr.is_system ? (
             <span className="rounded bg-blue-500/15 px-1 py-0.5 text-[9px] font-medium text-blue-400">SYS</span>
           ) : (
@@ -35,6 +34,7 @@ function AttrRow({ attr, onDelete }: { attr: import('@/features/glossary/types')
         </div>
         <span className="text-[10px] text-muted-foreground font-mono">{attr.code}</span>
       </div>
+      <span className="text-[10px] text-muted-foreground">{attr.is_required ? 'required' : 'optional'}</span>
       {onDelete && (
         <button
           onClick={onDelete}
@@ -225,7 +225,14 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
                 >
                   <span className="text-base">{k.icon}</span>
                   <div className="flex-1 min-w-0">
-                    <span className="font-medium truncate block">{k.name}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium truncate">{k.name}</span>
+                      {k.is_default ? (
+                        <span className="rounded bg-blue-500/15 px-1.5 py-0.5 text-[8px] font-medium text-blue-400 flex-shrink-0">System</span>
+                      ) : (
+                        <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[8px] font-medium text-primary flex-shrink-0">Custom</span>
+                      )}
+                    </div>
                     <span className="text-[10px] text-muted-foreground">
                       {k.default_attributes.length} attr{k.default_attributes.length !== 1 ? 's' : ''}
                     </span>

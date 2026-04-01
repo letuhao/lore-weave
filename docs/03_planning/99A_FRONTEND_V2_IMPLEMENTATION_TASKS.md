@@ -503,14 +503,25 @@ Deferred polish items (tracked here so they don't get lost):
   [ ] P3-R1-D5: Remove or repurpose ModeProvider (currently unused)
 
 Deferred glossary items (needs backend or P3-08):
+  Backend required:
   [ ] P3-R1-D6: Attribute active toggle (is_active column, on/off per attr) [BE+FE]
-  [ ] P3-R1-D7: Kind modified tracking (compare user edits vs seed defaults) [BE+FE]
-  [ ] P3-R1-D8: Revert to default (restore system attr to original seed value) [BE+FE]
-  [ ] P3-R1-D9: Drag-to-reorder kinds + attributes (update sort_order via PATCH) [FE]
+  [ ] P3-R1-D7: Kind + attribute modified tracking (compare vs seed defaults, show "modified" badge) [BE+FE]
+  [ ] P3-R1-D8: Revert to default — per-kind and per-attribute (restore to seed value) [BE+FE]
   [ ] P3-R1-D10: Relationship field type (entity references with role labels) [BE+FE]
-  [ ] P3-R1-D11: Genre badge on attributes ("Fantasy only") — needs P3-08a
-  [ ] P3-R1-D12: Genre badge in entity editor header — needs P3-08a
-  [ ] P3-R1-D13: Attribute deactivation per genre (dimmed + strikethrough) — needs P3-08a
+  [ ] P3-R1-D17: Kind description field — add to EntityKind domain type + listKinds query [BE+FE]
+  [ ] P3-R1-D18: Entity count per kind — aggregate in listKinds or separate endpoint [BE+FE]
+
+  Frontend only:
+  [ ] P3-R1-D9: Drag-to-reorder kinds + attributes (update sort_order via PATCH) [FE]
+  [ ] P3-R1-D19: "System" / "Custom" badge on kind list items (currently only section headers) [FE]
+  [ ] P3-R1-D20: Kind metadata row — show Display Name, Internal ID, Entities, Description [FE]
+  [ ] P3-R1-D21: Inline edit button (pencil) per attribute row [FE]
+  [ ] P3-R1-D22: "required" / "optional" text label per attribute (not just badge) [FE]
+
+  Needs P3-08a (Genre Groups):
+  [ ] P3-R1-D11: Genre badge on attributes ("Fantasy only")
+  [ ] P3-R1-D12: Genre badge in entity editor header
+  [ ] P3-R1-D13: Attribute deactivation per genre (dimmed + strikethrough)
 
 Deferred reader items:
   [ ] P3-R1-D14: Reader theme toggle button — wire ReaderThemeProvider to top bar [FE]
