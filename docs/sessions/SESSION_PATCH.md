@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-01 (session 12 end)
-- Updated By: Assistant (Phase 2.5 E1 + Data Re-Engineering + D0 pre-flight + D1-01/D1-02 migration)
+- Last Updated: 2026-04-01 (session 13 end)
+- Updated By: Assistant (Data Re-Engineering D1-03 + D1-04)
 - Active Branch: `main`
-- HEAD: `54a4d1f` — schema(D1-02): uuidv7 everywhere, JSONB body, drop pgcrypto
+- HEAD: `f76539e` — schema(D1-04): outbox_events table, pg_notify trigger, insertOutboxEvent helper
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -114,6 +114,21 @@
 | Frontend: "Translate N chunks" in ChunkEditor selection bar | `components/chunk-editor/ChunkEditor.tsx` | `b7dcc4c` |
 | Frontend: translating overlay + loading state per-chunk | `ChunkItem.tsx`, `ChunkEditor.tsx` | `b7dcc4c` |
 | Frontend: wire `onTranslateChunk` in ChapterEditorPageV2 | `pages/v2-drafts/ChapterEditorPageV2.tsx` | `b7dcc4c` |
+
+**What was done in this session (2026-04-01, session 13):**
+
+Data Re-Engineering Phase D1 continuation: chapter_blocks trigger + outbox pattern.
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| D1-03: chapter_blocks table DDL (uuidv7 PK, FK CASCADE, UNIQUE index) | `services/book-service/internal/migrate/migrate.go` | `599721a` |
+| D1-03: fn_extract_chapter_blocks() trigger (UPSERT from JSON_TABLE, block shrink, heading_context) | same file | `599721a` |
+| D1-03: trg_extract_chapter_blocks trigger (AFTER INSERT OR UPDATE OF body) | same file | `599721a` |
+| D1-04: outbox_events table DDL (partial index on pending) | same file | `f76539e` |
+| D1-04: fn_outbox_notify() + trg_outbox_notify (pg_notify on INSERT) | same file | `f76539e` |
+| D1-04: insertOutboxEvent() Go helper (atomic outbox write within tx) | `services/book-service/internal/api/outbox.go` (new) | `f76539e` |
+
+**9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
 **What was done in this session (2026-03-31 to 2026-04-01, session 12):**
 
@@ -307,7 +322,8 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Priority | Item | Notes |
 | -------- | ---- | ----- |
-| **P0** | **Data Re-Engineering Plan** | JSONB schema, event pipeline, chapter_blocks, knowledge-service prep |
+| **P0** | **Data Re-Engineering D1-06** | book-service 7 handler JSONB refactor (**critical path to unbreak system**) |
+| **P0** | **Data Re-Engineering D1-05 + D1-09** | loreweave_events schema + worker-infra scaffold (parallel with D1-06) |
 | P1 | Frontend V2 Phase 3 — Feature screens | **PAUSED until data re-engineering complete** |
 | P2 | Chapter editor: smoke test the full guard + toast flow | Save & leave, Discard & leave, logout dirty, download success |
 | P2 | BooksPage create-book error path: currently uses inline error in dialog — review if toast is better | `src/pages/BooksPage.tsx` |
@@ -351,6 +367,7 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Date       | What happened | Key commits |
 | ---------- | ------------- | ----------- |
+| 2026-04-01 | Data re-engineering D1-03 (chapter_blocks + trigger) + D1-04 (outbox_events + pg_notify + helper) | `599721a`, `f76539e` |
 | 2026-04-01 | Data re-engineering: D0 pre-flight (4/4 pass), D1-01 (PG18+Redis), D1-02 (uuidv7+JSONB) | `54a4d1f` |
 | 2026-03-31 | Phase 2.5 E1: Tiptap editor migration (8 tasks), bug fixes, workflow update | `4f39cf7` |
 | 2026-03-31 | LanguageTool integration, mixed-media editor design (4 drafts), Phase 2.5/3.5/4.5 planning | session 11 |

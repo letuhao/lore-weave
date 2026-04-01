@@ -1,10 +1,10 @@
 # Session Handoff — Data Re-Engineering Migration
 
 > **Purpose:** Give the next agent complete context to continue Phase D1 (Data Re-Engineering).
-> **Date:** 2026-04-01 (session 12 end)
-> **Last commit:** `54a4d1f` — schema(D1-02): uuidv7 everywhere, JSONB body, drop pgcrypto
+> **Date:** 2026-04-01 (session 13 end)
+> **Last commit:** `f76539e` — schema(D1-04): outbox_events table, pg_notify trigger, insertOutboxEvent helper
 > **Previous focus:** Frontend V2 Phase 2.5 E1 (Tiptap editor) — DONE
-> **Current focus:** Data Re-Engineering Phase D1 — IN PROGRESS
+> **Current focus:** Data Re-Engineering Phase D1 — IN PROGRESS (4/12 tasks done)
 
 ---
 
@@ -458,26 +458,34 @@ Event pipeline: Outbox → worker-infra → Redis Streams + event_log
 Two workers: worker-infra (Go, I/O) + worker-ai (Python, LLM)
 ```
 
-### D1 Progress (2 of 12 done)
+### D1 Progress (4 of 12 done)
 
 | Task | Status | Scope |
 |------|--------|-------|
 | D1-01 | **DONE** | Postgres 18 + Redis in docker-compose |
 | D1-02 | **DONE** | uuidv7 everywhere (30 tables), JSONB body, drop pgcrypto |
-| **D1-03** | **NEXT** | chapter_blocks table + UPSERT trigger (JSON_TABLE + _text) |
-| D1-04 | pending | outbox_events table + pg_notify trigger |
-| D1-05 | pending | loreweave_events schema (event_log, consumers, dead_letter) |
-| D1-06 | pending | book-service JSONB refactor (7 handlers + test rewrites) — L size |
+| D1-03 | **DONE** | chapter_blocks table + UPSERT trigger (JSON_TABLE + _text) — `599721a` |
+| D1-04 | **DONE** | outbox_events table + pg_notify trigger + insertOutboxEvent helper — `f76539e` |
+| D1-05 | pending | loreweave_events schema (event_log, consumers, dead_letter) — built with D1-09 |
+| **D1-06** | **NEXT** | book-service JSONB refactor (7 handlers + outbox wiring) — **L size, critical path** |
 | D1-07 | pending | createChapter: plain text → Tiptap JSON at import |
 | D1-08 | pending | Internal API text_content + translation-service fix (2 lines) |
-| D1-09 | pending | worker-infra service scaffold (new Go service, 10 files) |
+| D1-09 | pending | worker-infra service scaffold (new Go service, 10 files) — parallel with D1-06 |
 | D1-10 | pending | outbox-relay + cleanup tasks |
 | D1-11 | pending | Frontend: save Tiptap JSON with _text, load JSONB, read-only reader |
 | D1-12 | pending | Integration test (16 scenarios) |
 
+### Dependency Graph for Remaining Tasks
+
+```
+D1-06 (JSONB handler refactor) ──→ D1-07 (import convert) ──→ D1-08 (text_content) ──→ D1-11 (frontend)
+D1-05 + D1-09 (worker-infra) ──→ D1-10 (relay tasks)          ← can run parallel with D1-06
+                                                        All ──→ D1-12 (integration test)
+```
+
 ### Key Things the Next Agent Must Know
 
-1. **Strict 9-phase workflow** — each task goes through PLAN→DESIGN→REVIEW→BUILD→TEST→REVIEW→QC→SESSION→COMMIT individually. See CLAUDE.md and `memory/feedback_follow_task_workflow.md`.
+1. **Strict 9-phase workflow** — each task goes through PLAN→DESIGN→REVIEW→BUILD→TEST→REVIEW→QC→SESSION→COMMIT individually. See CLAUDE.md.
 
 2. **D0 pre-flight validated** — PG18 uuidv7(), JSON_TABLE, trigger+UPSERT, pgx json.RawMessage all tested and confirmed working. Test scripts in `infra/test-pg18-trigger.sql` and `infra/pg18test-go/`.
 
@@ -485,8 +493,12 @@ Two workers: worker-infra (Go, I/O) + worker-ai (Python, LLM)
 
 4. **book-service body column is now JSONB** — but the Go handler code still reads/writes it as `string`. D1-06 refactors all 7 handlers to use `json.RawMessage`. Until D1-06, the book-service will NOT start correctly because INSERT/UPDATE expect JSONB but pass strings.
 
-5. **Detailed sub-task specifications** in `102_DATA_RE_ENGINEERING_DETAILED_TASKS.md` — Cycle 2 has the trigger SQL, Cycle 4 has handler-by-handler changes with line numbers, Cycle 5 has translation-service impact, Cycle 6 has worker-infra project structure, Cycle 7 has frontend changes.
+5. **D1-03 + D1-04 are DONE** — `chapter_blocks` table, UPSERT trigger, `outbox_events` table, `pg_notify` trigger, and `insertOutboxEvent()` Go helper all exist. D1-06 handlers can now call `insertOutboxEvent()` directly.
 
-6. **_text snapshots** — frontend adds `_text` field to each Tiptap block on save. Trigger reads `$._text` via JSON_TABLE. This eliminates complex server-side JSON parsing. See plan §3.2.1.
+6. **Detailed sub-task specifications** in `102_DATA_RE_ENGINEERING_DETAILED_TASKS.md` — Cycle 4 has handler-by-handler changes with line numbers for D1-06, Cycle 5 has translation-service impact, Cycle 6 has worker-infra project structure, Cycle 7 has frontend changes.
 
-7. **getInternalBookChapter** must add `text_content` field — translation-service reads it instead of `body` (which is now JSONB). 2 one-line Python changes in D1-08.
+7. **_text snapshots** — frontend adds `_text` field to each Tiptap block on save. Trigger reads `$._text` via JSON_TABLE. This eliminates complex server-side JSON parsing. See plan §3.2.1.
+
+8. **getInternalBookChapter** must add `text_content` field — translation-service reads it instead of `body` (which is now JSONB). 2 one-line Python changes in D1-08.
+
+9. **D1-06 is the critical path** — after D1-06 + D1-07, book-service will work again with JSONB body. D1-05/D1-09/D1-10 (worker-infra) can be done in parallel but are not blocking.
