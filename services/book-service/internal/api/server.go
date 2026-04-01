@@ -1003,7 +1003,21 @@ WHERE b.id=$1 AND c.id=$2 AND b.owner_user_id=$3
 			writeError(w, http.StatusConflict, "CHAPTER_INVALID_LIFECYCLE", "invalid lifecycle for trash")
 			return
 		}
-		_, _ = s.pool.Exec(r.Context(), `UPDATE chapters SET lifecycle_state='trashed', trashed_at=now(), updated_at=now() WHERE id=$1`, chID)
+		tx, txErr := s.pool.Begin(r.Context())
+		if txErr != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to trash chapter")
+			return
+		}
+		defer tx.Rollback(r.Context())
+		_, _ = tx.Exec(r.Context(), `UPDATE chapters SET lifecycle_state='trashed', trashed_at=now(), updated_at=now() WHERE id=$1`, chID)
+		if err := insertOutboxEvent(r.Context(), tx, "chapter.trashed", chID, map[string]any{"book_id": bookID}); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to trash chapter")
+			return
+		}
+		if err := tx.Commit(r.Context()); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to trash chapter")
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 	case "active":
 		if bState != "active" || cState != "trashed" {
@@ -1017,7 +1031,21 @@ WHERE b.id=$1 AND c.id=$2 AND b.owner_user_id=$3
 			writeError(w, http.StatusConflict, "CHAPTER_INVALID_LIFECYCLE", "chapter must be trashed before purge")
 			return
 		}
-		_, _ = s.pool.Exec(r.Context(), `UPDATE chapters SET lifecycle_state='purge_pending', purge_eligible_at=now(), updated_at=now() WHERE id=$1`, chID)
+		tx, txErr := s.pool.Begin(r.Context())
+		if txErr != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to purge chapter")
+			return
+		}
+		defer tx.Rollback(r.Context())
+		_, _ = tx.Exec(r.Context(), `UPDATE chapters SET lifecycle_state='purge_pending', purge_eligible_at=now(), updated_at=now() WHERE id=$1`, chID)
+		if err := insertOutboxEvent(r.Context(), tx, "chapter.deleted", chID, map[string]any{"book_id": bookID}); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to purge chapter")
+			return
+		}
+		if err := tx.Commit(r.Context()); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to purge chapter")
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
