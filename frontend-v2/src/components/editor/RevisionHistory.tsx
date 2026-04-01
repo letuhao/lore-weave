@@ -8,7 +8,7 @@ import { ConfirmDialog } from '@/components/shared';
 import { ChapterReadView } from '@/components/shared/ChapterReadView';
 
 type Revision = { revision_id: string; created_at: string; message?: string };
-type PreviewState = { revision: Revision; body: string } | null;
+type PreviewState = { revision: Revision; textContent: string } | null;
 
 export function RevisionHistory({ bookId, chapterId, onRestore }: {
   bookId: string; chapterId: string; onRestore: () => void;
@@ -34,7 +34,7 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
     setPreviewLoading(true);
     try {
       const data = await booksApi.getRevision(accessToken, bookId, chapterId, rev.revision_id);
-      setPreview({ revision: rev, body: data.body });
+      setPreview({ revision: rev, textContent: data.text_content ?? '' });
     } catch { /* ignore */ }
     setPreviewLoading(false);
   };
@@ -141,7 +141,7 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
             </div>
             <div className="flex items-center gap-3">
               <span className="text-[10px] text-muted-foreground">
-                {wordCount(preview.body).toLocaleString()} words
+                {wordCount(preview.textContent).toLocaleString()} words
               </span>
               <button
                 onClick={() => setRestoreTarget(preview.revision)}
@@ -155,7 +155,7 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
 
           {/* Reading area — same layout as ReaderPage */}
           <div className="flex flex-1 justify-center overflow-y-auto px-6 py-10">
-            <ChapterReadView body={preview.body} />
+            <ChapterReadView body={preview.textContent} />
           </div>
         </div>
       )}

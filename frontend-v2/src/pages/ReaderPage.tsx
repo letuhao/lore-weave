@@ -3,14 +3,14 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import { Menu, X, ChevronLeft, ChevronRight, Sun, Pencil } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Book, type Chapter } from '@/features/books/api';
-import { ChapterReadView } from '@/components/shared/ChapterReadView';
+import { TiptapEditor } from '@/components/editor/TiptapEditor';
 import { cn } from '@/lib/utils';
 
 export function ReaderPage() {
   const { bookId = '', chapterId = '' } = useParams();
   const { accessToken } = useAuth();
   const navigate = useNavigate();
-  const [body, setBody] = useState('');
+  const [body, setBody] = useState<any>(null);
   const [chapter, setChapter] = useState<Chapter | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [book, setBook] = useState<Book | null>(null);
@@ -105,11 +105,21 @@ export function ReaderPage() {
 
       {/* Reading area */}
       <div className="flex flex-1 justify-center overflow-y-auto px-6 py-10">
-        <ChapterReadView
-          body={body}
-          title={chapter?.title || chapter?.original_filename}
-          chapterNumber={currentIdx + 1}
-        />
+        <div className="w-full max-w-[680px]">
+          {(chapter?.title || chapter?.original_filename) && (
+            <h1 className="mb-8 font-serif text-2xl font-bold">
+              {chapter?.title || chapter?.original_filename}
+            </h1>
+          )}
+          {body && (
+            <TiptapEditor
+              content={body}
+              onUpdate={() => {}}
+              editable={false}
+              className="tiptap-reader prose prose-lg"
+            />
+          )}
+        </div>
       </div>
 
       {/* Bottom nav */}

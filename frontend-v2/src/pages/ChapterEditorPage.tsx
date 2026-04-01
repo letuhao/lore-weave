@@ -10,7 +10,7 @@ import { booksApi, type Chapter } from '@/features/books/api';
 import { useEditorPanels } from '@/hooks/useEditorPanels';
 import { useEditorDirty } from '@/contexts/EditorDirtyContext';
 import { RevisionHistory } from '@/components/editor/RevisionHistory';
-import { TiptapEditor, htmlToPlainText, type TiptapEditorHandle } from '@/components/editor/TiptapEditor';
+import { TiptapEditor, type TiptapEditorHandle } from '@/components/editor/TiptapEditor';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { UnsavedChangesDialog } from '@/components/shared/UnsavedChangesDialog';
@@ -37,9 +37,9 @@ export function ChapterEditorPage() {
   const [savedTitle, setSavedTitle] = useState('');
 
   // Editor content
-  const [savedBody, setSavedBody] = useState('');
-  const [initialBody, setInitialBody] = useState('');
-  const [tiptapHtml, setTiptapHtml] = useState('');
+  const [savedBody, setSavedBody] = useState<any>(null);
+  const [tiptapJson, setTiptapJson] = useState<any>(null);
+  const [textContent, setTextContent] = useState('');
   const tiptapEditorRef = useRef<TiptapEditorHandle>(null);
 
   // Editor mode + grammar
@@ -66,7 +66,7 @@ export function ChapterEditorPage() {
 
   const { setIsDirty, guardedNavigate, pendingNavigation, confirmNavigation, cancelNavigation } = useEditorDirty();
 
-  const bodyChanged = tiptapHtml ? htmlToPlainText(tiptapHtml) !== savedBody : false;
+  const bodyChanged = tiptapJson ? JSON.stringify(tiptapJson) !== JSON.stringify(savedBody) : false;
   const titleChanged = title !== savedTitle;
   const isDirty = bodyChanged || titleChanged;
 
@@ -80,9 +80,9 @@ export function ChapterEditorPage() {
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
   const discardChanges = useCallback(() => {
-    setTiptapHtml('');
+    setTiptapJson(null);
     setTitle(savedTitle);
-    tiptapEditorRef.current?.__setContentFromPlainText(savedBody);
+    tiptapEditorRef.current?.setContent(savedBody);
   }, [savedBody, savedTitle]);
 
   // ── Load ──────────────────────────────────────────────────────────────────
@@ -95,8 +95,8 @@ export function ChapterEditorPage() {
         booksApi.getChapter(accessToken, bookId, chapterId),
       ]);
       setSavedBody(draft.body);
-      setInitialBody(draft.body);
-      setTiptapHtml('');
+      setTextContent(draft.text_content ?? '');
+      setTiptapJson(null);
       setVersion(draft.draft_version);
       const t = chapter.title ?? '';
       setTitle(t);
@@ -137,9 +137,10 @@ export function ChapterEditorPage() {
     setSaving(true);
     if (autoSaveTimer.current) { clearTimeout(autoSaveTimer.current); autoSaveTimer.current = null; }
     try {
-      const bodyToSave = tiptapHtml ? htmlToPlainText(tiptapHtml) : savedBody;
+      const bodyToSave = tiptapJson ?? savedBody;
       await booksApi.patchDraft(accessToken, bookId, chapterId, {
         body: bodyToSave,
+        body_format: 'json',
         commit_message: saveNote || undefined,
         expected_draft_version: version,
       });
@@ -152,7 +153,7 @@ export function ChapterEditorPage() {
       await load();
     } catch (e) { toast.error((e as Error).message); }
     setSaving(false);
-  }, [accessToken, bookId, chapterId, tiptapHtml, savedBody, saveNote, version, title, savedTitle, load]);
+  }, [accessToken, bookId, chapterId, tiptapJson, savedBody, saveNote, version, title, savedTitle, load]);
 
   // Keep ref current so auto-save always calls the latest version
   useEffect(() => { saveRef.current = save; }, [save]);
@@ -167,7 +168,7 @@ export function ChapterEditorPage() {
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(() => { void saveRef.current(); }, 300_000);
     return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); };
-  }, [isDirty, tiptapHtml, title]);
+  }, [isDirty, tiptapJson, title]);
 
   // ── Leave-page guard ──────────────────────────────────────────────────────
 
@@ -201,8 +202,7 @@ export function ChapterEditorPage() {
 
   // ── Word count display ────────────────────────────────────────────────────
 
-  const currentBody = tiptapHtml ? htmlToPlainText(tiptapHtml) : savedBody;
-  const wc = wordCount(currentBody);
+  const wc = wordCount(textContent);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -462,8 +462,8 @@ export function ChapterEditorPage() {
           {/* Tiptap editor */}
           <TiptapEditor
             ref={tiptapEditorRef}
-            content={initialBody}
-            onUpdate={(html) => setTiptapHtml(html)}
+            content={savedBody}
+            onUpdate={(json) => setTiptapJson(json)}
             grammarEnabled={grammarEnabled}
             editorMode={editorMode}
             className="flex-1 overflow-y-auto"

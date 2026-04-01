@@ -184,17 +184,18 @@ export const booksApi = {
   getDraft(token: string, bookId: string, chapterId: string) {
     return apiJson<{
       chapter_id: string;
-      body: string;
+      body: any;
       draft_format: string;
       draft_updated_at: string;
       draft_version: number;
+      text_content: string | null;
     }>(`/v1/books/${bookId}/chapters/${chapterId}/draft`, { token });
   },
   patchDraft(
     token: string,
     bookId: string,
     chapterId: string,
-    payload: { body: string; commit_message?: string; expected_draft_version?: number },
+    payload: { body: any; body_format?: string; commit_message?: string; expected_draft_version?: number },
   ) {
     return apiJson(`/v1/books/${bookId}/chapters/${chapterId}/draft`, {
       method: 'PATCH',
@@ -213,7 +214,7 @@ export const booksApi = {
     );
   },
   getRevision(token: string, bookId: string, chapterId: string, revisionId: string) {
-    return apiJson<{ revision_id: string; created_at: string; message?: string; body: string }>(
+    return apiJson<{ revision_id: string; created_at: string; message?: string; body: any; body_format: string; text_content: string | null }>(
       `/v1/books/${bookId}/chapters/${chapterId}/revisions/${revisionId}`,
       { token },
     );

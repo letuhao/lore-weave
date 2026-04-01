@@ -142,6 +142,11 @@ Data Re-Engineering Phase D1 continuation: book-service JSONB handler refactor (
 | D1-09c: task registry (interface, Register, RunSelected, graceful shutdown) | `services/worker-infra/internal/registry/` + 3 tests | this session |
 | D1-10a+b: outbox-relay + outbox-cleanup task implementations | `services/worker-infra/internal/tasks/` | this session |
 | D1-10c: worker-infra added to docker-compose | `infra/docker-compose.yml` | this session |
+| D1-11a: API client types updated (body: any, text_content, body_format) | `frontend-v2/src/features/books/api.ts` | this session |
+| D1-11b: TiptapEditor refactor: JSON content, addTextSnapshots, extractText | `frontend-v2/src/components/editor/TiptapEditor.tsx` | this session |
+| D1-11c: ChapterEditorPage: JSONB save/load, dirty check, discard | `frontend-v2/src/pages/ChapterEditorPage.tsx` | this session |
+| D1-11d: ReaderPage: read-only TiptapEditor replaces ChapterReadView | `frontend-v2/src/pages/ReaderPage.tsx` | this session |
+| D1-11e: RevisionHistory: uses text_content from API | `frontend-v2/src/components/editor/RevisionHistory.tsx` | this session |
 
 **9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
