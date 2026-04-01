@@ -511,6 +511,11 @@ Deferred glossary items (needs backend or P3-08):
   [ ] P3-R1-D11: Genre badge on attributes ("Fantasy only") — needs P3-08a
   [ ] P3-R1-D12: Genre badge in entity editor header — needs P3-08a
   [ ] P3-R1-D13: Attribute deactivation per genre (dimmed + strikethrough) — needs P3-08a
+
+Deferred reader items:
+  [ ] P3-R1-D14: Reader theme toggle button — wire ReaderThemeProvider to top bar [FE]
+  [ ] P3-R1-D15: Reader font size control — theme customizer panel [FE]
+  [ ] P3-R1-D16: TOC language selector — read translated versions (needs translation workbench) [FE+BE]
 ```
 
 ### Translation (FE — uses existing translation-service)
