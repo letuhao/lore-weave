@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { BookOpen, Plus, Search, Filter, Trash2 } from 'lucide-react';
+import { BookOpen, Plus, Search, Filter, Trash2, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
@@ -7,6 +7,7 @@ import { type GlossaryEntitySummary, type EntityKind, type FilterState, defaultF
 import { Skeleton } from '@/components/shared/Skeleton';
 import { EmptyState, ConfirmDialog } from '@/components/shared';
 import { cn } from '@/lib/utils';
+import { KindEditor } from './KindEditor';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-amber-400/15 text-amber-400',
@@ -37,6 +38,7 @@ export function GlossaryTab({ bookId }: { bookId: string }) {
   const [filterOpen, setFilterOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<GlossaryEntitySummary | null>(null);
   const [createKindOpen, setCreateKindOpen] = useState(false);
+  const [showKinds, setShowKinds] = useState(false);
 
   const loadEntities = async () => {
     if (!accessToken) return;
@@ -89,6 +91,10 @@ export function GlossaryTab({ bookId }: { bookId: string }) {
 
   const activeFilterCount = (filters.kindCodes.length > 0 ? 1 : 0) + (filters.status !== 'all' ? 1 : 0);
 
+  if (showKinds) {
+    return <KindEditor onClose={() => setShowKinds(false)} />;
+  }
+
   if (loading && entities.length === 0) {
     return (
       <div className="space-y-3 p-6">
@@ -114,6 +120,13 @@ export function GlossaryTab({ bookId }: { bookId: string }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowKinds(true)}
+            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+            Kinds
+          </button>
           <div className="relative">
             <button
               onClick={() => setCreateKindOpen(!createKindOpen)}
