@@ -136,6 +136,12 @@ Data Re-Engineering Phase D1 continuation: book-service JSONB handler refactor (
 | D1-08b: getRevision adds text_content extracted from JSONB _text fields | same file | this session |
 | D1-08d: translation-service reads text_content instead of body (2 files) | `translation_runner.py`, `chapter_worker.py` | this session |
 | D1-08e: translation tests updated with text_content mock responses | `test_chapter_worker.py`, `test_translation_runner.py` | this session |
+| D1-05+D1-09: worker-infra Go service scaffold (config, registry, migrate, tasks) | `services/worker-infra/` (new, 10 files) | this session |
+| D1-05a: loreweave_events schema (event_log, event_consumers, dead_letter_events) | `services/worker-infra/internal/migrate/migrate.go` | this session |
+| D1-09b: config loader (WORKER_TASKS, OUTBOX_SOURCES, EVENTS_DB_URL, REDIS_URL) | `services/worker-infra/internal/config/config.go` + 3 tests | this session |
+| D1-09c: task registry (interface, Register, RunSelected, graceful shutdown) | `services/worker-infra/internal/registry/` + 3 tests | this session |
+| D1-10a+b: outbox-relay + outbox-cleanup task implementations | `services/worker-infra/internal/tasks/` | this session |
+| D1-10c: worker-infra added to docker-compose | `infra/docker-compose.yml` | this session |
 
 **9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
@@ -347,7 +353,7 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 | Priority | Item | Notes |
 | -------- | ---- | ----- |
 | **P0** | **Data Re-Engineering D1-11** | Frontend: save Tiptap JSON with _text, load JSONB, read-only reader |
-| **P0** | **Data Re-Engineering D1-05 + D1-09** | loreweave_events schema + worker-infra scaffold (parallel track) |
+| **P0** | **Data Re-Engineering D1-12** | Integration test (16 scenarios) |
 | P1 | Frontend V2 Phase 3 — Feature screens | **PAUSED until data re-engineering complete** |
 | P2 | Chapter editor: smoke test the full guard + toast flow | Save & leave, Discard & leave, logout dirty, download success |
 | P2 | BooksPage create-book error path: currently uses inline error in dialog — review if toast is better | `src/pages/BooksPage.tsx` |

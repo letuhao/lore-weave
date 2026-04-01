@@ -285,6 +285,23 @@ services:
       start_period: 20s
       retries: 5
 
+  worker-infra:
+    build:
+      context: ../services/worker-infra
+      dockerfile: Dockerfile
+    environment:
+      WORKER_TASKS: "outbox-relay,outbox-cleanup"
+      EVENTS_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_events
+      REDIS_URL: redis://redis:6379
+      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book"
+      OUTBOX_CLEANUP_RETAIN_DAYS: "7"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   api-gateway-bff:
     build:
       context: ../services/api-gateway-bff
