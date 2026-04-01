@@ -41,6 +41,7 @@ type attrDefResp struct {
 	Name       string   `json:"name"`
 	FieldType  string   `json:"field_type"`
 	IsRequired bool     `json:"is_required"`
+	IsSystem   bool     `json:"is_system"`
 	SortOrder  int      `json:"sort_order"`
 	Options    []string `json:"options,omitempty"`
 }
@@ -220,7 +221,7 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 	avRows, err := s.pool.Query(ctx, `
 		SELECT eav.attr_value_id, eav.entity_id, eav.attr_def_id,
 		       eav.original_language, eav.original_value,
-		       ad.attr_def_id, ad.code, ad.name, ad.field_type, ad.is_required, ad.sort_order
+		       ad.attr_def_id, ad.code, ad.name, ad.field_type, ad.is_required, ad.is_system, ad.sort_order
 		FROM entity_attribute_values eav
 		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
 		WHERE eav.entity_id = $1
@@ -238,7 +239,7 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 			&av.AttrValueID, &av.EntityID, &av.AttrDefID,
 			&av.OriginalLanguage, &av.OriginalValue,
 			&av.AttributeDef.AttrDefID, &av.AttributeDef.Code, &av.AttributeDef.Name,
-			&av.AttributeDef.FieldType, &av.AttributeDef.IsRequired, &av.AttributeDef.SortOrder,
+			&av.AttributeDef.FieldType, &av.AttributeDef.IsRequired, &av.AttributeDef.IsSystem, &av.AttributeDef.SortOrder,
 		); err != nil {
 			return nil, err
 		}

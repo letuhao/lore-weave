@@ -298,8 +298,8 @@ export function GlossaryTab({ bookId }: { bookId: string }) {
       {/* Entity Editor slide-over */}
       {selectedEntityId && (
         <>
-          <div className="fixed inset-0 z-40 bg-black/30" onClick={() => setSelectedEntityId(null)} />
-          <div className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-lg border-l bg-background shadow-xl">
+          <div className="fixed inset-0 z-40 bg-black/50" onClick={() => setSelectedEntityId(null)} />
+          <div className="fixed inset-4 z-50 mx-auto max-w-3xl rounded-xl border bg-background shadow-2xl overflow-hidden flex flex-col" style={{ top: '2rem', bottom: '2rem' }}>
             <EntityEditor
               bookId={bookId}
               entityId={selectedEntityId}

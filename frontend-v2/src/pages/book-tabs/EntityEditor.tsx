@@ -228,8 +228,8 @@ export function EntityEditor({ bookId, entityId, onClose, onSaved, onDelete }: E
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b px-5 py-3 flex-shrink-0">
+      {/* Header — sticky with save/cancel */}
+      <div className="flex items-center justify-between border-b px-6 py-3 flex-shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-lg">{entity.kind.icon}</span>
           <span className="text-sm font-semibold font-serif truncate">
@@ -241,9 +241,6 @@ export function EntityEditor({ bookId, entityId, onClose, onSaved, onDelete }: E
           >
             {entity.kind.name}
           </span>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Status selector */}
           <select
             value={entity.status}
             onChange={(e) => void handleStatusChange(e.target.value)}
@@ -253,6 +250,22 @@ export function EntityEditor({ bookId, entityId, onClose, onSaved, onDelete }: E
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onClose}
+            className="rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => void handleSave()}
+            disabled={saving || !isDirty}
+            className="btn-glow inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
+          >
+            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+            Save Entity
+          </button>
           <button
             onClick={onClose}
             className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
@@ -346,34 +359,19 @@ export function EntityEditor({ bookId, entityId, onClose, onSaved, onDelete }: E
             No attributes defined for this entity kind.
           </p>
         )}
-      </div>
 
-      {/* Footer */}
-      <div className="flex items-center justify-between border-t px-5 py-3 flex-shrink-0">
-        <button
-          onClick={onDelete}
-          className="inline-flex items-center gap-1.5 rounded-md border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors"
-        >
-          <Trash2 className="h-3 w-3" />
-          Move to Trash
-        </button>
-        <div className="flex items-center gap-2">
+        {/* Move to Trash — at bottom of scroll area */}
+        <div className="mt-6 border-t pt-4">
           <button
-            onClick={onClose}
-            className="rounded-md border px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+            onClick={onDelete}
+            className="inline-flex items-center gap-1.5 rounded-md border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors"
           >
-            Cancel
-          </button>
-          <button
-            onClick={() => void handleSave()}
-            disabled={saving || !isDirty}
-            className="btn-glow inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
-          >
-            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-            Save Entity
+            <Trash2 className="h-3 w-3" />
+            Move to Trash
           </button>
         </div>
       </div>
+
     </div>
   );
 }

@@ -172,6 +172,8 @@ BEGIN
           'code',              ad.code,
           'name',              ad.name,
           'field_type',        ad.field_type,
+          'is_required',       ad.is_required,
+          'is_system',         ad.is_system,
           'sort_order',        ad.sort_order,
           'original_language', av.original_language,
           'original_value',    COALESCE(av.original_value, ''),
