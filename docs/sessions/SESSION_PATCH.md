@@ -129,6 +129,9 @@ Data Re-Engineering Phase D1 continuation: book-service JSONB handler refactor (
 | D1-06f: exportChapter — read plain text from chapter_blocks with draft fallback | same file | this session |
 | D1-06g: getInternalBookChapter — json.RawMessage body + text_content from blocks | same file | this session |
 | D1-06h: createChapterRecord — outbox event for chapter.created | same file | this session |
+| D1-07a: plainTextToTiptapJSON converter (pure function, _text snapshots) | `services/book-service/internal/api/tiptap.go` (new) | this session |
+| D1-07a: createChapterRecord stores Tiptap JSON body with draft_format='json' | `services/book-service/internal/api/server.go` | this session |
+| D1-07a: 5 unit tests for plainTextToTiptapJSON | `services/book-service/internal/api/server_test.go` | this session |
 
 **9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 

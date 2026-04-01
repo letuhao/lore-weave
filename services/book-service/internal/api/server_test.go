@@ -172,3 +172,77 @@ func TestFetchSharingVisibilityFallsBackToPrivate(t *testing.T) {
 		t.Fatalf("expected private fallback on upstream error, got %q", got)
 	}
 }
+
+func TestPlainTextToTiptapJSON(t *testing.T) {
+	t.Parallel()
+
+	t.Run("single paragraph", func(t *testing.T) {
+		result := plainTextToTiptapJSON("Hello world")
+		var doc map[string]any
+		if err := json.Unmarshal(result, &doc); err != nil {
+			t.Fatal(err)
+		}
+		if doc["type"] != "doc" {
+			t.Fatalf("expected doc type, got %v", doc["type"])
+		}
+		content := doc["content"].([]any)
+		if len(content) != 1 {
+			t.Fatalf("expected 1 paragraph, got %d", len(content))
+		}
+		p := content[0].(map[string]any)
+		if p["_text"] != "Hello world" {
+			t.Fatalf("expected _text 'Hello world', got %v", p["_text"])
+		}
+	})
+
+	t.Run("multiple paragraphs", func(t *testing.T) {
+		result := plainTextToTiptapJSON("First paragraph\n\nSecond paragraph\n\nThird")
+		var doc map[string]any
+		_ = json.Unmarshal(result, &doc)
+		content := doc["content"].([]any)
+		if len(content) != 3 {
+			t.Fatalf("expected 3 paragraphs, got %d", len(content))
+		}
+		texts := []string{"First paragraph", "Second paragraph", "Third"}
+		for i, c := range content {
+			p := c.(map[string]any)
+			if p["_text"] != texts[i] {
+				t.Fatalf("paragraph %d: expected %q, got %v", i, texts[i], p["_text"])
+			}
+		}
+	})
+
+	t.Run("empty text", func(t *testing.T) {
+		result := plainTextToTiptapJSON("")
+		var doc map[string]any
+		_ = json.Unmarshal(result, &doc)
+		content := doc["content"].([]any)
+		if len(content) != 1 {
+			t.Fatalf("expected 1 empty paragraph, got %d", len(content))
+		}
+		p := content[0].(map[string]any)
+		if p["_text"] != "" {
+			t.Fatalf("expected empty _text, got %v", p["_text"])
+		}
+		if _, hasContent := p["content"]; hasContent {
+			t.Fatal("empty paragraph should not have content array")
+		}
+	})
+
+	t.Run("windows line endings", func(t *testing.T) {
+		result := plainTextToTiptapJSON("Line one\r\n\r\nLine two")
+		var doc map[string]any
+		_ = json.Unmarshal(result, &doc)
+		content := doc["content"].([]any)
+		if len(content) != 2 {
+			t.Fatalf("expected 2 paragraphs, got %d", len(content))
+		}
+	})
+
+	t.Run("valid JSON output", func(t *testing.T) {
+		result := plainTextToTiptapJSON("Test with \"quotes\" and <html>")
+		if !json.Valid(result) {
+			t.Fatal("output is not valid JSON")
+		}
+	})
+}

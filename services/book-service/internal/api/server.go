@@ -799,6 +799,8 @@ func (s *Server) createChapterRecord(
 		writeError(w, http.StatusInsufficientStorage, "STORAGE_QUOTA_EXCEEDED", "quota exceeded")
 		return
 	}
+	// Convert plain text → Tiptap JSON with _text snapshots
+	jsonBody := plainTextToTiptapJSON(body)
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to create chapter")
@@ -818,8 +820,8 @@ RETURNING id
 	if includeRaw {
 		_, _ = tx.Exec(ctx, `INSERT INTO chapter_raw_objects(chapter_id, body_text) VALUES($1,$2)`, chapterID, body)
 	}
-	_, _ = tx.Exec(ctx, `INSERT INTO chapter_drafts(chapter_id, body, draft_format, draft_updated_at, draft_version) VALUES($1,$2,'plain',now(),1)`, chapterID, body)
-	_, _ = tx.Exec(ctx, `INSERT INTO chapter_revisions(chapter_id, body, message, author_user_id) VALUES($1,$2,$3,$4)`, chapterID, body, revisionMessage, ownerID)
+	_, _ = tx.Exec(ctx, `INSERT INTO chapter_drafts(chapter_id, body, draft_format, draft_updated_at, draft_version) VALUES($1,$2,'json',now(),1)`, chapterID, jsonBody)
+	_, _ = tx.Exec(ctx, `INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,$3,$4,$5)`, chapterID, jsonBody, "json", revisionMessage, ownerID)
 	_, _ = tx.Exec(ctx, `UPDATE chapters SET draft_revision_count=1 WHERE id=$1`, chapterID)
 	if err := insertOutboxEvent(ctx, tx, "chapter.created", chapterID, map[string]any{"book_id": bookID}); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to commit chapter")
