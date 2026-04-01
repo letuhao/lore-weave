@@ -241,6 +241,19 @@ header "T13: Delete Custom Kind"
 DK_STATUS=$(curl -s -w "%{http_code}" -o /dev/null -X DELETE "$GATEWAY/v1/glossary/kinds/$CK_ID" -H "$AUTH")
 assert_eq "T13: Delete kind returns 204" "204" "$DK_STATUS"
 
+# ── T14a: Cannot Delete System Attribute ──────────────────────────────────
+header "T14a: Cannot Delete System Attribute"
+
+# Get a system attribute ID from the first system kind
+SYS_ATTR_ID=$(curl -s "$GATEWAY/v1/glossary/kinds" -H "$AUTH" | python3 -c "import sys,json; kinds=json.load(sys.stdin); r=[a['attr_def_id'] for k in kinds if k.get('is_default') for a in k.get('default_attributes',[]) if a.get('is_system')]; print(r[0] if r else '')" 2>/dev/null || echo "")
+
+if [ -n "$SYS_ATTR_ID" ]; then
+  SA_STATUS=$(curl -s -w "%{http_code}" -o /dev/null -X DELETE "$GATEWAY/v1/glossary/kinds/$KIND_ID/attributes/$SYS_ATTR_ID" -H "$AUTH")
+  assert_eq "T14a: Delete system attr returns 403" "403" "$SA_STATUS"
+else
+  red "T14a: SKIP — no system attributes found"; FAIL=$((FAIL+1))
+fi
+
 # ── T14: Cannot Delete System Kind ───────────────────────────────────────
 header "T14: Cannot Delete System Kind"
 

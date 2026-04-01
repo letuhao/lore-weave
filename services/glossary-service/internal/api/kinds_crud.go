@@ -281,9 +281,9 @@ func (s *Server) patchAttrDef(w http.ResponseWriter, r *http.Request) {
 
 	var a domain.AttrDef
 	s.pool.QueryRow(r.Context(), `
-		SELECT attr_def_id, code, name, field_type, is_required, sort_order, options
+		SELECT attr_def_id, code, name, field_type, is_required, is_system, sort_order, options
 		FROM attribute_definitions WHERE attr_def_id=$1`, attrDefID,
-	).Scan(&a.AttrDefID, &a.Code, &a.Name, &a.FieldType, &a.IsRequired, &a.SortOrder, &a.Options)
+	).Scan(&a.AttrDefID, &a.Code, &a.Name, &a.FieldType, &a.IsRequired, &a.IsSystem, &a.SortOrder, &a.Options)
 
 	writeJSON(w, http.StatusOK, a)
 }
@@ -296,6 +296,17 @@ func (s *Server) deleteAttrDef(w http.ResponseWriter, r *http.Request) {
 	}
 	kindID := chi.URLParam(r, "kind_id")
 	attrDefID := chi.URLParam(r, "attr_def_id")
+
+	// Check if system attribute
+	var isSystem bool
+	if err := s.pool.QueryRow(r.Context(), `SELECT is_system FROM attribute_definitions WHERE attr_def_id=$1 AND kind_id=$2`, attrDefID, kindID).Scan(&isSystem); err == pgx.ErrNoRows {
+		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "attribute not found")
+		return
+	}
+	if isSystem {
+		writeError(w, http.StatusForbidden, "GLOSS_FORBIDDEN", "cannot delete system attributes")
+		return
+	}
 
 	tag, err := s.pool.Exec(r.Context(), `DELETE FROM attribute_definitions WHERE attr_def_id=$1 AND kind_id=$2`, attrDefID, kindID)
 	if err != nil {
@@ -312,7 +323,7 @@ func (s *Server) deleteAttrDef(w http.ResponseWriter, r *http.Request) {
 // loadAttrDefs fetches attribute definitions for a kind.
 func (s *Server) loadAttrDefs(ctx context.Context, kindID string) []domain.AttrDef {
 	rows, err := s.pool.Query(ctx, `
-		SELECT attr_def_id, code, name, field_type, is_required, sort_order, options
+		SELECT attr_def_id, code, name, field_type, is_required, is_system, sort_order, options
 		FROM attribute_definitions WHERE kind_id=$1 ORDER BY sort_order`, kindID)
 	if err != nil {
 		return []domain.AttrDef{}
@@ -321,7 +332,7 @@ func (s *Server) loadAttrDefs(ctx context.Context, kindID string) []domain.AttrD
 	attrs := make([]domain.AttrDef, 0)
 	for rows.Next() {
 		var a domain.AttrDef
-		rows.Scan(&a.AttrDefID, &a.Code, &a.Name, &a.FieldType, &a.IsRequired, &a.SortOrder, &a.Options)
+		rows.Scan(&a.AttrDefID, &a.Code, &a.Name, &a.FieldType, &a.IsRequired, &a.IsSystem, &a.SortOrder, &a.Options)
 		attrs = append(attrs, a)
 	}
 	return attrs

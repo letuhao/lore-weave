@@ -10,6 +10,7 @@ export type AttributeDefinition = {
   name: string;
   field_type: FieldType;
   is_required: boolean;
+  is_system: boolean;
   sort_order: number;
   options?: string[];
 };

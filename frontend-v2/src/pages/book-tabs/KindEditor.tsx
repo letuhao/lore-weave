@@ -334,16 +334,19 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
                               <span className="text-xs font-medium">{attr.name}</span>
                               <span className="rounded bg-secondary px-1.5 py-0.5 text-[9px] text-muted-foreground">{attr.field_type}</span>
                               {attr.is_required && <span className="rounded bg-amber-400/15 px-1 py-0.5 text-[9px] font-medium text-amber-400">required</span>}
+                              {attr.is_system && <span className="rounded bg-blue-500/15 px-1 py-0.5 text-[9px] font-medium text-blue-400">SYS</span>}
                             </div>
                             <span className="text-[10px] text-muted-foreground font-mono">{attr.code}</span>
                           </div>
-                          <button
-                            onClick={() => setDeleteAttrTarget(attr)}
-                            className="opacity-0 group-hover:opacity-100 rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
-                            title="Delete attribute"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
+                          {!attr.is_system && (
+                            <button
+                              onClick={() => setDeleteAttrTarget(attr)}
+                              className="opacity-0 group-hover:opacity-100 rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
+                              title="Delete attribute"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
                         </div>
                       ))}
                   </div>

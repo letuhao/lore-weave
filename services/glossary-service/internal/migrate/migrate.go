@@ -33,11 +33,17 @@ CREATE TABLE IF NOT EXISTS attribute_definitions (
   description TEXT,
   field_type  TEXT NOT NULL DEFAULT 'text',
   is_required BOOLEAN NOT NULL DEFAULT false,
+  is_system   BOOLEAN NOT NULL DEFAULT false,
   sort_order  INT NOT NULL DEFAULT 0,
   options     TEXT[],
   UNIQUE(kind_id, code)
 );
 CREATE INDEX IF NOT EXISTS idx_attr_def_kind ON attribute_definitions(kind_id);
+-- Migration: add is_system column if missing (idempotent)
+ALTER TABLE attribute_definitions ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT false;
+-- Mark seeded attributes on system kinds as is_system=true
+UPDATE attribute_definitions ad SET is_system = true
+FROM entity_kinds ek WHERE ek.kind_id = ad.kind_id AND ek.is_default = true AND ad.is_system = false;
 
 -- Glossary entities (book-level)
 CREATE TABLE IF NOT EXISTS glossary_entities (
@@ -438,8 +444,8 @@ func Seed(ctx context.Context, pool *pgxpool.Pool) error {
 
 		for _, a := range k.Attrs {
 			if _, err := tx.Exec(ctx, `
-				INSERT INTO attribute_definitions(kind_id, code, name, field_type, is_required, sort_order)
-				VALUES ($1,$2,$3,$4,$5,$6)`,
+				INSERT INTO attribute_definitions(kind_id, code, name, field_type, is_required, is_system, sort_order)
+				VALUES ($1,$2,$3,$4,$5,true,$6)`,
 				kindID, a.Code, a.Name, a.FieldType, a.IsRequired, a.SortOrder,
 			); err != nil {
 				return fmt.Errorf("seed attr %s.%s: %w", k.Code, a.Code, err)

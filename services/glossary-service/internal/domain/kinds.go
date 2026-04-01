@@ -21,6 +21,7 @@ type AttrDef struct {
 	Name       string   `json:"name"`
 	FieldType  string   `json:"field_type"`
 	IsRequired bool     `json:"is_required"`
+	IsSystem   bool     `json:"is_system"`
 	SortOrder  int      `json:"sort_order"`
 	Options    []string `json:"options,omitempty"`
 }
