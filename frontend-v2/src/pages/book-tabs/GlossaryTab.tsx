@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/shared/Skeleton';
 import { EmptyState, ConfirmDialog } from '@/components/shared';
 import { cn } from '@/lib/utils';
 import { KindEditor } from './KindEditor';
-import { EntityEditor } from './EntityEditor';
+import { EntityEditorModal } from '@/components/entity-editor';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-amber-400/15 text-amber-400',
@@ -295,22 +295,17 @@ export function GlossaryTab({ bookId }: { bookId: string }) {
         onConfirm={() => void handleDelete()}
       />
 
-      {/* Entity Editor slide-over */}
+      {/* Entity Editor Modal */}
       {selectedEntityId && (
-        <>
-          <div className="fixed inset-0 z-40 bg-black/50" onClick={() => setSelectedEntityId(null)} />
-          <div className="fixed inset-4 z-50 mx-auto max-w-3xl rounded-xl border bg-background shadow-2xl overflow-hidden flex flex-col" style={{ top: '2rem', bottom: '2rem' }}>
-            <EntityEditor
-              bookId={bookId}
-              entityId={selectedEntityId}
-              onClose={() => setSelectedEntityId(null)}
-              onSaved={() => invalidate()}
-              onDelete={() => {
-                setDeleteTarget(entities.find((e) => e.entity_id === selectedEntityId) ?? null);
-              }}
-            />
-          </div>
-        </>
+        <EntityEditorModal
+          bookId={bookId}
+          entityId={selectedEntityId}
+          onClose={() => setSelectedEntityId(null)}
+          onSaved={() => invalidate()}
+          onDelete={() => {
+            setDeleteTarget(entities.find((e) => e.entity_id === selectedEntityId) ?? null);
+          }}
+        />
       )}
     </div>
   );
