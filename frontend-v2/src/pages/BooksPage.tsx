@@ -1,12 +1,19 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Plus, ChevronRight } from 'lucide-react';
+import { BookOpen, Plus, ChevronRight, Languages } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Book } from '@/features/books/api';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { FilterToolbar, Pagination, EmptyState, FormDialog, StatusBadge, SkeletonCard } from '@/components/shared';
 import { LanguageDisplay } from '@/components/shared/LanguageDisplay';
+
+/** Generate a stable hue from a book ID for cover gradient */
+function hashToHue(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) & 0xfff;
+  return h % 360;
+}
 
 export function BooksPage() {
   const { t } = useTranslation('books');
@@ -25,6 +32,7 @@ export function BooksPage() {
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [newLang, setNewLang] = useState('');
+  const [langFilter, setLangFilter] = useState('');
 
   const load = async () => {
     if (!accessToken) return;
@@ -43,9 +51,13 @@ export function BooksPage() {
 
   useEffect(() => { void load(); }, [accessToken]);
 
-  const filteredBooks = search
-    ? books.filter((b) => b.title.toLowerCase().includes(search.toLowerCase()))
-    : books;
+  const filteredBooks = books.filter((b) => {
+    if (search && !b.title.toLowerCase().includes(search.toLowerCase())) return false;
+    if (langFilter && b.original_language !== langFilter) return false;
+    return true;
+  });
+
+  const allLanguages = [...new Set(books.map((b) => b.original_language).filter(Boolean))] as string[];
 
   const handleCreate = async () => {
     if (!accessToken || !newTitle.trim()) return;
@@ -75,7 +87,7 @@ export function BooksPage() {
         actions={
           <button
             onClick={() => setCreateOpen(true)}
-            className="inline-flex items-center gap-2 rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            className="btn-glow inline-flex items-center gap-2 rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground transition-all hover:bg-primary/90"
           >
             <Plus className="h-4 w-4" />
             {t('new_book')}
@@ -94,9 +106,23 @@ export function BooksPage() {
         onSearchChange={setSearch}
         searchPlaceholder={t('search_placeholder')}
         trailing={
-          <span className="text-xs text-muted-foreground">
-            {filteredBooks.length} {filteredBooks.length === 1 ? 'book' : 'books'}
-          </span>
+          <div className="flex items-center gap-3">
+            {allLanguages.length > 1 && (
+              <select
+                value={langFilter}
+                onChange={(e) => setLangFilter(e.target.value)}
+                className="appearance-none rounded-md border bg-background px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
+              >
+                <option value="">All languages</option>
+                {allLanguages.map((l) => (
+                  <option key={l} value={l}>{l}</option>
+                ))}
+              </select>
+            )}
+            <span className="text-xs text-muted-foreground">
+              {filteredBooks.length} {filteredBooks.length === 1 ? 'book' : 'books'}
+            </span>
+          </div>
         }
       />
 
@@ -115,6 +141,7 @@ export function BooksPage() {
           icon={BookOpen}
           title={t('empty.title')}
           description={t('empty.description')}
+          variant="primary"
           action={
             <button
               onClick={() => setCreateOpen(true)}
@@ -134,11 +161,17 @@ export function BooksPage() {
             <Link
               key={book.book_id}
               to={`/books/${book.book_id}`}
-              className="group flex items-center gap-4 rounded-lg border p-4 transition-colors hover:border-border hover:bg-card"
+              className="group flex items-center gap-4 rounded-lg border p-4 transition-all hover:border-[hsl(var(--border-hover,25_6%_24%))] hover:bg-card"
             >
-              {/* Cover placeholder */}
-              <div className="flex h-16 w-11 flex-shrink-0 items-end rounded border bg-gradient-to-br from-primary/10 to-accent/10 p-1">
-                <span className="font-serif text-[6px] leading-tight text-muted-foreground">
+              {/* Cover */}
+              <div
+                className="flex h-16 w-11 flex-shrink-0 items-end overflow-hidden rounded border border-[hsl(var(--border-hover,25_6%_24%))]"
+                style={{
+                  background: `linear-gradient(135deg, hsl(${hashToHue(book.book_id)} 30% 12%), hsl(${hashToHue(book.book_id)} 25% 16%))`,
+                  boxShadow: 'inset 0 0 20px rgba(0,0,0,0.5)',
+                }}
+              >
+                <span className="p-1 font-serif text-[6px] leading-tight" style={{ color: `hsl(${hashToHue(book.book_id)} 40% 75%)` }}>
                   {book.title.slice(0, 20)}
                 </span>
               </div>
@@ -164,6 +197,11 @@ export function BooksPage() {
                     </>
                   )}
                 </div>
+              </div>
+
+              {/* Translation dots (placeholder — real data needs coverage API per book) */}
+              <div className="flex items-center gap-1" title="Translation status">
+                <span className="h-2 w-2 rounded-full bg-success" />
               </div>
 
               <ChevronRight className="h-4 w-4 text-muted-foreground/30 transition-colors group-hover:text-muted-foreground" />

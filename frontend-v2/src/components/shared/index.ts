@@ -8,3 +8,4 @@ export { FilterToolbar } from './FilterToolbar';
 export { Pagination } from './Pagination';
 export { LanguageDisplay } from './LanguageDisplay';
 export { LanguageSelector } from './LanguageSelector';
+export { FloatingActionBar, FloatingActionDivider } from './FloatingActionBar';

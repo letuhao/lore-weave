@@ -66,7 +66,7 @@ export function ResetPage() {
               type="password"
               autoComplete="new-password"
               placeholder="••••••••"
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/40"
+              className="w-full rounded-md border bg-card px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/40"
             />
             {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
           </div>
@@ -78,7 +78,7 @@ export function ResetPage() {
               type="password"
               autoComplete="new-password"
               placeholder="••••••••"
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/40"
+              className="w-full rounded-md border bg-card px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/40"
             />
             {errors.confirmPassword && <p className="text-xs text-destructive">{errors.confirmPassword.message}</p>}
           </div>

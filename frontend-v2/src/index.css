@@ -55,6 +55,14 @@
   }
 }
 
+/* ── Button enhancements ─────────────────────────────────────────────────── */
+.btn-glow {
+  box-shadow: 0 0 24px hsl(var(--primary) / 0.15);
+}
+.btn-glow:hover {
+  box-shadow: 0 0 32px hsl(var(--primary) / 0.25);
+}
+
 /* ── Grammar check highlights ─────────────────────────────────────────────── */
 .grammar-issue {
   text-decoration-line: underline;
