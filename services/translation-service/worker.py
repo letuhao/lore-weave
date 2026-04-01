@@ -22,6 +22,7 @@ import aio_pika
 
 from app.config import settings
 from app.database import create_pool, get_pool
+from app.migrate import run_migrations
 from app.broker import connect_broker, publish, publish_event
 from app.workers.coordinator import handle_job_message
 from app.workers.chapter_worker import handle_chapter_message, _TransientError
@@ -81,6 +82,9 @@ async def _recover_stale_chapters(pool) -> None:
 async def main() -> None:
     pool = await create_pool(settings.database_url)
     log.info("DB pool ready")
+
+    await run_migrations(pool)
+    log.info("Migrations applied")
 
     await _recover_stale_chapters(pool)
 
