@@ -228,10 +228,9 @@ export function EntityEditor({ bookId, entityId, onClose, onSaved, onDelete }: E
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header — sticky with save/cancel */}
-      <div className="flex items-center justify-between border-b px-6 py-3 flex-shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-lg">{entity.kind.icon}</span>
+      {/* Header */}
+      <div className="flex items-center justify-between border-b px-6 py-4 flex-shrink-0">
+        <div className="flex items-center gap-2.5 min-w-0">
           <span className="text-sm font-semibold font-serif truncate">
             {entity.display_name || 'Untitled'}
           </span>
@@ -241,36 +240,23 @@ export function EntityEditor({ bookId, entityId, onClose, onSaved, onDelete }: E
           >
             {entity.kind.name}
           </span>
+        </div>
+        <div className="flex items-center gap-2">
           <select
             value={entity.status}
             onChange={(e) => void handleStatusChange(e.target.value)}
-            className="rounded-md border bg-background px-2 py-1 text-[10px] font-medium focus:outline-none"
+            className="rounded-md border bg-background px-2.5 py-1 text-[10px] font-medium focus:outline-none"
           >
             <option value="draft">Draft</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
-        </div>
-        <div className="flex items-center gap-2">
           <button
             onClick={onClose}
-            className="rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           >
-            Cancel
-          </button>
-          <button
-            onClick={() => void handleSave()}
-            disabled={saving || !isDirty}
-            className="btn-glow inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
-          >
-            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-            Save Entity
-          </button>
-          <button
-            onClick={onClose}
-            className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-          >
-            <X className="h-4 w-4" />
+            <X className="h-3.5 w-3.5" />
+            Close
           </button>
         </div>
       </div>
