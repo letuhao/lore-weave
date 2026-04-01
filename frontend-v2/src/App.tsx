@@ -1,17 +1,24 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 import { AuthProvider, RequireAuth } from '@/auth';
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 2 * 60 * 1000,  // 2 minutes — show cached data, refetch in background
-      gcTime: 10 * 60 * 1000,     // 10 minutes — keep in cache after unmount
+      staleTime: 2 * 60 * 1000,
+      gcTime: 24 * 60 * 60 * 1000, // 24h — persisted cache lives longer
       refetchOnWindowFocus: false,
       retry: 1,
     },
   },
+});
+
+const persister = createSyncStoragePersister({
+  storage: window.localStorage,
+  key: 'loreweave-query-cache',
 });
 import { ModeProvider } from '@/providers/ModeProvider';
 import { DashboardLayout } from '@/layouts/DashboardLayout';
@@ -32,7 +39,7 @@ import { HomePage } from '@/pages/HomePage';
 
 export function App() {
   return (
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider client={queryClient} persistOptions={{ persister, maxAge: 24 * 60 * 60 * 1000 }}>
     <AuthProvider>
     <ModeProvider>
     <ReaderThemeProvider>
@@ -113,6 +120,6 @@ export function App() {
     </ReaderThemeProvider>
     </ModeProvider>
     </AuthProvider>
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   );
 }
