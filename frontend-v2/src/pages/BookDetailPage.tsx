@@ -149,20 +149,26 @@ function BookTabContent({ bookId, book, activeTab, onReload }: {
     '/settings': 'Book settings — coming in P3-21.',
   };
 
-  if (activeTab === '') {
-    return <ChaptersTab bookId={bookId} />;
-  }
-  if (activeTab === '/translation') {
-    return <TranslationTab bookId={bookId} />;
-  }
-  if (activeTab === '/glossary') {
-    return <GlossaryTab bookId={bookId} />;
-  }
+  const placeholder = placeholders[activeTab];
 
   return (
-    <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
-      {placeholders[activeTab] ?? 'Unknown tab'}
-    </div>
+    <>
+      {/* Keep tabs mounted to avoid re-fetch flicker on switch */}
+      <div style={{ display: activeTab === '' ? undefined : 'none' }}>
+        <ChaptersTab bookId={bookId} />
+      </div>
+      <div style={{ display: activeTab === '/translation' ? undefined : 'none' }}>
+        <TranslationTab bookId={bookId} />
+      </div>
+      <div style={{ display: activeTab === '/glossary' ? undefined : 'none' }}>
+        <GlossaryTab bookId={bookId} />
+      </div>
+      {placeholder && (
+        <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
+          {placeholder}
+        </div>
+      )}
+    </>
   );
 }
 
