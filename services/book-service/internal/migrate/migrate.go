@@ -84,6 +84,22 @@ CREATE TABLE IF NOT EXISTS user_storage_quota (
   used_bytes BIGINT NOT NULL DEFAULT 0,
   quota_bytes BIGINT NOT NULL
 );
+
+-- ── chapter_blocks: denormalized text extracted from Tiptap JSONB ────────
+CREATE TABLE IF NOT EXISTS chapter_blocks (
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
+  chapter_id UUID NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+  block_index INT NOT NULL,
+  block_type TEXT NOT NULL,
+  text_content TEXT NOT NULL DEFAULT '',
+  content_hash TEXT NOT NULL,
+  heading_context TEXT,
+  attrs JSONB,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(chapter_id, block_index)
+);
+CREATE INDEX IF NOT EXISTS idx_chapter_blocks_chapter ON chapter_blocks(chapter_id);
+CREATE INDEX IF NOT EXISTS idx_chapter_blocks_type ON chapter_blocks(block_type);
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {
@@ -100,5 +116,83 @@ func Up(ctx context.Context, pool *pgxpool.Pool) error {
 		END $$;
 	`)
 
+	// D1-03: trigger function to extract chapter_blocks from Tiptap JSONB
+	if _, err := pool.Exec(ctx, triggerSQL); err != nil {
+		return fmt.Errorf("migrate trigger: %w", err)
+	}
+
 	return nil
 }
+
+const triggerSQL = `
+-- ── fn_extract_chapter_blocks: UPSERT blocks from Tiptap JSON ────────────
+CREATE OR REPLACE FUNCTION fn_extract_chapter_blocks()
+RETURNS TRIGGER AS $fn$
+DECLARE
+  _max_idx INT;
+BEGIN
+  -- 1. UPSERT blocks from JSON_TABLE reading _text snapshots
+  INSERT INTO chapter_blocks (chapter_id, block_index, block_type, text_content, content_hash, attrs)
+  SELECT
+    NEW.chapter_id,
+    (jt.block_index - 1),
+    jt.block_type,
+    COALESCE(jt.text_content, ''),
+    encode(sha256(COALESCE(jt.text_content, '')::bytea), 'hex'),
+    jt.block_attrs
+  FROM JSON_TABLE(
+    NEW.body, '$.content[*]'
+    COLUMNS (
+      block_index FOR ORDINALITY,
+      block_type  TEXT  PATH '$.type',
+      text_content TEXT PATH '$._text',
+      block_attrs JSONB PATH '$.attrs'
+    )
+  ) AS jt
+  WHERE jt.block_type IS NOT NULL
+  ON CONFLICT (chapter_id, block_index)
+  DO UPDATE SET
+    block_type   = EXCLUDED.block_type,
+    text_content = EXCLUDED.text_content,
+    content_hash = EXCLUDED.content_hash,
+    attrs        = EXCLUDED.attrs,
+    updated_at   = CASE
+      WHEN chapter_blocks.content_hash = EXCLUDED.content_hash
+      THEN chapter_blocks.updated_at
+      ELSE now()
+    END;
+
+  -- 2. Delete blocks beyond new document length
+  SELECT count(*) INTO _max_idx
+  FROM JSON_TABLE(NEW.body, '$.content[*]' COLUMNS (i FOR ORDINALITY)) AS jt;
+
+  DELETE FROM chapter_blocks
+  WHERE chapter_id = NEW.chapter_id AND block_index >= _max_idx;
+
+  -- 3. Fill heading_context (nearest preceding heading)
+  UPDATE chapter_blocks cb SET
+    heading_context = sub.ctx
+  FROM (
+    SELECT
+      id,
+      MAX(CASE WHEN block_type = 'heading' THEN text_content END)
+        OVER (PARTITION BY chapter_id ORDER BY block_index
+              ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS ctx
+    FROM chapter_blocks
+    WHERE chapter_id = NEW.chapter_id
+  ) sub
+  WHERE cb.id = sub.id AND cb.chapter_id = NEW.chapter_id;
+
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- ── Trigger: fire after INSERT or UPDATE of body on chapter_drafts ────────
+DO $$ BEGIN
+  CREATE TRIGGER trg_extract_chapter_blocks
+    AFTER INSERT OR UPDATE OF body ON chapter_drafts
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_extract_chapter_blocks();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+`
