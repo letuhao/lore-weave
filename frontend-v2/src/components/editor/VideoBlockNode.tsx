@@ -8,7 +8,6 @@ import { Video, Upload, Loader2, Lock, Play, Trash2, Replace, Accessibility, His
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { booksApi } from '@/features/books/api';
-import { MediaPrompt } from './MediaPrompt';
 import { getUploadContext } from './ImageBlockNode';
 
 const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100 MB
@@ -502,15 +501,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
       </div>
 
       {/* AI Prompt — collapsible */}
-      {/* AI Prompt — collapsible */}
-      <MediaPrompt
-        prompt={(node.attrs.ai_prompt as string) || ''}
-        onChange={(val) => updateAttributes({ ai_prompt: val })}
-        onRegenerate={() => {}}
-        regenerateDisabled={true}
-        regenerateLabel="Generate (coming soon)"
-      />
-      {/* Placeholder for future video generation errors */}
+      {/* AI Prompt — deferred until video generation APIs exist (Phase 4.5) */}
     </NodeViewWrapper>
   );
 }
