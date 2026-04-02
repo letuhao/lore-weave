@@ -17,7 +17,9 @@ import { UnsavedChangesDialog } from '@/components/shared/UnsavedChangesDialog';
 import { cn } from '@/lib/utils';
 import { useGrammarEnabled } from '@/hooks/useGrammarCheck';
 import { useEditorMode } from '@/hooks/useEditorMode';
-import { setImageUploadContext } from '@/components/editor/ImageBlockNode';
+import { setImageUploadContext, setOnOpenHistory } from '@/components/editor/ImageBlockNode';
+import { setOnOpenVideoHistory } from '@/components/editor/VideoBlockNode';
+import { VersionHistoryPanel } from '@/components/editor/VersionHistoryPanel';
 
 function wordCount(text: string): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
@@ -80,6 +82,9 @@ export function ChapterEditorPage() {
   // Discard state for in-place cancel (no navigation)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
+  // Version history panel
+  const [versionHistory, setVersionHistory] = useState<{ blockId: string; blockTitle: string; mediaSrc: string | null } | null>(null);
+
   // Mode switch with unsaved-changes check
   const [pendingModeSwitch, setPendingModeSwitch] = useState<'classic' | 'ai' | null>(null);
   const handleModeSwitch = useCallback((newMode: 'classic' | 'ai') => {
@@ -102,8 +107,17 @@ export function ChapterEditorPage() {
   useEffect(() => {
     if (accessToken && bookId && chapterId) {
       setImageUploadContext({ token: accessToken, bookId, chapterId });
+      const openHistory = (blockId: string, blockTitle: string, mediaSrc: string | null) => {
+        setVersionHistory({ blockId, blockTitle, mediaSrc });
+      };
+      setOnOpenHistory(openHistory);
+      setOnOpenVideoHistory(openHistory);
     }
-    return () => setImageUploadContext(null);
+    return () => {
+      setImageUploadContext(null);
+      setOnOpenHistory(null);
+      setOnOpenVideoHistory(null);
+    };
   }, [accessToken, bookId, chapterId]);
 
   // ── Load ──────────────────────────────────────────────────────────────────
@@ -513,15 +527,35 @@ export function ChapterEditorPage() {
             </div>
           </div>
 
-          {/* Tiptap editor */}
-          <TiptapEditor
-            ref={tiptapEditorRef}
-            content={savedBody}
-            onUpdate={(json) => setTiptapJson(json)}
-            grammarEnabled={grammarEnabled}
-            editorMode={editorMode}
-            className="flex-1 overflow-y-auto"
-          />
+          {/* Tiptap editor or version history panel */}
+          {versionHistory ? (
+            <VersionHistoryPanel
+              token={accessToken!}
+              bookId={bookId}
+              chapterId={chapterId}
+              blockId={versionHistory.blockId}
+              blockTitle={versionHistory.blockTitle}
+              currentMediaUrl={versionHistory.mediaSrc}
+              onClose={() => setVersionHistory(null)}
+              onRestore={(version) => {
+                // Update the block's src attr with the restored version's media URL
+                if (version.media_url) {
+                  // The editor will need to update the block — for now just close the panel
+                  // A full restore would require finding the block by blockId and updating its attrs
+                  setVersionHistory(null);
+                }
+              }}
+            />
+          ) : (
+            <TiptapEditor
+              ref={tiptapEditorRef}
+              content={savedBody}
+              onUpdate={(json) => setTiptapJson(json)}
+              grammarEnabled={grammarEnabled}
+              editorMode={editorMode}
+              className="flex-1 overflow-y-auto"
+            />
+          )}
 
           {/* Save note */}
           <div className="flex-shrink-0 border-t px-4 py-2">
