@@ -86,7 +86,7 @@ function CodeBlockNodeView({ node, updateAttributes, editor }: NodeViewProps) {
   // --- Classic mode: compact locked placeholder ---
   if (isClassic) {
     return (
-      <NodeViewWrapper as={'div' as any} className="code-block-wrapper code-block-wrapper--classic">
+      <NodeViewWrapper className="code-block-wrapper code-block-wrapper--classic">
         <div className="code-block-classic">
           <span className="code-block-classic-icon">&lt;/&gt;</span>
           <span className="code-block-classic-label">Code Block</span>
@@ -94,16 +94,13 @@ function CodeBlockNodeView({ node, updateAttributes, editor }: NodeViewProps) {
           <span className="code-block-classic-lock">🔒 AI mode</span>
         </div>
         {/* Hidden but preserved content — NodeViewContent must always be in DOM */}
-        <NodeViewContent
-          as={'pre' as any}
-          style={{ display: 'none' }}
-        />
+        <NodeViewContent style={{ display: 'none' }} />
       </NodeViewWrapper>
     );
   }
 
   return (
-    <NodeViewWrapper as={'div' as any} className="code-block-wrapper">
+    <NodeViewWrapper className="code-block-wrapper">
       {/* Header bar — not editable */}
       <div className="code-block-header" contentEditable={false}>
         <select
@@ -128,11 +125,9 @@ function CodeBlockNodeView({ node, updateAttributes, editor }: NodeViewProps) {
         </button>
       </div>
 
-      {/* Code content — MUST be <pre> for whitespace preservation */}
-      <NodeViewContent
-        as={'pre' as any}
-        className="code-block-pre"
-      />
+      {/* Code content — contentDOMElementTag='pre' in ReactNodeViewRenderer
+          makes ProseMirror use a real <pre> as contentDOM */}
+      <NodeViewContent className="code-block-pre" />
     </NodeViewWrapper>
   );
 }
@@ -140,7 +135,9 @@ function CodeBlockNodeView({ node, updateAttributes, editor }: NodeViewProps) {
 // --- Tiptap extension ---
 export const CodeBlockExtension = CodeBlockLowlight.extend({
   addNodeView() {
-    return ReactNodeViewRenderer(CodeBlockNodeView);
+    return ReactNodeViewRenderer(CodeBlockNodeView, {
+      contentDOMElementTag: 'pre',
+    });
   },
 }).configure({
   lowlight,
