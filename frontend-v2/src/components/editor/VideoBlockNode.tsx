@@ -281,8 +281,18 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           {caption && (
             <span className="hidden text-[9px] opacity-50 group-hover:inline">{caption}</span>
           )}
+          {src && _onOpenVideoHistory && (
+            <button
+              type="button"
+              onClick={() => _onOpenVideoHistory?.((node.attrs.blockId as string) || 'unknown', title, src)}
+              className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] transition-colors hover:bg-card hover:text-foreground"
+              title="Version history"
+            >
+              <History className="h-2.5 w-2.5" />
+            </button>
+          )}
           <span className="flex items-center gap-1 rounded bg-card px-1.5 py-0.5 text-[9px]">
-            <Lock className="h-2.5 w-2.5" /> Switch to AI mode to edit
+            <Lock className="h-2.5 w-2.5" /> AI mode
           </span>
         </div>
       </NodeViewWrapper>
