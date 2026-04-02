@@ -134,7 +134,7 @@ func (s *Server) uploadChapterMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mediaURL := fmt.Sprintf("http://%s/%s/%s", s.cfg.MinioEndpoint, mediaBucket, objectKey)
+	mediaURL := s.mediaURL(objectKey)
 
 	// Auto-create version record if block_id provided
 	var versionID *string
@@ -232,7 +232,7 @@ func (s *Server) listMediaVersions(w http.ResponseWriter, r *http.Request) {
 			"created_at":      createdAt,
 		}
 		if mediaRef != nil && *mediaRef != "" {
-			item["media_url"] = fmt.Sprintf("http://%s/%s/%s", s.cfg.MinioEndpoint, mediaBucket, *mediaRef)
+			item["media_url"] = s.mediaURL(*mediaRef)
 		}
 		items = append(items, item)
 	}
@@ -517,7 +517,7 @@ func (s *Server) generateChapterMedia(w http.ResponseWriter, r *http.Request) {
 		chapterID, body.BlockID, nextVersion, objectKey, body.Prompt, modelName, contentType, uploadInfo.Size,
 	).Scan(&versionID)
 
-	mediaURL := fmt.Sprintf("http://%s/%s/%s", s.cfg.MinioEndpoint, mediaBucket, objectKey)
+	mediaURL := s.mediaURL(objectKey)
 
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"url":          mediaURL,
@@ -571,6 +571,15 @@ func (s *Server) setBucketPublicRead(ctx context.Context) error {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+// mediaURL returns the browser-accessible URL for a MinIO object.
+// Uses MINIO_EXTERNAL_URL if set (e.g. http://localhost:9123), falls back to internal endpoint.
+func (s *Server) mediaURL(objectKey string) string {
+	if s.cfg.MinioExternalURL != "" {
+		return fmt.Sprintf("%s/%s/%s", s.cfg.MinioExternalURL, mediaBucket, objectKey)
+	}
+	return fmt.Sprintf("http://%s/%s/%s", s.cfg.MinioEndpoint, mediaBucket, objectKey)
+}
 
 func nilIfEmpty(s string) *string {
 	if s == "" {

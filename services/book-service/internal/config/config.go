@@ -17,6 +17,7 @@ type Config struct {
 	MinioAccessKey     string
 	MinioSecretKey     string
 	MinioUseSSL        bool
+	MinioExternalURL   string // URL prefix for browser-accessible media (e.g. http://localhost:9123)
 	ProviderRegistryURL  string
 	InternalServiceToken string
 }
@@ -33,6 +34,7 @@ func Load() (*Config, error) {
 		MinioAccessKey:     getEnv("MINIO_ACCESS_KEY", "loreweave"),
 		MinioSecretKey:     getEnv("MINIO_SECRET_KEY", ""),
 		MinioUseSSL:          getEnv("MINIO_USE_SSL", "false") == "true",
+		MinioExternalURL:     getEnv("MINIO_EXTERNAL_URL", ""),
 		ProviderRegistryURL:  getEnv("PROVIDER_REGISTRY_SERVICE_URL", "http://localhost:8085"),
 		InternalServiceToken: getEnv("INTERNAL_SERVICE_TOKEN", ""),
 	}

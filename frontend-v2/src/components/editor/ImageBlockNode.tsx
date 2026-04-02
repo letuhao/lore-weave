@@ -318,23 +318,33 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
     }
   }, [node.attrs.ai_prompt, node.attrs.blockId, updateAttributes]);
 
-  // --- Classic mode: compact locked placeholder ---
+  // --- Classic mode: compact locked placeholder with hover preview ---
   if (isClassic) {
     const title = (node.attrs.title as string) || 'Image';
     return (
-      <NodeViewWrapper className="my-2">
+      <NodeViewWrapper className="group my-2">
         <div className="flex items-center gap-2 rounded-lg border bg-secondary px-3 py-2 text-muted-foreground">
-          <ImageIcon className="h-4 w-4 flex-shrink-0 opacity-40" />
-          <span className="flex-1 truncate text-xs">{title}</span>
+          {/* Thumbnail preview on hover */}
           {src && (
-            <span className="text-[9px] opacity-50">
-              {caption || alt || 'image'}
+            <img src={src} alt="" className="h-6 w-6 rounded object-cover opacity-50" draggable={false} />
+          )}
+          {!src && <ImageIcon className="h-4 w-4 flex-shrink-0 opacity-40" />}
+          <span className="flex-1 truncate text-xs">{title}</span>
+          {src && caption && (
+            <span className="hidden text-[9px] opacity-50 group-hover:inline">
+              {caption}
             </span>
           )}
           <span className="flex items-center gap-1 rounded bg-card px-1.5 py-0.5 text-[9px]">
-            <Lock className="h-2.5 w-2.5" /> AI mode
+            <Lock className="h-2.5 w-2.5" /> Switch to AI mode to edit
           </span>
         </div>
+        {/* Hover preview — shows larger thumbnail */}
+        {src && (
+          <div className="hidden overflow-hidden rounded-b-lg border border-t-0 group-hover:block">
+            <img src={src} alt={alt} className="max-h-32 w-full object-cover opacity-70" draggable={false} />
+          </div>
+        )}
       </NodeViewWrapper>
     );
   }
