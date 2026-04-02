@@ -93,6 +93,8 @@ services:
       MINIO_ACCESS_KEY: loreweave
       MINIO_SECRET_KEY: loreweave_dev_minio_secret
       MINIO_USE_SSL: "false"
+      PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
     depends_on:
       postgres:
         condition: service_healthy

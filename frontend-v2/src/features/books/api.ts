@@ -371,6 +371,20 @@ export const booksApi = {
     return data as MediaVersion;
   },
 
+  async generateImage(
+    token: string, bookId: string, chapterId: string,
+    body: { block_id: string; prompt: string; model_source: string; model_ref: string; size?: string },
+  ): Promise<{ url: string; object_key: string; version: number; version_id: string; ai_model: string; size: number; content_type: string }> {
+    const res = await fetch(`${base()}/v1/books/${bookId}/chapters/${chapterId}/media-generate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw Object.assign(new Error(data?.message || res.statusText), { status: res.status, code: data?.code });
+    return data;
+  },
+
   async deleteMediaVersion(token: string, bookId: string, chapterId: string, versionId: string) {
     const res = await fetch(`${base()}/v1/books/${bookId}/chapters/${chapterId}/media-versions/${versionId}`, {
       method: 'DELETE',

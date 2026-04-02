@@ -17,6 +17,8 @@ type Config struct {
 	MinioAccessKey     string
 	MinioSecretKey     string
 	MinioUseSSL        bool
+	ProviderRegistryURL  string
+	InternalServiceToken string
 }
 
 func Load() (*Config, error) {
@@ -30,7 +32,9 @@ func Load() (*Config, error) {
 		MinioEndpoint:      getEnv("MINIO_ENDPOINT", "localhost:9000"),
 		MinioAccessKey:     getEnv("MINIO_ACCESS_KEY", "loreweave"),
 		MinioSecretKey:     getEnv("MINIO_SECRET_KEY", ""),
-		MinioUseSSL:        getEnv("MINIO_USE_SSL", "false") == "true",
+		MinioUseSSL:          getEnv("MINIO_USE_SSL", "false") == "true",
+		ProviderRegistryURL:  getEnv("PROVIDER_REGISTRY_SERVICE_URL", "http://localhost:8085"),
+		InternalServiceToken: getEnv("INTERNAL_SERVICE_TOKEN", ""),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

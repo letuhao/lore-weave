@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -341,6 +342,191 @@ func (s *Server) deleteMediaVersion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ── AI Image Generation ─────────────────────────────────────────────────────
+
+func (s *Server) generateChapterMedia(w http.ResponseWriter, r *http.Request) {
+	if s.minio == nil {
+		writeError(w, http.StatusServiceUnavailable, "MEDIA_UNAVAILABLE", "media storage not configured")
+		return
+	}
+	if s.cfg.ProviderRegistryURL == "" || s.cfg.InternalServiceToken == "" {
+		writeError(w, http.StatusServiceUnavailable, "GENERATION_UNAVAILABLE", "AI generation not configured")
+		return
+	}
+
+	ownerID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
+		return
+	}
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	chapterID := chi.URLParam(r, "chapter_id")
+
+	lifecycle, okBook, status := s.ensureOwnerBook(r.Context(), bookID, ownerID)
+	if !okBook {
+		writeError(w, status, "BOOK_NOT_FOUND", "book not found")
+		return
+	}
+	if lifecycle != "active" {
+		writeError(w, http.StatusConflict, "BOOK_INVALID_LIFECYCLE", "book not active")
+		return
+	}
+
+	var body struct {
+		BlockID    string `json:"block_id"`
+		Prompt     string `json:"prompt"`
+		ModelSource string `json:"model_source"` // "user_model" or "platform_model"
+		ModelRef   string `json:"model_ref"`     // model UUID
+		Size       string `json:"size"`           // "1024x1024" default
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid JSON")
+		return
+	}
+	if body.BlockID == "" || body.Prompt == "" || body.ModelRef == "" {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "block_id, prompt, and model_ref required")
+		return
+	}
+	if body.ModelSource == "" {
+		body.ModelSource = "user_model"
+	}
+	if body.Size == "" {
+		body.Size = "1024x1024"
+	}
+
+	ctx := r.Context()
+
+	// 1. Resolve provider credentials
+	credURL := fmt.Sprintf("%s/internal/credentials/%s/%s?user_id=%s",
+		s.cfg.ProviderRegistryURL, body.ModelSource, body.ModelRef, ownerID)
+	credReq, _ := http.NewRequestWithContext(ctx, "GET", credURL, nil)
+	credReq.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	credResp, err := http.DefaultClient.Do(credReq)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "PROVIDER_ERROR", "failed to reach provider registry")
+		return
+	}
+	defer credResp.Body.Close()
+	if credResp.StatusCode == http.StatusNotFound {
+		writeError(w, http.StatusPaymentRequired, "NO_PROVIDER", "no active AI provider configured")
+		return
+	}
+	if credResp.StatusCode != http.StatusOK {
+		writeError(w, http.StatusBadGateway, "PROVIDER_ERROR", "provider registry error")
+		return
+	}
+
+	var creds struct {
+		ProviderKind      string `json:"provider_kind"`
+		ProviderModelName string `json:"provider_model_name"`
+		BaseURL           string `json:"base_url"`
+		APIKey            string `json:"api_key"`
+	}
+	if err := json.NewDecoder(credResp.Body).Decode(&creds); err != nil {
+		writeError(w, http.StatusBadGateway, "PROVIDER_ERROR", "invalid provider response")
+		return
+	}
+
+	// 2. Call AI provider (OpenAI-compatible image generation)
+	baseURL := creds.BaseURL
+	if baseURL == "" {
+		baseURL = "https://api.openai.com"
+	}
+	genPayload, _ := json.Marshal(map[string]any{
+		"prompt":          body.Prompt,
+		"model":           creds.ProviderModelName,
+		"size":            body.Size,
+		"n":               1,
+		"response_format": "url",
+	})
+	genReq, _ := http.NewRequestWithContext(ctx, "POST", baseURL+"/v1/images/generations",
+		bytes.NewReader(genPayload))
+	genReq.Header.Set("Authorization", "Bearer "+creds.APIKey)
+	genReq.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 120 * time.Second}
+	genResp, err := client.Do(genReq)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "GENERATION_FAILED", "AI provider request failed")
+		return
+	}
+	defer genResp.Body.Close()
+	if genResp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(genResp.Body, 4096))
+		writeError(w, http.StatusBadGateway, "GENERATION_FAILED",
+			fmt.Sprintf("AI provider returned %d: %s", genResp.StatusCode, string(respBody)))
+		return
+	}
+
+	var genResult struct {
+		Data []struct {
+			URL string `json:"url"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(genResp.Body).Decode(&genResult); err != nil || len(genResult.Data) == 0 {
+		writeError(w, http.StatusBadGateway, "GENERATION_FAILED", "invalid AI provider response")
+		return
+	}
+
+	// 3. Download the generated image
+	imgResp, err := http.Get(genResult.Data[0].URL)
+	if err != nil || imgResp.StatusCode != http.StatusOK {
+		writeError(w, http.StatusBadGateway, "GENERATION_FAILED", "failed to download generated image")
+		return
+	}
+	defer imgResp.Body.Close()
+
+	contentType := imgResp.Header.Get("Content-Type")
+	ext := ".png"
+	if e, ok := allowedMediaTypes[contentType]; ok {
+		ext = e
+	}
+
+	// 4. Ensure bucket + upload to MinIO
+	if err := s.ensureMediaBucket(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "MEDIA_UPLOAD_FAILED", "storage init failed")
+		return
+	}
+
+	var nextVersion int
+	_ = s.pool.QueryRow(ctx,
+		`SELECT COALESCE(MAX(version), 0) + 1 FROM block_media_versions WHERE chapter_id=$1 AND block_id=$2`,
+		chapterID, body.BlockID).Scan(&nextVersion)
+
+	objectKey := fmt.Sprintf("books/%s/chapters/%s/%s/v%d%s", bookID, chapterID, body.BlockID, nextVersion, ext)
+	uploadInfo, err := s.minio.PutObject(ctx, mediaBucket, objectKey, imgResp.Body, -1,
+		minio.PutObjectOptions{ContentType: contentType})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "MEDIA_UPLOAD_FAILED", "failed to store generated image")
+		return
+	}
+
+	// 5. Create version record
+	modelName := creds.ProviderModelName
+	var versionID string
+	_ = s.pool.QueryRow(ctx, `
+		INSERT INTO block_media_versions(chapter_id, block_id, version, action, changes, media_ref, prompt_snapshot, ai_model, content_type, size_bytes)
+		VALUES($1, $2, $3, 'regenerate', ARRAY['prompt','media'], $4, $5, $6, $7, $8)
+		RETURNING id`,
+		chapterID, body.BlockID, nextVersion, objectKey, body.Prompt, modelName, contentType, uploadInfo.Size,
+	).Scan(&versionID)
+
+	mediaURL := fmt.Sprintf("http://%s/%s/%s", s.cfg.MinioEndpoint, mediaBucket, objectKey)
+
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"url":          mediaURL,
+		"object_key":   objectKey,
+		"version":      nextVersion,
+		"version_id":   versionID,
+		"ai_model":     modelName,
+		"size":         uploadInfo.Size,
+		"content_type": contentType,
+	})
 }
 
 // ── Bucket management ───────────────────────────────────────────────────────
