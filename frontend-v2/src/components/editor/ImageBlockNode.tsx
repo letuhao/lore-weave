@@ -4,7 +4,7 @@ import {
   NodeViewWrapper,
   type NodeViewProps,
 } from '@tiptap/react';
-import { ImageIcon, Accessibility, Upload, Loader2 } from 'lucide-react';
+import { ImageIcon, Accessibility, Upload, Loader2, Lock } from 'lucide-react';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { booksApi } from '@/features/books/api';
@@ -117,7 +117,9 @@ function validateFile(file: File): string | null {
 }
 
 // --- NodeView component ---
-function ImageBlockNodeView({ node, updateAttributes, selected }: NodeViewProps) {
+function ImageBlockNodeView({ node, updateAttributes, selected, editor }: NodeViewProps) {
+  const editorMode = ((editor.storage as any).mediaGuard?.editorMode as string) || 'ai';
+  const isClassic = editorMode === 'classic';
   const src = node.attrs.src as string | null;
   const alt = (node.attrs.alt as string) || '';
   const caption = (node.attrs.caption as string) || '';
@@ -241,6 +243,27 @@ function ImageBlockNodeView({ node, updateAttributes, selected }: NodeViewProps)
     },
     [doUpload],
   );
+
+  // --- Classic mode: compact locked placeholder ---
+  if (isClassic) {
+    const title = (node.attrs.title as string) || 'Image';
+    return (
+      <NodeViewWrapper className="my-2">
+        <div className="flex items-center gap-2 rounded-lg border bg-secondary px-3 py-2 text-muted-foreground">
+          <ImageIcon className="h-4 w-4 flex-shrink-0 opacity-40" />
+          <span className="flex-1 truncate text-xs">{title}</span>
+          {src && (
+            <span className="text-[9px] opacity-50">
+              {caption || alt || 'image'}
+            </span>
+          )}
+          <span className="flex items-center gap-1 rounded bg-card px-1.5 py-0.5 text-[9px]">
+            <Lock className="h-2.5 w-2.5" /> AI mode
+          </span>
+        </div>
+      </NodeViewWrapper>
+    );
+  }
 
   return (
     <NodeViewWrapper

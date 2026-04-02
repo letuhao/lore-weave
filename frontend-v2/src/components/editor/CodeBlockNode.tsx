@@ -6,7 +6,7 @@ import {
 } from '@tiptap/react';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { createLowlight } from 'lowlight';
-import { Copy, Check, Code2 } from 'lucide-react';
+import { Copy, Check, Code2, Lock } from 'lucide-react';
 import { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -59,7 +59,9 @@ export const CODE_LANGUAGES = [
 ] as const;
 
 // --- NodeView component ---
-function CodeBlockNodeView({ node, updateAttributes }: NodeViewProps) {
+function CodeBlockNodeView({ node, updateAttributes, editor }: NodeViewProps) {
+  const editorMode = ((editor.storage as any).mediaGuard?.editorMode as string) || 'ai';
+  const isClassic = editorMode === 'classic';
   const language = (node.attrs.language as string) || 'plaintext';
   const [copied, setCopied] = useState(false);
 
@@ -81,6 +83,22 @@ function CodeBlockNodeView({ node, updateAttributes }: NodeViewProps) {
     },
     [updateAttributes],
   );
+
+  // --- Classic mode: compact locked placeholder ---
+  if (isClassic) {
+    return (
+      <NodeViewWrapper className="my-2">
+        <div className="flex items-center gap-2 rounded-lg border bg-secondary px-3 py-2 text-muted-foreground">
+          <Code2 className="h-4 w-4 flex-shrink-0 opacity-40" />
+          <span className="flex-1 text-xs">Code Block</span>
+          <span className="font-mono text-[9px] opacity-50">{language}</span>
+          <span className="flex items-center gap-1 rounded bg-card px-1.5 py-0.5 text-[9px]">
+            <Lock className="h-2.5 w-2.5" /> AI mode
+          </span>
+        </div>
+      </NodeViewWrapper>
+    );
+  }
 
   return (
     <NodeViewWrapper className="my-2 overflow-hidden rounded-lg border bg-[#0d0b09]">

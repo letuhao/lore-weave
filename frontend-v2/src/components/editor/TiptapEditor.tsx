@@ -8,6 +8,7 @@ import { SlashMenuExtension, SlashMenuPopup, type EditorMode } from './SlashMenu
 import { CalloutExtension } from './CalloutNode';
 import { CodeBlockExtension } from './CodeBlockNode';
 import { ImageBlockExtension } from './ImageBlockNode';
+import { MediaGuardExtension } from './MediaGuardExtension';
 import { GrammarExtension, setGrammarEnabled } from './GrammarPlugin';
 
 export interface TiptapEditorHandle {
@@ -65,6 +66,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         }),
         CodeBlockExtension,
         ImageBlockExtension,
+        MediaGuardExtension,
         Placeholder.configure({
           placeholder: 'Type / for commands...',
         }),
@@ -103,6 +105,15 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
     useEffect(() => {
       if (editor) setGrammarEnabled(editor, grammarEnabled);
     }, [editor, grammarEnabled]);
+
+    // Sync editor mode to extension storage (used by MediaGuardExtension + NodeViews)
+    useEffect(() => {
+      if (editor) {
+        (editor.storage as any).mediaGuard.editorMode = editorMode;
+        // Force re-render of NodeViews so they pick up the mode change
+        editor.view.dispatch(editor.state.tr.setMeta('editorModeChanged', editorMode));
+      }
+    }, [editor, editorMode]);
 
     const setContentHandler = useCallback((newContent: any) => {
       if (!editor) return;
