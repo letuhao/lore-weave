@@ -45,15 +45,20 @@ export function extractText(node: JSONContent): string {
     .join(node.type === 'listItem' ? '\n' : '');
 }
 
-/** Add _text snapshot to each top-level block for the chapter_blocks trigger */
+/** Add _text snapshot to each top-level block for the chapter_blocks trigger.
+ *  Also strips transient attrs (_mode) that shouldn't be persisted. */
 export function addTextSnapshots(doc: JSONContent): JSONContent {
   if (!doc.content) return doc;
   return {
     ...doc,
-    content: doc.content.map(block => ({
-      ...block,
-      _text: extractText(block),
-    })),
+    content: doc.content.map(block => {
+      const cleaned = { ...block, _text: extractText(block) };
+      if (cleaned.attrs) {
+        const { _mode, ...rest } = cleaned.attrs as any;
+        cleaned.attrs = rest;
+      }
+      return cleaned;
+    }),
   };
 }
 
@@ -116,10 +121,24 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
 
     // Sync editor mode to extension storage (used by MediaGuardExtension + NodeViews)
     useEffect(() => {
-      if (editor) {
-        (editor.storage as any).mediaGuard.editorMode = editorMode;
-        // Force re-render of NodeViews so they pick up the mode change
-        editor.view.dispatch(editor.state.tr.setMeta('editorModeChanged', editorMode));
+      if (!editor) return;
+      (editor.storage as any).mediaGuard.editorMode = editorMode;
+
+      // Force re-render of all media NodeViews by touching their attrs.
+      // React NodeViews only re-render when their node changes — storage changes alone don't trigger it.
+      const mediaTypes = new Set(['imageBlock', 'videoBlock']);
+      const { tr } = editor.state;
+      let touched = false;
+      editor.state.doc.descendants((node, pos) => {
+        if (mediaTypes.has(node.type.name)) {
+          // Set a _mode attr (not persisted, just forces React re-render)
+          tr.setNodeMarkup(pos, undefined, { ...node.attrs, _mode: editorMode });
+          touched = true;
+        }
+      });
+      if (touched) {
+        tr.setMeta('addToHistory', false); // Don't pollute undo history
+        editor.view.dispatch(tr);
       }
     }, [editor, editorMode]);
 

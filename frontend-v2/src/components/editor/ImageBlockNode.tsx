@@ -56,6 +56,7 @@ export const ImageBlockExtension = Node.create({
       width: { default: 100 },
       title: { default: '' },
       ai_prompt: { default: '' },
+      _mode: { default: 'ai', rendered: false }, // transient, forces NodeView re-render on mode switch
     };
   },
 
@@ -362,13 +363,39 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         style={{ width: `${currentWidth}%` }}
       >
         {src ? (
-          <img
-            src={src}
-            alt={alt}
-            title={node.attrs.title as string}
-            className="block w-full rounded-t-lg object-cover"
-            draggable={false}
-          />
+          <div className="relative">
+            <img
+              src={src}
+              alt={alt}
+              title={node.attrs.title as string}
+              className="block w-full rounded-t-lg object-cover"
+              draggable={false}
+            />
+            {/* Hover overlay with quick actions */}
+            <div
+              className="absolute inset-0 flex items-start justify-end gap-1 rounded-t-lg bg-black/0 p-2 opacity-0 transition-all group-hover:bg-black/30 group-hover:opacity-100"
+              contentEditable={false}
+            >
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                onMouseDown={(e) => e.preventDefault()}
+                className="rounded bg-black/60 px-2 py-1 text-[10px] text-white backdrop-blur transition hover:bg-black/80"
+                title="Replace image"
+              >
+                <Replace className="inline h-3 w-3" /> Replace
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteNode()}
+                onMouseDown={(e) => e.preventDefault()}
+                className="rounded bg-black/60 px-2 py-1 text-[10px] text-white backdrop-blur transition hover:bg-destructive"
+                title="Delete block"
+              >
+                <Trash2 className="inline h-3 w-3" />
+              </button>
+            </div>
+          </div>
         ) : (
           /* Upload zone */
           <div

@@ -36,6 +36,7 @@ export const VideoBlockExtension = Node.create({
       width: { default: 100 },
       duration: { default: null },
       size_bytes: { default: null },
+      _mode: { default: 'ai', rendered: false }, // transient, forces NodeView re-render on mode switch
     };
   },
 
