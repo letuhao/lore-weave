@@ -1,5 +1,6 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { toast } from 'sonner';
 
 /**
  * Media block types that are protected in Classic mode.
@@ -11,6 +12,19 @@ const MEDIA_NODE_TYPES = new Set(['imageBlock', 'codeBlock', 'videoBlock']);
 const ATOM_MEDIA_TYPES = new Set(['imageBlock', 'videoBlock']);
 
 const mediaGuardKey = new PluginKey('mediaGuard');
+
+/** Debounce toast so it doesn't spam on repeated keypresses */
+let lastToastTime = 0;
+function showGuardToast(isClassic: boolean) {
+  const now = Date.now();
+  if (now - lastToastTime < 2000) return; // 2s debounce
+  lastToastTime = now;
+  if (isClassic) {
+    toast.info('Media blocks are protected in Classic mode. Switch to AI mode to edit or delete.', {
+      duration: 3000,
+    });
+  }
+}
 
 /**
  * Tiptap extension that protects media blocks from accidental deletion.
@@ -52,7 +66,8 @@ export const MediaGuardExtension = Extension.create({
                 if (posBefore > 0) {
                   const nodeBefore = state.doc.resolve(posBefore).nodeBefore;
                   if (nodeBefore && guardedTypes.has(nodeBefore.type.name)) {
-                    return true; // Block the keypress
+                    showGuardToast(isClassic);
+                    return true;
                   }
                 }
               }
@@ -65,7 +80,8 @@ export const MediaGuardExtension = Extension.create({
                 if (posAfter < state.doc.content.size) {
                   const nodeAfter = state.doc.resolve(posAfter).nodeAfter;
                   if (nodeAfter && guardedTypes.has(nodeAfter.type.name)) {
-                    return true; // Block the keypress
+                    showGuardToast(isClassic);
+                    return true;
                   }
                 }
               }
@@ -80,6 +96,21 @@ export const MediaGuardExtension = Extension.create({
                 }
               });
               if (hasMedia) {
+                showGuardToast(isClassic);
+                return true;
+              }
+            }
+
+            // --- Classic mode: block paste over selection containing media ---
+            if (isClassic && (event.key === 'v' && (event.ctrlKey || event.metaKey)) && !empty) {
+              let hasMedia = false;
+              state.doc.nodesBetween($from.pos, $to.pos, (node) => {
+                if (MEDIA_NODE_TYPES.has(node.type.name)) {
+                  hasMedia = true;
+                }
+              });
+              if (hasMedia) {
+                showGuardToast(isClassic);
                 return true;
               }
             }
