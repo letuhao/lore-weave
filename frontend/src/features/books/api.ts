@@ -102,6 +102,9 @@ export const booksApi = {
     form.append('file', file);
     return apiForm<Book>(`/v1/books/${bookId}/cover`, form, token);
   },
+  deleteCover(token: string, bookId: string) {
+    return apiJson<Book>(`/v1/books/${bookId}/cover`, { method: 'DELETE', token });
+  },
   listChapters(
     token: string,
     bookId: string,
