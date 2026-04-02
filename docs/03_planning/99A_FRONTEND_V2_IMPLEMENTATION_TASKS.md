@@ -1049,6 +1049,30 @@ P3-17a (wiki backend) blocks all wiki features
 4. User can always manually delete specific versions from the history panel
 5. Storage usage visible per chapter and per book
 
+### Version History Panel Enhancements (future polish)
+
+> Current state: Basic version history works — timeline, side-by-side comparison, prompt diff, restore/download/delete.
+> Compared to design draft `screen-editor-version-history.html`, the following features are missing.
+
+| Task | Type | Scope | Deps | Est | Priority |
+|---|---|---|---|---|---|
+| VH-01 | FE | Image/Audio tabs in history panel (switch between media + audio versions) | Phase 4.5 (Audio/TTS) | M | P2 |
+| VH-02 | FE | Image dimensions + file size on each comparison side | — | S | P2 |
+| VH-03 | FE | Version detail/description text (not just truncated prompt) | — | S | P2 |
+| VH-04 | FE+BE | Auto-create "prompt written" version when AI prompt is saved (no media yet) | — | S | P3 |
+| VH-05 | FE+BE | Auto-create "block created" version on block insert | — | S | P3 |
+| VH-06 | FE | Retention policy display in bottom bar ("keep last 10 versions") | MV-02 | S | P2 |
+| VH-07 | FE | MinIO path display in bottom bar (debug info) | — | S | P3 |
+| VH-08 | FE | Delete button on audio versions tab | Phase 4.5 | S | P2 |
+| VH-09 | FE | Voice tag display for TTS voice changes | Phase 4.5 | S | P3 |
+| VH-10 | FE | Caption change inline preview in timeline items ("old" → "new") | — | S | P2 |
+| VH-11 | FE | Git-branch icon in Versions header | — | S | P3 |
+| VH-12 | FE | Per-side comparison metadata (filename, dimensions, size below each image) | — | S | P2 |
+
+**Non-blocked (can do now):** VH-02, VH-03, VH-10, VH-11, VH-12
+**Blocked by Phase 4.5 (Audio/TTS):** VH-01, VH-08, VH-09
+**Blocked by MV retention tasks:** VH-06
+
 ### Video Generation Service — Provider Integration (future)
 
 > Service: `services/video-gen-service/` — Python/FastAPI, port 8088 (host: 8213)
@@ -1096,7 +1120,7 @@ Each adapter translates to the `GenerateResponse` schema defined in `app/models.
 
 ### Size Key: S = <1 session, M = 1-2 sessions, L = 2-4 sessions
 
-### Updated Total: 123 tasks (was 116)
+### Updated Total: 135 tasks (was 123)
 
 | Phase | FE | BE | FS | Total |
 |---|---|---|---|---|
@@ -1110,3 +1134,4 @@ Each adapter translates to the `GenerateResponse` schema defined in `app/models.
 | Phase 5 | 4 | 1 | 5 | 10 |
 | **Video Gen** | **2** | **7** | **1** | **10** |
 | **Media Versions** | **2** | **5** | **0** | **7** |
+| **Version History Polish** | **10** | **0** | **2** | **12** |
