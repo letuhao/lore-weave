@@ -504,3 +504,4 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 | **Structured book/chapter zip import-export** (portable bundles with metadata, revisions, assets) | Not implemented | Post-V1 feature wave | `100_FUTURE_FEATURE_STRUCTURED_IMPORT_EXPORT_MEDIA.md` |
 | **Media-rich chapters** — images and video for visual novel-style storytelling | **Phase 3.5 Done** | E4+E5 complete, image/video/code blocks | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` |
 | **Video generation provider integration** — connect video-gen-service to real providers (Sora, Veo, etc.) | Skeleton deployed | 10 tasks planned (VG-01..VG-10) | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` |
+| **Media version retention** — auto-delete old versions, retention policy, MinIO GC, storage usage UI | Planned | 7 tasks (MV-01..MV-07) | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` |

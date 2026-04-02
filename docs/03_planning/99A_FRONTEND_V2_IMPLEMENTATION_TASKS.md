@@ -1027,6 +1027,28 @@ P3-17a (wiki backend) blocks all wiki features
 - **Classic mode guards**: Tiptap `NodeView` with `editable: false` + `handleKeyDown` at media boundaries. No data deleted on mode switch — media blocks collapse to compact locked placeholders.
 - **Video generation service**: `video-gen-service` (Python/FastAPI) created as skeleton. Returns `status: "not_implemented"` until a real provider is connected. FE Generate button wired and ready.
 
+### Media Version Retention (future enhancement)
+
+> Current state: versions are created on upload/replace/generate but never deleted automatically.
+> Users can manually delete individual versions via the VersionHistoryPanel.
+
+| Task | Type | Scope | Deps | Est |
+|---|---|---|---|---|
+| MV-01 | BE | Auto-create version on every replace (currently only when blockId is passed) | E5-01 | S |
+| MV-02 | BE | Retention policy config — keep last N versions per block (default 10) | E5-01 | S |
+| MV-03 | BE | Auto-delete oldest versions exceeding retention limit (trigger on new version insert) | MV-02 | S |
+| MV-04 | BE | MinIO garbage collection — delete orphaned media files when version records are purged | MV-03 | S |
+| MV-05 | FE | Retention settings UI — per-book or global setting for max versions | MV-02 | S |
+| MV-06 | FE | Storage usage display — total version storage per chapter/book | E5-01 | S |
+| MV-07 | BE | Bulk version cleanup endpoint — purge all versions older than N days | MV-04 | S |
+
+**How it should work:**
+1. Every replace/upload/generate creates a new version (keeps old media in MinIO)
+2. Retention policy checks on insert: if block exceeds max versions, delete oldest
+3. Deleted version records trigger MinIO object cleanup (best-effort)
+4. User can always manually delete specific versions from the history panel
+5. Storage usage visible per chapter and per book
+
 ### Video Generation Service — Provider Integration (future)
 
 > Service: `services/video-gen-service/` — Python/FastAPI, port 8088 (host: 8213)
@@ -1074,7 +1096,7 @@ Each adapter translates to the `GenerateResponse` schema defined in `app/models.
 
 ### Size Key: S = <1 session, M = 1-2 sessions, L = 2-4 sessions
 
-### Updated Total: 116 tasks (was 106)
+### Updated Total: 123 tasks (was 116)
 
 | Phase | FE | BE | FS | Total |
 |---|---|---|---|---|
@@ -1087,3 +1109,4 @@ Each adapter translates to the `GenerateResponse` schema defined in `app/models.
 | **Phase 4.5** | **4** | **0** | **3** | **7** |
 | Phase 5 | 4 | 1 | 5 | 10 |
 | **Video Gen** | **2** | **7** | **1** | **10** |
+| **Media Versions** | **2** | **5** | **0** | **7** |
