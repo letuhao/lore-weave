@@ -7,6 +7,7 @@ import { FormatToolbar } from './FormatToolbar';
 import { SlashMenuExtension, SlashMenuPopup, type EditorMode } from './SlashMenu';
 import { CalloutExtension } from './CalloutNode';
 import { CodeBlockExtension } from './CodeBlockNode';
+import { ImageBlockExtension } from './ImageBlockNode';
 import { GrammarExtension, setGrammarEnabled } from './GrammarPlugin';
 
 export interface TiptapEditorHandle {
@@ -29,6 +30,8 @@ interface TiptapEditorProps {
 export function extractText(node: JSONContent): string {
   if (node.type === 'text') return node.text || '';
   if (node.type === 'hardBreak') return '\n';
+  // Atom nodes with no children — extract meaningful text from attrs
+  if (node.type === 'imageBlock') return (node.attrs?.alt as string) || '';
   if (!node.content) return '';
   return node.content
     .map(child => extractText(child))
@@ -61,6 +64,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
           codeBlock: false, // replaced by CodeBlockExtension (lowlight)
         }),
         CodeBlockExtension,
+        ImageBlockExtension,
         Placeholder.configure({
           placeholder: 'Type / for commands...',
         }),
