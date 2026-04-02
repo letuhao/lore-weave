@@ -13,15 +13,18 @@ import (
 )
 
 const (
-	maxMediaSize = 10 << 20 // 10 MB
+	maxImageSize = 10 << 20  // 10 MB
+	maxVideoSize = 100 << 20 // 100 MB
 	mediaBucket  = "loreweave-media"
 )
 
-var allowedImageTypes = map[string]string{
+var allowedMediaTypes = map[string]string{
 	"image/png":  ".png",
 	"image/jpeg": ".jpg",
 	"image/gif":  ".gif",
 	"image/webp": ".webp",
+	"video/mp4":  ".mp4",
+	"video/webm": ".webm",
 }
 
 func (s *Server) uploadChapterMedia(w http.ResponseWriter, r *http.Request) {
@@ -66,9 +69,9 @@ func (s *Server) uploadChapterMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse multipart
-	if err := r.ParseMultipartForm(maxMediaSize); err != nil {
-		writeError(w, http.StatusBadRequest, "MEDIA_TOO_LARGE", "file exceeds 10 MB limit")
+	// Parse multipart (use larger limit to accommodate video)
+	if err := r.ParseMultipartForm(maxVideoSize); err != nil {
+		writeError(w, http.StatusBadRequest, "MEDIA_TOO_LARGE", "file exceeds size limit")
 		return
 	}
 	f, fh, err := r.FormFile("file")
@@ -78,16 +81,24 @@ func (s *Server) uploadChapterMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 
-	if fh.Size > maxMediaSize {
-		writeError(w, http.StatusRequestEntityTooLarge, "MEDIA_TOO_LARGE", "file exceeds 10 MB limit")
+	contentType := fh.Header.Get("Content-Type")
+	ext, ok := allowedMediaTypes[contentType]
+	if !ok {
+		writeError(w, http.StatusUnsupportedMediaType, "UNSUPPORTED_MEDIA_TYPE",
+			fmt.Sprintf("unsupported type %s; allowed: png, jpg, gif, webp, mp4, webm", contentType))
 		return
 	}
 
-	contentType := fh.Header.Get("Content-Type")
-	ext, ok := allowedImageTypes[contentType]
-	if !ok {
-		writeError(w, http.StatusUnsupportedMediaType, "UNSUPPORTED_MEDIA_TYPE",
-			fmt.Sprintf("unsupported type %s; allowed: png, jpg, gif, webp", contentType))
+	// Apply size limit based on media type
+	isVideo := contentType == "video/mp4" || contentType == "video/webm"
+	sizeLimit := int64(maxImageSize)
+	if isVideo {
+		sizeLimit = maxVideoSize
+	}
+	if fh.Size > sizeLimit {
+		limitMB := sizeLimit / (1 << 20)
+		writeError(w, http.StatusRequestEntityTooLarge, "MEDIA_TOO_LARGE",
+			fmt.Sprintf("file exceeds %d MB limit", limitMB))
 		return
 	}
 

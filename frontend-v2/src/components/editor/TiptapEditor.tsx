@@ -8,6 +8,7 @@ import { SlashMenuExtension, SlashMenuPopup, type EditorMode } from './SlashMenu
 import { CalloutExtension } from './CalloutNode';
 import { CodeBlockExtension } from './CodeBlockNode';
 import { ImageBlockExtension } from './ImageBlockNode';
+import { VideoBlockExtension } from './VideoBlockNode';
 import { MediaGuardExtension } from './MediaGuardExtension';
 import { GrammarExtension, setGrammarEnabled } from './GrammarPlugin';
 
@@ -33,6 +34,7 @@ export function extractText(node: JSONContent): string {
   if (node.type === 'hardBreak') return '\n';
   // Atom nodes with no children — extract meaningful text from attrs
   if (node.type === 'imageBlock') return (node.attrs?.alt as string) || '';
+  if (node.type === 'videoBlock') return (node.attrs?.caption as string) || '';
   if (!node.content) return '';
   return node.content
     .map(child => extractText(child))
@@ -66,6 +68,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         }),
         CodeBlockExtension,
         ImageBlockExtension,
+        VideoBlockExtension,
         MediaGuardExtension,
         Placeholder.configure({
           placeholder: 'Type / for commands...',
