@@ -67,14 +67,14 @@ const SLASH_ITEMS: SlashMenuItem[] = [
     title: 'Image',
     description: 'Upload, paste, or AI generate',
     icon: <ImageIcon className="h-4 w-4" />,
-    command: (editor) => editor.chain().focus().insertContent({ type: 'imageBlock' }).run(),
+    command: (editor) => editor.chain().focus().insertContent({ type: 'imageBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run(),
     modes: ['ai'],
   },
   {
     title: 'Video',
     description: 'Upload video file',
     icon: <Video className="h-4 w-4" />,
-    command: (editor) => editor.chain().focus().insertContent({ type: 'videoBlock' }).run(),
+    command: (editor) => editor.chain().focus().insertContent({ type: 'videoBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run(),
     modes: ['ai'],
   },
   {

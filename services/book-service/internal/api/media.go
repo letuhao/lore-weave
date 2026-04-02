@@ -473,8 +473,9 @@ func (s *Server) generateChapterMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Download the generated image
-	imgResp, err := http.Get(genResult.Data[0].URL)
+	// 3. Download the generated image (reuse the timeout client)
+	dlReq, _ := http.NewRequestWithContext(ctx, "GET", genResult.Data[0].URL, nil)
+	imgResp, err := client.Do(dlReq)
 	if err != nil || imgResp.StatusCode != http.StatusOK {
 		writeError(w, http.StatusBadGateway, "GENERATION_FAILED", "failed to download generated image")
 		return

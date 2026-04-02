@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-02 (session 15 end)
-- Updated By: Assistant (Phase 3 FE complete + backend fixes + 120 integration tests)
+- Last Updated: 2026-04-02 (session 16)
+- Updated By: Assistant (Phase 3.5 Media Blocks complete — E4 + E5, 12 tasks, 13 commits)
 - Active Branch: `main`
-- HEAD: `eeee14c` — getBookByID scan fix + integration tests
+- HEAD: `c81d9d1` — E5-04 re-generate from prompt
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -398,8 +398,8 @@ Visual drafts: `design-drafts/components-v2-warm.html` (approved)
 | Phase 1 | Scaffold, layout shell, sidebar, routing, auth pages, copy API layer | **Done** |
 | Phase 2 | Core screens: Books list, Book Detail (tabs), Chapter Editor | **Done** |
 | **Phase 2.5** | **Editor Engine: Tiptap migration, block JSON, grammar, mode toggle** | **E1 Done (GATE passed), E2+E3 → moved to Data Re-Engineering** |
-| Phase 3 | Feature screens: Translation, Glossary, Chat, Sharing | **PAUSED — blocked by Data Re-Engineering** |
-| **Phase 3.5** | **Media Blocks: image/video/code, AI prompt, version tracking** | After Phase 3 FE |
+| Phase 3 | Feature screens: Translation, Glossary, Chat, Sharing | **Done** |
+| **Phase 3.5** | **Media Blocks: image/video/code, AI prompt, version tracking** | **Done (E4: 8 tasks + E5: 4 tasks = 12 tasks, session 16)** |
 | Phase 4 | Secondary: Settings, Usage, Browse + polish | Planned |
 | **Phase 4.5** | **Audio/TTS: per-paragraph narration, bulk generate, audiobook export** | After Phase 4 |
 
@@ -416,11 +416,12 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Priority | Item | Notes |
 | -------- | ---- | ----- |
-| **P0** | **Recycle Bin: add Chapter trash tab** | Backend supports `?lifecycle_state=trashed`, needs FE `listChaptersTrash` + tab in RecycleBinPageV2 |
-| **P0** | **Recycle Bin: add Chat session trash tab** | chat-service archive exists, may need purge endpoint |
-| P1 | P3-03: Jobs Drawer [FE] | Deferred until after translation workbench |
-| P1 | P3-04: Translation Settings Drawer [FE] | Deferred |
-| P1 | P3-08a/b: Genre Groups [BE+FE] | Needs new backend tables |
+| **P1** | **Phase 4: Settings, Usage, Browse + polish** | Next planned phase |
+| **P1** | **P3-08a/b: Genre Groups [BE+FE]** | Needs new backend tables, unblocks glossary polish |
+| P1 | Translation Workbench | Block-level translation (design draft exists), needs Phase 3.5 media blocks (done) |
+| P2 | GUI Review deferred items (D1-D22) | Editor polish, glossary polish, reader polish |
+| P2 | Platform Mode (103_PLATFORM_MODE_PLAN.md) | 35 tasks, deferred |
+| P2 | Phase 4.5: Audio/TTS | Per-paragraph narration (design draft exists) |
 | P1 | P3-19: Chat Context Integration [FE] | Uses chat-service |
 | P2 | GUI Review deferred items (D1-D22) | See 99A plan |
 | P2 | Platform Mode (103_PLATFORM_MODE_PLAN.md) | 35 tasks, deferred |
@@ -465,6 +466,7 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Date       | What happened | Key commits |
 | ---------- | ------------- | ----------- |
+| 2026-04-02 | Session 16: Phase 3.5 Media Blocks complete (E4: 8 tasks, E5: 4 tasks). Code block, image block (resize+alt+caption+upload+AI prompt), video block, classic mode guards, slash menu/toolbar, source view, media version tracking BE+FE, AI image generation, re-generate from prompt. 10 new files, 13 commits. | `40bb7b1`..`c81d9d1` |
 | 2026-04-02 | Session 15: Phase 3 FE complete (P3-18/19/20/21/22/22a+b), BE fixes (patchBook null, chat context field, gateway proxy), 5 integration test scripts (120 total scenarios), Docker fix | `911c249`..`eeee14c` |
 | 2026-04-02 | Session 14: D1 complete (D1-06→D1-12), Phase 3 FE (P3-01→P3-07), GUI review (5 drafts, 41 fixes), React Query, entity editor v2, Platform Mode plan | session 14 |
 | 2026-04-01 | Data re-engineering D1-06→D1-12: JSONB handlers, Tiptap import, text_content, worker-infra, frontend JSONB, integration tests | session 14 |

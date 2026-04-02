@@ -140,13 +140,13 @@ export function FormatToolbar({ editor, mode = 'classic' }: FormatToolbarProps) 
       {mode === 'ai' && (
         <>
           <ToolbarButton
-            onClick={() => editor.chain().focus().insertContent({ type: 'imageBlock' }).run()}
+            onClick={() => editor.chain().focus().insertContent({ type: 'imageBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run()}
             title="Insert image"
           >
             <ImageIcon className="h-3.5 w-3.5" />
           </ToolbarButton>
           <ToolbarButton
-            onClick={() => editor.chain().focus().insertContent({ type: 'videoBlock' }).run()}
+            onClick={() => editor.chain().focus().insertContent({ type: 'videoBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run()}
             title="Insert video"
           >
             <Video className="h-3.5 w-3.5" />

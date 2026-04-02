@@ -45,6 +45,11 @@ export const ImageBlockExtension = Node.create({
 
   addAttributes() {
     return {
+      blockId: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-block-id'),
+        renderHTML: (attrs) => ({ 'data-block-id': attrs.blockId }),
+      },
       src: { default: null },
       alt: { default: '' },
       caption: { default: '' },
@@ -64,6 +69,23 @@ export const ImageBlockExtension = Node.create({
 
   addNodeView() {
     return ReactNodeViewRenderer(ImageBlockNodeView);
+  },
+
+  // Auto-generate blockId on first insert (for version tracking)
+  onCreate() {
+    const { editor } = this;
+    const { doc, tr } = editor.state;
+    let modified = false;
+    doc.descendants((node, pos) => {
+      if (node.type.name === 'imageBlock' && !node.attrs.blockId) {
+        tr.setNodeMarkup(pos, undefined, {
+          ...node.attrs,
+          blockId: crypto.randomUUID().slice(0, 8),
+        });
+        modified = true;
+      }
+    });
+    if (modified) editor.view.dispatch(tr);
   },
 });
 
@@ -275,13 +297,15 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor }: NodeVi
         setRegenerateError('No AI model configured. Add a provider in Settings.');
         return;
       }
+      const blockId = (node.attrs.blockId as string) || crypto.randomUUID().slice(0, 8);
+      if (!node.attrs.blockId) updateAttributes({ blockId });
       const result = await booksApi.generateImage(ctx.token, ctx.bookId, ctx.chapterId, {
-        block_id: node.attrs.title || 'image',
+        block_id: blockId,
         prompt,
         model_source: 'user_model',
         model_ref: imageModel.user_model_id,
       });
-      updateAttributes({ src: result.url, title: node.attrs.title || 'generated' });
+      updateAttributes({ src: result.url });
     } catch (e: any) {
       if (e.status === 402) {
         setRegenerateError('No active AI provider. Configure one in Settings → Providers.');
@@ -291,7 +315,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor }: NodeVi
     } finally {
       setRegenerating(false);
     }
-  }, [node.attrs.ai_prompt, node.attrs.title, updateAttributes]);
+  }, [node.attrs.ai_prompt, node.attrs.blockId, updateAttributes]);
 
   // --- Classic mode: compact locked placeholder ---
   if (isClassic) {
@@ -433,7 +457,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor }: NodeVi
         {src && _onOpenHistory && (
           <button
             type="button"
-            onClick={() => _onOpenHistory?.(node.attrs.blockId || node.attrs.title || 'image', (node.attrs.title as string) || 'Image', src)}
+            onClick={() => _onOpenHistory?.((node.attrs.blockId as string) || 'unknown', (node.attrs.title as string) || 'Image', src)}
             className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             title="Version history"
           >

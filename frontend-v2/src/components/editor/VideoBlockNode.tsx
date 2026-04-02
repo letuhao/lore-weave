@@ -24,6 +24,11 @@ export const VideoBlockExtension = Node.create({
 
   addAttributes() {
     return {
+      blockId: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-block-id'),
+        renderHTML: (attrs) => ({ 'data-block-id': attrs.blockId }),
+      },
       src: { default: null },
       caption: { default: '' },
       ai_prompt: { default: '' },
