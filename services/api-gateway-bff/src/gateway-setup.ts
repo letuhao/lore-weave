@@ -35,6 +35,8 @@ export function configureGatewayApp(
   const bookProxy = createProxyMiddleware({
     target: urls.bookUrl,
     changeOrigin: true,
+    // Allow large bodies for cover image upload (multipart/form-data)
+    selfHandleResponse: false,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/books'),
   });
   const sharingProxy = createProxyMiddleware({

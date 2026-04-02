@@ -24,6 +24,7 @@ async def stream_response(
     pool: asyncpg.Pool,
     billing: BillingClient,
     parent_message_id: str | None = None,
+    context: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields AI SDK data stream protocol v1 SSE lines."""
 
@@ -38,6 +39,10 @@ async def stream_response(
         session_id,
     )
     messages = [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+
+    # Inject per-message context as a system message right before the last user message
+    if context:
+        messages.insert(-1, {"role": "system", "content": f"The user has attached the following context:\n\n{context}"})
 
     # LiteLLM model string
     if creds.provider_kind == "lm_studio":

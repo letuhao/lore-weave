@@ -48,6 +48,7 @@ class SessionListResponse(BaseModel):
 class SendMessageRequest(BaseModel):
     content: str
     edit_from_sequence: int | None = None
+    context: str | None = None  # Optional context block (book/chapter/glossary text) injected as system message
 
 
 class ChatMessage(BaseModel):

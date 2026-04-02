@@ -439,15 +439,33 @@ func (s *Server) patchBook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid payload")
 		return
 	}
-	_, err := s.pool.Exec(r.Context(), `
-UPDATE books
-SET title=COALESCE($3,title),
-    description=COALESCE($4,description),
-    original_language=COALESCE($5,original_language),
-    summary=COALESCE($6,summary),
-    updated_at=now()
-WHERE id=$1 AND owner_user_id=$2
-`, bookID, ownerID, stringFromAny(in["title"]), stringFromAny(in["description"]), stringFromAny(in["original_language"]), stringFromAny(in["summary"]))
+	// Build dynamic UPDATE — only set fields that were explicitly provided in the payload.
+	// This allows sending null to clear a field (vs omitting to keep it unchanged).
+	setClauses := []string{"updated_at=now()"}
+	args := []any{bookID, ownerID}
+	paramIdx := 3
+	if _, ok := in["title"]; ok {
+		setClauses = append(setClauses, fmt.Sprintf("title=COALESCE($%d,title)", paramIdx))
+		args = append(args, stringFromAny(in["title"]))
+		paramIdx++
+	}
+	if _, ok := in["description"]; ok {
+		setClauses = append(setClauses, fmt.Sprintf("description=$%d", paramIdx))
+		args = append(args, stringFromAny(in["description"]))
+		paramIdx++
+	}
+	if _, ok := in["original_language"]; ok {
+		setClauses = append(setClauses, fmt.Sprintf("original_language=$%d", paramIdx))
+		args = append(args, stringFromAny(in["original_language"]))
+		paramIdx++
+	}
+	if _, ok := in["summary"]; ok {
+		setClauses = append(setClauses, fmt.Sprintf("summary=$%d", paramIdx))
+		args = append(args, stringFromAny(in["summary"]))
+		paramIdx++
+	}
+	query := fmt.Sprintf("UPDATE books SET %s WHERE id=$1 AND owner_user_id=$2", strings.Join(setClauses, ", "))
+	_, err := s.pool.Exec(r.Context(), query, args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to patch book")
 		return
