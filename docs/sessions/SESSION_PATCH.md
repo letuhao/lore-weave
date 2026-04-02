@@ -50,6 +50,7 @@ Phase 3.5 media blocks: E4-06 completed.
 | E4-08: Source view — read-only Block JSON viewer with syntax highlighting, Copy JSON, toggle via editor handle, _text snapshots stripped | `components/editor/SourceView.tsx` (new), `TiptapEditor.tsx` | this session |
 | E4-review: Cross-cutting fixes — unified upload context, bucket race fix, streaming upload, SourceView colon fix | 4 files | this session |
 | E5-01: Media version tracking BE — block_media_versions table, CRUD endpoints (list/create/delete), auto-version on upload, versioned MinIO paths, public-read bucket policy | `migrate.go`, `media.go`, `server.go` | this session |
+| E5-02: Version history UI — split-panel layout, side-by-side image comparison, version timeline (dots, tags, timestamps), LCS-based prompt diff, restore/download/delete actions, History button on image blocks | `VersionHistoryPanel.tsx`, `VersionTimeline.tsx`, `PromptDiff.tsx` (new), `ImageBlockNode.tsx`, `features/books/api.ts` | this session |
 
 **9-phase workflow followed for E4-06:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 

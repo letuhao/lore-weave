@@ -344,4 +344,59 @@ export const booksApi = {
       xhr.send(form);
     });
   },
+
+  // ── Media Versions ──────────────────────────────────────────────────
+
+  async listMediaVersions(token: string, bookId: string, chapterId: string, blockId: string) {
+    const res = await apiAuthedFetch(
+      `/v1/books/${bookId}/chapters/${chapterId}/media-versions?block_id=${encodeURIComponent(blockId)}`,
+      token,
+    );
+    const body = await res.json();
+    if (!res.ok) throw Object.assign(new Error(body?.message || res.statusText), { status: res.status });
+    return body as { items: MediaVersion[] };
+  },
+
+  async createMediaVersion(
+    token: string, bookId: string, chapterId: string,
+    body: { block_id: string; action: string; changes: string[]; prompt_snapshot?: string; caption_snapshot?: string; media_ref?: string },
+  ) {
+    const res = await fetch(`${base()}/v1/books/${bookId}/chapters/${chapterId}/media-versions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw Object.assign(new Error(data?.message || res.statusText), { status: res.status });
+    return data as MediaVersion;
+  },
+
+  async deleteMediaVersion(token: string, bookId: string, chapterId: string, versionId: string) {
+    const res = await fetch(`${base()}/v1/books/${bookId}/chapters/${chapterId}/media-versions/${versionId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok && res.status !== 204) {
+      const data = await res.json().catch(() => null);
+      throw Object.assign(new Error(data?.message || res.statusText), { status: res.status });
+    }
+  },
+};
+
+// ── Types ───────────────────────────────────────────────────────────────
+
+export type MediaVersion = {
+  id: string;
+  block_id: string;
+  version: number;
+  action: string;
+  changes: string[];
+  media_ref: string | null;
+  media_url?: string | null;
+  prompt_snapshot: string;
+  caption_snapshot: string;
+  ai_model: string | null;
+  content_type: string | null;
+  size_bytes: number | null;
+  created_at: string;
 };

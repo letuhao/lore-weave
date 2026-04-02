@@ -4,7 +4,7 @@ import {
   NodeViewWrapper,
   type NodeViewProps,
 } from '@tiptap/react';
-import { ImageIcon, Accessibility, Upload, Loader2, Lock } from 'lucide-react';
+import { ImageIcon, Accessibility, Upload, Loader2, Lock, History } from 'lucide-react';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { booksApi } from '@/features/books/api';
@@ -23,6 +23,12 @@ export function setImageUploadContext(ctx: ImageUploadContext | null) {
 }
 export function getUploadContext(): ImageUploadContext | null {
   return _uploadCtx;
+}
+
+// History panel callback — set by the editor page
+let _onOpenHistory: ((blockId: string, blockTitle: string, mediaSrc: string | null) => void) | null = null;
+export function setOnOpenHistory(fn: typeof _onOpenHistory) {
+  _onOpenHistory = fn;
 }
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -383,6 +389,16 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor }: NodeVi
           <span className="flex-shrink-0 font-mono text-[9px] text-muted-foreground">
             {currentWidth}%
           </span>
+        )}
+        {src && _onOpenHistory && (
+          <button
+            type="button"
+            onClick={() => _onOpenHistory?.(node.attrs.blockId || node.attrs.title || 'image', (node.attrs.title as string) || 'Image', src)}
+            className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            title="Version history"
+          >
+            <History className="h-3 w-3" />
+          </button>
         )}
       </div>
 
