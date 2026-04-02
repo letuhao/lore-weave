@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-02 (session 16)
-- Updated By: Assistant (Phase 3.5 Media Blocks complete — E4 + E5, 12 tasks, 13 commits)
+- Last Updated: 2026-04-03 (session 16 end)
+- Updated By: Assistant (Phase 3.5 complete + M1-M6 + MIG-01/02 + bug fixes, 53 commits)
 - Active Branch: `main`
-- HEAD: `c81d9d1` — E5-04 re-generate from prompt
+- HEAD: `bec9eef` — MIG-02 Chat page migrated
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -422,17 +422,14 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Priority | Item | Notes |
 | -------- | ---- | ----- |
-| **P1** | **Phase 4: Settings, Usage, Browse + polish** | Next planned phase |
+| **P0** | **MIG-03..MIG-09: Remaining V1→V2 page migrations** | 7 pages: Usage, Settings, Browse, Public Book, Unlisted, Chapter Translations |
+| **P0** | **MIG-10: Delete old `frontend/` directory** | After all migrations complete |
 | **P1** | **P3-08a/b: Genre Groups [BE+FE]** | Needs new backend tables, unblocks glossary polish |
-| P1 | Translation Workbench | Block-level translation (design draft exists), needs Phase 3.5 media blocks (done) |
+| P1 | Translation Workbench | Block-level translation (design draft exists), Phase 3.5 done |
+| P1 | Phase 4: Settings, Usage, Browse + polish | Overlaps with MIG-03..08 |
 | P2 | GUI Review deferred items (D1-D22) | Editor polish, glossary polish, reader polish |
 | P2 | Platform Mode (103_PLATFORM_MODE_PLAN.md) | 35 tasks, deferred |
 | P2 | Phase 4.5: Audio/TTS | Per-paragraph narration (design draft exists) |
-| P1 | P3-19: Chat Context Integration [FE] | Uses chat-service |
-| P2 | GUI Review deferred items (D1-D22) | See 99A plan |
-| P2 | Platform Mode (103_PLATFORM_MODE_PLAN.md) | 35 tasks, deferred |
-| P2 | Chapter editor: smoke test the full guard + toast flow | Save & leave, Discard & leave, logout dirty, download success |
-| P3 | Chat Phase 4 — File attachments | After frontend-v2 Phase 3 stable |
 | P3 | Full acceptance evidence pack for M01-M05 | Currently smoke only |
 
 > **Architecture decision (session 12):** Frontend V2 Phase 3 paused. The glossary/wiki/chat features
@@ -472,7 +469,7 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Date       | What happened | Key commits |
 | ---------- | ------------- | ----------- |
-| 2026-04-02 | Session 16: Phase 3.5 Media Blocks complete (E4: 8 tasks, E5: 4 tasks). Code block, image block (resize+alt+caption+upload+AI prompt), video block, classic mode guards, slash menu/toolbar, source view, media version tracking BE+FE, AI image generation, re-generate from prompt. 10 new files, 13 commits. | `40bb7b1`..`c81d9d1` |
+| 2026-04-03 | Session 16: Phase 3.5 (E4+E5, 12 tasks), video-gen-service skeleton, M1-M6 (design draft gaps), MIG-01 (Trash page), MIG-02 (Chat page), code block fixes (5 iterations), image block fixes (upload wiring, MinIO URL, mode switch, hover overlay), removed localStorage cache persistence, planning docs (VG, MV, VH, TR, MIG). 53 commits. | `40bb7b1`..`bec9eef` |
 | 2026-04-02 | Session 15: Phase 3 FE complete (P3-18/19/20/21/22/22a+b), BE fixes (patchBook null, chat context field, gateway proxy), 5 integration test scripts (120 total scenarios), Docker fix | `911c249`..`eeee14c` |
 | 2026-04-02 | Session 14: D1 complete (D1-06→D1-12), Phase 3 FE (P3-01→P3-07), GUI review (5 drafts, 41 fixes), React Query, entity editor v2, Platform Mode plan | session 14 |
 | 2026-04-01 | Data re-engineering D1-06→D1-12: JSONB handlers, Tiptap import, text_content, worker-infra, frontend JSONB, integration tests | session 14 |

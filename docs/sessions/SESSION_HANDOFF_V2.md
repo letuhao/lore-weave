@@ -1,134 +1,121 @@
-# Session Handoff — Frontend V2 Phase 3 + GUI Review
+# Session Handoff — Session 16
 
 > **Purpose:** Give the next agent complete context to continue.
-> **Date:** 2026-04-02 (session 15 end)
-> **Last commit:** `eeee14c` — getBookByID scan fix + integration tests
-> **Previous focus:** Phase 3 FE feature screens + backend fixes
-> **Current focus:** Phase 3 FE complete, backend hardened. Next: Phase 3.5 (media blocks) or P3-08 (genre groups)
+> **Date:** 2026-04-03 (session 16 end)
+> **Last commit:** `bec9eef` — MIG-02 Chat page migrated
+> **Previous focus:** Phase 3.5 media blocks + design draft gap fixes + V1→V2 migration
+> **Current focus:** V1→V2 migration in progress (2 of 10 done). Next: MIG-03..MIG-10.
 
 ---
 
-## 1. What Happened This Session (session 15)
+## 1. What Happened This Session (session 16)
 
-### Phase 3 Frontend — 4 TASKS COMPLETED
-| Task | Commit | What |
-|------|--------|------|
-| P3-18 | `911c249` | Chat Page v2 — full-bleed layout, custom SSE streaming (dropped @ai-sdk/react), session sidebar, model selector, edit/regenerate, markdown + code blocks, 17 new files |
-| P3-20 | `bf83808` | Sharing Tab — card-based visibility selector (private/unlisted/public), unlisted URL copy, token rotation, wired into BookDetailPageV2 |
-| P3-21 | `b8b96b6` | Book Settings Tab — metadata editing (title, description, language, summary), cover image upload/replace/delete, wired into BookDetailPageV2 |
-| P3-22 | `08e294d` | Universal Recycle Bin — category tabs (Books, Glossary), TrashCard component, FloatingTrashBar, bulk select, search, sort, expiry badges, confirm dialog |
+### Phase 3.5 Media Blocks — E4 + E5 COMPLETE (12 tasks)
+| Task | What |
+|------|------|
+| E4-01 | Image block (resize, caption, alt text, selection ring) |
+| E4-02 | Image upload (drag-drop, paste, MinIO, progress bar) |
+| E4-03 | AI prompt field (reusable MediaPrompt component) |
+| E4-04 | Classic mode guards (keyboard protection, placeholders) |
+| E4-05 | Video block (player, upload, caption, AI prompt) |
+| E4-06 | Code block (lowlight syntax highlighting — native Tiptap, no custom NodeView) |
+| E4-07 | Slash menu + toolbar integration (media insert) |
+| E4-08 | Source view (Block JSON viewer) |
+| E5-01 | Media version tracking backend (block_media_versions table, CRUD) |
+| E5-02 | Version history UI (timeline, comparison, prompt diff) |
+| E5-03 | AI image generation (provider-registry → AI provider → MinIO) |
+| E5-04 | Re-generate from prompt |
 
-### Backend Fixes
+### Video Generation Service — Skeleton
+- `video-gen-service`: Python/FastAPI, returns `status: "not_implemented"`
+- Gateway proxy `/v1/video-gen` wired
+- FE Generate button calls API, shows skeleton message
+
+### Design Draft Gap Fixes (M1-M6)
 | Fix | What |
 |-----|------|
-| BE-S1 | patchBook: dynamic SET builder replaces COALESCE — null clears fields, omit keeps unchanged |
-| BE-S1 | getBookByID + listBooksByLifecycle: scan desc/lang/summary into `*string` (not `string`) — fixes crash on NULL |
-| BE-C1 | chat-service: optional `context` field on SendMessageRequest — injected as system message before user content |
-| BE-S2 | Gateway: selfHandleResponse on book proxy for multipart |
-| BE-S3 | False alarm — multipart proxy works fine (was test script issue) |
+| M1 | Version history button in Classic mode placeholders |
+| M2 | Guard toast notification on blocked keypress |
+| M3 | Paste protection in Classic mode |
+| M4 | Drag handles (tiptap-extension-global-drag-handle) |
+| M5 | Copy filename button on Classic placeholders |
+| M6 | Unsaved-changes dialog on AI→Classic mode switch |
 
-### Integration Tests (120 total scenarios)
-| Script | Scenarios | What |
-|--------|-----------|------|
-| `test-chat.sh` | 27/27 | Session CRUD, messages, outputs, export, auth guard, context field (T16) |
-| `test-sharing.sh` | 19/19 | Visibility lifecycle, token rotation, catalog, auth guard |
-| `test-book-settings.sh` | 23/23 | patchBook null clearing, cover upload/get/delete, chapter proxy, empty patch |
-| `test-glossary.sh` | 35/35 | Entity CRUD, kinds, attributes, chapter links, trash |
-| `test-integration-d1.sh` | 16/16 | Data pipeline, JSONB, chapter_blocks, triggers |
+### V1→V2 Migration (2 of 10 done)
+| Task | What | Lines |
+|------|------|-------|
+| MIG-01 ✅ | Trash page (`/trash`) — 4 tabs, TrashCard, FloatingTrashBar, restore/purge | 683 |
+| MIG-02 ✅ | Chat page (`/chat`) — session sidebar, SSE streaming, context integration | 2388 |
 
-### Phase 3 Frontend — FULL STATUS
-| Task | Status | What |
-|------|--------|------|
-| P3-01 | Done | Translation Matrix Tab |
-| P3-02 | Done | Translate Modal |
-| P3-05 | Done | Glossary Tab |
-| P3-06 | Done | Kind Editor |
-| P3-07 | Done | Entity Editor v2 |
-| P3-18 | **Done** | Chat Page v2 |
-| P3-20 | **Done** | Sharing Tab |
-| P3-21 | **Done** | Book Settings Tab |
-| P3-22 | **Done** | Universal Recycle Bin |
-| P3-22a+b | **Done** | Chapters + Chat Sessions tabs |
-| P3-19 | **Done** | Chat Context Integration (picker, pills, glossary filters) |
-| P3-03 | Deferred | Jobs Drawer (after translation workbench) |
-| P3-04 | Deferred | Translation Settings Drawer |
+### Bug Fixes
+- Code block: 5 iterations to fix focus/whitespace (final: no custom NodeView, native Tiptap)
+- Image upload: `setImageUploadContext` not wired → wired in ChapterEditorPage
+- MinIO URL: `minio:9000` (Docker internal) → `localhost:9123` (MINIO_EXTERNAL_URL)
+- Mode switch: didn't update NodeViews → `_mode` transient attr forces re-render
+- Image hover overlay: Replace + Delete buttons
+- Dockerfile: Go 1.22 → 1.25 for minio-go v7.0.100
+- Removed localStorage query cache persistence (caused stale data everywhere)
+- Chapter cache invalidation after create/restore
 
-### GUI Review — 5 DRAFTS REVIEWED
-| Draft | Fixes | Deferred |
-|-------|-------|----------|
-| 00. components-v2-warm | 11 fixes (glow, covers, filters, EmptyState, auth, FloatingActionBar) | — |
-| 01+02. chapter editor | 6 fixes (saved badge, version, metadata, source lines, status bar) | D1 (resize) |
-| 03. translation matrix | 10 fixes (checkboxes, row numbers, headers, cells, legend, floating bar) | — |
-| 04. glossary management | 4 fixes (section headers, SYS/USR, 2-col, footer) + entity editor v2 | D6-D22 |
-| 05. reader | 10 fixes (gradients, TOC, chapter header/footer, font, spacing) | D14-D16 |
-
-### Infrastructure
-- React Query installed + localStorage persistence (no flicker on navigation/refresh)
-- tailwindcss-animate plugin installed
-- Translation workbench design draft created (block-level translation)
-- Platform Mode plan written (103_PLATFORM_MODE_PLAN.md — admin, tiers, system AI)
+### Planning Docs Added
+- VG-01..VG-10: Video generation provider integration (10 tasks)
+- MV-01..MV-07: Media version retention policy (7 tasks)
+- VH-01..VH-12: Version history panel enhancements (12 tasks)
+- MIG-01..MIG-10: V1→V2 migration plan (10 tasks, 2 done)
 
 ---
 
 ## 2. Key Architecture Changes
 
-### Entity Editor v2 (NEW)
+### Media Blocks (new in session 16)
 ```
-components/entity-editor/
-  AttrCard.tsx           — base card wrapper
-  AttrTextCard.tsx       — text input
-  AttrTextareaCard.tsx   — textarea
-  AttrNumberCard.tsx     — number input
-  AttrDateCard.tsx       — date input
-  AttrSelectCard.tsx     — select dropdown
-  AttrBooleanCard.tsx    — toggle switch
-  AttrUrlCard.tsx        — URL input (mono)
-  AttrTagsCard.tsx       — tag pills
-  cardRegistry.ts        — CARD_REGISTRY map + SHORT_TYPES
-  EntityEditorModal.tsx  — modal shell
-  index.ts               — barrel exports
+components/editor/
+  ImageBlockNode.tsx    — ReactNodeViewRenderer, resize, upload, alt, prompt, history
+  VideoBlockNode.tsx    — Same pattern as image, HTML5 video player
+  CodeBlockNode.tsx     — NO custom NodeView (native Tiptap CodeBlockLowlight)
+  CodeBlockToolbar.tsx  — Floating toolbar on code block focus
+  MediaPrompt.tsx       — Reusable AI prompt field (image + video)
+  MediaGuardExtension.ts — Keyboard guards + toast + paste protection
+  useResize.ts          — Shared resize hook
+  VersionHistoryPanel.tsx — Split-panel version comparison
+  VersionTimeline.tsx   — Dot timeline with tags
+  PromptDiff.tsx        — LCS-based line diff
+  SourceView.tsx        — Read-only Block JSON viewer
 ```
 
-To add a new attribute type: create `AttrXxxCard.tsx`, add to `CARD_REGISTRY`.
+### Backend Changes
+- `book-service`: MinIO upload endpoint, media version tracking, AI generation
+- `video-gen-service`: New Python/FastAPI skeleton (port 8088/8213)
+- Gateway: `/v1/video-gen` proxy added
 
-### React Query Cache
-- `QueryClientProvider` wraps the app
-- `PersistQueryClientProvider` persists cache to localStorage
-- staleTime: 2min, gcTime: 24h
-- Key patterns: `['book', bookId]`, `['chapters', bookId, offset]`, `['translation-coverage', bookId]`, `['glossary-entities', bookId, filters]`, `['glossary-kinds']`
-- Mutations call `queryClient.invalidateQueries()` instead of manual reload
-
-### Book Detail Tabs
-Tabs use `display: none` (not conditional rendering) to prevent remount flicker.
+### Cache Change
+- **Removed** `PersistQueryClientProvider` (localStorage persistence)
+- Now: plain `QueryClientProvider`, staleTime: 30s, refetchOnWindowFocus: true
 
 ---
 
 ## 3. What's Next
 
-### Immediate — What To Do Next
+### Immediate — V1→V2 Migration (7 remaining, all S-size)
 
-Phase 3 FE is complete. All APIs are verified with 120 integration test scenarios. Pick from:
+| Task | Route | Source Lines |
+|------|-------|-------------|
+| MIG-03 | `/usage` | 81 |
+| MIG-04 | `/usage/:logId` | 59 |
+| MIG-05 | `/settings/:tab` | 54+ |
+| MIG-06 | `/browse` | 45 |
+| MIG-07 | `/browse/:bookId` | 81 |
+| MIG-08 | `/s/:accessToken` | 68 |
+| MIG-09 | Chapter translations | 245 |
+| **MIG-10** | **Delete old `frontend/`** | — |
 
-| Priority | Task | Type | Notes |
-|---|---|---|---|
-| **P1** | **Phase 3.5: Media blocks** | FE+BE | images, video, audio, code blocks in editor |
-| **P1** | **P3-08a: Genre Groups backend** | BE (Go) | New tables + CRUD endpoints |
-| P1 | Translation Workbench | FE+BE | Block-level translation (design draft exists) |
-| P2 | GUI Review deferred items (D1-D22) | FE | Editor polish, glossary polish, reader polish |
-| P2 | Platform Mode (103_PLATFORM_MODE_PLAN.md) | Full stack | Admin, tiers, system AI — 35 tasks |
-| P2 | P3-22c/d: Translation + Wiki trash tabs | Future | Blocked on Translation Workbench / Wiki backend |
+After MIG-10, the old `frontend/` directory is deleted entirely.
 
-### Deferred Items (tracked in 99A plan)
-- D1-D5: Editor resize handles, dead code cleanup, OnboardingWizard, NotificationBell, ModeProvider
-- D6-D22: Glossary polish (attr toggle, modified tracking, revert, drag, relationships, entity count, description, etc.)
-- D14-D16: Reader theme toggle, font size, TOC language selector
-- Platform Mode (103_PLATFORM_MODE_PLAN.md): 35 tasks across 5 phases
-
-### Integration Tests
-- `bash infra/test-integration-d1.sh` — D1 data pipeline (16 scenarios)
-- `bash infra/test-glossary.sh` — Glossary CRUD (35 scenarios, all pass)
-- `bash infra/test-chat.sh` — Chat service (25 scenarios, all pass)
-- `bash infra/test-sharing.sh` — Sharing service (19 scenarios, all pass)
+### Then
+- P3-08a/b: Genre Groups (BE+FE)
+- Translation Workbench
+- Phase 4: Settings, Usage, Browse polish
+- Phase 4.5: Audio/TTS
 
 ---
 
@@ -138,13 +125,12 @@ Phase 3 FE is complete. All APIs are verified with 120 integration test scenario
 |------|---------|
 | `CLAUDE.md` | Project rules, 9-phase workflow |
 | `docs/sessions/SESSION_PATCH.md` | Current status |
-| `docs/03_planning/99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | Full task list + deferred items |
-| `docs/03_planning/101_DATA_RE_ENGINEERING_PLAN.md` | Data architecture (completed) |
-| `docs/03_planning/103_PLATFORM_MODE_PLAN.md` | Future admin/tiers/system AI |
-| `design-drafts/screen-translation-workbench.html` | Block translation design |
-| `design-drafts/screen-entity-editor-v2.html` | Entity editor card design |
-| `infra/test-glossary.sh` | Glossary backend test |
-| `infra/test-integration-d1.sh` | D1 integration test |
+| `docs/03_planning/99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | Full task list (152 tasks) |
+| `frontend-v2/src/components/editor/` | All editor components (media blocks, code, guards) |
+| `frontend-v2/src/features/chat/` | Chat page (23 files, migrated from v1) |
+| `frontend-v2/src/features/trash/` | Trash page (5 files, migrated from v1) |
+| `services/video-gen-service/` | Video generation skeleton |
+| `services/book-service/internal/api/media.go` | Media upload + version tracking + AI generation |
 
 ---
 
@@ -152,10 +138,10 @@ Phase 3 FE is complete. All APIs are verified with 120 integration test scenario
 
 | Decision | Reasoning |
 |----------|-----------|
-| Translation workbench deferred until Phase 3.5 | Needs media blocks to be meaningful |
-| Manual translate = default, AI = assistant | Translation is a chapter version, not just text conversion |
-| Block-level translation (not chapter-level) | Media blocks don't translate, alignment matters |
-| React Query with localStorage persistence | Eliminates flicker on navigation and browser refresh |
-| Entity editor as centered modal + card system | Matches design draft, extensible for new attribute types |
-| Platform Mode deferred | Self-hosted works without admin roles; build features first |
-| GUI review as explicit task | Prevents design drift; 41 fixes found across 5 drafts |
+| Code block: no custom NodeView | 5 iterations of ReactNodeViewRenderer all broke focus/whitespace. Native Tiptap rendering works perfectly. Header bar via floating CodeBlockToolbar instead. |
+| Removed localStorage cache persistence | PersistQueryClientProvider caused stale data on every mutation (create, restore, trash). In-memory cache with 30s staleTime is simpler and correct. |
+| Default editor mode → AI | Design spec says "Default: AI Assistant for new users". Classic mode is opt-in. |
+| video-gen-service as skeleton | Interface stable now, FE wired. Real provider integration later (VG-01..VG-10). |
+| MinIO external URL | Browser can't resolve Docker-internal `minio:9000`. Added `MINIO_EXTERNAL_URL=http://localhost:9123`. |
+| `_mode` transient attr for mode switch | React NodeViews don't re-render on storage change. Touching `_mode` attr forces React re-render. Stripped from saved JSON. |
+| Backspace protection in AI mode too | Atom blocks (image, video) protected in both modes. Code blocks only in Classic. |
