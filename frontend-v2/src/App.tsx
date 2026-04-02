@@ -26,6 +26,7 @@ import { FullBleedLayout } from '@/layouts/FullBleedLayout';
 import { EditorLayout } from '@/layouts/EditorLayout';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
 import { BooksPage } from '@/pages/BooksPage';
+import { TrashPage } from '@/pages/TrashPage';
 import { BookDetailPage } from '@/pages/BookDetailPage';
 import { ChapterEditorPage } from '@/pages/ChapterEditorPage';
 import { ReaderPage } from '@/pages/ReaderPage';
@@ -87,7 +88,7 @@ export function App() {
           <Route element={<RequireAuth><DashboardLayout /></RequireAuth>}>
             {/* Workspace */}
             <Route path="/books" element={<BooksPage />} />
-            <Route path="/books/trash" element={<PlaceholderPage title="Trash" description="Recycle bin for deleted books." />} />
+            <Route path="/trash" element={<TrashPage />} />
             <Route path="/books/:bookId" element={<BookDetailPage />} />
             <Route path="/books/:bookId/translation" element={<BookDetailPage />} />
             <Route path="/books/:bookId/glossary" element={<BookDetailPage />} />

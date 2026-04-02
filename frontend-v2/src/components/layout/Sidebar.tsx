@@ -9,6 +9,7 @@ import {
   LogOut,
   LogIn,
   Trophy,
+  Trash2,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react';
@@ -28,6 +29,7 @@ const mainNav: NavItem[] = [
 ];
 
 const manageNav: NavItem[] = [
+  { to: '/trash', icon: Trash2, labelKey: 'nav.trash', auth: true },
   { to: '/usage', icon: BarChart3, labelKey: 'nav.usage', auth: true },
   { to: '/leaderboard', icon: Trophy, labelKey: 'nav.leaderboard' },
   { to: '/settings/account', icon: Settings, labelKey: 'nav.settings', auth: true },
