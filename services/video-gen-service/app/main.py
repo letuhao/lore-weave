@@ -1,5 +1,6 @@
 import os
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from .routers.generate import router as generate_router
 
 app = FastAPI(
@@ -8,6 +9,7 @@ app = FastAPI(
     description="Video generation from text prompts. Skeleton service — returns placeholder responses until a provider is connected.",
 )
 
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.include_router(generate_router, prefix="/v1/video-gen", tags=["video-gen"])
 
 

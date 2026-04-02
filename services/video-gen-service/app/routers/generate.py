@@ -22,6 +22,7 @@ async def generate_video(
     The interface is stable — clients can integrate now and get real
     results when the backend is connected to a provider.
     """
+    # TODO: validate JWT when real generation logic is added (use JWT_SECRET env)
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization required")
 

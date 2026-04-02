@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { booksApi } from '@/features/books/api';
 import { aiModelsApi } from '@/features/ai-models/api';
 import { MediaPrompt } from './MediaPrompt';
+import { useResize } from './useResize';
 
 // --- Upload context (set by the editor page, read by NodeView) ---
 export interface ImageUploadContext {
@@ -89,54 +90,6 @@ export const ImageBlockExtension = Node.create({
     if (modified) editor.view.dispatch(tr);
   },
 });
-
-// --- Resize hook ---
-function useResize(
-  initialWidth: number,
-  onResizeEnd: (width: number) => void,
-  containerRef: React.RefObject<HTMLDivElement | null>,
-) {
-  const [currentWidth, setCurrentWidth] = useState(initialWidth);
-  const isResizing = useRef(false);
-  const startX = useRef(0);
-  const startWidth = useRef(0);
-
-  const handlePointerDown = useCallback(
-    (e: React.PointerEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      isResizing.current = true;
-      startX.current = e.clientX;
-      startWidth.current = currentWidth;
-
-      const parentWidth = containerRef.current?.parentElement?.clientWidth ?? 1;
-
-      const onMove = (ev: PointerEvent) => {
-        if (!isResizing.current) return;
-        const deltaX = ev.clientX - startX.current;
-        const deltaPct = (deltaX / parentWidth) * 100;
-        const newWidth = Math.round(Math.min(100, Math.max(10, startWidth.current + deltaPct)));
-        setCurrentWidth(newWidth);
-      };
-
-      const onUp = () => {
-        isResizing.current = false;
-        document.removeEventListener('pointermove', onMove);
-        document.removeEventListener('pointerup', onUp);
-        setCurrentWidth((w) => {
-          onResizeEnd(w);
-          return w;
-        });
-      };
-
-      document.addEventListener('pointermove', onMove);
-      document.addEventListener('pointerup', onUp);
-    },
-    [currentWidth, onResizeEnd, containerRef],
-  );
-
-  return { currentWidth, setCurrentWidth, handlePointerDown };
-}
 
 // --- Upload validation ---
 function validateFile(file: File): string | null {
