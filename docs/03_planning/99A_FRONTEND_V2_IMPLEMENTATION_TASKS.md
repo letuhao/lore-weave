@@ -1049,23 +1049,42 @@ P3-17a (wiki backend) blocks all wiki features
 4. User can always manually delete specific versions from the history panel
 5. Storage usage visible per chapter and per book
 
-### Recycle Bin / Trash Page (not migrated to frontend-v2)
+### V1 → V2 Migration (pages not yet ported from old `frontend/`)
 
-> P3-22 was built in old `frontend/` but never migrated to `frontend-v2/`.
-> Route `/books/trash` exists as PlaceholderPage. Should be `/trash` (universal).
-> Reference: `frontend/src/pages/RecycleBinPageV2.tsx`, `design-drafts/screen-recycle-bin.html`
+> The old `frontend/` directory contains pages and features that were never migrated to `frontend-v2/`.
+> These are currently PlaceholderPages in v2. After all are migrated, delete `frontend/` entirely.
 
-| Task | Type | Scope | Deps | Est |
+**Pages to migrate (10 pages, all FE):**
+
+| Task | Route | Source | Lines | Est |
 |---|---|---|---|---|
-| TR-01 | FE | Trash page scaffold — route `/trash`, tabbed layout, nav link in sidebar | — | S |
-| TR-02 | FE | Books tab — list trashed books, restore, purge, bulk actions, expiry badges | booksApi.listTrashedBooks | S |
-| TR-03 | FE | Chapters tab — list trashed chapters per book, restore, purge | booksApi | S |
-| TR-04 | FE | Glossary entities tab — list trashed entities, restore, purge | glossaryApi | S |
-| TR-05 | FE | Chat sessions tab — list archived sessions, purge | chatApi | S |
-| TR-06 | FE | Search + sort + filters across all trash tabs | — | S |
-| TR-07 | FE | Empty trash action (purge all expired items) | — | S |
+| MIG-01 | `/trash` | `RecycleBinPageV2.tsx` + `features/trash/` (4 files) | 618 | M |
+| MIG-02 | `/chat` | `ChatPageV2.tsx` + `features/chat-v2/` (23 files) | 900 | L |
+| MIG-03 | `/usage` | `UsageLogsPage.tsx` | 81 | S |
+| MIG-04 | `/usage/:logId` | `UsageDetailPage.tsx` | 59 | S |
+| MIG-05 | `/settings/:tab` | `UserSettingsPage.tsx` + `components/settings/` | 54+ | M |
+| MIG-06 | `/browse` | `BrowsePage.tsx` | 45 | S |
+| MIG-07 | `/browse/:bookId` | `PublicBookPage.tsx` | 81 | S |
+| MIG-08 | `/s/:accessToken` | `UnlistedPage.tsx` | 68 | S |
+| MIG-09 | Chapter translations view | `ChapterTranslationsPage.tsx` | 245 | M |
+| MIG-10 | Delete old `frontend/` directory | — | — | S |
 
-**Implementation note:** Port from `frontend/src/pages/RecycleBinPageV2.tsx` — the component logic exists, needs Tailwind/shadcn migration to match frontend-v2 patterns.
+**Migration strategy:**
+- Port component logic, convert to Tailwind/shadcn patterns matching frontend-v2
+- Reuse existing v2 API clients (`booksApi`, `glossaryApi`, etc.)
+- Replace PlaceholderPage routes with real pages
+- After MIG-01..MIG-09 complete, MIG-10 deletes old frontend/
+
+**Already migrated (no action needed):**
+- BooksPage, BookDetailPage, ChapterEditorPage, ReaderPage
+- Auth pages (Login, Register, Forgot, Reset)
+- BookDetail tabs (Chapters, Translation, Glossary, Sharing, Settings)
+
+**Dead code in old frontend/ (delete with MIG-10):**
+- `chunk-editor/` — replaced by Tiptap
+- `chat/` (v1) — replaced by chat-v2
+- `RecycleBinPage.tsx` (v1) — replaced by RecycleBinPageV2
+- All test files for migrated pages
 
 ### Version History Panel Enhancements (future polish)
 
@@ -1138,7 +1157,7 @@ Each adapter translates to the `GenerateResponse` schema defined in `app/models.
 
 ### Size Key: S = <1 session, M = 1-2 sessions, L = 2-4 sessions
 
-### Updated Total: 142 tasks (was 135)
+### Updated Total: 152 tasks (was 142)
 
 | Phase | FE | BE | FS | Total |
 |---|---|---|---|---|
@@ -1152,5 +1171,5 @@ Each adapter translates to the `GenerateResponse` schema defined in `app/models.
 | Phase 5 | 4 | 1 | 5 | 10 |
 | **Video Gen** | **2** | **7** | **1** | **10** |
 | **Media Versions** | **2** | **5** | **0** | **7** |
-| **Trash Page** | **7** | **0** | **0** | **7** |
+| **V1→V2 Migration** | **10** | **0** | **0** | **10** |
 | **Version History Polish** | **10** | **0** | **2** | **12** |
