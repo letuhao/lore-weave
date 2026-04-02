@@ -9,6 +9,8 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { booksApi } from '@/features/books/api';
 import { getUploadContext } from './ImageBlockNode';
+import { MediaPrompt } from './MediaPrompt';
+import { videoGenApi } from '@/features/video-gen/api';
 
 const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100 MB
 const ALLOWED_VIDEO_TYPES = new Set(['video/mp4', 'video/webm']);
@@ -181,6 +183,8 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
   const [uploadPct, setUploadPct] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -276,6 +280,41 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
     },
     [doUpload],
   );
+
+  // --- AI Generate ---
+  const handleGenerate = useCallback(async () => {
+    const prompt = (node.attrs.ai_prompt as string)?.trim();
+    if (!prompt) return;
+    const ctx = getUploadContext();
+    if (!ctx) {
+      setGenerateError('Save the chapter first.');
+      return;
+    }
+    setGenerating(true);
+    setGenerateError(null);
+    try {
+      const result = await videoGenApi.generate(ctx.token, {
+        prompt,
+        duration_seconds: 5,
+        aspect_ratio: '16:9',
+      });
+      if (result.status === 'not_implemented') {
+        setGenerateError(result.message || 'Video generation not yet connected to a provider.');
+      } else if (result.status === 'completed' && result.video_url) {
+        updateAttributes({
+          src: result.video_url,
+          duration: result.duration_seconds,
+          size_bytes: result.size_bytes,
+        });
+      } else if (result.status === 'failed') {
+        setGenerateError(result.message || 'Generation failed.');
+      }
+    } catch (e: any) {
+      setGenerateError(e.message || 'Generation failed');
+    } finally {
+      setGenerating(false);
+    }
+  }, [node.attrs.ai_prompt, updateAttributes]);
 
   // --- Classic mode: compact locked placeholder ---
   if (isClassic) {
@@ -501,7 +540,19 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
       </div>
 
       {/* AI Prompt — collapsible */}
-      {/* AI Prompt — deferred until video generation APIs exist (Phase 4.5) */}
+      {/* AI Prompt + Generate */}
+      <MediaPrompt
+        prompt={(node.attrs.ai_prompt as string) || ''}
+        onChange={(val) => updateAttributes({ ai_prompt: val })}
+        onRegenerate={handleGenerate}
+        regenerateDisabled={generating || !(node.attrs.ai_prompt as string)?.trim()}
+        regenerateLabel={generating ? 'Generating...' : 'Generate'}
+      />
+      {generateError && (
+        <div className="border-t px-3 py-1 text-[10px] text-destructive" contentEditable={false}>
+          {generateError}
+        </div>
+      )}
     </NodeViewWrapper>
   );
 }

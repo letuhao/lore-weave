@@ -18,6 +18,7 @@ export function configureGatewayApp(
     translationUrl: string;
     glossaryUrl: string;
     chatUrl: string;
+    videoGenUrl: string;
   },
 ): void {
   app.enableCors({
@@ -76,6 +77,11 @@ export function configureGatewayApp(
     selfHandleResponse: false,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/chat'),
   });
+  const videoGenProxy = createProxyMiddleware({
+    target: urls.videoGenUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/video-gen'),
+  });
 
   const httpAdapter = app.getHttpAdapter();
   const instance = httpAdapter.getInstance();
@@ -124,6 +130,11 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const videoGenProxyFn = videoGenProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
 
   instance.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account')) {
@@ -152,6 +163,9 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/chat')) {
       return chatProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/video-gen')) {
+      return videoGenProxyFn(req, res, next);
     }
     return next();
   });
