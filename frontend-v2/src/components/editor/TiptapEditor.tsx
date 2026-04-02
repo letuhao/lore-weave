@@ -5,6 +5,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import Typography from '@tiptap/extension-typography';
 import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
 import { FormatToolbar } from './FormatToolbar';
+import { CodeBlockToolbar } from './CodeBlockToolbar';
 import { SlashMenuExtension, SlashMenuPopup, type EditorMode } from './SlashMenu';
 import { CalloutExtension } from './CalloutNode';
 import { CodeBlockExtension } from './CodeBlockNode';
@@ -148,6 +149,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
           <>
             <EditorContent editor={editor} />
             {editable && <SlashMenuPopup editor={editor} mode={editorMode} />}
+            {editable && <CodeBlockToolbar editor={editor} />}
           </>
         )}
       </div>

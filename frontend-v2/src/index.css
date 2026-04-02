@@ -168,6 +168,10 @@
   font-size: 12px;
   line-height: 1.6;
   color: #c8c0b4;
+  cursor: text;
+  /* Ensure text selection works inside code blocks */
+  -webkit-user-select: text;
+  user-select: text;
 }
 .tiptap-content pre code {
   font-family: inherit;
@@ -176,6 +180,12 @@
   padding: 0;
   border-radius: 0;
   color: inherit;
+  -webkit-user-select: text;
+  user-select: text;
+}
+/* Selection highlight in code blocks */
+.tiptap-content pre ::selection {
+  background: hsl(var(--primary) / 0.25);
 }
 
 /* ── Code block syntax highlighting (lowlight / hljs) ──────────────────── */
