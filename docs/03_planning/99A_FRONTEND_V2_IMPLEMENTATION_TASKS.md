@@ -766,8 +766,11 @@ P3-18: Chat Page [FE] (uses existing chat-service)          [✓] Done (session 
   Dropped @ai-sdk/react — custom useChatMessages hook
   Integration test: 25/25 pass (infra/test-chat.sh)
 
-P3-19: Chat Context Integration [FE]
-  AC: [ ] Book/chapter/glossary context selector, "Send chunk to AI"
+P3-19: Chat Context Integration [FE]                       [✓] Done (session 15)
+  Context picker (Books/Chapters/Glossary tabs), book+kind filters for glossary,
+  context pills above input, resolve+prepend on send, context pills on messages,
+  "Send to Chat" CustomEvent bridge for editor integration.
+  Design draft: design-drafts/screen-chat-context.html
 
 P3-20: Sharing Tab [FE] (uses existing sharing-service)     [✓] Done (session 15)
   Card-based visibility selector, unlisted URL copy, token rotation
@@ -781,15 +784,11 @@ P3-22: Recycle Bin [FE] (uses existing booksApi)            [✓] Done (session 
   Current tabs: Books, Glossary. Chapters tab ready to add (BE exists).
   Design draft: design-drafts/screen-recycle-bin.html
 
-P3-22a: Recycle Bin — Chapters Tab [FE]                     [ ]
-  BE ready: listChapters(?lifecycle_state=trashed), restoreChapter, purgeChapter
-  FE: add chapterToTrashItem normalizer + tab + fetch across all books
-  Deps: P3-22
+P3-22a: Recycle Bin — Chapters Tab [FE]                     [✓] Done (session 15)
+  Unified restoreItem/purgeItem, chapterToTrashItem normalizer, teal icon
 
-P3-22b: Recycle Bin — Chat Sessions Tab [FE]                [ ]
-  BE: chat-service archive exists (PATCH status=archived), DELETE works
-  FE: add chatSessionToTrashItem normalizer + tab + chatApi.listSessions(token, 'archived')
-  Deps: P3-22, P3-18
+P3-22b: Recycle Bin — Chat Sessions Tab [FE]                [✓] Done (session 15)
+  chatSessionToTrashItem normalizer, blue icon, restore=PATCH active, purge=DELETE
 
 P3-22c: Recycle Bin — Translations Tab [FS]                 [ ] (future — after Translation Workbench)
   BE: needs trash lifecycle on chapter_translations table (soft delete + restore + purge)

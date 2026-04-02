@@ -8,9 +8,9 @@
 ## Document Metadata
 
 - Last Updated: 2026-04-02 (session 15 end)
-- Updated By: Assistant (P3-18, P3-20, P3-21, P3-22 complete)
+- Updated By: Assistant (P3-18, P3-19, P3-20, P3-21, P3-22, P3-22a+b complete)
 - Active Branch: `main`
-- HEAD: `08e294d` — universal recycle bin
+- HEAD: `78107a1` — chat context integration
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -43,6 +43,8 @@ Phase 3 feature screens: 4 tasks completed.
 | P3-20: Sharing Tab — visibility selector, unlisted link, token rotation | `features/sharing/SharingTab.tsx`, `BookDetailPageV2.tsx` | `bf83808` |
 | P3-21: Book Settings Tab — metadata editing, cover image management | `features/books/SettingsTab.tsx`, `features/books/api.ts`, `BookDetailPageV2.tsx` | `b8b96b6` |
 | P3-22: Universal Recycle Bin — tabbed trash, bulk actions, expiry badges | `features/trash/` (4 new files), `pages/RecycleBinPageV2.tsx`, `design-drafts/screen-recycle-bin.html` | `08e294d` |
+| P3-22a+b: Recycle Bin — Chapters + Chat Sessions tabs, unified restoreItem/purgeItem | `features/trash/`, `features/books/api.ts` | `59ef220` |
+| P3-19: Chat Context Integration — context picker, pills, glossary filters, format+resolve | `features/chat-v2/context/` (6 new files), `ChatInputBar`, `ChatWindow`, `MessageBubble`, `ChatPageV2`, `design-drafts/screen-chat-context.html` | `78107a1` |
 | Integration test: chat-service (25 scenarios, all pass) | `infra/test-chat.sh` | `911c249` |
 | Integration test: sharing-service (19 scenarios, all pass) | `infra/test-sharing.sh` | `bf83808` |
 | Docker: rebuild translation-worker (PG18 volume fix + stale image) | — | — |
@@ -436,7 +438,7 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Date       | What happened | Key commits |
 | ---------- | ------------- | ----------- |
-| 2026-04-02 | Session 15: Phase 3 FE (P3-18 Chat, P3-20 Sharing, P3-21 Settings, P3-22 Recycle Bin), integration tests (chat 25/25, sharing 19/19), Docker fix | `911c249`, `bf83808`, `b8b96b6`, `08e294d` |
+| 2026-04-02 | Session 15: Phase 3 FE complete (P3-18 Chat, P3-19 Context, P3-20 Sharing, P3-21 Settings, P3-22 Recycle Bin + Chapters/Chat tabs), integration tests (chat 25/25, sharing 19/19), Docker fix | `911c249`..`78107a1` |
 | 2026-04-02 | Session 14: D1 complete (D1-06→D1-12), Phase 3 FE (P3-01→P3-07), GUI review (5 drafts, 41 fixes), React Query, entity editor v2, Platform Mode plan | session 14 |
 | 2026-04-01 | Data re-engineering D1-06→D1-12: JSONB handlers, Tiptap import, text_content, worker-infra, frontend JSONB, integration tests | session 14 |
 | 2026-04-01 | Data re-engineering D1-03 (chapter_blocks + trigger) + D1-04 (outbox_events + pg_notify + helper) | `599721a`, `f76539e` |

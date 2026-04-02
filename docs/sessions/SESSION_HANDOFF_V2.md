@@ -2,9 +2,9 @@
 
 > **Purpose:** Give the next agent complete context to continue.
 > **Date:** 2026-04-02 (session 15 end)
-> **Last commit:** `08e294d` — universal recycle bin
-> **Previous focus:** Phase 3 FE feature screens (P3-18, P3-20, P3-21, P3-22)
-> **Current focus:** Recycle bin gap analysis — missing trash types (chapters, chat sessions)
+> **Last commit:** `78107a1` — chat context integration
+> **Previous focus:** Phase 3 FE feature screens — all done
+> **Current focus:** Phase 3 FE complete. Next: Phase 3.5 (media blocks) or P3-08 (genre groups)
 
 ---
 
@@ -34,9 +34,10 @@
 | P3-20 | **Done** | Sharing Tab |
 | P3-21 | **Done** | Book Settings Tab |
 | P3-22 | **Done** | Universal Recycle Bin |
+| P3-22a+b | **Done** | Chapters + Chat Sessions tabs |
+| P3-19 | **Done** | Chat Context Integration (picker, pills, glossary filters) |
 | P3-03 | Deferred | Jobs Drawer (after translation workbench) |
 | P3-04 | Deferred | Translation Settings Drawer |
-| P3-19 | Pending | Chat Context Integration |
 
 ### GUI Review — 5 DRAFTS REVIEWED
 | Draft | Fixes | Deferred |
