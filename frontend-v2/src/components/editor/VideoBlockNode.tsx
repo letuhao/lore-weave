@@ -4,7 +4,7 @@ import {
   NodeViewWrapper,
   type NodeViewProps,
 } from '@tiptap/react';
-import { Video, Upload, Loader2, Lock, Play, Trash2, Replace, Accessibility, History } from 'lucide-react';
+import { Video, Upload, Loader2, Lock, Trash2, Replace, Accessibility, History } from 'lucide-react';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { booksApi } from '@/features/books/api';
@@ -312,18 +312,20 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         style={{ width: `${currentWidth}%` }}
       >
         {src ? (
-          /* Player placeholder with hover overlay */
-          <div className="relative flex aspect-video flex-col items-center justify-center bg-[#0a0a0a]">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-primary bg-primary/20 text-primary">
-              <Play className="h-5 w-5" />
-            </div>
-            <span className="mt-2 text-xs text-muted-foreground">{title}</span>
-            <span className="mt-0.5 text-[10px] text-muted-foreground/50">
-              {[formatDuration(duration), formatSize(sizeBytes)].filter(Boolean).join(' · ')}
-            </span>
-            {/* Hover overlay with quick actions */}
+          /* Real video player with hover overlay */
+          <div className="relative bg-[#0a0a0a]">
+            <video
+              src={src}
+              controls
+              className="block w-full rounded-t-lg"
+              draggable={false}
+              preload="metadata"
+            >
+              Your browser does not support the video tag.
+            </video>
+            {/* Hover overlay with quick actions — top-right corner */}
             <div
-              className="absolute inset-0 flex items-start justify-end gap-1 bg-black/0 p-2 opacity-0 transition-all group-hover:bg-black/30 group-hover:opacity-100"
+              className="absolute right-0 top-0 flex gap-1 bg-black/0 p-2 opacity-0 transition-all group-hover:opacity-100"
               contentEditable={false}
             >
               <button
