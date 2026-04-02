@@ -255,7 +255,7 @@ export function ChapterEditorPage() {
         </div>
 
         {/* Right controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-shrink-0 items-center gap-2">
           {/* Editor mode toggle */}
           <div className="flex items-center rounded-md border bg-muted/30 p-0.5">
             <button
