@@ -761,15 +761,25 @@ P3-17e: Wiki AI Assist + Cost Warning [FS]
 
 ### Chat + Other
 ```
-P3-18: Chat Page [FE] (uses existing chat-service)
-  AC: [ ] Session sidebar, message area, streaming, model selector
+P3-18: Chat Page [FE] (uses existing chat-service)          [✓] Done (session 15)
+  Full-bleed layout, custom SSE streaming, session CRUD, model selector
+  Dropped @ai-sdk/react — custom useChatMessages hook
+  Integration test: 25/25 pass (infra/test-chat.sh)
 
 P3-19: Chat Context Integration [FE]
   AC: [ ] Book/chapter/glossary context selector, "Send chunk to AI"
 
-P3-20: Sharing Tab [FE] (uses existing sharing-service)
-P3-21: Book Settings Tab [FE]
-P3-22: Recycle Bin [FE] (uses existing booksApi)
+P3-20: Sharing Tab [FE] (uses existing sharing-service)     [✓] Done (session 15)
+  Card-based visibility selector, unlisted URL copy, token rotation
+  Integration test: 19/19 pass (infra/test-sharing.sh)
+
+P3-21: Book Settings Tab [FE]                               [✓] Done (session 15)
+  Metadata form (title, desc, lang, summary), cover upload/replace/delete
+
+P3-22: Recycle Bin [FE] (uses existing booksApi)            [✓] Done (session 15)
+  Universal design: TrashCard + FloatingTrashBar + category tabs
+  Current tabs: Books, Glossary. Chapters tab ready to add (BE exists).
+  Design draft: design-drafts/screen-recycle-bin.html
 ```
 
 ---

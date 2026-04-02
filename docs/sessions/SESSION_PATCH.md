@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-02 (session 14 end)
-- Updated By: Assistant (D1 complete + Phase 3 FE + GUI review)
+- Last Updated: 2026-04-02 (session 15 end)
+- Updated By: Assistant (P3-18, P3-20, P3-21, P3-22 complete)
 - Active Branch: `main`
-- HEAD: `964a2ed` — entity editor v2 centered modal + attribute card system
+- HEAD: `08e294d` — universal recycle bin
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -32,6 +32,22 @@
 ## Current Active Work
 
 **Phase:** Frontend V2 Rebuild — Phase 3 (Feature Screens)
+
+**What was done in this session (2026-04-02, session 15):**
+
+Phase 3 feature screens: 4 tasks completed.
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| P3-18: Chat Page v2 — full-bleed layout, custom SSE streaming, session CRUD | `features/chat-v2/` (17 new files), `pages/ChatPageV2.tsx`, `App.tsx`, `AppNav.tsx`, `tailwind.config.cjs` | `911c249` |
+| P3-20: Sharing Tab — visibility selector, unlisted link, token rotation | `features/sharing/SharingTab.tsx`, `BookDetailPageV2.tsx` | `bf83808` |
+| P3-21: Book Settings Tab — metadata editing, cover image management | `features/books/SettingsTab.tsx`, `features/books/api.ts`, `BookDetailPageV2.tsx` | `b8b96b6` |
+| P3-22: Universal Recycle Bin — tabbed trash, bulk actions, expiry badges | `features/trash/` (4 new files), `pages/RecycleBinPageV2.tsx`, `design-drafts/screen-recycle-bin.html` | `08e294d` |
+| Integration test: chat-service (25 scenarios, all pass) | `infra/test-chat.sh` | `911c249` |
+| Integration test: sharing-service (19 scenarios, all pass) | `infra/test-sharing.sh` | `bf83808` |
+| Docker: rebuild translation-worker (PG18 volume fix + stale image) | — | — |
+
+**9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
 **What was done in this session (2026-03-29, session 1):**
 
@@ -371,16 +387,15 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Priority | Item | Notes |
 | -------- | ---- | ----- |
-| **P0** | **P3-18: Chat Page [FE]** | Uses existing chat-service — next FE task |
-| **P0** | **P3-20→P3-22: Sharing, Settings, Trash [FE]** | All APIs exist |
+| **P0** | **Recycle Bin: add Chapter trash tab** | Backend supports `?lifecycle_state=trashed`, needs FE `listChaptersTrash` + tab in RecycleBinPageV2 |
+| **P0** | **Recycle Bin: add Chat session trash tab** | chat-service archive exists, may need purge endpoint |
 | P1 | P3-03: Jobs Drawer [FE] | Deferred until after translation workbench |
 | P1 | P3-04: Translation Settings Drawer [FE] | Deferred |
 | P1 | P3-08a/b: Genre Groups [BE+FE] | Needs new backend tables |
+| P1 | P3-19: Chat Context Integration [FE] | Uses chat-service |
 | P2 | GUI Review deferred items (D1-D22) | See 99A plan |
 | P2 | Platform Mode (103_PLATFORM_MODE_PLAN.md) | 35 tasks, deferred |
-| P1 | Frontend V2 Phase 3 — Feature screens | **PAUSED until data re-engineering complete** |
 | P2 | Chapter editor: smoke test the full guard + toast flow | Save & leave, Discard & leave, logout dirty, download success |
-| P2 | BooksPage create-book error path: currently uses inline error in dialog — review if toast is better | `src/pages/BooksPage.tsx` |
 | P3 | Chat Phase 4 — File attachments | After frontend-v2 Phase 3 stable |
 | P3 | Full acceptance evidence pack for M01-M05 | Currently smoke only |
 
@@ -421,6 +436,7 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Date       | What happened | Key commits |
 | ---------- | ------------- | ----------- |
+| 2026-04-02 | Session 15: Phase 3 FE (P3-18 Chat, P3-20 Sharing, P3-21 Settings, P3-22 Recycle Bin), integration tests (chat 25/25, sharing 19/19), Docker fix | `911c249`, `bf83808`, `b8b96b6`, `08e294d` |
 | 2026-04-02 | Session 14: D1 complete (D1-06→D1-12), Phase 3 FE (P3-01→P3-07), GUI review (5 drafts, 41 fixes), React Query, entity editor v2, Platform Mode plan | session 14 |
 | 2026-04-01 | Data re-engineering D1-06→D1-12: JSONB handlers, Tiptap import, text_content, worker-infra, frontend JSONB, integration tests | session 14 |
 | 2026-04-01 | Data re-engineering D1-03 (chapter_blocks + trigger) + D1-04 (outbox_events + pg_notify + helper) | `599721a`, `f76539e` |

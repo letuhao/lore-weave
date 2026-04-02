@@ -1,37 +1,42 @@
 # Session Handoff — Frontend V2 Phase 3 + GUI Review
 
 > **Purpose:** Give the next agent complete context to continue.
-> **Date:** 2026-04-02 (session 14 end)
-> **Last commit:** `964a2ed` — entity editor v2 centered modal + attribute card system
-> **Previous focus:** Data Re-Engineering D1 — COMPLETE (12/12)
-> **Current focus:** Frontend V2 Phase 3 (feature screens) + GUI Review
+> **Date:** 2026-04-02 (session 15 end)
+> **Last commit:** `08e294d` — universal recycle bin
+> **Previous focus:** Phase 3 FE feature screens (P3-18, P3-20, P3-21, P3-22)
+> **Current focus:** Recycle bin gap analysis — missing trash types (chapters, chat sessions)
 
 ---
 
-## 1. What Happened This Session (session 14)
+## 1. What Happened This Session (session 15)
 
-### Data Re-Engineering D1 — COMPLETED
-All 12 tasks done. The data pipeline is fully operational:
-- D1-06: 7 handler JSONB refactor + 3 outbox events
-- D1-07: Plain text → Tiptap JSON at import
-- D1-08: text_content on APIs + translation-service fix
-- D1-05+D1-09+D1-10: worker-infra service + events schema + relay tasks
-- D1-11: Frontend JSONB save/load + read-only Tiptap reader
-- D1-12: Integration test script (16 scenarios)
-- D1-04d: transitionChapterLifecycle tx + outbox events
+### Phase 3 Frontend — 4 TASKS COMPLETED
+| Task | Commit | What |
+|------|--------|------|
+| P3-18 | `911c249` | Chat Page v2 — full-bleed layout, custom SSE streaming (dropped @ai-sdk/react), session sidebar, model selector, edit/regenerate, markdown + code blocks, 17 new files |
+| P3-20 | `bf83808` | Sharing Tab — card-based visibility selector (private/unlisted/public), unlisted URL copy, token rotation, wired into BookDetailPageV2 |
+| P3-21 | `b8b96b6` | Book Settings Tab — metadata editing (title, description, language, summary), cover image upload/replace/delete, wired into BookDetailPageV2 |
+| P3-22 | `08e294d` | Universal Recycle Bin — category tabs (Books, Glossary), TrashCard component, FloatingTrashBar, bulk select, search, sort, expiry badges, confirm dialog |
 
-### Phase 3 Frontend — IN PROGRESS
+### Integration Tests Added
+- `infra/test-chat.sh` — 25 scenarios, all pass (session CRUD, messages, outputs, export, auth guard)
+- `infra/test-sharing.sh` — 19 scenarios, all pass (visibility lifecycle, token rotation, catalog, auth guard)
+
+### Phase 3 Frontend — FULL STATUS
 | Task | Status | What |
 |------|--------|------|
-| P3-01 | Done | Translation Matrix Tab + language filter |
-| P3-02 | Done | Translate Modal (shows book settings, not fake dropdown) |
-| P3-05 | Done | Glossary Tab (entity list, filters, CRUD) |
-| P3-06 | Done | Kind Editor — full CRUD backend + interactive frontend |
-| P3-07 | Done | Entity Editor v2 — centered modal + 8 attribute card types |
+| P3-01 | Done | Translation Matrix Tab |
+| P3-02 | Done | Translate Modal |
+| P3-05 | Done | Glossary Tab |
+| P3-06 | Done | Kind Editor |
+| P3-07 | Done | Entity Editor v2 |
+| P3-18 | **Done** | Chat Page v2 |
+| P3-20 | **Done** | Sharing Tab |
+| P3-21 | **Done** | Book Settings Tab |
+| P3-22 | **Done** | Universal Recycle Bin |
 | P3-03 | Deferred | Jobs Drawer (after translation workbench) |
 | P3-04 | Deferred | Translation Settings Drawer |
-| P3-18 | **NEXT** | Chat Page (uses existing chat-service) |
-| P3-20-22 | Pending | Sharing, Settings, Trash |
+| P3-19 | Pending | Chat Context Integration |
 
 ### GUI Review — 5 DRAFTS REVIEWED
 | Draft | Fixes | Deferred |
@@ -85,13 +90,25 @@ Tabs use `display: none` (not conditional rendering) to prevent remount flicker.
 
 ## 3. What's Next
 
-### Immediate (P0)
-1. **P3-18: Chat Page [FE]** — uses existing chat-service. Copy chat API from v1 frontend.
-2. **P3-20: Sharing Tab [FE]** — uses existing sharing-service
-3. **P3-21: Book Settings Tab [FE]** — book metadata editing
-4. **P3-22: Recycle Bin [FE]** — uses existing booksApi
+### Immediate (P0) — Recycle Bin Gap Analysis
+The universal recycle bin currently supports Books + Glossary. Missing trash types need BE + FE work:
 
-### After Phase 3 FE
+| Trash Type | Backend Status | Frontend Status | What's Needed |
+|---|---|---|---|
+| **Books** | ✅ `listTrash`, `restoreBook`, `purgeBook` | ✅ Tab in RecycleBinPageV2 | Done |
+| **Glossary** | ✅ `listEntityTrash`, `restoreEntity`, `purgeEntity` | ✅ Tab in RecycleBinPageV2 | Done |
+| **Chapters** | ✅ `trashChapter`, `restoreChapter`, `purgeChapter` exist. List via `?lifecycle_state=trashed` | ❌ No tab yet | FE: add `listChaptersTrash` API helper + Chapters tab + normalizer |
+| **Chat Sessions** | ⚠️ Archive exists (`PATCH status=archived`), no purge/delete from archive | ❌ No tab yet | BE: ensure `DELETE /sessions/{id}` works for archived. FE: add tab |
+| **Translations** | ❌ No trash concept | ❌ — | Future — skip for now |
+| **Wiki Pages** | ❌ Service doesn't exist yet | ❌ — | Future — skip for now |
+
+**Recommended next steps:**
+1. Add Chapters tab to RecycleBinPageV2 (pure FE — backend ready)
+2. Add Chat Sessions tab (minor BE check + FE)
+3. Then move to Phase 3.5 or other tasks
+
+### After Recycle Bin Completion
+4. **P3-19: Chat Context Integration [FE]** — context-aware chat
 5. **Phase 3.5: Media blocks** — images, video, audio, code blocks in editor
 6. **Translation Workbench** — block-level translation (design draft exists)
 7. **P3-08: Genre Groups** — new backend tables + frontend
@@ -105,6 +122,8 @@ Tabs use `display: none` (not conditional rendering) to prevent remount flicker.
 ### Integration Tests
 - `bash infra/test-integration-d1.sh` — D1 data pipeline (16 scenarios)
 - `bash infra/test-glossary.sh` — Glossary CRUD (35 scenarios, all pass)
+- `bash infra/test-chat.sh` — Chat service (25 scenarios, all pass)
+- `bash infra/test-sharing.sh` — Sharing service (19 scenarios, all pass)
 
 ---
 
