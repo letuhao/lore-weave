@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Chat Context Integration (P3-19)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --input: #242019; --ring: #d4952a;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --secondary-fg: #e0d8cc;
+      --muted: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --destructive: #dc4e4e; --success: #3dba6a; --info: #5496e8;
+    }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; margin: 0; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    * { border-color: var(--border); box-sizing: border-box; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    .input-field { background: var(--background); border: 1px solid var(--border); color: var(--foreground); }
+    .input-field:focus { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px rgba(212,149,42,0.2); }
+    .input-field::placeholder { color: rgba(158,148,136,0.5); }
+
+    .btn-ghost { background: transparent; color: var(--muted-fg); border: none; cursor: pointer; }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); }
+
+    .context-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px 3px 7px; border-radius: 6px; font-size: 11px; font-weight: 500; border: 1px solid; cursor: default; }
+    .context-pill .remove { cursor: pointer; opacity: 0.5; transition: opacity 150ms; margin-left: 2px; }
+    .context-pill .remove:hover { opacity: 1; }
+
+    .context-pill-book { background: var(--primary-muted); border-color: rgba(232,168,50,0.2); color: var(--primary); }
+    .context-pill-chapter { background: var(--accent-muted); border-color: rgba(61,166,146,0.2); color: var(--accent); }
+    .context-pill-glossary { background: rgba(84,150,232,0.08); border-color: rgba(84,150,232,0.15); color: var(--info); }
+
+    .context-picker { background: var(--card); border: 1px solid var(--border-hover); border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); width: 320px; overflow: hidden; }
+    .picker-tab { padding: 8px 14px; font-size: 12px; font-weight: 500; color: var(--muted-fg); border-bottom: 2px solid transparent; cursor: pointer; background: none; border-top: none; border-left: none; border-right: none; }
+    .picker-tab.active { color: var(--foreground); border-bottom-color: var(--primary); }
+    .picker-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 12px; cursor: pointer; transition: background 150ms; }
+    .picker-item:hover { background: var(--card-hover); }
+    .picker-item .icon { width: 28px; height: 28px; border-radius: 5px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .picker-search { background: var(--input); border: none; padding: 8px 12px; font-size: 12px; color: var(--foreground); width: 100%; border-bottom: 1px solid var(--border); }
+    .picker-search:focus { outline: none; }
+    .picker-search::placeholder { color: var(--muted-fg); opacity: 0.6; }
+
+    .send-to-chat-btn { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--secondary); color: var(--muted-fg); transition: all 150ms; }
+    .send-to-chat-btn:hover { background: var(--accent-muted); color: var(--accent); border-color: rgba(61,166,146,0.3); }
+  </style>
+</head>
+<body>
+
+<div style="max-width: 800px; margin: 0 auto; padding: 40px 24px;">
+
+  <h1 style="font-size: 16px; font-weight: 600; margin: 0 0 8px;" class="font-serif">Chat Context Integration — P3-19</h1>
+  <p style="font-size: 12px; color: var(--muted-fg); margin: 0 0 40px;">
+    Attach book/chapter/glossary context to chat messages. The AI sees the context in its system prompt.
+  </p>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- ── PART 1: Context Bar (above chat input) ───────────────────────────── -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <div style="margin-bottom: 48px;">
+    <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Part 1 — Context bar above input (pills + attach button)</p>
+
+    <!-- Chat input area with context bar -->
+    <div style="border: 1px solid var(--border); border-radius: 12px; background: var(--card); overflow: hidden; max-width: 720px;">
+
+      <!-- Context bar -->
+      <div style="padding: 8px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+        <!-- Attach button -->
+        <button class="btn-ghost" style="padding: 4px 8px; border-radius: 5px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px; color: var(--muted-fg);">
+          <svg style="width:13px;height:13px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+          Context
+        </button>
+
+        <!-- Active context pills -->
+        <span class="context-pill context-pill-book">
+          <svg style="width:11px;height:11px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+          The Bureaucratic Hero
+          <span class="remove">✕</span>
+        </span>
+        <span class="context-pill context-pill-chapter">
+          <svg style="width:11px;height:11px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+          Ch.3 — The Filing of Grievances
+          <span class="remove">✕</span>
+        </span>
+      </div>
+
+      <!-- Textarea -->
+      <div style="position: relative; padding: 0;">
+        <textarea class="input-field" placeholder="Ask about your story, characters, world-building..." rows="3" style="width: 100%; padding: 12px 48px 12px 14px; border: none; border-radius: 0; font-size: 13px; resize: none; line-height: 1.5; background: transparent;"></textarea>
+        <button class="btn-primary" style="position: absolute; right: 8px; bottom: 8px; border: none; border-radius: 8px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+          <svg style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 19V5m0 0l-7 7m7-7l7 7"/></svg>
+        </button>
+      </div>
+
+      <p style="font-size: 10px; color: var(--muted-fg); padding: 4px 14px 8px; text-align: center;">
+        Context attached · Claude Sonnet 4.6 · Enter to send
+      </p>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- ── PART 1b: Context bar (empty state — no context attached) ─────────── -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <div style="margin-bottom: 48px;">
+    <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Part 1b — Empty state (no context attached — bar is hidden, only + button in textarea)</p>
+
+    <div style="border: 1px solid var(--border); border-radius: 12px; background: var(--card); overflow: hidden; max-width: 720px;">
+      <div style="position: relative; padding: 0;">
+        <textarea class="input-field" placeholder="Ask about your story, characters, world-building..." rows="3" style="width: 100%; padding: 12px 48px 12px 40px; border: none; border-radius: 0; font-size: 13px; resize: none; line-height: 1.5; background: transparent;"></textarea>
+        <!-- Attach button (left of textarea) -->
+        <button class="btn-ghost" style="position: absolute; left: 8px; bottom: 8px; padding: 6px; border-radius: 6px;" title="Attach context">
+          <svg style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 008.486 8.486L20.5 13"/></svg>
+        </button>
+        <button class="btn-primary" style="position: absolute; right: 8px; bottom: 8px; border: none; border-radius: 8px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+          <svg style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 19V5m0 0l-7 7m7-7l7 7"/></svg>
+        </button>
+      </div>
+      <p style="font-size: 10px; color: var(--muted-fg); padding: 4px 14px 8px; text-align: center;">
+        Claude Sonnet 4.6 · Enter to send · Shift+Enter for new line
+      </p>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- ── PART 2: Context Picker Popover ───────────────────────────────────── -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <div style="margin-bottom: 48px;">
+    <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Part 2 — Context picker popover (opens from + Context button)</p>
+
+    <div class="context-picker">
+      <!-- Tabs -->
+      <div style="display: flex; border-bottom: 1px solid var(--border);">
+        <button class="picker-tab active">
+          <span style="display: inline-flex; align-items: center; gap: 4px;">
+            <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+            Books
+          </span>
+        </button>
+        <button class="picker-tab">
+          <span style="display: inline-flex; align-items: center; gap: 4px;">
+            <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+            Chapters
+          </span>
+        </button>
+        <button class="picker-tab">
+          <span style="display: inline-flex; align-items: center; gap: 4px;">
+            <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 01-1.806-1.741L3.842 10.1a2 2 0 011.075-2.029l1.29-.645a6 6 0 013.86-.517l.318.158a6 6 0 003.86.517l2.387-.477a2 2 0 012.368 2.367l-.402 2.814a2 2 0 01-.77 1.34z"/></svg>
+            Glossary
+          </span>
+        </button>
+      </div>
+
+      <!-- Search -->
+      <input class="picker-search" placeholder="Search books..." />
+
+      <!-- Items list -->
+      <div style="max-height: 240px; overflow-y: auto;">
+        <!-- Book items -->
+        <div class="picker-item">
+          <div class="icon" style="background: var(--primary-muted); color: var(--primary);">
+            <svg style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+          </div>
+          <div style="flex: 1; min-width: 0;">
+            <p style="font-size: 12px; font-weight: 500; margin: 0;">The Bureaucratic Hero</p>
+            <p style="font-size: 10px; color: var(--muted-fg); margin: 1px 0 0;">12 chapters · English</p>
+          </div>
+          <span style="font-size: 10px; color: var(--accent);">✓ attached</span>
+        </div>
+        <div class="picker-item">
+          <div class="icon" style="background: var(--primary-muted); color: var(--primary);">
+            <svg style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+          </div>
+          <div style="flex: 1; min-width: 0;">
+            <p style="font-size: 12px; font-weight: 500; margin: 0;">World of Aeloria — Draft</p>
+            <p style="font-size: 10px; color: var(--muted-fg); margin: 1px 0 0;">3 chapters · Vietnamese</p>
+          </div>
+        </div>
+        <div class="picker-item">
+          <div class="icon" style="background: var(--primary-muted); color: var(--primary);">
+            <svg style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+          </div>
+          <div style="flex: 1; min-width: 0;">
+            <p style="font-size: 12px; font-weight: 500; margin: 0;">Untitled Project</p>
+            <p style="font-size: 10px; color: var(--muted-fg); margin: 1px 0 0;">0 chapters</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- ── PART 2b: Chapters tab in picker ──────────────────────────────────── -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <div style="margin-bottom: 48px;">
+    <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Part 2b — Chapters tab (shows chapters grouped by book, or flat if book already selected)</p>
+
+    <div class="context-picker">
+      <div style="display: flex; border-bottom: 1px solid var(--border);">
+        <button class="picker-tab">Books</button>
+        <button class="picker-tab active">Chapters</button>
+        <button class="picker-tab">Glossary</button>
+      </div>
+      <input class="picker-search" placeholder="Search chapters..." />
+      <div style="max-height: 240px; overflow-y: auto;">
+        <!-- Book group header -->
+        <div style="padding: 6px 12px; font-size: 10px; font-weight: 600; color: var(--muted-fg); text-transform: uppercase; letter-spacing: 0.04em; background: var(--background);">
+          The Bureaucratic Hero
+        </div>
+        <div class="picker-item">
+          <div class="icon" style="background: var(--accent-muted); color: var(--accent);">
+            <svg style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+          </div>
+          <div style="flex: 1; min-width: 0;">
+            <p style="font-size: 12px; font-weight: 500; margin: 0;">Ch.1 — The Prophecy</p>
+            <p style="font-size: 10px; color: var(--muted-fg); margin: 1px 0 0;">1,200 words</p>
+          </div>
+        </div>
+        <div class="picker-item">
+          <div class="icon" style="background: var(--accent-muted); color: var(--accent);">
+            <svg style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+          </div>
+          <div style="flex: 1; min-width: 0;">
+            <p style="font-size: 12px; font-weight: 500; margin: 0;">Ch.2 — The Royal Academy</p>
+            <p style="font-size: 10px; color: var(--muted-fg); margin: 1px 0 0;">2,800 words</p>
+          </div>
+        </div>
+        <div class="picker-item" style="background: var(--accent-muted);">
+          <div class="icon" style="background: var(--accent-muted); color: var(--accent);">
+            <svg style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+          </div>
+          <div style="flex: 1; min-width: 0;">
+            <p style="font-size: 12px; font-weight: 500; margin: 0;">Ch.3 — The Filing of Grievances</p>
+            <p style="font-size: 10px; color: var(--muted-fg); margin: 1px 0 0;">2,340 words</p>
+          </div>
+          <span style="font-size: 10px; color: var(--accent);">✓ attached</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- ── PART 2c: Glossary tab in picker ──────────────────────────────────── -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <div style="margin-bottom: 48px;">
+    <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Part 2c — Glossary tab (book filter + optional kind filter + entity list)</p>
+
+    <div class="context-picker">
+      <div style="display: flex; border-bottom: 1px solid var(--border);">
+        <button class="picker-tab">Books</button>
+        <button class="picker-tab">Chapters</button>
+        <button class="picker-tab active">Glossary</button>
+      </div>
+
+      <!-- Filter row: book selector + kind filter -->
+      <div style="padding: 8px 10px; border-bottom: 1px solid var(--border); display: flex; gap: 6px;">
+        <!-- Book filter (required — glossary is per-book) -->
+        <select style="flex: 1; background: var(--input); border: 1px solid var(--border); border-radius: 5px; padding: 4px 8px; font-size: 11px; color: var(--foreground);">
+          <option>The Bureaucratic Hero</option>
+          <option>World of Aeloria</option>
+          <option>Untitled Project</option>
+        </select>
+        <!-- Kind filter (optional — narrows by entity type) -->
+        <select style="width: 110px; background: var(--input); border: 1px solid var(--border); border-radius: 5px; padding: 4px 8px; font-size: 11px; color: var(--muted-fg);">
+          <option value="">All kinds</option>
+          <option>Character</option>
+          <option>Location</option>
+          <option>Item</option>
+          <option>Event</option>
+          <option>Faction</option>
+          <option>Concept</option>
+        </select>
+      </div>
+
+      <!-- Search -->
+      <input class="picker-search" placeholder="Search entities..." />
+
+      <!-- Entity list -->
+      <div style="max-height: 220px; overflow-y: auto;">
+        <div class="picker-item">
+          <span style="width: 10px; height: 10px; border-radius: 50%; background: #6d9eeb; flex-shrink: 0;"></span>
+          <div style="flex: 1; min-width: 0;">
+            <p style="font-size: 12px; font-weight: 500; margin: 0;">Aldric Thornwood</p>
+            <p style="font-size: 10px; color: var(--muted-fg); margin: 1px 0 0;">Character · 8 attributes</p>
+          </div>
+        </div>
+        <div class="picker-item">
+          <span style="width: 10px; height: 10px; border-radius: 50%; background: #6d9eeb; flex-shrink: 0;"></span>
+          <div style="flex: 1; min-width: 0;">
+            <p style="font-size: 12px; font-weight: 500; margin: 0;">Demon Lord Vexaris</p>
+            <p style="font-size: 10px; color: var(--muted-fg); margin: 1px 0 0;">Character · 6 attributes</p>
+          </div>
+        </div>
+        <div class="picker-item">
+          <span style="width: 10px; height: 10px; border-radius: 50%; background: #e06666; flex-shrink: 0;"></span>
+          <div style="flex: 1; min-width: 0;">
+            <p style="font-size: 12px; font-weight: 500; margin: 0;">Kingdom of Aeloria</p>
+            <p style="font-size: 10px; color: var(--muted-fg); margin: 1px 0 0;">Location · 5 attributes</p>
+          </div>
+        </div>
+        <div class="picker-item">
+          <span style="width: 10px; height: 10px; border-radius: 50%; background: #93c47d; flex-shrink: 0;"></span>
+          <div style="flex: 1; min-width: 0;">
+            <p style="font-size: 12px; font-weight: 500; margin: 0;">Precedent (Legendary Sword)</p>
+            <p style="font-size: 10px; color: var(--muted-fg); margin: 1px 0 0;">Item · 4 attributes</p>
+          </div>
+        </div>
+        <div class="picker-item">
+          <span style="width: 10px; height: 10px; border-radius: 50%; background: #f6b26b; flex-shrink: 0;"></span>
+          <div style="flex: 1; min-width: 0;">
+            <p style="font-size: 12px; font-weight: 500; margin: 0;">The Great Paperwork War</p>
+            <p style="font-size: 10px; color: var(--muted-fg); margin: 1px 0 0;">Event · 3 attributes</p>
+          </div>
+        </div>
+        <div class="picker-item">
+          <span style="width: 10px; height: 10px; border-radius: 50%; background: #b4a7d6; flex-shrink: 0;"></span>
+          <div style="flex: 1; min-width: 0;">
+            <p style="font-size: 12px; font-weight: 500; margin: 0;">Hero Certification Protocol</p>
+            <p style="font-size: 10px; color: var(--muted-fg); margin: 1px 0 0;">Concept · 2 attributes</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p style="font-size: 11px; color: var(--muted-fg); margin-top: 10px; padding-left: 4px;">
+      <strong>Book filter</strong> is required (glossary is per-book).
+      <strong>Kind filter</strong> is optional — defaults to "All kinds", narrows by entity type.
+      <br>Both combine with the search box for fast filtering.
+    </p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- ── PART 3: "Send to Chat" from Chapter Editor ───────────────────────── -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <div style="margin-bottom: 48px;">
+    <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Part 3 — "Send to Chat" button in chapter editor toolbar</p>
+
+    <!-- Simulated editor toolbar -->
+    <div style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; display: flex; align-items: center; gap: 8px; max-width: 720px;">
+      <!-- Format buttons (simplified) -->
+      <button class="btn-ghost" style="padding: 4px 6px; border-radius: 4px;"><strong style="font-size: 13px;">B</strong></button>
+      <button class="btn-ghost" style="padding: 4px 6px; border-radius: 4px;"><em style="font-size: 13px;">I</em></button>
+      <button class="btn-ghost" style="padding: 4px 6px; border-radius: 4px; font-size: 13px; text-decoration: underline;">U</button>
+      <div style="width: 1px; height: 16px; background: var(--border);"></div>
+      <button class="btn-ghost" style="padding: 4px 6px; border-radius: 4px; font-size: 12px;">H1</button>
+      <button class="btn-ghost" style="padding: 4px 6px; border-radius: 4px; font-size: 12px;">H2</button>
+      <div style="width: 1px; height: 16px; background: var(--border);"></div>
+
+      <!-- Spacer -->
+      <div style="flex: 1;"></div>
+
+      <!-- Send to Chat button -->
+      <button class="send-to-chat-btn">
+        <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        Send to Chat
+      </button>
+    </div>
+
+    <p style="font-size: 11px; color: var(--muted-fg); margin-top: 10px; padding-left: 4px;">
+      Sends the current chapter text (or selected text) to chat as context.
+      <br>If text is selected, only the selection is sent. Otherwise, the full chapter draft is attached.
+    </p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- ── PART 4: Context shown in message bubble ──────────────────────────── -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <div style="margin-bottom: 48px;">
+    <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Part 4 — Context reference shown in user message bubble</p>
+
+    <div style="max-width: 720px; display: flex; flex-direction: column; gap: 16px;">
+
+      <!-- User message with context -->
+      <div style="display: flex; justify-content: flex-end;">
+        <div style="max-width: 85%;">
+          <!-- Context reference (above message) -->
+          <div style="display: flex; gap: 4px; justify-content: flex-end; margin-bottom: 4px;">
+            <span class="context-pill context-pill-chapter" style="font-size: 10px; padding: 2px 8px;">
+              <svg style="width:10px;height:10px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+              Ch.3 attached
+            </span>
+          </div>
+          <div style="background: var(--secondary); border-radius: 12px 12px 4px 12px; padding: 12px 16px;">
+            <p style="font-size: 14px; line-height: 1.6; margin: 0;">Can you review this chapter for plot holes? Does Aldric's decision to file a formal complaint make sense given the urgency of the situation?</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Assistant response -->
+      <div style="display: flex; justify-content: flex-start;">
+        <div style="max-width: 85%;">
+          <div style="background: var(--card); border: 1px solid var(--border); border-radius: 12px 12px 12px 4px; padding: 16px 18px;">
+            <p style="font-size: 14px; line-height: 1.7; margin: 0 0 8px;">Looking at Chapter 3, there's actually a great thematic tension here. Aldric's insistence on filing the complaint <em>is</em> the point — it shows his character flaw. However, I'd suggest:</p>
+            <ul style="margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.7; color: var(--secondary-fg);">
+              <li style="margin-bottom: 4px;">Add a beat where he <em>hesitates</em> before choosing paperwork over action</li>
+              <li style="margin-bottom: 4px;">Have another character call out the absurdity</li>
+              <li>Show consequences — the delay costs something</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- ── DESIGN NOTES ───────────────────────────────────────────────────── -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!--
+  CHAT CONTEXT INTEGRATION — P3-19
+
+  HOW CONTEXT WORKS:
+  1. User clicks "+ Context" or paperclip button in chat input
+  2. Picker popover opens with tabs: Books, Chapters, Glossary
+  3. User selects items — they appear as pills above the textarea
+  4. On send, the context is prepended to the message as a system-level injection:
+     - Book: title + description + summary
+     - Chapter: title + full draft text (or text_content from API)
+     - Glossary entity: display_name + kind + all attribute values
+  5. The user message shows a small context pill indicating what was attached
+  6. Context persists for the session until user removes pills
+
+  CONTEXT PILL COLORS:
+  - Book:     amber (primary-muted bg, primary text)
+  - Chapter:  teal  (accent-muted bg, accent text)
+  - Glossary: blue  (info-muted bg, info text)
+
+  CONTEXT SIZE LIMITS:
+  - Book: ~500 tokens (title + description + summary)
+  - Chapter: ~2000-8000 tokens (full draft — warn if very large)
+  - Glossary: ~200-500 tokens (entity + attributes)
+  - Total context cap: configurable, default ~10000 tokens
+  - Show warning pill if total context exceeds limit
+
+  "SEND TO CHAT" FROM EDITOR:
+  - Button in chapter editor toolbar
+  - If text selected → sends selection as context snippet
+  - If no selection → attaches full chapter draft
+  - Opens chat page (or sidebar panel) with context pre-attached
+  - Uses DOM CustomEvent: 'loreweave:send-to-chat' (same pattern as paste-to-editor)
+
+  DATA FLOW:
+  ChatPage
+    └── ChatInputBar
+        ├── ContextBar (pills + attach button)
+        │   └── ContextPicker (popover with tabs)
+        │       ├── BookPicker (lists user's books)
+        │       ├── ChapterPicker (lists chapters, grouped by book)
+        │       └── GlossaryPicker (lists entities with kind dots)
+        └── textarea + send button
+
+  On send:
+    1. Collect context items → build context text
+    2. Prepend to user message (or inject as system context)
+    3. Send via useChatMessages.send(content, contextText?)
+    4. Backend: chat-service already supports system_prompt per session
+       Option A: Update session system_prompt with context (persists)
+       Option B: Prepend context to user message text (per-message)
+       → Recommended: Option B (per-message, no session mutation)
+-->
+
+</body>
+</html>

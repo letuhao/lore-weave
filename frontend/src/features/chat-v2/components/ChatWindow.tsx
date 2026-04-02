@@ -1,6 +1,7 @@
 import { toast } from 'sonner';
 import type { ChatSession } from '../types';
 import type { useChatMessages } from '../hooks/useChatMessages';
+import type { ContextItem } from '../context/types';
 import { ChatHeader } from './ChatHeader';
 import { ChatInputBar } from './ChatInputBar';
 import { MessageList } from './MessageList';
@@ -9,15 +10,27 @@ interface ChatWindowProps {
   session: ChatSession;
   chat: ReturnType<typeof useChatMessages>;
   onRename?: () => void;
+  contextItems: ContextItem[];
+  onAttachContext: (item: ContextItem) => void;
+  onDetachContext: (id: string) => void;
+  onClearContext: () => void;
+  onSendWithContext: (content: string) => void;
 }
 
-export function ChatWindow({ session, chat, onRename }: ChatWindowProps) {
+export function ChatWindow({
+  session,
+  chat,
+  onRename,
+  contextItems,
+  onAttachContext,
+  onDetachContext,
+  onClearContext,
+  onSendWithContext,
+}: ChatWindowProps) {
   const isArchived = session.status === 'archived';
 
   function handleSend(content: string) {
-    chat.send(content).catch((err) => {
-      toast.error(`Chat error: ${(err as Error).message}`);
-    });
+    onSendWithContext(content);
   }
 
   function handleEdit(content: string, sequenceNum: number) {
@@ -50,6 +63,10 @@ export function ChatWindow({ session, chat, onRename }: ChatWindowProps) {
         onStop={chat.stop}
         isStreaming={chat.isStreaming}
         disabled={isArchived}
+        contextItems={contextItems}
+        onAttachContext={onAttachContext}
+        onDetachContext={onDetachContext}
+        onClearContext={onClearContext}
       />
     </div>
   );
