@@ -4,12 +4,12 @@ import {
   NodeViewWrapper,
   type NodeViewProps,
 } from '@tiptap/react';
-import { Video, Upload, Loader2, Lock, Play } from 'lucide-react';
+import { Video, Upload, Loader2, Lock, Play, Trash2, Replace } from 'lucide-react';
 import { useState, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { booksApi } from '@/features/books/api';
 import { MediaPrompt } from './MediaPrompt';
-import { type ImageUploadContext, getUploadContext } from './ImageBlockNode';
+import { getUploadContext } from './ImageBlockNode';
 
 const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100 MB
 const ALLOWED_VIDEO_TYPES = new Set(['video/mp4', 'video/webm']);
@@ -36,7 +36,7 @@ export const VideoBlockExtension = Node.create({
       width: { default: 100 },
       duration: { default: null },
       size_bytes: { default: null },
-      _mode: { default: 'ai', rendered: false }, // transient, forces NodeView re-render on mode switch
+      _mode: { default: 'ai', rendered: false },
     };
   },
 
@@ -79,7 +79,7 @@ function formatSize(bytes: number | null): string {
 }
 
 // --- NodeView component ---
-function VideoBlockNodeView({ node, updateAttributes, selected, editor }: NodeViewProps) {
+function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNode }: NodeViewProps) {
   const editorMode = ((editor.storage as any).mediaGuard?.editorMode as string) || 'ai';
   const isClassic = editorMode === 'classic';
   const src = node.attrs.src as string | null;
@@ -157,16 +157,20 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor }: NodeVi
     [doUpload],
   );
 
-  // --- Classic mode: compact locked placeholder ---
+  // --- Classic mode: compact locked placeholder with hover preview ---
   if (isClassic) {
     return (
-      <NodeViewWrapper className="my-2">
+      <NodeViewWrapper className="group my-2">
         <div className="flex items-center gap-2 rounded-lg border bg-secondary px-3 py-2 text-muted-foreground">
           <Video className="h-4 w-4 flex-shrink-0 opacity-40" />
           <span className="flex-1 truncate text-xs">{title}</span>
           {sizeBytes && <span className="text-[9px] opacity-50">{formatSize(sizeBytes)}</span>}
+          {duration && <span className="text-[9px] opacity-50">{formatDuration(duration)}</span>}
+          {caption && (
+            <span className="hidden text-[9px] opacity-50 group-hover:inline">{caption}</span>
+          )}
           <span className="flex items-center gap-1 rounded bg-card px-1.5 py-0.5 text-[9px]">
-            <Lock className="h-2.5 w-2.5" /> AI mode
+            <Lock className="h-2.5 w-2.5" /> Switch to AI mode to edit
           </span>
         </div>
       </NodeViewWrapper>
@@ -191,8 +195,8 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor }: NodeVi
 
       {/* Video area */}
       {src ? (
-        /* Player placeholder */
-        <div className="relative flex aspect-video flex-col items-center justify-center bg-[#0a0a0a]">
+        /* Player placeholder with hover overlay */
+        <div className="group relative flex aspect-video flex-col items-center justify-center bg-[#0a0a0a]">
           <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-primary bg-primary/20 text-primary">
             <Play className="h-5 w-5" />
           </div>
@@ -200,6 +204,30 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor }: NodeVi
           <span className="mt-0.5 text-[10px] text-muted-foreground/50">
             {[formatDuration(duration), formatSize(sizeBytes)].filter(Boolean).join(' · ')}
           </span>
+          {/* Hover overlay with quick actions */}
+          <div
+            className="absolute inset-0 flex items-start justify-end gap-1 bg-black/0 p-2 opacity-0 transition-all group-hover:bg-black/30 group-hover:opacity-100"
+            contentEditable={false}
+          >
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              onMouseDown={(e) => e.preventDefault()}
+              className="rounded bg-black/60 px-2 py-1 text-[10px] text-white backdrop-blur transition hover:bg-black/80"
+              title="Replace video"
+            >
+              <Replace className="inline h-3 w-3" /> Replace
+            </button>
+            <button
+              type="button"
+              onClick={() => deleteNode()}
+              onMouseDown={(e) => e.preventDefault()}
+              className="rounded bg-black/60 px-2 py-1 text-[10px] text-white backdrop-blur transition hover:bg-destructive"
+              title="Delete block"
+            >
+              <Trash2 className="inline h-3 w-3" />
+            </button>
+          </div>
         </div>
       ) : (
         /* Upload zone */
@@ -245,7 +273,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor }: NodeVi
         </div>
       )}
 
-      {/* Caption bar */}
+      {/* Caption bar with actions */}
       <div
         className="flex items-center gap-2 border-t bg-card px-3 py-1.5"
         contentEditable={false}
@@ -259,6 +287,26 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor }: NodeVi
           className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground/40"
           aria-label="Video caption"
         />
+        {/* Replace video */}
+        {src && (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            title="Replace video"
+          >
+            <Replace className="h-3 w-3" />
+          </button>
+        )}
+        {/* Delete video block */}
+        <button
+          type="button"
+          onClick={() => deleteNode()}
+          className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+          title="Delete video block"
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
       </div>
 
       {/* AI Prompt */}
