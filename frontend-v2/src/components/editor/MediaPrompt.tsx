@@ -1,4 +1,4 @@
-import { Sparkles, Copy, Check, Wand2 } from 'lucide-react';
+import { Sparkles, Copy, Check, Wand2, Loader2 } from 'lucide-react';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -92,7 +92,11 @@ export function MediaPrompt({
                     : 'border-accent/30 bg-accent-muted text-accent-foreground hover:bg-accent hover:text-white',
                 )}
               >
-                <Wand2 className="h-3 w-3" />
+                {regenerateDisabled && regenerateLabel.includes('...') ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Wand2 className="h-3 w-3" />
+                )}
                 {regenerateLabel}
               </button>
             )}

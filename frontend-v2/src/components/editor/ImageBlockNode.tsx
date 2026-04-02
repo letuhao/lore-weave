@@ -8,6 +8,7 @@ import { ImageIcon, Accessibility, Upload, Loader2, Lock, History } from 'lucide
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { booksApi } from '@/features/books/api';
+import { aiModelsApi } from '@/features/ai-models/api';
 import { MediaPrompt } from './MediaPrompt';
 
 // --- Upload context (set by the editor page, read by NodeView) ---
@@ -138,6 +139,8 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor }: NodeVi
   const [uploadPct, setUploadPct] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenerateError, setRegenerateError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -252,6 +255,43 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor }: NodeVi
     },
     [doUpload],
   );
+
+  // --- AI Re-generate ---
+  const handleRegenerate = useCallback(async () => {
+    const prompt = (node.attrs.ai_prompt as string)?.trim();
+    if (!prompt) return;
+    const ctx = getUploadContext();
+    if (!ctx) {
+      setRegenerateError('Save the chapter first to enable AI generation.');
+      return;
+    }
+    setRegenerating(true);
+    setRegenerateError(null);
+    try {
+      // Get first available user model
+      const { items: models } = await aiModelsApi.listUserModels(ctx.token);
+      const imageModel = models.find(m => m.is_active) ?? models[0];
+      if (!imageModel) {
+        setRegenerateError('No AI model configured. Add a provider in Settings.');
+        return;
+      }
+      const result = await booksApi.generateImage(ctx.token, ctx.bookId, ctx.chapterId, {
+        block_id: node.attrs.title || 'image',
+        prompt,
+        model_source: 'user_model',
+        model_ref: imageModel.user_model_id,
+      });
+      updateAttributes({ src: result.url, title: node.attrs.title || 'generated' });
+    } catch (e: any) {
+      if (e.status === 402) {
+        setRegenerateError('No active AI provider. Configure one in Settings → Providers.');
+      } else {
+        setRegenerateError(e.message || 'Generation failed');
+      }
+    } finally {
+      setRegenerating(false);
+    }
+  }, [node.attrs.ai_prompt, node.attrs.title, updateAttributes]);
 
   // --- Classic mode: compact locked placeholder ---
   if (isClassic) {
@@ -436,10 +476,15 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor }: NodeVi
       <MediaPrompt
         prompt={(node.attrs.ai_prompt as string) || ''}
         onChange={(val) => updateAttributes({ ai_prompt: val })}
-        onRegenerate={() => {}}
-        regenerateDisabled={true}
-        regenerateLabel="Re-generate"
+        onRegenerate={() => handleRegenerate()}
+        regenerateDisabled={regenerating || !(node.attrs.ai_prompt as string)?.trim()}
+        regenerateLabel={regenerating ? 'Generating...' : 'Re-generate'}
       />
+      {regenerateError && (
+        <div className="border-t px-3 py-1 text-[10px] text-destructive" contentEditable={false}>
+          {regenerateError}
+        </div>
+      )}
     </NodeViewWrapper>
   );
 }
