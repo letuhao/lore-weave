@@ -115,6 +115,24 @@ CREATE TABLE IF NOT EXISTS outbox_events (
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_pending
   ON outbox_events(created_at) WHERE published_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS block_media_versions (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  chapter_id      UUID NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+  block_id        TEXT NOT NULL,
+  version         INT NOT NULL DEFAULT 1,
+  action          TEXT NOT NULL,
+  changes         TEXT[] NOT NULL DEFAULT '{}',
+  media_ref       TEXT,
+  prompt_snapshot TEXT DEFAULT '',
+  caption_snapshot TEXT DEFAULT '',
+  ai_model        TEXT,
+  content_type    TEXT,
+  size_bytes      BIGINT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_bmv_chapter_block
+  ON block_media_versions(chapter_id, block_id, version DESC);
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {
