@@ -305,10 +305,12 @@ export const booksApi = {
     chapterId: string,
     file: File,
     onProgress?: (pct: number) => void,
-  ): Promise<{ url: string; object_key: string; filename: string; size: number; content_type: string }> {
+    blockId?: string,
+  ): Promise<{ url: string; object_key: string; filename: string; size: number; content_type: string; version?: number; version_id?: string }> {
     return new Promise((resolve, reject) => {
       const form = new FormData();
       form.append('file', file);
+      if (blockId) form.append('block_id', blockId);
 
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `${base()}/v1/books/${bookId}/chapters/${chapterId}/media`);

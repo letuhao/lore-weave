@@ -215,12 +215,20 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
       setUploadPct(0);
       setUploadError(null);
       try {
+        // Ensure blockId exists for versioned upload
+        let blockId = node.attrs.blockId as string;
+        if (!blockId) {
+          blockId = crypto.randomUUID().slice(0, 8);
+          updateAttributes({ blockId });
+        }
+
         const result = await booksApi.uploadChapterMedia(
           _uploadCtx.token,
           _uploadCtx.bookId,
           _uploadCtx.chapterId,
           file,
           (pct) => setUploadPct(pct),
+          blockId,
         );
         updateAttributes({
           src: result.url,
@@ -232,7 +240,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         setUploading(false);
       }
     },
-    [updateAttributes],
+    [updateAttributes, node.attrs.blockId],
   );
 
   const handleDrop = useCallback(

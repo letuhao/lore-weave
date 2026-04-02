@@ -14,6 +14,21 @@ import { getUploadContext } from './ImageBlockNode';
 const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100 MB
 const ALLOWED_VIDEO_TYPES = new Set(['video/mp4', 'video/webm']);
 
+/** Extract video duration client-side using HTMLVideoElement metadata */
+function getVideoDuration(file: File): Promise<number | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      const dur = isFinite(video.duration) ? Math.round(video.duration) : null;
+      resolve(dur);
+      URL.revokeObjectURL(video.src);
+    };
+    video.onerror = () => resolve(null);
+    video.src = URL.createObjectURL(file);
+  });
+}
+
 // History panel callback — shared with ImageBlockNode's _onOpenHistory
 // Video reuses the same callback since VersionHistoryPanel works for any block type
 let _onOpenVideoHistory: ((blockId: string, blockTitle: string, mediaSrc: string | null) => void) | null = null;
@@ -187,17 +202,29 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
       setUploadPct(0);
       setUploadError(null);
       try {
+        // Extract duration client-side
+        const duration = await getVideoDuration(file);
+
+        // Ensure blockId exists for versioned upload
+        let blockId = node.attrs.blockId as string;
+        if (!blockId) {
+          blockId = crypto.randomUUID().slice(0, 8);
+          updateAttributes({ blockId });
+        }
+
         const result = await booksApi.uploadChapterMedia(
           _uploadCtx.token,
           _uploadCtx.bookId,
           _uploadCtx.chapterId,
           file,
           (pct) => setUploadPct(pct),
+          blockId,
         );
         updateAttributes({
           src: result.url,
           title: result.filename,
           size_bytes: result.size,
+          duration,
         });
       } catch (e: any) {
         setUploadError(e.message || 'Upload failed');
@@ -205,7 +232,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         setUploading(false);
       }
     },
-    [updateAttributes],
+    [updateAttributes, node.attrs.blockId],
   );
 
   const handleDrop = useCallback(
