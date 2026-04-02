@@ -8,6 +8,7 @@ import { ImageIcon, Accessibility, Upload, Loader2 } from 'lucide-react';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { booksApi } from '@/features/books/api';
+import { MediaPrompt } from './MediaPrompt';
 
 // --- Upload context (set by the editor page, read by NodeView) ---
 export interface ImageUploadContext {
@@ -39,6 +40,7 @@ export const ImageBlockExtension = Node.create({
       caption: { default: '' },
       width: { default: 100 },
       title: { default: '' },
+      ai_prompt: { default: '' },
     };
   },
 
@@ -387,6 +389,15 @@ function ImageBlockNodeView({ node, updateAttributes, selected }: NodeViewProps)
           </div>
         )}
       </div>
+
+      {/* AI Prompt — collapsible */}
+      <MediaPrompt
+        prompt={(node.attrs.ai_prompt as string) || ''}
+        onChange={(val) => updateAttributes({ ai_prompt: val })}
+        onRegenerate={() => {}}
+        regenerateDisabled={true}
+        regenerateLabel="Re-generate"
+      />
     </NodeViewWrapper>
   );
 }

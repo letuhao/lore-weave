@@ -43,6 +43,7 @@ Phase 3.5 media blocks: E4-06 completed.
 | E4-06: Code block — CodeBlockLowlight + ReactNodeViewRenderer, language selector (13 langs), copy button, hljs theme, slash menu + toolbar integration | `components/editor/CodeBlockNode.tsx` (new), `TiptapEditor.tsx`, `SlashMenu.tsx`, `FormatToolbar.tsx`, `index.css` | this session |
 | E4-01: Image block — atom node with ReactNodeViewRenderer, resize handles (pointer events, 10-100%), editable caption, collapsible alt text field (WCAG), selection ring, empty state placeholder, extractText returns alt | `components/editor/ImageBlockNode.tsx` (new), `TiptapEditor.tsx` | this session |
 | E4-02: Image upload — BE: MinIO upload endpoint on book-service (auth, type/size validation, UUID key), FE: drag-drop/paste/file-picker with XHR progress, error handling | `book-service/internal/api/media.go` (new), `server.go`, `config.go`, `docker-compose.yml`, `ImageBlockNode.tsx`, `features/books/api.ts` | this session |
+| E4-03: AI prompt field — reusable MediaPrompt component (collapsible, textarea auto-grow, saved/empty badge, copy, re-generate placeholder), ai_prompt attr on imageBlock | `components/editor/MediaPrompt.tsx` (new), `ImageBlockNode.tsx` | this session |
 
 **9-phase workflow followed for E4-06:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
