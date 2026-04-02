@@ -145,13 +145,10 @@ function CodeBlockNodeView({ node, updateAttributes, editor }: NodeViewProps) {
         </button>
       </div>
 
-      {/* Code content — editable */}
-      <pre className="m-0 overflow-x-auto bg-transparent p-0">
-        <NodeViewContent
-          as={'code' as 'div'}
-          className="block px-4 py-3 font-mono text-xs leading-relaxed text-[#c8c0b4] outline-none"
-        />
-      </pre>
+      {/* Code content — editable. white-space:pre preserves newlines in code */}
+      <NodeViewContent
+        className="overflow-x-auto whitespace-pre bg-transparent px-4 py-3 font-mono text-xs leading-relaxed text-[#c8c0b4] outline-none"
+      />
     </NodeViewWrapper>
   );
 }
