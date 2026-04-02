@@ -210,19 +210,28 @@
   background: hsl(var(--secondary));
   color: hsl(var(--foreground));
 }
-.code-block-pre {
-  margin: 0;
-  padding: 12px 16px;
-  overflow-x: auto;
-  background: transparent;
+.code-block-copy--copied {
+  color: hsl(var(--success));
 }
-.code-block-code {
+.code-block-pre {
+  margin: 0 !important;
+  padding: 12px 16px !important;
+  overflow-x: auto;
+  background: transparent !important;
   font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
   line-height: 1.6;
   color: #c8c0b4;
   outline: none;
-  white-space: pre;
+  border: none !important;
+  border-radius: 0 !important;
+}
+.code-block-pre code {
+  font-family: inherit;
+  font-size: inherit;
+  background: none;
+  padding: 0;
+  border-radius: 0;
 }
 
 .code-block-wrapper--classic {
