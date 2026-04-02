@@ -1049,6 +1049,24 @@ P3-17a (wiki backend) blocks all wiki features
 4. User can always manually delete specific versions from the history panel
 5. Storage usage visible per chapter and per book
 
+### Recycle Bin / Trash Page (not migrated to frontend-v2)
+
+> P3-22 was built in old `frontend/` but never migrated to `frontend-v2/`.
+> Route `/books/trash` exists as PlaceholderPage. Should be `/trash` (universal).
+> Reference: `frontend/src/pages/RecycleBinPageV2.tsx`, `design-drafts/screen-recycle-bin.html`
+
+| Task | Type | Scope | Deps | Est |
+|---|---|---|---|---|
+| TR-01 | FE | Trash page scaffold — route `/trash`, tabbed layout, nav link in sidebar | — | S |
+| TR-02 | FE | Books tab — list trashed books, restore, purge, bulk actions, expiry badges | booksApi.listTrashedBooks | S |
+| TR-03 | FE | Chapters tab — list trashed chapters per book, restore, purge | booksApi | S |
+| TR-04 | FE | Glossary entities tab — list trashed entities, restore, purge | glossaryApi | S |
+| TR-05 | FE | Chat sessions tab — list archived sessions, purge | chatApi | S |
+| TR-06 | FE | Search + sort + filters across all trash tabs | — | S |
+| TR-07 | FE | Empty trash action (purge all expired items) | — | S |
+
+**Implementation note:** Port from `frontend/src/pages/RecycleBinPageV2.tsx` — the component logic exists, needs Tailwind/shadcn migration to match frontend-v2 patterns.
+
 ### Version History Panel Enhancements (future polish)
 
 > Current state: Basic version history works — timeline, side-by-side comparison, prompt diff, restore/download/delete.
@@ -1120,7 +1138,7 @@ Each adapter translates to the `GenerateResponse` schema defined in `app/models.
 
 ### Size Key: S = <1 session, M = 1-2 sessions, L = 2-4 sessions
 
-### Updated Total: 135 tasks (was 123)
+### Updated Total: 142 tasks (was 135)
 
 | Phase | FE | BE | FS | Total |
 |---|---|---|---|---|
@@ -1134,4 +1152,5 @@ Each adapter translates to the `GenerateResponse` schema defined in `app/models.
 | Phase 5 | 4 | 1 | 5 | 10 |
 | **Video Gen** | **2** | **7** | **1** | **10** |
 | **Media Versions** | **2** | **5** | **0** | **7** |
+| **Trash Page** | **7** | **0** | **0** | **7** |
 | **Version History Polish** | **10** | **0** | **2** | **12** |
