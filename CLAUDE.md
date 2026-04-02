@@ -30,6 +30,7 @@ Monorepo layout:
 | `translation-service` | Go / Chi | Translation pipeline |
 | `glossary-service` | Go / Chi | Glossary & lore management |
 | `chat-service` | Python / FastAPI | Chat with LLMs via LiteLLM |
+| `video-gen-service` | Python / FastAPI | Video generation (skeleton — provider TBD) |
 
 Data: Postgres (per-service DBs), Redis Streams (jobs), MinIO (objects).
 

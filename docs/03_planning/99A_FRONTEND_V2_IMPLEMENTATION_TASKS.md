@@ -1025,6 +1025,36 @@ P3-17a (wiki backend) blocks all wiki features
 - **Audio/TTS remains Phase 4.5**: the mixed-media draft designs audio slots on text blocks, but audio is a separate concern from visual media. Build visual media first.
 - **Version data model**: versions stored as `media_versions` array in block JSON (lightweight metadata) + actual media files in MinIO with versioned paths. Old prompts are always kept (cheap text). Media files subject to retention policy.
 - **Classic mode guards**: Tiptap `NodeView` with `editable: false` + `handleKeyDown` at media boundaries. No data deleted on mode switch — media blocks collapse to compact locked placeholders.
+- **Video generation service**: `video-gen-service` (Python/FastAPI) created as skeleton. Returns `status: "not_implemented"` until a real provider is connected. FE Generate button wired and ready.
+
+### Video Generation Service — Provider Integration (future)
+
+> Service: `services/video-gen-service/` — Python/FastAPI, port 8088 (host: 8213)
+> Gateway: `/v1/video-gen` proxied via `api-gateway-bff`
+> Status: **Skeleton deployed** — interface stable, no provider connected
+
+| Task | Type | Scope | Deps | Est |
+|---|---|---|---|---|
+| VG-01 | BE | Provider adapter: OpenAI Sora (text-to-video) | video-gen-service, provider-registry | M |
+| VG-02 | BE | Provider adapter: Google Veo (text-to-video) | video-gen-service, provider-registry | M |
+| VG-03 | BE | Provider adapter: Stability AI Stable Video (image-to-video) | video-gen-service, provider-registry | M |
+| VG-04 | BE | Provider adapter: RunwayML Gen-3 (text/image-to-video) | video-gen-service, provider-registry | M |
+| VG-05 | BE | MinIO storage integration (store generated videos) | video-gen-service, MinIO | S |
+| VG-06 | BE | Async generation with status polling (pending → completed) | video-gen-service, Redis | M |
+| VG-07 | FE | Generation progress UI (polling, status badge, cancel) | VG-06 | M |
+| VG-08 | FE | Model selector in video block (pick from available models) | VG-01..04 | S |
+| VG-09 | BE | JWT validation + user ownership check | video-gen-service | S |
+| VG-10 | BE | Version record creation on generate (reuse block_media_versions) | VG-05, E5-01 | S |
+
+**Implementation order:** VG-09 (auth) → VG-05 (MinIO) → VG-01 (first provider) → VG-06 (async) → VG-07 (progress UI) → VG-10 (versioning) → VG-08 (model selector) → VG-02..04 (more providers)
+
+**Provider API formats (for adapter development):**
+- OpenAI Sora: `POST /v1/video/generations` (OpenAI-compatible, similar to images)
+- Google Veo: Vertex AI endpoint, different auth + format
+- Stability AI: `POST /v2beta/image-to-video` (REST, different response format)
+- RunwayML: GraphQL API, webhook-based async
+
+Each adapter translates to the `GenerateResponse` schema defined in `app/models.py`.
 
 ---
 
@@ -1044,7 +1074,7 @@ P3-17a (wiki backend) blocks all wiki features
 
 ### Size Key: S = <1 session, M = 1-2 sessions, L = 2-4 sessions
 
-### Updated Total: 106 tasks (was 104)
+### Updated Total: 116 tasks (was 106)
 
 | Phase | FE | BE | FS | Total |
 |---|---|---|---|---|
@@ -1056,3 +1086,4 @@ P3-17a (wiki backend) blocks all wiki features
 | Phase 4 | 11 | 3 | 0 | 14 |
 | **Phase 4.5** | **4** | **0** | **3** | **7** |
 | Phase 5 | 4 | 1 | 5 | 10 |
+| **Video Gen** | **2** | **7** | **1** | **10** |

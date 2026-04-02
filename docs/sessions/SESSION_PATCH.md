@@ -497,4 +497,5 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 | Production rollout hardening (SRE, security sign-off) | Not done | Pre-release gate wave | — |
 | SSE / WebSocket streaming progress for translation jobs | Not implemented | Currently polling | — |
 | **Structured book/chapter zip import-export** (portable bundles with metadata, revisions, assets) | Not implemented | Post-V1 feature wave | `100_FUTURE_FEATURE_STRUCTURED_IMPORT_EXPORT_MEDIA.md` |
-| **Media-rich chapters** — images and video for visual novel-style storytelling | Not implemented | Post-V1 feature wave | `100_FUTURE_FEATURE_STRUCTURED_IMPORT_EXPORT_MEDIA.md` |
+| **Media-rich chapters** — images and video for visual novel-style storytelling | **Phase 3.5 Done** | E4+E5 complete, image/video/code blocks | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` |
+| **Video generation provider integration** — connect video-gen-service to real providers (Sora, Veo, etc.) | Skeleton deployed | 10 tasks planned (VG-01..VG-10) | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` |
