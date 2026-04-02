@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Recycle Bin (Universal Trash)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --input: #242019; --ring: #d4952a;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --secondary-fg: #e0d8cc;
+      --muted: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --destructive: #dc4e4e; --destructive-fg: #f8f2ec;
+      --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+    }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; margin: 0; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    * { border-color: var(--border); box-sizing: border-box; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    .tab-btn { padding: 8px 16px; font-size: 13px; font-weight: 500; border-bottom: 2px solid transparent; color: var(--muted-fg); cursor: pointer; background: none; border-top: none; border-left: none; border-right: none; transition: all 150ms; }
+    .tab-btn:hover { color: var(--foreground); }
+    .tab-btn.active { color: var(--foreground); border-bottom-color: var(--primary); }
+
+    .trash-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; transition: background 150ms, border-color 150ms; cursor: default; }
+    .trash-card:hover { background: var(--card-hover); border-color: var(--border-hover); }
+    .trash-card.selected { border-color: var(--ring); background: rgba(212,149,42,0.05); }
+
+    .btn-sm { padding: 5px 12px; font-size: 12px; font-weight: 500; border-radius: 6px; cursor: pointer; border: none; display: inline-flex; align-items: center; gap: 5px; transition: all 150ms; }
+    .btn-outline { background: transparent; color: var(--muted-fg); border: 1px solid var(--border); }
+    .btn-outline:hover { color: var(--foreground); border-color: var(--border-hover); background: var(--secondary); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); }
+    .btn-ghost:hover { color: var(--foreground); background: var(--secondary); }
+    .btn-destructive { background: var(--destructive); color: var(--destructive-fg); }
+    .btn-destructive:hover { filter: brightness(1.1); }
+    .btn-success { background: var(--accent); color: #f0faf8; }
+    .btn-success:hover { filter: brightness(1.1); }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); }
+    .btn-primary:hover { filter: brightness(1.1); }
+
+    .checkbox { width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--border-hover); background: var(--input); appearance: none; cursor: pointer; position: relative; }
+    .checkbox:checked { background: var(--primary); border-color: var(--primary); }
+    .checkbox:checked::after { content: '✓'; position: absolute; top: -1px; left: 2px; font-size: 12px; color: var(--primary-fg); font-weight: 700; }
+
+    .kind-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+    .badge { padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 500; display: inline-flex; align-items: center; gap: 4px; }
+    .badge-muted { background: var(--secondary); color: var(--muted-fg); }
+    .badge-warn { background: rgba(220,78,78,0.12); color: var(--destructive); }
+
+    .floating-bar { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--card); border: 1px solid var(--border-hover); border-radius: 12px; padding: 10px 20px; display: flex; align-items: center; gap: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); z-index: 50; }
+
+    .search-input { background: var(--input); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px 6px 32px; font-size: 13px; color: var(--foreground); width: 220px; }
+    .search-input:focus { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px rgba(212,149,42,0.15); }
+    .search-input::placeholder { color: var(--muted-fg); opacity: 0.6; }
+
+    .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; gap: 12px; }
+  </style>
+</head>
+<body>
+
+<div style="max-width: 960px; margin: 0 auto; padding: 32px 24px;">
+
+  <!-- ── Page Header ──────────────────────────────────────────────────────── -->
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px;">
+    <div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <svg style="width:20px;height:20px;color:var(--muted-fg)" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        <h1 style="font-size: 18px; font-weight: 600; margin: 0;">Recycle Bin</h1>
+      </div>
+      <p style="font-size: 12px; color: var(--muted-fg); margin: 4px 0 0 30px;">
+        Items here will be permanently deleted after 30 days.
+      </p>
+    </div>
+    <a href="#" style="font-size: 13px; color: var(--muted-fg); text-decoration: none;">
+      ← Back to Workspace
+    </a>
+  </div>
+
+  <!-- ── Category Tabs + Search ───────────────────────────────────────────── -->
+  <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); margin-bottom: 20px;">
+    <div style="display: flex;">
+      <button class="tab-btn active">
+        <span style="display: inline-flex; align-items: center; gap: 5px;">
+          <svg style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+          Books
+          <span class="badge badge-muted">3</span>
+        </span>
+      </button>
+      <button class="tab-btn">
+        <span style="display: inline-flex; align-items: center; gap: 5px;">
+          <svg style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+          Chapters
+          <span class="badge badge-muted">5</span>
+        </span>
+      </button>
+      <button class="tab-btn">
+        <span style="display: inline-flex; align-items: center; gap: 5px;">
+          <svg style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 01-1.806-1.741L3.842 10.1a2 2 0 011.075-2.029l1.29-.645a6 6 0 013.86-.517l.318.158a6 6 0 003.86.517l2.387-.477a2 2 0 012.368 2.367l-.402 2.814a2 2 0 01-.77 1.34z"/></svg>
+          Glossary
+          <span class="badge badge-muted">12</span>
+        </span>
+      </button>
+      <!-- Future tabs: Chat Sessions, Translations, Wiki Pages, etc. -->
+    </div>
+    <div style="position: relative; margin-bottom: -1px;">
+      <svg style="width:14px;height:14px;position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted-fg)" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+      <input class="search-input" placeholder="Search trash…" />
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- ── BOOKS TAB (Active) ───────────────────────────────────────────────── -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <!-- Toolbar row -->
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <input type="checkbox" class="checkbox" title="Select all" />
+      <span style="font-size: 12px; color: var(--muted-fg);">3 items</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 6px;">
+      <select style="background: var(--input); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 12px; color: var(--muted-fg);">
+        <option>Newest first</option>
+        <option>Oldest first</option>
+        <option>Name A-Z</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Book trash cards -->
+  <div style="display: flex; flex-direction: column; gap: 8px;">
+
+    <!-- Card 1: Book (selected) -->
+    <div class="trash-card selected" style="display: flex; align-items: center; gap: 12px;">
+      <input type="checkbox" class="checkbox" checked />
+      <!-- Icon -->
+      <div style="width: 36px; height: 36px; border-radius: 6px; background: var(--primary-muted); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+        <svg style="width:18px;height:18px;color:var(--primary)" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+      </div>
+      <!-- Content -->
+      <div style="flex: 1; min-width: 0;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <p style="font-size: 13px; font-weight: 500; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">The Bureaucratic Hero</p>
+          <span class="badge badge-muted">12 chapters</span>
+        </div>
+        <p style="font-size: 11px; color: var(--muted-fg); margin: 2px 0 0;">
+          Deleted 2 days ago · English
+        </p>
+      </div>
+      <!-- Expiry -->
+      <span class="badge badge-warn" title="Will be permanently deleted">
+        <svg style="width:10px;height:10px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        28 days left
+      </span>
+      <!-- Actions -->
+      <div style="display: flex; gap: 4px; flex-shrink: 0;">
+        <button class="btn-sm btn-outline" title="Restore">
+          <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
+          Restore
+        </button>
+        <button class="btn-sm btn-ghost" style="color: var(--destructive);" title="Delete permanently">
+          <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Card 2: Book -->
+    <div class="trash-card" style="display: flex; align-items: center; gap: 12px;">
+      <input type="checkbox" class="checkbox" />
+      <div style="width: 36px; height: 36px; border-radius: 6px; background: var(--primary-muted); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+        <svg style="width:18px;height:18px;color:var(--primary)" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+      </div>
+      <div style="flex: 1; min-width: 0;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <p style="font-size: 13px; font-weight: 500; margin: 0;">World of Aeloria — Draft</p>
+          <span class="badge badge-muted">3 chapters</span>
+        </div>
+        <p style="font-size: 11px; color: var(--muted-fg); margin: 2px 0 0;">
+          Deleted 5 days ago · Vietnamese
+        </p>
+      </div>
+      <span class="badge badge-warn">
+        <svg style="width:10px;height:10px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        25 days left
+      </span>
+      <div style="display: flex; gap: 4px; flex-shrink: 0;">
+        <button class="btn-sm btn-outline">
+          <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
+          Restore
+        </button>
+        <button class="btn-sm btn-ghost" style="color: var(--destructive);">
+          <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Card 3: Book (near expiry) -->
+    <div class="trash-card" style="display: flex; align-items: center; gap: 12px;">
+      <input type="checkbox" class="checkbox" />
+      <div style="width: 36px; height: 36px; border-radius: 6px; background: var(--primary-muted); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+        <svg style="width:18px;height:18px;color:var(--primary)" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+      </div>
+      <div style="flex: 1; min-width: 0;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <p style="font-size: 13px; font-weight: 500; margin: 0;">Untitled Project</p>
+          <span class="badge badge-muted">0 chapters</span>
+        </div>
+        <p style="font-size: 11px; color: var(--muted-fg); margin: 2px 0 0;">
+          Deleted 27 days ago
+        </p>
+      </div>
+      <span class="badge badge-warn" style="background: rgba(220,78,78,0.2);">
+        <svg style="width:10px;height:10px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        3 days left
+      </span>
+      <div style="display: flex; gap: 4px; flex-shrink: 0;">
+        <button class="btn-sm btn-outline">
+          <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
+          Restore
+        </button>
+        <button class="btn-sm btn-ghost" style="color: var(--destructive);">
+          <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- ── GLOSSARY TAB (Inactive - shown below for reference) ──────────────── -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <div style="margin-top: 48px; padding-top: 24px; border-top: 2px dashed var(--border);">
+    <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 16px;">↓ Glossary tab preview (same card pattern, different icon + metadata)</p>
+
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+
+      <!-- Glossary entity card -->
+      <div class="trash-card" style="display: flex; align-items: center; gap: 12px;">
+        <input type="checkbox" class="checkbox" />
+        <!-- Kind color dot instead of icon box -->
+        <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+          <span class="kind-dot" style="background: #6d9eeb;"></span>
+        </div>
+        <div style="flex: 1; min-width: 0;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <p style="font-size: 13px; font-weight: 500; margin: 0;">Aldric Thornwood</p>
+            <span class="badge badge-muted">Character</span>
+            <span style="font-size: 11px; color: var(--muted-fg);">from <span style="color: var(--foreground); font-weight: 500;">The Bureaucratic Hero</span></span>
+          </div>
+          <p style="font-size: 11px; color: var(--muted-fg); margin: 2px 0 0;">
+            Deleted 1 day ago · 8 attributes
+          </p>
+        </div>
+        <span class="badge badge-warn">
+          <svg style="width:10px;height:10px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          29 days
+        </span>
+        <div style="display: flex; gap: 4px; flex-shrink: 0;">
+          <button class="btn-sm btn-outline">
+            <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
+            Restore
+          </button>
+          <button class="btn-sm btn-ghost" style="color: var(--destructive);">
+            <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Glossary entity card 2 -->
+      <div class="trash-card" style="display: flex; align-items: center; gap: 12px;">
+        <input type="checkbox" class="checkbox" />
+        <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+          <span class="kind-dot" style="background: #e06666;"></span>
+        </div>
+        <div style="flex: 1; min-width: 0;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <p style="font-size: 13px; font-weight: 500; margin: 0;">Kingdom of Aeloria</p>
+            <span class="badge badge-muted">Location</span>
+            <span style="font-size: 11px; color: var(--muted-fg);">from <span style="color: var(--foreground); font-weight: 500;">World of Aeloria</span></span>
+          </div>
+          <p style="font-size: 11px; color: var(--muted-fg); margin: 2px 0 0;">
+            Deleted 3 days ago · 5 attributes
+          </p>
+        </div>
+        <span class="badge badge-warn">
+          <svg style="width:10px;height:10px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          27 days
+        </span>
+        <div style="display: flex; gap: 4px; flex-shrink: 0;">
+          <button class="btn-sm btn-outline">
+            <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
+            Restore
+          </button>
+          <button class="btn-sm btn-ghost" style="color: var(--destructive);">
+            <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- ── EMPTY STATE (when a tab has no items) ────────────────────────────── -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <div style="margin-top: 48px; padding-top: 24px; border-top: 2px dashed var(--border);">
+    <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 16px;">↓ Empty state (shown when a category has no trashed items)</p>
+
+    <div class="empty-state">
+      <svg style="width: 48px; height: 48px; color: var(--muted-fg); opacity: 0.3;" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+      <p style="font-size: 14px; font-weight: 500; margin: 0;">Trash is empty</p>
+      <p style="font-size: 12px; color: var(--muted-fg); margin: 0;">
+        Deleted items will appear here for 30 days before permanent removal.
+      </p>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- ── FLOATING ACTION BAR (shown when items selected) ──────────────────── -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <div class="floating-bar">
+    <span style="font-size: 13px; font-weight: 500;">1 selected</span>
+    <div style="width: 1px; height: 20px; background: var(--border);"></div>
+    <button class="btn-sm btn-success">
+      <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
+      Restore Selected
+    </button>
+    <button class="btn-sm btn-destructive">
+      <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+      Delete Permanently
+    </button>
+    <button class="btn-sm btn-ghost" title="Clear selection">
+      <svg style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- ── DESIGN NOTES ───────────────────────────────────────────────────── -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!--
+  UNIVERSAL RECYCLE BIN — Design System
+
+  Pattern: category tabs + universal trash card + floating action bar
+
+  CARD ANATOMY (consistent across all types):
+  ┌──────────────────────────────────────────────────────────────────┐
+  │ [checkbox] [icon/dot] [title + badge + context] [expiry] [actions] │
+  └──────────────────────────────────────────────────────────────────┘
+
+  Per-type variations:
+  ┌──────────────┬──────────────┬─────────────────┬──────────────────┐
+  │ Type         │ Icon         │ Badge           │ Context          │
+  ├──────────────┼──────────────┼─────────────────┼──────────────────┤
+  │ Book         │ Book icon    │ "N chapters"    │ Language          │
+  │ Chapter      │ File icon    │ "N words"       │ "from BookTitle"  │
+  │ Glossary     │ Kind dot     │ Kind name       │ "from BookTitle"  │
+  │ Chat Session │ Chat icon    │ "N messages"    │ Model name        │
+  │ Wiki Page    │ Wiki icon    │ "N revisions"   │ "from WikiTitle"  │
+  │ Translation  │ Lang icon    │ "source→target" │ "from BookTitle"  │
+  └──────────────┴──────────────┴─────────────────┴──────────────────┘
+
+  EXPIRY BADGE:
+  - > 7 days: subtle (default badge-warn)
+  - ≤ 7 days: stronger red background (urgency)
+  - Shows "N days left" until permanent deletion
+
+  FLOATING ACTION BAR:
+  - Appears when ≥1 items selected
+  - "Restore Selected" (accent/green) + "Delete Permanently" (destructive)
+  - Selection count + clear button
+  - Fixed to bottom center
+
+  CATEGORY TABS:
+  - Each type gets a tab with icon + count badge
+  - Tabs are additive — new trash types just add a new tab
+  - Tabs only appear if the backend supports that type
+
+  FUTURE EXTENSIBILITY:
+  - New trash type = new tab + card renderer (icon, badge, context)
+  - Card shape stays identical — only the left icon and metadata change
+  - Floating bar works identically for all types
+-->
+
+</body>
+</html>

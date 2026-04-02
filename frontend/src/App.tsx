@@ -12,7 +12,7 @@ import {
   BookDetailPageV2 as BookDetailPage,
   ChapterEditorPageV2 as ChapterEditorPage,
 } from '@/pages/v2-drafts';
-import { RecycleBinPage } from './pages/RecycleBinPage';
+import { RecycleBinPageV2 } from './pages/RecycleBinPageV2';
 import { SharingPage } from './pages/SharingPage';
 import { BrowsePage } from './pages/BrowsePage';
 import { UnlistedPage } from './pages/UnlistedPage';
@@ -94,7 +94,7 @@ function AppRoutes() {
           path="/books/trash"
           element={
             <RequireAuth>
-              <RecycleBinPage />
+              <RecycleBinPageV2 />
             </RequireAuth>
           }
         />
