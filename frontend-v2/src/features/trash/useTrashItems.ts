@@ -134,14 +134,14 @@ export function useTrashItems() {
       case 'book':
         await booksApi.restoreBook(accessToken, item.id);
         await fetchBooks();
-        queryClient.removeQueries({ queryKey: ['books'] });
+        queryClient.invalidateQueries({ queryKey: ['books'] });
         break;
       case 'chapter': {
         const ch = item.raw as Chapter;
         await booksApi.restoreChapter(accessToken, ch.book_id, ch.chapter_id);
         await fetchChapters();
         // Remove stale cache AND refetch — invalidate alone isn't enough with localStorage persistence
-        queryClient.removeQueries({ queryKey: ['chapters', ch.book_id] });
+        queryClient.invalidateQueries({ queryKey: ['chapters', ch.book_id] });
         queryClient.invalidateQueries({ queryKey: ['book', ch.book_id] });
         break;
       }
@@ -149,7 +149,7 @@ export function useTrashItems() {
         const ent = item.raw as EntityTrashItem;
         await restoreGlossaryEntity(accessToken, ent.book_id, ent.entity_id);
         await fetchGlossary();
-        queryClient.removeQueries({ queryKey: ['glossary-entities', ent.book_id] });
+        queryClient.invalidateQueries({ queryKey: ['glossary-entities', ent.book_id] });
         break;
       }
       case 'chat': {
