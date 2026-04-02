@@ -12,7 +12,7 @@ const STORAGE_KEY = 'lw_editor_mode';
 export function useEditorMode() {
   const [mode, setModeState] = useState<EditorMode>(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
-    return stored === 'ai' ? 'ai' : 'classic';
+    return stored === 'classic' ? 'classic' : 'ai';
   });
 
   const setMode = useCallback((m: EditorMode) => {

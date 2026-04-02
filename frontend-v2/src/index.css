@@ -156,104 +156,27 @@
   font-size: 0.85em;
 }
 
+/* ── Code block (Tiptap native rendering — no custom NodeView) ─────────── */
 .tiptap-content pre {
-  background: hsl(var(--secondary));
-  border-radius: 6px;
-  padding: 0.75em 1em;
-  margin: 1em 0;
-  overflow-x: auto;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.85em;
-  line-height: 1.6;
-}
-
-/* ── Code block (native NodeView with header) ──────────────────────────── */
-.code-block-wrapper {
-  margin: 8px 0;
-  border-radius: 8px;
-  border: 1px solid hsl(var(--border));
   background: #0d0b09;
-  overflow: hidden;
-}
-.code-block-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 12px;
-  border-bottom: 1px solid hsl(var(--border));
-  background: hsl(var(--secondary));
-}
-.code-block-lang {
-  background: hsl(var(--input));
   border: 1px solid hsl(var(--border));
-  border-radius: 4px;
-  color: hsl(var(--foreground));
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  padding: 2px 6px;
-  outline: none;
-}
-.code-block-copy {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: transparent;
-  border: none;
-  color: hsl(var(--muted-foreground));
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 120ms;
-}
-.code-block-copy:hover {
-  background: hsl(var(--secondary));
-  color: hsl(var(--foreground));
-}
-.code-block-copy--copied {
-  color: hsl(var(--success));
-}
-.code-block-pre {
-  margin: 0 !important;
-  padding: 12px 16px !important;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 8px 0;
   overflow-x: auto;
-  background: transparent !important;
   font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
   line-height: 1.6;
   color: #c8c0b4;
-  outline: none;
-  border: none !important;
-  border-radius: 0 !important;
 }
-.code-block-pre code {
+.tiptap-content pre code {
   font-family: inherit;
   font-size: inherit;
   background: none;
   padding: 0;
   border-radius: 0;
+  color: inherit;
 }
-
-.code-block-wrapper--selected {
-  outline: 2px solid hsl(var(--primary) / 0.4);
-  outline-offset: 2px;
-  border-radius: 8px;
-}
-.code-block-wrapper--classic {
-  background: hsl(var(--secondary));
-}
-.code-block-classic {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  font-size: 12px;
-  color: hsl(var(--muted-foreground));
-}
-.code-block-classic-icon { opacity: 0.4; }
-.code-block-classic-label { flex: 1; font-size: 12px; }
-.code-block-classic-lang { font-family: 'JetBrains Mono', monospace; font-size: 9px; opacity: 0.5; }
-.code-block-classic-lock { font-size: 9px; background: hsl(var(--card)); padding: 2px 6px; border-radius: 3px; }
 
 /* ── Code block syntax highlighting (lowlight / hljs) ──────────────────── */
 .hljs-keyword,
