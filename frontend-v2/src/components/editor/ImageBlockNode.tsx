@@ -306,6 +306,16 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
               <History className="h-2.5 w-2.5" />
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => {
+              if (title && title !== 'Image') navigator.clipboard.writeText(title);
+            }}
+            className="hidden flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-card hover:text-foreground group-hover:flex"
+            title="Copy filename"
+          >
+            Copy
+          </button>
           <span className="flex items-center gap-1 rounded bg-card px-1.5 py-0.5 text-[9px]">
             <Lock className="h-2.5 w-2.5" /> AI mode
           </span>
