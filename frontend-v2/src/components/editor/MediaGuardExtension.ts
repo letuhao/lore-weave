@@ -102,7 +102,7 @@ export const MediaGuardExtension = Extension.create({
             }
 
             // --- Classic mode: block paste over selection containing media ---
-            if (isClassic && (event.key === 'v' && (event.ctrlKey || event.metaKey)) && !empty) {
+            if (isClassic && (event.key.toLowerCase() === 'v' && (event.ctrlKey || event.metaKey)) && !empty) {
               let hasMedia = false;
               state.doc.nodesBetween($from.pos, $to.pos, (node) => {
                 if (MEDIA_NODE_TYPES.has(node.type.name)) {
