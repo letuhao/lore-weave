@@ -780,6 +780,26 @@ P3-22: Recycle Bin [FE] (uses existing booksApi)            [✓] Done (session 
   Universal design: TrashCard + FloatingTrashBar + category tabs
   Current tabs: Books, Glossary. Chapters tab ready to add (BE exists).
   Design draft: design-drafts/screen-recycle-bin.html
+
+P3-22a: Recycle Bin — Chapters Tab [FE]                     [ ]
+  BE ready: listChapters(?lifecycle_state=trashed), restoreChapter, purgeChapter
+  FE: add chapterToTrashItem normalizer + tab + fetch across all books
+  Deps: P3-22
+
+P3-22b: Recycle Bin — Chat Sessions Tab [FE]                [ ]
+  BE: chat-service archive exists (PATCH status=archived), DELETE works
+  FE: add chatSessionToTrashItem normalizer + tab + chatApi.listSessions(token, 'archived')
+  Deps: P3-22, P3-18
+
+P3-22c: Recycle Bin — Translations Tab [FS]                 [ ] (future — after Translation Workbench)
+  BE: needs trash lifecycle on chapter_translations table (soft delete + restore + purge)
+  FE: add translation normalizer + tab
+  Deps: P3-22, Translation Workbench (P3-T1..T8)
+
+P3-22d: Recycle Bin — Wiki Pages Tab [FS]                   [ ] (future — after Wiki backend)
+  BE: needs trash lifecycle on wiki_pages table
+  FE: add wiki normalizer + tab
+  Deps: P3-22, P3-17a (Wiki backend)
 ```
 
 ---

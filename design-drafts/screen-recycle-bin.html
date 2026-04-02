@@ -108,7 +108,14 @@
           <span class="badge badge-muted">12</span>
         </span>
       </button>
-      <!-- Future tabs: Chat Sessions, Translations, Wiki Pages, etc. -->
+      <button class="tab-btn">
+        <span style="display: inline-flex; align-items: center; gap: 5px;">
+          <svg style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+          Chat Sessions
+          <span class="badge badge-muted">2</span>
+        </span>
+      </button>
+      <!-- Future tabs: Translations, Wiki Pages, etc. -->
     </div>
     <div style="position: relative; margin-bottom: -1px;">
       <svg style="width:14px;height:14px;position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted-fg)" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
@@ -308,6 +315,152 @@
   </div>
 
   <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- ── CHAPTERS TAB PREVIEW ─────────────────────────────────────────────── -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <div style="margin-top: 48px; padding-top: 24px; border-top: 2px dashed var(--border);">
+    <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 16px;">↓ Chapters tab preview (file icon, word count badge, "from BookTitle" context)</p>
+
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+
+      <!-- Chapter card 1 -->
+      <div class="trash-card" style="display: flex; align-items: center; gap: 12px;">
+        <input type="checkbox" class="checkbox" />
+        <div style="width: 36px; height: 36px; border-radius: 6px; background: var(--accent-muted); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <svg style="width:18px;height:18px;color:var(--accent)" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+        </div>
+        <div style="flex: 1; min-width: 0;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <p style="font-size: 13px; font-weight: 500; margin: 0;">Chapter 3 — The Filing of Grievances</p>
+            <span class="badge badge-muted">2,340 words</span>
+            <span style="font-size: 11px; color: var(--muted-fg);">from <span style="color: var(--foreground); font-weight: 500;">The Bureaucratic Hero</span></span>
+          </div>
+          <p style="font-size: 11px; color: var(--muted-fg); margin: 2px 0 0;">
+            Deleted 4 days ago · English · 3 revisions
+          </p>
+        </div>
+        <span class="badge badge-warn">
+          <svg style="width:10px;height:10px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          26 days
+        </span>
+        <div style="display: flex; gap: 4px; flex-shrink: 0;">
+          <button class="btn-sm btn-outline">
+            <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
+            Restore
+          </button>
+          <button class="btn-sm btn-ghost" style="color: var(--destructive);">
+            <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Chapter card 2 (near expiry) -->
+      <div class="trash-card" style="display: flex; align-items: center; gap: 12px;">
+        <input type="checkbox" class="checkbox" />
+        <div style="width: 36px; height: 36px; border-radius: 6px; background: var(--accent-muted); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <svg style="width:18px;height:18px;color:var(--accent)" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+        </div>
+        <div style="flex: 1; min-width: 0;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <p style="font-size: 13px; font-weight: 500; margin: 0;">Prologue — The Prophecy</p>
+            <span class="badge badge-muted">890 words</span>
+            <span style="font-size: 11px; color: var(--muted-fg);">from <span style="color: var(--foreground); font-weight: 500;">World of Aeloria</span></span>
+          </div>
+          <p style="font-size: 11px; color: var(--muted-fg); margin: 2px 0 0;">
+            Deleted 25 days ago · Vietnamese · 1 revision
+          </p>
+        </div>
+        <span class="badge badge-warn" style="background: rgba(220,78,78,0.2);">
+          <svg style="width:10px;height:10px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          5 days left
+        </span>
+        <div style="display: flex; gap: 4px; flex-shrink: 0;">
+          <button class="btn-sm btn-outline">
+            <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
+            Restore
+          </button>
+          <button class="btn-sm btn-ghost" style="color: var(--destructive);">
+            <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- ── CHAT SESSIONS TAB PREVIEW ────────────────────────────────────────── -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <div style="margin-top: 48px; padding-top: 24px; border-top: 2px dashed var(--border);">
+    <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 16px;">↓ Chat Sessions tab preview (chat icon, message count badge, model name context)</p>
+
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+
+      <!-- Chat session card 1 -->
+      <div class="trash-card" style="display: flex; align-items: center; gap: 12px;">
+        <input type="checkbox" class="checkbox" />
+        <div style="width: 36px; height: 36px; border-radius: 6px; background: rgba(84,150,232,0.12); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <svg style="width:18px;height:18px;color:var(--info)" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        </div>
+        <div style="flex: 1; min-width: 0;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <p style="font-size: 13px; font-weight: 500; margin: 0;">Character development — Aldric</p>
+            <span class="badge badge-muted">24 messages</span>
+            <span style="font-size: 11px; color: var(--muted-fg);">Claude Sonnet 4.6</span>
+          </div>
+          <p style="font-size: 11px; color: var(--muted-fg); margin: 2px 0 0;">
+            Archived 3 days ago
+          </p>
+        </div>
+        <span class="badge badge-warn">
+          <svg style="width:10px;height:10px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          27 days
+        </span>
+        <div style="display: flex; gap: 4px; flex-shrink: 0;">
+          <button class="btn-sm btn-outline">
+            <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
+            Restore
+          </button>
+          <button class="btn-sm btn-ghost" style="color: var(--destructive);">
+            <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Chat session card 2 -->
+      <div class="trash-card" style="display: flex; align-items: center; gap: 12px;">
+        <input type="checkbox" class="checkbox" />
+        <div style="width: 36px; height: 36px; border-radius: 6px; background: rgba(84,150,232,0.12); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <svg style="width:18px;height:18px;color:var(--info)" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        </div>
+        <div style="flex: 1; min-width: 0;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <p style="font-size: 13px; font-weight: 500; margin: 0;">Plot hole review — Ch.1-5</p>
+            <span class="badge badge-muted">8 messages</span>
+            <span style="font-size: 11px; color: var(--muted-fg);">GPT-4o</span>
+          </div>
+          <p style="font-size: 11px; color: var(--muted-fg); margin: 2px 0 0;">
+            Archived 10 days ago
+          </p>
+        </div>
+        <span class="badge badge-warn">
+          <svg style="width:10px;height:10px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          20 days
+        </span>
+        <div style="display: flex; gap: 4px; flex-shrink: 0;">
+          <button class="btn-sm btn-outline">
+            <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
+            Restore
+          </button>
+          <button class="btn-sm btn-ghost" style="color: var(--destructive);">
+            <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
   <!-- ── EMPTY STATE (when a tab has no items) ────────────────────────────── -->
   <!-- ══════════════════════════════════════════════════════════════════════ -->
 
@@ -359,16 +512,24 @@
   └──────────────────────────────────────────────────────────────────┘
 
   Per-type variations:
-  ┌──────────────┬──────────────┬─────────────────┬──────────────────┐
-  │ Type         │ Icon         │ Badge           │ Context          │
-  ├──────────────┼──────────────┼─────────────────┼──────────────────┤
-  │ Book         │ Book icon    │ "N chapters"    │ Language          │
-  │ Chapter      │ File icon    │ "N words"       │ "from BookTitle"  │
-  │ Glossary     │ Kind dot     │ Kind name       │ "from BookTitle"  │
-  │ Chat Session │ Chat icon    │ "N messages"    │ Model name        │
-  │ Wiki Page    │ Wiki icon    │ "N revisions"   │ "from WikiTitle"  │
-  │ Translation  │ Lang icon    │ "source→target" │ "from BookTitle"  │
-  └──────────────┴──────────────┴─────────────────┴──────────────────┘
+  ┌──────────────┬──────────────────────┬─────────────────┬──────────────────┬──────────┐
+  │ Type         │ Icon                 │ Badge           │ Context          │ Status   │
+  ├──────────────┼──────────────────────┼─────────────────┼──────────────────┼──────────┤
+  │ Book         │ Book icon (amber)    │ "N chapters"    │ Language          │ ✅ Done  │
+  │ Chapter      │ File icon (teal)     │ "N words"       │ "from BookTitle"  │ 🔜 Next  │
+  │ Glossary     │ Kind color dot       │ Kind name       │ "from BookTitle"  │ ✅ Done  │
+  │ Chat Session │ Chat icon (blue)     │ "N messages"    │ Model name        │ 🔜 Next  │
+  │ Translation  │ Lang icon            │ "source→target" │ "from BookTitle"  │ 📋 Future│
+  │ Wiki Page    │ Wiki icon            │ "N revisions"   │ "from WikiTitle"  │ 📋 Future│
+  └──────────────┴──────────────────────┴─────────────────┴──────────────────┴──────────┘
+
+  ICON COLORS per type:
+  - Book:         amber (--primary-muted bg, --primary icon)
+  - Chapter:      teal  (--accent-muted bg, --accent icon)
+  - Glossary:     kind color dot (no icon box)
+  - Chat Session: blue  (info/12% bg, --info icon)
+  - Translation:  amber variant (future)
+  - Wiki Page:    teal variant (future)
 
   EXPIRY BADGE:
   - > 7 days: subtle (default badge-warn)
