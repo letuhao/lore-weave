@@ -57,6 +57,7 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
         original_language: newLang,
         body: newBody || undefined,
       });
+      invalidate(); // Clear cache so chapter list refetches when user navigates back
       setCreateOpen(false);
       setNewTitle('');
       setNewLang('');
