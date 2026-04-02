@@ -1,6 +1,6 @@
 import type { Editor } from '@tiptap/react';
 import {
-  Bold, Italic, Strikethrough, Code, List, ListOrdered,
+  Bold, Italic, Strikethrough, Code, Code2, List, ListOrdered,
   Heading1, Heading2, Heading3, Minus, Undo2, Redo2, Quote, Pilcrow,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -135,6 +135,13 @@ export function FormatToolbar({ editor, mode = 'classic' }: FormatToolbarProps) 
         title="Block quote"
       >
         <Quote className="h-3.5 w-3.5" />
+      </ToolbarButton>
+      <ToolbarButton
+        active={editor.isActive('codeBlock')}
+        onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+        title="Code block"
+      >
+        <Code2 className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().setHorizontalRule().run()}

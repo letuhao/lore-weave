@@ -4,7 +4,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Editor } from '@tiptap/react';
 import {
-  Pilcrow, Heading1, Heading2, Heading3, Minus, List, ListOrdered, Quote, MessageSquareText,
+  Pilcrow, Heading1, Heading2, Heading3, Minus, List, ListOrdered, Quote, MessageSquareText, Code2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -61,6 +61,12 @@ const SLASH_ITEMS: SlashMenuItem[] = [
     description: 'Block quotation',
     icon: <Quote className="h-4 w-4" />,
     command: (editor) => editor.chain().focus().toggleBlockquote().run(),
+  },
+  {
+    title: 'Code Block',
+    description: 'Syntax highlighted code',
+    icon: <Code2 className="h-4 w-4" />,
+    command: (editor) => editor.chain().focus().toggleCodeBlock().run(),
   },
   {
     title: 'Callout',

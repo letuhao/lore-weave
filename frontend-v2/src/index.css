@@ -167,6 +167,24 @@
   line-height: 1.6;
 }
 
+/* ── Code block syntax highlighting (lowlight / hljs) ──────────────────── */
+.hljs-keyword,
+.hljs-built_in  { color: #e88e32; }
+.hljs-string,
+.hljs-attr       { color: #3dba6a; }
+.hljs-comment,
+.hljs-doctag     { color: #666; font-style: italic; }
+.hljs-function,
+.hljs-title      { color: #5496e8; }
+.hljs-number,
+.hljs-literal    { color: #dc4e4e; }
+.hljs-variable,
+.hljs-template-variable { color: #e8a832; }
+.hljs-type,
+.hljs-class      { color: #c78ef0; }
+.hljs-meta,
+.hljs-selector   { color: #9e9488; }
+
 .tiptap-content p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;

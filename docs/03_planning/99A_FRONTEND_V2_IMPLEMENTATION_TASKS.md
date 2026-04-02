@@ -496,7 +496,7 @@ Review checklist per component:
   [ ] Unused imports cleaned
 
 Deferred polish items (tracked here so they don't get lost):
-  [ ] P3-R1-D1: Editor panel drag-to-resize handles (design draft 02, resize-handle class)
+  [✓] P3-R1-D1: Editor panel drag-to-resize handles — MOVED to E4-01 (image block resize handles)
   [ ] P3-R1-D2: Dead code cleanup — ChunkItem.tsx + ChunkInsertRow.tsx (replaced by Tiptap)
   [ ] P3-R1-D3: Wire OnboardingWizard into App (exists but not rendered)
   [ ] P3-R1-D4: Wire NotificationBell with real data (currently mock)
@@ -990,25 +990,41 @@ P3-17a (wiki backend) blocks all wiki features
 
 ## Phase 3.5: Media Blocks (after Phase 3 FE-only tasks)
 
+> Design drafts: `screen-editor-mixed-media.html`, `screen-editor-version-history.html`, `screen-editor-modes.html`
+>
+> Current editor state: TiptapEditor with StarterKit (heading 1-3, horizontalRule, no codeBlock),
+> Placeholder, Typography, CalloutExtension (ReactNodeViewRenderer), GrammarExtension,
+> SlashMenuExtension. Mode toggle (`classic`/`ai`) filters slash menu items. No media blocks yet.
+
 ### E4: Image + Video + Code Blocks
 
 | Task | Type | Scope | Deps | Est |
 |---|---|---|---|---|
-| E4-01 | FE | Image block Tiptap node (NodeView: preview, caption, resize) | E2-01 | M |
-| E4-02 | FE | Image upload: drag-drop, paste, file picker to MinIO | E4-01 | M |
-| E4-03 | FE | AI prompt field on media blocks (stored in block JSON) | E4-01 | S |
-| E4-04 | FE | Classic mode guards: media blocks locked, backspace/delete protection | E4-01, E1-06 | S |
-| E4-05 | FE | Video block (player placeholder, upload, caption) | E4-02 | M |
-| E4-06 | FE | Code block with syntax highlighting + language selector | E1-01 | S |
+| E4-01 | FE | Image block Tiptap node — ReactNodeViewRenderer with: preview, editable caption, **alt text field** (accessibility, EPUB export), **resize handles** (corner drag, constrained aspect ratio, width stored in block attrs), selection outline, block menu (⋯) | — | M |
+| E4-02 | FE | Image upload: drag-drop zone, clipboard paste (Ctrl+V), file picker — upload to MinIO via gateway, progress indicator, max 10 MB, formats: PNG/JPG/GIF/WebP | E4-01 | M |
+| E4-03 | FE | AI prompt field on media blocks — collapsible `<details>` per image/video block, prompt textarea stored in block JSON `ai_prompt` attr, "Re-generate" + "Copy prompt" buttons, `prompt-badge` (saved/empty) | E4-01 | S |
+| E4-04 | FE | Classic mode guards — media blocks render as compact locked placeholders (`NodeView` with `editable: false`), `handleKeyDown` extension intercepts backspace/delete at media boundaries, guard overlay on attempted deletion with "Switch to AI mode" action, Select-all+delete protects media blocks, drag handle hidden on media in classic mode | E4-01 | S |
+| E4-05 | FE | Video block — ReactNodeViewRenderer: player placeholder (play button overlay, duration, file size), editable caption, upload to MinIO, AI prompt field (generation marked "coming soon"), formats: MP4/WebM, max 100 MB | E4-02 | M |
+| E4-06 | FE | Code block — Tiptap CodeBlockLowlight extension: syntax highlighting (lowlight/highlight.js), language selector dropdown in header bar, copy button, line numbers optional | — | S |
+| E4-07 | FE | Slash menu + FormatToolbar media integration — add Image/Video/Code/Callout insert buttons to FormatToolbar (AI mode only), add Image/Video/Code items to slash menu with `modes: ['ai']`, add Translate/Send-to-AI buttons to toolbar (AI mode) | E4-01, E4-05, E4-06 | S |
+| E4-08 | FE | Source view tab — read-only Block JSON viewer (toggle Visual/Source in toolbar), syntax-highlighted JSON of chapter structure, Copy JSON button | E4-01 | S |
 
 ### E5: Media Version Tracking + AI Generation
 
 | Task | Type | Scope | Deps | Est |
 |---|---|---|---|---|
-| E5-01 | FS | Media version tracking backend (block_media_versions table + API) | E4-01 | M |
-| E5-02 | FE | Version history UI: timeline, prompt diff, side-by-side comparison | E5-01 | L |
-| E5-03 | FS | AI image generation (prompt to provider-registry to MinIO) | E4-03 | L |
-| E5-04 | FE | Re-generate from prompt, version snapshot on regenerate | E5-01, E5-03 | M |
+| E5-01 | FS | Media version tracking backend — `block_media_versions` table in loreweave_books (block_id, version, action, changes[], prompt_snapshot, media_ref, caption_snapshot, ai_model, created_at), CRUD endpoints on book-service, MinIO path pattern `chapters/{chapterId}/blocks/{blockId}/v{N}.{ext}`, retention policy config (keep last 10 versions) | E4-01 | M |
+| E5-02 | FE | Version history UI — split-panel layout (left: side-by-side image comparison with version labels, right: dot timeline with tags), prompt diff (git-style red/green lines), Image/Audio tabs, Restore/Download/Delete actions, storage stats in bottom bar | E5-01 | L |
+| E5-03 | FS | AI image generation — prompt from block `ai_prompt` attr, routed through provider-registry to AI provider, response stored in MinIO, new version created in block_media_versions, provider/model recorded | E4-03 | L |
+| E5-04 | FE | Re-generate from prompt — "Re-generate" button triggers E5-03, creates version snapshot (prompt + old media preserved), progress indicator during generation, error handling (402 no credits, 502 provider error) | E5-01, E5-03 | M |
+
+### Design decisions (Phase 3.5)
+
+- **Resize handles on E4-01** (not deferred): image blocks without resize are unusable — users need layout control from day one. Stores `width` (percentage or px) in block attrs; aspect ratio locked by default.
+- **Alt text on E4-01** (not deferred): required for WCAG 2.1 AA compliance and EPUB export. Separate from caption — caption is visible to readers, alt is for screen readers and broken images. Rendered as a secondary input or collapsible field in the image block UI.
+- **Audio/TTS remains Phase 4.5**: the mixed-media draft designs audio slots on text blocks, but audio is a separate concern from visual media. Build visual media first.
+- **Version data model**: versions stored as `media_versions` array in block JSON (lightweight metadata) + actual media files in MinIO with versioned paths. Old prompts are always kept (cheap text). Media files subject to retention policy.
+- **Classic mode guards**: Tiptap `NodeView` with `editable: false` + `handleKeyDown` at media boundaries. No data deleted on mode switch — media blocks collapse to compact locked placeholders.
 
 ---
 
@@ -1028,7 +1044,7 @@ P3-17a (wiki backend) blocks all wiki features
 
 ### Size Key: S = <1 session, M = 1-2 sessions, L = 2-4 sessions
 
-### Updated Total: 104 tasks (was 75)
+### Updated Total: 106 tasks (was 104)
 
 | Phase | FE | BE | FS | Total |
 |---|---|---|---|---|
@@ -1036,7 +1052,7 @@ P3-17a (wiki backend) blocks all wiki features
 | Phase 2 | 13 | 2 | 1 | 16 |
 | **Phase 2.5** | **9** | **0** | **3** | **12** |
 | Phase 3 | 16 | 5 | 3 | 24 |
-| **Phase 3.5** | **6** | **0** | **4** | **10** |
+| **Phase 3.5** | **8** | **0** | **4** | **12** |
 | Phase 4 | 11 | 3 | 0 | 14 |
 | **Phase 4.5** | **4** | **0** | **3** | **7** |
 | Phase 5 | 4 | 1 | 5 | 10 |

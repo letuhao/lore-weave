@@ -6,6 +6,7 @@ import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 
 import { FormatToolbar } from './FormatToolbar';
 import { SlashMenuExtension, SlashMenuPopup, type EditorMode } from './SlashMenu';
 import { CalloutExtension } from './CalloutNode';
+import { CodeBlockExtension } from './CodeBlockNode';
 import { GrammarExtension, setGrammarEnabled } from './GrammarPlugin';
 
 export interface TiptapEditorHandle {
@@ -57,8 +58,9 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         StarterKit.configure({
           heading: { levels: [1, 2, 3] },
           horizontalRule: {},
-          codeBlock: false,
+          codeBlock: false, // replaced by CodeBlockExtension (lowlight)
         }),
+        CodeBlockExtension,
         Placeholder.configure({
           placeholder: 'Type / for commands...',
         }),

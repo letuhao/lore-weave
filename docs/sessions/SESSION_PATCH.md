@@ -31,7 +31,18 @@
 
 ## Current Active Work
 
-**Phase:** Frontend V2 Rebuild — Phase 3 (Feature Screens)
+**Phase:** Frontend V2 Rebuild — Phase 3.5 (Media Blocks)
+
+**What was done in this session (2026-04-02, session 16):**
+
+Phase 3.5 media blocks: E4-06 completed.
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| Phase 3.5 plan update: E4 expanded to 8 tasks, resize handles + alt text added to E4-01, design decisions documented | `docs/03_planning/99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | this session |
+| E4-06: Code block — CodeBlockLowlight + ReactNodeViewRenderer, language selector (13 langs), copy button, hljs theme, slash menu + toolbar integration | `components/editor/CodeBlockNode.tsx` (new), `TiptapEditor.tsx`, `SlashMenu.tsx`, `FormatToolbar.tsx`, `index.css` | this session |
+
+**9-phase workflow followed for E4-06:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
 **What was done in this session (2026-04-02, session 15):**
 
