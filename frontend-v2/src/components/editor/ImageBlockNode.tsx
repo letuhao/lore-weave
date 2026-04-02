@@ -4,7 +4,7 @@ import {
   NodeViewWrapper,
   type NodeViewProps,
 } from '@tiptap/react';
-import { ImageIcon, Accessibility, Upload, Loader2, Lock, History } from 'lucide-react';
+import { ImageIcon, Accessibility, Upload, Loader2, Lock, History, Trash2, Replace } from 'lucide-react';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { booksApi } from '@/features/books/api';
@@ -149,7 +149,7 @@ function validateFile(file: File): string | null {
 }
 
 // --- NodeView component ---
-function ImageBlockNodeView({ node, updateAttributes, selected, editor }: NodeViewProps) {
+function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNode }: NodeViewProps) {
   const editorMode = ((editor.storage as any).mediaGuard?.editorMode as string) || 'ai';
   const isClassic = editorMode === 'classic';
   const src = node.attrs.src as string | null;
@@ -373,7 +373,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor }: NodeVi
           /* Upload zone */
           <div
             className={cn(
-              'flex aspect-video flex-col items-center justify-center gap-2 rounded-t-lg border-2 border-dashed transition-colors',
+              'flex flex-col items-center justify-center gap-2 rounded-t-lg border-2 border-dashed py-8 transition-colors',
               uploading
                 ? 'border-primary/40 bg-primary/5'
                 : dragOver
@@ -454,6 +454,17 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor }: NodeVi
             {currentWidth}%
           </span>
         )}
+        {/* Replace image — re-open file picker */}
+        {src && (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            title="Replace image"
+          >
+            <Replace className="h-3 w-3" />
+          </button>
+        )}
         {src && _onOpenHistory && (
           <button
             type="button"
@@ -464,6 +475,15 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor }: NodeVi
             <History className="h-3 w-3" />
           </button>
         )}
+        {/* Delete image block */}
+        <button
+          type="button"
+          onClick={() => deleteNode()}
+          className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+          title="Delete image block"
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
       </div>
 
       {/* Alt text — collapsible */}

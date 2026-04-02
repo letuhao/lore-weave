@@ -17,6 +17,7 @@ import { UnsavedChangesDialog } from '@/components/shared/UnsavedChangesDialog';
 import { cn } from '@/lib/utils';
 import { useGrammarEnabled } from '@/hooks/useGrammarCheck';
 import { useEditorMode } from '@/hooks/useEditorMode';
+import { setImageUploadContext } from '@/components/editor/ImageBlockNode';
 
 function wordCount(text: string): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
@@ -84,6 +85,14 @@ export function ChapterEditorPage() {
     setTitle(savedTitle);
     tiptapEditorRef.current?.setContent(savedBody);
   }, [savedBody, savedTitle]);
+
+  // ── Wire media upload context for image/video blocks ──────────────────────
+  useEffect(() => {
+    if (accessToken && bookId && chapterId) {
+      setImageUploadContext({ token: accessToken, bookId, chapterId });
+    }
+    return () => setImageUploadContext(null);
+  }, [accessToken, bookId, chapterId]);
 
   // ── Load ──────────────────────────────────────────────────────────────────
 

@@ -204,7 +204,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor }: NodeVi
         /* Upload zone */
         <div
           className={cn(
-            'flex aspect-video flex-col items-center justify-center gap-2 border-2 border-dashed transition-colors',
+            'flex flex-col items-center justify-center gap-2 border-2 border-dashed py-8 transition-colors',
             uploading
               ? 'border-primary/40 bg-primary/5'
               : dragOver
