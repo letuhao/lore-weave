@@ -52,6 +52,11 @@ Phase 3.5 media blocks: E4-06 completed.
 | E5-01: Media version tracking BE — block_media_versions table, CRUD endpoints (list/create/delete), auto-version on upload, versioned MinIO paths, public-read bucket policy | `migrate.go`, `media.go`, `server.go` | this session |
 | E5-02: Version history UI — split-panel layout, side-by-side image comparison, version timeline (dots, tags, timestamps), LCS-based prompt diff, restore/download/delete actions, History button on image blocks | `VersionHistoryPanel.tsx`, `VersionTimeline.tsx`, `PromptDiff.tsx` (new), `ImageBlockNode.tsx`, `features/books/api.ts` | this session |
 | Video generation service skeleton — Python/FastAPI, health/generate/models endpoints, returns "not_implemented", gateway proxy, FE wired with Generate button | `services/video-gen-service/` (new, 6 files), `gateway-setup.ts`, `main.ts`, `docker-compose.yml`, `features/video-gen/api.ts` (new), `VideoBlockNode.tsx` | this session |
+| M1: Version history button in Classic mode (image + video placeholders) | `ImageBlockNode.tsx`, `VideoBlockNode.tsx` | this session |
+| M2+M3: Guard toast notification + paste protection in Classic mode | `MediaGuardExtension.ts` | this session |
+| M4: Drag handles for block reordering (tiptap-extension-global-drag-handle) | `TiptapEditor.tsx`, `index.css` | this session |
+| M5: Copy filename button on Classic placeholders | `ImageBlockNode.tsx`, `VideoBlockNode.tsx` | this session |
+| M6: Unsaved-changes dialog on AI → Classic mode switch | `ChapterEditorPage.tsx` | this session |
 | E5-03: AI image generation — BE endpoint (provider-registry → AI provider → MinIO), version record, FE generateImage() API client | `media.go`, `server.go`, `config.go`, `docker-compose.yml`, `features/books/api.ts` | this session |
 | E5-04: Re-generate from prompt — wired Re-generate button, fetch user models, call generateImage, loading/error states, spinner in MediaPrompt | `ImageBlockNode.tsx`, `MediaPrompt.tsx` | this session |
 
