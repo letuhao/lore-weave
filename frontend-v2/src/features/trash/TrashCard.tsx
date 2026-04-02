@@ -62,21 +62,28 @@ export function TrashCard({ item, selected, onToggle, onRestore, onPurge, disabl
       })()}
 
       <div className="min-w-0 flex-1">
+        {/* Row 1: title + badge */}
         <div className="flex items-center gap-2">
           <p className="truncate text-[13px] font-medium text-foreground">{item.title}</p>
           <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
             {item.badge}
           </span>
-          {item.context && (
-            <span className="hidden text-[11px] text-muted-foreground sm:inline">{item.context}</span>
-          )}
         </div>
-        <p className="mt-0.5 text-[11px] text-muted-foreground">{relativeDeleted(item.deletedAt)}</p>
+        {/* Row 2: context + deleted time — always visible */}
+        <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          {item.context && (
+            <>
+              <span className="font-medium text-foreground/70">{item.context}</span>
+              <span className="opacity-40">·</span>
+            </>
+          )}
+          <span>{relativeDeleted(item.deletedAt)}</span>
+        </div>
       </div>
 
       <span
         className={cn(
-          'hidden shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium sm:inline-flex',
+          'shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium inline-flex',
           urgent ? 'bg-destructive/15 text-destructive' : 'bg-destructive/10 text-destructive/80',
         )}
       >
