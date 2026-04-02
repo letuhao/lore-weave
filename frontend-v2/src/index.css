@@ -156,6 +156,33 @@
   font-size: 0.85em;
 }
 
+/* ── Drag handle ───────────────────────────────────────────────────────── */
+.drag-handle {
+  position: fixed;
+  opacity: 1;
+  transition: opacity 120ms;
+  width: 16px;
+  height: 20px;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  color: hsl(var(--muted-foreground));
+}
+.drag-handle::after {
+  content: '⠿';
+  font-size: 14px;
+  line-height: 1;
+}
+.drag-handle:hover {
+  background: hsl(var(--secondary));
+  color: hsl(var(--foreground));
+}
+.drag-handle:active {
+  cursor: grabbing;
+}
+
 /* ── Code block (Tiptap native rendering — no custom NodeView) ─────────── */
 .tiptap-content pre {
   background: #0d0b09;

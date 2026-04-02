@@ -12,6 +12,7 @@ import { CodeBlockExtension } from './CodeBlockNode';
 import { ImageBlockExtension } from './ImageBlockNode';
 import { VideoBlockExtension } from './VideoBlockNode';
 import { MediaGuardExtension } from './MediaGuardExtension';
+import GlobalDragHandle from 'tiptap-extension-global-drag-handle';
 import { GrammarExtension, setGrammarEnabled } from './GrammarPlugin';
 
 export interface TiptapEditorHandle {
@@ -80,6 +81,9 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         ImageBlockExtension,
         VideoBlockExtension,
         MediaGuardExtension,
+        GlobalDragHandle.configure({
+          dragHandleWidth: 20,
+        }),
         Placeholder.configure({
           placeholder: 'Type / for commands...',
         }),
