@@ -29,6 +29,9 @@ export type Chapter = {
   draft_updated_at?: string | null;
   draft_revision_count?: number;
   lifecycle_state: 'active' | 'trashed' | 'purge_pending';
+  trashed_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 };
 
 const base = () => import.meta.env.VITE_API_BASE || 'http://localhost:3000';

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BookOpen, Search, Trash2 } from 'lucide-react';
+import { BookOpen, FileText, MessageSquare, Search, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Select } from '@/components/ui/select';
@@ -15,8 +15,6 @@ import { useTrashItems } from '@/features/trash/useTrashItems';
 import { TrashCard } from '@/features/trash/TrashCard';
 import { FloatingTrashBar } from '@/features/trash/FloatingTrashBar';
 import type { TrashItem, TrashType } from '@/features/trash/types';
-import type { Book } from '@/features/books/api';
-import type { EntityTrashItem } from '@/features/glossary/types';
 
 type SortKey = 'newest' | 'oldest' | 'name';
 
@@ -34,15 +32,32 @@ function sortItems(items: TrashItem[], sort: SortKey): TrashItem[] {
   }
 }
 
+// ── Tab definitions ─────────────────────────────────────────────────────────
+
+const TAB_DEFS: { value: TrashType; label: string; icon: React.ReactNode }[] = [
+  { value: 'book',    label: 'Books',         icon: <BookOpen className="h-3.5 w-3.5" /> },
+  { value: 'chapter', label: 'Chapters',      icon: <FileText className="h-3.5 w-3.5" /> },
+  {
+    value: 'glossary',
+    label: 'Glossary',
+    icon: (
+      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+        <path d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 01-1.806-1.741L3.842 10.1a2 2 0 011.075-2.029l1.29-.645a6 6 0 013.86-.517l.318.158a6 6 0 003.86.517l2.387-.477a2 2 0 012.368 2.367l-.402 2.814a2 2 0 01-.77 1.34z" />
+      </svg>
+    ),
+  },
+  { value: 'chat',    label: 'Chat Sessions', icon: <MessageSquare className="h-3.5 w-3.5" /> },
+];
+
+// ── Page component ──────────────────────────────────────────────────────────
+
 export function RecycleBinPageV2() {
   const {
     items: allItems,
     counts,
     isLoading,
-    restoreBook,
-    purgeBook,
-    restoreGlossary,
-    purgeGlossary,
+    restoreItem,
+    purgeItem,
   } = useTrashItems();
 
   const [activeTab, setActiveTab] = useState<TrashType>('book');
@@ -68,7 +83,6 @@ export function RecycleBinPageV2() {
     return sortItems(filtered, sort);
   }, [allItems, activeTab, search, sort]);
 
-  // Clear selection when switching tabs
   function handleTabChange(tab: string) {
     setActiveTab(tab as TrashType);
     setSelected(new Set());
@@ -99,11 +113,7 @@ export function RecycleBinPageV2() {
   async function handleRestore(item: TrashItem) {
     setActionLoading(true);
     try {
-      if (item.type === 'book') {
-        await restoreBook(item.id);
-      } else {
-        await restoreGlossary(item.raw as EntityTrashItem);
-      }
+      await restoreItem(item);
       setSelected((prev) => { const n = new Set(prev); n.delete(item.id); return n; });
       toast.success(`Restored "${item.title}"`);
     } catch (e) {
@@ -125,15 +135,9 @@ export function RecycleBinPageV2() {
     let restored = 0;
     for (const item of selectedItems) {
       try {
-        if (item.type === 'book') {
-          await restoreBook(item.id);
-        } else {
-          await restoreGlossary(item.raw as EntityTrashItem);
-        }
+        await restoreItem(item);
         restored++;
-      } catch {
-        // continue with remaining
-      }
+      } catch { /* continue */ }
     }
     setSelected(new Set());
     setActionLoading(false);
@@ -145,7 +149,7 @@ export function RecycleBinPageV2() {
     setConfirmPurge(selectedItems);
   }
 
-  // ── Confirm purge dialog ──────────────────────────────────────────────────
+  // ── Confirm purge ─────────────────────────────────────────────────────────
 
   async function executePurge() {
     if (!confirmPurge) return;
@@ -153,15 +157,9 @@ export function RecycleBinPageV2() {
     let purged = 0;
     for (const item of confirmPurge) {
       try {
-        if (item.type === 'book') {
-          await purgeBook(item.id);
-        } else {
-          await purgeGlossary(item.raw as EntityTrashItem);
-        }
+        await purgeItem(item);
         purged++;
-      } catch {
-        // continue
-      }
+      } catch { /* continue */ }
     }
     setSelected((prev) => {
       const next = new Set(prev);
@@ -172,17 +170,6 @@ export function RecycleBinPageV2() {
     setActionLoading(false);
     toast.success(`Permanently deleted ${purged} item${purged !== 1 ? 's' : ''}`);
   }
-
-  // ── Tab icon helper ───────────────────────────────────────────────────────
-
-  const TAB_ICONS: Record<TrashType, React.ReactNode> = {
-    book: <BookOpen className="h-3.5 w-3.5" />,
-    glossary: (
-      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-        <path d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 01-1.806-1.741L3.842 10.1a2 2 0 011.075-2.029l1.29-.645a6 6 0 013.86-.517l.318.158a6 6 0 003.86.517l2.387-.477a2 2 0 012.368 2.367l-.402 2.814a2 2 0 01-.77 1.34z" />
-      </svg>
-    ),
-  };
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -208,27 +195,19 @@ export function RecycleBinPageV2() {
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <div className="flex items-center justify-between">
           <TabsList>
-            <TabsTrigger value="book" className="gap-1.5">
-              {TAB_ICONS.book}
-              Books
-              {counts.book > 0 && (
-                <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                  {counts.book}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="glossary" className="gap-1.5">
-              {TAB_ICONS.glossary}
-              Glossary
-              {counts.glossary > 0 && (
-                <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                  {counts.glossary}
-                </span>
-              )}
-            </TabsTrigger>
+            {TAB_DEFS.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
+                {tab.icon}
+                {tab.label}
+                {counts[tab.value] > 0 && (
+                  <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                    {counts[tab.value]}
+                  </span>
+                )}
+              </TabsTrigger>
+            ))}
           </TabsList>
 
-          {/* Search */}
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -240,9 +219,9 @@ export function RecycleBinPageV2() {
           </div>
         </div>
 
-        {/* Shared content for both tabs (same card pattern) */}
-        {(['book', 'glossary'] as TrashType[]).map((tabType) => (
-          <TabsContent key={tabType} value={tabType} className="space-y-3">
+        {/* Shared tab content (same card pattern for all types) */}
+        {TAB_DEFS.map((tab) => (
+          <TabsContent key={tab.value} value={tab.value} className="space-y-3">
             {/* Toolbar */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -268,7 +247,7 @@ export function RecycleBinPageV2() {
               </Select>
             </div>
 
-            {/* Loading skeleton */}
+            {/* Loading */}
             {isLoading && tabItems.length === 0 && (
               <div className="space-y-2">
                 {[1, 2, 3].map((i) => (

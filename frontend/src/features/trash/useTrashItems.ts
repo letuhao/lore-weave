@@ -1,25 +1,34 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/auth';
-import { booksApi, type Book } from '@/features/books/api';
+import { booksApi, type Chapter } from '@/features/books/api';
 import { glossaryApi } from '@/features/glossary/api';
+import { chatApi } from '@/features/chat-v2/api';
 import type { EntityTrashItem } from '@/features/glossary/types';
-import { bookToTrashItem, glossaryToTrashItem, type TrashItem, type TrashType } from './types';
+import type { ChatSession } from '@/features/chat-v2/types';
+import {
+  bookToTrashItem,
+  chapterToTrashItem,
+  glossaryToTrashItem,
+  chatSessionToTrashItem,
+  type TrashItem,
+  type TrashType,
+} from './types';
 
 interface UseTrashItemsReturn {
   items: TrashItem[];
   counts: Record<TrashType, number>;
   isLoading: boolean;
   refresh: () => Promise<void>;
-  restoreBook: (bookId: string) => Promise<void>;
-  purgeBook: (bookId: string) => Promise<void>;
-  restoreGlossary: (item: EntityTrashItem) => Promise<void>;
-  purgeGlossary: (item: EntityTrashItem) => Promise<void>;
+  restoreItem: (item: TrashItem) => Promise<void>;
+  purgeItem: (item: TrashItem) => Promise<void>;
 }
 
 export function useTrashItems(): UseTrashItemsReturn {
   const { accessToken } = useAuth();
   const [bookItems, setBookItems] = useState<TrashItem[]>([]);
+  const [chapterItems, setChapterItems] = useState<TrashItem[]>([]);
   const [glossaryItems, setGlossaryItems] = useState<TrashItem[]>([]);
+  const [chatItems, setChatItems] = useState<TrashItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // ── Fetch books ───────────────────────────────────────────────────────────
@@ -34,12 +43,36 @@ export function useTrashItems(): UseTrashItemsReturn {
     }
   }, [accessToken]);
 
+  // ── Fetch chapters (across all books) ─────────────────────────────────────
+
+  const fetchChapters = useCallback(async () => {
+    if (!accessToken) return;
+    try {
+      const booksRes = await booksApi.listBooks(accessToken);
+      const bookMap = new Map(booksRes.items.map((b) => [b.book_id, b.title]));
+
+      const results = await Promise.all(
+        booksRes.items.map((b) =>
+          booksApi
+            .listChapters(accessToken, b.book_id, { lifecycle_state: 'trashed', limit: 100 })
+            .then((r) => r.items.map((ch) => chapterToTrashItem(ch, bookMap.get(b.book_id))))
+            .catch(() => [] as TrashItem[]),
+        ),
+      );
+
+      setChapterItems(
+        results.flat().sort((a, b) => new Date(b.deletedAt).getTime() - new Date(a.deletedAt).getTime()),
+      );
+    } catch {
+      setChapterItems([]);
+    }
+  }, [accessToken]);
+
   // ── Fetch glossary (across all books) ─────────────────────────────────────
 
   const fetchGlossary = useCallback(async () => {
     if (!accessToken) return;
     try {
-      // Get all books to scan their glossary trash
       const booksRes = await booksApi.listBooks(accessToken);
       const bookMap = new Map(booksRes.items.map((b) => [b.book_id, b.title]));
 
@@ -60,62 +93,102 @@ export function useTrashItems(): UseTrashItemsReturn {
     }
   }, [accessToken]);
 
+  // ── Fetch chat sessions (archived) ────────────────────────────────────────
+
+  const fetchChat = useCallback(async () => {
+    if (!accessToken) return;
+    try {
+      const res = await chatApi.listSessions(accessToken, 'archived');
+      setChatItems(res.items.map(chatSessionToTrashItem));
+    } catch {
+      setChatItems([]);
+    }
+  }, [accessToken]);
+
   // ── Combined refresh ──────────────────────────────────────────────────────
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
-    await Promise.all([fetchBooks(), fetchGlossary()]);
+    await Promise.all([fetchBooks(), fetchChapters(), fetchGlossary(), fetchChat()]);
     setIsLoading(false);
-  }, [fetchBooks, fetchGlossary]);
+  }, [fetchBooks, fetchChapters, fetchGlossary, fetchChat]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
-  // ── Actions ───────────────────────────────────────────────────────────────
+  // ── Unified restore/purge ─────────────────────────────────────────────────
 
-  const restoreBook = useCallback(
-    async (bookId: string) => {
+  const restoreItem = useCallback(
+    async (item: TrashItem) => {
       if (!accessToken) return;
-      await booksApi.restoreBook(accessToken, bookId);
-      await fetchBooks();
+      switch (item.type) {
+        case 'book':
+          await booksApi.restoreBook(accessToken, item.id);
+          await fetchBooks();
+          break;
+        case 'chapter': {
+          const ch = item.raw as Chapter;
+          await booksApi.restoreChapter(accessToken, ch.book_id, ch.chapter_id);
+          await fetchChapters();
+          break;
+        }
+        case 'glossary': {
+          const ent = item.raw as EntityTrashItem;
+          await glossaryApi.restoreEntity(ent.book_id, ent.entity_id, accessToken);
+          await fetchGlossary();
+          break;
+        }
+        case 'chat': {
+          const sess = item.raw as ChatSession;
+          await chatApi.patchSession(accessToken, sess.session_id, { status: 'active' });
+          await fetchChat();
+          break;
+        }
+      }
     },
-    [accessToken, fetchBooks],
+    [accessToken, fetchBooks, fetchChapters, fetchGlossary, fetchChat],
   );
 
-  const purgeBook = useCallback(
-    async (bookId: string) => {
+  const purgeItem = useCallback(
+    async (item: TrashItem) => {
       if (!accessToken) return;
-      await booksApi.purgeBook(accessToken, bookId);
-      await fetchBooks();
+      switch (item.type) {
+        case 'book':
+          await booksApi.purgeBook(accessToken, item.id);
+          await fetchBooks();
+          break;
+        case 'chapter': {
+          const ch = item.raw as Chapter;
+          await booksApi.purgeChapter(accessToken, ch.book_id, ch.chapter_id);
+          await fetchChapters();
+          break;
+        }
+        case 'glossary': {
+          const ent = item.raw as EntityTrashItem;
+          await glossaryApi.purgeEntity(ent.book_id, ent.entity_id, accessToken);
+          await fetchGlossary();
+          break;
+        }
+        case 'chat': {
+          const sess = item.raw as ChatSession;
+          await chatApi.deleteSession(accessToken, sess.session_id);
+          await fetchChat();
+          break;
+        }
+      }
     },
-    [accessToken, fetchBooks],
-  );
-
-  const restoreGlossary = useCallback(
-    async (item: EntityTrashItem) => {
-      if (!accessToken) return;
-      await glossaryApi.restoreEntity(item.book_id, item.entity_id, accessToken);
-      await fetchGlossary();
-    },
-    [accessToken, fetchGlossary],
-  );
-
-  const purgeGlossary = useCallback(
-    async (item: EntityTrashItem) => {
-      if (!accessToken) return;
-      await glossaryApi.purgeEntity(item.book_id, item.entity_id, accessToken);
-      await fetchGlossary();
-    },
-    [accessToken, fetchGlossary],
+    [accessToken, fetchBooks, fetchChapters, fetchGlossary, fetchChat],
   );
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
-  const allItems = [...bookItems, ...glossaryItems];
+  const allItems = [...bookItems, ...chapterItems, ...glossaryItems, ...chatItems];
   const counts: Record<TrashType, number> = {
     book: bookItems.length,
+    chapter: chapterItems.length,
     glossary: glossaryItems.length,
+    chat: chatItems.length,
   };
 
   return {
@@ -123,9 +196,7 @@ export function useTrashItems(): UseTrashItemsReturn {
     counts,
     isLoading,
     refresh,
-    restoreBook,
-    purgeBook,
-    restoreGlossary,
-    purgeGlossary,
+    restoreItem,
+    purgeItem,
   };
 }

@@ -1,4 +1,4 @@
-import { BookOpen, FileText, RotateCcw, Trash2, Clock } from 'lucide-react';
+import { BookOpen, FileText, MessageSquare, RotateCcw, Trash2, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { TrashItem } from './types';
@@ -28,10 +28,10 @@ function relativeDeleted(iso: string): string {
   return `Deleted ${days} days ago`;
 }
 
-const TYPE_ICON: Record<string, React.ReactNode> = {
-  book: <BookOpen className="h-[18px] w-[18px]" />,
-  glossary: null, // uses kind dot instead
-  chapter: <FileText className="h-[18px] w-[18px]" />,
+const TYPE_ICON: Record<string, { icon: React.ReactNode; bg: string; fg: string }> = {
+  book:    { icon: <BookOpen className="h-[18px] w-[18px]" />,       bg: 'bg-primary/10',    fg: 'text-primary' },
+  chapter: { icon: <FileText className="h-[18px] w-[18px]" />,      bg: 'bg-accent/10',     fg: 'text-accent' },
+  chat:    { icon: <MessageSquare className="h-[18px] w-[18px]" />, bg: 'bg-blue-500/10',   fg: 'text-blue-400' },
 };
 
 export function TrashCard({ item, selected, onToggle, onRestore, onPurge, disabled }: TrashCardProps) {
@@ -61,11 +61,14 @@ export function TrashCard({ item, selected, onToggle, onRestore, onPurge, disabl
           className="h-2.5 w-2.5 shrink-0 rounded-full"
           style={{ background: item.iconColor }}
         />
-      ) : (
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-          {TYPE_ICON[item.type] ?? <FileText className="h-[18px] w-[18px]" />}
-        </div>
-      )}
+      ) : (() => {
+        const style = TYPE_ICON[item.type] ?? TYPE_ICON.book;
+        return (
+          <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-md', style.bg, style.fg)}>
+            {style.icon}
+          </div>
+        );
+      })()}
 
       {/* Content */}
       <div className="min-w-0 flex-1">
