@@ -74,6 +74,23 @@ export const VideoBlockExtension = Node.create({
   addNodeView() {
     return ReactNodeViewRenderer(VideoBlockNodeView);
   },
+
+  // Auto-generate blockId on first load for existing blocks without one
+  onCreate() {
+    const { editor } = this;
+    const { doc, tr } = editor.state;
+    let modified = false;
+    doc.descendants((node, pos) => {
+      if (node.type.name === 'videoBlock' && !node.attrs.blockId) {
+        tr.setNodeMarkup(pos, undefined, {
+          ...node.attrs,
+          blockId: crypto.randomUUID().slice(0, 8),
+        });
+        modified = true;
+      }
+    });
+    if (modified) editor.view.dispatch(tr);
+  },
 });
 
 // --- Validation ---
@@ -485,6 +502,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
       </div>
 
       {/* AI Prompt — collapsible */}
+      {/* AI Prompt — collapsible */}
       <MediaPrompt
         prompt={(node.attrs.ai_prompt as string) || ''}
         onChange={(val) => updateAttributes({ ai_prompt: val })}
@@ -492,6 +510,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         regenerateDisabled={true}
         regenerateLabel="Generate (coming soon)"
       />
+      {/* Placeholder for future video generation errors */}
     </NodeViewWrapper>
   );
 }
