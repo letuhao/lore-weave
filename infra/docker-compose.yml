@@ -89,6 +89,10 @@ services:
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       BOOKS_STORAGE_BUCKET: loreweave-dev-books
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: loreweave
+      MINIO_SECRET_KEY: loreweave_dev_minio_secret
+      MINIO_USE_SSL: "false"
     depends_on:
       postgres:
         condition: service_healthy

@@ -17,6 +17,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 
 	"github.com/loreweave/book-service/internal/config"
 )
@@ -25,10 +27,21 @@ type Server struct {
 	pool   *pgxpool.Pool
 	cfg    *config.Config
 	secret []byte
+	minio  *minio.Client
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
-	return &Server{pool: pool, cfg: cfg, secret: []byte(cfg.JWTSecret)}
+	s := &Server{pool: pool, cfg: cfg, secret: []byte(cfg.JWTSecret)}
+	if cfg.MinioEndpoint != "" && cfg.MinioSecretKey != "" {
+		mc, err := minio.New(cfg.MinioEndpoint, &minio.Options{
+			Creds:  credentials.NewStaticV4(cfg.MinioAccessKey, cfg.MinioSecretKey, ""),
+			Secure: cfg.MinioUseSSL,
+		})
+		if err == nil {
+			s.minio = mc
+		}
+	}
+	return s
 }
 
 func (s *Server) Router() http.Handler {
@@ -80,6 +93,7 @@ func (s *Server) Router() http.Handler {
 				r.Get("/revisions", s.listRevisions)
 				r.Get("/revisions/{revision_id}", s.getRevision)
 				r.Post("/revisions/{revision_id}/restore", s.restoreRevision)
+				r.Post("/media", s.uploadChapterMedia)
 			})
 		})
 	})

@@ -4,9 +4,25 @@ import {
   NodeViewWrapper,
   type NodeViewProps,
 } from '@tiptap/react';
-import { ImageIcon, Accessibility } from 'lucide-react';
+import { ImageIcon, Accessibility, Upload, Loader2 } from 'lucide-react';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
+import { booksApi } from '@/features/books/api';
+
+// --- Upload context (set by the editor page, read by NodeView) ---
+export interface ImageUploadContext {
+  token: string;
+  bookId: string;
+  chapterId: string;
+}
+
+let _uploadCtx: ImageUploadContext | null = null;
+export function setImageUploadContext(ctx: ImageUploadContext | null) {
+  _uploadCtx = ctx;
+}
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
 // --- Tiptap node extension ---
 export const ImageBlockExtension = Node.create({
@@ -87,6 +103,17 @@ function useResize(
   return { currentWidth, setCurrentWidth, handlePointerDown };
 }
 
+// --- Upload validation ---
+function validateFile(file: File): string | null {
+  if (!ALLOWED_TYPES.has(file.type)) {
+    return `Unsupported type: ${file.type}. Use PNG, JPG, GIF, or WebP.`;
+  }
+  if (file.size > MAX_FILE_SIZE) {
+    return `File too large: ${(file.size / 1024 / 1024).toFixed(1)} MB. Max 10 MB.`;
+  }
+  return null;
+}
+
 // --- NodeView component ---
 function ImageBlockNodeView({ node, updateAttributes, selected }: NodeViewProps) {
   const src = node.attrs.src as string | null;
@@ -94,7 +121,12 @@ function ImageBlockNodeView({ node, updateAttributes, selected }: NodeViewProps)
   const caption = (node.attrs.caption as string) || '';
   const width = (node.attrs.width as number) || 100;
   const [showAlt, setShowAlt] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadPct, setUploadPct] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleResizeEnd = useCallback(
     (newWidth: number) => {
@@ -128,13 +160,103 @@ function ImageBlockNodeView({ node, updateAttributes, selected }: NodeViewProps)
     [updateAttributes],
   );
 
+  // --- Upload logic ---
+  const doUpload = useCallback(
+    async (file: File) => {
+      const err = validateFile(file);
+      if (err) {
+        setUploadError(err);
+        return;
+      }
+      if (!_uploadCtx) {
+        setUploadError('Upload not available — save the chapter first.');
+        return;
+      }
+      setUploading(true);
+      setUploadPct(0);
+      setUploadError(null);
+      try {
+        const result = await booksApi.uploadChapterMedia(
+          _uploadCtx.token,
+          _uploadCtx.bookId,
+          _uploadCtx.chapterId,
+          file,
+          (pct) => setUploadPct(pct),
+        );
+        updateAttributes({
+          src: result.url,
+          title: result.filename,
+        });
+      } catch (e: any) {
+        setUploadError(e.message || 'Upload failed');
+      } finally {
+        setUploading(false);
+      }
+    },
+    [updateAttributes],
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      const file = e.dataTransfer.files[0];
+      if (file) doUpload(file);
+    },
+    [doUpload],
+  );
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback(() => setDragOver(false), []);
+
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) doUpload(file);
+      // Reset input so the same file can be re-selected
+      e.target.value = '';
+    },
+    [doUpload],
+  );
+
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent) => {
+      const items = e.clipboardData.items;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+          const file = items[i].getAsFile();
+          if (file) {
+            e.preventDefault();
+            doUpload(file);
+            return;
+          }
+        }
+      }
+    },
+    [doUpload],
+  );
+
   return (
     <NodeViewWrapper
       className={cn(
         'my-2 overflow-hidden rounded-lg border transition-shadow',
         selected ? 'ring-2 ring-primary/40' : 'hover:border-border-hover',
       )}
+      onPaste={!src ? handlePaste : undefined}
     >
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/gif,image/webp"
+        className="hidden"
+        onChange={handleFileSelect}
+      />
+
       {/* Image container with percentage width */}
       <div
         ref={containerRef}
@@ -150,32 +272,69 @@ function ImageBlockNodeView({ node, updateAttributes, selected }: NodeViewProps)
             draggable={false}
           />
         ) : (
-          /* Empty state placeholder */
-          <div className="flex aspect-video flex-col items-center justify-center gap-2 rounded-t-lg bg-secondary text-muted-foreground">
-            <ImageIcon className="h-8 w-8 opacity-30" />
-            <span className="text-xs">No image</span>
-            <span className="text-[9px] opacity-50">
-              Use the upload button or paste an image
-            </span>
+          /* Upload zone */
+          <div
+            className={cn(
+              'flex aspect-video flex-col items-center justify-center gap-2 rounded-t-lg border-2 border-dashed transition-colors',
+              uploading
+                ? 'border-primary/40 bg-primary/5'
+                : dragOver
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border bg-secondary text-muted-foreground hover:border-primary/40 hover:text-foreground',
+            )}
+            contentEditable={false}
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onClick={() => !uploading && fileInputRef.current?.click()}
+            style={{ cursor: uploading ? 'default' : 'pointer' }}
+          >
+            {uploading ? (
+              <>
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <span className="text-xs">Uploading... {uploadPct}%</span>
+                <div className="mx-8 h-1.5 w-48 overflow-hidden rounded-full bg-secondary">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{ width: `${uploadPct}%` }}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <Upload className="h-6 w-6 opacity-40" />
+                <span className="text-xs font-medium">
+                  {dragOver ? 'Drop image here' : 'Drop an image, click to browse, or Ctrl+V'}
+                </span>
+                <span className="text-[9px] opacity-50">
+                  PNG, JPG, GIF, WebP — Max 10 MB
+                </span>
+              </>
+            )}
+            {uploadError && (
+              <span className="mt-1 text-[10px] text-destructive">{uploadError}</span>
+            )}
           </div>
         )}
 
-        {/* Resize handle — bottom-right corner */}
-        <div
-          className={cn(
-            'absolute bottom-1 right-1 flex h-4 w-4 cursor-nwse-resize items-center justify-center rounded-sm bg-primary/70 transition-opacity',
-            selected ? 'opacity-80' : 'opacity-0 group-hover:opacity-100',
-          )}
-          onPointerDown={handlePointerDown}
-          contentEditable={false}
-          title={`Width: ${currentWidth}%`}
-        >
-          <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor" className="text-primary-fg">
-            <circle cx="6" cy="6" r="1" />
-            <circle cx="6" cy="3" r="1" />
-            <circle cx="3" cy="6" r="1" />
-          </svg>
-        </div>
+        {/* Resize handle — bottom-right corner (only when image loaded) */}
+        {src && (
+          <div
+            className={cn(
+              'absolute bottom-1 right-1 flex h-4 w-4 cursor-nwse-resize items-center justify-center rounded-sm bg-primary/70 transition-opacity',
+              selected ? 'opacity-80' : 'opacity-0 group-hover:opacity-100',
+            )}
+            onPointerDown={handlePointerDown}
+            contentEditable={false}
+            title={`Width: ${currentWidth}%`}
+          >
+            <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor" className="text-primary-fg">
+              <circle cx="6" cy="6" r="1" />
+              <circle cx="6" cy="3" r="1" />
+              <circle cx="3" cy="6" r="1" />
+            </svg>
+          </div>
+        )}
       </div>
 
       {/* Caption + metadata bar */}

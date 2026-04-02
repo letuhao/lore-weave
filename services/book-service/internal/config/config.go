@@ -13,6 +13,10 @@ type Config struct {
 	BooksStorageBucket string
 	QuotaBytesDefault  int64
 	SharingInternalURL string
+	MinioEndpoint      string
+	MinioAccessKey     string
+	MinioSecretKey     string
+	MinioUseSSL        bool
 }
 
 func Load() (*Config, error) {
@@ -23,6 +27,10 @@ func Load() (*Config, error) {
 		BooksStorageBucket: getEnv("BOOKS_STORAGE_BUCKET", "loreweave-dev-books"),
 		QuotaBytesDefault:  getInt64("QUOTA_BYTES_DEFAULT", 100*1024*1024),
 		SharingInternalURL: getEnv("SHARING_INTERNAL_URL", "http://localhost:8083"),
+		MinioEndpoint:      getEnv("MINIO_ENDPOINT", "localhost:9000"),
+		MinioAccessKey:     getEnv("MINIO_ACCESS_KEY", "loreweave"),
+		MinioSecretKey:     getEnv("MINIO_SECRET_KEY", ""),
+		MinioUseSSL:        getEnv("MINIO_USE_SSL", "false") == "true",
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

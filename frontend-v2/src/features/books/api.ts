@@ -297,4 +297,51 @@ export const booksApi = {
       `/v1/sharing/unlisted/${accessToken}/chapters/${chapterId}`,
     );
   },
+
+  /** Upload chapter media (image) to MinIO. Uses XHR for progress tracking. */
+  uploadChapterMedia(
+    token: string,
+    bookId: string,
+    chapterId: string,
+    file: File,
+    onProgress?: (pct: number) => void,
+  ): Promise<{ url: string; object_key: string; filename: string; size: number; content_type: string }> {
+    return new Promise((resolve, reject) => {
+      const form = new FormData();
+      form.append('file', file);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${base()}/v1/books/${bookId}/chapters/${chapterId}/media`);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+      if (onProgress) {
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            onProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        });
+      }
+
+      xhr.addEventListener('load', () => {
+        try {
+          const body = JSON.parse(xhr.responseText);
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(body);
+          } else {
+            reject(Object.assign(new Error(body?.message || xhr.statusText), {
+              status: xhr.status,
+              code: body?.code,
+            }));
+          }
+        } catch {
+          reject(new Error('Invalid response'));
+        }
+      });
+
+      xhr.addEventListener('error', () => reject(new Error('Network error')));
+      xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')));
+
+      xhr.send(form);
+    });
+  },
 };
