@@ -1,9 +1,9 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"path/filepath"
 
@@ -102,13 +102,6 @@ func (s *Server) uploadChapterMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Read file
-	buf := new(bytes.Buffer)
-	if _, err := buf.ReadFrom(f); err != nil {
-		writeError(w, http.StatusInternalServerError, "MEDIA_UPLOAD_FAILED", "failed to read file")
-		return
-	}
-
 	// Generate object key
 	mediaID := uuid.New().String()
 	objectKey := fmt.Sprintf("books/%s/chapters/%s/%s%s", bookID, chapterID, mediaID, ext)
@@ -120,8 +113,8 @@ func (s *Server) uploadChapterMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Upload to MinIO
-	_, err = s.minio.PutObject(ctx, mediaBucket, objectKey, bytes.NewReader(buf.Bytes()), int64(buf.Len()),
+	// Stream directly from multipart to MinIO (avoids buffering 100 MB video in memory)
+	uploadInfo, err := s.minio.PutObject(ctx, mediaBucket, objectKey, io.LimitReader(f, sizeLimit), fh.Size,
 		minio.PutObjectOptions{ContentType: contentType})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "MEDIA_UPLOAD_FAILED", "upload failed")
@@ -140,19 +133,33 @@ func (s *Server) uploadChapterMedia(w http.ResponseWriter, r *http.Request) {
 		"url":          mediaURL,
 		"object_key":   objectKey,
 		"filename":     originalName,
-		"size":         buf.Len(),
+		"size":         uploadInfo.Size,
 		"content_type": contentType,
 	})
 }
 
+var mediaBucketReady bool
+
 func (s *Server) ensureMediaBucket(ctx context.Context) error {
+	if mediaBucketReady {
+		return nil
+	}
 	exists, err := s.minio.BucketExists(ctx, mediaBucket)
 	if err != nil {
 		return err
 	}
 	if !exists {
-		return s.minio.MakeBucket(ctx, mediaBucket, minio.MakeBucketOptions{})
+		err = s.minio.MakeBucket(ctx, mediaBucket, minio.MakeBucketOptions{})
+		if err != nil {
+			// Race condition: another goroutine may have created it
+			if exists2, _ := s.minio.BucketExists(ctx, mediaBucket); exists2 {
+				mediaBucketReady = true
+				return nil
+			}
+			return err
+		}
 	}
+	mediaBucketReady = true
 	return nil
 }
 

@@ -21,6 +21,9 @@ let _uploadCtx: ImageUploadContext | null = null;
 export function setImageUploadContext(ctx: ImageUploadContext | null) {
   _uploadCtx = ctx;
 }
+export function getUploadContext(): ImageUploadContext | null {
+  return _uploadCtx;
+}
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const ALLOWED_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);

@@ -77,9 +77,11 @@ function syntaxHighlight(json: string): (JSX.Element | string)[] {
     }
 
     if (match[1]) {
-      // Key
+      // Key — match[0] includes the trailing `: `, so use the full match
       parts.push(<span key={idx++} style={{ color: '#5496e8' }}>{match[1]}</span>);
-      parts.push(': ');
+      // The regex consumed `"key":` but JSON.stringify puts `"key": ` — grab the colon+space from the match
+      const afterKey = json.slice(match.index + match[1].length, regex.lastIndex);
+      parts.push(afterKey);
     } else if (match[2]) {
       // String value
       parts.push(<span key={idx++} style={{ color: '#3dba6a' }}>{match[2]}</span>);

@@ -9,13 +9,7 @@ import { useState, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { booksApi } from '@/features/books/api';
 import { MediaPrompt } from './MediaPrompt';
-import type { ImageUploadContext } from './ImageBlockNode';
-
-// Reuse the upload context from ImageBlockNode
-let _uploadCtx: ImageUploadContext | null = null;
-export function setVideoUploadContext(ctx: ImageUploadContext | null) {
-  _uploadCtx = ctx;
-}
+import { type ImageUploadContext, getUploadContext } from './ImageBlockNode';
 
 const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100 MB
 const ALLOWED_VIDEO_TYPES = new Set(['video/mp4', 'video/webm']);
@@ -101,6 +95,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor }: NodeVi
         setUploadError(err);
         return;
       }
+      const _uploadCtx = getUploadContext();
       if (!_uploadCtx) {
         setUploadError('Upload not available — save the chapter first.');
         return;
