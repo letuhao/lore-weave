@@ -2,9 +2,9 @@
 
 > **Purpose:** Give the next agent complete context to continue.
 > **Date:** 2026-04-02 (session 15 end)
-> **Last commit:** `78107a1` — chat context integration
-> **Previous focus:** Phase 3 FE feature screens — all done
-> **Current focus:** Phase 3 FE complete. Next: Phase 3.5 (media blocks) or P3-08 (genre groups)
+> **Last commit:** `eeee14c` — getBookByID scan fix + integration tests
+> **Previous focus:** Phase 3 FE feature screens + backend fixes
+> **Current focus:** Phase 3 FE complete, backend hardened. Next: Phase 3.5 (media blocks) or P3-08 (genre groups)
 
 ---
 
@@ -18,9 +18,23 @@
 | P3-21 | `b8b96b6` | Book Settings Tab — metadata editing (title, description, language, summary), cover image upload/replace/delete, wired into BookDetailPageV2 |
 | P3-22 | `08e294d` | Universal Recycle Bin — category tabs (Books, Glossary), TrashCard component, FloatingTrashBar, bulk select, search, sort, expiry badges, confirm dialog |
 
-### Integration Tests Added
-- `infra/test-chat.sh` — 25 scenarios, all pass (session CRUD, messages, outputs, export, auth guard)
-- `infra/test-sharing.sh` — 19 scenarios, all pass (visibility lifecycle, token rotation, catalog, auth guard)
+### Backend Fixes
+| Fix | What |
+|-----|------|
+| BE-S1 | patchBook: dynamic SET builder replaces COALESCE — null clears fields, omit keeps unchanged |
+| BE-S1 | getBookByID + listBooksByLifecycle: scan desc/lang/summary into `*string` (not `string`) — fixes crash on NULL |
+| BE-C1 | chat-service: optional `context` field on SendMessageRequest — injected as system message before user content |
+| BE-S2 | Gateway: selfHandleResponse on book proxy for multipart |
+| BE-S3 | False alarm — multipart proxy works fine (was test script issue) |
+
+### Integration Tests (120 total scenarios)
+| Script | Scenarios | What |
+|--------|-----------|------|
+| `test-chat.sh` | 27/27 | Session CRUD, messages, outputs, export, auth guard, context field (T16) |
+| `test-sharing.sh` | 19/19 | Visibility lifecycle, token rotation, catalog, auth guard |
+| `test-book-settings.sh` | 23/23 | patchBook null clearing, cover upload/get/delete, chapter proxy, empty patch |
+| `test-glossary.sh` | 35/35 | Entity CRUD, kinds, attributes, chapter links, trash |
+| `test-integration-d1.sh` | 16/16 | Data pipeline, JSONB, chapter_blocks, triggers |
 
 ### Phase 3 Frontend — FULL STATUS
 | Task | Status | What |
@@ -91,28 +105,18 @@ Tabs use `display: none` (not conditional rendering) to prevent remount flicker.
 
 ## 3. What's Next
 
-### Immediate (P0) — Recycle Bin Gap Analysis
-The universal recycle bin currently supports Books + Glossary. Missing trash types need BE + FE work:
+### Immediate — What To Do Next
 
-| Trash Type | Backend Status | Frontend Status | What's Needed |
+Phase 3 FE is complete. All APIs are verified with 120 integration test scenarios. Pick from:
+
+| Priority | Task | Type | Notes |
 |---|---|---|---|
-| **Books** | ✅ `listTrash`, `restoreBook`, `purgeBook` | ✅ Tab in RecycleBinPageV2 | Done |
-| **Glossary** | ✅ `listEntityTrash`, `restoreEntity`, `purgeEntity` | ✅ Tab in RecycleBinPageV2 | Done |
-| **Chapters** | ✅ `trashChapter`, `restoreChapter`, `purgeChapter` exist. List via `?lifecycle_state=trashed` | ❌ No tab yet | FE: add `listChaptersTrash` API helper + Chapters tab + normalizer |
-| **Chat Sessions** | ⚠️ Archive exists (`PATCH status=archived`), no purge/delete from archive | ❌ No tab yet | BE: ensure `DELETE /sessions/{id}` works for archived. FE: add tab |
-| **Translations** | ❌ No trash concept | ❌ — | Future — skip for now |
-| **Wiki Pages** | ❌ Service doesn't exist yet | ❌ — | Future — skip for now |
-
-**Recommended next steps:**
-1. Add Chapters tab to RecycleBinPageV2 (pure FE — backend ready)
-2. Add Chat Sessions tab (minor BE check + FE)
-3. Then move to Phase 3.5 or other tasks
-
-### After Recycle Bin Completion
-4. **P3-19: Chat Context Integration [FE]** — context-aware chat
-5. **Phase 3.5: Media blocks** — images, video, audio, code blocks in editor
-6. **Translation Workbench** — block-level translation (design draft exists)
-7. **P3-08: Genre Groups** — new backend tables + frontend
+| **P1** | **Phase 3.5: Media blocks** | FE+BE | images, video, audio, code blocks in editor |
+| **P1** | **P3-08a: Genre Groups backend** | BE (Go) | New tables + CRUD endpoints |
+| P1 | Translation Workbench | FE+BE | Block-level translation (design draft exists) |
+| P2 | GUI Review deferred items (D1-D22) | FE | Editor polish, glossary polish, reader polish |
+| P2 | Platform Mode (103_PLATFORM_MODE_PLAN.md) | Full stack | Admin, tiers, system AI — 35 tasks |
+| P2 | P3-22c/d: Translation + Wiki trash tabs | Future | Blocked on Translation Workbench / Wiki backend |
 
 ### Deferred Items (tracked in 99A plan)
 - D1-D5: Editor resize handles, dead code cleanup, OnboardingWizard, NotificationBell, ModeProvider
