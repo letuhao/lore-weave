@@ -1,13 +1,5 @@
-import {
-  ReactNodeViewRenderer,
-  NodeViewWrapper,
-  NodeViewContent,
-  type NodeViewProps,
-} from '@tiptap/react';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { createLowlight } from 'lowlight';
-import { useState, useCallback } from 'react';
-import { cn } from '@/lib/utils';
 
 // --- Language imports (tree-shakeable, not `common`) ---
 import javascript from 'highlight.js/lib/languages/javascript';
@@ -40,7 +32,6 @@ lowlight.register('bash', bash);
 
 export { lowlight };
 
-// --- Language list for the selector ---
 export const CODE_LANGUAGES = [
   { value: 'plaintext', label: 'Plain Text' },
   { value: 'javascript', label: 'JavaScript' },
@@ -57,87 +48,122 @@ export const CODE_LANGUAGES = [
   { value: 'bash', label: 'Bash' },
 ] as const;
 
-// --- NodeView component ---
-// Key: NodeViewContent MUST render as <pre> to preserve whitespace on paste.
-// The type says as="div" only but runtime accepts any string tag.
-function CodeBlockNodeView({ node, updateAttributes, editor }: NodeViewProps) {
-  const editorMode = ((editor.storage as any).mediaGuard?.editorMode as string) || 'ai';
-  const isClassic = editorMode === 'classic';
-  const language = (node.attrs.language as string) || 'plaintext';
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(node.textContent).then(
-      () => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      },
-      () => {},
-    );
-  }, [node.textContent]);
-
-  const handleLanguageChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
-      updateAttributes({ language: e.target.value });
-    },
-    [updateAttributes],
-  );
-
-  // --- Classic mode: compact locked placeholder ---
-  if (isClassic) {
-    return (
-      <NodeViewWrapper className="code-block-wrapper code-block-wrapper--classic">
-        <div className="code-block-classic">
-          <span className="code-block-classic-icon">&lt;/&gt;</span>
-          <span className="code-block-classic-label">Code Block</span>
-          <span className="code-block-classic-lang">{language}</span>
-          <span className="code-block-classic-lock">🔒 AI mode</span>
-        </div>
-        {/* Hidden but preserved content — NodeViewContent must always be in DOM */}
-        <NodeViewContent style={{ display: 'none' }} />
-      </NodeViewWrapper>
-    );
-  }
-
-  return (
-    <NodeViewWrapper className="code-block-wrapper">
-      {/* Header bar — not editable */}
-      <div className="code-block-header" contentEditable={false}>
-        <select
-          value={language}
-          onChange={handleLanguageChange}
-          aria-label="Code language"
-          className="code-block-lang"
-        >
-          {CODE_LANGUAGES.map((lang) => (
-            <option key={lang.value} value={lang.value}>
-              {lang.label}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          onClick={handleCopy}
-          className={cn('code-block-copy', copied && 'code-block-copy--copied')}
-          title="Copy code"
-        >
-          {copied ? '✓ Copied' : '⧉ Copy'}
-        </button>
-      </div>
-
-      {/* Code content — contentDOMElementTag='pre' in ReactNodeViewRenderer
-          makes ProseMirror use a real <pre> as contentDOM */}
-      <NodeViewContent className="code-block-pre" />
-    </NodeViewWrapper>
-  );
-}
-
-// --- Tiptap extension ---
+/**
+ * CodeBlock extension with lowlight syntax highlighting.
+ *
+ * Uses a pure ProseMirror NodeView (no React) to avoid focus/whitespace issues.
+ * The header bar (language selector + copy button) is injected as DOM above the
+ * native <pre><code> content area.
+ */
 export const CodeBlockExtension = CodeBlockLowlight.extend({
   addNodeView() {
-    return ReactNodeViewRenderer(CodeBlockNodeView, {
-      contentDOMElementTag: 'pre',
-    });
+    return ({ node, getPos, editor }) => {
+      const wrapper = document.createElement('div');
+      wrapper.classList.add('code-block-wrapper');
+
+      // --- Header bar ---
+      const header = document.createElement('div');
+      header.classList.add('code-block-header');
+      header.contentEditable = 'false';
+
+      const select = document.createElement('select');
+      select.classList.add('code-block-lang');
+      select.setAttribute('aria-label', 'Code language');
+      for (const lang of CODE_LANGUAGES) {
+        const opt = document.createElement('option');
+        opt.value = lang.value;
+        opt.textContent = lang.label;
+        select.appendChild(opt);
+      }
+      select.value = node.attrs.language || 'plaintext';
+      select.addEventListener('change', () => {
+        if (typeof getPos !== 'function') return;
+        const pos = getPos();
+        if (pos == null) return;
+        editor.view.dispatch(
+          editor.state.tr.setNodeMarkup(pos, undefined, {
+            ...node.attrs,
+            language: select.value,
+          }),
+        );
+      });
+      // Prevent ProseMirror from handling select interactions
+      select.addEventListener('mousedown', (e) => e.stopPropagation());
+
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.classList.add('code-block-copy');
+      copyBtn.title = 'Copy code';
+      copyBtn.textContent = '⧉ Copy';
+      copyBtn.addEventListener('mousedown', (e) => e.preventDefault()); // prevent focus steal
+      copyBtn.addEventListener('click', () => {
+        const text = codeEl.textContent || '';
+        navigator.clipboard.writeText(text).then(() => {
+          copyBtn.textContent = '✓ Copied';
+          copyBtn.classList.add('code-block-copy--copied');
+          setTimeout(() => {
+            copyBtn.textContent = '⧉ Copy';
+            copyBtn.classList.remove('code-block-copy--copied');
+          }, 1500);
+        }, () => {});
+      });
+
+      header.appendChild(select);
+      header.appendChild(copyBtn);
+
+      // --- Code area: <pre><code> — this is ProseMirror's contentDOM ---
+      const pre = document.createElement('pre');
+      pre.classList.add('code-block-pre');
+      const codeEl = document.createElement('code');
+      pre.appendChild(codeEl);
+
+      // --- Classic placeholder (hidden by default) ---
+      const classicEl = document.createElement('div');
+      classicEl.classList.add('code-block-classic');
+      classicEl.style.display = 'none';
+      classicEl.innerHTML = '<span class="code-block-classic-icon">&lt;/&gt;</span>'
+        + '<span class="code-block-classic-label">Code Block</span>'
+        + '<span class="code-block-classic-lang"></span>'
+        + '<span class="code-block-classic-lock">🔒 AI mode</span>';
+
+      wrapper.appendChild(header);
+      wrapper.appendChild(pre);
+      wrapper.appendChild(classicEl);
+
+      const syncMode = () => {
+        const mode = (editor.storage as any).mediaGuard?.editorMode || 'ai';
+        const isClassic = mode === 'classic';
+        header.style.display = isClassic ? 'none' : '';
+        pre.style.display = isClassic ? 'none' : '';
+        classicEl.style.display = isClassic ? '' : 'none';
+        wrapper.classList.toggle('code-block-wrapper--classic', isClassic);
+        const langSpan = classicEl.querySelector('.code-block-classic-lang');
+        if (langSpan) langSpan.textContent = node.attrs.language || 'plaintext';
+      };
+      syncMode();
+
+      return {
+        dom: wrapper,
+        contentDOM: codeEl, // ProseMirror puts text content here
+        update(updatedNode) {
+          if (updatedNode.type.name !== 'codeBlock') return false;
+          // Keep reference to latest node attrs for the select change handler
+          node = updatedNode;
+          select.value = updatedNode.attrs.language || 'plaintext';
+          syncMode();
+          return true;
+        },
+        selectNode() {
+          wrapper.classList.add('code-block-wrapper--selected');
+        },
+        deselectNode() {
+          wrapper.classList.remove('code-block-wrapper--selected');
+        },
+        destroy() {
+          // cleanup
+        },
+      };
+    };
   },
 }).configure({
   lowlight,

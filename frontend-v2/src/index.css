@@ -234,6 +234,11 @@
   border-radius: 0;
 }
 
+.code-block-wrapper--selected {
+  outline: 2px solid hsl(var(--primary) / 0.4);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
 .code-block-wrapper--classic {
   background: hsl(var(--secondary));
 }
