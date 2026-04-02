@@ -251,6 +251,32 @@ UNKNOWN_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
   -H "$AUTH" "$GATEWAY/v1/chat/sessions/00000000-0000-0000-0000-000000000099")
 assert_status "T14 unknown session 404" "404" "$UNKNOWN_STATUS"
 
+# ── T16: Send message with context field (BE-C1) ─────────────────────────────
+header "T16: Context field accepted"
+
+# Context field should be accepted without 422 — will get 404 (fake model) or 502 but NOT 422
+CTX_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+  -X POST -H "$AUTH" -H "Content-Type: application/json" \
+  "$GATEWAY/v1/chat/sessions/$SESSION_ID/messages" \
+  -d '{"content":"Analyze this","context":"Chapter 3: Aldric walked in..."}')
+# Accept 404 (model not found) or 502 (cred resolution) — just not 422 (validation)
+if [ "$CTX_STATUS" != "422" ]; then
+  green "T16 context field accepted (HTTP $CTX_STATUS, not 422)"; PASS=$((PASS+1))
+else
+  red "T16 context field rejected with 422 — model needs context field"; FAIL=$((FAIL+1))
+fi
+
+# Without context (backwards compat)
+NOCTX_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+  -X POST -H "$AUTH" -H "Content-Type: application/json" \
+  "$GATEWAY/v1/chat/sessions/$SESSION_ID/messages" \
+  -d '{"content":"Hello"}')
+if [ "$NOCTX_STATUS" != "422" ]; then
+  green "T16 no-context backwards compat (HTTP $NOCTX_STATUS)"; PASS=$((PASS+1))
+else
+  red "T16 no-context broke backwards compat"; FAIL=$((FAIL+1))
+fi
+
 # ── T15: Cleanup — delete remaining session ──────────────────────────────────
 header "T15: Cleanup"
 

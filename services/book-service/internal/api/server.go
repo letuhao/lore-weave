@@ -312,8 +312,8 @@ LIMIT $3 OFFSET $4
 	items := make([]map[string]any, 0)
 	for rows.Next() {
 		var id, owner uuid.UUID
-		var title string
-		var desc, lang, summary, state string
+		var title, state string
+		var desc, lang, summary *string
 		var trashedAt, purgeAt, createdAt, updatedAt *time.Time
 		var chapterCount int
 		var hasCover bool
@@ -323,9 +323,9 @@ LIMIT $3 OFFSET $4
 				"book_id":           id,
 				"owner_user_id":     owner,
 				"title":             title,
-				"description":       nullableString(desc),
-				"original_language": nullableString(lang),
-				"summary":           nullableString(summary),
+				"description":       desc,
+				"original_language": lang,
+				"summary":           summary,
 				"lifecycle_state":   state,
 				"trashed_at":        trashedAt,
 				"purge_eligible_at": purgeAt,
@@ -364,7 +364,8 @@ func (s *Server) getBook(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getBookByID(w http.ResponseWriter, ctx context.Context, bookID, ownerID uuid.UUID, status int) {
 	var id, owner uuid.UUID
-	var title, desc, lang, summary, state string
+	var title, state string
+	var desc, lang, summary *string
 	var trashedAt, purgeAt, createdAt, updatedAt *time.Time
 	var chapterCount int
 	err := s.pool.QueryRow(ctx, `
@@ -397,9 +398,9 @@ WHERE b.id=$1 AND b.owner_user_id=$2
 		"book_id":           id,
 		"owner_user_id":     owner,
 		"title":             title,
-		"description":       nullableString(desc),
-		"original_language": nullableString(lang),
-		"summary":           nullableString(summary),
+		"description":       desc,
+		"original_language": lang,
+		"summary":           summary,
 		"cover":             cover,
 		"chapter_count":     chapterCount,
 		"visibility":        s.fetchSharingVisibility(ctx, id),
