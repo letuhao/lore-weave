@@ -1,8 +1,9 @@
 import { useEditor, EditorContent, type JSONContent } from '@tiptap/react';
+import { SourceView } from './SourceView';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Typography from '@tiptap/extension-typography';
-import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
 import { FormatToolbar } from './FormatToolbar';
 import { SlashMenuExtension, SlashMenuPopup, type EditorMode } from './SlashMenu';
 import { CalloutExtension } from './CalloutNode';
@@ -17,6 +18,8 @@ export interface TiptapEditorHandle {
   setContent: (json: any) => void;
   /** Toggle grammar checking */
   setGrammarEnabled: (enabled: boolean) => void;
+  /** Toggle source view */
+  setSourceView: (show: boolean) => void;
 }
 
 interface TiptapEditorProps {
@@ -58,6 +61,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
     const initialContent = useRef(content);
     const prevContent = useRef(content);
     const isExternalUpdate = useRef(false);
+    const [showSource, setShowSource] = useState(false);
 
     const editor = useEditor({
       extensions: [
@@ -130,6 +134,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
       setGrammarEnabled: (enabled: boolean) => {
         if (editor) setGrammarEnabled(editor, enabled);
       },
+      setSourceView: (show: boolean) => setShowSource(show),
     }), [setContentHandler, editor]);
 
     if (!editor) return null;
@@ -137,8 +142,14 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
     return (
       <div className={`${className ?? ''} tiptap-editor-wrapper relative`}>
         {editable && <FormatToolbar editor={editor} mode={editorMode} />}
-        <EditorContent editor={editor} />
-        {editable && <SlashMenuPopup editor={editor} mode={editorMode} />}
+        {showSource ? (
+          <SourceView json={editor.getJSON()} />
+        ) : (
+          <>
+            <EditorContent editor={editor} />
+            {editable && <SlashMenuPopup editor={editor} mode={editorMode} />}
+          </>
+        )}
       </div>
     );
   },
