@@ -10,6 +10,7 @@ import {
   BookOpen,
   Share2,
 } from 'lucide-react';
+import { SharingTab } from '@/features/sharing/SharingTab';
 import { useAuth } from '@/auth';
 import { booksApi, type Book, type Chapter } from '@/features/books/api';
 import { LanguagePicker } from '@/components/books/LanguagePicker';
@@ -369,6 +370,7 @@ export function BookDetailPageV2() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="chapters">Chapters</TabsTrigger>
+          <TabsTrigger value="sharing">Sharing</TabsTrigger>
           <TabsTrigger value="overview">Overview</TabsTrigger>
         </TabsList>
 
@@ -570,6 +572,11 @@ export function BookDetailPageV2() {
               }}
             />
           )}
+        </TabsContent>
+
+        {/* ── Sharing Tab ─────────────────────────────────────────────────────── */}
+        <TabsContent value="sharing" className="space-y-4">
+          <SharingTab bookId={bookId} />
         </TabsContent>
 
         {/* ── Overview Tab ────────────────────────────────────────────────────── */}
