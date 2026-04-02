@@ -20,6 +20,7 @@ import { EditorLayout } from '@/layouts/EditorLayout';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
 import { BooksPage } from '@/pages/BooksPage';
 import { TrashPage } from '@/pages/TrashPage';
+import { ChatPage } from '@/pages/ChatPage';
 import { BookDetailPage } from '@/pages/BookDetailPage';
 import { ChapterEditorPage } from '@/pages/ChapterEditorPage';
 import { ReaderPage } from '@/pages/ReaderPage';
@@ -77,6 +78,11 @@ export function App() {
             <Route path="/books/:bookId/chapters/:chapterId/edit" element={<ChapterEditorPage />} />
           </Route>
 
+          {/* Chat (full-bleed, no sidebar chrome) */}
+          <Route element={<RequireAuth><FullBleedLayout /></RequireAuth>}>
+            <Route path="/chat" element={<ChatPage />} />
+          </Route>
+
           {/* Dashboard pages (full sidebar) */}
           <Route element={<RequireAuth><DashboardLayout /></RequireAuth>}>
             {/* Workspace */}
@@ -89,8 +95,7 @@ export function App() {
             <Route path="/books/:bookId/settings" element={<BookDetailPage />} />
             <Route path="/books/:bookId/wiki" element={<BookDetailPage />} />
 
-            {/* Chat */}
-            <Route path="/chat" element={<PlaceholderPage title="Chat" description="AI chat with session sidebar — coming in P3-18." />} />
+            {/* Chat — placeholder removed, see FullBleedLayout below */}
 
             {/* Manage */}
             <Route path="/usage" element={<PlaceholderPage title="Usage" description="AI usage monitor — coming in P4-06." />} />
