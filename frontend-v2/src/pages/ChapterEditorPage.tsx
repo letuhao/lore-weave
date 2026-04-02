@@ -80,6 +80,18 @@ export function ChapterEditorPage() {
   // Discard state for in-place cancel (no navigation)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
+  // Mode switch with unsaved-changes check
+  const [pendingModeSwitch, setPendingModeSwitch] = useState<'classic' | 'ai' | null>(null);
+  const handleModeSwitch = useCallback((newMode: 'classic' | 'ai') => {
+    // Classic → AI is always safe (expanding, no data loss)
+    if (newMode === 'ai' || !isDirty) {
+      setEditorMode(newMode);
+      return;
+    }
+    // AI → Classic with dirty editor — confirm first
+    setPendingModeSwitch(newMode);
+  }, [isDirty, setEditorMode]);
+
   const discardChanges = useCallback(() => {
     setTiptapJson(null);
     setTitle(savedTitle);
@@ -268,7 +280,7 @@ export function ChapterEditorPage() {
           {/* Editor mode toggle */}
           <div className="flex items-center rounded-md border bg-muted/30 p-0.5">
             <button
-              onClick={() => setEditorMode('classic')}
+              onClick={() => handleModeSwitch('classic')}
               className={cn(
                 'flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors',
                 editorMode === 'classic'
@@ -281,7 +293,7 @@ export function ChapterEditorPage() {
               Classic
             </button>
             <button
-              onClick={() => setEditorMode('ai')}
+              onClick={() => handleModeSwitch('ai')}
               className={cn(
                 'flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors',
                 editorMode === 'ai'
@@ -585,6 +597,15 @@ export function ChapterEditorPage() {
         onOpenChange={(open) => { if (!open) cancelNavigation(); }}
         onSave={async () => { await save(); confirmNavigation(); }}
         onDiscard={() => { discardChanges(); confirmNavigation(); }}
+        saving={saving}
+      />
+
+      {/* Mode switch guard — shown when switching AI → Classic with dirty editor */}
+      <UnsavedChangesDialog
+        open={pendingModeSwitch !== null}
+        onOpenChange={(open) => { if (!open) setPendingModeSwitch(null); }}
+        onSave={async () => { await save(); setEditorMode(pendingModeSwitch!); setPendingModeSwitch(null); }}
+        onDiscard={() => { discardChanges(); setEditorMode(pendingModeSwitch!); setPendingModeSwitch(null); }}
         saving={saving}
       />
     </div>
