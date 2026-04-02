@@ -34,6 +34,9 @@ export function AppNav() {
               <Link to="/books/trash" className={linkClass}>
                 Recycle bin
               </Link>
+              <Link to="/chat" className={linkClass}>
+                Chat
+              </Link>
               <Link to="/m03/usage" className={linkClass}>
                 Usage logs
               </Link>

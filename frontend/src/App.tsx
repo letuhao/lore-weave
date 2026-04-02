@@ -24,7 +24,7 @@ import { UserSettingsPage } from './pages/UserSettingsPage';
 import BookTranslationPage from './pages/BookTranslationPage';
 import { GlossaryPage } from './pages/GlossaryPage';
 import { GlossaryTrashPage } from './pages/GlossaryTrashPage';
-import ChatPage from './pages/ChatPage';
+import ChatPageV2 from './pages/ChatPageV2';
 
 function Home() {
   const { accessToken } = useAuth();
@@ -50,6 +50,16 @@ function RequireAuth({ children }: { children: ReactNode }) {
 function AppRoutes() {
   return (
     <Routes>
+      {/* Full-bleed routes (outside AppLayout) */}
+      <Route
+        path="/chat"
+        element={
+          <RequireAuth>
+            <ChatPageV2 />
+          </RequireAuth>
+        }
+      />
+
       <Route element={<AppLayout />}>
         <Route path="/" element={<Home />} />
         <Route path="/register" element={<RegisterPage />} />
@@ -172,14 +182,7 @@ function AppRoutes() {
             </RequireAuth>
           }
         />
-        <Route
-          path="/chat"
-          element={
-            <RequireAuth>
-              <ChatPage />
-            </RequireAuth>
-          }
-        />
+        {/* /chat moved outside AppLayout for full-bleed layout */}
       </Route>
     </Routes>
   );

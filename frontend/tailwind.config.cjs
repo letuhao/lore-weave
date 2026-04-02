@@ -39,6 +39,15 @@ module.exports = {
           foreground: 'hsl(var(--card-foreground))',
         },
       },
+      keyframes: {
+        'typing-dot': {
+          '0%, 80%, 100%': { opacity: '0.3' },
+          '40%': { opacity: '1' },
+        },
+      },
+      animation: {
+        'typing-dot': 'typing-dot 1.4s infinite',
+      },
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
