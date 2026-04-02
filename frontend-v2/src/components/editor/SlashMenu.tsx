@@ -5,6 +5,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Editor } from '@tiptap/react';
 import {
   Pilcrow, Heading1, Heading2, Heading3, Minus, List, ListOrdered, Quote, MessageSquareText, Code2,
+  ImageIcon, Video,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -61,6 +62,20 @@ const SLASH_ITEMS: SlashMenuItem[] = [
     description: 'Block quotation',
     icon: <Quote className="h-4 w-4" />,
     command: (editor) => editor.chain().focus().toggleBlockquote().run(),
+  },
+  {
+    title: 'Image',
+    description: 'Upload, paste, or AI generate',
+    icon: <ImageIcon className="h-4 w-4" />,
+    command: (editor) => editor.chain().focus().insertContent({ type: 'imageBlock' }).run(),
+    modes: ['ai'],
+  },
+  {
+    title: 'Video',
+    description: 'Upload video file',
+    icon: <Video className="h-4 w-4" />,
+    command: (editor) => editor.chain().focus().insertContent({ type: 'videoBlock' }).run(),
+    modes: ['ai'],
   },
   {
     title: 'Code Block',

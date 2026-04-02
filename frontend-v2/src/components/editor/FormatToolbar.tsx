@@ -2,6 +2,7 @@ import type { Editor } from '@tiptap/react';
 import {
   Bold, Italic, Strikethrough, Code, Code2, List, ListOrdered,
   Heading1, Heading2, Heading3, Minus, Undo2, Redo2, Quote, Pilcrow,
+  ImageIcon, Video,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { EditorMode } from './SlashMenu';
@@ -136,6 +137,22 @@ export function FormatToolbar({ editor, mode = 'classic' }: FormatToolbarProps) 
       >
         <Quote className="h-3.5 w-3.5" />
       </ToolbarButton>
+      {mode === 'ai' && (
+        <>
+          <ToolbarButton
+            onClick={() => editor.chain().focus().insertContent({ type: 'imageBlock' }).run()}
+            title="Insert image"
+          >
+            <ImageIcon className="h-3.5 w-3.5" />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={() => editor.chain().focus().insertContent({ type: 'videoBlock' }).run()}
+            title="Insert video"
+          >
+            <Video className="h-3.5 w-3.5" />
+          </ToolbarButton>
+        </>
+      )}
       <ToolbarButton
         active={editor.isActive('codeBlock')}
         onClick={() => editor.chain().focus().toggleCodeBlock().run()}

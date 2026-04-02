@@ -46,6 +46,7 @@ Phase 3.5 media blocks: E4-06 completed.
 | E4-03: AI prompt field — reusable MediaPrompt component (collapsible, textarea auto-grow, saved/empty badge, copy, re-generate placeholder), ai_prompt attr on imageBlock | `components/editor/MediaPrompt.tsx` (new), `ImageBlockNode.tsx` | this session |
 | E4-04: Classic mode guards — MediaGuardExtension (backspace/delete/selection protection), compact locked placeholders for image+code blocks, mode storage sync | `components/editor/MediaGuardExtension.ts` (new), `ImageBlockNode.tsx`, `CodeBlockNode.tsx`, `TiptapEditor.tsx` | this session |
 | E4-05: Video block — player placeholder, upload (MP4/WebM, 100 MB), caption, AI prompt (coming soon), Classic mode placeholder, BE video MIME support | `components/editor/VideoBlockNode.tsx` (new), `TiptapEditor.tsx`, `book-service/media.go` | this session |
+| E4-07: Slash menu + toolbar — Image/Video in slash menu (AI mode), Image/Video insert buttons in FormatToolbar (AI mode) | `SlashMenu.tsx`, `FormatToolbar.tsx` | this session |
 
 **9-phase workflow followed for E4-06:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
