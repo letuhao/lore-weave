@@ -6,7 +6,7 @@ import { useAuth } from '@/auth';
 import { accountApi, type Profile } from './api';
 
 export function AccountTab() {
-  const { accessToken } = useAuth();
+  const { accessToken, updateUser } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [displayName, setDisplayName] = useState('');
@@ -42,6 +42,7 @@ export function AccountTab() {
     try {
       const updated = await accountApi.patchProfile(accessToken, { display_name: displayName });
       setProfile(updated);
+      updateUser({ display_name: updated.display_name });
       toast.success('Profile updated');
     } catch {
       toast.error('Failed to save profile');

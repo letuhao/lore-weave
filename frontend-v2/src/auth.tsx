@@ -15,6 +15,7 @@ type AuthState = {
   user: UserProfile | null;
   setTokens: (a: string | null, r: string | null) => void;
   logoutLocal: () => void;
+  updateUser: (patch: Partial<UserProfile>) => void;
 };
 
 const Ctx = createContext<AuthState | null>(null);
@@ -60,6 +61,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logoutLocal = useCallback(() => setTokens(null, null), [setTokens]);
 
+  const updateUser = useCallback((patch: Partial<UserProfile>) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, ...patch };
+      localStorage.setItem(USER_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
   // Fetch user profile when token is available
   useEffect(() => {
     if (!accessToken) return;
@@ -74,8 +84,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [accessToken]);
 
   const v = useMemo(
-    () => ({ accessToken, refreshToken, user, setTokens, logoutLocal }),
-    [accessToken, refreshToken, user, setTokens, logoutLocal],
+    () => ({ accessToken, refreshToken, user, setTokens, logoutLocal, updateUser }),
+    [accessToken, refreshToken, user, setTokens, logoutLocal, updateUser],
   );
 
   return <Ctx.Provider value={v}>{children}</Ctx.Provider>;
