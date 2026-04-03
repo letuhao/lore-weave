@@ -93,7 +93,7 @@ export function ChatPage() {
               resolvedData.set(item.id, { entity });
             }
           } catch {
-            // Skip failed resolutions — still send the message
+            toast.warning(`Could not load context for "${item.label}" — sending without it`);
           }
         }
 

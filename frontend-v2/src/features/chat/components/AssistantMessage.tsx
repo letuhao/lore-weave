@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import { toast } from 'sonner';
 import { ThinkingBlock } from './ThinkingBlock';
+import { firePasteToEditor } from '../utils/pasteToEditor';
 
 interface AssistantMessageProps {
   content: string;
@@ -57,8 +58,8 @@ export function AssistantMessage({
   }
 
   function handleSendToEditor() {
-    window.dispatchEvent(new CustomEvent('paste-to-editor', { detail: { text: content } }));
-    toast.success('Sent to editor');
+    firePasteToEditor({ text: content });
+    toast.success('Sent to editor — open a chapter to paste');
     setShowMore(false);
   }
 
