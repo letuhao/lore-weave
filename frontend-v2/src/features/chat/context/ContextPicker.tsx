@@ -152,7 +152,7 @@ export function ContextPicker({ attached, onAttach, onDetach, onClose }: Context
   }, [filteredChapters]);
 
   return (
-    <div className="absolute bottom-full left-0 z-50 mb-2 w-[320px] overflow-hidden rounded-[10px] border border-border bg-card shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
+    <div className="w-[380px] max-h-[70vh] overflow-hidden rounded-xl border border-border bg-card shadow-[0_16px_48px_rgba(0,0,0,0.5)]">
       {/* Tabs */}
       <div className="flex border-b border-border">
         {TABS.map((t) => (

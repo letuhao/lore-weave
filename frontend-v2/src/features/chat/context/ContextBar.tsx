@@ -20,29 +20,18 @@ const PILL_STYLES: Record<string, { bg: string; border: string; text: string }> 
 const PILL_ICON: Record<string, React.ReactNode> = {
   book: <BookOpen className="h-[11px] w-[11px]" />,
   chapter: <FileText className="h-[11px] w-[11px]" />,
-  glossary: null, // uses kind dot
+  glossary: null,
 };
 
 export function ContextBar({ items, onAttach, onDetach, onClearAll }: ContextBarProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Close picker on click outside
-  useEffect(() => {
-    if (!pickerOpen) return;
-    function handleClick(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setPickerOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [pickerOpen]);
+  const hasItems = items.length > 0;
 
-  // If no items and picker closed, render just the attach button inline
-  if (items.length === 0 && !pickerOpen) {
-    return (
-      <div ref={containerRef} className="relative">
+  return (
+    <>
+      {/* Attach button (when no items, shown as icon inside input) */}
+      {!hasItems && (
         <button
           type="button"
           onClick={() => setPickerOpen(true)}
@@ -51,86 +40,82 @@ export function ContextBar({ items, onAttach, onDetach, onClearAll }: ContextBar
         >
           <Paperclip className="h-4 w-4" />
         </button>
-        {pickerOpen && (
-          <ContextPicker
-            attached={items}
-            onAttach={(item) => { onAttach(item); }}
-            onDetach={onDetach}
-            onClose={() => setPickerOpen(false)}
-          />
-        )}
-      </div>
-    );
-  }
+      )}
 
-  // With items: show context bar above input
-  return (
-    <div ref={containerRef} className="relative">
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-3.5 py-2">
-        {/* Attach button */}
-        <button
-          type="button"
-          onClick={() => setPickerOpen(!pickerOpen)}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-        >
-          <Plus className="h-3 w-3" />
-          Context
-        </button>
-
-        {/* Pills */}
-        {items.map((item) => {
-          const style = PILL_STYLES[item.type] ?? PILL_STYLES.book;
-          return (
-            <span
-              key={item.id}
-              className={cn(
-                'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium',
-                style.bg,
-                style.border,
-                style.text,
-              )}
-            >
-              {item.type === 'glossary' && item.kindColor ? (
-                <span
-                  className="h-2 w-2 rounded-full"
-                  style={{ background: item.kindColor }}
-                />
-              ) : (
-                PILL_ICON[item.type]
-              )}
-              <span className="max-w-[140px] truncate">{item.label}</span>
-              <button
-                type="button"
-                onClick={() => onDetach(item.id)}
-                className="ml-0.5 opacity-50 transition-opacity hover:opacity-100"
-              >
-                <X className="h-2.5 w-2.5" />
-              </button>
-            </span>
-          );
-        })}
-
-        {/* Clear all (when multiple) */}
-        {items.length > 1 && (
+      {/* Context pills bar (when items attached) */}
+      {hasItems && (
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-3.5 py-2">
           <button
             type="button"
-            onClick={onClearAll}
-            className="text-[10px] text-muted-foreground hover:text-foreground"
+            onClick={() => setPickerOpen(!pickerOpen)}
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           >
-            Clear all
+            <Plus className="h-3 w-3" />
+            Context
           </button>
-        )}
-      </div>
 
-      {/* Picker popover */}
-      {pickerOpen && (
-        <ContextPicker
-          attached={items}
-          onAttach={(item) => { onAttach(item); }}
-          onDetach={onDetach}
-          onClose={() => setPickerOpen(false)}
-        />
+          {items.map((item) => {
+            const style = PILL_STYLES[item.type] ?? PILL_STYLES.book;
+            return (
+              <span
+                key={item.id}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium',
+                  style.bg, style.border, style.text,
+                )}
+              >
+                {item.type === 'glossary' && item.kindColor ? (
+                  <span className="h-2 w-2 rounded-full" style={{ background: item.kindColor }} />
+                ) : (
+                  PILL_ICON[item.type]
+                )}
+                <span className="max-w-[140px] truncate">{item.label}</span>
+                <button
+                  type="button"
+                  onClick={() => onDetach(item.id)}
+                  className="ml-0.5 opacity-50 transition-opacity hover:opacity-100"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            );
+          })}
+
+          {items.length > 1 && (
+            <button type="button" onClick={onClearAll} className="text-[10px] text-muted-foreground hover:text-foreground">
+              Clear all
+            </button>
+          )}
+        </div>
       )}
-    </div>
+
+      {/* Floating picker modal — renders via portal-like fixed overlay */}
+      {pickerOpen && (
+        <div
+          className="fixed inset-0 z-50"
+          onClick={() => setPickerOpen(false)}
+          onKeyDown={(e) => { if (e.key === 'Escape') setPickerOpen(false); }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Context picker"
+        >
+          {/* Semi-transparent backdrop */}
+          <div className="absolute inset-0 bg-black/30" />
+
+          {/* Centered floating panel */}
+          <div
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ContextPicker
+              attached={items}
+              onAttach={(item) => onAttach(item)}
+              onDetach={onDetach}
+              onClose={() => setPickerOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+    </>
   );
 }
