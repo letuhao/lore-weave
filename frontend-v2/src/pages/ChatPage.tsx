@@ -131,12 +131,13 @@ export function ChatPage() {
 
   // ── Session CRUD handlers ─────────────────────────────────────────────────
 
-  async function handleCreate(modelRef: string) {
+  async function handleCreate(modelRef: string, systemPrompt?: string) {
     try {
       const session = await createSession({
         model_source: 'user_model',
         model_ref: modelRef,
         title: 'New Chat',
+        system_prompt: systemPrompt,
       });
       setActiveSession(session);
       setShowNewDialog(false);
