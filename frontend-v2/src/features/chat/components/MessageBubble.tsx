@@ -15,6 +15,12 @@ interface MessageBubbleProps {
   onEdit?: (newContent: string) => void;
   onRegenerate?: () => void;
   disabled?: boolean;
+  /** Streaming reasoning text (only for active streaming message) */
+  streamingReasoning?: string;
+  /** Whether reasoning is actively streaming */
+  isThinkingStreaming?: boolean;
+  /** Elapsed thinking time */
+  thinkingElapsed?: number;
 }
 
 const CONTEXT_PILL_ICON: Record<string, React.ReactNode> = {
@@ -39,6 +45,9 @@ export function MessageBubble({
   onEdit,
   onRegenerate,
   disabled,
+  streamingReasoning,
+  isThinkingStreaming,
+  thinkingElapsed,
 }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const rawContent = message.content;
@@ -101,6 +110,15 @@ export function MessageBubble({
                 isStreaming={isStreamingMsg}
                 onRegenerate={onRegenerate}
                 disabled={disabled}
+                reasoning={
+                  isStreamingMsg
+                    ? streamingReasoning
+                    : (message.content_parts as { reasoning?: string } | null)?.reasoning
+                }
+                isThinkingStreaming={isStreamingMsg ? isThinkingStreaming : false}
+                thinkingElapsed={isStreamingMsg ? thinkingElapsed : undefined}
+                inputTokens={message.input_tokens}
+                outputTokens={message.output_tokens}
               />
               {codeOutputs.length > 0 && (
                 <div className="mt-2 space-y-1.5">

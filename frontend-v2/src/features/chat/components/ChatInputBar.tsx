@@ -1,15 +1,19 @@
 import { useState } from 'react';
-import { ArrowUp, Square } from 'lucide-react';
+import { ArrowUp, Brain, Square, Zap } from 'lucide-react';
 import TextareaAutosize from 'react-textarea-autosize';
 import { ContextBar } from '../context/ContextBar';
 import type { ContextItem } from '../context/types';
 
 interface ChatInputBarProps {
-  onSend: (content: string) => void;
+  onSend: (content: string, thinking?: boolean) => void;
   onStop: () => void;
   isStreaming: boolean;
   disabled?: boolean;
   modelHint?: string;
+  /** Whether the active model supports thinking mode */
+  supportsThinking?: boolean;
+  /** Session-level default thinking mode */
+  thinkingDefault?: boolean;
   /** Context items attached to the next message */
   contextItems: ContextItem[];
   onAttachContext: (item: ContextItem) => void;
@@ -23,18 +27,22 @@ export function ChatInputBar({
   isStreaming,
   disabled,
   modelHint,
+  supportsThinking,
+  thinkingDefault,
   contextItems,
   onAttachContext,
   onDetachContext,
   onClearContext,
 }: ChatInputBarProps) {
   const [value, setValue] = useState('');
+  const [thinkingMode, setThinkingMode] = useState(thinkingDefault ?? false);
 
-  function handleSubmit() {
+  function handleSubmit(forceThinking?: boolean) {
     const text = value.trim();
     if (!text || isStreaming) return;
     setValue('');
-    onSend(text);
+    const thinking = supportsThinking ? (forceThinking ?? thinkingMode) : undefined;
+    onSend(text, thinking);
   }
 
   const hasContext = contextItems.length > 0;
@@ -60,39 +68,85 @@ export function ChatInputBar({
             maxRows={8}
             disabled={disabled || isStreaming}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
+              if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
                 e.preventDefault();
                 handleSubmit();
+              }
+              // Ctrl+Shift+Enter = force Think mode
+              if (e.key === 'Enter' && e.ctrlKey && e.shiftKey && supportsThinking) {
+                e.preventDefault();
+                handleSubmit(true);
+              }
+              // Ctrl+Enter = force Fast mode
+              if (e.key === 'Enter' && e.ctrlKey && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit(false);
               }
             }}
             className={`w-full resize-none border-none bg-transparent py-3 pr-12 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:outline-none disabled:opacity-50 ${hasContext ? 'px-3.5' : 'pl-10 pr-12'}`}
           />
 
-          {/* Send / Stop button */}
-          {isStreaming ? (
-            <button
-              type="button"
-              onClick={onStop}
-              title="Stop generating"
-              className="absolute right-2 bottom-2 flex h-[34px] w-[34px] items-center justify-center rounded-lg bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90"
-            >
-              <Square className="h-4 w-4" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={!value.trim() || disabled}
-              title="Send (Enter)"
-              className="absolute right-2 bottom-2 flex h-[34px] w-[34px] items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <ArrowUp className="h-4 w-4" />
-            </button>
-          )}
+          {/* Bottom row: mode toggle + send */}
+          <div className="flex items-center justify-between px-2 pb-2">
+            <div className="flex items-center gap-2">
+              {/* Think/Fast toggle */}
+              {supportsThinking && (
+                <div className="inline-flex rounded-md bg-secondary p-0.5 gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setThinkingMode(true)}
+                    className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                      thinkingMode
+                        ? 'bg-[#1e1633] text-[#a78bfa] border border-[#3b2d6b]'
+                        : 'text-muted-foreground'
+                    }`}
+                  >
+                    <Brain className="h-2.5 w-2.5" />
+                    Think
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setThinkingMode(false)}
+                    className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                      !thinkingMode
+                        ? 'bg-accent/10 text-accent border border-accent/30'
+                        : 'text-muted-foreground'
+                    }`}
+                  >
+                    <Zap className="h-2.5 w-2.5" />
+                    Fast
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Send / Stop button */}
+            {isStreaming ? (
+              <button
+                type="button"
+                onClick={onStop}
+                title="Stop generating (Esc)"
+                className="flex h-[34px] w-[34px] items-center justify-center rounded-lg bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90"
+              >
+                <Square className="h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleSubmit()}
+                disabled={!value.trim() || disabled}
+                title="Send (Enter)"
+                className="flex h-[34px] w-[34px] items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ArrowUp className="h-4 w-4" />
+              </button>
+            )}
+          </div>
         </div>
         <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
           {hasContext ? 'Context attached · ' : ''}
           {modelHint ? `${modelHint} · ` : ''}Enter to send &middot; Shift+Enter for new line
+          {supportsThinking ? ' · Ctrl+Shift+Enter think · Ctrl+Enter fast' : ''}
         </p>
       </div>
     </div>

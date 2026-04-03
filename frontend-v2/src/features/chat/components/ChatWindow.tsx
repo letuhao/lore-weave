@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { toast } from 'sonner';
 import type { ChatSession } from '../types';
 import type { useChatMessages } from '../hooks/useChatMessages';
@@ -5,17 +6,19 @@ import type { ContextItem } from '../context/types';
 import { ChatHeader } from './ChatHeader';
 import { ChatInputBar } from './ChatInputBar';
 import { MessageList } from './MessageList';
+import { SessionSettingsPanel } from './SessionSettingsPanel';
 
 interface ChatWindowProps {
   session: ChatSession;
   chat: ReturnType<typeof useChatMessages>;
   modelNameMap?: Map<string, string>;
   onRename?: () => void;
+  onSessionUpdate?: (updated: ChatSession) => void;
   contextItems: ContextItem[];
   onAttachContext: (item: ContextItem) => void;
   onDetachContext: (id: string) => void;
   onClearContext: () => void;
-  onSendWithContext: (content: string) => void;
+  onSendWithContext: (content: string, thinking?: boolean) => void;
 }
 
 export function ChatWindow({
@@ -23,16 +26,18 @@ export function ChatWindow({
   chat,
   modelNameMap,
   onRename,
+  onSessionUpdate,
   contextItems,
   onAttachContext,
   onDetachContext,
   onClearContext,
   onSendWithContext,
 }: ChatWindowProps) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const isArchived = session.status === 'archived';
 
-  function handleSend(content: string) {
-    onSendWithContext(content);
+  function handleSend(content: string, thinking?: boolean) {
+    onSendWithContext(content, thinking);
   }
 
   function handleEdit(content: string, sequenceNum: number) {
@@ -49,11 +54,19 @@ export function ChatWindow({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <ChatHeader session={session} modelNameMap={modelNameMap} onRename={onRename} />
+      <ChatHeader
+        session={session}
+        modelNameMap={modelNameMap}
+        onRename={onRename}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
 
       <MessageList
         messages={chat.messages}
         streamingText={chat.streamingText}
+        streamingReasoning={chat.streamingReasoning}
+        streamPhase={chat.streamPhase}
+        thinkingElapsed={chat.thinkingElapsed}
         isStreaming={chat.isStreaming}
         onEditMessage={!isArchived ? handleEdit : undefined}
         onRegenerateMessage={!isArchived ? handleRegenerate : undefined}
@@ -65,11 +78,21 @@ export function ChatWindow({
         onStop={chat.stop}
         isStreaming={chat.isStreaming}
         disabled={isArchived}
+        supportsThinking={true}
+        thinkingDefault={session.generation_params?.thinking ?? false}
         contextItems={contextItems}
         onAttachContext={onAttachContext}
         onDetachContext={onDetachContext}
         onClearContext={onClearContext}
       />
+
+      {settingsOpen && (
+        <SessionSettingsPanel
+          session={session}
+          onSessionUpdate={(updated) => onSessionUpdate?.(updated)}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </div>
   );
 }

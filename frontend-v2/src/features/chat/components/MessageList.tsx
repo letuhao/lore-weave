@@ -2,10 +2,18 @@ import { useEffect, useRef } from 'react';
 import { MessageBubble } from './MessageBubble';
 import type { ChatMessage } from '../types';
 
+type StreamPhase = 'idle' | 'thinking' | 'responding';
+
 interface MessageListProps {
   messages: ChatMessage[];
   /** Partial streaming text for in-progress response */
   streamingText: string;
+  /** Partial streaming reasoning text */
+  streamingReasoning?: string;
+  /** Current stream phase */
+  streamPhase?: StreamPhase;
+  /** Elapsed thinking time in seconds */
+  thinkingElapsed?: number;
   isStreaming: boolean;
   onEditMessage?: (content: string, sequenceNum: number) => void;
   onRegenerateMessage?: (userContent: string, userSequenceNum: number) => void;
@@ -15,6 +23,9 @@ interface MessageListProps {
 export function MessageList({
   messages,
   streamingText,
+  streamingReasoning,
+  streamPhase,
+  thinkingElapsed,
   isStreaming,
   onEditMessage,
   onRegenerateMessage,
@@ -70,7 +81,7 @@ export function MessageList({
         ))}
 
         {/* Streaming assistant message (in progress) */}
-        {isStreaming && streamingText && (
+        {isStreaming && (streamingText || streamingReasoning) && (
           <MessageBubble
             message={{
               message_id: `streaming-${Date.now()}`,
@@ -90,11 +101,14 @@ export function MessageList({
             }}
             isStreamingMsg
             disabled
+            streamingReasoning={streamingReasoning}
+            isThinkingStreaming={streamPhase === 'thinking'}
+            thinkingElapsed={thinkingElapsed}
           />
         )}
 
         {/* Typing indicator (before any text arrives) */}
-        {isStreaming && !streamingText && (
+        {isStreaming && !streamingText && !streamingReasoning && (
           <div className="flex justify-start">
             <div className="flex items-center gap-1.5 rounded-[12px_12px_12px_4px] border border-border bg-card px-4 py-3">
               <span className="inline-block h-1.5 w-1.5 animate-[typing-dot_1.4s_infinite_0s] rounded-full bg-accent" />

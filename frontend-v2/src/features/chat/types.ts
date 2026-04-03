@@ -1,6 +1,13 @@
 // ── Chat V2 Types ─────────────────────────────────────────────────────────────
 // Mirrors chat-service backend models.
 
+export interface GenerationParams {
+  max_tokens?: number | null;
+  temperature?: number | null;
+  top_p?: number | null;
+  thinking?: boolean | null;
+}
+
 export interface ChatSession {
   session_id: string;
   owner_user_id: string;
@@ -8,6 +15,8 @@ export interface ChatSession {
   model_source: string;
   model_ref: string;
   system_prompt: string | null;
+  generation_params: GenerationParams;
+  is_pinned: boolean;
   status: 'active' | 'archived';
   message_count: number;
   last_message_at: string | null;
@@ -54,6 +63,7 @@ export interface CreateSessionPayload {
   model_ref: string;
   title?: string;
   system_prompt?: string;
+  generation_params?: GenerationParams;
 }
 
 export interface PatchSessionPayload {
@@ -62,4 +72,6 @@ export interface PatchSessionPayload {
   model_source?: string;
   model_ref?: string;
   status?: string;
+  generation_params?: GenerationParams;
+  is_pinned?: boolean;
 }

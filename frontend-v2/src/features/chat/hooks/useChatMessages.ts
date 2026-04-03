@@ -4,18 +4,24 @@ import { chatApi } from '../api';
 import type { ChatMessage } from '../types';
 
 type StreamStatus = 'idle' | 'streaming' | 'error';
+type StreamPhase = 'idle' | 'thinking' | 'responding';
 
 /**
  * Unified hook: owns message list + SSE streaming for send/edit/regenerate.
- * Replaces both useMessages + useStreamingEdit + @ai-sdk/react useChat.
+ * Supports reasoning-delta (thinking) and text-delta (content) events.
  */
 export function useChatMessages(sessionId: string | null) {
   const { accessToken } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [streamingText, setStreamingText] = useState('');
+  const [streamingReasoning, setStreamingReasoning] = useState('');
+  const [streamPhase, setStreamPhase] = useState<StreamPhase>('idle');
+  const [thinkingElapsed, setThinkingElapsed] = useState(0);
   const [streamStatus, setStreamStatus] = useState<StreamStatus>('idle');
   const abortRef = useRef<AbortController | null>(null);
+  const thinkingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const thinkingStartRef = useRef<number>(0);
 
   // ── Fetch messages on session change ──────────────────────────────────────────
 
@@ -42,7 +48,7 @@ export function useChatMessages(sessionId: string | null) {
   // ── SSE streaming ─────────────────────────────────────────────────────────────
 
   const streamPost = useCallback(
-    async (content: string, editFromSequence?: number): Promise<string> => {
+    async (content: string, editFromSequence?: number, thinking?: boolean): Promise<string> => {
       if (!accessToken || !sessionId) throw new Error('Not ready');
 
       // Abort any in-progress stream
@@ -51,14 +57,35 @@ export function useChatMessages(sessionId: string | null) {
       abortRef.current = controller;
 
       setStreamingText('');
+      setStreamingReasoning('');
+      setStreamPhase('idle');
+      setThinkingElapsed(0);
       setStreamStatus('streaming');
 
-      let accumulated = '';
+      let accumulatedContent = '';
+      let accumulatedReasoning = '';
+
+      // Thinking timer
+      function startThinkingTimer() {
+        thinkingStartRef.current = Date.now();
+        thinkingTimerRef.current = setInterval(() => {
+          setThinkingElapsed((Date.now() - thinkingStartRef.current) / 1000);
+        }, 100);
+      }
+      function stopThinkingTimer() {
+        if (thinkingTimerRef.current) {
+          clearInterval(thinkingTimerRef.current);
+          thinkingTimerRef.current = null;
+        }
+      }
 
       try {
         const body: Record<string, unknown> = { content };
         if (editFromSequence != null) {
           body.edit_from_sequence = editFromSequence;
+        }
+        if (thinking != null) {
+          body.thinking = thinking;
         }
 
         const res = await fetch(chatApi.messagesUrl(sessionId), {
@@ -97,9 +124,23 @@ export function useChatMessages(sessionId: string | null) {
 
             try {
               const event = JSON.parse(payload);
-              if (event.type === 'text-delta' && event.delta) {
-                accumulated += event.delta;
-                setStreamingText(accumulated);
+              if (event.type === 'reasoning-delta' && event.delta) {
+                if (accumulatedReasoning === '') {
+                  setStreamPhase('thinking');
+                  startThinkingTimer();
+                }
+                accumulatedReasoning += event.delta;
+                setStreamingReasoning(accumulatedReasoning);
+              } else if (event.type === 'text-delta' && event.delta) {
+                if (accumulatedContent === '' && accumulatedReasoning !== '') {
+                  // Transition from thinking → responding
+                  stopThinkingTimer();
+                  setStreamPhase('responding');
+                } else if (accumulatedContent === '') {
+                  setStreamPhase('responding');
+                }
+                accumulatedContent += event.delta;
+                setStreamingText(accumulatedContent);
               } else if (event.type === 'error') {
                 throw new Error(event.errorText || 'Stream error');
               }
@@ -110,20 +151,26 @@ export function useChatMessages(sessionId: string | null) {
           }
         }
 
+        stopThinkingTimer();
         setStreamStatus('idle');
+        setStreamPhase('idle');
         // Refetch messages to get persisted data (tokens, message_id, etc.)
         void fetchMessages();
-        return accumulated;
+        return accumulatedContent;
       } catch (err) {
+        stopThinkingTimer();
         if ((err as Error).name === 'AbortError') {
           setStreamStatus('idle');
-          return accumulated;
+          setStreamPhase('idle');
+          return accumulatedContent;
         }
         setStreamStatus('error');
+        setStreamPhase('idle');
         throw err;
       } finally {
         abortRef.current = null;
         setStreamingText('');
+        setStreamingReasoning('');
       }
     },
     [accessToken, sessionId, fetchMessages],
@@ -133,7 +180,7 @@ export function useChatMessages(sessionId: string | null) {
 
   /** Send a new message (normal flow) */
   const send = useCallback(
-    (content: string) => {
+    (content: string, thinking?: boolean) => {
       // Optimistically add user message to the list
       const optimistic: ChatMessage = {
         message_id: `opt-${Date.now()}`,
@@ -152,7 +199,7 @@ export function useChatMessages(sessionId: string | null) {
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, optimistic]);
-      return streamPost(content);
+      return streamPost(content, undefined, thinking);
     },
     [sessionId, messages.length, streamPost],
   );
@@ -160,7 +207,6 @@ export function useChatMessages(sessionId: string | null) {
   /** Edit a user message and re-run from that point */
   const edit = useCallback(
     (content: string, editFromSequence: number) => {
-      // Truncate messages up to (but not including) the edited sequence
       setMessages((prev) => {
         const truncated = prev.filter((m) => m.sequence_num < editFromSequence);
         const optimistic: ChatMessage = {
@@ -189,9 +235,7 @@ export function useChatMessages(sessionId: string | null) {
   /** Regenerate the assistant response after a given user message */
   const regenerate = useCallback(
     (userContent: string, userSequenceNum: number) => {
-      // Keep messages up to and including the user message
       setMessages((prev) => prev.filter((m) => m.sequence_num <= userSequenceNum));
-      // edit_from_sequence = the user message sequence (server will delete after it and re-run)
       return streamPost(userContent, userSequenceNum);
     },
     [streamPost],
@@ -206,6 +250,9 @@ export function useChatMessages(sessionId: string | null) {
     messages,
     isLoading,
     streamingText,
+    streamingReasoning,
+    streamPhase,
+    thinkingElapsed,
     streamStatus,
     isStreaming: streamStatus === 'streaming',
     send,

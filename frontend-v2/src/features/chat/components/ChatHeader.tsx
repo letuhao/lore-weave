@@ -1,4 +1,4 @@
-import { Download, Pencil } from 'lucide-react';
+import { Download, Pencil, Settings } from 'lucide-react';
 import { chatApi } from '../api';
 import type { ChatSession } from '../types';
 
@@ -6,9 +6,10 @@ interface ChatHeaderProps {
   session: ChatSession;
   modelNameMap?: Map<string, string>;
   onRename?: () => void;
+  onOpenSettings?: () => void;
 }
 
-export function ChatHeader({ session, modelNameMap, onRename }: ChatHeaderProps) {
+export function ChatHeader({ session, modelNameMap, onRename, onOpenSettings }: ChatHeaderProps) {
   function handleExport(format: 'markdown' | 'json') {
     const url = chatApi.exportUrl(session.session_id, format);
     window.open(url, '_blank');
@@ -45,6 +46,16 @@ export function ChatHeader({ session, modelNameMap, onRename }: ChatHeaderProps)
             className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           >
             <Pencil className="h-[15px] w-[15px]" />
+          </button>
+        )}
+        {onOpenSettings && (
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            title="Session Settings"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          >
+            <Settings className="h-[15px] w-[15px]" />
           </button>
         )}
       </div>

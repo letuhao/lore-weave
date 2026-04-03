@@ -70,7 +70,7 @@ export function ChatPage() {
   // ── Send with context ─────────────────────────────────────────────────────
 
   const handleSendWithContext = useCallback(
-    async (content: string) => {
+    async (content: string, thinking?: boolean) => {
       if (!accessToken) return;
 
       let finalContent = content;
@@ -105,7 +105,7 @@ export function ChatPage() {
         setContextItems([]);
       }
 
-      chat.send(finalContent).catch((err) => {
+      chat.send(finalContent, thinking).catch((err) => {
         toast.error(`Chat error: ${(err as Error).message}`);
       });
     },
@@ -204,11 +204,12 @@ export function ChatPage() {
               chat={chat}
               modelNameMap={modelNameMap}
               onRename={handleHeaderRename}
+              onSessionUpdate={(updated) => setActiveSession(updated)}
               contextItems={contextItems}
               onAttachContext={handleAttachContext}
               onDetachContext={handleDetachContext}
               onClearContext={handleClearContext}
-              onSendWithContext={(content) => void handleSendWithContext(content)}
+              onSendWithContext={(content, thinking) => void handleSendWithContext(content, thinking)}
             />
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
