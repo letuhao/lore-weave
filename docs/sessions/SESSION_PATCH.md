@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-03 (session 17 end)
-- Updated By: Assistant (MIG-03/05/06 + provider enhancement + chat fixes, 21 commits)
+- Last Updated: 2026-04-03 (session 18 in progress)
+- Updated By: Assistant (Phase 6 Chat Enhancement BE — 7 tasks, 28/28 tests pass)
 - Active Branch: `main`
-- HEAD: `621cf6f` — fix: LM Studio/Ollama chat auth
+- HEAD: pending commit
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -31,7 +31,29 @@
 
 ## Current Active Work
 
-**Phase:** V1→V2 Migration (MIG-03 in progress)
+**Phase:** Phase 6 — Chat Enhancement (BE complete, FE next)
+
+**What was done in this session (2026-04-03, session 18):**
+
+Phase 6 Chat Enhancement — Backend implementation + integration tests (28/28 pass).
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| Phase 6 planning: competitive analysis, 16 tasks (C6-01..C6-16), BE-first strategy | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | this session |
+| Design draft: enhanced chat GUI (thinking block, session settings, format pills, branch nav) | `design-drafts/screen-chat-enhanced.html` (new) | this session |
+| BE-C6-01: `generation_params` JSONB column + `is_pinned` BOOLEAN on chat_sessions | `migrate.py`, `models.py`, `sessions.py` | this session |
+| BE-C6-02: stream_service reads generation_params → passes temperature/top_p/max_tokens to LLM | `stream_service.py` | this session |
+| BE-C6-03: system_prompt injection — prepend session system_prompt as system message | `stream_service.py` | this session |
+| BE-C6-04: thinking mode — parse `reasoning_content`, emit `reasoning-delta` SSE events | `stream_service.py`, `messages.py`, `models.py` | this session |
+| BE-C6-05: message search endpoint — FTS with `ts_headline` snippets | `sessions.py`, `models.py`, `migrate.py` | this session |
+| BE-C6-06: session pin — `is_pinned` field, pinned-first sort in list | `sessions.py`, `models.py`, `migrate.py` | this session |
+| BE-C6-07: auto-title generation — async LLM call after first exchange, reasoning fallback | `stream_service.py` | this session |
+| Critical fix: bypass LiteLLM for streaming (strips `reasoning_content`), use OpenAI SDK directly | `stream_service.py` | this session |
+| Route fix: move `/search` before `/{session_id}` to prevent path conflict | `sessions.py` | this session |
+| Test setup: LM Studio provider + qwen3-1.7b model insertion script | `infra/setup-chat-test-model.sh` (new) | this session |
+| Integration test: 28 scenarios (T20-T33), all pass, covers CRUD + streaming + thinking + search | `infra/test-chat-enhanced.sh` (new) | this session |
+
+**9-phase workflow followed:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
 **What was done in this session (2026-04-03, session 17):**
 

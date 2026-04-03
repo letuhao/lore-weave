@@ -1195,9 +1195,465 @@ Each adapter translates to the `GenerateResponse` schema defined in `app/models.
 | E7-01 | FE | Bulk TTS: "Generate all narration" per chapter | E6-03 | M |
 | E7-02 | FS | Audiobook export: concatenate chapter audio to single file | E7-01, P4-13a | L |
 
+---
+
+## Phase 6: Chat Enhancement — Competitive Parity & Beyond
+
+> **Goal:** Bring LoreWeave chat to feature parity with Claude, ChatGPT, LM Studio, Gemini —
+> then surpass them with novel-workflow-specific features (context attach, paste to editor, etc.).
+>
+> **Principle:** Extend, don't remake. Current GUI is solid — add capabilities, not new layouts.
+>
+> **Design draft:** `design-drafts/screen-chat-enhanced.html`
+
+### Competitive Reference
+
+| Feature | Claude | ChatGPT | LM Studio | Gemini | LoreWeave (now) | LoreWeave (target) |
+|---------|--------|---------|-----------|--------|-----------------|-------------------|
+| Streaming response | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Thinking mode toggle | ✅ Extended | ✅ Reasoning | ✅ Checkbox | ✅ Deep Think | ❌ | ✅ C6-01 |
+| Thinking output display | ✅ Collapsible | ✅ Collapsible | ✅ Raw block | ✅ Collapsible | ❌ | ✅ C6-01 |
+| System prompt per session | ✅ Projects | ✅ Custom instr | ✅ Per-chat | ✅ Gems | ❌ (DB has field) | ✅ C6-02 |
+| Max tokens control | ❌ | ❌ | ✅ Slider | ❌ | ❌ | ✅ C6-03 |
+| Temperature control | ❌ | ❌ | ✅ Slider | ❌ | ❌ | ✅ C6-03 |
+| Top P control | ❌ | ❌ | ✅ Slider | ❌ | ❌ | ✅ C6-03 |
+| Model switch mid-session | ✅ | ✅ Dropdown | ✅ Dropdown | ✅ | ❌ (create new) | ✅ C6-04 |
+| Token usage on messages | ❌ | ❌ | ✅ Per-msg | ❌ | ❌ (BE has data) | ✅ C6-05 |
+| Message branching | ✅ Fork | ✅ < > arrows | ❌ | ❌ | ❌ (truncate) | ✅ C6-10 |
+| Search messages | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ C6-11 |
+| Keyboard shortcuts | ✅ | ✅ | ✅ | ✅ | Enter only | ✅ C6-08 |
+| Session folders/pins | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ C6-09 |
+| Context attach (stories) | ❌ | ❌ | ❌ | ❌ | ✅ Unique! | ✅ Enhance |
+| Paste to Editor | ❌ | ❌ | ❌ | ❌ | ✅ Unique! | ✅ Keep |
+| Output card extraction | ❌ | ✅ Artifacts | ❌ | ❌ | ✅ | ✅ Enhance |
+
+### Priority 1 — Critical (thinking support + session settings)
+
+```
+C6-01: Thinking Mode + Reasoning Display [FS]                 [ ]
+  Scope: Backend stream reasoning_content, FE toggle + collapsible thinking block.
+  BE changes:
+    - stream_service.py: parse delta.reasoning_content (Qwen3, DeepSeek-R1)
+    - Emit SSE event type "reasoning-delta" separate from "text-delta"
+    - Track thinking_tokens separately in usage
+    - SendMessageRequest: add generation_params.thinking (bool)
+    - acompletion(): pass thinking param when supported
+  FE changes:
+    - ChatInputBar: [💭 Think / ⚡ Fast] toggle button (only if model capability_flags.thinking)
+    - AssistantMessage: collapsible ThinkingBlock component
+      - Animated "Thinking..." with elapsed time during stream
+      - Collapsed by default after completion, expandable
+      - Monospace font, muted text color
+    - useChatMessages: parse "reasoning-delta" events, track thinkingText separately
+    - MessageBubble: show thinking_tokens + output_tokens footer
+  Acceptance:
+    - Qwen3 thinking tokens stream in real-time (no blank wait)
+    - Toggle switches between thinking/fast mode per-message
+    - Thinking block collapsible, shows duration
+    - Non-thinking models hide toggle
+  Size: M
+  Deps: existing chat-service, provider-registry capability_flags
+
+C6-02: System Prompt Editor [FE]                               [ ]
+  Scope: Expose existing system_prompt field in UI.
+  FE changes:
+    - NewChatDialog: add expandable "System Prompt" textarea
+    - ChatHeader: pencil icon → Session Settings popover/slide-over
+    - SessionSettings panel: edit system_prompt + save via PATCH
+    - System prompt template presets (Novelist, Translator, Worldbuilder, Custom)
+  Acceptance:
+    - System prompt visible in new chat dialog
+    - Editable from header settings
+    - Persists across page reload
+    - Preset templates work
+  Size: S
+  Deps: PatchSessionRequest already supports system_prompt
+
+C6-03: Generation Parameters [FS]                              [ ]
+  Scope: max_tokens, temperature, top_p per-session.
+  BE changes:
+    - chat_sessions: add generation_params JSONB column (default {})
+    - PatchSession: accept generation_params
+    - stream_service.py: read params from session, pass to acompletion()
+    - Validate ranges: temperature 0-2, top_p 0-1, max_tokens 1-128000
+  FE changes:
+    - SessionSettings panel: sliders for temperature, top_p, max_tokens
+    - max_tokens: number input + "Unlimited" toggle (∞)
+    - temperature: slider 0-2 with 0.1 steps, default 0.7
+    - top_p: slider 0-1 with 0.05 steps, default 0.9
+    - Show "Advanced" accordion (collapsed by default)
+    - Save to session via PATCH
+  Acceptance:
+    - Parameters affect model output (lower temp = more deterministic)
+    - Unlimited mode sends no max_tokens to provider
+    - Settings persist per-session
+  Size: M
+  Deps: C6-02 (shares SessionSettings panel)
+```
+
+### Priority 2 — High (UX parity with Claude/ChatGPT)
+
+```
+C6-04: Model Switch Mid-Session [FE]                           [ ]
+  Scope: Change model without creating new session.
+  FE changes:
+    - ChatHeader or SessionSettings: model dropdown (from user_models)
+    - PATCH session with new model_ref + model_source
+    - Divider in message list: "Switched to {model}" annotation
+  Acceptance:
+    - Model switchable mid-conversation
+    - New messages use new model
+    - Visual indicator of model switch in history
+  Size: S
+  Deps: PatchSessionRequest already supports model_source + model_ref
+
+C6-05: Token Usage Display [FE]                                [ ]
+  Scope: Show token counts already stored in ChatMessage.
+  FE changes:
+    - AssistantMessage footer: "↑ 1,234 in · ↓ 567 out" subtle text
+    - Show on hover or always (user preference)
+    - Thinking messages: "💭 890 thinking · ↑ 1,234 in · ↓ 567 out"
+    - Session total in ChatHeader: "Total: 12.4K tokens"
+  Acceptance:
+    - Token counts visible per-message
+    - Session total accurate
+    - No layout shift
+  Size: S
+  Deps: data already in ChatMessage.input_tokens/output_tokens
+
+C6-06: Enhanced New Chat Dialog [FE]                           [ ]
+  Scope: Upgrade dialog to match competitor onboarding.
+  FE changes:
+    - Model selector with grouped list (by provider), search filter
+    - System prompt textarea with template presets dropdown
+    - Quick-start tiles: "Novel Assistant", "Translator", "Worldbuilder"
+    - Recent model pill (last used model pre-selected)
+    - Model capability badges (🧠 thinking, 🎨 vision, 📝 128K context)
+  Acceptance:
+    - Models grouped by provider, searchable
+    - Presets fill system prompt
+    - Last used model pre-selected
+  Size: M
+  Deps: C6-02
+
+C6-07: Session Settings Slide-Over [FE]                        [ ]
+  Scope: Unified settings panel accessible from ChatHeader.
+  FE changes:
+    - Slide-over panel (right side, 360px wide)
+    - Sections: Model, System Prompt, Parameters, Info
+    - Info section: created date, message count, total tokens, model history
+    - "Reset to Defaults" button
+  Acceptance:
+    - Accessible from ⚙️ icon in ChatHeader
+    - All settings editable without leaving chat
+    - Changes apply immediately
+  Size: S
+  Deps: C6-02, C6-03, C6-04
+```
+
+### Priority 3 — Competitive advantage
+
+```
+C6-08: Keyboard Shortcuts [FE]                                 [ ]
+  Scope: Power user shortcuts for chat.
+  FE changes:
+    - Ctrl+Shift+Enter: send with thinking mode ON
+    - Ctrl+Enter: send with thinking mode OFF (fast)
+    - Ctrl+/: focus input bar
+    - Escape: stop streaming
+    - Ctrl+Shift+C: copy last assistant message
+    - Ctrl+N: new chat
+    - Ctrl+Shift+S: open session settings
+    - Show shortcut hints in tooltip/footer
+  Acceptance:
+    - All shortcuts work, no conflicts with browser
+    - Hints visible in footer text
+  Size: S
+
+C6-09: Session Organization [FE]                               [ ]
+  Scope: Pin and group sessions in sidebar.
+  FE changes:
+    - Pin/unpin sessions (pinned always at top)
+    - Group by: "Today", "Yesterday", "This week", "Older" (auto)
+    - Search/filter sessions by title
+    - Collapse groups
+  Acceptance:
+    - Pinned sessions stick to top
+    - Temporal grouping automatic
+    - Search filters in real-time
+  Size: M
+
+C6-10: Message Branching [FS]                                  [ ]
+  Scope: Edit creates a branch, navigate between branches.
+  BE changes:
+    - New table: message_branches (branch_id, session_id, parent_sequence, created_at)
+    - Edit: create branch instead of deleting messages
+    - API: list branches for a sequence point
+  FE changes:
+    - After edit: show "< 1/2 >" branch navigator on the edited message
+    - Navigate between alternative responses
+    - Branch tree view (optional, in session settings)
+  Acceptance:
+    - Edit preserves original messages in a branch
+    - User can navigate between branches
+    - Branch count visible
+  Size: L
+  Deps: requires schema change + significant logic
+
+C6-11: Message Search [FE]                                     [ ]
+  Scope: Search within current session and across all sessions.
+  FE changes:
+    - Ctrl+F: search within current session (highlight matches)
+    - Sidebar search: filter sessions by message content
+    - Search results: show matched message snippet, click to jump
+  BE changes (optional):
+    - Full-text search index on chat_messages.content
+    - GET /v1/chat/search?q=...&user_id=...
+  Acceptance:
+    - In-session search highlights matches and scrolls to them
+    - Cross-session search shows relevant sessions
+  Size: M
+
+C6-12: Response Format Options [FE]                            [ ]
+  Scope: Let user request specific output format.
+  FE changes:
+    - Dropdown or pills in input bar: "Auto", "Concise", "Detailed", "Bullet Points", "Table"
+    - Appends format instruction to system prompt dynamically
+  Acceptance:
+    - Format selection affects response style
+    - Persists per-session
+  Size: S
+```
+
+### Priority 4 — Polish & delight
+
+```
+C6-13: Streaming Indicators [FE]                               [ ]
+  Scope: Better visual feedback during streaming.
+  FE changes:
+    - Thinking phase: pulsing brain icon + "Thinking..." + elapsed seconds timer
+    - Response phase: streaming speed indicator (tokens/sec)
+    - Complete: subtle checkmark + total time
+  Size: S
+
+C6-14: Message Actions Menu [FE]                               [ ]
+  Scope: Context menu on messages (right-click or ··· button).
+  FE changes:
+    - Copy text, Copy as markdown, Copy code blocks
+    - Share message (future)
+    - Pin message (bookmarks within session)
+    - "Send to Editor" (existing paste-to-editor enhanced)
+  Size: S
+
+C6-15: Auto-Title Generation [FS]                              [ ]
+  Scope: Auto-generate session title from first exchange.
+  BE changes:
+    - After first assistant response, call LLM with "Summarize in 5 words"
+    - Update session title automatically
+  FE changes:
+    - Show "New Chat" initially, animate title change
+    - User can still manually rename
+  Size: S
+
+C6-16: Chat Prompt Library [FE]                                [ ]
+  Scope: Saved prompt templates accessible from input bar.
+  FE changes:
+    - "/" command in input: shows template picker
+    - Templates: user-created + built-in (translate, analyze, summarize...)
+    - Template variables: {{selected_text}}, {{chapter_title}}, etc.
+  Size: M
+```
+
+### Dependency Graph (Chat Enhancement)
+
+```
+C6-01 (thinking) ──→ C6-08 (shortcuts: Ctrl+Shift+Enter)
+                  ──→ C6-13 (thinking indicators)
+C6-02 (system prompt) ──→ C6-06 (enhanced new chat)
+                       ──→ C6-07 (session settings panel)
+C6-03 (gen params) ──→ C6-07 (session settings panel)
+C6-04 (model switch) ──→ C6-07 (session settings panel)
+C6-05 (token display) — standalone
+C6-09 (organization) — standalone
+C6-10 (branching) — standalone (complex, can defer)
+C6-11 (search) — standalone
+C6-12 (format) — standalone
+C6-14 (actions menu) — standalone
+C6-15 (auto-title) — standalone
+C6-16 (prompt library) — standalone
+```
+
+### Implementation Order — BE First, Verify, Then FE
+
+**Strategy:** All backend changes first, verified with integration test scripts,
+then FE in a second pass. This ensures the API contract is stable before building UI.
+
+**Test model:** Qwen3-1.7B on LM Studio (host.docker.internal:1234)
+Must insert provider + user_model into DB before testing.
+
+```
+────────────────────────────────────────────────────────────────────────
+PHASE A: BACKEND (all BE tasks, verified with test scripts)
+────────────────────────────────────────────────────────────────────────
+
+BE-C6-01: generation_params column + migration                  [ ]
+  - ALTER TABLE chat_sessions ADD COLUMN generation_params JSONB DEFAULT '{}'
+  - Update migrate.py DDL
+  - PatchSessionRequest: add generation_params field
+  - patch_session: COALESCE merge generation_params
+  - create_session: accept generation_params
+  - Test: create session with params, PATCH params, verify persisted
+  Size: S
+
+BE-C6-02: stream_service reads generation_params               [ ]
+  - Load session.generation_params before streaming
+  - Pass to acompletion(): max_tokens, temperature, top_p
+  - Validate ranges (temperature 0-2, top_p 0-1, max_tokens 1-128000)
+  - If generation_params.max_tokens is null/0 → omit (unlimited)
+  - Test: create session with temperature=0.1, send message, verify lower randomness
+  Size: S
+  Deps: BE-C6-01
+
+BE-C6-03: system_prompt injection in streaming                  [ ]
+  - stream_service.py: read session.system_prompt from DB
+  - Prepend as {"role":"system","content":...} to messages array
+  - System prompt + per-message context coexist (system prompt first)
+  - Test: create session with system_prompt="Answer only in rhymes",
+    send "What is your favorite color?", verify rhyming response
+  Size: S
+
+BE-C6-04: thinking mode — reasoning_content parsing             [ ]
+  - SendMessageRequest: add thinking field (bool, default false)
+  - stream_service.py: when thinking=true, pass extra param to acompletion
+    - For Qwen3/DeepSeek: reasoning via delta.reasoning_content
+    - For others: graceful fallback (ignore thinking flag)
+  - Emit SSE events: {"type":"reasoning-delta","delta":"..."} for thinking
+  - Continue emitting {"type":"text-delta","delta":"..."} for content
+  - Track thinking_tokens in finish event
+  - Persist thinking_tokens in chat_messages (new column or content_parts JSONB)
+  - Test: send with thinking=true to Qwen3, verify reasoning-delta events appear
+  Size: M
+  Deps: BE-C6-02
+
+BE-C6-05: message search endpoint                               [ ]
+  - GET /v1/chat/sessions/search?q=...
+  - Full-text search on chat_messages.content + chat_sessions.title
+  - Returns: [{session_id, title, message_id, role, snippet, created_at}]
+  - CREATE INDEX idx_chat_messages_search ON chat_messages USING gin(to_tsvector('english', content))
+  - Test: create sessions with messages, search by keyword, verify results
+  Size: S
+
+BE-C6-06: session pin field                                     [ ]
+  - ALTER TABLE chat_sessions ADD COLUMN is_pinned BOOLEAN DEFAULT false
+  - Update DDL, _row_to_session, ChatSession model
+  - PatchSessionRequest: add is_pinned field
+  - list_sessions: ORDER BY is_pinned DESC, last_message_at DESC
+  - Test: pin session, list → pinned first
+  Size: S
+
+BE-C6-07: auto-title generation                                 [ ]
+  - After first assistant message, generate title via LLM
+  - Use same model, short prompt: "Summarize this conversation in 5 words"
+  - Non-blocking: asyncio.create_task (like billing log)
+  - Update session title in DB
+  - Test: send first message, verify title changes from "New Chat"
+  Size: S
+  Deps: BE-C6-02
+
+────────────────────────────────────────────────────────────────────────
+PHASE B: INTEGRATION TEST SCRIPT
+────────────────────────────────────────────────────────────────────────
+
+TEST-C6: infra/test-chat-enhanced.sh                            [ ]
+  Scenarios (extends existing test-chat.sh pattern):
+  - T20: Create session with generation_params (temp=0.1, max_tokens=256)
+  - T21: PATCH generation_params (change temperature)
+  - T22: Create session with system_prompt, verify field persisted
+  - T23: PATCH system_prompt
+  - T24: Send message with system_prompt → verify response follows instruction
+  - T25: Send message with thinking=true → verify reasoning-delta SSE events
+  - T26: Send message with thinking=false → verify no reasoning-delta events
+  - T27: Verify generation_params affect response (low temp → deterministic)
+  - T28: Pin session, list → pinned session first
+  - T29: Unpin session, list → normal order
+  - T30: Search messages → returns matching sessions
+  - T31: Auto-title after first message (title != "New Chat")
+  - T32: Send with max_tokens=50 → response truncated
+  - T33: Send with context + system_prompt → both present in LLM input
+  Size: M
+  Deps: BE-C6-01..07
+
+────────────────────────────────────────────────────────────────────────
+PHASE C: TEST DATA SETUP (run before integration tests)
+────────────────────────────────────────────────────────────────────────
+
+SETUP-C6: Insert LM Studio test provider + model                [ ]
+  Docker host: host.docker.internal:1234
+  Provider: lm_studio, api_standard: lm_studio
+  Model: qwen/qwen3-1.7b
+  Insert into: provider_credentials, user_models tables
+  Script: infra/setup-chat-test-model.sh
+
+────────────────────────────────────────────────────────────────────────
+PHASE D: FRONTEND (after all BE verified)
+────────────────────────────────────────────────────────────────────────
+
+FE-C6-01: Session Settings slide-over                           [ ]
+  - System prompt editor + preset templates
+  - Generation params sliders (temperature, top_p, max_tokens)
+  - Model selector dropdown (grouped by provider)
+  - Session info cards (messages, tokens, cost)
+  Deps: BE-C6-01, BE-C6-02, BE-C6-03
+
+FE-C6-02: Thinking mode UI                                      [ ]
+  - Think/Fast toggle in ChatInputBar
+  - ThinkingBlock component (collapsible, purple, timer)
+  - useChatMessages: parse reasoning-delta events
+  - Keyboard: Ctrl+Shift+Enter = Think, Ctrl+Enter = Fast
+  Deps: BE-C6-04
+
+FE-C6-03: Token display + model badge                           [ ]
+  - Token counts per-message footer
+  - Session total in ChatHeader
+  - Model badge (clickable → model switch)
+  - Model switch annotation in message list
+  Deps: BE-C6-01
+
+FE-C6-04: Session sidebar enhancements                          [ ]
+  - Search bar
+  - Temporal groups (Today/Yesterday/This Week/Older)
+  - Pin/unpin
+  Deps: BE-C6-06
+
+FE-C6-05: Enhanced NewChatDialog                                [ ]
+  - Grouped model selector with search
+  - System prompt textarea + presets
+  - Quick-start tiles
+  - Capability badges
+  Deps: BE-C6-01
+
+FE-C6-06: Keyboard shortcuts + format pills                     [ ]
+  - All shortcuts from C6-08 spec
+  - Format pills in input bar
+  - Footer hints
+  Deps: FE-C6-01, FE-C6-02
+
+FE-C6-07: Message search UI                                     [ ]
+  - Ctrl+F: in-session search with highlight
+  - Sidebar cross-session search
+  Deps: BE-C6-05
+
+FE-C6-08: Message branching (if time permits)                   [ ]
+  - Edit → branch instead of truncate
+  - < 1/2 > navigator
+  Deps: needs separate BE branch table (deferred)
+```
+
+---
+
 ### Size Key: S = <1 session, M = 1-2 sessions, L = 2-4 sessions
 
-### Updated Total: 152 tasks (was 142)
+### Updated Total: 168 tasks (was 152)
 
 | Phase | FE | BE | FS | Total |
 |---|---|---|---|---|
@@ -1209,6 +1665,7 @@ Each adapter translates to the `GenerateResponse` schema defined in `app/models.
 | Phase 4 | 11 | 3 | 0 | 14 |
 | **Phase 4.5** | **4** | **0** | **3** | **7** |
 | Phase 5 | 4 | 1 | 5 | 10 |
+| **Phase 6 (Chat)** | **11** | **0** | **5** | **16** |
 | **Video Gen** | **2** | **7** | **1** | **10** |
 | **Media Versions** | **2** | **5** | **0** | **7** |
 | **V1→V2 Migration** | **10** | **0** | **0** | **10** |

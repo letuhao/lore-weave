@@ -9,11 +9,19 @@ from pydantic import BaseModel
 
 # ── Sessions ──────────────────────────────────────────────────────────────────
 
+class GenerationParams(BaseModel):
+    max_tokens: int | None = None
+    temperature: float | None = None
+    top_p: float | None = None
+    thinking: bool | None = None
+
+
 class CreateSessionRequest(BaseModel):
     model_source: str         # 'user_model' | 'platform_model'
     model_ref: UUID
     title: str = "New Chat"
     system_prompt: str | None = None
+    generation_params: GenerationParams | None = None
 
 
 class PatchSessionRequest(BaseModel):
@@ -22,6 +30,8 @@ class PatchSessionRequest(BaseModel):
     model_source: str | None = None
     model_ref: UUID | None = None
     status: str | None = None
+    generation_params: GenerationParams | None = None
+    is_pinned: bool | None = None
 
 
 class ChatSession(BaseModel):
@@ -31,6 +41,8 @@ class ChatSession(BaseModel):
     model_source: str
     model_ref: UUID
     system_prompt: str | None
+    generation_params: dict[str, Any]
+    is_pinned: bool
     status: str
     message_count: int
     last_message_at: datetime | None
@@ -43,12 +55,26 @@ class SessionListResponse(BaseModel):
     next_cursor: str | None
 
 
+class SearchResult(BaseModel):
+    session_id: UUID
+    session_title: str
+    message_id: UUID
+    role: str
+    snippet: str
+    created_at: datetime
+
+
+class SearchResponse(BaseModel):
+    items: list[SearchResult]
+
+
 # ── Messages ──────────────────────────────────────────────────────────────────
 
 class SendMessageRequest(BaseModel):
     content: str
     edit_from_sequence: int | None = None
     context: str | None = None  # Optional context block (book/chapter/glossary text) injected as system message
+    thinking: bool | None = None  # Override session default: true=think, false=fast, None=use session default
 
 
 class ChatMessage(BaseModel):

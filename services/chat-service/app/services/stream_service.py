@@ -1,17 +1,104 @@
-"""LiteLLM streaming service — emits AI SDK data stream protocol v1."""
+"""Streaming service — emits AI SDK data stream protocol v1 SSE lines.
+
+Uses OpenAI AsyncClient directly (not LiteLLM) so we get raw delta fields
+including reasoning_content from thinking models (Qwen3, DeepSeek-R1).
+Falls back to LiteLLM for Anthropic and other non-OpenAI-compatible providers.
+"""
 from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from typing import AsyncGenerator
 from uuid import uuid4
 
 import asyncpg
+from openai import AsyncOpenAI
 from litellm import acompletion
 
 from app.client.billing_client import BillingClient
 from app.models import ProviderCredentials
 from app.services.output_extractor import extract_outputs
+
+logger = logging.getLogger(__name__)
+
+
+def _is_openai_compatible(provider_kind: str) -> bool:
+    """Providers that speak the OpenAI chat/completions SSE protocol."""
+    return provider_kind in ("lm_studio", "ollama", "openai") or provider_kind not in ("anthropic",)
+
+
+async def _stream_openai_compatible(
+    model_name: str,
+    messages: list[dict],
+    api_key: str,
+    base_url: str | None,
+    gen_params: dict,
+) -> AsyncGenerator[dict, None]:
+    """Stream via openai.AsyncOpenAI — preserves reasoning_content."""
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+    kwargs: dict = {
+        "model": model_name,
+        "messages": messages,
+        "stream": True,
+    }
+    if gen_params.get("temperature") is not None:
+        kwargs["temperature"] = gen_params["temperature"]
+    if gen_params.get("top_p") is not None:
+        kwargs["top_p"] = gen_params["top_p"]
+    if gen_params.get("max_tokens") is not None and gen_params["max_tokens"] > 0:
+        kwargs["max_tokens"] = gen_params["max_tokens"]
+
+    response = await client.chat.completions.create(**kwargs)
+    async for chunk in response:
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta
+        # OpenAI SDK preserves extra fields in model_extra
+        raw = getattr(delta, "model_extra", {}) or {}
+        yield {
+            "content": delta.content or "",
+            "reasoning_content": raw.get("reasoning_content", "") or "",
+            "finish_reason": chunk.choices[0].finish_reason,
+            "usage": getattr(chunk, "usage", None),
+        }
+    await client.close()
+
+
+async def _stream_litellm(
+    model: str,
+    messages: list[dict],
+    api_key: str,
+    base_url: str | None,
+    gen_params: dict,
+) -> AsyncGenerator[dict, None]:
+    """Stream via LiteLLM — for Anthropic and non-OpenAI providers."""
+    kwargs: dict = {
+        "model": model,
+        "messages": messages,
+        "stream": True,
+        "api_key": api_key,
+        "base_url": base_url or None,
+        "timeout": 300,
+    }
+    if gen_params.get("temperature") is not None:
+        kwargs["temperature"] = gen_params["temperature"]
+    if gen_params.get("top_p") is not None:
+        kwargs["top_p"] = gen_params["top_p"]
+    if gen_params.get("max_tokens") is not None and gen_params["max_tokens"] > 0:
+        kwargs["max_tokens"] = gen_params["max_tokens"]
+
+    response = await acompletion(**kwargs)
+    async for chunk in response:
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta
+        yield {
+            "content": delta.content or "",
+            "reasoning_content": getattr(delta, "reasoning_content", "") or "",
+            "finish_reason": chunk.choices[0].finish_reason,
+            "usage": getattr(chunk, "usage", None),
+        }
 
 
 async def stream_response(
@@ -25,10 +112,22 @@ async def stream_response(
     billing: BillingClient,
     parent_message_id: str | None = None,
     context: str | None = None,
+    thinking: bool | None = None,
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields AI SDK data stream protocol v1 SSE lines."""
 
-    # Build message history (last 50 to avoid context overflow)
+    # ── Load session settings ───────────────────────────────────────────────
+    session_row = await pool.fetchrow(
+        "SELECT system_prompt, generation_params FROM chat_sessions WHERE session_id = $1",
+        session_id,
+    )
+    system_prompt = session_row["system_prompt"] if session_row else None
+    gp_raw = session_row["generation_params"] if session_row else {}
+    if isinstance(gp_raw, str):
+        gp_raw = json.loads(gp_raw)
+    gen_params: dict = gp_raw if gp_raw else {}
+
+    # ── Build message history (last 50 to avoid context overflow) ───────────
     rows = await pool.fetch(
         """
         SELECT role, content FROM chat_messages
@@ -38,67 +137,88 @@ async def stream_response(
         """,
         session_id,
     )
-    messages = [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+    messages: list[dict] = [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+
+    # Inject session-level system prompt at the beginning
+    if system_prompt:
+        messages.insert(0, {"role": "system", "content": system_prompt})
 
     # Inject per-message context as a system message right before the last user message
     if context:
         messages.insert(-1, {"role": "system", "content": f"The user has attached the following context:\n\n{context}"})
 
-    # LiteLLM model string
-    if creds.provider_kind in ("lm_studio", "ollama"):
-        model = f"openai/{creds.provider_model_name}"
-    elif creds.provider_kind in ("openai", "anthropic"):
-        model = f"{creds.provider_kind}/{creds.provider_model_name}"
-    else:
-        # Custom providers: assume OpenAI-compatible
-        model = f"openai/{creds.provider_model_name}"
-
-    # For local providers without API key, use a dummy key
-    # (LiteLLM/OpenAI SDK requires a non-empty api_key string)
+    # ── Resolve model string + base_url ─────────────────────────────────────
     api_key = creds.api_key if creds.api_key else "lw-no-key"
+    base_url = creds.base_url or None
 
+    # For OpenAI-compatible providers, use the raw model name with OpenAI SDK
+    # For Anthropic, use LiteLLM with anthropic/ prefix
+    use_openai_sdk = _is_openai_compatible(creds.provider_kind)
+
+    if creds.provider_kind == "anthropic":
+        model_string = f"anthropic/{creds.provider_model_name}"
+    elif creds.provider_kind == "openai" and not base_url:
+        model_string = creds.provider_model_name
+        base_url = "https://api.openai.com/v1"
+    else:
+        # LM Studio, Ollama, custom — raw model name for OpenAI SDK
+        model_string = creds.provider_model_name
+        if creds.provider_kind == "lm_studio" and base_url and not base_url.rstrip("/").endswith("/v1"):
+            base_url = base_url.rstrip("/") + "/v1"
+
+    # ── Stream ──────────────────────────────────────────────────────────────
     full_content: list[str] = []
-    last_chunk = None
+    full_reasoning: list[str] = []
+    last_usage = None
     msg_id = str(uuid4())
 
     try:
-        response = await acompletion(
-            model=model,
-            messages=messages,
-            stream=True,
-            api_key=api_key,
-            base_url=creds.base_url or None,
-            timeout=300,
-        )
-        async for chunk in response:
-            last_chunk = chunk
-            delta = ""
-            if chunk.choices and chunk.choices[0].delta.content:
-                delta = chunk.choices[0].delta.content
-            if delta:
-                full_content.append(delta)
-                yield f'data: {json.dumps({"type": "text-delta", "delta": delta})}\n\n'
+        if use_openai_sdk:
+            chunk_stream = _stream_openai_compatible(model_string, messages, api_key, base_url, gen_params)
+        else:
+            chunk_stream = _stream_litellm(model_string, messages, api_key, base_url, gen_params)
+
+        async for chunk_data in chunk_stream:
+            reasoning = chunk_data["reasoning_content"]
+            content = chunk_data["content"]
+            if chunk_data.get("usage"):
+                last_usage = chunk_data["usage"]
+
+            if reasoning:
+                full_reasoning.append(reasoning)
+                yield f'data: {json.dumps({"type": "reasoning-delta", "delta": reasoning})}\n\n'
+            if content:
+                full_content.append(content)
+                yield f'data: {json.dumps({"type": "text-delta", "delta": content})}\n\n'
 
         final_text = "".join(full_content)
+        final_reasoning = "".join(full_reasoning)
 
-        # Persist assistant message
+        # ── Persist assistant message ───────────────────────────────────────
         async with pool.acquire() as conn:
             seq = await conn.fetchval(
                 "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM chat_messages WHERE session_id = $1",
                 session_id,
             )
-            usage = last_chunk.usage if last_chunk and hasattr(last_chunk, "usage") else None
-            input_tok = usage.prompt_tokens if usage else None
-            output_tok = usage.completion_tokens if usage else None
+            input_tok = getattr(last_usage, "prompt_tokens", None) if last_usage else None
+            output_tok = getattr(last_usage, "completion_tokens", None) if last_usage else None
+
+            # Store reasoning in content_parts JSONB if present
+            content_parts = None
+            if final_reasoning:
+                content_parts = json.dumps({
+                    "reasoning": final_reasoning,
+                    "thinking_tokens": len(final_reasoning),
+                })
 
             await conn.execute(
                 """
                 INSERT INTO chat_messages
-                  (message_id, session_id, owner_user_id, role, content, sequence_num,
-                   input_tokens, output_tokens, model_ref, parent_message_id)
-                VALUES ($1,$2,$3,'assistant',$4,$5,$6,$7,$8,$9)
+                  (message_id, session_id, owner_user_id, role, content, content_parts,
+                   sequence_num, input_tokens, output_tokens, model_ref, parent_message_id)
+                VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10)
                 """,
-                msg_id, session_id, user_id, final_text, seq,
+                msg_id, session_id, user_id, final_text, content_parts, seq,
                 input_tok, output_tok, model_ref, parent_message_id,
             )
 
@@ -131,9 +251,13 @@ async def stream_response(
                 session_id,
             )
 
-        # Send custom data annotation (IDs back to frontend) — only if artifacts were extracted
+        # Send custom data annotation (IDs back to frontend)
+        data_payload: dict = {"message_id": msg_id}
         if artifacts:
-            yield f'data: {json.dumps({"type": "data", "data": [{"message_id": msg_id, "output_id": output_id}]})}\n\n'
+            data_payload["output_id"] = output_id
+        if final_reasoning:
+            data_payload["has_reasoning"] = True
+        yield f'data: {json.dumps({"type": "data", "data": [data_payload]})}\n\n'
 
         # Finish event
         finish = {
@@ -146,8 +270,27 @@ async def stream_response(
         }
         yield f'data: {json.dumps(finish)}\n\n'
 
+        # Auto-title: generate title after first assistant message
+        current_count = await pool.fetchval(
+            "SELECT message_count FROM chat_sessions WHERE session_id = $1",
+            session_id,
+        )
+        if current_count is not None and current_count <= 2:
+            asyncio.create_task(
+                _auto_generate_title(
+                    session_id=session_id,
+                    user_message=user_message_content,
+                    assistant_message=final_text[:500],
+                    model_name=model_string,
+                    api_key=api_key,
+                    base_url=base_url,
+                    pool=pool,
+                    use_openai_sdk=use_openai_sdk,
+                )
+            )
+
         # Log usage async (non-blocking)
-        if usage:
+        if last_usage:
             asyncio.create_task(
                 billing.log_usage(
                     user_id=user_id,
@@ -162,6 +305,79 @@ async def stream_response(
             )
 
     except Exception as exc:
+        logger.exception("Stream error for session %s", session_id)
         yield f'data: {json.dumps({"type": "error", "errorText": str(exc)})}\n\n'
 
     yield "data: [DONE]\n\n"
+
+
+async def _auto_generate_title(
+    session_id: str,
+    user_message: str,
+    assistant_message: str,
+    model_name: str,
+    api_key: str,
+    base_url: str | None,
+    pool: asyncpg.Pool,
+    use_openai_sdk: bool = True,
+) -> None:
+    """Generate a short title for the session based on the first exchange."""
+    title_messages = [
+        {
+            "role": "system",
+            "content": "Generate a concise title (max 6 words) for this conversation. "
+            "Return ONLY the title, no quotes, no explanation. "
+            "Do NOT think or reason — just output the title directly.",
+        },
+        {"role": "user", "content": user_message[:300]},
+        {"role": "assistant", "content": assistant_message[:300] if assistant_message else "(responded)"},
+        {"role": "user", "content": "Title:"},
+    ]
+    try:
+        if use_openai_sdk:
+            client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+            resp = await client.chat.completions.create(
+                model=model_name,
+                messages=title_messages,
+                stream=False,
+                max_tokens=200,  # Extra budget so thinking models have room for content
+                temperature=0.3,
+            )
+            msg = resp.choices[0].message
+            # Thinking models (Qwen3) may put answer in content, or content may be empty
+            # if all tokens went to reasoning. Check both.
+            raw_content = (msg.content or "").strip()
+            raw_extra = getattr(msg, "model_extra", {}) or {}
+            raw_reasoning = (raw_extra.get("reasoning_content", "") or "").strip()
+            # Prefer content; fall back to last line of reasoning
+            if raw_content:
+                title = raw_content.strip().strip('"').strip("'")
+            elif raw_reasoning:
+                # Extract last meaningful line from reasoning as title
+                lines = [l.strip() for l in raw_reasoning.split("\n") if l.strip() and not l.strip().startswith("Okay") and not l.strip().startswith("Let me")]
+                title = lines[-1].strip().strip('"').strip("'") if lines else ""
+            else:
+                title = ""
+            await client.close()
+        else:
+            resp = await acompletion(
+                model=model_name,
+                messages=title_messages,
+                stream=False,
+                api_key=api_key,
+                base_url=base_url,
+                max_tokens=100,
+                temperature=0.3,
+            )
+            title = (resp.choices[0].message.content or "").strip().strip('"').strip("'")
+
+        if title and len(title) <= 100:
+            await pool.execute(
+                """
+                UPDATE chat_sessions SET title = $2, updated_at = now()
+                WHERE session_id = $1 AND title = 'New Chat'
+                """,
+                session_id, title,
+            )
+    except Exception:
+        logger.debug("Auto-title generation failed for session %s", session_id, exc_info=True)

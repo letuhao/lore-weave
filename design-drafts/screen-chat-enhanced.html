@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave — Enhanced Chat GUI (Design Draft)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --input: #242019; --ring: #d4952a;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --secondary-fg: #e0d8cc;
+      --muted: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --destructive: #dc4e4e; --success: #3dba6a; --info: #5496e8;
+      --thinking: #a78bfa; --thinking-muted: #1e1633; --thinking-border: #3b2d6b;
+    }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; margin: 0; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    * { border-color: var(--border); box-sizing: border-box; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    .sidebar-link { transition: background 150ms, color 150ms; }
+    .sidebar-link:hover { background: var(--secondary); }
+    .sidebar-link.active { background: var(--primary-muted); color: var(--primary); }
+
+    .session-item { transition: background 150ms; cursor: pointer; border-left: 2px solid transparent; }
+    .session-item:hover { background: var(--card-hover); }
+    .session-item.active { background: var(--accent-muted); border-left-color: var(--accent); }
+
+    .msg-user { background: var(--secondary); border-radius: 12px 12px 4px 12px; }
+    .msg-assistant { background: var(--card); border: 1px solid var(--border); border-radius: 12px 12px 12px 4px; }
+
+    .btn-primary { background: var(--primary); color: var(--primary-fg); }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); transition: all 150ms; }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+    .input-field { background: var(--background); border: 1px solid var(--border); color: var(--foreground); }
+    .input-field:focus { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px rgba(212,149,42,0.2); }
+    .input-field::placeholder { color: rgba(158,148,136,0.5); }
+
+    /* Thinking block */
+    .thinking-block { background: var(--thinking-muted); border: 1px solid var(--thinking-border); border-radius: 8px; }
+    .thinking-text { color: #c4b5fd; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.6; }
+
+    /* Toggle */
+    .mode-toggle { display: inline-flex; border-radius: 6px; background: var(--secondary); padding: 2px; gap: 2px; }
+    .mode-toggle-btn { padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 500; cursor: pointer; transition: all 150ms; border: none; background: transparent; color: var(--muted-fg); }
+    .mode-toggle-btn.active-think { background: var(--thinking-muted); color: var(--thinking); border: 1px solid var(--thinking-border); }
+    .mode-toggle-btn.active-fast { background: var(--accent-muted); color: var(--accent); border: 1px solid rgba(61,166,146,0.3); }
+
+    /* Slide-over */
+    .slide-over { position: fixed; top: 0; right: 0; bottom: 0; width: 380px; background: var(--card); border-left: 1px solid var(--border); z-index: 100; box-shadow: -8px 0 30px rgba(0,0,0,0.4); overflow-y: auto; }
+
+    /* Slider */
+    .param-slider { -webkit-appearance: none; width: 100%; height: 4px; border-radius: 2px; background: var(--border); outline: none; }
+    .param-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--primary); cursor: pointer; }
+
+    /* Time group */
+    .time-group-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg); padding: 12px 16px 4px; }
+
+    /* Pin icon */
+    .pin-icon { color: var(--primary); }
+
+    /* Search */
+    .search-bar { background: var(--input); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 12px; color: var(--foreground); width: 100%; }
+    .search-bar:focus { outline: none; border-color: var(--ring); }
+    .search-bar::placeholder { color: var(--muted-fg); }
+
+    /* Token badge */
+    .token-badge { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted-fg); }
+
+    /* Branch nav */
+    .branch-nav { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted-fg); }
+    .branch-nav button { background: none; border: none; color: var(--muted-fg); cursor: pointer; padding: 2px; border-radius: 3px; }
+    .branch-nav button:hover { color: var(--foreground); background: var(--secondary); }
+
+    /* Preset tile */
+    .preset-tile { background: var(--secondary); border: 1px solid var(--border); border-radius: 8px; padding: 12px; cursor: pointer; transition: all 150ms; }
+    .preset-tile:hover { border-color: var(--border-hover); background: var(--card-hover); }
+    .preset-tile.selected { border-color: var(--accent); background: var(--accent-muted); }
+
+    /* Context pill */
+    .ctx-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 6px; border-radius: 99px; font-size: 11px; font-weight: 500; }
+    .ctx-pill-book { background: var(--primary-muted); color: var(--primary); }
+    .ctx-pill-glossary { background: var(--accent-muted); color: var(--accent-fg); }
+
+    /* Typing dots */
+    @keyframes typing-dot { 0%, 80%, 100% { opacity: 0.3; } 40% { opacity: 1; } }
+    .typing-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+
+    /* Thinking pulse */
+    @keyframes think-pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+    .think-pulse { animation: think-pulse 2s ease-in-out infinite; }
+
+    /* Format pills */
+    .format-pill { padding: 3px 10px; border-radius: 99px; font-size: 11px; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--muted-fg); transition: all 150ms; }
+    .format-pill:hover { border-color: var(--border-hover); color: var(--foreground); }
+    .format-pill.active { border-color: var(--accent); background: var(--accent-muted); color: var(--accent-fg); }
+
+    /* Annotations */
+    .annotation { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 0; font-size: 11px; color: var(--muted-fg); }
+    .annotation-line { flex: 1; height: 1px; background: var(--border); }
+  </style>
+</head>
+<body>
+
+<div style="display: flex; height: 100vh; overflow: hidden;">
+
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <!-- NAV SIDEBAR (same as existing)                                           -->
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <aside style="width: 240px; display: flex; flex-direction: column; border-right: 1px solid var(--border); background: var(--background); flex-shrink: 0;">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 16px 16px 12px;">
+      <div style="width: 28px; height: 28px; border-radius: 6px; background: var(--primary); color: var(--primary-fg); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;">L</div>
+      <span class="font-serif" style="font-size: 14px; font-weight: 600;">LoreWeave</span>
+    </div>
+    <nav style="padding: 0 8px; display: flex; flex-direction: column; gap: 2px;">
+      <p style="padding: 12px 12px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg);">Main</p>
+      <a href="#" class="sidebar-link" style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; font-size: 13px; color: var(--muted-fg); text-decoration: none;">
+        <svg style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.332 0-3.332.477-4.5 1.253"/></svg>
+        Workspace
+      </a>
+      <a href="#" class="sidebar-link active" style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; font-size: 13px; text-decoration: none;">
+        <svg style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        Chat
+      </a>
+      <a href="#" class="sidebar-link" style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; font-size: 13px; color: var(--muted-fg); text-decoration: none;">
+        <svg style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        Browse
+      </a>
+      <a href="#" class="sidebar-link" style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; font-size: 13px; color: var(--muted-fg); text-decoration: none;">
+        <svg style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
+        Settings
+      </a>
+    </nav>
+    <div style="flex: 1;"></div>
+    <div style="border-top: 1px solid var(--border); padding: 12px;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 6px;">
+        <div style="width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--primary)); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600;">N</div>
+        <div>
+          <p style="font-size: 12px; font-weight: 500;">Nene</p>
+          <p style="font-size: 10px; color: var(--muted-fg);">Free tier</p>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <!-- SESSION SIDEBAR (enhanced: search + groups + pins) [C6-09]               -->
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <aside style="width: 270px; display: flex; flex-direction: column; border-right: 1px solid var(--border); background: var(--card); flex-shrink: 0;">
+    <!-- Header + New button -->
+    <div style="display: flex; items-center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--border); align-items: center;">
+      <span style="font-size: 13px; font-weight: 600;">Conversations</span>
+      <button class="btn-primary" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 500; border: none; cursor: pointer;">
+        <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
+        New
+      </button>
+    </div>
+
+    <!-- [C6-09] Search sessions -->
+    <div style="padding: 8px 14px;">
+      <input type="text" class="search-bar" placeholder="Search conversations..." />
+    </div>
+
+    <!-- Session list with groups -->
+    <div style="flex: 1; overflow-y: auto;">
+
+      <!-- [C6-09] Pinned section -->
+      <div class="time-group-label" style="display: flex; align-items: center; gap: 4px;">
+        <svg class="pin-icon" style="width:10px;height:10px" fill="currentColor" viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
+        Pinned
+      </div>
+      <div class="session-item active" style="padding: 10px 16px;">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <p style="font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">Novel Plot Analysis</p>
+          <svg class="pin-icon" style="width:10px;height:10px; flex-shrink:0;" fill="currentColor" viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
+          <span style="font-size: 10px; color: var(--muted-fg);">Qwen3-32B</span>
+          <span style="font-size: 10px; color: var(--muted-fg);">2m ago</span>
+        </div>
+      </div>
+
+      <!-- Today group -->
+      <div class="time-group-label">Today</div>
+      <div class="session-item" style="padding: 10px 16px;">
+        <p style="font-size: 13px; font-weight: 500; color: var(--muted-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Character Development Help</p>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
+          <span style="font-size: 10px; color: var(--muted-fg);">Claude 3.5 Sonnet</span>
+          <span style="font-size: 10px; color: var(--muted-fg);">1h ago</span>
+        </div>
+      </div>
+      <div class="session-item" style="padding: 10px 16px;">
+        <p style="font-size: 13px; font-weight: 500; color: var(--muted-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Translate Ch. 12 Review</p>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
+          <span style="font-size: 10px; color: var(--muted-fg);">GPT-4o</span>
+          <span style="font-size: 10px; color: var(--muted-fg);">3h ago</span>
+        </div>
+      </div>
+
+      <!-- Yesterday group -->
+      <div class="time-group-label">Yesterday</div>
+      <div class="session-item" style="padding: 10px 16px;">
+        <p style="font-size: 13px; font-weight: 500; color: var(--muted-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Worldbuilding: Magic System</p>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
+          <span style="font-size: 10px; color: var(--muted-fg);">Qwen3-32B</span>
+          <span style="font-size: 10px; color: var(--muted-fg);">Yesterday</span>
+        </div>
+      </div>
+      <div class="session-item" style="padding: 10px 16px;">
+        <p style="font-size: 13px; font-weight: 500; color: var(--muted-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Glossary Review — Names</p>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
+          <span style="font-size: 10px; color: var(--muted-fg);">Qwen3-32B</span>
+          <span style="font-size: 10px; color: var(--muted-fg);">Yesterday</span>
+        </div>
+      </div>
+
+      <!-- This Week group -->
+      <div class="time-group-label">This Week</div>
+      <div class="session-item" style="padding: 10px 16px;">
+        <p style="font-size: 13px; font-weight: 500; color: var(--muted-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Dialogue Style Comparison</p>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
+          <span style="font-size: 10px; color: var(--muted-fg);">DeepSeek-R1</span>
+          <span style="font-size: 10px; color: var(--muted-fg);">3d ago</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <!-- MAIN CHAT AREA                                                           -->
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <main style="flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative;">
+
+    <!-- ── CHAT HEADER (enhanced) [C6-04, C6-05, C6-07] ── -->
+    <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); padding: 10px 24px; background: var(--card); flex-shrink: 0;">
+      <div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <h2 style="font-size: 14px; font-weight: 600; margin: 0;">Novel Plot Analysis</h2>
+          <!-- [C6-04] Model switcher badge -->
+          <button class="btn-ghost" style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 99px; font-size: 11px; border: 1px solid var(--border);">
+            <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--success);"></span>
+            Qwen3-32B
+            <svg style="width:10px;height:10px; opacity:0.5;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>
+          </button>
+        </div>
+        <p style="font-size: 11px; color: var(--muted-fg); margin-top: 2px;">
+          <!-- [C6-05] Token usage in header -->
+          42 messages &middot; <span class="font-mono" style="font-size: 10px;">18.4K tokens</span> &middot; <span class="font-mono" style="font-size: 10px;">$0.003</span>
+        </p>
+      </div>
+      <div style="display: flex; align-items: center; gap: 4px;">
+        <!-- [C6-11] Search in session -->
+        <button class="btn-ghost" style="padding: 6px; border-radius: 6px; border: none; cursor: pointer;" title="Search (Ctrl+F)">
+          <svg style="width:15px;height:15px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        </button>
+        <!-- Export -->
+        <button class="btn-ghost" style="padding: 6px; border-radius: 6px; border: none; cursor: pointer;" title="Export">
+          <svg style="width:15px;height:15px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        </button>
+        <!-- [C6-07] Session Settings -->
+        <button class="btn-ghost" onclick="document.getElementById('slideOver').style.display='block'" style="padding: 6px; border-radius: 6px; border: none; cursor: pointer;" title="Session Settings (Ctrl+Shift+S)">
+          <svg style="width:15px;height:15px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── MESSAGE LIST ── -->
+    <div style="flex: 1; overflow-y: auto; padding: 24px 32px;">
+      <div style="max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px;">
+
+        <!-- System prompt indicator -->
+        <div class="annotation">
+          <span class="annotation-line"></span>
+          <span style="display: flex; align-items: center; gap: 4px; white-space: nowrap;">
+            <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            System: Novel writing assistant &middot; <span style="color: var(--accent);">click to edit</span>
+          </span>
+          <span class="annotation-line"></span>
+        </div>
+
+        <!-- USER MESSAGE 1 -->
+        <div style="display: flex; justify-content: flex-end;">
+          <div class="msg-user" style="padding: 12px 16px; max-width: 80%;">
+            <!-- Context pills on message -->
+            <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px;">
+              <span class="ctx-pill ctx-pill-book">
+                <svg style="width:10px;height:10px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253"/></svg>
+                The Azure Throne
+              </span>
+              <span class="ctx-pill ctx-pill-glossary">
+                <svg style="width:10px;height:10px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+                Kael
+              </span>
+            </div>
+            <p style="font-size: 13px; line-height: 1.6; margin: 0;">Analyze the character arc of Kael across chapters 1-5. What are his core motivations, and do they evolve believably?</p>
+          </div>
+        </div>
+
+        <!-- ASSISTANT MESSAGE 1 — with THINKING BLOCK [C6-01] -->
+        <div style="display: flex; justify-content: flex-start;">
+          <div class="msg-assistant" style="padding: 14px 18px; max-width: 85%;">
+
+            <!-- [C6-01] Thinking block (collapsible) -->
+            <details class="thinking-block" style="margin-bottom: 12px; padding: 10px 14px;">
+              <summary style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--thinking); font-weight: 500; list-style: none;">
+                <svg style="width:14px;height:14px; flex-shrink:0;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                Thought for 4.2s
+                <svg style="width:10px;height:10px; margin-left: auto; transform: rotate(0deg); transition: transform 150ms;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>
+              </summary>
+              <div class="thinking-text" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--thinking-border);">
+                Let me analyze Kael's progression across the first five chapters...<br><br>
+                Chapter 1: Kael is introduced as a reluctant heir. His motivation is escape — he wants freedom from obligation. Key scene: the throne room refusal.<br><br>
+                Chapter 2: First encounter with the Veil. His motivation shifts from escape to curiosity. The worldbuilding here introduces the magic system through his eyes.<br><br>
+                Chapter 3: The mentor figure (Sera) challenges his assumptions. Now I see a dual motivation: curiosity + proving himself.<br><br>
+                Chapter 4-5: The betrayal scene is the turning point. His motivation crystallizes into protecting others rather than himself. This is the key arc shift...
+              </div>
+            </details>
+
+            <!-- Actual response content -->
+            <div style="font-size: 13px; line-height: 1.7;">
+              <p style="margin: 0 0 10px;"><strong style="color: var(--primary);">Kael's Character Arc (Chapters 1-5):</strong></p>
+              <p style="margin: 0 0 8px;">Kael undergoes a compelling three-phase transformation:</p>
+              <p style="margin: 0 0 6px;"><strong>1. The Reluctant Heir (Ch. 1-2):</strong> His core motivation is <em>escape</em>. The throne room refusal scene establishes his conflict with duty. This is effective — we see internal resistance against external expectation.</p>
+              <p style="margin: 0 0 6px;"><strong>2. The Awakened Seeker (Ch. 3):</strong> Sera's mentorship redirects his energy. His motivation evolves to <em>understanding</em> — both of the Veil and of himself. The shift feels organic because it's driven by curiosity, not plot convenience.</p>
+              <p style="margin: 0 0 6px;"><strong>3. The Protector (Ch. 4-5):</strong> The betrayal catalyzes his final shift to <em>protection</em>. He stops running and starts fighting for others.</p>
+              <p style="margin: 0 0 0; padding-top: 6px; border-top: 1px dashed var(--border); color: var(--muted-fg); font-size: 12px;">
+                <strong style="color: var(--accent);">Suggestion:</strong> The Chapter 3→4 transition could be stronger. Consider adding a scene where Kael <em>chooses</em> to stay rather than being forced by circumstances.
+              </p>
+            </div>
+
+            <!-- [C6-05] Token usage + actions footer -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border);">
+              <div class="token-badge" style="display: flex; align-items: center; gap: 8px;">
+                <span title="Thinking tokens">💭 890</span>
+                <span title="Input tokens">↑ 2,140</span>
+                <span title="Output tokens">↓ 487</span>
+                <span title="Time">&middot; 4.8s</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <button class="btn-ghost" style="padding: 4px; border-radius: 4px; border: none; cursor: pointer;" title="Copy">
+                  <svg style="width:13px;height:13px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                </button>
+                <button class="btn-ghost" style="padding: 4px; border-radius: 4px; border: none; cursor: pointer;" title="Regenerate">
+                  <svg style="width:13px;height:13px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
+                </button>
+                <!-- [C6-14] More actions -->
+                <button class="btn-ghost" style="padding: 4px; border-radius: 4px; border: none; cursor: pointer;" title="More actions">
+                  <svg style="width:13px;height:13px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" r="1" cy="12"/><circle cx="5" cy="12" r="1"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- [C6-04] Model switch annotation -->
+        <div class="annotation">
+          <span class="annotation-line"></span>
+          <span style="display: flex; align-items: center; gap: 4px; white-space: nowrap;">
+            <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+            Switched to <strong>Claude 3.5 Sonnet</strong>
+          </span>
+          <span class="annotation-line"></span>
+        </div>
+
+        <!-- USER MESSAGE 2 (edited, with branch navigation) -->
+        <div style="display: flex; justify-content: flex-end;">
+          <div class="msg-user" style="padding: 12px 16px; max-width: 80%;">
+            <p style="font-size: 13px; line-height: 1.6; margin: 0;">Can you rewrite the Chapter 3-4 transition scene? Make Kael actively choose to stay.</p>
+            <!-- [C6-10] Branch navigation -->
+            <div style="margin-top: 6px; display: flex; align-items: center; justify-content: space-between;">
+              <div class="branch-nav">
+                <button title="Previous edit">&lsaquo;</button>
+                <span>2 / 3</span>
+                <button title="Next edit">&rsaquo;</button>
+                <span style="font-size: 10px; color: var(--muted-fg); margin-left: 4px;">edited</span>
+              </div>
+              <button class="btn-ghost" style="padding: 2px 4px; border: none; font-size: 11px; cursor: pointer;">
+                <svg style="width:11px;height:11px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ASSISTANT MESSAGE 2 — NON-THINKING (fast mode), with output card -->
+        <div style="display: flex; justify-content: flex-start;">
+          <div class="msg-assistant" style="padding: 14px 18px; max-width: 85%;">
+            <div style="font-size: 13px; line-height: 1.7;">
+              <p style="margin: 0 0 8px;">Here's a rewritten transition scene for the end of Chapter 3:</p>
+              <div style="background: var(--background); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin: 8px 0;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                  <span style="font-size: 11px; font-weight: 500; color: var(--accent);">Scene: The Threshold Choice</span>
+                  <div style="display: flex; gap: 4px;">
+                    <button class="btn-ghost" style="padding: 3px; border-radius: 4px; border: none; cursor: pointer; font-size: 10px;" title="Copy">Copy</button>
+                    <button class="btn-ghost" style="padding: 3px 6px; border-radius: 4px; border: none; cursor: pointer; font-size: 10px; color: var(--accent);" title="Paste to Editor">To Editor</button>
+                    <button class="btn-ghost" style="padding: 3px; border-radius: 4px; border: none; cursor: pointer; font-size: 10px;" title="Download">Save</button>
+                  </div>
+                </div>
+                <p class="font-serif" style="font-size: 13px; line-height: 1.8; color: var(--foreground); opacity: 0.9; margin: 0;">
+                  The gate stood open. Beyond it, the road wound south through wheat fields bathed in amber light — the kind of light that made you forget you'd ever known winter. Kael's horse shifted beneath him, sensing the rider's indecision.<br><br>
+                  "You could go," Sera said. No accusation. No plea. Just the observation of someone who had watched a thousand students leave.<br><br>
+                  Kael looked south. Then north, toward the Veil, where the sky rippled like heat over stone. He thought of the boy in the market who couldn't stop his hands from shaking. Of the woman who woke screaming words in a language no one recognized.<br><br>
+                  He dismounted.<br><br>
+                  "I'm not staying for you," he said. "I'm staying because someone should."
+                </p>
+              </div>
+            </div>
+
+            <!-- Token footer -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border);">
+              <div class="token-badge" style="display: flex; align-items: center; gap: 8px;">
+                <span style="display: inline-flex; align-items: center; gap: 2px; color: var(--accent);">
+                  <svg style="width:10px;height:10px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                  Fast
+                </span>
+                <span>↑ 1,890</span>
+                <span>↓ 312</span>
+                <span>&middot; 2.1s</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <button class="btn-ghost" style="padding: 4px; border-radius: 4px; border: none; cursor: pointer;" title="Copy">
+                  <svg style="width:13px;height:13px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                </button>
+                <button class="btn-ghost" style="padding: 4px; border-radius: 4px; border: none; cursor: pointer;" title="Regenerate">
+                  <svg style="width:13px;height:13px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
+                </button>
+                <button class="btn-ghost" style="padding: 4px; border-radius: 4px; border: none; cursor: pointer;" title="More">
+                  <svg style="width:13px;height:13px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" r="1" cy="12"/><circle cx="5" cy="12" r="1"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- STREAMING MESSAGE — Thinking phase in progress [C6-01, C6-13] -->
+        <div style="display: flex; justify-content: flex-start;">
+          <div class="msg-assistant" style="padding: 14px 18px; max-width: 85%;">
+            <!-- Active thinking indicator -->
+            <div class="thinking-block think-pulse" style="padding: 10px 14px; display: flex; align-items: center; gap: 8px;">
+              <svg class="think-pulse" style="width:16px;height:16px; color: var(--thinking);" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+              <span style="font-size: 12px; color: var(--thinking); font-weight: 500;">Thinking...</span>
+              <span class="font-mono" style="font-size: 11px; color: var(--thinking); opacity: 0.7; margin-left: auto;">2.3s</span>
+            </div>
+            <!-- Streaming dots below thinking block -->
+            <div style="margin-top: 10px; display: flex; align-items: center; gap: 6px;">
+              <span class="typing-dot" style="background: var(--thinking); animation: typing-dot 1.4s infinite 0s;"></span>
+              <span class="typing-dot" style="background: var(--thinking); animation: typing-dot 1.4s infinite 0.2s;"></span>
+              <span class="typing-dot" style="background: var(--thinking); animation: typing-dot 1.4s infinite 0.4s;"></span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── ENHANCED INPUT BAR [C6-01, C6-08, C6-12] ── -->
+    <div style="flex-shrink: 0; border-top: 1px solid var(--border); background: var(--card); padding: 16px 32px;">
+      <div style="max-width: 720px; margin: 0 auto;">
+
+        <!-- [C6-12] Format options row -->
+        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+          <span style="font-size: 10px; color: var(--muted-fg); margin-right: 4px;">Format:</span>
+          <button class="format-pill active">Auto</button>
+          <button class="format-pill">Concise</button>
+          <button class="format-pill">Detailed</button>
+          <button class="format-pill">Bullets</button>
+          <button class="format-pill">Table</button>
+        </div>
+
+        <div style="position: relative; border: 1px solid var(--border); border-radius: 10px; background: var(--background);" class="input-field" tabindex="-1">
+
+          <!-- Context pills bar (existing feature, shown when items attached) -->
+          <div style="display: flex; align-items: center; gap: 6px; padding: 8px 12px 0; flex-wrap: wrap;">
+            <span class="ctx-pill ctx-pill-book">
+              <svg style="width:10px;height:10px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13"/></svg>
+              Ch. 6: The Veil Breaks
+              <button style="background: none; border: none; color: inherit; cursor: pointer; padding: 0; margin-left: 2px; opacity: 0.6;">x</button>
+            </span>
+            <button style="background: none; border: none; color: var(--muted-fg); font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 3px;">
+              <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+              Attach
+            </button>
+          </div>
+
+          <!-- Textarea -->
+          <div contenteditable="false" style="min-height: 72px; max-height: 180px; padding: 10px 56px 10px 14px; font-size: 13px; line-height: 1.6; color: var(--foreground); outline: none; overflow-y: auto;">
+            <span style="color: var(--muted-fg); opacity: 0.5;">Continue the scene — what happens when Kael enters the Veil for the first time?</span>
+          </div>
+
+          <!-- Bottom row: mode toggle + send -->
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 8px 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <!-- [C6-01] Thinking mode toggle -->
+              <div class="mode-toggle">
+                <button class="mode-toggle-btn active-think">
+                  <span style="display: flex; align-items: center; gap: 3px;">
+                    <svg style="width:11px;height:11px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                    Think
+                  </span>
+                </button>
+                <button class="mode-toggle-btn">
+                  <span style="display: flex; align-items: center; gap: 3px;">
+                    <svg style="width:11px;height:11px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    Fast
+                  </span>
+                </button>
+              </div>
+
+              <!-- [C6-16] Prompt template trigger -->
+              <button class="btn-ghost" style="border: none; cursor: pointer; padding: 4px 8px; font-size: 11px; border-radius: 4px; display: flex; align-items: center; gap: 3px;" title="Prompt templates (/)">
+                <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h7"/></svg>
+                Templates
+              </button>
+            </div>
+
+            <!-- Send button -->
+            <button class="btn-primary" style="display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 8px; border: none; cursor: pointer;">
+              <svg style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- [C6-08] Keyboard hints -->
+        <p style="text-align: center; font-size: 10px; color: var(--muted-fg); margin-top: 6px;">
+          <span style="opacity: 0.7;">Enter</span> send &middot;
+          <span style="opacity: 0.7;">Shift+Enter</span> new line &middot;
+          <span style="opacity: 0.7;">Ctrl+Shift+Enter</span> send with Think &middot;
+          <span style="opacity: 0.7;">Ctrl+/</span> focus &middot;
+          <span style="opacity: 0.7;">Esc</span> stop
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <!-- SESSION SETTINGS SLIDE-OVER [C6-07]                                      -->
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <div id="slideOver" class="slide-over" style="display: block;">
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border);">
+      <h3 style="font-size: 14px; font-weight: 600; margin: 0;">Session Settings</h3>
+      <button onclick="document.getElementById('slideOver').style.display='none'" class="btn-ghost" style="padding: 6px; border-radius: 6px; border: none; cursor: pointer;">
+        <svg style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div style="padding: 20px;">
+
+      <!-- Model selector [C6-04] -->
+      <div style="margin-bottom: 20px;">
+        <label style="font-size: 12px; font-weight: 500; color: var(--muted-fg); display: block; margin-bottom: 6px;">Model</label>
+        <select class="input-field" style="width: 100%; padding: 8px 10px; border-radius: 6px; font-size: 13px;">
+          <optgroup label="LM Studio">
+            <option selected>Qwen3-32B</option>
+            <option>Qwen3-8B</option>
+            <option>DeepSeek-R1-14B</option>
+          </optgroup>
+          <optgroup label="OpenAI">
+            <option>GPT-4o</option>
+            <option>GPT-4o mini</option>
+          </optgroup>
+          <optgroup label="Anthropic">
+            <option>Claude 3.5 Sonnet</option>
+            <option>Claude 3.5 Haiku</option>
+          </optgroup>
+        </select>
+        <div style="display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap;">
+          <span style="display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 99px; font-size: 10px; background: var(--thinking-muted); color: var(--thinking); border: 1px solid var(--thinking-border);">
+            <svg style="width:9px;height:9px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707"/></svg>
+            Thinking
+          </span>
+          <span style="display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 99px; font-size: 10px; background: var(--accent-muted); color: var(--accent-fg); border: 1px solid rgba(61,166,146,0.2);">128K ctx</span>
+          <span style="display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 99px; font-size: 10px; background: var(--secondary); color: var(--muted-fg); border: 1px solid var(--border);">Chat</span>
+        </div>
+      </div>
+
+      <!-- System prompt [C6-02] -->
+      <div style="margin-bottom: 20px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+          <label style="font-size: 12px; font-weight: 500; color: var(--muted-fg);">System Prompt</label>
+          <select style="background: transparent; border: none; color: var(--accent); font-size: 11px; cursor: pointer;">
+            <option>Custom</option>
+            <option>Novelist</option>
+            <option>Translator</option>
+            <option>Worldbuilder</option>
+            <option>Editor</option>
+            <option>Analyst</option>
+          </select>
+        </div>
+        <textarea class="input-field" style="width: 100%; padding: 10px; border-radius: 6px; font-size: 12px; line-height: 1.5; min-height: 100px; resize: vertical;">You are a creative writing assistant specializing in fantasy novels. Analyze character arcs, plot structure, and worldbuilding with a focus on internal consistency. When suggesting changes, provide concrete scene rewrites rather than abstract advice.</textarea>
+      </div>
+
+      <!-- Generation params [C6-03] -->
+      <div style="margin-bottom: 20px;">
+        <details open>
+          <summary style="font-size: 12px; font-weight: 500; color: var(--muted-fg); cursor: pointer; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;">
+            <svg style="width:10px;height:10px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>
+            Generation Parameters
+          </summary>
+
+          <!-- Max Tokens -->
+          <div style="margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <label style="font-size: 11px; color: var(--muted-fg);">Max Tokens</label>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <input type="number" class="input-field font-mono" style="width: 70px; padding: 4px 8px; border-radius: 4px; font-size: 12px; text-align: right;" value="4096" />
+                <label style="display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--muted-fg); cursor: pointer;">
+                  <input type="checkbox" style="accent-color: var(--accent);" />
+                  <span>&#8734;</span>
+                </label>
+              </div>
+            </div>
+            <input type="range" class="param-slider" min="256" max="32768" value="4096" step="256" />
+            <div style="display: flex; justify-content: space-between; font-size: 9px; color: var(--muted-fg); margin-top: 2px;">
+              <span>256</span><span>32K</span>
+            </div>
+          </div>
+
+          <!-- Temperature -->
+          <div style="margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <label style="font-size: 11px; color: var(--muted-fg);">Temperature</label>
+              <span class="font-mono" style="font-size: 12px; color: var(--foreground);">0.7</span>
+            </div>
+            <input type="range" class="param-slider" min="0" max="2" value="0.7" step="0.1" />
+            <div style="display: flex; justify-content: space-between; font-size: 9px; color: var(--muted-fg); margin-top: 2px;">
+              <span>0 (precise)</span><span>2 (creative)</span>
+            </div>
+          </div>
+
+          <!-- Top P -->
+          <div style="margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <label style="font-size: 11px; color: var(--muted-fg);">Top P</label>
+              <span class="font-mono" style="font-size: 12px; color: var(--foreground);">0.9</span>
+            </div>
+            <input type="range" class="param-slider" min="0" max="1" value="0.9" step="0.05" />
+            <div style="display: flex; justify-content: space-between; font-size: 9px; color: var(--muted-fg); margin-top: 2px;">
+              <span>0 (narrow)</span><span>1 (diverse)</span>
+            </div>
+          </div>
+
+          <!-- Thinking mode default -->
+          <div style="margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <label style="font-size: 11px; color: var(--muted-fg);">Default Mode</label>
+              <div class="mode-toggle">
+                <button class="mode-toggle-btn active-think">
+                  <span style="display: flex; align-items: center; gap: 3px;">
+                    <svg style="width:10px;height:10px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1"/></svg>
+                    Think
+                  </span>
+                </button>
+                <button class="mode-toggle-btn">
+                  <span style="display: flex; align-items: center; gap: 3px;">
+                    <svg style="width:10px;height:10px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    Fast
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Session info -->
+      <div style="border-top: 1px solid var(--border); padding-top: 16px;">
+        <label style="font-size: 12px; font-weight: 500; color: var(--muted-fg); display: block; margin-bottom: 10px;">Session Info</label>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div style="background: var(--secondary); border-radius: 6px; padding: 10px;">
+            <p style="font-size: 10px; color: var(--muted-fg); margin: 0;">Messages</p>
+            <p class="font-mono" style="font-size: 16px; font-weight: 600; margin: 2px 0 0;">42</p>
+          </div>
+          <div style="background: var(--secondary); border-radius: 6px; padding: 10px;">
+            <p style="font-size: 10px; color: var(--muted-fg); margin: 0;">Total Tokens</p>
+            <p class="font-mono" style="font-size: 16px; font-weight: 600; margin: 2px 0 0;">18.4K</p>
+          </div>
+          <div style="background: var(--secondary); border-radius: 6px; padding: 10px;">
+            <p style="font-size: 10px; color: var(--muted-fg); margin: 0;">Est. Cost</p>
+            <p class="font-mono" style="font-size: 16px; font-weight: 600; margin: 2px 0 0;">$0.003</p>
+          </div>
+          <div style="background: var(--secondary); border-radius: 6px; padding: 10px;">
+            <p style="font-size: 10px; color: var(--muted-fg); margin: 0;">Created</p>
+            <p style="font-size: 13px; font-weight: 500; margin: 2px 0 0;">Apr 3</p>
+          </div>
+        </div>
+
+        <!-- Reset + danger zone -->
+        <div style="margin-top: 16px; display: flex; gap: 8px;">
+          <button class="btn-ghost" style="flex: 1; padding: 8px; border-radius: 6px; font-size: 12px; border: 1px solid var(--border); cursor: pointer;">Reset to Defaults</button>
+          <button style="flex: 1; padding: 8px; border-radius: 6px; font-size: 12px; border: 1px solid rgba(220,78,78,0.3); background: rgba(220,78,78,0.08); color: var(--destructive); cursor: pointer;">Archive Session</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- DESIGN NOTES (not part of UI)                                            -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<div style="background: #0a0908; border-top: 3px solid var(--primary); padding: 40px 32px; margin-top: 0;">
+  <div style="max-width: 900px; margin: 0 auto;">
+    <h2 style="font-size: 20px; font-weight: 700; margin: 0 0 8px;" class="font-serif">Design Notes — Chat Enhancement (Phase 6)</h2>
+    <p style="font-size: 13px; color: var(--muted-fg); margin: 0 0 24px;">Reference for implementation. Not rendered in production.</p>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+      <div style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px;">
+        <h3 style="font-size: 13px; font-weight: 600; color: var(--primary); margin: 0 0 8px;">C6-01: Thinking Mode</h3>
+        <ul style="font-size: 12px; line-height: 1.7; color: var(--muted-fg); margin: 0; padding-left: 16px;">
+          <li>Toggle in input bar: [Think] / [Fast]</li>
+          <li>Only shown if model capability_flags.thinking = true</li>
+          <li>Collapsible thinking block on assistant messages</li>
+          <li>Animated "Thinking..." with elapsed timer during stream</li>
+          <li>Purple theme (--thinking color family)</li>
+          <li>BE: parse delta.reasoning_content from Qwen3/DeepSeek</li>
+          <li>BE: emit "reasoning-delta" SSE events</li>
+          <li>Ctrl+Shift+Enter = force Think mode</li>
+        </ul>
+      </div>
+      <div style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px;">
+        <h3 style="font-size: 13px; font-weight: 600; color: var(--primary); margin: 0 0 8px;">C6-02/03: System Prompt + Params</h3>
+        <ul style="font-size: 12px; line-height: 1.7; color: var(--muted-fg); margin: 0; padding-left: 16px;">
+          <li>System prompt editable from session settings slide-over</li>
+          <li>Template presets: Novelist, Translator, Worldbuilder, Editor, Analyst</li>
+          <li>Annotation line shows current system prompt in chat</li>
+          <li>Generation params: temperature (0-2), top_p (0-1), max_tokens (256-32K)</li>
+          <li>Unlimited toggle (&#8734;) for max_tokens</li>
+          <li>BE: generation_params JSONB column on chat_sessions</li>
+          <li>Passed to LiteLLM acompletion()</li>
+        </ul>
+      </div>
+      <div style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px;">
+        <h3 style="font-size: 13px; font-weight: 600; color: var(--primary); margin: 0 0 8px;">C6-04/05: Model Switch + Tokens</h3>
+        <ul style="font-size: 12px; line-height: 1.7; color: var(--muted-fg); margin: 0; padding-left: 16px;">
+          <li>Model badge in header is clickable dropdown</li>
+          <li>Switch inserts annotation divider in message list</li>
+          <li>Token counts on every assistant message footer</li>
+          <li>Thinking tokens shown separately (purple)</li>
+          <li>Session total in header (messages + tokens + est. cost)</li>
+          <li>Response time shown per-message</li>
+        </ul>
+      </div>
+      <div style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px;">
+        <h3 style="font-size: 13px; font-weight: 600; color: var(--primary); margin: 0 0 8px;">C6-09/10/11: Sidebar + Branching + Search</h3>
+        <ul style="font-size: 12px; line-height: 1.7; color: var(--muted-fg); margin: 0; padding-left: 16px;">
+          <li>Session groups: Pinned, Today, Yesterday, This Week, Older</li>
+          <li>Search bar filters sessions by title</li>
+          <li>Pin/unpin sessions (pinned always on top)</li>
+          <li>Edit creates branch, not truncate</li>
+          <li>&lt; 1/2 &gt; navigation on edited messages</li>
+          <li>Ctrl+F: in-session search with highlight</li>
+        </ul>
+      </div>
+      <div style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px;">
+        <h3 style="font-size: 13px; font-weight: 600; color: var(--primary); margin: 0 0 8px;">C6-08: Keyboard Shortcuts</h3>
+        <ul style="font-size: 12px; line-height: 1.7; color: var(--muted-fg); margin: 0; padding-left: 16px;">
+          <li>Enter: send (current mode)</li>
+          <li>Shift+Enter: new line</li>
+          <li>Ctrl+Shift+Enter: send with Think mode</li>
+          <li>Ctrl+Enter: send with Fast mode</li>
+          <li>Ctrl+/: focus input bar</li>
+          <li>Escape: stop streaming</li>
+          <li>Ctrl+N: new chat</li>
+          <li>Ctrl+Shift+S: session settings</li>
+          <li>Ctrl+F: search in session</li>
+          <li>Ctrl+Shift+C: copy last response</li>
+        </ul>
+      </div>
+      <div style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px;">
+        <h3 style="font-size: 13px; font-weight: 600; color: var(--primary); margin: 0 0 8px;">Color System</h3>
+        <ul style="font-size: 12px; line-height: 1.7; color: var(--muted-fg); margin: 0; padding-left: 16px;">
+          <li>Thinking: purple family (#a78bfa, #1e1633, #3b2d6b)</li>
+          <li>Fast mode: accent/teal family (existing --accent)</li>
+          <li>User messages: --secondary (existing)</li>
+          <li>Assistant messages: --card with border (existing)</li>
+          <li>Token badges: --muted-fg, JetBrains Mono</li>
+          <li>Model switch annotation: --muted-fg with dashed lines</li>
+          <li>System prompt: --accent clickable text</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

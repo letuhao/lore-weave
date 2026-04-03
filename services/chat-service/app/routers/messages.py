@@ -165,6 +165,7 @@ async def send_message(
             billing=billing,
             parent_message_id=parent_message_id,
             context=body.context,
+            thinking=body.thinking,
         ),
         media_type="text/event-stream",
         headers=headers,

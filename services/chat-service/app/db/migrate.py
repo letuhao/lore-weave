@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
   model_source      VARCHAR(20) NOT NULL,
   model_ref         UUID NOT NULL,
   system_prompt     TEXT,
+  generation_params JSONB NOT NULL DEFAULT '{}',
   status            VARCHAR(20) NOT NULL DEFAULT 'active',
   message_count     INT NOT NULL DEFAULT 0,
   last_message_at   TIMESTAMPTZ,
@@ -62,6 +63,20 @@ CREATE INDEX IF NOT EXISTS idx_chat_outputs_session
 
 CREATE INDEX IF NOT EXISTS idx_chat_outputs_owner
   ON chat_outputs (owner_user_id, output_type, created_at DESC);
+
+-- Phase 6: Full-text search index for message search
+CREATE INDEX IF NOT EXISTS idx_chat_messages_fts
+  ON chat_messages USING gin(to_tsvector('english', content));
+
+-- Phase 6: Chat Enhancement migrations (idempotent)
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='generation_params') THEN
+    ALTER TABLE chat_sessions ADD COLUMN generation_params JSONB NOT NULL DEFAULT '{}';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='is_pinned') THEN
+    ALTER TABLE chat_sessions ADD COLUMN is_pinned BOOLEAN NOT NULL DEFAULT false;
+  END IF;
+END $$;
 """
 
 
