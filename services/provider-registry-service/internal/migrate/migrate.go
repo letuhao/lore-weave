@@ -53,6 +53,14 @@ CREATE INDEX IF NOT EXISTS idx_user_models_owner_flags ON user_models(owner_user
 -- v2: notes field for user annotations on models
 ALTER TABLE user_models ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
 
+-- v3: support custom providers + api_standard
+-- Drop CHECK constraints to allow any provider_kind string
+ALTER TABLE provider_credentials DROP CONSTRAINT IF EXISTS provider_credentials_provider_kind_check;
+ALTER TABLE user_models DROP CONSTRAINT IF EXISTS user_models_provider_kind_check;
+ALTER TABLE platform_models DROP CONSTRAINT IF EXISTS platform_models_provider_kind_check;
+-- api_standard: which API protocol this provider speaks (openai_compatible, anthropic, ollama, lm_studio)
+ALTER TABLE provider_credentials ADD COLUMN IF NOT EXISTS api_standard TEXT NOT NULL DEFAULT 'openai_compatible';
+
 CREATE TABLE IF NOT EXISTS user_model_tags (
   user_model_tag_id UUID PRIMARY KEY DEFAULT uuidv7(),
   user_model_id UUID NOT NULL REFERENCES user_models(user_model_id) ON DELETE CASCADE,

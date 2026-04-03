@@ -45,13 +45,16 @@ export const accountApi = {
 
 export type ProviderKind = 'openai' | 'anthropic' | 'ollama' | 'lm_studio';
 
+export type APIStandard = 'openai_compatible' | 'anthropic' | 'ollama' | 'lm_studio';
+
 export type ProviderCredential = {
   provider_credential_id: string;
-  provider_kind: ProviderKind;
+  provider_kind: string;
   display_name: string;
   endpoint_base_url?: string | null;
   status: 'active' | 'invalid' | 'disabled' | 'archived';
   has_secret: boolean;
+  api_standard?: APIStandard;
   created_at: string;
   updated_at: string;
 };
@@ -93,13 +96,13 @@ export const providerApi = {
     return apiJson<{ items: ProviderCredential[] }>('/v1/model-registry/providers', { token });
   },
 
-  createProvider(token: string, payload: { provider_kind: ProviderKind; display_name: string; secret?: string; endpoint_base_url?: string }) {
+  createProvider(token: string, payload: { provider_kind: string; display_name: string; secret?: string; endpoint_base_url?: string; api_standard?: APIStandard }) {
     return apiJson<ProviderCredential>('/v1/model-registry/providers', {
       method: 'POST', token, body: JSON.stringify(payload),
     });
   },
 
-  patchProvider(token: string, id: string, payload: { display_name?: string; secret?: string; endpoint_base_url?: string; active?: boolean }) {
+  patchProvider(token: string, id: string, payload: { display_name?: string; secret?: string; endpoint_base_url?: string; active?: boolean; api_standard?: APIStandard }) {
     return apiJson<ProviderCredential>(`/v1/model-registry/providers/${id}`, {
       method: 'PATCH', token, body: JSON.stringify(payload),
     });

@@ -25,15 +25,16 @@ func TestResolveAdapter(t *testing.T) {
 	}
 }
 
-func TestResolveAdapterUnknown(t *testing.T) {
+func TestResolveAdapterCustomFallsBackToOpenAI(t *testing.T) {
 	t.Parallel()
 
-	adapter, err := ResolveAdapter("unknown", &http.Client{})
-	if err == nil {
-		t.Fatal("expected error for unknown provider kind")
+	// Custom/unknown provider kinds should resolve to OpenAI-compatible adapter
+	adapter, err := ResolveAdapter("groq", &http.Client{})
+	if err != nil {
+		t.Fatalf("custom provider kind should not error: %v", err)
 	}
-	if adapter != nil {
-		t.Fatal("adapter must be nil for unknown provider kind")
+	if adapter == nil {
+		t.Fatal("adapter must not be nil for custom provider kind")
 	}
 }
 

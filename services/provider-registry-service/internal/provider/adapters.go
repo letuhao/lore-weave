@@ -314,7 +314,12 @@ func ResolveAdapter(providerKind string, client *http.Client) (Adapter, error) {
 	case "lm_studio":
 		return &lmStudioAdapter{client: client}, nil
 	default:
-		return nil, fmt.Errorf("unknown provider_kind: %s", providerKind)
+		// Custom providers: use OpenAI-compatible adapter with empty inventory
+		// (user adds models manually or inventory syncs via /v1/models endpoint)
+		return &openaiAdapter{
+			client:          client,
+			staticInventory: []ModelInventory{},
+		}, nil
 	}
 }
 

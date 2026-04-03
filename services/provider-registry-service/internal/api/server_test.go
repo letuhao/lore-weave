@@ -117,26 +117,18 @@ func TestCreateProviderCredentialValidation(t *testing.T) {
 		wantStatus int
 	}{
 		{
-			name: "invalid provider kind",
+			name: "missing provider_kind",
 			body: map[string]any{
-				"provider_kind": "abc",
+				"provider_kind": "",
 				"display_name":  "x",
 			},
 			wantStatus: http.StatusBadRequest,
 		},
 		{
-			name: "missing cloud secret",
+			name: "missing display_name",
 			body: map[string]any{
 				"provider_kind": "openai",
-				"display_name":  "x",
-			},
-			wantStatus: http.StatusBadRequest,
-		},
-		{
-			name: "missing local endpoint",
-			body: map[string]any{
-				"provider_kind": "ollama",
-				"display_name":  "x",
+				"display_name":  "",
 			},
 			wantStatus: http.StatusBadRequest,
 		},

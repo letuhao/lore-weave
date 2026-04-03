@@ -4,20 +4,33 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
-import { providerApi, type ProviderCredential, type ProviderKind, type UserModel } from './api';
+import { providerApi, type ProviderCredential, type UserModel, type APIStandard } from './api';
 import { AddModelModal } from './AddModelModal';
 import { EditModelModal } from './EditModelModal';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const PROVIDER_META: Record<ProviderKind, { label: string; color: string; bg: string; desc: string }> = {
+const KNOWN_PROVIDERS: Record<string, { label: string; color: string; bg: string; desc: string }> = {
   anthropic:  { label: 'Anthropic',  color: '#d4a574', bg: '#1a1008', desc: 'Claude models — powerful for translation and chat' },
   openai:     { label: 'OpenAI',     color: '#74c0a4', bg: '#0a1a14', desc: 'GPT models — versatile general purpose' },
   ollama:     { label: 'Ollama',     color: '#7ab4f0', bg: '#0a1420', desc: 'Local models — free, private, no API key needed' },
   lm_studio:  { label: 'LM Studio',  color: '#a78bfa', bg: '#14101e', desc: 'Local models via LM Studio desktop app' },
 };
 
-const ALL_KINDS: ProviderKind[] = ['anthropic', 'openai', 'ollama', 'lm_studio'];
+const DEFAULT_META = { label: 'Custom', color: '#9e9488', bg: '#1e1a17', desc: 'Custom OpenAI-compatible provider' };
+
+function getProviderMeta(kind: string) {
+  return KNOWN_PROVIDERS[kind] ?? DEFAULT_META;
+}
+
+const PRESET_KINDS = ['anthropic', 'openai', 'ollama', 'lm_studio'] as const;
+
+const API_STANDARDS: { value: APIStandard; label: string }[] = [
+  { value: 'openai_compatible', label: 'OpenAI Compatible' },
+  { value: 'anthropic', label: 'Anthropic' },
+  { value: 'ollama', label: 'Ollama' },
+  { value: 'lm_studio', label: 'LM Studio' },
+];
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -27,14 +40,20 @@ export function ProvidersTab() {
   const [models, setModels] = useState<UserModel[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Dialogs
-  const [addKind, setAddKind] = useState<ProviderKind | null>(null);
+  // Add provider dialog
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [addKind, setAddKind] = useState('');
+  const [addDisplayName, setAddDisplayName] = useState('');
   const [addSecret, setAddSecret] = useState('');
   const [addEndpoint, setAddEndpoint] = useState('');
+  const [addApiStandard, setAddApiStandard] = useState<APIStandard>('openai_compatible');
   const [addSaving, setAddSaving] = useState(false);
 
   const [editProvider, setEditProvider] = useState<ProviderCredential | null>(null);
   const [editSecret, setEditSecret] = useState('');
+  const [editDisplayName, setEditDisplayName] = useState('');
+  const [editEndpoint, setEditEndpoint] = useState('');
+  const [editApiStandard, setEditApiStandard] = useState<APIStandard>('openai_compatible');
 
   const [deleteTarget, setDeleteTarget] = useState<ProviderCredential | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -67,22 +86,38 @@ export function ProvidersTab() {
   useEffect(() => { void refresh(); }, [refresh]);
 
   const configuredKinds = new Set(providers.map((p) => p.provider_kind));
-  const unconfiguredKinds = ALL_KINDS.filter((k) => !configuredKinds.has(k));
+  // (unconfigured presets computed inline in render)
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
+  function openAddDialog(presetKind?: string) {
+    if (presetKind) {
+      const meta = getProviderMeta(presetKind);
+      setAddKind(presetKind);
+      setAddDisplayName(meta.label);
+      setAddApiStandard(presetKind === 'anthropic' ? 'anthropic' : presetKind === 'ollama' ? 'ollama' : presetKind === 'lm_studio' ? 'lm_studio' : 'openai_compatible');
+    } else {
+      setAddKind('');
+      setAddDisplayName('');
+      setAddApiStandard('openai_compatible');
+    }
+    setAddSecret(''); setAddEndpoint('');
+    setShowAddDialog(true);
+  }
+
   async function handleAddProvider() {
-    if (!accessToken || !addKind) return;
+    if (!accessToken || !addKind.trim() || !addDisplayName.trim()) return;
     setAddSaving(true);
     try {
       await providerApi.createProvider(accessToken, {
-        provider_kind: addKind,
-        display_name: PROVIDER_META[addKind].label,
+        provider_kind: addKind.trim(),
+        display_name: addDisplayName.trim(),
         secret: addSecret || undefined,
         endpoint_base_url: addEndpoint || undefined,
+        api_standard: addApiStandard,
       });
-      toast.success(`${PROVIDER_META[addKind].label} added`);
-      setAddKind(null); setAddSecret(''); setAddEndpoint('');
+      toast.success(`${addDisplayName.trim()} added`);
+      setShowAddDialog(false);
       await refresh();
     } catch (e) {
       toast.error((e as Error).message || 'Failed to add provider');
@@ -91,16 +126,21 @@ export function ProvidersTab() {
     }
   }
 
-  async function handleEditKey() {
+  async function handleEditProvider() {
     if (!accessToken || !editProvider) return;
     setEditSaving(true);
     try {
-      await providerApi.patchProvider(accessToken, editProvider.provider_credential_id, { secret: editSecret });
-      toast.success('API key updated');
-      setEditProvider(null); setEditSecret('');
+      const payload: Record<string, unknown> = {};
+      if (editDisplayName && editDisplayName !== editProvider.display_name) payload.display_name = editDisplayName;
+      if (editEndpoint !== (editProvider.endpoint_base_url ?? '')) payload.endpoint_base_url = editEndpoint || null;
+      if (editSecret) payload.secret = editSecret;
+      if (editApiStandard !== (editProvider.api_standard ?? 'openai_compatible')) payload.api_standard = editApiStandard;
+      await providerApi.patchProvider(accessToken, editProvider.provider_credential_id, payload as any);
+      toast.success('Provider updated');
+      setEditProvider(null);
       await refresh();
     } catch {
-      toast.error('Failed to update key');
+      toast.error('Failed to update provider');
     } finally {
       setEditSaving(false);
     }
@@ -185,23 +225,19 @@ export function ProvidersTab() {
           <h2 className="text-sm font-semibold">AI Model Providers</h2>
           <p className="text-xs text-muted-foreground">Bring your own API keys. Your keys are encrypted and never shared.</p>
         </div>
-        {unconfiguredKinds.length > 0 && (
-          <div className="relative">
-            <button
-              onClick={() => setAddKind(unconfiguredKinds[0])}
-              className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
-            >
-              <Plus className="h-3 w-3" />
-              Add Provider
-            </button>
-          </div>
-        )}
+        <button
+          onClick={() => openAddDialog()}
+          className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
+        >
+          <Plus className="h-3 w-3" />
+          Add Provider
+        </button>
       </div>
 
       <div className="space-y-3">
         {/* Configured providers */}
         {providers.map((prov) => {
-          const meta = PROVIDER_META[prov.provider_kind] ?? PROVIDER_META.openai;
+          const meta = getProviderMeta(prov.provider_kind);
           const provModels = models.filter((m) => m.provider_credential_id === prov.provider_credential_id);
           return (
             <div key={prov.provider_credential_id} className="rounded-lg border bg-card p-4">
@@ -232,7 +268,7 @@ export function ProvidersTab() {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button
-                    onClick={() => { setEditProvider(prov); setEditSecret(''); }}
+                    onClick={() => { setEditProvider(prov); setEditSecret(''); setEditDisplayName(prov.display_name); setEditEndpoint(prov.endpoint_base_url ?? ''); setEditApiStandard((prov.api_standard as APIStandard) ?? 'openai_compatible'); }}
                     className="rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors hover:bg-secondary"
                   >
                     <Pencil className="mr-1 inline h-2.5 w-2.5" />
@@ -323,17 +359,14 @@ export function ProvidersTab() {
           );
         })}
 
-        {/* Unconfigured providers */}
-        {unconfiguredKinds.map((kind) => {
-          const meta = PROVIDER_META[kind];
+        {/* Unconfigured preset providers */}
+        {PRESET_KINDS.filter((k) => !configuredKinds.has(k)).map((kind) => {
+          const meta = getProviderMeta(kind);
           return (
             <div key={kind} className="rounded-lg border border-dashed bg-card p-4 opacity-70">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <div
-                    className="flex h-8 w-8 items-center justify-center rounded-md bg-secondary text-sm font-bold"
-                    style={{ color: meta.color }}
-                  >
+                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-secondary text-sm font-bold" style={{ color: meta.color }}>
                     {meta.label[0]}
                   </div>
                   <div>
@@ -345,7 +378,7 @@ export function ProvidersTab() {
                   </div>
                 </div>
                 <button
-                  onClick={() => { setAddKind(kind); setAddSecret(''); setAddEndpoint(''); }}
+                  onClick={() => openAddDialog(kind)}
                   className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-secondary"
                 >
                   <Plus className="h-3 w-3" />
@@ -358,30 +391,67 @@ export function ProvidersTab() {
       </div>
 
       {/* ── Add Provider Dialog ─────────────────────────────────────────── */}
-      {addKind && (
+      {showAddDialog && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={() => setAddKind(null)}
-          onKeyDown={(e) => { if (e.key === 'Escape') setAddKind(null); }}
+          onClick={() => setShowAddDialog(false)}
+          onKeyDown={(e) => { if (e.key === 'Escape') setShowAddDialog(false); }}
           role="dialog"
           aria-modal="true"
           aria-label="Add provider"
         >
           <div className="w-full max-w-md rounded-lg border bg-card p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-4 text-sm font-semibold">Add {PROVIDER_META[addKind].label} Provider</h3>
+            <h3 className="mb-4 text-sm font-semibold">Add Provider</h3>
 
-            {/* Kind selector */}
-            <div className="mb-4">
-              <label className="mb-1 block text-xs font-medium">Provider</label>
+            <div className="mb-3 grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium">Provider Kind</label>
+                <input
+                  type="text"
+                  value={addKind}
+                  onChange={(e) => setAddKind(e.target.value)}
+                  placeholder="e.g. openai, groq, together..."
+                  list="provider-kind-list"
+                  className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+                />
+                <datalist id="provider-kind-list">
+                  {PRESET_KINDS.map((k) => <option key={k} value={k}>{getProviderMeta(k).label}</option>)}
+                </datalist>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium">Display Name</label>
+                <input
+                  type="text"
+                  value={addDisplayName}
+                  onChange={(e) => setAddDisplayName(e.target.value)}
+                  placeholder="e.g. My Groq"
+                  className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+                />
+              </div>
+            </div>
+
+            <div className="mb-3">
+              <label className="mb-1 block text-xs font-medium">API Standard</label>
               <select
-                value={addKind}
-                onChange={(e) => setAddKind(e.target.value as ProviderKind)}
+                value={addApiStandard}
+                onChange={(e) => setAddApiStandard(e.target.value as APIStandard)}
                 className="h-9 w-full rounded-md border bg-background px-3 text-[13px]"
               >
-                {unconfiguredKinds.map((k) => (
-                  <option key={k} value={k}>{PROVIDER_META[k].label}</option>
-                ))}
+                {API_STANDARDS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
+              <p className="mt-1 text-[10px] text-muted-foreground">Most third-party providers (Groq, Together, Mistral, DeepSeek) are OpenAI Compatible.</p>
+            </div>
+
+            <div className="mb-3">
+              <label className="mb-1 block text-xs font-medium">Endpoint URL</label>
+              <input
+                type="url"
+                value={addEndpoint}
+                onChange={(e) => setAddEndpoint(e.target.value)}
+                placeholder={addApiStandard === 'ollama' ? 'http://localhost:11434' : 'https://api.example.com'}
+                className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+              />
+              <p className="mt-1 text-[10px] text-muted-foreground">Leave empty for default endpoint (OpenAI, Anthropic).</p>
             </div>
 
             <div className="mb-4">
@@ -390,29 +460,16 @@ export function ProvidersTab() {
                 type="password"
                 value={addSecret}
                 onChange={(e) => setAddSecret(e.target.value)}
-                placeholder={addKind === 'ollama' || addKind === 'lm_studio' ? 'Optional for local providers' : 'sk-...'}
+                placeholder={addApiStandard === 'ollama' ? 'Optional for local' : 'sk-...'}
                 className="h-9 w-full rounded-md border bg-background px-3 font-mono text-[13px] tracking-wider focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
               />
             </div>
 
-            {(addKind === 'ollama' || addKind === 'lm_studio') && (
-              <div className="mb-4">
-                <label className="mb-1 block text-xs font-medium">Endpoint URL</label>
-                <input
-                  type="url"
-                  value={addEndpoint}
-                  onChange={(e) => setAddEndpoint(e.target.value)}
-                  placeholder="http://localhost:11434"
-                  className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
-                />
-              </div>
-            )}
-
             <div className="flex justify-end gap-2">
-              <button onClick={() => setAddKind(null)} className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary">Cancel</button>
+              <button onClick={() => setShowAddDialog(false)} className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary">Cancel</button>
               <button
                 onClick={handleAddProvider}
-                disabled={addSaving}
+                disabled={addSaving || !addKind.trim() || !addDisplayName.trim()}
                 className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
               >
                 {addSaving ? 'Adding...' : 'Add Provider'}
@@ -422,7 +479,7 @@ export function ProvidersTab() {
         </div>
       )}
 
-      {/* ── Edit Key Dialog ─────────────────────────────────────────────── */}
+      {/* ── Edit Provider Dialog ──────────────────────────────────────── */}
       {editProvider && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
@@ -430,28 +487,63 @@ export function ProvidersTab() {
           onKeyDown={(e) => { if (e.key === 'Escape') setEditProvider(null); }}
           role="dialog"
           aria-modal="true"
-          aria-label="Edit API key"
+          aria-label="Edit provider"
         >
           <div className="w-full max-w-md rounded-lg border bg-card p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-4 text-sm font-semibold">Edit API Key — {editProvider.display_name}</h3>
+            <h3 className="mb-4 text-sm font-semibold">Edit Provider — {editProvider.provider_kind}</h3>
+
+            <div className="mb-3">
+              <label className="mb-1 block text-xs font-medium">Display Name</label>
+              <input
+                type="text"
+                value={editDisplayName}
+                onChange={(e) => setEditDisplayName(e.target.value)}
+                className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+              />
+            </div>
+
+            <div className="mb-3">
+              <label className="mb-1 block text-xs font-medium">API Standard</label>
+              <select
+                value={editApiStandard}
+                onChange={(e) => setEditApiStandard(e.target.value as APIStandard)}
+                className="h-9 w-full rounded-md border bg-background px-3 text-[13px]"
+              >
+                {API_STANDARDS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </select>
+            </div>
+
+            <div className="mb-3">
+              <label className="mb-1 block text-xs font-medium">Endpoint URL</label>
+              <input
+                type="url"
+                value={editEndpoint}
+                onChange={(e) => setEditEndpoint(e.target.value)}
+                placeholder="Leave empty for default"
+                className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+              />
+            </div>
+
             <div className="mb-4">
-              <label className="mb-1 block text-xs font-medium">New API Key</label>
+              <label className="mb-1 block text-xs font-medium">API Key</label>
               <input
                 type="password"
                 value={editSecret}
                 onChange={(e) => setEditSecret(e.target.value)}
-                placeholder="sk-..."
+                placeholder={editProvider.has_secret ? '••••••••  (leave empty to keep current)' : 'sk-...'}
                 className="h-9 w-full rounded-md border bg-background px-3 font-mono text-[13px] tracking-wider focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
               />
+              <p className="mt-1 text-[10px] text-muted-foreground">Leave empty to keep the existing key.</p>
             </div>
+
             <div className="flex justify-end gap-2">
               <button onClick={() => setEditProvider(null)} className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary">Cancel</button>
               <button
-                onClick={handleEditKey}
-                disabled={!editSecret || editSaving}
+                onClick={handleEditProvider}
+                disabled={editSaving}
                 className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
               >
-                {editSaving ? 'Updating...' : 'Update Key'}
+                {editSaving ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </div>

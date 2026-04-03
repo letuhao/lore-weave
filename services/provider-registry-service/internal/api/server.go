@@ -294,26 +294,33 @@ func (s *Server) createProviderCredential(w http.ResponseWriter, r *http.Request
 		Secret          string `json:"secret"`
 		EndpointBaseURL string `json:"endpoint_base_url"`
 		Active          *bool  `json:"active"`
+		APIStandard     string `json:"api_standard"` // openai_compatible, anthropic, ollama, lm_studio
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
 		return
 	}
-	if in.ProviderKind != "openai" && in.ProviderKind != "anthropic" && in.ProviderKind != "ollama" && in.ProviderKind != "lm_studio" {
-		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid provider_kind")
+	if strings.TrimSpace(in.ProviderKind) == "" {
+		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "provider_kind is required")
 		return
 	}
 	if strings.TrimSpace(in.DisplayName) == "" {
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "display_name is required")
 		return
 	}
-	if (in.ProviderKind == "openai" || in.ProviderKind == "anthropic") && strings.TrimSpace(in.Secret) == "" {
-		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "secret is required for cloud providers")
-		return
-	}
-	if (in.ProviderKind == "ollama" || in.ProviderKind == "lm_studio") && strings.TrimSpace(in.EndpointBaseURL) == "" {
-		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "endpoint_base_url is required for local providers")
-		return
+	// Default api_standard based on provider_kind
+	apiStandard := in.APIStandard
+	if apiStandard == "" {
+		switch in.ProviderKind {
+		case "anthropic":
+			apiStandard = "anthropic"
+		case "ollama":
+			apiStandard = "ollama"
+		case "lm_studio":
+			apiStandard = "lm_studio"
+		default:
+			apiStandard = "openai_compatible"
+		}
 	}
 	encryptedSecret, keyRef, err := s.encryptSecret(in.Secret)
 	if err != nil {
@@ -334,10 +341,10 @@ func (s *Server) createProviderCredential(w http.ResponseWriter, r *http.Request
 		UpdatedAt            time.Time `json:"updated_at"`
 	}
 	err = s.pool.QueryRow(r.Context(), `
-INSERT INTO provider_credentials(owner_user_id, provider_kind, display_name, endpoint_base_url, secret_ciphertext, secret_key_ref, status)
-VALUES ($1,$2,$3,$4,$5,$6,$7)
+INSERT INTO provider_credentials(owner_user_id, provider_kind, display_name, endpoint_base_url, secret_ciphertext, secret_key_ref, status, api_standard)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 RETURNING provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at
-`, userID, in.ProviderKind, in.DisplayName, nullableString(in.EndpointBaseURL), encryptedSecret, keyRef, status).
+`, userID, in.ProviderKind, in.DisplayName, nullableString(in.EndpointBaseURL), encryptedSecret, keyRef, status, apiStandard).
 		Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_PROVIDER_SAVE_FAILED", "failed to create provider credential")
@@ -361,7 +368,7 @@ func (s *Server) listProviderCredentials(w http.ResponseWriter, r *http.Request)
 	}
 	rows, err := s.pool.Query(r.Context(), `
 SELECT provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at,
-       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret
+       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret, api_standard
 FROM provider_credentials
 WHERE owner_user_id=$1 AND status <> 'archived'
 ORDER BY created_at DESC
@@ -380,11 +387,12 @@ ORDER BY created_at DESC
 		CreatedAt            time.Time `json:"created_at"`
 		UpdatedAt            time.Time `json:"updated_at"`
 		HasSecret            bool      `json:"has_secret"`
+		APIStandard          string    `json:"api_standard"`
 	}
 	items := make([]row, 0)
 	for rows.Next() {
 		var item row
-		if err := rows.Scan(&item.ProviderCredentialID, &item.ProviderKind, &item.DisplayName, &item.EndpointBaseURL, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.HasSecret); err != nil {
+		if err := rows.Scan(&item.ProviderCredentialID, &item.ProviderKind, &item.DisplayName, &item.EndpointBaseURL, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.HasSecret, &item.APIStandard); err != nil {
 			writeError(w, http.StatusInternalServerError, "M03_PROVIDER_QUERY_FAILED", "failed to parse provider row")
 			return
 		}
@@ -408,6 +416,7 @@ func (s *Server) patchProviderCredential(w http.ResponseWriter, r *http.Request)
 		Secret          *string `json:"secret"`
 		EndpointBaseURL *string `json:"endpoint_base_url"`
 		Active          *bool   `json:"active"`
+		APIStandard     *string `json:"api_standard"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
@@ -440,9 +449,10 @@ SET
   secret_ciphertext = COALESCE($5, secret_ciphertext),
   secret_key_ref = COALESCE($6, secret_key_ref),
   status = COALESCE($7, status),
+  api_standard = COALESCE($8, api_standard),
   updated_at = now()
 WHERE provider_credential_id = $1 AND owner_user_id = $2 AND status <> 'archived'
-`, id, userID, in.DisplayName, in.EndpointBaseURL, encryptedSecret, keyRef, statusPatch)
+`, id, userID, in.DisplayName, in.EndpointBaseURL, encryptedSecret, keyRef, statusPatch, in.APIStandard)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_PROVIDER_UPDATE_FAILED", "failed to update provider credential")
 		return
@@ -464,13 +474,14 @@ func (s *Server) getProviderCredentialByID(w http.ResponseWriter, r *http.Reques
 		CreatedAt            time.Time `json:"created_at"`
 		UpdatedAt            time.Time `json:"updated_at"`
 		HasSecret            bool      `json:"has_secret"`
+		APIStandard          string    `json:"api_standard"`
 	}
 	err := s.pool.QueryRow(r.Context(), `
 SELECT provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at,
-       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret
+       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret, api_standard
 FROM provider_credentials
 WHERE provider_credential_id=$1 AND owner_user_id=$2
-`, id, userID).Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.HasSecret)
+`, id, userID).Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.HasSecret, &out.APIStandard)
 	if err == pgx.ErrNoRows {
 		writeError(w, http.StatusNotFound, "M03_PROVIDER_NOT_FOUND", "provider credential not found")
 		return
