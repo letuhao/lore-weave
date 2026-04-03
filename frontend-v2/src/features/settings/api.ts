@@ -65,6 +65,8 @@ export type UserModel = {
   alias?: string | null;
   is_active: boolean;
   is_favorite: boolean;
+  capability_flags?: Record<string, unknown>;
+  notes?: string;
   tags: Array<{ tag_name: string; note?: string }>;
   created_at: string;
 };
@@ -125,6 +127,7 @@ export const providerApi = {
     context_length?: number;
     capability_flags?: Record<string, unknown>;
     tags?: Array<{ tag_name: string; note?: string }>;
+    notes?: string;
   }) {
     return apiJson<UserModel>('/v1/model-registry/user-models', {
       method: 'POST', token, body: JSON.stringify(payload),
@@ -135,6 +138,7 @@ export const providerApi = {
     alias?: string;
     context_length?: number | null;
     capability_flags?: Record<string, unknown>;
+    notes?: string;
   }) {
     return apiJson<UserModel>(`/v1/model-registry/user-models/${modelId}`, {
       method: 'PATCH', token, body: JSON.stringify(payload),

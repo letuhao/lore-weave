@@ -50,6 +50,9 @@ CREATE TABLE IF NOT EXISTS user_models (
 CREATE INDEX IF NOT EXISTS idx_user_models_owner ON user_models(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_user_models_owner_flags ON user_models(owner_user_id, is_active, is_favorite);
 
+-- v2: notes field for user annotations on models
+ALTER TABLE user_models ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
+
 CREATE TABLE IF NOT EXISTS user_model_tags (
   user_model_tag_id UUID PRIMARY KEY DEFAULT uuidv7(),
   user_model_id UUID NOT NULL REFERENCES user_models(user_model_id) ON DELETE CASCADE,

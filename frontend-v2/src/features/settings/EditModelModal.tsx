@@ -26,7 +26,7 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
     return f;
   });
   const [tags, setTags] = useState<string[]>(model.tags.map((t) => t.tag_name));
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(model.notes ?? '');
   const [isActive, setIsActive] = useState(model.is_active);
   const [isFavorite, setIsFavorite] = useState(model.is_favorite);
   const [saving, setSaving] = useState(false);
@@ -45,11 +45,12 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
       const capFlags: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(flags)) { if (v) capFlags[k] = true; }
 
-      // 1. Patch model fields (alias, context, flags)
+      // 1. Patch model fields (alias, context, flags, notes)
       await providerApi.patchUserModel(accessToken, model.user_model_id, {
         alias: alias || undefined,
         context_length: contextLength ? Number(contextLength) : null,
         capability_flags: capFlags,
+        notes,
       });
 
       // 2. Save tags

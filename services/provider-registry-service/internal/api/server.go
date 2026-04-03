@@ -667,6 +667,7 @@ func (s *Server) createUserModel(w http.ResponseWriter, r *http.Request) {
 		Alias                string         `json:"alias"`
 		CapabilityFlags      map[string]any `json:"capability_flags"`
 		Tags                 []modelTag     `json:"tags"`
+		Notes                string         `json:"notes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
@@ -701,11 +702,11 @@ WHERE provider_credential_id=$1 AND owner_user_id=$2 AND status='active'
 	flagsBytes, _ := json.Marshal(in.CapabilityFlags)
 	var out userModelRow
 	err = s.pool.QueryRow(r.Context(), `
-INSERT INTO user_models(owner_user_id, provider_credential_id, provider_kind, provider_model_name, context_length, alias, capability_flags)
-VALUES ($1,$2,$3,$4,$5,$6,$7)
-RETURNING user_model_id, provider_credential_id, provider_kind, provider_model_name, context_length, alias, is_active, is_favorite, capability_flags, created_at, updated_at
-`, userID, credentialID, providerKind, in.ProviderModelName, in.ContextLength, nullableString(in.Alias), flagsBytes).
-		Scan(&out.UserModelID, &out.ProviderCredentialID, &out.ProviderKind, &out.ProviderModelName, &out.ContextLength, &out.Alias, &out.IsActive, &out.IsFavorite, &out.CapabilityFlags, &out.CreatedAt, &out.UpdatedAt)
+INSERT INTO user_models(owner_user_id, provider_credential_id, provider_kind, provider_model_name, context_length, alias, capability_flags, notes)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+RETURNING user_model_id, provider_credential_id, provider_kind, provider_model_name, context_length, alias, is_active, is_favorite, capability_flags, notes, created_at, updated_at
+`, userID, credentialID, providerKind, in.ProviderModelName, in.ContextLength, nullableString(in.Alias), flagsBytes, in.Notes).
+		Scan(&out.UserModelID, &out.ProviderCredentialID, &out.ProviderKind, &out.ProviderModelName, &out.ContextLength, &out.Alias, &out.IsActive, &out.IsFavorite, &out.CapabilityFlags, &out.Notes, &out.CreatedAt, &out.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_CREATE_FAILED", "failed to create user model")
 		return
@@ -732,6 +733,7 @@ type userModelRow struct {
 	IsActive             bool
 	IsFavorite           bool
 	CapabilityFlags      []byte
+	Notes                string
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 }
@@ -794,10 +796,10 @@ SELECT user_model_id FROM user_models WHERE owner_user_id=$1
 func (s *Server) readUserModel(ctx context.Context, userID, id uuid.UUID) (map[string]any, error) {
 	var row userModelRow
 	err := s.pool.QueryRow(ctx, `
-SELECT user_model_id, provider_credential_id, provider_kind, provider_model_name, context_length, alias, is_active, is_favorite, capability_flags, created_at, updated_at
+SELECT user_model_id, provider_credential_id, provider_kind, provider_model_name, context_length, alias, is_active, is_favorite, capability_flags, notes, created_at, updated_at
 FROM user_models
 WHERE user_model_id=$1 AND owner_user_id=$2
-`, id, userID).Scan(&row.UserModelID, &row.ProviderCredentialID, &row.ProviderKind, &row.ProviderModelName, &row.ContextLength, &row.Alias, &row.IsActive, &row.IsFavorite, &row.CapabilityFlags, &row.CreatedAt, &row.UpdatedAt)
+`, id, userID).Scan(&row.UserModelID, &row.ProviderCredentialID, &row.ProviderKind, &row.ProviderModelName, &row.ContextLength, &row.Alias, &row.IsActive, &row.IsFavorite, &row.CapabilityFlags, &row.Notes, &row.CreatedAt, &row.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -820,6 +822,7 @@ WHERE user_model_id=$1 AND owner_user_id=$2
 		"is_active":              row.IsActive,
 		"is_favorite":            row.IsFavorite,
 		"capability_flags":       flags,
+		"notes":                  row.Notes,
 		"tags":                   tags,
 		"created_at":             row.CreatedAt,
 		"updated_at":             row.UpdatedAt,
@@ -857,6 +860,7 @@ func (s *Server) patchUserModel(w http.ResponseWriter, r *http.Request) {
 		Alias           *string        `json:"alias"`
 		ContextLength   *int           `json:"context_length"`
 		CapabilityFlags map[string]any `json:"capability_flags"`
+		Notes           *string        `json:"notes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
@@ -868,9 +872,10 @@ UPDATE user_models
 SET alias=COALESCE($3, alias),
     context_length=COALESCE($4, context_length),
     capability_flags=CASE WHEN $5::jsonb IS NULL THEN capability_flags ELSE $5 END,
+    notes=COALESCE($6, notes),
     updated_at=now()
 WHERE user_model_id=$1 AND owner_user_id=$2
-`, id, userID, in.Alias, in.ContextLength, nullJSON(flagsBytes, in.CapabilityFlags != nil))
+`, id, userID, in.Alias, in.ContextLength, nullJSON(flagsBytes, in.CapabilityFlags != nil), in.Notes)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_UPDATE_FAILED", "failed to patch user model")
 		return

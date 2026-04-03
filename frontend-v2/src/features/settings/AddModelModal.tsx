@@ -114,6 +114,7 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
         context_length: contextLength ? Number(contextLength) : undefined,
         capability_flags: capFlags,
         tags: tags.map((t) => ({ tag_name: t })),
+        notes: notes || undefined,
       });
       toast.success(`${alias || modelName} added`);
       onAdded();
