@@ -60,6 +60,8 @@ MIG-03: Usage Monitor page — full-stack build from draft design.
 | MIG-06 BE: catalog-service — sort (recent/chapters/alpha) + language filter, over-fetch+paginate | `catalog-service/server.go` | this session |
 | MIG-06 FE: Browse page — hero, search (debounced), language chips, genre chips (disabled), sort, 4-col grid, BookCard, pagination | 3 new files, `App.tsx` | this session |
 | P3-08c: Genre tag + browse filter task added to planning doc | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | this session |
+| Provider enhancement BE: embed preconfig JSON (26 OpenAI + 10 Anthropic), replace hardcoded 2-3 models | `adapters.go`, 2 JSON files | this session |
+| Provider enhancement FE: AddModelModal (autocomplete, capability types, tags, notes) + EditModelModal (toggles, verify, delete) | 2 new files, `ProvidersTab.tsx`, `api.ts` | this session |
 
 **9-phase workflow followed:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 

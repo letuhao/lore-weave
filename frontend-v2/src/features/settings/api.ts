@@ -72,7 +72,19 @@ export type UserModel = {
 export type InventoryModel = {
   provider_model_name: string;
   context_length?: number | null;
+  capability_flags?: Record<string, unknown>;
 };
+
+export type CapabilityType = 'chat' | 'embedding' | 'tts' | 'stt' | 'image_gen' | 'moderation' | 'reranker';
+
+export function getInventoryMeta(m: InventoryModel) {
+  const f = m.capability_flags ?? {};
+  return {
+    displayName: (f._display_name as string) ?? m.provider_model_name,
+    capability: (f._capability as CapabilityType) ?? 'chat',
+    isRecommended: (f._is_recommended as boolean) ?? false,
+  };
+}
 
 export const providerApi = {
   listProviders(token: string) {

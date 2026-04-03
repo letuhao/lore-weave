@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { providerApi, type ProviderCredential, type ProviderKind, type UserModel } from './api';
+import { AddModelModal } from './AddModelModal';
+import { EditModelModal } from './EditModelModal';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -39,6 +41,10 @@ export function ProvidersTab() {
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [editSaving, setEditSaving] = useState(false);
+
+  // Model modals
+  const [addModelProvider, setAddModelProvider] = useState<ProviderCredential | null>(null);
+  const [editModel, setEditModel] = useState<UserModel | null>(null);
 
   const refresh = useCallback(async () => {
     if (!accessToken) return;
@@ -232,15 +238,21 @@ export function ProvidersTab() {
                   <span className="text-[11px] font-semibold text-muted-foreground">
                     Models ({provModels.length} configured)
                   </span>
+                  <button
+                    onClick={() => setAddModelProvider(prov)}
+                    className="flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                  >
+                    <Plus className="h-2.5 w-2.5" /> Add Model
+                  </button>
                 </div>
                 {provModels.length === 0 && (
                   <div className="px-3.5 py-3 text-[11px] text-muted-foreground">No models configured yet.</div>
                 )}
                 {provModels.map((model) => (
                   <div key={model.user_model_id} className="flex items-center gap-2.5 border-t px-3.5 py-2.5 transition-colors hover:bg-card-foreground/[0.02]">
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setEditModel(model)}>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[13px] font-medium truncate">{model.alias || model.provider_model_name}</span>
+                        <span className="text-[13px] font-medium truncate hover:text-primary">{model.alias || model.provider_model_name}</span>
                         {model.is_favorite && <span className="rounded bg-secondary px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">Default</span>}
                       </div>
                       <span className="block truncate font-mono text-[10px] text-muted-foreground">{model.provider_model_name}</span>
@@ -429,6 +441,24 @@ export function ProvidersTab() {
         onConfirm={handleDelete}
         loading={deleting}
       />
+
+      {/* Add Model Modal */}
+      {addModelProvider && (
+        <AddModelModal
+          provider={addModelProvider}
+          onClose={() => setAddModelProvider(null)}
+          onAdded={refresh}
+        />
+      )}
+
+      {/* Edit Model Modal */}
+      {editModel && (
+        <EditModelModal
+          model={editModel}
+          onClose={() => setEditModel(null)}
+          onUpdated={refresh}
+        />
+      )}
     </div>
   );
 }

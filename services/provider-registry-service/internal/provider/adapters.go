@@ -3,12 +3,50 @@ package provider
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 )
+
+//go:embed preconfig_openai.json
+var openaiPreconfigJSON []byte
+
+//go:embed preconfig_anthropic.json
+var anthropicPreconfigJSON []byte
+
+func loadPreconfig(data []byte) []ModelInventory {
+	type entry struct {
+		ProviderModelName string         `json:"provider_model_name"`
+		DisplayName       string         `json:"display_name"`
+		Capability        string         `json:"capability"`
+		ContextLength     *int           `json:"context_length"`
+		IsRecommended     bool           `json:"is_recommended"`
+		CapabilityFlags   map[string]any `json:"capability_flags"`
+	}
+	var entries []entry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return nil
+	}
+	out := make([]ModelInventory, len(entries))
+	for i, e := range entries {
+		flags := e.CapabilityFlags
+		if flags == nil {
+			flags = map[string]any{}
+		}
+		flags["_capability"] = e.Capability
+		flags["_display_name"] = e.DisplayName
+		flags["_is_recommended"] = e.IsRecommended
+		out[i] = ModelInventory{
+			ProviderModelName: e.ProviderModelName,
+			ContextLength:     e.ContextLength,
+			CapabilityFlags:   flags,
+		}
+	}
+	return out
+}
 
 type Adapter interface {
 	ListModels(ctx context.Context, endpointBaseURL, secret string) ([]ModelInventory, error)
@@ -260,24 +298,16 @@ func (a *lmStudioAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secr
 // ── factory ───────────────────────────────────────────────────────────────────
 
 func ResolveAdapter(providerKind string, client *http.Client) (Adapter, error) {
-	ctx16 := 16384
-	ctx32 := 32768
-	ctx200 := 200000
 	switch providerKind {
 	case "openai":
 		return &openaiAdapter{
-			client: client,
-			staticInventory: []ModelInventory{
-				{ProviderModelName: "gpt-4o-mini", ContextLength: &ctx16, CapabilityFlags: map[string]any{"chat": true, "tool_calling": true}},
-				{ProviderModelName: "gpt-4.1", ContextLength: &ctx32, CapabilityFlags: map[string]any{"chat": true, "tool_calling": true}},
-			},
+			client:          client,
+			staticInventory: loadPreconfig(openaiPreconfigJSON),
 		}, nil
 	case "anthropic":
 		return &anthropicAdapter{
-			client: client,
-			staticInventory: []ModelInventory{
-				{ProviderModelName: "claude-3-5-sonnet-20241022", ContextLength: &ctx200, CapabilityFlags: map[string]any{"chat": true, "tool_calling": true}},
-			},
+			client:          client,
+			staticInventory: loadPreconfig(anthropicPreconfigJSON),
 		}, nil
 	case "ollama":
 		return &ollamaAdapter{client: client}, nil
