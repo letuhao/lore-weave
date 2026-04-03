@@ -113,6 +113,24 @@ export function ChatPage() {
     [accessToken, contextItems, chat],
   );
 
+  // ── Global keyboard shortcuts ──────────────────────────────────────────────
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      // Ctrl+N: new chat
+      if (e.ctrlKey && e.key === 'n') {
+        e.preventDefault();
+        setShowNewDialog(true);
+      }
+      // Escape: stop streaming
+      if (e.key === 'Escape' && chat.isStreaming) {
+        chat.stop();
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [chat.isStreaming, chat.stop]);
+
   // ── Listen for "Send to Chat" from editor ─────────────────────────────────
 
   useEffect(() => {

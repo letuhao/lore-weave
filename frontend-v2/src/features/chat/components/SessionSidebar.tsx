@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
   Check,
@@ -12,6 +12,8 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/auth';
+import { chatApi } from '../api';
 import type { ChatSession } from '../types';
 
 // ── SessionItem ─────────────────────────────────────────────────────────────────
@@ -228,7 +230,28 @@ export function SessionSidebar({
   onDelete,
   onTogglePin,
 }: SessionSidebarProps) {
+  const { accessToken } = useAuth();
   const [search, setSearch] = useState('');
+  const [ftsResults, setFtsResults] = useState<Array<{ session_id: string; session_title: string; snippet: string }>>([]);
+  const ftsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Full-text search when query is 3+ chars (debounced)
+  const runFtsSearch = useCallback((q: string) => {
+    if (ftsTimerRef.current) clearTimeout(ftsTimerRef.current);
+    if (!accessToken || q.length < 3) { setFtsResults([]); return; }
+    ftsTimerRef.current = setTimeout(() => {
+      void chatApi.searchMessages(accessToken, q, 10).then((res) => {
+        // Deduplicate by session_id
+        const seen = new Set<string>();
+        setFtsResults(res.items.filter((r) => { if (seen.has(r.session_id)) return false; seen.add(r.session_id); return true; }));
+      }).catch(() => setFtsResults([]));
+    }, 400);
+  }, [accessToken]);
+
+  function handleSearchChange(value: string) {
+    setSearch(value);
+    runFtsSearch(value);
+  }
 
   const filtered = useMemo(() => {
     if (!search.trim()) return sessions;
@@ -260,7 +283,7 @@ export function SessionSidebar({
           <input
             type="text"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             placeholder="Search conversations..."
             className="w-full rounded-md border border-border bg-background py-1.5 pl-7 pr-2 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-ring"
           />
@@ -292,6 +315,32 @@ export function SessionSidebar({
           <p className="mt-6 px-4 text-center text-xs text-muted-foreground">
             No matches for &ldquo;{search}&rdquo;
           </p>
+        )}
+
+        {/* FTS results (when searching 3+ chars and results found beyond title match) */}
+        {ftsResults.length > 0 && search.length >= 3 && (
+          <div>
+            <p className="px-4 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <Search className="mr-1 inline h-2.5 w-2.5" />
+              Message matches
+            </p>
+            {ftsResults.map((r) => (
+              <div
+                key={r.session_id}
+                onClick={() => {
+                  const match = sessions.find((s) => s.session_id === r.session_id);
+                  if (match) onSelect(match);
+                }}
+                className="cursor-pointer border-l-2 border-transparent px-4 py-2 transition-colors hover:bg-card-foreground/5"
+              >
+                <p className="truncate text-[12px] font-medium text-muted-foreground">{r.session_title}</p>
+                <p
+                  className="mt-0.5 truncate text-[10px] text-muted-foreground/70"
+                  dangerouslySetInnerHTML={{ __html: r.snippet.replace(/\*\*/g, (_, i) => i % 2 === 0 ? '<mark class="bg-accent/30 text-accent-fg rounded px-0.5">' : '</mark>') }}
+                />
+              </div>
+            ))}
+          </div>
         )}
 
         {groups.map((group) => (

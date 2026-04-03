@@ -78,6 +78,21 @@ export const chatApi = {
     return `${base()}/v1/chat/outputs/${outputId}/download`;
   },
 
+  // ── Search ───────────────────────────────────────────────────────────────────
+
+  searchMessages(token: string, query: string, limit = 20) {
+    return apiJson<{
+      items: Array<{
+        session_id: string;
+        session_title: string;
+        message_id: string;
+        role: string;
+        snippet: string;
+        created_at: string;
+      }>;
+    }>(`/v1/chat/sessions/search?q=${encodeURIComponent(query)}&limit=${limit}`, { token });
+  },
+
   // ── Streaming endpoint base URL ───────────────────────────────────────────────
 
   messagesUrl(sessionId: string) {
