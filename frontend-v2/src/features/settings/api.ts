@@ -28,6 +28,17 @@ export const accountApi = {
       body: JSON.stringify(payload),
     });
   },
+
+  requestVerifyEmail(token: string) {
+    return apiJson<void>('/v1/auth/verify-email/request', { method: 'POST', token });
+  },
+
+  confirmVerifyEmail(verifyToken: string) {
+    return apiJson<void>('/v1/auth/verify-email/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ token: verifyToken }),
+    });
+  },
 };
 
 // ── Provider Registry (extend v2 ai-models API) ─────────────────────────────

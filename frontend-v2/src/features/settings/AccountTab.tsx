@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Save, AlertTriangle, Eye, EyeOff } from 'lucide-react';
+import { Save, AlertTriangle, Eye, EyeOff, Mail, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
@@ -20,6 +20,11 @@ export function AccountTab() {
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [pwSaving, setPwSaving] = useState(false);
+
+  // Email verification
+  const [verifyStep, setVerifyStep] = useState<'idle' | 'sent' | 'confirm'>('idle');
+  const [verifyToken, setVerifyToken] = useState('');
+  const [verifySending, setVerifySending] = useState(false);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -68,6 +73,36 @@ export function AccountTab() {
     }
   }
 
+  async function handleRequestVerify() {
+    if (!accessToken) return;
+    setVerifySending(true);
+    try {
+      await accountApi.requestVerifyEmail(accessToken);
+      setVerifyStep('sent');
+      toast.success('Verification email sent — check your inbox');
+    } catch (e) {
+      toast.error((e as Error).message || 'Failed to send verification email');
+    } finally {
+      setVerifySending(false);
+    }
+  }
+
+  async function handleConfirmVerify() {
+    if (!verifyToken.trim()) return;
+    setVerifySending(true);
+    try {
+      await accountApi.confirmVerifyEmail(verifyToken.trim());
+      setProfile((p) => p ? { ...p, email_verified: true } : p);
+      setVerifyStep('idle');
+      setVerifyToken('');
+      toast.success('Email verified successfully');
+    } catch (e) {
+      toast.error((e as Error).message || 'Verification failed');
+    } finally {
+      setVerifySending(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -102,9 +137,54 @@ export function AccountTab() {
               disabled
               className="h-9 w-full rounded-md border bg-background px-3 text-[13px] text-muted-foreground"
             />
-            {profile && !profile.email_verified && (
-              <p className="mt-1 text-[10px] text-yellow-500">Email not verified</p>
-            )}
+            {profile?.email_verified ? (
+              <p className="mt-1 flex items-center gap-1 text-[10px] text-green-500">
+                <CheckCircle className="h-3 w-3" /> Verified
+              </p>
+            ) : profile ? (
+              <div className="mt-1.5">
+                {verifyStep === 'idle' && (
+                  <button
+                    onClick={handleRequestVerify}
+                    disabled={verifySending}
+                    className="flex items-center gap-1 text-[10px] font-medium text-yellow-500 hover:text-yellow-400"
+                  >
+                    <Mail className="h-3 w-3" />
+                    {verifySending ? 'Sending...' : 'Verify email'}
+                  </button>
+                )}
+                {verifyStep === 'sent' && (
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] text-green-500">Verification email sent — check your inbox</p>
+                    <button onClick={() => setVerifyStep('confirm')} className="text-[10px] font-medium text-primary hover:underline">
+                      Enter verification token
+                    </button>
+                  </div>
+                )}
+                {verifyStep === 'confirm' && (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={verifyToken}
+                      onChange={(e) => setVerifyToken(e.target.value)}
+                      placeholder="Paste token from email..."
+                      autoComplete="off"
+                      className="h-7 w-48 rounded border bg-background px-2 text-[11px] focus:border-ring focus:outline-none"
+                    />
+                    <button
+                      onClick={handleConfirmVerify}
+                      disabled={verifySending || !verifyToken.trim()}
+                      className="rounded bg-primary px-2 py-1 text-[10px] font-medium text-primary-foreground disabled:opacity-50"
+                    >
+                      {verifySending ? '...' : 'Confirm'}
+                    </button>
+                    <button onClick={() => { setVerifyStep('idle'); setVerifyToken(''); }} className="text-[10px] text-muted-foreground hover:text-foreground">
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="mt-4 flex items-center justify-between">
