@@ -56,6 +56,7 @@ MIG-03: Usage Monitor page — full-stack build from draft design.
 | FE: recharts dependency added | `package.json` | this session |
 | M4-01 BE: previous period query in `getUsageSummary` — prev_request_count, prev_total_tokens, prev_total_cost_usd, prev_error_rate | `server.go` | this session |
 | M4-02 FE: trend indicators on StatCards — ↑↓ % vs prev period, sentiment coloring (green/red/neutral) | `StatCards.tsx`, `types.ts` | this session |
+| MIG-05: Settings page — 5 tabs (Account, Providers, Translation, Reading, Language) | 9 new files, `App.tsx`, `translation/api.ts` | this session |
 
 **9-phase workflow followed:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 

@@ -116,6 +116,14 @@ export const translationApi = {
     return apiJson('/v1/translation/preferences', { token });
   },
 
+  putPreferences(token: string, payload: Partial<UserTranslationPreferences>): Promise<UserTranslationPreferences> {
+    return apiJson('/v1/translation/preferences', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+      token,
+    });
+  },
+
   getBookSettings(token: string, bookId: string): Promise<BookTranslationSettings> {
     return apiJson(`/v1/translation/books/${bookId}/settings`, { token });
   },

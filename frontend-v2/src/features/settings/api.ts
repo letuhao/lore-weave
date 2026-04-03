@@ -1,0 +1,119 @@
+import { apiJson } from '@/api';
+
+// ── Account / Profile ────────────────────────────────────────────────────────
+
+export type Profile = {
+  display_name: string | null;
+  email: string;
+  email_verified: boolean;
+};
+
+export const accountApi = {
+  getProfile(token: string) {
+    return apiJson<Profile>('/v1/account/profile', { token });
+  },
+
+  patchProfile(token: string, payload: { display_name?: string }) {
+    return apiJson<Profile>('/v1/account/profile', {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
+
+  changePassword(token: string, payload: { current_password: string; new_password: string }) {
+    return apiJson<void>('/v1/auth/change-password', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
+};
+
+// ── Provider Registry (extend v2 ai-models API) ─────────────────────────────
+
+export type ProviderKind = 'openai' | 'anthropic' | 'ollama' | 'lm_studio';
+
+export type ProviderCredential = {
+  provider_credential_id: string;
+  provider_kind: ProviderKind;
+  display_name: string;
+  endpoint_base_url?: string | null;
+  status: 'active' | 'invalid' | 'disabled' | 'archived';
+  has_secret: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UserModel = {
+  user_model_id: string;
+  provider_credential_id: string;
+  provider_kind: ProviderKind;
+  provider_model_name: string;
+  context_length?: number | null;
+  alias?: string | null;
+  is_active: boolean;
+  is_favorite: boolean;
+  tags: Array<{ tag_name: string; note?: string }>;
+  created_at: string;
+};
+
+export type InventoryModel = {
+  provider_model_name: string;
+  context_length?: number | null;
+};
+
+export const providerApi = {
+  listProviders(token: string) {
+    return apiJson<{ items: ProviderCredential[] }>('/v1/model-registry/providers', { token });
+  },
+
+  createProvider(token: string, payload: { provider_kind: ProviderKind; display_name: string; secret?: string; endpoint_base_url?: string }) {
+    return apiJson<ProviderCredential>('/v1/model-registry/providers', {
+      method: 'POST', token, body: JSON.stringify(payload),
+    });
+  },
+
+  patchProvider(token: string, id: string, payload: { display_name?: string; secret?: string; endpoint_base_url?: string; active?: boolean }) {
+    return apiJson<ProviderCredential>(`/v1/model-registry/providers/${id}`, {
+      method: 'PATCH', token, body: JSON.stringify(payload),
+    });
+  },
+
+  deleteProvider(token: string, id: string) {
+    return apiJson<void>(`/v1/model-registry/providers/${id}`, { method: 'DELETE', token });
+  },
+
+  listInventory(token: string, providerId: string, refresh = false) {
+    const qs = refresh ? '?refresh=true' : '';
+    return apiJson<{ items: InventoryModel[]; synced_at?: string }>(
+      `/v1/model-registry/providers/${providerId}/models${qs}`, { token },
+    );
+  },
+
+  listUserModels(token: string) {
+    return apiJson<{ items: UserModel[] }>('/v1/model-registry/user-models?include_inactive=true', { token });
+  },
+
+  createUserModel(token: string, payload: { provider_credential_id: string; provider_model_name: string; alias?: string }) {
+    return apiJson<UserModel>('/v1/model-registry/user-models', {
+      method: 'POST', token, body: JSON.stringify(payload),
+    });
+  },
+
+  patchActivation(token: string, modelId: string, isActive: boolean) {
+    return apiJson<UserModel>(`/v1/model-registry/user-models/${modelId}/activation`, {
+      method: 'PATCH', token, body: JSON.stringify({ is_active: isActive }),
+    });
+  },
+
+  deleteUserModel(token: string, modelId: string) {
+    return apiJson<void>(`/v1/model-registry/user-models/${modelId}`, { method: 'DELETE', token });
+  },
+
+  verifyUserModel(token: string, modelId: string) {
+    return apiJson<{ verified: boolean; latency_ms: number; error?: string }>(
+      `/v1/model-registry/user-models/${modelId}/verify`, { method: 'POST', token },
+    );
+  },
+};

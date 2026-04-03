@@ -32,6 +32,7 @@ import { ForgotPage } from '@/pages/auth/ForgotPage';
 import { ResetPage } from '@/pages/auth/ResetPage';
 import { HomePage } from '@/pages/HomePage';
 import { UsagePage } from '@/pages/UsagePage';
+import { SettingsPage } from '@/pages/SettingsPage';
 
 export function App() {
   return (
@@ -103,7 +104,7 @@ export function App() {
 
             {/* Settings */}
             <Route path="/settings" element={<Navigate to="/settings/account" replace />} />
-            <Route path="/settings/:tab" element={<PlaceholderPage title="Settings" description="Account, Providers, Translation, Reading, Language — coming in P4-01." />} />
+            <Route path="/settings/:tab" element={<SettingsPage />} />
 
             {/* Notifications */}
             <Route path="/notifications" element={<PlaceholderPage title="Notifications" description="Notification center — coming in P2-09." />} />
