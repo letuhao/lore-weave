@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Add/Edit Model Modal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --input: #242019; --ring: #d4952a;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a;
+      --destructive: #dc4e4e; --success: #3dba6a; --info: #5496e8;
+      --system: #7c6cd4;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::selection { background: rgba(232,168,50,0.25); }
+
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; font-family: inherit; }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+    .btn-outline:hover { background: var(--secondary); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-sm { padding: 4px 10px; font-size: 11px; }
+    .btn-danger { background: transparent; color: var(--destructive); border: 1px solid rgba(220,78,78,0.3); }
+    .btn-danger:hover { background: rgba(220,78,78,0.08); }
+
+    .input-field { background: var(--background); border: 1px solid var(--border); color: var(--foreground); border-radius: 6px; padding: 8px 12px; font-size: 13px; font-family: inherit; width: 100%; transition: all 150ms; }
+    .input-field:focus { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px rgba(212,149,42,0.15); }
+    .input-field::placeholder { color: rgba(158,148,136,0.4); }
+
+    .badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 500; }
+    .badge-success { background: rgba(61,186,106,0.12); color: #5dd88a; }
+    .badge-info { background: rgba(84,150,232,0.12); color: #7ab4f0; }
+    .badge-muted { background: var(--secondary); color: var(--muted-fg); }
+    .badge-accent { background: rgba(61,166,146,0.12); color: var(--accent); }
+    .badge-system { background: rgba(124,108,212,0.12); color: #a78bfa; }
+    .badge-warning { background: rgba(232,168,50,0.12); color: #f0be54; }
+
+    .toggle { width: 36px; height: 20px; border-radius: 10px; background: var(--secondary); position: relative; cursor: pointer; transition: all 150ms; flex-shrink: 0; }
+    .toggle.on { background: var(--success); }
+    .toggle::after { content: ''; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: var(--foreground); top: 2px; left: 2px; transition: all 150ms; }
+    .toggle.on::after { left: 18px; }
+
+    .field-label { font-size: 12px; font-weight: 500; margin-bottom: 4px; display: block; }
+    .field-hint { font-size: 11px; color: var(--muted-fg); margin-top: 4px; }
+    .section { margin-bottom: 20px; }
+
+    /* Capability type colors */
+    .cap-chat { background: rgba(61,186,106,0.12); color: #5dd88a; border: 1px solid rgba(61,186,106,0.15); }
+    .cap-embedding { background: rgba(84,150,232,0.12); color: #7ab4f0; border: 1px solid rgba(84,150,232,0.15); }
+    .cap-tts { background: rgba(232,168,50,0.12); color: #f0be54; border: 1px solid rgba(232,168,50,0.15); }
+    .cap-stt { background: rgba(249,115,22,0.12); color: #fdba74; border: 1px solid rgba(249,115,22,0.15); }
+    .cap-image { background: rgba(236,72,153,0.12); color: #f9a8d4; border: 1px solid rgba(236,72,153,0.15); }
+    .cap-moderation { background: rgba(124,108,212,0.12); color: #a78bfa; border: 1px solid rgba(124,108,212,0.15); }
+    .cap-reranker { background: rgba(6,182,212,0.12); color: #67e8f9; border: 1px solid rgba(6,182,212,0.15); }
+
+    /* Tag */
+    .tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; background: var(--secondary); color: var(--foreground); border: 1px solid var(--border); }
+    .tag .remove { width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; border-radius: 50%; cursor: pointer; transition: all 120ms; }
+    .tag .remove:hover { background: rgba(220,78,78,0.2); color: var(--destructive); }
+
+    /* Autocomplete */
+    .autocomplete-list { position: absolute; top: 100%; left: 0; right: 0; background: var(--card); border: 1px solid var(--border); border-radius: 6px; max-height: 240px; overflow-y: auto; z-index: 10; margin-top: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+    .autocomplete-item { padding: 8px 12px; cursor: pointer; transition: background 100ms; display: flex; align-items: center; gap: 10px; }
+    .autocomplete-item:hover { background: var(--card-hover); }
+    .autocomplete-item.selected { background: var(--primary-muted); }
+    .autocomplete-group { padding: 8px 12px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted-fg); }
+
+    /* Modal backdrop */
+    .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
+    .modal { width: 560px; max-height: 90vh; overflow-y: auto; background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 16px 48px rgba(0,0,0,0.5); }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+    .modal-body { padding: 20px; }
+    .modal-footer { display: flex; justify-content: space-between; padding: 12px 20px; border-top: 1px solid var(--border); }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- MODAL 1: ADD MODEL (from inventory)                                       -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+
+<div style="display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; padding: 32px;">
+
+  <!-- Add Model Modal -->
+  <div class="modal" style="position: relative;">
+    <div class="modal-header">
+      <div>
+        <h2 style="font-size: 15px; font-weight: 600;">Add Model</h2>
+        <p style="font-size: 11px; color: var(--muted-fg); margin-top: 2px;">Select from Anthropic's available models</p>
+      </div>
+      <button class="btn btn-ghost btn-sm" style="width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center;">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="modal-body">
+
+      <!-- Model selector with autocomplete -->
+      <div class="section">
+        <label class="field-label">Model</label>
+        <div style="position: relative;">
+          <input class="input-field" placeholder="Search models..." value="claude" style="padding-right: 80px;" />
+          <span style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 10px; color: var(--muted-fg);">18 models</span>
+
+          <!-- Autocomplete dropdown -->
+          <div class="autocomplete-list">
+            <div class="autocomplete-group">Chat Models</div>
+            <div class="autocomplete-item selected">
+              <div style="flex: 1;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 13px; font-weight: 500;">Claude Sonnet 4.6</span>
+                  <span class="badge badge-success" style="font-size: 9px; padding: 1px 6px;">Recommended</span>
+                </div>
+                <span class="font-mono" style="font-size: 10px; color: var(--muted-fg);">claude-sonnet-4-6-20260301</span>
+              </div>
+              <span style="font-size: 10px; color: var(--muted-fg);">200K ctx</span>
+              <span class="badge cap-chat" style="font-size: 9px; padding: 1px 6px; border-radius: 3px;">Chat</span>
+            </div>
+            <div class="autocomplete-item">
+              <div style="flex: 1;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 13px; font-weight: 500;">Claude Opus 4.6</span>
+                </div>
+                <span class="font-mono" style="font-size: 10px; color: var(--muted-fg);">claude-opus-4-6-20260301</span>
+              </div>
+              <span style="font-size: 10px; color: var(--muted-fg);">200K ctx</span>
+              <span class="badge cap-chat" style="font-size: 9px; padding: 1px 6px; border-radius: 3px;">Chat</span>
+            </div>
+            <div class="autocomplete-item">
+              <div style="flex: 1;">
+                <span style="font-size: 13px; font-weight: 500;">Claude Haiku 4.5</span>
+                <span class="font-mono" style="font-size: 10px; color: var(--muted-fg); display: block;">claude-haiku-4-5-20251001</span>
+              </div>
+              <span style="font-size: 10px; color: var(--muted-fg);">200K ctx</span>
+              <span class="badge cap-chat" style="font-size: 9px; padding: 1px 6px; border-radius: 3px;">Chat</span>
+            </div>
+            <div class="autocomplete-item">
+              <div style="flex: 1;">
+                <span style="font-size: 13px; font-weight: 500;">Claude Sonnet 4.5</span>
+                <span class="font-mono" style="font-size: 10px; color: var(--muted-fg); display: block;">claude-sonnet-4-5-20250514</span>
+              </div>
+              <span style="font-size: 10px; color: var(--muted-fg);">200K ctx</span>
+              <span class="badge cap-chat" style="font-size: 9px; padding: 1px 6px; border-radius: 3px;">Chat</span>
+            </div>
+          </div>
+        </div>
+        <p class="field-hint">Type to search. Or enter a custom model name not in the list.</p>
+      </div>
+
+      <!-- Auto-filled fields (from preconfig) -->
+      <div class="section">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div>
+            <label class="field-label">Alias (display name)</label>
+            <input class="input-field" value="Claude Sonnet 4.6" placeholder="e.g. My Fast Model" />
+          </div>
+          <div>
+            <label class="field-label">Context Length</label>
+            <input class="input-field font-mono" value="200000" type="number" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Capability type -->
+      <div class="section">
+        <label class="field-label">Capability Type</label>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px;">
+          <span class="badge cap-chat" style="padding: 4px 10px; font-size: 11px; border-radius: 5px; cursor: pointer; opacity: 1;">
+            <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+            Chat / LLM
+          </span>
+          <span class="badge cap-embedding" style="padding: 4px 10px; font-size: 11px; border-radius: 5px; cursor: pointer; opacity: 0.4;">
+            Embedding
+          </span>
+          <span class="badge cap-tts" style="padding: 4px 10px; font-size: 11px; border-radius: 5px; cursor: pointer; opacity: 0.4;">
+            Text-to-Speech
+          </span>
+          <span class="badge cap-stt" style="padding: 4px 10px; font-size: 11px; border-radius: 5px; cursor: pointer; opacity: 0.4;">
+            Speech-to-Text
+          </span>
+          <span class="badge cap-image" style="padding: 4px 10px; font-size: 11px; border-radius: 5px; cursor: pointer; opacity: 0.4;">
+            Image Gen
+          </span>
+          <span class="badge cap-reranker" style="padding: 4px 10px; font-size: 11px; border-radius: 5px; cursor: pointer; opacity: 0.4;">
+            Reranker
+          </span>
+          <span class="badge cap-moderation" style="padding: 4px 10px; font-size: 11px; border-radius: 5px; cursor: pointer; opacity: 0.4;">
+            Moderation
+          </span>
+        </div>
+      </div>
+
+      <!-- Capability flags (checkboxes) -->
+      <div class="section">
+        <label class="field-label">Capabilities</label>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px;">
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
+            <input type="checkbox" checked style="accent-color: var(--primary);" /> Vision
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
+            <input type="checkbox" checked style="accent-color: var(--primary);" /> Tool Calling
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
+            <input type="checkbox" checked style="accent-color: var(--primary);" /> Extended Thinking
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
+            <input type="checkbox" style="accent-color: var(--primary);" /> JSON Mode
+          </label>
+        </div>
+        <p class="field-hint">Auto-detected from model config. Toggle to override.</p>
+      </div>
+
+      <!-- Tags -->
+      <div class="section">
+        <label class="field-label">Tags</label>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px;">
+          <span class="tag">
+            Translation
+            <span class="remove"><svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></span>
+          </span>
+          <span class="tag">
+            Chat
+            <span class="remove"><svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></span>
+          </span>
+          <span class="tag" style="background: var(--primary-muted); border-color: rgba(232,168,50,0.2); color: var(--primary);">
+            ⭐ Default
+            <span class="remove"><svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></span>
+          </span>
+        </div>
+        <div style="display: flex; gap: 6px;">
+          <input class="input-field" placeholder="Add tag... (e.g. Chunk Edit, Backup)" style="flex: 1; padding: 6px 10px; font-size: 12px;" />
+          <button class="btn btn-outline btn-sm">Add</button>
+        </div>
+        <p class="field-hint">Tags help organize models by purpose. Common: Translation, Chat, Chunk Edit, Image Gen.</p>
+      </div>
+
+      <!-- Description / notes -->
+      <div class="section" style="margin-bottom: 0;">
+        <label class="field-label">Notes</label>
+        <textarea class="input-field" rows="2" placeholder="Optional notes about this model configuration..." style="resize: vertical; font-size: 12px;">Best for Japanese → English translation. Good balance of quality and speed.</textarea>
+      </div>
+
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-outline">Cancel</button>
+      <button class="btn btn-primary">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+        Add Model
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- MODAL 2: EDIT MODEL (existing)                                         -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+  <div class="modal" style="position: relative;">
+    <div class="modal-header">
+      <div>
+        <h2 style="font-size: 15px; font-weight: 600;">Edit Model</h2>
+        <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
+          <span class="font-mono" style="font-size: 11px; color: var(--muted-fg);">claude-sonnet-4-6-20260301</span>
+          <span class="badge cap-chat" style="font-size: 9px; padding: 1px 6px; border-radius: 3px;">Chat</span>
+          <span class="badge badge-success" style="font-size: 9px; padding: 1px 6px;">Active</span>
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-sm" style="width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center;">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="modal-body">
+
+      <!-- Alias + Context -->
+      <div class="section">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div>
+            <label class="field-label">Alias (display name)</label>
+            <input class="input-field" value="Claude Sonnet 4.6" />
+          </div>
+          <div>
+            <label class="field-label">Context Length</label>
+            <input class="input-field font-mono" value="200000" type="number" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Status toggles -->
+      <div class="section">
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--secondary); border-radius: 6px;">
+            <div>
+              <span style="font-size: 13px; font-weight: 500;">Active</span>
+              <p style="font-size: 11px; color: var(--muted-fg);">Model available for selection in translation and chat</p>
+            </div>
+            <div class="toggle on"></div>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--secondary); border-radius: 6px;">
+            <div>
+              <span style="font-size: 13px; font-weight: 500;">⭐ Default Model</span>
+              <p style="font-size: 11px; color: var(--muted-fg);">Use as default when no model is specifically selected</p>
+            </div>
+            <div class="toggle on"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Capability flags -->
+      <div class="section">
+        <label class="field-label">Capabilities</label>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px;">
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
+            <input type="checkbox" checked style="accent-color: var(--primary);" /> Vision
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
+            <input type="checkbox" checked style="accent-color: var(--primary);" /> Tool Calling
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
+            <input type="checkbox" checked style="accent-color: var(--primary);" /> Extended Thinking
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
+            <input type="checkbox" style="accent-color: var(--primary);" /> JSON Mode
+          </label>
+        </div>
+      </div>
+
+      <!-- Tags -->
+      <div class="section">
+        <label class="field-label">Tags</label>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px;">
+          <span class="tag">
+            Translation
+            <span class="remove"><svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></span>
+          </span>
+          <span class="tag">
+            Chat
+            <span class="remove"><svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></span>
+          </span>
+        </div>
+        <div style="display: flex; gap: 6px;">
+          <input class="input-field" placeholder="Add tag..." style="flex: 1; padding: 6px 10px; font-size: 12px;" />
+          <button class="btn btn-outline btn-sm">Add</button>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="section">
+        <label class="field-label">Notes</label>
+        <textarea class="input-field" rows="2" placeholder="Optional notes..." style="resize: vertical; font-size: 12px;">Best for Japanese → English translation. Good balance of quality and speed.</textarea>
+      </div>
+
+      <!-- Verify -->
+      <div class="section" style="margin-bottom: 0;">
+        <div style="display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: rgba(61,186,106,0.06); border: 1px solid rgba(61,186,106,0.15); border-radius: 6px;">
+          <svg width="14" height="14" fill="none" stroke="#5dd88a" stroke-width="2" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          <div style="flex: 1;">
+            <span style="font-size: 12px; font-weight: 500; color: #5dd88a;">Last verified: 2.3s ago — OK (342ms)</span>
+          </div>
+          <button class="btn btn-outline btn-sm" style="color: #5dd88a; border-color: rgba(61,186,106,0.3);">
+            <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            Re-verify
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-danger btn-sm">
+        <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        Delete Model
+      </button>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-outline">Cancel</button>
+        <button class="btn btn-primary">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

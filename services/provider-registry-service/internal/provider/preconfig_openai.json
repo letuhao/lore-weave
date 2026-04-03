@@ -1,0 +1,33 @@
+[
+  {"provider_model_name": "gpt-4.1", "display_name": "GPT-4.1", "capability": "chat", "context_length": 1047576, "is_recommended": true, "capability_flags": {"chat": true, "vision": true, "tool_calling": true, "json_mode": true}},
+  {"provider_model_name": "gpt-4.1-mini", "display_name": "GPT-4.1 Mini", "capability": "chat", "context_length": 1047576, "is_recommended": true, "capability_flags": {"chat": true, "vision": true, "tool_calling": true, "json_mode": true}},
+  {"provider_model_name": "gpt-4.1-nano", "display_name": "GPT-4.1 Nano", "capability": "chat", "context_length": 1047576, "is_recommended": false, "capability_flags": {"chat": true, "vision": true, "tool_calling": true, "json_mode": true}},
+  {"provider_model_name": "gpt-4o", "display_name": "GPT-4o", "capability": "chat", "context_length": 128000, "is_recommended": true, "capability_flags": {"chat": true, "vision": true, "tool_calling": true, "json_mode": true}},
+  {"provider_model_name": "gpt-4o-mini", "display_name": "GPT-4o Mini", "capability": "chat", "context_length": 128000, "is_recommended": true, "capability_flags": {"chat": true, "vision": true, "tool_calling": true, "json_mode": true}},
+  {"provider_model_name": "o4-mini", "display_name": "o4-mini", "capability": "chat", "context_length": 200000, "is_recommended": true, "capability_flags": {"chat": true, "vision": true, "tool_calling": true, "reasoning": true}},
+  {"provider_model_name": "o3", "display_name": "o3", "capability": "chat", "context_length": 200000, "is_recommended": true, "capability_flags": {"chat": true, "vision": true, "tool_calling": true, "reasoning": true}},
+  {"provider_model_name": "o3-mini", "display_name": "o3-mini", "capability": "chat", "context_length": 200000, "is_recommended": false, "capability_flags": {"chat": true, "tool_calling": true, "reasoning": true}},
+  {"provider_model_name": "o1", "display_name": "o1", "capability": "chat", "context_length": 200000, "is_recommended": false, "capability_flags": {"chat": true, "vision": true, "reasoning": true}},
+  {"provider_model_name": "o1-mini", "display_name": "o1-mini", "capability": "chat", "context_length": 128000, "is_recommended": false, "capability_flags": {"chat": true, "reasoning": true}},
+  {"provider_model_name": "o1-pro", "display_name": "o1-pro", "capability": "chat", "context_length": 200000, "is_recommended": false, "capability_flags": {"chat": true, "vision": true, "reasoning": true}},
+  {"provider_model_name": "gpt-4-turbo", "display_name": "GPT-4 Turbo", "capability": "chat", "context_length": 128000, "is_recommended": false, "capability_flags": {"chat": true, "vision": true, "tool_calling": true, "json_mode": true}},
+  {"provider_model_name": "gpt-3.5-turbo", "display_name": "GPT-3.5 Turbo", "capability": "chat", "context_length": 16385, "is_recommended": false, "capability_flags": {"chat": true, "tool_calling": true, "json_mode": true}},
+
+  {"provider_model_name": "text-embedding-3-large", "display_name": "Embedding 3 Large", "capability": "embedding", "context_length": 8191, "is_recommended": true, "capability_flags": {"embedding": true}},
+  {"provider_model_name": "text-embedding-3-small", "display_name": "Embedding 3 Small", "capability": "embedding", "context_length": 8191, "is_recommended": true, "capability_flags": {"embedding": true}},
+  {"provider_model_name": "text-embedding-ada-002", "display_name": "Embedding Ada 002", "capability": "embedding", "context_length": 8191, "is_recommended": false, "capability_flags": {"embedding": true}},
+
+  {"provider_model_name": "tts-1", "display_name": "TTS-1", "capability": "tts", "context_length": 4096, "is_recommended": true, "capability_flags": {"tts": true}},
+  {"provider_model_name": "tts-1-hd", "display_name": "TTS-1 HD", "capability": "tts", "context_length": 4096, "is_recommended": true, "capability_flags": {"tts": true}},
+
+  {"provider_model_name": "whisper-1", "display_name": "Whisper v1", "capability": "stt", "context_length": null, "is_recommended": true, "capability_flags": {"stt": true}},
+  {"provider_model_name": "gpt-4o-transcribe", "display_name": "GPT-4o Transcribe", "capability": "stt", "context_length": null, "is_recommended": true, "capability_flags": {"stt": true}},
+  {"provider_model_name": "gpt-4o-mini-transcribe", "display_name": "GPT-4o Mini Transcribe", "capability": "stt", "context_length": null, "is_recommended": false, "capability_flags": {"stt": true}},
+
+  {"provider_model_name": "dall-e-3", "display_name": "DALL-E 3", "capability": "image_gen", "context_length": null, "is_recommended": true, "capability_flags": {"image_gen": true}},
+  {"provider_model_name": "dall-e-2", "display_name": "DALL-E 2", "capability": "image_gen", "context_length": null, "is_recommended": false, "capability_flags": {"image_gen": true}},
+  {"provider_model_name": "gpt-image-1", "display_name": "GPT Image 1", "capability": "image_gen", "context_length": null, "is_recommended": true, "capability_flags": {"image_gen": true}},
+
+  {"provider_model_name": "omni-moderation-latest", "display_name": "Omni Moderation", "capability": "moderation", "context_length": null, "is_recommended": true, "capability_flags": {"moderation": true}},
+  {"provider_model_name": "text-moderation-latest", "display_name": "Text Moderation", "capability": "moderation", "context_length": null, "is_recommended": false, "capability_flags": {"moderation": true}}
+]
