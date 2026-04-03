@@ -33,9 +33,10 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   usage_log_id      UUID,
   is_error          BOOLEAN NOT NULL DEFAULT false,
   error_detail      TEXT,
+  branch_id         INT NOT NULL DEFAULT 0,
   parent_message_id UUID REFERENCES chat_messages(message_id),
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (session_id, sequence_num)
+  UNIQUE (session_id, sequence_num, branch_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session
@@ -63,6 +64,17 @@ CREATE INDEX IF NOT EXISTS idx_chat_outputs_session
 
 CREATE INDEX IF NOT EXISTS idx_chat_outputs_owner
   ON chat_outputs (owner_user_id, output_type, created_at DESC);
+
+-- Phase 6: Message branching
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_messages' AND column_name='branch_id') THEN
+    ALTER TABLE chat_messages ADD COLUMN branch_id INT NOT NULL DEFAULT 0;
+    -- Replace old UNIQUE constraint (session_id, sequence_num) with branched version
+    ALTER TABLE chat_messages DROP CONSTRAINT IF EXISTS chat_messages_session_id_sequence_num_key;
+    ALTER TABLE chat_messages DROP CONSTRAINT IF EXISTS chat_messages_session_id_sequence_num_branch_id_key;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_messages_branch_unique ON chat_messages(session_id, sequence_num, branch_id);
+  END IF;
+END $$;
 
 -- Phase 6: Full-text search index for message search
 CREATE INDEX IF NOT EXISTS idx_chat_messages_fts

@@ -18,6 +18,8 @@ interface MessageListProps {
   onEditMessage?: (content: string, sequenceNum: number) => void;
   onRegenerateMessage?: (userContent: string, userSequenceNum: number) => void;
   disabled?: boolean;
+  sessionId?: string;
+  onSwitchBranch?: (branchId: number) => void;
 }
 
 export function MessageList({
@@ -30,6 +32,8 @@ export function MessageList({
   onEditMessage,
   onRegenerateMessage,
   disabled,
+  sessionId,
+  onSwitchBranch,
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -77,6 +81,8 @@ export function MessageList({
                 : undefined
             }
             disabled={disabled}
+            sessionId={sessionId}
+            onSwitchBranch={onSwitchBranch}
           />
         ))}
 
@@ -96,6 +102,7 @@ export function MessageList({
               model_ref: null,
               is_error: false,
               error_detail: null,
+              branch_id: 0,
               parent_message_id: null,
               created_at: new Date().toISOString(),
             }}

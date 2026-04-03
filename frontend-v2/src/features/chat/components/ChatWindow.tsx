@@ -71,6 +71,12 @@ export function ChatWindow({
         onEditMessage={!isArchived ? handleEdit : undefined}
         onRegenerateMessage={!isArchived ? handleRegenerate : undefined}
         disabled={isArchived || chat.isStreaming}
+        sessionId={session.session_id}
+        onSwitchBranch={(branchId) => {
+          // Reload messages for the selected branch
+          // For now, refresh active branch (branch switching requires loading alt messages)
+          chat.refresh();
+        }}
       />
 
       <ChatInputBar

@@ -37,6 +37,7 @@ async def list_messages(
     session_id: UUID,
     limit: int = Query(50, le=200),
     before_seq: int | None = None,
+    branch_id: int = Query(0, alias="branch_id"),
     user_id: str = Depends(get_current_user),
     pool: asyncpg.Pool = Depends(get_db),
 ) -> MessageListResponse:
@@ -52,23 +53,63 @@ async def list_messages(
         rows = await pool.fetch(
             """
             SELECT * FROM chat_messages
-            WHERE session_id=$1 AND sequence_num < $2
+            WHERE session_id=$1 AND branch_id=$4 AND sequence_num < $2
             ORDER BY sequence_num ASC
             LIMIT $3
             """,
-            str(session_id), before_seq, limit,
+            str(session_id), before_seq, limit, branch_id,
         )
     else:
         rows = await pool.fetch(
             """
             SELECT * FROM chat_messages
-            WHERE session_id=$1
+            WHERE session_id=$1 AND branch_id=$3
             ORDER BY sequence_num ASC
             LIMIT $2
             """,
-            str(session_id), limit,
+            str(session_id), limit, branch_id,
         )
     return MessageListResponse(items=[_row_to_message(r) for r in rows])
+
+
+@router.get("/{session_id}/branches")
+async def list_branches(
+    session_id: UUID,
+    sequence_num: int = Query(..., description="Fork point sequence number"),
+    user_id: str = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """List all branch_ids that have messages after the given sequence_num."""
+    exists = await pool.fetchval(
+        "SELECT 1 FROM chat_sessions WHERE session_id=$1 AND owner_user_id=$2",
+        str(session_id), user_id,
+    )
+    if not exists:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    rows = await pool.fetch(
+        """
+        SELECT DISTINCT branch_id,
+               MIN(created_at) AS created_at,
+               COUNT(*) AS message_count
+        FROM chat_messages
+        WHERE session_id=$1 AND sequence_num > $2
+        GROUP BY branch_id
+        ORDER BY branch_id ASC
+        """,
+        str(session_id), sequence_num,
+    )
+    return {
+        "sequence_num": sequence_num,
+        "branches": [
+            {
+                "branch_id": r["branch_id"],
+                "message_count": r["message_count"],
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            }
+            for r in rows
+        ],
+    }
 
 
 @router.post("/{session_id}/messages")
@@ -92,50 +133,59 @@ async def send_message(
     model_source = session["model_source"]
     model_ref = str(session["model_ref"])
 
-    # Edit flow: delete branched messages + insert replacement + update count — all atomic.
+    # Edit flow: move old messages to a branch, insert new on active branch (0).
     # Non-edit flow: simple insert + increment.
     parent_message_id: str | None = None
-    deleted_count = 0
+    branched_count = 0
     async with pool.acquire() as conn:
         async with conn.transaction():
             if body.edit_from_sequence is not None:
                 parent_message_id = await conn.fetchval(
                     """
                     SELECT message_id::text FROM chat_messages
-                    WHERE session_id=$1 AND sequence_num=$2
+                    WHERE session_id=$1 AND sequence_num=$2 AND branch_id=0
                     """,
                     str(session_id), body.edit_from_sequence,
                 )
-                # asyncpg execute returns "DELETE N" — parse count from status string
+                # Allocate next branch_id for this session
+                next_branch = await conn.fetchval(
+                    "SELECT COALESCE(MAX(branch_id), 0) + 1 FROM chat_messages WHERE session_id=$1",
+                    str(session_id),
+                )
+                # Move active messages after edit point to new branch (soft-hide, not delete)
                 result = await conn.execute(
                     """
-                    DELETE FROM chat_messages
-                    WHERE session_id=$1 AND sequence_num > $2
+                    UPDATE chat_messages
+                    SET branch_id = $3
+                    WHERE session_id=$1 AND sequence_num > $2 AND branch_id=0
                     """,
-                    str(session_id), body.edit_from_sequence,
+                    str(session_id), body.edit_from_sequence, next_branch,
                 )
-                deleted_count = int(result.split()[-1])
+                branched_count = int(result.split()[-1])
 
             seq = await conn.fetchval(
-                "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM chat_messages WHERE session_id=$1",
+                """
+                SELECT COALESCE(MAX(sequence_num), 0) + 1
+                FROM chat_messages WHERE session_id=$1 AND branch_id=0
+                """,
                 str(session_id),
             )
             await conn.execute(
                 """
                 INSERT INTO chat_messages
-                  (session_id, owner_user_id, role, content, sequence_num, parent_message_id)
-                VALUES ($1,$2,'user',$3,$4,$5)
+                  (session_id, owner_user_id, role, content, sequence_num, parent_message_id, branch_id)
+                VALUES ($1,$2,'user',$3,$4,$5, 0)
                 """,
                 str(session_id), user_id, body.content, seq, parent_message_id,
             )
-            # deleted_count=0 on non-edit path → GREATEST(count - 0 + 1, 0) = count + 1
+            # Update message count: subtract branched msgs, add 1 for new user msg
             await conn.execute(
                 """
                 UPDATE chat_sessions
                 SET message_count = GREATEST(message_count - $2 + 1, 0), updated_at = now()
                 WHERE session_id = $1
                 """,
-                str(session_id), deleted_count,
+                str(session_id), branched_count,
             )
 
     # Resolve credentials

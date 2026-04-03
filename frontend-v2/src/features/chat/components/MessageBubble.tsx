@@ -5,6 +5,7 @@ import type { ChatMessage, ChatOutput } from '../types';
 import { extractCodeBlocks } from '../utils/extractCodeBlocks';
 import { hasContext, extractUserMessage, extractContextLabels } from '../context/types';
 import { AssistantMessage } from './AssistantMessage';
+import { BranchNavigator } from './BranchNavigator';
 import { UserMessage } from './UserMessage';
 import { OutputCard } from './OutputCard';
 
@@ -21,6 +22,10 @@ interface MessageBubbleProps {
   isThinkingStreaming?: boolean;
   /** Elapsed thinking time */
   thinkingElapsed?: number;
+  /** Session ID for branch navigation */
+  sessionId?: string;
+  /** Called when user switches branch */
+  onSwitchBranch?: (branchId: number) => void;
 }
 
 const CONTEXT_PILL_ICON: Record<string, React.ReactNode> = {
@@ -48,6 +53,8 @@ export function MessageBubble({
   streamingReasoning,
   isThinkingStreaming,
   thinkingElapsed,
+  sessionId,
+  onSwitchBranch,
 }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const rawContent = message.content;
@@ -102,7 +109,20 @@ export function MessageBubble({
           )}
         >
           {isUser ? (
-            <UserMessage content={displayText} onEdit={onEdit} disabled={disabled} />
+            <>
+              <UserMessage content={displayText} onEdit={onEdit} disabled={disabled} />
+              {/* Branch navigator — shown on edited messages (have parent_message_id) */}
+              {message.parent_message_id && sessionId && onSwitchBranch && (
+                <div className="mt-1.5 flex justify-end">
+                  <BranchNavigator
+                    sessionId={sessionId}
+                    forkSequenceNum={message.sequence_num - 1}
+                    activeBranchId={message.branch_id ?? 0}
+                    onSwitchBranch={onSwitchBranch}
+                  />
+                </div>
+              )}
+            </>
           ) : (
             <>
               <AssistantMessage

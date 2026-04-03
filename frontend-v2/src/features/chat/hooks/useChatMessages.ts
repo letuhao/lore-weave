@@ -196,6 +196,7 @@ export function useChatMessages(sessionId: string | null) {
         model_ref: null,
         is_error: false,
         error_detail: null,
+        branch_id: 0,
         parent_message_id: null,
         created_at: new Date().toISOString(),
       };
@@ -218,6 +219,7 @@ export function useChatMessages(sessionId: string | null) {
           content,
           content_parts: null,
           sequence_num: editFromSequence,
+          branch_id: 0,
           input_tokens: null,
           output_tokens: null,
           model_ref: null,

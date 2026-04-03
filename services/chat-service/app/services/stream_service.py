@@ -133,7 +133,7 @@ async def stream_response(
     rows = await pool.fetch(
         """
         SELECT role, content FROM chat_messages
-        WHERE session_id = $1 AND is_error = false
+        WHERE session_id = $1 AND is_error = false AND branch_id = 0
         ORDER BY sequence_num DESC
         LIMIT 50
         """,

@@ -78,6 +78,15 @@ export const chatApi = {
     return `${base()}/v1/chat/outputs/${outputId}/download`;
   },
 
+  // ── Branches ─────────────────────────────────────────────────────────────────
+
+  listBranches(token: string, sessionId: string, sequenceNum: number) {
+    return apiJson<{
+      sequence_num: number;
+      branches: Array<{ branch_id: number; message_count: number; created_at: string | null }>;
+    }>(`/v1/chat/sessions/${sessionId}/branches?sequence_num=${sequenceNum}`, { token });
+  },
+
   // ── Search ───────────────────────────────────────────────────────────────────
 
   searchMessages(token: string, query: string, limit = 20) {

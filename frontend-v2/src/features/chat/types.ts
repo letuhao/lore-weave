@@ -32,6 +32,7 @@ export interface ChatMessage {
   content: string;
   content_parts: unknown | null;
   sequence_num: number;
+  branch_id: number;
   input_tokens: number | null;
   output_tokens: number | null;
   model_ref: string | null;
@@ -39,6 +40,12 @@ export interface ChatMessage {
   error_detail: string | null;
   parent_message_id: string | null;
   created_at: string;
+}
+
+export interface BranchInfo {
+  branch_id: number;
+  message_count: number;
+  created_at: string | null;
 }
 
 export interface ChatOutput {
