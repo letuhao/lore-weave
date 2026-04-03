@@ -334,10 +334,9 @@ export function SessionSidebar({
                 className="cursor-pointer border-l-2 border-transparent px-4 py-2 transition-colors hover:bg-card-foreground/5"
               >
                 <p className="truncate text-[12px] font-medium text-muted-foreground">{r.session_title}</p>
-                <p
-                  className="mt-0.5 truncate text-[10px] text-muted-foreground/70"
-                  dangerouslySetInnerHTML={{ __html: r.snippet.replace(/\*\*/g, (_, i) => i % 2 === 0 ? '<mark class="bg-accent/30 text-accent-fg rounded px-0.5">' : '</mark>') }}
-                />
+                <p className="mt-0.5 truncate text-[10px] text-muted-foreground/70">
+                  {r.snippet.replace(/\*\*/g, '')}
+                </p>
               </div>
             ))}
           </div>

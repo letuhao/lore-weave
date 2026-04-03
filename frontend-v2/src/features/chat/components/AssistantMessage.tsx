@@ -67,7 +67,7 @@ export function AssistantMessage({
               {hasReasoning && (
                 <span className="flex items-center gap-0.5 text-[#a78bfa]">
                   <Brain className="h-2.5 w-2.5" />
-                  {reasoning ? reasoning.length : 0}
+                  Thinking
                 </span>
               )}
               {!hasReasoning && (

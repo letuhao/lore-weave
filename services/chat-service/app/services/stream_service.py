@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 def _is_openai_compatible(provider_kind: str) -> bool:
     """Providers that speak the OpenAI chat/completions SSE protocol."""
-    return provider_kind in ("lm_studio", "ollama", "openai") or provider_kind not in ("anthropic",)
+    return provider_kind != "anthropic"
 
 
 async def _stream_openai_compatible(
@@ -37,32 +37,34 @@ async def _stream_openai_compatible(
 ) -> AsyncGenerator[dict, None]:
     """Stream via openai.AsyncOpenAI — preserves reasoning_content."""
     client = AsyncOpenAI(api_key=api_key, base_url=base_url)
-    kwargs: dict = {
-        "model": model_name,
-        "messages": messages,
-        "stream": True,
-    }
-    if gen_params.get("temperature") is not None:
-        kwargs["temperature"] = gen_params["temperature"]
-    if gen_params.get("top_p") is not None:
-        kwargs["top_p"] = gen_params["top_p"]
-    if gen_params.get("max_tokens") is not None and gen_params["max_tokens"] > 0:
-        kwargs["max_tokens"] = gen_params["max_tokens"]
-
-    response = await client.chat.completions.create(**kwargs)
-    async for chunk in response:
-        if not chunk.choices:
-            continue
-        delta = chunk.choices[0].delta
-        # OpenAI SDK preserves extra fields in model_extra
-        raw = getattr(delta, "model_extra", {}) or {}
-        yield {
-            "content": delta.content or "",
-            "reasoning_content": raw.get("reasoning_content", "") or "",
-            "finish_reason": chunk.choices[0].finish_reason,
-            "usage": getattr(chunk, "usage", None),
+    try:
+        kwargs: dict = {
+            "model": model_name,
+            "messages": messages,
+            "stream": True,
         }
-    await client.close()
+        if gen_params.get("temperature") is not None:
+            kwargs["temperature"] = gen_params["temperature"]
+        if gen_params.get("top_p") is not None:
+            kwargs["top_p"] = gen_params["top_p"]
+        if gen_params.get("max_tokens") is not None and gen_params["max_tokens"] > 0:
+            kwargs["max_tokens"] = gen_params["max_tokens"]
+
+        response = await client.chat.completions.create(**kwargs)
+        async for chunk in response:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            # OpenAI SDK preserves extra fields in model_extra
+            raw = getattr(delta, "model_extra", {}) or {}
+            yield {
+                "content": delta.content or "",
+                "reasoning_content": raw.get("reasoning_content", "") or "",
+                "finish_reason": chunk.choices[0].finish_reason,
+                "usage": getattr(chunk, "usage", None),
+            }
+    finally:
+        await client.close()
 
 
 async def _stream_litellm(
@@ -208,7 +210,7 @@ async def stream_response(
             if final_reasoning:
                 content_parts = json.dumps({
                     "reasoning": final_reasoning,
-                    "thinking_tokens": len(final_reasoning),
+                    "reasoning_length": len(final_reasoning),
                 })
 
             await conn.execute(
@@ -306,7 +308,11 @@ async def stream_response(
 
     except Exception as exc:
         logger.exception("Stream error for session %s", session_id)
-        yield f'data: {json.dumps({"type": "error", "errorText": str(exc)})}\n\n'
+        # Sanitize error message — don't leak internal details
+        safe_msg = str(exc)
+        if any(kw in safe_msg.lower() for kw in ("traceback", "file ", "/usr/", "password", "secret")):
+            safe_msg = "An internal error occurred. Please try again."
+        yield f'data: {json.dumps({"type": "error", "errorText": safe_msg})}\n\n'
 
     yield "data: [DONE]\n\n"
 

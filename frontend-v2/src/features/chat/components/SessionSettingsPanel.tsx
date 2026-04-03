@@ -62,20 +62,27 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  // Close on click outside
+  // Close on click outside (use mousedown to avoid conflict with open button)
+  const openedAtRef = useRef(Date.now());
   useEffect(() => {
+    openedAtRef.current = Date.now();
     function handleClick(e: MouseEvent) {
+      // Ignore clicks within 150ms of opening (prevents instant close from trigger button)
+      if (Date.now() - openedAtRef.current < 150) return;
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
         onClose();
       }
     }
-    // Delay to avoid closing immediately from the open button click
-    const timer = setTimeout(() => window.addEventListener('mousedown', handleClick), 100);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener('mousedown', handleClick);
-    };
+    window.addEventListener('mousedown', handleClick);
+    return () => window.removeEventListener('mousedown', handleClick);
   }, [onClose]);
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
 
   // ── Save helper (debounced PATCH) ─────────────────────────────────────────
   const patchSession = useCallback(

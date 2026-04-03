@@ -15,6 +15,14 @@ class GenerationParams(BaseModel):
     top_p: float | None = None
     thinking: bool | None = None
 
+    def model_post_init(self, __context: Any) -> None:
+        if self.temperature is not None and not (0.0 <= self.temperature <= 2.0):
+            raise ValueError("temperature must be between 0.0 and 2.0")
+        if self.top_p is not None and not (0.0 <= self.top_p <= 1.0):
+            raise ValueError("top_p must be between 0.0 and 1.0")
+        if self.max_tokens is not None and self.max_tokens < 0:
+            raise ValueError("max_tokens must be non-negative")
+
 
 class CreateSessionRequest(BaseModel):
     model_source: str         # 'user_model' | 'platform_model'

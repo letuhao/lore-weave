@@ -168,6 +168,7 @@ export function useChatMessages(sessionId: string | null) {
         setStreamPhase('idle');
         throw err;
       } finally {
+        stopThinkingTimer();
         abortRef.current = null;
         setStreamingText('');
         setStreamingReasoning('');

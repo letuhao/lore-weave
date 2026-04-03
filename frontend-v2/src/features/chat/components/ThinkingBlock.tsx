@@ -37,11 +37,11 @@ export function ThinkingBlock({ reasoning, isStreaming, elapsed }: ThinkingBlock
 
   // Completed thinking — collapsible
   return (
-    <details className="mb-3 rounded-lg border border-[#3b2d6b] bg-[#1e1633] px-3 py-2.5">
+    <details className="group mb-3 rounded-lg border border-[#3b2d6b] bg-[#1e1633] px-3 py-2.5">
       <summary className="flex cursor-pointer items-center gap-2 list-none text-xs font-medium text-[#a78bfa]">
         <Brain className="h-3.5 w-3.5" />
         <span>Thought for {timeLabel || 'a moment'}</span>
-        <svg className="ml-auto h-2.5 w-2.5 transition-transform [[open]>&]:rotate-180" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" /></svg>
+        <svg className="ml-auto h-2.5 w-2.5 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" /></svg>
       </summary>
       <div className="mt-2 max-h-[300px] overflow-y-auto border-t border-[#3b2d6b] pt-2">
         <p className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-[#c4b5fd]">
