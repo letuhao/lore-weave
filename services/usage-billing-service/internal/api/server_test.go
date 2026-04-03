@@ -116,7 +116,7 @@ func TestScanUsageLogRow(t *testing.T) {
 	now := time.Now().UTC()
 	vals := []any{
 		uuid.New(), uuid.New(), uuid.New(), "openai", "user_model", uuid.New(),
-		1, 2, 3, 0.1, "quota", "success", "m03-v1", "in", "out", "kref", "AES-256-GCM", 1, now,
+		1, 2, 3, 0.1, "quota", "success", "m03-v1", "in", "out", "kref", "AES-256-GCM", 1, "translation", now,
 	}
 	row, err := scanUsageLogRow(fakeScanner{values: vals})
 	if err != nil {

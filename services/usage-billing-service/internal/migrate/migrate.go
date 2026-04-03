@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS usage_logs (
 );
 CREATE INDEX IF NOT EXISTS idx_usage_logs_owner_created ON usage_logs(owner_user_id, created_at DESC);
 
+-- v2: purpose column for usage categorization (translation, chat, chunk_edit, image_gen, etc.)
+ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT 'unknown';
+CREATE INDEX IF NOT EXISTS idx_usage_logs_purpose ON usage_logs(owner_user_id, purpose);
+
 CREATE TABLE IF NOT EXISTS usage_log_details (
   usage_log_id UUID PRIMARY KEY REFERENCES usage_logs(usage_log_id) ON DELETE CASCADE,
   payload_encryption_key_ciphertext TEXT NOT NULL,

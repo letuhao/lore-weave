@@ -188,6 +188,7 @@ func (s *Server) recordInvocation(w http.ResponseWriter, r *http.Request) {
 		InputPayload  map[string]any `json:"input_payload"`
 		OutputPayload map[string]any `json:"output_payload"`
 		RequestStatus string         `json:"request_status"`
+		Purpose       string         `json:"purpose"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "M03_BILLING_RECORD_INVALID", "invalid payload")
@@ -214,6 +215,10 @@ func (s *Server) recordInvocation(w http.ResponseWriter, r *http.Request) {
 	requestStatus := in.RequestStatus
 	if requestStatus == "" {
 		requestStatus = "success"
+	}
+	purpose := in.Purpose
+	if purpose == "" {
+		purpose = "unknown"
 	}
 	var quotaRemaining int
 	var credits int
@@ -271,13 +276,13 @@ WHERE owner_user_id=$1
 INSERT INTO usage_logs(
   request_id, owner_user_id, provider_kind, model_source, model_ref,
   input_tokens, output_tokens, total_tokens, total_cost_usd, billing_decision, request_status, policy_version,
-  input_payload_ciphertext, output_payload_ciphertext, payload_encryption_key_ref, payload_encryption_algo
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'AES-256-GCM')
+  input_payload_ciphertext, output_payload_ciphertext, payload_encryption_key_ref, payload_encryption_algo, purpose
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'AES-256-GCM',$16)
 ON CONFLICT (request_id) DO UPDATE SET request_id = EXCLUDED.request_id
 RETURNING usage_log_id
 `, in.RequestID, in.OwnerUserID, in.ProviderKind, in.ModelSource, in.ModelRef,
 		in.InputTokens, in.OutputTokens, totalTokens, costUSD, decision, requestStatus, policyVersion,
-		inputCipher, outputCipher, keyRef).Scan(&usageLogID)
+		inputCipher, outputCipher, keyRef, purpose).Scan(&usageLogID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_BILLING_RECORD_FAILED", "failed to write usage log")
 		return
@@ -311,17 +316,58 @@ func (s *Server) listUsageLogs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
 	}
-	limit := parseIntDefault(r.URL.Query().Get("limit"), 20, 1, 100)
-	offset := parseIntDefault(r.URL.Query().Get("offset"), 0, 0, 1000000)
-	rows, err := s.pool.Query(r.Context(), `
+	q := r.URL.Query()
+	limit := parseIntDefault(q.Get("limit"), 20, 1, 100)
+	offset := parseIntDefault(q.Get("offset"), 0, 0, 1000000)
+
+	// Build dynamic WHERE clauses
+	conditions := []string{"owner_user_id=$1"}
+	args := []any{userID}
+	argIdx := 2
+
+	if v := q.Get("provider_kind"); v != "" {
+		conditions = append(conditions, fmt.Sprintf("provider_kind=$%d", argIdx))
+		args = append(args, v)
+		argIdx++
+	}
+	if v := q.Get("request_status"); v != "" {
+		conditions = append(conditions, fmt.Sprintf("request_status=$%d", argIdx))
+		args = append(args, v)
+		argIdx++
+	}
+	if v := q.Get("purpose"); v != "" {
+		conditions = append(conditions, fmt.Sprintf("purpose=$%d", argIdx))
+		args = append(args, v)
+		argIdx++
+	}
+	if v := q.Get("from"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			conditions = append(conditions, fmt.Sprintf("created_at >= $%d", argIdx))
+			args = append(args, t)
+			argIdx++
+		}
+	}
+	if v := q.Get("to"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			conditions = append(conditions, fmt.Sprintf("created_at <= $%d", argIdx))
+			args = append(args, t)
+			argIdx++
+		}
+	}
+
+	where := strings.Join(conditions, " AND ")
+
+	// Query items
+	queryArgs := append(args, limit, offset)
+	rows, err := s.pool.Query(r.Context(), fmt.Sprintf(`
 SELECT usage_log_id, request_id, owner_user_id, provider_kind, model_source, model_ref, input_tokens, output_tokens,
        total_tokens, total_cost_usd, billing_decision, request_status, policy_version, input_payload_ciphertext,
-       output_payload_ciphertext, payload_encryption_key_ref, payload_encryption_algo, decrypt_access_audit_count, created_at
+       output_payload_ciphertext, payload_encryption_key_ref, payload_encryption_algo, decrypt_access_audit_count, purpose, created_at
 FROM usage_logs
-WHERE owner_user_id=$1
+WHERE %s
 ORDER BY created_at DESC
-LIMIT $2 OFFSET $3
-`, userID, limit, offset)
+LIMIT $%d OFFSET $%d
+`, where, argIdx, argIdx+1), queryArgs...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_USAGE_QUERY_FAILED", "failed to list usage logs")
 		return
@@ -336,8 +382,10 @@ LIMIT $2 OFFSET $3
 		}
 		items = append(items, item)
 	}
+
+	// Count with same filters
 	var total int
-	_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM usage_logs WHERE owner_user_id=$1`, userID).Scan(&total)
+	_ = s.pool.QueryRow(r.Context(), fmt.Sprintf(`SELECT COUNT(*) FROM usage_logs WHERE %s`, where), args...).Scan(&total)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items":  items,
 		"total":  total,
@@ -352,12 +400,12 @@ type rowScanner interface {
 
 func scanUsageLogRow(s rowScanner) (map[string]any, error) {
 	var usageLogID, requestID, ownerID, modelRef uuid.UUID
-	var providerKind, modelSource, billingDecision, requestStatus, policyVersion, inputCipher, outputCipher, keyRef, algo string
+	var providerKind, modelSource, billingDecision, requestStatus, policyVersion, inputCipher, outputCipher, keyRef, algo, purpose string
 	var inputTokens, outputTokens, totalTokens, decryptAuditCount int
 	var totalCost float64
 	var createdAt time.Time
 	if err := s.Scan(&usageLogID, &requestID, &ownerID, &providerKind, &modelSource, &modelRef, &inputTokens, &outputTokens,
-		&totalTokens, &totalCost, &billingDecision, &requestStatus, &policyVersion, &inputCipher, &outputCipher, &keyRef, &algo, &decryptAuditCount, &createdAt); err != nil {
+		&totalTokens, &totalCost, &billingDecision, &requestStatus, &policyVersion, &inputCipher, &outputCipher, &keyRef, &algo, &decryptAuditCount, &purpose, &createdAt); err != nil {
 		return nil, err
 	}
 	return map[string]any{
@@ -379,6 +427,7 @@ func scanUsageLogRow(s rowScanner) (map[string]any, error) {
 		"payload_encryption_key_ref": keyRef,
 		"payload_encryption_algo":    algo,
 		"decrypt_access_audit_count": decryptAuditCount,
+		"purpose":                    purpose,
 		"created_at":                 createdAt,
 	}, nil
 }
@@ -498,21 +547,96 @@ func (s *Server) getUsageSummary(w http.ResponseWriter, r *http.Request) {
 		where = "created_at >= now() - interval '24 hours'"
 	case "last_7d":
 		where = "created_at >= now() - interval '7 days'"
+	case "last_30d":
+		where = "created_at >= now() - interval '30 days'"
+	case "last_90d":
+		where = "created_at >= now() - interval '90 days'"
 	default:
 		where = "date_trunc('month', created_at) = date_trunc('month', now())"
 	}
-	var requestCount, totalTokens int
+	var requestCount, totalTokens, errorCount int
 	var totalCost float64
 	var creditCount int
 	err := s.pool.QueryRow(r.Context(), `
 SELECT COUNT(*), COALESCE(SUM(total_tokens),0), COALESCE(SUM(total_cost_usd),0),
-       COALESCE(SUM(CASE WHEN billing_decision='credits' THEN total_tokens ELSE 0 END),0)
+       COALESCE(SUM(CASE WHEN billing_decision='credits' THEN total_tokens ELSE 0 END),0),
+       COALESCE(SUM(CASE WHEN request_status!='success' THEN 1 ELSE 0 END),0)
 FROM usage_logs
-WHERE owner_user_id=$1 AND `+where, userID).Scan(&requestCount, &totalTokens, &totalCost, &creditCount)
+WHERE owner_user_id=$1 AND `+where, userID).Scan(&requestCount, &totalTokens, &totalCost, &creditCount, &errorCount)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_USAGE_SUMMARY_FAILED", "failed to read summary")
 		return
 	}
+	var errorRate float64
+	if requestCount > 0 {
+		errorRate = float64(errorCount) / float64(requestCount) * 100
+	}
+
+	// Breakdown by provider
+	providerRows, _ := s.pool.Query(r.Context(), `
+SELECT provider_kind, COALESCE(SUM(total_tokens),0), COALESCE(SUM(total_cost_usd),0), COUNT(*)
+FROM usage_logs
+WHERE owner_user_id=$1 AND `+where+`
+GROUP BY provider_kind ORDER BY SUM(total_tokens) DESC
+`, userID)
+	providerBreakdown := make([]map[string]any, 0)
+	if providerRows != nil {
+		defer providerRows.Close()
+		for providerRows.Next() {
+			var pk string
+			var tokens, count int
+			var cost float64
+			if err := providerRows.Scan(&pk, &tokens, &cost, &count); err == nil {
+				providerBreakdown = append(providerBreakdown, map[string]any{
+					"provider_kind": pk, "total_tokens": tokens, "total_cost_usd": cost, "request_count": count,
+				})
+			}
+		}
+	}
+
+	// Breakdown by purpose
+	purposeRows, _ := s.pool.Query(r.Context(), `
+SELECT purpose, COALESCE(SUM(total_tokens),0), COUNT(*)
+FROM usage_logs
+WHERE owner_user_id=$1 AND `+where+`
+GROUP BY purpose ORDER BY SUM(total_tokens) DESC
+`, userID)
+	purposeBreakdown := make([]map[string]any, 0)
+	if purposeRows != nil {
+		defer purposeRows.Close()
+		for purposeRows.Next() {
+			var p string
+			var tokens, count int
+			if err := purposeRows.Scan(&p, &tokens, &count); err == nil {
+				purposeBreakdown = append(purposeBreakdown, map[string]any{
+					"purpose": p, "total_tokens": tokens, "request_count": count,
+				})
+			}
+		}
+	}
+
+	// Daily breakdown
+	dailyRows, _ := s.pool.Query(r.Context(), `
+SELECT date_trunc('day', created_at)::date AS day,
+       COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COUNT(*)
+FROM usage_logs
+WHERE owner_user_id=$1 AND `+where+`
+GROUP BY day ORDER BY day
+`, userID)
+	dailyBreakdown := make([]map[string]any, 0)
+	if dailyRows != nil {
+		defer dailyRows.Close()
+		for dailyRows.Next() {
+			var day time.Time
+			var input, output, count int
+			if err := dailyRows.Scan(&day, &input, &output, &count); err == nil {
+				dailyBreakdown = append(dailyBreakdown, map[string]any{
+					"date": day.Format("2006-01-02"), "input_tokens": input, "output_tokens": output, "request_count": count,
+				})
+			}
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"period":                period,
 		"request_count":         requestCount,
@@ -520,6 +644,11 @@ WHERE owner_user_id=$1 AND `+where, userID).Scan(&requestCount, &totalTokens, &t
 		"total_cost_usd":        totalCost,
 		"charged_credits":       creditCount,
 		"quota_consumed_tokens": totalTokens - creditCount,
+		"error_count":           errorCount,
+		"error_rate":            errorRate,
+		"by_provider":           providerBreakdown,
+		"by_purpose":            purposeBreakdown,
+		"daily":                 dailyBreakdown,
 	})
 }
 

@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-03 (session 16 end)
-- Updated By: Assistant (Phase 3.5 complete + M1-M6 + MIG-01/02 + bug fixes, 53 commits)
+- Last Updated: 2026-04-03 (session 17 in progress)
+- Updated By: Assistant (MIG-03 Usage Monitor page — full-stack)
 - Active Branch: `main`
-- HEAD: `bec9eef` — MIG-02 Chat page migrated
+- HEAD: pending commit — MIG-03 Usage Monitor
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -31,7 +31,31 @@
 
 ## Current Active Work
 
-**Phase:** Frontend V2 Rebuild — Phase 3.5 (Media Blocks)
+**Phase:** V1→V2 Migration (MIG-03 in progress)
+
+**What was done in this session (2026-04-03, session 17):**
+
+MIG-03: Usage Monitor page — full-stack build from draft design.
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| BE: `purpose` column added to `usage_logs` table | `migrate.go` | this session |
+| BE: `recordInvocation` accepts `purpose` field | `server.go` | this session |
+| BE: `listUsageLogs` — server-side filters (provider_kind, request_status, purpose, from, to) | `server.go` | this session |
+| BE: `getUsageSummary` — error_rate, by_provider, by_purpose, daily breakdowns, last_30d/90d | `server.go` | this session |
+| BE: test updated for `purpose` column in scanUsageLogRow | `server_test.go` | this session |
+| FE: `features/usage/types.ts` — UsageLog, UsageSummary, AccountBalance, filter types | new file | this session |
+| FE: `features/usage/api.ts` — usageApi (listLogs, getLogDetail, getSummary, getBalance) | new file | this session |
+| FE: `features/usage/StatCards.tsx` — 4 stat cards (tokens, cost, calls, error rate) | new file | this session |
+| FE: `features/usage/BreakdownPanels.tsx` — Tokens by Provider + Purpose bar charts | new file | this session |
+| FE: `features/usage/DailyChart.tsx` — Recharts stacked bar chart (input/output tokens) | new file | this session |
+| FE: `features/usage/RequestLogTable.tsx` — filterable table with expandable rows | new file | this session |
+| FE: `features/usage/ExpandedRow.tsx` — lazy-fetch detail, Input/Output/Raw JSON tabs | new file | this session |
+| FE: `pages/UsagePage.tsx` — page shell with period selector, CSV export | new file | this session |
+| FE: App.tsx — replaced /usage placeholder with UsagePage, removed /usage/:logId | `App.tsx` | this session |
+| FE: recharts dependency added | `package.json` | this session |
+
+**9-phase workflow followed:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
 **What was done in this session (2026-04-02, session 16):**
 

@@ -31,6 +31,7 @@ import { RegisterPage } from '@/pages/auth/RegisterPage';
 import { ForgotPage } from '@/pages/auth/ForgotPage';
 import { ResetPage } from '@/pages/auth/ResetPage';
 import { HomePage } from '@/pages/HomePage';
+import { UsagePage } from '@/pages/UsagePage';
 
 export function App() {
   return (
@@ -98,8 +99,7 @@ export function App() {
             {/* Chat — placeholder removed, see FullBleedLayout below */}
 
             {/* Manage */}
-            <Route path="/usage" element={<PlaceholderPage title="Usage" description="AI usage monitor — coming in P4-06." />} />
-            <Route path="/usage/:logId" element={<PlaceholderPage title="Usage Detail" />} />
+            <Route path="/usage" element={<UsagePage />} />
 
             {/* Settings */}
             <Route path="/settings" element={<Navigate to="/settings/account" replace />} />
