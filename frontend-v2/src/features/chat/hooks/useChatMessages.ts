@@ -25,14 +25,14 @@ export function useChatMessages(sessionId: string | null) {
 
   // ── Fetch messages on session change ──────────────────────────────────────────
 
-  const fetchMessages = useCallback(async () => {
+  const fetchMessages = useCallback(async (branchId?: number) => {
     if (!accessToken || !sessionId) {
       setMessages([]);
       return;
     }
     setIsLoading(true);
     try {
-      const res = await chatApi.listMessages(accessToken, sessionId);
+      const res = await chatApi.listMessages(accessToken, sessionId, undefined, branchId);
       setMessages(res.items);
     } catch {
       // Silently fail — toast is handled at component level
@@ -263,5 +263,6 @@ export function useChatMessages(sessionId: string | null) {
     regenerate,
     stop,
     refresh: fetchMessages,
+    refreshBranch: (branchId: number) => fetchMessages(branchId),
   };
 }

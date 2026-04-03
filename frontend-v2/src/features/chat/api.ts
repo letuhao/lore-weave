@@ -51,8 +51,11 @@ export const chatApi = {
 
   // ── Messages ──────────────────────────────────────────────────────────────────
 
-  listMessages(token: string, sessionId: string, beforeSeq?: number) {
-    const qs = beforeSeq != null ? `?before_seq=${beforeSeq}` : '';
+  listMessages(token: string, sessionId: string, beforeSeq?: number, branchId?: number) {
+    const params = new URLSearchParams();
+    if (beforeSeq != null) params.set('before_seq', String(beforeSeq));
+    if (branchId != null && branchId > 0) params.set('branch_id', String(branchId));
+    const qs = params.toString() ? `?${params.toString()}` : '';
     return apiJson<{ items: ChatMessage[] }>(
       `/v1/chat/sessions/${sessionId}/messages${qs}`,
       { token },

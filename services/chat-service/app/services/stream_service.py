@@ -217,8 +217,8 @@ async def stream_response(
                 """
                 INSERT INTO chat_messages
                   (message_id, session_id, owner_user_id, role, content, content_parts,
-                   sequence_num, input_tokens, output_tokens, model_ref, parent_message_id)
-                VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10)
+                   sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id)
+                VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0)
                 """,
                 msg_id, session_id, user_id, final_text, content_parts, seq,
                 input_tok, output_tok, model_ref, parent_message_id,

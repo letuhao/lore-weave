@@ -43,9 +43,10 @@ export function BranchNavigator({
 
   if (loading || branches.length <= 1) return null;
 
-  const currentIndex = branches.findIndex((b) => b.branch_id === activeBranchId);
+  let currentIndex = branches.findIndex((b) => b.branch_id === activeBranchId);
+  if (currentIndex === -1) currentIndex = 0; // Fallback to first branch
   const total = branches.length;
-  const displayIndex = currentIndex >= 0 ? currentIndex + 1 : 1;
+  const displayIndex = currentIndex + 1;
 
   function goPrev() {
     if (currentIndex > 0) {

@@ -161,7 +161,11 @@ async def send_message(
                     """,
                     str(session_id), body.edit_from_sequence, next_branch,
                 )
-                branched_count = int(result.split()[-1])
+                # asyncpg returns "UPDATE N" — extract count safely
+                try:
+                    branched_count = int(result.split()[-1])
+                except (ValueError, IndexError):
+                    branched_count = 0
 
             seq = await conn.fetchval(
                 """
