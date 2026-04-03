@@ -17,6 +17,7 @@ import { ModeProvider } from '@/providers/ModeProvider';
 import { DashboardLayout } from '@/layouts/DashboardLayout';
 import { FullBleedLayout } from '@/layouts/FullBleedLayout';
 import { EditorLayout } from '@/layouts/EditorLayout';
+import { ChatLayout } from '@/layouts/ChatLayout';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
 import { BooksPage } from '@/pages/BooksPage';
 import { TrashPage } from '@/pages/TrashPage';
@@ -81,8 +82,8 @@ export function App() {
             <Route path="/books/:bookId/chapters/:chapterId/edit" element={<ChapterEditorPage />} />
           </Route>
 
-          {/* Chat (full-bleed, no sidebar chrome) */}
-          <Route element={<RequireAuth><FullBleedLayout /></RequireAuth>}>
+          {/* Chat (app sidebar + full-bleed content, no padding) */}
+          <Route element={<RequireAuth><ChatLayout /></RequireAuth>}>
             <Route path="/chat" element={<ChatPage />} />
           </Route>
 
