@@ -9,6 +9,7 @@ import { MessageList } from './MessageList';
 interface ChatWindowProps {
   session: ChatSession;
   chat: ReturnType<typeof useChatMessages>;
+  modelNameMap?: Map<string, string>;
   onRename?: () => void;
   contextItems: ContextItem[];
   onAttachContext: (item: ContextItem) => void;
@@ -20,6 +21,7 @@ interface ChatWindowProps {
 export function ChatWindow({
   session,
   chat,
+  modelNameMap,
   onRename,
   contextItems,
   onAttachContext,
@@ -47,7 +49,7 @@ export function ChatWindow({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <ChatHeader session={session} onRename={onRename} />
+      <ChatHeader session={session} modelNameMap={modelNameMap} onRename={onRename} />
 
       <MessageList
         messages={chat.messages}

@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 
 
+import { providerApi, type UserModel } from '@/features/settings/api';
 import { booksApi } from '@/features/books/api';
 import { glossaryApi } from '@/features/glossary/api';
 import { useSessions } from '@/features/chat/hooks/useSessions';
@@ -30,6 +31,22 @@ export function ChatPage() {
   const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [contextItems, setContextItems] = useState<ContextItem[]>([]);
+
+  // Model name resolver: model_ref UUID → display name
+  const [modelNameMap, setModelNameMap] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    if (!accessToken) return;
+    let cancelled = false;
+    providerApi.listUserModels(accessToken).then((res) => {
+      if (cancelled) return;
+      const map = new Map<string, string>();
+      for (const m of res.items ?? []) {
+        map.set(m.user_model_id, m.alias || m.provider_model_name);
+      }
+      setModelNameMap(map);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [accessToken]);
 
   const chat = useChatMessages(activeSession?.session_id ?? null);
 
@@ -172,6 +189,7 @@ export function ChatPage() {
           sessions={sessions}
           activeSessionId={activeSession?.session_id ?? null}
           isLoading={sessionsLoading}
+          modelNameMap={modelNameMap}
           onSelect={setActiveSession}
           onCreate={() => setShowNewDialog(true)}
           onRename={handleRename}
@@ -184,6 +202,7 @@ export function ChatPage() {
             <ChatWindow
               session={activeSession}
               chat={chat}
+              modelNameMap={modelNameMap}
               onRename={handleHeaderRename}
               contextItems={contextItems}
               onAttachContext={handleAttachContext}

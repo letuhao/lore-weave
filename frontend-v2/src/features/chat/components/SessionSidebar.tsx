@@ -16,6 +16,7 @@ import type { ChatSession } from '../types';
 interface SessionItemProps {
   session: ChatSession;
   isActive: boolean;
+  modelNameMap?: Map<string, string>;
   onSelect: () => void;
   onRename: (title: string) => void;
   onArchive: () => void;
@@ -25,6 +26,7 @@ interface SessionItemProps {
 function SessionItem({
   session,
   isActive,
+  modelNameMap,
   onSelect,
   onRename,
   onArchive,
@@ -107,7 +109,7 @@ function SessionItem({
           </p>
           <div className="mt-1 flex items-center justify-between">
             <span className="text-[10px] text-muted-foreground">
-              {session.model_source === 'user_model' ? 'My Model' : 'Platform'}
+              {modelNameMap?.get(session.model_ref) ?? (session.model_source === 'user_model' ? 'My Model' : 'Platform')}
             </span>
             <span className="text-[10px] text-muted-foreground">
               {relativeTime(session.last_message_at ?? session.created_at)}
@@ -156,6 +158,7 @@ interface SessionSidebarProps {
   sessions: ChatSession[];
   activeSessionId: string | null;
   isLoading: boolean;
+  modelNameMap?: Map<string, string>;
   onSelect: (session: ChatSession) => void;
   onCreate: () => void;
   onRename: (sessionId: string, title: string) => void;
@@ -167,6 +170,7 @@ export function SessionSidebar({
   sessions,
   activeSessionId,
   isLoading,
+  modelNameMap,
   onSelect,
   onCreate,
   onRename,
@@ -214,6 +218,7 @@ export function SessionSidebar({
             key={s.session_id}
             session={s}
             isActive={s.session_id === activeSessionId}
+            modelNameMap={modelNameMap}
             onSelect={() => onSelect(s)}
             onRename={(title) => onRename(s.session_id, title)}
             onArchive={() => onArchive(s.session_id)}

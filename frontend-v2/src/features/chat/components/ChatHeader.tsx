@@ -4,10 +4,11 @@ import type { ChatSession } from '../types';
 
 interface ChatHeaderProps {
   session: ChatSession;
+  modelNameMap?: Map<string, string>;
   onRename?: () => void;
 }
 
-export function ChatHeader({ session, onRename }: ChatHeaderProps) {
+export function ChatHeader({ session, modelNameMap, onRename }: ChatHeaderProps) {
   function handleExport(format: 'markdown' | 'json') {
     const url = chatApi.exportUrl(session.session_id, format);
     window.open(url, '_blank');
@@ -18,7 +19,7 @@ export function ChatHeader({ session, onRename }: ChatHeaderProps) {
       <div>
         <h2 className="text-sm font-semibold text-foreground">{session.title}</h2>
         <p className="mt-0.5 text-[11px] text-muted-foreground">
-          {session.model_source === 'user_model' ? 'My Model' : 'Platform'} \u00B7{' '}
+          {modelNameMap?.get(session.model_ref) ?? (session.model_source === 'user_model' ? 'My Model' : 'Platform')} \u00B7{' '}
           {session.message_count} message{session.message_count !== 1 ? 's' : ''}
           {session.status === 'archived' && (
             <span className="ml-1.5 rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
