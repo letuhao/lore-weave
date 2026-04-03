@@ -36,11 +36,14 @@ const FONTS = [
 ] as const;
 
 export function ReadingTab() {
+  const [saved, setSaved] = useState<ReadingPrefs>(loadPrefs);
   const [prefs, setPrefs] = useState<ReadingPrefs>(loadPrefs);
 
-  function save(updated: ReadingPrefs) {
-    setPrefs(updated);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  const isDirty = JSON.stringify(prefs) !== JSON.stringify(saved);
+
+  function save() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
+    setSaved({ ...prefs });
     toast.success('Reading preferences saved');
   }
 
@@ -60,6 +63,7 @@ export function ReadingTab() {
             step={1}
             value={prefs.fontSize}
             onChange={(e) => setPrefs({ ...prefs, fontSize: Number(e.target.value) })}
+            aria-label="Font size in pixels"
             className="w-full max-w-xs accent-primary"
           />
           <div className="mt-1 flex justify-between text-[10px] text-muted-foreground" style={{ maxWidth: 320 }}>
@@ -77,6 +81,7 @@ export function ReadingTab() {
             step={0.1}
             value={prefs.lineSpacing}
             onChange={(e) => setPrefs({ ...prefs, lineSpacing: Number(e.target.value) })}
+            aria-label="Line spacing multiplier"
             className="w-full max-w-xs accent-primary"
           />
         </div>
@@ -140,8 +145,9 @@ export function ReadingTab() {
 
         <div className="flex justify-end">
           <button
-            onClick={() => save(prefs)}
-            className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
+            onClick={save}
+            disabled={!isDirty}
+            className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
           >
             <Save className="h-3 w-3" />
             Save Preferences

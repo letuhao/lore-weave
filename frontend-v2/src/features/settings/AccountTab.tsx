@@ -136,6 +136,7 @@ export function AccountTab() {
                   type={showCurrent ? 'text' : 'password'}
                   value={currentPw}
                   onChange={(e) => setCurrentPw(e.target.value)}
+                  autoComplete="current-password"
                   className="h-9 w-full rounded-md border bg-background px-3 pr-9 font-mono text-[13px] tracking-wider focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
                 />
                 <button onClick={() => setShowCurrent(!showCurrent)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground" aria-label="Toggle password visibility">
@@ -150,6 +151,7 @@ export function AccountTab() {
                   type={showNew ? 'text' : 'password'}
                   value={newPw}
                   onChange={(e) => setNewPw(e.target.value)}
+                  autoComplete="new-password"
                   className="h-9 w-full rounded-md border bg-background px-3 pr-9 font-mono text-[13px] tracking-wider focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
                 />
                 <button onClick={() => setShowNew(!showNew)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground" aria-label="Toggle password visibility">
@@ -163,6 +165,7 @@ export function AccountTab() {
                 type="password"
                 value={confirmPw}
                 onChange={(e) => setConfirmPw(e.target.value)}
+                autoComplete="new-password"
                 className={cn(
                   'h-9 w-full rounded-md border bg-background px-3 font-mono text-[13px] tracking-wider focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30',
                   confirmPw && confirmPw !== newPw && 'border-destructive',

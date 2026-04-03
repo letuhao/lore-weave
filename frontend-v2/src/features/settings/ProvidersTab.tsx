@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Plus, Check, Pencil, Trash2, Loader2, RefreshCw, Zap } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Plus, Pencil, Loader2, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
@@ -35,7 +35,10 @@ export function ProvidersTab() {
   const [editSecret, setEditSecret] = useState('');
 
   const [deleteTarget, setDeleteTarget] = useState<ProviderCredential | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!accessToken) return;
@@ -83,6 +86,7 @@ export function ProvidersTab() {
 
   async function handleEditKey() {
     if (!accessToken || !editProvider) return;
+    setEditSaving(true);
     try {
       await providerApi.patchProvider(accessToken, editProvider.provider_credential_id, { secret: editSecret });
       toast.success('API key updated');
@@ -90,11 +94,14 @@ export function ProvidersTab() {
       await refresh();
     } catch {
       toast.error('Failed to update key');
+    } finally {
+      setEditSaving(false);
     }
   }
 
   async function handleDelete() {
     if (!accessToken || !deleteTarget) return;
+    setDeleting(true);
     try {
       await providerApi.deleteProvider(accessToken, deleteTarget.provider_credential_id);
       toast.success('Provider removed');
@@ -102,16 +109,21 @@ export function ProvidersTab() {
       await refresh();
     } catch {
       toast.error('Failed to remove provider');
+    } finally {
+      setDeleting(false);
     }
   }
 
   async function handleToggleModel(model: UserModel) {
-    if (!accessToken) return;
+    if (!accessToken || togglingId) return;
+    setTogglingId(model.user_model_id);
     try {
       await providerApi.patchActivation(accessToken, model.user_model_id, !model.is_active);
       await refresh();
     } catch {
       toast.error('Failed to toggle model');
+    } finally {
+      setTogglingId(null);
     }
   }
 
@@ -239,9 +251,10 @@ export function ProvidersTab() {
                     {/* Toggle */}
                     <button
                       onClick={() => handleToggleModel(model)}
+                      disabled={togglingId === model.user_model_id}
                       aria-label={model.is_active ? 'Deactivate model' : 'Activate model'}
                       className={cn(
-                        'relative h-5 w-9 flex-shrink-0 rounded-full transition-colors',
+                        'relative h-5 w-9 flex-shrink-0 rounded-full transition-colors disabled:opacity-50',
                         model.is_active ? 'bg-green-500' : 'bg-secondary',
                       )}
                     >
@@ -306,7 +319,14 @@ export function ProvidersTab() {
 
       {/* ── Add Provider Dialog ─────────────────────────────────────────── */}
       {addKind && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setAddKind(null)}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setAddKind(null)}
+          onKeyDown={(e) => { if (e.key === 'Escape') setAddKind(null); }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Add provider"
+        >
           <div className="w-full max-w-md rounded-lg border bg-card p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-4 text-sm font-semibold">Add {PROVIDER_META[addKind].label} Provider</h3>
 
@@ -364,7 +384,14 @@ export function ProvidersTab() {
 
       {/* ── Edit Key Dialog ─────────────────────────────────────────────── */}
       {editProvider && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setEditProvider(null)}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setEditProvider(null)}
+          onKeyDown={(e) => { if (e.key === 'Escape') setEditProvider(null); }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Edit API key"
+        >
           <div className="w-full max-w-md rounded-lg border bg-card p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-4 text-sm font-semibold">Edit API Key — {editProvider.display_name}</h3>
             <div className="mb-4">
@@ -381,10 +408,10 @@ export function ProvidersTab() {
               <button onClick={() => setEditProvider(null)} className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary">Cancel</button>
               <button
                 onClick={handleEditKey}
-                disabled={!editSecret}
+                disabled={!editSecret || editSaving}
                 className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
               >
-                Update Key
+                {editSaving ? 'Updating...' : 'Update Key'}
               </button>
             </div>
           </div>
@@ -394,12 +421,13 @@ export function ProvidersTab() {
       {/* ── Delete Confirm ──────────────────────────────────────────────── */}
       <ConfirmDialog
         open={!!deleteTarget}
-        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}
         title={`Remove ${deleteTarget?.display_name ?? 'provider'}?`}
         description="This will remove the provider and all its configured models. This cannot be undone."
         confirmLabel="Remove"
         variant="destructive"
         onConfirm={handleDelete}
+        loading={deleting}
       />
     </div>
   );

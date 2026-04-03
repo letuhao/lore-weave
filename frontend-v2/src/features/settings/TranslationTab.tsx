@@ -89,6 +89,7 @@ export function TranslationTab() {
             <select
               value={targetLang}
               onChange={(e) => setTargetLang(e.target.value)}
+              aria-label="Default target language"
               className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
             >
               {LANGUAGES.map((l) => (
@@ -114,6 +115,8 @@ export function TranslationTab() {
             value={systemPrompt}
             onChange={(e) => setSystemPrompt(e.target.value)}
             rows={4}
+            placeholder="You are a professional {source_language}-to-{target_language} translator..."
+            aria-label="System prompt template"
             className="w-full resize-y rounded-md border bg-background px-3 py-2 text-xs leading-relaxed focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
           />
           <p className="mt-1 text-[11px] text-muted-foreground">
@@ -127,6 +130,8 @@ export function TranslationTab() {
             value={userPromptTpl}
             onChange={(e) => setUserPromptTpl(e.target.value)}
             rows={3}
+            placeholder="Translate the following text to {target_language}:&#10;&#10;{text}"
+            aria-label="User prompt template"
             className="w-full resize-y rounded-md border bg-background px-3 py-2 text-xs leading-relaxed focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
           />
         </div>
