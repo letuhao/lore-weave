@@ -541,18 +541,23 @@ func (s *Server) getUsageSummary(w http.ResponseWriter, r *http.Request) {
 	if period == "" {
 		period = "current_month"
 	}
-	var where string
+	var where, prevWhere string
 	switch period {
 	case "last_24h":
 		where = "created_at >= now() - interval '24 hours'"
+		prevWhere = "created_at >= now() - interval '48 hours' AND created_at < now() - interval '24 hours'"
 	case "last_7d":
 		where = "created_at >= now() - interval '7 days'"
+		prevWhere = "created_at >= now() - interval '14 days' AND created_at < now() - interval '7 days'"
 	case "last_30d":
 		where = "created_at >= now() - interval '30 days'"
+		prevWhere = "created_at >= now() - interval '60 days' AND created_at < now() - interval '30 days'"
 	case "last_90d":
 		where = "created_at >= now() - interval '90 days'"
+		prevWhere = "created_at >= now() - interval '180 days' AND created_at < now() - interval '90 days'"
 	default:
 		where = "date_trunc('month', created_at) = date_trunc('month', now())"
+		prevWhere = "date_trunc('month', created_at) = date_trunc('month', now() - interval '1 month')"
 	}
 	var requestCount, totalTokens, errorCount int
 	var totalCost float64
@@ -570,6 +575,19 @@ WHERE owner_user_id=$1 AND `+where, userID).Scan(&requestCount, &totalTokens, &t
 	var errorRate float64
 	if requestCount > 0 {
 		errorRate = float64(errorCount) / float64(requestCount) * 100
+	}
+
+	// Previous period for trend comparison
+	var prevRequestCount, prevTotalTokens, prevErrorCount int
+	var prevTotalCost float64
+	_ = s.pool.QueryRow(r.Context(), `
+SELECT COUNT(*), COALESCE(SUM(total_tokens),0), COALESCE(SUM(total_cost_usd),0),
+       COALESCE(SUM(CASE WHEN request_status!='success' THEN 1 ELSE 0 END),0)
+FROM usage_logs
+WHERE owner_user_id=$1 AND `+prevWhere, userID).Scan(&prevRequestCount, &prevTotalTokens, &prevTotalCost, &prevErrorCount)
+	var prevErrorRate float64
+	if prevRequestCount > 0 {
+		prevErrorRate = float64(prevErrorCount) / float64(prevRequestCount) * 100
 	}
 
 	// Breakdown by provider
@@ -643,6 +661,10 @@ GROUP BY day ORDER BY day
 		"quota_consumed_tokens": totalTokens - creditCount,
 		"error_count":           errorCount,
 		"error_rate":            errorRate,
+		"prev_request_count":    prevRequestCount,
+		"prev_total_tokens":     prevTotalTokens,
+		"prev_total_cost_usd":   prevTotalCost,
+		"prev_error_rate":       prevErrorRate,
 		"by_provider":           providerBreakdown,
 		"by_purpose":            purposeBreakdown,
 		"daily":                 dailyBreakdown,

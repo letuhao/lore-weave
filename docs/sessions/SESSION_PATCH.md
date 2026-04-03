@@ -54,6 +54,8 @@ MIG-03: Usage Monitor page — full-stack build from draft design.
 | FE: `pages/UsagePage.tsx` — page shell with period selector, CSV export | new file | this session |
 | FE: App.tsx — replaced /usage placeholder with UsagePage, removed /usage/:logId | `App.tsx` | this session |
 | FE: recharts dependency added | `package.json` | this session |
+| M4-01 BE: previous period query in `getUsageSummary` — prev_request_count, prev_total_tokens, prev_total_cost_usd, prev_error_rate | `server.go` | this session |
+| M4-02 FE: trend indicators on StatCards — ↑↓ % vs prev period, sentiment coloring (green/red/neutral) | `StatCards.tsx`, `types.ts` | this session |
 
 **9-phase workflow followed:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 

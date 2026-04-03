@@ -56,6 +56,10 @@ export type UsageSummary = {
   quota_consumed_tokens: number;
   error_count: number;
   error_rate: number;
+  prev_request_count: number;
+  prev_total_tokens: number;
+  prev_total_cost_usd: number;
+  prev_error_rate: number;
   by_provider: ProviderBreakdown[];
   by_purpose: PurposeBreakdown[];
   daily: DailyBreakdown[];
