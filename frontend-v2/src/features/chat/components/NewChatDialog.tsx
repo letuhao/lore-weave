@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Brain, MessageSquare, Search, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
 import type { CreateSessionPayload, GenerationParams } from '../types';
@@ -26,6 +27,8 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
   const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open || !accessToken) return;
@@ -43,6 +46,13 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [open, accessToken]);
+
+  // Auto-focus search input when dialog opens
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => searchInputRef.current?.focus(), 50);
+    }
+  }, [open]);
 
   // Reset on close
   useEffect(() => {
@@ -83,11 +93,17 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
   }
 
   function handleCreate() {
-    onCreate(
-      selectedModel,
-      systemPrompt || undefined,
-      undefined,
-    );
+    setCreating(true);
+    try {
+      onCreate(
+        selectedModel,
+        systemPrompt || undefined,
+        undefined,
+      );
+    } catch (err) {
+      toast.error(`Failed to create chat: ${(err as Error).message}`);
+      setCreating(false);
+    }
   }
 
   if (!open) return null;
@@ -120,10 +136,12 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
                   <input
+                    ref={searchInputRef}
                     type="text"
                     value={modelSearch}
                     onChange={(e) => setModelSearch(e.target.value)}
                     placeholder="Search models..."
+                    aria-label="Search models"
                     className="w-full rounded-t-md border border-border bg-background py-1.5 pl-7 pr-2 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-ring"
                   />
                 </div>
@@ -211,7 +229,7 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
           <button
             type="button"
             className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:brightness-110 disabled:opacity-50"
-            disabled={!selectedModel || loading}
+            disabled={!selectedModel || loading || creating}
             onClick={handleCreate}
           >
             Start Chat

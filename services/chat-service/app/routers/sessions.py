@@ -44,7 +44,7 @@ async def create_session(
     user_id: str = Depends(get_current_user),
     pool: asyncpg.Pool = Depends(get_db),
 ) -> ChatSession:
-    gp = json.dumps(body.generation_params.model_dump(exclude_none=True)) if body.generation_params else "{}"
+    gp = json.dumps(body.generation_params.model_dump(exclude_unset=True)) if body.generation_params else "{}"
     row = await pool.fetchrow(
         """
         INSERT INTO chat_sessions (owner_user_id, title, model_source, model_ref, system_prompt, generation_params)
@@ -156,9 +156,10 @@ async def patch_session(
     if not row:
         raise HTTPException(status_code=404, detail="session not found")
     # JSONB merge: existing || new (new keys overwrite, existing keys preserved)
+    # Use exclude_unset (not exclude_none) so explicit null values can clear keys
     gp_patch = None
     if body.generation_params is not None:
-        gp_patch = json.dumps(body.generation_params.model_dump(exclude_none=True))
+        gp_patch = json.dumps(body.generation_params.model_dump(exclude_unset=True))
     row = await pool.fetchrow(
         """
         UPDATE chat_sessions SET

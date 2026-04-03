@@ -3,6 +3,7 @@ import { ArrowUp, Brain, Square, Zap } from 'lucide-react';
 import TextareaAutosize from 'react-textarea-autosize';
 import { ContextBar } from '../context/ContextBar';
 import type { ContextItem } from '../context/types';
+import { PromptTemplatePicker, type PromptTemplate } from './PromptTemplates';
 
 interface ChatInputBarProps {
   onSend: (content: string, thinking?: boolean) => void;
@@ -36,13 +37,43 @@ export function ChatInputBar({
 }: ChatInputBarProps) {
   const [value, setValue] = useState('');
   const [thinkingMode, setThinkingMode] = useState(thinkingDefault ?? false);
+  const [responseFormat, setResponseFormat] = useState<string>('Auto');
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [templateFilter, setTemplateFilter] = useState('');
+
+  function handleTemplateSelect(template: PromptTemplate) {
+    setValue(template.prompt);
+    setShowTemplates(false);
+    setTemplateFilter('');
+  }
+
+  function handleValueChange(newValue: string) {
+    setValue(newValue);
+    // "/" at start of input triggers template picker
+    if (newValue.startsWith('/')) {
+      setShowTemplates(true);
+      setTemplateFilter(newValue.slice(1));
+    } else {
+      setShowTemplates(false);
+      setTemplateFilter('');
+    }
+  }
+
+  const FORMAT_INSTRUCTIONS: Record<string, string> = {
+    Auto: '',
+    Concise: '\n\n[Respond concisely in 2-3 sentences maximum.]',
+    Detailed: '\n\n[Provide a detailed, thorough response with examples.]',
+    Bullets: '\n\n[Format your response as bullet points.]',
+    Table: '\n\n[Format your response as a markdown table where applicable.]',
+  };
 
   function handleSubmit(forceThinking?: boolean) {
     const text = value.trim();
     if (!text || isStreaming) return;
     setValue('');
     const thinking = supportsThinking ? (forceThinking ?? thinkingMode) : undefined;
-    onSend(text, thinking);
+    const formatSuffix = FORMAT_INSTRUCTIONS[responseFormat] ?? '';
+    onSend(text + formatSuffix, thinking);
   }
 
   const hasContext = contextItems.length > 0;
@@ -50,7 +81,34 @@ export function ChatInputBar({
   return (
     <div className="shrink-0 border-t border-border bg-card px-8 py-4">
       <div className="mx-auto max-w-[720px]">
+        {/* Format pills */}
+        <div className="mb-1.5 flex items-center gap-1.5">
+          <span className="text-[10px] text-muted-foreground">Format:</span>
+          {['Auto', 'Concise', 'Detailed', 'Bullets', 'Table'].map((fmt) => (
+            <button
+              key={fmt}
+              type="button"
+              onClick={() => setResponseFormat(fmt)}
+              className={`rounded-full border px-2.5 py-0.5 text-[10px] transition-colors ${
+                responseFormat === fmt
+                  ? 'border-accent/50 bg-accent/10 text-accent'
+                  : 'border-border text-muted-foreground hover:border-border hover:text-foreground'
+              }`}
+            >
+              {fmt}
+            </button>
+          ))}
+        </div>
+
         <div className="relative overflow-visible rounded-[10px] border border-border bg-background focus-within:border-ring focus-within:shadow-[0_0_0_3px_rgba(212,149,42,0.2)]">
+          {/* Prompt template picker (triggered by "/") */}
+          <PromptTemplatePicker
+            open={showTemplates}
+            filter={templateFilter}
+            onSelect={handleTemplateSelect}
+            onClose={() => { setShowTemplates(false); setTemplateFilter(''); }}
+          />
+
           {/* Context bar (pills + attach button) */}
           <ContextBar
             items={contextItems}
@@ -62,7 +120,7 @@ export function ChatInputBar({
           {/* Textarea */}
           <TextareaAutosize
             value={value}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) => handleValueChange(e.target.value)}
             placeholder="Ask about your story, characters, world-building..."
             minRows={3}
             maxRows={8}

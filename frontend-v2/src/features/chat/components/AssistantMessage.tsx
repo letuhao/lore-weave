@@ -1,4 +1,5 @@
-import { Brain, Copy, RefreshCw, Zap } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Brain, Copy, MoreHorizontal, RefreshCw, Send, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import { toast } from 'sonner';
@@ -31,9 +32,34 @@ export function AssistantMessage({
   inputTokens,
   outputTokens,
 }: AssistantMessageProps) {
+  const [showMore, setShowMore] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!showMore) return;
+    function handleClick(e: MouseEvent) {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setShowMore(false);
+    }
+    window.addEventListener('mousedown', handleClick);
+    return () => window.removeEventListener('mousedown', handleClick);
+  }, [showMore]);
+
   async function handleCopy() {
     await navigator.clipboard.writeText(content);
     toast.success('Copied to clipboard');
+  }
+
+  async function handleCopyMarkdown() {
+    await navigator.clipboard.writeText(content);
+    toast.success('Copied as markdown');
+    setShowMore(false);
+  }
+
+  function handleSendToEditor() {
+    window.dispatchEvent(new CustomEvent('paste-to-editor', { detail: { text: content } }));
+    toast.success('Sent to editor');
+    setShowMore(false);
   }
 
   const hasReasoning = !!reasoning || isThinkingStreaming;
@@ -102,6 +128,37 @@ export function AssistantMessage({
                   <RefreshCw className="h-3.5 w-3.5" />
                 </button>
               )}
+              {/* More actions dropdown */}
+              <div ref={moreRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowMore(!showMore)}
+                  title="More actions"
+                  className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                >
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </button>
+                {showMore && (
+                  <div className="absolute right-0 bottom-full mb-1 z-10 min-w-[140px] rounded-md border border-border bg-card py-1 shadow-lg">
+                    <button
+                      type="button"
+                      onClick={handleCopyMarkdown}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-secondary transition-colors"
+                    >
+                      <Copy className="h-3 w-3" />
+                      Copy Markdown
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSendToEditor}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-secondary transition-colors"
+                    >
+                      <Send className="h-3 w-3" />
+                      Send to Editor
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

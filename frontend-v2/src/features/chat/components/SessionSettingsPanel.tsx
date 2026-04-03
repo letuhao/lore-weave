@@ -366,6 +366,28 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
               <p className="text-[10px] text-muted-foreground">Pinned</p>
               <p className="mt-0.5 text-sm font-medium">{session.is_pinned ? 'Yes' : 'No'}</p>
             </div>
+          {/* Reset + Actions */}
+          <div className="mt-4 flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setTemperature(0.7);
+                setTopP(0.9);
+                setMaxTokens(0);
+                setUnlimited(true);
+                setThinkingDefault(false);
+                setSystemPrompt('');
+                setSelectedPreset('Custom');
+                patchSession({
+                  system_prompt: '',
+                  generation_params: { temperature: null, top_p: null, max_tokens: null, thinking: null },
+                });
+              }}
+              className="flex-1 rounded-md border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-secondary transition-colors"
+            >
+              Reset to Defaults
+            </button>
+          </div>
           </div>
         </div>
       </div>
