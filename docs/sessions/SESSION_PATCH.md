@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-03 (session 17 in progress)
-- Updated By: Assistant (MIG-03 Usage Monitor page — full-stack)
+- Last Updated: 2026-04-03 (session 17 end)
+- Updated By: Assistant (MIG-03/05/06 + provider enhancement + chat fixes, 21 commits)
 - Active Branch: `main`
-- HEAD: pending commit — MIG-03 Usage Monitor
+- HEAD: `621cf6f` — fix: LM Studio/Ollama chat auth
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -62,6 +62,19 @@ MIG-03: Usage Monitor page — full-stack build from draft design.
 | P3-08c: Genre tag + browse filter task added to planning doc | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | this session |
 | Provider enhancement BE: embed preconfig JSON (26 OpenAI + 10 Anthropic), replace hardcoded 2-3 models | `adapters.go`, 2 JSON files | this session |
 | Provider enhancement FE: AddModelModal (autocomplete, capability types, tags, notes) + EditModelModal (toggles, verify, delete) | 2 new files, `ProvidersTab.tsx`, `api.ts` | this session |
+| Model management fix: complete data flow (API sends all fields), shared TagEditor + CapabilityFlags, delete icon on rows | 6 files | this session |
+| Notes field full-stack: BE migration + create/patch/read, FE send on create + load on edit | 5 files | this session |
+| TranslationTab fix: model picker dropdown grouped by provider, fix save error (missing model_source/ref) | `TranslationTab.tsx` | this session |
+| Email verification flow: request + confirm in AccountTab | `api.ts`, `AccountTab.tsx` | this session |
+| Sidebar display name: updateUser() in AuthProvider, instant update after profile save | `auth.tsx`, `AccountTab.tsx` | this session |
+| Chat layout fix: new ChatLayout (Sidebar + full-bleed), move from FullBleedLayout | `ChatLayout.tsx`, `App.tsx` | this session |
+| Chat model display: resolve model_ref UUID → display name in header + sidebar | 4 chat files | this session |
+| Unicode fix: replace literal \u00B7 in JSX text with &middot; | 2 chat files | this session |
+| Context picker: floating modal instead of inline absolute (no layout shift) | `ContextBar.tsx`, `ContextPicker.tsx` | this session |
+| Custom providers: drop CHECK constraint, add api_standard column, accept any provider_kind | BE 5 files, FE 2 files | this session |
+| LiteLLM auth fix: dummy API key for local providers (LM Studio/Ollama) | `stream_service.py` | this session |
+| Planning: P3-08c genre filter task, P4-04 Reading/Theme unification plan (6 sub-tasks) | 2 planning docs | this session |
+| Design draft: model editor modal (Add/Edit) + preconfig catalogs JSON | 3 new files | this session |
 
 **9-phase workflow followed:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
