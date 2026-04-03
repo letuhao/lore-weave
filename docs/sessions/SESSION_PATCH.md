@@ -8,9 +8,9 @@
 ## Document Metadata
 
 - Last Updated: 2026-04-03 (session 18 end)
-- Updated By: Assistant (Phase 6 Chat Enhancement — 7 BE tasks + 7 FE tasks, 5 commits)
+- Updated By: Assistant (Phase 6 Chat Enhancement — complete, 13 commits)
 - Active Branch: `main`
-- HEAD: `502abbe` — feat(chat-fe): keyboard shortcuts, FTS message search
+- HEAD: `5ad82af` — fix: branching review — 3 critical + 2 high issues
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -60,6 +60,18 @@ Phase 6 Chat Enhancement — Backend implementation + integration tests (28/28 p
 | FE-C6-06: Keyboard shortcuts (Ctrl+N new, Esc stop, Ctrl+Shift+Enter think) | `ChatPage.tsx`, `ChatInputBar.tsx` | `502abbe` |
 | FE-C6-07: FTS message search in sidebar (debounced, snippet highlights) | `api.ts`, `SessionSidebar.tsx` | `502abbe` |
 | Types updated: GenerationParams, is_pinned, thinking field, SearchResult | `types.ts` | `d16f54b` |
+| Code review: 4 critical + 5 high fixes (tautology, client leak, validation, XSS, timers) | 7 files | `d87931c` |
+| C6-12: Format pills (Auto/Concise/Detailed/Bullets/Table) | `ChatInputBar.tsx` | `7f06c22` |
+| C6-14: Message actions dropdown (Copy Markdown, Send to Editor) | `AssistantMessage.tsx` | `7f06c22` |
+| C6-16: Prompt template library ("/" trigger, 8 templates, arrow key nav) | `PromptTemplates.tsx` (new), `ChatInputBar.tsx` | `7f06c22` |
+| M1: gen_params PATCH clear to null + "Reset to Defaults" button | `sessions.py`, `SessionSettingsPanel.tsx` | `7f06c22` |
+| M3: NewChatDialog auto-focus + error toast | `NewChatDialog.tsx` | `7f06c22` |
+| M4: ChatPage loading spinner on session switch | `ChatPage.tsx` | `7f06c22` |
+| Fix: Send to Editor event name mismatch (paste-to-editor → loreweave:paste-to-editor) | `AssistantMessage.tsx` | `c2d1840` |
+| Fix: Context resolution warning toast | `ChatPage.tsx` | `c2d1840` |
+| FE-C6-08 BE: branch_id column, edit-as-branch (UPDATE not DELETE), branches endpoint | `migrate.py`, `messages.py`, `stream_service.py` | `7a74be9` |
+| FE-C6-08 FE: BranchNavigator component, branch switching, listBranches API | `BranchNavigator.tsx` (new), `MessageBubble.tsx`, `MessageList.tsx`, `ChatWindow.tsx`, `api.ts`, `types.ts` | `7a74be9` |
+| Branching review: 3 critical + 2 high (refreshBranch, listMessages branch_id, fallback) | 6 files | `5ad82af` |
 
 **9-phase workflow followed:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
