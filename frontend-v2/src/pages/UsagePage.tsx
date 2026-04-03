@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
 import { usageApi } from '@/features/usage/api';
@@ -30,6 +31,14 @@ function periodToDateRange(period: Period): { from?: string; to?: string } {
   };
 }
 
+function escapeCSV(val: string | number): string {
+  const str = String(val);
+  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.startsWith('=') || str.startsWith('+') || str.startsWith('-') || str.startsWith('@')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
 export function UsagePage() {
   const { accessToken } = useAuth();
   const [period, setPeriod] = useState<Period>('last_7d');
@@ -42,24 +51,34 @@ export function UsagePage() {
   const [filters, setFilters] = useState<UsageFilters>({});
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const abortRef = useRef<AbortController | null>(null);
 
   const periodLabel = PERIODS.find((p) => p.value === period)?.label ?? '7d';
 
   // Fetch summary + balance
   useEffect(() => {
     if (!accessToken) return;
+    let cancelled = false;
     Promise.all([
       usageApi.getSummary(accessToken, period),
       usageApi.getBalance(accessToken),
     ]).then(([s, b]) => {
+      if (cancelled) return;
       setSummary(s);
       setBalance(b);
-    }).catch(() => {});
+    }).catch(() => {
+      if (cancelled) return;
+      toast.error('Failed to load usage summary');
+    });
+    return () => { cancelled = true; };
   }, [accessToken, period]);
 
-  // Fetch logs with server-side filters
+  // Fetch logs with server-side filters + abort stale requests
   const fetchLogs = useCallback(async () => {
     if (!accessToken) return;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoading(true);
     try {
       const dateRange = periodToDateRange(period);
@@ -70,17 +89,22 @@ export function UsagePage() {
         from: dateRange.from,
         to: dateRange.to,
       });
+      if (controller.signal.aborted) return;
       setLogs(res.items ?? []);
       setTotal(res.total);
     } catch {
+      if (controller.signal.aborted) return;
       setLogs([]);
       setTotal(0);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, [accessToken, period, limit, offset, filters]);
 
-  useEffect(() => { void fetchLogs(); }, [fetchLogs]);
+  useEffect(() => {
+    void fetchLogs();
+    return () => { abortRef.current?.abort(); };
+  }, [fetchLogs]);
 
   // Client-side search (text filter on already-loaded page of logs)
   const filteredLogs = search.trim()
@@ -95,19 +119,19 @@ export function UsagePage() {
       })
     : logs;
 
-  // CSV export
+  // CSV export with proper escaping
   function handleExportCSV() {
     const headers = ['Time', 'Status', 'Purpose', 'Provider', 'Input Tokens', 'Output Tokens', 'Cost USD', 'Billing', 'Request ID'];
     const rows = filteredLogs.map((l) => [
-      l.created_at,
-      l.request_status,
-      l.purpose,
-      l.provider_kind,
-      l.input_tokens,
-      l.output_tokens,
-      l.total_cost_usd.toFixed(6),
-      l.billing_decision,
-      l.request_id,
+      escapeCSV(l.created_at),
+      escapeCSV(l.request_status),
+      escapeCSV(l.purpose),
+      escapeCSV(l.provider_kind),
+      escapeCSV(l.input_tokens),
+      escapeCSV(l.output_tokens),
+      escapeCSV(l.total_cost_usd.toFixed(6)),
+      escapeCSV(l.billing_decision),
+      escapeCSV(l.request_id),
     ]);
     const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -136,11 +160,12 @@ export function UsagePage() {
         </div>
         <div className="flex items-center gap-2">
           {/* Period selector */}
-          <div className="flex items-center gap-0.5 rounded-md bg-secondary p-0.5">
+          <div className="flex items-center gap-0.5 rounded-md bg-secondary p-0.5" role="group" aria-label="Time period selector">
             {PERIODS.map((p) => (
               <button
                 key={p.value}
                 onClick={() => { setPeriod(p.value); setOffset(0); }}
+                aria-pressed={period === p.value}
                 className={cn(
                   'rounded px-2.5 py-1 text-xs font-medium transition-colors',
                   period === p.value
@@ -185,6 +210,7 @@ export function UsagePage() {
         offset={offset}
         filters={filters}
         search={search}
+        loading={loading}
         onSearchChange={setSearch}
         onFiltersChange={handleFiltersChange}
         onOffsetChange={setOffset}

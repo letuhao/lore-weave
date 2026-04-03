@@ -498,7 +498,7 @@ FROM usage_log_details WHERE usage_log_id=$1
 	row := s.pool.QueryRow(r.Context(), `
 SELECT usage_log_id, request_id, owner_user_id, provider_kind, model_source, model_ref, input_tokens, output_tokens,
        total_tokens, total_cost_usd, billing_decision, request_status, policy_version, input_payload_ciphertext,
-       output_payload_ciphertext, payload_encryption_key_ref, payload_encryption_algo, decrypt_access_audit_count, created_at
+       output_payload_ciphertext, payload_encryption_key_ref, payload_encryption_algo, decrypt_access_audit_count, purpose, created_at
 FROM usage_logs WHERE usage_log_id=$1
 `, usageLogID)
 	logBody, err := scanUsageLogRow(row)
@@ -573,14 +573,13 @@ WHERE owner_user_id=$1 AND `+where, userID).Scan(&requestCount, &totalTokens, &t
 	}
 
 	// Breakdown by provider
-	providerRows, _ := s.pool.Query(r.Context(), `
+	providerBreakdown := make([]map[string]any, 0)
+	if providerRows, err := s.pool.Query(r.Context(), `
 SELECT provider_kind, COALESCE(SUM(total_tokens),0), COALESCE(SUM(total_cost_usd),0), COUNT(*)
 FROM usage_logs
 WHERE owner_user_id=$1 AND `+where+`
 GROUP BY provider_kind ORDER BY SUM(total_tokens) DESC
-`, userID)
-	providerBreakdown := make([]map[string]any, 0)
-	if providerRows != nil {
+`, userID); err == nil {
 		defer providerRows.Close()
 		for providerRows.Next() {
 			var pk string
@@ -595,14 +594,13 @@ GROUP BY provider_kind ORDER BY SUM(total_tokens) DESC
 	}
 
 	// Breakdown by purpose
-	purposeRows, _ := s.pool.Query(r.Context(), `
+	purposeBreakdown := make([]map[string]any, 0)
+	if purposeRows, err := s.pool.Query(r.Context(), `
 SELECT purpose, COALESCE(SUM(total_tokens),0), COUNT(*)
 FROM usage_logs
 WHERE owner_user_id=$1 AND `+where+`
 GROUP BY purpose ORDER BY SUM(total_tokens) DESC
-`, userID)
-	purposeBreakdown := make([]map[string]any, 0)
-	if purposeRows != nil {
+`, userID); err == nil {
 		defer purposeRows.Close()
 		for purposeRows.Next() {
 			var p string
@@ -616,15 +614,14 @@ GROUP BY purpose ORDER BY SUM(total_tokens) DESC
 	}
 
 	// Daily breakdown
-	dailyRows, _ := s.pool.Query(r.Context(), `
+	dailyBreakdown := make([]map[string]any, 0)
+	if dailyRows, err := s.pool.Query(r.Context(), `
 SELECT date_trunc('day', created_at)::date AS day,
        COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COUNT(*)
 FROM usage_logs
 WHERE owner_user_id=$1 AND `+where+`
 GROUP BY day ORDER BY day
-`, userID)
-	dailyBreakdown := make([]map[string]any, 0)
-	if dailyRows != nil {
+`, userID); err == nil {
 		defer dailyRows.Close()
 		for dailyRows.Next() {
 			var day time.Time
@@ -698,7 +695,7 @@ func (s *Server) adminListUsage(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.pool.Query(r.Context(), `
 SELECT usage_log_id, request_id, owner_user_id, provider_kind, model_source, model_ref, input_tokens, output_tokens,
        total_tokens, total_cost_usd, billing_decision, request_status, policy_version, input_payload_ciphertext,
-       output_payload_ciphertext, payload_encryption_key_ref, payload_encryption_algo, decrypt_access_audit_count, created_at
+       output_payload_ciphertext, payload_encryption_key_ref, payload_encryption_algo, decrypt_access_audit_count, purpose, created_at
 FROM usage_logs
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2

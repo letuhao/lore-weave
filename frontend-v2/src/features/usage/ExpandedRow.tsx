@@ -22,18 +22,28 @@ export function ExpandedRow({ usageLogId, colSpan }: Props) {
 
   useEffect(() => {
     if (!accessToken) return;
+    let cancelled = false;
     setLoading(true);
     usageApi
       .getLogDetail(accessToken, usageLogId)
-      .then(setDetail)
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setLoading(false));
+      .then((d) => { if (!cancelled) setDetail(d); })
+      .catch((e) => { if (!cancelled) setError((e as Error).message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [accessToken, usageLogId]);
 
+  // Clean up copied timeout on unmount
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
   function handleCopy(text: string) {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    navigator.clipboard.writeText(text).then(
+      () => setCopied(true),
+      () => { /* clipboard denied — fail silently, button stays as Copy */ },
+    );
   }
 
   if (loading) {
@@ -95,10 +105,12 @@ export function ExpandedRow({ usageLogId, colSpan }: Props) {
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-0 border-b px-4">
+          <div className="flex gap-0 border-b px-4" role="tablist" aria-label="Payload view">
             {(['input', 'output', 'raw'] as Tab[]).map((t) => (
               <button
                 key={t}
+                role="tab"
+                aria-selected={tab === t}
                 onClick={() => setTab(t)}
                 className={cn(
                   'border-b-2 px-3 py-2 text-xs font-medium capitalize transition-colors',
@@ -113,6 +125,7 @@ export function ExpandedRow({ usageLogId, colSpan }: Props) {
             <div className="flex-1" />
             <button
               onClick={() => handleCopy(tabContent[tab])}
+              aria-label="Copy to clipboard"
               className="flex items-center gap-1 px-2 text-[10px] text-muted-foreground hover:text-foreground"
             >
               {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
@@ -121,7 +134,7 @@ export function ExpandedRow({ usageLogId, colSpan }: Props) {
           </div>
 
           {/* Content */}
-          <div className="max-h-52 overflow-auto p-4">
+          <div className="max-h-52 overflow-auto p-4" role="tabpanel">
             <pre className="whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-secondary-foreground">
               {tabContent[tab]}
             </pre>

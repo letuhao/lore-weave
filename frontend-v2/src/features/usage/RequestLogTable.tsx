@@ -48,6 +48,7 @@ type Props = {
   offset: number;
   filters: UsageFilters;
   search: string;
+  loading?: boolean;
   onSearchChange: (v: string) => void;
   onFiltersChange: (f: UsageFilters) => void;
   onOffsetChange: (offset: number) => void;
@@ -61,6 +62,7 @@ export function RequestLogTable({
   offset,
   filters,
   search,
+  loading,
   onSearchChange,
   onFiltersChange,
   onOffsetChange,
@@ -103,7 +105,8 @@ export function RequestLogTable({
             type="text"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search by model, context..."
+            placeholder="Filter current page..."
+            aria-label="Search usage logs on current page"
             className="h-[30px] w-full rounded border bg-background pl-7 pr-2 text-[11px] placeholder:text-muted-foreground/40 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
           />
         </div>
@@ -112,6 +115,7 @@ export function RequestLogTable({
         <select
           value={filters.provider_kind ?? ''}
           onChange={(e) => onFiltersChange({ ...filters, provider_kind: (e.target.value || undefined) as ProviderKind | undefined })}
+          aria-label="Filter by provider"
           className="h-[30px] min-w-[130px] rounded border bg-background px-2 text-[11px]"
         >
           <option value="">All Providers</option>
@@ -124,6 +128,7 @@ export function RequestLogTable({
         <select
           value={filters.purpose ?? ''}
           onChange={(e) => onFiltersChange({ ...filters, purpose: (e.target.value || undefined) as Purpose | undefined })}
+          aria-label="Filter by purpose"
           className="h-[30px] min-w-[120px] rounded border bg-background px-2 text-[11px]"
         >
           <option value="">All Purposes</option>
@@ -136,6 +141,7 @@ export function RequestLogTable({
         <select
           value={filters.request_status ?? ''}
           onChange={(e) => onFiltersChange({ ...filters, request_status: (e.target.value || undefined) as RequestStatus | undefined })}
+          aria-label="Filter by status"
           className="h-[30px] min-w-[100px] rounded border bg-background px-2 text-[11px]"
         >
           <option value="">All Status</option>
@@ -177,6 +183,15 @@ export function RequestLogTable({
             </tr>
           </thead>
           <tbody>
+            {loading && logs.length === 0 && Array.from({ length: 5 }).map((_, i) => (
+              <tr key={`skel-${i}`}>
+                {Array.from({ length: 8 }).map((_, j) => (
+                  <td key={j} className="px-3 py-2">
+                    <div className="h-4 animate-pulse rounded bg-muted" />
+                  </td>
+                ))}
+              </tr>
+            ))}
             {logs.map((log) => (
               <Fragment key={log.usage_log_id}>
                 <tr
@@ -208,12 +223,14 @@ export function RequestLogTable({
                   </td>
                   <td className="px-3 py-2 text-right font-mono text-[11px] text-muted-foreground">${log.total_cost_usd.toFixed(3)}</td>
                   <td className="px-3 py-2">
-                    <ChevronDown
-                      className={cn(
-                        'h-3 w-3 text-muted-foreground transition-transform',
-                        expandedId === log.usage_log_id && 'rotate-180',
-                      )}
-                    />
+                    <span aria-label={expandedId === log.usage_log_id ? 'Collapse details' : 'Expand details'}>
+                      <ChevronDown
+                        className={cn(
+                          'h-3 w-3 text-muted-foreground transition-transform',
+                          expandedId === log.usage_log_id && 'rotate-180',
+                        )}
+                      />
+                    </span>
                   </td>
                 </tr>
                 {expandedId === log.usage_log_id && (
