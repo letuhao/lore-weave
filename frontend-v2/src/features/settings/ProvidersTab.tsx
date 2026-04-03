@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Plus, Pencil, Loader2, Zap } from 'lucide-react';
+import { Plus, Pencil, Loader2, Zap, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
@@ -42,9 +42,10 @@ export function ProvidersTab() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [editSaving, setEditSaving] = useState(false);
 
-  // Model modals
+  // Model modals + inline delete
   const [addModelProvider, setAddModelProvider] = useState<ProviderCredential | null>(null);
   const [editModel, setEditModel] = useState<UserModel | null>(null);
+  const [deletingModelId, setDeletingModelId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!accessToken) return;
@@ -147,6 +148,20 @@ export function ProvidersTab() {
       toast.error('Verify request failed');
     } finally {
       setVerifyingId(null);
+    }
+  }
+
+  async function handleDeleteModel(model: UserModel) {
+    if (!accessToken) return;
+    setDeletingModelId(model.user_model_id);
+    try {
+      await providerApi.deleteUserModel(accessToken, model.user_model_id);
+      toast.success(`${model.alias || model.provider_model_name} removed`);
+      await refresh();
+    } catch {
+      toast.error('Failed to delete model');
+    } finally {
+      setDeletingModelId(null);
     }
   }
 
@@ -287,6 +302,19 @@ export function ProvidersTab() {
                         <Zap className="h-2.5 w-2.5" />
                       )}
                       Test
+                    </button>
+                    {/* Delete */}
+                    <button
+                      onClick={() => handleDeleteModel(model)}
+                      disabled={deletingModelId === model.user_model_id}
+                      aria-label={`Delete ${model.alias || model.provider_model_name}`}
+                      className="rounded p-1 text-muted-foreground/50 transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                    >
+                      {deletingModelId === model.user_model_id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3 w-3" />
+                      )}
                     </button>
                   </div>
                 ))}

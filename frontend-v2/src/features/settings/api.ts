@@ -118,15 +118,44 @@ export const providerApi = {
     return apiJson<{ items: UserModel[] }>('/v1/model-registry/user-models?include_inactive=true', { token });
   },
 
-  createUserModel(token: string, payload: { provider_credential_id: string; provider_model_name: string; alias?: string }) {
+  createUserModel(token: string, payload: {
+    provider_credential_id: string;
+    provider_model_name: string;
+    alias?: string;
+    context_length?: number;
+    capability_flags?: Record<string, unknown>;
+    tags?: Array<{ tag_name: string; note?: string }>;
+  }) {
     return apiJson<UserModel>('/v1/model-registry/user-models', {
       method: 'POST', token, body: JSON.stringify(payload),
+    });
+  },
+
+  patchUserModel(token: string, modelId: string, payload: {
+    alias?: string;
+    context_length?: number | null;
+    capability_flags?: Record<string, unknown>;
+  }) {
+    return apiJson<UserModel>(`/v1/model-registry/user-models/${modelId}`, {
+      method: 'PATCH', token, body: JSON.stringify(payload),
+    });
+  },
+
+  putUserModelTags(token: string, modelId: string, tags: Array<{ tag_name: string; note?: string }>) {
+    return apiJson<UserModel>(`/v1/model-registry/user-models/${modelId}/tags`, {
+      method: 'PUT', token, body: JSON.stringify({ tags }),
     });
   },
 
   patchActivation(token: string, modelId: string, isActive: boolean) {
     return apiJson<UserModel>(`/v1/model-registry/user-models/${modelId}/activation`, {
       method: 'PATCH', token, body: JSON.stringify({ is_active: isActive }),
+    });
+  },
+
+  patchFavorite(token: string, modelId: string, isFavorite: boolean) {
+    return apiJson<UserModel>(`/v1/model-registry/user-models/${modelId}/favorite`, {
+      method: 'PATCH', token, body: JSON.stringify({ is_favorite: isFavorite }),
     });
   },
 
