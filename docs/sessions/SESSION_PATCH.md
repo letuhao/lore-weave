@@ -57,6 +57,9 @@ MIG-03: Usage Monitor page — full-stack build from draft design.
 | M4-01 BE: previous period query in `getUsageSummary` — prev_request_count, prev_total_tokens, prev_total_cost_usd, prev_error_rate | `server.go` | this session |
 | M4-02 FE: trend indicators on StatCards — ↑↓ % vs prev period, sentiment coloring (green/red/neutral) | `StatCards.tsx`, `types.ts` | this session |
 | MIG-05: Settings page — 5 tabs (Account, Providers, Translation, Reading, Language) | 9 new files, `App.tsx`, `translation/api.ts` | this session |
+| MIG-06 BE: catalog-service — sort (recent/chapters/alpha) + language filter, over-fetch+paginate | `catalog-service/server.go` | this session |
+| MIG-06 FE: Browse page — hero, search (debounced), language chips, genre chips (disabled), sort, 4-col grid, BookCard, pagination | 3 new files, `App.tsx` | this session |
+| P3-08c: Genre tag + browse filter task added to planning doc | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | this session |
 
 **9-phase workflow followed:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 

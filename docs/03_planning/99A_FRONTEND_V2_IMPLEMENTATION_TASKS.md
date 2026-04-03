@@ -601,6 +601,16 @@ P3-08b: Genre Group Editor — Frontend [FE]
     - [ ] Genre list panel + activation matrix table
     - [ ] Toggle switches per attribute per genre
     - [ ] Compare view across genres
+
+P3-08c: Book Genre Tag + Browse Genre Filter [FS]
+  Deps: P3-08a (genre tables exist)
+  NOTE: MIG-06 (Browse page) defers genre filter chips to this task.
+        Browse page renders genre chips as disabled/muted until this is done.
+  AC:
+    - [ ] Add `genre` or `genre_tags` field to books table (book-service migration)
+    - [ ] Genre selector in book create/edit UI (SettingsTab)
+    - [ ] catalog-service: accept `genre` query param in listPublicBooks
+    - [ ] Browse page: enable genre filter chips, wire to API param
 ```
 
 ### Social Service — New Backend (required for community features)

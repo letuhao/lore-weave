@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -157,33 +158,89 @@ func (s *Server) listPublicBooks(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	q := r.URL.Query().Get("q")
-	ids, status := s.fetchPublicIDs(limit, offset, q)
+	language := r.URL.Query().Get("language")
+	sortBy := r.URL.Query().Get("sort") // recent, chapters, alpha
+
+	// Fetch a large page to allow client-side filter/sort
+	// (sharing-service handles the "public" gate, we filter further here)
+	fetchLimit := 200
+	ids, status := s.fetchPublicIDs(fetchLimit, 0, q)
 	if status != http.StatusOK {
 		writeError(w, http.StatusBadGateway, "BOOK_CONFLICT", "failed to query public books")
 		return
 	}
-	items := make([]map[string]any, 0, len(ids.BookIDs))
+
+	// Collect projections
+	type entry struct {
+		data map[string]any
+		proj *bookProjection
+	}
+	all := make([]entry, 0, len(ids.BookIDs))
 	for _, id := range ids.BookIDs {
 		p, st := s.fetchProjection(id)
 		if st != http.StatusOK || p.LifecycleState != "active" {
 			continue
 		}
-		items = append(items, map[string]any{
-			"book_id":           p.BookID,
-			"title":             p.Title,
-			"description":       p.Description,
-			"original_language": p.OriginalLanguage,
-			"summary_excerpt":   p.SummaryExcerpt,
-			"has_cover":         p.HasCover,
-			"cover_url":         p.CoverURL,
-			"chapter_count":     p.ChapterCount,
-			"visibility":        "public",
-			"created_at":        p.CreatedAt,
+		// Language filter
+		if language != "" && (p.OriginalLanguage == nil || *p.OriginalLanguage != language) {
+			continue
+		}
+		all = append(all, entry{
+			data: map[string]any{
+				"book_id":           p.BookID,
+				"title":             p.Title,
+				"description":       p.Description,
+				"original_language": p.OriginalLanguage,
+				"summary_excerpt":   p.SummaryExcerpt,
+				"has_cover":         p.HasCover,
+				"cover_url":         p.CoverURL,
+				"chapter_count":     p.ChapterCount,
+				"visibility":        "public",
+				"created_at":        p.CreatedAt,
+			},
+			proj: p,
 		})
+	}
+
+	// Sort
+	switch sortBy {
+	case "alpha":
+		sort.Slice(all, func(i, j int) bool {
+			return strings.ToLower(all[i].proj.Title) < strings.ToLower(all[j].proj.Title)
+		})
+	case "chapters":
+		sort.Slice(all, func(i, j int) bool {
+			return all[i].proj.ChapterCount > all[j].proj.ChapterCount
+		})
+	default: // "recent" or empty — newest first
+		sort.Slice(all, func(i, j int) bool {
+			ti := all[i].proj.CreatedAt
+			tj := all[j].proj.CreatedAt
+			if ti == nil || tj == nil {
+				return ti != nil
+			}
+			return ti.After(*tj)
+		})
+	}
+
+	// Paginate
+	total := len(all)
+	end := offset + limit
+	if offset > total {
+		offset = total
+	}
+	if end > total {
+		end = total
+	}
+	page := all[offset:end]
+
+	items := make([]map[string]any, len(page))
+	for i, e := range page {
+		items[i] = e.data
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items": items,
-		"total": ids.Total,
+		"total": total,
 	})
 }
 
