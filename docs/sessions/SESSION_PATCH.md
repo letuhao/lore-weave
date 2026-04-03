@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-03 (session 18 in progress)
-- Updated By: Assistant (Phase 6 Chat Enhancement BE — 7 tasks, 28/28 tests pass)
+- Last Updated: 2026-04-03 (session 18 end)
+- Updated By: Assistant (Phase 6 Chat Enhancement — 7 BE tasks + 7 FE tasks, 5 commits)
 - Active Branch: `main`
-- HEAD: pending commit
+- HEAD: `502abbe` — feat(chat-fe): keyboard shortcuts, FTS message search
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -52,6 +52,14 @@ Phase 6 Chat Enhancement — Backend implementation + integration tests (28/28 p
 | Route fix: move `/search` before `/{session_id}` to prevent path conflict | `sessions.py` | this session |
 | Test setup: LM Studio provider + qwen3-1.7b model insertion script | `infra/setup-chat-test-model.sh` (new) | this session |
 | Integration test: 28 scenarios (T20-T33), all pass, covers CRUD + streaming + thinking + search | `infra/test-chat-enhanced.sh` (new) | this session |
+| FE-C6-01: SessionSettingsPanel slide-over (model, system prompt, gen params, info) | `SessionSettingsPanel.tsx` (new), `ChatHeader.tsx`, `ChatWindow.tsx`, `ChatPage.tsx` | `d16f54b` |
+| FE-C6-02: Thinking mode UI (Think/Fast toggle, ThinkingBlock, reasoning-delta parsing) | `ThinkingBlock.tsx` (new), `ChatInputBar.tsx`, `AssistantMessage.tsx`, `MessageBubble.tsx`, `MessageList.tsx`, `useChatMessages.ts` | `d16f54b` |
+| FE-C6-03: Token display per-message (thinking/input/output counts, Fast/Think badge) | `AssistantMessage.tsx` | `d16f54b` |
+| FE-C6-04: Sidebar search + temporal groups (Pinned/Today/Yesterday/Week/Older) + pin/unpin | `SessionSidebar.tsx`, `useSessions.ts`, `ChatPage.tsx` | `7a1c2a6` |
+| FE-C6-05: Enhanced NewChatDialog (model search, presets, badges, system prompt) | `NewChatDialog.tsx`, `ChatPage.tsx` | `8b3fdec` |
+| FE-C6-06: Keyboard shortcuts (Ctrl+N new, Esc stop, Ctrl+Shift+Enter think) | `ChatPage.tsx`, `ChatInputBar.tsx` | `502abbe` |
+| FE-C6-07: FTS message search in sidebar (debounced, snippet highlights) | `api.ts`, `SessionSidebar.tsx` | `502abbe` |
+| Types updated: GenerationParams, is_pinned, thinking field, SearchResult | `types.ts` | `d16f54b` |
 
 **9-phase workflow followed:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
