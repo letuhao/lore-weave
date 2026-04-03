@@ -45,10 +45,17 @@ async def stream_response(
         messages.insert(-1, {"role": "system", "content": f"The user has attached the following context:\n\n{context}"})
 
     # LiteLLM model string
-    if creds.provider_kind == "lm_studio":
+    if creds.provider_kind in ("lm_studio", "ollama"):
         model = f"openai/{creds.provider_model_name}"
-    else:
+    elif creds.provider_kind in ("openai", "anthropic"):
         model = f"{creds.provider_kind}/{creds.provider_model_name}"
+    else:
+        # Custom providers: assume OpenAI-compatible
+        model = f"openai/{creds.provider_model_name}"
+
+    # For local providers without API key, use a dummy key
+    # (LiteLLM/OpenAI SDK requires a non-empty api_key string)
+    api_key = creds.api_key if creds.api_key else "lw-no-key"
 
     full_content: list[str] = []
     last_chunk = None
@@ -59,7 +66,7 @@ async def stream_response(
             model=model,
             messages=messages,
             stream=True,
-            api_key=creds.api_key or None,
+            api_key=api_key,
             base_url=creds.base_url or None,
             timeout=300,
         )
