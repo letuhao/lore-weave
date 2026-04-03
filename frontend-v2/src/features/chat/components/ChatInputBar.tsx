@@ -91,8 +91,8 @@ export function ChatInputBar({
           )}
         </div>
         <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
-          {hasContext ? 'Context attached \u00B7 ' : ''}
-          {modelHint ? `${modelHint} \u00B7 ` : ''}Enter to send \u00B7 Shift+Enter for new line
+          {hasContext ? 'Context attached · ' : ''}
+          {modelHint ? `${modelHint} · ` : ''}Enter to send &middot; Shift+Enter for new line
         </p>
       </div>
     </div>
