@@ -44,13 +44,14 @@ export function PromptTemplatePicker({ open, filter, onSelect, onClose }: Prompt
   useEffect(() => {
     if (!open) return;
     function handleKeyDown(e: KeyboardEvent) {
+      if (filtered.length === 0) return;
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setSelectedIndex((i) => Math.min(i + 1, filtered.length - 1));
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         setSelectedIndex((i) => Math.max(i - 1, 0));
-      } else if (e.key === 'Enter' && filtered[selectedIndex]) {
+      } else if (e.key === 'Enter' && filtered.length > 0 && filtered[selectedIndex]) {
         e.preventDefault();
         onSelect(filtered[selectedIndex]);
       } else if (e.key === 'Escape') {

@@ -49,9 +49,9 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
 
   // Auto-focus search input when dialog opens
   useEffect(() => {
-    if (open) {
-      setTimeout(() => searchInputRef.current?.focus(), 50);
-    }
+    if (!open) return;
+    const timer = setTimeout(() => searchInputRef.current?.focus(), 50);
+    return () => clearTimeout(timer);
   }, [open]);
 
   // Reset on close
@@ -94,6 +94,7 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
 
   function handleCreate() {
     setCreating(true);
+    // onCreate is called by parent (may be sync or async) — always reset creating
     try {
       onCreate(
         selectedModel,
@@ -102,7 +103,9 @@ export function NewChatDialog({ open, onClose, onCreate }: NewChatDialogProps) {
       );
     } catch (err) {
       toast.error(`Failed to create chat: ${(err as Error).message}`);
-      setCreating(false);
+    } finally {
+      // Reset after a short delay to prevent double-clicks but not permanently disable
+      setTimeout(() => setCreating(false), 1000);
     }
   }
 
