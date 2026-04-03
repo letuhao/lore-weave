@@ -819,7 +819,37 @@ P3-22d: Recycle Bin — Wiki Pages Tab [FS]                   [ ] (future — af
 P4-01: Settings — Account Tab [FE]
 P4-02: Settings — Model Providers [FE] (uses existing provider-registry)
 P4-03: Settings — Translation Defaults [FE] (uses existing translation-service prefs)
-P4-04: Settings — Reading Preferences [FE]
+P4-04: Settings — Reading & Theme Unification [FS] ⚠️ BIG REFACTOR
+  Deps: P2-08 (ReaderThemeProvider), MIG-05 (ReadingTab)
+  NOTE: This is a significant refactoring task. ReadingTab in Settings
+        currently uses standalone localStorage (font size, spacing, 3
+        themes, 3 fonts). ReaderThemeProvider has 6 presets with CSS
+        variables scoped to .reader-content. These must be unified.
+        Design draft: screen-theme-customizer.html (detailed design).
+
+  Sub-tasks:
+    - [ ] P4-04a: BE — reading_preferences table (persist to DB, not just localStorage)
+    - [ ] P4-04b: Merge ReadingTab → ReaderThemeProvider
+          - Unify font size, line-height, font family, theme presets
+          - ReadingTab becomes the UI for ReaderThemeProvider settings
+          - Remove standalone localStorage approach in ReadingTab
+          - Support 6 theme presets (not 3) matching ReaderThemeProvider
+    - [ ] P4-04c: Theme customizer panel in Reader (inline, not in Settings)
+          - Quick-toggle dropdown in reader toolbar (P3-R1-D14)
+          - Font size control in reader (P3-R1-D15)
+          - Full customizer panel matching screen-theme-customizer.html
+    - [ ] P4-04d: Live preview in Settings ReadingTab
+          - Show reader-like preview with actual theme applied
+    - [ ] P4-04e: API persistence — save/load from BE instead of localStorage
+    - [ ] P4-04f: Sync — changes in reader customizer reflect in Settings and vice versa
+
+  Impact areas (refactor scope):
+    - providers/ReaderThemeProvider.tsx — core theme logic
+    - features/settings/ReadingTab.tsx — Settings UI
+    - pages/ReaderPage.tsx — reader toolbar integration
+    - CSS variables — unify .reader-content scoping
+    - localStorage migration — existing users' saved prefs
+
 P4-05: Settings — Language + Notification Prefs [FE]
 
 P4-06: Usage Monitor — Dashboard [FE] (uses existing usage-billing)
