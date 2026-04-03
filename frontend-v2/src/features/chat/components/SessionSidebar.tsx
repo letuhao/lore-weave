@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
   Check,
   MessageSquare,
   Pencil,
+  Pin,
+  PinOff,
   Plus,
+  Search,
   Trash2,
   X,
 } from 'lucide-react';
@@ -21,6 +24,7 @@ interface SessionItemProps {
   onRename: (title: string) => void;
   onArchive: () => void;
   onDelete: () => void;
+  onTogglePin: () => void;
 }
 
 function SessionItem({
@@ -31,6 +35,7 @@ function SessionItem({
   onRename,
   onArchive,
   onDelete,
+  onTogglePin,
 }: SessionItemProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(session.title);
@@ -99,14 +104,17 @@ function SessionItem({
         </div>
       ) : (
         <>
-          <p
-            className={cn(
-              'truncate text-[13px] font-medium',
-              isActive ? 'text-foreground' : 'text-muted-foreground',
-            )}
-          >
-            {session.title}
-          </p>
+          <div className="flex items-center gap-1">
+            <p
+              className={cn(
+                'truncate text-[13px] font-medium flex-1',
+                isActive ? 'text-foreground' : 'text-muted-foreground',
+              )}
+            >
+              {session.title}
+            </p>
+            {session.is_pinned && <Pin className="h-2.5 w-2.5 shrink-0 text-primary" />}
+          </div>
           <div className="mt-1 flex items-center justify-between">
             <span className="text-[10px] text-muted-foreground">
               {modelNameMap?.get(session.model_ref) ?? (session.model_source === 'user_model' ? 'My Model' : 'Platform')}
@@ -121,6 +129,13 @@ function SessionItem({
       {/* Hover actions */}
       {!isEditing && (
         <div className="mt-1 hidden items-center gap-1 group-hover:flex">
+          <button
+            title={session.is_pinned ? 'Unpin' : 'Pin'}
+            onClick={(e) => { e.stopPropagation(); onTogglePin(); }}
+            className="rounded p-0.5 text-muted-foreground hover:text-primary"
+          >
+            {session.is_pinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
+          </button>
           <button
             title="Rename"
             onClick={(e) => {
@@ -164,6 +179,41 @@ interface SessionSidebarProps {
   onRename: (sessionId: string, title: string) => void;
   onArchive: (sessionId: string) => void;
   onDelete: (sessionId: string) => void;
+  onTogglePin?: (sessionId: string, pinned: boolean) => void;
+}
+
+// ── Temporal grouping ──────────────────────────────────────────────────────────
+
+type SessionGroup = { label: string; sessions: ChatSession[] };
+
+function groupSessions(sessions: ChatSession[]): SessionGroup[] {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 86_400_000);
+  const weekAgo = new Date(today.getTime() - 7 * 86_400_000);
+
+  const pinned: ChatSession[] = [];
+  const todayArr: ChatSession[] = [];
+  const yesterdayArr: ChatSession[] = [];
+  const weekArr: ChatSession[] = [];
+  const older: ChatSession[] = [];
+
+  for (const s of sessions) {
+    if (s.is_pinned) { pinned.push(s); continue; }
+    const d = new Date(s.last_message_at ?? s.created_at);
+    if (d >= today) todayArr.push(s);
+    else if (d >= yesterday) yesterdayArr.push(s);
+    else if (d >= weekAgo) weekArr.push(s);
+    else older.push(s);
+  }
+
+  const groups: SessionGroup[] = [];
+  if (pinned.length) groups.push({ label: 'Pinned', sessions: pinned });
+  if (todayArr.length) groups.push({ label: 'Today', sessions: todayArr });
+  if (yesterdayArr.length) groups.push({ label: 'Yesterday', sessions: yesterdayArr });
+  if (weekArr.length) groups.push({ label: 'This Week', sessions: weekArr });
+  if (older.length) groups.push({ label: 'Older', sessions: older });
+  return groups;
 }
 
 export function SessionSidebar({
@@ -176,9 +226,20 @@ export function SessionSidebar({
   onRename,
   onArchive,
   onDelete,
+  onTogglePin,
 }: SessionSidebarProps) {
+  const [search, setSearch] = useState('');
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return sessions;
+    const q = search.toLowerCase();
+    return sessions.filter((s) => s.title.toLowerCase().includes(q));
+  }, [sessions, search]);
+
+  const groups = useMemo(() => groupSessions(filtered), [filtered]);
+
   return (
-    <div className="flex h-full w-[260px] shrink-0 flex-col border-r border-border bg-card">
+    <div className="flex h-full w-[270px] shrink-0 flex-col border-r border-border bg-card">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <span className="text-[13px] font-semibold text-foreground">Conversations</span>
@@ -192,7 +253,21 @@ export function SessionSidebar({
         </button>
       </div>
 
-      {/* Session list */}
+      {/* Search */}
+      <div className="px-3 py-2">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search conversations..."
+            className="w-full rounded-md border border-border bg-background py-1.5 pl-7 pr-2 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-ring"
+          />
+        </div>
+      </div>
+
+      {/* Session list with groups */}
       <div className="flex-1 overflow-y-auto">
         {isLoading && sessions.length === 0 && (
           <div className="space-y-3 px-4 py-4">
@@ -213,17 +288,32 @@ export function SessionSidebar({
           </p>
         )}
 
-        {sessions.map((s) => (
-          <SessionItem
-            key={s.session_id}
-            session={s}
-            isActive={s.session_id === activeSessionId}
-            modelNameMap={modelNameMap}
-            onSelect={() => onSelect(s)}
-            onRename={(title) => onRename(s.session_id, title)}
-            onArchive={() => onArchive(s.session_id)}
-            onDelete={() => onDelete(s.session_id)}
-          />
+        {!isLoading && filtered.length === 0 && sessions.length > 0 && (
+          <p className="mt-6 px-4 text-center text-xs text-muted-foreground">
+            No matches for &ldquo;{search}&rdquo;
+          </p>
+        )}
+
+        {groups.map((group) => (
+          <div key={group.label}>
+            <p className="px-4 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {group.label === 'Pinned' && <Pin className="mr-1 inline h-2.5 w-2.5 text-primary" />}
+              {group.label}
+            </p>
+            {group.sessions.map((s) => (
+              <SessionItem
+                key={s.session_id}
+                session={s}
+                isActive={s.session_id === activeSessionId}
+                modelNameMap={modelNameMap}
+                onSelect={() => onSelect(s)}
+                onRename={(title) => onRename(s.session_id, title)}
+                onArchive={() => onArchive(s.session_id)}
+                onDelete={() => onDelete(s.session_id)}
+                onTogglePin={() => onTogglePin?.(s.session_id, !s.is_pinned)}
+              />
+            ))}
+          </div>
         ))}
       </div>
     </div>

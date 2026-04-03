@@ -64,6 +64,15 @@ export function useSessions() {
     [accessToken],
   );
 
+  const togglePin = useCallback(
+    async (sessionId: string, pinned: boolean) => {
+      if (!accessToken) return;
+      const updated = await chatApi.patchSession(accessToken, sessionId, { is_pinned: pinned });
+      setSessions((prev) => prev.map((s) => (s.session_id === sessionId ? updated : s)));
+    },
+    [accessToken],
+  );
+
   return {
     sessions,
     isLoading,
@@ -73,5 +82,6 @@ export function useSessions() {
     renameSession,
     archiveSession,
     deleteSession,
+    togglePin,
   };
 }

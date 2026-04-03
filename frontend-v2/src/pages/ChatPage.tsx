@@ -26,6 +26,7 @@ export function ChatPage() {
     renameSession,
     archiveSession,
     deleteSession,
+    togglePin,
   } = useSessions();
 
   const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
@@ -195,6 +196,7 @@ export function ChatPage() {
           onRename={handleRename}
           onArchive={handleArchive}
           onDelete={handleDelete}
+          onTogglePin={(sessionId, pinned) => void togglePin(sessionId, pinned)}
         />
 
         <div className="flex flex-1 flex-col overflow-hidden">
