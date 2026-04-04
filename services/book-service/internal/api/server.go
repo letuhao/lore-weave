@@ -1530,10 +1530,11 @@ func (s *Server) getInternalBookChapters(w http.ResponseWriter, r *http.Request)
 	var total int
 	_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM chapters WHERE book_id=$1 AND lifecycle_state='active'`, bookID).Scan(&total)
 	rows, err := s.pool.Query(r.Context(), `
-SELECT id,title,sort_order,original_language,draft_updated_at
-FROM chapters
-WHERE book_id=$1 AND lifecycle_state='active'
-ORDER BY sort_order, created_at
+SELECT c.id, c.title, c.sort_order, c.original_language, c.draft_updated_at,
+  COALESCE((SELECT octet_length(d.body::text) / 5 FROM chapter_drafts d WHERE d.chapter_id = c.id LIMIT 1), 0) AS word_count_estimate
+FROM chapters c
+WHERE c.book_id=$1 AND c.lifecycle_state='active'
+ORDER BY c.sort_order, c.created_at
 LIMIT $2 OFFSET $3
 `, bookID, limit, offset)
 	if err != nil {
@@ -1547,13 +1548,15 @@ LIMIT $2 OFFSET $3
 		var title, lang string
 		var sortOrder int
 		var draftUpdated *time.Time
-		if err := rows.Scan(&chapterID, &title, &sortOrder, &lang, &draftUpdated); err == nil {
+		var wordCount int
+		if err := rows.Scan(&chapterID, &title, &sortOrder, &lang, &draftUpdated, &wordCount); err == nil {
 			items = append(items, map[string]any{
-				"chapter_id":        chapterID,
-				"title":             nullableString(title),
-				"sort_order":        sortOrder,
-				"original_language": lang,
-				"draft_updated_at":  draftUpdated,
+				"chapter_id":          chapterID,
+				"title":               nullableString(title),
+				"sort_order":          sortOrder,
+				"original_language":   lang,
+				"draft_updated_at":    draftUpdated,
+				"word_count_estimate": wordCount,
 			})
 		}
 	}

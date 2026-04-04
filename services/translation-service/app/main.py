@@ -46,3 +46,33 @@ app.include_router(translate_router.router)
 @app.get("/health", response_class=PlainTextResponse)
 async def health() -> str:
     return "ok"
+
+
+# ── Internal endpoints (no auth — service-to-service only) ─────────────────
+
+from uuid import UUID
+from fastapi import Depends
+from .database import get_pool
+import asyncpg
+
+
+@app.get("/internal/books/{book_id}/languages")
+async def get_book_languages(book_id: UUID, db: asyncpg.Pool = Depends(get_pool)):
+    """Return list of target languages that have at least one completed translation."""
+    rows = await db.fetch(
+        """
+        SELECT target_language, COUNT(DISTINCT chapter_id) AS chapter_count
+        FROM chapter_translations
+        WHERE book_id = $1 AND status = 'completed'
+        GROUP BY target_language
+        ORDER BY target_language
+        """,
+        book_id,
+    )
+    return {
+        "book_id": str(book_id),
+        "languages": [
+            {"language": r["target_language"], "chapter_count": r["chapter_count"]}
+            for r in rows
+        ],
+    }

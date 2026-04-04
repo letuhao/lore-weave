@@ -132,10 +132,10 @@ services:
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_catalog?sslmode=disable
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       SHARING_SERVICE_INTERNAL_URL: http://sharing-service:8083
+      TRANSLATION_SERVICE_INTERNAL_URL: http://translation-service:8087
     depends_on:
       postgres:
         condition: service_healthy
-
       book-service:
         condition: service_healthy
       sharing-service:

@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Public Book Detail</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --input: #242019; --ring: #d4952a;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --secondary-fg: #e0d8cc;
+      --muted: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --destructive: #dc4e4e; --success: #3dba6a; --info: #5496e8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    .sidebar { width: 240px; flex-shrink: 0; background: var(--background); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+    .sidebar-link { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; font-size: 13px; color: var(--muted-fg); text-decoration: none; transition: all 120ms; }
+    .sidebar-link:hover { background: var(--secondary); }
+    .sidebar-link.active { background: var(--primary-muted); color: var(--primary); }
+    .badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 500; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; font-family: inherit; }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+    .btn-outline:hover { background: var(--secondary); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); padding: 6px; border-radius: 6px; border: none; cursor: pointer; }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+
+    .chapter-row { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border); transition: background 120ms; cursor: pointer; }
+    .chapter-row:hover { background: var(--card-hover); }
+    .chapter-row:last-child { border-bottom: none; }
+
+    .translation-badge { font-size: 9px; font-weight: 500; padding: 1px 6px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; }
+  </style>
+</head>
+<body>
+
+<div style="display: flex; height: 100vh; overflow: hidden;">
+
+  <!-- ── Nav Sidebar ── -->
+  <aside class="sidebar">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 16px 16px 12px;">
+      <div style="width: 28px; height: 28px; border-radius: 6px; background: var(--primary); color: var(--primary-fg); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;">L</div>
+      <span class="font-serif" style="font-size: 14px; font-weight: 600;">LoreWeave</span>
+    </div>
+    <nav style="padding: 0 8px; display: flex; flex-direction: column; gap: 2px;">
+      <p style="padding: 12px 12px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg);">Main</p>
+      <a href="#" class="sidebar-link">
+        <svg style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.332 0-3.332.477-4.5 1.253"/></svg>
+        Workspace
+      </a>
+      <a href="#" class="sidebar-link">
+        <svg style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        Chat
+      </a>
+      <a href="#" class="sidebar-link active">
+        <svg style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        Browse
+      </a>
+    </nav>
+    <div style="flex: 1;"></div>
+    <div style="border-top: 1px solid var(--border); padding: 12px;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 6px;">
+        <div style="width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--primary)); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600;">N</div>
+        <div><p style="font-size: 12px; font-weight: 500;">Nene</p><p style="font-size: 10px; color: var(--muted-fg);">Free tier</p></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main Content ── -->
+  <main style="flex: 1; overflow-y: auto;">
+
+    <!-- Breadcrumb -->
+    <div style="padding: 12px 32px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted-fg);">
+      <a href="#" style="color: var(--accent); text-decoration: none;">Browse</a>
+      <svg style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+      <span style="color: var(--foreground);">The Demon Lord's Duty</span>
+    </div>
+
+    <!-- Hero Section -->
+    <div style="padding: 32px; display: flex; gap: 32px; max-width: 1000px; margin: 0 auto;">
+
+      <!-- Cover Image -->
+      <div style="flex-shrink: 0; width: 200px;">
+        <div style="aspect-ratio: 2/3; border-radius: 12px; overflow: hidden; background: linear-gradient(135deg, #2d1740, #1a1030); border: 1px solid var(--border); position: relative;">
+          <!-- Gradient placeholder -->
+          <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 50%; background: linear-gradient(transparent, rgba(0,0,0,0.5));"></div>
+          <div style="position: absolute; bottom: 12px; left: 12px; right: 12px;">
+            <span style="background: rgba(45,23,64,0.9); padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 500; color: #d8b4fe;">Fantasy</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Book Info -->
+      <div style="flex: 1; min-width: 0;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+          <span class="badge" style="background: var(--success); color: white; font-size: 10px;">Public</span>
+          <span class="badge" style="background: var(--secondary); color: var(--muted-fg);">Completed</span>
+        </div>
+
+        <h1 class="font-serif" style="font-size: 28px; font-weight: 600; line-height: 1.3; margin-bottom: 8px;">The Demon Lord's Duty</h1>
+
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; font-size: 13px; color: var(--muted-fg);">
+          <span>by <a href="#" style="color: var(--accent); text-decoration: none;">NeneScarlet</a></span>
+          <span>&middot;</span>
+          <span>24 chapters</span>
+          <span>&middot;</span>
+          <span>45,200 words</span>
+          <span>&middot;</span>
+          <span class="font-mono" style="font-size: 11px; background: var(--secondary); padding: 1px 6px; border-radius: 3px;">ja</span>
+        </div>
+
+        <p style="font-size: 14px; line-height: 1.7; color: var(--foreground); opacity: 0.85; margin-bottom: 20px;">
+          In a world where demon lords and heroes follow a strict bureaucratic protocol, the newly appointed Demon Lord discovers that his most dangerous weapon isn't magic — it's paperwork. A comedic fantasy about duty, tea, and the art of filing formal complaints.
+        </p>
+
+        <!-- Translations available -->
+        <div style="margin-bottom: 20px;">
+          <p style="font-size: 11px; font-weight: 500; color: var(--muted-fg); margin-bottom: 8px;">Available languages</p>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <span class="translation-badge" style="background: var(--accent-muted); color: var(--accent-fg); border: 1px solid rgba(61,166,146,0.2);">
+              Japanese (ja) &middot; Original
+            </span>
+            <span class="translation-badge" style="background: var(--secondary); color: var(--muted-fg); border: 1px solid var(--border);">
+              English (en) &middot; 24/24
+            </span>
+            <span class="translation-badge" style="background: var(--secondary); color: var(--muted-fg); border: 1px solid var(--border);">
+              Ti&#7871;ng Vi&#7879;t (vi) &middot; 18/24
+            </span>
+            <span class="translation-badge" style="background: var(--secondary); color: var(--muted-fg); border: 1px solid var(--border);">
+              &#32321;&#39636;&#20013;&#25991; (zh-TW) &middot; 12/24
+            </span>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-primary">
+            <svg style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.332 0-3.332.477-4.5 1.253"/></svg>
+            Start Reading
+          </button>
+          <button class="btn btn-outline">
+            <svg style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+            Add to Library
+          </button>
+          <button class="btn btn-outline">
+            <svg style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
+            Share
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chapter List -->
+    <div style="max-width: 1000px; margin: 0 auto; padding: 0 32px 32px;">
+
+      <!-- Language selector for chapter list -->
+      <div style="display: flex; items-center; justify-content: space-between; margin-bottom: 16px; align-items: center;">
+        <h2 style="font-size: 16px; font-weight: 600;">Chapters</h2>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 11px; color: var(--muted-fg);">Reading language:</span>
+          <select style="background: var(--secondary); border: 1px solid var(--border); color: var(--foreground); padding: 4px 8px; border-radius: 6px; font-size: 12px; font-family: inherit;">
+            <option>Japanese (ja) — Original</option>
+            <option selected>English (en)</option>
+            <option>Ti&#7871;ng Vi&#7879;t (vi)</option>
+            <option>&#32321;&#39636;&#20013;&#25991; (zh-TW)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Chapter list -->
+      <div style="background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden;">
+
+        <!-- Prologue -->
+        <div class="chapter-row">
+          <div style="width: 36px; text-align: center; font-size: 12px; color: var(--muted-fg); font-weight: 500;">0</div>
+          <div style="flex: 1; min-width: 0;">
+            <p style="font-size: 13px; font-weight: 500;">Prologue &mdash; The Summoning</p>
+            <p style="font-size: 11px; color: var(--muted-fg); margin-top: 2px;">1,247 words</p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="translation-badge" style="background: var(--accent-muted); color: var(--accent-fg);">en</span>
+            <span class="translation-badge" style="background: var(--accent-muted); color: var(--accent-fg);">vi</span>
+            <span class="translation-badge" style="background: var(--accent-muted); color: var(--accent-fg);">zh</span>
+          </div>
+          <button class="btn-ghost" style="margin-left: 8px;">
+            <svg style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+          </button>
+        </div>
+
+        <!-- Ch 1 -->
+        <div class="chapter-row">
+          <div style="width: 36px; text-align: center; font-size: 12px; color: var(--muted-fg); font-weight: 500;">1</div>
+          <div style="flex: 1; min-width: 0;">
+            <p style="font-size: 13px; font-weight: 500;">A New Responsibility</p>
+            <p style="font-size: 11px; color: var(--muted-fg); margin-top: 2px;">2,103 words</p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="translation-badge" style="background: var(--accent-muted); color: var(--accent-fg);">en</span>
+            <span class="translation-badge" style="background: var(--accent-muted); color: var(--accent-fg);">vi</span>
+          </div>
+          <button class="btn-ghost" style="margin-left: 8px;">
+            <svg style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+          </button>
+        </div>
+
+        <!-- Ch 2 -->
+        <div class="chapter-row">
+          <div style="width: 36px; text-align: center; font-size: 12px; color: var(--muted-fg); font-weight: 500;">2</div>
+          <div style="flex: 1; min-width: 0;">
+            <p style="font-size: 13px; font-weight: 500;">The Hero's Complaint</p>
+            <p style="font-size: 11px; color: var(--muted-fg); margin-top: 2px;">1,892 words</p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="translation-badge" style="background: var(--accent-muted); color: var(--accent-fg);">en</span>
+          </div>
+          <button class="btn-ghost" style="margin-left: 8px;">
+            <svg style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+          </button>
+        </div>
+
+        <!-- Ch 3 -->
+        <div class="chapter-row">
+          <div style="width: 36px; text-align: center; font-size: 12px; color: var(--muted-fg); font-weight: 500;">3</div>
+          <div style="flex: 1; min-width: 0;">
+            <p style="font-size: 13px; font-weight: 500;">The Formal Complaint</p>
+            <p style="font-size: 11px; color: var(--muted-fg); margin-top: 2px;">2,450 words</p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="translation-badge" style="background: var(--accent-muted); color: var(--accent-fg);">en</span>
+            <span class="translation-badge" style="background: var(--accent-muted); color: var(--accent-fg);">vi</span>
+            <span class="translation-badge" style="background: var(--accent-muted); color: var(--accent-fg);">zh</span>
+          </div>
+          <button class="btn-ghost" style="margin-left: 8px;">
+            <svg style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+          </button>
+        </div>
+
+        <!-- Ch 4 -->
+        <div class="chapter-row">
+          <div style="width: 36px; text-align: center; font-size: 12px; color: var(--muted-fg); font-weight: 500;">4</div>
+          <div style="flex: 1; min-width: 0;">
+            <p style="font-size: 13px; font-weight: 500;">Tea and Negotiations</p>
+            <p style="font-size: 11px; color: var(--muted-fg); margin-top: 2px;">1,780 words</p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="translation-badge" style="background: var(--accent-muted); color: var(--accent-fg);">en</span>
+          </div>
+          <button class="btn-ghost" style="margin-left: 8px;">
+            <svg style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+          </button>
+        </div>
+
+        <!-- Ch 5 -->
+        <div class="chapter-row">
+          <div style="width: 36px; text-align: center; font-size: 12px; color: var(--muted-fg); font-weight: 500;">5</div>
+          <div style="flex: 1; min-width: 0;">
+            <p style="font-size: 13px; font-weight: 500;">The Parchwork of Laws</p>
+            <p style="font-size: 11px; color: var(--muted-fg); margin-top: 2px;">2,210 words</p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="translation-badge" style="background: var(--secondary); color: var(--muted-fg); opacity: 0.5;">en</span>
+          </div>
+          <button class="btn-ghost" style="margin-left: 8px;">
+            <svg style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+          </button>
+        </div>
+
+        <!-- More chapters indicator -->
+        <div style="padding: 12px 16px; text-align: center; border-top: 1px solid var(--border);">
+          <span style="font-size: 12px; color: var(--muted-fg);">Showing 6 of 24 chapters</span>
+          <div style="display: flex; justify-content: center; gap: 4px; margin-top: 8px;">
+            <button class="btn-ghost" style="padding: 4px 8px; font-size: 11px; border: 1px solid var(--border); border-radius: 4px; color: var(--foreground); background: var(--accent-muted);">1</button>
+            <button class="btn-ghost" style="padding: 4px 8px; font-size: 11px; border: 1px solid var(--border); border-radius: 4px;">2</button>
+            <button class="btn-ghost" style="padding: 4px 8px; font-size: 11px; border: 1px solid var(--border); border-radius: 4px;">3</button>
+            <button class="btn-ghost" style="padding: 4px 8px; font-size: 11px; border: 1px solid var(--border); border-radius: 4px;">4</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Book stats footer -->
+      <div style="margin-top: 24px; display: flex; gap: 16px; flex-wrap: wrap;">
+        <div style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; flex: 1; min-width: 140px;">
+          <p style="font-size: 10px; color: var(--muted-fg); text-transform: uppercase; letter-spacing: 0.05em;">Total Words</p>
+          <p class="font-mono" style="font-size: 20px; font-weight: 600; margin-top: 4px;">45,200</p>
+        </div>
+        <div style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; flex: 1; min-width: 140px;">
+          <p style="font-size: 10px; color: var(--muted-fg); text-transform: uppercase; letter-spacing: 0.05em;">Languages</p>
+          <p class="font-mono" style="font-size: 20px; font-weight: 600; margin-top: 4px;">4</p>
+        </div>
+        <div style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; flex: 1; min-width: 140px;">
+          <p style="font-size: 10px; color: var(--muted-fg); text-transform: uppercase; letter-spacing: 0.05em;">Published</p>
+          <p style="font-size: 14px; font-weight: 500; margin-top: 4px;">Mar 15, 2026</p>
+        </div>
+        <div style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; flex: 1; min-width: 140px;">
+          <p style="font-size: 10px; color: var(--muted-fg); text-transform: uppercase; letter-spacing: 0.05em;">Last Updated</p>
+          <p style="font-size: 14px; font-weight: 500; margin-top: 4px;">Apr 2, 2026</p>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- DESIGN NOTES                                                            -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<div style="background: #0a0908; border-top: 3px solid var(--primary); padding: 40px 32px;">
+  <div style="max-width: 800px; margin: 0 auto;">
+    <h2 class="font-serif" style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">Design Notes — Public Book Detail (MIG-07)</h2>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+      <div style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px;">
+        <h3 style="font-size: 12px; color: var(--primary); font-weight: 600; margin-bottom: 6px;">Layout</h3>
+        <ul style="font-size: 11px; line-height: 1.8; color: var(--muted-fg); padding-left: 14px;">
+          <li>Breadcrumb: Browse > Book Title</li>
+          <li>Hero: Cover (200px) + Info (flex)</li>
+          <li>Chapter list: card with rows, pagination</li>
+          <li>Stats footer: 4 cards grid</li>
+          <li>Max-width 1000px, centered</li>
+        </ul>
+      </div>
+      <div style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px;">
+        <h3 style="font-size: 12px; color: var(--primary); font-weight: 600; margin-bottom: 6px;">Data Sources</h3>
+        <ul style="font-size: 11px; line-height: 1.8; color: var(--muted-fg); padding-left: 14px;">
+          <li>GET /v1/catalog/books/:id (no auth)</li>
+          <li>GET /v1/catalog/books/:id/chapters (paginated)</li>
+          <li>Cover: book.cover_url or gradient fallback</li>
+          <li>Translations: from chapter list response</li>
+          <li>Click chapter &rarr; /read/:bookId/:chapterId</li>
+        </ul>
+      </div>
+      <div style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px;">
+        <h3 style="font-size: 12px; color: var(--primary); font-weight: 600; margin-bottom: 6px;">Actions</h3>
+        <ul style="font-size: 11px; line-height: 1.8; color: var(--muted-fg); padding-left: 14px;">
+          <li>"Start Reading" &rarr; /read/:bookId/:firstChapterId</li>
+          <li>"Add to Library" &rarr; future (bookmarks)</li>
+          <li>"Share" &rarr; copy URL</li>
+          <li>Language selector changes chapter view language</li>
+          <li>Chapter row click &rarr; reader for that chapter</li>
+        </ul>
+      </div>
+      <div style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px;">
+        <h3 style="font-size: 12px; color: var(--primary); font-weight: 600; margin-bottom: 6px;">States</h3>
+        <ul style="font-size: 11px; line-height: 1.8; color: var(--muted-fg); padding-left: 14px;">
+          <li>Loading: skeleton for cover + info + chapter list</li>
+          <li>Not found: 404 message with back to Browse link</li>
+          <li>No chapters: empty state message</li>
+          <li>Translation badge opacity: full = available, 50% = partial</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

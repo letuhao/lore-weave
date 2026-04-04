@@ -65,6 +65,7 @@ type sharingPublicList struct {
 }
 type bookProjection struct {
 	BookID           uuid.UUID  `json:"book_id"`
+	OwnerUserID      uuid.UUID  `json:"owner_user_id"`
 	Title            string     `json:"title"`
 	Description      *string    `json:"description"`
 	OriginalLanguage *string    `json:"original_language"`
@@ -263,8 +264,12 @@ func (s *Server) getPublicBook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return
 	}
+	// Fetch available translation languages (best-effort, non-blocking)
+	languages := s.fetchBookLanguages(p.BookID)
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"book_id":           p.BookID,
+		"owner_user_id":     p.OwnerUserID,
 		"title":             p.Title,
 		"description":       p.Description,
 		"original_language": p.OriginalLanguage,
@@ -274,7 +279,31 @@ func (s *Server) getPublicBook(w http.ResponseWriter, r *http.Request) {
 		"chapter_count":     p.ChapterCount,
 		"visibility":        "public",
 		"created_at":        p.CreatedAt,
+		"available_languages": languages,
 	})
+}
+
+func (s *Server) fetchBookLanguages(bookID uuid.UUID) []map[string]any {
+	u := fmt.Sprintf("%s/internal/books/%s/languages", strings.TrimRight(s.cfg.TranslationServiceInternalURL, "/"), bookID)
+	res, err := http.Get(u)
+	if err != nil || res.StatusCode != http.StatusOK {
+		return nil
+	}
+	defer res.Body.Close()
+	var out struct {
+		Languages []struct {
+			Language     string `json:"language"`
+			ChapterCount int    `json:"chapter_count"`
+		} `json:"languages"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return nil
+	}
+	result := make([]map[string]any, len(out.Languages))
+	for i, l := range out.Languages {
+		result[i] = map[string]any{"language": l.Language, "chapter_count": l.ChapterCount}
+	}
+	return result
 }
 
 func (s *Server) listPublicBookChapters(w http.ResponseWriter, r *http.Request) {
