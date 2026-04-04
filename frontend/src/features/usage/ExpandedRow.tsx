@@ -70,9 +70,11 @@ export function ExpandedRow({ usageLogId, colSpan }: Props) {
 
   const { usage_log, input_payload, output_payload } = detail;
 
+  const isEmpty = (v: unknown) => !v || (typeof v === 'object' && Object.keys(v as object).length === 0) || (typeof v === 'string' && (v === 'null' || v.includes('ciphertext')));
+
   const tabContent: Record<Tab, string> = {
-    input: JSON.stringify(input_payload, null, 2),
-    output: JSON.stringify(output_payload, null, 2),
+    input: isEmpty(input_payload) ? '(No input payload recorded for this request)' : JSON.stringify(input_payload, null, 2),
+    output: isEmpty(output_payload) ? '(No output payload recorded for this request)' : JSON.stringify(output_payload, null, 2),
     raw: JSON.stringify({ usage_log, input_payload, output_payload }, null, 2),
   };
 
