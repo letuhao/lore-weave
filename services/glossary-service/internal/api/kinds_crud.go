@@ -294,10 +294,14 @@ func (s *Server) patchAttrDef(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var a domain.AttrDef
-	s.pool.QueryRow(r.Context(), `
+	err = s.pool.QueryRow(r.Context(), `
 		SELECT attr_def_id, code, name, field_type, is_required, is_system, sort_order, options, genre_tags
-		FROM attribute_definitions WHERE attr_def_id=$1`, attrDefID,
+		FROM attribute_definitions WHERE attr_def_id=$1 AND kind_id=$2`, attrDefID, kindID,
 	).Scan(&a.AttrDefID, &a.Code, &a.Name, &a.FieldType, &a.IsRequired, &a.IsSystem, &a.SortOrder, &a.Options, &a.GenreTags)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to re-fetch attribute")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, a)
 }
