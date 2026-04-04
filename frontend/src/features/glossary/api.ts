@@ -1,6 +1,7 @@
 import { apiJson } from '../../api';
 import type {
   EntityKind,
+  GenreGroup,
   GlossaryEntity,
   GlossaryEntityListResponse,
   FilterState,
@@ -88,7 +89,7 @@ export const glossaryApi = {
 
   // ── Attribute Definition CRUD ─────────────────────────────────────────────
 
-  createAttrDef(token: string, kindId: string, payload: { code: string; name: string; field_type?: string; is_required?: boolean; sort_order?: number; options?: string[] }) {
+  createAttrDef(token: string, kindId: string, payload: { code: string; name: string; field_type?: string; is_required?: boolean; sort_order?: number; options?: string[]; genre_tags?: string[] }) {
     return apiJson<import('./types').AttributeDefinition>(`${BASE}/kinds/${kindId}/attributes`, {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -121,5 +122,43 @@ export const glossaryApi = {
       `${BASE}/books/${bookId}/entities/${entityId}/attributes/${attrValueId}`,
       { method: 'PATCH', body: JSON.stringify(changes), token },
     );
+  },
+
+  // ── Genre Groups ────────────────────────────────────────────────────────────
+
+  listGenres(bookId: string, token: string): Promise<GenreGroup[]> {
+    return apiJson<GenreGroup[]>(`${BASE}/books/${bookId}/genres`, { token });
+  },
+
+  createGenre(
+    bookId: string,
+    payload: { name: string; color?: string; description?: string; sort_order?: number },
+    token: string,
+  ): Promise<GenreGroup> {
+    return apiJson<GenreGroup>(`${BASE}/books/${bookId}/genres`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      token,
+    });
+  },
+
+  patchGenre(
+    bookId: string,
+    genreId: string,
+    changes: Record<string, unknown>,
+    token: string,
+  ): Promise<GenreGroup> {
+    return apiJson<GenreGroup>(`${BASE}/books/${bookId}/genres/${genreId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(changes),
+      token,
+    });
+  },
+
+  deleteGenre(bookId: string, genreId: string, token: string): Promise<void> {
+    return apiJson<void>(`${BASE}/books/${bookId}/genres/${genreId}`, {
+      method: 'DELETE',
+      token,
+    });
   },
 };

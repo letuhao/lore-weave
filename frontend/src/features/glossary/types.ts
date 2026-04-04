@@ -13,6 +13,7 @@ export type AttributeDefinition = {
   is_system: boolean;
   sort_order: number;
   options?: string[];
+  genre_tags: string[];
 };
 
 export type EntityKind = {
@@ -102,6 +103,16 @@ export type GlossaryEntityListResponse = {
   total: number;
   limit: number;
   offset: number;
+};
+
+export type GenreGroup = {
+  id: string;
+  book_id: string;
+  name: string;
+  color: string;
+  description: string;
+  sort_order: number;
+  created_at: string;
 };
 
 export type FilterState = {

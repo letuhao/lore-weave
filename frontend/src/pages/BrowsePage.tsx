@@ -15,6 +15,7 @@ type CatalogBook = {
   chapter_count?: number;
   has_cover?: boolean;
   cover_url?: string | null;
+  genre_tags: string[];
   created_at?: string | null;
 };
 

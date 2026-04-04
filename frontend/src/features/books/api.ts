@@ -12,6 +12,7 @@ export type Book = {
   chapter_count: number;
   has_cover?: boolean;
   visibility?: Visibility;
+  genre_tags: string[];
   lifecycle_state: 'active' | 'trashed' | 'purge_pending';
   created_at?: string;
   updated_at?: string;
@@ -81,7 +82,7 @@ export const booksApi = {
   },
   createBook(
     token: string,
-    payload: { title: string; description?: string; original_language?: string; summary?: string },
+    payload: { title: string; description?: string; original_language?: string; summary?: string; genre_tags?: string[] },
   ) {
     return apiJson<Book>('/v1/books', { method: 'POST', token, body: JSON.stringify(payload) });
   },
