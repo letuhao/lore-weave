@@ -32,7 +32,7 @@ function KindBadge({ kind }: { kind: GlossaryEntitySummary['kind'] }) {
   );
 }
 
-export function GlossaryTab({ bookId }: { bookId: string }) {
+export function GlossaryTab({ bookId, bookGenreTags = [] }: { bookId: string; bookGenreTags?: string[] }) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
@@ -63,8 +63,16 @@ export function GlossaryTab({ bookId }: { bookId: string }) {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['glossary-entities', bookId] });
 
   const visibleKinds = useMemo(
-    () => kinds.filter((k) => !k.is_hidden).sort((a, b) => a.sort_order - b.sort_order),
-    [kinds],
+    () => kinds
+      .filter((k) => !k.is_hidden)
+      .filter((k) => {
+        // Empty genre_tags or "universal" = show for all books
+        if (k.genre_tags.length === 0 || k.genre_tags.includes('universal')) return true;
+        // Otherwise, show if book has at least one matching genre
+        return bookGenreTags.length === 0 || k.genre_tags.some((t) => bookGenreTags.includes(t));
+      })
+      .sort((a, b) => a.sort_order - b.sort_order),
+    [kinds, bookGenreTags],
   );
 
   const handleCreate = async (kindId: string) => {
@@ -313,6 +321,7 @@ export function GlossaryTab({ bookId }: { bookId: string }) {
         <EntityEditorModal
           bookId={bookId}
           entityId={selectedEntityId}
+          bookGenreTags={bookGenreTags}
           onClose={() => setSelectedEntityId(null)}
           onSaved={() => invalidate()}
           onDelete={() => {

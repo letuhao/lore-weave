@@ -157,7 +157,7 @@ function BookTabContent({ bookId, book, activeTab, onReload }: {
         <TranslationTab bookId={bookId} />
       </div>
       <div style={{ display: activeTab === '/glossary' ? undefined : 'none' }}>
-        <GlossaryTab bookId={bookId} />
+        <GlossaryTab bookId={bookId} bookGenreTags={book.genre_tags ?? []} />
       </div>
       {placeholder && (
         <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">

@@ -11,12 +11,13 @@ import { getCardComponent, SHORT_TYPES } from './cardRegistry';
 interface EntityEditorModalProps {
   bookId: string;
   entityId: string;
+  bookGenreTags?: string[];
   onClose: () => void;
   onSaved: () => void;
   onDelete: () => void;
 }
 
-export function EntityEditorModal({ bookId, entityId, onClose, onSaved, onDelete }: EntityEditorModalProps) {
+export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], onClose, onSaved, onDelete }: EntityEditorModalProps) {
   const { accessToken } = useAuth();
   const [entity, setEntity] = useState<GlossaryEntity | null>(null);
   const [loading, setLoading] = useState(true);
@@ -107,9 +108,15 @@ export function EntityEditorModal({ bookId, entityId, onClose, onSaved, onDelete
 
   if (!entity) return null;
 
-  const sortedAttrs = [...entity.attribute_values].sort(
-    (a, b) => a.attribute_def.sort_order - b.attribute_def.sort_order,
-  );
+  // Filter attributes by genre: show if attr has no genre_tags (universal) or matches book genres
+  const genreMatch = (attr: AttributeValue) => {
+    const tags = attr.attribute_def.genre_tags;
+    return tags.length === 0 || tags.some((t) => bookGenreTags.includes(t));
+  };
+
+  const sortedAttrs = [...entity.attribute_values]
+    .filter(genreMatch)
+    .sort((a, b) => a.attribute_def.sort_order - b.attribute_def.sort_order);
   const sysAttrs = sortedAttrs.filter((a) => a.attribute_def.is_system);
   const usrAttrs = sortedAttrs.filter((a) => !a.attribute_def.is_system);
 
@@ -135,6 +142,11 @@ export function EntityEditorModal({ bookId, entityId, onClose, onSaved, onDelete
               >
                 {entity.kind.icon} {entity.kind.name}
               </span>
+              {bookGenreTags.length > 0 && bookGenreTags.map((g) => (
+                <span key={g} className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-medium text-violet-400 flex-shrink-0">
+                  {g}
+                </span>
+              ))}
               <select
                 value={entity.status}
                 onChange={(e) => void handleStatusChange(e.target.value)}
