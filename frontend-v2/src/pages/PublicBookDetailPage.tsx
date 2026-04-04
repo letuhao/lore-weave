@@ -62,22 +62,26 @@ export function PublicBookDetailPage() {
   // Fetch book detail
   useEffect(() => {
     if (!bookId) return;
+    setError('');
     setLoading(true);
+    let mounted = true;
     booksApi.getCatalogBook(bookId)
-      .then((data) => setBook(data as CatalogBook))
-      .catch((e) => setError((e as Error).message || 'Book not found'))
-      .finally(() => setLoading(false));
+      .then((data) => { if (mounted) setBook(data as CatalogBook); })
+      .catch((e) => { if (mounted) setError((e as Error).message || 'Book not found'); })
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
   }, [bookId]);
 
   // Fetch chapters (paginated)
   useEffect(() => {
     if (!bookId) return;
+    let mounted = true;
     booksApi.listCatalogChapters(bookId, { limit, offset })
       .then((res) => {
-        setChapters(res.items ?? []);
-        setTotal(res.total ?? 0);
+        if (mounted) { setChapters(res.items ?? []); setTotal(res.total ?? 0); }
       })
-      .catch(() => setChapters([]));
+      .catch(() => { if (mounted) { setChapters([]); toast.error('Failed to load chapters'); } });
+    return () => { mounted = false; };
   }, [bookId, limit, offset]);
 
   // ── Loading skeleton ──────────────────────────────────────────────────────
@@ -203,7 +207,7 @@ export function PublicBookDetailPage() {
               </button>
             )}
             <button
-              onClick={() => { navigator.clipboard.writeText(window.location.href); toast.success('Link copied'); }}
+              onClick={() => { navigator.clipboard.writeText(window.location.href).then(() => toast.success('Link copied')).catch(() => toast.error('Failed to copy')); }}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm text-foreground transition-colors hover:bg-secondary"
             >
               <Share2 className="h-3.5 w-3.5" />
