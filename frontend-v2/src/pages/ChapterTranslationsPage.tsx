@@ -75,7 +75,15 @@ export function ChapterTranslationsPage() {
     if (lang === null) {
       setSearchParams((p) => { p.delete('lang'); p.delete('vid'); return p; }, { replace: true });
     } else {
-      setSearchParams((p) => { p.set('lang', lang); p.delete('vid'); return p; }, { replace: true });
+      // Auto-select active version (or first) for the chosen language
+      const group = languages.find((g) => g.target_language === lang);
+      const activeVer = group?.versions.find((v) => v.is_active) ?? group?.versions[0];
+      setSearchParams((p) => {
+        p.set('lang', lang);
+        if (activeVer) p.set('vid', activeVer.id);
+        else p.delete('vid');
+        return p;
+      }, { replace: true });
     }
   }
 
@@ -199,7 +207,7 @@ function OriginalViewer({ bookId, chapterId }: { bookId: string; chapterId: stri
     let mounted = true;
     booksApi.getDraft(accessToken, bookId, chapterId)
       .then((d) => { if (mounted) setBody(d.text_content || (typeof d.body === 'string' ? d.body : '')); })
-      .catch(() => { if (mounted) setBody(null); })
+      .catch((e) => { if (mounted) { setBody(null); toast.error(`Failed to load draft: ${(e as Error).message}`); } })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, [accessToken, bookId, chapterId]);
