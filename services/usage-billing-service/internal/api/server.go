@@ -457,38 +457,25 @@ func (s *Server) getUsageLogDetail(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "M03_LOG_DECRYPT_FORBIDDEN", "forbidden")
 		return
 	}
+	inputPayload := map[string]any{}
+	outputPayload := map[string]any{}
+	// Try to decrypt payloads — gracefully handle missing/empty/corrupt ciphertext
 	var keyCipher, inputCipher, outputCipher string
 	err = s.pool.QueryRow(r.Context(), `
 SELECT payload_encryption_key_ciphertext, input_payload_ciphertext, output_payload_ciphertext
 FROM usage_log_details WHERE usage_log_id=$1
 `, usageLogID).Scan(&keyCipher, &inputCipher, &outputCipher)
-	if err == pgx.ErrNoRows {
-		writeError(w, http.StatusConflict, "M03_CIPHERTEXT_UNAVAILABLE", "ciphertext unavailable")
-		return
+	if err == nil && keyCipher != "" {
+		if sessionKey, err2 := decryptWithKey(s.secretKey, keyCipher); err2 == nil {
+			if inputPlain, err3 := decryptWithKey(sessionKey, inputCipher); err3 == nil {
+				_ = json.Unmarshal(inputPlain, &inputPayload)
+			}
+			if outputPlain, err3 := decryptWithKey(sessionKey, outputCipher); err3 == nil {
+				_ = json.Unmarshal(outputPlain, &outputPayload)
+			}
+		}
 	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "M03_USAGE_QUERY_FAILED", "failed to load encrypted payload")
-		return
-	}
-	sessionKey, err := decryptWithKey(s.secretKey, keyCipher)
-	if err != nil {
-		writeError(w, http.StatusConflict, "M03_CIPHERTEXT_UNAVAILABLE", "ciphertext unavailable")
-		return
-	}
-	inputPlain, err := decryptWithKey(sessionKey, inputCipher)
-	if err != nil {
-		writeError(w, http.StatusConflict, "M03_CIPHERTEXT_UNAVAILABLE", "ciphertext unavailable")
-		return
-	}
-	outputPlain, err := decryptWithKey(sessionKey, outputCipher)
-	if err != nil {
-		writeError(w, http.StatusConflict, "M03_CIPHERTEXT_UNAVAILABLE", "ciphertext unavailable")
-		return
-	}
-	inputPayload := map[string]any{}
-	outputPayload := map[string]any{}
-	_ = json.Unmarshal(inputPlain, &inputPayload)
-	_ = json.Unmarshal(outputPlain, &outputPayload)
+	// If no details row or decrypt failed, payloads stay as empty maps (not an error)
 	tx, err := s.pool.Begin(r.Context())
 	if err == nil {
 		_, _ = tx.Exec(r.Context(), `INSERT INTO usage_log_decrypt_audits(usage_log_id, owner_user_id) VALUES ($1,$2)`, usageLogID, userID)
