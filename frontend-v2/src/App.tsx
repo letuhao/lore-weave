@@ -35,6 +35,7 @@ import { HomePage } from '@/pages/HomePage';
 import { UsagePage } from '@/pages/UsagePage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { BrowsePage } from '@/pages/BrowsePage';
+import { PublicBookDetailPage } from '@/pages/PublicBookDetailPage';
 
 export function App() {
   return (
@@ -62,7 +63,7 @@ export function App() {
           {/* Public pages with sidebar — no auth required */}
           <Route element={<DashboardLayout />}>
             <Route path="/browse" element={<BrowsePage />} />
-            <Route path="/browse/:bookId" element={<PlaceholderPage title="Public Book" />} />
+            <Route path="/browse/:bookId" element={<PublicBookDetailPage />} />
             <Route path="/leaderboard" element={<PlaceholderPage title="Leaderboard" description="Top books, authors, and translators." />} />
             <Route path="/users/:userId" element={<PlaceholderPage title="User Profile" />} />
           </Route>
