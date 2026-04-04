@@ -24,6 +24,7 @@ type AttrDef struct {
 	IsSystem   bool     `json:"is_system"`
 	SortOrder  int      `json:"sort_order"`
 	Options    []string `json:"options,omitempty"`
+	GenreTags  []string `json:"genre_tags"`
 }
 
 // SeedKind is the static definition used to seed entity_kinds + attribute_definitions.

@@ -472,6 +472,7 @@ CREATE TABLE IF NOT EXISTS genre_groups (
     UNIQUE(book_id, name)
 );
 CREATE INDEX IF NOT EXISTS idx_genre_groups_book ON genre_groups(book_id);
+ALTER TABLE attribute_definitions ADD COLUMN IF NOT EXISTS genre_tags TEXT[] NOT NULL DEFAULT '{}';
 `
 
 func UpGenreGroups(ctx context.Context, pool *pgxpool.Pool) error {

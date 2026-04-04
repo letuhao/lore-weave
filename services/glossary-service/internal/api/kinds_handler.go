@@ -27,6 +27,7 @@ type attrRow struct {
 	IsRequired bool
 	IsSystem   bool
 	SortOrder  int
+	GenreTags  []string
 }
 
 // listKinds handles GET /v1/glossary/kinds.
@@ -68,7 +69,7 @@ func (s *Server) listKinds(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch all attribute definitions in one query
 	attrRowsQ, err := s.pool.Query(ctx, `
-		SELECT ad.attr_def_id, ad.kind_id, ad.code, ad.name, ad.field_type, ad.is_required, ad.is_system, ad.sort_order
+		SELECT ad.attr_def_id, ad.kind_id, ad.code, ad.name, ad.field_type, ad.is_required, ad.is_system, ad.sort_order, ad.genre_tags
 		FROM attribute_definitions ad
 		ORDER BY ad.kind_id, ad.sort_order`)
 	if err != nil {
@@ -83,7 +84,7 @@ func (s *Server) listKinds(w http.ResponseWriter, r *http.Request) {
 		var kindID string
 		var a attrRow
 		if err := attrRowsQ.Scan(&a.AttrDefID, &kindID, &a.Code, &a.Name,
-			&a.FieldType, &a.IsRequired, &a.IsSystem, &a.SortOrder); err != nil {
+			&a.FieldType, &a.IsRequired, &a.IsSystem, &a.SortOrder, &a.GenreTags); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan attr error")
 			return
 		}
@@ -107,6 +108,7 @@ func (s *Server) listKinds(w http.ResponseWriter, r *http.Request) {
 				IsRequired: a.IsRequired,
 				IsSystem:   a.IsSystem,
 				SortOrder:  a.SortOrder,
+				GenreTags:  a.GenreTags,
 			})
 		}
 		out = append(out, domain.EntityKind{

@@ -187,6 +187,7 @@ func (s *Server) createAttrDef(w http.ResponseWriter, r *http.Request) {
 		IsRequired bool     `json:"is_required"`
 		SortOrder  int      `json:"sort_order"`
 		Options    []string `json:"options"`
+		GenreTags  []string `json:"genre_tags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Code == "" || in.Name == "" {
 		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "code and name are required")
@@ -195,13 +196,16 @@ func (s *Server) createAttrDef(w http.ResponseWriter, r *http.Request) {
 	if in.FieldType == "" {
 		in.FieldType = "text"
 	}
+	if in.GenreTags == nil {
+		in.GenreTags = []string{}
+	}
 
 	var attrDefID string
 	err := s.pool.QueryRow(r.Context(), `
-		INSERT INTO attribute_definitions(kind_id, code, name, field_type, is_required, sort_order, options)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		INSERT INTO attribute_definitions(kind_id, code, name, field_type, is_required, sort_order, options, genre_tags)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 		RETURNING attr_def_id`,
-		kindID, in.Code, in.Name, in.FieldType, in.IsRequired, in.SortOrder, in.Options,
+		kindID, in.Code, in.Name, in.FieldType, in.IsRequired, in.SortOrder, in.Options, in.GenreTags,
 	).Scan(&attrDefID)
 	if err != nil {
 		writeError(w, http.StatusConflict, "GLOSS_CONFLICT", "attribute code already exists for this kind")
@@ -216,6 +220,7 @@ func (s *Server) createAttrDef(w http.ResponseWriter, r *http.Request) {
 		IsRequired: in.IsRequired,
 		SortOrder:  in.SortOrder,
 		Options:    in.Options,
+		GenreTags:  in.GenreTags,
 	})
 }
 
@@ -263,6 +268,15 @@ func (s *Server) patchAttrDef(w http.ResponseWriter, r *http.Request) {
 		args = append(args, opts)
 		i++
 	}
+	if v, ok := in["genre_tags"]; ok {
+		tags, _ := toStringSlice(v)
+		if tags == nil {
+			tags = []string{}
+		}
+		sets += comma(sets) + "genre_tags=$" + itoa(i)
+		args = append(args, tags)
+		i++
+	}
 
 	if sets == "" {
 		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "no fields to update")
@@ -281,9 +295,9 @@ func (s *Server) patchAttrDef(w http.ResponseWriter, r *http.Request) {
 
 	var a domain.AttrDef
 	s.pool.QueryRow(r.Context(), `
-		SELECT attr_def_id, code, name, field_type, is_required, is_system, sort_order, options
+		SELECT attr_def_id, code, name, field_type, is_required, is_system, sort_order, options, genre_tags
 		FROM attribute_definitions WHERE attr_def_id=$1`, attrDefID,
-	).Scan(&a.AttrDefID, &a.Code, &a.Name, &a.FieldType, &a.IsRequired, &a.IsSystem, &a.SortOrder, &a.Options)
+	).Scan(&a.AttrDefID, &a.Code, &a.Name, &a.FieldType, &a.IsRequired, &a.IsSystem, &a.SortOrder, &a.Options, &a.GenreTags)
 
 	writeJSON(w, http.StatusOK, a)
 }
@@ -323,7 +337,7 @@ func (s *Server) deleteAttrDef(w http.ResponseWriter, r *http.Request) {
 // loadAttrDefs fetches attribute definitions for a kind.
 func (s *Server) loadAttrDefs(ctx context.Context, kindID string) []domain.AttrDef {
 	rows, err := s.pool.Query(ctx, `
-		SELECT attr_def_id, code, name, field_type, is_required, is_system, sort_order, options
+		SELECT attr_def_id, code, name, field_type, is_required, is_system, sort_order, options, genre_tags
 		FROM attribute_definitions WHERE kind_id=$1 ORDER BY sort_order`, kindID)
 	if err != nil {
 		return []domain.AttrDef{}
@@ -332,7 +346,7 @@ func (s *Server) loadAttrDefs(ctx context.Context, kindID string) []domain.AttrD
 	attrs := make([]domain.AttrDef, 0)
 	for rows.Next() {
 		var a domain.AttrDef
-		rows.Scan(&a.AttrDefID, &a.Code, &a.Name, &a.FieldType, &a.IsRequired, &a.IsSystem, &a.SortOrder, &a.Options)
+		rows.Scan(&a.AttrDefID, &a.Code, &a.Name, &a.FieldType, &a.IsRequired, &a.IsSystem, &a.SortOrder, &a.Options, &a.GenreTags)
 		attrs = append(attrs, a)
 	}
 	return attrs
