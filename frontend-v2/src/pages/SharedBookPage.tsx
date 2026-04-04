@@ -75,6 +75,8 @@ export function SharedBookPage() {
   // Fetch chapters
   useEffect(() => {
     if (!accessToken) return;
+    // Close inline reader when pagination changes — chapter list is different
+    setReadingChapter(null);
     let mounted = true;
     booksApi.listUnlistedChapters(accessToken, { limit, offset })
       .then((res) => {
