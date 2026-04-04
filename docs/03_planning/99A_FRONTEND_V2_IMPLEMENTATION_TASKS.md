@@ -731,7 +731,7 @@ Missing DB columns:
 ── Backend Tasks (BE-KE-01..06) ──────────────────────────────────────────────
 
 BE-KE-01: Kind description field — expose in API [BE]
-  Status: [ ]
+  Status: [✓] Done (b2f60d4, 67879aa — 24/24 tests)
   DB: column `entity_kinds.description` already exists
   Changes:
     - listKinds: include `description` in SELECT + response JSON
@@ -743,7 +743,7 @@ BE-KE-01: Kind description field — expose in API [BE]
     - [ ] Existing kinds with NULL description work without error
 
 BE-KE-02: Entity count per kind [BE]
-  Status: [ ]
+  Status: [✓] Done (731ab9d — 32/32 tests)
   DB: no schema change — aggregate query from glossary_entities
   Changes:
     - listKinds: add subquery `SELECT count(*) FROM glossary_entities WHERE kind_id = ek.kind_id AND deleted_at IS NULL` as entity_count
@@ -754,7 +754,7 @@ BE-KE-02: Entity count per kind [BE]
     - [ ] Kinds with 0 entities return entity_count: 0
 
 BE-KE-03: Attribute is_active toggle [BE]
-  Status: [ ]
+  Status: [✓] Done (2a76891 — 42/42 tests)
   DB: ALTER TABLE attribute_definitions ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true
   Changes:
     - migrate.go: add migration SQL
@@ -768,7 +768,7 @@ BE-KE-03: Attribute is_active toggle [BE]
     - [ ] Existing attributes default to is_active=true
 
 BE-KE-04: Attribute inline edit — PATCH name, field_type, is_required, options [BE]
-  Status: [ ]
+  Status: [✓] Done (3da6932 — 60/60 tests)
   DB: no schema change — fields already exist
   Changes:
     - patchAttrDef: extend to accept name, field_type, is_required, options (currently only genre_tags)
@@ -779,7 +779,7 @@ BE-KE-04: Attribute inline edit — PATCH name, field_type, is_required, options
     - [ ] System attributes (is_system=true) can still be edited (name customization)
 
 BE-KE-05: Attribute description — expose in API [BE]
-  Status: [ ]
+  Status: [✓] Done — covered by BE-KE-01 (same commit exposed description on both kinds and attrs)
   DB: column `attribute_definitions.description` already exists
   Changes:
     - listKinds: include attr description in response
