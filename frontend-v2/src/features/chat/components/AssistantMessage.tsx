@@ -74,6 +74,7 @@ export function AssistantMessage({
           reasoning={reasoning ?? ''}
           isStreaming={isThinkingStreaming}
           elapsed={thinkingElapsed}
+          contentEmpty={!isStreaming && !content.trim()}
         />
       )}
 
