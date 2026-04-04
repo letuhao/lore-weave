@@ -58,6 +58,7 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
   const [editName, setEditName] = useState('');
   const [editIcon, setEditIcon] = useState('');
   const [editColor, setEditColor] = useState('');
+  const [editGenreTags, setEditGenreTags] = useState<string[]>([]);
   const [kindDirty, setKindDirty] = useState(false);
   const [savingKind, setSavingKind] = useState(false);
 
@@ -97,6 +98,7 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
       setEditName(selected.name);
       setEditIcon(selected.icon);
       setEditColor(selected.color);
+      setEditGenreTags(selected.genre_tags ?? []);
       setKindDirty(false);
     }
   }, [selected?.kind_id]);
@@ -106,7 +108,7 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
     setSavingKind(true);
     try {
       await glossaryApi.patchKind(accessToken, selected.kind_id, {
-        name: editName, icon: editIcon, color: editColor,
+        name: editName, icon: editIcon, color: editColor, genre_tags: editGenreTags,
       });
       toast.success('Kind saved');
       setKindDirty(false);
@@ -304,6 +306,53 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Genre tags */}
+              <div className="flex items-center gap-2 border-b bg-card/30 px-6 py-2.5">
+                <span className="flex-shrink-0 text-[10px] font-medium text-muted-foreground">Genres:</span>
+                <div className="flex flex-1 flex-wrap items-center gap-1.5">
+                  {editGenreTags.map((tag) => (
+                    <span
+                      key={tag}
+                      className={cn(
+                        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium',
+                        tag === 'universal'
+                          ? 'bg-blue-500/15 text-blue-400'
+                          : 'bg-secondary text-foreground',
+                      )}
+                    >
+                      {tag}
+                      <button
+                        onClick={() => {
+                          setEditGenreTags(editGenreTags.filter((t) => t !== tag));
+                          setKindDirty(true);
+                        }}
+                        className="ml-0.5 rounded-full p-px text-muted-foreground/60 hover:text-foreground transition-colors"
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </span>
+                  ))}
+                  <input
+                    placeholder="+ Add genre"
+                    className="w-24 bg-transparent text-[10px] outline-none placeholder:text-muted-foreground/50"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const val = (e.target as HTMLInputElement).value.trim();
+                        if (val && !editGenreTags.includes(val)) {
+                          setEditGenreTags([...editGenreTags, val]);
+                          setKindDirty(true);
+                        }
+                        (e.target as HTMLInputElement).value = '';
+                        e.preventDefault();
+                      }
+                    }}
+                  />
+                </div>
+                <span className="flex-shrink-0 text-[9px] text-muted-foreground">
+                  Kind shows when book has matching genre
+                </span>
               </div>
 
               {/* Attributes */}
