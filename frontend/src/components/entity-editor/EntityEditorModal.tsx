@@ -12,12 +12,13 @@ interface EntityEditorModalProps {
   bookId: string;
   entityId: string;
   bookGenreTags?: string[];
+  kindGenreTags?: string[];
   onClose: () => void;
   onSaved: () => void;
   onDelete: () => void;
 }
 
-export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], onClose, onSaved, onDelete }: EntityEditorModalProps) {
+export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGenreTags = [], onClose, onSaved, onDelete }: EntityEditorModalProps) {
   const { accessToken } = useAuth();
   const [entity, setEntity] = useState<GlossaryEntity | null>(null);
   const [loading, setLoading] = useState(true);
@@ -142,7 +143,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], onClos
               >
                 {entity.kind.icon} {entity.kind.name}
               </span>
-              {bookGenreTags.length > 0 && bookGenreTags.map((g) => (
+              {kindGenreTags.filter((t) => t !== 'universal').map((g) => (
                 <span key={g} className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-medium text-violet-400 flex-shrink-0">
                   {g}
                 </span>

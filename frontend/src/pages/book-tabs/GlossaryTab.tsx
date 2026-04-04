@@ -317,18 +317,23 @@ export function GlossaryTab({ bookId, bookGenreTags = [] }: { bookId: string; bo
       />
 
       {/* Entity Editor Modal */}
-      {selectedEntityId && (
-        <EntityEditorModal
-          bookId={bookId}
-          entityId={selectedEntityId}
-          bookGenreTags={bookGenreTags}
-          onClose={() => setSelectedEntityId(null)}
-          onSaved={() => invalidate()}
-          onDelete={() => {
-            setDeleteTarget(entities.find((e) => e.entity_id === selectedEntityId) ?? null);
-          }}
-        />
-      )}
+      {selectedEntityId && (() => {
+        const selectedEntity = entities.find((e) => e.entity_id === selectedEntityId);
+        const kindTags = kinds.find((k) => k.kind_id === selectedEntity?.kind_id)?.genre_tags ?? [];
+        return (
+          <EntityEditorModal
+            bookId={bookId}
+            entityId={selectedEntityId}
+            bookGenreTags={bookGenreTags}
+            kindGenreTags={kindTags}
+            onClose={() => setSelectedEntityId(null)}
+            onSaved={() => invalidate()}
+            onDelete={() => {
+              setDeleteTarget(selectedEntity ?? null);
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }
