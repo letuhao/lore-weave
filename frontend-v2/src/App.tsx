@@ -37,6 +37,7 @@ import { SettingsPage } from '@/pages/SettingsPage';
 import { BrowsePage } from '@/pages/BrowsePage';
 import { PublicBookDetailPage } from '@/pages/PublicBookDetailPage';
 import { SharedBookPage } from '@/pages/SharedBookPage';
+import { ChapterTranslationsPage } from '@/pages/ChapterTranslationsPage';
 
 export function App() {
   return (
@@ -82,6 +83,7 @@ export function App() {
           {/* Editor (collapsed sidebar) */}
           <Route element={<RequireAuth><EditorLayout /></RequireAuth>}>
             <Route path="/books/:bookId/chapters/:chapterId/edit" element={<ChapterEditorPage />} />
+            <Route path="/books/:bookId/chapters/:chapterId/translations" element={<ChapterTranslationsPage />} />
           </Route>
 
           {/* Chat (app sidebar + full-bleed content, no padding) */}

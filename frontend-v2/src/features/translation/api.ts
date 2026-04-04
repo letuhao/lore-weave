@@ -14,6 +14,7 @@ export type ChapterTranslation = {
   chapter_id: string;
   book_id: string;
   owner_user_id: string;
+  version_num: number;
   status: ChapterTranslationStatus;
   translated_body: string | null;
   source_language: string | null;
