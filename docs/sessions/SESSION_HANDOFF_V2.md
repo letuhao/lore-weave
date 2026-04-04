@@ -1,96 +1,111 @@
 # Session Handoff — Session 18
 
 > **Purpose:** Give the next agent complete context to continue.
-> **Date:** 2026-04-03 (session 18 end)
-> **Last commit:** `5ad82af` — fix: branching review — 3 critical + 2 high issues
+> **Date:** 2026-04-04 (session 18 end)
+> **Last commit:** `634c17f` — fix(chat): attach button opens context picker again
+> **Total commits this session:** 52
 > **Previous focus:** V1→V2 migration (7/10 done from session 17)
-> **Current focus:** Phase 6 Chat Enhancement COMPLETE. Next: MIG-07..MIG-10 or Phase 7.
+> **Current focus:** ALL migration done. Chat enhanced. Providers + billing fixed. README rewritten.
 
 ---
 
-## 1. What Happened This Session (session 18) — 13 commits
+## 1. What Happened This Session — 52 commits
 
-### Phase 6 Chat Enhancement — Full Implementation
+### Phase 6: Chat Enhancement (16 tasks + deferred + branching)
+- Generation params, system prompt, thinking mode (reasoning-delta SSE)
+- Session settings slide-over, Think/Fast toggle, token display
+- Message branching (edit creates branch, not delete)
+- Sidebar search + temporal groups + pin/unpin
+- Enhanced NewChatDialog with presets + model search
+- Format pills, prompt templates ("/"), message actions menu
+- Keyboard shortcuts, FTS message search
+- Thinking loop warning indicator
+- Seamless stream append (no flicker on completion)
 
-**Backend (7 tasks, 28/28 integration tests pass):**
+### V1→V2 Migration Complete (MIG-07..10)
+- MIG-07: PublicBookDetailPage (BE: owner_user_id, word_count, languages)
+- MIG-08: SharedBookPage (inline reader, no auth needed)
+- MIG-09: ChapterTranslationsPage (version sidebar, viewer, split compare)
+- MIG-10: Deleted old `frontend/` (22,985 lines removed)
+- Renamed `frontend-v2/` → `frontend/`
 
-| Commit | What |
-|--------|------|
-| `d2dbe74` | Full BE build: generation_params JSONB, system_prompt injection, thinking mode (reasoning_content), FTS search, pin, auto-title, OpenAI SDK direct streaming |
-| `7a74be9` | Message branching: branch_id column, edit-as-branch (UPDATE not DELETE), branches endpoint |
-| `5ad82af` | Branching review fixes: refreshBranch, listMessages branch_id param, fallback handling |
+### Provider Registry Enhancement
+- Dynamic model fetch from all providers (LM Studio, Ollama, OpenAI, Anthropic)
+- LM Studio native API: context_length, type detection, capabilities
+- Sync info bar in AddModelModal (count, types, refresh button)
 
-**Frontend (8 tasks + 6 deferred items):**
+### Usage Billing Fixes (3 critical bugs)
+- Billing client wrong API path (`/v1/model-billing/usage` → `/internal/model-billing/record`)
+- Missing required fields (request_id, purpose)
+- Encryption key mismatch (input/output used different session keys)
+- Full payload logging (messages + response + reasoning)
+- Graceful decrypt for missing payloads
+- Chart tooltip dark theme fix
 
-| Commit | What |
-|--------|------|
-| `d16f54b` | SessionSettingsPanel (model/prompt/params/info), ThinkingBlock + Think/Fast toggle, token display, reasoning-delta parsing |
-| `7a1c2a6` | Sidebar: search bar, temporal groups (Pinned/Today/Yesterday/Week/Older), pin/unpin |
-| `8b3fdec` | Enhanced NewChatDialog: model search, 4 preset tiles, capability badges, system prompt |
-| `502abbe` | Keyboard shortcuts (Ctrl+N, Esc, Ctrl+Shift+Enter), FTS message search in sidebar |
-| `7f06c22` | Deferred: format pills, prompt templates ("/"), actions menu, Reset to Defaults, auto-focus, loading state |
-| `c2d1840` | Fix: Send to Editor event name mismatch, context resolution warning toast |
-| `7a74be9` | BranchNavigator (< 1/3 >), branch switching via refreshBranch() |
+### Chat UX Fixes
+- Token counting (stream_options include_usage)
+- content_parts JSON parsing (string → object)
+- Message timestamps
+- Thinking toggle auto-collapse/expand
+- Auto-scroll during reasoning stream
+- Delete message (BE endpoint + FE button)
+- Edit textarea full-width with TextareaAutosize
+- Responsive width (2xl:max-w-[900px])
+- Header message count (live from messages.length)
+- Interrupted stream recovery (refetch on abort)
+- Attach button layout (no overlap with Think/Fast)
+- Think/Fast mode persistence (auto-save to session)
 
-**Review & Fixes:**
-
-| Commit | What |
-|--------|------|
-| `d87931c` | Code review: 4 critical (tautology, client leak, char-as-token, XSS) + 5 high fixes |
-| `8b1db88` | Deferred review: creating state reset, empty list guard, timer cleanup |
-| `5ad82af` | Branching review: 3 critical (branch switching non-functional) + 2 high |
+### Documentation
+- README rewritten with 8 automated screenshots
+- Phase 7 Infrastructure Hardening planned (4 tasks)
+- MIG-09 detailed breakdown (5 sub-tasks)
 
 ---
 
 ## 2. Key Architecture Changes
 
-### Stream Service — Bypassed LiteLLM
-- **Problem:** LiteLLM strips `reasoning_content` from Qwen3/DeepSeek-R1 chunks
-- **Solution:** Use `openai.AsyncOpenAI` directly for all OpenAI-compatible providers
-- LiteLLM kept only for Anthropic
-- `_is_openai_compatible(provider_kind)` → returns True for everything except `"anthropic"`
+### Stream Service — Seamless Completion
+- After streaming, assistant message appended directly from SSE data
+- No `fetchMessages()` call on success — eliminates flicker
+- Captures message_id, usage, timing from SSE events
+- Refetch kept only for abort/error paths
 
-### chat_sessions — 2 New Columns
-- `generation_params JSONB DEFAULT '{}'` — temperature, top_p, max_tokens, thinking
-- `is_pinned BOOLEAN DEFAULT false`
+### Billing Pipeline — Fixed End-to-End
+- Chat → billing client → `/internal/model-billing/record` (was wrong path)
+- Full payload: `input_payload: {messages}`, `output_payload: {content, reasoning}`
+- AES-256-GCM encryption: single session key for both payloads (was separate)
+- Graceful decrypt: empty payloads return `{}` not error
 
-### chat_messages — Message Branching
-- `branch_id INT DEFAULT 0` — 0=active branch, 1+=historical
-- UNIQUE constraint: `(session_id, sequence_num, branch_id)` (was `(session_id, sequence_num)`)
-- Edit flow: `UPDATE SET branch_id=N` instead of `DELETE` — preserves history
-- New endpoint: `GET /branches?sequence_num=N`
-- `GET /messages?branch_id=N` loads specific branch
+### Provider Dynamic Fetch
+- All 4 adapters now call real APIs (was static preconfig JSON)
+- LM Studio: native `/api/v1/models` with context_length, type, params
+- Anthropic: `/v1/models` with thinking, vision, pdf capabilities
+- Sync to `provider_inventory_models` DB table with timestamp
 
-### SSE Protocol — New Event Type
-- `{"type": "reasoning-delta", "delta": "..."}` — thinking tokens (separate from text-delta)
-- `{"type": "data", "data": [{..., "has_reasoning": true}]}` — indicates reasoning present
-- FE tracks `streamPhase`: idle → thinking → responding
-
-### Frontend New Components
-- `SessionSettingsPanel.tsx` — slide-over with model/prompt/params/info
-- `ThinkingBlock.tsx` — collapsible reasoning with elapsed timer
-- `BranchNavigator.tsx` — `< 1/3 >` branch switching
-- `PromptTemplates.tsx` — "/" command picker with 8 built-in templates
+### Frontend Consolidation
+- `frontend-v2/` renamed to `frontend/` — sole frontend
+- Old `frontend/` deleted (195 files, 22,985 lines)
 
 ---
 
 ## 3. What's Next
 
-### Immediate — V1→V2 Migration (3 remaining + final cleanup)
-
-| Task | Route | Status |
-|------|-------|--------|
-| MIG-07 | `/browse/:bookId` | Public book detail |
-| MIG-08 | `/s/:accessToken` | Shared/unlisted book access |
-| MIG-09 | Chapter translations view | 245 lines in old FE |
-| **MIG-10** | **Delete old `frontend/`** | Final cleanup |
-
-### Then — Backlog (priority order)
+### Priority 1 — Feature Development
 1. P3-08a/b/c: Genre Groups (BE tables + FE editor + browse filter)
 2. P4-04: Reading/Theme unification (big refactor, 6 sub-tasks)
-3. Translation Workbench
+3. Translation Workbench (split-view editing, draft exists)
+
+### Priority 2 — Polish
 4. Phase 4: Browse polish, Author analytics
 5. Phase 4.5: Audio/TTS
+
+### Priority 3 — Technical Debt
+6. Phase 7: Infrastructure Hardening
+   - INF-01: Service-to-service auth (X-Internal-Token everywhere)
+   - INF-02: Internal HTTP client with timeout + retry
+   - INF-03: Structured JSON logging
+   - INF-04: Health check deep mode
 
 ---
 
@@ -100,41 +115,29 @@
 |------|---------|
 | `CLAUDE.md` | Project rules, 9-phase workflow |
 | `docs/sessions/SESSION_PATCH.md` | Current status |
-| `docs/03_planning/99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | Full task list (168+ tasks, Phase 6 section) |
-| `services/chat-service/app/services/stream_service.py` | OpenAI SDK streaming, reasoning, auto-title |
-| `services/chat-service/app/routers/sessions.py` | CRUD + search + JSONB merge + pin |
-| `services/chat-service/app/routers/messages.py` | Branching edit flow + branches endpoint |
-| `services/chat-service/app/db/migrate.py` | Schema (branch_id, generation_params, is_pinned, FTS) |
-| `frontend-v2/src/features/chat/components/` | 14 components (SessionSettings, ThinkingBlock, BranchNavigator, PromptTemplates, etc.) |
-| `frontend-v2/src/features/chat/hooks/useChatMessages.ts` | SSE parsing, reasoning-delta, thinking timer, refreshBranch |
-| `frontend-v2/src/features/chat/hooks/useSessions.ts` | Session CRUD + togglePin |
-| `infra/test-chat-enhanced.sh` | 28 integration tests |
-| `infra/setup-chat-test-model.sh` | LM Studio test model setup |
-| `design-drafts/screen-chat-enhanced.html` | Design reference |
+| `docs/03_planning/99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | Full task list (172+ tasks) |
+| `frontend/src/features/chat/` | Chat: 16 components, 2 hooks |
+| `frontend/src/features/translation/components/` | Translation: 3 components |
+| `frontend/src/pages/` | All pages (15+) |
+| `services/chat-service/app/services/stream_service.py` | OpenAI SDK streaming |
+| `services/chat-service/app/client/billing_client.py` | Usage billing integration |
+| `services/usage-billing-service/internal/api/server.go` | Billing + encryption |
+| `services/provider-registry-service/internal/provider/adapters.go` | Dynamic model fetch |
+| `services/catalog-service/internal/api/server.go` | Public book + languages |
+| `infra/test-chat-enhanced.sh` | Chat integration tests (28 scenarios) |
+| `infra/test-mig07-public-book.sh` | Public book tests (19 scenarios) |
+| `design-drafts/` | 31 HTML design mockups |
 
 ---
 
-## 5. Important Decisions Made This Session
-
-| Decision | Reasoning |
-|----------|-----------|
-| Bypass LiteLLM for streaming | LiteLLM strips reasoning_content from Qwen3. Use openai.AsyncOpenAI directly for all OpenAI-compatible providers. |
-| branch_id on chat_messages (not separate table) | Simpler schema, backward compatible (existing data gets branch_id=0). Avoids join overhead. |
-| Edit = UPDATE branch_id, not DELETE | Preserves conversation history. Users can navigate between branches with < 1/3 > UI. |
-| Format pills append to content (not system prompt) | Keeps system prompt clean. Format instruction is per-message, not per-session. |
-| Prompt templates via "/" command | Familiar pattern (Slack, Discord). No backend needed — templates are FE-only constants. |
-| exclude_unset (not exclude_none) for gen_params PATCH | Allows explicit null to clear values (e.g., reset temperature to default). |
-| Auto-title with max_tokens=200 | Thinking models (Qwen3) need extra token budget for reasoning before generating title. |
-
----
-
-## 6. Known Issues / Tech Debt
+## 5. Known Issues / Tech Debt
 
 | Issue | Severity | Note |
 |-------|----------|------|
-| ReadingTab ↔ ReaderThemeProvider not unified | Medium | Deferred to P4-04 |
-| Vite build chunk size warning (1.8MB) | Low | Pre-existing, needs code splitting |
-| ContextPicker loads all data on open | Medium | Could paginate or lazy-load |
-| Auto-title may fail silently with thinking models | Low | Non-critical, logs debug message |
-| Branch switching reloads full message list | Low | Could optimize to splice messages locally |
-| No dynamic model fetch from OpenAI/Anthropic API | Low | Uses preconfig JSON fallback |
+| Internal endpoints no auth | Medium | Planned: Phase 7 INF-01 |
+| Internal HTTP calls no timeout | Medium | Planned: Phase 7 INF-02 |
+| ReadingTab ↔ ReaderThemeProvider not unified | Medium | Planned: P4-04 |
+| Vite build chunk size warning (1.8MB) | Low | Needs code splitting |
+| ContextPicker loads all data on open | Medium | Could paginate |
+| Old billing records have corrupt output ciphertext | Low | Pre-fix data, new records fine |
+| Auto-title may fail with small thinking models | Low | Non-critical, silent fallback |

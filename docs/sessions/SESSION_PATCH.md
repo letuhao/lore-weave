@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-03 (session 18 end)
-- Updated By: Assistant (Phase 6 Chat Enhancement — complete, 13 commits)
+- Last Updated: 2026-04-04 (session 18 end)
+- Updated By: Assistant (Phase 6 Chat + MIG-07..10 + providers + billing + README — 52 commits)
 - Active Branch: `main`
-- HEAD: `5ad82af` — fix: branching review — 3 critical + 2 high issues
+- HEAD: `634c17f` — fix(chat): attach button opens context picker again
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -31,7 +31,7 @@
 
 ## Current Active Work
 
-**Phase:** Phase 6 — Chat Enhancement (BE complete, FE next)
+**Phase:** V1→V2 Migration COMPLETE. Phase 6 Chat Enhancement COMPLETE. Next: P3-08 Genre Groups or Phase 7 Infra.
 
 **What was done in this session (2026-04-03, session 18):**
 
