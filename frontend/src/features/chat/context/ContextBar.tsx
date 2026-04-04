@@ -9,6 +9,9 @@ interface ContextBarProps {
   onAttach: (item: ContextItem) => void;
   onDetach: (id: string) => void;
   onClearAll: () => void;
+  /** Controlled picker open state (optional — if provided, parent controls open/close) */
+  externalPickerOpen?: boolean;
+  onExternalPickerClose?: () => void;
 }
 
 const PILL_STYLES: Record<string, { bg: string; border: string; text: string }> = {
@@ -23,8 +26,10 @@ const PILL_ICON: Record<string, React.ReactNode> = {
   glossary: null,
 };
 
-export function ContextBar({ items, onAttach, onDetach, onClearAll }: ContextBarProps) {
-  const [pickerOpen, setPickerOpen] = useState(false);
+export function ContextBar({ items, onAttach, onDetach, onClearAll, externalPickerOpen, onExternalPickerClose }: ContextBarProps) {
+  const [internalPickerOpen, setInternalPickerOpen] = useState(false);
+  const pickerOpen = externalPickerOpen || internalPickerOpen;
+  const closePicker = () => { setInternalPickerOpen(false); onExternalPickerClose?.(); };
 
   const hasItems = items.length > 0;
 
@@ -37,7 +42,7 @@ export function ContextBar({ items, onAttach, onDetach, onClearAll }: ContextBar
         <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-3.5 py-2">
           <button
             type="button"
-            onClick={() => setPickerOpen(!pickerOpen)}
+            onClick={() => { if (pickerOpen) closePicker(); else setInternalPickerOpen(true); }}
             className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           >
             <Plus className="h-3 w-3" />
@@ -83,8 +88,8 @@ export function ContextBar({ items, onAttach, onDetach, onClearAll }: ContextBar
       {pickerOpen && (
         <div
           className="fixed inset-0 z-50"
-          onClick={() => setPickerOpen(false)}
-          onKeyDown={(e) => { if (e.key === 'Escape') setPickerOpen(false); }}
+          onClick={closePicker}
+          onKeyDown={(e) => { if (e.key === 'Escape') closePicker(); }}
           role="dialog"
           aria-modal="true"
           aria-label="Context picker"
@@ -101,7 +106,7 @@ export function ContextBar({ items, onAttach, onDetach, onClearAll }: ContextBar
               attached={items}
               onAttach={(item) => onAttach(item)}
               onDetach={onDetach}
-              onClose={() => setPickerOpen(false)}
+              onClose={closePicker}
             />
           </div>
         </div>

@@ -43,6 +43,7 @@ export function ChatInputBar({
   const [responseFormat, setResponseFormat] = useState<string>('Auto');
   const [showTemplates, setShowTemplates] = useState(false);
   const [templateFilter, setTemplateFilter] = useState('');
+  const [attachPickerOpen, setAttachPickerOpen] = useState(false);
 
   function handleTemplateSelect(template: PromptTemplate) {
     setValue(template.prompt);
@@ -118,6 +119,8 @@ export function ChatInputBar({
             onAttach={onAttachContext}
             onDetach={onDetachContext}
             onClearAll={onClearContext}
+            externalPickerOpen={attachPickerOpen}
+            onExternalPickerClose={() => setAttachPickerOpen(false)}
           />
 
           {/* Textarea */}
@@ -150,21 +153,15 @@ export function ChatInputBar({
           {/* Bottom row: attach + mode toggle + send */}
           <div className="flex items-center justify-between px-2 pb-2">
             <div className="flex items-center gap-2">
-              {/* Attach button (inline, not overlapping) */}
-              {!hasContext && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    // Trigger attach via ContextBar's picker — find and click the hidden attach button
-                    const attachBtn = document.querySelector('[title="Attach context"]') as HTMLButtonElement;
-                    attachBtn?.click();
-                  }}
-                  className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                  title="Attach context"
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" /></svg>
-                </button>
-              )}
+              {/* Attach context button */}
+              <button
+                type="button"
+                onClick={() => setAttachPickerOpen(true)}
+                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                title="Attach context"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" /></svg>
+              </button>
               {/* Think/Fast toggle */}
               {supportsThinking && (
                 <div className="inline-flex rounded-md bg-secondary p-0.5 gap-0.5">
