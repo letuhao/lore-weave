@@ -64,6 +64,9 @@ export function useChatMessages(sessionId: string | null) {
 
       let accumulatedContent = '';
       let accumulatedReasoning = '';
+      let streamMessageId: string | null = null;
+      let streamUsage: { promptTokens?: number; completionTokens?: number } = {};
+      let streamTiming: { responseTimeMs?: number; timeToFirstTokenMs?: number } = {};
 
       // Thinking timer
       function startThinkingTimer() {
@@ -141,6 +144,11 @@ export function useChatMessages(sessionId: string | null) {
                 }
                 accumulatedContent += event.delta;
                 setStreamingText(accumulatedContent);
+              } else if (event.type === 'data' && event.data?.[0]) {
+                streamMessageId = event.data[0].message_id || null;
+              } else if (event.type === 'finish-message') {
+                streamUsage = event.usage || {};
+                streamTiming = event.timing || {};
               } else if (event.type === 'error') {
                 throw new Error(event.errorText || 'Stream error');
               }
@@ -154,8 +162,31 @@ export function useChatMessages(sessionId: string | null) {
         stopThinkingTimer();
         setStreamStatus('idle');
         setStreamPhase('idle');
-        // Refetch messages to get persisted data (tokens, message_id, etc.)
-        void fetchMessages();
+
+        // Seamless append: add completed assistant message to list without refetch
+        const assistantMessage: ChatMessage = {
+          message_id: streamMessageId || `done-${Date.now()}`,
+          session_id: sessionId ?? '',
+          owner_user_id: '',
+          role: 'assistant',
+          content: accumulatedContent,
+          content_parts: {
+            ...(accumulatedReasoning ? { reasoning: accumulatedReasoning, reasoning_length: accumulatedReasoning.length } : {}),
+            ...(streamTiming.responseTimeMs != null ? { response_time_ms: streamTiming.responseTimeMs } : {}),
+            ...(streamTiming.timeToFirstTokenMs != null ? { time_to_first_token_ms: streamTiming.timeToFirstTokenMs } : {}),
+          },
+          sequence_num: messages.length + 2, // user msg + this
+          branch_id: 0,
+          input_tokens: streamUsage.promptTokens ?? null,
+          output_tokens: streamUsage.completionTokens ?? null,
+          model_ref: null,
+          is_error: false,
+          error_detail: null,
+          parent_message_id: null,
+          created_at: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+
         return accumulatedContent;
       } catch (err) {
         stopThinkingTimer();
