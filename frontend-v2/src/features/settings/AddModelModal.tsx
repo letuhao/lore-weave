@@ -56,8 +56,9 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
       .finally(() => setLoadingInv(false));
   }, [accessToken, provider.provider_credential_id]);
 
+  // Load cached inventory on mount (no refresh). User clicks Refresh to fetch from provider.
   useEffect(() => {
-    fetchInventory(true);
+    fetchInventory(false);
   }, [fetchInventory]);
 
   // Filtered + grouped
@@ -146,54 +147,46 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
             <h2 className="text-[15px] font-semibold">Add Model</h2>
             <p className="mt-0.5 text-[11px] text-muted-foreground">Select from {provider.display_name}&apos;s available models</p>
           </div>
-          <div className="flex items-center gap-1">
+          <button onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Sync info bar — 2 columns: type badges (left, wrapping) + refresh (right) */}
+        <div className="grid grid-cols-[1fr_auto] gap-2 border-b bg-secondary/30 px-5 py-2.5">
+          {/* Left: model count + type badges */}
+          <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground min-w-0">
+            <span className="font-semibold text-foreground">{inventory.length} models</span>
+            {inventory.length > 0 &&
+              Object.entries(
+                inventory.reduce<Record<string, number>>((acc, m) => {
+                  const cap = (getInventoryMeta(m).capability || 'chat');
+                  acc[cap] = (acc[cap] || 0) + 1;
+                  return acc;
+                }, {}),
+              ).map(([cap, count]) => (
+                <span key={cap} className={cn('inline-flex items-center gap-0.5 whitespace-nowrap rounded px-1.5 py-0.5 text-[9px] font-medium border', CAP_STYLES[cap] || 'bg-secondary text-muted-foreground border-border')}>
+                  {count} {CAP_LABELS[cap] || cap}
+                </span>
+              ))
+            }
+          </div>
+
+          {/* Right: timestamp + refresh button */}
+          <div className="flex flex-col items-end gap-1 shrink-0">
             <button
               onClick={() => { fetchInventory(true); toast.info('Fetching models from provider...'); }}
               disabled={loadingInv}
-              title="Fetch models from provider"
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-40 transition-colors"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${loadingInv ? 'animate-spin' : ''}`} />
-            </button>
-            <button onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Sync info bar */}
-        <div className="flex items-center justify-between border-b bg-secondary/30 px-5 py-2">
-          <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-            <span className="font-medium">{inventory.length} models</span>
-            {inventory.length > 0 && (
-              <>
-                <span>&middot;</span>
-                {Object.entries(
-                  inventory.reduce<Record<string, number>>((acc, m) => {
-                    const cap = (getInventoryMeta(m).capability || 'chat');
-                    acc[cap] = (acc[cap] || 0) + 1;
-                    return acc;
-                  }, {}),
-                ).map(([cap, count]) => (
-                  <span key={cap} className={cn('rounded px-1.5 py-0.5 text-[9px] font-medium border', CAP_STYLES[cap] || 'bg-secondary text-muted-foreground border-border')}>
-                    {count} {CAP_LABELS[cap] || cap}
-                  </span>
-                ))}
-              </>
-            )}
-          </div>
-          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-            {syncedAt && (
-              <span>Fetched {new Date(syncedAt).toLocaleString()}</span>
-            )}
-            <button
-              onClick={() => { fetchInventory(true); toast.info('Refreshing models from provider...'); }}
-              disabled={loadingInv}
-              className="flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium text-accent hover:bg-accent/10 disabled:opacity-40 transition-colors"
+              className="flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium text-accent border border-accent/20 hover:bg-accent/10 disabled:opacity-40 transition-colors"
             >
               <RefreshCw className={`h-3 w-3 ${loadingInv ? 'animate-spin' : ''}`} />
               Refresh
             </button>
+            {syncedAt && (
+              <span className="text-[9px] text-muted-foreground">
+                {new Date(syncedAt).toLocaleString()}
+              </span>
+            )}
           </div>
         </div>
 
