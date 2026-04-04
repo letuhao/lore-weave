@@ -12,6 +12,7 @@ type EntityKind struct {
 	IsHidden    bool      `json:"is_hidden"`
 	SortOrder   int       `json:"sort_order"`
 	GenreTags   []string  `json:"genre_tags"`
+	EntityCount int       `json:"entity_count"`
 	Attributes  []AttrDef `json:"default_attributes"`
 }
 

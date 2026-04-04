@@ -18,6 +18,7 @@ type kindRow struct {
 	IsHidden    bool
 	SortOrder   int
 	GenreTags   []string
+	EntityCount int
 }
 
 type attrRow struct {
@@ -44,8 +45,9 @@ func (s *Server) listKinds(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch all visible kinds ordered by sort_order
 	kindRows, err := s.pool.Query(ctx, `
-		SELECT kind_id, code, name, description, icon, color, is_default, is_hidden, sort_order, genre_tags
-		FROM entity_kinds
+		SELECT kind_id, code, name, description, icon, color, is_default, is_hidden, sort_order, genre_tags,
+			COALESCE((SELECT count(*) FROM glossary_entities ge WHERE ge.kind_id = ek.kind_id AND ge.deleted_at IS NULL), 0) AS entity_count
+		FROM entity_kinds ek
 		WHERE is_hidden = false
 		ORDER BY sort_order`)
 	if err != nil {
@@ -58,7 +60,7 @@ func (s *Server) listKinds(w http.ResponseWriter, r *http.Request) {
 	for kindRows.Next() {
 		var k kindRow
 		if err := kindRows.Scan(&k.KindID, &k.Code, &k.Name, &k.Description, &k.Icon, &k.Color,
-			&k.IsDefault, &k.IsHidden, &k.SortOrder, &k.GenreTags); err != nil {
+			&k.IsDefault, &k.IsHidden, &k.SortOrder, &k.GenreTags, &k.EntityCount); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan error")
 			return
 		}
@@ -126,6 +128,7 @@ func (s *Server) listKinds(w http.ResponseWriter, r *http.Request) {
 			IsHidden:    k.IsHidden,
 			SortOrder:   k.SortOrder,
 			GenreTags:   k.GenreTags,
+			EntityCount: k.EntityCount,
 			Attributes:  attrs,
 		})
 	}

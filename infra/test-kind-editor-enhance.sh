@@ -274,13 +274,108 @@ T17_ATTR_DESC=$(echo "$KINDS2" | node -e "
 assert_eq "T17 listKinds attr description" "Energy required to cast" "$T17_ATTR_DESC"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Cleanup: delete test kinds
+# BE-KE-02: Entity count per kind
+# ═══════════════════════════════════════════════════════════════════════════════
+header "BE-KE-02a: entity_count in listKinds"
+
+# Create a book for entity creation
+BOOK_RESP=$(curl -s -X POST "$GATEWAY/v1/books" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"title":"KE Test Book","original_language":"en"}')
+BOOK_ID=$(echo "$BOOK_RESP" | jget .book_id)
+assert_not_empty "Setup: created book for entity tests" "$BOOK_ID"
+
+# T18: listKinds includes entity_count key
+KINDS3=$(curl -s -H "$AUTH" "$GATEWAY/v1/glossary/kinds")
+T18_HAS_KEY=$(echo "$KINDS3" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    console.log('entity_count' in j[0] ? 'HAS_KEY' : 'MISSING');
+  });" 2>/dev/null)
+assert_eq "T18 listKinds has entity_count key" "HAS_KEY" "$T18_HAS_KEY"
+
+# T19: test_spell kind (custom, no entities) should have entity_count=0
+T19_COUNT=$(echo "$KINDS3" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    const spell=j.find(k=>k.code==='test_spell');
+    console.log(spell ? spell.entity_count : 'NOT_FOUND');
+  });" 2>/dev/null)
+assert_eq "T19 test_spell entity_count=0" "0" "$T19_COUNT"
+
+# T20: Get Character kind_id for entity creation
+CHAR_KIND_ID=$(echo "$KINDS3" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    const ch=j.find(k=>k.code==='character');
+    console.log(ch ? ch.kind_id : '');
+  });" 2>/dev/null)
+assert_not_empty "T20 found character kind_id" "$CHAR_KIND_ID"
+
+# T21: Get current Character entity_count before creating
+T21_BEFORE=$(echo "$KINDS3" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    const ch=j.find(k=>k.code==='character');
+    console.log(ch ? ch.entity_count : -1);
+  });" 2>/dev/null)
+
+# Create an entity of type Character
+E1=$(curl -s -X POST "$GATEWAY/v1/glossary/books/$BOOK_ID/entities" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d "{\"kind_id\":\"$CHAR_KIND_ID\"}")
+ENTITY_ID=$(echo "$E1" | jget .entity_id)
+assert_not_empty "T21 created character entity" "$ENTITY_ID"
+
+# T22: listKinds now shows entity_count incremented by 1
+KINDS4=$(curl -s -H "$AUTH" "$GATEWAY/v1/glossary/kinds")
+T22_AFTER=$(echo "$KINDS4" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    const ch=j.find(k=>k.code==='character');
+    console.log(ch ? ch.entity_count : -1);
+  });" 2>/dev/null)
+T22_EXPECTED=$((T21_BEFORE + 1))
+assert_eq "T22 character entity_count incremented" "$T22_EXPECTED" "$T22_AFTER"
+
+# T23: Soft-delete the entity, count should go back down
+curl -s -X DELETE "$GATEWAY/v1/glossary/books/$BOOK_ID/entities/$ENTITY_ID" \
+  -H "$AUTH" > /dev/null 2>&1
+
+KINDS5=$(curl -s -H "$AUTH" "$GATEWAY/v1/glossary/kinds")
+T23_AFTER_DEL=$(echo "$KINDS5" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    const ch=j.find(k=>k.code==='character');
+    console.log(ch ? ch.entity_count : -1);
+  });" 2>/dev/null)
+assert_eq "T23 entity_count decremented after soft-delete" "$T21_BEFORE" "$T23_AFTER_DEL"
+
+# T24: System kinds with no entities return entity_count=0 (or >= 0, not null/undefined)
+T24_TERM_COUNT=$(echo "$KINDS5" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    const t=j.find(k=>k.code==='terminology');
+    console.log(t ? (typeof t.entity_count === 'number' ? 'NUMBER' : typeof t.entity_count) : 'NOT_FOUND');
+  });" 2>/dev/null)
+assert_eq "T24 entity_count is a number (not null)" "NUMBER" "$T24_TERM_COUNT"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Cleanup: delete test kinds + book
 # ═══════════════════════════════════════════════════════════════════════════════
 header "Cleanup"
 
 curl -s -X DELETE "$GATEWAY/v1/glossary/kinds/$NEW_KIND_ID" -H "$AUTH" > /dev/null 2>&1
 curl -s -X DELETE "$GATEWAY/v1/glossary/kinds/$NEW_KIND_ID2" -H "$AUTH" > /dev/null 2>&1
-green "Cleanup: deleted test kinds"
+curl -s -X DELETE "$GATEWAY/v1/books/$BOOK_ID" -H "$AUTH" > /dev/null 2>&1
+green "Cleanup: deleted test kinds + book"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Summary
