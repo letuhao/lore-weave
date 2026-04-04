@@ -272,13 +272,17 @@ func (s *Server) createBook(w http.ResponseWriter, r *http.Request) {
 	}
 	var in struct {
 		Title            string `json:"title"`
-		Description      string `json:"description"`
-		OriginalLanguage string `json:"original_language"`
-		Summary          string `json:"summary"`
+		Description      string   `json:"description"`
+		OriginalLanguage string   `json:"original_language"`
+		Summary          string   `json:"summary"`
+		GenreTags        []string `json:"genre_tags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || strings.TrimSpace(in.Title) == "" {
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "title is required")
 		return
+	}
+	if in.GenreTags == nil {
+		in.GenreTags = []string{}
 	}
 	ctx := r.Context()
 	if err := s.ensureQuotaRow(ctx, ownerID); err != nil {
@@ -287,10 +291,10 @@ func (s *Server) createBook(w http.ResponseWriter, r *http.Request) {
 	}
 	var bookID uuid.UUID
 	if err := s.pool.QueryRow(ctx, `
-INSERT INTO books(owner_user_id,title,description,original_language,summary)
-VALUES($1,$2,$3,$4,$5)
+INSERT INTO books(owner_user_id,title,description,original_language,summary,genre_tags)
+VALUES($1,$2,$3,$4,$5,$6)
 RETURNING id
-`, ownerID, in.Title, in.Description, in.OriginalLanguage, in.Summary).Scan(&bookID); err != nil {
+`, ownerID, in.Title, in.Description, in.OriginalLanguage, in.Summary, in.GenreTags).Scan(&bookID); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to create book")
 		return
 	}
@@ -316,7 +320,8 @@ func (s *Server) listBooksByLifecycle(w http.ResponseWriter, r *http.Request, li
 	rows, err := s.pool.Query(ctx, `
 SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,b.lifecycle_state,b.trashed_at,b.purge_eligible_at,b.created_at,b.updated_at,
   COALESCE((SELECT COUNT(*) FROM chapters c WHERE c.book_id=b.id AND c.lifecycle_state='active'),0) AS chapter_count,
-  EXISTS(SELECT 1 FROM book_cover_assets a WHERE a.book_id=b.id) AS has_cover
+  EXISTS(SELECT 1 FROM book_cover_assets a WHERE a.book_id=b.id) AS has_cover,
+  b.genre_tags
 FROM books b
 WHERE b.owner_user_id=$1 AND b.lifecycle_state=$2
 ORDER BY b.created_at DESC
@@ -335,7 +340,11 @@ LIMIT $3 OFFSET $4
 		var trashedAt, purgeAt, createdAt, updatedAt *time.Time
 		var chapterCount int
 		var hasCover bool
-		if err := rows.Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &chapterCount, &hasCover); err == nil {
+		var genreTags []string
+		if err := rows.Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &chapterCount, &hasCover, &genreTags); err == nil {
+			if genreTags == nil {
+				genreTags = []string{}
+			}
 			visibility := s.fetchSharingVisibility(ctx, id)
 			items = append(items, map[string]any{
 				"book_id":           id,
@@ -350,6 +359,7 @@ LIMIT $3 OFFSET $4
 				"chapter_count":     chapterCount,
 				"has_cover":         hasCover,
 				"visibility":        visibility,
+				"genre_tags":        genreTags,
 				"created_at":        createdAt,
 				"updated_at":        updatedAt,
 			})
@@ -386,12 +396,14 @@ func (s *Server) getBookByID(w http.ResponseWriter, ctx context.Context, bookID,
 	var desc, lang, summary *string
 	var trashedAt, purgeAt, createdAt, updatedAt *time.Time
 	var chapterCount int
+	var genreTags []string
 	err := s.pool.QueryRow(ctx, `
 SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,b.lifecycle_state,b.trashed_at,b.purge_eligible_at,b.created_at,b.updated_at,
-  COALESCE((SELECT COUNT(*) FROM chapters c WHERE c.book_id=b.id AND c.lifecycle_state='active'),0) AS chapter_count
+  COALESCE((SELECT COUNT(*) FROM chapters c WHERE c.book_id=b.id AND c.lifecycle_state='active'),0) AS chapter_count,
+  b.genre_tags
 FROM books b
 WHERE b.id=$1 AND b.owner_user_id=$2
-`, bookID, ownerID).Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &chapterCount)
+`, bookID, ownerID).Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &chapterCount, &genreTags)
 	if errors.Is(err, pgx.ErrNoRows) || state == "purge_pending" {
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return
@@ -412,6 +424,9 @@ WHERE b.id=$1 AND b.owner_user_id=$2
 			"download_url": fmt.Sprintf("/v1/books/%s/cover?key=%s", bookID, skey),
 		}
 	}
+	if genreTags == nil {
+		genreTags = []string{}
+	}
 	writeJSON(w, status, map[string]any{
 		"book_id":           id,
 		"owner_user_id":     owner,
@@ -423,6 +438,7 @@ WHERE b.id=$1 AND b.owner_user_id=$2
 		"chapter_count":     chapterCount,
 		"visibility":        s.fetchSharingVisibility(ctx, id),
 		"lifecycle_state":   state,
+		"genre_tags":        genreTags,
 		"trashed_at":        trashedAt,
 		"purge_eligible_at": purgeAt,
 		"created_at":        createdAt,
@@ -481,6 +497,19 @@ func (s *Server) patchBook(w http.ResponseWriter, r *http.Request) {
 	if _, ok := in["summary"]; ok {
 		setClauses = append(setClauses, fmt.Sprintf("summary=$%d", paramIdx))
 		args = append(args, stringFromAny(in["summary"]))
+		paramIdx++
+	}
+	if v, ok := in["genre_tags"]; ok {
+		tags := make([]string, 0)
+		if arr, ok := v.([]any); ok {
+			for _, item := range arr {
+				if s, ok := item.(string); ok {
+					tags = append(tags, s)
+				}
+			}
+		}
+		setClauses = append(setClauses, fmt.Sprintf("genre_tags=$%d", paramIdx))
+		args = append(args, tags)
 		paramIdx++
 	}
 	query := fmt.Sprintf("UPDATE books SET %s WHERE id=$1 AND owner_user_id=$2", strings.Join(setClauses, ", "))

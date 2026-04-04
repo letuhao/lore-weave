@@ -43,7 +43,9 @@ P3-08 Genre Groups — Backend-first implementation (tag-based, no activation ma
 | Planning: rewrote P3-08a/b/c → BE-G1..G5 + FE-G1..G7 (12 tasks, backend-first) | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | this session |
 | BE-G1: `genre_groups` table + CRUD (4 endpoints, 24/24 tests pass) | `migrate.go`, `genres_handler.go` (new), `genres_crud.go` (new), `domain/genres.go` (new), `server.go`, `main.go` | this session |
 | BE-G1 review: UUID validation, cross-book re-fetch, length limits | `genres_crud.go`, `genres_handler.go` | this session |
-| BE-G2: `attribute_definitions.genre_tags` column + CRUD (9/9 tests pass) | `migrate.go`, `kinds_crud.go`, `kinds_handler.go`, `domain/kinds.go` | this session |
+| BE-G2: `attribute_definitions.genre_tags` column + CRUD (12/12 tests pass) | `migrate.go`, `kinds_crud.go`, `kinds_handler.go`, `domain/kinds.go` | this session |
+| BE-G2 review: patchAttrDef re-fetch add kind_id + error check | `kinds_crud.go` | this session |
+| BE-G3: `books.genre_tags` column + CRUD (8/8 tests pass) | book-service `migrate.go`, `server.go` | this session |
 
 **9-phase workflow followed:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
