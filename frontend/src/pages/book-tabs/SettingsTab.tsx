@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Save, Loader2, Upload, Trash2, X, ChevronDown, Check, Plus, Info } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Save, Loader2, Upload, X, ChevronDown, Check, Plus, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
+import { apiJson } from '@/api';
 import { booksApi, type Book, type Visibility } from '@/features/books/api';
 import { glossaryApi } from '@/features/glossary/api';
-import type { GenreGroup, EntityKind } from '@/features/glossary/types';
 import { cn } from '@/lib/utils';
 
 type Props = {
@@ -16,7 +16,6 @@ type Props = {
 
 export function SettingsTab({ bookId, book, onReload }: Props) {
   const { accessToken } = useAuth();
-  const queryClient = useQueryClient();
 
   // ── Form state ──
   const [title, setTitle] = useState(book.title);
@@ -45,12 +44,17 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
     setVisibility((book.visibility as Visibility) ?? 'private');
   }, [book]);
 
-  // Fetch cover
+  // Fetch cover (revoke old blob URL to prevent memory leak)
   useEffect(() => {
     if (!accessToken || !book.has_cover) { setCoverUrl(null); return; }
+    let revoked = false;
     booksApi.getCover(accessToken, bookId)
-      .then((blob) => setCoverUrl(URL.createObjectURL(blob)))
+      .then((blob) => {
+        if (revoked) return;
+        setCoverUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(blob); });
+      })
       .catch(() => setCoverUrl(null));
+    return () => { revoked = true; };
   }, [accessToken, bookId, book.has_cover]);
 
   // Fetch genres for this book
@@ -138,11 +142,8 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
   const handleRemoveCover = async () => {
     if (!accessToken) return;
     try {
-      await fetch(`${import.meta.env.VITE_API_BASE || ''}/v1/books/${bookId}/cover`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      setCoverUrl(null);
+      await apiJson<void>(`/v1/books/${bookId}/cover`, { method: 'DELETE', token: accessToken });
+      setCoverUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
       toast.success('Cover removed');
       onReload();
     } catch (e) {
