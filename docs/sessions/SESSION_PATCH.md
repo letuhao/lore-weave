@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-04 (session 19 end)
-- Updated By: Assistant (P3-08 Genre Groups — 12 tasks complete, 26 commits)
+- Last Updated: 2026-04-05 (session 20 end)
+- Updated By: Assistant (E2E fixes + P3-KE backend complete — 8 commits, 67/67 integration tests)
 - Active Branch: `main`
-- HEAD: `64799f8` — fix(frontend): FE-G7 review — multi-genre select (OR logic)
+- HEAD: `88da9b4` — fix(glossary): patchKind re-fetch includes entity_count subquery
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -31,7 +31,33 @@
 
 ## Current Active Work
 
-**Phase:** P3-08 Genre Groups COMPLETE. Next: P4-04 Reading/Theme unification or Phase 7 Infra.
+**Phase:** P3-KE Kind Editor Enhancement — backend COMPLETE (6/6). Next: FE-KE-01..07 (frontend).
+
+**What was done in this session (2026-04-05, session 20):**
+
+E2E browser review fixes (8 issues) + P3-KE Kind Editor Enhancement backend (6 tasks). 8 commits, 67/67 integration tests.
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| B1: Fix raw \u2026 in trash search placeholder | `TrashPage.tsx` | `b2f60d4` |
+| B2: Genre tags on public book detail page | `PublicBookDetailPage.tsx` | `b2f60d4` |
+| B3: "Back to Workspace" link on 404 page | `PlaceholderPage.tsx` | `b2f60d4` |
+| B4: Recharts negative dimension warning | `DailyChart.tsx` | `b2f60d4` |
+| U1: Display Name field on registration | `RegisterPage.tsx` | `b2f60d4` |
+| U3: Lazy-load BookDetailPage tabs (mount on first visit) | `BookDetailPage.tsx` | `b2f60d4` |
+| U4: Genre tags on workspace book cards | `BooksPage.tsx` | `b2f60d4` |
+| Critical fix: null-guard genre_tags (11 access sites, 5 files) | `EntityEditorModal.tsx`, `GenreGroupsPanel.tsx`, `GlossaryTab.tsx`, `KindEditor.tsx`, `SettingsTab.tsx` | `b2f60d4` |
+| P3-KE plan added to 99A (13 tasks, BE-first strategy) | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | `b2f60d4` |
+| BE-KE-01: Kind + attr description field — expose existing columns | `domain/kinds.go`, `kinds_handler.go`, `kinds_crud.go` | `b2f60d4`, `67879aa` |
+| BE-KE-02: Entity count per kind — correlated subquery in listKinds | `domain/kinds.go`, `kinds_handler.go` | `731ab9d` |
+| BE-KE-03: Attribute is_active toggle — migration + CRUD | `migrate.go`, `domain/kinds.go`, `kinds_handler.go`, `kinds_crud.go` | `2a76891` |
+| BE-KE-04: Attribute inline edit validation — field_type allowlist, empty name rejection | `kinds_crud.go` | `3da6932` |
+| BE-KE-05: Attr description — already covered by BE-KE-01 | — | — |
+| BE-KE-06: Sort order reorder endpoints (kinds + attrs) | `server.go`, `kinds_crud.go` | `96fd331` |
+| Review fix: patchKind re-fetch missing entity_count subquery | `kinds_crud.go` | `88da9b4` |
+| Integration test suite: 67 scenarios, all pass | `infra/test-kind-editor-enhance.sh` | `67879aa`..`96fd331` |
+
+**9-phase workflow followed for each BE-KE task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
 **What was done in this session (2026-04-04, session 19):**
 

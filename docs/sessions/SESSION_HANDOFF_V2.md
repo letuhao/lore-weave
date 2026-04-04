@@ -1,100 +1,98 @@
-# Session Handoff — Session 19
+# Session Handoff — Session 20
 
 > **Purpose:** Give the next agent complete context to continue.
-> **Date:** 2026-04-04 (session 19 end)
-> **Last commit:** `64799f8` — fix(frontend): FE-G7 review — multi-genre select (OR logic)
-> **Total commits this session:** 26
-> **Previous focus:** V1→V2 migration complete, Phase 6 Chat done (session 18)
-> **Current focus:** P3-08 Genre Groups COMPLETE — full backend + frontend, 12 tasks, 65 BE tests.
+> **Date:** 2026-04-05 (session 20 end)
+> **Last commit:** `88da9b4` — fix(glossary): patchKind re-fetch includes entity_count subquery
+> **Total commits this session:** 8
+> **Previous focus:** P3-08 Genre Groups complete (session 19)
+> **Current focus:** E2E fixes + P3-KE Kind Editor Enhancement backend COMPLETE (6/6 tasks, 67/67 tests)
 
 ---
 
-## 1. What Happened This Session — 26 commits
+## 1. What Happened This Session — 8 commits
 
-### P3-08 Genre Groups (tag-based, no activation matrix)
+### E2E Browser Review Fixes (8 issues from browser Claude)
+- B1: Raw `\u2026` in trash placeholder → replaced with `…`
+- B2: Genre tags missing on public book detail → added pills
+- B3: 404 page stranded (no nav) → added "Back to Workspace" link
+- B4: Recharts negative dimension warning → `minWidth`/`minHeight`
+- U1: Registration missing Display Name → added field + API wiring
+- U2: Glossary entity rows not clickable → already fixed (verified)
+- U3: BookDetailPage eager tab loading → lazy mount-on-first-visit
+- U4: Genre tags missing on workspace cards → added pills
 
-Design decision: replaced activation matrix with simple `genre_tags: string[]` on kinds, attributes, and books. Genres are per-book definitions in `genre_groups` table; kinds/attrs are tagged with genre names; entity editor filters attrs by book genre intersection.
+### Critical Fix: genre_tags null guards
+The `genre_tags` field can be `null`/`undefined` from the API for data created before the genre feature. 11 access points across 5 files were crashing React (`.length` on undefined). All fixed with `?? []` guards.
 
-**Backend (BE-G1..G5) — 5 services touched:**
-- BE-G1: `genre_groups` table + CRUD in glossary-service (4 endpoints)
-- BE-G2: `attribute_definitions.genre_tags` column + CRUD update
-- BE-G3: `books.genre_tags` column + CRUD update
-- BE-G4: Catalog genre filter (`?genre=` param, OR logic, comma-separated)
-- BE-G5: Integration test script (65 scenarios, all pass)
-- Bonus: pre-existing title scan bug fix in `getBookProjection`
+### P3-KE Kind Editor Enhancement — Backend (6/6 done)
 
-**Frontend (FE-G1..G7) — 12 files touched:**
-- FE-G1: Types + API client (GenreGroup, genre CRUD, genre_tags on all types)
-- FE-G2: Genre Groups tab in GlossaryTab (list + detail + CRUD modal + rename cascade)
-- FE-G3: Kind Editor genre_tags row (tag pills, Enter to add, Save with kind)
-- FE-G4: Attribute genre_tags pills on rows + in create form
-- FE-G5: Entity Editor genre filter (hide attrs not matching book genres) + kind dropdown filter
-- FE-G6: Full Book SettingsTab (P3-21 — basic info, cover, genre selector, visibility)
-- FE-G7: Browse genre filter (multi-select chips, dynamic from catalog data, book card genre pills)
+| Task | What | DB change? | Tests |
+|---|---|---|---|
+| BE-KE-01 | Kind + attr `description` exposed in API | No (column existed) | 24 |
+| BE-KE-02 | `entity_count` per kind via subquery | No | +8 = 32 |
+| BE-KE-03 | Attr `is_active` toggle | Yes (new column) | +10 = 42 |
+| BE-KE-04 | Attr edit validation (field_type allowlist, empty name) | No | +18 = 60 |
+| BE-KE-05 | Attr description | Covered by BE-KE-01 | — |
+| BE-KE-06 | Reorder endpoints (kinds + attrs) | No (new endpoints) | +7 = 67 |
 
----
-
-## 2. Key Architecture Changes
-
-### Genre System — Tag-Based Scoping
-- `genre_groups` table: per-book genre definitions (name, color, description)
-- `entity_kinds.genre_tags TEXT[]`: kind appears in entity forms when book has matching genre (empty/universal = always)
-- `attribute_definitions.genre_tags TEXT[]`: attr shows when book has matching genre (empty = always)
-- `books.genre_tags TEXT[]`: user-selected genres for the book
-- Catalog `?genre=` filter: OR logic, comma-separated
-- No activation matrix — pure string tag intersection
-
-### Book SettingsTab — P3-21 Implemented
-- Replaces placeholder in BookDetailPage
-- 4 sections: Basic Info, Cover Image, Genre Tags, Visibility
-- Genre selector: multi-select from book's genre_groups, colored pills, impact preview
-- Dirty tracking + partial PATCH (only changed fields)
-
-### Entity Editor Genre Filter
-- `bookGenreTags` prop drilled from BookDetailPage → GlossaryTab → EntityEditorModal
-- Attributes filtered client-side: show if `attr.genre_tags` is empty OR intersects `book.genre_tags`
-- Kind dropdown in "New Entity" also filtered by genre match
+Review fix: `patchKind` re-fetch was missing `entity_count` subquery.
 
 ---
 
-## 3. What's Next
+## 2. What's Next
 
-### Priority 1 — Feature Development
+### Immediate — FE-KE-01..07 (Kind Editor frontend enhancement)
+
+All backend is ready. Frontend tasks in order:
+
+| Task | What |
+|---|---|
+| FE-KE-01 | Kind metadata panel (description textarea, entity count display) |
+| FE-KE-02 | Attribute inline edit modal (pencil icon → edit form) |
+| FE-KE-03 | Attribute toggle on/off switch (uses `is_active`) |
+| FE-KE-04 | Drag-to-reorder kinds (`/kinds/reorder` endpoint) |
+| FE-KE-05 | Drag-to-reorder attributes (`/attributes/reorder` endpoint) |
+| FE-KE-06 | Genre-colored dots on tag pills |
+| FE-KE-07 | Modified indicator + Revert to default (stretch) |
+
+### After P3-KE
 1. P4-04: Reading/Theme unification (big refactor, 6 sub-tasks)
-2. Translation Workbench (split-view editing, draft exists)
-
-### Priority 2 — Polish
-3. Phase 4: Browse polish, Author analytics
-4. Phase 4.5: Audio/TTS
-
-### Priority 3 — Technical Debt
-5. Phase 7: Infrastructure Hardening
-   - INF-01: Service-to-service auth (X-Internal-Token everywhere)
-   - INF-02: Internal HTTP client with timeout + retry
-   - INF-03: Structured JSON logging
-   - INF-04: Health check deep mode
+2. Translation Workbench (split-view editing)
+3. Phase 7: Infrastructure Hardening
 
 ---
 
-## 4. Key Files for Next Agent
+## 3. Key Files for Next Agent
 
 | File | Purpose |
 |------|---------|
-| `CLAUDE.md` | Project rules, 9-phase workflow |
 | `docs/sessions/SESSION_PATCH.md` | Current status |
-| `docs/03_planning/99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | Full task list (genre tasks marked done) |
-| `infra/test-genre-groups.sh` | Genre integration tests (65 scenarios) |
-| `services/glossary-service/internal/api/genres_*.go` | Genre CRUD handlers |
-| `services/glossary-service/internal/api/kinds_*.go` | Kind/attr CRUD (with genre_tags) |
-| `services/book-service/internal/api/server.go` | Book CRUD + projection (with genre_tags) |
-| `services/catalog-service/internal/api/server.go` | Catalog filter (with genre param) |
-| `frontend/src/features/glossary/components/` | GenreGroupsPanel, GenreFormModal |
-| `frontend/src/pages/book-tabs/KindEditor.tsx` | Kind + attr genre_tags editing |
-| `frontend/src/pages/book-tabs/SettingsTab.tsx` | Full book settings (P3-21) |
-| `frontend/src/components/entity-editor/EntityEditorModal.tsx` | Entity editor with genre filter |
-| `frontend/src/features/browse/FilterBar.tsx` | Browse genre chips (multi-select) |
-| `design-drafts/screen-glossary-management.html` | Glossary management design (tag-based) |
-| `design-drafts/screen-genre-groups.html` | Genre modal, book settings, browse filter designs |
+| `docs/03_planning/99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | Full task list (P3-KE section has BE done, FE pending) |
+| `services/glossary-service/internal/api/kinds_crud.go` | All kind/attr CRUD + reorder handlers |
+| `services/glossary-service/internal/api/kinds_handler.go` | listKinds with description, entity_count, is_active |
+| `services/glossary-service/internal/domain/kinds.go` | EntityKind + AttrDef structs |
+| `services/glossary-service/internal/api/server.go` | Route registration (includes /reorder) |
+| `infra/test-kind-editor-enhance.sh` | 67 integration tests for BE-KE |
+| `frontend/src/pages/book-tabs/KindEditor.tsx` | Current KindEditor (FE-KE target) |
+| `design-drafts/screen-glossary-management.html` | Design reference for gap analysis |
+
+---
+
+## 4. API Surface Added
+
+```
+PATCH /v1/glossary/kinds/reorder                              — { kind_ids: string[] }
+PATCH /v1/glossary/kinds/:kindId/attributes/reorder           — { attr_def_ids: string[] }
+```
+
+Fields added to existing endpoints:
+- `description: string|null` on EntityKind and AttrDef (all CRUD)
+- `entity_count: number` on EntityKind (listKinds + patchKind response)
+- `is_active: boolean` on AttrDef (listKinds, createAttrDef, patchAttrDef)
+
+Validation added to `patchAttrDef`:
+- `field_type` must be one of: text, textarea, select, number, date, tags, url, boolean
+- `name` must not be empty
 
 ---
 
@@ -102,11 +100,9 @@ Design decision: replaced activation matrix with simple `genre_tags: string[]` o
 
 | Issue | Severity | Note |
 |-------|----------|------|
-| Export endpoint missing genre_tags | Medium | F1 from BE audit — defer to AI/RAG pipeline work |
-| Genre rename doesn't cascade automatically via BE | Medium | FE does client-side cascade (Promise.allSettled). Works but not atomic. |
-| Internal endpoints no auth | Medium | Planned: Phase 7 INF-01 |
-| Internal HTTP calls no timeout | Medium | Planned: Phase 7 INF-02 |
+| FE genre_tags null guards (11 sites) | Fixed | Was crashing React on glossary tab |
+| Frontend types don't include `description`, `entity_count`, `is_active` | Medium | FE types need updating when FE-KE starts |
+| Export endpoint missing genre_tags | Medium | Defer to AI/RAG pipeline work |
+| Genre rename cascade not atomic (client-side Promise.allSettled) | Medium | Works but not transactional |
 | Vite build chunk size warning (1.8MB) | Low | Needs code splitting |
-| recharts not installed (build fails) | Low | Pre-existing, usage charts only |
-| `patchKind`/`patchAttrDef` use string-based duplicate detection | Low | Should use SQLSTATE 23505, systemic |
-| Browse genre chips extracted from page results only | Low | If genres only exist on books not in first 200, they won't show |
+| Browse genre chips from page results only | Low | Genres on books outside first 200 won't show |
