@@ -18,6 +18,11 @@ Chat with any LLM. System prompts, generation parameters, thinking mode with rea
 
 ![Chat with Session Settings](docs/screenshots/chat-enhanced.png)
 
+### Rich Editor with AI Assistant Mode
+Mixed media editor with text, images, audio narration, AI prompts, grammar checking, and source view. Visual/Source toggle, chapter sidebar, and grammar panel.
+
+![AI Editor Mode](docs/screenshots/editor-ai-mode.png)
+
 ### Chapter Editor
 Paragraph-level editing with revision history, chunk selection, inline translation, and AI context tools.
 
