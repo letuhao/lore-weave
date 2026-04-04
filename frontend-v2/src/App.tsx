@@ -36,6 +36,7 @@ import { UsagePage } from '@/pages/UsagePage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { BrowsePage } from '@/pages/BrowsePage';
 import { PublicBookDetailPage } from '@/pages/PublicBookDetailPage';
+import { SharedBookPage } from '@/pages/SharedBookPage';
 
 export function App() {
   return (
@@ -73,7 +74,7 @@ export function App() {
 
           {/* Public reader — unlisted/public books readable without login */}
           <Route element={<FullBleedLayout />}>
-            <Route path="/s/:accessToken" element={<PlaceholderPage title="Shared Book" description="Unlisted access — coming in P4." />} />
+            <Route path="/s/:accessToken" element={<SharedBookPage />} />
           </Route>
 
           {/* ── Protected routes (auth required) ── */}

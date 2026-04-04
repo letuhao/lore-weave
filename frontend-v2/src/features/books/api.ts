@@ -282,7 +282,12 @@ export const booksApi = {
     );
   },
   getUnlisted(accessToken: string) {
-    return apiJson<{ book_id: string; title: string; summary_excerpt?: string; original_language?: string; chapter_count?: number }>(
+    return apiJson<{
+      book_id: string; title: string; description?: string | null;
+      summary_excerpt?: string | null; original_language?: string | null;
+      has_cover?: boolean; cover_url?: string | null;
+      chapter_count?: number; visibility?: string;
+    }>(
       `/v1/sharing/unlisted/${accessToken}`,
     );
   },
@@ -291,12 +296,21 @@ export const booksApi = {
     if (params?.limit) qs.set('limit', String(params.limit));
     if (params?.offset) qs.set('offset', String(params.offset));
     const query = qs.toString();
-    return apiJson<{ items: Array<{ chapter_id: string; title?: string | null; sort_order: number; original_language: string }>; total: number; limit?: number; offset?: number }>(
+    return apiJson<{
+      items: Array<{
+        chapter_id: string; title?: string | null; sort_order: number;
+        original_language: string; word_count_estimate?: number;
+      }>;
+      total: number; limit?: number; offset?: number;
+    }>(
       `/v1/sharing/unlisted/${accessToken}/chapters${query ? `?${query}` : ''}`,
     );
   },
   getUnlistedChapter(accessToken: string, chapterId: string) {
-    return apiJson<{ chapter_id: string; title?: string | null; sort_order: number; original_language: string; body: string }>(
+    return apiJson<{
+      chapter_id: string; title?: string | null; sort_order: number;
+      original_language: string; body: any; text_content?: string;
+    }>(
       `/v1/sharing/unlisted/${accessToken}/chapters/${chapterId}`,
     );
   },
