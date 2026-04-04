@@ -31,7 +31,7 @@ function AttrRow({ attr, onDelete }: { attr: import('@/features/glossary/types')
           ) : (
             <span className="rounded bg-primary/15 px-1 py-0.5 text-[9px] font-medium text-primary">USR</span>
           )}
-          {attr.genre_tags.length > 0 && attr.genre_tags.map((tag) => (
+          {attr.genre_tags.map((tag) => (
             <span key={tag} className="rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[8px] font-medium text-violet-400">
               {tag}
             </span>
