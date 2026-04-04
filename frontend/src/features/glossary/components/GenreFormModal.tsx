@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Plus, Pencil } from 'lucide-react';
+import { X, Plus } from 'lucide-react';
 import type { GenreGroup } from '../types';
 
 const COLOR_PRESETS = [
@@ -8,7 +8,6 @@ const COLOR_PRESETS = [
 ];
 
 type Props = {
-  bookId: string;
   genre?: GenreGroup | null;
   onSave: (data: { name: string; color: string; description: string }) => Promise<void>;
   onClose: () => void;
@@ -24,11 +23,11 @@ export function GenreFormModal({ genre, onSave, onClose }: Props) {
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && !saving) onClose();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose]);
+  }, [onClose, saving]);
 
   const handleSubmit = async () => {
     const trimmed = name.trim();

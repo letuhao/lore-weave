@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Plus, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '../api';
@@ -57,8 +57,9 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
   }, [taggedAttrs]);
 
   const handleCreate = async (data: { name: string; color: string; description: string }) => {
-    await glossaryApi.createGenre(bookId, data, accessToken!);
+    const created = await glossaryApi.createGenre(bookId, data, accessToken!);
     toast.success('Genre created');
+    setSelectedId(created.id);
     setModalMode(null);
     invalidate();
   };
@@ -261,10 +262,10 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
 
       {/* Modals */}
       {modalMode === 'create' && (
-        <GenreFormModal bookId={bookId} onSave={handleCreate} onClose={() => setModalMode(null)} />
+        <GenreFormModal onSave={handleCreate} onClose={() => setModalMode(null)} />
       )}
       {modalMode === 'edit' && selected && (
-        <GenreFormModal bookId={bookId} genre={selected} onSave={handleEdit} onClose={() => setModalMode(null)} />
+        <GenreFormModal genre={selected} onSave={handleEdit} onClose={() => setModalMode(null)} />
       )}
       <ConfirmDialog
         open={!!deleteTarget}
