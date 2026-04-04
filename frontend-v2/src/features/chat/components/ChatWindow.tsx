@@ -57,6 +57,7 @@ export function ChatWindow({
 
   function handleDeleteMessage(messageId: string) {
     if (!accessToken) return;
+    if (!confirm('Delete this message? This cannot be undone.')) return;
     chatApi.deleteMessage(accessToken, session.session_id, messageId)
       .then(() => { chat.refresh(); })
       .catch((err) => { toast.error(`Delete failed: ${(err as Error).message}`); });

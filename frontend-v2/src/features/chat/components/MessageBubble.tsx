@@ -69,6 +69,13 @@ export function MessageBubble({
     [messageHasContext, rawContent],
   );
 
+  // Parse content_parts safely
+  const contentParts = message.content_parts as {
+    reasoning?: string;
+    response_time_ms?: number;
+    time_to_first_token_ms?: number;
+  } | null;
+
   // Extract code blocks from assistant messages to show as OutputCards
   const codeOutputs = useMemo<ChatOutput[]>(() => {
     if (isUser || isStreamingMsg) return [];
@@ -135,14 +142,14 @@ export function MessageBubble({
                 reasoning={
                   isStreamingMsg
                     ? streamingReasoning
-                    : (message.content_parts as { reasoning?: string } | null)?.reasoning
+                    : contentParts?.reasoning
                 }
                 isThinkingStreaming={isStreamingMsg ? isThinkingStreaming : false}
                 thinkingElapsed={isStreamingMsg ? thinkingElapsed : undefined}
                 inputTokens={message.input_tokens}
                 outputTokens={message.output_tokens}
-                responseTimeMs={(message.content_parts as any)?.response_time_ms}
-                timeToFirstTokenMs={(message.content_parts as any)?.time_to_first_token_ms}
+                responseTimeMs={contentParts?.response_time_ms}
+                timeToFirstTokenMs={contentParts?.time_to_first_token_ms}
               />
               {codeOutputs.length > 0 && (
                 <div className="mt-2 space-y-1.5">

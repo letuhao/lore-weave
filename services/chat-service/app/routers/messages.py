@@ -242,8 +242,8 @@ async def delete_message(
         raise HTTPException(status_code=404, detail="session not found")
 
     result = await pool.execute(
-        "DELETE FROM chat_messages WHERE message_id=$1 AND session_id=$2",
-        str(message_id), str(session_id),
+        "DELETE FROM chat_messages WHERE message_id=$1 AND session_id=$2 AND owner_user_id=$3",
+        str(message_id), str(session_id), user_id,
     )
     try:
         deleted = int(result.split()[-1])
