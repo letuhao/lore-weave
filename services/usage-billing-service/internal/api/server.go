@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -257,19 +258,30 @@ WHERE owner_user_id=$1
 		return
 	}
 
-	inputCipher, inputKeyCipher, keyRef, err := s.encryptPayload(in.InputPayload)
+	// Generate one session key for both payloads so decrypt works with single stored key
+	sessionKey := make([]byte, 32)
+	if _, err := rand.Read(sessionKey); err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_ENCRYPTION_FAILED", "failed to generate session key")
+		return
+	}
+	inputPlain, _ := json.Marshal(in.InputPayload)
+	outputPlain, _ := json.Marshal(in.OutputPayload)
+	inputCipher, err := encryptWithKey(sessionKey, inputPlain)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_ENCRYPTION_FAILED", "failed to encrypt input payload")
 		return
 	}
-	outputCipher, outputKeyCipher, _, err := s.encryptPayload(in.OutputPayload)
+	outputCipher, err := encryptWithKey(sessionKey, outputPlain)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_ENCRYPTION_FAILED", "failed to encrypt output payload")
 		return
 	}
-	if inputKeyCipher != outputKeyCipher {
-		outputKeyCipher = inputKeyCipher
+	keyCipherRaw, err := encryptWithKey(s.secretKey, sessionKey)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_ENCRYPTION_FAILED", "failed to encrypt session key")
+		return
 	}
+	keyRef := uuid.New().String()
 
 	var usageLogID uuid.UUID
 	err = tx.QueryRow(r.Context(), `
@@ -294,7 +306,7 @@ ON CONFLICT (usage_log_id) DO UPDATE SET
   payload_encryption_key_ciphertext = EXCLUDED.payload_encryption_key_ciphertext,
   input_payload_ciphertext = EXCLUDED.input_payload_ciphertext,
   output_payload_ciphertext = EXCLUDED.output_payload_ciphertext
-`, usageLogID, inputKeyCipher, inputCipher, outputCipher)
+`, usageLogID, keyCipherRaw, inputCipher, outputCipher)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_BILLING_RECORD_FAILED", "failed to write usage log details")
 		return
@@ -468,14 +480,23 @@ FROM usage_log_details WHERE usage_log_id=$1
 	if err == nil && keyCipher != "" {
 		if sessionKey, err2 := decryptWithKey(s.secretKey, keyCipher); err2 == nil {
 			if inputPlain, err3 := decryptWithKey(sessionKey, inputCipher); err3 == nil {
-				_ = json.Unmarshal(inputPlain, &inputPayload)
+				if err4 := json.Unmarshal(inputPlain, &inputPayload); err4 != nil {
+					log.Printf("[billing] input unmarshal failed: %v (len=%d)", err4, len(inputPlain))
+				}
+			} else {
+				log.Printf("[billing] input decrypt failed: %v", err3)
 			}
 			if outputPlain, err3 := decryptWithKey(sessionKey, outputCipher); err3 == nil {
-				_ = json.Unmarshal(outputPlain, &outputPayload)
+				if err4 := json.Unmarshal(outputPlain, &outputPayload); err4 != nil {
+					log.Printf("[billing] output unmarshal failed: %v (len=%d)", err4, len(outputPlain))
+				}
+			} else {
+				log.Printf("[billing] output decrypt failed: %v", err3)
 			}
+		} else {
+			log.Printf("[billing] session key decrypt failed: %v", err2)
 		}
 	}
-	// If no details row or decrypt failed, payloads stay as empty maps (not an error)
 	tx, err := s.pool.Begin(r.Context())
 	if err == nil {
 		_, _ = tx.Exec(r.Context(), `INSERT INTO usage_log_decrypt_audits(usage_log_id, owner_user_id) VALUES ($1,$2)`, usageLogID, userID)

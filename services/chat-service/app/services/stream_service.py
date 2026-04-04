@@ -327,6 +327,8 @@ async def stream_response(
                     output_tokens=output_tok or 0,
                     session_id=session_id,
                     message_id=msg_id,
+                    input_payload={"messages": messages},
+                    output_payload={"content": final_text, "reasoning": final_reasoning or None},
                 )
             )
 

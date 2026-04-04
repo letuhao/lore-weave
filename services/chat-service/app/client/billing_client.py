@@ -22,6 +22,8 @@ class BillingClient:
         output_tokens: int,
         session_id: str,
         message_id: str,
+        input_payload: dict | list | None = None,
+        output_payload: dict | str | None = None,
     ) -> None:
         payload = {
             "request_id": str(uuid4()),
@@ -33,6 +35,8 @@ class BillingClient:
             "output_tokens": output_tokens,
             "request_status": "success",
             "purpose": "chat",
+            "input_payload": input_payload or {},
+            "output_payload": output_payload if isinstance(output_payload, dict) else {"content": output_payload or ""},
         }
         try:
             async with httpx.AsyncClient(timeout=10) as client:
