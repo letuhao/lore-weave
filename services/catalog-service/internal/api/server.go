@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"sort"
@@ -286,10 +287,15 @@ func (s *Server) getPublicBook(w http.ResponseWriter, r *http.Request) {
 func (s *Server) fetchBookLanguages(bookID uuid.UUID) []map[string]any {
 	u := fmt.Sprintf("%s/internal/books/%s/languages", strings.TrimRight(s.cfg.TranslationServiceInternalURL, "/"), bookID)
 	res, err := http.Get(u)
-	if err != nil || res.StatusCode != http.StatusOK {
-		return nil
+	if err != nil {
+		log.Printf("[catalog] failed to fetch languages for book %s: %v", bookID, err)
+		return []map[string]any{}
 	}
 	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		log.Printf("[catalog] translation-service returned %d for book %s languages", res.StatusCode, bookID)
+		return []map[string]any{}
+	}
 	var out struct {
 		Languages []struct {
 			Language     string `json:"language"`

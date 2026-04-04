@@ -51,12 +51,24 @@ async def health() -> str:
 # ── Internal endpoints (no auth — service-to-service only) ─────────────────
 
 from uuid import UUID
+from typing import List
 from fastapi import Depends
+from pydantic import BaseModel
 from .database import get_pool
 import asyncpg
 
 
-@app.get("/internal/books/{book_id}/languages")
+class LanguageInfo(BaseModel):
+    language: str
+    chapter_count: int
+
+
+class BookLanguagesResponse(BaseModel):
+    book_id: str
+    languages: List[LanguageInfo]
+
+
+@app.get("/internal/books/{book_id}/languages", response_model=BookLanguagesResponse)
 async def get_book_languages(book_id: UUID, db: asyncpg.Pool = Depends(get_pool)):
     """Return list of target languages that have at least one completed translation."""
     rows = await db.fetch(
@@ -69,10 +81,10 @@ async def get_book_languages(book_id: UUID, db: asyncpg.Pool = Depends(get_pool)
         """,
         book_id,
     )
-    return {
-        "book_id": str(book_id),
-        "languages": [
-            {"language": r["target_language"], "chapter_count": r["chapter_count"]}
+    return BookLanguagesResponse(
+        book_id=str(book_id),
+        languages=[
+            LanguageInfo(language=r["target_language"], chapter_count=r["chapter_count"])
             for r in rows
         ],
-    }
+    )
