@@ -47,6 +47,9 @@ P3-08 Genre Groups — Backend-first implementation (tag-based, no activation ma
 | BE-G2 review: patchAttrDef re-fetch add kind_id + error check | `kinds_crud.go` | this session |
 | BE-G3: `books.genre_tags` column + CRUD (8/8 tests pass) | book-service `migrate.go`, `server.go` | this session |
 | BE-G4: Catalog genre filter + projection (8/8 tests pass) | book-service `server.go` (projection), catalog-service `server.go` | this session |
+| BE-G4 review: nil guard on genreTags in projection | book-service `server.go` | this session |
+| Fix: getBookProjection cover scan overwrites title variable (pre-existing bug) | book-service `server.go` | this session |
+| BE-G5: Integration test script (65 scenarios, all pass) | `infra/test-genre-groups.sh` (new) | this session |
 
 **9-phase workflow followed:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
