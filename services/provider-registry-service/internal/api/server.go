@@ -633,6 +633,10 @@ ORDER BY provider_model_name ASC
 		})
 		syncedAt = &rowSyncedAt
 	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_INVENTORY_QUERY_FAILED", "failed to read inventory rows")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "synced_at": syncedAt})
 }
 

@@ -116,18 +116,26 @@ func getJSON(ctx context.Context, client *http.Client, url string, headers map[s
 		return nil, fmt.Errorf("http: %w", err)
 	}
 	defer res.Body.Close()
-	raw, err := io.ReadAll(res.Body)
+	// Limit response size to 10MB to prevent OOM
+	raw, err := io.ReadAll(io.LimitReader(res.Body, 10<<20))
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
 	}
+	if res.StatusCode >= 400 {
+		return nil, fmt.Errorf("provider error %d: %s", res.StatusCode, string(raw[:min(len(raw), 200)]))
+	}
 	var out map[string]any
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, fmt.Errorf("unmarshal (status %d): %s", res.StatusCode, string(raw))
-	}
-	if res.StatusCode >= 400 {
-		return nil, fmt.Errorf("provider error %d", res.StatusCode)
+		return nil, fmt.Errorf("unmarshal: expected JSON, got %s", string(raw[:min(len(raw), 100)]))
 	}
 	return out, nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func extractMessages(input map[string]any) []map[string]any {
