@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Plus, Search, Filter, Trash2, Settings2 } from 'lucide-react';
+import { BookOpen, Plus, Search, Filter, Trash2, Settings2, Layers } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
@@ -9,7 +9,10 @@ import { Skeleton } from '@/components/shared/Skeleton';
 import { EmptyState, ConfirmDialog } from '@/components/shared';
 import { cn } from '@/lib/utils';
 import { KindEditor } from './KindEditor';
+import { GenreGroupsPanel } from '@/features/glossary/components/GenreGroupsPanel';
 import { EntityEditorModal } from '@/components/entity-editor';
+
+type GlossaryView = 'entities' | 'kinds' | 'genres';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-amber-400/15 text-amber-400',
@@ -36,7 +39,7 @@ export function GlossaryTab({ bookId }: { bookId: string }) {
   const [filterOpen, setFilterOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<GlossaryEntitySummary | null>(null);
   const [createKindOpen, setCreateKindOpen] = useState(false);
-  const [showKinds, setShowKinds] = useState(false);
+  const [view, setView] = useState<GlossaryView>('entities');
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
 
   const { data: entityData, isLoading: entitiesLoading, error: entitiesError } = useQuery({
@@ -90,8 +93,11 @@ export function GlossaryTab({ bookId }: { bookId: string }) {
 
   const activeFilterCount = (filters.kindCodes.length > 0 ? 1 : 0) + (filters.status !== 'all' ? 1 : 0);
 
-  if (showKinds) {
-    return <KindEditor onClose={() => setShowKinds(false)} />;
+  if (view === 'kinds') {
+    return <KindEditor onClose={() => setView('entities')} />;
+  }
+  if (view === 'genres') {
+    return <GenreGroupsPanel bookId={bookId} kinds={kinds} onClose={() => setView('entities')} />;
   }
 
   if (loading && entities.length === 0) {
@@ -120,7 +126,14 @@ export function GlossaryTab({ bookId }: { bookId: string }) {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowKinds(true)}
+            onClick={() => setView('genres')}
+            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          >
+            <Layers className="h-3.5 w-3.5" />
+            Genres
+          </button>
+          <button
+            onClick={() => setView('kinds')}
             className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           >
             <Settings2 className="h-3.5 w-3.5" />
