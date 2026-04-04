@@ -1,138 +1,191 @@
-# 🌌 LoreWeave
+# LoreWeave
 
 **The Open Source Creative Home for Novelists.**
 
-LoreWeave is a community-driven project designed to help hobbyist authors, world-builders, and fans of web novels create, translate, and share their stories. It combines the power of AI with the art of storytelling to help you keep your "lore" consistent across every chapter and every language.
+LoreWeave is a self-hosted platform for writing, translating, and sharing multilingual novels. It combines AI assistance with deep worldbuilding tools to help you keep your lore consistent across every chapter and every language.
+
+BYOK (Bring Your Own Key) — works with OpenAI, Anthropic, LM Studio, Ollama, and any OpenAI-compatible provider.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Open Source](https://img.shields.io/badge/Open%20Source-❤️-blue.svg)](https://opensource.org/how-to-contribute/)
+[![Open Source](https://img.shields.io/badge/Open%20Source-Community-blue.svg)](https://github.com/)
 
 ---
 
-## ✨ Features Built for Storytellers
+## Screenshots
 
-LoreWeave is more than just a digital notebook—it's an assistant that "understands" your world.
+### AI Chat with Thinking Mode
+Chat with any LLM. System prompts, generation parameters, thinking mode with real-time reasoning display, message branching, prompt templates.
 
-### ✍️ Novel Creation & AI Assistance
-Whether you're brainstorming a new plot or polishing dialogue, LoreWeave’s upcoming **Creative Assistant** is being designed to act as your co-author, ensuring every new idea stays true to your established story history.
+![Chat with Session Settings](docs/screenshots/chat-enhanced.png)
 
-### 📚 The Lore Weaver (Customizable Glossary) — *Next Milestone*
-Never forget a character's detail or a location's history. 
-*   **Track Everything**: Create entries for Characters, Locations, Items, and more.
-*   **Evidence-Based**: Link your lore entries directly to the specific lines in your chapters.
-*   **Highly Customizable**: Add any attribute you need to keep your world-building deep and organized.
+### Chapter Editor
+Paragraph-level editing with revision history, chunk selection, inline translation, and AI context tools.
 
-### 🌍 Share Your Worlds
-Build your novel, translate it for friends around the world, and showcase your universe to a community of like-minded hobbyists.
+![Chapter Editor](docs/screenshots/chapter-editor.png)
 
----
+### Immersive Reader
+Clean reading mode with table of contents, multi-language support, and chapter navigation.
 
-## 🏗️ The LoreWeave Ecosystem (Modules)
+![Reader](docs/screenshots/reader.png)
 
-LoreWeave is composed of several specialized services working together. This modular "microservices" approach ensures the platform is fast, scalable, and easy to extend.
+### Translation Matrix
+Batch translate chapters across multiple languages. Track progress, manage translation jobs, review status per chapter.
 
-### 🎨 Frontend & Gateway
-| Service | Technology | Role | Port |
-| :--- | :--- | :--- | :--- |
-| **Frontend** | React + Vite | Premium UI with **Tailwind CSS**. | `5173` |
-| **API Gateway (BFF)** | NestJS | Orchestrates all backend requests. | `3000` |
+![Translation Matrix](docs/screenshots/translation.png)
 
-### 🔑 Identity & Foundation
-| Service | Technology | Role | Port |
-| :--- | :--- | :--- | :--- |
-| **Auth Service** | Go (Golang) | Identity and profile management. | `8081` |
-| **Mailhog** | SMTP | Local email testing service. | `8025 (UI)` |
+### Browse & Discover
+Public catalog with genre filtering, language chips, search, and book cards.
 
-### 📖 Narrative & Sharing
-| Service | Technology | Role | Port |
-| :--- | :--- | :--- | :--- |
-| **Book Service** | Go (Golang) | Book and chapter management. | `8082` |
-| **Sharing Service** | Go (Golang) | Visibility and ownership permissions. | `8083` |
-| **Catalog Service** | Go (Golang) | Public discovery and browsing. | `8084` |
+![Browse Catalog](docs/screenshots/browse-catalog.png)
 
-### 🤖 AI & Intelligent Pipelines
-| Service | Technology | Role | Port |
-| :--- | :--- | :--- | :--- |
-| **Provider Registry** | Go (Golang) | Connect your AI keys (BYOK). | `8085` |
-| **Usage & Billing** | Go (Golang) | Monitor AI consumption and credits. | `8086` |
-| **Translation Service** | Node/TS | Translation job lifecycle management. | `8087` |
-| **Translation Worker** | Node/TS | Async job execution via RabbitMQ. | `-` |
+### Glossary & Lore Management
+Entity kinds (Character, Location, Item, etc.), custom attributes, system vs user fields, cross-reference tracking.
 
-### 🗄️ Infrastructure (Engines)
-| Engine | Technology | Role | Port |
-| :--- | :--- | :--- | :--- |
-| **PostgreSQL** | Relational DB | The "Source of Truth" for all data. | `5432` |
-| **MinIO** | Object Storage | Cloud-native storage for your book files. | `9000` |
-| **RabbitMQ** | Message Broker | Handles background and async tasks. | `5672` |
+![Glossary Management](docs/screenshots/glossary.png)
+
+### Entity Editor
+Card-based attribute editing with system/user separation, tags, evidence linking, and relationship tracking.
+
+![Entity Editor](docs/screenshots/entity-editor.png)
+
+### AI Usage Monitor
+Track token usage, costs, and performance across all AI operations. Per-model and per-purpose breakdowns.
+
+![Usage Monitor](docs/screenshots/usage-monitor.png)
 
 ---
 
-## 🤖 Suggested AI Models (BYOK)
+## Features
 
-LoreWeave is model-agnostic. You can bring your own keys from major cloud providers or host your own local models for total privacy.
+### Writing & Editing
+- Tiptap-based rich text editor with AI and Classic modes
+- Paragraph-level chunk editing and selection
+- Revision history with restore, version comparison
+- Media blocks: images, video, code (AI mode)
+- Source view (block JSON inspector)
 
-### 🌍 For Story Translation
-| Focus | Cloud (API) | Self-Hosted (Local) |
-| :--- | :--- | :--- |
-| **Premium Quality** | **GPT-4o** / **Claude 3.5 Sonnet** | **Llama 3.1 70B** |
-| **Budget Friendly** | **DeepSeek-V3** / **DeepSeek-R1** | **Gemma 3 27B** |
+### AI Chat
+- Multi-provider streaming (OpenAI, Anthropic, LM Studio, Ollama)
+- Thinking mode — real-time reasoning display (Qwen3, DeepSeek-R1)
+- System prompts with presets (Novelist, Translator, Worldbuilder, Editor)
+- Generation parameters (temperature, top_p, max_tokens)
+- Message branching — edit creates branch, not delete
+- Prompt template library (type "/" to search)
+- Response format pills (Concise, Detailed, Bullets, Table)
+- Token usage and timing metrics per message (TTFT, response time)
+- Context attachment (books, chapters, glossary entities)
+- Auto-title generation from first exchange
 
-### 🧠 For Lore Context (Context Compact)
-Fast models used for lore extraction, context distillation, and RAG.
-| Focus | Cloud (API) | Self-Hosted (Local) |
-| :--- | :--- | :--- |
-| **High Speed** | **GPT-4o-mini** / **Claude 3 Haiku** | **Phi-4 Mini** / **Gemma 3 4B** |
-| **Deep Reasoning** | **Gemini 1.5 Flash** | **Llama 3.1 8B** |
+### Translation
+- Batch translation pipeline with async workers
+- Translation matrix — status per chapter per language
+- Per-chunk inline translation from editor
+- Multi-language support (any language pair)
 
-> [!TIP]
-> For **Local Hosting**, we recommend using **[Ollama](https://ollama.com/)** or **[LM Studio](https://lmstudio.ai/)** to expose your models via an OpenAI-compatible API.
+### Worldbuilding
+- Customizable entity kinds (Character, Location, Item, Organization, etc.)
+- Dynamic attributes — add any field type (text, number, list, relationships)
+- Evidence linking — tie lore entries to specific chapter paragraphs
+- System + User attribute separation
+
+### Community
+- Public book catalog with search, genre, and language filters
+- Sharing — public, unlisted (link-only), private visibility
+- User profiles
+
+### Platform
+- BYOK — bring your own API keys from any provider
+- Dynamic model discovery from provider APIs (58+ LM Studio models auto-detected)
+- AI usage monitoring with cost estimates and daily breakdowns
+- Recycle bin with restore
+- Settings: Account, Providers, Translation, Reading, Language
 
 ---
 
-## 🗺️ Roadmap & Current Situation
+## Architecture
 
-The weave is growing fast! We have completed the core functional layers for the basic novel lifecycle.
+Self-hosted Docker Compose monorepo with 11 microservices.
 
-### 📍 Current Situation: **Phase 1 Foundations (Usable)**
-The platform is now **functionally usable** across the core modules:
+```
+Frontend (React/Vite) ──> API Gateway (NestJS) ──> Microservices
+                                                      ├── auth-service (Go)
+                                                      ├── book-service (Go)
+                                                      ├── sharing-service (Go)
+                                                      ├── catalog-service (Go)
+                                                      ├── provider-registry (Go)
+                                                      ├── usage-billing (Go)
+                                                      ├── translation-service (Go)
+                                                      ├── glossary-service (Go)
+                                                      ├── chat-service (Python/FastAPI)
+                                                      └── video-gen-service (Python)
+Data: PostgreSQL (per-service DBs) + Redis Streams + MinIO (objects)
+```
 
-*   **✅ Identity & Books**: Secure registration and book management are fully active.
-*   **✅ Discovery & Sharing**: Books can be shared and browsed in the catalog.
-*   **✅ AI Providers**: BYOK registration and usage metering are live.
-*   **✅ Raw Translation**: (*Final Stages*) Functional async translation pipeline is live and smoke-tested. 
-
-### 🚀 Upcoming Milestones
-- [ ] **UI/UX Polishing** — A dedicated wave to improve the look and feel of the current tools. 
-- [ ] **Phase 2: The Lore Weaver** — The advanced, AI-assisted glossary and world-building engine.
-- [ ] **Phase 3: Creator Assistance** — Brainstorming and writing tools for authors.
+| Layer | Tech | Purpose |
+|-------|------|---------|
+| Frontend | React + Vite + Tailwind + shadcn/ui | Premium dark UI |
+| Gateway | NestJS | Route all external traffic |
+| Domain Services | Go / Chi | Books, auth, sharing, glossary, providers |
+| AI Services | Python / FastAPI | Chat streaming, translation, video gen |
+| Data | PostgreSQL 18 | Per-service databases with JSONB |
+| Objects | MinIO | Media uploads, exports |
+| Events | Redis Streams | Async job processing |
 
 ---
 
-## 🛠️ Join the Weave (Local Dev)
+## Quick Start
 
-Want to help build LoreWeave? You can get the project running in minutes.
-
-### 🐳 The Quickest Start (Docker)
-Run the entire platform in one command:
+### Docker (recommended)
 ```bash
 cd infra
 docker compose up --build
 ```
-> Access the UI at: [http://localhost:5173](http://localhost:5173)
+Access the UI at [http://localhost:5173](http://localhost:5173)
 
-### 🛠️ Manual / Hybrid Start
-1. **Infra**: `cd infra && docker compose up -d postgres minio rabbitmq mailhog`
-2. **Setup**: Copy `.env.example` to `.env` in the services you're working on.
-3. **Frontend**: `cd frontend && npm run dev`
+### Manual / Hybrid
+1. **Infra**: `cd infra && docker compose up -d postgres minio redis mailhog`
+2. **Services**: Start individual services (see each service's README)
+3. **Frontend**: `cd frontend-v2 && npm install && npm run dev`
 
 ---
 
-## 🤝 Contributing & Community
+## AI Models (BYOK)
 
-LoreWeave is for everyone. If you're a developer, artist, or author, we'd love for you to join us!
+LoreWeave is model-agnostic. Connect any provider:
 
-*   **Documentation**: Check out the [docs/](docs/) folder for our architectural plans and designs.
-*   **Governance**: We follow a [Contract-First Approach](contracts/) using OpenAPI.
-*   **License**: This project is licensed under the **[MIT License](LICENSE)**.
+| Provider | Setup | Dynamic Model Fetch |
+|----------|-------|-------------------|
+| **OpenAI** | API key | 110+ models auto-discovered |
+| **Anthropic** | API key | 8 models with rich capabilities |
+| **LM Studio** | Local URL | 58+ models with context length, type detection |
+| **Ollama** | Local URL | Local models auto-listed |
+| **Custom** | Any OpenAI-compatible endpoint | Dynamic fetch supported |
 
-Developed with ❤️ for the Creative Community.
+### Recommended Models
+
+| Use Case | Cloud | Self-Hosted |
+|----------|-------|-------------|
+| Novel writing | GPT-5, Claude Sonnet 4.6 | Qwen3-32B, Llama 3 70B |
+| Translation | Claude Opus 4.6, GPT-4.1 | Qwen3-14B |
+| Quick tasks | GPT-5-nano, Claude Haiku 4.5 | Qwen3-1.7B, Gemma 3 4B |
+
+---
+
+## Documentation
+
+- `docs/03_planning/` — Module planning docs, task lists
+- `docs/sessions/` — Session logs and handoff docs
+- `design-drafts/` — 30 interactive HTML design mockups
+- `contracts/api/` — OpenAPI specs per service
+
+---
+
+## Contributing
+
+LoreWeave is for everyone. Developers, artists, translators, and authors welcome.
+
+- **License**: [MIT](LICENSE)
+- **Architecture**: Contract-first microservices
+- **Docs**: See [docs/](docs/) folder
+
+Developed with care for the Creative Community.
