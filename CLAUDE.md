@@ -12,7 +12,7 @@ Source of truth for current status: `docs/sessions/SESSION_PATCH.md`
 
 Monorepo layout:
 - `services/` — microservices (Go/Chi, Python/FastAPI, TypeScript/NestJS)
-- `frontend/` — Vite + React + Tailwind + shadcn/ui
+- `frontend-v2/` — Vite + React + Tailwind + shadcn/ui
 - `contracts/api/` — OpenAPI specs per service domain
 - `docs/` — governance, planning, and session docs
 - `infra/` — docker-compose and infra config
