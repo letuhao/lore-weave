@@ -1,3 +1,4 @@
+import json
 from uuid import UUID
 
 import asyncpg
@@ -20,7 +21,7 @@ def _row_to_message(r: asyncpg.Record) -> ChatMessage:
         owner_user_id=r["owner_user_id"],
         role=r["role"],
         content=r["content"],
-        content_parts=r["content_parts"],
+        content_parts=json.loads(r["content_parts"]) if isinstance(r["content_parts"], str) else r["content_parts"],
         sequence_num=r["sequence_num"],
         input_tokens=r["input_tokens"],
         output_tokens=r["output_tokens"],

@@ -42,6 +42,7 @@ async def _stream_openai_compatible(
             "model": model_name,
             "messages": messages,
             "stream": True,
+            "stream_options": {"include_usage": True},
         }
         if gen_params.get("temperature") is not None:
             kwargs["temperature"] = gen_params["temperature"]
@@ -52,7 +53,16 @@ async def _stream_openai_compatible(
 
         response = await client.chat.completions.create(**kwargs)
         async for chunk in response:
+            if not chunk.choices and not getattr(chunk, "usage", None):
+                continue
+            # Final chunk may have usage but no choices
             if not chunk.choices:
+                yield {
+                    "content": "",
+                    "reasoning_content": "",
+                    "finish_reason": None,
+                    "usage": getattr(chunk, "usage", None),
+                }
                 continue
             delta = chunk.choices[0].delta
             # OpenAI SDK preserves extra fields in model_extra
