@@ -158,8 +158,74 @@ type openaiAdapter struct {
 
 const openaiBaseURL = "https://api.openai.com"
 
-func (a *openaiAdapter) ListModels(_ context.Context, _ string, _ string) ([]ModelInventory, error) {
-	return a.staticInventory, nil
+func (a *openaiAdapter) ListModels(ctx context.Context, endpointBaseURL, secret string) ([]ModelInventory, error) {
+	base := strings.TrimRight(endpointBaseURL, "/")
+	if base == "" {
+		base = openaiBaseURL
+	}
+	headers := map[string]string{}
+	if secret != "" {
+		headers["Authorization"] = "Bearer " + secret
+	}
+	out, err := getJSON(ctx, a.client, base+"/v1/models", headers)
+	if err != nil {
+		// Fallback to static inventory if API call fails
+		return a.staticInventory, nil
+	}
+	data, ok := out["data"].([]any)
+	if !ok || len(data) == 0 {
+		return a.staticInventory, nil
+	}
+	return parseOpenAIModels(data), nil
+}
+
+func parseOpenAIModels(data []any) []ModelInventory {
+	var models []ModelInventory
+	for _, item := range data {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := m["id"].(string)
+		if id == "" {
+			continue
+		}
+		cap := classifyOpenAIModel(id)
+		flags := map[string]any{
+			"_capability":   cap,
+			"_display_name": id,
+		}
+		// Detect thinking models
+		if strings.HasPrefix(id, "o1") || strings.HasPrefix(id, "o3") || strings.HasPrefix(id, "o4") {
+			flags["thinking"] = true
+		}
+		models = append(models, ModelInventory{
+			ProviderModelName: id,
+			CapabilityFlags:   flags,
+		})
+	}
+	return models
+}
+
+func classifyOpenAIModel(id string) string {
+	switch {
+	case strings.Contains(id, "embedding") || strings.Contains(id, "ada-002"):
+		return "embedding"
+	case strings.Contains(id, "dall-e") || strings.Contains(id, "gpt-image") || strings.Contains(id, "sora") || id == "chatgpt-image-latest":
+		return "image_gen"
+	case strings.Contains(id, "tts") || strings.Contains(id, "whisper"):
+		return "tts"
+	case strings.Contains(id, "audio") || strings.Contains(id, "realtime"):
+		return "audio"
+	case strings.Contains(id, "transcribe"):
+		return "stt"
+	case strings.Contains(id, "moderation"):
+		return "moderation"
+	case strings.HasPrefix(id, "davinci") || strings.HasPrefix(id, "babbage"):
+		return "completion"
+	default:
+		return "chat"
+	}
 }
 
 func (a *openaiAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any) (map[string]any, Usage, error) {
@@ -202,8 +268,85 @@ type anthropicAdapter struct {
 
 const anthropicBaseURL = "https://api.anthropic.com"
 
-func (a *anthropicAdapter) ListModels(_ context.Context, _ string, _ string) ([]ModelInventory, error) {
-	return a.staticInventory, nil
+func (a *anthropicAdapter) ListModels(ctx context.Context, endpointBaseURL, secret string) ([]ModelInventory, error) {
+	base := strings.TrimRight(endpointBaseURL, "/")
+	if base == "" {
+		base = anthropicBaseURL
+	}
+	headers := map[string]string{
+		"x-api-key":         secret,
+		"anthropic-version": "2023-06-01",
+	}
+	out, err := getJSON(ctx, a.client, base+"/v1/models", headers)
+	if err != nil {
+		return a.staticInventory, nil
+	}
+	data, ok := out["data"].([]any)
+	if !ok || len(data) == 0 {
+		return a.staticInventory, nil
+	}
+	return parseAnthropicModels(data), nil
+}
+
+func parseAnthropicModels(data []any) []ModelInventory {
+	var models []ModelInventory
+	for _, item := range data {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := m["id"].(string)
+		displayName, _ := m["display_name"].(string)
+		if id == "" {
+			continue
+		}
+		if displayName == "" {
+			displayName = id
+		}
+		flags := map[string]any{
+			"_capability":   "chat",
+			"_display_name": displayName,
+		}
+		// Parse context length
+		var ctxLen *int
+		if v, ok := m["max_input_tokens"].(float64); ok && v > 0 {
+			n := int(v)
+			ctxLen = &n
+		}
+		// Parse rich capabilities
+		if caps, ok := m["capabilities"].(map[string]any); ok {
+			if isSupported(caps, "thinking") {
+				flags["thinking"] = true
+			}
+			if isSupported(caps, "image_input") {
+				flags["vision"] = true
+			}
+			if isSupported(caps, "pdf_input") {
+				flags["pdf"] = true
+			}
+			if isSupported(caps, "code_execution") {
+				flags["code_execution"] = true
+			}
+			if isSupported(caps, "structured_outputs") {
+				flags["structured_outputs"] = true
+			}
+		}
+		models = append(models, ModelInventory{
+			ProviderModelName: id,
+			ContextLength:     ctxLen,
+			CapabilityFlags:   flags,
+		})
+	}
+	return models
+}
+
+func isSupported(caps map[string]any, key string) bool {
+	if v, ok := caps[key].(map[string]any); ok {
+		if sup, ok := v["supported"].(bool); ok {
+			return sup
+		}
+	}
+	return false
 }
 
 func (a *anthropicAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any) (map[string]any, Usage, error) {

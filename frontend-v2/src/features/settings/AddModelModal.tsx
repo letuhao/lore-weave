@@ -32,6 +32,7 @@ type Props = {
 export function AddModelModal({ provider, onClose, onAdded }: Props) {
   const { accessToken } = useAuth();
   const [inventory, setInventory] = useState<InventoryModel[]>([]);
+  const [syncedAt, setSyncedAt] = useState<string | null>(null);
   const [loadingInv, setLoadingInv] = useState(true);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<InventoryModel | null>(null);
@@ -50,7 +51,7 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
     if (!accessToken) return;
     setLoadingInv(true);
     providerApi.listInventory(accessToken, provider.provider_credential_id, refresh)
-      .then((res) => { setInventory(res.items ?? []); })
+      .then((res) => { setInventory(res.items ?? []); setSyncedAt(res.synced_at ?? null); })
       .catch((e) => { if (refresh) toast.error(`Failed to fetch models: ${(e as Error).message}`); })
       .finally(() => setLoadingInv(false));
   }, [accessToken, provider.provider_credential_id]);
@@ -156,6 +157,42 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
             </button>
             <button onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
               <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Sync info bar */}
+        <div className="flex items-center justify-between border-b bg-secondary/30 px-5 py-2">
+          <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+            <span className="font-medium">{inventory.length} models</span>
+            {inventory.length > 0 && (
+              <>
+                <span>&middot;</span>
+                {Object.entries(
+                  inventory.reduce<Record<string, number>>((acc, m) => {
+                    const cap = (getInventoryMeta(m).capability || 'chat');
+                    acc[cap] = (acc[cap] || 0) + 1;
+                    return acc;
+                  }, {}),
+                ).map(([cap, count]) => (
+                  <span key={cap} className={cn('rounded px-1.5 py-0.5 text-[9px] font-medium border', CAP_STYLES[cap] || 'bg-secondary text-muted-foreground border-border')}>
+                    {count} {CAP_LABELS[cap] || cap}
+                  </span>
+                ))}
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+            {syncedAt && (
+              <span>Fetched {new Date(syncedAt).toLocaleString()}</span>
+            )}
+            <button
+              onClick={() => { fetchInventory(true); toast.info('Refreshing models from provider...'); }}
+              disabled={loadingInv}
+              className="flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium text-accent hover:bg-accent/10 disabled:opacity-40 transition-colors"
+            >
+              <RefreshCw className={`h-3 w-3 ${loadingInv ? 'animate-spin' : ''}`} />
+              Refresh
             </button>
           </div>
         </div>
