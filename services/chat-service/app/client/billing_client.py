@@ -1,6 +1,11 @@
+import logging
+from uuid import uuid4
+
 import httpx
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class BillingClient:
@@ -19,20 +24,23 @@ class BillingClient:
         message_id: str,
     ) -> None:
         payload = {
+            "request_id": str(uuid4()),
             "owner_user_id": user_id,
             "model_source": model_source,
             "model_ref": model_ref,
             "provider_kind": provider_kind,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
-            "source": "chat",
-            "source_ref": message_id,
+            "request_status": "success",
+            "purpose": "chat",
         }
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                await client.post(f"{self._base}/v1/model-billing/usage", json=payload)
-        except Exception:
-            pass  # billing is best-effort, never block the stream
+                resp = await client.post(f"{self._base}/internal/model-billing/record", json=payload)
+                if resp.status_code >= 400:
+                    logger.warning("Billing record failed (%d): %s", resp.status_code, resp.text[:200])
+        except Exception as exc:
+            logger.debug("Billing log_usage failed: %s", exc)
 
 
 _client: BillingClient | None = None
