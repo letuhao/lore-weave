@@ -75,6 +75,7 @@ type bookProjection struct {
 	CoverURL         *string    `json:"cover_url"`
 	ChapterCount     int        `json:"chapter_count"`
 	LifecycleState   string     `json:"lifecycle_state"`
+	GenreTags        []string   `json:"genre_tags"`
 	CreatedAt        *time.Time `json:"created_at"`
 }
 
@@ -161,7 +162,19 @@ func (s *Server) listPublicBooks(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query().Get("q")
 	language := r.URL.Query().Get("language")
+	genre := r.URL.Query().Get("genre") // filter by genre tag (OR if comma-separated)
 	sortBy := r.URL.Query().Get("sort") // recent, chapters, alpha
+
+	// Parse genre filter into a set for fast lookup
+	genreFilter := make(map[string]bool)
+	if genre != "" {
+		for _, g := range strings.Split(genre, ",") {
+			g = strings.TrimSpace(g)
+			if g != "" {
+				genreFilter[g] = true
+			}
+		}
+	}
 
 	// Fetch a large page to allow client-side filter/sort
 	// (sharing-service handles the "public" gate, we filter further here)
@@ -187,6 +200,23 @@ func (s *Server) listPublicBooks(w http.ResponseWriter, r *http.Request) {
 		if language != "" && (p.OriginalLanguage == nil || *p.OriginalLanguage != language) {
 			continue
 		}
+		// Genre filter (OR logic: book must have at least one matching genre tag)
+		if len(genreFilter) > 0 {
+			matched := false
+			for _, t := range p.GenreTags {
+				if genreFilter[t] {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+		}
+		genreTags := p.GenreTags
+		if genreTags == nil {
+			genreTags = []string{}
+		}
 		all = append(all, entry{
 			data: map[string]any{
 				"book_id":           p.BookID,
@@ -197,6 +227,7 @@ func (s *Server) listPublicBooks(w http.ResponseWriter, r *http.Request) {
 				"has_cover":         p.HasCover,
 				"cover_url":         p.CoverURL,
 				"chapter_count":     p.ChapterCount,
+				"genre_tags":        genreTags,
 				"visibility":        "public",
 				"created_at":        p.CreatedAt,
 			},
@@ -268,18 +299,23 @@ func (s *Server) getPublicBook(w http.ResponseWriter, r *http.Request) {
 	// Fetch available translation languages (best-effort, non-blocking)
 	languages := s.fetchBookLanguages(p.BookID)
 
+	genreTags := p.GenreTags
+	if genreTags == nil {
+		genreTags = []string{}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"book_id":           p.BookID,
-		"owner_user_id":     p.OwnerUserID,
-		"title":             p.Title,
-		"description":       p.Description,
-		"original_language": p.OriginalLanguage,
-		"summary_excerpt":   p.SummaryExcerpt,
-		"has_cover":         p.HasCover,
-		"cover_url":         p.CoverURL,
-		"chapter_count":     p.ChapterCount,
-		"visibility":        "public",
-		"created_at":        p.CreatedAt,
+		"book_id":             p.BookID,
+		"owner_user_id":       p.OwnerUserID,
+		"title":               p.Title,
+		"description":         p.Description,
+		"original_language":   p.OriginalLanguage,
+		"summary_excerpt":     p.SummaryExcerpt,
+		"has_cover":           p.HasCover,
+		"cover_url":           p.CoverURL,
+		"chapter_count":       p.ChapterCount,
+		"genre_tags":          genreTags,
+		"visibility":          "public",
+		"created_at":          p.CreatedAt,
 		"available_languages": languages,
 	})
 }
