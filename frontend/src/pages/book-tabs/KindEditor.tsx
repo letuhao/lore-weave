@@ -351,7 +351,7 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
                   />
                 </div>
                 <span className="flex-shrink-0 text-[9px] text-muted-foreground">
-                  Kind shows when book has matching genre
+                  Empty = all books
                 </span>
               </div>
 
