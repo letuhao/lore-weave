@@ -368,6 +368,99 @@ T24_TERM_COUNT=$(echo "$KINDS5" | node -e "
 assert_eq "T24 entity_count is a number (not null)" "NUMBER" "$T24_TERM_COUNT"
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# BE-KE-03: Attribute is_active toggle
+# ═══════════════════════════════════════════════════════════════════════════════
+header "BE-KE-03a: is_active in listKinds"
+
+# T25: listKinds attrs have is_active key
+KINDS6=$(curl -s -H "$AUTH" "$GATEWAY/v1/glossary/kinds")
+T25_HAS_KEY=$(echo "$KINDS6" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    const attrs=j[0].default_attributes;
+    console.log(attrs.length>0 && 'is_active' in attrs[0] ? 'HAS_KEY' : 'MISSING');
+  });" 2>/dev/null)
+assert_eq "T25 attr has is_active key" "HAS_KEY" "$T25_HAS_KEY"
+
+# T26: Existing attrs default to is_active=true
+T26_VAL=$(echo "$KINDS6" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    const attrs=j[0].default_attributes;
+    console.log(attrs.length>0 && attrs[0].is_active === true ? 'true' : 'false');
+  });" 2>/dev/null)
+assert_eq "T26 existing attr is_active defaults true" "true" "$T26_VAL"
+
+header "BE-KE-03b: createAttrDef returns is_active=true"
+
+# T27: Create attr — response has is_active=true
+A3=$(curl -s -X POST "$GATEWAY/v1/glossary/kinds/$NEW_KIND_ID/attributes" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"code":"toggle_test","name":"Toggle Test","field_type":"text"}')
+ATTR_ID3=$(echo "$A3" | jget .attr_def_id)
+assert_not_empty "T27 create attr (got id)" "$ATTR_ID3"
+T27_ACTIVE=$(echo "$A3" | jget .is_active)
+assert_eq "T27 new attr is_active=true" "true" "$T27_ACTIVE"
+
+header "BE-KE-03c: patchAttrDef toggle is_active"
+
+# T28: Patch attr to deactivate (is_active=false)
+APATCH3=$(curl -s -X PATCH "$GATEWAY/v1/glossary/kinds/$NEW_KIND_ID/attributes/$ATTR_ID3" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"is_active":false}')
+assert_eq "T28 patch is_active=false" "false" "$(echo "$APATCH3" | jget .is_active)"
+
+# T29: Verify deactivated attr persists in listKinds
+KINDS7=$(curl -s -H "$AUTH" "$GATEWAY/v1/glossary/kinds")
+T29_VAL=$(echo "$KINDS7" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    const spell=j.find(k=>k.code==='test_spell');
+    if(!spell){console.log('NOT_FOUND');return;}
+    const a=spell.default_attributes.find(a=>a.code==='toggle_test');
+    console.log(a ? String(a.is_active) : 'NOT_FOUND');
+  });" 2>/dev/null)
+assert_eq "T29 listKinds shows is_active=false" "false" "$T29_VAL"
+
+# T30: Patch attr back to active (is_active=true)
+APATCH4=$(curl -s -X PATCH "$GATEWAY/v1/glossary/kinds/$NEW_KIND_ID/attributes/$ATTR_ID3" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"is_active":true}')
+assert_eq "T30 patch is_active=true" "true" "$(echo "$APATCH4" | jget .is_active)"
+
+# T31: Toggle doesn't affect other fields
+assert_eq "T31 name unchanged after toggle" "Toggle Test" "$(echo "$APATCH4" | jget .name)"
+assert_eq "T31 field_type unchanged after toggle" "text" "$(echo "$APATCH4" | jget .field_type)"
+
+# T32: Deactivating system attr is allowed
+SYS_ATTR_ID=$(echo "$KINDS6" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    const ch=j.find(k=>k.code==='character');
+    if(!ch){console.log('');return;}
+    const a=ch.default_attributes.find(a=>a.is_system && a.code!=='name');
+    console.log(a ? a.attr_def_id : '');
+  });" 2>/dev/null)
+
+if [ -n "$SYS_ATTR_ID" ]; then
+  APATCH5_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$GATEWAY/v1/glossary/kinds/$CHAR_KIND_ID/attributes/$SYS_ATTR_ID" \
+    -H "$AUTH" -H "Content-Type: application/json" \
+    -d '{"is_active":false}')
+  assert_status "T32 deactivate system attr allowed" "200" "$APATCH5_STATUS"
+
+  # Restore it back
+  curl -s -X PATCH "$GATEWAY/v1/glossary/kinds/$CHAR_KIND_ID/attributes/$SYS_ATTR_ID" \
+    -H "$AUTH" -H "Content-Type: application/json" \
+    -d '{"is_active":true}' > /dev/null 2>&1
+else
+  red "T32 could not find system attr to test"; FAIL=$((FAIL+1))
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Cleanup: delete test kinds + book
 # ═══════════════════════════════════════════════════════════════════════════════
 header "Cleanup"

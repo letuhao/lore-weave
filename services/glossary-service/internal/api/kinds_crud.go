@@ -227,6 +227,7 @@ func (s *Server) createAttrDef(w http.ResponseWriter, r *http.Request) {
 		Description: in.Description,
 		FieldType:   in.FieldType,
 		IsRequired:  in.IsRequired,
+		IsActive:    true,
 		SortOrder:   in.SortOrder,
 		Options:     in.Options,
 		GenreTags:   in.GenreTags,
@@ -271,6 +272,11 @@ func (s *Server) patchAttrDef(w http.ResponseWriter, r *http.Request) {
 		args = append(args, v)
 		i++
 	}
+	if v, ok := in["is_active"]; ok {
+		sets += comma(sets) + "is_active=$" + itoa(i)
+		args = append(args, v)
+		i++
+	}
 	if v, ok := in["sort_order"]; ok {
 		sets += comma(sets) + "sort_order=$" + itoa(i)
 		args = append(args, v)
@@ -309,9 +315,9 @@ func (s *Server) patchAttrDef(w http.ResponseWriter, r *http.Request) {
 
 	var a domain.AttrDef
 	err = s.pool.QueryRow(r.Context(), `
-		SELECT attr_def_id, code, name, description, field_type, is_required, is_system, sort_order, options, genre_tags
+		SELECT attr_def_id, code, name, description, field_type, is_required, is_system, is_active, sort_order, options, genre_tags
 		FROM attribute_definitions WHERE attr_def_id=$1 AND kind_id=$2`, attrDefID, kindID,
-	).Scan(&a.AttrDefID, &a.Code, &a.Name, &a.Description, &a.FieldType, &a.IsRequired, &a.IsSystem, &a.SortOrder, &a.Options, &a.GenreTags)
+	).Scan(&a.AttrDefID, &a.Code, &a.Name, &a.Description, &a.FieldType, &a.IsRequired, &a.IsSystem, &a.IsActive, &a.SortOrder, &a.Options, &a.GenreTags)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to re-fetch attribute")
 		return
@@ -355,7 +361,7 @@ func (s *Server) deleteAttrDef(w http.ResponseWriter, r *http.Request) {
 // loadAttrDefs fetches attribute definitions for a kind.
 func (s *Server) loadAttrDefs(ctx context.Context, kindID string) []domain.AttrDef {
 	rows, err := s.pool.Query(ctx, `
-		SELECT attr_def_id, code, name, description, field_type, is_required, is_system, sort_order, options, genre_tags
+		SELECT attr_def_id, code, name, description, field_type, is_required, is_system, is_active, sort_order, options, genre_tags
 		FROM attribute_definitions WHERE kind_id=$1 ORDER BY sort_order`, kindID)
 	if err != nil {
 		return []domain.AttrDef{}
@@ -364,7 +370,7 @@ func (s *Server) loadAttrDefs(ctx context.Context, kindID string) []domain.AttrD
 	attrs := make([]domain.AttrDef, 0)
 	for rows.Next() {
 		var a domain.AttrDef
-		rows.Scan(&a.AttrDefID, &a.Code, &a.Name, &a.Description, &a.FieldType, &a.IsRequired, &a.IsSystem, &a.SortOrder, &a.Options, &a.GenreTags)
+		rows.Scan(&a.AttrDefID, &a.Code, &a.Name, &a.Description, &a.FieldType, &a.IsRequired, &a.IsSystem, &a.IsActive, &a.SortOrder, &a.Options, &a.GenreTags)
 		attrs = append(attrs, a)
 	}
 	return attrs
