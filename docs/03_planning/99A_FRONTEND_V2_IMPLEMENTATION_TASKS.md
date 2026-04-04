@@ -1651,9 +1651,74 @@ FE-C6-08: Message branching (if time permits)                   [ ]
 
 ---
 
+## Phase 7: Infrastructure Hardening
+
+> **Goal:** Cross-cutting security and reliability improvements.
+> These are systemic issues that should be fixed across ALL services at once,
+> not piecemeal per-feature.
+
+```
+INF-01: Service-to-service authentication [BE]                  [ ]
+  Scope: Standardize internal endpoint auth across all services.
+  Current state:
+    - provider-registry + chat-service: have X-Internal-Token check (partial)
+    - book-service, sharing-service, catalog-service, translation-service:
+      /internal/* endpoints have NO auth — rely on Docker network isolation
+  Plan:
+    - Design shared middleware: validate X-Internal-Token header
+    - Go services: chi middleware that checks header against config
+    - Python services: FastAPI dependency that checks header
+    - Apply to ALL /internal/* endpoints across 6 services
+    - Update all internal HTTP callers to send token
+  Acceptance:
+    - All /internal/* endpoints reject requests without valid token
+    - All service-to-service calls include X-Internal-Token header
+    - Existing integration tests still pass
+  Size: M
+
+INF-02: Internal HTTP client with timeout + retry [BE]          [ ]
+  Scope: Replace raw http.Get() with shared client across all Go services.
+  Current state:
+    - 20+ http.Get() calls with no timeout across catalog, book, sharing services
+    - If downstream service hangs, caller blocks indefinitely
+  Plan:
+    - Create shared httputil package (or per-service helper):
+      - Default timeout: 10s
+      - 1 retry with 500ms backoff
+      - Response body size limit (10MB)
+      - Context propagation from request
+    - Replace all http.Get() calls in:
+      catalog-service (5 calls), book-service (2 calls),
+      translation-service (3 calls), provider-registry (adapter calls)
+  Acceptance:
+    - All internal HTTP calls have 10s timeout
+    - Hanging downstream returns error within 10s, not indefinitely
+    - Logs include caller context on timeout
+  Size: M
+
+INF-03: Structured logging [BE]                                 [ ]
+  Scope: Replace log.Printf with structured JSON logging.
+  Current state: plain text logs, inconsistent format across services.
+  Plan:
+    - Go: slog (stdlib) with JSON handler
+    - Python: structlog or standard logging with JSON formatter
+    - Common fields: service, request_id, user_id, duration
+  Size: M
+
+INF-04: Health check deep mode [BE]                             [ ]
+  Scope: /health endpoints check DB connectivity, not just "process alive".
+  Current state: all /health return "ok" without checking dependencies.
+  Plan:
+    - /health: basic (for Docker healthcheck, fast)
+    - /health/ready: deep (checks DB pool, Redis, downstream services)
+  Size: S
+```
+
+---
+
 ### Size Key: S = <1 session, M = 1-2 sessions, L = 2-4 sessions
 
-### Updated Total: 168 tasks (was 152)
+### Updated Total: 172 tasks (was 168)
 
 | Phase | FE | BE | FS | Total |
 |---|---|---|---|---|
@@ -1666,6 +1731,7 @@ FE-C6-08: Message branching (if time permits)                   [ ]
 | **Phase 4.5** | **4** | **0** | **3** | **7** |
 | Phase 5 | 4 | 1 | 5 | 10 |
 | **Phase 6 (Chat)** | **11** | **0** | **5** | **16** |
+| **Phase 7 (Infra)** | **0** | **4** | **0** | **4** |
 | **Video Gen** | **2** | **7** | **1** | **10** |
 | **Media Versions** | **2** | **5** | **0** | **7** |
 | **V1→V2 Migration** | **10** | **0** | **0** | **10** |
