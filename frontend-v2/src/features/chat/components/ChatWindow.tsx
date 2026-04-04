@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useAuth } from '@/auth';
+import { chatApi } from '../api';
 import type { ChatSession } from '../types';
 import type { useChatMessages } from '../hooks/useChatMessages';
 import type { ContextItem } from '../context/types';
@@ -33,6 +35,7 @@ export function ChatWindow({
   onClearContext,
   onSendWithContext,
 }: ChatWindowProps) {
+  const { accessToken } = useAuth();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const isArchived = session.status === 'archived';
 
@@ -52,11 +55,19 @@ export function ChatWindow({
     });
   }
 
+  function handleDeleteMessage(messageId: string) {
+    if (!accessToken) return;
+    chatApi.deleteMessage(accessToken, session.session_id, messageId)
+      .then(() => { chat.refresh(); })
+      .catch((err) => { toast.error(`Delete failed: ${(err as Error).message}`); });
+  }
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <ChatHeader
         session={session}
         modelNameMap={modelNameMap}
+        messageCount={chat.messages.length}
         onRename={onRename}
         onOpenSettings={() => setSettingsOpen(true)}
       />
@@ -70,6 +81,7 @@ export function ChatWindow({
         isStreaming={chat.isStreaming}
         onEditMessage={!isArchived ? handleEdit : undefined}
         onRegenerateMessage={!isArchived ? handleRegenerate : undefined}
+        onDeleteMessage={!isArchived ? handleDeleteMessage : undefined}
         disabled={isArchived || chat.isStreaming}
         sessionId={session.session_id}
         onSwitchBranch={(branchId) => {

@@ -5,11 +5,13 @@ import type { ChatSession } from '../types';
 interface ChatHeaderProps {
   session: ChatSession;
   modelNameMap?: Map<string, string>;
+  /** Actual message count from loaded messages (overrides session.message_count which may be stale) */
+  messageCount?: number;
   onRename?: () => void;
   onOpenSettings?: () => void;
 }
 
-export function ChatHeader({ session, modelNameMap, onRename, onOpenSettings }: ChatHeaderProps) {
+export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOpenSettings }: ChatHeaderProps) {
   function handleExport(format: 'markdown' | 'json') {
     const url = chatApi.exportUrl(session.session_id, format);
     window.open(url, '_blank');
@@ -21,7 +23,7 @@ export function ChatHeader({ session, modelNameMap, onRename, onOpenSettings }: 
         <h2 className="text-sm font-semibold text-foreground">{session.title}</h2>
         <p className="mt-0.5 text-[11px] text-muted-foreground">
           {modelNameMap?.get(session.model_ref) ?? (session.model_source === 'user_model' ? 'My Model' : 'Platform')} &middot;{' '}
-          {session.message_count} message{session.message_count !== 1 ? 's' : ''}
+          {messageCount ?? session.message_count} message{(messageCount ?? session.message_count) !== 1 ? 's' : ''}
           {session.status === 'archived' && (
             <span className="ml-1.5 rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
               Archived

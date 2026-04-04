@@ -81,6 +81,13 @@ export const chatApi = {
     return `${base()}/v1/chat/outputs/${outputId}/download`;
   },
 
+  deleteMessage(token: string, sessionId: string, messageId: string) {
+    return apiJson<void>(`/v1/chat/sessions/${sessionId}/messages/${messageId}`, {
+      method: 'DELETE',
+      token,
+    });
+  },
+
   // ── Branches ─────────────────────────────────────────────────────────────────
 
   listBranches(token: string, sessionId: string, sequenceNum: number) {

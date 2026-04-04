@@ -1,13 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
-import { Check, Pencil, X } from 'lucide-react';
+import { Check, Pencil, Trash2, X } from 'lucide-react';
+import TextareaAutosize from 'react-textarea-autosize';
 
 interface UserMessageProps {
   content: string;
   onEdit?: (newContent: string) => void;
+  onDelete?: () => void;
   disabled?: boolean;
 }
 
-export function UserMessage({ content, onEdit, disabled }: UserMessageProps) {
+export function UserMessage({ content, onEdit, onDelete, disabled }: UserMessageProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(content);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -41,9 +43,9 @@ export function UserMessage({ content, onEdit, disabled }: UserMessageProps) {
 
   if (editing) {
     return (
-      <div className="space-y-1.5">
-        <textarea
-          ref={textareaRef}
+      <div className="space-y-2">
+        <TextareaAutosize
+          ref={textareaRef as any}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
@@ -53,26 +55,32 @@ export function UserMessage({ content, onEdit, disabled }: UserMessageProps) {
             }
             if (e.key === 'Escape') cancelEdit();
           }}
-          rows={Math.min(8, draft.split('\n').length + 1)}
-          className="w-full resize-none rounded-md border border-border bg-background px-2.5 py-1.5 text-sm leading-relaxed text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          minRows={3}
+          maxRows={16}
+          className="w-full resize-none rounded-md border border-ring bg-background px-3 py-2.5 text-sm leading-relaxed text-foreground focus:outline-none focus:ring-1 focus:ring-ring/50 shadow-[0_0_0_3px_rgba(212,149,42,0.1)]"
         />
-        <div className="flex gap-1 justify-end">
-          <button
-            type="button"
-            onClick={cancelEdit}
-            title="Cancel (Esc)"
-            className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={confirmEdit}
-            title="Confirm (Enter)"
-            className="rounded-md p-1 text-emerald-400 hover:bg-emerald-500/10 transition-colors"
-          >
-            <Check className="h-3.5 w-3.5" />
-          </button>
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-muted-foreground">
+            Enter to confirm &middot; Esc to cancel &middot; Shift+Enter new line
+          </span>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={cancelEdit}
+              title="Cancel (Esc)"
+              className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmEdit}
+              title="Confirm (Enter)"
+              className="rounded-md bg-accent/10 px-2 py-1 text-xs text-accent hover:bg-accent/20 transition-colors"
+            >
+              Save
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -81,15 +89,29 @@ export function UserMessage({ content, onEdit, disabled }: UserMessageProps) {
   return (
     <div className="group relative">
       <p className="whitespace-pre-wrap text-sm leading-relaxed">{content}</p>
-      {onEdit && !disabled && (
-        <button
-          type="button"
-          onClick={startEdit}
-          title="Edit message"
-          className="absolute -bottom-1 -right-1 rounded-md p-1 opacity-0 transition-opacity group-hover:opacity-70 hover:!opacity-100 text-muted-foreground hover:text-foreground"
-        >
-          <Pencil className="h-3 w-3" />
-        </button>
+      {!disabled && (onEdit || onDelete) && (
+        <div className="absolute -bottom-1 -right-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-70 hover:!opacity-100">
+          {onEdit && (
+            <button
+              type="button"
+              onClick={startEdit}
+              title="Edit message"
+              className="rounded-md p-1 text-muted-foreground hover:text-foreground"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              onClick={onDelete}
+              title="Delete message"
+              className="rounded-md p-1 text-muted-foreground hover:text-destructive"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

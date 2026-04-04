@@ -15,6 +15,7 @@ interface MessageBubbleProps {
   isStreamingMsg?: boolean;
   onEdit?: (newContent: string) => void;
   onRegenerate?: () => void;
+  onDelete?: () => void;
   disabled?: boolean;
   /** Streaming reasoning text (only for active streaming message) */
   streamingReasoning?: string;
@@ -49,6 +50,7 @@ export function MessageBubble({
   isStreamingMsg,
   onEdit,
   onRegenerate,
+  onDelete,
   disabled,
   streamingReasoning,
   isThinkingStreaming,
@@ -110,7 +112,7 @@ export function MessageBubble({
         >
           {isUser ? (
             <>
-              <UserMessage content={displayText} onEdit={onEdit} disabled={disabled} />
+              <UserMessage content={displayText} onEdit={onEdit} onDelete={onDelete} disabled={disabled} />
               {/* Branch navigator — shown on edited messages (have parent_message_id) */}
               {message.parent_message_id && sessionId && onSwitchBranch && (
                 <div className="mt-1.5 flex justify-end">
@@ -139,6 +141,8 @@ export function MessageBubble({
                 thinkingElapsed={isStreamingMsg ? thinkingElapsed : undefined}
                 inputTokens={message.input_tokens}
                 outputTokens={message.output_tokens}
+                responseTimeMs={(message.content_parts as any)?.response_time_ms}
+                timeToFirstTokenMs={(message.content_parts as any)?.time_to_first_token_ms}
               />
               {codeOutputs.length > 0 && (
                 <div className="mt-2 space-y-1.5">

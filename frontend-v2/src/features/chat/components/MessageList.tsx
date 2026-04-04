@@ -17,6 +17,7 @@ interface MessageListProps {
   isStreaming: boolean;
   onEditMessage?: (content: string, sequenceNum: number) => void;
   onRegenerateMessage?: (userContent: string, userSequenceNum: number) => void;
+  onDeleteMessage?: (messageId: string) => void;
   disabled?: boolean;
   sessionId?: string;
   onSwitchBranch?: (branchId: number) => void;
@@ -31,6 +32,7 @@ export function MessageList({
   isStreaming,
   onEditMessage,
   onRegenerateMessage,
+  onDeleteMessage,
   disabled,
   sessionId,
   onSwitchBranch,
@@ -62,7 +64,7 @@ export function MessageList({
 
   return (
     <div className="flex-1 overflow-y-auto px-8 py-6">
-      <div className="mx-auto flex max-w-[720px] flex-col gap-5">
+      <div className="mx-auto flex w-full max-w-[720px] 2xl:max-w-[900px] flex-col gap-5">
         {messages.map((msg, i) => (
           <MessageBubble
             key={msg.message_id}
@@ -78,6 +80,11 @@ export function MessageList({
                     const user = findPrecedingUser(i);
                     if (user) onRegenerateMessage(user.content, user.sequenceNum);
                   }
+                : undefined
+            }
+            onDelete={
+              onDeleteMessage
+                ? () => onDeleteMessage(msg.message_id)
                 : undefined
             }
             disabled={disabled}

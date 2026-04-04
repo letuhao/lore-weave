@@ -224,3 +224,41 @@ async def send_message(
         media_type="text/event-stream",
         headers=headers,
     )
+
+
+@router.delete("/{session_id}/messages/{message_id}", status_code=204)
+async def delete_message(
+    session_id: UUID,
+    message_id: UUID,
+    user_id: str = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db),
+) -> None:
+    # Verify ownership
+    exists = await pool.fetchval(
+        "SELECT 1 FROM chat_sessions WHERE session_id=$1 AND owner_user_id=$2",
+        str(session_id), user_id,
+    )
+    if not exists:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    result = await pool.execute(
+        "DELETE FROM chat_messages WHERE message_id=$1 AND session_id=$2",
+        str(message_id), str(session_id),
+    )
+    try:
+        deleted = int(result.split()[-1])
+    except (ValueError, IndexError):
+        deleted = 0
+
+    if deleted == 0:
+        raise HTTPException(status_code=404, detail="message not found")
+
+    # Update session message count
+    await pool.execute(
+        """
+        UPDATE chat_sessions
+        SET message_count = GREATEST(message_count - 1, 0), updated_at = now()
+        WHERE session_id = $1
+        """,
+        str(session_id),
+    )

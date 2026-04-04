@@ -162,10 +162,14 @@ export function useChatMessages(sessionId: string | null) {
         if ((err as Error).name === 'AbortError') {
           setStreamStatus('idle');
           setStreamPhase('idle');
+          // Refetch to pick up any partially persisted messages from backend
+          void fetchMessages();
           return accumulatedContent;
         }
         setStreamStatus('error');
         setStreamPhase('idle');
+        // Refetch on error too — backend may have persisted partial data
+        void fetchMessages();
         throw err;
       } finally {
         stopThinkingTimer();

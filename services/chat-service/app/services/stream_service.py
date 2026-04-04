@@ -173,6 +173,9 @@ async def stream_response(
     full_reasoning: list[str] = []
     last_usage = None
     msg_id = str(uuid4())
+    import time as _time
+    stream_start = _time.monotonic()
+    time_to_first_token: float | None = None
 
     try:
         if use_openai_sdk:
@@ -186,6 +189,10 @@ async def stream_response(
             if chunk_data.get("usage"):
                 last_usage = chunk_data["usage"]
 
+            # Track time to first token (reasoning or content)
+            if time_to_first_token is None and (reasoning or content):
+                time_to_first_token = (_time.monotonic() - stream_start) * 1000  # ms
+
             if reasoning:
                 full_reasoning.append(reasoning)
                 yield f'data: {json.dumps({"type": "reasoning-delta", "delta": reasoning})}\n\n'
@@ -193,6 +200,7 @@ async def stream_response(
                 full_content.append(content)
                 yield f'data: {json.dumps({"type": "text-delta", "delta": content})}\n\n'
 
+        response_time_ms = (_time.monotonic() - stream_start) * 1000
         final_text = "".join(full_content)
         final_reasoning = "".join(full_reasoning)
 
@@ -205,13 +213,15 @@ async def stream_response(
             input_tok = getattr(last_usage, "prompt_tokens", None) if last_usage else None
             output_tok = getattr(last_usage, "completion_tokens", None) if last_usage else None
 
-            # Store reasoning in content_parts JSONB if present
-            content_parts = None
+            # Store metadata in content_parts JSONB
+            parts: dict = {}
             if final_reasoning:
-                content_parts = json.dumps({
-                    "reasoning": final_reasoning,
-                    "reasoning_length": len(final_reasoning),
-                })
+                parts["reasoning"] = final_reasoning
+                parts["reasoning_length"] = len(final_reasoning)
+            parts["response_time_ms"] = round(response_time_ms)
+            if time_to_first_token is not None:
+                parts["time_to_first_token_ms"] = round(time_to_first_token)
+            content_parts = json.dumps(parts) if parts else None
 
             await conn.execute(
                 """
@@ -261,13 +271,17 @@ async def stream_response(
             data_payload["has_reasoning"] = True
         yield f'data: {json.dumps({"type": "data", "data": [data_payload]})}\n\n'
 
-        # Finish event
+        # Finish event — includes timing metrics
         finish = {
             "type": "finish-message",
             "finishReason": "stop",
             "usage": {
                 "promptTokens": input_tok or 0,
                 "completionTokens": output_tok or 0,
+            },
+            "timing": {
+                "responseTimeMs": round(response_time_ms),
+                "timeToFirstTokenMs": round(time_to_first_token) if time_to_first_token is not None else None,
             },
         }
         yield f'data: {json.dumps(finish)}\n\n'

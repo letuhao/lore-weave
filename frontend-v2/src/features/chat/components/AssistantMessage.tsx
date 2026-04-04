@@ -20,6 +20,9 @@ interface AssistantMessageProps {
   /** Token counts (from persisted message) */
   inputTokens?: number | null;
   outputTokens?: number | null;
+  /** Timing metrics from content_parts */
+  responseTimeMs?: number | null;
+  timeToFirstTokenMs?: number | null;
 }
 
 export function AssistantMessage({
@@ -32,6 +35,8 @@ export function AssistantMessage({
   thinkingElapsed,
   inputTokens,
   outputTokens,
+  responseTimeMs,
+  timeToFirstTokenMs,
 }: AssistantMessageProps) {
   const [showMore, setShowMore] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
@@ -65,6 +70,7 @@ export function AssistantMessage({
 
   const hasReasoning = !!reasoning || isThinkingStreaming;
   const hasTokens = inputTokens != null || outputTokens != null;
+  const hasMetrics = hasTokens || responseTimeMs != null;
 
   return (
     <div className="group relative">
@@ -89,23 +95,28 @@ export function AssistantMessage({
       {/* Token footer + action buttons */}
       {!isStreaming && (
         <div className="mt-1.5 flex items-center justify-between opacity-0 transition-opacity group-hover:opacity-100">
-          {/* Token counts */}
-          {hasTokens && (
+          {/* Token counts + timing */}
+          {hasMetrics && (
             <div className="flex items-center gap-2 font-mono text-[10px] text-muted-foreground">
-              {hasReasoning && (
+              {hasReasoning ? (
                 <span className="flex items-center gap-0.5 text-[#a78bfa]">
                   <Brain className="h-2.5 w-2.5" />
-                  Thinking
+                  Think
                 </span>
-              )}
-              {!hasReasoning && (
+              ) : (
                 <span className="flex items-center gap-0.5 text-accent">
                   <Zap className="h-2.5 w-2.5" />
                   Fast
                 </span>
               )}
-              {inputTokens != null && <span>&uarr; {inputTokens.toLocaleString()}</span>}
-              {outputTokens != null && <span>&darr; {outputTokens.toLocaleString()}</span>}
+              {inputTokens != null && <span>&uarr;{inputTokens.toLocaleString()}</span>}
+              {outputTokens != null && <span>&darr;{outputTokens.toLocaleString()}</span>}
+              {responseTimeMs != null && (
+                <span>&middot; {(responseTimeMs / 1000).toFixed(1)}s</span>
+              )}
+              {timeToFirstTokenMs != null && (
+                <span title="Time to first token">TTFT {timeToFirstTokenMs}ms</span>
+              )}
             </div>
           )}
 
