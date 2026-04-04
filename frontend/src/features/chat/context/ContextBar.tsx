@@ -30,17 +30,7 @@ export function ContextBar({ items, onAttach, onDetach, onClearAll }: ContextBar
 
   return (
     <>
-      {/* Attach button (when no items, shown as icon inside input) */}
-      {!hasItems && (
-        <button
-          type="button"
-          onClick={() => setPickerOpen(true)}
-          className="absolute bottom-2 left-2 z-10 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-          title="Attach context"
-        >
-          <Paperclip className="h-4 w-4" />
-        </button>
-      )}
+      {/* Attach button removed from here — now inline in ChatInputBar bottom row */}
 
       {/* Context pills bar (when items attached) */}
       {hasItems && (

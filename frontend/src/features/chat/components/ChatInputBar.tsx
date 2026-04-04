@@ -15,6 +15,8 @@ interface ChatInputBarProps {
   supportsThinking?: boolean;
   /** Session-level default thinking mode */
   thinkingDefault?: boolean;
+  /** Called when user switches Think/Fast to persist to session */
+  onThinkingModeChange?: (thinking: boolean) => void;
   /** Context items attached to the next message */
   contextItems: ContextItem[];
   onAttachContext: (item: ContextItem) => void;
@@ -30,6 +32,7 @@ export function ChatInputBar({
   modelHint,
   supportsThinking,
   thinkingDefault,
+  onThinkingModeChange,
   contextItems,
   onAttachContext,
   onDetachContext,
@@ -141,18 +144,33 @@ export function ChatInputBar({
                 handleSubmit(false);
               }
             }}
-            className={`w-full resize-none border-none bg-transparent py-3 pr-12 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:outline-none disabled:opacity-50 ${hasContext ? 'px-3.5' : 'pl-10 pr-12'}`}
+            className="w-full resize-none border-none bg-transparent px-3.5 py-3 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:outline-none disabled:opacity-50"
           />
 
-          {/* Bottom row: mode toggle + send */}
+          {/* Bottom row: attach + mode toggle + send */}
           <div className="flex items-center justify-between px-2 pb-2">
             <div className="flex items-center gap-2">
+              {/* Attach button (inline, not overlapping) */}
+              {!hasContext && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Trigger attach via ContextBar's picker — find and click the hidden attach button
+                    const attachBtn = document.querySelector('[title="Attach context"]') as HTMLButtonElement;
+                    attachBtn?.click();
+                  }}
+                  className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                  title="Attach context"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" /></svg>
+                </button>
+              )}
               {/* Think/Fast toggle */}
               {supportsThinking && (
                 <div className="inline-flex rounded-md bg-secondary p-0.5 gap-0.5">
                   <button
                     type="button"
-                    onClick={() => setThinkingMode(true)}
+                    onClick={() => { setThinkingMode(true); onThinkingModeChange?.(true); }}
                     className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
                       thinkingMode
                         ? 'bg-[#1e1633] text-[#a78bfa] border border-[#3b2d6b]'
@@ -164,7 +182,7 @@ export function ChatInputBar({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setThinkingMode(false)}
+                    onClick={() => { setThinkingMode(false); onThinkingModeChange?.(false); }}
                     className={`flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
                       !thinkingMode
                         ? 'bg-accent/10 text-accent border border-accent/30'

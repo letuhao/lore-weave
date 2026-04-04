@@ -97,6 +97,12 @@ export function ChatWindow({
         disabled={isArchived}
         supportsThinking={true}
         thinkingDefault={session.generation_params?.thinking ?? false}
+        onThinkingModeChange={(thinking) => {
+          if (!accessToken) return;
+          chatApi.patchSession(accessToken, session.session_id, { generation_params: { thinking } })
+            .then((updated) => onSessionUpdate?.(updated))
+            .catch(() => {});
+        }}
         contextItems={contextItems}
         onAttachContext={onAttachContext}
         onDetachContext={onDetachContext}

@@ -16,8 +16,8 @@ export function ThinkingBlock({ reasoning, isStreaming, elapsed, contentEmpty }:
   const timeLabel = elapsed != null ? `${elapsed.toFixed(1)}s` : '';
   const isLongThinking = isStreaming && elapsed != null && elapsed > LONG_THINKING_THRESHOLD;
 
-  // Toggle: open while streaming, closed after completion
-  const [expanded, setExpanded] = useState(true);
+  // Toggle: open while streaming, closed for persisted messages
+  const [expanded, setExpanded] = useState(!!isStreaming);
   const contentRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when reasoning streams (like terminal log)
