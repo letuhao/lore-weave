@@ -23,7 +23,7 @@ function AttrRow({ attr, onDelete }: { attr: import('@/features/glossary/types')
   return (
     <div className="flex items-center gap-3 border-b px-4 py-2.5 group hover:bg-card/50 transition-colors last:border-b-0">
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs font-medium">{attr.name}</span>
           <span className="rounded bg-secondary px-1.5 py-0.5 text-[9px] text-muted-foreground">{attr.field_type}</span>
           {attr.is_system ? (
@@ -31,6 +31,11 @@ function AttrRow({ attr, onDelete }: { attr: import('@/features/glossary/types')
           ) : (
             <span className="rounded bg-primary/15 px-1 py-0.5 text-[9px] font-medium text-primary">USR</span>
           )}
+          {attr.genre_tags.length > 0 && attr.genre_tags.map((tag) => (
+            <span key={tag} className="rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[8px] font-medium text-violet-400">
+              {tag}
+            </span>
+          ))}
         </div>
         <span className="text-[10px] text-muted-foreground font-mono">{attr.code}</span>
       </div>
@@ -76,6 +81,7 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
   const [newAttrCode, setNewAttrCode] = useState('');
   const [newAttrName, setNewAttrName] = useState('');
   const [newAttrType, setNewAttrType] = useState<FieldType>('text');
+  const [newAttrGenreTags, setNewAttrGenreTags] = useState<string[]>([]);
 
   const loadKinds = useCallback(async () => {
     if (!accessToken) return;
@@ -147,12 +153,14 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
       await glossaryApi.createAttrDef(accessToken, selected.kind_id, {
         code: newAttrCode, name: newAttrName, field_type: newAttrType,
         sort_order: (selected.default_attributes.length + 1) * 10,
+        genre_tags: newAttrGenreTags.length > 0 ? newAttrGenreTags : undefined,
       });
       toast.success('Attribute added');
       setShowNewAttr(false);
       setNewAttrCode('');
       setNewAttrName('');
       setNewAttrType('text');
+      setNewAttrGenreTags([]);
       await loadKinds();
     } catch (e) { toast.error((e as Error).message); }
   };
@@ -393,8 +401,35 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
                         ))}
                       </select>
                     </div>
+                    {/* Genre tags for new attribute */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-muted-foreground flex-shrink-0">Genres:</span>
+                      <div className="flex flex-wrap items-center gap-1">
+                        {newAttrGenreTags.map((tag) => (
+                          <span key={tag} className="inline-flex items-center gap-0.5 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-medium text-violet-400">
+                            {tag}
+                            <button onClick={() => setNewAttrGenreTags(newAttrGenreTags.filter((t) => t !== tag))} className="ml-0.5 text-violet-400/60 hover:text-violet-300">
+                              <X className="h-2 w-2" />
+                            </button>
+                          </span>
+                        ))}
+                        <input
+                          placeholder="+ tag"
+                          className="w-16 bg-transparent text-[10px] outline-none placeholder:text-muted-foreground/50"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const val = (e.target as HTMLInputElement).value.trim();
+                              if (val && !newAttrGenreTags.includes(val)) setNewAttrGenreTags([...newAttrGenreTags, val]);
+                              (e.target as HTMLInputElement).value = '';
+                            }
+                          }}
+                        />
+                      </div>
+                      <span className="text-[9px] text-muted-foreground flex-shrink-0">Empty = all genres</span>
+                    </div>
                     <div className="flex justify-end gap-2">
-                      <button onClick={() => setShowNewAttr(false)} className="rounded-md border px-3 py-1 text-[10px] text-muted-foreground hover:bg-secondary">Cancel</button>
+                      <button onClick={() => { setShowNewAttr(false); setNewAttrGenreTags([]); }} className="rounded-md border px-3 py-1 text-[10px] text-muted-foreground hover:bg-secondary">Cancel</button>
                       <button
                         onClick={() => void handleCreateAttr()}
                         disabled={!newAttrCode || !newAttrName}
