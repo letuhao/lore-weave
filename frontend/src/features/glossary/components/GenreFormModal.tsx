@@ -89,6 +89,7 @@ export function GenreFormModal({ genre, onSave, onClose }: Props) {
                 autoFocus
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && name.trim() && !saving) void handleSubmit(); }}
                 placeholder="e.g. Wuxia, Gothic Horror, Cyberpunk..."
                 className="w-full rounded-md border bg-background px-3 py-1.5 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
               />

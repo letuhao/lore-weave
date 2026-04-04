@@ -4,6 +4,7 @@ import { ArrowLeft, Plus, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '../api';
+import { booksApi } from '@/features/books/api';
 import type { GenreGroup, EntityKind } from '../types';
 import { ConfirmDialog } from '@/components/shared';
 import { cn } from '@/lib/utils';
@@ -56,6 +57,15 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
     return n;
   }, [taggedAttrs]);
 
+  // Pre-compute kind counts per genre for the list (avoids recomputing per item per render)
+  const kindCountByGenre = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const g of genres) {
+      map.set(g.name, kinds.filter((k) => k.genre_tags.includes(g.name)).length);
+    }
+    return map;
+  }, [genres, kinds]);
+
   const handleCreate = async (data: { name: string; color: string; description: string }) => {
     const created = await glossaryApi.createGenre(bookId, data, accessToken!);
     toast.success('Genre created');
@@ -66,7 +76,38 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
 
   const handleEdit = async (data: { name: string; color: string; description: string }) => {
     if (!selected) return;
+    const oldName = selected.name;
+    const newName = data.name;
     await glossaryApi.patchGenre(bookId, selected.id, data, accessToken!);
+
+    // Cascade rename: update genre_tags on kinds, attrs, and book
+    if (oldName !== newName) {
+      const renameTag = (tags: string[]) => tags.map((t) => (t === oldName ? newName : t));
+      const promises: Promise<unknown>[] = [];
+
+      for (const k of kinds) {
+        if (k.genre_tags.includes(oldName)) {
+          promises.push(glossaryApi.patchKind(accessToken!, k.kind_id, { genre_tags: renameTag(k.genre_tags) }));
+        }
+        for (const a of k.default_attributes) {
+          if (a.genre_tags.includes(oldName)) {
+            promises.push(glossaryApi.patchAttrDef(accessToken!, k.kind_id, a.attr_def_id, { genre_tags: renameTag(a.genre_tags) }));
+          }
+        }
+      }
+
+      // Also rename in the book's own genre_tags
+      try {
+        const book = await booksApi.getBook(accessToken!, bookId);
+        if (book.genre_tags.includes(oldName)) {
+          promises.push(booksApi.patchBook(accessToken!, bookId, { genre_tags: renameTag(book.genre_tags) }));
+        }
+      } catch { /* book fetch failed — skip book cascade */ }
+
+      await Promise.allSettled(promises);
+      queryClient.invalidateQueries({ queryKey: ['glossary-kinds'] });
+    }
+
     toast.success('Genre updated');
     setModalMode(null);
     invalidate();
@@ -138,7 +179,7 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
               <div className="flex-1 min-w-0">
                 <div className="truncate text-[13px] font-medium">{g.name}</div>
                 <div className="text-[10px] text-muted-foreground">
-                  {kinds.filter((k) => k.genre_tags.includes(g.name)).length} kinds
+                  {kindCountByGenre.get(g.name) ?? 0} kinds
                 </div>
               </div>
             </button>
