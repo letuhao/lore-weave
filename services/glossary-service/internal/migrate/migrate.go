@@ -457,3 +457,26 @@ func Seed(ctx context.Context, pool *pgxpool.Pool) error {
 
 	return tx.Commit(ctx)
 }
+
+// ── genre groups ─────────────────────────────────────────────────────────────
+
+const genreGroupsSQL = `
+CREATE TABLE IF NOT EXISTS genre_groups (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    book_id     UUID NOT NULL,
+    name        TEXT NOT NULL,
+    color       TEXT NOT NULL DEFAULT '#8b5cf6',
+    description TEXT NOT NULL DEFAULT '',
+    sort_order  INT  NOT NULL DEFAULT 0,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(book_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_genre_groups_book ON genre_groups(book_id);
+`
+
+func UpGenreGroups(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, genreGroupsSQL); err != nil {
+		return fmt.Errorf("migrate genre_groups: %w", err)
+	}
+	return nil
+}

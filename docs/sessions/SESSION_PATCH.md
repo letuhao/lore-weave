@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-04 (session 18 end)
-- Updated By: Assistant (Phase 6 Chat + MIG-07..10 + providers + billing + README — 52 commits)
+- Last Updated: 2026-04-04 (session 19 in-progress)
+- Updated By: Assistant (P3-08 Genre Groups — backend phase)
 - Active Branch: `main`
-- HEAD: `634c17f` — fix(chat): attach button opens context picker again
+- HEAD: pending commit — BE-G1 genre_groups CRUD
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -31,7 +31,19 @@
 
 ## Current Active Work
 
-**Phase:** V1→V2 Migration COMPLETE. Phase 6 Chat Enhancement COMPLETE. Next: P3-08 Genre Groups or Phase 7 Infra.
+**Phase:** P3-08 Genre Groups — Backend phase in progress.
+
+**What was done in this session (2026-04-04, session 19):**
+
+P3-08 Genre Groups — Backend-first implementation (tag-based, no activation matrix).
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| Design: replaced activation matrix with tag-based genre scoping | `design-drafts/screen-glossary-management.html`, `design-drafts/screen-genre-groups.html` (new) | this session |
+| Planning: rewrote P3-08a/b/c → BE-G1..G5 + FE-G1..G7 (12 tasks, backend-first) | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | this session |
+| BE-G1: `genre_groups` table + CRUD (4 endpoints, 13/13 tests pass) | `migrate.go`, `genres_handler.go` (new), `genres_crud.go` (new), `domain/genres.go` (new), `server.go`, `main.go` | this session |
+
+**9-phase workflow followed:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
 **What was done in this session (2026-04-03, session 18):**
 

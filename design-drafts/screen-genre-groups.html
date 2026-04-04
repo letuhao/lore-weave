@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Genre Groups: Create/Edit Modal, Book Settings Genre Selector, Browse Filter</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --input: #242019; --ring: #d4952a;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --secondary-fg: #e0d8cc;
+      --muted: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --destructive: #dc4e4e; --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+      --system: #7c6cd4; --system-muted: #2a2540;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; font-family: inherit; }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+    .btn-outline:hover { background: var(--secondary); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); padding: 4px 8px; }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-danger { background: transparent; color: var(--destructive); }
+    .btn-danger:hover { background: rgba(220,78,78,0.1); }
+    .btn-sm { padding: 3px 8px; font-size: 11px; border-radius: 4px; }
+    .btn-icon { width: 26px; height: 26px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 5px; border: none; cursor: pointer; background: transparent; color: var(--muted-fg); transition: all 120ms; }
+    .btn-icon:hover { background: var(--secondary); color: var(--foreground); }
+
+    .input-field { background: var(--background); border: 1px solid var(--border); color: var(--foreground); border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: inherit; width: 100%; transition: border-color 150ms; }
+    .input-field:focus { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px rgba(212,149,42,0.15); }
+    .input-field::placeholder { color: rgba(158,148,136,0.5); }
+
+    .badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 500; }
+    .badge-system { background: var(--system-muted); color: var(--system); }
+    .badge-user { background: var(--primary-muted); color: var(--primary); }
+    .badge-success { background: rgba(61,186,106,0.12); color: #5dd88a; }
+    .badge-muted { background: var(--secondary); color: var(--muted-fg); }
+
+    /* Showcase wrapper */
+    .showcase { max-width: 1400px; margin: 0 auto; padding: 32px 24px; }
+    .showcase h1 { font-family: 'Lora', serif; font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+    .showcase-subtitle { font-size: 13px; color: var(--muted-fg); margin-bottom: 32px; }
+    .showcase-section { margin-bottom: 48px; }
+    .showcase-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .showcase-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* Panel */
+    .panel { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--card); }
+    .panel-header { padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
+    .panel-title { font-size: 13px; font-weight: 600; }
+
+    /* Modal */
+    .modal-backdrop { position: relative; background: rgba(0,0,0,0.4); border-radius: 12px; padding: 40px; display: flex; align-items: center; justify-content: center; }
+    .modal {
+      width: 100%; max-width: 480px;
+      background: var(--background);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 8px 64px rgba(0,0,0,0.6);
+      overflow: hidden;
+    }
+    .modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--card);
+    }
+
+    /* Color swatch */
+    .color-swatch { width: 28px; height: 28px; border-radius: 6px; border: 2px solid transparent; cursor: pointer; transition: all 120ms; }
+    .color-swatch:hover { transform: scale(1.1); }
+    .color-swatch.selected { border-color: var(--foreground); box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--foreground); }
+
+    /* Genre tag (pill) */
+    .genre-tag { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 500; cursor: default; }
+    .genre-tag-remove { width: 14px; height: 14px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 120ms; }
+    .genre-tag-remove:hover { background: rgba(255,255,255,0.15); }
+
+    /* Filter chip */
+    .filter-chip { display: inline-flex; align-items: center; gap: 4px; padding: 5px 12px; border-radius: 999px; font-size: 12px; border: 1px solid var(--border); color: var(--muted-fg); cursor: pointer; transition: all 120ms; user-select: none; }
+    .filter-chip:hover { border-color: var(--border-hover); color: var(--foreground); }
+    .filter-chip.active { border-color: var(--primary); background: var(--primary-muted); color: var(--primary); }
+
+    /* Toggle switch */
+    .toggle { width: 32px; height: 18px; border-radius: 9px; background: var(--secondary); position: relative; cursor: pointer; transition: all 150ms; flex-shrink: 0; }
+    .toggle.on { background: var(--success); }
+    .toggle::after { content: ''; position: absolute; width: 14px; height: 14px; border-radius: 50%; background: var(--foreground); top: 2px; left: 2px; transition: all 150ms; }
+    .toggle.on::after { left: 16px; }
+    .toggle.off { background: var(--secondary); }
+    .toggle.off::after { background: var(--muted-fg); }
+
+    /* Settings form fields */
+    .form-group { margin-bottom: 20px; }
+    .form-label { display: block; font-size: 12px; font-weight: 500; margin-bottom: 6px; }
+    .form-hint { font-size: 11px; color: var(--muted-fg); margin-top: 4px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    /* Tabs */
+    .tab-bar { display: flex; gap: 0; border-bottom: 1px solid var(--border); background: var(--card); }
+    .tab-item { padding: 10px 16px; font-size: 12px; font-weight: 500; color: var(--muted-fg); cursor: pointer; border-bottom: 2px solid transparent; transition: all 120ms; display: flex; align-items: center; gap: 6px; }
+    .tab-item:hover { color: var(--foreground); }
+    .tab-item.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+    /* Dropdown for genre selector */
+    .dropdown-menu {
+      position: absolute; top: 100%; left: 0; right: 0;
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      margin-top: 4px; z-index: 10; overflow: hidden;
+    }
+    .dropdown-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 12px; cursor: pointer; transition: background 120ms; }
+    .dropdown-item:hover { background: var(--card-hover); }
+    .dropdown-item .check { width: 16px; height: 16px; border: 1px solid var(--border); border-radius: 3px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .dropdown-item .check.checked { background: var(--primary); border-color: var(--primary); }
+
+    /* Book card (mini for browse) */
+    .book-card { border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: var(--card); transition: all 200ms; cursor: pointer; }
+    .book-card:hover { border-color: var(--border-hover); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+    .book-cover { aspect-ratio: 2/3; position: relative; overflow: hidden; }
+    .book-cover-gradient { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 50%); }
+    .book-info { padding: 10px 12px; }
+  </style>
+</head>
+<body>
+
+<div class="showcase">
+
+  <h1>Genre Groups — Supplementary Screens</h1>
+  <p class="showcase-subtitle">Create/Edit modal, Book Settings genre selector, and Browse page genre filter (P3-08a/b/c)</p>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 1: GENRE CREATE / EDIT MODAL
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">1. Genre Create / Edit Modal — triggered from "New" or "Edit Genre" in genre group editor</div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+
+      <!-- CREATE mode -->
+      <div class="modal-backdrop">
+        <div class="modal">
+          <div class="modal-header">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+              <span class="panel-title">New Genre Group</span>
+            </div>
+            <button class="btn-icon">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+            <!-- Genre name -->
+            <div>
+              <label class="form-label">Genre Name <span style="color: var(--destructive);">*</span></label>
+              <input class="input-field" placeholder="e.g. Wuxia, Gothic Horror, Cyberpunk..." />
+            </div>
+
+            <!-- Color picker -->
+            <div>
+              <label class="form-label">Color</label>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
+                <div class="color-swatch" style="background: #8b5cf6;"></div>
+                <div class="color-swatch" style="background: #ec4899;"></div>
+                <div class="color-swatch selected" style="background: #06b6d4;"></div>
+                <div class="color-swatch" style="background: #f97316;"></div>
+                <div class="color-swatch" style="background: #3dba6a;"></div>
+                <div class="color-swatch" style="background: #e8a832;"></div>
+                <div class="color-swatch" style="background: #dc4e4e;"></div>
+                <div class="color-swatch" style="background: #64748b;"></div>
+                <div class="color-swatch" style="background: #8b5e3c;"></div>
+                <div class="color-swatch" style="background: #a855f7;"></div>
+              </div>
+              <div class="form-hint">Used in badges, filter chips, and the activation matrix</div>
+            </div>
+
+            <!-- Description (optional) -->
+            <div>
+              <label class="form-label">Description <span style="color: var(--muted-fg); font-weight: 400;">(optional)</span></label>
+              <textarea class="input-field" rows="2" placeholder="Brief note about what this genre covers..."></textarea>
+            </div>
+
+            <!-- Active toggle -->
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: var(--secondary); border-radius: 6px;">
+              <div>
+                <div style="font-size: 12px; font-weight: 500;">Active on creation</div>
+                <div style="font-size: 10px; color: var(--muted-fg);">Active genres filter which attributes appear in entity forms</div>
+              </div>
+              <div class="toggle on"></div>
+            </div>
+
+            <!-- Footer -->
+            <div style="display: flex; justify-content: flex-end; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border);">
+              <button class="btn btn-outline">Cancel</button>
+              <button class="btn btn-primary">
+                <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+                Create Genre
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- EDIT mode -->
+      <div class="modal-backdrop">
+        <div class="modal">
+          <div class="modal-header">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="width: 12px; height: 12px; border-radius: 3px; background: #8b5cf6;"></div>
+              <span class="panel-title">Edit Genre — Fantasy</span>
+            </div>
+            <button class="btn-icon">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+            <!-- Genre name (filled) -->
+            <div>
+              <label class="form-label">Genre Name <span style="color: var(--destructive);">*</span></label>
+              <input class="input-field" value="Fantasy" />
+            </div>
+
+            <!-- Color picker (with selection) -->
+            <div>
+              <label class="form-label">Color</label>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
+                <div class="color-swatch selected" style="background: #8b5cf6;"></div>
+                <div class="color-swatch" style="background: #ec4899;"></div>
+                <div class="color-swatch" style="background: #06b6d4;"></div>
+                <div class="color-swatch" style="background: #f97316;"></div>
+                <div class="color-swatch" style="background: #3dba6a;"></div>
+                <div class="color-swatch" style="background: #e8a832;"></div>
+                <div class="color-swatch" style="background: #dc4e4e;"></div>
+                <div class="color-swatch" style="background: #64748b;"></div>
+                <div class="color-swatch" style="background: #8b5e3c;"></div>
+                <div class="color-swatch" style="background: #a855f7;"></div>
+              </div>
+              <!-- Custom hex input -->
+              <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+                <span style="font-size: 11px; color: var(--muted-fg);">or</span>
+                <div style="display: flex; align-items: center; gap: 4px; background: var(--background); border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px;">
+                  <span class="font-mono" style="font-size: 11px; color: var(--muted-fg);">#</span>
+                  <input type="text" value="8b5cf6" style="background: transparent; border: none; color: var(--foreground); font-family: 'JetBrains Mono', monospace; font-size: 11px; width: 60px; outline: none;" />
+                  <div style="width: 14px; height: 14px; border-radius: 3px; background: #8b5cf6;"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Description -->
+            <div>
+              <label class="form-label">Description</label>
+              <textarea class="input-field" rows="2">Magic systems, mythical creatures, supernatural powers, and otherworldly settings.</textarea>
+            </div>
+
+            <!-- Active toggle -->
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: var(--secondary); border-radius: 6px;">
+              <div>
+                <div style="font-size: 12px; font-weight: 500;">Active</div>
+                <div style="font-size: 10px; color: var(--muted-fg);">Disabling hides genre-specific attributes from entity forms</div>
+              </div>
+              <div class="toggle on"></div>
+            </div>
+
+            <!-- Stats (edit mode only) -->
+            <div style="display: flex; gap: 16px; padding: 10px 12px; background: rgba(139,92,246,0.04); border: 1px solid rgba(139,92,246,0.1); border-radius: 6px;">
+              <div>
+                <div style="font-size: 10px; color: var(--muted-fg);">Attributes active</div>
+                <div style="font-size: 14px; font-weight: 600;">18 / 24</div>
+              </div>
+              <div>
+                <div style="font-size: 10px; color: var(--muted-fg);">Kinds using</div>
+                <div style="font-size: 14px; font-weight: 600;">8</div>
+              </div>
+              <div>
+                <div style="font-size: 10px; color: var(--muted-fg);">Books tagged</div>
+                <div style="font-size: 14px; font-weight: 600;">3</div>
+              </div>
+              <div>
+                <div style="font-size: 10px; color: var(--muted-fg);">Created</div>
+                <div style="font-size: 11px; color: var(--muted-fg); margin-top: 2px;">2026-03-15</div>
+              </div>
+            </div>
+
+            <!-- Footer with delete -->
+            <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 8px; border-top: 1px solid var(--border);">
+              <button class="btn btn-danger btn-sm">
+                <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                Delete Genre
+              </button>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn btn-outline">Cancel</button>
+                <button class="btn btn-primary">
+                  <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 2: BOOK SETTINGS TAB — includes genre selector
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">2. Book Settings Tab — full book metadata editing with genre selector (P3-21 + P3-08c)</div>
+
+    <div class="panel" style="max-width: 880px;">
+      <!-- Book detail header (context) -->
+      <div style="padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; background: var(--card);">
+        <div style="width: 40px; height: 56px; border-radius: 4px; background: linear-gradient(135deg, #2d1740, #1a1030); flex-shrink: 0;"></div>
+        <div>
+          <div class="font-serif" style="font-size: 15px; font-weight: 600;">The Hero and the Demon Lord's Paperwork</div>
+          <div style="font-size: 11px; color: var(--muted-fg);">24 chapters &middot; 89,420 words &middot; Private</div>
+        </div>
+      </div>
+
+      <!-- Tab bar -->
+      <div class="tab-bar">
+        <div class="tab-item">Chapters</div>
+        <div class="tab-item">Translation</div>
+        <div class="tab-item">Glossary</div>
+        <div class="tab-item">Wiki</div>
+        <div class="tab-item">Sharing</div>
+        <div class="tab-item active">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
+          Settings
+        </div>
+      </div>
+
+      <!-- Settings content -->
+      <div style="padding: 24px 20px;">
+        <!-- Section: Basic Info -->
+        <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg); margin-bottom: 16px;">Basic Information</div>
+
+        <div class="form-group">
+          <label class="form-label">Title <span style="color: var(--destructive);">*</span></label>
+          <input class="input-field" value="The Hero and the Demon Lord's Paperwork" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea class="input-field" rows="3" placeholder="A brief summary of this book...">A comedic fantasy where the Hero discovers that defeating the Demon Lord requires not a legendary sword, but mastery of bureaucratic procedures, legal loopholes, and an ungodly amount of paperwork.</textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Original Language</label>
+            <select class="input-field">
+              <option>Japanese (ja)</option>
+              <option>English (en)</option>
+              <option>Vietnamese (vi)</option>
+              <option>Chinese Traditional (zh-TW)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Summary <span style="font-weight: 400; color: var(--muted-fg);">(for catalog)</span></label>
+            <input class="input-field" placeholder="One-line summary shown in browse cards..." value="Hero vs Demon Lord, but it's all paperwork." />
+          </div>
+        </div>
+
+        <!-- Divider -->
+        <div style="border-top: 1px solid var(--border); margin: 24px 0;"></div>
+
+        <!-- Section: Cover Image -->
+        <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg); margin-bottom: 16px;">Cover Image</div>
+
+        <div class="form-group" style="display: flex; gap: 16px; align-items: flex-start;">
+          <!-- Current cover -->
+          <div style="width: 100px; height: 150px; border-radius: 6px; background: linear-gradient(135deg, #2d1740, #1a1030); flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border);">
+            <svg width="24" height="24" fill="none" stroke="var(--muted-fg)" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          </div>
+          <div style="flex: 1;">
+            <div style="font-size: 12px; color: var(--muted-fg); margin-bottom: 8px;">Upload a cover image (JPG/PNG, max 5 MB, recommended 2:3 ratio)</div>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-outline btn-sm">
+                <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4m14-7l-5-5-5 5m5-5v12"/></svg>
+                Upload Cover
+              </button>
+              <button class="btn btn-ghost btn-sm" style="color: var(--destructive);">Remove</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Divider -->
+        <div style="border-top: 1px solid var(--border); margin: 24px 0;"></div>
+
+        <!-- Section: Genre Tags -->
+        <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+          Genre Tags
+          <span class="badge badge-muted" style="font-size: 9px; text-transform: none; letter-spacing: 0;">NEW</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Genres <span style="font-weight: 400; color: var(--muted-fg);">Select genres that apply to this book</span></label>
+
+          <!-- Selected genres as pills -->
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
+            <span class="genre-tag" style="background: rgba(139,92,246,0.15); color: #a78bfa;">
+              <div style="width: 6px; height: 6px; border-radius: 2px; background: #8b5cf6;"></div>
+              Fantasy
+              <span class="genre-tag-remove">
+                <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+              </span>
+            </span>
+            <span class="genre-tag" style="background: rgba(232,168,50,0.15); color: #fcd34d;">
+              <div style="width: 6px; height: 6px; border-radius: 2px; background: #e8a832;"></div>
+              Comedy
+              <span class="genre-tag-remove">
+                <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+              </span>
+            </span>
+          </div>
+
+          <!-- Dropdown selector -->
+          <div style="position: relative;">
+            <div class="input-field" style="display: flex; align-items: center; gap: 4px; cursor: pointer; padding: 5px 10px;">
+              <svg width="12" height="12" fill="none" stroke="var(--muted-fg)" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+              <span style="font-size: 12px; color: var(--muted-fg);">Add genre...</span>
+              <div style="flex: 1;"></div>
+              <svg width="12" height="12" fill="none" stroke="var(--muted-fg)" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+
+            <!-- Dropdown open state -->
+            <div class="dropdown-menu">
+              <!-- Search -->
+              <div style="padding: 8px 10px; border-bottom: 1px solid var(--border);">
+                <input class="input-field" placeholder="Search genres..." style="font-size: 12px; padding: 4px 8px;" />
+              </div>
+
+              <!-- Already selected (checked) -->
+              <div class="dropdown-item">
+                <div class="check checked">
+                  <svg width="10" height="10" fill="none" stroke="var(--primary-fg)" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+                </div>
+                <div style="width: 8px; height: 8px; border-radius: 2px; background: #8b5cf6;"></div>
+                <span>Fantasy</span>
+              </div>
+              <div class="dropdown-item">
+                <div class="check checked">
+                  <svg width="10" height="10" fill="none" stroke="var(--primary-fg)" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+                </div>
+                <div style="width: 8px; height: 8px; border-radius: 2px; background: #e8a832;"></div>
+                <span>Comedy</span>
+              </div>
+
+              <!-- Available -->
+              <div class="dropdown-item">
+                <div class="check"></div>
+                <div style="width: 8px; height: 8px; border-radius: 2px; background: #ec4899;"></div>
+                <span>Drama</span>
+              </div>
+              <div class="dropdown-item">
+                <div class="check"></div>
+                <div style="width: 8px; height: 8px; border-radius: 2px; background: #ec4899;"></div>
+                <span>Romance</span>
+              </div>
+              <div class="dropdown-item">
+                <div class="check"></div>
+                <div style="width: 8px; height: 8px; border-radius: 2px; background: #06b6d4;"></div>
+                <span>Sci-Fi</span>
+              </div>
+              <div class="dropdown-item">
+                <div class="check"></div>
+                <div style="width: 8px; height: 8px; border-radius: 2px; background: #f97316;"></div>
+                <span>Historical</span>
+              </div>
+
+              <!-- Divider + create new -->
+              <div style="border-top: 1px solid var(--border); padding: 6px 10px;">
+                <button class="btn btn-ghost btn-sm" style="width: 100%; justify-content: center; color: var(--primary);">
+                  <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+                  Create new genre...
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-hint">Genres control which glossary attributes are active. Manage genres in Glossary &rarr; Genre Groups tab.</div>
+        </div>
+
+        <!-- Genre impact preview -->
+        <div style="padding: 10px 12px; background: rgba(139,92,246,0.04); border: 1px solid rgba(139,92,246,0.1); border-radius: 6px; margin-bottom: 20px;">
+          <div style="font-size: 11px; font-weight: 500; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+            <svg width="12" height="12" fill="none" stroke="#8b5cf6" stroke-width="2" viewBox="0 0 24 24"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span style="color: #a78bfa;">Genre impact on glossary</span>
+          </div>
+          <div style="font-size: 11px; color: var(--muted-fg); line-height: 1.5;">
+            <strong>Fantasy</strong> activates: Power Level, Magic Skills, Combat Style, Mana Density<br/>
+            <strong>Comedy</strong> has no genre-specific attributes yet
+          </div>
+        </div>
+
+        <!-- Divider -->
+        <div style="border-top: 1px solid var(--border); margin: 24px 0;"></div>
+
+        <!-- Section: Visibility -->
+        <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg); margin-bottom: 16px;">Visibility</div>
+
+        <div class="form-group">
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <!-- Private -->
+            <label style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--secondary); border: 1px solid var(--primary); border-radius: 6px; cursor: pointer;">
+              <input type="radio" name="vis" checked style="accent-color: var(--primary);" />
+              <div>
+                <div style="font-size: 12px; font-weight: 500;">Private</div>
+                <div style="font-size: 10px; color: var(--muted-fg);">Only you can see this book</div>
+              </div>
+            </label>
+            <!-- Unlisted -->
+            <label style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--background); border: 1px solid var(--border); border-radius: 6px; cursor: pointer;">
+              <input type="radio" name="vis" style="accent-color: var(--primary);" />
+              <div>
+                <div style="font-size: 12px; font-weight: 500;">Unlisted</div>
+                <div style="font-size: 10px; color: var(--muted-fg);">Anyone with the link can read, but not listed in browse</div>
+              </div>
+            </label>
+            <!-- Public -->
+            <label style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--background); border: 1px solid var(--border); border-radius: 6px; cursor: pointer;">
+              <input type="radio" name="vis" style="accent-color: var(--primary);" />
+              <div>
+                <div style="font-size: 12px; font-weight: 500;">Public</div>
+                <div style="font-size: 10px; color: var(--muted-fg);">Visible to everyone in the catalog</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Save bar -->
+        <div style="display: flex; justify-content: flex-end; gap: 8px; padding-top: 16px; border-top: 1px solid var(--border);">
+          <button class="btn btn-outline">Discard Changes</button>
+          <button class="btn btn-primary">
+            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+            Save Settings
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 3: BROWSE PAGE — GENRE FILTER (enabled state)
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">3. Browse Page — Genre filter chips enabled (was disabled, now wired to P3-08c)</div>
+
+    <div class="panel" style="max-width: 960px;">
+      <!-- Header -->
+      <div style="padding: 24px 20px 0; text-align: center;">
+        <h2 class="font-serif" style="font-size: 20px; font-weight: 600; margin-bottom: 4px;">Browse Catalog</h2>
+        <p style="font-size: 12px; color: var(--muted-fg); margin-bottom: 16px;">Discover translated novels from the community</p>
+
+        <!-- Search -->
+        <div style="max-width: 400px; margin: 0 auto 16px;">
+          <div style="position: relative;">
+            <svg style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%);" width="14" height="14" fill="none" stroke="var(--muted-fg)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            <input class="input-field" placeholder="Search by title, author, or keyword..." style="padding-left: 32px;" />
+          </div>
+        </div>
+
+        <!-- Filter chips: Genre + Language -->
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 20px;">
+          <!-- All button -->
+          <span class="filter-chip">All</span>
+
+          <!-- Genre chips (ENABLED — with color dots) -->
+          <span class="filter-chip active" style="border-color: #8b5cf6; background: rgba(139,92,246,0.12); color: #a78bfa;">
+            <div style="width: 6px; height: 6px; border-radius: 2px; background: #8b5cf6;"></div>
+            Fantasy
+          </span>
+          <span class="filter-chip">
+            <div style="width: 6px; height: 6px; border-radius: 2px; background: #ec4899;"></div>
+            Drama
+          </span>
+          <span class="filter-chip">
+            <div style="width: 6px; height: 6px; border-radius: 2px; background: #ec4899;"></div>
+            Romance
+          </span>
+          <span class="filter-chip">
+            <div style="width: 6px; height: 6px; border-radius: 2px; background: #06b6d4;"></div>
+            Sci-Fi
+          </span>
+          <span class="filter-chip">
+            <div style="width: 6px; height: 6px; border-radius: 2px; background: #f97316;"></div>
+            Historical
+          </span>
+          <span class="filter-chip">
+            <div style="width: 6px; height: 6px; border-radius: 2px; background: #e8a832;"></div>
+            Comedy
+          </span>
+
+          <!-- Separator -->
+          <span style="color: var(--border); font-size: 14px; padding: 0 2px; display: flex; align-items: center;">|</span>
+
+          <!-- Language chips (unchanged) -->
+          <span class="filter-chip" style="border-style: dashed;">
+            <span class="font-mono" style="font-size: 10px;">ja</span>
+            Japanese
+          </span>
+          <span class="filter-chip active">
+            <span class="font-mono" style="font-size: 10px;">en</span>
+            English
+          </span>
+          <span class="filter-chip">
+            <span class="font-mono" style="font-size: 10px;">vi</span>
+            Vietnamese
+          </span>
+        </div>
+
+        <!-- Sort -->
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 4px; margin-bottom: 16px;">
+          <span style="font-size: 12px; color: var(--muted-fg);">12 books found &middot; filtered by <strong style="color: #a78bfa;">Fantasy</strong> + <strong style="color: var(--foreground);">English</strong></span>
+          <select class="input-field" style="width: auto; padding: 4px 8px; font-size: 11px;">
+            <option>Most Recent</option>
+            <option>Most Chapters</option>
+            <option>A-Z</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Book grid (4-col) -->
+      <div style="padding: 0 20px 24px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;">
+        <!-- Book 1 -->
+        <div class="book-card">
+          <div class="book-cover" style="background: linear-gradient(135deg, #2d1740, #1a1030);">
+            <div class="book-cover-gradient"></div>
+            <div style="position: absolute; bottom: 8px; left: 8px; display: flex; gap: 4px;">
+              <span style="padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: 500; background: rgba(139,92,246,0.4); color: #c4b5fd;">Fantasy</span>
+              <span style="padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: 500; background: rgba(232,168,50,0.4); color: #fcd34d;">Comedy</span>
+            </div>
+          </div>
+          <div class="book-info">
+            <div style="font-size: 12px; font-weight: 500; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">The Hero's Paperwork</div>
+            <div style="font-size: 10px; color: var(--muted-fg);">24 chapters</div>
+          </div>
+        </div>
+
+        <!-- Book 2 -->
+        <div class="book-card">
+          <div class="book-cover" style="background: linear-gradient(135deg, #162824, #0a1a14);">
+            <div class="book-cover-gradient"></div>
+            <div style="position: absolute; bottom: 8px; left: 8px; display: flex; gap: 4px;">
+              <span style="padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: 500; background: rgba(139,92,246,0.4); color: #c4b5fd;">Fantasy</span>
+            </div>
+          </div>
+          <div class="book-info">
+            <div style="font-size: 12px; font-weight: 500; margin-bottom: 2px;">Demon Sword Saga</div>
+            <div style="font-size: 10px; color: var(--muted-fg);">18 chapters</div>
+          </div>
+        </div>
+
+        <!-- Book 3 -->
+        <div class="book-card">
+          <div class="book-cover" style="background: linear-gradient(135deg, #302018, #1a100c);">
+            <div class="book-cover-gradient"></div>
+            <div style="position: absolute; bottom: 8px; left: 8px; display: flex; gap: 4px;">
+              <span style="padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: 500; background: rgba(139,92,246,0.4); color: #c4b5fd;">Fantasy</span>
+            </div>
+          </div>
+          <div class="book-info">
+            <div style="font-size: 12px; font-weight: 500; margin-bottom: 2px;">Cultivation Manual</div>
+            <div style="font-size: 10px; color: var(--muted-fg);">42 chapters</div>
+          </div>
+        </div>
+
+        <!-- Book 4 -->
+        <div class="book-card">
+          <div class="book-cover" style="background: linear-gradient(135deg, #201830, #100c20);">
+            <div class="book-cover-gradient"></div>
+            <div style="position: absolute; bottom: 8px; left: 8px; display: flex; gap: 4px;">
+              <span style="padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: 500; background: rgba(139,92,246,0.4); color: #c4b5fd;">Fantasy</span>
+              <span style="padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: 500; background: rgba(236,72,153,0.4); color: #f9a8d4;">Romance</span>
+            </div>
+          </div>
+          <div class="book-info">
+            <div style="font-size: 12px; font-weight: 500; margin-bottom: 2px;">Witch & Familiar</div>
+            <div style="font-size: 10px; color: var(--muted-fg);">15 chapters</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Comparison: disabled vs enabled state -->
+    <div style="margin-top: 16px; padding: 14px 16px; background: var(--card); border: 1px solid var(--border); border-radius: 8px;">
+      <div style="font-size: 11px; font-weight: 600; margin-bottom: 10px;">Before / After comparison — genre chips</div>
+      <div style="display: flex; gap: 24px; font-size: 12px;">
+        <div>
+          <div style="font-size: 10px; color: var(--muted-fg); margin-bottom: 6px;">BEFORE (P3-08c not done)</div>
+          <div style="display: flex; gap: 6px;">
+            <span style="display: inline-flex; align-items: center; gap: 4px; padding: 5px 12px; border-radius: 999px; font-size: 12px; border: 1px dashed var(--border); color: rgba(158,148,136,0.5); cursor: not-allowed;">Fantasy</span>
+            <span style="display: inline-flex; align-items: center; gap: 4px; padding: 5px 12px; border-radius: 999px; font-size: 12px; border: 1px dashed var(--border); color: rgba(158,148,136,0.5); cursor: not-allowed;">Drama</span>
+            <span style="display: inline-flex; align-items: center; gap: 4px; padding: 5px 12px; border-radius: 999px; font-size: 12px; border: 1px dashed var(--border); color: rgba(158,148,136,0.5); cursor: not-allowed;">Romance</span>
+          </div>
+        </div>
+        <div>
+          <div style="font-size: 10px; color: var(--muted-fg); margin-bottom: 6px;">AFTER (P3-08c done)</div>
+          <div style="display: flex; gap: 6px;">
+            <span class="filter-chip active" style="border-color: #8b5cf6; background: rgba(139,92,246,0.12); color: #a78bfa;">
+              <div style="width: 6px; height: 6px; border-radius: 2px; background: #8b5cf6;"></div>
+              Fantasy
+            </span>
+            <span class="filter-chip">
+              <div style="width: 6px; height: 6px; border-radius: 2px; background: #ec4899;"></div>
+              Drama
+            </span>
+            <span class="filter-chip">
+              <div style="width: 6px; height: 6px; border-radius: 2px; background: #ec4899;"></div>
+              Romance
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 4: GENRE TAB IN GLOSSARY — how to navigate there
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">4. Navigation — Genre Groups tab inside Glossary management</div>
+
+    <div class="panel" style="max-width: 700px;">
+      <!-- Glossary sub-tabs -->
+      <div class="tab-bar">
+        <div class="tab-item">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+          Entities
+        </div>
+        <div class="tab-item">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+          Kinds &amp; Attributes
+        </div>
+        <div class="tab-item active">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+          Genre Groups
+          <span class="badge badge-muted" style="font-size: 9px;">4</span>
+        </div>
+      </div>
+
+      <!-- Content hint -->
+      <div style="padding: 40px 20px; text-align: center; color: var(--muted-fg);">
+        <div style="font-size: 13px; margin-bottom: 4px;">This tab shows the Genre Group Editor + Activation Matrix</div>
+        <div style="font-size: 11px;">See <strong>screen-glossary-management.html</strong> Section 2 for the full layout</div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Legend -->
+  <div style="padding: 20px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); margin-top: 32px;">
+    <div style="font-size: 12px; font-weight: 600; margin-bottom: 12px;">Design Notes — P3-08a/b/c</div>
+    <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; color: var(--muted-fg); line-height: 1.6;">
+      <div><strong style="color: var(--foreground);">Genre Create/Edit Modal:</strong> Launched from Genre Group Editor. Color picker with 10 presets + custom hex. Edit mode shows stats (attrs/kinds/books count). Delete with confirmation.</div>
+      <div><strong style="color: var(--foreground);">Book SettingsTab Genre Selector:</strong> Multi-select dropdown with checkboxes. Shows selected genres as colored pills with remove button. Impact preview shows which glossary attributes each genre activates. Links to Glossary genre management for creation.</div>
+      <div><strong style="color: var(--foreground);">Browse Genre Filter:</strong> Replace disabled dashed chips with enabled solid chips. Each chip gets its genre color dot. Active state uses genre color instead of primary. Filter by genre_tags array intersection. Can multi-select genres (OR logic).</div>
+      <div><strong style="color: var(--foreground);">Book Cards:</strong> Show multiple genre tags (small pills) on cover image bottom-left. Max 2-3 visible, overflow as "+N more".</div>
+      <div><strong style="color: var(--foreground);">Data Model (tag-based, no matrix):</strong> genre_groups table (glossary-service) defines available genres (name, color, description). Kinds have genre_tags[] &mdash; kind appears in entity forms when book has matching genre. Attributes have genre_tags[] &mdash; attribute only shows when book has matching genre (empty = always show). Books have genre_tags[] (book-service) &mdash; string array of genre names selected by user. No activation matrix table &mdash; genre scoping is purely tag-based.</div>
+      <div><strong style="color: var(--foreground);">Data Flow:</strong> genre_groups (glossary-service) &rarr; kind.genre_tags + attr.genre_tags (glossary-service) &rarr; book.genre_tags (book-service) &rarr; catalog-service filter &rarr; browse page chips. Entity form filters kinds/attrs by intersection of book.genre_tags with kind/attr genre_tags.</div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

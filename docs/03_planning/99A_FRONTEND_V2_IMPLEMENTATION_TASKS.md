@@ -518,10 +518,10 @@ Deferred glossary items (needs backend or P3-08):
   [ ] P3-R1-D21: Inline edit button (pencil) per attribute row [FE]
   [ ] P3-R1-D22: "required" / "optional" text label per attribute (not just badge) [FE]
 
-  Needs P3-08a (Genre Groups):
-  [ ] P3-R1-D11: Genre badge on attributes ("Fantasy only")
-  [ ] P3-R1-D12: Genre badge in entity editor header
-  [ ] P3-R1-D13: Attribute deactivation per genre (dimmed + strikethrough)
+  Covered by Genre Groups (FE-G3..G5):
+  [✓] P3-R1-D11: Genre badge on attributes → FE-G4 (genre tag pills on attr rows)
+  [✓] P3-R1-D12: Genre badge in entity editor header → FE-G5 (genre indicator)
+  [—] P3-R1-D13: Attribute deactivation per genre → DROPPED (tag-based filtering replaces matrix deactivation)
 
 Deferred reader items:
   [ ] P3-R1-D14: Reader theme toggle button — wire ReaderThemeProvider to top bar [FE]
@@ -576,42 +576,149 @@ P3-06: Kind Editor [FE]
 P3-07: Entity Editor [FE]
 ```
 
-### Glossary — Genre Groups (requires backend extension)
-```
-P3-08a: Genre Groups — Backend [BE]
-  Scope: Extend glossary-service with genre group tables + endpoints
-  New DB tables (in loreweave_glossary):
-    - genre_groups (id, book_id, name, color, sort_order, is_active, created_at)
-    - genre_attribute_activations (genre_group_id, attribute_definition_id, is_active)
-  New endpoints:
-    - GET    /v1/books/{book_id}/glossary/genres
-    - POST   /v1/books/{book_id}/glossary/genres
-    - PATCH  /v1/books/{book_id}/glossary/genres/{genre_id}
-    - DELETE /v1/books/{book_id}/glossary/genres/{genre_id}
-    - GET    /v1/books/{book_id}/glossary/genres/{genre_id}/activations
-    - PUT    /v1/books/{book_id}/glossary/genres/{genre_id}/activations
-  AC:
-    - [ ] Genre CRUD with color + sort order
-    - [ ] Activation matrix: toggle attributes per genre
-    - [ ] Active genre filters entity form (hide inactive attributes)
+### Glossary — Genre Groups (tag-based, backend-first)
 
-P3-08b: Genre Group Editor — Frontend [FE]
-  Deps: P3-08a
-  AC:
-    - [ ] Genre list panel + activation matrix table
-    - [ ] Toggle switches per attribute per genre
-    - [ ] Compare view across genres
+Design approach: tag-based genre scoping (NO activation matrix).
+  - genre_groups table = available genre definitions per book (name, color, description)
+  - kind.genre_tags[] = kind appears in entity forms when book has matching genre (empty/universal = always)
+  - attr_def.genre_tags[] = attribute shows when book has matching genre (empty = always)
+  - book.genre_tags[] = user-selected genres for the book
+  - Entity form filters kinds/attrs by intersection of book.genre_tags with kind/attr genre_tags.
 
-P3-08c: Book Genre Tag + Browse Genre Filter [FS]
-  Deps: P3-08a (genre tables exist)
-  NOTE: MIG-06 (Browse page) defers genre filter chips to this task.
-        Browse page renders genre chips as disabled/muted until this is done.
-  AC:
-    - [ ] Add `genre` or `genre_tags` field to books table (book-service migration)
-    - [ ] Genre selector in book create/edit UI (SettingsTab)
-    - [ ] catalog-service: accept `genre` query param in listPublicBooks
-    - [ ] Browse page: enable genre filter chips, wire to API param
+Design drafts:
+  - design-drafts/screen-glossary-management.html (Sections 1-3: kind editor, genre overview, entity editor)
+  - design-drafts/screen-genre-groups.html (genre modal, book settings, browse filter)
+
+Existing backend state:
+  - entity_kinds.genre_tags TEXT[] — already exists, CRUD wired, seed data has values
+  - attribute_definitions.genre_tags — MISSING (needs migration + CRUD update)
+  - books.genre_tags — MISSING (needs migration + CRUD update)
+  - genre_groups table — MISSING (needs new table + CRUD)
+  - catalog-service genre filter — MISSING
+
 ```
+--- BACKEND PHASE (all done before FE starts) ---
+
+BE-G1: Genre Groups table + CRUD [BE] (glossary-service)
+  Migration: CREATE TABLE genre_groups (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    book_id UUID NOT NULL,
+    name TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT '#8b5cf6',
+    description TEXT NOT NULL DEFAULT '',
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  ) + UNIQUE(book_id, name)
+  Endpoints (scoped under existing /v1/glossary prefix):
+    - GET    /v1/glossary/books/{book_id}/genres       → list genres for a book
+    - POST   /v1/glossary/books/{book_id}/genres       → create genre
+    - PATCH  /v1/glossary/books/{book_id}/genres/{id}  → update name/color/description/sort_order
+    - DELETE /v1/glossary/books/{book_id}/genres/{id}  → delete genre
+  AC:
+    - [ ] Table created with migration
+    - [ ] CRUD endpoints work with auth
+    - [ ] Unique constraint on (book_id, name)
+
+BE-G2: Attribute genre_tags column [BE] (glossary-service)
+  Migration: ALTER TABLE attribute_definitions ADD COLUMN IF NOT EXISTS genre_tags TEXT[] NOT NULL DEFAULT '{}'
+  Update: createAttrDef, patchAttrDef, getKinds — accept/return genre_tags on attribute_definitions
+  AC:
+    - [ ] Column added
+    - [ ] POST /v1/glossary/kinds/{kind_id}/attributes accepts genre_tags
+    - [ ] PATCH /v1/glossary/kinds/{kind_id}/attributes/{id} accepts genre_tags
+    - [ ] GET /v1/glossary/kinds returns genre_tags on each attribute_definition
+
+BE-G3: Book genre_tags column [BE] (book-service)
+  Migration: ALTER TABLE books ADD COLUMN IF NOT EXISTS genre_tags TEXT[] NOT NULL DEFAULT '{}'
+  Update: createBook, patchBook, getBook — accept/return genre_tags
+  AC:
+    - [ ] Column added
+    - [ ] POST /v1/books accepts genre_tags
+    - [ ] PATCH /v1/books/{id} accepts genre_tags
+    - [ ] GET /v1/books/{id} returns genre_tags
+
+BE-G4: Catalog genre filter [BE] (catalog-service)
+  Update: listPublicBooks — accept `genre` query param, filter by genre_tags array overlap
+  Update: bookProjection — include genre_tags field
+  AC:
+    - [ ] GET /v1/catalog/books?genre=Fantasy filters correctly (array overlap)
+    - [ ] Book projection includes genre_tags in response
+    - [ ] Multiple genre params supported (OR logic)
+
+BE-G5: Integration tests [BE] (infra/)
+  New: infra/test-genre-groups.sh
+  AC:
+    - [ ] Genre CRUD (create, list, update, delete, duplicate name rejected)
+    - [ ] Attr genre_tags (create with tags, patch tags, verify in GET)
+    - [ ] Book genre_tags (patch, verify in GET)
+    - [ ] Catalog genre filter (filter by genre, verify results)
+    - [ ] All tests pass
+
+--- FRONTEND PHASE (all BE endpoints ready, zero blockers) ---
+
+FE-G1: Types + API client [FE]
+  Update: glossary/types.ts — add GenreGroup type, genre_tags on AttributeDefinition
+  Update: glossary/api.ts — add genre CRUD methods
+  Update: books/api.ts — add genre_tags to Book type
+  AC:
+    - [ ] All new types defined
+    - [ ] All API methods callable
+
+FE-G2: Genre Groups tab + CRUD [FE]
+  New: Genre Groups tab in GlossaryTab (3rd tab: Entities | Kinds & Attributes | Genre Groups)
+  New: Genre list panel (left) + detail/overview panel (right)
+  New: GenreCreateEditModal (name, color picker, description)
+  AC:
+    - [ ] Tab navigation works
+    - [ ] Genre list shows all genres with color dot, counts
+    - [ ] Create/Edit/Delete genre works
+    - [ ] Detail panel shows tagged kinds + attributes summary
+
+FE-G3: Kind Editor genre_tags [FE]
+  Update: KindEditor.tsx — add genre_tags row below kind metadata
+  Genre tag pills with "Add" dropdown (pick from book's genre_groups)
+  AC:
+    - [ ] Genre tags displayed on kind detail panel
+    - [ ] Add/remove genre tags, saves via PATCH
+
+FE-G4: Attribute genre_tags [FE]
+  Update: KindEditor.tsx — genre tag pills on attribute rows
+  Update: Add Attribute form — optional genre_tags multi-select
+  AC:
+    - [ ] Genre pills shown on attr rows (colored, per genre)
+    - [ ] Create attr with genre_tags
+    - [ ] Edit attr genre_tags
+
+FE-G5: Entity Editor genre filter [FE]
+  Update: EntityEditorModal.tsx — genre indicator in header (from kind.genre_tags)
+  Update: AttrGrid — hide attributes whose genre_tags don't match book.genre_tags
+  AC:
+    - [ ] Genre badge shown in entity editor header
+    - [ ] Attributes filtered: genre-scoped attrs hidden if book doesn't have that genre
+    - [ ] Non-genre attrs (empty genre_tags) always shown
+
+FE-G6: Book SettingsTab with genre selector [FE]
+  New: book-tabs/SettingsTab.tsx (replaces placeholder in BookDetailPage)
+  Includes: title, description, language, summary, cover image, genre selector, visibility
+  Genre selector: multi-select dropdown with checkboxes, selected as colored pills
+  AC:
+    - [ ] Full settings tab implemented (P3-21 + genre selector)
+    - [ ] Genre selector lists genres from glossary-service
+    - [ ] Selected genres saved to book.genre_tags via PATCH
+
+FE-G7: Browse genre filter [FE]
+  Update: FilterBar.tsx — replace disabled dashed chips with enabled genre chips
+  Update: BrowsePage — wire genre param to catalog API
+  AC:
+    - [ ] Genre chips loaded from available genres
+    - [ ] Click to filter, active state with genre color
+    - [ ] Book cards show genre tags on cover
+```
+
+Deferred items now unblocked by P3-08:
+  [x] P3-R1-D11: Genre badge on attributes → covered by FE-G4
+  [x] P3-R1-D12: Genre badge in entity editor header → covered by FE-G5
+  [ ] P3-R1-D13: Attribute deactivation per genre → DROPPED (no matrix, tag-based instead)
 
 ### Social Service — New Backend (required for community features)
 ```
@@ -934,7 +1041,7 @@ PHASE 3 (features — new backend services)
   P3-09 (social-service scaffold) → P3-10, P3-11, P3-12, P3-13, P3-14, P3-16
   P3-15a (follow backend) → P3-15b (profile FE)
   P3-17a (wiki backend) → P3-17b, P3-17c, P3-17d → P3-17e
-  P3-08a (genre backend) → P3-08b (genre FE)
+  BE-G1..G5 (genre backend) → FE-G1..G7 (genre FE, zero blockers)
   P3-01...P3-04 (translation FE — no backend needed)
   P3-05...P3-07 (glossary FE — no backend needed)
   P3-18, P3-19 (chat FE — no backend needed)
@@ -944,7 +1051,7 @@ PHASE 3 (features — new backend services)
 
 ```
 Can run simultaneously:
-  Backend: P2-09b + P2-11b + P3-09 + P3-15a + P3-17a + P3-08a
+  Backend: P2-09b + P2-11b + P3-09 + P3-15a + P3-17a + BE-G1..G5
   Frontend: P2-01...P2-08 (all Phase 2 FE tasks)
 
 This means backend work for Phase 3 can start while Phase 2 frontend is building.
@@ -977,7 +1084,7 @@ P3-17a (wiki backend) blocks all wiki features
 3. P3-09   Social Service scaffold (blocks most of Phase 3)
 4. P3-15a  Follow system (blocks profiles)
 5. P3-17a  Wiki backend (blocks wiki)
-6. P3-08a  Genre groups (blocks genre editor)
+6. BE-G1..G5  Genre groups backend (unblocks all genre FE)
 7. P4-08a  Author analytics
 8. P4-13a  Export
 9. P4-14   Email notifications

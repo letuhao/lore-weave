@@ -44,6 +44,9 @@ func main() {
 	if err := migrate.UpSoftDelete(ctx, pool); err != nil {
 		log.Fatalf("migrate soft-delete: %v", err)
 	}
+	if err := migrate.UpGenreGroups(ctx, pool); err != nil {
+		log.Fatalf("migrate genre-groups: %v", err)
+	}
 
 	srv := api.NewServer(pool, cfg)
 	httpSrv := &http.Server{
