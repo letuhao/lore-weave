@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { ChaptersTab } from '@/pages/book-tabs/ChaptersTab';
 import { TranslationTab } from '@/pages/book-tabs/TranslationTab';
 import { GlossaryTab } from '@/pages/book-tabs/GlossaryTab';
+import { SettingsTab } from '@/pages/book-tabs/SettingsTab';
 
 const tabs = [
   { key: '', label: 'Chapters' },
@@ -142,7 +143,7 @@ function BookTabContent({ bookId, book, activeTab, onReload }: {
   const placeholders: Record<string, string> = {
     '/wiki': 'Wiki — coming in P3-17.',
     '/sharing': 'Sharing settings — coming in P3-20.',
-    '/settings': 'Book settings — coming in P3-21.',
+    // '/settings': now rendered as SettingsTab below
   };
 
   const placeholder = placeholders[activeTab];
@@ -158,6 +159,9 @@ function BookTabContent({ bookId, book, activeTab, onReload }: {
       </div>
       <div style={{ display: activeTab === '/glossary' ? undefined : 'none' }}>
         <GlossaryTab bookId={bookId} bookGenreTags={book.genre_tags ?? []} />
+      </div>
+      <div style={{ display: activeTab === '/settings' ? undefined : 'none' }}>
+        <SettingsTab bookId={bookId} book={book} onReload={onReload} />
       </div>
       {placeholder && (
         <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
