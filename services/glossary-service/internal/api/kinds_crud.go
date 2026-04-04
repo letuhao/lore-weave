@@ -249,6 +249,25 @@ func (s *Server) patchAttrDef(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validation
+	if v, ok := in["name"]; ok {
+		s, _ := v.(string)
+		if s == "" {
+			writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "name must not be empty")
+			return
+		}
+	}
+	if v, ok := in["field_type"]; ok {
+		s, _ := v.(string)
+		switch s {
+		case "text", "textarea", "select", "number", "date", "tags", "url", "boolean":
+			// valid
+		default:
+			writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "invalid field_type: "+s)
+			return
+		}
+	}
+
 	sets := ""
 	args := []any{attrDefID, kindID}
 	i := 3

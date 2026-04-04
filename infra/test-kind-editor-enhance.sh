@@ -461,6 +461,108 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# BE-KE-04: Attribute inline edit — PATCH name, field_type, is_required
+# ═══════════════════════════════════════════════════════════════════════════════
+header "BE-KE-04a: patch attr name + field_type + is_required"
+
+# T33: Patch attr name
+APATCH6=$(curl -s -X PATCH "$GATEWAY/v1/glossary/kinds/$NEW_KIND_ID/attributes/$ATTR_ID3" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"name":"Renamed Toggle"}')
+assert_eq "T33 patch attr name" "Renamed Toggle" "$(echo "$APATCH6" | jget .name)"
+
+# T34: Patch attr field_type
+APATCH7=$(curl -s -X PATCH "$GATEWAY/v1/glossary/kinds/$NEW_KIND_ID/attributes/$ATTR_ID3" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"field_type":"textarea"}')
+assert_eq "T34 patch attr field_type" "textarea" "$(echo "$APATCH7" | jget .field_type)"
+
+# T35: Patch attr is_required
+APATCH8=$(curl -s -X PATCH "$GATEWAY/v1/glossary/kinds/$NEW_KIND_ID/attributes/$ATTR_ID3" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"is_required":true}')
+assert_eq "T35 patch attr is_required=true" "true" "$(echo "$APATCH8" | jget .is_required)"
+
+# T36: Patch multiple fields at once
+APATCH9=$(curl -s -X PATCH "$GATEWAY/v1/glossary/kinds/$NEW_KIND_ID/attributes/$ATTR_ID3" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"name":"Multi Update","field_type":"number","is_required":false}')
+assert_eq "T36 multi-patch name" "Multi Update" "$(echo "$APATCH9" | jget .name)"
+assert_eq "T36 multi-patch field_type" "number" "$(echo "$APATCH9" | jget .field_type)"
+assert_eq "T36 multi-patch is_required" "false" "$(echo "$APATCH9" | jget .is_required)"
+
+header "BE-KE-04b: validation — invalid field_type + empty name"
+
+# T37: Invalid field_type returns 400
+T37_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$GATEWAY/v1/glossary/kinds/$NEW_KIND_ID/attributes/$ATTR_ID3" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"field_type":"invalid_type"}')
+assert_status "T37 invalid field_type returns 400" "400" "$T37_STATUS"
+
+# T38: Empty name returns 400
+T38_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$GATEWAY/v1/glossary/kinds/$NEW_KIND_ID/attributes/$ATTR_ID3" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"name":""}')
+assert_status "T38 empty name returns 400" "400" "$T38_STATUS"
+
+# T39: Attr unchanged after rejected patches
+KINDS8=$(curl -s -H "$AUTH" "$GATEWAY/v1/glossary/kinds")
+T39_NAME=$(echo "$KINDS8" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    const spell=j.find(k=>k.code==='test_spell');
+    if(!spell){console.log('NOT_FOUND');return;}
+    const a=spell.default_attributes.find(a=>a.code==='toggle_test');
+    console.log(a ? a.name : 'NOT_FOUND');
+  });" 2>/dev/null)
+assert_eq "T39 attr unchanged after rejected patches" "Multi Update" "$T39_NAME"
+
+header "BE-KE-04c: system attr name customization"
+
+# T40: Patch system attr name (allowed)
+SYS_ATTR_NAME_BEFORE=$(echo "$KINDS8" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    const ch=j.find(k=>k.code==='character');
+    if(!ch){console.log('');return;}
+    const a=ch.default_attributes.find(a=>a.is_system && a.code==='aliases');
+    console.log(a ? a.name : '');
+  });" 2>/dev/null)
+SYS_ALIASES_ID=$(echo "$KINDS8" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    const ch=j.find(k=>k.code==='character');
+    if(!ch){console.log('');return;}
+    const a=ch.default_attributes.find(a=>a.is_system && a.code==='aliases');
+    console.log(a ? a.attr_def_id : '');
+  });" 2>/dev/null)
+
+if [ -n "$SYS_ALIASES_ID" ]; then
+  APATCH10=$(curl -s -X PATCH "$GATEWAY/v1/glossary/kinds/$CHAR_KIND_ID/attributes/$SYS_ALIASES_ID" \
+    -H "$AUTH" -H "Content-Type: application/json" \
+    -d '{"name":"Also Known As"}')
+  assert_eq "T40 system attr rename allowed" "Also Known As" "$(echo "$APATCH10" | jget .name)"
+
+  # Restore original name
+  curl -s -X PATCH "$GATEWAY/v1/glossary/kinds/$CHAR_KIND_ID/attributes/$SYS_ALIASES_ID" \
+    -H "$AUTH" -H "Content-Type: application/json" \
+    -d "{\"name\":\"$SYS_ATTR_NAME_BEFORE\"}" > /dev/null 2>&1
+else
+  red "T40 could not find aliases attr to test"; FAIL=$((FAIL+1))
+fi
+
+# T41: All valid field_types accepted
+for ft in text textarea select number date tags url boolean; do
+  T41_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$GATEWAY/v1/glossary/kinds/$NEW_KIND_ID/attributes/$ATTR_ID3" \
+    -H "$AUTH" -H "Content-Type: application/json" \
+    -d "{\"field_type\":\"$ft\"}")
+  assert_status "T41 field_type=$ft accepted" "200" "$T41_STATUS"
+done
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Cleanup: delete test kinds + book
 # ═══════════════════════════════════════════════════════════════════════════════
 header "Cleanup"
