@@ -563,6 +563,132 @@ for ft in text textarea select number date tags url boolean; do
 done
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# BE-KE-06: Sort order reorder endpoints
+# ═══════════════════════════════════════════════════════════════════════════════
+header "BE-KE-06a: reorder kinds"
+
+# Get current kind order
+KINDS_BEFORE=$(curl -s -H "$AUTH" "$GATEWAY/v1/glossary/kinds")
+FIRST_TWO_IDS=$(echo "$KINDS_BEFORE" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    // Get test_spell and test_nodesc IDs (our custom kinds)
+    const spell=j.find(k=>k.code==='test_spell');
+    const nodesc=j.find(k=>k.code==='test_nodesc');
+    if(spell&&nodesc) console.log(spell.kind_id+','+nodesc.kind_id);
+    else console.log('');
+  });" 2>/dev/null)
+
+SPELL_ID=$(echo "$FIRST_TWO_IDS" | cut -d, -f1)
+NODESC_ID=$(echo "$FIRST_TWO_IDS" | cut -d, -f2)
+
+# T42: Reorder kinds — swap test_spell and test_nodesc
+# Put nodesc before spell (reversed)
+ALL_KIND_IDS=$(echo "$KINDS_BEFORE" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    // Swap our two custom kinds, keep system kinds in original order
+    const ids=j.map(k=>k.kind_id);
+    const si=ids.indexOf('$SPELL_ID');
+    const ni=ids.indexOf('$NODESC_ID');
+    if(si>=0&&ni>=0){[ids[si],ids[ni]]=[ids[ni],ids[si]];}
+    console.log(JSON.stringify(ids));
+  });" 2>/dev/null)
+
+REORDER_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$GATEWAY/v1/glossary/kinds/reorder" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d "{\"kind_ids\":$ALL_KIND_IDS}")
+assert_status "T42 reorder kinds" "200" "$REORDER_STATUS"
+
+# T43: Verify new order in listKinds
+KINDS_AFTER=$(curl -s -H "$AUTH" "$GATEWAY/v1/glossary/kinds")
+T43_ORDER=$(echo "$KINDS_AFTER" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    const si=j.findIndex(k=>k.kind_id==='$SPELL_ID');
+    const ni=j.findIndex(k=>k.kind_id==='$NODESC_ID');
+    console.log(ni < si ? 'SWAPPED' : 'NOT_SWAPPED');
+  });" 2>/dev/null)
+assert_eq "T43 kinds order swapped" "SWAPPED" "$T43_ORDER"
+
+# T44: Empty array returns 400
+T44_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$GATEWAY/v1/glossary/kinds/reorder" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"kind_ids":[]}')
+assert_status "T44 empty kind_ids returns 400" "400" "$T44_STATUS"
+
+header "BE-KE-06b: reorder attributes"
+
+# Get attrs for test_spell kind
+SPELL_ATTRS=$(echo "$KINDS_AFTER" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    const spell=j.find(k=>k.code==='test_spell');
+    if(!spell||spell.default_attributes.length<2){console.log('');return;}
+    const ids=spell.default_attributes.map(a=>a.attr_def_id);
+    console.log(JSON.stringify(ids));
+  });" 2>/dev/null)
+
+ATTR_FIRST=$(echo "$KINDS_AFTER" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    const spell=j.find(k=>k.code==='test_spell');
+    if(!spell||spell.default_attributes.length<2){console.log('');return;}
+    console.log(spell.default_attributes[0].code);
+  });" 2>/dev/null)
+
+if [ -n "$SPELL_ATTRS" ] && [ "$SPELL_ATTRS" != "[]" ]; then
+  # T45: Reorder attrs — reverse order
+  REVERSED_ATTRS=$(echo "$SPELL_ATTRS" | node -e "
+    let d=''; process.stdin.on('data',c=>d+=c);
+    process.stdin.on('end',()=>{
+      console.log(JSON.stringify(JSON.parse(d).reverse()));
+    });" 2>/dev/null)
+
+  T45_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$GATEWAY/v1/glossary/kinds/$SPELL_ID/attributes/reorder" \
+    -H "$AUTH" -H "Content-Type: application/json" \
+    -d "{\"attr_def_ids\":$REVERSED_ATTRS}")
+  assert_status "T45 reorder attrs" "200" "$T45_STATUS"
+
+  # T46: Verify new attr order in listKinds
+  KINDS_AFTER2=$(curl -s -H "$AUTH" "$GATEWAY/v1/glossary/kinds")
+  ATTR_FIRST_AFTER=$(echo "$KINDS_AFTER2" | node -e "
+    let d=''; process.stdin.on('data',c=>d+=c);
+    process.stdin.on('end',()=>{
+      const j=JSON.parse(d);
+      const spell=j.find(k=>k.code==='test_spell');
+      if(!spell||spell.default_attributes.length<2){console.log('');return;}
+      console.log(spell.default_attributes[0].code);
+    });" 2>/dev/null)
+
+  if [ "$ATTR_FIRST" != "$ATTR_FIRST_AFTER" ]; then
+    green "T46 attr order changed after reorder"; PASS=$((PASS+1))
+  else
+    red "T46 attr order did not change (was: $ATTR_FIRST, still: $ATTR_FIRST_AFTER)"; FAIL=$((FAIL+1))
+  fi
+else
+  red "T45 skip — test_spell has < 2 attrs"; FAIL=$((FAIL+1))
+  red "T46 skip — test_spell has < 2 attrs"; FAIL=$((FAIL+1))
+fi
+
+# T47: Empty attr_def_ids returns 400
+T47_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$GATEWAY/v1/glossary/kinds/$SPELL_ID/attributes/reorder" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"attr_def_ids":[]}')
+assert_status "T47 empty attr_def_ids returns 400" "400" "$T47_STATUS"
+
+# T48: Reorder with non-existent IDs doesn't error (no-op for unknown IDs)
+T48_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$GATEWAY/v1/glossary/kinds/$SPELL_ID/attributes/reorder" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"attr_def_ids":["00000000-0000-0000-0000-000000000000"]}')
+assert_status "T48 reorder with unknown ID succeeds (no-op)" "200" "$T48_STATUS"
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Cleanup: delete test kinds + book
 # ═══════════════════════════════════════════════════════════════════════════════
 header "Cleanup"

@@ -395,6 +395,74 @@ func (s *Server) loadAttrDefs(ctx context.Context, kindID string) []domain.AttrD
 	return attrs
 }
 
+// reorderKinds handles PATCH /v1/glossary/kinds/reorder
+func (s *Server) reorderKinds(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireUserID(r); !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
+		return
+	}
+	var in struct {
+		KindIDs []string `json:"kind_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || len(in.KindIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "kind_ids array is required")
+		return
+	}
+
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to begin transaction")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	for i, id := range in.KindIDs {
+		tx.Exec(r.Context(), `UPDATE entity_kinds SET sort_order=$1 WHERE kind_id=$2`, i, id)
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to commit reorder")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"reordered": len(in.KindIDs)})
+}
+
+// reorderAttrDefs handles PATCH /v1/glossary/kinds/{kind_id}/attributes/reorder
+func (s *Server) reorderAttrDefs(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireUserID(r); !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
+		return
+	}
+	kindID := chi.URLParam(r, "kind_id")
+
+	var in struct {
+		AttrDefIDs []string `json:"attr_def_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || len(in.AttrDefIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "attr_def_ids array is required")
+		return
+	}
+
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to begin transaction")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	for i, id := range in.AttrDefIDs {
+		tx.Exec(r.Context(), `UPDATE attribute_definitions SET sort_order=$1 WHERE attr_def_id=$2 AND kind_id=$3`, i, id, kindID)
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to commit reorder")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"reordered": len(in.AttrDefIDs)})
+}
+
 // helpers
 
 func comma(s string) string {
