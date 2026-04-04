@@ -4,8 +4,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/loreweave/glossary-service/internal/domain"
 )
 
@@ -16,7 +14,11 @@ func (s *Server) listGenres(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bookID := chi.URLParam(r, "book_id")
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+
 	ctx := r.Context()
 
 	rows, err := s.pool.Query(ctx, `

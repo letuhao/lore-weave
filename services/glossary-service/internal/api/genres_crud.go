@@ -6,9 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/loreweave/glossary-service/internal/domain"
+)
+
+const (
+	maxGenreNameLen = 200
+	maxGenreDescLen = 5000
+	maxColorLen     = 50
 )
 
 // createGenre creates a new genre group for a book.
@@ -18,7 +22,10 @@ func (s *Server) createGenre(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bookID := chi.URLParam(r, "book_id")
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
 
 	var in struct {
 		Name        string `json:"name"`
@@ -36,8 +43,20 @@ func (s *Server) createGenre(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "name is required")
 		return
 	}
+	if len(in.Name) > maxGenreNameLen {
+		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "name too long (max 200 chars)")
+		return
+	}
 	if in.Color == "" {
 		in.Color = "#8b5cf6"
+	}
+	if len(in.Color) > maxColorLen {
+		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "color too long (max 50 chars)")
+		return
+	}
+	if len(in.Description) > maxGenreDescLen {
+		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "description too long (max 5000 chars)")
+		return
 	}
 	sortOrder := 0
 	if in.SortOrder != nil {
@@ -72,8 +91,14 @@ func (s *Server) patchGenre(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bookID := chi.URLParam(r, "book_id")
-	genreID := chi.URLParam(r, "genre_id")
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	genreID, ok := parsePathUUID(w, r, "genre_id")
+	if !ok {
+		return
+	}
 
 	var in map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -92,23 +117,42 @@ func (s *Server) patchGenre(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "name cannot be empty")
 			return
 		}
+		if len(name) > maxGenreNameLen {
+			writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "name too long (max 200 chars)")
+			return
+		}
 		sets += comma(sets) + "name=$" + itoa(i)
 		args = append(args, name)
 		i++
 	}
 	if v, ok := in["color"]; ok {
+		color, _ := v.(string)
+		if len(color) > maxColorLen {
+			writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "color too long (max 50 chars)")
+			return
+		}
 		sets += comma(sets) + "color=$" + itoa(i)
-		args = append(args, v)
+		args = append(args, color)
 		i++
 	}
 	if v, ok := in["description"]; ok {
+		desc, _ := v.(string)
+		if len(desc) > maxGenreDescLen {
+			writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "description too long (max 5000 chars)")
+			return
+		}
 		sets += comma(sets) + "description=$" + itoa(i)
-		args = append(args, v)
+		args = append(args, desc)
 		i++
 	}
 	if v, ok := in["sort_order"]; ok {
+		f, fOk := v.(float64)
+		if !fOk {
+			writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "sort_order must be a number")
+			return
+		}
 		sets += comma(sets) + "sort_order=$" + itoa(i)
-		args = append(args, v)
+		args = append(args, int(f))
 		i++
 	}
 
@@ -137,7 +181,7 @@ func (s *Server) patchGenre(w http.ResponseWriter, r *http.Request) {
 	var createdAt time.Time
 	err = s.pool.QueryRow(r.Context(), `
 		SELECT id, book_id, name, color, description, sort_order, created_at
-		FROM genre_groups WHERE id=$1`, genreID,
+		FROM genre_groups WHERE id=$1 AND book_id=$2`, genreID, bookID,
 	).Scan(&g.ID, &g.BookID, &g.Name, &g.Color, &g.Description, &g.SortOrder, &createdAt)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to re-fetch genre")
@@ -155,8 +199,14 @@ func (s *Server) deleteGenre(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bookID := chi.URLParam(r, "book_id")
-	genreID := chi.URLParam(r, "genre_id")
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	genreID, ok := parsePathUUID(w, r, "genre_id")
+	if !ok {
+		return
+	}
 
 	tag, err := s.pool.Exec(r.Context(),
 		"DELETE FROM genre_groups WHERE id=$1 AND book_id=$2", genreID, bookID)
