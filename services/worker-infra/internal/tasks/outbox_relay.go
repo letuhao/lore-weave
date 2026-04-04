@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -10,6 +11,12 @@ import (
 
 	"github.com/loreweave/worker-infra/internal/config"
 )
+
+// uuidStr converts a [16]byte UUID to standard string format.
+func uuidStr(b [16]byte) string {
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
 
 type OutboxRelay struct {
 	Sources    []config.OutboxSource
@@ -75,6 +82,10 @@ LIMIT 100
 			return count, err
 		}
 
+		// Convert UUIDs from [16]byte to string for Redis and logging
+		idStr := uuidStr(id)
+		aggIDStr := uuidStr(aggregateID)
+
 		// Publish to Redis Stream
 		streamKey := "loreweave:events:" + aggregateType
 		err := t.Redis.XAdd(ctx, &redis.XAddArgs{
@@ -83,13 +94,13 @@ LIMIT 100
 			Approx: true,
 			Values: map[string]any{
 				"event_type":    eventType,
-				"aggregate_id":  aggregateID,
+				"aggregate_id":  aggIDStr,
 				"payload":       string(payload),
 				"source":        sourceName,
 			},
 		}).Err()
 		if err != nil {
-			log.Printf("[outbox-relay] %s: redis XADD failed for %x: %v", sourceName, id, err)
+			log.Printf("[outbox-relay] %s: redis XADD failed for %s: %v", sourceName, idStr, err)
 			pool.Exec(ctx, `UPDATE outbox_events SET retry_count=retry_count+1, last_error=$2 WHERE id=$1`, id, err.Error())
 			continue
 		}
@@ -99,7 +110,7 @@ LIMIT 100
 INSERT INTO event_log (source_service, source_outbox_id, event_type, aggregate_type, aggregate_id, payload, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
 ON CONFLICT (source_service, source_outbox_id) DO NOTHING
-`, sourceName+"-service", id, eventType, aggregateType, aggregateID, payload, createdAt)
+`, sourceName+"-service", idStr, eventType, aggregateType, aggIDStr, payload, createdAt)
 
 		// Mark as published
 		pool.Exec(ctx, `UPDATE outbox_events SET published_at=now() WHERE id=$1`, id)
