@@ -136,9 +136,10 @@ func (s *Server) patchKind(w http.ResponseWriter, r *http.Request) {
 	// Return updated kind
 	var k domain.EntityKind
 	err = s.pool.QueryRow(r.Context(), `
-		SELECT kind_id, code, name, description, icon, color, is_default, is_hidden, sort_order, genre_tags
-		FROM entity_kinds WHERE kind_id=$1`, kindID,
-	).Scan(&k.KindID, &k.Code, &k.Name, &k.Description, &k.Icon, &k.Color, &k.IsDefault, &k.IsHidden, &k.SortOrder, &k.GenreTags)
+		SELECT kind_id, code, name, description, icon, color, is_default, is_hidden, sort_order, genre_tags,
+			COALESCE((SELECT count(*) FROM glossary_entities ge WHERE ge.kind_id = ek.kind_id AND ge.deleted_at IS NULL), 0)
+		FROM entity_kinds ek WHERE kind_id=$1`, kindID,
+	).Scan(&k.KindID, &k.Code, &k.Name, &k.Description, &k.Icon, &k.Color, &k.IsDefault, &k.IsHidden, &k.SortOrder, &k.GenreTags, &k.EntityCount)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to read kind")
 		return
