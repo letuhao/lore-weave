@@ -67,10 +67,11 @@ func (s *Server) listKinds(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch all attribute definitions in one query
+	// Fetch attribute definitions only for visible kinds
 	attrRowsQ, err := s.pool.Query(ctx, `
 		SELECT ad.attr_def_id, ad.kind_id, ad.code, ad.name, ad.field_type, ad.is_required, ad.is_system, ad.sort_order, ad.genre_tags
 		FROM attribute_definitions ad
+		JOIN entity_kinds ek ON ek.kind_id = ad.kind_id AND ek.is_hidden = false
 		ORDER BY ad.kind_id, ad.sort_order`)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to query attrs")

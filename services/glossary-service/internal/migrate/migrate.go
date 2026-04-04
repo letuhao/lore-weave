@@ -462,7 +462,7 @@ func Seed(ctx context.Context, pool *pgxpool.Pool) error {
 
 const genreGroupsSQL = `
 CREATE TABLE IF NOT EXISTS genre_groups (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id          UUID PRIMARY KEY DEFAULT uuidv7(),
     book_id     UUID NOT NULL,
     name        TEXT NOT NULL,
     color       TEXT NOT NULL DEFAULT '#8b5cf6',
@@ -471,6 +471,7 @@ CREATE TABLE IF NOT EXISTS genre_groups (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(book_id, name)
 );
+ALTER TABLE genre_groups ALTER COLUMN id SET DEFAULT uuidv7();
 CREATE INDEX IF NOT EXISTS idx_genre_groups_book ON genre_groups(book_id);
 ALTER TABLE attribute_definitions ADD COLUMN IF NOT EXISTS genre_tags TEXT[] NOT NULL DEFAULT '{}';
 `
