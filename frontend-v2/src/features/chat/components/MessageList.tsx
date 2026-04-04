@@ -39,10 +39,12 @@ export function MessageList({
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll on new messages, streaming text, or streaming reasoning
+  // Auto-scroll on new messages or when streaming content changes
+  // Use length thresholds to avoid firing on every single character
+  const scrollTrigger = `${messages.length}:${(streamingText?.length ?? 0) >> 5}:${(streamingReasoning?.length ?? 0) >> 5}`;
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length, streamingText, streamingReasoning]);
+  }, [scrollTrigger]);
 
   if (messages.length === 0 && !isStreaming) {
     return (

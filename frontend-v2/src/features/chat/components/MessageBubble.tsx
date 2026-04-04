@@ -162,7 +162,7 @@ export function MessageBubble({
           )}
         </div>
         {/* Timestamp */}
-        {!isStreamingMsg && message.created_at && (
+        {!isStreamingMsg && message.created_at && !isNaN(new Date(message.created_at).getTime()) && (
           <p className={cn('mt-1 text-[9px] text-muted-foreground/50', isUser ? 'text-right' : 'text-left')}>
             {new Date(message.created_at).toLocaleTimeString()}
           </p>

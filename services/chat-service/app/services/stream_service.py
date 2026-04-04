@@ -60,7 +60,7 @@ async def _stream_openai_compatible(
                 yield {
                     "content": "",
                     "reasoning_content": "",
-                    "finish_reason": None,
+                    "finish_reason": "stop",
                     "usage": getattr(chunk, "usage", None),
                 }
                 continue

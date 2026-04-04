@@ -14,6 +14,17 @@ from app.services.stream_service import stream_response
 router = APIRouter(prefix="/v1/chat/sessions", tags=["messages"])
 
 
+def _parse_content_parts(raw: object) -> object:
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return None
+    return raw
+
+
 def _row_to_message(r: asyncpg.Record) -> ChatMessage:
     return ChatMessage(
         message_id=r["message_id"],
@@ -21,7 +32,7 @@ def _row_to_message(r: asyncpg.Record) -> ChatMessage:
         owner_user_id=r["owner_user_id"],
         role=r["role"],
         content=r["content"],
-        content_parts=json.loads(r["content_parts"]) if isinstance(r["content_parts"], str) else r["content_parts"],
+        content_parts=_parse_content_parts(r["content_parts"]),
         sequence_num=r["sequence_num"],
         input_tokens=r["input_tokens"],
         output_tokens=r["output_tokens"],

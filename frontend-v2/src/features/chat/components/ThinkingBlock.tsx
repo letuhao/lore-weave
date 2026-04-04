@@ -27,14 +27,16 @@ export function ThinkingBlock({ reasoning, isStreaming, elapsed, contentEmpty }:
     }
   }, [reasoning, expanded]);
 
-  // Auto-collapse when streaming ends
+  // Auto-collapse when streaming ends, auto-expand when streaming starts
   const wasStreamingRef = useRef(isStreaming);
   useEffect(() => {
     if (wasStreamingRef.current && !isStreaming) {
-      // Was streaming, now done — collapse
       setExpanded(false);
+      wasStreamingRef.current = false;
+    } else if (isStreaming && !wasStreamingRef.current) {
+      setExpanded(true);
+      wasStreamingRef.current = true;
     }
-    wasStreamingRef.current = isStreaming;
   }, [isStreaming]);
 
   if (isStreaming) {
