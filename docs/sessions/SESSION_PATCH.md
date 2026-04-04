@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-04 (session 19 in-progress)
-- Updated By: Assistant (P3-08 Genre Groups — backend phase)
+- Last Updated: 2026-04-04 (session 19 end)
+- Updated By: Assistant (P3-08 Genre Groups — 12 tasks complete, 26 commits)
 - Active Branch: `main`
-- HEAD: pending commit — BE-G1 genre_groups CRUD
+- HEAD: `64799f8` — fix(frontend): FE-G7 review — multi-genre select (OR logic)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -31,25 +31,33 @@
 
 ## Current Active Work
 
-**Phase:** P3-08 Genre Groups — Backend phase in progress.
+**Phase:** P3-08 Genre Groups COMPLETE. Next: P4-04 Reading/Theme unification or Phase 7 Infra.
 
 **What was done in this session (2026-04-04, session 19):**
 
-P3-08 Genre Groups — Backend-first implementation (tag-based, no activation matrix).
+P3-08 Genre Groups — Full backend + frontend implementation (tag-based, no activation matrix). 26 commits.
 
 | Work item | Files touched | Commit |
 | --------- | ------------- | ------ |
 | Design: replaced activation matrix with tag-based genre scoping | `design-drafts/screen-glossary-management.html`, `design-drafts/screen-genre-groups.html` (new) | this session |
 | Planning: rewrote P3-08a/b/c → BE-G1..G5 + FE-G1..G7 (12 tasks, backend-first) | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | this session |
-| BE-G1: `genre_groups` table + CRUD (4 endpoints, 24/24 tests pass) | `migrate.go`, `genres_handler.go` (new), `genres_crud.go` (new), `domain/genres.go` (new), `server.go`, `main.go` | this session |
-| BE-G1 review: UUID validation, cross-book re-fetch, length limits | `genres_crud.go`, `genres_handler.go` | this session |
-| BE-G2: `attribute_definitions.genre_tags` column + CRUD (12/12 tests pass) | `migrate.go`, `kinds_crud.go`, `kinds_handler.go`, `domain/kinds.go` | this session |
-| BE-G2 review: patchAttrDef re-fetch add kind_id + error check | `kinds_crud.go` | this session |
-| BE-G3: `books.genre_tags` column + CRUD (8/8 tests pass) | book-service `migrate.go`, `server.go` | this session |
-| BE-G4: Catalog genre filter + projection (8/8 tests pass) | book-service `server.go` (projection), catalog-service `server.go` | this session |
-| BE-G4 review: nil guard on genreTags in projection | book-service `server.go` | this session |
-| Fix: getBookProjection cover scan overwrites title variable (pre-existing bug) | book-service `server.go` | this session |
-| BE-G5: Integration test script (65 scenarios, all pass) | `infra/test-genre-groups.sh` (new) | this session |
+| BE-G1: `genre_groups` table + CRUD (4 endpoints, 24/24 tests) | glossary-service: `migrate.go`, `genres_handler.go`, `genres_crud.go`, `domain/genres.go`, `server.go`, `main.go` | `ada8dcf` |
+| BE-G1 review: UUID validation, cross-book re-fetch, length limits | `genres_crud.go`, `genres_handler.go` | `d3d7e6d` |
+| BE-G2: `attribute_definitions.genre_tags` column + CRUD (12/12 tests) | `migrate.go`, `kinds_crud.go`, `kinds_handler.go`, `domain/kinds.go` | `981a9ea` |
+| BE-G2 review: patchAttrDef re-fetch add kind_id + error check | `kinds_crud.go` | `7f93c5a` |
+| BE-G3: `books.genre_tags` column + CRUD (11/11 tests) | book-service `migrate.go`, `server.go` | `46f1df2` |
+| BE-G4: Catalog genre filter + projection (12/12 tests) | book-service `server.go`, catalog-service `server.go` | `853a1b0` |
+| BE-G4 review: nil guard + pre-existing title scan bug fix | book-service `server.go` | `152f19a`, `e01e6d6` |
+| BE-G5: Integration test script (65 scenarios, all pass) | `infra/test-genre-groups.sh` (new) | `401ab60` |
+| H2+H3 fix: uuidv7 for genre_groups, skip hidden kinds in attr query | glossary-service `migrate.go`, `kinds_handler.go` | `7e8340c` |
+| FE-G1: Types + API client (GenreGroup, genre_tags on all types) | `glossary/types.ts`, `glossary/api.ts`, `books/api.ts`, `BrowsePage.tsx` | `08d70e2` |
+| FE-G2: Genre Groups tab + CRUD + detail panel | `GlossaryTab.tsx`, `GenreGroupsPanel.tsx` (new), `GenreFormModal.tsx` (new) | `213e48a` |
+| FE-G2 review: dead imports, escape guard, auto-select, rename cascade | `GenreGroupsPanel.tsx`, `GenreFormModal.tsx` | `36c5ab7`, `fe9ee3d` |
+| FE-G3: Kind Editor genre_tags row | `KindEditor.tsx` | `c3e662b`, `b7a3245` |
+| FE-G4: Attr genre_tags pills + create form | `KindEditor.tsx` | `7e41867`, `b11bc15` |
+| FE-G5: Entity Editor genre filter + kind dropdown filter | `BookDetailPage.tsx`, `GlossaryTab.tsx`, `EntityEditorModal.tsx` | `085cb61`, `c900c41` |
+| FE-G6: Book SettingsTab (P3-21 + genre selector, cover, visibility) | `SettingsTab.tsx` (new), `BookDetailPage.tsx` | `1596013`, `4fbb672` |
+| FE-G7: Browse genre filter chips + book card genre pills (multi-select) | `BrowsePage.tsx`, `FilterBar.tsx`, `BookCard.tsx` | `36299a4`, `64799f8` |
 
 **9-phase workflow followed:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
