@@ -83,6 +83,59 @@ export type BookCoverageResponse = {
   known_languages: string[];
 };
 
+// ── Version types ─────────────────────────────────────────────────────────────
+
+export type VersionSummary = {
+  id: string;
+  version_num: number;
+  job_id: string;
+  status: ChapterTranslationStatus;
+  is_active: boolean;
+  model_source: string;
+  model_ref: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  created_at: string;
+};
+
+export type LanguageVersionGroup = {
+  target_language: string;
+  active_id: string | null;
+  versions: VersionSummary[];
+};
+
+export type ChapterVersionsResponse = {
+  chapter_id: string;
+  languages: LanguageVersionGroup[];
+};
+
+export type ActiveVersionResponse = {
+  chapter_id: string;
+  target_language: string;
+  active_id: string;
+};
+
+// ── Version API ───────────────────────────────────────────────────────────────
+
+export const versionsApi = {
+  listChapterVersions(token: string, chapterId: string): Promise<ChapterVersionsResponse> {
+    return apiJson(`/v1/translation/chapters/${chapterId}/versions`, { token });
+  },
+
+  getChapterVersion(token: string, chapterId: string, versionId: string): Promise<ChapterTranslation> {
+    return apiJson(`/v1/translation/chapters/${chapterId}/versions/${versionId}`, { token });
+  },
+
+  setActiveVersion(token: string, chapterId: string, versionId: string): Promise<ActiveVersionResponse> {
+    return apiJson(`/v1/translation/chapters/${chapterId}/versions/${versionId}/active`, {
+      method: 'PUT',
+      token,
+    });
+  },
+};
+
+// ── Translation API ───────────────────────────────────────────────────────────
+
 export const translationApi = {
   getBookCoverage(token: string, bookId: string): Promise<BookCoverageResponse> {
     return apiJson(`/v1/translation/books/${bookId}/coverage`, { token });
