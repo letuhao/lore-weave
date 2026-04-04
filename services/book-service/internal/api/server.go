@@ -1522,6 +1522,9 @@ FROM books b WHERE b.id=$1
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to load projection")
 		return
 	}
+	if genreTags == nil {
+		genreTags = []string{}
+	}
 	var hasCover bool
 	var coverURL *string
 	var ctype string
