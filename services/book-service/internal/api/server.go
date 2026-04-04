@@ -1527,9 +1527,9 @@ FROM books b WHERE b.id=$1
 	}
 	var hasCover bool
 	var coverURL *string
-	var ctype string
+	var ctype, skey string
 	var csize int64
-	if err := s.pool.QueryRow(r.Context(), `SELECT content_type, byte_size, storage_key FROM book_cover_assets WHERE book_id=$1`, bookID).Scan(&ctype, &csize, &title); err == nil {
+	if err := s.pool.QueryRow(r.Context(), `SELECT content_type, byte_size, storage_key FROM book_cover_assets WHERE book_id=$1`, bookID).Scan(&ctype, &csize, &skey); err == nil {
 		hasCover = true
 		u := fmt.Sprintf("/v1/books/%s/cover", bookID)
 		coverURL = &u
