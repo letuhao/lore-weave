@@ -9,23 +9,36 @@ const LANGUAGES = [
   { code: 'ko', label: '한국어 (ko)' },
 ];
 
-const GENRES = ['Fantasy', 'Drama', 'Romance', 'Sci-Fi', 'Historical'];
-
 const SORTS = [
   { value: 'recent', label: 'Most recent' },
   { value: 'chapters', label: 'Most chapters' },
   { value: 'alpha', label: 'Alphabetical' },
 ];
 
+// Deterministic color from genre name hash (no genre_groups lookup needed)
+const GENRE_COLORS = [
+  '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#3dba6a',
+  '#e8a832', '#dc4e4e', '#a855f7', '#64748b', '#8b5e3c',
+];
+
+function genreColor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return GENRE_COLORS[Math.abs(h) % GENRE_COLORS.length];
+}
+
 type Props = {
   language: string;
+  genre: string;
+  availableGenres: string[];
   sort: string;
   total: number;
   onLanguageChange: (lang: string) => void;
+  onGenreChange: (genre: string) => void;
   onSortChange: (sort: string) => void;
 };
 
-export function FilterBar({ language, sort, total, onLanguageChange, onSortChange }: Props) {
+export function FilterBar({ language, genre, availableGenres, sort, total, onLanguageChange, onGenreChange, onSortChange }: Props) {
   return (
     <div>
       {/* Filter chips */}
@@ -46,23 +59,45 @@ export function FilterBar({ language, sort, total, onLanguageChange, onSortChang
           </button>
         ))}
 
-        {/* Genre chips — disabled, deferred to P3-08c */}
-        <span className="mx-1 text-border">|</span>
-        {GENRES.map((g) => (
-          <button
-            key={g}
-            disabled
-            title="Genre filter coming in P3-08c"
-            className="cursor-not-allowed rounded-full border border-dashed px-3 py-1 text-xs text-muted-foreground/50"
-          >
-            {g}
-          </button>
-        ))}
+        {/* Separator */}
+        {availableGenres.length > 0 && (
+          <span className="mx-1 text-border">|</span>
+        )}
+
+        {/* Genre chips (dynamic, enabled) */}
+        {availableGenres.map((g) => {
+          const color = genreColor(g);
+          const isActive = genre === g;
+          return (
+            <button
+              key={g}
+              onClick={() => onGenreChange(isActive ? '' : g)}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors',
+                isActive
+                  ? 'text-foreground'
+                  : 'text-muted-foreground hover:border-border/80 hover:text-foreground',
+              )}
+              style={isActive ? { borderColor: color, background: color + '18', color } : undefined}
+            >
+              <span className="h-1.5 w-1.5 rounded-sm" style={{ background: color }} />
+              {g}
+            </button>
+          );
+        })}
       </div>
 
       {/* Results count + sort */}
       <div className="mb-4 flex items-center justify-between">
-        <span className="text-[13px] text-muted-foreground">{total} books found</span>
+        <span className="text-[13px] text-muted-foreground">
+          {total} book{total !== 1 ? 's' : ''} found
+          {genre && (
+            <> &middot; filtered by <strong style={{ color: genreColor(genre) }}>{genre}</strong></>
+          )}
+          {language && (
+            <> {genre ? '+' : '· filtered by'} <strong className="text-foreground">{language}</strong></>
+          )}
+        </span>
         <select
           value={sort}
           onChange={(e) => onSortChange(e.target.value)}

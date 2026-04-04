@@ -28,6 +28,7 @@ type Props = {
     chapter_count?: number;
     has_cover?: boolean;
     cover_url?: string | null;
+    genre_tags?: string[];
     created_at?: string | null;
   };
 };
@@ -53,6 +54,25 @@ export function BookCard({ book }: Props) {
         ) : null}
         {/* Gradient overlay */}
         <div className="absolute bottom-0 left-0 right-0 h-3/5 bg-gradient-to-t from-black/70 to-transparent" />
+        {/* Genre pills */}
+        {book.genre_tags && book.genre_tags.length > 0 && (
+          <div className="absolute bottom-2 left-2 flex flex-wrap gap-1">
+            {book.genre_tags.slice(0, 3).map((g) => (
+              <span
+                key={g}
+                className="rounded px-1.5 py-px text-[9px] font-medium"
+                style={{ background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.85)' }}
+              >
+                {g}
+              </span>
+            ))}
+            {book.genre_tags.length > 3 && (
+              <span className="rounded px-1.5 py-px text-[9px] font-medium" style={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' }}>
+                +{book.genre_tags.length - 3}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Info */}

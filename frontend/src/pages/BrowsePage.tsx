@@ -25,7 +25,9 @@ export function BrowsePage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [language, setLanguage] = useState('');
+  const [genre, setGenre] = useState('');
   const [sort, setSort] = useState('recent');
+  const [availableGenres, setAvailableGenres] = useState<string[]>([]);
   const [limit] = useState(12);
   const [offset, setOffset] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -41,6 +43,7 @@ export function BrowsePage() {
       if (offset) params.offset = String(offset);
       if (search.trim()) params.q = search.trim();
       if (language) params.language = language;
+      if (genre) params.genre = genre;
       if (sort) params.sort = sort;
 
       const qs = new URLSearchParams(params).toString();
@@ -49,8 +52,17 @@ export function BrowsePage() {
       if (controller.signal.aborted) return;
       if (!res.ok) throw new Error('Failed to load catalog');
       const data = await res.json();
-      setBooks(data.items ?? []);
+      const items: CatalogBook[] = data.items ?? [];
+      setBooks(items);
       setTotal(data.total ?? 0);
+      // Extract unique genre names from all returned books (for filter chips)
+      if (!genre) {
+        const allGenres = new Set<string>();
+        for (const b of items) {
+          for (const g of b.genre_tags ?? []) allGenres.add(g);
+        }
+        setAvailableGenres([...allGenres].sort());
+      }
     } catch {
       if (controller.signal.aborted) return;
       setBooks([]);
@@ -59,7 +71,7 @@ export function BrowsePage() {
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  }, [limit, offset, search, language, sort]);
+  }, [limit, offset, search, language, genre, sort]);
 
   useEffect(() => {
     void fetchBooks();
@@ -78,6 +90,11 @@ export function BrowsePage() {
 
   function handleLanguageChange(lang: string) {
     setLanguage(lang);
+    setOffset(0);
+  }
+
+  function handleGenreChange(g: string) {
+    setGenre(g);
     setOffset(0);
   }
 
@@ -114,9 +131,12 @@ export function BrowsePage() {
       {/* Filters + sort */}
       <FilterBar
         language={language}
+        genre={genre}
+        availableGenres={availableGenres}
         sort={sort}
         total={total}
         onLanguageChange={handleLanguageChange}
+        onGenreChange={handleGenreChange}
         onSortChange={handleSortChange}
       />
 
