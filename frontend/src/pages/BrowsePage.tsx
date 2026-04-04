@@ -25,7 +25,7 @@ export function BrowsePage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [language, setLanguage] = useState('');
-  const [genre, setGenre] = useState('');
+  const [genres, setGenres] = useState<string[]>([]);
   const [sort, setSort] = useState('recent');
   const [availableGenres, setAvailableGenres] = useState<string[]>([]);
   const [limit] = useState(12);
@@ -43,7 +43,7 @@ export function BrowsePage() {
       if (offset) params.offset = String(offset);
       if (search.trim()) params.q = search.trim();
       if (language) params.language = language;
-      if (genre) params.genre = genre;
+      if (genres.length > 0) params.genre = genres.join(',');
       if (sort) params.sort = sort;
 
       const qs = new URLSearchParams(params).toString();
@@ -56,7 +56,7 @@ export function BrowsePage() {
       setBooks(items);
       setTotal(data.total ?? 0);
       // Extract unique genre names from all returned books (for filter chips)
-      if (!genre) {
+      if (genres.length === 0) {
         const allGenres = new Set<string>();
         for (const b of items) {
           for (const g of b.genre_tags ?? []) allGenres.add(g);
@@ -71,7 +71,7 @@ export function BrowsePage() {
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  }, [limit, offset, search, language, genre, sort]);
+  }, [limit, offset, search, language, genres, sort]);
 
   useEffect(() => {
     void fetchBooks();
@@ -93,8 +93,13 @@ export function BrowsePage() {
     setOffset(0);
   }
 
-  function handleGenreChange(g: string) {
-    setGenre(g);
+  function handleGenreToggle(g: string) {
+    setGenres((prev) => prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]);
+    setOffset(0);
+  }
+
+  function handleGenreClear() {
+    setGenres([]);
     setOffset(0);
   }
 
@@ -131,12 +136,13 @@ export function BrowsePage() {
       {/* Filters + sort */}
       <FilterBar
         language={language}
-        genre={genre}
+        genres={genres}
         availableGenres={availableGenres}
         sort={sort}
         total={total}
         onLanguageChange={handleLanguageChange}
-        onGenreChange={handleGenreChange}
+        onGenreToggle={handleGenreToggle}
+        onGenreClear={handleGenreClear}
         onSortChange={handleSortChange}
       />
 

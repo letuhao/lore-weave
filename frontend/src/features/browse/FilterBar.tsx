@@ -29,16 +29,20 @@ function genreColor(name: string): string {
 
 type Props = {
   language: string;
-  genre: string;
+  genres: string[];
   availableGenres: string[];
   sort: string;
   total: number;
   onLanguageChange: (lang: string) => void;
-  onGenreChange: (genre: string) => void;
+  onGenreToggle: (genre: string) => void;
+  onGenreClear: () => void;
   onSortChange: (sort: string) => void;
 };
 
-export function FilterBar({ language, genre, availableGenres, sort, total, onLanguageChange, onGenreChange, onSortChange }: Props) {
+export function FilterBar({
+  language, genres, availableGenres, sort, total,
+  onLanguageChange, onGenreToggle, onGenreClear, onSortChange,
+}: Props) {
   return (
     <div>
       {/* Filter chips */}
@@ -61,17 +65,29 @@ export function FilterBar({ language, genre, availableGenres, sort, total, onLan
 
         {/* Separator */}
         {availableGenres.length > 0 && (
-          <span className="mx-1 text-border">|</span>
+          <>
+            <span className="mx-1 text-border">|</span>
+
+            {/* Clear genre filter */}
+            {genres.length > 0 && (
+              <button
+                onClick={onGenreClear}
+                className="rounded-full border border-dashed px-2.5 py-1 text-[10px] text-muted-foreground hover:border-border/80 hover:text-foreground transition-colors"
+              >
+                Clear genres
+              </button>
+            )}
+          </>
         )}
 
-        {/* Genre chips (dynamic, enabled) */}
+        {/* Genre chips (dynamic, multi-select) */}
         {availableGenres.map((g) => {
           const color = genreColor(g);
-          const isActive = genre === g;
+          const isActive = genres.includes(g);
           return (
             <button
               key={g}
-              onClick={() => onGenreChange(isActive ? '' : g)}
+              onClick={() => onGenreToggle(g)}
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors',
                 isActive
@@ -91,11 +107,16 @@ export function FilterBar({ language, genre, availableGenres, sort, total, onLan
       <div className="mb-4 flex items-center justify-between">
         <span className="text-[13px] text-muted-foreground">
           {total} book{total !== 1 ? 's' : ''} found
-          {genre && (
-            <> &middot; filtered by <strong style={{ color: genreColor(genre) }}>{genre}</strong></>
+          {genres.length > 0 && (
+            <> &middot; {genres.map((g, i) => (
+              <span key={g}>
+                {i > 0 && ' + '}
+                <strong style={{ color: genreColor(g) }}>{g}</strong>
+              </span>
+            ))}</>
           )}
           {language && (
-            <> {genre ? '+' : '· filtered by'} <strong className="text-foreground">{language}</strong></>
+            <> {genres.length > 0 ? '+ ' : '· '}<strong className="text-foreground">{language}</strong></>
           )}
         </span>
         <select
