@@ -1104,14 +1104,68 @@ P3-17a (wiki backend) blocks all wiki features
 | MIG-04 | `/usage/:logId` | `UsageDetailPage.tsx` | 59 | S |
 | MIG-05 | `/settings/:tab` | `UserSettingsPage.tsx` + `components/settings/` | 54+ | M |
 | MIG-06 | `/browse` | `BrowsePage.tsx` | 45 | S |
-| MIG-07 | `/browse/:bookId` | `PublicBookPage.tsx` | 81 | S |
-| MIG-08 | `/s/:accessToken` | `UnlistedPage.tsx` | 68 | S |
-| MIG-09 | Chapter translations view | `ChapterTranslationsPage.tsx` | 245 | M |
-| MIG-10 | Delete old `frontend/` directory | — | — | S |
+| MIG-07 | `/browse/:bookId` | `PublicBookDetailPage.tsx` | 287 | S | [✓] Done (session 18) |
+| MIG-08 | `/s/:accessToken` | `SharedBookPage.tsx` | 332 | S | [✓] Done (session 18) |
+| MIG-09 | Chapter translations view | 5 sub-tasks below | 500+ | L | [ ] |
+| MIG-10 | Delete old `frontend/` directory | — | — | S | [ ] blocked by MIG-09 |
+
+**MIG-09 Detailed Breakdown (BE first, then FE):**
+
+> **Design draft:** `design-drafts/screen-chapter-translations.html`
+> **Route:** `/books/:bookId/chapters/:chapterId/translations`
+> **BE APIs exist:** list versions, get version, set active (translation-service)
+
+```
+BE-MIG09-01: versionsApi in FE translation/api.ts              [ ]
+  - listChapterVersions(token, chapterId)
+    → GET /v1/translation/chapters/:id/versions
+  - getChapterVersion(token, chapterId, versionId)
+    → GET /v1/translation/chapters/:id/versions/:vid
+  - setActiveVersion(token, chapterId, versionId)
+    → PUT /v1/translation/chapters/:id/versions/:vid/active
+  Note: BE endpoints exist — this is FE API client only
+  Size: S
+
+FE-MIG09-02: VersionSidebar component                          [ ]
+  - Language tabs: Original + target languages with version counts
+  - Version list per language: v1/v2/v3 with model name, status, time
+  - Active badge on active version
+  - Status colors: completed (green), running (blue), failed (red)
+  - Re-translate button → opens TranslateModal
+  - Compare Mode toggle button
+  Size: M
+
+FE-MIG09-03: TranslationViewer component                       [ ]
+  - Toolbar: version name, status badges, token counts, model name
+  - Actions: Copy text, Set Active (if completed + not already active)
+  - Content: translated body (serif font, reading-optimized)
+  - Loading state for version content fetch
+  Size: S
+
+FE-MIG09-04: SplitCompareView component                        [ ]
+  - Two panes: Original (left) + Translation (right)
+  - Header labels: language + version
+  - Center divider with "ja → en" label
+  - Both panes scroll independently
+  - Exit compare button
+  Size: S
+
+FE-MIG09-05: ChapterTranslationsPage + route                   [ ]
+  - Full-height layout: VersionSidebar (left) + content (right)
+  - URL-driven: ?lang=en&vid=xxx
+  - Auto-select: most-translated language + active version
+  - Empty state: no translations → "Translate" CTA
+  - Breadcrumb: Back to book link
+  - Route: /books/:bookId/chapters/:chapterId/translations
+  - Navigation from TranslationTab matrix (click cell → this page)
+  Size: M
+  Deps: FE-MIG09-02, 03, 04
+```
 
 **Migration strategy:**
-- Port component logic, convert to Tailwind/shadcn patterns matching frontend-v2
-- Reuse existing v2 API clients (`booksApi`, `glossaryApi`, etc.)
+- Rebuild from scratch matching v2 design system (not copy from old frontend)
+- BE-first: verify API contract with test script before FE
+- Reuse existing v2 API clients + TranslateModal
 - Replace PlaceholderPage routes with real pages
 - After MIG-01..MIG-09 complete, MIG-10 deletes old frontend/
 
@@ -1119,6 +1173,7 @@ P3-17a (wiki backend) blocks all wiki features
 - BooksPage, BookDetailPage, ChapterEditorPage, ReaderPage
 - Auth pages (Login, Register, Forgot, Reset)
 - BookDetail tabs (Chapters, Translation, Glossary, Sharing, Settings)
+- MIG-01..MIG-08: all done (session 15-18)
 
 **Dead code in old frontend/ (delete with MIG-10):**
 - `chunk-editor/` — replaced by Tiptap

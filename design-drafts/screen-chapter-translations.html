@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Chapter Translations View</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Noto+Serif+JP:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --input: #242019; --ring: #d4952a;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --secondary-fg: #e0d8cc;
+      --muted: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --destructive: #dc4e4e; --success: #3dba6a; --info: #5496e8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; height: 100vh; overflow: hidden; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 2px; }
+
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; font-family: inherit; }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+    .btn-outline:hover { background: var(--secondary); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); border: none; cursor: pointer; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-family: inherit; }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+    .badge { display: inline-flex; align-items: center; gap: 3px; border-radius: 99px; padding: 2px 8px; font-size: 10px; font-weight: 500; }
+
+    /* Language tabs */
+    .lang-tab { padding: 8px 14px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 120ms; border: none; background: transparent; color: var(--muted-fg); font-family: inherit; }
+    .lang-tab:hover { background: var(--secondary); }
+    .lang-tab.active { background: var(--accent-muted); color: var(--accent-fg); border: 1px solid rgba(61,166,146,0.2); }
+    .lang-tab.original { background: var(--primary-muted); color: var(--primary); }
+
+    /* Version item */
+    .version-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; cursor: pointer; transition: all 120ms; border: 1px solid transparent; }
+    .version-item:hover { background: var(--card-hover); }
+    .version-item.selected { background: var(--accent-muted); border-color: rgba(61,166,146,0.2); }
+    .version-item.active-badge::after { content: 'Active'; font-size: 9px; color: var(--success); background: rgba(61,186,106,0.1); padding: 1px 6px; border-radius: 99px; margin-left: auto; }
+
+    /* Split panes */
+    .split-pane { flex: 1; overflow-y: auto; padding: 24px; }
+    .split-divider { width: 1px; background: var(--border); flex-shrink: 0; }
+
+    /* Status badge colors */
+    .status-completed { background: rgba(61,186,106,0.1); color: var(--success); }
+    .status-running { background: rgba(84,150,232,0.1); color: var(--info); }
+    .status-failed { background: rgba(220,78,78,0.1); color: var(--destructive); }
+    .status-pending { background: var(--secondary); color: var(--muted-fg); }
+  </style>
+</head>
+<body>
+
+<div style="display: flex; height: 100vh; overflow: hidden;">
+
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <!-- LEFT SIDEBAR: Languages + Versions                                       -->
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <aside style="width: 240px; flex-shrink: 0; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--card);">
+
+    <!-- Header -->
+    <div style="padding: 14px 16px; border-bottom: 1px solid var(--border);">
+      <a href="#" style="font-size: 11px; color: var(--accent); text-decoration: none;">&larr; Back to book</a>
+      <h2 class="font-serif" style="font-size: 14px; font-weight: 600; margin-top: 6px;">Ch.3 &mdash; The Hero's Complaint</h2>
+      <p style="font-size: 10px; color: var(--muted-fg); margin-top: 2px;">1,892 words &middot; Japanese (ja)</p>
+    </div>
+
+    <!-- Language tabs -->
+    <div style="padding: 10px 12px;">
+      <p style="font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg); margin-bottom: 6px;">Languages</p>
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <button class="lang-tab original">
+          <span style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 10px; font-family: 'JetBrains Mono'; opacity: 0.6;">ja</span>
+            Original
+          </span>
+        </button>
+        <button class="lang-tab active">
+          <span style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+            <span style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 10px; font-family: 'JetBrains Mono'; opacity: 0.6;">en</span>
+              English
+            </span>
+            <span style="font-size: 9px; color: var(--success);">3 ver</span>
+          </span>
+        </button>
+        <button class="lang-tab">
+          <span style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+            <span style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 10px; font-family: 'JetBrains Mono'; opacity: 0.6;">vi</span>
+              Vietnamese
+            </span>
+            <span style="font-size: 9px; color: var(--muted-fg);">1 ver</span>
+          </span>
+        </button>
+        <button class="lang-tab">
+          <span style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+            <span style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 10px; font-family: 'JetBrains Mono'; opacity: 0.6;">zh</span>
+              Chinese (TW)
+            </span>
+            <span style="font-size: 9px; color: var(--info);">running</span>
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Versions for selected language -->
+    <div style="flex: 1; overflow-y: auto; padding: 0 12px 12px;">
+      <p style="font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg); margin-bottom: 6px;">English Versions</p>
+      <div style="display: flex; flex-direction: column; gap: 3px;">
+        <div class="version-item selected active-badge">
+          <div>
+            <p style="font-size: 12px; font-weight: 500;">v3</p>
+            <p style="font-size: 9px; color: var(--muted-fg);">Claude Sonnet 4.6 &middot; 2h ago</p>
+          </div>
+        </div>
+        <div class="version-item">
+          <div>
+            <p style="font-size: 12px; font-weight: 500;">v2</p>
+            <p style="font-size: 9px; color: var(--muted-fg);">GPT-4o &middot; 1d ago</p>
+          </div>
+        </div>
+        <div class="version-item">
+          <div>
+            <p style="font-size: 12px; font-weight: 500;">v1</p>
+            <p style="font-size: 9px; color: var(--muted-fg);">Qwen3-32B &middot; 3d ago</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div style="padding: 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px;">
+      <button class="btn btn-primary" style="width: 100%; justify-content: center; padding: 8px;">
+        <svg style="width:13px;height:13px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        Re-translate
+      </button>
+      <button class="btn btn-outline" style="width: 100%; justify-content: center;">
+        <svg style="width:13px;height:13px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        Compare Mode
+      </button>
+    </div>
+  </aside>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <!-- MAIN CONTENT: Translation viewer (or split compare)                      -->
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <main style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+
+    <!-- Toolbar -->
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <h3 style="font-size: 13px; font-weight: 600;">English Translation &mdash; v3</h3>
+        <span class="badge status-completed">Completed</span>
+        <span class="badge" style="background: rgba(61,186,106,0.1); color: var(--success); border: 1px solid rgba(61,186,106,0.15);">
+          <svg style="width:10px;height:10px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+          Active
+        </span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="font-mono" style="font-size: 10px; color: var(--muted-fg);">&uarr; 2,140 &darr; 1,892 tokens</span>
+        <span style="font-size: 10px; color: var(--muted-fg);">&middot;</span>
+        <span style="font-size: 10px; color: var(--muted-fg);">Claude Sonnet 4.6</span>
+        <button class="btn-ghost">
+          <svg style="width:13px;height:13px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          Copy
+        </button>
+        <button class="btn-ghost" style="color: var(--accent);">
+          <svg style="width:13px;height:13px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+          Set Active
+        </button>
+      </div>
+    </div>
+
+    <!-- Content area: single view or split -->
+    <div style="flex: 1; display: flex; overflow: hidden;">
+
+      <!-- Single translation view -->
+      <div class="split-pane">
+        <div class="font-serif" style="max-width: 680px; margin: 0 auto; font-size: 15px; line-height: 1.9; color: var(--foreground); opacity: 0.9;">
+          <p style="margin-bottom: 16px;">The throne room was silent except for the gentle hiss of magical torches. The Demon Lord sat with one leg crossed over the other, examining a scroll that detailed the latest territorial dispute with the neighboring kingdom of Aeloria.</p>
+          <p style="margin-bottom: 16px;">"Your Majesty, the Hero has arrived," announced the chamberlain, his voice echoing against the obsidian walls. The words carried an undertone of anxiety that even centuries of service could not fully mask.</p>
+          <p style="margin-bottom: 16px;">The Demon Lord sighed &mdash; a sound that caused the torches to flicker. "Send him in. And prepare the tea. The good one, not the cursed variety." A pause. "Actually, prepare both. Let's see what kind of mood he's in."</p>
+          <p style="margin-bottom: 16px;">The doors burst open with theatrical force. The Hero strode in, armor gleaming, cape billowing despite the notable absence of wind. His sword was drawn, pointed directly at the ceiling in what was clearly a rehearsed pose.</p>
+          <p style="margin-bottom: 16px;">"Demon Lord!" he bellowed. "I have come to lodge a formal complaint!" The Hero reached into his breastplate and produced a crumpled piece of parchment. "Subsection 7, paragraph 3 of the Hero-Demon Lord Engagement Protocol clearly states..."</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- PAGE 2: Compare Mode (split view)                                        -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<div style="margin-top: 40px; border-top: 3px solid var(--accent); display: flex; height: 600px;">
+  <!-- Left: Original -->
+  <div style="flex: 1; display: flex; flex-direction: column; border-right: 1px solid var(--border);">
+    <div style="padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--card); flex-shrink: 0;">
+      <p style="font-size: 11px; font-weight: 600; color: var(--primary);">Original &mdash; Japanese (ja)</p>
+    </div>
+    <div class="split-pane" style="font-family: 'Noto Serif JP', serif; font-size: 15px; line-height: 2.0; color: var(--foreground); opacity: 0.85;">
+      <p style="margin-bottom: 16px;">玉座の間は、魔法の松明の穏やかな音だけが響いていた。魔王は足を組んで座り、隣国アエロリアとの最新の領土紛争を詳述した巻物を調べていた。</p>
+      <p style="margin-bottom: 16px;">「陛下、勇者がお見えになりました」と侍従が告げた。その声は黒曜石の壁に反響した。何世紀もの勤務でさえ完全には隠せない不安の色が、その言葉には含まれていた。</p>
+      <p style="margin-bottom: 16px;">魔王はため息をついた。その音で松明が揺れた。「通せ。それから茶を用意しろ。良い方だ、呪いの品種じゃないぞ。」少しの間。「いや、両方用意しろ。奴の機嫌を見てからだ。」</p>
+    </div>
+  </div>
+  <!-- Divider with labels -->
+  <div style="width: 1px; background: var(--border); position: relative;">
+    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--card); border: 1px solid var(--border); border-radius: 99px; padding: 4px 8px; font-size: 9px; color: var(--muted-fg); white-space: nowrap;">
+      ja &rarr; en
+    </div>
+  </div>
+  <!-- Right: Translation -->
+  <div style="flex: 1; display: flex; flex-direction: column;">
+    <div style="padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--card); flex-shrink: 0;">
+      <p style="font-size: 11px; font-weight: 600; color: var(--accent);">Translation &mdash; English (en) v3</p>
+    </div>
+    <div class="split-pane font-serif" style="font-size: 15px; line-height: 1.9; color: var(--foreground); opacity: 0.9;">
+      <p style="margin-bottom: 16px;">The throne room was silent except for the gentle hiss of magical torches. The Demon Lord sat with one leg crossed over the other, examining a scroll that detailed the latest territorial dispute with the neighboring kingdom of Aeloria.</p>
+      <p style="margin-bottom: 16px;">"Your Majesty, the Hero has arrived," announced the chamberlain, his voice echoing against the obsidian walls. The words carried an undertone of anxiety that even centuries of service could not fully mask.</p>
+      <p style="margin-bottom: 16px;">The Demon Lord sighed &mdash; a sound that caused the torches to flicker. "Send him in. And prepare the tea. The good one, not the cursed variety." A pause. "Actually, prepare both. Let's see what kind of mood he's in."</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- DESIGN NOTES                                                            -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<div style="background: #0a0908; border-top: 3px solid var(--primary); padding: 40px 32px;">
+  <div style="max-width: 800px; margin: 0 auto;">
+    <h2 class="font-serif" style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">Design Notes &mdash; Chapter Translations View (MIG-09)</h2>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+      <div style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px;">
+        <h3 style="font-size: 12px; color: var(--primary); font-weight: 600; margin-bottom: 6px;">Layout</h3>
+        <ul style="font-size: 11px; line-height: 1.8; color: var(--muted-fg); padding-left: 14px;">
+          <li>Left sidebar (240px): language tabs + version list</li>
+          <li>Main area: translation content (serif, reading-optimized)</li>
+          <li>Compare mode: split view (original left, translation right)</li>
+          <li>Toolbar: version info, status, tokens, actions</li>
+          <li>Full height, no page scroll (sidebar + content scroll independently)</li>
+        </ul>
+      </div>
+      <div style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px;">
+        <h3 style="font-size: 12px; color: var(--primary); font-weight: 600; margin-bottom: 6px;">Data Sources</h3>
+        <ul style="font-size: 11px; line-height: 1.8; color: var(--muted-fg); padding-left: 14px;">
+          <li>GET /v1/translation/chapters/:id/versions &rarr; languages + versions</li>
+          <li>GET /v1/translation/chapters/:id/versions/:vid &rarr; translated body</li>
+          <li>PUT /v1/translation/chapters/:id/versions/:vid/active &rarr; set active</li>
+          <li>GET /v1/books/:bookId/chapters/:chapterId/draft &rarr; original body</li>
+          <li>Route: /books/:bookId/chapters/:chapterId/translations</li>
+        </ul>
+      </div>
+      <div style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px;">
+        <h3 style="font-size: 12px; color: var(--primary); font-weight: 600; margin-bottom: 6px;">Interactions</h3>
+        <ul style="font-size: 11px; line-height: 1.8; color: var(--muted-fg); padding-left: 14px;">
+          <li>Click language tab &rarr; show versions for that language</li>
+          <li>Click "Original" tab &rarr; show original draft body</li>
+          <li>Click version &rarr; load translated_body</li>
+          <li>"Set Active" &rarr; PUT active version</li>
+          <li>"Compare Mode" &rarr; split view (original | translation)</li>
+          <li>"Re-translate" &rarr; open TranslateModal</li>
+          <li>"Copy" &rarr; copy translated text to clipboard</li>
+        </ul>
+      </div>
+      <div style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px;">
+        <h3 style="font-size: 12px; color: var(--primary); font-weight: 600; margin-bottom: 6px;">States</h3>
+        <ul style="font-size: 11px; line-height: 1.8; color: var(--muted-fg); padding-left: 14px;">
+          <li>Loading: skeleton for sidebar + content</li>
+          <li>No translations: empty state with "Translate" CTA</li>
+          <li>Version statuses: completed (green), running (blue), failed (red), pending (gray)</li>
+          <li>Active version: green "Active" badge + checkmark</li>
+          <li>URL-driven selection: ?lang=en&vid=xxx</li>
+          <li>Auto-select: most-translated language + active version</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
