@@ -389,10 +389,9 @@ services:
     volumes:
       - loreweave_languagetool:/LanguageTool/languagetool-data
 
-  # Frontend V2 — run with: docker compose --profile v2 up frontend-v2
   frontend:
     build:
-      context: ../frontend-v2
+      context: ../frontend
       dockerfile: Dockerfile
       args:
         VITE_API_BASE: ${VITE_API_BASE:-http://localhost:3123}

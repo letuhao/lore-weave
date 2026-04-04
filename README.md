@@ -150,7 +150,7 @@ Access the UI at [http://localhost:5173](http://localhost:5173)
 ### Manual / Hybrid
 1. **Infra**: `cd infra && docker compose up -d postgres minio redis mailhog`
 2. **Services**: Start individual services (see each service's README)
-3. **Frontend**: `cd frontend-v2 && npm install && npm run dev`
+3. **Frontend**: `cd frontend && npm install && npm run dev`
 
 ---
 
