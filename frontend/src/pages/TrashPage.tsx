@@ -145,7 +145,7 @@ export function TrashPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search trash\u2026"
+            placeholder="Search trash…"
             className="h-8 w-[200px] rounded-md border bg-input pl-8 pr-3 text-[13px] text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
           />
         </div>
@@ -232,7 +232,7 @@ export function TrashPage() {
             ? `"${confirmPurge[0].title}" will be permanently deleted. This cannot be undone.`
             : `${confirmPurge?.length ?? 0} items will be permanently deleted. This cannot be undone.`
         }
-        confirmLabel={actionLoading ? 'Deleting\u2026' : 'Delete Permanently'}
+        confirmLabel={actionLoading ? 'Deleting…' : 'Delete Permanently'}
         cancelLabel="Cancel"
         variant="destructive"
         onConfirm={() => void executePurge()}

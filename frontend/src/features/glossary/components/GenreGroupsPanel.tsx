@@ -36,14 +36,14 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
   // Compute kind/attr counts for selected genre
   const taggedKinds = useMemo(() => {
     if (!selected) return [];
-    return kinds.filter((k) => k.genre_tags.includes(selected.name));
+    return kinds.filter((k) => (k.genre_tags ?? []).includes(selected.name));
   }, [kinds, selected]);
 
   const taggedAttrs = useMemo(() => {
     if (!selected) return new Map<string, { kind: EntityKind; attrs: EntityKind['default_attributes'] }>();
     const map = new Map<string, { kind: EntityKind; attrs: EntityKind['default_attributes'] }>();
     for (const k of kinds) {
-      const matching = k.default_attributes.filter((a) => a.genre_tags.includes(selected.name));
+      const matching = k.default_attributes.filter((a) => (a.genre_tags ?? []).includes(selected.name));
       if (matching.length > 0) {
         map.set(k.kind_id, { kind: k, attrs: matching });
       }
@@ -61,7 +61,7 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
   const kindCountByGenre = useMemo(() => {
     const map = new Map<string, number>();
     for (const g of genres) {
-      map.set(g.name, kinds.filter((k) => k.genre_tags.includes(g.name)).length);
+      map.set(g.name, kinds.filter((k) => (k.genre_tags ?? []).includes(g.name)).length);
     }
     return map;
   }, [genres, kinds]);
@@ -86,12 +86,12 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
       const promises: Promise<unknown>[] = [];
 
       for (const k of kinds) {
-        if (k.genre_tags.includes(oldName)) {
-          promises.push(glossaryApi.patchKind(accessToken!, k.kind_id, { genre_tags: renameTag(k.genre_tags) }));
+        if ((k.genre_tags ?? []).includes(oldName)) {
+          promises.push(glossaryApi.patchKind(accessToken!, k.kind_id, { genre_tags: renameTag(k.genre_tags ?? []) }));
         }
         for (const a of k.default_attributes) {
-          if (a.genre_tags.includes(oldName)) {
-            promises.push(glossaryApi.patchAttrDef(accessToken!, k.kind_id, a.attr_def_id, { genre_tags: renameTag(a.genre_tags) }));
+          if ((a.genre_tags ?? []).includes(oldName)) {
+            promises.push(glossaryApi.patchAttrDef(accessToken!, k.kind_id, a.attr_def_id, { genre_tags: renameTag(a.genre_tags ?? []) }));
           }
         }
       }
@@ -99,8 +99,8 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
       // Also rename in the book's own genre_tags
       try {
         const book = await booksApi.getBook(accessToken!, bookId);
-        if (book.genre_tags.includes(oldName)) {
-          promises.push(booksApi.patchBook(accessToken!, bookId, { genre_tags: renameTag(book.genre_tags) }));
+        if ((book.genre_tags ?? []).includes(oldName)) {
+          promises.push(booksApi.patchBook(accessToken!, bookId, { genre_tags: renameTag(book.genre_tags ?? []) }));
         }
       } catch { /* book fetch failed — skip book cascade */ }
 

@@ -16,6 +16,7 @@ type CatalogBook = {
   summary_excerpt?: string | null;
   has_cover?: boolean;
   cover_url?: string | null;
+  genre_tags?: string[];
   chapter_count: number;
   visibility: string;
   created_at?: string | null;
@@ -142,8 +143,13 @@ export function PublicBookDetailPage() {
         {/* Info */}
         <div className="min-w-0 flex-1">
           {/* Badges */}
-          <div className="mb-2 flex items-center gap-2">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
             <span className="rounded-full bg-[#3dba6a] px-2 py-0.5 text-[10px] font-medium text-white">Public</span>
+            {book.genre_tags && book.genre_tags.length > 0 && book.genre_tags.map((g) => (
+              <span key={g} className="rounded-full border border-border bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                {g}
+              </span>
+            ))}
           </div>
 
           <h1 className="font-serif text-2xl font-semibold leading-tight">{book.title}</h1>

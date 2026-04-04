@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { BookOpen, MessageCircle, Search, BarChart3, Settings, Trophy, Trash2, Bell } from 'lucide-react';
 
 const icons: Record<string, React.ElementType> = {
@@ -13,6 +14,7 @@ const icons: Record<string, React.ElementType> = {
 
 export function PlaceholderPage({ title, description }: { title: string; description?: string }) {
   const Icon = icons[title] ?? BookOpen;
+  const is404 = title === '404';
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center">
       <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
@@ -22,6 +24,11 @@ export function PlaceholderPage({ title, description }: { title: string; descrip
       <p className="mt-2 text-sm text-muted-foreground">
         {description ?? `${title} page — coming in Phase 2.`}
       </p>
+      {is404 && (
+        <Link to="/books" className="mt-4 text-sm text-primary hover:underline">
+          &larr; Back to Workspace
+        </Link>
+      )}
     </div>
   );
 }

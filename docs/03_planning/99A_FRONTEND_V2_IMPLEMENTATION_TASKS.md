@@ -502,23 +502,10 @@ Deferred polish items (tracked here so they don't get lost):
   [ ] P3-R1-D4: Wire NotificationBell with real data (currently mock)
   [ ] P3-R1-D5: Remove or repurpose ModeProvider (currently unused)
 
-Deferred glossary items (needs backend or P3-08):
-  Backend required:
-  [ ] P3-R1-D6: Attribute active toggle (is_active column, on/off per attr) [BE+FE]
-  [ ] P3-R1-D7: Kind + attribute modified tracking (compare vs seed defaults, show "modified" badge) [BE+FE]
-  [ ] P3-R1-D8: Revert to default — per-kind and per-attribute (restore to seed value) [BE+FE]
-  [ ] P3-R1-D10: Relationship field type (entity references with role labels) [BE+FE]
-  [ ] P3-R1-D17: Kind description field — add to EntityKind domain type + listKinds query [BE+FE]
-  [ ] P3-R1-D18: Entity count per kind — aggregate in listKinds or separate endpoint [BE+FE]
+Deferred glossary items — PROMOTED to P3-09 Kind Editor Enhancement (full-stack, BE-first):
+  See P3-09 section below for detailed task breakdown.
 
-  Frontend only:
-  [ ] P3-R1-D9: Drag-to-reorder kinds + attributes (update sort_order via PATCH) [FE]
-  [ ] P3-R1-D19: "System" / "Custom" badge on kind list items (currently only section headers) [FE]
-  [ ] P3-R1-D20: Kind metadata row — show Display Name, Internal ID, Entities, Description [FE]
-  [ ] P3-R1-D21: Inline edit button (pencil) per attribute row [FE]
-  [ ] P3-R1-D22: "required" / "optional" text label per attribute (not just badge) [FE]
-
-  Covered by Genre Groups (FE-G3..G5):
+  Covered by Genre Groups (FE-G3..G5) — already done:
   [✓] P3-R1-D11: Genre badge on attributes → FE-G4 (genre tag pills on attr rows)
   [✓] P3-R1-D12: Genre badge in entity editor header → FE-G5 (genre indicator)
   [—] P3-R1-D13: Attribute deactivation per genre → DROPPED (tag-based filtering replaces matrix deactivation)
@@ -715,10 +702,170 @@ FE-G7: Browse genre filter [FE]
     - [ ] Book cards show genre tags on cover
 ```
 
-Deferred items now unblocked by P3-08:
+Deferred items resolved:
   [x] P3-R1-D11: Genre badge on attributes → covered by FE-G4
   [x] P3-R1-D12: Genre badge in entity editor header → covered by FE-G5
-  [ ] P3-R1-D13: Attribute deactivation per genre → DROPPED (no matrix, tag-based instead)
+  [—] P3-R1-D13: Attribute deactivation per genre → DROPPED (no matrix, tag-based instead)
+  [→] P3-R1-D6..D22 (Kind Editor gaps) → PROMOTED to P3-KE Kind Editor Enhancement section
+
+### Kind Editor Enhancement (full-stack, BE-first)
+
+Design reference: `design-drafts/screen-glossary-management.html` (Section 1: Kind Editor)
+
+Scope: Close the gap between the design draft and the current KindEditor implementation.
+Strategy: All backend tasks first (BE-KE-01..06), then all frontend tasks (FE-KE-01..07).
+Service: glossary-service (Go/Chi)
+
+Existing DB state (already in schema):
+  - `entity_kinds.description TEXT` — column EXISTS but not exposed in API or FE
+  - `attribute_definitions.description TEXT` — column EXISTS but not exposed in API or FE
+  - `attribute_definitions.is_system BOOLEAN` — EXISTS
+  - `entity_kinds.is_default BOOLEAN` — EXISTS
+  - `entity_kinds.sort_order INT` — EXISTS
+  - `attribute_definitions.sort_order INT` — EXISTS
+
+Missing DB columns:
+  - `attribute_definitions.is_active BOOLEAN NOT NULL DEFAULT true` — toggle on/off without deleting
+
+```
+── Backend Tasks (BE-KE-01..06) ──────────────────────────────────────────────
+
+BE-KE-01: Kind description field — expose in API [BE]
+  Status: [ ]
+  DB: column `entity_kinds.description` already exists
+  Changes:
+    - listKinds: include `description` in SELECT + response JSON
+    - patchKind: accept `description` in PATCH body, persist to DB
+    - Domain type: add Description field to EntityKind struct
+  AC:
+    - [ ] GET /v1/glossary/kinds returns description field (null if empty)
+    - [ ] PATCH /v1/glossary/kinds/:id accepts description, persists correctly
+    - [ ] Existing kinds with NULL description work without error
+
+BE-KE-02: Entity count per kind [BE]
+  Status: [ ]
+  DB: no schema change — aggregate query from glossary_entities
+  Changes:
+    - listKinds: add subquery `SELECT count(*) FROM glossary_entities WHERE kind_id = ek.kind_id AND deleted_at IS NULL` as entity_count
+    - Domain type: add EntityCount field
+  AC:
+    - [ ] GET /v1/glossary/kinds returns entity_count per kind
+    - [ ] Count excludes soft-deleted entities
+    - [ ] Kinds with 0 entities return entity_count: 0
+
+BE-KE-03: Attribute is_active toggle [BE]
+  Status: [ ]
+  DB: ALTER TABLE attribute_definitions ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true
+  Changes:
+    - migrate.go: add migration SQL
+    - listKinds: include is_active in attr response
+    - patchAttrDef: accept is_active in PATCH body
+    - Entity detail: optionally filter inactive attrs (or let FE decide)
+  AC:
+    - [ ] Migration adds is_active column (idempotent)
+    - [ ] GET /v1/glossary/kinds returns is_active per attribute
+    - [ ] PATCH /v1/glossary/kinds/:kindId/attributes/:attrId accepts is_active toggle
+    - [ ] Existing attributes default to is_active=true
+
+BE-KE-04: Attribute inline edit — PATCH name, field_type, is_required, options [BE]
+  Status: [ ]
+  DB: no schema change — fields already exist
+  Changes:
+    - patchAttrDef: extend to accept name, field_type, is_required, options (currently only genre_tags)
+    - Validation: field_type must be one of known types, name non-empty
+  AC:
+    - [ ] PATCH /v1/glossary/kinds/:kindId/attributes/:attrId accepts name, field_type, is_required
+    - [ ] Invalid field_type returns 400
+    - [ ] System attributes (is_system=true) can still be edited (name customization)
+
+BE-KE-05: Attribute description — expose in API [BE]
+  Status: [ ]
+  DB: column `attribute_definitions.description` already exists
+  Changes:
+    - listKinds: include attr description in response
+    - patchAttrDef: accept description in PATCH body
+    - createAttrDef: accept description in POST body
+  AC:
+    - [ ] GET /v1/glossary/kinds returns description per attribute
+    - [ ] PATCH/POST accept description field
+
+BE-KE-06: Sort order PATCH endpoints [BE]
+  Status: [ ]
+  DB: sort_order columns already exist on both tables
+  Changes:
+    - New endpoint: PATCH /v1/glossary/kinds/reorder — accepts { kind_ids: string[] } ordered array
+    - New endpoint: PATCH /v1/glossary/kinds/:kindId/attributes/reorder — accepts { attr_def_ids: string[] }
+    - Both endpoints update sort_order = array index for each ID
+  AC:
+    - [ ] PATCH /v1/glossary/kinds/reorder updates sort_order for all provided kind IDs
+    - [ ] PATCH /v1/glossary/kinds/:kindId/attributes/reorder updates attr sort_order
+    - [ ] Missing IDs in array are left at their current sort_order
+    - [ ] Returns 400 if any ID doesn't exist
+
+── Frontend Tasks (FE-KE-01..07) — start after all BE-KE done ───────────────
+
+FE-KE-01: Kind metadata panel [FE]
+  Status: [ ]
+  Update: KindEditor.tsx — add Description field to edit form, show entity count in detail header
+  AC:
+    - [ ] Description textarea in kind edit form (editable, saves via PATCH)
+    - [ ] Entity count shown in kind detail header (e.g. "12 attributes · 45 entities")
+    - [ ] Kind metadata row: Display Name, Internal ID, Entity count, Description
+
+FE-KE-02: Attribute inline edit modal [FE]
+  Status: [ ]
+  Update: KindEditor.tsx — pencil icon per attribute row → opens edit popover/inline form
+  Fields: name, field_type (dropdown), is_required (checkbox), description (textarea), genre_tags
+  AC:
+    - [ ] Pencil icon on each attribute row (hover reveal, like delete icon)
+    - [ ] Click opens inline edit form or small modal
+    - [ ] Save PATCHes the attribute, reloads kind
+    - [ ] System attributes editable (name customization allowed)
+
+FE-KE-03: Attribute toggle on/off [FE]
+  Status: [ ]
+  Update: KindEditor.tsx — toggle switch per attribute row (uses is_active from BE-KE-03)
+  AC:
+    - [ ] Toggle switch shown per attribute (green=active, muted=inactive)
+    - [ ] Toggle sends PATCH with is_active: true/false
+    - [ ] Inactive attributes shown with reduced opacity + strikethrough name
+    - [ ] Entity editor filters out is_active=false attributes
+
+FE-KE-04: Drag-to-reorder kinds [FE]
+  Status: [ ]
+  Update: KindEditor.tsx — drag handles on kind list items
+  Library: @dnd-kit/core + @dnd-kit/sortable (or similar)
+  AC:
+    - [ ] Drag handles visible on kind list rows (grip dots icon)
+    - [ ] Drag-and-drop reorders within System/User sections
+    - [ ] On drop, calls PATCH /v1/glossary/kinds/reorder with new order
+    - [ ] Optimistic UI update, revert on error
+
+FE-KE-05: Drag-to-reorder attributes [FE]
+  Status: [ ]
+  Update: KindEditor.tsx — drag handles on attribute rows
+  AC:
+    - [ ] Drag handles on attribute rows (within System/User sections)
+    - [ ] On drop, calls PATCH /v1/glossary/kinds/:kindId/attributes/reorder
+    - [ ] Optimistic UI update
+
+FE-KE-06: Genre-colored dots on tag pills [FE]
+  Status: [ ]
+  Update: KindEditor.tsx, AttrRow — genre tag pills show colored dot matching genre_group color
+  Requires: fetch genre_groups for the current book to get color mapping
+  AC:
+    - [ ] Genre tag pills show small colored square/dot before genre name
+    - [ ] Color sourced from genre_groups API (fallback: default violet)
+
+FE-KE-07: Modified indicator + Revert to default [FE] ⚠️ STRETCH
+  Status: [ ]
+  Note: This is a stretch goal — requires comparing current kind/attr state vs seed defaults.
+  Approach: Store seed defaults as a JSON constant in frontend, diff at render time.
+  AC:
+    - [ ] "modified" badge on system kinds/attrs that differ from seed defaults
+    - [ ] "Revert to Default" button per kind (resets name, icon, color, attrs to seed)
+    - [ ] Confirm dialog before revert
+```
 
 ### Social Service — New Backend (required for community features)
 ```

@@ -88,7 +88,7 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
       const attrs: string[] = [];
       for (const k of kinds) {
         for (const a of k.default_attributes) {
-          if (a.genre_tags.includes(g)) attrs.push(a.name);
+          if ((a.genre_tags ?? []).includes(g)) attrs.push(a.name);
         }
       }
       result.push({ genre: g, attrs });

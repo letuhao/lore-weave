@@ -8,26 +8,28 @@ import (
 
 // kindRow is the DB-joined shape returned from listKinds.
 type kindRow struct {
-	KindID    string
-	Code      string
-	Name      string
-	Icon      string
-	Color     string
-	IsDefault bool
-	IsHidden  bool
-	SortOrder int
-	GenreTags []string
+	KindID      string
+	Code        string
+	Name        string
+	Description *string
+	Icon        string
+	Color       string
+	IsDefault   bool
+	IsHidden    bool
+	SortOrder   int
+	GenreTags   []string
 }
 
 type attrRow struct {
-	AttrDefID  string
-	Code       string
-	Name       string
-	FieldType  string
-	IsRequired bool
-	IsSystem   bool
-	SortOrder  int
-	GenreTags  []string
+	AttrDefID   string
+	Code        string
+	Name        string
+	Description *string
+	FieldType   string
+	IsRequired  bool
+	IsSystem    bool
+	SortOrder   int
+	GenreTags   []string
 }
 
 // listKinds handles GET /v1/glossary/kinds.
@@ -42,7 +44,7 @@ func (s *Server) listKinds(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch all visible kinds ordered by sort_order
 	kindRows, err := s.pool.Query(ctx, `
-		SELECT kind_id, code, name, icon, color, is_default, is_hidden, sort_order, genre_tags
+		SELECT kind_id, code, name, description, icon, color, is_default, is_hidden, sort_order, genre_tags
 		FROM entity_kinds
 		WHERE is_hidden = false
 		ORDER BY sort_order`)
@@ -55,7 +57,7 @@ func (s *Server) listKinds(w http.ResponseWriter, r *http.Request) {
 	var kinds []kindRow
 	for kindRows.Next() {
 		var k kindRow
-		if err := kindRows.Scan(&k.KindID, &k.Code, &k.Name, &k.Icon, &k.Color,
+		if err := kindRows.Scan(&k.KindID, &k.Code, &k.Name, &k.Description, &k.Icon, &k.Color,
 			&k.IsDefault, &k.IsHidden, &k.SortOrder, &k.GenreTags); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan error")
 			return
@@ -69,7 +71,7 @@ func (s *Server) listKinds(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch attribute definitions only for visible kinds
 	attrRowsQ, err := s.pool.Query(ctx, `
-		SELECT ad.attr_def_id, ad.kind_id, ad.code, ad.name, ad.field_type, ad.is_required, ad.is_system, ad.sort_order, ad.genre_tags
+		SELECT ad.attr_def_id, ad.kind_id, ad.code, ad.name, ad.description, ad.field_type, ad.is_required, ad.is_system, ad.sort_order, ad.genre_tags
 		FROM attribute_definitions ad
 		JOIN entity_kinds ek ON ek.kind_id = ad.kind_id AND ek.is_hidden = false
 		ORDER BY ad.kind_id, ad.sort_order`)
@@ -84,7 +86,7 @@ func (s *Server) listKinds(w http.ResponseWriter, r *http.Request) {
 	for attrRowsQ.Next() {
 		var kindID string
 		var a attrRow
-		if err := attrRowsQ.Scan(&a.AttrDefID, &kindID, &a.Code, &a.Name,
+		if err := attrRowsQ.Scan(&a.AttrDefID, &kindID, &a.Code, &a.Name, &a.Description,
 			&a.FieldType, &a.IsRequired, &a.IsSystem, &a.SortOrder, &a.GenreTags); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan attr error")
 			return
@@ -102,27 +104,29 @@ func (s *Server) listKinds(w http.ResponseWriter, r *http.Request) {
 		attrs := make([]domain.AttrDef, 0, len(attrsByKind[k.KindID]))
 		for _, a := range attrsByKind[k.KindID] {
 			attrs = append(attrs, domain.AttrDef{
-				AttrDefID:  a.AttrDefID,
-				Code:       a.Code,
-				Name:       a.Name,
-				FieldType:  a.FieldType,
-				IsRequired: a.IsRequired,
-				IsSystem:   a.IsSystem,
-				SortOrder:  a.SortOrder,
-				GenreTags:  a.GenreTags,
+				AttrDefID:   a.AttrDefID,
+				Code:        a.Code,
+				Name:        a.Name,
+				Description: a.Description,
+				FieldType:   a.FieldType,
+				IsRequired:  a.IsRequired,
+				IsSystem:    a.IsSystem,
+				SortOrder:   a.SortOrder,
+				GenreTags:   a.GenreTags,
 			})
 		}
 		out = append(out, domain.EntityKind{
-			KindID:     k.KindID,
-			Code:       k.Code,
-			Name:       k.Name,
-			Icon:       k.Icon,
-			Color:      k.Color,
-			IsDefault:  k.IsDefault,
-			IsHidden:   k.IsHidden,
-			SortOrder:  k.SortOrder,
-			GenreTags:  k.GenreTags,
-			Attributes: attrs,
+			KindID:      k.KindID,
+			Code:        k.Code,
+			Name:        k.Name,
+			Description: k.Description,
+			Icon:        k.Icon,
+			Color:       k.Color,
+			IsDefault:   k.IsDefault,
+			IsHidden:    k.IsHidden,
+			SortOrder:   k.SortOrder,
+			GenreTags:   k.GenreTags,
+			Attributes:  attrs,
 		})
 	}
 

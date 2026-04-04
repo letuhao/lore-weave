@@ -148,21 +148,31 @@ function BookTabContent({ bookId, book, activeTab, onReload }: {
 
   const placeholder = placeholders[activeTab];
 
+  const visited = useState(() => new Set<string>([activeTab]))[0];
+  visited.add(activeTab);
+
   return (
     <>
-      {/* Keep tabs mounted to avoid re-fetch flicker on switch */}
-      <div style={{ display: activeTab === '' ? undefined : 'none' }}>
-        <ChaptersTab bookId={bookId} />
-      </div>
-      <div style={{ display: activeTab === '/translation' ? undefined : 'none' }}>
-        <TranslationTab bookId={bookId} />
-      </div>
-      <div style={{ display: activeTab === '/glossary' ? undefined : 'none' }}>
-        <GlossaryTab bookId={bookId} bookGenreTags={book.genre_tags ?? []} />
-      </div>
-      <div style={{ display: activeTab === '/settings' ? undefined : 'none' }}>
-        <SettingsTab bookId={bookId} book={book} onReload={onReload} />
-      </div>
+      {visited.has('') && (
+        <div style={{ display: activeTab === '' ? undefined : 'none' }}>
+          <ChaptersTab bookId={bookId} />
+        </div>
+      )}
+      {visited.has('/translation') && (
+        <div style={{ display: activeTab === '/translation' ? undefined : 'none' }}>
+          <TranslationTab bookId={bookId} />
+        </div>
+      )}
+      {visited.has('/glossary') && (
+        <div style={{ display: activeTab === '/glossary' ? undefined : 'none' }}>
+          <GlossaryTab bookId={bookId} bookGenreTags={book.genre_tags ?? []} />
+        </div>
+      )}
+      {visited.has('/settings') && (
+        <div style={{ display: activeTab === '/settings' ? undefined : 'none' }}>
+          <SettingsTab bookId={bookId} book={book} onReload={onReload} />
+        </div>
+      )}
       {placeholder && (
         <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
           {placeholder}

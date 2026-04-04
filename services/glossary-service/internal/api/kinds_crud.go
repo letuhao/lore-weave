@@ -19,11 +19,12 @@ func (s *Server) createKind(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Code      string   `json:"code"`
-		Name      string   `json:"name"`
-		Icon      string   `json:"icon"`
-		Color     string   `json:"color"`
-		GenreTags []string `json:"genre_tags"`
+		Code        string   `json:"code"`
+		Name        string   `json:"name"`
+		Description *string  `json:"description"`
+		Icon        string   `json:"icon"`
+		Color       string   `json:"color"`
+		GenreTags   []string `json:"genre_tags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Code == "" || in.Name == "" {
 		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "code and name are required")
@@ -41,12 +42,12 @@ func (s *Server) createKind(w http.ResponseWriter, r *http.Request) {
 
 	var kindID string
 	err := s.pool.QueryRow(r.Context(), `
-		INSERT INTO entity_kinds(code, name, icon, color, is_default, is_hidden, sort_order, genre_tags)
-		VALUES ($1,$2,$3,$4,false,false,
+		INSERT INTO entity_kinds(code, name, description, icon, color, is_default, is_hidden, sort_order, genre_tags)
+		VALUES ($1,$2,$3,$4,$5,false,false,
 			COALESCE((SELECT MAX(sort_order)+1 FROM entity_kinds),1),
-			$5)
+			$6)
 		RETURNING kind_id`,
-		in.Code, in.Name, in.Icon, in.Color, in.GenreTags,
+		in.Code, in.Name, in.Description, in.Icon, in.Color, in.GenreTags,
 	).Scan(&kindID)
 	if err != nil {
 		writeError(w, http.StatusConflict, "GLOSS_CONFLICT", "kind code already exists")
@@ -54,15 +55,16 @@ func (s *Server) createKind(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, domain.EntityKind{
-		KindID:     kindID,
-		Code:       in.Code,
-		Name:       in.Name,
-		Icon:       in.Icon,
-		Color:      in.Color,
-		IsDefault:  false,
-		IsHidden:   false,
-		GenreTags:  in.GenreTags,
-		Attributes: []domain.AttrDef{},
+		KindID:      kindID,
+		Code:        in.Code,
+		Name:        in.Name,
+		Description: in.Description,
+		Icon:        in.Icon,
+		Color:       in.Color,
+		IsDefault:   false,
+		IsHidden:    false,
+		GenreTags:   in.GenreTags,
+		Attributes:  []domain.AttrDef{},
 	})
 }
 
@@ -99,6 +101,11 @@ func (s *Server) patchKind(w http.ResponseWriter, r *http.Request) {
 		args = append(args, v)
 		i++
 	}
+	if v, ok := in["description"]; ok {
+		sets += comma(sets) + "description=$" + itoa(i)
+		args = append(args, v)
+		i++
+	}
 	if v, ok := in["is_hidden"]; ok {
 		sets += comma(sets) + "is_hidden=$" + itoa(i)
 		args = append(args, v)
@@ -129,9 +136,9 @@ func (s *Server) patchKind(w http.ResponseWriter, r *http.Request) {
 	// Return updated kind
 	var k domain.EntityKind
 	err = s.pool.QueryRow(r.Context(), `
-		SELECT kind_id, code, name, icon, color, is_default, is_hidden, sort_order, genre_tags
+		SELECT kind_id, code, name, description, icon, color, is_default, is_hidden, sort_order, genre_tags
 		FROM entity_kinds WHERE kind_id=$1`, kindID,
-	).Scan(&k.KindID, &k.Code, &k.Name, &k.Icon, &k.Color, &k.IsDefault, &k.IsHidden, &k.SortOrder, &k.GenreTags)
+	).Scan(&k.KindID, &k.Code, &k.Name, &k.Description, &k.Icon, &k.Color, &k.IsDefault, &k.IsHidden, &k.SortOrder, &k.GenreTags)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to read kind")
 		return
@@ -181,13 +188,14 @@ func (s *Server) createAttrDef(w http.ResponseWriter, r *http.Request) {
 	kindID := chi.URLParam(r, "kind_id")
 
 	var in struct {
-		Code       string   `json:"code"`
-		Name       string   `json:"name"`
-		FieldType  string   `json:"field_type"`
-		IsRequired bool     `json:"is_required"`
-		SortOrder  int      `json:"sort_order"`
-		Options    []string `json:"options"`
-		GenreTags  []string `json:"genre_tags"`
+		Code        string   `json:"code"`
+		Name        string   `json:"name"`
+		Description *string  `json:"description"`
+		FieldType   string   `json:"field_type"`
+		IsRequired  bool     `json:"is_required"`
+		SortOrder   int      `json:"sort_order"`
+		Options     []string `json:"options"`
+		GenreTags   []string `json:"genre_tags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Code == "" || in.Name == "" {
 		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "code and name are required")
@@ -202,10 +210,10 @@ func (s *Server) createAttrDef(w http.ResponseWriter, r *http.Request) {
 
 	var attrDefID string
 	err := s.pool.QueryRow(r.Context(), `
-		INSERT INTO attribute_definitions(kind_id, code, name, field_type, is_required, sort_order, options, genre_tags)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		INSERT INTO attribute_definitions(kind_id, code, name, description, field_type, is_required, sort_order, options, genre_tags)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		RETURNING attr_def_id`,
-		kindID, in.Code, in.Name, in.FieldType, in.IsRequired, in.SortOrder, in.Options, in.GenreTags,
+		kindID, in.Code, in.Name, in.Description, in.FieldType, in.IsRequired, in.SortOrder, in.Options, in.GenreTags,
 	).Scan(&attrDefID)
 	if err != nil {
 		writeError(w, http.StatusConflict, "GLOSS_CONFLICT", "attribute code already exists for this kind")
@@ -213,14 +221,15 @@ func (s *Server) createAttrDef(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, domain.AttrDef{
-		AttrDefID:  attrDefID,
-		Code:       in.Code,
-		Name:       in.Name,
-		FieldType:  in.FieldType,
-		IsRequired: in.IsRequired,
-		SortOrder:  in.SortOrder,
-		Options:    in.Options,
-		GenreTags:  in.GenreTags,
+		AttrDefID:   attrDefID,
+		Code:        in.Code,
+		Name:        in.Name,
+		Description: in.Description,
+		FieldType:   in.FieldType,
+		IsRequired:  in.IsRequired,
+		SortOrder:   in.SortOrder,
+		Options:     in.Options,
+		GenreTags:   in.GenreTags,
 	})
 }
 
@@ -244,6 +253,11 @@ func (s *Server) patchAttrDef(w http.ResponseWriter, r *http.Request) {
 	i := 3
 	if v, ok := in["name"]; ok {
 		sets += comma(sets) + "name=$" + itoa(i)
+		args = append(args, v)
+		i++
+	}
+	if v, ok := in["description"]; ok {
+		sets += comma(sets) + "description=$" + itoa(i)
 		args = append(args, v)
 		i++
 	}
@@ -295,9 +309,9 @@ func (s *Server) patchAttrDef(w http.ResponseWriter, r *http.Request) {
 
 	var a domain.AttrDef
 	err = s.pool.QueryRow(r.Context(), `
-		SELECT attr_def_id, code, name, field_type, is_required, is_system, sort_order, options, genre_tags
+		SELECT attr_def_id, code, name, description, field_type, is_required, is_system, sort_order, options, genre_tags
 		FROM attribute_definitions WHERE attr_def_id=$1 AND kind_id=$2`, attrDefID, kindID,
-	).Scan(&a.AttrDefID, &a.Code, &a.Name, &a.FieldType, &a.IsRequired, &a.IsSystem, &a.SortOrder, &a.Options, &a.GenreTags)
+	).Scan(&a.AttrDefID, &a.Code, &a.Name, &a.Description, &a.FieldType, &a.IsRequired, &a.IsSystem, &a.SortOrder, &a.Options, &a.GenreTags)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to re-fetch attribute")
 		return
@@ -341,7 +355,7 @@ func (s *Server) deleteAttrDef(w http.ResponseWriter, r *http.Request) {
 // loadAttrDefs fetches attribute definitions for a kind.
 func (s *Server) loadAttrDefs(ctx context.Context, kindID string) []domain.AttrDef {
 	rows, err := s.pool.Query(ctx, `
-		SELECT attr_def_id, code, name, field_type, is_required, is_system, sort_order, options, genre_tags
+		SELECT attr_def_id, code, name, description, field_type, is_required, is_system, sort_order, options, genre_tags
 		FROM attribute_definitions WHERE kind_id=$1 ORDER BY sort_order`, kindID)
 	if err != nil {
 		return []domain.AttrDef{}
@@ -350,7 +364,7 @@ func (s *Server) loadAttrDefs(ctx context.Context, kindID string) []domain.AttrD
 	attrs := make([]domain.AttrDef, 0)
 	for rows.Next() {
 		var a domain.AttrDef
-		rows.Scan(&a.AttrDefID, &a.Code, &a.Name, &a.FieldType, &a.IsRequired, &a.IsSystem, &a.SortOrder, &a.Options, &a.GenreTags)
+		rows.Scan(&a.AttrDefID, &a.Code, &a.Name, &a.Description, &a.FieldType, &a.IsRequired, &a.IsSystem, &a.SortOrder, &a.Options, &a.GenreTags)
 		attrs = append(attrs, a)
 	}
 	return attrs

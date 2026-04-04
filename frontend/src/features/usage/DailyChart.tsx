@@ -56,7 +56,7 @@ export function DailyChart({ data }: Props) {
         </div>
       </div>
       <div className="px-4 py-5" style={{ height: 220 }}>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
           <BarChart data={chartData} barGap={0}>
             <XAxis
               dataKey="label"

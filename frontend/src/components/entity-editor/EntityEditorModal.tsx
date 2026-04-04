@@ -111,7 +111,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
 
   // Filter attributes by genre: show if attr has no genre_tags (universal) or matches book genres
   const genreMatch = (attr: AttributeValue) => {
-    const tags = attr.attribute_def.genre_tags;
+    const tags = attr.attribute_def.genre_tags ?? [];
     return tags.length === 0 || tags.some((t) => bookGenreTags.includes(t));
   };
 

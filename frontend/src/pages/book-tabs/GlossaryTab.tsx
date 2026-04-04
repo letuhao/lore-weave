@@ -66,10 +66,11 @@ export function GlossaryTab({ bookId, bookGenreTags = [] }: { bookId: string; bo
     () => kinds
       .filter((k) => !k.is_hidden)
       .filter((k) => {
+        const tags = k.genre_tags ?? [];
         // Empty genre_tags or "universal" = show for all books
-        if (k.genre_tags.length === 0 || k.genre_tags.includes('universal')) return true;
+        if (tags.length === 0 || tags.includes('universal')) return true;
         // Otherwise, show if book has at least one matching genre
-        return bookGenreTags.length === 0 || k.genre_tags.some((t) => bookGenreTags.includes(t));
+        return bookGenreTags.length === 0 || tags.some((t) => bookGenreTags.includes(t));
       })
       .sort((a, b) => a.sort_order - b.sort_order),
     [kinds, bookGenreTags],

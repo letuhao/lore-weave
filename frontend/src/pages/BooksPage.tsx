@@ -197,6 +197,20 @@ export function BooksPage() {
                     </>
                   )}
                 </div>
+                {book.genre_tags && book.genre_tags.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {book.genre_tags.slice(0, 4).map((g) => (
+                      <span key={g} className="rounded-full border border-border bg-secondary px-1.5 py-px text-[9px] font-medium text-muted-foreground">
+                        {g}
+                      </span>
+                    ))}
+                    {book.genre_tags.length > 4 && (
+                      <span className="rounded-full border border-border bg-secondary px-1.5 py-px text-[9px] font-medium text-muted-foreground">
+                        +{book.genre_tags.length - 4}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Translation dots (placeholder — real data needs coverage API per book) */}

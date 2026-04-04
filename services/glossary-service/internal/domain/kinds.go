@@ -2,29 +2,31 @@ package domain
 
 // EntityKind describes a category of glossary entity (e.g. Character, Location).
 type EntityKind struct {
-	KindID     string    `json:"kind_id"`
-	Code       string    `json:"code"`
-	Name       string    `json:"name"`
-	Icon       string    `json:"icon"`
-	Color      string    `json:"color"`
-	IsDefault  bool      `json:"is_default"`
-	IsHidden   bool      `json:"is_hidden"`
-	SortOrder  int       `json:"sort_order"`
-	GenreTags  []string  `json:"genre_tags"`
-	Attributes []AttrDef `json:"default_attributes"`
+	KindID      string    `json:"kind_id"`
+	Code        string    `json:"code"`
+	Name        string    `json:"name"`
+	Description *string   `json:"description"`
+	Icon        string    `json:"icon"`
+	Color       string    `json:"color"`
+	IsDefault   bool      `json:"is_default"`
+	IsHidden    bool      `json:"is_hidden"`
+	SortOrder   int       `json:"sort_order"`
+	GenreTags   []string  `json:"genre_tags"`
+	Attributes  []AttrDef `json:"default_attributes"`
 }
 
 // AttrDef describes one attribute field within a kind.
 type AttrDef struct {
-	AttrDefID  string   `json:"attr_def_id"`
-	Code       string   `json:"code"`
-	Name       string   `json:"name"`
-	FieldType  string   `json:"field_type"`
-	IsRequired bool     `json:"is_required"`
-	IsSystem   bool     `json:"is_system"`
-	SortOrder  int      `json:"sort_order"`
-	Options    []string `json:"options,omitempty"`
-	GenreTags  []string `json:"genre_tags"`
+	AttrDefID   string   `json:"attr_def_id"`
+	Code        string   `json:"code"`
+	Name        string   `json:"name"`
+	Description *string  `json:"description"`
+	FieldType   string   `json:"field_type"`
+	IsRequired  bool     `json:"is_required"`
+	IsSystem    bool     `json:"is_system"`
+	SortOrder   int      `json:"sort_order"`
+	Options     []string `json:"options,omitempty"`
+	GenreTags   []string `json:"genre_tags"`
 }
 
 // SeedKind is the static definition used to seed entity_kinds + attribute_definitions.

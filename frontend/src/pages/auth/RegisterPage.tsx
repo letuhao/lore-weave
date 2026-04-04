@@ -16,6 +16,7 @@ export function RegisterPage() {
   const [error, setError] = useState('');
 
   const schema = z.object({
+    displayName: z.string().max(100).optional(),
     email: z.string().min(1, t('validation.email_required')).email(t('validation.email_invalid')),
     password: z.string().min(8, t('validation.password_min')),
     confirmPassword: z.string().min(1, t('validation.password_required')),
@@ -33,7 +34,11 @@ export function RegisterPage() {
     try {
       const res = await apiJson<{ access_token: string; refresh_token: string }>('/v1/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ email: data.email, password: data.password }),
+        body: JSON.stringify({
+          email: data.email,
+          password: data.password,
+          ...(data.displayName?.trim() ? { display_name: data.displayName.trim() } : {}),
+        }),
       });
       setTokens(res.access_token, res.refresh_token);
       navigate('/books');
@@ -59,6 +64,17 @@ export function RegisterPage() {
             {error}
           </div>
         )}
+
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">Display Name</label>
+          <input
+            {...register('displayName')}
+            type="text"
+            autoComplete="name"
+            placeholder="Your name (optional)"
+            className="w-full rounded-md border bg-card px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/40"
+          />
+        </div>
 
         <div className="space-y-1.5">
           <label className="text-sm font-medium">{t('register.email')}</label>
