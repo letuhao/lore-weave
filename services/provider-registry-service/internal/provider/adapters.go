@@ -103,6 +103,33 @@ func postJSON(ctx context.Context, client *http.Client, url string, headers map[
 	return out, nil
 }
 
+func getJSON(ctx context.Context, client *http.Client, url string, headers map[string]string) (map[string]any, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("new request: %w", err)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("http: %w", err)
+	}
+	defer res.Body.Close()
+	raw, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("unmarshal (status %d): %s", res.StatusCode, string(raw))
+	}
+	if res.StatusCode >= 400 {
+		return nil, fmt.Errorf("provider error %d", res.StatusCode)
+	}
+	return out, nil
+}
+
 func extractMessages(input map[string]any) []map[string]any {
 	if v, ok := input["messages"]; ok {
 		if msgs, ok := v.([]map[string]any); ok {
@@ -221,8 +248,40 @@ type ollamaAdapter struct {
 
 const ollamaDefaultBase = "http://localhost:11434"
 
-func (a *ollamaAdapter) ListModels(_ context.Context, _ string, _ string) ([]ModelInventory, error) {
-	return []ModelInventory{}, nil
+func (a *ollamaAdapter) ListModels(ctx context.Context, endpointBaseURL, _ string) ([]ModelInventory, error) {
+	base := strings.TrimRight(endpointBaseURL, "/")
+	if base == "" {
+		base = ollamaDefaultBase
+	}
+	// Ollama exposes GET /api/tags to list local models
+	out, err := getJSON(ctx, a.client, base+"/api/tags", nil)
+	if err != nil {
+		return nil, fmt.Errorf("list models: %w", err)
+	}
+	// Response: {"models": [{"name": "llama3:latest", "size": N, "parameter_size": "8B", ...}]}
+	var models []ModelInventory
+	if mList, ok := out["models"].([]any); ok {
+		for _, item := range mList {
+			m, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			name, _ := m["name"].(string)
+			if name == "" {
+				continue
+			}
+			cap := "chat"
+			if strings.Contains(name, "embed") {
+				cap = "embedding"
+			}
+			inv := ModelInventory{
+				ProviderModelName: name,
+				CapabilityFlags:   map[string]any{"_capability": cap, "_display_name": name},
+			}
+			models = append(models, inv)
+		}
+	}
+	return models, nil
 }
 
 func (a *ollamaAdapter) Invoke(ctx context.Context, endpointBaseURL, _ string, modelName string, input map[string]any) (map[string]any, Usage, error) {
@@ -259,8 +318,98 @@ type lmStudioAdapter struct {
 
 const lmStudioDefaultBase = "http://localhost:1234"
 
-func (a *lmStudioAdapter) ListModels(_ context.Context, _ string, _ string) ([]ModelInventory, error) {
-	return []ModelInventory{}, nil
+func (a *lmStudioAdapter) ListModels(ctx context.Context, endpointBaseURL, secret string) ([]ModelInventory, error) {
+	base := strings.TrimRight(endpointBaseURL, "/")
+	if base == "" {
+		base = lmStudioDefaultBase
+	}
+	headers := map[string]string{}
+	if secret != "" {
+		headers["Authorization"] = "Bearer " + secret
+	}
+	// Try LM Studio native API first (richer data: context_length, type, capabilities)
+	// GET /api/v1/models → {"models": [{key, type, display_name, max_context_length, ...}]}
+	out, err := getJSON(ctx, a.client, base+"/api/v1/models", headers)
+	if err == nil {
+		if mList, ok := out["models"].([]any); ok && len(mList) > 0 {
+			return parseLMStudioNativeModels(mList), nil
+		}
+	}
+	// Fallback to OpenAI-compatible GET /v1/models → {"data": [{id, ...}]}
+	out, err = getJSON(ctx, a.client, base+"/v1/models", headers)
+	if err != nil {
+		return nil, fmt.Errorf("list models: %w", err)
+	}
+	var models []ModelInventory
+	if data, ok := out["data"].([]any); ok {
+		for _, item := range data {
+			m, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			id, _ := m["id"].(string)
+			if id == "" {
+				continue
+			}
+			models = append(models, ModelInventory{
+				ProviderModelName: id,
+				CapabilityFlags:   map[string]any{"_capability": "chat", "_display_name": id},
+			})
+		}
+	}
+	return models, nil
+}
+
+func parseLMStudioNativeModels(mList []any) []ModelInventory {
+	var models []ModelInventory
+	for _, item := range mList {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		key, _ := m["key"].(string)
+		if key == "" {
+			continue
+		}
+		modelType, _ := m["type"].(string)
+		displayName, _ := m["display_name"].(string)
+		if displayName == "" {
+			displayName = key
+		}
+		var ctxLen *int
+		if mcl, ok := m["max_context_length"].(float64); ok && mcl > 0 {
+			v := int(mcl)
+			ctxLen = &v
+		}
+		cap := "chat"
+		if modelType == "embedding" || modelType == "text-embedding" {
+			cap = "embedding"
+		} else if strings.Contains(modelType, "rerank") || strings.Contains(key, "rerank") {
+			cap = "reranker"
+		}
+		flags := map[string]any{
+			"_capability":   cap,
+			"_display_name": displayName,
+		}
+		// Parse capabilities from LM Studio native format
+		if caps, ok := m["capabilities"].(map[string]any); ok {
+			if v, ok := caps["vision"].(bool); ok && v {
+				flags["vision"] = true
+			}
+			if v, ok := caps["trained_for_tool_use"].(bool); ok && v {
+				flags["tool_use"] = true
+			}
+		}
+		if params, ok := m["params_string"].(string); ok && params != "" {
+			flags["_params"] = params
+		}
+		models = append(models, ModelInventory{
+			ProviderModelName: key,
+			ContextLength:     ctxLen,
+			CapabilityFlags:   flags,
+		})
+	}
+	return models
 }
 
 func (a *lmStudioAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any) (map[string]any, Usage, error) {

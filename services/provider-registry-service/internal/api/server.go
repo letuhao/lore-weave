@@ -596,7 +596,7 @@ func (s *Server) listProviderInventory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	refresh := r.URL.Query().Get("refresh") == "true"
-	if refresh || cred.ProviderKind == "openai" || cred.ProviderKind == "anthropic" {
+	if refresh {
 		if err := s.syncInventory(r.Context(), cred); err != nil {
 			writeError(w, http.StatusBadGateway, "M03_PROVIDER_SYNC_FAILED", "failed to sync provider inventory")
 			return

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Plus, Search, Star, X, Loader2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Plus, RefreshCw, Search, Star, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
@@ -46,15 +46,18 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
   const [saving, setSaving] = useState(false);
 
   // Load inventory
-  useEffect(() => {
+  const fetchInventory = useCallback((refresh: boolean) => {
     if (!accessToken) return;
-    let cancelled = false;
-    providerApi.listInventory(accessToken, provider.provider_credential_id, true)
-      .then((res) => { if (!cancelled) setInventory(res.items ?? []); })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setLoadingInv(false); });
-    return () => { cancelled = true; };
+    setLoadingInv(true);
+    providerApi.listInventory(accessToken, provider.provider_credential_id, refresh)
+      .then((res) => { setInventory(res.items ?? []); })
+      .catch((e) => { if (refresh) toast.error(`Failed to fetch models: ${(e as Error).message}`); })
+      .finally(() => setLoadingInv(false));
   }, [accessToken, provider.provider_credential_id]);
+
+  useEffect(() => {
+    fetchInventory(true);
+  }, [fetchInventory]);
 
   // Filtered + grouped
   const grouped = useMemo(() => {
@@ -140,11 +143,21 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
         <div className="flex items-center justify-between border-b px-5 py-4">
           <div>
             <h2 className="text-[15px] font-semibold">Add Model</h2>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">Select from {provider.display_name}'s available models</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">Select from {provider.display_name}&apos;s available models</p>
           </div>
-          <button onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => { fetchInventory(true); toast.info('Fetching models from provider...'); }}
+              disabled={loadingInv}
+              title="Fetch models from provider"
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-40 transition-colors"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${loadingInv ? 'animate-spin' : ''}`} />
+            </button>
+            <button onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Body */}
