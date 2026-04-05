@@ -150,3 +150,11 @@ frontend_port:   5173 (Vite dev)
 gateway_port:    3001 (NestJS BFF)
 mcp_url:         http://localhost:3000/mcp (optional, ContextHub)
 ```
+
+## Test Account
+```
+email:    claude-test@loreweave.dev
+password: Claude@Test2026
+name:     Claude Test
+```
+Use this account for browser smoke tests (Playwright MCP, etc.).

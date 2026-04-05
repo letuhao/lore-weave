@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { Menu, X, ChevronLeft, ChevronRight, Pencil, Volume2, Sun } from 'lucide-react';
 import { useAuth } from '@/auth';
@@ -47,6 +47,7 @@ export function ReaderPage() {
   // Map: language code → active translation version ID
   const [langVersionMap, setLangVersionMap] = useState<Record<string, string>>({});
   const [langLoading, setLangLoading] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -147,10 +148,10 @@ export function ReaderPage() {
           if (!tocOpen && nextCh) navigate(`/books/${bookId}/chapters/${nextCh.chapter_id}/read`);
           break;
         case 'Home':
-          if (!tocOpen) window.scrollTo({ top: 0, behavior: 'smooth' });
+          if (!tocOpen) scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
           break;
         case 'End':
-          if (!tocOpen) window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+          if (!tocOpen) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
           break;
         default:
           return;
@@ -220,7 +221,7 @@ export function ReaderPage() {
       />
 
       {/* Reading area */}
-      <div className="flex flex-1 justify-center overflow-y-auto" style={{ padding: '64px 24px 120px' }}>
+      <div ref={scrollRef} className="flex flex-1 justify-center overflow-y-auto" style={{ padding: '64px 24px 120px' }}>
         <article style={{ maxWidth: 'var(--reader-width, 680px)', width: '100%' }}>
 
           {/* Chapter header */}
