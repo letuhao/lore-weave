@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-05 (session 21, in progress)
-- Updated By: Assistant (Phase 8 Reader Rewrite — design + planning + RD-00)
+- Last Updated: 2026-04-05 (session 21 end, final)
+- Updated By: Assistant (Phase 8A+8B+8C complete, 8D planned — 25 commits)
 - Active Branch: `main`
-- HEAD: pending commit
+- HEAD: `f667955` — docs(plan): replace Phase 8D+8E with unified audio system
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -31,7 +31,7 @@
 
 ## Current Active Work
 
-**Phase:** Phase 8A — ContentRenderer + ReaderPage Rewrite COMPLETE (13/13 tasks). Next: Phase 8B (reader theme).
+**Phase:** Phase 8A (13/13) + 8B (3/3) + 8C (2/2) COMPLETE. Phase 8D (unified audio, 24 tasks) planned. Next: AU-01 BE.
 
 **What was done in this session (2026-04-05, session 21):**
 
@@ -55,7 +55,18 @@ Phase 8 design + planning + RD-00. Design review of reader architecture, 3 HTML 
 | RD-09: Language selector in TOC — switch reading language | `TOCSidebar.tsx`, `ReaderPage.tsx`, `reader.css` | `4f08f20` |
 | RD-10: Top bar edit button — owner-only visibility | `ReaderPage.tsx` | `93b12b6` |
 | RD-11: Keyboard shortcuts (arrows, T, Escape, Home/End) | `ReaderPage.tsx` | `6d35e16` |
-| RD-12: Integration cleanup — remove old .tiptap-reader CSS, mark tasks done | `index.css`, planning doc | pending |
+| RD-12: Integration cleanup — remove old .tiptap-reader CSS, mark tasks done | `index.css`, planning doc | `1710bc4` |
+| Review fixes: extractText shared util, useMemo, lang loading, Escape | `ReaderPage.tsx`, `tiptap-utils.ts` | `3ec3e55` |
+| Smoke test fix: Home/End scroll targets reader container + test account | `ReaderPage.tsx`, `CLAUDE.md` | `ad1873e` |
+| RD-13: Reader theme wiring — apply --reader-* CSS vars | `ReaderPage.tsx` | `a1b8d5c` |
+| RD-14: ThemeCustomizer slide-over (presets, fonts, sliders) | `ThemeCustomizer.tsx` (new), `ReaderPage.tsx` | `240830f` |
+| RD-15: Reading mode toggles (block indices, placeholders) | `ThemeCustomizer.tsx`, `ReaderPage.tsx` | `7dc3273` |
+| 8B review fixes: Escape closes theme, mutual exclusion, top bar readability | `ReaderPage.tsx` | `2691880` |
+| RD-16+17: RevisionHistory uses ContentRenderer, delete ChapterReadView | `RevisionHistory.tsx`, `ChapterReadView.tsx` (deleted) | `52556cb` |
+| Bug fix: sharing status (SHARING_INTERNAL_URL), multi-file upload, fake read marks | `docker-compose.yml`, `ImportDialog.tsx`, `TOCSidebar.tsx`, planning | `a94a25b` |
+| Bug fix: remove circular dependency book↔sharing | `docker-compose.yml` | `39d591a` |
+| Design: Part 4 unified audio system (audio blocks + playback) | `screen-reader-v2-part4-audio-blocks.html` (new) | `01e021b` |
+| Plan: Phase 8D unified audio — 24 tasks replacing old 8D+8E | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | `f667955` |
 
 **9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
