@@ -73,14 +73,14 @@ export function DailyChart({ data }: Props) {
             />
             <Tooltip
               contentStyle={{
-                background: '#1e1a17',
-                border: '1px solid #332d28',
+                background: 'hsl(var(--card))',
+                border: '1px solid hsl(var(--border))',
                 borderRadius: 6,
                 fontSize: 11,
-                color: '#f5efe8',
+                color: 'hsl(var(--foreground))',
               }}
               wrapperStyle={{ outline: 'none' }}
-              cursor={{ fill: 'rgba(255,255,255,0.03)' }}
+              cursor={{ fill: 'hsl(var(--muted) / 0.15)' }}
               labelFormatter={(_, payload) => payload[0]?.payload?.fullDate ?? ''}
               formatter={(value, name) => [formatTokens(Number(value ?? 0)), name === 'input_tokens' ? 'Input' : 'Output']}
             />

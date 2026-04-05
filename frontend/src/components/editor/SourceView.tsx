@@ -78,22 +78,21 @@ function syntaxHighlight(json: string): (JSX.Element | string)[] {
 
     if (match[1]) {
       // Key — match[0] includes the trailing `: `, so use the full match
-      parts.push(<span key={idx++} style={{ color: '#5496e8' }}>{match[1]}</span>);
-      // The regex consumed `"key":` but JSON.stringify puts `"key": ` — grab the colon+space from the match
+      parts.push(<span key={idx++} className="text-info">{match[1]}</span>);
       const afterKey = json.slice(match.index + match[1].length, regex.lastIndex);
       parts.push(afterKey);
     } else if (match[2]) {
       // String value
-      parts.push(<span key={idx++} style={{ color: '#3dba6a' }}>{match[2]}</span>);
+      parts.push(<span key={idx++} className="text-success">{match[2]}</span>);
     } else if (match[3]) {
       // Number
-      parts.push(<span key={idx++} style={{ color: '#dc4e4e' }}>{match[3]}</span>);
+      parts.push(<span key={idx++} className="text-destructive">{match[3]}</span>);
     } else if (match[4]) {
       // Boolean
-      parts.push(<span key={idx++} style={{ color: '#e88e32' }}>{match[4]}</span>);
+      parts.push(<span key={idx++} className="text-warning">{match[4]}</span>);
     } else if (match[5]) {
       // Null
-      parts.push(<span key={idx++} style={{ color: '#e88e32' }}>{match[5]}</span>);
+      parts.push(<span key={idx++} className="text-warning">{match[5]}</span>);
     }
 
     lastIndex = regex.lastIndex;
