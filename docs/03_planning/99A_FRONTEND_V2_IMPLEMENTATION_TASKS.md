@@ -2601,109 +2601,33 @@ Task order:
 
 ---
 
-### Phase 8D: Browser TTS (5 tasks)
+### Phase 8D: Unified Audio System (24 tasks — replaces old 8D+8E)
 
-> **Goal:** Free text-to-speech using Web Speech API with block-level sync.
-> **Deps:** Phase 8A complete, no backend needed.
+> **Goal:** Complete audio system — audio attachments on text blocks, standalone
+> audioBlock, unified playback engine with source priority, AI TTS generation.
+> **Design draft:** `design-drafts/screen-reader-v2-part4-audio-blocks.html`
+> **Strategy:** All BE first (no FE blockers), then editor, reader, playback, settings.
+>
+> **Task order:**
+> ```
+> BE: AU-01 → AU-02 → AU-03 → AU-04 → AU-05
+> Editor: AU-06 → AU-07 → AU-08 → AU-09 → AU-10
+> Reader display: AU-11 → AU-12 → AU-13
+> Playback engine: AU-14 → AU-15 → AU-16 → AU-17
+> Player UI: AU-18 → AU-19 → AU-20 → AU-21
+> Settings: AU-22 → AU-23 → AU-24
+> ```
 
-  RD-18: useTTS hook — Web Speech API [FE]
-    Status: [ ]
-    Size: M
-    Scope: React hook for browser TTS with block-level control
-    File: frontend/src/hooks/useTTS.ts
-    Features:
-      - Extract text blocks from chapter body (skip media/hr/code)
-      - SpeechSynthesisUtterance per block
-      - State: idle | playing | paused
-      - Controls: play, pause, resume, stop, nextBlock, prevBlock
-      - Active block index tracking
-      - Speed control (0.5x — 2.0x)
-      - Voice selection (from speechSynthesis.getVoices())
-      - onBlockChange callback (for scroll sync)
-    AC:
-      - [ ] Reads text blocks in sequence
-      - [ ] Skips media blocks
-      - [ ] Play/pause/resume controls work
-      - [ ] Block navigation (prev/next) works
-      - [ ] Speed changes apply immediately
-      - [ ] Voice list populated from browser
+  ── Backend (5 tasks) ────────────────────────────────────────────────────
 
-  RD-19: TTSBar floating player [FE]
+  AU-01: BE — chapter_audio_segments table + CRUD [BE]
     Status: [ ]
     Size: S
-    Deps: RD-18
-    Scope: Floating audio player bar above bottom navigation
-    File: frontend/src/components/reader/TTSBar.tsx
-    Shows: play/pause button, block label + text preview, progress bar,
-    time display, prev/next block, speed button, close button
-    Waveform animation when playing
-    AC:
-      - [ ] Bar appears when TTS activated
-      - [ ] Play/pause toggles correctly
-      - [ ] Block text preview updates with active block
-      - [ ] Progress scrubber shows position
-      - [ ] Close button stops TTS and hides bar
-
-  RD-20: Block scroll sync [FE]
-    Status: [ ]
-    Size: S
-    Deps: RD-18
-    Scope: Auto-scroll content to keep active TTS block centered
-    File: frontend/src/hooks/useBlockScroll.ts
-    Features:
-      - On ttsActiveBlock change → scrollIntoView({ behavior: 'smooth', block: 'center' })
-      - ContentRenderer highlights active block (gold border)
-      - Click any block → jump TTS to that block
-    AC:
-      - [ ] Active block scrolls into view smoothly
-      - [ ] Active block visually highlighted
-      - [ ] Clicking a block jumps TTS playback
-
-  RD-21: TTS keyboard shortcuts [FE]
-    Status: [ ]
-    Size: S
-    Deps: RD-18
-    Scope: Keyboard controls for TTS
-    Shortcuts:
-      - Space → play/pause (when TTS active)
-      - [ / ] → decrease/increase speed
-      - Shift+Left / Shift+Right → prev/next block
-      - M → mute/unmute
-      - Escape → close TTS
-    AC:
-      - [ ] All shortcuts work when TTS is active
-      - [ ] Space doesn't scroll page when TTS is active
-      - [ ] Escape closes TTS bar
-
-  RD-22: TTS settings panel [FE]
-    Status: [ ]
-    Size: S
-    Deps: RD-18, RD-19
-    Scope: Settings panel for TTS (opened from TTSBar gear icon)
-    File: frontend/src/components/reader/TTSSettings.tsx
-    Sections: voice selector, speed slider, pitch slider,
-    behavior toggles (auto-scroll, highlight, dim upcoming, pause on media)
-    AC:
-      - [ ] Voice dropdown lists available system voices
-      - [ ] Speed + pitch sliders with live effect
-      - [ ] Behavior toggles persist to localStorage
-      - [ ] Panel opens from TTSBar settings icon
-
----
-
-### Phase 8E: AI TTS with Persisted Audio (7 tasks)
-
-> **Goal:** AI-generated audio stored as permanent assets in DB + MinIO.
-> **Deps:** Phase 8D (browser TTS UI already built), backend work needed.
-
-  RD-23: BE — chapter_audio_segments table + CRUD [BE]
-    Status: [ ]
-    Size: S
-    Service: book-service (owns chapter media)
+    Service: book-service
     DB:
       CREATE TABLE chapter_audio_segments (
         segment_id UUID PRIMARY KEY,
-        chapter_id UUID NOT NULL REFERENCES chapters(chapter_id),
+        chapter_id UUID NOT NULL,
         block_index INT NOT NULL,
         source_text TEXT NOT NULL,
         source_text_hash VARCHAR(64) NOT NULL,
@@ -2717,115 +2641,375 @@ Task order:
       CREATE INDEX idx_audio_seg_lookup
         ON chapter_audio_segments(chapter_id, language, voice, block_index);
     Endpoints:
-      GET /v1/books/:bookId/chapters/:chapterId/audio?language=X&voice=Y
-        → returns segments (without source_text, only hashes + metadata)
-      GET /v1/books/:bookId/chapters/:chapterId/audio/:segmentId
-        → returns single segment with source_text (for subtitle)
+      GET  /v1/books/:bookId/chapters/:chapterId/audio?language=X&voice=Y
+      GET  /v1/books/:bookId/chapters/:chapterId/audio/:segmentId
       DELETE /v1/books/:bookId/chapters/:chapterId/audio?language=X&voice=Y
-        → deletes all segments + MinIO objects for that voice
     AC:
       - [ ] Table created via migration
-      - [ ] GET list returns segments ordered by block_index
-      - [ ] GET list excludes source_text (only hash + metadata)
+      - [ ] GET list returns segments ordered by block_index (no source_text)
       - [ ] GET single includes source_text for subtitle display
       - [ ] DELETE removes DB rows + MinIO objects
       - [ ] Integration tests
 
-  RD-24: BE — TTS generation endpoint [BE]
+  AU-02: BE — Audio upload endpoint (attach to block) [BE]
+    Status: [ ]
+    Size: S
+    Deps: AU-01
+    Service: book-service (reuses existing MinIO upload infrastructure)
+    Endpoint:
+      POST /v1/books/:bookId/chapters/:chapterId/block-audio
+        multipart: file + block_index + subtitle (optional)
+      → Upload to MinIO: audio/{chapterId}/attached/{block_index}_{uuid}.mp3
+      → Return: { audio_url, media_key, duration_ms }
+    Note: The FE writes audio_url/audio_key/audio_subtitle into block attrs
+    and saves via normal patchDraft. No separate DB table for attached audio.
+    AC:
+      - [ ] File uploaded to MinIO with correct path
+      - [ ] Duration extracted from audio file
+      - [ ] Returns presigned URL for playback
+      - [ ] Auth required (book owner)
+      - [ ] Integration tests
+
+  AU-03: BE — AI TTS generation endpoint [BE]
     Status: [ ]
     Size: M
-    Deps: RD-23
-    Service: book-service (calls provider-registry for credentials)
+    Deps: AU-01
+    Service: book-service (calls provider-registry for AI credentials)
     Endpoint:
       POST /v1/books/:bookId/chapters/:chapterId/audio/generate
         { language, voice, provider, blocks: [{ index, text }] }
       Flow:
         1. Get provider credentials from provider-registry-service
         2. For each block: call AI TTS API (OpenAI / ElevenLabs)
-        3. Upload audio to MinIO: audio/{chapterId}/{language}/{voice}/{index}.mp3
+        3. Upload each segment to MinIO
         4. Create chapter_audio_segments rows
         5. Track usage via usage-billing-service
         6. Return: { segments: [{ block_index, media_url, duration_ms }] }
     AC:
       - [ ] OpenAI TTS provider supported
       - [ ] Audio stored in MinIO with correct paths
-      - [ ] DB rows created for each segment
+      - [ ] DB rows created per segment
       - [ ] Usage recorded for billing
-      - [ ] Error handling: partial failure returns completed segments
+      - [ ] Partial failure: returns completed segments + errors
       - [ ] Integration tests
 
-  RD-25: BE — gateway proxy for audio endpoints [BE]
+  AU-04: BE — Gateway proxy for audio endpoints [BE]
     Status: [ ]
     Size: S
-    Deps: RD-23
+    Deps: AU-01
     Service: api-gateway-bff
-    Route: /v1/books/:bookId/chapters/:chapterId/audio/* → book-service
+    Routes: /v1/books/:bookId/chapters/:chapterId/audio/* → book-service
+            /v1/books/:bookId/chapters/:chapterId/block-audio → book-service
     AC:
-      - [ ] GET/POST/DELETE audio endpoints proxied through gateway
+      - [ ] All audio endpoints proxied through gateway
       - [ ] Auth header forwarded
 
-  RD-26: FE — AI TTS API client [FE]
+  AU-05: BE — Audio integration tests [BE]
     Status: [ ]
     Size: S
-    Deps: RD-25
-    File: frontend/src/features/books/api.ts (extend)
-    Methods:
-      listAudioSegments(token, bookId, chapterId, language, voice)
-      getAudioSegment(token, bookId, chapterId, segmentId)
-      generateAudio(token, bookId, chapterId, { language, voice, provider, blocks })
-      deleteAudio(token, bookId, chapterId, language, voice)
-    Types: AudioSegment { segment_id, block_index, source_text_hash, media_url, duration_ms, ... }
+    Deps: AU-01..AU-04
+    File: infra/test-audio.sh
+    Scenarios: upload, list, get single, delete, generate (mock or real provider),
+    attach to block, verify MinIO objects exist/deleted
     AC:
-      - [ ] All 4 API methods implemented
-      - [ ] Types match backend response
+      - [ ] All endpoints tested
+      - [ ] All pass
 
-  RD-27: FE — useAITTS hook [FE]
+  ── Editor: audioBlock + audio attachment (5 tasks) ──────────────────────
+
+  AU-06: audioBlock Tiptap extension [FE]
     Status: [ ]
     Size: M
-    Deps: RD-18, RD-26
-    File: frontend/src/hooks/useAITTS.ts
+    Scope: New Tiptap node type for standalone audio blocks
+    File: frontend/src/components/editor/AudioBlockNode.tsx
+    Attrs: src, media_key, subtitle, title, duration_ms, size_bytes
     Features:
-      - Fetch existing segments on mount
-      - Match segments to current blocks via source_text_hash
-      - Detect content drift (hash mismatch)
-      - Play audio via <audio> element per block
-      - Reuse TTSBar UI (same controls, different audio source)
+      - Insert via slash menu (/audio)
+      - NodeView: waveform player + subtitle input + upload/record buttons
+      - Empty state: upload/record prompt
+      - Plays audio in editor for preview
     AC:
-      - [ ] Loads existing audio segments
-      - [ ] Plays audio block-by-block via <audio>
-      - [ ] Block sync + auto-scroll works (same as browser TTS)
-      - [ ] Content drift detected and shown in UI
+      - [ ] /audio in slash menu inserts audioBlock
+      - [ ] Upload stores file via AU-02 endpoint
+      - [ ] Player plays/pauses audio in editor
+      - [ ] Subtitle field editable
+      - [ ] Empty state shown when no src
 
-  RD-28: FE — AI TTS generation UI [FE]
+  AU-07: Audio attachment attrs on text blocks [FE]
     Status: [ ]
     Size: S
-    Deps: RD-27
-    Scope: Generation progress bar + cost estimate + saved audio status
-    Changes to TTSSettings.tsx:
-      - Browser/AI mode toggle
-      - AI voice + provider selector
-      - Cost estimate panel
+    Deps: AU-06
+    Scope: Extend paragraph/heading/blockquote/callout with audio attrs
+    Changes:
+      - Add attrs to StarterKit paragraph extension (or extension storage):
+        audio_url, audio_key, audio_subtitle, audio_duration_ms, audio_source
+      - Attrs are null by default (no visual change to existing blocks)
+      - Saved normally via patchDraft (attrs persist in Tiptap JSON)
+    AC:
+      - [ ] Audio attrs added to paragraph/heading nodes
+      - [ ] Null by default (existing content unaffected)
+      - [ ] Attrs survive save/load cycle
+
+  AU-08: AudioAttachBar — mini player on text blocks [FE]
+    Status: [ ]
+    Size: S
+    Deps: AU-07
+    Scope: When a text block has audio_url, show mini player bar below text
+    File: frontend/src/components/editor/AudioAttachBar.tsx
+    Shows: play button, waveform, duration, source badge, mismatch indicator
+    Replace/remove buttons
+    AC:
+      - [ ] Bar appears when block has audio_url
+      - [ ] Play/pause audio
+      - [ ] Shows source badge (recorded/uploaded/AI)
+      - [ ] Mismatch warning when subtitle differs from text
+      - [ ] Replace and remove buttons work
+
+  AU-09: AudioAttachActions — upload/record/generate [FE]
+    Status: [ ]
+    Size: M
+    Deps: AU-07, AU-02
+    Scope: Hover actions to attach audio to a text block
+    File: frontend/src/components/editor/AudioAttachActions.tsx
+    Actions:
+      - Upload: file picker → AU-02 endpoint → set audio attrs
+      - Record: MediaRecorder API → AU-02 endpoint → set audio attrs
+      - Generate AI: calls AU-03 → stores as attachment + segment
+    AC:
+      - [ ] Upload button opens file picker, uploads, sets attrs
+      - [ ] Record button records via mic, uploads, sets attrs
+      - [ ] Generate button calls AI TTS for single block
+      - [ ] All update block attrs (audio_url, audio_subtitle, etc.)
+
+  AU-10: Slash menu + FormatToolbar audio entries [FE]
+    Status: [ ]
+    Size: S
+    Deps: AU-06
+    Scope: Add audioBlock to slash menu and toolbar
+    Changes:
+      - SlashMenu.tsx: add /audio command
+      - FormatToolbar.tsx: add audio insert button (AI mode only)
+    AC:
+      - [ ] /audio in slash menu inserts audioBlock
+      - [ ] Audio button in toolbar (AI mode)
+
+  ── Reader display (3 tasks) ─────────────────────────────────────────────
+
+  AU-11: AudioBlock display component (reader) [FE]
+    Status: [ ]
+    Size: S
+    Scope: Render standalone audioBlock in ContentRenderer
+    File: frontend/src/components/reader/blocks/AudioBlock.tsx
+    Renders: embedded player with waveform, play button, time, subtitle
+    AC:
+      - [ ] Audio plays on click
+      - [ ] Subtitle shown below player
+      - [ ] Styled per design draft (purple accent)
+
+  AU-12: Audio indicator on text blocks (reader) [FE]
+    Status: [ ]
+    Size: S
+    Deps: AU-11
+    Scope: Show play button on hover for text blocks with audio_url
+    Changes to ContentRenderer.tsx:
+      - Check block.attrs?.audio_url
+      - Render inline play button on right side
+      - Mismatch ⚠️ indicator when audio_subtitle differs from text
+    AC:
+      - [ ] Play button appears on hover for blocks with audio
+      - [ ] Clicking plays attached audio
+      - [ ] Mismatch ⚠️ shown when subtitle differs
+      - [ ] No indicator on blocks without audio
+
+  AU-13: Audio block + indicator CSS [FE]
+    Status: [ ]
+    Size: S
+    Deps: AU-11, AU-12
+    Scope: Reader CSS for audioBlock player, inline indicator, playing state
+    File: frontend/src/components/reader/reader.css (extend)
+    AC:
+      - [ ] AudioBlock styled with purple accent per design draft
+      - [ ] Inline play button positioned and styled
+      - [ ] Playing state highlight (purple left border)
+
+  ── Playback engine (4 tasks) ────────────────────────────────────────────
+
+  AU-14: TTSProvider context + playback interface [FE]
+    Status: [ ]
+    Size: M
+    Scope: React context managing unified playback state
+    File: frontend/src/hooks/useTTS.ts
+    State: { status: idle|playing|paused, activeBlockId, source, speed, voice }
+    Interface: play(), pause(), stop(), nextBlock(), prevBlock(), seekBlock(id)
+    Source priority per block:
+      1. block.attrs.audio_url → AudioFileEngine
+      2. aiSegments[block_index] → AudioFileEngine
+      3. text block → BrowserTTSEngine
+      4. audioBlock → play inline, advance after
+    AC:
+      - [ ] Context provides unified state + controls
+      - [ ] Source resolved per block based on priority
+      - [ ] Active block tracking works across source switches
+
+  AU-15: AudioFileEngine — plays attached/AI audio [FE]
+    Status: [ ]
+    Size: S
+    Deps: AU-14
+    Scope: Engine that plays audio files via <audio> element
+    File: frontend/src/hooks/engines/AudioFileEngine.ts
+    Features:
+      - Receives audio URL → creates <audio> element
+      - Reports progress (currentTime / duration)
+      - onEnd callback → advance to next block
+      - Speed control via playbackRate
+    AC:
+      - [ ] Plays audio URLs
+      - [ ] Reports progress
+      - [ ] Speed control works
+      - [ ] Calls onEnd when finished
+
+  AU-16: BrowserTTSEngine — Web Speech API fallback [FE]
+    Status: [ ]
+    Size: S
+    Deps: AU-14
+    Scope: Engine that speaks text via SpeechSynthesisUtterance
+    File: frontend/src/hooks/engines/BrowserTTSEngine.ts
+    Features:
+      - speak(text) → SpeechSynthesisUtterance
+      - Voice selection from speechSynthesis.getVoices()
+      - Speed control via rate property
+      - onEnd callback → advance to next block
+    AC:
+      - [ ] Speaks text blocks
+      - [ ] Voice list populated
+      - [ ] Speed control works
+      - [ ] Calls onEnd when finished
+
+  AU-17: Block text extraction utility [FE]
+    Status: [ ]
+    Size: S
+    Scope: Extract speakable text + audio source info per block
+    File: frontend/src/lib/audio-utils.ts
+    Functions:
+      - extractSpeakableBlocks(blocks) → [{ blockId, text, audioUrl?, source }]
+      - Skips: imageBlock, videoBlock, horizontalRule
+      - audioBlock: returns { type: 'audio', src, subtitle }
+      - Text blocks: returns { type: 'text', text, audioUrl?, audioSubtitle? }
+    AC:
+      - [ ] Correctly categorizes all block types
+      - [ ] Extracts audio attachment info from attrs
+      - [ ] Returns ordered list for playback queue
+
+  ── Player UI (4 tasks) ──────────────────────────────────────────────────
+
+  AU-18: TTSBar floating player [FE]
+    Status: [ ]
+    Size: M
+    Deps: AU-14
+    Scope: Floating audio player bar above bottom navigation
+    File: frontend/src/components/reader/TTSBar.tsx
+    Shows: play/pause, block text preview, scrubber, time,
+    prev/next block, speed button, source badge, close button
+    Source-colored: purple (recorded), blue (AI), gray (browser)
+    AC:
+      - [ ] Bar appears when playback activated
+      - [ ] Play/pause toggles correctly
+      - [ ] Source badge shows current audio source
+      - [ ] Block text updates with active block
+      - [ ] Scrubber shows progress (for audio file sources)
+      - [ ] Close button stops playback
+
+  AU-19: Block scroll sync + highlight [FE]
+    Status: [ ]
+    Size: S
+    Deps: AU-14
+    Scope: Auto-scroll + highlight active block during playback
+    File: frontend/src/hooks/useBlockScroll.ts
+    Features:
+      - scrollIntoView on block change
+      - Purple left border highlight on playing block
+      - Click any block → seekBlock(id)
+    AC:
+      - [ ] Active block scrolls into view
+      - [ ] Active block highlighted
+      - [ ] Click-to-seek works
+
+  AU-20: Playback keyboard shortcuts [FE]
+    Status: [ ]
+    Size: S
+    Deps: AU-14, AU-18
+    Shortcuts:
+      - Space → play/pause (when playback active)
+      - [ / ] → decrease/increase speed
+      - Shift+Left / Shift+Right → prev/next block
+      - M → mute/unmute
+      - Escape → close playback
+    AC:
+      - [ ] All shortcuts work
+      - [ ] Space doesn't scroll page
+      - [ ] Escape closes TTSBar
+
+  AU-21: Wire into ReaderPage [FE]
+    Status: [ ]
+    Size: S
+    Deps: AU-18, AU-19, AU-20
+    Scope: Enable the Volume2 button, wrap reader in TTSProvider
+    Changes to ReaderPage.tsx:
+      - Wrap content area with TTSProvider
+      - Volume2 button activates playback
+      - Pass ttsActiveBlock to ContentRenderer
+      - Pass onBlockClick for seek
+    AC:
+      - [ ] Volume2 button starts playback
+      - [ ] TTSBar appears
+      - [ ] Block highlighting works
+      - [ ] Playback progresses through chapter
+
+  ── Settings + Management (3 tasks) ──────────────────────────────────────
+
+  AU-22: TTS settings panel [FE]
+    Status: [ ]
+    Size: S
+    Deps: AU-18
+    Scope: Settings panel opened from TTSBar gear icon
+    File: frontend/src/components/reader/TTSSettings.tsx
+    Sections: browser voice selector, speed/pitch sliders,
+    behavior toggles (auto-scroll, highlight, pause on media),
+    AI voice + provider selector, source priority display
+    AC:
+      - [ ] Voice dropdown (browser voices)
+      - [ ] Speed + pitch sliders
+      - [ ] Behavior toggles persist to localStorage
+      - [ ] AI voice selector (when AI audio available)
+
+  AU-23: Audio overview panel [FE]
+    Status: [ ]
+    Size: S
+    Deps: AU-14
+    Scope: Per-block audio status panel (accessible from ThemeCustomizer)
+    File: frontend/src/components/reader/AudioOverview.tsx
+    Shows: each block with status badge (recorded/AI/browser/none/mismatch)
+    "Generate missing" bulk action button with cost estimate
+    AC:
+      - [ ] Lists all blocks with audio status
+      - [ ] Badges match design draft
+      - [ ] "Generate missing" shows count + cost estimate
+
+  AU-24: AI generation UI (progress + drift) [FE]
+    Status: [ ]
+    Size: M
+    Deps: AU-22, AU-23
+    Scope: Generation progress, cost estimate, saved audio card, drift detection
+    Changes to TTSSettings + AudioOverview:
       - Generate button → progress bar with per-block dots
       - Saved audio card (green) when audio exists
-      - Content drift warning (amber) when blocks changed
+      - Content drift warning (amber) when blocks changed since generation
+      - Re-generate changed blocks only (partial update)
     AC:
-      - [ ] Cost estimate calculated from block text lengths
-      - [ ] Generation progress shows per-block status
-      - [ ] Saved audio card shows voice, segments, duration, timestamp
-      - [ ] Drift warning shows changed block count + re-generate cost
-      - [ ] Re-generate only changed blocks (not all)
-
-  RD-29: FE — AI TTS audio management [FE]
-    Status: [ ]
-    Size: S
-    Deps: RD-27
-    Scope: Delete audio, re-generate, manage saved audio
-    UI: Delete button on saved audio card, re-generate changed blocks,
-    confirmation dialog before delete
-    AC:
-      - [ ] Delete audio with confirmation
-      - [ ] Re-generate updates only changed segments
-      - [ ] Old segments replaced in DB + MinIO
+      - [ ] Cost estimate from block text lengths
+      - [ ] Generation progress with per-block dots
+      - [ ] Saved audio card shows metadata
+      - [ ] Drift warning with re-generate option
 
 ---
 
@@ -2897,11 +3081,11 @@ Task order:
 | 8A: ContentRenderer + Reader | 13 | 13 | 0 | None |
 | 8B: Reader Theme | 3 | 3 | 0 | 8A |
 | 8C: RevisionHistory Cleanup | 2 | 2 | 0 | 8A |
-| 8D: Browser TTS | 5 | 5 | 0 | 8A |
-| 8E: AI TTS Persisted | 7 | 4 | 3 | 8D |
+| 8D: Unified Audio System | 24 | 19 | 5 | 8A |
 | 8F: Translation Upgrade | TBD | — | — | 8A |
 | 8G: Translation Review | TBD | — | — | 8F |
-| **Total (8A-8E)** | **30** | **27** | **3** | |
+| 8H: Reading Analytics | TBD | — | — | 8A |
+| **Total (8A-8D)** | **42** | **37** | **5** | |
 
 ---
 
