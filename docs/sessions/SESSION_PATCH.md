@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-05 (session 20 end, final)
-- Updated By: Assistant (E2E + P3-KE + Phase 7 + Attr Editor + P4-04 Theme — 39 commits, 245 integration tests)
+- Last Updated: 2026-04-05 (session 21, in progress)
+- Updated By: Assistant (Phase 8 Reader Rewrite — design + planning + RD-00)
 - Active Branch: `main`
-- HEAD: `54f1de3` — docs(plan): future theme editor improvements
+- HEAD: pending commit
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -31,7 +31,21 @@
 
 ## Current Active Work
 
-**Phase:** P3-KE (13/13) + Phase 7 Infra (4/4) + P4-04 Theme (7/9 + custom editor) COMPLETE. Next: Reader page refactor.
+**Phase:** Phase 8 — Unified Content Viewer & Reader Rewrite. RD-00 done, RD-01 next.
+
+**What was done in this session (2026-04-05, session 21):**
+
+Phase 8 design + planning + RD-00. Design review of reader architecture, 3 HTML design drafts created, 30-task breakdown across 7 sub-phases (8A-8G), design decisions finalized.
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| Design: reader-v2-part1 (block renderer + chrome) | `design-drafts/screen-reader-v2-part1-renderer.html` (new) | pending |
+| Design: reader-v2-part2 (TTS/audio player) | `design-drafts/screen-reader-v2-part2-audio-tts.html` (new) | pending |
+| Design: reader-v2-part3 (review modes) | `design-drafts/screen-reader-v2-part3-review-modes.html` (new) | pending |
+| Planning: Phase 8 breakdown (30 tasks, 7 sub-phases) | `docs/03_planning/99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | pending |
+| RD-00: Install 5 missing editor extensions (link, underline, highlight, sub, sup) | `TiptapEditor.tsx`, `FormatToolbar.tsx`, `package.json` | pending |
+
+**9-phase workflow followed for RD-00:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
 **What was done in this session (2026-04-05, session 20):**
 

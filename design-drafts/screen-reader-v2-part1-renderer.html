@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Unified Reader / Content Viewer (Part 1: Renderer + Chrome)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Noto+Serif+JP:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Merriweather:wght@300;400;700&family=Source+Serif+4:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* ══════════════════════════════════════════════════════════════════════════
+       DESIGN NOTES — Unified Content Viewer
+       ══════════════════════════════════════════════════════════════════════════
+
+       PROBLEM:
+       Old ReaderPage uses TiptapEditor(editable=false) — loads full editor stack
+       (slash menu, drag handles, grammar, media guard) just to display content.
+       ChapterReadView splits by \n\n — can't render structured data at all.
+
+       SOLUTION:
+       A lightweight <ContentRenderer> component that:
+       1. Takes Tiptap JSON → renders each block as pure React (no Tiptap dependency)
+       2. Supports: paragraph, heading, image, video, code, callout, hr, lists
+       3. Each block gets a stable ID for scroll targeting, TTS sync, highlighting
+       4. Zero editing extensions loaded — pure display component
+
+       THREE MODES (same renderer, different chrome):
+       ┌─────────────────────────────────────────────────────────────────────┐
+       │  Mode            │ Chrome                  │ Used By               │
+       ├─────────────────────────────────────────────────────────────────────┤
+       │  reader          │ Full: TOC, nav, theme,  │ /books/:id/ch/:id/read│
+       │                  │ progress, TTS, language │ (public + private)    │
+       ├─────────────────────────────────────────────────────────────────────┤
+       │  review          │ Minimal: header only    │ Translation workbench │
+       │                  │                         │ Revision history      │
+       ├─────────────────────────────────────────────────────────────────────┤
+       │  embedded        │ None: just blocks       │ Inline previews,      │
+       │                  │                         │ book detail page      │
+       └─────────────────────────────────────────────────────────────────────┘
+
+       THIS FILE: Part 1 — Full reader mode with all chrome
+       - Section A: Block renderer showcase (all block types)
+       - Section B: Full reader view (reading experience)
+       - Section C: Theme customizer panel (slide-over)
+       - Section D: TOC with language selector
+    ═══════════════════════════════════════════════════════════════════════ */
+
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a;
+      --destructive: #dc4e4e; --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+
+      /* Reader theme (customizable via ThemeProvider) */
+      --reader-bg: #181412;
+      --reader-fg: #f5efe8;
+      --reader-font: 'Lora', Georgia, serif;
+      --reader-size: 17px;
+      --reader-line: 1.85;
+      --reader-width: 680px;
+      --reader-spacing: 1.4em;
+
+      /* Media block tokens */
+      --media-radius: 10px;
+      --media-caption-size: 12px;
+      --code-bg: #1a1816;
+      --code-border: #2a2520;
+      --callout-border: var(--info);
+      --callout-bg: rgba(84,150,232,0.04);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+    ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 2px; }
+    ::selection { background: rgba(232,168,50,0.25); }
+
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+    .btn-icon { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: none; cursor: pointer; background: transparent; color: var(--muted-fg); transition: all 120ms; }
+    .btn-icon:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-icon.active { background: var(--primary-muted); color: var(--primary); }
+
+    /* ── Showcase layout ─────────────────────────────────────────────────── */
+    .showcase { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+    .showcase h1 { font-family: 'Lora', serif; font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+    .showcase-subtitle { font-size: 13px; color: var(--muted-fg); margin-bottom: 32px; }
+    .showcase-section { margin-bottom: 56px; }
+    .showcase-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .showcase-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    .showcase-note { font-size: 11px; color: var(--muted-fg); margin-bottom: 16px; line-height: 1.6; padding: 10px 14px; background: var(--secondary); border-radius: 6px; border-left: 3px solid var(--accent); }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       SECTION A: CONTENT RENDERER — Block-by-block rendering
+       ══════════════════════════════════════════════════════════════════════ */
+
+    /* Base content area */
+    .content-renderer {
+      max-width: var(--reader-width);
+      width: 100%;
+      color: var(--reader-fg);
+      font-family: var(--reader-font);
+      font-size: var(--reader-size);
+      line-height: var(--reader-line);
+    }
+
+    /* ── Block wrapper (every block gets this) ─────────────────────────── */
+    .content-block {
+      position: relative;
+      margin-bottom: var(--reader-spacing);
+      transition: background 200ms, box-shadow 200ms;
+      border-radius: 4px;
+    }
+
+    /* TTS highlight state */
+    .content-block.tts-active {
+      background: rgba(232,168,50,0.06);
+      box-shadow: -4px 0 0 var(--primary);
+      padding-left: 12px;
+    }
+
+    /* Hover state (shows block index in review mode) */
+    .content-block .block-index {
+      position: absolute;
+      left: -36px;
+      top: 4px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      color: var(--border-hover);
+      opacity: 0;
+      transition: opacity 150ms;
+      user-select: none;
+    }
+    .content-renderer.show-indices .content-block .block-index { opacity: 1; }
+    .content-renderer.show-indices .content-block:hover .block-index { color: var(--muted-fg); }
+
+    /* ── Paragraph ─────────────────────────────────────────────────────── */
+    .block-paragraph {
+      /* inherits font/size/line from .content-renderer */
+    }
+
+    /* Inline marks */
+    .block-paragraph strong { font-weight: 600; }
+    .block-paragraph em { font-style: italic; }
+    .block-paragraph code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85em;
+      background: rgba(255,255,255,0.06);
+      padding: 1px 5px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+    }
+    .block-paragraph a {
+      color: var(--accent);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    /* ── Heading ────────────────────────────────────────────────────────── */
+    .block-heading {
+      font-family: var(--reader-font);
+      font-weight: 600;
+      margin-top: calc(var(--reader-spacing) * 1.5);
+      margin-bottom: calc(var(--reader-spacing) * 0.75);
+    }
+    .block-heading-1 { font-size: calc(var(--reader-size) * 1.6); line-height: 1.3; }
+    .block-heading-2 { font-size: calc(var(--reader-size) * 1.3); line-height: 1.35; }
+    .block-heading-3 { font-size: calc(var(--reader-size) * 1.1); line-height: 1.4; }
+
+    /* ── Image block ───────────────────────────────────────────────────── */
+    .block-image {
+      margin: calc(var(--reader-spacing) * 1.5) 0;
+    }
+    .block-image figure {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .block-image img {
+      max-width: 100%;
+      border-radius: var(--media-radius);
+      border: 1px solid var(--border);
+      cursor: zoom-in;
+      transition: transform 200ms;
+    }
+    .block-image img:hover {
+      transform: scale(1.005);
+    }
+    .block-image figcaption {
+      margin-top: 10px;
+      font-family: 'Inter', sans-serif;
+      font-size: var(--media-caption-size);
+      color: var(--muted-fg);
+      text-align: center;
+      font-style: italic;
+      max-width: 480px;
+    }
+    /* Lightbox trigger indicator */
+    .block-image .zoom-hint {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 28px;
+      height: 28px;
+      background: rgba(0,0,0,0.6);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 150ms;
+      color: white;
+    }
+    .block-image:hover .zoom-hint { opacity: 1; }
+
+    /* ── Video block ───────────────────────────────────────────────────── */
+    .block-video {
+      margin: calc(var(--reader-spacing) * 1.5) 0;
+    }
+    .block-video .video-wrapper {
+      position: relative;
+      border-radius: var(--media-radius);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: #000;
+    }
+    .block-video video {
+      width: 100%;
+      display: block;
+    }
+    .block-video figcaption {
+      margin-top: 10px;
+      font-family: 'Inter', sans-serif;
+      font-size: var(--media-caption-size);
+      color: var(--muted-fg);
+      text-align: center;
+      font-style: italic;
+    }
+
+    /* ── Code block ────────────────────────────────────────────────────── */
+    .block-code {
+      margin: calc(var(--reader-spacing) * 1.2) 0;
+      background: var(--code-bg);
+      border: 1px solid var(--code-border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .block-code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--code-border);
+      background: rgba(255,255,255,0.015);
+    }
+    .block-code-lang {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--muted-fg);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .block-code-copy {
+      font-family: 'Inter', sans-serif;
+      font-size: 10px;
+      color: var(--muted-fg);
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 2px 8px;
+      border-radius: 4px;
+      transition: all 120ms;
+    }
+    .block-code-copy:hover { background: var(--secondary); color: var(--foreground); }
+    .block-code pre {
+      padding: 14px 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      overflow-x: auto;
+      color: var(--foreground);
+    }
+    .block-code pre .keyword { color: #c678dd; }
+    .block-code pre .string { color: #98c379; }
+    .block-code pre .comment { color: #5c6370; font-style: italic; }
+    .block-code pre .function { color: #61afef; }
+    .block-code pre .number { color: #d19a66; }
+
+    /* ── Callout block ─────────────────────────────────────────────────── */
+    .block-callout {
+      margin: calc(var(--reader-spacing) * 1.2) 0;
+      padding: 14px 18px;
+      border-left: 3px solid var(--callout-border);
+      background: var(--callout-bg);
+      border-radius: 0 8px 8px 0;
+      font-style: italic;
+      font-size: calc(var(--reader-size) * 0.95);
+    }
+    .block-callout.callout-warning { border-left-color: var(--warning); background: rgba(232,168,50,0.04); }
+    .block-callout.callout-success { border-left-color: var(--success); background: rgba(61,186,106,0.04); }
+    .block-callout.callout-danger { border-left-color: var(--destructive); background: rgba(220,78,78,0.04); }
+    .block-callout-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 6px;
+      font-style: normal;
+    }
+
+    /* ── Horizontal rule ───────────────────────────────────────────────── */
+    .block-hr {
+      margin: calc(var(--reader-spacing) * 2) auto;
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+    }
+    .block-hr span {
+      width: 4px; height: 4px; border-radius: 50%; background: var(--border-hover);
+    }
+
+    /* ── Blockquote ────────────────────────────────────────────────────── */
+    .block-blockquote {
+      margin: var(--reader-spacing) 0;
+      padding-left: 20px;
+      border-left: 2px solid var(--border-hover);
+      color: var(--muted-fg);
+      font-style: italic;
+    }
+
+    /* ── List blocks ───────────────────────────────────────────────────── */
+    .block-list {
+      margin: var(--reader-spacing) 0;
+      padding-left: 24px;
+    }
+    .block-list li {
+      margin-bottom: 0.4em;
+    }
+    .block-list.ordered { list-style: decimal; }
+    .block-list.unordered { list-style: disc; }
+
+
+    /* ══════════════════════════════════════════════════════════════════════
+       SECTION B: FULL READER VIEW
+       ══════════════════════════════════════════════════════════════════════ */
+
+    .reader-shell {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: var(--reader-bg);
+      overflow: hidden;
+    }
+
+    /* ── Progress bar ──────────────────────────────────────────────────── */
+    .reader-progress {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: rgba(255,255,255,0.05);
+      z-index: 25;
+    }
+    .reader-progress-fill {
+      height: 100%;
+      background: var(--primary);
+      transition: width 150ms;
+    }
+
+    /* ── Top bar ───────────────────────────────────────────────────────── */
+    .reader-topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      background: linear-gradient(var(--reader-bg), transparent);
+      z-index: 20;
+      transition: opacity 300ms;
+    }
+    .reader-topbar .breadcrumb {
+      font-size: 12px;
+      color: var(--muted-fg);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .reader-topbar .breadcrumb .book-title {
+      color: var(--foreground);
+      font-weight: 500;
+    }
+
+    .reader-topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    /* ── TTS / Audio player bar ────────────────────────────────────────── */
+    .tts-bar {
+      position: fixed;
+      bottom: 72px; left: 50%; transform: translateX(-50%);
+      z-index: 22;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      min-width: 420px;
+    }
+    .tts-bar .tts-play {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: var(--primary-fg);
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 120ms;
+    }
+    .tts-bar .tts-play:hover { filter: brightness(1.1); transform: scale(1.05); }
+    .tts-bar .tts-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .tts-bar .tts-block-text {
+      font-size: 12px;
+      color: var(--foreground);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tts-bar .tts-progress {
+      height: 3px;
+      background: var(--secondary);
+      border-radius: 2px;
+      margin-top: 6px;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    .tts-bar .tts-progress-fill {
+      height: 100%;
+      background: var(--primary);
+      border-radius: 2px;
+      transition: width 100ms;
+    }
+    .tts-bar .tts-time {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--muted-fg);
+      flex-shrink: 0;
+    }
+    .tts-controls {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+    .tts-speed {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--muted-fg);
+      background: var(--secondary);
+      border: none;
+      padding: 3px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .tts-speed:hover { color: var(--foreground); }
+
+    /* ── Bottom navigation ─────────────────────────────────────────────── */
+    .reader-bottombar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 24px;
+      background: linear-gradient(transparent, var(--reader-bg));
+      z-index: 20;
+    }
+    .nav-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--foreground);
+      cursor: pointer;
+      transition: all 120ms;
+      font-family: inherit;
+      text-decoration: none;
+    }
+    .nav-btn:hover { border-color: var(--border-hover); background: var(--card-hover); }
+    .nav-btn-primary { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
+    .nav-btn-primary:hover { filter: brightness(1.1); }
+
+    /* ── Reading area ──────────────────────────────────────────────────── */
+    .reader-scroll {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      justify-content: center;
+      padding: 64px 24px 140px;
+    }
+
+    /* ── Chapter header ────────────────────────────────────────────────── */
+    .chapter-header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .chapter-header .ch-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      color: var(--muted-fg);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+    .chapter-header .ch-title {
+      font-family: var(--reader-font);
+      font-size: calc(var(--reader-size) * 1.8);
+      font-weight: 600;
+      line-height: 1.3;
+      margin-bottom: 12px;
+    }
+    .chapter-header .ch-divider {
+      width: 40px;
+      height: 2px;
+      background: var(--primary);
+      opacity: 0.5;
+      margin: 0 auto;
+      border-radius: 1px;
+    }
+    .chapter-header .ch-meta {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      color: var(--muted-fg);
+      margin-top: 12px;
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+    }
+
+    /* ── End of chapter ────────────────────────────────────────────────── */
+    .chapter-end {
+      text-align: center;
+      margin-top: 48px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+    }
+    .chapter-end p {
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      color: var(--muted-fg);
+    }
+
+
+    /* ══════════════════════════════════════════════════════════════════════
+       SECTION C: TOC SIDEBAR
+       ══════════════════════════════════════════════════════════════════════ */
+
+    .toc-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 30; }
+    .toc-panel {
+      position: fixed; top: 0; left: 0; bottom: 0; width: 320px;
+      background: var(--card); border-right: 1px solid var(--border);
+      z-index: 31; display: flex; flex-direction: column;
+      box-shadow: 8px 0 32px rgba(0,0,0,0.4);
+    }
+    .toc-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px; font-size: 13px; color: var(--muted-fg);
+      cursor: pointer; transition: all 120ms; border-left: 2px solid transparent;
+      border-bottom: 1px solid rgba(51,45,40,0.3);
+    }
+    .toc-item:hover { background: var(--card-hover); color: var(--foreground); }
+    .toc-item.current { background: var(--primary-muted); color: var(--primary); border-left-color: var(--primary); font-weight: 500; }
+    .toc-item .ch-num { width: 24px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; flex-shrink: 0; opacity: 0.6; }
+
+
+    /* ══════════════════════════════════════════════════════════════════════
+       SECTION D: THEME CUSTOMIZER SLIDE-OVER
+       ══════════════════════════════════════════════════════════════════════ */
+
+    .theme-panel {
+      position: fixed; top: 0; right: 0; bottom: 0; width: 340px;
+      background: var(--card); border-left: 1px solid var(--border);
+      z-index: 31; display: flex; flex-direction: column;
+      box-shadow: -8px 0 32px rgba(0,0,0,0.4);
+    }
+    .theme-panel-header {
+      padding: 16px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .theme-panel-body {
+      flex: 1; overflow-y: auto; padding: 16px;
+    }
+    .theme-section {
+      margin-bottom: 24px;
+    }
+    .theme-section-title {
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.05em; color: var(--muted-fg); margin-bottom: 10px;
+    }
+    .theme-preset {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; border-radius: 8px; cursor: pointer;
+      transition: all 120ms; border: 1px solid transparent;
+    }
+    .theme-preset:hover { background: var(--secondary); }
+    .theme-preset.active { border-color: var(--primary); background: var(--primary-muted); }
+    .theme-preset-swatch {
+      width: 32px; height: 32px; border-radius: 6px; flex-shrink: 0;
+      border: 1px solid var(--border); display: flex; align-items: center;
+      justify-content: center; font-size: 9px; font-weight: 600;
+    }
+    .theme-preset-info { flex: 1; }
+    .theme-preset-name { font-size: 12px; font-weight: 500; }
+    .theme-preset-desc { font-size: 10px; color: var(--muted-fg); }
+
+    /* Slider control */
+    .theme-slider-row {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+    }
+    .theme-slider-label {
+      font-size: 11px; color: var(--muted-fg); width: 80px; flex-shrink: 0;
+    }
+    .theme-slider {
+      flex: 1; -webkit-appearance: none; height: 3px; background: var(--secondary);
+      border-radius: 2px; outline: none;
+    }
+    .theme-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 14px; height: 14px;
+      border-radius: 50%; background: var(--primary); cursor: pointer;
+    }
+    .theme-slider-value {
+      font-family: 'JetBrains Mono', monospace; font-size: 10px;
+      color: var(--muted-fg); width: 40px; text-align: right;
+    }
+
+    /* Font selector */
+    .font-option {
+      display: flex; align-items: center; gap: 10px;
+      padding: 6px 10px; border-radius: 6px; cursor: pointer;
+      transition: all 120ms; border: 1px solid transparent;
+    }
+    .font-option:hover { background: var(--secondary); }
+    .font-option.active { border-color: var(--primary); background: var(--primary-muted); }
+    .font-option-sample { font-size: 14px; width: 100px; }
+    .font-option-name { font-size: 11px; color: var(--muted-fg); }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       SECTION E: LANGUAGE SELECTOR (in TOC footer)
+       ══════════════════════════════════════════════════════════════════════ */
+
+    .lang-selector {
+      padding: 12px 16px; border-top: 1px solid var(--border);
+    }
+    .lang-selector-label {
+      font-size: 10px; color: var(--muted-fg); margin-bottom: 6px;
+      display: flex; align-items: center; gap: 4px;
+    }
+    .lang-pills { display: flex; gap: 4px; flex-wrap: wrap; }
+    .lang-pill {
+      padding: 5px 10px; border-radius: 6px; font-size: 11px;
+      font-weight: 500; cursor: pointer; transition: all 120ms;
+      border: 1px solid var(--border); background: transparent;
+      color: var(--muted-fg); font-family: inherit;
+    }
+    .lang-pill:hover { background: var(--secondary); color: var(--foreground); }
+    .lang-pill.active {
+      border-color: var(--primary); background: var(--primary-muted);
+      color: var(--primary);
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     SECTION A: BLOCK RENDERER SHOWCASE
+     Shows every block type the ContentRenderer must support
+     ══════════════════════════════════════════════════════════════════════════ -->
+
+<div class="showcase">
+  <h1>Unified Content Viewer — Part 1</h1>
+  <p class="showcase-subtitle">Block renderer + reader chrome. Replaces ReaderPage + ChapterReadView with a single lightweight component.</p>
+
+  <div class="showcase-note">
+    <strong>Architecture:</strong> ContentRenderer takes Tiptap JSON and renders each block as pure React.
+    No Tiptap editor instance is created. Each block gets a stable <code>data-block-id</code> for
+    TTS sync, scroll targeting, and translation alignment.
+    <br><br>
+    <strong>Block types:</strong> paragraph, heading (h1-h3), imageBlock, videoBlock, codeBlock, callout, blockquote, bulletList, orderedList, horizontalRule
+  </div>
+
+  <div class="showcase-section">
+    <div class="showcase-label">All Block Types — Dark Theme</div>
+
+    <div style="background: var(--reader-bg); border: 1px solid var(--border); border-radius: 12px; padding: 48px; display: flex; justify-content: center;">
+      <div class="content-renderer show-indices" style="position: relative;">
+
+        <!-- Block 0: Heading H2 -->
+        <div class="content-block" data-block-id="b0">
+          <span class="block-index">0</span>
+          <h2 class="block-heading block-heading-2">The Hero's Complaint</h2>
+        </div>
+
+        <!-- Block 1: Paragraph -->
+        <div class="content-block" data-block-id="b1">
+          <span class="block-index">1</span>
+          <p class="block-paragraph">The throne room was silent except for the gentle hiss of magical torches. The Demon Lord sat with one leg crossed over the other, examining a scroll that detailed the latest territorial dispute with the neighboring kingdom of <em>Aeloria</em>.</p>
+        </div>
+
+        <!-- Block 2: Paragraph with inline code -->
+        <div class="content-block" data-block-id="b2">
+          <span class="block-index">2</span>
+          <p class="block-paragraph">"Your Majesty, the Hero has arrived," announced the chamberlain, his voice echoing against the <strong>obsidian walls</strong>. The words carried an undertone of anxiety that even centuries of service could not fully mask.</p>
+        </div>
+
+        <!-- Block 3: Image -->
+        <div class="content-block block-image" data-block-id="b3">
+          <span class="block-index">3</span>
+          <figure>
+            <div style="width: 100%; height: 320px; background: linear-gradient(135deg, #2a2420 0%, #1a1816 50%, #2d2520 100%); border-radius: var(--media-radius); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; position: relative;">
+              <div style="text-align: center;">
+                <svg width="48" height="48" fill="none" stroke="var(--muted-fg)" stroke-width="1.5" viewBox="0 0 24 24" style="opacity: 0.4;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                <p style="font-family: Inter, sans-serif; font-size: 11px; color: var(--muted-fg); margin-top: 8px; opacity: 0.5;">throne_room_illustration.png</p>
+              </div>
+              <div class="zoom-hint" style="opacity: 1;">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+              </div>
+            </div>
+            <figcaption>The obsidian throne room, where magical torches cast dancing shadows across polished walls.</figcaption>
+          </figure>
+        </div>
+
+        <!-- Block 4: Paragraph (TTS active demo) -->
+        <div class="content-block tts-active" data-block-id="b4">
+          <span class="block-index">4</span>
+          <p class="block-paragraph">The Demon Lord sighed — a sound that caused the torches to flicker. "Send him in. And prepare the tea. The good one, not the cursed variety." A pause. "Actually, prepare both. Let's see what kind of mood he's in."</p>
+        </div>
+
+        <!-- Block 5: Callout -->
+        <div class="content-block" data-block-id="b5">
+          <span class="block-index">5</span>
+          <div class="block-callout">
+            <div class="callout-label" style="color: var(--info);">Translator's Note</div>
+            <p>The original Japanese uses the honorific 「魔王殿」 which implies a level of formal respect not easily conveyed in English. The Hero's use of this title while filing complaints creates a deliberate comedic contrast.</p>
+          </div>
+        </div>
+
+        <!-- Block 6: Code block -->
+        <div class="content-block" data-block-id="b6">
+          <span class="block-index">6</span>
+          <div class="block-code">
+            <div class="block-code-header">
+              <span class="block-code-lang">typescript</span>
+              <button class="block-code-copy">Copy</button>
+            </div>
+            <pre><span class="comment">// The Engagement Protocol — subsection 7.3</span>
+<span class="keyword">interface</span> <span class="function">ComplaintRecord</span> {
+  hero_id: <span class="keyword">string</span>;
+  category: <span class="string">'font_size'</span> | <span class="string">'tea_quality'</span> | <span class="string">'dramatic_entrance'</span>;
+  severity: <span class="number">1</span> | <span class="number">2</span> | <span class="number">3</span>;
+  filed_date: Date;
+}</pre>
+          </div>
+        </div>
+
+        <!-- Block 7: Blockquote -->
+        <div class="content-block" data-block-id="b7">
+          <span class="block-index">7</span>
+          <blockquote class="block-blockquote">
+            <p>"Legibility is not trivial." — Aldric, Hero of Aeloria, upon receiving his forty-seventh complaint acknowledgement in 8pt font.</p>
+          </blockquote>
+        </div>
+
+        <!-- Block 8: Horizontal rule (scene break) -->
+        <div class="content-block" data-block-id="b8">
+          <div class="block-hr">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+
+        <!-- Block 9: Heading H3 -->
+        <div class="content-block" data-block-id="b9">
+          <span class="block-index">9</span>
+          <h3 class="block-heading block-heading-3">The Forty-Seventh Complaint</h3>
+        </div>
+
+        <!-- Block 10: Video -->
+        <div class="content-block block-video" data-block-id="b10">
+          <span class="block-index">10</span>
+          <figure>
+            <div class="video-wrapper" style="aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #1a1816 0%, #2a2420 100%);">
+              <div style="text-align: center;">
+                <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; margin: 0 auto;">
+                  <svg width="24" height="24" fill="var(--foreground)" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                </div>
+                <p style="font-family: Inter, sans-serif; font-size: 11px; color: var(--muted-fg); margin-top: 10px;">hero_entrance_animation.mp4</p>
+                <p style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--border-hover); margin-top: 2px;">0:42 &middot; 12.4 MB</p>
+              </div>
+            </div>
+            <figcaption>The Hero's dramatic entrance — cape billowing despite the notable absence of wind.</figcaption>
+          </figure>
+        </div>
+
+        <!-- Block 11: Bullet list -->
+        <div class="content-block" data-block-id="b11">
+          <span class="block-index">11</span>
+          <ul class="block-list unordered">
+            <li>Complaint #1-13: Font size on Engagement Protocol copies</li>
+            <li>Complaint #14-27: Tea temperature inconsistencies</li>
+            <li>Complaint #28-40: Scheduling conflicts with other quests</li>
+            <li>Complaint #41-46: Chair comfort in the petition chamber</li>
+            <li>Complaint #47: <em>Pending classification</em></li>
+          </ul>
+        </div>
+
+        <!-- Block 12: Paragraph -->
+        <div class="content-block" data-block-id="b12">
+          <span class="block-index">12</span>
+          <p class="block-paragraph">Aldric took a measured sip of tea. "Legibility is not trivial." The Demon Lord made a note to have the Protocol reprinted. In 14pt font this time. Perhaps even with <strong>bold headings</strong>.</p>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════ -->
+  <!-- SECTION B: SEPIA THEME PREVIEW                                     -->
+  <!-- ════════════════════════════════════════════════════════════════════ -->
+
+  <div class="showcase-section">
+    <div class="showcase-label">Sepia Theme — Reader Typography</div>
+
+    <div style="background: #f4ecd8; border: 1px solid #d4c8a8; border-radius: 12px; padding: 48px; display: flex; justify-content: center;">
+      <div class="content-renderer" style="--reader-fg: #433422; --reader-bg: #f4ecd8; --reader-font: 'Source Serif 4', Georgia, serif; --reader-size: 18px; --reader-line: 1.9; --reader-spacing: 1.5em; max-width: 640px;">
+
+        <div class="content-block" data-block-id="s0">
+          <h2 class="block-heading block-heading-2" style="color: #433422;">Tea and Negotiations</h2>
+        </div>
+        <div class="content-block" data-block-id="s1">
+          <p class="block-paragraph" style="color: #433422;">The doors burst open with theatrical force. The Hero strode in, armor gleaming, cape billowing despite the notable absence of wind. His sword was drawn, pointed directly at the ceiling in what was clearly a rehearsed pose.</p>
+        </div>
+        <div class="content-block block-image" data-block-id="s2">
+          <figure>
+            <div style="width: 100%; height: 240px; background: linear-gradient(135deg, #e8dcc0 0%, #d4c8a8 50%, #e0d4b8 100%); border-radius: var(--media-radius); border: 1px solid #c4b898; display: flex; align-items: center; justify-content: center;">
+              <svg width="40" height="40" fill="none" stroke="#8a7a60" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            </div>
+            <figcaption style="color: #8a7a60;">Aldric's rehearsed pose — the Hero believed in the importance of first impressions.</figcaption>
+          </figure>
+        </div>
+        <div class="content-block" data-block-id="s3">
+          <p class="block-paragraph" style="color: #433422;">"Demon Lord!" he bellowed. "I have come to lodge a formal complaint!" The Hero reached into his breastplate and produced a crumpled piece of parchment. "Subsection 7, paragraph 3 of the Hero-Demon Lord Engagement Protocol clearly states—"</p>
+        </div>
+        <div class="content-block" data-block-id="s4">
+          <div class="block-callout" style="border-left-color: #b89a50; background: rgba(184,154,80,0.08); color: #5a4a30; font-style: italic;">
+            <div class="callout-label" style="color: #8a7a50;">Author's Note</div>
+            <p style="color: #5a4a30;">This scene was inspired by actual medieval complaint procedures, which were surprisingly bureaucratic.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     SECTION B: FULL READER VIEW (complete reading experience)
+     This is what /books/:bookId/chapters/:chapterId/read looks like
+     ══════════════════════════════════════════════════════════════════════════ -->
+
+<div class="showcase">
+  <div class="showcase-section">
+    <div class="showcase-label">Full Reader View — Complete Reading Experience</div>
+    <div class="showcase-note">
+      <strong>Changes from old reader:</strong><br>
+      1. ContentRenderer replaces TiptapEditor(editable=false) — no editor extensions loaded<br>
+      2. Reader theme CSS vars fully applied (--reader-bg/fg/font/size/line/width/spacing)<br>
+      3. Theme customizer slide-over panel (font, size, spacing, presets)<br>
+      4. TTS audio bar with block-level sync and auto-scroll<br>
+      5. Language selector in TOC (switch between original / translations)<br>
+      6. Block indices visible on hover (for translators)<br>
+      7. Public access without auth token (shared link / public books)
+    </div>
+  </div>
+</div>
+
+<div class="reader-shell" style="height: auto; min-height: 100vh; position: relative;">
+
+  <!-- Progress bar -->
+  <div class="reader-progress" style="position: sticky;">
+    <div class="reader-progress-fill" style="width: 42%;"></div>
+  </div>
+
+  <!-- Top bar -->
+  <div class="reader-topbar" style="position: sticky;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <div class="btn-icon" title="Table of Contents">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </div>
+      <div class="breadcrumb">
+        <span class="book-title">The Demon Lord's Duty</span>
+        <span style="color: var(--border);">/</span>
+        <span>Chapter 3 of 24</span>
+      </div>
+    </div>
+    <div class="reader-topbar-right">
+      <!-- TTS toggle -->
+      <div class="btn-icon" title="Read aloud (TTS)">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5zM19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.08"/></svg>
+      </div>
+      <!-- Theme -->
+      <div class="btn-icon active" title="Reading theme">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+      </div>
+      <!-- Font -->
+      <div class="btn-icon" title="Font settings">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 7V5h14v2M10 5v14m-4 0h8M19 17V5m0 12h-4"/></svg>
+      </div>
+      <!-- Edit (owner only) -->
+      <div class="btn-icon" title="Edit this chapter">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+      </div>
+      <!-- Close -->
+      <div class="btn-icon" title="Back to book">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reading area -->
+  <div style="display: flex; justify-content: center; padding: 64px 24px 180px; background: var(--reader-bg);">
+    <div class="content-renderer" style="max-width: var(--reader-width); width: 100%;">
+
+      <!-- Chapter header -->
+      <div class="chapter-header">
+        <p class="ch-label">Chapter 3</p>
+        <h1 class="ch-title">The Hero's Complaint</h1>
+        <div class="ch-divider"></div>
+        <div class="ch-meta">
+          <span>1,892 words</span>
+          <span style="color: var(--border);">&middot;</span>
+          <span>~8 min read</span>
+          <span style="color: var(--border);">&middot;</span>
+          <span style="display: inline-flex; align-items: center; gap: 3px;">
+            <span style="font-size: 10px; font-family: 'JetBrains Mono'; padding: 1px 5px; background: var(--secondary); border-radius: 3px;">ja</span>
+            Japanese
+          </span>
+        </div>
+      </div>
+
+      <!-- Block 1 -->
+      <div class="content-block" data-block-id="r1">
+        <p class="block-paragraph">The throne room was silent except for the gentle hiss of magical torches. The Demon Lord sat with one leg crossed over the other, examining a scroll that detailed the latest territorial dispute with the neighboring kingdom of <em>Aeloria</em>.</p>
+      </div>
+
+      <!-- Block 2 -->
+      <div class="content-block" data-block-id="r2">
+        <p class="block-paragraph">"Your Majesty, the Hero has arrived," announced the chamberlain, his voice echoing against the <strong>obsidian walls</strong>. The words carried an undertone of anxiety that even centuries of service could not fully mask.</p>
+      </div>
+
+      <!-- Block 3: Image -->
+      <div class="content-block block-image" data-block-id="r3">
+        <figure>
+          <div style="width: 100%; height: 360px; background: linear-gradient(135deg, #2a2420 0%, #1a1816 50%, #2d2520 100%); border-radius: var(--media-radius); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; position: relative;">
+            <div style="text-align: center;">
+              <svg width="48" height="48" fill="none" stroke="var(--muted-fg)" stroke-width="1.5" viewBox="0 0 24 24" style="opacity: 0.3;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+              <p style="font-family: Inter, sans-serif; font-size: 11px; color: var(--muted-fg); margin-top: 8px; opacity: 0.4;">throne_room_panorama.png &middot; 2048 x 1024</p>
+            </div>
+            <div class="zoom-hint" style="opacity: 0.7;">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+            </div>
+          </div>
+          <figcaption>The obsidian throne room — magical torches cast perpetual golden light across walls that had witnessed ten thousand years of demon politics.</figcaption>
+        </figure>
+      </div>
+
+      <!-- Block 4: Currently being read by TTS -->
+      <div class="content-block tts-active" data-block-id="r4">
+        <p class="block-paragraph">The Demon Lord sighed — a sound that caused the torches to flicker. "Send him in. And prepare the tea. The good one, not the cursed variety." A pause. "Actually, prepare both. Let's see what kind of mood he's in."</p>
+      </div>
+
+      <!-- Block 5 -->
+      <div class="content-block" data-block-id="r5">
+        <p class="block-paragraph">The doors burst open with theatrical force. The Hero strode in, armor gleaming, cape billowing despite the notable absence of wind. His sword was drawn, pointed directly at the ceiling in what was clearly a rehearsed pose.</p>
+      </div>
+
+      <!-- Block 6: Video -->
+      <div class="content-block block-video" data-block-id="r6">
+        <figure>
+          <div class="video-wrapper" style="aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #1a1816 0%, #2a2420 100%);">
+            <div style="text-align: center;">
+              <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; margin: 0 auto; cursor: pointer; transition: all 150ms;" onmouseover="this.style.background='rgba(255,255,255,0.15)';this.style.transform='scale(1.05)'" onmouseout="this.style.background='rgba(255,255,255,0.1)';this.style.transform='scale(1)'">
+                <svg width="24" height="24" fill="var(--foreground)" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              </div>
+              <p style="font-family: Inter, sans-serif; font-size: 11px; color: var(--muted-fg); margin-top: 10px;">hero_entrance_cinematic.mp4</p>
+              <p style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--border-hover); margin-top: 2px;">1:12 &middot; 24.8 MB</p>
+            </div>
+          </div>
+          <figcaption>The Hero's signature entrance — theatrical force, billowing cape, rehearsed pose. (Cinematic recreation)</figcaption>
+        </figure>
+      </div>
+
+      <!-- Block 7 -->
+      <div class="content-block" data-block-id="r7">
+        <p class="block-paragraph">"Demon Lord!" he bellowed. "I have come to lodge a formal complaint!" The Hero reached into his breastplate and produced a crumpled piece of parchment. "Subsection 7, paragraph 3 of the Hero-Demon Lord Engagement Protocol clearly states—"</p>
+      </div>
+
+      <!-- Block 8: Callout -->
+      <div class="content-block" data-block-id="r8">
+        <div class="block-callout">
+          <div class="callout-label" style="color: var(--info);">Translator's Note</div>
+          <p>The original uses keigo (敬語) throughout this exchange — both characters maintain extremely polite speech even during heated arguments, which is part of the humor.</p>
+        </div>
+      </div>
+
+      <!-- Block 9 -->
+      <div class="content-block" data-block-id="r9">
+        <p class="block-paragraph">"Sit down, Aldric." The Demon Lord gestured to a chair that materialized from shadow. "Tea?"</p>
+      </div>
+
+      <!-- Block 10: Scene break -->
+      <div class="content-block" data-block-id="r10">
+        <div class="block-hr"><span></span><span></span><span></span></div>
+      </div>
+
+      <!-- Block 11: Code -->
+      <div class="content-block" data-block-id="r11">
+        <div class="block-code">
+          <div class="block-code-header">
+            <span class="block-code-lang">Ancient Script</span>
+            <button class="block-code-copy">Copy</button>
+          </div>
+          <pre style="color: var(--reader-fg);">PROTOCOL OF ENGAGEMENT
+Section VII — Formal Complaints
+  &sect; 7.3  Font Requirements
+    (a) All documents shall be printed in no less than 12pt
+    (b) Headings shall use bold face, minimum 14pt
+    (c) The Hero retains the right to request larger fonts
+        for any subsection, at no additional cost to the
+        Kingdom treasury.</pre>
+        </div>
+      </div>
+
+      <!-- Block 12 -->
+      <div class="content-block" data-block-id="r12">
+        <p class="block-paragraph">Aldric took a measured sip of tea. "Legibility is not trivial." The Demon Lord made a note to have the Protocol reprinted. In 14pt font this time. Perhaps even with <strong>bold headings</strong>.</p>
+      </div>
+
+      <!-- End of chapter -->
+      <div class="chapter-end">
+        <p>End of Chapter 3</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- TTS Audio bar (floating) -->
+  <div class="tts-bar" style="position: sticky; bottom: 72px; margin: 0 auto;">
+    <button class="tts-play" title="Pause">
+      <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+    </button>
+    <div class="tts-info">
+      <div class="tts-block-text">Block 4: "The Demon Lord sighed — a sound that caused the torches to flicker..."</div>
+      <div class="tts-progress">
+        <div class="tts-progress-fill" style="width: 65%;"></div>
+      </div>
+    </div>
+    <div class="tts-time">1:24 / 8:02</div>
+    <div class="tts-controls">
+      <!-- Previous block -->
+      <div class="btn-icon" style="width: 24px; height: 24px;" title="Previous block">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 20L9 12l10-8v16zM5 19V5"/></svg>
+      </div>
+      <!-- Next block -->
+      <div class="btn-icon" style="width: 24px; height: 24px;" title="Next block">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 4l10 8-10 8V4zM19 5v14"/></svg>
+      </div>
+      <!-- Speed -->
+      <button class="tts-speed" title="Playback speed">1.0x</button>
+      <!-- Close TTS -->
+      <div class="btn-icon" style="width: 24px; height: 24px;" title="Close TTS">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom navigation -->
+  <div class="reader-bottombar" style="position: sticky; bottom: 0;">
+    <button class="nav-btn">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"/></svg>
+      Ch.2 — A New Responsibility
+    </button>
+    <div style="text-align: center;">
+      <span style="font-size: 11px; color: var(--muted-fg);">Chapter 3 of 24 &middot; 42% complete</span>
+    </div>
+    <button class="nav-btn nav-btn-primary">
+      Ch.4 — Tea and Negotiations
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+    </button>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     SECTION C: TOC SIDEBAR + LANGUAGE SELECTOR
+     ══════════════════════════════════════════════════════════════════════════ -->
+
+<div class="showcase">
+  <div class="showcase-section">
+    <div class="showcase-label">TOC Sidebar + Language Selector</div>
+    <div class="showcase-note">
+      <strong>New:</strong> Language selector in TOC footer lets readers switch between original and available translations
+      without leaving the reader. The same chapter loads in the selected language.
+      <br><br>
+      <strong>Auto-scroll mode:</strong> Optional continuous scroll — when reaching the end of a chapter,
+      auto-loads the next one (infinite scroll reading). Toggle in settings.
+    </div>
+
+    <div style="display: flex; gap: 24px;">
+
+      <!-- TOC Panel -->
+      <div style="width: 320px; flex-shrink: 0; background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; height: 520px;">
+        <!-- Header -->
+        <div style="padding: 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+          <div>
+            <h2 class="font-serif" style="font-size: 15px; font-weight: 600;">The Demon Lord's Duty</h2>
+            <p style="font-size: 11px; color: var(--muted-fg); margin-top: 2px;">日本語 (ja) &middot; 24 chapters &middot; 45,200 words</p>
+          </div>
+          <div class="btn-icon">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+          </div>
+        </div>
+
+        <!-- Progress bar -->
+        <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px;">
+          <div style="flex: 1; height: 4px; background: var(--secondary); border-radius: 2px; overflow: hidden;">
+            <div style="width: 12.5%; height: 100%; background: var(--primary); border-radius: 2px;"></div>
+          </div>
+          <span style="font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--muted-fg);">3 / 24</span>
+        </div>
+
+        <!-- Chapter list -->
+        <div style="flex: 1; overflow-y: auto;">
+          <div class="toc-item" style="opacity: 0.7;">
+            <span class="ch-num">1</span>
+            <span style="flex: 1;">Prologue — The Summoning</span>
+            <svg width="12" height="12" fill="none" stroke="var(--success)" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+          </div>
+          <div class="toc-item" style="opacity: 0.7;">
+            <span class="ch-num">2</span>
+            <span style="flex: 1;">A New Responsibility</span>
+            <svg width="12" height="12" fill="none" stroke="var(--success)" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+          </div>
+          <div class="toc-item current">
+            <span class="ch-num">3</span>
+            <span style="flex: 1;">The Hero's Complaint</span>
+            <span style="font-size: 9px; color: var(--primary);">reading</span>
+          </div>
+          <div class="toc-item">
+            <span class="ch-num">4</span>
+            <span>Tea and Negotiations</span>
+          </div>
+          <div class="toc-item">
+            <span class="ch-num">5</span>
+            <span>The Parchwork of Laws</span>
+          </div>
+          <div class="toc-item">
+            <span class="ch-num">6</span>
+            <span>A Brief History of Complaints</span>
+          </div>
+          <div class="toc-item">
+            <span class="ch-num">7</span>
+            <span>The Minister's Proposal</span>
+          </div>
+          <div class="toc-item" style="opacity: 0.4;">
+            <span class="ch-num">...</span>
+            <span></span>
+          </div>
+          <div class="toc-item" style="opacity: 0.4;">
+            <span class="ch-num">24</span>
+            <span>Epilogue — The Next Filing</span>
+          </div>
+        </div>
+
+        <!-- Language selector -->
+        <div class="lang-selector">
+          <div class="lang-selector-label">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+            Reading language
+          </div>
+          <div class="lang-pills">
+            <button class="lang-pill active">日本語 (ja)</button>
+            <button class="lang-pill">English (en)</button>
+            <button class="lang-pill">Tiếng Vit (vi)</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Theme customizer panel -->
+      <div style="width: 340px; flex-shrink: 0; background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; height: 520px;">
+        <div class="theme-panel-header">
+          <span style="font-size: 13px; font-weight: 600;">Reading Theme</span>
+          <div class="btn-icon">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+          </div>
+        </div>
+
+        <div class="theme-panel-body" style="flex: 1; overflow-y: auto; padding: 16px;">
+
+          <!-- Theme presets -->
+          <div class="theme-section">
+            <div class="theme-section-title">Theme Presets</div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <div class="theme-preset active">
+                <div class="theme-preset-swatch" style="background: #181412; color: #f5efe8;">Aa</div>
+                <div class="theme-preset-info">
+                  <div class="theme-preset-name">Dark</div>
+                  <div class="theme-preset-desc">Warm dark background</div>
+                </div>
+              </div>
+              <div class="theme-preset">
+                <div class="theme-preset-swatch" style="background: #fafaf8; color: #1a1a1a;">Aa</div>
+                <div class="theme-preset-info">
+                  <div class="theme-preset-name">Light</div>
+                  <div class="theme-preset-desc">Clean white background</div>
+                </div>
+              </div>
+              <div class="theme-preset">
+                <div class="theme-preset-swatch" style="background: #f4ecd8; color: #433422;">Aa</div>
+                <div class="theme-preset-info">
+                  <div class="theme-preset-name">Sepia</div>
+                  <div class="theme-preset-desc">Warm paper tone</div>
+                </div>
+              </div>
+              <div class="theme-preset">
+                <div class="theme-preset-swatch" style="background: #0a0a0a; color: #e0e0e0;">Aa</div>
+                <div class="theme-preset-info">
+                  <div class="theme-preset-name">OLED</div>
+                  <div class="theme-preset-desc">True black for OLED screens</div>
+                </div>
+              </div>
+              <div class="theme-preset">
+                <div class="theme-preset-swatch" style="background: #1a2a1a; color: #c8e0c0;">Aa</div>
+                <div class="theme-preset-info">
+                  <div class="theme-preset-name">Forest</div>
+                  <div class="theme-preset-desc">Easy on the eyes at night</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Font -->
+          <div class="theme-section">
+            <div class="theme-section-title">Font</div>
+            <div style="display: flex; flex-direction: column; gap: 3px;">
+              <div class="font-option active">
+                <span class="font-option-sample" style="font-family: 'Lora', serif;">The quick brown</span>
+                <span class="font-option-name">Lora</span>
+              </div>
+              <div class="font-option">
+                <span class="font-option-sample" style="font-family: 'Merriweather', serif;">The quick brown</span>
+                <span class="font-option-name">Merriweather</span>
+              </div>
+              <div class="font-option">
+                <span class="font-option-sample" style="font-family: 'Source Serif 4', serif;">The quick brown</span>
+                <span class="font-option-name">Source Serif 4</span>
+              </div>
+              <div class="font-option">
+                <span class="font-option-sample" style="font-family: 'Inter', sans-serif;">The quick brown</span>
+                <span class="font-option-name">Inter</span>
+              </div>
+              <div class="font-option">
+                <span class="font-option-sample" style="font-family: 'Noto Serif JP', serif;">素早い茶色の</span>
+                <span class="font-option-name">Noto Serif JP</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Typography sliders -->
+          <div class="theme-section">
+            <div class="theme-section-title">Typography</div>
+            <div class="theme-slider-row">
+              <span class="theme-slider-label">Font size</span>
+              <input type="range" class="theme-slider" min="12" max="28" value="17">
+              <span class="theme-slider-value">17px</span>
+            </div>
+            <div class="theme-slider-row">
+              <span class="theme-slider-label">Line height</span>
+              <input type="range" class="theme-slider" min="140" max="220" value="185">
+              <span class="theme-slider-value">1.85</span>
+            </div>
+            <div class="theme-slider-row">
+              <span class="theme-slider-label">Text width</span>
+              <input type="range" class="theme-slider" min="480" max="960" value="680">
+              <span class="theme-slider-value">680px</span>
+            </div>
+            <div class="theme-slider-row">
+              <span class="theme-slider-label">Spacing</span>
+              <input type="range" class="theme-slider" min="80" max="200" value="140">
+              <span class="theme-slider-value">1.4em</span>
+            </div>
+          </div>
+
+          <!-- Auto-scroll setting -->
+          <div class="theme-section">
+            <div class="theme-section-title">Reading Mode</div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer;">
+                <input type="checkbox" style="accent-color: var(--primary);">
+                Auto-load next chapter (infinite scroll)
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer;">
+                <input type="checkbox" checked style="accent-color: var(--primary);">
+                Auto-scroll with TTS playback
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer;">
+                <input type="checkbox" style="accent-color: var(--primary);">
+                Show block indices (translator mode)
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     ARCHITECTURE SUMMARY
+     ══════════════════════════════════════════════════════════════════════════ -->
+
+<div class="showcase">
+  <div class="showcase-section">
+    <div class="showcase-label">Component Architecture</div>
+    <div class="showcase-note" style="font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 1.8; white-space: pre; border-left-color: var(--primary);">
+COMPONENT TREE:
+
+&lt;ReaderPage&gt;                              ← route: /books/:id/ch/:id/read
+  &lt;ReaderProgress /&gt;                       ← scroll % bar at top
+  &lt;ReaderTopBar&gt;                           ← hamburger, breadcrumb, TTS/theme/edit/close
+    &lt;TTSToggle /&gt;
+    &lt;ThemeToggle /&gt;                        ← opens ThemeCustomizer slide-over
+  &lt;/ReaderTopBar&gt;
+  &lt;TOCSidebar&gt;                             ← slide-in overlay
+    &lt;ChapterList /&gt;
+    &lt;LanguageSelector /&gt;                   ← switch original/translation
+  &lt;/TOCSidebar&gt;
+  &lt;ThemeCustomizer /&gt;                      ← slide-over: presets, font, typography, modes
+  &lt;ContentRenderer                         ← ★ CORE: pure block renderer
+    blocks={chapter.body.content}
+    ttsActiveBlock={currentBlockId}
+    showIndices={translatorMode}
+    onBlockClick={handleBlockClick}        ← TTS: jump to block
+  /&gt;
+  &lt;TTSBar /&gt;                               ← floating audio player (Part 2)
+  &lt;ReaderBottomBar /&gt;                      ← prev/next chapter nav
+
+&lt;ContentRenderer&gt;                          ← ★ REUSABLE across all modes
+  Renders each Tiptap JSON block as React:
+    paragraph  → &lt;p className="block-paragraph"&gt;
+    heading    → &lt;h2 className="block-heading block-heading-2"&gt;
+    imageBlock → &lt;figure&gt;&lt;img/&gt;&lt;figcaption/&gt;&lt;/figure&gt;
+    videoBlock → &lt;figure&gt;&lt;video/&gt;&lt;figcaption/&gt;&lt;/figure&gt;
+    codeBlock  → &lt;div className="block-code"&gt;&lt;pre/&gt;&lt;/div&gt;
+    callout    → &lt;div className="block-callout"&gt;
+    blockquote → &lt;blockquote&gt;
+    bulletList → &lt;ul&gt;
+    orderedList→ &lt;ol&gt;
+    hr         → &lt;div className="block-hr"&gt;
+
+  Each block wrapper: &lt;div data-block-id="..." className="content-block"&gt;
+
+PROPS INTERFACE:
+  ContentRenderer {
+    blocks: TiptapBlock[]        // doc.content array from Tiptap JSON
+    ttsActiveBlock?: string      // highlight this block (gold left border)
+    showIndices?: boolean        // show block numbers (translator mode)
+    onBlockClick?: (id) => void  // TTS jump / selection
+    className?: string           // additional styling
+  }
+
+DATA FLOW:
+  ReaderPage
+    → fetches chapter via booksApi.getDraft() or public API
+    → extracts body.content (array of blocks)
+    → passes to ContentRenderer
+    → NO Tiptap editor instance created
+    → NO editing extensions loaded
+    → CSS vars from ThemeProvider control all visual presentation
+
+SHARED USAGE:
+  1. ReaderPage             → ContentRenderer (full chrome)
+  2. TranslationWorkbench   → ContentRenderer (source pane, read-only)
+  3. RevisionHistory        → ContentRenderer (preview pane)
+  4. BookDetailPage excerpt  → ContentRenderer (first 3 blocks)
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

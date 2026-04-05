@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Unified Reader (Part 3: Review Modes)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Noto+Serif+JP:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ══════════════════════════════════════════════════════════════════════════
+       DESIGN NOTES — Review Modes
+
+       ContentRenderer is the SAME component used in all three contexts.
+       The difference is the CHROME (surrounding UI) and the PROPS.
+
+       MODE 1: TRANSLATION REVIEW
+       - Split pane: source (original lang) | translation (target lang)
+       - Block-aligned: blocks scroll in sync
+       - Source side: ContentRenderer (read-only, with indices)
+       - Translation side: ContentRenderer (read-only, with diff highlights)
+       - Toolbar: language pair, translation version, approve/reject
+       - Media blocks show side-by-side (image same, caption translated)
+
+       MODE 2: WORKBENCH REVIEW (Revision Preview)
+       - Single pane ContentRenderer embedded in editor right panel
+       - Replaces old ChapterReadView (plain text split)
+       - Used by RevisionHistory to preview any saved revision
+       - Compact mode: smaller font, no chapter header
+
+       MODE 3: EMBEDDED PREVIEW
+       - ContentRenderer with first N blocks only
+       - Used in BookDetailPage to show chapter excerpt
+       - No chrome, no interactivity
+    ═══════════════════════════════════════════════════════════════════════ */
+
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --destructive: #dc4e4e; --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+      --reader-font: 'Lora', Georgia, serif;
+      --reader-size: 15px; --reader-line: 1.75;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+    ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 2px; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; font-family: inherit; }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-accent { background: var(--accent); color: white; }
+    .btn-accent:hover { filter: brightness(1.1); }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+    .btn-outline:hover { background: var(--secondary); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); padding: 4px 8px; }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-icon { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: none; cursor: pointer; background: transparent; color: var(--muted-fg); transition: all 120ms; }
+    .btn-icon:hover { background: var(--secondary); color: var(--foreground); }
+
+    .showcase { max-width: 1400px; margin: 0 auto; padding: 32px 24px; }
+    .showcase h1 { font-family: 'Lora', serif; font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+    .showcase-subtitle { font-size: 13px; color: var(--muted-fg); margin-bottom: 32px; }
+    .showcase-section { margin-bottom: 56px; }
+    .showcase-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .showcase-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    .showcase-note { font-size: 11px; color: var(--muted-fg); margin-bottom: 16px; line-height: 1.6; padding: 10px 14px; background: var(--secondary); border-radius: 6px; border-left: 3px solid var(--accent); }
+
+    /* ── Translation Review Layout ─────────────────────────────────────── */
+    .review-shell {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--background);
+    }
+    .review-toolbar {
+      height: 44px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 16px; background: var(--card); flex-shrink: 0;
+    }
+    .review-split {
+      display: flex; height: 600px;
+    }
+    .review-pane {
+      flex: 1; overflow-y: auto; padding: 24px;
+    }
+    .review-pane-source {
+      border-right: 1px solid var(--border);
+      background: var(--background-alt);
+    }
+    .review-divider {
+      width: 1px; background: var(--border); flex-shrink: 0;
+      position: relative;
+    }
+    .review-divider-handle {
+      position: absolute; top: 50%; left: -6px;
+      width: 12px; height: 32px;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 4px; display: flex; align-items: center;
+      justify-content: center; cursor: col-resize;
+      transform: translateY(-50%);
+    }
+
+    /* Panel headers */
+    .pane-header {
+      height: 32px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 16px; background: rgba(255,255,255,0.02);
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.05em; color: var(--muted-fg);
+    }
+
+    /* ── Block rows (aligned) ──────────────────────────────────────────── */
+    .aligned-block {
+      display: flex;
+      border-bottom: 1px solid rgba(51,45,40,0.3);
+      min-height: 60px;
+      transition: background 100ms;
+    }
+    .aligned-block:hover { background: rgba(255,255,255,0.01); }
+    .aligned-block.active { background: rgba(232,168,50,0.03); }
+
+    .aligned-gutter {
+      width: 36px; flex-shrink: 0;
+      display: flex; flex-direction: column; align-items: center;
+      padding-top: 10px; gap: 3px;
+      border-right: 1px solid rgba(51,45,40,0.3);
+    }
+    .aligned-index {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px; color: var(--border-hover); font-weight: 500;
+    }
+    .aligned-type {
+      font-size: 7px; padding: 1px 4px; border-radius: 2px;
+      text-transform: uppercase; letter-spacing: 0.03em;
+      font-weight: 600;
+    }
+    .aligned-type.para { background: var(--secondary); color: var(--muted-fg); }
+    .aligned-type.head { background: rgba(232,168,50,0.1); color: var(--primary); }
+    .aligned-type.media { background: rgba(61,166,146,0.1); color: var(--accent); }
+    .aligned-type.call { background: rgba(84,150,232,0.1); color: var(--info); }
+
+    .aligned-source {
+      flex: 1; padding: 10px 16px;
+      font-family: var(--reader-font);
+      font-size: 14px; line-height: 1.7;
+      color: var(--foreground); opacity: 0.85;
+    }
+    .aligned-source.heading { font-size: 18px; font-weight: 600; line-height: 1.4; opacity: 1; }
+
+    .aligned-translation {
+      flex: 1; padding: 10px 16px;
+      border-left: 1px solid var(--border);
+      font-family: var(--reader-font);
+      font-size: 14px; line-height: 1.7;
+    }
+
+    /* Translation status indicators */
+    .translation-status {
+      width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+    }
+    .ts-done { background: var(--success); }
+    .ts-draft { background: var(--warning); }
+    .ts-ai { background: var(--info); }
+    .ts-empty { background: var(--border-hover); }
+
+    /* Diff highlights */
+    .diff-added { background: rgba(61,186,106,0.12); padding: 0 2px; border-radius: 2px; }
+    .diff-removed { background: rgba(220,78,78,0.12); padding: 0 2px; border-radius: 2px; text-decoration: line-through; opacity: 0.6; }
+
+    /* Media in review */
+    .review-media {
+      display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+    }
+    .review-media-thumb {
+      width: 72px; height: 48px; border-radius: 6px;
+      background: var(--secondary); display: flex; align-items: center;
+      justify-content: center; flex-shrink: 0; overflow: hidden;
+    }
+    .review-media-info { font-size: 11px; color: var(--muted-fg); }
+    .review-media-info .filename { color: var(--foreground); font-weight: 500; font-size: 12px; }
+
+    /* ── Workbench review panel ────────────────────────────────────────── */
+    .workbench-panel {
+      border: 1px solid var(--border); border-radius: 12px;
+      overflow: hidden; background: var(--card);
+      width: 340px;
+    }
+    .workbench-panel-header {
+      padding: 10px 14px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .workbench-panel-body {
+      max-height: 500px; overflow-y: auto; padding: 16px;
+    }
+
+    /* Compact content renderer (workbench) */
+    .content-renderer-compact {
+      font-family: var(--reader-font);
+      font-size: 13px; line-height: 1.7;
+      color: var(--foreground);
+    }
+    .content-renderer-compact .content-block { margin-bottom: 1em; }
+    .content-renderer-compact .block-heading { font-size: 16px; font-weight: 600; margin-top: 1.2em; }
+    .content-renderer-compact .block-image-compact {
+      margin: 0.8em 0;
+    }
+    .content-renderer-compact .block-image-compact-thumb {
+      width: 100%; height: 120px; border-radius: 6px;
+      background: var(--secondary); display: flex; align-items: center;
+      justify-content: center; border: 1px solid var(--border);
+    }
+    .content-renderer-compact .block-code-compact {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px; line-height: 1.5;
+      background: rgba(26,24,22,0.8); border: 1px solid var(--border);
+      border-radius: 6px; padding: 10px 12px;
+      overflow-x: auto;
+    }
+    .content-renderer-compact .block-callout-compact {
+      border-left: 2px solid var(--info);
+      padding-left: 10px;
+      font-style: italic;
+      font-size: 12px;
+      color: var(--muted-fg);
+    }
+
+    /* ── Embedded preview ──────────────────────────────────────────────── */
+    .embed-preview {
+      border: 1px solid var(--border); border-radius: 10px;
+      overflow: hidden; background: var(--card);
+      max-width: 480px;
+    }
+    .embed-preview-body {
+      padding: 16px;
+      position: relative;
+    }
+    .embed-preview-fade {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: 60px;
+      background: linear-gradient(transparent, var(--card));
+      display: flex; align-items: flex-end; justify-content: center;
+      padding-bottom: 10px;
+    }
+
+    /* ── Version badge ─────────────────────────────────────────────────── */
+    .version-badge {
+      font-size: 9px; font-weight: 500; padding: 2px 6px;
+      border-radius: 99px; display: inline-flex; align-items: center; gap: 3px;
+    }
+    .vb-current { background: rgba(61,186,106,0.1); color: var(--success); }
+    .vb-draft { background: rgba(232,168,50,0.1); color: var(--warning); }
+    .vb-ai { background: rgba(84,150,232,0.1); color: var(--info); }
+  </style>
+</head>
+<body>
+
+<div class="showcase">
+  <h1>Unified Reader — Part 3: Review Modes</h1>
+  <p class="showcase-subtitle">Same ContentRenderer component used in translation review, revision preview, and embedded excerpts.</p>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       MODE 1: TRANSLATION REVIEW (split-pane, block-aligned)
+       ══════════════════════════════════════════════════════════════════════ -->
+
+  <div class="showcase-section">
+    <div class="showcase-label">Mode 1 — Translation Review (Split-Pane)</div>
+    <div class="showcase-note">
+      <strong>Block-aligned split view:</strong> Source and translation blocks are paired by index.
+      Each row shows the source text (left) and its translation (right).
+      Media blocks show the same asset on both sides with translated captions.
+      Status dots indicate translation state per block.
+      <br><br>
+      <strong>Uses ContentRenderer internally:</strong> Each side renders blocks via the same component,
+      just with different content and a compact layout mode.
+    </div>
+
+    <div class="review-shell">
+      <!-- Toolbar -->
+      <div class="review-toolbar">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <button class="btn-icon" title="Back to book">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"/></svg>
+          </button>
+          <div style="font-size: 12px;">
+            <span style="font-weight: 500;">Ch.3 — The Hero's Complaint</span>
+            <span style="color: var(--border); margin: 0 6px;">/</span>
+            <span style="color: var(--muted-fg);">Translation Review</span>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <!-- Language pair -->
+          <div style="display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; background: var(--secondary); font-size: 11px;">
+            <span style="font-family: 'JetBrains Mono'; font-size: 10px; padding: 1px 5px; background: var(--primary-muted); color: var(--primary); border-radius: 3px;">ja</span>
+            <svg width="12" height="12" fill="none" stroke="var(--muted-fg)" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            <span style="font-family: 'JetBrains Mono'; font-size: 10px; padding: 1px 5px; background: var(--accent-muted); color: var(--accent-fg); border-radius: 3px;">en</span>
+          </div>
+          <!-- Version selector -->
+          <select style="background: var(--secondary); border: 1px solid var(--border); color: var(--foreground); font-size: 11px; padding: 4px 8px; border-radius: 5px; font-family: inherit;">
+            <option>v3 (latest) — AI + human edit</option>
+            <option>v2 — AI raw translation</option>
+            <option>v1 — Machine draft</option>
+          </select>
+          <!-- Progress -->
+          <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted-fg);">
+            <div style="width: 60px; height: 4px; background: var(--secondary); border-radius: 2px; overflow: hidden;">
+              <div style="width: 75%; height: 100%; background: var(--success); border-radius: 2px;"></div>
+            </div>
+            <span>9/12</span>
+          </div>
+          <!-- Actions -->
+          <button class="btn btn-accent" style="gap: 4px;">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+            Approve
+          </button>
+        </div>
+      </div>
+
+      <!-- Column headers -->
+      <div style="display: flex; border-bottom: 1px solid var(--border);">
+        <div class="pane-header" style="flex: 1; border-right: 1px solid var(--border);">
+          <span>Source — Japanese (ja)</span>
+          <span style="font-size: 9px; text-transform: none; letter-spacing: 0; font-weight: 400;">1,892 words</span>
+        </div>
+        <div class="pane-header" style="flex: 1;">
+          <span>Translation — English (en)</span>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="version-badge vb-ai">AI + edited</span>
+            <span style="font-size: 9px; text-transform: none; letter-spacing: 0; font-weight: 400;">1,756 words</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Block-aligned rows -->
+      <div style="max-height: 520px; overflow-y: auto;">
+
+        <!-- Row 1: Heading -->
+        <div class="aligned-block">
+          <div class="aligned-gutter">
+            <span class="aligned-index">1</span>
+            <span class="aligned-type head">H2</span>
+            <div class="translation-status ts-done"></div>
+          </div>
+          <div class="aligned-source heading">勇者の苦情</div>
+          <div class="aligned-translation" style="font-size: 18px; font-weight: 600; line-height: 1.4;">The Hero's Complaint</div>
+        </div>
+
+        <!-- Row 2: Paragraph -->
+        <div class="aligned-block">
+          <div class="aligned-gutter">
+            <span class="aligned-index">2</span>
+            <span class="aligned-type para">P</span>
+            <div class="translation-status ts-done"></div>
+          </div>
+          <div class="aligned-source" style="font-family: 'Noto Serif JP', serif;">玉座の間は、魔法の松明の穏やかな音を除いて静寂に包まれていた。魔王は足を組んで座り、隣国アエロリアとの最新の領土紛争について詳述された巻物を調べていた。</div>
+          <div class="aligned-translation">The throne room was silent except for the gentle hiss of magical torches. The Demon Lord sat with one leg crossed over the other, examining a scroll that detailed the latest territorial dispute with the neighboring kingdom of <em>Aeloria</em>.</div>
+        </div>
+
+        <!-- Row 3: Paragraph (with diff) -->
+        <div class="aligned-block active">
+          <div class="aligned-gutter">
+            <span class="aligned-index">3</span>
+            <span class="aligned-type para">P</span>
+            <div class="translation-status ts-draft"></div>
+          </div>
+          <div class="aligned-source" style="font-family: 'Noto Serif JP', serif;">「陛下、勇者が参りました」と侍従が告げた。その声は黒曜石の壁に反響した。何世紀もの勤めをもってしても完全には隠せない不安の色が言葉に滲んでいた。</div>
+          <div class="aligned-translation">
+            "Your Majesty, the Hero has arrived," announced the chamberlain, his voice echoing against the <span class="diff-added">obsidian</span> walls. The words carried an undertone of <span class="diff-added">anxiety</span> <span class="diff-removed">nervousness</span> that even centuries of service could not fully mask.
+          </div>
+        </div>
+
+        <!-- Row 4: Image block -->
+        <div class="aligned-block">
+          <div class="aligned-gutter">
+            <span class="aligned-index">4</span>
+            <span class="aligned-type media">IMG</span>
+            <div class="translation-status ts-done"></div>
+          </div>
+          <div class="review-media" style="flex: 1;">
+            <div class="review-media-thumb">
+              <svg width="20" height="20" fill="none" stroke="var(--muted-fg)" stroke-width="1.5" viewBox="0 0 24 24" style="opacity: 0.4;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            </div>
+            <div class="review-media-info">
+              <div class="filename">throne_room.png</div>
+              <div>Caption: 玉座の間のイラスト</div>
+            </div>
+          </div>
+          <div style="flex: 1; border-left: 1px solid var(--border); padding: 10px 16px; display: flex; align-items: center;">
+            <div class="review-media-info" style="width: 100%;">
+              <div style="font-size: 11px; color: var(--accent);">Same image — translated caption:</div>
+              <div style="margin-top: 4px; font-family: 'Lora', serif; font-size: 13px; font-style: italic; color: var(--foreground);">The obsidian throne room illustration</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 5: Paragraph -->
+        <div class="aligned-block">
+          <div class="aligned-gutter">
+            <span class="aligned-index">5</span>
+            <span class="aligned-type para">P</span>
+            <div class="translation-status ts-ai"></div>
+          </div>
+          <div class="aligned-source" style="font-family: 'Noto Serif JP', serif;">魔王はため息をついた — その音で松明が揺らめいた。「通せ。そして茶を用意しろ。良い方だ、呪われた方ではない。」間を置いて。「いや、両方用意しろ。奴の機嫌次第だ。」</div>
+          <div class="aligned-translation">
+            <span style="display: flex; align-items: flex-start; gap: 6px;">
+              <span class="version-badge vb-ai" style="margin-top: 2px; flex-shrink: 0;">AI</span>
+              <span>The Demon Lord sighed — a sound that caused the torches to flicker. "Send him in. And prepare the tea. The good one, not the cursed variety." A pause. "Actually, prepare both. Let's see what kind of mood he's in."</span>
+            </span>
+          </div>
+        </div>
+
+        <!-- Row 6: Callout -->
+        <div class="aligned-block">
+          <div class="aligned-gutter">
+            <span class="aligned-index">6</span>
+            <span class="aligned-type call">NOTE</span>
+            <div class="translation-status ts-empty"></div>
+          </div>
+          <div class="aligned-source">
+            <div style="border-left: 2px solid var(--info); padding-left: 10px; font-style: italic; font-size: 13px; color: var(--muted-fg);">
+              原文では敬語が使われています。両者が激しく議論している最中でも非常に丁寧な言葉遣いを維持しているのがユーモアの一部です。
+            </div>
+          </div>
+          <div class="aligned-translation" style="display: flex; align-items: center;">
+            <div style="width: 100%; border: 1px dashed var(--border-hover); border-radius: 6px; padding: 12px; text-align: center; font-size: 11px; color: var(--muted-fg); cursor: pointer;">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: -2px;"><path d="M12 5v14M5 12h14"/></svg>
+              Translate this note
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 7: Paragraph -->
+        <div class="aligned-block">
+          <div class="aligned-gutter">
+            <span class="aligned-index">7</span>
+            <span class="aligned-type para">P</span>
+            <div class="translation-status ts-done"></div>
+          </div>
+          <div class="aligned-source" style="font-family: 'Noto Serif JP', serif;">扉が芝居がかった勢いで開け放たれた。勇者が堂々と歩み入る。鎧は輝き、マントは風もないのにはためいている。剣は抜かれ、天井に向けられていた — 明らかにリハーサル済みのポーズで。</div>
+          <div class="aligned-translation">The doors burst open with theatrical force. The Hero strode in, armor gleaming, cape billowing despite the notable absence of wind. His sword was drawn, pointed directly at the ceiling in what was clearly a rehearsed pose.</div>
+        </div>
+
+      </div>
+
+      <!-- Bottom status bar -->
+      <div style="border-top: 1px solid var(--border); padding: 8px 16px; display: flex; align-items: center; justify-content: space-between; background: var(--card); font-size: 10px; color: var(--muted-fg);">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span><span class="translation-status ts-done" style="display: inline-block; vertical-align: middle;"></span> Done: 6</span>
+          <span><span class="translation-status ts-ai" style="display: inline-block; vertical-align: middle;"></span> AI: 2</span>
+          <span><span class="translation-status ts-draft" style="display: inline-block; vertical-align: middle;"></span> Draft: 1</span>
+          <span><span class="translation-status ts-empty" style="display: inline-block; vertical-align: middle;"></span> Empty: 3</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span>Sync scroll: on</span>
+          <span>|</span>
+          <span>Block 3 of 12 selected</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       MODE 2: WORKBENCH REVIEW (Revision Preview)
+       ══════════════════════════════════════════════════════════════════════ -->
+
+  <div class="showcase-section">
+    <div class="showcase-label">Mode 2 — Workbench Revision Preview</div>
+    <div class="showcase-note">
+      <strong>Replaces ChapterReadView</strong> (the old plain-text renderer that split by \n\n).
+      Used in the editor's right panel when viewing a saved revision.
+      ContentRenderer in compact mode — smaller text, no chapter header, all block types supported.
+    </div>
+
+    <div style="display: flex; gap: 24px;">
+
+      <!-- Revision list (left context) -->
+      <div style="width: 260px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--card);">
+        <div style="padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600;">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: -1px; margin-right: 4px;"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Revision History
+        </div>
+        <div style="overflow-y: auto; max-height: 440px;">
+          <div style="padding: 8px 14px; border-bottom: 1px solid rgba(51,45,40,0.3); background: var(--primary-muted); border-left: 2px solid var(--primary); cursor: pointer;">
+            <div style="font-size: 11px; font-weight: 500; color: var(--primary);">v12 — "added flashback scene"</div>
+            <div style="font-size: 9px; color: var(--muted-fg); margin-top: 2px;">2 hours ago &middot; 1,892 words</div>
+          </div>
+          <div style="padding: 8px 14px; border-bottom: 1px solid rgba(51,45,40,0.3); cursor: pointer;">
+            <div style="font-size: 11px; font-weight: 500;">v11 — "fix typo in dialogue"</div>
+            <div style="font-size: 9px; color: var(--muted-fg); margin-top: 2px;">5 hours ago &middot; 1,880 words</div>
+          </div>
+          <div style="padding: 8px 14px; border-bottom: 1px solid rgba(51,45,40,0.3); cursor: pointer;">
+            <div style="font-size: 11px; font-weight: 500;">v10</div>
+            <div style="font-size: 9px; color: var(--muted-fg); margin-top: 2px;">Yesterday &middot; 1,864 words</div>
+          </div>
+          <div style="padding: 8px 14px; border-bottom: 1px solid rgba(51,45,40,0.3); cursor: pointer;">
+            <div style="font-size: 11px; font-weight: 500;">v9 — "AI translation imported"</div>
+            <div style="font-size: 9px; color: var(--muted-fg); margin-top: 2px;">2 days ago &middot; 1,702 words</div>
+          </div>
+        </div>
+        <div style="padding: 8px 14px; border-top: 1px solid var(--border); display: flex; gap: 6px;">
+          <button class="btn btn-outline" style="flex: 1; justify-content: center;">
+            <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 4v6h6M23 20v-6h-6"/></svg>
+            Restore
+          </button>
+          <button class="btn btn-ghost" style="flex: 1; justify-content: center;">Diff</button>
+        </div>
+      </div>
+
+      <!-- Compact content preview -->
+      <div class="workbench-panel" style="width: 380px;">
+        <div class="workbench-panel-header">
+          <div>
+            <span style="font-size: 12px; font-weight: 600;">Preview — v12</span>
+            <span style="font-size: 10px; color: var(--muted-fg); margin-left: 6px;">"added flashback scene"</span>
+          </div>
+          <div class="btn-icon" style="width: 22px; height: 22px;">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+          </div>
+        </div>
+        <div class="workbench-panel-body">
+          <div class="content-renderer-compact">
+
+            <div class="content-block">
+              <div class="block-heading" style="font-size: 16px;">The Hero's Complaint</div>
+            </div>
+
+            <div class="content-block">
+              <p>The throne room was silent except for the gentle hiss of magical torches. The Demon Lord sat with one leg crossed over the other.</p>
+            </div>
+
+            <div class="content-block">
+              <p>"Your Majesty, the Hero has arrived," announced the chamberlain.</p>
+            </div>
+
+            <!-- Image block in compact mode -->
+            <div class="content-block block-image-compact">
+              <div class="block-image-compact-thumb">
+                <svg width="24" height="24" fill="none" stroke="var(--muted-fg)" stroke-width="1.5" viewBox="0 0 24 24" style="opacity: 0.3;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+              </div>
+              <div style="font-size: 10px; color: var(--muted-fg); margin-top: 4px; text-align: center; font-style: italic;">The obsidian throne room</div>
+            </div>
+
+            <div class="content-block">
+              <p>The Demon Lord sighed — a sound that caused the torches to flicker. "Send him in."</p>
+            </div>
+
+            <!-- Callout in compact mode -->
+            <div class="content-block">
+              <div class="block-callout-compact">
+                Translator's Note: The original uses keigo throughout this exchange.
+              </div>
+            </div>
+
+            <!-- Code in compact mode -->
+            <div class="content-block">
+              <div class="block-code-compact">PROTOCOL OF ENGAGEMENT
+Section VII — Formal Complaints
+  § 7.3  Font Requirements</div>
+            </div>
+
+            <div class="content-block">
+              <p>Aldric took a measured sip of tea. "Legibility is not trivial."</p>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       MODE 3: EMBEDDED PREVIEW (Book Detail excerpt)
+       ══════════════════════════════════════════════════════════════════════ -->
+
+  <div class="showcase-section">
+    <div class="showcase-label">Mode 3 — Embedded Preview (Book Detail Excerpt)</div>
+    <div class="showcase-note">
+      ContentRenderer with <code>maxBlocks={3}</code> prop — shows first 3 blocks with a gradient fade
+      and "Continue reading" button. Used in BookDetailPage chapter preview.
+    </div>
+
+    <div style="display: flex; gap: 24px;">
+
+      <div class="embed-preview">
+        <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+          <div>
+            <div style="font-size: 12px; font-weight: 600;">Ch.3 — The Hero's Complaint</div>
+            <div style="font-size: 10px; color: var(--muted-fg); margin-top: 2px;">1,892 words &middot; ~8 min</div>
+          </div>
+          <button class="btn btn-outline" style="font-size: 10px; padding: 4px 10px;">
+            <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2zM22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+            Read
+          </button>
+        </div>
+        <div class="embed-preview-body" style="min-height: 180px;">
+          <div class="content-renderer-compact">
+            <div class="content-block">
+              <p>The throne room was silent except for the gentle hiss of magical torches. The Demon Lord sat with one leg crossed over the other, examining a scroll...</p>
+            </div>
+            <div class="content-block">
+              <p>"Your Majesty, the Hero has arrived," announced the chamberlain, his voice echoing against the obsidian walls.</p>
+            </div>
+            <div class="content-block" style="opacity: 0.5;">
+              <p>The Demon Lord sighed — a sound that caused the torches to...</p>
+            </div>
+          </div>
+          <div class="embed-preview-fade">
+            <button class="btn btn-ghost" style="font-size: 10px;">Continue reading &rarr;</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- With image -->
+      <div class="embed-preview">
+        <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+          <div>
+            <div style="font-size: 12px; font-weight: 600;">Ch.8 — Sword and Quill</div>
+            <div style="font-size: 10px; color: var(--muted-fg); margin-top: 2px;">2,340 words &middot; ~10 min</div>
+          </div>
+          <button class="btn btn-outline" style="font-size: 10px; padding: 4px 10px;">
+            <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2zM22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+            Read
+          </button>
+        </div>
+        <div class="embed-preview-body" style="min-height: 180px;">
+          <div class="content-renderer-compact">
+            <div class="content-block">
+              <p>The training grounds were empty at dawn, save for two figures.</p>
+            </div>
+            <div class="content-block block-image-compact">
+              <div class="block-image-compact-thumb" style="height: 80px;">
+                <svg width="20" height="20" fill="none" stroke="var(--muted-fg)" stroke-width="1.5" viewBox="0 0 24 24" style="opacity: 0.3;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+              </div>
+            </div>
+            <div class="content-block" style="opacity: 0.5;">
+              <p>Aldric drew his sword with the flourish of someone who had...</p>
+            </div>
+          </div>
+          <div class="embed-preview-fade">
+            <button class="btn btn-ghost" style="font-size: 10px;">Continue reading &rarr;</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       ARCHITECTURE SUMMARY
+       ══════════════════════════════════════════════════════════════════════ -->
+
+  <div class="showcase-section">
+    <div class="showcase-label">ContentRenderer — Usage Across All Modes</div>
+    <div class="showcase-note" style="font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 1.8; white-space: pre; border-left-color: var(--primary);">
+COMPONENT: ContentRenderer
+
+PROPS:
+  blocks: TiptapBlock[]           // doc.content from Tiptap JSON
+  mode?: 'full' | 'compact'      // full = reader, compact = panels/embeds
+  ttsActiveBlock?: string         // highlight block (TTS sync)
+  showIndices?: boolean           // show block numbers
+  maxBlocks?: number              // limit blocks shown (embedded preview)
+  onBlockClick?: (id) => void     // click handler (TTS jump, selection)
+  className?: string
+
+USAGE MAP:
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │  Context                │ Mode      │ Props                         │
+  ├──────────────────────────────────────────────────────────────────────┤
+  │  ReaderPage             │ full      │ ttsActiveBlock, onBlockClick  │
+  │  TranslationReview src  │ compact   │ showIndices                   │
+  │  TranslationReview tgt  │ compact   │ showIndices                   │
+  │  RevisionPreview        │ compact   │ (none)                        │
+  │  BookDetailExcerpt      │ compact   │ maxBlocks=3                   │
+  └──────────────────────────────────────────────────────────────────────┘
+
+BLOCK TYPE → RENDER MAP:
+  paragraph    → &lt;p&gt; with inline marks (bold, italic, code, link)
+  heading      → &lt;h1-h3&gt; with level-based sizing
+  imageBlock   → &lt;figure&gt;&lt;img&gt;&lt;figcaption&gt; (full) or thumbnail (compact)
+  videoBlock   → &lt;figure&gt;&lt;video&gt;&lt;figcaption&gt; (full) or placeholder (compact)
+  codeBlock    → &lt;pre&gt; with language header + copy (full) or plain pre (compact)
+  callout      → styled blockquote with label
+  blockquote   → &lt;blockquote&gt;
+  bulletList   → &lt;ul&gt;
+  orderedList  → &lt;ol&gt;
+  horizontalRule → three dots (scene break)
+
+FILES TO CREATE:
+  frontend/src/components/reader/ContentRenderer.tsx   ← Core renderer
+  frontend/src/components/reader/blocks/              ← Per-block-type components
+    ParagraphBlock.tsx
+    HeadingBlock.tsx
+    ImageBlock.tsx
+    VideoBlock.tsx
+    CodeBlock.tsx
+    CalloutBlock.tsx
+    ListBlock.tsx
+    HorizontalRuleBlock.tsx
+  frontend/src/components/reader/InlineRenderer.tsx    ← Bold/italic/code/link
+  frontend/src/pages/ReaderPage.tsx                    ← Rewritten (no Tiptap)
+  frontend/src/components/reader/ReaderTopBar.tsx
+  frontend/src/components/reader/ReaderBottomBar.tsx
+  frontend/src/components/reader/TOCSidebar.tsx
+  frontend/src/components/reader/ThemeCustomizer.tsx
+  frontend/src/components/reader/TTSBar.tsx
+  frontend/src/components/reader/TTSSettings.tsx
+  frontend/src/hooks/useTTS.ts                         ← TTS logic hook
+  frontend/src/hooks/useBlockScroll.ts                 ← Auto-scroll logic
+
+FILES TO DELETE:
+  frontend/src/components/shared/ChapterReadView.tsx   ← Dead code
+
+FILES TO UPDATE:
+  frontend/src/components/editor/RevisionHistory.tsx   ← Use ContentRenderer
+  frontend/src/pages/BookDetailPage.tsx                ← Excerpt preview
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

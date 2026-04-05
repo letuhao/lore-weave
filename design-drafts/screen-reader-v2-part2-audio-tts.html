@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Unified Reader (Part 2: TTS / Audio Player)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ══════════════════════════════════════════════════════════════════════════
+       DESIGN NOTES — TTS / Audio Player
+
+       TWO AUDIO MODES:
+       ┌──────────────────────────────────────────────────────────────────────┐
+       │  Mode           │ Source              │ Quality     │ Cost          │
+       ├──────────────────────────────────────────────────────────────────────┤
+       │  Browser TTS    │ Web Speech API      │ Acceptable  │ Free          │
+       │  AI TTS         │ Provider (OpenAI,   │ Premium     │ Per-character  │
+       │                 │  ElevenLabs, etc)   │             │               │
+       └──────────────────────────────────────────────────────────────────────┘
+
+       BLOCK-LEVEL SYNC:
+       - Content is sliced into blocks (matching ContentRenderer blocks)
+       - Each block gets its own audio segment
+       - Active block highlighted with gold left border + subtle bg
+       - Auto-scroll keeps active block centered in viewport
+       - User can click any block to jump TTS to that point
+
+       AUTO-SLICE PIPELINE:
+       1. Extract text from each block (skip media blocks)
+       2. For Browser TTS: use SpeechSynthesisUtterance per block
+       3. For AI TTS: batch text → API → receive audio segments
+       4. Store generated audio as permanent assets in DB + MinIO (per chapter + language + voice)
+
+       THIS FILE:
+       - Section A: TTS bar states (idle, playing, paused, generating)
+       - Section B: Full reader with TTS active + auto-scroll demo
+       - Section C: TTS settings panel (voice, speed, mode, auto-scroll)
+       - Section D: Audio generation progress (AI TTS)
+    ═══════════════════════════════════════════════════════════════════════ */
+
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a;
+      --destructive: #dc4e4e; --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+      --reader-bg: #181412; --reader-fg: #f5efe8;
+      --reader-font: 'Lora', Georgia, serif;
+      --reader-size: 17px; --reader-line: 1.85;
+      --reader-width: 680px; --reader-spacing: 1.4em;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+    ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 2px; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+    .btn-icon { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: none; cursor: pointer; background: transparent; color: var(--muted-fg); transition: all 120ms; }
+    .btn-icon:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-icon.active { background: var(--primary-muted); color: var(--primary); }
+    .btn-icon-sm { width: 26px; height: 26px; }
+
+    .showcase { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+    .showcase h1 { font-family: 'Lora', serif; font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+    .showcase-subtitle { font-size: 13px; color: var(--muted-fg); margin-bottom: 32px; }
+    .showcase-section { margin-bottom: 56px; }
+    .showcase-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .showcase-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    .showcase-note { font-size: 11px; color: var(--muted-fg); margin-bottom: 16px; line-height: 1.6; padding: 10px 14px; background: var(--secondary); border-radius: 6px; border-left: 3px solid var(--accent); }
+
+    /* ── TTS Bar ──────────────────────────────────────────────────────────── */
+    .tts-bar {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      width: 520px;
+    }
+    .tts-play {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: var(--primary-fg);
+      border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: all 120ms;
+    }
+    .tts-play:hover { filter: brightness(1.1); transform: scale(1.05); }
+    .tts-play.generating {
+      background: var(--secondary);
+      color: var(--muted-fg);
+      cursor: wait;
+    }
+    .tts-info { flex: 1; min-width: 0; }
+    .tts-block-label {
+      font-size: 10px; color: var(--muted-fg);
+      display: flex; align-items: center; gap: 4px;
+      margin-bottom: 3px;
+    }
+    .tts-block-label .block-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      background: var(--secondary);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+    .tts-block-text {
+      font-size: 12px; color: var(--foreground);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      font-family: 'Lora', serif;
+    }
+    .tts-scrubber {
+      height: 4px; background: var(--secondary); border-radius: 2px;
+      margin-top: 8px; overflow: hidden; cursor: pointer;
+      position: relative;
+    }
+    .tts-scrubber-fill { height: 100%; background: var(--primary); border-radius: 2px; transition: width 100ms; }
+    .tts-scrubber-handle {
+      position: absolute; top: 50%; right: 0;
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--primary); transform: translate(50%, -50%);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+      opacity: 0; transition: opacity 150ms;
+    }
+    .tts-scrubber:hover .tts-scrubber-handle { opacity: 1; }
+
+    .tts-time {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px; color: var(--muted-fg);
+      flex-shrink: 0;
+      text-align: right;
+    }
+    .tts-controls { display: flex; align-items: center; gap: 1px; }
+    .tts-speed {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px; color: var(--muted-fg);
+      background: var(--secondary); border: none;
+      padding: 3px 7px; border-radius: 4px; cursor: pointer;
+      transition: all 120ms;
+    }
+    .tts-speed:hover { color: var(--foreground); background: var(--border); }
+
+    /* ── Waveform visualizer ──────────────────────────────────────────────── */
+    .tts-waveform {
+      display: flex; align-items: center; gap: 2px; height: 20px;
+    }
+    .tts-waveform-bar {
+      width: 2px; background: var(--primary); border-radius: 1px;
+      animation: wave 0.8s ease-in-out infinite;
+    }
+    @keyframes wave {
+      0%, 100% { height: 4px; opacity: 0.4; }
+      50% { height: 16px; opacity: 1; }
+    }
+
+    /* ── Block highlight in content ─────────────────────────────────────── */
+    .content-renderer { max-width: var(--reader-width); width: 100%; color: var(--reader-fg); font-family: var(--reader-font); font-size: var(--reader-size); line-height: var(--reader-line); }
+    .content-block { position: relative; margin-bottom: var(--reader-spacing); transition: background 300ms, box-shadow 300ms; border-radius: 4px; padding: 2px 0; }
+    .content-block.tts-active { background: rgba(232,168,50,0.06); box-shadow: -4px 0 0 var(--primary); padding-left: 14px; }
+    .content-block.tts-upcoming { opacity: 0.5; }
+    .content-block.tts-past { }
+    .content-block.tts-clickable { cursor: pointer; }
+    .content-block.tts-clickable:hover { background: rgba(232,168,50,0.03); }
+
+    /* ── Generation progress ──────────────────────────────────────────────── */
+    .gen-progress-bar {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      padding: 16px 20px; width: 520px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    .gen-progress-header {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
+    }
+    .gen-progress-title { font-size: 12px; font-weight: 600; }
+    .gen-progress-subtitle { font-size: 10px; color: var(--muted-fg); }
+    .gen-track { height: 4px; background: var(--secondary); border-radius: 2px; overflow: hidden; margin-bottom: 8px; }
+    .gen-track-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 300ms; }
+    .gen-block-list { display: flex; gap: 3px; flex-wrap: wrap; }
+    .gen-block-dot {
+      width: 8px; height: 8px; border-radius: 2px;
+      background: var(--secondary); transition: background 200ms;
+    }
+    .gen-block-dot.done { background: var(--success); }
+    .gen-block-dot.active { background: var(--accent); animation: pulse 1s infinite; }
+    .gen-block-dot.skip { background: var(--border); opacity: 0.3; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    /* ── Settings panel ──────────────────────────────────────────────────── */
+    .tts-settings {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      width: 360px; overflow: hidden;
+    }
+    .tts-settings-header {
+      padding: 14px 16px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .tts-settings-body { padding: 16px; }
+    .tts-setting-group { margin-bottom: 20px; }
+    .tts-setting-label {
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.05em; color: var(--muted-fg); margin-bottom: 8px;
+    }
+    .tts-voice-option {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; border-radius: 8px; cursor: pointer;
+      transition: all 120ms; border: 1px solid transparent;
+    }
+    .tts-voice-option:hover { background: var(--secondary); }
+    .tts-voice-option.active { border-color: var(--primary); background: var(--primary-muted); }
+    .tts-voice-avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: var(--secondary); display: flex; align-items: center;
+      justify-content: center; font-size: 12px; flex-shrink: 0;
+    }
+    .tts-voice-info { flex: 1; }
+    .tts-voice-name { font-size: 12px; font-weight: 500; }
+    .tts-voice-desc { font-size: 10px; color: var(--muted-fg); }
+    .tts-voice-preview {
+      width: 24px; height: 24px; border-radius: 50%;
+      background: transparent; border: 1px solid var(--border);
+      color: var(--muted-fg); cursor: pointer; display: flex;
+      align-items: center; justify-content: center; transition: all 120ms;
+    }
+    .tts-voice-preview:hover { border-color: var(--primary); color: var(--primary); }
+
+    .slider-row {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+    }
+    .slider-label { font-size: 11px; color: var(--muted-fg); width: 90px; flex-shrink: 0; }
+    .slider-input {
+      flex: 1; -webkit-appearance: none; height: 3px; background: var(--secondary);
+      border-radius: 2px; outline: none;
+    }
+    .slider-input::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 14px; height: 14px;
+      border-radius: 50%; background: var(--primary); cursor: pointer;
+    }
+    .slider-value { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted-fg); width: 36px; text-align: right; }
+
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 0;
+    }
+    .toggle-label { font-size: 12px; }
+    .toggle-desc { font-size: 10px; color: var(--muted-fg); }
+    .toggle-switch {
+      width: 36px; height: 20px; border-radius: 10px;
+      background: var(--secondary); position: relative; cursor: pointer;
+      transition: background 150ms;
+    }
+    .toggle-switch.on { background: var(--primary); }
+    .toggle-switch::after {
+      content: ''; position: absolute;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: white; top: 2px; left: 2px;
+      transition: transform 150ms;
+    }
+    .toggle-switch.on::after { transform: translateX(16px); }
+
+    /* Cost badge */
+    .cost-badge {
+      font-size: 9px; font-weight: 500; padding: 2px 6px;
+      border-radius: 99px; display: inline-flex; align-items: center; gap: 3px;
+    }
+    .cost-free { background: rgba(61,186,106,0.1); color: var(--success); }
+    .cost-paid { background: rgba(232,168,50,0.1); color: var(--warning); }
+  </style>
+</head>
+<body>
+
+<div class="showcase">
+  <h1>Unified Reader — Part 2: Audio / TTS</h1>
+  <p class="showcase-subtitle">Block-level text-to-speech with auto-scroll, highlighting, and AI voice generation.</p>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       SECTION A: TTS BAR STATES
+       ══════════════════════════════════════════════════════════════════════ -->
+
+  <div class="showcase-section">
+    <div class="showcase-label">TTS Bar — All States</div>
+    <div class="showcase-note">
+      The TTS bar floats above the bottom navigation. It appears when TTS is activated
+      and shows the current block being read. Waveform animation indicates active speech.
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 20px; align-items: center;">
+
+      <!-- State 1: Playing -->
+      <div>
+        <div style="font-size: 10px; color: var(--muted-fg); text-align: center; margin-bottom: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Playing</div>
+        <div class="tts-bar">
+          <button class="tts-play" title="Pause">
+            <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+          </button>
+          <div class="tts-info">
+            <div class="tts-block-label">
+              <span class="block-num">4 / 12</span>
+              <span>paragraph</span>
+              <div class="tts-waveform" style="margin-left: 6px;">
+                <div class="tts-waveform-bar" style="animation-delay: 0s;"></div>
+                <div class="tts-waveform-bar" style="animation-delay: 0.1s;"></div>
+                <div class="tts-waveform-bar" style="animation-delay: 0.2s;"></div>
+                <div class="tts-waveform-bar" style="animation-delay: 0.3s;"></div>
+                <div class="tts-waveform-bar" style="animation-delay: 0.15s;"></div>
+              </div>
+            </div>
+            <div class="tts-block-text">"Send him in. And prepare the tea. The good one, not the cursed variety."</div>
+            <div class="tts-scrubber">
+              <div class="tts-scrubber-fill" style="width: 65%;"></div>
+              <div class="tts-scrubber-handle" style="left: 65%;"></div>
+            </div>
+          </div>
+          <div class="tts-time">
+            <div>1:24</div>
+            <div style="opacity: 0.5;">8:02</div>
+          </div>
+          <div class="tts-controls">
+            <div class="btn-icon btn-icon-sm" title="Previous block">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 20L9 12l10-8v16zM5 19V5"/></svg>
+            </div>
+            <div class="btn-icon btn-icon-sm" title="Next block">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 4l10 8-10 8V4zM19 5v14"/></svg>
+            </div>
+            <button class="tts-speed">1.0x</button>
+            <div class="btn-icon btn-icon-sm" title="TTS settings">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            </div>
+            <div class="btn-icon btn-icon-sm" title="Close TTS">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- State 2: Paused -->
+      <div>
+        <div style="font-size: 10px; color: var(--muted-fg); text-align: center; margin-bottom: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Paused</div>
+        <div class="tts-bar" style="opacity: 0.85;">
+          <button class="tts-play" title="Resume">
+            <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <div class="tts-info">
+            <div class="tts-block-label">
+              <span class="block-num">4 / 12</span>
+              <span>paragraph</span>
+              <span style="color: var(--warning); font-size: 9px; font-weight: 500; margin-left: 4px;">PAUSED</span>
+            </div>
+            <div class="tts-block-text">"Send him in. And prepare the tea. The good one, not the cursed variety."</div>
+            <div class="tts-scrubber">
+              <div class="tts-scrubber-fill" style="width: 65%;"></div>
+            </div>
+          </div>
+          <div class="tts-time">
+            <div>1:24</div>
+            <div style="opacity: 0.5;">8:02</div>
+          </div>
+          <div class="tts-controls">
+            <div class="btn-icon btn-icon-sm"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 20L9 12l10-8v16zM5 19V5"/></svg></div>
+            <div class="btn-icon btn-icon-sm"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 4l10 8-10 8V4zM19 5v14"/></svg></div>
+            <button class="tts-speed">1.0x</button>
+            <div class="btn-icon btn-icon-sm"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg></div>
+            <div class="btn-icon btn-icon-sm"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- State 3: Generating (AI TTS) -->
+      <div>
+        <div style="font-size: 10px; color: var(--muted-fg); text-align: center; margin-bottom: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Generating AI Audio</div>
+        <div class="gen-progress-bar">
+          <div class="gen-progress-header">
+            <div>
+              <div class="gen-progress-title">
+                <svg width="12" height="12" fill="none" stroke="var(--accent)" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: -1px;"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                Generating audio with <span style="color: var(--accent);">Alloy</span> voice...
+              </div>
+              <div class="gen-progress-subtitle">Block 7 of 12 &middot; ~2 min remaining &middot; est. $0.03</div>
+            </div>
+            <button style="font-size: 11px; color: var(--muted-fg); background: transparent; border: 1px solid var(--border); padding: 4px 10px; border-radius: 5px; cursor: pointer;">Cancel</button>
+          </div>
+          <div class="gen-track">
+            <div class="gen-track-fill" style="width: 58%;"></div>
+          </div>
+          <div class="gen-block-list">
+            <div class="gen-block-dot done"></div>
+            <div class="gen-block-dot done"></div>
+            <div class="gen-block-dot done"></div>
+            <div class="gen-block-dot skip" title="Image block — skipped"></div>
+            <div class="gen-block-dot done"></div>
+            <div class="gen-block-dot done"></div>
+            <div class="gen-block-dot active"></div>
+            <div class="gen-block-dot"></div>
+            <div class="gen-block-dot skip" title="Video block — skipped"></div>
+            <div class="gen-block-dot"></div>
+            <div class="gen-block-dot"></div>
+            <div class="gen-block-dot"></div>
+          </div>
+          <div style="font-size: 9px; color: var(--muted-fg); margin-top: 6px; display: flex; gap: 10px;">
+            <span><span style="display: inline-block; width: 6px; height: 6px; border-radius: 1px; background: var(--success); vertical-align: middle;"></span> Done</span>
+            <span><span style="display: inline-block; width: 6px; height: 6px; border-radius: 1px; background: var(--accent); vertical-align: middle; animation: pulse 1s infinite;"></span> Generating</span>
+            <span><span style="display: inline-block; width: 6px; height: 6px; border-radius: 1px; background: var(--border); opacity: 0.3; vertical-align: middle;"></span> Skipped (media)</span>
+            <span><span style="display: inline-block; width: 6px; height: 6px; border-radius: 1px; background: var(--secondary); vertical-align: middle;"></span> Pending</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       SECTION B: CONTENT WITH TTS HIGHLIGHTING
+       ══════════════════════════════════════════════════════════════════════ -->
+
+  <div class="showcase-section">
+    <div class="showcase-label">Block-Level TTS Highlighting + Auto-Scroll</div>
+    <div class="showcase-note">
+      <strong>How it works:</strong><br>
+      1. Active block gets gold left border + subtle background highlight<br>
+      2. Past blocks stay normal opacity, upcoming blocks slightly dimmed<br>
+      3. Auto-scroll smoothly centers the active block in the viewport<br>
+      4. Click any block to jump TTS to that position<br>
+      5. Media blocks (image/video) are paused on — reader sees the visual while TTS waits
+    </div>
+
+    <div style="background: var(--reader-bg); border: 1px solid var(--border); border-radius: 12px; padding: 48px; display: flex; justify-content: center;">
+      <div class="content-renderer" style="max-width: 640px;">
+
+        <!-- Past blocks -->
+        <div class="content-block tts-past tts-clickable" data-block-id="t1">
+          <p style="font-family: var(--reader-font); font-size: var(--reader-size); line-height: var(--reader-line);">The throne room was silent except for the gentle hiss of magical torches.</p>
+        </div>
+
+        <div class="content-block tts-past tts-clickable" data-block-id="t2">
+          <p style="font-family: var(--reader-font); font-size: var(--reader-size); line-height: var(--reader-line);">"Your Majesty, the Hero has arrived," announced the chamberlain.</p>
+        </div>
+
+        <!-- Image block — TTS pauses here (reader looks at image) -->
+        <div class="content-block tts-past tts-clickable" data-block-id="t3" style="margin: calc(var(--reader-spacing) * 1.5) 0;">
+          <figure style="text-align: center;">
+            <div style="width: 100%; height: 180px; background: linear-gradient(135deg, #2a2420, #1a1816); border-radius: 10px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center;">
+              <svg width="32" height="32" fill="none" stroke="var(--muted-fg)" stroke-width="1.5" viewBox="0 0 24 24" style="opacity: 0.3;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            </div>
+            <figcaption style="font-family: Inter, sans-serif; font-size: 12px; color: var(--muted-fg); margin-top: 8px; font-style: italic;">The throne room illustration</figcaption>
+          </figure>
+        </div>
+
+        <!-- ACTIVE BLOCK — currently being read -->
+        <div class="content-block tts-active tts-clickable" data-block-id="t4">
+          <p style="font-family: var(--reader-font); font-size: var(--reader-size); line-height: var(--reader-line);">The Demon Lord sighed — a sound that caused the torches to flicker. "Send him in. And prepare the tea. The good one, not the cursed variety."</p>
+        </div>
+
+        <!-- Upcoming blocks (slightly dimmed) -->
+        <div class="content-block tts-upcoming tts-clickable" data-block-id="t5">
+          <p style="font-family: var(--reader-font); font-size: var(--reader-size); line-height: var(--reader-line);">The doors burst open with theatrical force. The Hero strode in, armor gleaming.</p>
+        </div>
+
+        <div class="content-block tts-upcoming tts-clickable" data-block-id="t6">
+          <p style="font-family: var(--reader-font); font-size: var(--reader-size); line-height: var(--reader-line);">"Demon Lord!" he bellowed. "I have come to lodge a formal complaint!"</p>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       SECTION C: TTS SETTINGS PANEL
+       ══════════════════════════════════════════════════════════════════════ -->
+
+  <div class="showcase-section">
+    <div class="showcase-label">TTS Settings Panel</div>
+
+    <div style="display: flex; gap: 24px;">
+
+      <!-- Settings panel -->
+      <div class="tts-settings">
+        <div class="tts-settings-header">
+          <span style="font-size: 13px; font-weight: 600;">TTS Settings</span>
+          <div class="btn-icon" style="width: 24px; height: 24px;">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+          </div>
+        </div>
+        <div class="tts-settings-body">
+
+          <!-- TTS Mode -->
+          <div class="tts-setting-group">
+            <div class="tts-setting-label">Audio Source</div>
+            <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+              <div style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid var(--primary); background: var(--primary-muted); cursor: pointer; text-align: center;">
+                <div style="font-size: 12px; font-weight: 500; color: var(--primary);">Browser TTS</div>
+                <div class="cost-badge cost-free" style="margin-top: 4px;">Free</div>
+              </div>
+              <div style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; text-align: center;">
+                <div style="font-size: 12px; font-weight: 500;">AI Voice</div>
+                <div class="cost-badge cost-paid" style="margin-top: 4px;">Uses credits</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Voice selection (Browser TTS mode) -->
+          <div class="tts-setting-group">
+            <div class="tts-setting-label">Voice</div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <div class="tts-voice-option active">
+                <div class="tts-voice-avatar">🇬🇧</div>
+                <div class="tts-voice-info">
+                  <div class="tts-voice-name">Google UK English Female</div>
+                  <div class="tts-voice-desc">Natural, clear enunciation</div>
+                </div>
+                <button class="tts-voice-preview" title="Preview voice">
+                  <svg width="10" height="10" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                </button>
+              </div>
+              <div class="tts-voice-option">
+                <div class="tts-voice-avatar">🇺🇸</div>
+                <div class="tts-voice-info">
+                  <div class="tts-voice-name">Google US English</div>
+                  <div class="tts-voice-desc">Standard American</div>
+                </div>
+                <button class="tts-voice-preview">
+                  <svg width="10" height="10" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                </button>
+              </div>
+              <div class="tts-voice-option">
+                <div class="tts-voice-avatar">🇯🇵</div>
+                <div class="tts-voice-info">
+                  <div class="tts-voice-name">Google 日本語</div>
+                  <div class="tts-voice-desc">Japanese voice</div>
+                </div>
+                <button class="tts-voice-preview">
+                  <svg width="10" height="10" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Speed / Pitch -->
+          <div class="tts-setting-group">
+            <div class="tts-setting-label">Playback</div>
+            <div class="slider-row">
+              <span class="slider-label">Speed</span>
+              <input type="range" class="slider-input" min="50" max="200" value="100">
+              <span class="slider-value">1.0x</span>
+            </div>
+            <div class="slider-row">
+              <span class="slider-label">Pitch</span>
+              <input type="range" class="slider-input" min="50" max="150" value="100">
+              <span class="slider-value">1.0</span>
+            </div>
+          </div>
+
+          <!-- Behavior toggles -->
+          <div class="tts-setting-group">
+            <div class="tts-setting-label">Behavior</div>
+
+            <div class="toggle-row">
+              <div>
+                <div class="toggle-label">Auto-scroll</div>
+                <div class="toggle-desc">Keep reading block centered</div>
+              </div>
+              <div class="toggle-switch on"></div>
+            </div>
+
+            <div class="toggle-row">
+              <div>
+                <div class="toggle-label">Highlight active block</div>
+                <div class="toggle-desc">Gold border on current block</div>
+              </div>
+              <div class="toggle-switch on"></div>
+            </div>
+
+            <div class="toggle-row">
+              <div>
+                <div class="toggle-label">Dim upcoming blocks</div>
+                <div class="toggle-desc">Focus attention on active block</div>
+              </div>
+              <div class="toggle-switch"></div>
+            </div>
+
+            <div class="toggle-row">
+              <div>
+                <div class="toggle-label">Pause on media</div>
+                <div class="toggle-desc">Wait at images/videos before continuing</div>
+              </div>
+              <div class="toggle-switch on"></div>
+            </div>
+
+            <div class="toggle-row">
+              <div>
+                <div class="toggle-label">Auto-next chapter</div>
+                <div class="toggle-desc">Continue to next chapter when done</div>
+              </div>
+              <div class="toggle-switch"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Voice settings (when AI mode selected) -->
+      <div class="tts-settings">
+        <div class="tts-settings-header">
+          <span style="font-size: 13px; font-weight: 600;">AI Voice Settings</span>
+          <div class="cost-badge cost-paid">Uses AI credits</div>
+        </div>
+        <div class="tts-settings-body">
+
+          <div class="tts-setting-group">
+            <div class="tts-setting-label">AI Voice Provider</div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <div class="tts-voice-option active">
+                <div class="tts-voice-avatar" style="font-size: 10px; font-weight: 600; background: rgba(61,166,146,0.15); color: var(--accent);">OAI</div>
+                <div class="tts-voice-info">
+                  <div class="tts-voice-name">OpenAI TTS</div>
+                  <div class="tts-voice-desc">6 voices &middot; ~$0.015/1K chars</div>
+                </div>
+              </div>
+              <div class="tts-voice-option">
+                <div class="tts-voice-avatar" style="font-size: 10px; font-weight: 600; background: rgba(84,150,232,0.15); color: var(--info);">11L</div>
+                <div class="tts-voice-info">
+                  <div class="tts-voice-name">ElevenLabs</div>
+                  <div class="tts-voice-desc">Premium voices &middot; ~$0.03/1K chars</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tts-setting-group">
+            <div class="tts-setting-label">Voice</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+              <div style="padding: 6px 12px; border-radius: 6px; border: 1px solid var(--primary); background: var(--primary-muted); font-size: 11px; font-weight: 500; color: var(--primary); cursor: pointer;">Alloy</div>
+              <div style="padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); font-size: 11px; color: var(--muted-fg); cursor: pointer;">Echo</div>
+              <div style="padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); font-size: 11px; color: var(--muted-fg); cursor: pointer;">Fable</div>
+              <div style="padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); font-size: 11px; color: var(--muted-fg); cursor: pointer;">Nova</div>
+              <div style="padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); font-size: 11px; color: var(--muted-fg); cursor: pointer;">Onyx</div>
+              <div style="padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); font-size: 11px; color: var(--muted-fg); cursor: pointer;">Shimmer</div>
+            </div>
+          </div>
+
+          <div class="tts-setting-group">
+            <div class="tts-setting-label">Cost Estimate</div>
+            <div style="background: var(--secondary); border-radius: 8px; padding: 12px;">
+              <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px;">
+                <span style="color: var(--muted-fg);">Chapter length</span>
+                <span>1,892 words (~9,460 chars)</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px;">
+                <span style="color: var(--muted-fg);">Text blocks</span>
+                <span>10 of 12 (2 media skipped)</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 11px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);">
+                <span style="color: var(--muted-fg);">Estimated cost</span>
+                <span style="color: var(--warning); font-weight: 600;">~$0.14</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- When NO audio exists yet -->
+          <button style="width: 100%; padding: 10px; border-radius: 8px; background: var(--accent); color: white; border: none; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            Generate Audio ($0.14)
+          </button>
+          <p style="font-size: 10px; color: var(--muted-fg); text-align: center; margin-top: 6px;">Audio will be saved permanently to your library</p>
+
+          <!-- When audio ALREADY EXISTS (saved asset) -->
+          <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
+            <div style="background: rgba(61,186,106,0.06); border: 1px solid rgba(61,186,106,0.15); border-radius: 8px; padding: 12px;">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                <svg width="14" height="14" fill="none" stroke="var(--success)" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+                <span style="font-size: 12px; font-weight: 600; color: var(--success);">Audio saved</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 3px;">
+                <span style="color: var(--muted-fg);">Voice</span>
+                <span>Alloy (OpenAI)</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 3px;">
+                <span style="color: var(--muted-fg);">Segments</span>
+                <span>10 blocks &middot; 8:02 total</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 3px;">
+                <span style="color: var(--muted-fg);">Generated</span>
+                <span>2 hours ago</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                <span style="color: var(--muted-fg);">Content match</span>
+                <span style="color: var(--success);">Up to date</span>
+              </div>
+            </div>
+            <div style="display: flex; gap: 6px; margin-top: 8px;">
+              <button style="flex: 1; padding: 7px; border-radius: 6px; background: var(--primary); color: var(--primary-fg); border: none; font-size: 11px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                <svg width="10" height="10" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                Play
+              </button>
+              <button style="flex: 1; padding: 7px; border-radius: 6px; background: transparent; border: 1px solid var(--border); color: var(--muted-fg); font-size: 11px; cursor: pointer;">Re-generate</button>
+              <button style="padding: 7px 10px; border-radius: 6px; background: transparent; border: 1px solid var(--border); color: var(--destructive); font-size: 11px; cursor: pointer;" title="Delete saved audio">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- When audio exists but content has drifted -->
+          <div style="margin-top: 12px;">
+            <div style="background: rgba(232,168,50,0.06); border: 1px solid rgba(232,168,50,0.15); border-radius: 8px; padding: 10px; font-size: 10px;">
+              <div style="display: flex; align-items: center; gap: 6px; color: var(--warning); font-weight: 600; margin-bottom: 4px;">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01"/></svg>
+                Content changed
+              </div>
+              <p style="color: var(--muted-fg);">3 blocks were edited since audio was generated. Old audio still plays but may not match current text.</p>
+              <button style="margin-top: 6px; padding: 5px 10px; border-radius: 5px; background: var(--warning); color: var(--primary-fg); border: none; font-size: 10px; font-weight: 500; cursor: pointer;">Re-generate changed blocks ($0.04)</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       ARCHITECTURE NOTES
+       ══════════════════════════════════════════════════════════════════════ -->
+
+  <div class="showcase-section">
+    <div class="showcase-label">TTS Architecture</div>
+    <div class="showcase-note" style="font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 1.8; white-space: pre; border-left-color: var(--primary);">
+TTS COMPONENT TREE:
+
+&lt;TTSProvider&gt;                              ← React context wrapping ReaderPage
+  state: { mode, status, activeBlockIdx, speed, voice, segments }
+  │
+  ├── useBrowserTTS()                       ← Web Speech API hook
+  │     speak(text) → SpeechSynthesisUtterance
+  │     onBoundary → word-level progress
+  │     onEnd → advance to next block
+  │
+  ├── useAITTS()                            ← AI voice generation hook
+  │     generateAudio(blocks) → POST /v1/tts/generate
+  │     returns: { blockId, audioUrl }[]
+  │     plays via &lt;audio&gt; element
+  │
+  └── &lt;TTSBar /&gt;                            ← floating player UI
+
+BLOCK SLICING:
+  1. chapter.body.content → extract blocks
+  2. Filter: keep paragraph, heading, blockquote, callout, list
+  3. Skip: imageBlock, videoBlock, horizontalRule, codeBlock
+  4. For each text block: extractText(block) → plain string
+  5. Build ordered queue: [{ blockId, text, type }]
+
+SYNC FLOW:
+  TTS reads block N
+    → set ttsActiveBlock = blockId
+    → ContentRenderer highlights block N
+    → auto-scroll: block N → scrollIntoView({ behavior: 'smooth', block: 'center' })
+    → on complete: advance to block N+1
+    → if media block: pause for 3s (configurable), then skip
+
+AUDIO STORAGE (AI mode — persisted assets, NOT cache):
+  Generated audio is a PERMANENT MEDIA ASSET — stored in DB + MinIO,
+  just like images and videos. Never expires, never auto-deleted.
+
+  DB table: chapter_audio_segments
+    chapter_id     UUID
+    block_index    INT          ← position in chapter
+    voice          TEXT         ← e.g. 'alloy', 'nova'
+    provider       TEXT         ← e.g. 'openai', 'elevenlabs'
+    language       TEXT         ← e.g. 'ja', 'en'
+    media_url      TEXT         ← MinIO presigned URL
+    media_key      TEXT         ← MinIO object key
+    duration_ms    INT
+    content_hash   TEXT         ← hash of source text at generation time
+    created_at     TIMESTAMPTZ
+
+  MinIO path: audio/{chapter_id}/{language}/{voice}/{block_index}.mp3
+
+  Content drift detection:
+    - On load, compare current block text hash vs stored content_hash
+    - If different → show "Content changed since audio was generated"
+      with option to re-generate (old audio still playable)
+    - User explicitly clicks "Re-generate" → creates new segment,
+      old one is replaced (same DB row updated, old MinIO object deleted)
+
+  Reuses existing media infrastructure:
+    - MinIO upload/presigned URL from book-service
+    - Provider credentials from provider-registry-service
+    - Usage tracking via usage-billing-service
+
+BACKEND (AI TTS):
+  POST /v1/tts/generate
+    { chapter_id, language, voice, provider, blocks: [{ index, text }] }
+    → Calls AI provider (OpenAI/ElevenLabs) per block
+    → Stores each segment in MinIO + creates DB record
+    → Returns: { segments: [{ block_index, media_url, duration_ms }] }
+
+  GET /v1/tts/segments?chapter_id=X&amp;language=Y&amp;voice=Z
+    → Returns existing audio segments for playback (no regeneration)
+    → Includes content_hash for drift detection
+
+  DELETE /v1/tts/segments/:segmentId
+    → Removes audio asset from DB + MinIO
+
+KEYBOARD SHORTCUTS:
+  Space        → play/pause
+  Left/Right   → prev/next block
+  [/]          → decrease/increase speed
+  M            → toggle mute
+  Escape       → close TTS
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

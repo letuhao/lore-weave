@@ -2205,9 +2205,670 @@ INF-04: Health check deep mode [BE]                             [✓] Done (b670
 
 ---
 
+---
+
+## Phase 8: Unified Content Viewer & Reader Rewrite
+
+> **Problem:** Old ReaderPage uses TiptapEditor(editable=false) — loads full editor stack
+> just to display content. ChapterReadView splits by \n\n — can't render structured data.
+> Both are broken for mixed-media chapters (images, videos, code blocks, callouts).
+>
+> **Solution:** Lightweight display components (no Tiptap dependency) that render Tiptap JSON
+> as pure React. Shared across reader, revision preview, translation review, and excerpts.
+>
+> **Design drafts:**
+> - `design-drafts/screen-reader-v2-part1-renderer.html` — Block renderer + reader chrome
+> - `design-drafts/screen-reader-v2-part2-audio-tts.html` — TTS / audio player
+> - `design-drafts/screen-reader-v2-part3-review-modes.html` — Review modes
+>
+> **Phasing:**
+>
+> | Sub-phase | Scope | Deps |
+> |-----------|-------|------|
+> | **Phase 8A** | ContentRenderer + ReaderPage rewrite | None |
+> | **Phase 8B** | Reader theme integration (FE-TH-04 + FE-TH-05) | 8A |
+> | **Phase 8C** | RevisionHistory + ChapterReadView cleanup | 8A |
+> | **Phase 8D** | Browser TTS (free, Web Speech API) | 8A |
+> | **Phase 8E** | AI TTS with persisted audio (BE + FE) | 8D |
+> | **Phase 8F** | Translation pipeline upgrade (TEXT → block JSONB) | 8A |
+> | **Phase 8G** | Translation review mode (split-pane) | 8F |
+>
+> **Architecture decisions:**
+> - Custom React display components, NOT Tiptap generateHTML() (avoids importing extensions)
+> - Each block gets `data-block-id` for TTS sync, scroll targeting, click handling
+> - ContentRenderer accepts `mode: 'full' | 'compact'` for reader vs embedded contexts
+> - Reader theme via `--reader-*` CSS vars (already in ThemeProvider, just needs wiring)
+> - AI TTS audio stored as persistent assets in DB + MinIO (not cache, never expires)
+> - Audio segments store `source_text` (subtitle) + `source_text_hash` (change detection)
+> - Translation review deferred until translation pipeline upgraded to block-level JSONB
+
+---
+
+### Phase 8A: ContentRenderer + ReaderPage Rewrite (12 tasks)
+
+> **Goal:** Replace broken reader with lightweight display components.
+> ReaderPage works for authenticated users with full structured content support.
+> Public reader deferred (needs BE endpoints).
+
+```
+Task order:
+  RD-00 → RD-01 → RD-02 → RD-03 → RD-04 → RD-05 → RD-06
+  → RD-07 → RD-08 → RD-09 → RD-10 → RD-11 → RD-12
+```
+
+  RD-00: Install missing editor extensions [FE]
+    Status: [ ]
+    Size: S
+    Scope: Add 5 Tiptap inline mark extensions to the editor
+    Packages: @tiptap/extension-link, @tiptap/extension-underline,
+      @tiptap/extension-highlight, @tiptap/extension-subscript,
+      @tiptap/extension-superscript
+    Files:
+      frontend/package.json — add 5 deps
+      frontend/src/components/editor/TiptapEditor.tsx — register extensions
+      frontend/src/components/editor/FormatToolbar.tsx — add toolbar buttons
+    Link config: openOnClick: false, HTMLAttributes: { target: '_blank', rel: 'noopener' }
+    Toolbar: Link (chain icon, URL prompt), Underline (U), Highlight (highlighter),
+      Subscript (X₂), Superscript (X²)
+    AC:
+      - [ ] All 5 extensions installed and registered in editor
+      - [ ] Toolbar buttons toggle each mark
+      - [ ] Link button prompts for URL, sets href + target + rel
+      - [ ] Keyboard shortcuts: Ctrl+U (underline), Ctrl+Shift+H (highlight)
+      - [ ] Existing content renders unchanged (marks are additive)
+      - [ ] Build passes, no new warnings
+
+  RD-01: InlineRenderer — text marks display [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-00
+    Scope: Component that renders Tiptap inline content (text nodes + marks)
+    File: frontend/src/components/reader/InlineRenderer.tsx
+    Input: TiptapNode[] (content array with type:"text", marks:[...])
+    Handles 9 mark types (flat array, not nested — wrap in order):
+      bold → <strong>, italic → <em>, strike → <s>, code → <code>,
+      link → <a href target="_blank" rel="noopener">,
+      underline → <u>, highlight → <mark>, subscript → <sub>, superscript → <sup>
+    Also handles: hardBreak → <br />
+    Unknown mark types → render text without mark (defensive, no crash)
+    AC:
+      - [ ] All 9 mark types render correctly
+      - [ ] Stacked marks render (e.g., bold+italic = <strong><em>)
+      - [ ] Links open in new tab with rel="noopener"
+      - [ ] Inline code styled with monospace + subtle bg
+      - [ ] Highlight styled with subtle background
+      - [ ] Hard breaks (type:"hardBreak") render as <br>
+      - [ ] Unknown mark types don't crash
+
+  RD-02: Block display components — text types [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-01
+    Scope: Display components for text-based blocks
+    Files:
+      frontend/src/components/reader/blocks/ParagraphBlock.tsx
+      frontend/src/components/reader/blocks/HeadingBlock.tsx
+      frontend/src/components/reader/blocks/BlockquoteBlock.tsx
+      frontend/src/components/reader/blocks/ListBlock.tsx
+      frontend/src/components/reader/blocks/HorizontalRuleBlock.tsx
+    Each takes TiptapNode props → renders HTML element + InlineRenderer for content
+    HeadingBlock reads attrs.level for h1/h2/h3
+    ListBlock handles bulletList + orderedList (recursive for nested lists)
+    HorizontalRuleBlock renders three-dot scene break
+    AC:
+      - [ ] All 5 text block types render correctly
+      - [ ] Heading levels produce correct h1/h2/h3 tags
+      - [ ] Nested lists render properly
+      - [ ] Styling uses --reader-* CSS variables
+
+  RD-03: Block display components — media types [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-01
+    Scope: Display components for media blocks
+    Files:
+      frontend/src/components/reader/blocks/ImageBlock.tsx
+      frontend/src/components/reader/blocks/VideoBlock.tsx
+      frontend/src/components/reader/blocks/CodeBlock.tsx
+      frontend/src/components/reader/blocks/CalloutBlock.tsx
+    ImageBlock: <figure> with <img> + <figcaption>, zoom-hint overlay, lazy loading
+    VideoBlock: <figure> with <video> + play button overlay + <figcaption>
+    CodeBlock: language header + copy button + <pre> (no syntax highlighting — defer)
+    CalloutBlock: colored left border + label + content (type from attrs)
+    AC:
+      - [ ] Images lazy-load with IntersectionObserver
+      - [ ] Video shows poster/placeholder, plays on click
+      - [ ] Code block copy button copies to clipboard
+      - [ ] Callout types (info, warning, success, danger) show correct colors
+
+  RD-04: ContentRenderer — block orchestrator [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-02, RD-03
+    Scope: Main component that maps Tiptap JSON blocks to display components
+    File: frontend/src/components/reader/ContentRenderer.tsx
+    Props:
+      blocks: TiptapBlock[]         // doc.content array
+      mode?: 'full' | 'compact'    // sizing mode
+      ttsActiveBlock?: string      // highlight block (future TTS)
+      showIndices?: boolean        // block numbers (translator mode)
+      maxBlocks?: number           // limit for embedded preview
+      onBlockClick?: (blockId: string) => void
+      className?: string
+    Renders each block wrapped in <div data-block-id="block-{index}">
+    Switch on block.type → render appropriate display component
+    Unknown block types → fallback <pre>{JSON.stringify(block)}</pre>
+    AC:
+      - [ ] All block types from RD-02 + RD-03 render correctly
+      - [ ] data-block-id on every block wrapper
+      - [ ] compact mode applies smaller sizing
+      - [ ] maxBlocks truncates with gradient fade
+      - [ ] ttsActiveBlock adds highlight class
+      - [ ] Unknown block type shows debug fallback (not crash)
+
+  RD-05: ContentRenderer CSS — reader styles [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-04
+    Scope: CSS for all block types in reader context
+    File: frontend/src/components/reader/reader.css (or co-located)
+    Styles from design draft: .content-block, .block-paragraph, .block-heading,
+    .block-image, .block-video, .block-code, .block-callout, .block-hr, etc.
+    All sizing via --reader-* CSS vars (font, size, line-height, width, spacing)
+    Full mode: generous spacing, large images
+    Compact mode: tighter spacing, thumbnail images, smaller text
+    TTS active state: gold left border + subtle background
+    AC:
+      - [ ] Full mode matches design draft visual fidelity
+      - [ ] Compact mode visually distinct (smaller, tighter)
+      - [ ] All sizing responds to --reader-* CSS variable changes
+      - [ ] TTS highlight class styled correctly
+      - [ ] Dark theme + sepia theme both render well
+
+  RD-06: ReaderPage rewrite — basic structure [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-04, RD-05
+    Scope: Rewrite ReaderPage.tsx to use ContentRenderer instead of TiptapEditor
+    File: frontend/src/pages/ReaderPage.tsx (rewrite)
+    Changes:
+      - Remove TiptapEditor import and usage
+      - Fetch chapter draft via booksApi.getDraft()
+      - Extract body.content → pass to ContentRenderer
+      - Keep existing: progress bar, top bar breadcrumb, loading state
+      - Keep existing: chapter prev/next navigation (bottom bar)
+      - Remove: tiptap-reader CSS class usage
+    AC:
+      - [ ] ReaderPage renders structured content (paragraphs, images, code, etc.)
+      - [ ] No Tiptap dependency imported
+      - [ ] Progress bar works
+      - [ ] Chapter navigation (prev/next) works
+      - [ ] Loading state shows correctly
+
+  RD-07: ReaderPage — chapter header + end marker [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-06
+    Scope: Chapter header (number, title, metadata) and end-of-chapter marker
+    Changes to ReaderPage.tsx:
+      - Chapter header: number label, title, amber divider, word count, reading time, language
+      - Reading time: character-based for CJK, word-based for Latin
+      - End marker: "End of Chapter N" with top border
+    AC:
+      - [ ] Chapter header shows number, title, divider
+      - [ ] Metadata shows word count + reading time + language
+      - [ ] CJK chapters use character count for reading time
+      - [ ] End marker visible after content
+
+  RD-08: ReaderPage — TOC sidebar [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-06
+    Scope: Table of contents slide-in overlay (matches existing design)
+    File: frontend/src/components/reader/TOCSidebar.tsx
+    Features:
+      - Hamburger button in top bar opens TOC
+      - Chapter list with current chapter highlighted
+      - Read chapters show checkmark
+      - Reading progress bar in header
+      - Book title + chapter count
+      - Click chapter → navigate (close TOC)
+      - Click overlay backdrop → close
+    AC:
+      - [ ] TOC opens/closes on hamburger click
+      - [ ] Current chapter highlighted with gold left border
+      - [ ] Read chapters show green checkmark
+      - [ ] Progress bar shows reading position
+      - [ ] Navigation to other chapters works
+
+  RD-09: ReaderPage — language selector in TOC [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-08
+    Scope: Language pills in TOC footer for switching reading language
+    Changes: TOCSidebar.tsx footer section
+    Data flow:
+      - Fetch available translations for this chapter
+        (GET /v1/translation/chapters/{id}/translations → list of languages)
+      - Show pill per language (original highlighted differently)
+      - On select: reload content in that language
+      - Currently translations are flat TEXT — ContentRenderer falls back to
+        wrapping in a single paragraph block. This is intentional until Phase 8F
+        upgrades translations to block-level JSONB.
+    AC:
+      - [ ] Language pills shown in TOC footer
+      - [ ] Original language visually distinct (gold pill)
+      - [ ] Clicking translation language reloads content
+      - [ ] Flat text translations render as paragraphs (split by \n\n)
+      - [ ] Graceful handling when no translations exist
+
+  RD-10: ReaderPage — top bar actions [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-06
+    Scope: Top bar action buttons (theme, edit, close)
+    Changes to ReaderPage.tsx top bar:
+      - Theme button (placeholder — opens ThemeCustomizer in Phase 8B)
+      - TTS button (placeholder — wired in Phase 8D)
+      - Edit button (link to /edit, shown only if authenticated + owner)
+      - Close button (back to book detail page)
+    AC:
+      - [ ] Theme + TTS buttons visible but inactive (placeholder for future phases)
+      - [ ] Edit button shown only for authenticated book owner
+      - [ ] Close button navigates back to book detail
+
+  RD-11: ReaderPage — keyboard shortcuts [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-06, RD-08
+    Scope: Keyboard navigation for reader
+    Shortcuts:
+      - Left arrow / PageUp → previous chapter
+      - Right arrow / PageDown → next chapter
+      - T → toggle TOC sidebar
+      - Escape → close TOC / close reader (back to book)
+      - Home → scroll to top
+      - End → scroll to bottom
+    AC:
+      - [ ] All shortcuts work in reader view
+      - [ ] Shortcuts don't fire when TOC is open (except Escape to close)
+      - [ ] No conflict with browser defaults
+
+  RD-12: Integration test + cleanup [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-06..RD-11
+    Scope: Verify full reader flow, clean up old CSS
+    Changes:
+      - Remove .tiptap-reader CSS rules from index.css
+      - Verify reader works with all block types (create test chapter with all types)
+      - Verify chapter navigation cycle (first → last → first)
+      - Verify reader loads without Tiptap in bundle (check import graph)
+      - Browser test: dark theme renders correctly
+    AC:
+      - [ ] Old .tiptap-reader CSS removed
+      - [ ] Reader renders chapter with all block types
+      - [ ] Chapter navigation works end-to-end
+      - [ ] No Tiptap imports in reader page bundle
+      - [ ] Visual regression check passes
+
+---
+
+### Phase 8B: Reader Theme Integration (3 tasks)
+
+> **Goal:** Wire FE-TH-04 + FE-TH-05 — reader uses theme CSS vars + toolbar customizer.
+> **Deps:** Phase 8A complete
+
+  RD-13: ReaderPage theme wiring (= FE-TH-05) [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-06
+    Scope: Apply --reader-* CSS vars to content area
+    Changes:
+      - Reading area container gets reader theme CSS vars from useReaderTheme()
+      - Content uses reader theme (bg, fg, font, size, spacing)
+      - Chrome (top bar, bottom bar) keeps app theme
+      - Reader can have different theme from app (e.g., app=dark, reader=sepia)
+    AC:
+      - [ ] Reader content styled by reader theme
+      - [ ] App chrome unaffected by reader theme
+      - [ ] Theme changes from Settings reflect in reader
+
+  RD-14: ThemeCustomizer slide-over (= FE-TH-04) [FE]
+    Status: [ ]
+    Size: M
+    Deps: RD-13
+    Scope: Slide-over panel opened from reader top bar theme button
+    File: frontend/src/components/reader/ThemeCustomizer.tsx
+    Sections: theme presets (5), font picker (5 fonts), font size slider,
+    line height slider, text width slider, spacing slider
+    Live preview: changes apply instantly to reader content
+    Saves via ThemeProvider (persists to API)
+    AC:
+      - [ ] Opens from theme button in reader top bar
+      - [ ] 5 presets with swatches (dark, light, sepia, oled, forest)
+      - [ ] Font picker with sample text preview
+      - [ ] Typography sliders with live preview
+      - [ ] Changes persist via ThemeProvider
+      - [ ] Dismissable (click outside, Escape)
+
+  RD-15: Reading mode toggles [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-14
+    Scope: Additional settings in ThemeCustomizer
+    Toggles:
+      - Show block indices (translator mode) → sets showIndices on ContentRenderer
+      - Auto-load next chapter (infinite scroll — placeholder, not wired)
+    AC:
+      - [ ] Block indices toggle works (shows/hides block numbers)
+      - [ ] Settings persist in ThemeProvider
+
+---
+
+### Phase 8C: RevisionHistory + Cleanup (2 tasks)
+
+> **Goal:** Update RevisionHistory to use ContentRenderer, delete ChapterReadView.
+> **Deps:** Phase 8A complete
+
+  RD-16: RevisionHistory — use ContentRenderer [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-04
+    Scope: Replace ChapterReadView in RevisionHistory with ContentRenderer(compact)
+    File: frontend/src/components/editor/RevisionHistory.tsx
+    Changes:
+      - Import ContentRenderer instead of ChapterReadView
+      - Revision body is Tiptap JSON → pass body.content to ContentRenderer
+      - If revision body is plain text (old format) → wrap in paragraph blocks
+      - mode="compact" for panel sizing
+    AC:
+      - [ ] Revision preview shows structured content (images, code, etc.)
+      - [ ] Old plain-text revisions still render (wrapped in paragraphs)
+      - [ ] Compact mode fits in editor right panel
+
+  RD-17: Delete ChapterReadView [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-16
+    Scope: Remove dead code
+    Delete: frontend/src/components/shared/ChapterReadView.tsx
+    Remove all imports/references
+    AC:
+      - [ ] File deleted
+      - [ ] No remaining imports
+      - [ ] Build passes
+
+---
+
+### Phase 8D: Browser TTS (5 tasks)
+
+> **Goal:** Free text-to-speech using Web Speech API with block-level sync.
+> **Deps:** Phase 8A complete, no backend needed.
+
+  RD-18: useTTS hook — Web Speech API [FE]
+    Status: [ ]
+    Size: M
+    Scope: React hook for browser TTS with block-level control
+    File: frontend/src/hooks/useTTS.ts
+    Features:
+      - Extract text blocks from chapter body (skip media/hr/code)
+      - SpeechSynthesisUtterance per block
+      - State: idle | playing | paused
+      - Controls: play, pause, resume, stop, nextBlock, prevBlock
+      - Active block index tracking
+      - Speed control (0.5x — 2.0x)
+      - Voice selection (from speechSynthesis.getVoices())
+      - onBlockChange callback (for scroll sync)
+    AC:
+      - [ ] Reads text blocks in sequence
+      - [ ] Skips media blocks
+      - [ ] Play/pause/resume controls work
+      - [ ] Block navigation (prev/next) works
+      - [ ] Speed changes apply immediately
+      - [ ] Voice list populated from browser
+
+  RD-19: TTSBar floating player [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-18
+    Scope: Floating audio player bar above bottom navigation
+    File: frontend/src/components/reader/TTSBar.tsx
+    Shows: play/pause button, block label + text preview, progress bar,
+    time display, prev/next block, speed button, close button
+    Waveform animation when playing
+    AC:
+      - [ ] Bar appears when TTS activated
+      - [ ] Play/pause toggles correctly
+      - [ ] Block text preview updates with active block
+      - [ ] Progress scrubber shows position
+      - [ ] Close button stops TTS and hides bar
+
+  RD-20: Block scroll sync [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-18
+    Scope: Auto-scroll content to keep active TTS block centered
+    File: frontend/src/hooks/useBlockScroll.ts
+    Features:
+      - On ttsActiveBlock change → scrollIntoView({ behavior: 'smooth', block: 'center' })
+      - ContentRenderer highlights active block (gold border)
+      - Click any block → jump TTS to that block
+    AC:
+      - [ ] Active block scrolls into view smoothly
+      - [ ] Active block visually highlighted
+      - [ ] Clicking a block jumps TTS playback
+
+  RD-21: TTS keyboard shortcuts [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-18
+    Scope: Keyboard controls for TTS
+    Shortcuts:
+      - Space → play/pause (when TTS active)
+      - [ / ] → decrease/increase speed
+      - Shift+Left / Shift+Right → prev/next block
+      - M → mute/unmute
+      - Escape → close TTS
+    AC:
+      - [ ] All shortcuts work when TTS is active
+      - [ ] Space doesn't scroll page when TTS is active
+      - [ ] Escape closes TTS bar
+
+  RD-22: TTS settings panel [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-18, RD-19
+    Scope: Settings panel for TTS (opened from TTSBar gear icon)
+    File: frontend/src/components/reader/TTSSettings.tsx
+    Sections: voice selector, speed slider, pitch slider,
+    behavior toggles (auto-scroll, highlight, dim upcoming, pause on media)
+    AC:
+      - [ ] Voice dropdown lists available system voices
+      - [ ] Speed + pitch sliders with live effect
+      - [ ] Behavior toggles persist to localStorage
+      - [ ] Panel opens from TTSBar settings icon
+
+---
+
+### Phase 8E: AI TTS with Persisted Audio (7 tasks)
+
+> **Goal:** AI-generated audio stored as permanent assets in DB + MinIO.
+> **Deps:** Phase 8D (browser TTS UI already built), backend work needed.
+
+  RD-23: BE — chapter_audio_segments table + CRUD [BE]
+    Status: [ ]
+    Size: S
+    Service: book-service (owns chapter media)
+    DB:
+      CREATE TABLE chapter_audio_segments (
+        segment_id UUID PRIMARY KEY,
+        chapter_id UUID NOT NULL REFERENCES chapters(chapter_id),
+        block_index INT NOT NULL,
+        source_text TEXT NOT NULL,
+        source_text_hash VARCHAR(64) NOT NULL,
+        voice TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        language TEXT NOT NULL,
+        media_key TEXT NOT NULL,
+        duration_ms INT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX idx_audio_seg_lookup
+        ON chapter_audio_segments(chapter_id, language, voice, block_index);
+    Endpoints:
+      GET /v1/books/:bookId/chapters/:chapterId/audio?language=X&voice=Y
+        → returns segments (without source_text, only hashes + metadata)
+      GET /v1/books/:bookId/chapters/:chapterId/audio/:segmentId
+        → returns single segment with source_text (for subtitle)
+      DELETE /v1/books/:bookId/chapters/:chapterId/audio?language=X&voice=Y
+        → deletes all segments + MinIO objects for that voice
+    AC:
+      - [ ] Table created via migration
+      - [ ] GET list returns segments ordered by block_index
+      - [ ] GET list excludes source_text (only hash + metadata)
+      - [ ] GET single includes source_text for subtitle display
+      - [ ] DELETE removes DB rows + MinIO objects
+      - [ ] Integration tests
+
+  RD-24: BE — TTS generation endpoint [BE]
+    Status: [ ]
+    Size: M
+    Deps: RD-23
+    Service: book-service (calls provider-registry for credentials)
+    Endpoint:
+      POST /v1/books/:bookId/chapters/:chapterId/audio/generate
+        { language, voice, provider, blocks: [{ index, text }] }
+      Flow:
+        1. Get provider credentials from provider-registry-service
+        2. For each block: call AI TTS API (OpenAI / ElevenLabs)
+        3. Upload audio to MinIO: audio/{chapterId}/{language}/{voice}/{index}.mp3
+        4. Create chapter_audio_segments rows
+        5. Track usage via usage-billing-service
+        6. Return: { segments: [{ block_index, media_url, duration_ms }] }
+    AC:
+      - [ ] OpenAI TTS provider supported
+      - [ ] Audio stored in MinIO with correct paths
+      - [ ] DB rows created for each segment
+      - [ ] Usage recorded for billing
+      - [ ] Error handling: partial failure returns completed segments
+      - [ ] Integration tests
+
+  RD-25: BE — gateway proxy for audio endpoints [BE]
+    Status: [ ]
+    Size: S
+    Deps: RD-23
+    Service: api-gateway-bff
+    Route: /v1/books/:bookId/chapters/:chapterId/audio/* → book-service
+    AC:
+      - [ ] GET/POST/DELETE audio endpoints proxied through gateway
+      - [ ] Auth header forwarded
+
+  RD-26: FE — AI TTS API client [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-25
+    File: frontend/src/features/books/api.ts (extend)
+    Methods:
+      listAudioSegments(token, bookId, chapterId, language, voice)
+      getAudioSegment(token, bookId, chapterId, segmentId)
+      generateAudio(token, bookId, chapterId, { language, voice, provider, blocks })
+      deleteAudio(token, bookId, chapterId, language, voice)
+    Types: AudioSegment { segment_id, block_index, source_text_hash, media_url, duration_ms, ... }
+    AC:
+      - [ ] All 4 API methods implemented
+      - [ ] Types match backend response
+
+  RD-27: FE — useAITTS hook [FE]
+    Status: [ ]
+    Size: M
+    Deps: RD-18, RD-26
+    File: frontend/src/hooks/useAITTS.ts
+    Features:
+      - Fetch existing segments on mount
+      - Match segments to current blocks via source_text_hash
+      - Detect content drift (hash mismatch)
+      - Play audio via <audio> element per block
+      - Reuse TTSBar UI (same controls, different audio source)
+    AC:
+      - [ ] Loads existing audio segments
+      - [ ] Plays audio block-by-block via <audio>
+      - [ ] Block sync + auto-scroll works (same as browser TTS)
+      - [ ] Content drift detected and shown in UI
+
+  RD-28: FE — AI TTS generation UI [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-27
+    Scope: Generation progress bar + cost estimate + saved audio status
+    Changes to TTSSettings.tsx:
+      - Browser/AI mode toggle
+      - AI voice + provider selector
+      - Cost estimate panel
+      - Generate button → progress bar with per-block dots
+      - Saved audio card (green) when audio exists
+      - Content drift warning (amber) when blocks changed
+    AC:
+      - [ ] Cost estimate calculated from block text lengths
+      - [ ] Generation progress shows per-block status
+      - [ ] Saved audio card shows voice, segments, duration, timestamp
+      - [ ] Drift warning shows changed block count + re-generate cost
+      - [ ] Re-generate only changed blocks (not all)
+
+  RD-29: FE — AI TTS audio management [FE]
+    Status: [ ]
+    Size: S
+    Deps: RD-27
+    Scope: Delete audio, re-generate, manage saved audio
+    UI: Delete button on saved audio card, re-generate changed blocks,
+    confirmation dialog before delete
+    AC:
+      - [ ] Delete audio with confirmation
+      - [ ] Re-generate updates only changed segments
+      - [ ] Old segments replaced in DB + MinIO
+
+---
+
+### Phase 8F: Translation Pipeline Upgrade (future — needs separate planning)
+
+> **Goal:** Upgrade translation from flat TEXT to block-level JSONB.
+> Preserves block structure, media references, and callout types.
+> **Status:** Not broken down yet — needs its own planning session.
+> **Key changes:**
+> - translated_body: TEXT → JSONB (same Tiptap block structure)
+> - Translation pipeline: chunk-based → block-by-block
+> - Media blocks: translate caption only, keep asset references
+> - Code blocks: keep as-is
+> - Callouts: translate content, keep type
+
+---
+
+### Phase 8G: Translation Review Mode (future — needs Phase 8F)
+
+> **Goal:** Split-pane block-aligned review mode for translations.
+> **Status:** Not broken down yet — depends on Phase 8F data model.
+> **Design draft:** screen-reader-v2-part3-review-modes.html
+
+---
+
+### Phase 8 Summary
+
+| Sub-phase | Tasks | FE | BE | Deps |
+|-----------|-------|----|----|------|
+| 8A: ContentRenderer + Reader | 13 | 13 | 0 | None |
+| 8B: Reader Theme | 3 | 3 | 0 | 8A |
+| 8C: RevisionHistory Cleanup | 2 | 2 | 0 | 8A |
+| 8D: Browser TTS | 5 | 5 | 0 | 8A |
+| 8E: AI TTS Persisted | 7 | 4 | 3 | 8D |
+| 8F: Translation Upgrade | TBD | — | — | 8A |
+| 8G: Translation Review | TBD | — | — | 8F |
+| **Total (8A-8E)** | **30** | **27** | **3** | |
+
+---
+
 ### Size Key: S = <1 session, M = 1-2 sessions, L = 2-4 sessions
 
-### Updated Total: 172 tasks (was 168)
+### Updated Total: 202 tasks (was 172)
 
 | Phase | FE | BE | FS | Total |
 |---|---|---|---|---|
