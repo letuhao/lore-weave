@@ -1,4 +1,5 @@
 import type { JSONContent } from '@tiptap/react';
+import './reader.css';
 import { ParagraphBlock } from './blocks/ParagraphBlock';
 import { HeadingBlock } from './blocks/HeadingBlock';
 import { ImageBlock } from './blocks/ImageBlock';
