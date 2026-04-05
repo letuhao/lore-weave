@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { Menu, X, ChevronLeft, ChevronRight, Pencil, Volume2, Sun } from 'lucide-react';
 import { useAuth } from '@/auth';
@@ -7,7 +7,7 @@ import { versionsApi } from '@/features/translation/api';
 import { ContentRenderer } from '@/components/reader/ContentRenderer';
 import { TOCSidebar, type LanguageOption } from '@/components/reader/TOCSidebar';
 import type { JSONContent } from '@tiptap/react';
-import { extractText } from '@/components/editor/TiptapEditor';
+import { extractText } from '@/lib/tiptap-utils';
 
 /** CJK Unicode ranges: CJK Unified Ideographs, Hiragana, Katakana, Hangul */
 const CJK_REGEX = /[\u3000-\u9fff\uac00-\ud7af\uff00-\uffef]/;
@@ -46,6 +46,7 @@ export function ReaderPage() {
   const [activeLanguage, setActiveLanguage] = useState('');
   // Map: language code → active translation version ID
   const [langVersionMap, setLangVersionMap] = useState<Record<string, string>>({});
+  const [langLoading, setLangLoading] = useState(false);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -102,15 +103,17 @@ export function ReaderPage() {
     }
     const versionId = langVersionMap[lang];
     if (!versionId || !accessToken) return;
+    setLangLoading(true);
     try {
       const version = await versionsApi.getChapterVersion(accessToken, chapterId, versionId);
       if (version.translated_body) {
         setBlocks(textToBlocks(version.translated_body));
       }
     } catch {
-      // Silently fall back to original
       setBlocks(originalBlocks);
       setActiveLanguage(origLang);
+    } finally {
+      setLangLoading(false);
     }
   }, [book, originalBlocks, langVersionMap, accessToken, chapterId, textToBlocks]);
 
@@ -119,7 +122,7 @@ export function ReaderPage() {
   const nextCh = currentIdx < chapters.length - 1 ? chapters[currentIdx + 1] : null;
   const progress = chapters.length > 0 ? ((currentIdx + 1) / chapters.length) * 100 : 0;
   const chapterLang = chapter?.original_language;
-  const stats = computeReadingStats(blocks, chapterLang ?? undefined);
+  const stats = useMemo(() => computeReadingStats(blocks, chapterLang ?? undefined), [blocks, chapterLang]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -130,7 +133,6 @@ export function ReaderPage() {
       switch (e.key) {
         case 'Escape':
           if (tocOpen) setTocOpen(false);
-          else navigate(`/books/${bookId}`);
           break;
         case 't':
         case 'T':
@@ -244,8 +246,11 @@ export function ReaderPage() {
           </div>
 
           {/* Chapter content — ContentRenderer */}
+          {langLoading && (
+            <div className="mb-6 text-center text-xs text-muted-foreground animate-pulse">Loading translation...</div>
+          )}
           {blocks.length > 0 ? (
-            <ContentRenderer blocks={blocks} />
+            <ContentRenderer blocks={blocks} className={langLoading ? 'opacity-50 transition-opacity' : ''} />
           ) : (
             <p className="text-center font-serif text-muted-foreground italic">
               Empty chapter — nothing written yet.
