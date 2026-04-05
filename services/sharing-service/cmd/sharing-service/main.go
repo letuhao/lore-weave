@@ -41,7 +41,7 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
-		slog.Info("sharing-service listening", "addr", cfg.HTTPAddr)
+		slog.Info("listening", "addr", cfg.HTTPAddr)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("listen", "error", err)
 			os.Exit(1)

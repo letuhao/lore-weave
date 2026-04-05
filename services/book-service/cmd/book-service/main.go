@@ -46,7 +46,7 @@ func main() {
 	}
 
 	go func() {
-		slog.Info("book-service listening", "addr", cfg.HTTPAddr)
+		slog.Info("listening", "addr", cfg.HTTPAddr)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("listen", "error", err)
 			os.Exit(1)
