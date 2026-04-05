@@ -24,39 +24,44 @@ const VARIABLES = ['{{entity_name}}', '{{kind_name}}', '{{book_title}}', '{{genr
 interface AttrEditorModalProps {
   kindId: string;
   kindCode: string;
-  attr: AttributeDefinition;
+  attr?: AttributeDefinition; // undefined = create mode
+  existingAttrCount?: number; // for sort_order on create
   genreColorMap: Map<string, string>;
   onClose: () => void;
   onSaved: () => void;
   onDelete?: () => void;
 }
 
-export function AttrEditorModal({ kindId, kindCode, attr, genreColorMap, onClose, onSaved, onDelete }: AttrEditorModalProps) {
+export function AttrEditorModal({ kindId, kindCode, attr, existingAttrCount = 0, genreColorMap, onClose, onSaved, onDelete }: AttrEditorModalProps) {
   const { accessToken } = useAuth();
   const [saving, setSaving] = useState(false);
+  const isCreate = !attr;
+
+  // Create-only field
+  const [code, setCode] = useState('');
 
   // Core fields
-  const [name, setName] = useState(attr.name);
-  const [description, setDescription] = useState(attr.description ?? '');
-  const [fieldType, setFieldType] = useState<FieldType>(attr.field_type as FieldType);
-  const [isRequired, setIsRequired] = useState(attr.is_required);
-  const [isActive, setIsActive] = useState(attr.is_active);
+  const [name, setName] = useState(attr?.name ?? '');
+  const [description, setDescription] = useState(attr?.description ?? '');
+  const [fieldType, setFieldType] = useState<FieldType>((attr?.field_type as FieldType) ?? 'text');
+  const [isRequired, setIsRequired] = useState(attr?.is_required ?? false);
+  const [isActive, setIsActive] = useState(attr?.is_active ?? true);
 
   // Genre tags
-  const [genreTags, setGenreTags] = useState<string[]>(attr.genre_tags ?? []);
+  const [genreTags, setGenreTags] = useState<string[]>(attr?.genre_tags ?? []);
 
   // Options (for select type)
-  const [options, setOptions] = useState<string[]>(attr.options ?? []);
+  const [options, setOptions] = useState<string[]>(attr?.options ?? []);
 
   // AI prompts
-  const [autoFillPrompt, setAutoFillPrompt] = useState(attr.auto_fill_prompt ?? '');
-  const [translationHint, setTranslationHint] = useState(attr.translation_hint ?? '');
+  const [autoFillPrompt, setAutoFillPrompt] = useState(attr?.auto_fill_prompt ?? '');
+  const [translationHint, setTranslationHint] = useState(attr?.translation_hint ?? '');
 
   // Revert confirm
   const [showRevert, setShowRevert] = useState(false);
 
-  const modified = isAttrModified(kindCode, attr);
-  const seedAttr = SEED_KINDS[kindCode]?.attrs[attr.code];
+  const modified = attr ? isAttrModified(kindCode, attr) : false;
+  const seedAttr = attr ? SEED_KINDS[kindCode]?.attrs[attr.code] : undefined;
   const hasAI = !!(autoFillPrompt.trim() || translationHint.trim());
 
   // Esc to close
@@ -68,20 +73,37 @@ export function AttrEditorModal({ kindId, kindCode, attr, genreColorMap, onClose
 
   const handleSave = async () => {
     if (!accessToken || !name.trim()) return;
+    if (isCreate && !code.trim()) { toast.error('Code is required'); return; }
     setSaving(true);
     try {
-      await glossaryApi.patchAttrDef(accessToken, kindId, attr.attr_def_id, {
-        name: name.trim(),
-        description: description.trim() || null,
-        field_type: fieldType,
-        is_required: isRequired,
-        is_active: isActive,
-        genre_tags: genreTags,
-        options: fieldType === 'select' ? options.filter(Boolean) : undefined,
-        auto_fill_prompt: autoFillPrompt.trim() || null,
-        translation_hint: translationHint.trim() || null,
-      });
-      toast.success('Attribute updated');
+      if (isCreate) {
+        await glossaryApi.createAttrDef(accessToken, kindId, {
+          code: code.trim().toLowerCase().replace(/[^a-z0-9_]/g, ''),
+          name: name.trim(),
+          description: description.trim() || undefined,
+          field_type: fieldType,
+          is_required: isRequired,
+          sort_order: (existingAttrCount + 1) * 10,
+          genre_tags: genreTags.length > 0 ? genreTags : undefined,
+          options: fieldType === 'select' ? options.filter(Boolean) : undefined,
+          auto_fill_prompt: autoFillPrompt.trim() || undefined,
+          translation_hint: translationHint.trim() || undefined,
+        });
+        toast.success('Attribute created');
+      } else {
+        await glossaryApi.patchAttrDef(accessToken, kindId, attr!.attr_def_id, {
+          name: name.trim(),
+          description: description.trim() || null,
+          field_type: fieldType,
+          is_required: isRequired,
+          is_active: isActive,
+          genre_tags: genreTags,
+          options: fieldType === 'select' ? options.filter(Boolean) : undefined,
+          auto_fill_prompt: autoFillPrompt.trim() || null,
+          translation_hint: translationHint.trim() || null,
+        });
+        toast.success('Attribute updated');
+      }
       onSaved();
       onClose();
     } catch (e) { toast.error((e as Error).message); }
@@ -114,12 +136,12 @@ export function AttrEditorModal({ kindId, kindCode, attr, genreColorMap, onClose
           {/* Header */}
           <div className="flex items-center justify-between border-b bg-card px-5 py-3.5 flex-shrink-0">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold">Edit Attribute</span>
-              {attr.is_system ? (
+              <span className="text-sm font-semibold">{isCreate ? 'New Attribute' : 'Edit Attribute'}</span>
+              {!isCreate && (attr!.is_system ? (
                 <span className="rounded bg-blue-500/15 px-1.5 py-0.5 text-[9px] font-medium text-blue-400">System</span>
               ) : (
                 <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[9px] font-medium text-primary">Custom</span>
-              )}
+              ))}
               {modified && <span className="text-[9px] font-medium text-amber-400 italic">modified</span>}
               {hasAI && (
                 <span className="inline-flex items-center gap-1 rounded bg-accent/12 px-1.5 py-0.5 text-[9px] font-semibold text-accent">
@@ -165,10 +187,23 @@ export function AttrEditorModal({ kindId, kindCode, attr, genreColorMap, onClose
                 </div>
 
                 <div className="flex items-center gap-5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-medium text-muted-foreground">Internal Code</span>
-                    <span className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{attr.code}</span>
-                  </div>
+                  {isCreate ? (
+                    <div>
+                      <label className="text-[10px] font-medium text-muted-foreground">Internal Code</label>
+                      <input
+                        value={code}
+                        onChange={(e) => setCode(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                        placeholder="e.g. power_level"
+                        className="mt-1 w-[140px] rounded-md border bg-input px-2 py-1.5 font-mono text-[10px] focus:border-ring focus:outline-none placeholder:text-muted-foreground/50"
+                        autoFocus
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-medium text-muted-foreground">Internal Code</span>
+                      <span className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{attr!.code}</span>
+                    </div>
+                  )}
                   <label className="flex items-center gap-1.5 cursor-pointer">
                     <input type="checkbox" checked={isRequired} onChange={(e) => setIsRequired(e.target.checked)} className="h-3.5 w-3.5 rounded border-border accent-primary" />
                     <span className="text-[10px] font-medium text-muted-foreground">Required</span>
@@ -323,7 +358,7 @@ export function AttrEditorModal({ kindId, kindCode, attr, genreColorMap, onClose
           {/* Footer */}
           <div className="flex items-center justify-between border-t bg-card px-5 py-3 flex-shrink-0">
             <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-              {attr.is_system && modified && seedAttr && (
+              {!isCreate && attr!.is_system && modified && seedAttr && (
                 <button
                   onClick={() => setShowRevert(true)}
                   className="inline-flex items-center gap-1 text-amber-400 hover:text-amber-300 transition-colors"
@@ -332,7 +367,7 @@ export function AttrEditorModal({ kindId, kindCode, attr, genreColorMap, onClose
                   Revert to default name
                 </button>
               )}
-              {!attr.is_system && onDelete && (
+              {!isCreate && !attr!.is_system && onDelete && (
                 <button
                   onClick={onDelete}
                   className="inline-flex items-center gap-1 text-destructive hover:text-destructive/80 transition-colors"
@@ -348,11 +383,11 @@ export function AttrEditorModal({ kindId, kindCode, attr, genreColorMap, onClose
               </button>
               <button
                 onClick={() => void handleSave()}
-                disabled={saving || !name.trim()}
+                disabled={saving || !name.trim() || (isCreate && !code.trim())}
                 className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
               >
                 {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                Save Changes
+                {isCreate ? 'Create Attribute' : 'Save Changes'}
               </button>
             </div>
           </div>

@@ -105,7 +105,11 @@ export const glossaryApi = {
 
   // ── Attribute Definition CRUD ─────────────────────────────────────────────
 
-  createAttrDef(token: string, kindId: string, payload: { code: string; name: string; field_type?: string; is_required?: boolean; sort_order?: number; options?: string[]; genre_tags?: string[] }) {
+  createAttrDef(token: string, kindId: string, payload: {
+    code: string; name: string; description?: string; field_type?: string; is_required?: boolean;
+    sort_order?: number; options?: string[]; genre_tags?: string[];
+    auto_fill_prompt?: string; translation_hint?: string;
+  }) {
     return apiJson<import('./types').AttributeDefinition>(`${BASE}/kinds/${kindId}/attributes`, {
       method: 'POST',
       body: JSON.stringify(payload),
