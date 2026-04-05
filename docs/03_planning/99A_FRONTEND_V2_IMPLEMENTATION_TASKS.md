@@ -1272,6 +1272,48 @@ P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-f
   BE first, then CSS presets, then provider, then sidebar toggle, then Settings UI, then audit.
   FE-TH-04 + FE-TH-05 (reader customizer + integration) deferred until reader page refactor.
 
+  ── Future Theme Editor Improvements (deferred) ──────────────────────────
+
+  These are enhancements to the theme system that aren't needed now but should be
+  planned when the reader page is refactored or when user feedback demands them.
+
+  App Theme Customization:
+    [ ] TH-F01: Custom app theme — color pickers for background, foreground, primary, accent
+         Currently: only 4 fixed presets. Future: "Custom" option with full color editor.
+         Impact: index.css needs dynamic CSS variable injection, not just data-theme presets.
+    [ ] TH-F02: App theme scheduling — auto-switch between light (day) and dark (night) by time
+    [ ] TH-F03: System theme sync — follow OS dark/light preference via prefers-color-scheme
+
+  Reader Theme Customization:
+    [ ] TH-F04: Custom accent/link color in reader — highlight, selection, link colors
+    [ ] TH-F05: Reader image brightness/contrast adjustment — dim images in dark themes
+    [ ] TH-F06: Code block syntax theme — separate highlight.js theme per reader theme
+    [ ] TH-F07: Reading progress bar color customization
+    [ ] TH-F08: Custom CSS injection — power user textarea for arbitrary CSS overrides
+    [ ] TH-F09: Per-book theme override — different books can have different reading themes
+         Stored as book_preferences JSONB on book-service (separate from user_preferences)
+
+  Typography:
+    [ ] TH-F10: Google Fonts integration — paste URL to add custom web fonts
+    [ ] TH-F11: Font weight selector (light/regular/medium/bold)
+    [ ] TH-F12: Letter spacing control
+    [ ] TH-F13: Text alignment (left/justify) toggle
+    [ ] TH-F14: CJK-specific typography — ruby/furigana size, vertical text mode toggle
+    [ ] TH-F15: RTL text direction support
+
+  Preset Management:
+    [ ] TH-F16: Theme import/export — download/upload custom preset as JSON file
+    [ ] TH-F17: Theme sharing — share custom presets via shareable URL (needs social-service)
+    [ ] TH-F18: Community theme gallery — browse and install presets from other users
+    [ ] TH-F19: Preset preview on hover — show full live preview before applying
+
+  Reader Integration (blocked on reader page refactor):
+    [ ] FE-TH-04: Reader toolbar customizer — "Aa" button opens inline panel (deferred)
+    [ ] FE-TH-05: Reader page theme wiring — apply --reader-* CSS vars to content (deferred)
+    [ ] TH-F20: Scroll-based theme transition — gradual bg shift while reading (ambient mode)
+    [ ] TH-F21: Focus mode — dim non-paragraph content, spotlight current paragraph
+    [ ] TH-F22: Night shift — reduce blue light via CSS filter overlay
+
 P4-05: Settings — Language + Notification Prefs [FE]
 
 P4-06: Usage Monitor — Dashboard [FE] (uses existing usage-billing)
