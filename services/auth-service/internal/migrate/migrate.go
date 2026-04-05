@@ -59,6 +59,12 @@ CREATE TABLE IF NOT EXISTS security_preferences (
   session_alerts_enabled BOOLEAN NOT NULL DEFAULT FALSE,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS user_preferences (
+  user_id    UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  prefs      JSONB NOT NULL DEFAULT '{}',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

@@ -81,6 +81,9 @@ func (s *Server) Router() http.Handler {
 		r.Patch("/account/profile", http.HandlerFunc(s.patchProfile))
 		r.Get("/account/security/preferences", http.HandlerFunc(s.getSecurityPrefs))
 		r.Patch("/account/security/preferences", http.HandlerFunc(s.patchSecurityPrefs))
+
+		r.Get("/me/preferences", http.HandlerFunc(s.getPreferences))
+		r.Patch("/me/preferences", http.HandlerFunc(s.patchPreferences))
 	})
 	return r
 }

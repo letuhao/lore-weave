@@ -758,3 +758,66 @@ func passwordResetPlainBody(token, publicBase string) string {
 	}
 	return b.String()
 }
+
+// ── User Preferences ─────────────────────────────────────────────────────────
+
+func (s *Server) getPreferences(w http.ResponseWriter, r *http.Request) {
+	claims, err := s.parseAccess(r)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, jwtErrorCode(err), "invalid access token")
+		return
+	}
+	uid, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, "AUTH_TOKEN_INVALID", "invalid subject")
+		return
+	}
+
+	var prefs json.RawMessage
+	err = s.pool.QueryRow(r.Context(),
+		`SELECT prefs FROM user_preferences WHERE user_id = $1`, uid,
+	).Scan(&prefs)
+	if err != nil {
+		prefs = json.RawMessage(`{}`)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]json.RawMessage{"prefs": prefs})
+}
+
+func (s *Server) patchPreferences(w http.ResponseWriter, r *http.Request) {
+	claims, err := s.parseAccess(r)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, jwtErrorCode(err), "invalid access token")
+		return
+	}
+	uid, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, "AUTH_TOKEN_INVALID", "invalid subject")
+		return
+	}
+
+	var body struct {
+		Prefs json.RawMessage `json:"prefs"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.Prefs) == 0 {
+		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "prefs object required")
+		return
+	}
+
+	var result json.RawMessage
+	err = s.pool.QueryRow(r.Context(), `
+		INSERT INTO user_preferences (user_id, prefs, updated_at)
+		VALUES ($1, $2, now())
+		ON CONFLICT (user_id) DO UPDATE SET
+			prefs = user_preferences.prefs || $2,
+			updated_at = now()
+		RETURNING prefs`,
+		uid, body.Prefs,
+	).Scan(&result)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL_ERROR", "failed to save preferences")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]json.RawMessage{"prefs": result})
+}
