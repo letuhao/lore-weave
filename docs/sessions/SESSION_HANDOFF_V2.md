@@ -2,10 +2,10 @@
 
 > **Purpose:** Give the next agent complete context to continue.
 > **Date:** 2026-04-05 (session 20 end)
-> **Last commit:** `6c82a86` — fix(frontend): AttrEditorModal supports create mode
-> **Total commits this session:** 29
+> **Last commit:** `54f1de3` — docs(plan): future theme editor improvements
+> **Total commits this session:** 39
 > **Previous focus:** P3-08 Genre Groups complete (session 19)
-> **Current focus:** E2E fixes + P3-KE (13/13) + Phase 7 Infra (4/4) + Attr Editor Modal — 231+79 integration tests
+> **Current focus:** E2E + P3-KE (13/13) + Phase 7 Infra (4/4) + Attr Editor + P4-04 Theme (7/9 + custom) — 245 integration tests
 
 ---
 
@@ -71,14 +71,31 @@ New integration test: `infra/test-infra-health.sh` (22 scenarios).
 | FE | `AttrEditorModal.tsx` — replaces inline edit form, pencil opens modal | `8463b80` |
 | FE | Create mode — "Add Attribute" also opens modal with code field | `6c82a86` |
 
+### P4-04: Theme Unification — 7/9 done + custom editor
+
+| Task | What | Commit |
+|---|---|---|
+| BE-TH-01+02 | user_preferences JSONB + gateway proxy (14/14 tests) | `bc4e67f` |
+| FE-TH-01 | 4 app theme CSS presets (dark/light/sepia/oled) | `775035b` |
+| FE-TH-02 | Unified ThemeProvider (replaces ReaderThemeProvider) | `c9bf5eb` |
+| FE-TH-03 | Theme toggle in sidebar | `b751192` |
+| FE-TH-04 | Reader toolbar customizer — DEFERRED (reader broken) | — |
+| FE-TH-05 | Reader page theme integration — DEFERRED (reader broken) | — |
+| FE-TH-06 | Settings ReadingTab rewrite | `b2efad4` |
+| FE-TH-07 | CSS audit — hardcoded colors cleaned | `9eb24f0` |
+| Custom | Color pickers, spacing, save/load custom presets | `5a7367d` |
+
+22 future theme improvements documented (TH-F01..F22).
+
 ---
 
 ## 2. What's Next
 
 ### All current work COMPLETE. Next priorities:
-1. P4-04: Reading/Theme unification (big refactor, 6 sub-tasks)
+1. Reader page refactor — currently broken, needs full rewrite (then FE-TH-04 + FE-TH-05)
 2. Translation Workbench (split-view editing)
-3. Phase 7: Infrastructure Hardening
+3. Phase 4: Browse polish, Author analytics
+4. Phase 4.5: Audio/TTS
 
 ---
 

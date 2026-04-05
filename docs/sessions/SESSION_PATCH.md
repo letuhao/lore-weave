@@ -8,9 +8,9 @@
 ## Document Metadata
 
 - Last Updated: 2026-04-05 (session 20 end, final)
-- Updated By: Assistant (E2E fixes + P3-KE + Phase 7 Infra + Attr Editor Modal — 29 commits, 231+79 integration tests)
+- Updated By: Assistant (E2E + P3-KE + Phase 7 + Attr Editor + P4-04 Theme — 39 commits, 245 integration tests)
 - Active Branch: `main`
-- HEAD: `6c82a86` — fix(frontend): AttrEditorModal supports create mode
+- HEAD: `54f1de3` — docs(plan): future theme editor improvements
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -31,7 +31,7 @@
 
 ## Current Active Work
 
-**Phase:** P3-KE Kind Editor Enhancement COMPLETE (13/13) + Phase 7 Infrastructure Hardening COMPLETE (4/4). Next: P4-04 Reading/Theme unification.
+**Phase:** P3-KE (13/13) + Phase 7 Infra (4/4) + P4-04 Theme (7/9 + custom editor) COMPLETE. Next: Reader page refactor.
 
 **What was done in this session (2026-04-05, session 20):**
 
@@ -73,6 +73,15 @@ E2E browser review fixes (8 issues) + P3-KE Kind Editor Enhancement COMPLETE (13
 | Attr Editor BE: auto_fill_prompt + translation_hint columns (79/79 pass) | `migrate.go`, `domain/kinds.go`, `kinds_handler.go`, `kinds_crud.go` | `b59ef13` |
 | Attr Editor FE: AttrEditorModal — floating modal replaces inline form | `AttrEditorModal.tsx` (new), `KindEditor.tsx`, `glossary/types.ts` | `8463b80` |
 | Attr Editor FE: create mode — "Add Attribute" opens modal too | `AttrEditorModal.tsx`, `KindEditor.tsx`, `glossary/api.ts` | `6c82a86` |
+| P4-04 plan: detailed 9-task breakdown (2 BE + 7 FE) | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | `043c990` |
+| BE-TH-01+02: user_preferences JSONB table + gateway proxy (14/14 pass) | auth-service, gateway | `bc4e67f` |
+| FE-TH-01: 4 app theme presets via CSS variable overrides | `index.css` | `775035b` |
+| FE-TH-02: unified ThemeProvider replaces ReaderThemeProvider | `ThemeProvider.tsx` (new), `App.tsx` | `c9bf5eb` |
+| FE-TH-03: theme toggle in sidebar (cycles dark/light/sepia/oled) | `Sidebar.tsx` | `b751192` |
+| FE-TH-06: Settings ReadingTab rewrite (app theme + reader theme + typography) | `ReadingTab.tsx` | `b2efad4` |
+| FE-TH-07: CSS audit — hardcoded colors → theme tokens | `SourceView.tsx`, `DailyChart.tsx` | `9eb24f0` |
+| Custom theme editor: color pickers, paragraph spacing, save/load custom presets | `ThemeProvider.tsx`, `ReadingTab.tsx` | `5a7367d` |
+| Future theme improvements plan: 22 deferred items across 5 categories | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | `54f1de3` |
 
 **9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
