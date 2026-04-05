@@ -1,3 +1,6 @@
+import { useState } from 'react';
+import { Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAppTheme, useReaderTheme, APP_THEMES, type AppTheme } from '@/providers/ThemeProvider';
 import { cn } from '@/lib/utils';
 
@@ -5,6 +8,7 @@ const READER_FONTS = [
   { value: "'Lora', Georgia, serif", label: 'Lora', cls: 'font-serif' },
   { value: "'Inter', sans-serif", label: 'Inter', cls: 'font-sans' },
   { value: "'Noto Serif JP', serif", label: 'Noto Serif JP', cls: 'font-serif' },
+  { value: "'Noto Serif TC', serif", label: 'Noto Serif TC', cls: 'font-serif' },
   { value: "system-ui, sans-serif", label: 'System', cls: '' },
 ];
 
@@ -15,12 +19,21 @@ const APP_THEME_COLORS: Record<AppTheme, { bg: string; fg: string; accent: strin
   oled:  { bg: '#000000', fg: '#cccccc', accent: '#e8a832' },
 };
 
+const SPACING_OPTIONS = [
+  { value: 0.8, label: 'Compact' },
+  { value: 1.2, label: 'Normal' },
+  { value: 1.6, label: 'Relaxed' },
+];
+
 export function ReadingTab() {
   const { appTheme, setAppTheme } = useAppTheme();
   const {
     theme: readerTheme, presetName, presets, setPreset,
     setFontSize, setLineHeight, setMaxWidth, setFont,
+    setCustomBg, setCustomFg, setSpacing,
+    customPresets, saveCustomPreset, deleteCustomPreset, loadCustomPreset,
   } = useReaderTheme();
+  const [newPresetName, setNewPresetName] = useState('');
 
   return (
     <div className="space-y-8">
@@ -38,7 +51,7 @@ export function ReadingTab() {
                 onClick={() => setAppTheme(t.value)}
                 className={cn(
                   'group flex flex-col items-center gap-2 rounded-lg border p-3 transition-all',
-                  appTheme === t.value ? 'border-primary ring-2 ring-primary/30' : 'border-border hover:border-border hover:bg-secondary/50',
+                  appTheme === t.value ? 'border-primary ring-2 ring-primary/30' : 'border-border hover:bg-secondary/50',
                 )}
               >
                 <div
@@ -57,10 +70,10 @@ export function ReadingTab() {
         </div>
       </section>
 
-      {/* ── Reader Theme ────────────────────────────────────────────── */}
+      {/* ── Reader Theme Presets ─────────────────────────────────────── */}
       <section>
         <h2 className="text-sm font-semibold">Reader Theme</h2>
-        <p className="mb-4 text-xs text-muted-foreground">Independent theme for the reading view. Can differ from the app theme.</p>
+        <p className="mb-4 text-xs text-muted-foreground">Independent theme for the reading view.</p>
         <div className="grid grid-cols-3 gap-3 max-w-lg sm:grid-cols-6">
           {Object.entries(presets).map(([key, preset]) => (
             <button
@@ -83,6 +96,67 @@ export function ReadingTab() {
             </button>
           ))}
         </div>
+
+        {/* Custom presets */}
+        {customPresets.length > 0 && (
+          <div className="mt-3">
+            <p className="mb-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Custom Presets</p>
+            <div className="flex flex-wrap gap-2">
+              {customPresets.map((cp) => (
+                <div key={cp.name} className="group flex items-center gap-1 rounded-lg border px-2 py-1.5 hover:bg-secondary/50 transition-colors">
+                  <button onClick={() => loadCustomPreset(cp)} className="flex items-center gap-2">
+                    <span className="h-4 w-4 rounded" style={{ background: cp.bg, border: `1px solid ${cp.fg}30` }} />
+                    <span className="text-[11px] font-medium">{cp.name}</span>
+                  </button>
+                  <button
+                    onClick={() => deleteCustomPreset(cp.name)}
+                    className="opacity-0 group-hover:opacity-100 ml-1 text-muted-foreground hover:text-destructive transition-all"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* ── Custom Colors ───────────────────────────────────────────── */}
+      <section>
+        <h2 className="text-sm font-semibold">Custom Colors</h2>
+        <p className="mb-4 text-xs text-muted-foreground">Override the preset background and text colors.</p>
+        <div className="flex gap-6 max-w-lg">
+          <div className="flex-1">
+            <label className="mb-2 block text-xs font-medium">Background</label>
+            <div className="flex items-center gap-3">
+              <input
+                type="color"
+                value={readerTheme.bg}
+                onChange={(e) => setCustomBg(e.target.value)}
+                className="h-8 w-10 cursor-pointer rounded border bg-transparent"
+              />
+              <span className="font-mono text-[11px] text-muted-foreground">{readerTheme.bg}</span>
+              {readerTheme.bg !== (presets[presetName]?.bg ?? '') && (
+                <button onClick={() => setCustomBg('')} className="text-[10px] text-primary hover:underline">Reset</button>
+              )}
+            </div>
+          </div>
+          <div className="flex-1">
+            <label className="mb-2 block text-xs font-medium">Text</label>
+            <div className="flex items-center gap-3">
+              <input
+                type="color"
+                value={readerTheme.fg}
+                onChange={(e) => setCustomFg(e.target.value)}
+                className="h-8 w-10 cursor-pointer rounded border bg-transparent"
+              />
+              <span className="font-mono text-[11px] text-muted-foreground">{readerTheme.fg}</span>
+              {readerTheme.fg !== (presets[presetName]?.fg ?? '') && (
+                <button onClick={() => setCustomFg('')} className="text-[10px] text-primary hover:underline">Reset</button>
+              )}
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* ── Reader Typography ───────────────────────────────────────── */}
@@ -94,20 +168,27 @@ export function ReadingTab() {
           {/* Font family */}
           <div>
             <label className="mb-2 block text-xs font-medium">Font Family</label>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-2">
               {READER_FONTS.map((f) => (
                 <button
                   key={f.value}
                   onClick={() => setFont(f.value)}
                   className={cn(
-                    'rounded-md border px-4 py-2 text-[13px] transition-colors',
-                    f.cls,
+                    'flex items-center justify-between rounded-md border px-4 py-2.5 transition-colors text-left',
                     readerTheme.fontFamily === f.value
-                      ? 'border-primary bg-primary/10 text-primary'
+                      ? 'border-primary bg-primary/10'
                       : 'hover:bg-secondary',
                   )}
                 >
-                  {f.label}
+                  <div>
+                    <p className={cn('text-[13px] font-medium', f.cls)}>{f.label}</p>
+                    <p className={cn('text-[11px] text-muted-foreground mt-0.5', f.cls)} style={{ fontFamily: f.value }}>The throne room was silent...</p>
+                  </div>
+                  {readerTheme.fontFamily === f.value && (
+                    <span className="h-4 w-4 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -115,7 +196,10 @@ export function ReadingTab() {
 
           {/* Font size */}
           <div>
-            <label className="mb-2 block text-xs font-medium">Font Size: {readerTheme.fontSize}px</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-medium">Font Size</label>
+              <span className="text-xs font-semibold text-primary">{readerTheme.fontSize}px</span>
+            </div>
             <input
               type="range" min={12} max={28} step={1}
               value={readerTheme.fontSize}
@@ -129,7 +213,10 @@ export function ReadingTab() {
 
           {/* Line height */}
           <div>
-            <label className="mb-2 block text-xs font-medium">Line Height: {readerTheme.lineHeight.toFixed(1)}</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-medium">Line Height</label>
+              <span className="text-xs font-semibold text-primary">{readerTheme.lineHeight.toFixed(1)}</span>
+            </div>
             <input
               type="range" min={1.4} max={2.2} step={0.1}
               value={readerTheme.lineHeight}
@@ -143,7 +230,10 @@ export function ReadingTab() {
 
           {/* Max width */}
           <div>
-            <label className="mb-2 block text-xs font-medium">Text Width: {readerTheme.maxWidth}px</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-medium">Text Width</label>
+              <span className="text-xs font-semibold text-primary">{readerTheme.maxWidth}px</span>
+            </div>
             <input
               type="range" min={480} max={960} step={40}
               value={readerTheme.maxWidth}
@@ -154,6 +244,53 @@ export function ReadingTab() {
               <span>Narrow</span><span>Medium</span><span>Wide</span>
             </div>
           </div>
+
+          {/* Paragraph spacing */}
+          <div>
+            <label className="mb-2 block text-xs font-medium">Paragraph Spacing</label>
+            <div className="flex gap-1 rounded-md border bg-secondary/50 p-1">
+              {SPACING_OPTIONS.map((s) => (
+                <button
+                  key={s.value}
+                  onClick={() => setSpacing(s.value)}
+                  className={cn(
+                    'flex-1 rounded-md py-1.5 text-[11px] font-medium transition-colors',
+                    readerTheme.spacing === s.value
+                      ? 'bg-primary/15 text-primary'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Save as Custom Preset ────────────────────────────────────── */}
+      <section>
+        <h2 className="text-sm font-semibold">Save as Custom Preset</h2>
+        <p className="mb-3 text-xs text-muted-foreground">Save your current reader settings as a reusable preset.</p>
+        <div className="flex gap-2 max-w-sm">
+          <input
+            value={newPresetName}
+            onChange={(e) => setNewPresetName(e.target.value)}
+            placeholder="Preset name..."
+            className="flex-1 rounded-md border bg-input px-3 py-1.5 text-xs focus:border-ring focus:outline-none placeholder:text-muted-foreground/50"
+          />
+          <button
+            onClick={() => {
+              if (!newPresetName.trim()) return;
+              saveCustomPreset(newPresetName.trim());
+              toast.success(`Preset "${newPresetName.trim()}" saved`);
+              setNewPresetName('');
+            }}
+            disabled={!newPresetName.trim()}
+            className="rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            Save
+          </button>
         </div>
       </section>
 
@@ -173,11 +310,14 @@ export function ReadingTab() {
             padding: '24px 28px',
           }}
         >
-          <p style={{ marginBottom: '0.8em' }}>
+          <p style={{ marginBottom: `${readerTheme.spacing}em` }}>
             The throne room was silent save for the quiet crackling of magical torches. The Demon Lord sat cross-legged, examining a scroll detailing the latest territorial dispute with the neighboring kingdom of Aerolia.
           </p>
-          <p>
+          <p style={{ marginBottom: `${readerTheme.spacing}em` }}>
             "Your Majesty," the aide said, bowing deeply. "The envoy from the Eastern Province has arrived. They bring... unusual terms."
+          </p>
+          <p>
+            The Demon Lord raised an eyebrow. "Unusual? Or simply inconvenient?"
           </p>
         </div>
       </section>
