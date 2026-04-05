@@ -130,6 +130,8 @@ export function ReaderPage() {
   const chapterLang = chapter?.original_language;
   const stats = useMemo(() => computeReadingStats(blocks, chapterLang ?? undefined), [blocks, chapterLang]);
 
+  const anyOverlayOpen = tocOpen || themeOpen;
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -138,25 +140,27 @@ export function ReaderPage() {
 
       switch (e.key) {
         case 'Escape':
-          if (tocOpen) setTocOpen(false);
+          if (themeOpen) setThemeOpen(false);
+          else if (tocOpen) setTocOpen(false);
           break;
         case 't':
         case 'T':
+          if (themeOpen) setThemeOpen(false);
           setTocOpen((v) => !v);
           break;
         case 'ArrowLeft':
         case 'PageUp':
-          if (!tocOpen && prevCh) navigate(`/books/${bookId}/chapters/${prevCh.chapter_id}/read`);
+          if (!anyOverlayOpen && prevCh) navigate(`/books/${bookId}/chapters/${prevCh.chapter_id}/read`);
           break;
         case 'ArrowRight':
         case 'PageDown':
-          if (!tocOpen && nextCh) navigate(`/books/${bookId}/chapters/${nextCh.chapter_id}/read`);
+          if (!anyOverlayOpen && nextCh) navigate(`/books/${bookId}/chapters/${nextCh.chapter_id}/read`);
           break;
         case 'Home':
-          if (!tocOpen) scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+          if (!anyOverlayOpen) scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
           break;
         case 'End':
-          if (!tocOpen) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+          if (!anyOverlayOpen) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
           break;
         default:
           return;
@@ -164,7 +168,7 @@ export function ReaderPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [tocOpen, prevCh, nextCh, bookId, navigate]);
+  }, [tocOpen, themeOpen, anyOverlayOpen, prevCh, nextCh, bookId, navigate]);
 
   if (loading) return <div className="flex h-screen items-center justify-center text-sm text-muted-foreground">Loading...</div>;
 
@@ -175,13 +179,13 @@ export function ReaderPage() {
         <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
       </div>
 
-      {/* Top bar — gradient fade (uses reader bg for blending) */}
+      {/* Top bar — semi-opaque card bg for readability on any reader theme */}
       <div
-        className="fixed left-0 right-0 top-0 z-[19] flex h-12 items-center justify-between px-4"
-        style={{ background: `linear-gradient(${readerTheme.bg}, transparent)` }}
+        className="fixed left-0 right-0 top-0 z-[19] flex h-12 items-center justify-between border-b border-border/30 px-4"
+        style={{ background: 'hsl(var(--card) / 0.85)', backdropFilter: 'blur(8px)' }}
       >
         <div className="flex items-center gap-3">
-          <button onClick={() => setTocOpen(true)} className="rounded p-1.5 text-muted-foreground hover:bg-secondary">
+          <button onClick={() => { setTocOpen(true); setThemeOpen(false); }} className="rounded p-1.5 text-muted-foreground hover:bg-secondary">
             <Menu className="h-4 w-4" />
           </button>
           <span className="text-xs text-muted-foreground">
@@ -196,7 +200,7 @@ export function ReaderPage() {
             <Volume2 className="h-4 w-4" />
           </button>
           {/* Theme customizer toggle */}
-          <button onClick={() => setThemeOpen((v) => !v)} className={`rounded p-1.5 transition-colors ${themeOpen ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary'}`} title="Reading theme">
+          <button onClick={() => { setThemeOpen((v) => !v); setTocOpen(false); }} className={`rounded p-1.5 transition-colors ${themeOpen ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary'}`} title="Reading theme">
             <Sun className="h-4 w-4" />
           </button>
           {accessToken && user && book?.owner_user_id === user.user_id && (
