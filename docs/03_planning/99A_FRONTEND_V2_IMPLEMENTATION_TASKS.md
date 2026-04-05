@@ -1266,11 +1266,11 @@ P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-f
 
   ── Task Order ────────────────────────────────────────────────────────────
 
-  BE-TH-01 → BE-TH-02 → FE-TH-01 → FE-TH-02 → FE-TH-03 → FE-TH-05 → FE-TH-04 → FE-TH-06 → FE-TH-07
+  BE-TH-01 → BE-TH-02 → FE-TH-01 → FE-TH-02 → FE-TH-03 → FE-TH-06 → FE-TH-07
+  Then when reader page is refactored: FE-TH-05 → FE-TH-04
 
-  BE first (preferences API), then CSS presets, then provider, then UI pieces.
-  FE-TH-05 (reader integration) before FE-TH-04 (customizer) — need the wiring before the controls.
-  FE-TH-07 (audit) last — catches issues introduced by the refactor.
+  BE first, then CSS presets, then provider, then sidebar toggle, then Settings UI, then audit.
+  FE-TH-04 + FE-TH-05 (reader customizer + integration) deferred until reader page refactor.
 
 P4-05: Settings — Language + Notification Prefs [FE]
 
