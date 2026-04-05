@@ -103,7 +103,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [] }: { bookId: string; bo
   const activeFilterCount = (filters.kindCodes.length > 0 ? 1 : 0) + (filters.status !== 'all' ? 1 : 0);
 
   if (view === 'kinds') {
-    return <KindEditor onClose={() => setView('entities')} />;
+    return <KindEditor bookId={bookId} onClose={() => setView('entities')} />;
   }
   if (view === 'genres') {
     return <GenreGroupsPanel bookId={bookId} kinds={kinds} onClose={() => setView('entities')} />;

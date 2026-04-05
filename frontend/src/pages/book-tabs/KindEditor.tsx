@@ -1,9 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Settings2, Plus, Trash2, Save, Loader2, ChevronRight, X, Pencil, GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
-import { type EntityKind, type AttributeDefinition, type FieldType } from '@/features/glossary/types';
+import { type EntityKind, type AttributeDefinition, type FieldType, type GenreGroup } from '@/features/glossary/types';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { ConfirmDialog } from '@/components/shared';
 import { cn } from '@/lib/utils';
@@ -19,13 +19,14 @@ const FIELD_TYPE_OPTIONS: { value: FieldType; label: string }[] = [
   { value: 'boolean', label: 'Boolean' },
 ];
 
-function AttrRow({ attr, onEdit, onToggle, onDelete, dragProps, isOver }: {
+function AttrRow({ attr, onEdit, onToggle, onDelete, dragProps, isOver, genreColorMap }: {
   attr: import('@/features/glossary/types').AttributeDefinition;
   onEdit: () => void;
   onToggle: () => void;
   onDelete: (() => void) | undefined;
   dragProps?: { draggable: true; onDragStart: () => void; onDragOver: (e: React.DragEvent) => void; onDragEnd: () => void; onDrop: () => void };
   isOver?: boolean;
+  genreColorMap?: Map<string, string>;
 }) {
   const inactive = attr.is_active === false;
   return (
@@ -47,11 +48,16 @@ function AttrRow({ attr, onEdit, onToggle, onDelete, dragProps, isOver }: {
           ) : (
             <span className="rounded bg-primary/15 px-1 py-0.5 text-[9px] font-medium text-primary">USR</span>
           )}
-          {(attr.genre_tags ?? []).map((tag) => (
-            <span key={tag} className="rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[8px] font-medium text-violet-400">
-              {tag}
-            </span>
-          ))}
+          {(attr.genre_tags ?? []).map((tag) => {
+            const color = genreColorMap?.get(tag);
+            return (
+              <span key={tag} className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[8px] font-medium"
+                style={color ? { background: color + '18', color } : { background: 'rgba(139,92,246,0.15)', color: '#a78bfa' }}>
+                <span className="h-1 w-1 rounded-sm flex-shrink-0" style={{ background: color || '#8b5cf6' }} />
+                {tag}
+              </span>
+            );
+          })}
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-muted-foreground font-mono">{attr.code}</span>
@@ -92,9 +98,10 @@ function AttrRow({ attr, onEdit, onToggle, onDelete, dragProps, isOver }: {
   );
 }
 
-export function KindEditor({ onClose }: { onClose: () => void }) {
+export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () => void }) {
   const { accessToken } = useAuth();
   const [kinds, setKinds] = useState<EntityKind[]>([]);
+  const [genres, setGenres] = useState<GenreGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -144,12 +151,16 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
     if (!accessToken) return;
     setLoading(true);
     try {
-      const k = await glossaryApi.getKinds(accessToken);
+      const [k, g] = await Promise.all([
+        glossaryApi.getKinds(accessToken),
+        glossaryApi.listGenres(bookId, accessToken).catch(() => [] as GenreGroup[]),
+      ]);
       setKinds(k);
+      setGenres(g);
       if (k.length > 0 && !selectedId) setSelectedId(k[0].kind_id);
     } catch (e) { toast.error((e as Error).message); }
     setLoading(false);
-  }, [accessToken]);
+  }, [accessToken, bookId]);
 
   useEffect(() => { void loadKinds(); }, [loadKinds]);
 
@@ -310,6 +321,12 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
 
   const systemKinds = kinds.filter((k) => k.is_default);
   const userKinds = kinds.filter((k) => !k.is_default);
+
+  const genreColorMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const g of genres) map.set(g.name, g.color);
+    return map;
+  }, [genres]);
 
   const renderEditAttrForm = () => (
     <div className="border-b bg-card/80 px-4 py-3 space-y-2">
@@ -700,6 +717,7 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
                           .map((attr) => (
                             <div key={attr.attr_def_id}>
                               <AttrRow attr={attr} onEdit={() => openEditAttr(attr)} onToggle={() => void handleToggleAttr(attr)} onDelete={undefined}
+                                genreColorMap={genreColorMap}
                                 isOver={overAttrId === attr.attr_def_id && dragAttrId !== attr.attr_def_id}
                                 dragProps={{
                                   draggable: true,
@@ -728,6 +746,7 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
                           .map((attr) => (
                             <div key={attr.attr_def_id}>
                               <AttrRow attr={attr} onEdit={() => openEditAttr(attr)} onToggle={() => void handleToggleAttr(attr)} onDelete={() => setDeleteAttrTarget(attr)}
+                                genreColorMap={genreColorMap}
                                 isOver={overAttrId === attr.attr_def_id && dragAttrId !== attr.attr_def_id}
                                 dragProps={{
                                   draggable: true,
