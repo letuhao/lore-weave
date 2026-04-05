@@ -19,16 +19,18 @@ const FIELD_TYPE_OPTIONS: { value: FieldType; label: string }[] = [
   { value: 'boolean', label: 'Boolean' },
 ];
 
-function AttrRow({ attr, onEdit, onDelete }: {
+function AttrRow({ attr, onEdit, onToggle, onDelete }: {
   attr: import('@/features/glossary/types').AttributeDefinition;
   onEdit: () => void;
+  onToggle: () => void;
   onDelete: (() => void) | undefined;
 }) {
+  const inactive = attr.is_active === false;
   return (
-    <div className="flex items-center gap-3 border-b px-4 py-2.5 group hover:bg-card/50 transition-colors last:border-b-0">
+    <div className={cn("flex items-center gap-3 border-b px-4 py-2.5 group hover:bg-card/50 transition-colors last:border-b-0", inactive && "opacity-50")}>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-medium">{attr.name}</span>
+          <span className={cn("text-xs font-medium", inactive && "line-through")}>{attr.name}</span>
           <span className="rounded bg-secondary px-1.5 py-0.5 text-[9px] text-muted-foreground">{attr.field_type}</span>
           {attr.is_system ? (
             <span className="rounded bg-blue-500/15 px-1 py-0.5 text-[9px] font-medium text-blue-400">SYS</span>
@@ -47,6 +49,19 @@ function AttrRow({ attr, onEdit, onDelete }: {
         </div>
       </div>
       <span className="text-[10px] text-muted-foreground">{attr.is_required ? 'required' : 'optional'}</span>
+      <button
+        onClick={onToggle}
+        className={cn(
+          "relative h-[18px] w-8 rounded-full transition-colors flex-shrink-0",
+          inactive ? "bg-secondary" : "bg-green-500",
+        )}
+        title={inactive ? 'Activate' : 'Deactivate'}
+      >
+        <span className={cn(
+          "absolute top-[2px] h-[14px] w-[14px] rounded-full transition-all",
+          inactive ? "left-[2px] bg-muted-foreground" : "left-[16px] bg-white",
+        )} />
+      </button>
       <button
         onClick={onEdit}
         className="opacity-0 group-hover:opacity-100 rounded p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
@@ -169,6 +184,16 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
       toast.success('Kind deleted');
       setDeleteTarget(null);
       if (selectedId === deleteTarget.kind_id) setSelectedId(null);
+      await loadKinds();
+    } catch (e) { toast.error((e as Error).message); }
+  };
+
+  const handleToggleAttr = async (attr: AttributeDefinition) => {
+    if (!accessToken || !selected) return;
+    try {
+      await glossaryApi.patchAttrDef(accessToken, selected.kind_id, attr.attr_def_id, {
+        is_active: !attr.is_active,
+      });
       await loadKinds();
     } catch (e) { toast.error((e as Error).message); }
   };
@@ -608,7 +633,7 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
                           .sort((a, b) => a.sort_order - b.sort_order)
                           .map((attr) => (
                             <div key={attr.attr_def_id}>
-                              <AttrRow attr={attr} onEdit={() => openEditAttr(attr)} onDelete={undefined} />
+                              <AttrRow attr={attr} onEdit={() => openEditAttr(attr)} onToggle={() => void handleToggleAttr(attr)} onDelete={undefined} />
                               {editAttrId === attr.attr_def_id && renderEditAttrForm()}
                             </div>
                           ))}
@@ -628,7 +653,7 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
                           .sort((a, b) => a.sort_order - b.sort_order)
                           .map((attr) => (
                             <div key={attr.attr_def_id}>
-                              <AttrRow attr={attr} onEdit={() => openEditAttr(attr)} onDelete={() => setDeleteAttrTarget(attr)} />
+                              <AttrRow attr={attr} onEdit={() => openEditAttr(attr)} onToggle={() => void handleToggleAttr(attr)} onDelete={() => setDeleteAttrTarget(attr)} />
                               {editAttrId === attr.attr_def_id && renderEditAttrForm()}
                             </div>
                           ))}
