@@ -100,8 +100,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      sharing-service:
-        condition: service_healthy
       minio:
         condition: service_started
     ports:
