@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Settings2, Plus, Trash2, Save, Loader2, ChevronRight, X } from 'lucide-react';
+import { Settings2, Plus, Trash2, Save, Loader2, ChevronRight, X, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
@@ -19,7 +19,11 @@ const FIELD_TYPE_OPTIONS: { value: FieldType; label: string }[] = [
   { value: 'boolean', label: 'Boolean' },
 ];
 
-function AttrRow({ attr, onDelete }: { attr: import('@/features/glossary/types').AttributeDefinition; onDelete: (() => void) | undefined }) {
+function AttrRow({ attr, onEdit, onDelete }: {
+  attr: import('@/features/glossary/types').AttributeDefinition;
+  onEdit: () => void;
+  onDelete: (() => void) | undefined;
+}) {
   return (
     <div className="flex items-center gap-3 border-b px-4 py-2.5 group hover:bg-card/50 transition-colors last:border-b-0">
       <div className="flex-1 min-w-0">
@@ -37,9 +41,19 @@ function AttrRow({ attr, onDelete }: { attr: import('@/features/glossary/types')
             </span>
           ))}
         </div>
-        <span className="text-[10px] text-muted-foreground font-mono">{attr.code}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-muted-foreground font-mono">{attr.code}</span>
+          {attr.description && <span className="text-[10px] text-muted-foreground truncate max-w-[200px]">{attr.description}</span>}
+        </div>
       </div>
       <span className="text-[10px] text-muted-foreground">{attr.is_required ? 'required' : 'optional'}</span>
+      <button
+        onClick={onEdit}
+        className="opacity-0 group-hover:opacity-100 rounded p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+        title="Edit attribute"
+      >
+        <Pencil className="h-3 w-3" />
+      </button>
       {onDelete && (
         <button
           onClick={onDelete}
@@ -76,6 +90,15 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
   const [showNewKind, setShowNewKind] = useState(false);
   const [newCode, setNewCode] = useState('');
   const [newName, setNewName] = useState('');
+
+  // Edit attribute
+  const [editAttrId, setEditAttrId] = useState<string | null>(null);
+  const [editAttrName, setEditAttrName] = useState('');
+  const [editAttrDesc, setEditAttrDesc] = useState('');
+  const [editAttrType, setEditAttrType] = useState<FieldType>('text');
+  const [editAttrRequired, setEditAttrRequired] = useState(false);
+  const [editAttrGenreTags, setEditAttrGenreTags] = useState<string[]>([]);
+  const [savingAttr, setSavingAttr] = useState(false);
 
   // New attribute
   const [showNewAttr, setShowNewAttr] = useState(false);
@@ -150,6 +173,33 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
     } catch (e) { toast.error((e as Error).message); }
   };
 
+  const openEditAttr = (attr: AttributeDefinition) => {
+    setEditAttrId(attr.attr_def_id);
+    setEditAttrName(attr.name);
+    setEditAttrDesc(attr.description ?? '');
+    setEditAttrType(attr.field_type as FieldType);
+    setEditAttrRequired(attr.is_required);
+    setEditAttrGenreTags(attr.genre_tags ?? []);
+  };
+
+  const handleSaveAttr = async () => {
+    if (!accessToken || !selected || !editAttrId || !editAttrName.trim()) return;
+    setSavingAttr(true);
+    try {
+      await glossaryApi.patchAttrDef(accessToken, selected.kind_id, editAttrId, {
+        name: editAttrName,
+        description: editAttrDesc || null,
+        field_type: editAttrType,
+        is_required: editAttrRequired,
+        genre_tags: editAttrGenreTags,
+      });
+      toast.success('Attribute updated');
+      setEditAttrId(null);
+      await loadKinds();
+    } catch (e) { toast.error((e as Error).message); }
+    setSavingAttr(false);
+  };
+
   const handleCreateAttr = async () => {
     if (!accessToken || !selected || !newAttrCode || !newAttrName) return;
     try {
@@ -180,6 +230,88 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
 
   const systemKinds = kinds.filter((k) => k.is_default);
   const userKinds = kinds.filter((k) => !k.is_default);
+
+  const renderEditAttrForm = () => (
+    <div className="border-b bg-card/80 px-4 py-3 space-y-2">
+      <div className="grid grid-cols-[1fr_auto_auto] gap-2 items-end">
+        <div>
+          <label className="text-[10px] text-muted-foreground">Name</label>
+          <input
+            value={editAttrName}
+            onChange={(e) => setEditAttrName(e.target.value)}
+            className="mt-0.5 w-full rounded-md border bg-background px-2 py-1.5 text-xs focus:border-ring focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] text-muted-foreground">Type</label>
+          <select
+            value={editAttrType}
+            onChange={(e) => setEditAttrType(e.target.value as FieldType)}
+            className="mt-0.5 rounded-md border bg-background px-2 py-1.5 text-xs focus:border-ring focus:outline-none"
+          >
+            {FIELD_TYPE_OPTIONS.map((ft) => (
+              <option key={ft.value} value={ft.value}>{ft.label}</option>
+            ))}
+          </select>
+        </div>
+        <label className="flex items-center gap-1.5 pb-1.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={editAttrRequired}
+            onChange={(e) => setEditAttrRequired(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border-border accent-primary"
+          />
+          <span className="text-[10px] text-muted-foreground">Required</span>
+        </label>
+      </div>
+      <div>
+        <label className="text-[10px] text-muted-foreground">Description</label>
+        <input
+          value={editAttrDesc}
+          onChange={(e) => setEditAttrDesc(e.target.value)}
+          placeholder="What this attribute represents..."
+          className="mt-0.5 w-full rounded-md border bg-background px-2 py-1.5 text-xs focus:border-ring focus:outline-none placeholder:text-muted-foreground/50"
+        />
+      </div>
+      {/* Genre tags */}
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] text-muted-foreground flex-shrink-0">Genres:</span>
+        <div className="flex flex-wrap items-center gap-1">
+          {editAttrGenreTags.map((tag) => (
+            <span key={tag} className="inline-flex items-center gap-0.5 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-medium text-violet-400">
+              {tag}
+              <button onClick={() => setEditAttrGenreTags(editAttrGenreTags.filter((t) => t !== tag))} className="ml-0.5 text-violet-400/60 hover:text-violet-300">
+                <X className="h-2 w-2" />
+              </button>
+            </span>
+          ))}
+          <input
+            placeholder="+ tag"
+            className="w-16 bg-transparent text-[10px] outline-none placeholder:text-muted-foreground/50"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                const val = (e.target as HTMLInputElement).value.trim();
+                if (val && !editAttrGenreTags.includes(val)) setEditAttrGenreTags([...editAttrGenreTags, val]);
+                (e.target as HTMLInputElement).value = '';
+              }
+            }}
+          />
+        </div>
+      </div>
+      <div className="flex justify-end gap-2">
+        <button onClick={() => setEditAttrId(null)} className="rounded-md border px-3 py-1 text-[10px] text-muted-foreground hover:bg-secondary">Cancel</button>
+        <button
+          onClick={() => void handleSaveAttr()}
+          disabled={savingAttr || !editAttrName.trim()}
+          className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1 text-[10px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        >
+          {savingAttr && <Loader2 className="h-3 w-3 animate-spin" />}
+          Save
+        </button>
+      </div>
+    </div>
+  );
 
   if (loading) {
     return (
@@ -475,7 +607,10 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
                           .filter((a) => a.is_system)
                           .sort((a, b) => a.sort_order - b.sort_order)
                           .map((attr) => (
-                            <AttrRow key={attr.attr_def_id} attr={attr} onDelete={undefined} />
+                            <div key={attr.attr_def_id}>
+                              <AttrRow attr={attr} onEdit={() => openEditAttr(attr)} onDelete={undefined} />
+                              {editAttrId === attr.attr_def_id && renderEditAttrForm()}
+                            </div>
                           ))}
                       </>
                     )}
@@ -492,7 +627,10 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
                           .filter((a) => !a.is_system)
                           .sort((a, b) => a.sort_order - b.sort_order)
                           .map((attr) => (
-                            <AttrRow key={attr.attr_def_id} attr={attr} onDelete={() => setDeleteAttrTarget(attr)} />
+                            <div key={attr.attr_def_id}>
+                              <AttrRow attr={attr} onEdit={() => openEditAttr(attr)} onDelete={() => setDeleteAttrTarget(attr)} />
+                              {editAttrId === attr.attr_def_id && renderEditAttrForm()}
+                            </div>
                           ))}
                       </>
                     )}
