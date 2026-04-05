@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils';
 interface ThemeCustomizerProps {
   open: boolean;
   onClose: () => void;
+  showIndices: boolean;
+  onShowIndicesChange: (v: boolean) => void;
 }
 
 const PRESET_DESCRIPTIONS: Record<string, string> = {
@@ -24,7 +26,7 @@ const FONT_OPTIONS: { family: string; label: string; sample: string }[] = [
   { family: "'Noto Serif JP', serif", label: 'Noto Serif JP', sample: '素早い茶色の狐' },
 ];
 
-export function ThemeCustomizer({ open, onClose }: ThemeCustomizerProps) {
+export function ThemeCustomizer({ open, onClose, showIndices, onShowIndicesChange }: ThemeCustomizerProps) {
   const {
     theme, presetName, presets, setPreset,
     setFont, setFontSize, setLineHeight, setMaxWidth, setSpacing,
@@ -134,6 +136,30 @@ export function ThemeCustomizer({ open, onClose }: ThemeCustomizerProps) {
                 display={`${(theme.spacing ?? 1.2).toFixed(1)}em`}
                 onChange={setSpacing}
               />
+            </div>
+          </section>
+
+          {/* Reading mode */}
+          <section>
+            <h3 className="mb-2.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Reading Mode</h3>
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showIndices}
+                  onChange={(e) => onShowIndicesChange(e.target.checked)}
+                  className="accent-primary"
+                />
+                Show block indices (translator mode)
+              </label>
+              <label className="flex items-center gap-2 text-xs cursor-pointer opacity-50">
+                <input type="checkbox" disabled className="accent-primary" />
+                Auto-load next chapter (coming soon)
+              </label>
+              <label className="flex items-center gap-2 text-xs cursor-pointer opacity-50">
+                <input type="checkbox" disabled className="accent-primary" />
+                Auto-scroll with TTS (coming soon)
+              </label>
             </div>
           </section>
         </div>

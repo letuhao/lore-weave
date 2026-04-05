@@ -43,6 +43,7 @@ export function ReaderPage() {
   const [book, setBook] = useState<Book | null>(null);
   const [tocOpen, setTocOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [showIndices, setShowIndices] = useState(() => localStorage.getItem('lw_reader_indices') === 'true');
   const [loading, setLoading] = useState(true);
 
   // Language state
@@ -225,7 +226,12 @@ export function ReaderPage() {
       />
 
       {/* Theme customizer slide-over */}
-      <ThemeCustomizer open={themeOpen} onClose={() => setThemeOpen(false)} />
+      <ThemeCustomizer
+        open={themeOpen}
+        onClose={() => setThemeOpen(false)}
+        showIndices={showIndices}
+        onShowIndicesChange={(v) => { setShowIndices(v); localStorage.setItem('lw_reader_indices', String(v)); }}
+      />
 
       {/* Reading area — reader theme applied here, chrome stays on app theme */}
       <div ref={scrollRef} className="flex flex-1 justify-center overflow-y-auto" style={{ padding: '64px 24px 120px', background: readerTheme.bg, color: readerTheme.fg, ...readerCssVars as React.CSSProperties }}>
@@ -258,7 +264,7 @@ export function ReaderPage() {
             <div className="mb-6 text-center text-xs text-muted-foreground animate-pulse">Loading translation...</div>
           )}
           {blocks.length > 0 ? (
-            <ContentRenderer blocks={blocks} className={langLoading ? 'opacity-50 transition-opacity' : ''} />
+            <ContentRenderer blocks={blocks} showIndices={showIndices} className={langLoading ? 'opacity-50 transition-opacity' : ''} />
           ) : (
             <p className="text-center font-serif text-muted-foreground italic">
               Empty chapter — nothing written yet.
