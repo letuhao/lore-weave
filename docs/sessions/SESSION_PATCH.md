@@ -8,9 +8,9 @@
 ## Document Metadata
 
 - Last Updated: 2026-04-05 (session 20 end, final)
-- Updated By: Assistant (E2E fixes + P3-KE COMPLETE + Phase 7 Infra COMPLETE — 24 commits, 231 integration tests)
+- Updated By: Assistant (E2E fixes + P3-KE + Phase 7 Infra + Attr Editor Modal — 29 commits, 231+79 integration tests)
 - Active Branch: `main`
-- HEAD: `b670f7c` — feat(infra): INF-04 health check deep mode
+- HEAD: `6c82a86` — fix(frontend): AttrEditorModal supports create mode
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -69,6 +69,10 @@ E2E browser review fixes (8 issues) + P3-KE Kind Editor Enhancement COMPLETE (13
 | INF-02: Internal HTTP client — 10s timeout + 1 retry, zero http.Get remaining | `catalog/server.go`, `sharing/server.go`, `book/server.go`, `book/media.go` | `e02a1c9` |
 | INF-03: Structured JSON logging — 77 log.Printf→slog across 8 Go services | 15 files across 8 services | `af1679d`, `da818cd` |
 | INF-04: Health check deep mode — /health (ping) + /health/ready (SELECT 1) | 7 service server.go files, `test-infra-health.sh` (new) | `b670f7c` |
+| Attr Editor: design draft (2 variants — system + user attr, AI sections) | `screen-attr-editor-modal.html` (new), `screen-glossary-management.html` | `cfd1f38` |
+| Attr Editor BE: auto_fill_prompt + translation_hint columns (79/79 pass) | `migrate.go`, `domain/kinds.go`, `kinds_handler.go`, `kinds_crud.go` | `b59ef13` |
+| Attr Editor FE: AttrEditorModal — floating modal replaces inline form | `AttrEditorModal.tsx` (new), `KindEditor.tsx`, `glossary/types.ts` | `8463b80` |
+| Attr Editor FE: create mode — "Add Attribute" opens modal too | `AttrEditorModal.tsx`, `KindEditor.tsx`, `glossary/api.ts` | `6c82a86` |
 
 **9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 

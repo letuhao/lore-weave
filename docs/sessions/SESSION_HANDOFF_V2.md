@@ -2,10 +2,10 @@
 
 > **Purpose:** Give the next agent complete context to continue.
 > **Date:** 2026-04-05 (session 20 end)
-> **Last commit:** `b670f7c` — feat(infra): INF-04 health check deep mode
-> **Total commits this session:** 24
+> **Last commit:** `6c82a86` — fix(frontend): AttrEditorModal supports create mode
+> **Total commits this session:** 29
 > **Previous focus:** P3-08 Genre Groups complete (session 19)
-> **Current focus:** E2E fixes + P3-KE COMPLETE (13/13) + Phase 7 Infra COMPLETE (4/4) — 231 integration tests
+> **Current focus:** E2E fixes + P3-KE (13/13) + Phase 7 Infra (4/4) + Attr Editor Modal — 231+79 integration tests
 
 ---
 
@@ -62,11 +62,20 @@ Review fixes: patchKind entity_count subquery (`88da9b4`), parallel revert + gen
 
 New integration test: `infra/test-infra-health.sh` (22 scenarios).
 
+### Attribute Editor Modal Enhancement
+
+| Step | What | Commit |
+|---|---|---|
+| Design draft | `screen-attr-editor-modal.html` — 4-section modal (Core, Options, Genre, AI) | `cfd1f38` |
+| BE | `auto_fill_prompt` + `translation_hint` columns on attribute_definitions | `b59ef13` |
+| FE | `AttrEditorModal.tsx` — replaces inline edit form, pencil opens modal | `8463b80` |
+| FE | Create mode — "Add Attribute" also opens modal with code field | `6c82a86` |
+
 ---
 
 ## 2. What's Next
 
-### P3-KE + Phase 7 COMPLETE. Next priorities:
+### All current work COMPLETE. Next priorities:
 1. P4-04: Reading/Theme unification (big refactor, 6 sub-tasks)
 2. Translation Workbench (split-view editing)
 3. Phase 7: Infrastructure Hardening
@@ -88,7 +97,9 @@ New integration test: `infra/test-infra-health.sh` (22 scenarios).
 | `frontend/src/pages/book-tabs/seedDefaults.ts` | Seed kind/attr defaults for modified indicator |
 | `frontend/src/features/glossary/types.ts` | Glossary FE types (includes description, entity_count, is_active) |
 | `frontend/src/features/glossary/api.ts` | Glossary API client (includes reorderKinds, reorderAttrDefs) |
-| `design-drafts/screen-glossary-management.html` | Design reference (all gaps now closed) |
+| `design-drafts/screen-glossary-management.html` | Kind Editor design (updated with inline edit + AI badge notes) |
+| `design-drafts/screen-attr-editor-modal.html` | Attribute Editor Modal design (4 sections, 2 variants) |
+| `frontend/src/pages/book-tabs/AttrEditorModal.tsx` | Attr editor modal (create + edit, AI prompts) |
 | `infra/test-infra-health.sh` | 22 health check integration tests (INF-04) |
 | `infra/docker-compose.yml` | All services have INTERNAL_SERVICE_TOKEN |
 
