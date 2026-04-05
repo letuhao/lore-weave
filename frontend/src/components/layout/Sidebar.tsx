@@ -12,9 +12,14 @@ import {
   Trash2,
   PanelLeftClose,
   PanelLeftOpen,
+  Sun,
+  Moon,
+  Sunset,
+  Monitor,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { useSidebar } from '@/providers/SidebarProvider';
+import { useAppTheme, type AppTheme } from '@/providers/ThemeProvider';
 import { cn } from '@/lib/utils';
 import { apiJson } from '@/api';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
@@ -40,7 +45,16 @@ export function Sidebar() {
   const { t } = useTranslation();
   const { accessToken, user, logoutLocal } = useAuth();
   const { collapsed, toggle } = useSidebar();
+  const { appTheme, setAppTheme, themes } = useAppTheme();
   const isLoggedIn = !!accessToken;
+
+  const themeIcons: Record<AppTheme, React.ElementType> = { dark: Moon, light: Sun, sepia: Sunset, oled: Monitor };
+  const ThemeIcon = themeIcons[appTheme];
+  const cycleTheme = () => {
+    const order: AppTheme[] = ['dark', 'light', 'sepia', 'oled'];
+    const next = order[(order.indexOf(appTheme) + 1) % order.length];
+    setAppTheme(next);
+  };
 
   const handleLogout = async () => {
     if (accessToken) {
@@ -125,6 +139,23 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="border-t p-3">
+        {/* Theme toggle — always visible */}
+        <div className={cn('mb-2', collapsed ? 'flex justify-center' : 'px-2')}>
+          <button
+            onClick={cycleTheme}
+            className={cn(
+              'flex items-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground',
+              collapsed ? 'justify-center p-2' : 'w-full gap-3 px-3 py-2 text-sm',
+            )}
+            title={`Theme: ${themes.find((t) => t.value === appTheme)?.label ?? appTheme}`}
+          >
+            <ThemeIcon className="h-4 w-4 flex-shrink-0" />
+            {!collapsed && (
+              <span className="capitalize">{appTheme}</span>
+            )}
+          </button>
+        </div>
+
         {accessToken ? (
           <>
             {/* Notification bell */}
