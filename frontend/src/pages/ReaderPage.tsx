@@ -121,6 +121,43 @@ export function ReaderPage() {
   const chapterLang = chapter?.original_language;
   const stats = computeReadingStats(blocks, chapterLang ?? undefined);
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Ignore when typing in inputs
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      switch (e.key) {
+        case 'Escape':
+          if (tocOpen) setTocOpen(false);
+          else navigate(`/books/${bookId}`);
+          break;
+        case 't':
+        case 'T':
+          setTocOpen((v) => !v);
+          break;
+        case 'ArrowLeft':
+        case 'PageUp':
+          if (!tocOpen && prevCh) navigate(`/books/${bookId}/chapters/${prevCh.chapter_id}/read`);
+          break;
+        case 'ArrowRight':
+        case 'PageDown':
+          if (!tocOpen && nextCh) navigate(`/books/${bookId}/chapters/${nextCh.chapter_id}/read`);
+          break;
+        case 'Home':
+          if (!tocOpen) window.scrollTo({ top: 0, behavior: 'smooth' });
+          break;
+        case 'End':
+          if (!tocOpen) window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+          break;
+        default:
+          return;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [tocOpen, prevCh, nextCh, bookId, navigate]);
+
   if (loading) return <div className="flex h-screen items-center justify-center text-sm text-muted-foreground">Loading...</div>;
 
   return (
