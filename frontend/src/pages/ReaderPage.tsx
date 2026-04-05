@@ -8,6 +8,7 @@ import { ContentRenderer } from '@/components/reader/ContentRenderer';
 import { TOCSidebar, type LanguageOption } from '@/components/reader/TOCSidebar';
 import type { JSONContent } from '@tiptap/react';
 import { extractText } from '@/lib/tiptap-utils';
+import { useReaderTheme } from '@/providers/ThemeProvider';
 
 /** CJK Unicode ranges: CJK Unified Ideographs, Hiragana, Katakana, Hangul */
 const CJK_REGEX = /[\u3000-\u9fff\uac00-\ud7af\uff00-\uffef]/;
@@ -33,6 +34,7 @@ export function ReaderPage() {
   const { bookId = '', chapterId = '' } = useParams();
   const { accessToken, user } = useAuth();
   const navigate = useNavigate();
+  const { cssVars: readerCssVars, theme: readerTheme } = useReaderTheme();
   const [originalBlocks, setOriginalBlocks] = useState<JSONContent[]>([]);
   const [blocks, setBlocks] = useState<JSONContent[]>([]);
   const [chapter, setChapter] = useState<Chapter | null>(null);
@@ -164,16 +166,16 @@ export function ReaderPage() {
   if (loading) return <div className="flex h-screen items-center justify-center text-sm text-muted-foreground">Loading...</div>;
 
   return (
-    <div className="relative flex h-screen flex-col bg-background">
+    <div className="relative flex h-screen flex-col" style={{ background: readerTheme.bg }}>
       {/* Progress bar */}
       <div className="fixed left-0 right-0 top-0 z-20 h-0.5 bg-secondary">
         <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
       </div>
 
-      {/* Top bar — gradient fade */}
+      {/* Top bar — gradient fade (uses reader bg for blending) */}
       <div
         className="fixed left-0 right-0 top-0 z-[19] flex h-12 items-center justify-between px-4"
-        style={{ background: 'linear-gradient(hsl(var(--background)), transparent)' }}
+        style={{ background: `linear-gradient(${readerTheme.bg}, transparent)` }}
       >
         <div className="flex items-center gap-3">
           <button onClick={() => setTocOpen(true)} className="rounded p-1.5 text-muted-foreground hover:bg-secondary">
@@ -220,8 +222,8 @@ export function ReaderPage() {
         onLanguageChange={handleLanguageChange}
       />
 
-      {/* Reading area */}
-      <div ref={scrollRef} className="flex flex-1 justify-center overflow-y-auto" style={{ padding: '64px 24px 120px' }}>
+      {/* Reading area — reader theme applied here, chrome stays on app theme */}
+      <div ref={scrollRef} className="flex flex-1 justify-center overflow-y-auto" style={{ padding: '64px 24px 120px', background: readerTheme.bg, color: readerTheme.fg, ...readerCssVars as React.CSSProperties }}>
         <article style={{ maxWidth: 'var(--reader-width, 680px)', width: '100%' }}>
 
           {/* Chapter header */}
@@ -268,7 +270,7 @@ export function ReaderPage() {
       {/* Bottom nav — gradient fade */}
       <div
         className="fixed bottom-0 left-0 right-0 z-20 flex items-center justify-between px-6 py-3"
-        style={{ background: 'linear-gradient(transparent, hsl(var(--background)))' }}
+        style={{ background: `linear-gradient(transparent, ${readerTheme.bg})` }}
       >
         {prevCh ? (
           <Link to={`/books/${bookId}/chapters/${prevCh.chapter_id}/read`} className="inline-flex items-center gap-2 rounded-lg border bg-card px-4 py-2 text-xs transition-colors hover:border-[hsl(var(--border-hover,25_6%_24%))] hover:bg-[hsl(var(--card-hover,25_7%_14%))]">
