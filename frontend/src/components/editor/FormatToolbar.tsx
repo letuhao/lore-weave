@@ -1,8 +1,8 @@
 import type { Editor } from '@tiptap/react';
 import {
-  Bold, Italic, Strikethrough, Code, Code2, List, ListOrdered,
+  Bold, Italic, Strikethrough, Underline, Code, Code2, List, ListOrdered,
   Heading1, Heading2, Heading3, Minus, Undo2, Redo2, Quote, Pilcrow,
-  ImageIcon, Video,
+  ImageIcon, Video, Link2, Highlighter, Subscript, Superscript,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { EditorMode } from './SlashMenu';
@@ -106,11 +106,57 @@ export function FormatToolbar({ editor, mode = 'classic' }: FormatToolbarProps) 
         <Strikethrough className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
+        active={editor.isActive('underline')}
+        onClick={() => editor.chain().focus().toggleUnderline().run()}
+        title="Underline (Ctrl+U)"
+      >
+        <Underline className="h-3.5 w-3.5" />
+      </ToolbarButton>
+      <ToolbarButton
         active={editor.isActive('code')}
         onClick={() => editor.chain().focus().toggleCode().run()}
         title="Inline code"
       >
         <Code className="h-3.5 w-3.5" />
+      </ToolbarButton>
+
+      <Divider />
+
+      {/* Rich marks */}
+      <ToolbarButton
+        active={editor.isActive('link')}
+        onClick={() => {
+          if (editor.isActive('link')) {
+            editor.chain().focus().unsetLink().run();
+          } else {
+            const url = window.prompt('URL:');
+            if (url) editor.chain().focus().setLink({ href: url }).run();
+          }
+        }}
+        title="Link"
+      >
+        <Link2 className="h-3.5 w-3.5" />
+      </ToolbarButton>
+      <ToolbarButton
+        active={editor.isActive('highlight')}
+        onClick={() => editor.chain().focus().toggleHighlight().run()}
+        title="Highlight (Ctrl+Shift+H)"
+      >
+        <Highlighter className="h-3.5 w-3.5" />
+      </ToolbarButton>
+      <ToolbarButton
+        active={editor.isActive('subscript')}
+        onClick={() => editor.chain().focus().toggleSubscript().run()}
+        title="Subscript"
+      >
+        <Subscript className="h-3.5 w-3.5" />
+      </ToolbarButton>
+      <ToolbarButton
+        active={editor.isActive('superscript')}
+        onClick={() => editor.chain().focus().toggleSuperscript().run()}
+        title="Superscript"
+      >
+        <Superscript className="h-3.5 w-3.5" />
       </ToolbarButton>
 
       <Divider />

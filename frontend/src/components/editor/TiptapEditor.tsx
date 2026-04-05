@@ -12,6 +12,11 @@ import { CodeBlockExtension } from './CodeBlockNode';
 import { ImageBlockExtension } from './ImageBlockNode';
 import { VideoBlockExtension } from './VideoBlockNode';
 import { MediaGuardExtension } from './MediaGuardExtension';
+import Link from '@tiptap/extension-link';
+import Underline from '@tiptap/extension-underline';
+import Highlight from '@tiptap/extension-highlight';
+import Subscript from '@tiptap/extension-subscript';
+import Superscript from '@tiptap/extension-superscript';
 import GlobalDragHandle from 'tiptap-extension-global-drag-handle';
 import { GrammarExtension, setGrammarEnabled } from './GrammarPlugin';
 
@@ -81,6 +86,14 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         ImageBlockExtension,
         VideoBlockExtension,
         MediaGuardExtension,
+        Link.configure({
+          openOnClick: false,
+          HTMLAttributes: { target: '_blank', rel: 'noopener noreferrer' },
+        }),
+        Underline,
+        Highlight.configure({ multicolor: false }),
+        Subscript,
+        Superscript,
         GlobalDragHandle.configure({
           dragHandleWidth: 20,
         }),
