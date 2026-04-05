@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Settings2, Plus, Trash2, Save, Loader2, ChevronRight, X, Pencil, GripVertical } from 'lucide-react';
+import { Settings2, Plus, Trash2, Save, Loader2, ChevronRight, X, Pencil, GripVertical, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
@@ -7,6 +7,7 @@ import { type EntityKind, type AttributeDefinition, type FieldType, type GenreGr
 import { Skeleton } from '@/components/shared/Skeleton';
 import { ConfirmDialog } from '@/components/shared';
 import { cn } from '@/lib/utils';
+import { SEED_KINDS, countKindModifications, isAttrModified } from './seedDefaults';
 
 const FIELD_TYPE_OPTIONS: { value: FieldType; label: string }[] = [
   { value: 'text', label: 'Text' },
@@ -19,8 +20,9 @@ const FIELD_TYPE_OPTIONS: { value: FieldType; label: string }[] = [
   { value: 'boolean', label: 'Boolean' },
 ];
 
-function AttrRow({ attr, onEdit, onToggle, onDelete, dragProps, isOver, genreColorMap }: {
+function AttrRow({ attr, kindCode, onEdit, onToggle, onDelete, dragProps, isOver, genreColorMap }: {
   attr: import('@/features/glossary/types').AttributeDefinition;
+  kindCode?: string;
   onEdit: () => void;
   onToggle: () => void;
   onDelete: (() => void) | undefined;
@@ -28,6 +30,7 @@ function AttrRow({ attr, onEdit, onToggle, onDelete, dragProps, isOver, genreCol
   isOver?: boolean;
   genreColorMap?: Map<string, string>;
 }) {
+  const modified = kindCode ? isAttrModified(kindCode, attr) : false;
   const inactive = attr.is_active === false;
   return (
     <div
@@ -48,6 +51,7 @@ function AttrRow({ attr, onEdit, onToggle, onDelete, dragProps, isOver, genreCol
           ) : (
             <span className="rounded bg-primary/15 px-1 py-0.5 text-[9px] font-medium text-primary">USR</span>
           )}
+          {modified && <span className="text-[9px] font-medium text-amber-400 italic">modified</span>}
           {(attr.genre_tags ?? []).map((tag) => {
             const color = genreColorMap?.get(tag);
             return (
@@ -117,6 +121,9 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<EntityKind | null>(null);
   const [deleteAttrTarget, setDeleteAttrTarget] = useState<AttributeDefinition | null>(null);
+
+  // Revert confirm
+  const [revertTarget, setRevertTarget] = useState<EntityKind | null>(null);
 
   // New kind dialog
   const [showNewKind, setShowNewKind] = useState(false);
@@ -213,6 +220,29 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
       toast.success('Kind deleted');
       setDeleteTarget(null);
       if (selectedId === deleteTarget.kind_id) setSelectedId(null);
+      await loadKinds();
+    } catch (e) { toast.error((e as Error).message); }
+  };
+
+  const handleRevertKind = async () => {
+    if (!accessToken || !revertTarget) return;
+    const seed = SEED_KINDS[revertTarget.code];
+    if (!seed) return;
+    try {
+      await glossaryApi.patchKind(accessToken, revertTarget.kind_id, {
+        name: seed.name, icon: seed.icon, color: seed.color,
+      });
+      for (const attr of revertTarget.default_attributes) {
+        if (!attr.is_system) continue;
+        const seedAttr = seed.attrs[attr.code];
+        if (seedAttr && attr.name !== seedAttr.name) {
+          await glossaryApi.patchAttrDef(accessToken, revertTarget.kind_id, attr.attr_def_id, {
+            name: seedAttr.name,
+          });
+        }
+      }
+      toast.success('Reverted to defaults');
+      setRevertTarget(null);
       await loadKinds();
     } catch (e) { toast.error((e as Error).message); }
   };
@@ -485,6 +515,9 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                       ) : (
                         <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[8px] font-medium text-primary flex-shrink-0">Custom</span>
                       )}
+                      {k.is_default && countKindModifications(k) > 0 && (
+                        <span className="text-[8px] font-medium text-amber-400 italic flex-shrink-0">modified</span>
+                      )}
                     </div>
                     <span className="text-[10px] text-muted-foreground">
                       {k.default_attributes.length} attr{k.default_attributes.length !== 1 ? 's' : ''}
@@ -513,6 +546,16 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
+                    {selected.is_default && countKindModifications(selected) > 0 && (
+                      <button
+                        onClick={() => setRevertTarget(selected)}
+                        className="inline-flex items-center gap-1 rounded-md border border-dashed border-blue-500/40 px-2 py-1 text-[10px] font-medium text-blue-400 hover:bg-blue-500/10 transition-colors"
+                        title="Revert all changes to system defaults"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        Revert to Default
+                      </button>
+                    )}
                     {!selected.is_default && (
                       <button
                         onClick={() => setDeleteTarget(selected)}
@@ -716,7 +759,7 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                           .sort((a, b) => a.sort_order - b.sort_order)
                           .map((attr) => (
                             <div key={attr.attr_def_id}>
-                              <AttrRow attr={attr} onEdit={() => openEditAttr(attr)} onToggle={() => void handleToggleAttr(attr)} onDelete={undefined}
+                              <AttrRow attr={attr} kindCode={selected.code} onEdit={() => openEditAttr(attr)} onToggle={() => void handleToggleAttr(attr)} onDelete={undefined}
                                 genreColorMap={genreColorMap}
                                 isOver={overAttrId === attr.attr_def_id && dragAttrId !== attr.attr_def_id}
                                 dragProps={{
@@ -745,7 +788,7 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                           .sort((a, b) => a.sort_order - b.sort_order)
                           .map((attr) => (
                             <div key={attr.attr_def_id}>
-                              <AttrRow attr={attr} onEdit={() => openEditAttr(attr)} onToggle={() => void handleToggleAttr(attr)} onDelete={() => setDeleteAttrTarget(attr)}
+                              <AttrRow attr={attr} kindCode={selected.code} onEdit={() => openEditAttr(attr)} onToggle={() => void handleToggleAttr(attr)} onDelete={() => setDeleteAttrTarget(attr)}
                                 genreColorMap={genreColorMap}
                                 isOver={overAttrId === attr.attr_def_id && dragAttrId !== attr.attr_def_id}
                                 dragProps={{
@@ -835,6 +878,15 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
         confirmLabel="Delete Attribute"
         variant="destructive"
         onConfirm={() => void handleDeleteAttr()}
+      />
+      <ConfirmDialog
+        open={!!revertTarget}
+        onOpenChange={(open) => { if (!open) setRevertTarget(null); }}
+        title="Revert to defaults?"
+        description={`"${revertTarget?.name}" will be reset to its original name, icon, color, and attribute names. Genre tags and custom attributes will not be affected.`}
+        confirmLabel="Revert"
+        variant="destructive"
+        onConfirm={() => void handleRevertKind()}
       />
     </div>
   );
