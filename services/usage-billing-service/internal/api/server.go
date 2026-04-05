@@ -48,6 +48,16 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	}
 }
 
+func (s *Server) requireInternalToken(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.cfg.InternalServiceToken != "" && r.Header.Get("X-Internal-Token") != s.cfg.InternalServiceToken {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid internal token"})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -59,7 +69,10 @@ func (s *Server) Router() http.Handler {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	r.Post("/internal/model-billing/record", s.recordInvocation)
+	r.Route("/internal", func(r chi.Router) {
+		r.Use(s.requireInternalToken)
+		r.Post("/model-billing/record", s.recordInvocation)
+	})
 
 	r.Route("/v1/model-billing", func(r chi.Router) {
 		r.Get("/usage-logs", s.listUsageLogs)

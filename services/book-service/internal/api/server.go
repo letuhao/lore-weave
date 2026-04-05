@@ -44,6 +44,16 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	return s
 }
 
+func (s *Server) requireInternalToken(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.cfg.InternalServiceToken != "" && r.Header.Get("X-Internal-Token") != s.cfg.InternalServiceToken {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid internal token"})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -55,6 +65,7 @@ func (s *Server) Router() http.Handler {
 	})
 
 	r.Route("/internal", func(r chi.Router) {
+		r.Use(s.requireInternalToken)
 		r.Get("/books/{book_id}/projection", s.getBookProjection)
 		r.Get("/books/{book_id}/chapters", s.getInternalBookChapters)
 		r.Get("/books/{book_id}/chapters/{chapter_id}", s.getInternalBookChapter)
@@ -176,6 +187,9 @@ func (s *Server) fetchSharingVisibility(ctx context.Context, bookID uuid.UUID) s
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/internal/sharing/books/%s/visibility", strings.TrimRight(s.cfg.SharingInternalURL, "/"), bookID), nil)
 	if err != nil {
 		return "private"
+	}
+	if s.cfg.InternalServiceToken != "" {
+		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

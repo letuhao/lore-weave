@@ -8,14 +8,16 @@ import (
 type Config struct {
 	HTTPAddr    string
 	DatabaseURL string
-	JWTSecret   string
+	JWTSecret            string
+	InternalServiceToken string
 }
 
 func Load() (*Config, error) {
 	c := &Config{
-		HTTPAddr:    getEnv("HTTP_ADDR", ":8086"),
-		DatabaseURL: os.Getenv("DATABASE_URL"),
-		JWTSecret:   os.Getenv("JWT_SECRET"),
+		HTTPAddr:             getEnv("HTTP_ADDR", ":8086"),
+		DatabaseURL:          os.Getenv("DATABASE_URL"),
+		JWTSecret:            os.Getenv("JWT_SECRET"),
+		InternalServiceToken: getEnv("INTERNAL_SERVICE_TOKEN", ""),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

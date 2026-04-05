@@ -35,6 +35,9 @@ func (s *Server) fetchBookProjection(ctx context.Context, bookID uuid.UUID) (*bo
 	if err != nil {
 		return nil, http.StatusInternalServerError
 	}
+	if s.cfg.InternalServiceToken != "" {
+		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	}
 	res, err := bookHTTPClient.Do(req)
 	if err != nil {
 		return nil, http.StatusServiceUnavailable
@@ -58,6 +61,9 @@ func (s *Server) fetchBookChapters(ctx context.Context, bookID uuid.UUID) ([]cha
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, http.StatusInternalServerError
+	}
+	if s.cfg.InternalServiceToken != "" {
+		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
 	}
 	res, err := bookHTTPClient.Do(req)
 	if err != nil {

@@ -53,6 +53,16 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	}
 }
 
+func (s *Server) requireInternalToken(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.cfg.InternalServiceToken != "" && r.Header.Get("X-Internal-Token") != s.cfg.InternalServiceToken {
+			writeError(w, http.StatusUnauthorized, "INTERNAL_UNAUTHORIZED", "invalid internal token")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -91,8 +101,9 @@ func (s *Server) Router() http.Handler {
 	})
 
 	// Internal service-to-service routes — NOT proxied by api-gateway-bff.
-	// Protected by X-Internal-Token header instead of user JWT.
+	// Protected by X-Internal-Token middleware instead of user JWT.
 	r.Route("/internal", func(r chi.Router) {
+		r.Use(s.requireInternalToken)
 		r.Get("/credentials/{model_source}/{model_ref}", s.getInternalCredentials)
 	})
 
@@ -100,11 +111,6 @@ func (s *Server) Router() http.Handler {
 }
 
 func (s *Server) getInternalCredentials(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("X-Internal-Token") != s.cfg.InternalServiceToken {
-		writeError(w, http.StatusUnauthorized, "INTERNAL_UNAUTHORIZED", "invalid internal token")
-		return
-	}
-
 	userIDStr := r.URL.Query().Get("user_id")
 	if userIDStr == "" {
 		writeError(w, http.StatusBadRequest, "INTERNAL_VALIDATION_ERROR", "user_id query param required")
@@ -1455,6 +1461,9 @@ func (s *Server) recordInvocation(ctx context.Context, payload map[string]any) (
 		return uuid.Nil, "", 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if s.cfg.InternalServiceToken != "" {
+		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	}
 	res, err := s.client.Do(req)
 	if err != nil {
 		return uuid.Nil, "", 0, err

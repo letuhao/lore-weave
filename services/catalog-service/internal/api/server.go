@@ -28,6 +28,18 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	return &Server{pool: pool, cfg: cfg}
 }
 
+// internalGet makes a GET request to an internal service endpoint with X-Internal-Token.
+func (s *Server) internalGet(url string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	if s.cfg.InternalServiceToken != "" {
+		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	}
+	return http.DefaultClient.Do(req)
+}
+
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -84,7 +96,7 @@ func (s *Server) fetchPublicIDs(limit, offset int, q string) (*sharingPublicList
 	if q != "" {
 		u += "&q=" + url.QueryEscape(q)
 	}
-	res, err := http.Get(u)
+	res, err := s.internalGet(u)
 	if err != nil {
 		return nil, http.StatusBadGateway
 	}
@@ -100,7 +112,7 @@ func (s *Server) fetchPublicIDs(limit, offset int, q string) (*sharingPublicList
 }
 
 func (s *Server) fetchProjection(id uuid.UUID) (*bookProjection, int) {
-	res, err := http.Get(fmt.Sprintf("%s/internal/books/%s/projection", strings.TrimRight(s.cfg.BookServiceInternalURL, "/"), id))
+	res, err := s.internalGet(fmt.Sprintf("%s/internal/books/%s/projection", strings.TrimRight(s.cfg.BookServiceInternalURL, "/"), id))
 	if err != nil {
 		return nil, http.StatusBadGateway
 	}
@@ -116,7 +128,7 @@ func (s *Server) fetchProjection(id uuid.UUID) (*bookProjection, int) {
 }
 
 func (s *Server) fetchPublicChapterList(bookID uuid.UUID, limit, offset int) (map[string]any, int) {
-	res, err := http.Get(fmt.Sprintf("%s/internal/books/%s/chapters?limit=%d&offset=%d", strings.TrimRight(s.cfg.BookServiceInternalURL, "/"), bookID, limit, offset))
+	res, err := s.internalGet(fmt.Sprintf("%s/internal/books/%s/chapters?limit=%d&offset=%d", strings.TrimRight(s.cfg.BookServiceInternalURL, "/"), bookID, limit, offset))
 	if err != nil {
 		return nil, http.StatusBadGateway
 	}
@@ -132,7 +144,7 @@ func (s *Server) fetchPublicChapterList(bookID uuid.UUID, limit, offset int) (ma
 }
 
 func (s *Server) fetchPublicChapterDetail(bookID, chapterID uuid.UUID) (map[string]any, int) {
-	res, err := http.Get(fmt.Sprintf("%s/internal/books/%s/chapters/%s", strings.TrimRight(s.cfg.BookServiceInternalURL, "/"), bookID, chapterID))
+	res, err := s.internalGet(fmt.Sprintf("%s/internal/books/%s/chapters/%s", strings.TrimRight(s.cfg.BookServiceInternalURL, "/"), bookID, chapterID))
 	if err != nil {
 		return nil, http.StatusBadGateway
 	}
@@ -283,7 +295,7 @@ func (s *Server) getPublicBook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "CATALOG_INVALID_QUERY", "invalid book id")
 		return
 	}
-	res, err := http.Get(fmt.Sprintf("%s/internal/sharing/public/%s", strings.TrimRight(s.cfg.SharingServiceInternalURL, "/"), bookID))
+	res, err := s.internalGet(fmt.Sprintf("%s/internal/sharing/public/%s", strings.TrimRight(s.cfg.SharingServiceInternalURL, "/"), bookID))
 	if err != nil || res.StatusCode != http.StatusOK {
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return
@@ -322,7 +334,7 @@ func (s *Server) getPublicBook(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) fetchBookLanguages(bookID uuid.UUID) []map[string]any {
 	u := fmt.Sprintf("%s/internal/books/%s/languages", strings.TrimRight(s.cfg.TranslationServiceInternalURL, "/"), bookID)
-	res, err := http.Get(u)
+	res, err := s.internalGet(u)
 	if err != nil {
 		log.Printf("[catalog] failed to fetch languages for book %s: %v", bookID, err)
 		return []map[string]any{}
@@ -354,7 +366,7 @@ func (s *Server) listPublicBookChapters(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "CATALOG_INVALID_QUERY", "invalid book id")
 		return
 	}
-	res, err := http.Get(fmt.Sprintf("%s/internal/sharing/public/%s", strings.TrimRight(s.cfg.SharingServiceInternalURL, "/"), bookID))
+	res, err := s.internalGet(fmt.Sprintf("%s/internal/sharing/public/%s", strings.TrimRight(s.cfg.SharingServiceInternalURL, "/"), bookID))
 	if err != nil || res.StatusCode != http.StatusOK {
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return
@@ -393,7 +405,7 @@ func (s *Server) getPublicBookChapter(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "CATALOG_INVALID_QUERY", "invalid chapter id")
 		return
 	}
-	res, err := http.Get(fmt.Sprintf("%s/internal/sharing/public/%s", strings.TrimRight(s.cfg.SharingServiceInternalURL, "/"), bookID))
+	res, err := s.internalGet(fmt.Sprintf("%s/internal/sharing/public/%s", strings.TrimRight(s.cfg.SharingServiceInternalURL, "/"), bookID))
 	if err != nil || res.StatusCode != http.StatusOK {
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return

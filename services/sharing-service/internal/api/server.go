@@ -29,6 +29,27 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	return &Server{pool: pool, cfg: cfg, secret: []byte(cfg.JWTSecret)}
 }
 
+func (s *Server) internalGet(url string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	if s.cfg.InternalServiceToken != "" {
+		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	}
+	return http.DefaultClient.Do(req)
+}
+
+func (s *Server) requireInternalToken(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.cfg.InternalServiceToken != "" && r.Header.Get("X-Internal-Token") != s.cfg.InternalServiceToken {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid internal token"})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -40,6 +61,7 @@ func (s *Server) Router() http.Handler {
 	})
 
 	r.Route("/internal/sharing", func(r chi.Router) {
+		r.Use(s.requireInternalToken)
 		r.Get("/public", s.listPublicInternal)
 		r.Get("/public/{book_id}", s.getPublicInternal)
 		r.Get("/books/{book_id}/visibility", s.getBookVisibilityInternal)
@@ -114,7 +136,7 @@ type bookProjection struct {
 }
 
 func (s *Server) fetchBookProjection(bookID uuid.UUID) (*bookProjection, int) {
-	res, err := http.Get(fmt.Sprintf("%s/internal/books/%s/projection", strings.TrimRight(s.cfg.BookServiceInternalURL, "/"), bookID))
+	res, err := s.internalGet(fmt.Sprintf("%s/internal/books/%s/projection", strings.TrimRight(s.cfg.BookServiceInternalURL, "/"), bookID))
 	if err != nil {
 		return nil, http.StatusBadGateway
 	}
@@ -300,7 +322,7 @@ func (s *Server) resolveUnlistedBookID(ctx context.Context, tokenValue string) (
 }
 
 func (s *Server) fetchBookChaptersInternal(bookID uuid.UUID, limit, offset int) (map[string]any, int) {
-	res, err := http.Get(fmt.Sprintf("%s/internal/books/%s/chapters?limit=%d&offset=%d", strings.TrimRight(s.cfg.BookServiceInternalURL, "/"), bookID, limit, offset))
+	res, err := s.internalGet(fmt.Sprintf("%s/internal/books/%s/chapters?limit=%d&offset=%d", strings.TrimRight(s.cfg.BookServiceInternalURL, "/"), bookID, limit, offset))
 	if err != nil {
 		return nil, http.StatusBadGateway
 	}
@@ -316,7 +338,7 @@ func (s *Server) fetchBookChaptersInternal(bookID uuid.UUID, limit, offset int) 
 }
 
 func (s *Server) fetchBookChapterInternal(bookID, chapterID uuid.UUID) (map[string]any, int) {
-	res, err := http.Get(fmt.Sprintf("%s/internal/books/%s/chapters/%s", strings.TrimRight(s.cfg.BookServiceInternalURL, "/"), bookID, chapterID))
+	res, err := s.internalGet(fmt.Sprintf("%s/internal/books/%s/chapters/%s", strings.TrimRight(s.cfg.BookServiceInternalURL, "/"), bookID, chapterID))
 	if err != nil {
 		return nil, http.StatusBadGateway
 	}
