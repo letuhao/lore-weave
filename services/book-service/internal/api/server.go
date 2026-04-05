@@ -44,6 +44,8 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	return s
 }
 
+var internalClient = &http.Client{Timeout: 10 * time.Second}
+
 func (s *Server) requireInternalToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.cfg.InternalServiceToken != "" && r.Header.Get("X-Internal-Token") != s.cfg.InternalServiceToken {
@@ -191,7 +193,7 @@ func (s *Server) fetchSharingVisibility(ctx context.Context, bookID uuid.UUID) s
 	if s.cfg.InternalServiceToken != "" {
 		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := internalClient.Do(req)
 	if err != nil {
 		return "private"
 	}

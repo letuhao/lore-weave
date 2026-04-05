@@ -29,15 +29,25 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	return &Server{pool: pool, cfg: cfg, secret: []byte(cfg.JWTSecret)}
 }
 
+var internalClient = &http.Client{Timeout: 10 * time.Second}
+
 func (s *Server) internalGet(url string) (*http.Response, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	do := func() (*http.Response, error) {
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return nil, err
+		}
+		if s.cfg.InternalServiceToken != "" {
+			req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+		}
+		return internalClient.Do(req)
+	}
+	res, err := do()
 	if err != nil {
-		return nil, err
+		time.Sleep(500 * time.Millisecond)
+		return do()
 	}
-	if s.cfg.InternalServiceToken != "" {
-		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
-	}
-	return http.DefaultClient.Do(req)
+	return res, nil
 }
 
 func (s *Server) requireInternalToken(next http.Handler) http.Handler {

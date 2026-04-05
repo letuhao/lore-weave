@@ -406,7 +406,7 @@ func (s *Server) generateChapterMedia(w http.ResponseWriter, r *http.Request) {
 		s.cfg.ProviderRegistryURL, body.ModelSource, body.ModelRef, ownerID)
 	credReq, _ := http.NewRequestWithContext(ctx, "GET", credURL, nil)
 	credReq.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
-	credResp, err := http.DefaultClient.Do(credReq)
+	credResp, err := internalClient.Do(credReq)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "PROVIDER_ERROR", "failed to reach provider registry")
 		return
