@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-05 (session 20 end, updated)
-- Updated By: Assistant (E2E fixes + P3-KE COMPLETE — 17 commits, 67/67 BE tests, 13/13 tasks)
+- Last Updated: 2026-04-05 (session 20 end, final)
+- Updated By: Assistant (E2E fixes + P3-KE COMPLETE + Phase 7 Infra COMPLETE — 24 commits, 231 integration tests)
 - Active Branch: `main`
-- HEAD: `042f4e1` — fix(frontend): FE-KE review — parallel revert, genre-colored kind tags
+- HEAD: `b670f7c` — feat(infra): INF-04 health check deep mode
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -31,7 +31,7 @@
 
 ## Current Active Work
 
-**Phase:** P3-KE Kind Editor Enhancement COMPLETE (13/13). Next: P4-04 Reading/Theme unification or Phase 7 Infra.
+**Phase:** P3-KE Kind Editor Enhancement COMPLETE (13/13) + Phase 7 Infrastructure Hardening COMPLETE (4/4). Next: P4-04 Reading/Theme unification.
 
 **What was done in this session (2026-04-05, session 20):**
 
@@ -64,6 +64,11 @@ E2E browser review fixes (8 issues) + P3-KE Kind Editor Enhancement COMPLETE (13
 | FE-KE-06: Genre-colored dots on tag pills (genreColorMap from genre_groups) | `KindEditor.tsx`, `GlossaryTab.tsx` | `88cfadf` |
 | FE-KE-07: Modified indicator + Revert to default (seedDefaults.ts, confirm dialog) | `KindEditor.tsx`, `seedDefaults.ts` (new) | `c204d1a` |
 | FE-KE review: parallel revert + genre-colored kind tags | `KindEditor.tsx` | `042f4e1` |
+
+| INF-01: Service-to-service auth — requireInternalToken middleware + internalGet | 11 files across 6 services, `docker-compose.yml` | `03644b3` |
+| INF-02: Internal HTTP client — 10s timeout + 1 retry, zero http.Get remaining | `catalog/server.go`, `sharing/server.go`, `book/server.go`, `book/media.go` | `e02a1c9` |
+| INF-03: Structured JSON logging — 77 log.Printf→slog across 8 Go services | 15 files across 8 services | `af1679d`, `da818cd` |
+| INF-04: Health check deep mode — /health (ping) + /health/ready (SELECT 1) | 7 service server.go files, `test-infra-health.sh` (new) | `b670f7c` |
 
 **9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 

@@ -2,10 +2,10 @@
 
 > **Purpose:** Give the next agent complete context to continue.
 > **Date:** 2026-04-05 (session 20 end)
-> **Last commit:** `042f4e1` — fix(frontend): FE-KE review — parallel revert, genre-colored kind tags
-> **Total commits this session:** 17
+> **Last commit:** `b670f7c` — feat(infra): INF-04 health check deep mode
+> **Total commits this session:** 24
 > **Previous focus:** P3-08 Genre Groups complete (session 19)
-> **Current focus:** E2E fixes + P3-KE Kind Editor Enhancement COMPLETE (13/13 tasks, 67/67 BE tests)
+> **Current focus:** E2E fixes + P3-KE COMPLETE (13/13) + Phase 7 Infra COMPLETE (4/4) — 231 integration tests
 
 ---
 
@@ -51,11 +51,22 @@ The `genre_tags` field can be `null`/`undefined` from the API for data created b
 
 Review fixes: patchKind entity_count subquery (`88da9b4`), parallel revert + genre-colored kind tags (`042f4e1`).
 
+### Phase 7: Infrastructure Hardening — COMPLETE (4/4)
+
+| Task | What | Commit |
+|---|---|---|
+| INF-01 | Service-to-service auth — X-Internal-Token middleware on all /internal/* routes | `03644b3` |
+| INF-02 | HTTP client timeout (10s) + 1 retry — zero http.Get/DefaultClient remaining | `e02a1c9` |
+| INF-03 | Structured JSON logging — slog across 8 Go services (77 calls converted) | `af1679d`, `da818cd` |
+| INF-04 | Health check deep mode — /health (ping) + /health/ready (SELECT 1) on 7 services | `b670f7c` |
+
+New integration test: `infra/test-infra-health.sh` (22 scenarios).
+
 ---
 
 ## 2. What's Next
 
-### P3-KE is COMPLETE. Next priorities:
+### P3-KE + Phase 7 COMPLETE. Next priorities:
 1. P4-04: Reading/Theme unification (big refactor, 6 sub-tasks)
 2. Translation Workbench (split-view editing)
 3. Phase 7: Infrastructure Hardening
@@ -78,6 +89,8 @@ Review fixes: patchKind entity_count subquery (`88da9b4`), parallel revert + gen
 | `frontend/src/features/glossary/types.ts` | Glossary FE types (includes description, entity_count, is_active) |
 | `frontend/src/features/glossary/api.ts` | Glossary API client (includes reorderKinds, reorderAttrDefs) |
 | `design-drafts/screen-glossary-management.html` | Design reference (all gaps now closed) |
+| `infra/test-infra-health.sh` | 22 health check integration tests (INF-04) |
+| `infra/docker-compose.yml` | All services have INTERNAL_SERVICE_TOKEN |
 
 ---
 
@@ -105,6 +118,10 @@ Validation added to `patchAttrDef`:
 |-------|----------|------|
 | FE genre_tags null guards (11 sites) | Fixed | Was crashing React on glossary tab |
 | FE glossary types updated with description, entity_count, is_active | Fixed | Updated in FE-KE-01 |
+| Internal endpoints no auth | Fixed | INF-01: X-Internal-Token middleware on all /internal/* routes |
+| Internal HTTP calls no timeout | Fixed | INF-02: 10s timeout + 1 retry, zero http.Get remaining |
+| Plain text logs | Fixed | INF-03: slog JSON across all 8 Go services |
+| Health checks don't verify DB | Fixed | INF-04: /health pings DB, /health/ready runs SELECT 1 |
 | Export endpoint missing genre_tags | Medium | Defer to AI/RAG pipeline work |
 | Genre rename cascade not atomic (client-side Promise.allSettled) | Medium | Works but not transactional |
 | Vite build chunk size warning (1.8MB) | Low | Needs code splitting |

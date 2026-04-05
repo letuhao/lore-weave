@@ -1964,60 +1964,30 @@ FE-C6-08: Message branching (if time permits)                   [ ]
 > not piecemeal per-feature.
 
 ```
-INF-01: Service-to-service authentication [BE]                  [ ]
-  Scope: Standardize internal endpoint auth across all services.
-  Current state:
-    - provider-registry + chat-service: have X-Internal-Token check (partial)
-    - book-service, sharing-service, catalog-service, translation-service:
-      /internal/* endpoints have NO auth — rely on Docker network isolation
-  Plan:
-    - Design shared middleware: validate X-Internal-Token header
-    - Go services: chi middleware that checks header against config
-    - Python services: FastAPI dependency that checks header
-    - Apply to ALL /internal/* endpoints across 6 services
-    - Update all internal HTTP callers to send token
-  Acceptance:
-    - All /internal/* endpoints reject requests without valid token
-    - All service-to-service calls include X-Internal-Token header
-    - Existing integration tests still pass
-  Size: M
+INF-01: Service-to-service authentication [BE]                  [✓] Done (03644b3)
+  requireInternalToken chi middleware on all /internal/* routes (book, sharing,
+  usage-billing, provider-registry). internalGet helper with token header on all
+  callers (catalog 8 calls, sharing 3, book 2, glossary 2, provider-registry 1).
+  InternalServiceToken added to all service configs + docker-compose.
+  209/209 integration tests pass.
 
-INF-02: Internal HTTP client with timeout + retry [BE]          [ ]
-  Scope: Replace raw http.Get() with shared client across all Go services.
-  Current state:
-    - 20+ http.Get() calls with no timeout across catalog, book, sharing services
-    - If downstream service hangs, caller blocks indefinitely
-  Plan:
-    - Create shared httputil package (or per-service helper):
-      - Default timeout: 10s
-      - 1 retry with 500ms backoff
-      - Response body size limit (10MB)
-      - Context propagation from request
-    - Replace all http.Get() calls in:
-      catalog-service (5 calls), book-service (2 calls),
-      translation-service (3 calls), provider-registry (adapter calls)
-  Acceptance:
-    - All internal HTTP calls have 10s timeout
-    - Hanging downstream returns error within 10s, not indefinitely
-    - Logs include caller context on timeout
-  Size: M
+INF-02: Internal HTTP client with timeout + retry [BE]          [✓] Done (e02a1c9)
+  var internalClient = &http.Client{Timeout: 10 * time.Second} in catalog,
+  sharing, book services. 1 retry with 500ms backoff in internalGet helpers.
+  Zero http.Get() and zero http.DefaultClient remaining in codebase.
+  209/209 integration tests pass.
 
-INF-03: Structured logging [BE]                                 [ ]
-  Scope: Replace log.Printf with structured JSON logging.
-  Current state: plain text logs, inconsistent format across services.
-  Plan:
-    - Go: slog (stdlib) with JSON handler
-    - Python: structlog or standard logging with JSON formatter
-    - Common fields: service, request_id, user_id, duration
-  Size: M
+INF-03: Structured logging [BE]                                 [✓] Done (af1679d, da818cd)
+  Replaced all 77 log.Printf/Println/Fatal with slog.Info/Error across 15 files
+  in 8 Go services. JSON handler with "service" attribute in each main.go.
+  Normalized "listening" messages across all services.
+  209/209 integration tests pass.
 
-INF-04: Health check deep mode [BE]                             [ ]
-  Scope: /health endpoints check DB connectivity, not just "process alive".
-  Current state: all /health return "ok" without checking dependencies.
-  Plan:
-    - /health: basic (for Docker healthcheck, fast)
-    - /health/ready: deep (checks DB pool, Redis, downstream services)
-  Size: S
+INF-04: Health check deep mode [BE]                             [✓] Done (b670f7c)
+  /health: pool.Ping (fast, Docker healthcheck). /health/ready: SELECT 1 (deep,
+  returns JSON {"status":"ready"}). Both return 503 with error on failure.
+  Nil-pool guard prevents panic in unit tests. 22 new integration tests.
+  231/231 integration tests pass (209 existing + 22 new).
 ```
 
 ---
