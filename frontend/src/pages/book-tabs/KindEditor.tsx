@@ -19,15 +19,25 @@ const FIELD_TYPE_OPTIONS: { value: FieldType; label: string }[] = [
   { value: 'boolean', label: 'Boolean' },
 ];
 
-function AttrRow({ attr, onEdit, onToggle, onDelete }: {
+function AttrRow({ attr, onEdit, onToggle, onDelete, dragProps, isOver }: {
   attr: import('@/features/glossary/types').AttributeDefinition;
   onEdit: () => void;
   onToggle: () => void;
   onDelete: (() => void) | undefined;
+  dragProps?: { draggable: true; onDragStart: () => void; onDragOver: (e: React.DragEvent) => void; onDragEnd: () => void; onDrop: () => void };
+  isOver?: boolean;
 }) {
   const inactive = attr.is_active === false;
   return (
-    <div className={cn("flex items-center gap-3 border-b px-4 py-2.5 group hover:bg-card/50 transition-colors last:border-b-0", inactive && "opacity-50")}>
+    <div
+      {...dragProps}
+      className={cn(
+        "flex items-center gap-2 border-b px-4 py-2.5 group hover:bg-card/50 transition-colors last:border-b-0",
+        inactive && "opacity-50",
+        isOver && "border-t-2 border-t-primary",
+      )}
+    >
+      {dragProps && <GripVertical className="h-3 w-3 text-muted-foreground/30 group-hover:text-muted-foreground/70 flex-shrink-0 cursor-grab" />}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={cn("text-xs font-medium", inactive && "line-through")}>{attr.name}</span>
@@ -119,6 +129,10 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
   const [dragKindId, setDragKindId] = useState<string | null>(null);
   const [overKindId, setOverKindId] = useState<string | null>(null);
 
+  // Drag reorder attrs
+  const [dragAttrId, setDragAttrId] = useState<string | null>(null);
+  const [overAttrId, setOverAttrId] = useState<string | null>(null);
+
   // New attribute
   const [showNewAttr, setShowNewAttr] = useState(false);
   const [newAttrCode, setNewAttrCode] = useState('');
@@ -205,6 +219,24 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
     setKinds(reordered);
     try {
       await glossaryApi.reorderKinds(accessToken, ordered);
+    } catch (e) {
+      toast.error('Reorder failed');
+      await loadKinds();
+    }
+  };
+
+  const handleAttrDrop = async (fromId: string, toId: string) => {
+    if (!accessToken || !selected || fromId === toId) return;
+    const attrs = [...selected.default_attributes].sort((a, b) => a.sort_order - b.sort_order);
+    const ordered = attrs.map((a) => a.attr_def_id);
+    const fromIdx = ordered.indexOf(fromId);
+    const toIdx = ordered.indexOf(toId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    ordered.splice(fromIdx, 1);
+    ordered.splice(toIdx, 0, fromId);
+    try {
+      await glossaryApi.reorderAttrDefs(accessToken, selected.kind_id, ordered);
+      await loadKinds();
     } catch (e) {
       toast.error('Reorder failed');
       await loadKinds();
@@ -667,7 +699,15 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
                           .sort((a, b) => a.sort_order - b.sort_order)
                           .map((attr) => (
                             <div key={attr.attr_def_id}>
-                              <AttrRow attr={attr} onEdit={() => openEditAttr(attr)} onToggle={() => void handleToggleAttr(attr)} onDelete={undefined} />
+                              <AttrRow attr={attr} onEdit={() => openEditAttr(attr)} onToggle={() => void handleToggleAttr(attr)} onDelete={undefined}
+                                isOver={overAttrId === attr.attr_def_id && dragAttrId !== attr.attr_def_id}
+                                dragProps={{
+                                  draggable: true,
+                                  onDragStart: () => setDragAttrId(attr.attr_def_id),
+                                  onDragOver: (e) => { e.preventDefault(); setOverAttrId(attr.attr_def_id); },
+                                  onDragEnd: () => { setDragAttrId(null); setOverAttrId(null); },
+                                  onDrop: () => { if (dragAttrId) void handleAttrDrop(dragAttrId, attr.attr_def_id); setDragAttrId(null); setOverAttrId(null); },
+                                }} />
                               {editAttrId === attr.attr_def_id && renderEditAttrForm()}
                             </div>
                           ))}
@@ -687,7 +727,15 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
                           .sort((a, b) => a.sort_order - b.sort_order)
                           .map((attr) => (
                             <div key={attr.attr_def_id}>
-                              <AttrRow attr={attr} onEdit={() => openEditAttr(attr)} onToggle={() => void handleToggleAttr(attr)} onDelete={() => setDeleteAttrTarget(attr)} />
+                              <AttrRow attr={attr} onEdit={() => openEditAttr(attr)} onToggle={() => void handleToggleAttr(attr)} onDelete={() => setDeleteAttrTarget(attr)}
+                                isOver={overAttrId === attr.attr_def_id && dragAttrId !== attr.attr_def_id}
+                                dragProps={{
+                                  draggable: true,
+                                  onDragStart: () => setDragAttrId(attr.attr_def_id),
+                                  onDragOver: (e) => { e.preventDefault(); setOverAttrId(attr.attr_def_id); },
+                                  onDragEnd: () => { setDragAttrId(null); setOverAttrId(null); },
+                                  onDrop: () => { if (dragAttrId) void handleAttrDrop(dragAttrId, attr.attr_def_id); setDragAttrId(null); setOverAttrId(null); },
+                                }} />
                               {editAttrId === attr.attr_def_id && renderEditAttrForm()}
                             </div>
                           ))}
