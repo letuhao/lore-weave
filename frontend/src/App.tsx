@@ -25,7 +25,8 @@ import { ChatPage } from '@/pages/ChatPage';
 import { BookDetailPage } from '@/pages/BookDetailPage';
 import { ChapterEditorPage } from '@/pages/ChapterEditorPage';
 import { ReaderPage } from '@/pages/ReaderPage';
-import { ReaderThemeProvider } from '@/providers/ReaderThemeProvider';
+import { ThemeProvider } from '@/providers/ThemeProvider';
+import { useAuth } from '@/auth';
 import { SidebarProvider } from '@/providers/SidebarProvider';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { RegisterPage } from '@/pages/auth/RegisterPage';
@@ -39,12 +40,17 @@ import { PublicBookDetailPage } from '@/pages/PublicBookDetailPage';
 import { SharedBookPage } from '@/pages/SharedBookPage';
 import { ChapterTranslationsPage } from '@/pages/ChapterTranslationsPage';
 
+function AuthenticatedThemeProvider({ children }: { children: React.ReactNode }) {
+  const { accessToken } = useAuth();
+  return <ThemeProvider accessToken={accessToken}>{children}</ThemeProvider>;
+}
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
     <AuthProvider>
     <ModeProvider>
-    <ReaderThemeProvider>
+    <AuthenticatedThemeProvider>
     <SidebarProvider>
       <BrowserRouter>
         <Toaster position="bottom-right" richColors closeButton />
@@ -123,7 +129,7 @@ export function App() {
         </Routes>
       </BrowserRouter>
     </SidebarProvider>
-    </ReaderThemeProvider>
+    </AuthenticatedThemeProvider>
     </ModeProvider>
     </AuthProvider>
     </QueryClientProvider>
