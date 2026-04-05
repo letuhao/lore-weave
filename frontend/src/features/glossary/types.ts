@@ -8,9 +8,11 @@ export type AttributeDefinition = {
   attr_def_id: string;
   code: string;
   name: string;
+  description?: string | null;
   field_type: FieldType;
   is_required: boolean;
   is_system: boolean;
+  is_active: boolean;
   sort_order: number;
   options?: string[];
   genre_tags: string[];
@@ -20,12 +22,14 @@ export type EntityKind = {
   kind_id: string;
   code: string;
   name: string;
+  description?: string | null;
   icon: string;
   color: string;
   is_default: boolean;
   is_hidden: boolean;
   sort_order: number;
   genre_tags: string[];
+  entity_count: number;
   default_attributes: AttributeDefinition[];
 };
 

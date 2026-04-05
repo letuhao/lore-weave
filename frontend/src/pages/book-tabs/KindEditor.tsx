@@ -63,6 +63,7 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
   const [editName, setEditName] = useState('');
   const [editIcon, setEditIcon] = useState('');
   const [editColor, setEditColor] = useState('');
+  const [editDescription, setEditDescription] = useState('');
   const [editGenreTags, setEditGenreTags] = useState<string[]>([]);
   const [kindDirty, setKindDirty] = useState(false);
   const [savingKind, setSavingKind] = useState(false);
@@ -104,6 +105,7 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
       setEditName(selected.name);
       setEditIcon(selected.icon);
       setEditColor(selected.color);
+      setEditDescription(selected.description ?? '');
       setEditGenreTags(selected.genre_tags ?? []);
       setKindDirty(false);
     }
@@ -114,7 +116,8 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
     setSavingKind(true);
     try {
       await glossaryApi.patchKind(accessToken, selected.kind_id, {
-        name: editName, icon: editIcon, color: editColor, genre_tags: editGenreTags,
+        name: editName, icon: editIcon, color: editColor,
+        description: editDescription || null, genre_tags: editGenreTags,
       });
       toast.success('Kind saved');
       setKindDirty(false);
@@ -245,6 +248,7 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
                     </div>
                     <span className="text-[10px] text-muted-foreground">
                       {k.default_attributes.length} attr{k.default_attributes.length !== 1 ? 's' : ''}
+                      {' · '}{k.entity_count} entit{k.entity_count !== 1 ? 'ies' : 'y'}
                     </span>
                   </div>
                   {selectedId === k.kind_id && <ChevronRight className="h-3 w-3 text-primary" />}
@@ -264,6 +268,9 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-[10px] text-muted-foreground">{selected.code}</span>
                     {selected.is_default && <span className="rounded bg-secondary px-1.5 py-0.5 text-[9px] text-muted-foreground">system</span>}
+                    <span className="text-[10px] text-muted-foreground">
+                      {selected.default_attributes.length} attrs · {selected.entity_count} entit{selected.entity_count !== 1 ? 'ies' : 'y'}
+                    </span>
                   </div>
                   <div className="flex items-center gap-2">
                     {!selected.is_default && (
@@ -313,6 +320,16 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
                       className="mt-1 h-8 w-10 cursor-pointer rounded border bg-background"
                     />
                   </div>
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground">Description</label>
+                  <textarea
+                    value={editDescription}
+                    onChange={(e) => { setEditDescription(e.target.value); setKindDirty(true); }}
+                    placeholder="What this kind represents..."
+                    rows={2}
+                    className="mt-1 w-full resize-none rounded-md border bg-background px-3 py-1.5 text-xs focus:border-ring focus:outline-none placeholder:text-muted-foreground/50"
+                  />
                 </div>
               </div>
 
