@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { Menu, X, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
+import { Menu, X, ChevronLeft, ChevronRight, Pencil, Volume2, Sun } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Book, type Chapter } from '@/features/books/api';
-import { TiptapEditor } from '@/components/editor/TiptapEditor';
+import { ContentRenderer } from '@/components/reader/ContentRenderer';
 import { cn } from '@/lib/utils';
+import type { JSONContent } from '@tiptap/react';
 
 export function ReaderPage() {
   const { bookId = '', chapterId = '' } = useParams();
   const { accessToken } = useAuth();
   const navigate = useNavigate();
-  const [body, setBody] = useState<any>(null);
+  const [blocks, setBlocks] = useState<JSONContent[]>([]);
   const [chapter, setChapter] = useState<Chapter | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [book, setBook] = useState<Book | null>(null);
@@ -26,7 +27,9 @@ export function ReaderPage() {
       booksApi.listChapters(accessToken, bookId, { lifecycle_state: 'active', limit: 100 }),
     ]).then(([b, d, chs]) => {
       setBook(b);
-      setBody(d.body);
+      // Extract blocks from Tiptap JSON body
+      const body = d.body as JSONContent | null;
+      setBlocks(body?.content ?? []);
       setChapter(chs.items.find((c) => c.chapter_id === chapterId) ?? null);
       setChapters(chs.items);
     }).catch(() => {}).finally(() => setLoading(false));
@@ -41,12 +44,12 @@ export function ReaderPage() {
 
   return (
     <div className="relative flex h-screen flex-col bg-background">
-      {/* #1 Progress bar */}
+      {/* Progress bar */}
       <div className="fixed left-0 right-0 top-0 z-20 h-0.5 bg-secondary">
         <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
       </div>
 
-      {/* #1 Top bar — gradient fade */}
+      {/* Top bar — gradient fade */}
       <div
         className="fixed left-0 right-0 top-0 z-[19] flex h-12 items-center justify-between px-4"
         style={{ background: 'linear-gradient(hsl(var(--background)), transparent)' }}
@@ -62,6 +65,14 @@ export function ReaderPage() {
           </span>
         </div>
         <div className="flex gap-1">
+          {/* TTS placeholder — wired in Phase 8D */}
+          <button className="rounded p-1.5 text-muted-foreground hover:bg-secondary" title="Read aloud (coming soon)" disabled>
+            <Volume2 className="h-4 w-4" />
+          </button>
+          {/* Theme placeholder — wired in Phase 8B */}
+          <button className="rounded p-1.5 text-muted-foreground hover:bg-secondary" title="Reading theme (coming soon)" disabled>
+            <Sun className="h-4 w-4" />
+          </button>
           {accessToken && (
             <Link to={`/books/${bookId}/chapters/${chapterId}/edit`} className="rounded p-1.5 text-muted-foreground hover:bg-secondary" title="Edit this chapter">
               <Pencil className="h-4 w-4" />
@@ -82,9 +93,8 @@ export function ReaderPage() {
             <div className="flex items-center justify-between border-b p-4">
               <div>
                 <h2 className="font-serif text-sm font-semibold">{book?.title}</h2>
-                {/* #4 Language + word count */}
                 <p className="text-[11px] text-muted-foreground">
-                  {book?.original_language && <>{book.original_language} · </>}
+                  {book?.original_language && <>{book.original_language} &middot; </>}
                   {chapters.length} chapters
                 </p>
               </div>
@@ -93,7 +103,7 @@ export function ReaderPage() {
               </button>
             </div>
 
-            {/* #5 Reading progress bar */}
+            {/* Reading progress bar */}
             <div className="flex items-center gap-2.5 border-b px-4 py-3">
               <div className="h-1 flex-1 overflow-hidden rounded-full bg-secondary">
                 <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} />
@@ -119,7 +129,6 @@ export function ReaderPage() {
                   >
                     <span className="w-5 flex-shrink-0 text-right font-mono text-[11px]">{i + 1}</span>
                     <span className="flex-1">{ch.title || ch.original_filename}</span>
-                    {/* #6 Read check / "reading" label */}
                     {isCurrent && <span className="text-[9px] text-primary">reading</span>}
                     {isRead && (
                       <svg className="h-3 w-3 flex-shrink-0 text-success" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" /></svg>
@@ -132,11 +141,11 @@ export function ReaderPage() {
         </>
       )}
 
-      {/* #9 Reading area — more padding */}
+      {/* Reading area */}
       <div className="flex flex-1 justify-center overflow-y-auto" style={{ padding: '64px 24px 120px' }}>
-        <article className="w-full" style={{ maxWidth: 680 }}>
+        <article style={{ maxWidth: 'var(--reader-width, 680px)', width: '100%' }}>
 
-          {/* #8 Chapter header: number label + title + amber divider */}
+          {/* Chapter header */}
           <header className="mb-10 text-center">
             <p className="mb-2 font-sans text-xs uppercase tracking-widest text-muted-foreground">
               Chapter {currentIdx + 1}
@@ -149,24 +158,23 @@ export function ReaderPage() {
             <div className="mx-auto mt-3 h-0.5 w-10 rounded bg-primary/50" />
           </header>
 
-          {/* Chapter content — Tiptap read-only */}
-          {body && (
-            <TiptapEditor
-              content={body}
-              onUpdate={() => {}}
-              editable={false}
-              className="tiptap-reader"
-            />
+          {/* Chapter content — ContentRenderer */}
+          {blocks.length > 0 ? (
+            <ContentRenderer blocks={blocks} />
+          ) : (
+            <p className="text-center font-serif text-muted-foreground italic">
+              Empty chapter — nothing written yet.
+            </p>
           )}
 
-          {/* #9 End of chapter marker */}
+          {/* End of chapter marker */}
           <div className="mt-12 border-t pt-6 text-center">
             <p className="font-sans text-xs text-muted-foreground">End of Chapter {currentIdx + 1}</p>
           </div>
         </article>
       </div>
 
-      {/* #1 Bottom nav — gradient fade */}
+      {/* Bottom nav — gradient fade */}
       <div
         className="fixed bottom-0 left-0 right-0 z-20 flex items-center justify-between px-6 py-3"
         style={{ background: 'linear-gradient(transparent, hsl(var(--background)))' }}
@@ -176,9 +184,8 @@ export function ReaderPage() {
             <ChevronLeft className="h-3.5 w-3.5" /> {prevCh.title || `Ch. ${currentIdx}`}
           </Link>
         ) : <div />}
-        {/* #13 Center with percentage */}
         <span className="text-[11px] text-muted-foreground">
-          Chapter {currentIdx + 1} of {chapters.length} · {Math.round(progress)}% complete
+          Chapter {currentIdx + 1} of {chapters.length} &middot; {Math.round(progress)}% complete
         </span>
         {nextCh ? (
           <Link to={`/books/${bookId}/chapters/${nextCh.chapter_id}/read`} className="btn-glow inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition-all hover:bg-primary/90">
