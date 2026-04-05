@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-05 (session 20 end)
-- Updated By: Assistant (E2E fixes + P3-KE backend complete — 8 commits, 67/67 integration tests)
+- Last Updated: 2026-04-05 (session 20 end, updated)
+- Updated By: Assistant (E2E fixes + P3-KE COMPLETE — 17 commits, 67/67 BE tests, 13/13 tasks)
 - Active Branch: `main`
-- HEAD: `88da9b4` — fix(glossary): patchKind re-fetch includes entity_count subquery
+- HEAD: `042f4e1` — fix(frontend): FE-KE review — parallel revert, genre-colored kind tags
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -31,11 +31,11 @@
 
 ## Current Active Work
 
-**Phase:** P3-KE Kind Editor Enhancement — backend COMPLETE (6/6). Next: FE-KE-01..07 (frontend).
+**Phase:** P3-KE Kind Editor Enhancement COMPLETE (13/13). Next: P4-04 Reading/Theme unification or Phase 7 Infra.
 
 **What was done in this session (2026-04-05, session 20):**
 
-E2E browser review fixes (8 issues) + P3-KE Kind Editor Enhancement backend (6 tasks). 8 commits, 67/67 integration tests.
+E2E browser review fixes (8 issues) + P3-KE Kind Editor Enhancement COMPLETE (13 tasks: 6 BE + 7 FE). 17 commits, 67/67 BE integration tests.
 
 | Work item | Files touched | Commit |
 | --------- | ------------- | ------ |
@@ -56,8 +56,16 @@ E2E browser review fixes (8 issues) + P3-KE Kind Editor Enhancement backend (6 t
 | BE-KE-06: Sort order reorder endpoints (kinds + attrs) | `server.go`, `kinds_crud.go` | `96fd331` |
 | Review fix: patchKind re-fetch missing entity_count subquery | `kinds_crud.go` | `88da9b4` |
 | Integration test suite: 67 scenarios, all pass | `infra/test-kind-editor-enhance.sh` | `67879aa`..`96fd331` |
+| FE-KE-01: Kind metadata panel — description textarea + entity count | `KindEditor.tsx`, `glossary/types.ts` | `eeafec7` |
+| FE-KE-02: Attribute inline edit form (pencil icon, name/type/required/desc/genre) | `KindEditor.tsx` | `6624e70` |
+| FE-KE-03: Attribute toggle on/off (CSS switch, is_active PATCH) | `KindEditor.tsx` | `b28925d` |
+| FE-KE-04: Drag-to-reorder kinds (native HTML DnD, GripVertical, optimistic UI) | `KindEditor.tsx`, `glossary/api.ts` | `63d6b04` |
+| FE-KE-05: Drag-to-reorder attributes | `KindEditor.tsx` | `cb41f1e` |
+| FE-KE-06: Genre-colored dots on tag pills (genreColorMap from genre_groups) | `KindEditor.tsx`, `GlossaryTab.tsx` | `88cfadf` |
+| FE-KE-07: Modified indicator + Revert to default (seedDefaults.ts, confirm dialog) | `KindEditor.tsx`, `seedDefaults.ts` (new) | `c204d1a` |
+| FE-KE review: parallel revert + genre-colored kind tags | `KindEditor.tsx` | `042f4e1` |
 
-**9-phase workflow followed for each BE-KE task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
+**9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
 **What was done in this session (2026-04-04, session 19):**
 

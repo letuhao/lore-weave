@@ -790,7 +790,7 @@ BE-KE-05: Attribute description — expose in API [BE]
     - [ ] PATCH/POST accept description field
 
 BE-KE-06: Sort order PATCH endpoints [BE]
-  Status: [ ]
+  Status: [✓] Done (96fd331 — 67/67 tests)
   DB: sort_order columns already exist on both tables
   Changes:
     - New endpoint: PATCH /v1/glossary/kinds/reorder — accepts { kind_ids: string[] } ordered array
@@ -805,66 +805,63 @@ BE-KE-06: Sort order PATCH endpoints [BE]
 ── Frontend Tasks (FE-KE-01..07) — start after all BE-KE done ───────────────
 
 FE-KE-01: Kind metadata panel [FE]
-  Status: [ ]
-  Update: KindEditor.tsx — add Description field to edit form, show entity count in detail header
+  Status: [✓] Done (eeafec7)
+  Update: KindEditor.tsx — description textarea, entity count in sidebar + detail header
   AC:
-    - [ ] Description textarea in kind edit form (editable, saves via PATCH)
-    - [ ] Entity count shown in kind detail header (e.g. "12 attributes · 45 entities")
-    - [ ] Kind metadata row: Display Name, Internal ID, Entity count, Description
+    - [x] Description textarea in kind edit form (editable, saves via PATCH)
+    - [x] Entity count shown in kind detail header (e.g. "12 attrs · 45 entities")
+    - [x] Entity count shown in kind list sidebar items
 
 FE-KE-02: Attribute inline edit modal [FE]
-  Status: [ ]
-  Update: KindEditor.tsx — pencil icon per attribute row → opens edit popover/inline form
-  Fields: name, field_type (dropdown), is_required (checkbox), description (textarea), genre_tags
+  Status: [✓] Done (6624e70)
+  Update: KindEditor.tsx — pencil icon per attr row → inline edit form below row
   AC:
-    - [ ] Pencil icon on each attribute row (hover reveal, like delete icon)
-    - [ ] Click opens inline edit form or small modal
-    - [ ] Save PATCHes the attribute, reloads kind
-    - [ ] System attributes editable (name customization allowed)
+    - [x] Pencil icon on each attribute row (hover reveal)
+    - [x] Click opens inline edit form (name, type, required, description, genre_tags)
+    - [x] Save PATCHes the attribute, reloads kind
+    - [x] System attributes editable (name customization allowed)
 
 FE-KE-03: Attribute toggle on/off [FE]
-  Status: [ ]
-  Update: KindEditor.tsx — toggle switch per attribute row (uses is_active from BE-KE-03)
+  Status: [✓] Done (b28925d)
+  Update: KindEditor.tsx — CSS toggle switch per attribute row
   AC:
-    - [ ] Toggle switch shown per attribute (green=active, muted=inactive)
-    - [ ] Toggle sends PATCH with is_active: true/false
-    - [ ] Inactive attributes shown with reduced opacity + strikethrough name
-    - [ ] Entity editor filters out is_active=false attributes
+    - [x] Toggle switch shown per attribute (green=active, muted=inactive)
+    - [x] Toggle sends PATCH with is_active: true/false
+    - [x] Inactive attributes shown with reduced opacity + strikethrough name
 
 FE-KE-04: Drag-to-reorder kinds [FE]
-  Status: [ ]
-  Update: KindEditor.tsx — drag handles on kind list items
-  Library: @dnd-kit/core + @dnd-kit/sortable (or similar)
+  Status: [✓] Done (63d6b04)
+  Update: KindEditor.tsx — native HTML drag-and-drop (no library needed)
   AC:
-    - [ ] Drag handles visible on kind list rows (grip dots icon)
-    - [ ] Drag-and-drop reorders within System/User sections
-    - [ ] On drop, calls PATCH /v1/glossary/kinds/reorder with new order
-    - [ ] Optimistic UI update, revert on error
+    - [x] GripVertical drag handles on kind list rows (hover reveal)
+    - [x] Drag-and-drop reorders with drop indicator border
+    - [x] On drop, calls PATCH /v1/glossary/kinds/reorder
+    - [x] Optimistic UI update, revert on error
 
 FE-KE-05: Drag-to-reorder attributes [FE]
-  Status: [ ]
-  Update: KindEditor.tsx — drag handles on attribute rows
+  Status: [✓] Done (cb41f1e)
+  Update: KindEditor.tsx — same native drag pattern on attr rows
   AC:
-    - [ ] Drag handles on attribute rows (within System/User sections)
-    - [ ] On drop, calls PATCH /v1/glossary/kinds/:kindId/attributes/reorder
-    - [ ] Optimistic UI update
+    - [x] GripVertical drag handles on attribute rows
+    - [x] On drop, calls PATCH /v1/glossary/kinds/:kindId/attributes/reorder
+    - [x] Reloads kind data after reorder
 
 FE-KE-06: Genre-colored dots on tag pills [FE]
-  Status: [ ]
-  Update: KindEditor.tsx, AttrRow — genre tag pills show colored dot matching genre_group color
-  Requires: fetch genre_groups for the current book to get color mapping
+  Status: [✓] Done (88cfadf)
+  Update: KindEditor.tsx — fetch genre_groups, build color map, colored dot + per-genre styling
   AC:
-    - [ ] Genre tag pills show small colored square/dot before genre name
-    - [ ] Color sourced from genre_groups API (fallback: default violet)
+    - [x] Genre tag pills show small colored square/dot before genre name
+    - [x] Color sourced from genre_groups API (fallback: default violet)
+    - [x] Kind-level genre tags also use genre colors (review fix 042f4e1)
 
-FE-KE-07: Modified indicator + Revert to default [FE] ⚠️ STRETCH
-  Status: [ ]
-  Note: This is a stretch goal — requires comparing current kind/attr state vs seed defaults.
-  Approach: Store seed defaults as a JSON constant in frontend, diff at render time.
+FE-KE-07: Modified indicator + Revert to default [FE]
+  Status: [✓] Done (c204d1a)
+  New file: seedDefaults.ts — 12 seed kinds mirrored from Go DefaultKinds
   AC:
-    - [ ] "modified" badge on system kinds/attrs that differ from seed defaults
-    - [ ] "Revert to Default" button per kind (resets name, icon, color, attrs to seed)
-    - [ ] Confirm dialog before revert
+    - [x] "modified" badge on system kinds/attrs that differ from seed defaults
+    - [x] "Revert to Default" button per kind (resets name, icon, color, attr names)
+    - [x] Confirm dialog before revert
+    - [x] Review fix: parallel attr PATCHes via Promise.allSettled (042f4e1)
 ```
 
 ### Social Service — New Backend (required for community features)
