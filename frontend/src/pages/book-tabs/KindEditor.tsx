@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/shared/Skeleton';
 import { ConfirmDialog } from '@/components/shared';
 import { cn } from '@/lib/utils';
 import { SEED_KINDS, countKindModifications, isAttrModified } from './seedDefaults';
+import { AttrEditorModal } from './AttrEditorModal';
 
 const FIELD_TYPE_OPTIONS: { value: FieldType; label: string }[] = [
   { value: 'text', label: 'Text' },
@@ -52,6 +53,9 @@ function AttrRow({ attr, kindCode, onEdit, onToggle, onDelete, dragProps, isOver
             <span className="rounded bg-primary/15 px-1 py-0.5 text-[9px] font-medium text-primary">USR</span>
           )}
           {modified && <span className="text-[9px] font-medium text-amber-400 italic">modified</span>}
+          {(attr.auto_fill_prompt || attr.translation_hint) && (
+            <span className="inline-flex items-center gap-1 rounded bg-accent/12 px-1 py-0.5 text-[8px] font-semibold text-accent">AI</span>
+          )}
           {(attr.genre_tags ?? []).map((tag) => {
             const color = genreColorMap?.get(tag);
             return (
@@ -130,14 +134,8 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
   const [newCode, setNewCode] = useState('');
   const [newName, setNewName] = useState('');
 
-  // Edit attribute
-  const [editAttrId, setEditAttrId] = useState<string | null>(null);
-  const [editAttrName, setEditAttrName] = useState('');
-  const [editAttrDesc, setEditAttrDesc] = useState('');
-  const [editAttrType, setEditAttrType] = useState<FieldType>('text');
-  const [editAttrRequired, setEditAttrRequired] = useState(false);
-  const [editAttrGenreTags, setEditAttrGenreTags] = useState<string[]>([]);
-  const [savingAttr, setSavingAttr] = useState(false);
+  // Attr editor modal
+  const [editAttr, setEditAttr] = useState<AttributeDefinition | null>(null);
 
   // Drag reorder kinds
   const [dragKindId, setDragKindId] = useState<string | null>(null);
@@ -289,33 +287,6 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
     } catch (e) { toast.error((e as Error).message); }
   };
 
-  const openEditAttr = (attr: AttributeDefinition) => {
-    setEditAttrId(attr.attr_def_id);
-    setEditAttrName(attr.name);
-    setEditAttrDesc(attr.description ?? '');
-    setEditAttrType(attr.field_type as FieldType);
-    setEditAttrRequired(attr.is_required);
-    setEditAttrGenreTags(attr.genre_tags ?? []);
-  };
-
-  const handleSaveAttr = async () => {
-    if (!accessToken || !selected || !editAttrId || !editAttrName.trim()) return;
-    setSavingAttr(true);
-    try {
-      await glossaryApi.patchAttrDef(accessToken, selected.kind_id, editAttrId, {
-        name: editAttrName,
-        description: editAttrDesc || null,
-        field_type: editAttrType,
-        is_required: editAttrRequired,
-        genre_tags: editAttrGenreTags,
-      });
-      toast.success('Attribute updated');
-      setEditAttrId(null);
-      await loadKinds();
-    } catch (e) { toast.error((e as Error).message); }
-    setSavingAttr(false);
-  };
-
   const handleCreateAttr = async () => {
     if (!accessToken || !selected || !newAttrCode || !newAttrName) return;
     try {
@@ -352,88 +323,6 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
     for (const g of genres) map.set(g.name, g.color);
     return map;
   }, [genres]);
-
-  const renderEditAttrForm = () => (
-    <div className="border-b bg-card/80 px-4 py-3 space-y-2">
-      <div className="grid grid-cols-[1fr_auto_auto] gap-2 items-end">
-        <div>
-          <label className="text-[10px] text-muted-foreground">Name</label>
-          <input
-            value={editAttrName}
-            onChange={(e) => setEditAttrName(e.target.value)}
-            className="mt-0.5 w-full rounded-md border bg-background px-2 py-1.5 text-xs focus:border-ring focus:outline-none"
-          />
-        </div>
-        <div>
-          <label className="text-[10px] text-muted-foreground">Type</label>
-          <select
-            value={editAttrType}
-            onChange={(e) => setEditAttrType(e.target.value as FieldType)}
-            className="mt-0.5 rounded-md border bg-background px-2 py-1.5 text-xs focus:border-ring focus:outline-none"
-          >
-            {FIELD_TYPE_OPTIONS.map((ft) => (
-              <option key={ft.value} value={ft.value}>{ft.label}</option>
-            ))}
-          </select>
-        </div>
-        <label className="flex items-center gap-1.5 pb-1.5 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={editAttrRequired}
-            onChange={(e) => setEditAttrRequired(e.target.checked)}
-            className="h-3.5 w-3.5 rounded border-border accent-primary"
-          />
-          <span className="text-[10px] text-muted-foreground">Required</span>
-        </label>
-      </div>
-      <div>
-        <label className="text-[10px] text-muted-foreground">Description</label>
-        <input
-          value={editAttrDesc}
-          onChange={(e) => setEditAttrDesc(e.target.value)}
-          placeholder="What this attribute represents..."
-          className="mt-0.5 w-full rounded-md border bg-background px-2 py-1.5 text-xs focus:border-ring focus:outline-none placeholder:text-muted-foreground/50"
-        />
-      </div>
-      {/* Genre tags */}
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] text-muted-foreground flex-shrink-0">Genres:</span>
-        <div className="flex flex-wrap items-center gap-1">
-          {editAttrGenreTags.map((tag) => (
-            <span key={tag} className="inline-flex items-center gap-0.5 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-medium text-violet-400">
-              {tag}
-              <button onClick={() => setEditAttrGenreTags(editAttrGenreTags.filter((t) => t !== tag))} className="ml-0.5 text-violet-400/60 hover:text-violet-300">
-                <X className="h-2 w-2" />
-              </button>
-            </span>
-          ))}
-          <input
-            placeholder="+ tag"
-            className="w-16 bg-transparent text-[10px] outline-none placeholder:text-muted-foreground/50"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                const val = (e.target as HTMLInputElement).value.trim();
-                if (val && !editAttrGenreTags.includes(val)) setEditAttrGenreTags([...editAttrGenreTags, val]);
-                (e.target as HTMLInputElement).value = '';
-              }
-            }}
-          />
-        </div>
-      </div>
-      <div className="flex justify-end gap-2">
-        <button onClick={() => setEditAttrId(null)} className="rounded-md border px-3 py-1 text-[10px] text-muted-foreground hover:bg-secondary">Cancel</button>
-        <button
-          onClick={() => void handleSaveAttr()}
-          disabled={savingAttr || !editAttrName.trim()}
-          className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1 text-[10px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-        >
-          {savingAttr && <Loader2 className="h-3 w-3 animate-spin" />}
-          Save
-        </button>
-      </div>
-    </div>
-  );
 
   if (loading) {
     return (
@@ -757,7 +646,7 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                           .sort((a, b) => a.sort_order - b.sort_order)
                           .map((attr) => (
                             <div key={attr.attr_def_id}>
-                              <AttrRow attr={attr} kindCode={selected.code} onEdit={() => openEditAttr(attr)} onToggle={() => void handleToggleAttr(attr)} onDelete={undefined}
+                              <AttrRow attr={attr} kindCode={selected.code} onEdit={() => setEditAttr(attr)} onToggle={() => void handleToggleAttr(attr)} onDelete={undefined}
                                 genreColorMap={genreColorMap}
                                 isOver={overAttrId === attr.attr_def_id && dragAttrId !== attr.attr_def_id}
                                 dragProps={{
@@ -767,7 +656,6 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                                   onDragEnd: () => { setDragAttrId(null); setOverAttrId(null); },
                                   onDrop: () => { if (dragAttrId) void handleAttrDrop(dragAttrId, attr.attr_def_id); setDragAttrId(null); setOverAttrId(null); },
                                 }} />
-                              {editAttrId === attr.attr_def_id && renderEditAttrForm()}
                             </div>
                           ))}
                       </>
@@ -786,7 +674,7 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                           .sort((a, b) => a.sort_order - b.sort_order)
                           .map((attr) => (
                             <div key={attr.attr_def_id}>
-                              <AttrRow attr={attr} kindCode={selected.code} onEdit={() => openEditAttr(attr)} onToggle={() => void handleToggleAttr(attr)} onDelete={() => setDeleteAttrTarget(attr)}
+                              <AttrRow attr={attr} kindCode={selected.code} onEdit={() => setEditAttr(attr)} onToggle={() => void handleToggleAttr(attr)} onDelete={() => setDeleteAttrTarget(attr)}
                                 genreColorMap={genreColorMap}
                                 isOver={overAttrId === attr.attr_def_id && dragAttrId !== attr.attr_def_id}
                                 dragProps={{
@@ -796,7 +684,6 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                                   onDragEnd: () => { setDragAttrId(null); setOverAttrId(null); },
                                   onDrop: () => { if (dragAttrId) void handleAttrDrop(dragAttrId, attr.attr_def_id); setDragAttrId(null); setOverAttrId(null); },
                                 }} />
-                              {editAttrId === attr.attr_def_id && renderEditAttrForm()}
                             </div>
                           ))}
                       </>
@@ -886,6 +773,19 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
         variant="destructive"
         onConfirm={() => void handleRevertKind()}
       />
+
+      {/* Attr Editor Modal */}
+      {editAttr && selected && (
+        <AttrEditorModal
+          kindId={selected.kind_id}
+          kindCode={selected.code}
+          attr={editAttr}
+          genreColorMap={genreColorMap}
+          onClose={() => setEditAttr(null)}
+          onSaved={() => void loadKinds()}
+          onDelete={!editAttr.is_system ? () => { setDeleteAttrTarget(editAttr); setEditAttr(null); } : undefined}
+        />
+      )}
     </div>
   );
 }

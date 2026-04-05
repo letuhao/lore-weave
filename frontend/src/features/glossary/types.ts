@@ -16,6 +16,8 @@ export type AttributeDefinition = {
   sort_order: number;
   options?: string[];
   genre_tags: string[];
+  auto_fill_prompt?: string | null;
+  translation_hint?: string | null;
 };
 
 export type EntityKind = {
