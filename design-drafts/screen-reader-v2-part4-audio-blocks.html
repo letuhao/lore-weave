@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Unified Audio System (Part 4: Audio Blocks + Playback)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ══════════════════════════════════════════════════════════════════════════
+       DESIGN NOTES — Unified Audio System
+
+       REPLACES Part 2 (TTS-only) with a comprehensive audio model.
+
+       TWO AUDIO CONCEPTS:
+       ┌──────────────────────────────────────────────────────────────────────┐
+       │  Concept              │ What it is                                  │
+       ├──────────────────────────────────────────────────────────────────────┤
+       │  Audio Attachment     │ Audio paired with a text block. Could be    │
+       │  (on text blocks)     │ recorded, uploaded, or AI-generated.        │
+       │                       │ Has optional subtitle that may differ       │
+       │                       │ from the block text.                        │
+       ├──────────────────────────────────────────────────────────────────────┤
+       │  audioBlock           │ Standalone audio block (no text). Used for  │
+       │  (new block type)     │ narration, background music, sound effects, │
+       │                       │ spoken-only content. Has optional subtitle. │
+       └──────────────────────────────────────────────────────────────────────┘
+
+       AUDIO SOURCE PRIORITY (playback):
+         1. Attached audio (recorded/uploaded/AI on this block)
+         2. AI TTS (generated audio persisted in DB + MinIO)
+         3. Browser TTS (free, Web Speech API fallback)
+         4. Skip (media blocks, audioBlocks played inline)
+
+       MISMATCH DETECTION:
+         block.text = extractText(block)
+         block.attrs.audio_subtitle = "..."
+         if normalize(text) !== normalize(subtitle) → show ⚠️
+
+       THIS FILE:
+         Section A: Editor — audio attachment on text blocks
+         Section B: Editor — standalone audioBlock
+         Section C: Reader — audio indicators + inline playback
+         Section D: Unified TTSBar + playback engine
+         Section E: Audio management (upload, record, generate, drift)
+         Section F: Architecture (schema, components, data flow)
+    ═══════════════════════════════════════════════════════════════════════ */
+
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a;
+      --destructive: #dc4e4e; --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+      --reader-bg: #181412; --reader-fg: #f5efe8;
+      --reader-font: 'Lora', Georgia, serif;
+      --reader-size: 17px; --reader-line: 1.85;
+      --reader-width: 680px; --reader-spacing: 1.4em;
+      --audio: #8b5cf6;
+      --audio-muted: rgba(139,92,246,0.1);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+    ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 2px; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+    .btn-icon { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: none; cursor: pointer; background: transparent; color: var(--muted-fg); transition: all 120ms; }
+    .btn-icon:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-icon.active { background: var(--primary-muted); color: var(--primary); }
+    .btn-icon-sm { width: 24px; height: 24px; }
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; font-family: inherit; }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+    .btn-outline:hover { background: var(--secondary); }
+
+    .showcase { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+    .showcase h1 { font-family: 'Lora', serif; font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+    .showcase-subtitle { font-size: 13px; color: var(--muted-fg); margin-bottom: 32px; }
+    .showcase-section { margin-bottom: 56px; }
+    .showcase-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .showcase-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    .showcase-note { font-size: 11px; color: var(--muted-fg); margin-bottom: 16px; line-height: 1.6; padding: 10px 14px; background: var(--secondary); border-radius: 6px; border-left: 3px solid var(--accent); }
+
+    /* ── Audio indicator badge ──────────────────────────────────────────── */
+    .audio-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 9px; font-weight: 500; padding: 1px 6px; border-radius: 99px; }
+    .audio-badge.recorded { background: var(--audio-muted); color: var(--audio); }
+    .audio-badge.ai { background: rgba(84,150,232,0.1); color: var(--info); }
+    .audio-badge.browser { background: rgba(158,148,136,0.1); color: var(--muted-fg); }
+    .audio-badge.mismatch { background: rgba(232,168,50,0.1); color: var(--warning); }
+    .audio-badge.none { background: var(--secondary); color: var(--border-hover); }
+
+    /* ── Editor block with audio attachment ─────────────────────────────── */
+    .editor-block {
+      position: relative;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 2px;
+      transition: all 120ms;
+    }
+    .editor-block:hover { border-color: var(--border); }
+    .editor-block.has-audio { border-left: 2px solid var(--audio); }
+    .editor-block.has-audio.mismatch { border-left-color: var(--warning); }
+
+    .editor-block .block-text {
+      font-family: 'Lora', serif;
+      font-size: 15px;
+      line-height: 1.7;
+      outline: none;
+    }
+
+    /* Audio attachment bar (below text in editor) */
+    .audio-attach {
+      margin-top: 8px;
+      padding: 8px 10px;
+      background: var(--background-alt);
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .audio-attach-play {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--audio); color: white;
+      border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: all 120ms;
+    }
+    .audio-attach-play:hover { filter: brightness(1.15); }
+    .audio-attach-info { flex: 1; min-width: 0; }
+    .audio-attach-waveform {
+      height: 24px; flex: 1; display: flex; align-items: center; gap: 1px;
+    }
+    .audio-attach-waveform span {
+      width: 2px; background: var(--audio); border-radius: 1px; opacity: 0.4;
+    }
+    .audio-attach-meta {
+      font-size: 9px; color: var(--muted-fg); display: flex; gap: 8px; margin-top: 3px;
+    }
+    .audio-attach-actions { display: flex; gap: 2px; }
+
+    /* Subtitle diff */
+    .subtitle-diff {
+      margin-top: 6px;
+      padding: 6px 10px;
+      background: rgba(232,168,50,0.04);
+      border: 1px solid rgba(232,168,50,0.15);
+      border-radius: 5px;
+      font-size: 11px;
+    }
+    .subtitle-diff-label { font-size: 9px; font-weight: 600; color: var(--warning); margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.03em; }
+    .subtitle-diff del { color: var(--destructive); text-decoration: line-through; opacity: 0.6; }
+    .subtitle-diff ins { color: var(--success); text-decoration: none; background: rgba(61,186,106,0.08); padding: 0 2px; border-radius: 2px; }
+
+    /* ── Standalone audioBlock in editor ────────────────────────────────── */
+    .audio-block-editor {
+      margin: 8px 0;
+      padding: 14px 16px;
+      background: var(--background-alt);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--audio);
+      border-radius: 0 8px 8px 0;
+    }
+    .audio-block-header {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+    }
+    .audio-block-icon {
+      width: 36px; height: 36px; border-radius: 8px;
+      background: var(--audio-muted); color: var(--audio);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .audio-block-title { font-size: 13px; font-weight: 500; }
+    .audio-block-subtitle-input {
+      width: 100%; padding: 6px 10px; border-radius: 5px;
+      background: var(--background); border: 1px solid var(--border);
+      color: var(--foreground); font-family: 'Lora', serif; font-size: 13px;
+      outline: none; transition: border-color 120ms;
+    }
+    .audio-block-subtitle-input:focus { border-color: var(--audio); }
+    .audio-block-subtitle-input::placeholder { color: rgba(158,148,136,0.4); }
+
+    /* ── Reader: audio indicators on blocks ─────────────────────────────── */
+    .reader-block {
+      position: relative;
+      margin-bottom: var(--reader-spacing);
+      padding: 2px 0;
+      border-radius: 4px;
+      transition: background 200ms, box-shadow 200ms;
+    }
+    .reader-block.playing {
+      background: rgba(139,92,246,0.06);
+      box-shadow: -4px 0 0 var(--audio);
+      padding-left: 12px;
+    }
+    .reader-audio-indicator {
+      position: absolute;
+      right: -32px;
+      top: 4px;
+      opacity: 0;
+      transition: opacity 150ms;
+    }
+    .reader-block:hover .reader-audio-indicator { opacity: 1; }
+    .reader-block.has-audio .reader-audio-indicator { opacity: 0.5; }
+    .reader-block.has-audio:hover .reader-audio-indicator { opacity: 1; }
+
+    .reader-inline-play {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: var(--audio); color: white;
+      border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 120ms;
+    }
+    .reader-inline-play:hover { transform: scale(1.1); }
+
+    /* ── Standalone audioBlock in reader ────────────────────────────────── */
+    .reader-audio-block {
+      margin: calc(var(--reader-spacing) * 1.5) 0;
+      padding: 16px 20px;
+      background: var(--audio-muted);
+      border: 1px solid rgba(139,92,246,0.15);
+      border-radius: 10px;
+    }
+    .reader-audio-player {
+      display: flex; align-items: center; gap: 14px;
+    }
+    .reader-audio-play {
+      width: 44px; height: 44px; border-radius: 50%;
+      background: var(--audio); color: white;
+      border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: all 120ms;
+    }
+    .reader-audio-play:hover { filter: brightness(1.15); transform: scale(1.05); }
+    .reader-audio-waveform {
+      flex: 1; height: 32px; display: flex; align-items: center; gap: 1.5px;
+    }
+    .reader-audio-waveform span {
+      width: 2.5px; background: var(--audio); border-radius: 1px; opacity: 0.3;
+      transition: opacity 200ms;
+    }
+    .reader-audio-waveform.active span { opacity: 0.7; }
+    .reader-audio-time {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px; color: var(--muted-fg); flex-shrink: 0;
+    }
+    .reader-audio-subtitle {
+      margin-top: 10px;
+      font-family: 'Lora', serif;
+      font-size: calc(var(--reader-size) * 0.9);
+      line-height: 1.7;
+      color: var(--muted-fg);
+      font-style: italic;
+    }
+
+    /* ── Unified TTS Bar ───────────────────────────────────────────────── */
+    .tts-bar {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px 18px;
+      display: flex; align-items: center; gap: 14px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      width: 540px;
+    }
+    .tts-play {
+      width: 40px; height: 40px; border-radius: 50%;
+      border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: all 120ms;
+    }
+    .tts-play:hover { filter: brightness(1.1); transform: scale(1.05); }
+    .tts-play.src-recorded { background: var(--audio); color: white; }
+    .tts-play.src-ai { background: var(--info); color: white; }
+    .tts-play.src-browser { background: var(--muted-fg); color: var(--background); }
+
+    .tts-info { flex: 1; min-width: 0; }
+    .tts-source-badge { font-size: 8px; font-weight: 600; padding: 1px 5px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.03em; }
+    .tts-source-badge.recorded { background: var(--audio-muted); color: var(--audio); }
+    .tts-source-badge.ai { background: rgba(84,150,232,0.1); color: var(--info); }
+    .tts-source-badge.browser { background: var(--secondary); color: var(--muted-fg); }
+
+    .tts-block-text {
+      font-size: 12px; color: var(--foreground);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      font-family: 'Lora', serif; margin-top: 2px;
+    }
+    .tts-scrubber {
+      height: 4px; background: var(--secondary); border-radius: 2px;
+      margin-top: 6px; overflow: hidden; cursor: pointer;
+    }
+    .tts-scrubber-fill { height: 100%; border-radius: 2px; transition: width 100ms; }
+    .tts-scrubber-fill.src-recorded { background: var(--audio); }
+    .tts-scrubber-fill.src-ai { background: var(--info); }
+    .tts-scrubber-fill.src-browser { background: var(--muted-fg); }
+
+    .tts-time { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted-fg); flex-shrink: 0; }
+    .tts-controls { display: flex; align-items: center; gap: 1px; }
+    .tts-speed { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted-fg); background: var(--secondary); border: none; padding: 3px 7px; border-radius: 4px; cursor: pointer; }
+
+    /* ── Audio overview panel ───────────────────────────────────────────── */
+    .audio-overview {
+      width: 360px; border: 1px solid var(--border); border-radius: 12px;
+      overflow: hidden; background: var(--card);
+    }
+    .audio-overview-header {
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .audio-overview-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 16px; border-bottom: 1px solid rgba(51,45,40,0.3);
+      font-size: 11px; transition: background 100ms;
+    }
+    .audio-overview-row:hover { background: var(--secondary); }
+    .audio-overview-idx { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--border-hover); width: 20px; text-align: right; }
+    .audio-overview-text { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted-fg); }
+    .audio-overview-status { flex-shrink: 0; }
+  </style>
+</head>
+<body>
+
+<div class="showcase">
+  <h1>Unified Audio System — Part 4</h1>
+  <p class="showcase-subtitle">Audio attachments on text blocks + standalone audioBlock + unified playback with source priority.</p>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       SECTION A: EDITOR — Audio Attachment on Text Blocks
+       ══════════════════════════════════════════════════════════════════════ -->
+
+  <div class="showcase-section">
+    <div class="showcase-label">Section A — Editor: Audio Attachment on Text Blocks</div>
+    <div class="showcase-note">
+      Text blocks gain optional audio attrs: <code>audio_url</code>, <code>audio_subtitle</code>, <code>audio_duration_ms</code>.
+      When audio is attached, a mini player bar appears below the text.
+      If subtitle differs from block text, a mismatch warning shows with diff.
+    </div>
+
+    <div style="background: var(--background-alt); border: 1px solid var(--border); border-radius: 12px; padding: 24px; max-width: 720px;">
+
+      <!-- Block 1: No audio -->
+      <div class="editor-block">
+        <div class="block-text">The throne room was silent except for the gentle hiss of magical torches.</div>
+      </div>
+
+      <!-- Block 2: Has matching audio -->
+      <div class="editor-block has-audio">
+        <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;">
+          <div class="block-text">"Your Majesty, the Hero has arrived," announced the chamberlain.</div>
+          <span class="audio-badge recorded">🔊 recorded</span>
+        </div>
+        <div class="audio-attach">
+          <button class="audio-attach-play">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <div class="audio-attach-info">
+            <div class="audio-attach-waveform">
+              <span style="height: 6px;"></span><span style="height: 14px;"></span><span style="height: 10px;"></span><span style="height: 18px;"></span><span style="height: 8px;"></span><span style="height: 22px;"></span><span style="height: 12px;"></span><span style="height: 16px;"></span><span style="height: 6px;"></span><span style="height: 20px;"></span><span style="height: 10px;"></span><span style="height: 14px;"></span><span style="height: 8px;"></span><span style="height: 18px;"></span><span style="height: 6px;"></span>
+            </div>
+            <div class="audio-attach-meta">
+              <span>0:04</span>
+              <span>narration_002.mp3</span>
+              <span style="color: var(--success);">subtitle matches</span>
+            </div>
+          </div>
+          <div class="audio-attach-actions">
+            <div class="btn-icon btn-icon-sm" title="Replace audio">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 4v6h6M23 20v-6h-6"/></svg>
+            </div>
+            <div class="btn-icon btn-icon-sm" title="Remove audio">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Block 3: Has audio with MISMATCH -->
+      <div class="editor-block has-audio mismatch">
+        <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;">
+          <div class="block-text">The Demon Lord sighed — a sound that caused the torches to flicker.</div>
+          <span class="audio-badge mismatch">⚠️ mismatch</span>
+        </div>
+        <div class="audio-attach">
+          <button class="audio-attach-play">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <div class="audio-attach-info">
+            <div class="audio-attach-waveform">
+              <span style="height: 8px;"></span><span style="height: 16px;"></span><span style="height: 12px;"></span><span style="height: 20px;"></span><span style="height: 6px;"></span><span style="height: 18px;"></span><span style="height: 10px;"></span><span style="height: 14px;"></span>
+            </div>
+            <div class="audio-attach-meta">
+              <span>0:06</span>
+              <span style="color: var(--warning);">subtitle differs from text</span>
+            </div>
+          </div>
+          <div class="audio-attach-actions">
+            <div class="btn-icon btn-icon-sm" title="Replace audio"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 4v6h6M23 20v-6h-6"/></svg></div>
+            <div class="btn-icon btn-icon-sm" title="Remove audio"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></div>
+          </div>
+        </div>
+        <!-- Subtitle diff -->
+        <div class="subtitle-diff">
+          <div class="subtitle-diff-label">⚠️ Subtitle vs block text</div>
+          <div>
+            <div style="margin-bottom: 2px;"><span style="font-size: 9px; color: var(--muted-fg);">Text:</span> The Demon Lord sighed — a sound that caused the torches to flicker.</div>
+            <div><span style="font-size: 9px; color: var(--muted-fg);">Audio:</span> The Demon Lord <ins>let out a heavy</ins> sigh<del> — a sound</del> that caused the torches to flicker<ins>, casting wild shadows across the obsidian walls</ins>.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Block 4: AI-generated audio -->
+      <div class="editor-block has-audio">
+        <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;">
+          <div class="block-text">"Send him in. And prepare the tea. The good one, not the cursed variety."</div>
+          <span class="audio-badge ai">🤖 AI generated</span>
+        </div>
+        <div class="audio-attach">
+          <button class="audio-attach-play" style="background: var(--info);">
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <div class="audio-attach-info">
+            <div class="audio-attach-waveform">
+              <span style="height: 10px; background: var(--info);"></span><span style="height: 18px; background: var(--info);"></span><span style="height: 14px; background: var(--info);"></span><span style="height: 8px; background: var(--info);"></span><span style="height: 22px; background: var(--info);"></span><span style="height: 12px; background: var(--info);"></span><span style="height: 16px; background: var(--info);"></span><span style="height: 6px; background: var(--info);"></span>
+            </div>
+            <div class="audio-attach-meta">
+              <span>0:05</span>
+              <span>Alloy (OpenAI)</span>
+              <span style="color: var(--success);">up to date</span>
+            </div>
+          </div>
+          <div class="audio-attach-actions">
+            <div class="btn-icon btn-icon-sm" title="Re-generate"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 4v6h6M23 20v-6h-6"/></svg></div>
+            <div class="btn-icon btn-icon-sm" title="Remove audio"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Audio attach actions (hover state / right-click) -->
+      <div style="margin-top: 16px; padding: 12px; border: 1px dashed var(--border); border-radius: 8px;">
+        <p style="font-size: 10px; color: var(--muted-fg); margin-bottom: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;">Attach audio to a block (hover actions)</p>
+        <div style="display: flex; gap: 6px;">
+          <button class="btn btn-outline" style="gap: 4px;"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg> Upload</button>
+          <button class="btn btn-outline" style="gap: 4px;"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3zM19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg> Record</button>
+          <button class="btn btn-outline" style="gap: 4px; color: var(--info);"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg> Generate AI</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       SECTION B: EDITOR — Standalone audioBlock
+       ══════════════════════════════════════════════════════════════════════ -->
+
+  <div class="showcase-section">
+    <div class="showcase-label">Section B — Editor: Standalone audioBlock</div>
+    <div class="showcase-note">
+      New block type inserted via slash menu (<code>/audio</code>). Used for narration segments,
+      background music, sound effects, or spoken-only content with no text equivalent.
+      Has optional editable subtitle field.
+    </div>
+
+    <div style="background: var(--background-alt); border: 1px solid var(--border); border-radius: 12px; padding: 24px; max-width: 720px;">
+
+      <!-- audioBlock: with file uploaded -->
+      <div class="audio-block-editor">
+        <div class="audio-block-header">
+          <div class="audio-block-icon">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          </div>
+          <div style="flex: 1;">
+            <div class="audio-block-title">chapter_intro_narration.mp3</div>
+            <div style="font-size: 10px; color: var(--muted-fg); margin-top: 1px;">1:24 &middot; 2.1 MB &middot; uploaded</div>
+          </div>
+          <div style="display: flex; gap: 2px;">
+            <div class="btn-icon btn-icon-sm" title="Replace"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 4v6h6M23 20v-6h-6"/></svg></div>
+            <div class="btn-icon btn-icon-sm" title="Delete block"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></div>
+          </div>
+        </div>
+        <!-- Player -->
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+          <button class="audio-attach-play" style="width: 32px; height: 32px;">
+            <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <div class="audio-attach-waveform" style="height: 28px;">
+            <span style="height: 8px;"></span><span style="height: 20px;"></span><span style="height: 14px;"></span><span style="height: 24px;"></span><span style="height: 10px;"></span><span style="height: 18px;"></span><span style="height: 6px;"></span><span style="height: 22px;"></span><span style="height: 12px;"></span><span style="height: 16px;"></span><span style="height: 8px;"></span><span style="height: 20px;"></span><span style="height: 14px;"></span><span style="height: 10px;"></span><span style="height: 24px;"></span><span style="height: 6px;"></span><span style="height: 18px;"></span><span style="height: 12px;"></span>
+          </div>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted-fg);">0:00 / 1:24</span>
+        </div>
+        <!-- Subtitle field -->
+        <div>
+          <label style="font-size: 9px; color: var(--muted-fg); text-transform: uppercase; letter-spacing: 0.04em;">Subtitle (optional)</label>
+          <input class="audio-block-subtitle-input" type="text" value="In a world where demons and heroes negotiate over tea..." placeholder="Add subtitle text for this audio..." style="margin-top: 4px;" />
+        </div>
+      </div>
+
+      <!-- audioBlock: empty (just inserted) -->
+      <div class="audio-block-editor" style="border-style: dashed; border-color: var(--border-hover); background: transparent;">
+        <div style="text-align: center; padding: 20px;">
+          <div class="audio-block-icon" style="margin: 0 auto 10px;">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          </div>
+          <p style="font-size: 12px; color: var(--muted-fg); margin-bottom: 10px;">Audio Block</p>
+          <div style="display: flex; gap: 6px; justify-content: center;">
+            <button class="btn btn-outline">Upload audio</button>
+            <button class="btn btn-outline">Record</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       SECTION C: READER — Audio Indicators + Inline Playback
+       ══════════════════════════════════════════════════════════════════════ -->
+
+  <div class="showcase-section">
+    <div class="showcase-label">Section C — Reader: Audio Indicators + Inline Playback</div>
+    <div class="showcase-note">
+      In reader view, blocks with attached audio show a small play button on hover.
+      Standalone audioBlocks render as embedded players with waveform + subtitle.
+      Source badges indicate whether audio is recorded, AI, or browser TTS.
+    </div>
+
+    <div style="background: var(--reader-bg); border: 1px solid var(--border); border-radius: 12px; padding: 48px 64px; max-width: 800px;">
+      <div style="max-width: var(--reader-width); margin: 0 auto; position: relative;">
+
+        <!-- Text block: no audio -->
+        <div class="reader-block" style="font-family: var(--reader-font); font-size: var(--reader-size); line-height: var(--reader-line);">
+          <p>The throne room was silent except for the gentle hiss of magical torches.</p>
+          <div class="reader-audio-indicator">
+            <!-- No indicator — no audio -->
+          </div>
+        </div>
+
+        <!-- Text block: has audio (hover shows play) -->
+        <div class="reader-block has-audio" style="font-family: var(--reader-font); font-size: var(--reader-size); line-height: var(--reader-line);">
+          <p>"Your Majesty, the Hero has arrived," announced the chamberlain.</p>
+          <div class="reader-audio-indicator" style="opacity: 1;">
+            <button class="reader-inline-play" title="Play attached audio">
+              <svg width="10" height="10" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Standalone audioBlock in reader -->
+        <div class="reader-audio-block">
+          <div class="reader-audio-player">
+            <button class="reader-audio-play">
+              <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+            <div style="flex: 1;">
+              <div class="reader-audio-waveform">
+                <span style="height: 6px;"></span><span style="height: 18px;"></span><span style="height: 12px;"></span><span style="height: 24px;"></span><span style="height: 8px;"></span><span style="height: 20px;"></span><span style="height: 14px;"></span><span style="height: 10px;"></span><span style="height: 22px;"></span><span style="height: 6px;"></span><span style="height: 16px;"></span><span style="height: 12px;"></span><span style="height: 20px;"></span><span style="height: 8px;"></span><span style="height: 18px;"></span><span style="height: 14px;"></span><span style="height: 6px;"></span><span style="height: 22px;"></span>
+              </div>
+              <div style="height: 3px; background: var(--secondary); border-radius: 2px; margin-top: 6px; overflow: hidden;">
+                <div style="width: 35%; height: 100%; background: var(--audio); border-radius: 2px;"></div>
+              </div>
+            </div>
+            <div class="reader-audio-time">0:30 / 1:24</div>
+          </div>
+          <div class="reader-audio-subtitle">In a world where demons and heroes negotiate over tea, the most dangerous weapon isn't a sword — it's a formal complaint filed in triplicate.</div>
+        </div>
+
+        <!-- Text block: currently playing (highlighted) -->
+        <div class="reader-block has-audio playing" style="font-family: var(--reader-font); font-size: var(--reader-size); line-height: var(--reader-line);">
+          <p>The Demon Lord sighed — a sound that caused the torches to flicker. "Send him in. And prepare the tea."</p>
+          <div class="reader-audio-indicator" style="opacity: 1;">
+            <button class="reader-inline-play" title="Playing...">
+              <svg width="10" height="10" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Text block: mismatch indicator -->
+        <div class="reader-block has-audio" style="font-family: var(--reader-font); font-size: var(--reader-size); line-height: var(--reader-line);">
+          <p>The doors burst open with theatrical force.</p>
+          <div class="reader-audio-indicator" style="opacity: 1;">
+            <div style="display: flex; align-items: center; gap: 3px;">
+              <button class="reader-inline-play" style="background: var(--warning);" title="Play (subtitle differs)">
+                <svg width="10" height="10" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              </button>
+              <span style="font-size: 8px; color: var(--warning);">⚠️</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       SECTION D: UNIFIED TTS BAR + PLAYBACK ENGINE
+       ══════════════════════════════════════════════════════════════════════ -->
+
+  <div class="showcase-section">
+    <div class="showcase-label">Section D — Unified TTSBar + Playback Engine</div>
+    <div class="showcase-note">
+      <strong>Source priority per block:</strong><br>
+      1. Attached audio (recorded/uploaded) → plays audio file<br>
+      2. AI TTS (generated, persisted) → plays audio file<br>
+      3. Browser TTS (Web Speech API) → speaks text live<br>
+      4. Standalone audioBlock → played inline, TTSBar skips or pauses<br><br>
+      TTSBar shows source badge so reader knows what they're hearing.
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 20px; align-items: center;">
+
+      <!-- State: Playing recorded audio -->
+      <div>
+        <div style="font-size: 10px; color: var(--muted-fg); text-align: center; margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Playing — Recorded Audio</div>
+        <div class="tts-bar">
+          <button class="tts-play src-recorded">
+            <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+          </button>
+          <div class="tts-info">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-family: 'JetBrains Mono'; font-size: 9px; background: var(--secondary); padding: 1px 5px; border-radius: 3px; color: var(--muted-fg);">2 / 8</span>
+              <span class="tts-source-badge recorded">🎵 recorded</span>
+            </div>
+            <div class="tts-block-text">"Your Majesty, the Hero has arrived," announced the chamberlain.</div>
+            <div class="tts-scrubber"><div class="tts-scrubber-fill src-recorded" style="width: 45%;"></div></div>
+          </div>
+          <div class="tts-time">0:02 / 0:04</div>
+          <div class="tts-controls">
+            <div class="btn-icon btn-icon-sm"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 20L9 12l10-8v16zM5 19V5"/></svg></div>
+            <div class="btn-icon btn-icon-sm"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 4l10 8-10 8V4zM19 5v14"/></svg></div>
+            <button class="tts-speed">1.0x</button>
+            <div class="btn-icon btn-icon-sm"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- State: Playing AI TTS -->
+      <div>
+        <div style="font-size: 10px; color: var(--muted-fg); text-align: center; margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Playing — AI Generated</div>
+        <div class="tts-bar">
+          <button class="tts-play src-ai">
+            <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+          </button>
+          <div class="tts-info">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-family: 'JetBrains Mono'; font-size: 9px; background: var(--secondary); padding: 1px 5px; border-radius: 3px; color: var(--muted-fg);">4 / 8</span>
+              <span class="tts-source-badge ai">🤖 Alloy (AI)</span>
+            </div>
+            <div class="tts-block-text">"Send him in. And prepare the tea. The good one, not the cursed variety."</div>
+            <div class="tts-scrubber"><div class="tts-scrubber-fill src-ai" style="width: 60%;"></div></div>
+          </div>
+          <div class="tts-time">0:03 / 0:05</div>
+          <div class="tts-controls">
+            <div class="btn-icon btn-icon-sm"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 20L9 12l10-8v16zM5 19V5"/></svg></div>
+            <div class="btn-icon btn-icon-sm"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 4l10 8-10 8V4zM19 5v14"/></svg></div>
+            <button class="tts-speed">1.0x</button>
+            <div class="btn-icon btn-icon-sm"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- State: Browser TTS fallback -->
+      <div>
+        <div style="font-size: 10px; color: var(--muted-fg); text-align: center; margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Playing — Browser TTS (fallback)</div>
+        <div class="tts-bar">
+          <button class="tts-play src-browser">
+            <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+          </button>
+          <div class="tts-info">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-family: 'JetBrains Mono'; font-size: 9px; background: var(--secondary); padding: 1px 5px; border-radius: 3px; color: var(--muted-fg);">6 / 8</span>
+              <span class="tts-source-badge browser">📢 browser</span>
+            </div>
+            <div class="tts-block-text">The doors burst open with theatrical force. The Hero strode in, armor gleaming.</div>
+            <div class="tts-scrubber"><div class="tts-scrubber-fill src-browser" style="width: 30%;"></div></div>
+          </div>
+          <div class="tts-time">—</div>
+          <div class="tts-controls">
+            <div class="btn-icon btn-icon-sm"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 20L9 12l10-8v16zM5 19V5"/></svg></div>
+            <div class="btn-icon btn-icon-sm"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 4l10 8-10 8V4zM19 5v14"/></svg></div>
+            <button class="tts-speed">1.0x</button>
+            <div class="btn-icon btn-icon-sm"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       SECTION E: AUDIO OVERVIEW PANEL
+       ══════════════════════════════════════════════════════════════════════ -->
+
+  <div class="showcase-section">
+    <div class="showcase-label">Section E — Audio Overview Panel</div>
+    <div class="showcase-note">
+      Shows per-block audio status for the chapter. Accessible from the ThemeCustomizer
+      or a dedicated toolbar button. Helps authors see which blocks have audio and which
+      need recording/generation.
+    </div>
+
+    <div class="audio-overview">
+      <div class="audio-overview-header">
+        <span style="font-size: 13px; font-weight: 600;">Audio Overview</span>
+        <span style="font-size: 10px; color: var(--muted-fg);">5 / 8 blocks have audio</span>
+      </div>
+      <div style="max-height: 300px; overflow-y: auto;">
+        <div class="audio-overview-row">
+          <span class="audio-overview-idx">1</span>
+          <span class="audio-overview-text">The throne room was silent except for the gentle...</span>
+          <span class="audio-overview-status"><span class="audio-badge none">— none</span></span>
+        </div>
+        <div class="audio-overview-row">
+          <span class="audio-overview-idx">2</span>
+          <span class="audio-overview-text">"Your Majesty, the Hero has arrived," announced...</span>
+          <span class="audio-overview-status"><span class="audio-badge recorded">🔊 recorded</span></span>
+        </div>
+        <div class="audio-overview-row" style="background: rgba(232,168,50,0.03);">
+          <span class="audio-overview-idx">3</span>
+          <span class="audio-overview-text">The Demon Lord sighed — a sound that caused...</span>
+          <span class="audio-overview-status"><span class="audio-badge mismatch">⚠️ mismatch</span></span>
+        </div>
+        <div class="audio-overview-row">
+          <span class="audio-overview-idx">4</span>
+          <span class="audio-overview-text">"Send him in. And prepare the tea."</span>
+          <span class="audio-overview-status"><span class="audio-badge ai">🤖 AI</span></span>
+        </div>
+        <div class="audio-overview-row">
+          <span class="audio-overview-idx">—</span>
+          <span class="audio-overview-text" style="color: var(--audio);">🎵 chapter_intro_narration.mp3</span>
+          <span class="audio-overview-status"><span class="audio-badge recorded">🔊 audio</span></span>
+        </div>
+        <div class="audio-overview-row">
+          <span class="audio-overview-idx">5</span>
+          <span class="audio-overview-text">"Demon Lord!" he bellowed. "I have come to lodge..."</span>
+          <span class="audio-overview-status"><span class="audio-badge ai">🤖 AI</span></span>
+        </div>
+        <div class="audio-overview-row">
+          <span class="audio-overview-idx">6</span>
+          <span class="audio-overview-text">The doors burst open with theatrical force.</span>
+          <span class="audio-overview-status"><span class="audio-badge none">— none</span></span>
+        </div>
+        <div class="audio-overview-row">
+          <span class="audio-overview-idx">7</span>
+          <span class="audio-overview-text">"Sit down, Aldric." The Demon Lord gestured...</span>
+          <span class="audio-overview-status"><span class="audio-badge ai">🤖 AI</span></span>
+        </div>
+      </div>
+      <div style="padding: 10px 16px; border-top: 1px solid var(--border); display: flex; gap: 6px;">
+        <button class="btn btn-outline" style="flex: 1; justify-content: center; gap: 4px;">
+          <svg width="12" height="12" fill="none" stroke="var(--info)" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          Generate missing (3 blocks, ~$0.06)
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       SECTION F: ARCHITECTURE
+       ══════════════════════════════════════════════════════════════════════ -->
+
+  <div class="showcase-section">
+    <div class="showcase-label">Section F — Architecture</div>
+    <div class="showcase-note" style="font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 1.8; white-space: pre; border-left-color: var(--primary);">
+TIPTAP SCHEMA:
+
+  paragraph / heading / blockquote / callout (text blocks):
+    Existing attrs + NEW optional audio attrs:
+      audio_url:         string | null   ← MinIO presigned URL
+      audio_key:         string | null   ← MinIO object key
+      audio_subtitle:    string | null   ← what the audio says (may differ from text)
+      audio_duration_ms: number | null
+      audio_source:      'recorded' | 'uploaded' | 'ai' | null
+
+  audioBlock (NEW node type):
+    attrs:
+      src:          string | null   ← MinIO presigned URL
+      media_key:    string | null   ← MinIO object key
+      subtitle:     string | null
+      title:        string | null   ← filename or description
+      duration_ms:  number | null
+      size_bytes:   number | null
+
+
+DB TABLE (persisted AI audio — extends previous design):
+
+  chapter_audio_segments
+    segment_id        UUID PK
+    chapter_id        UUID NOT NULL
+    block_index       INT NOT NULL
+    source_text       TEXT NOT NULL          ← subtitle / text that was spoken
+    source_text_hash  VARCHAR(64) NOT NULL   ← for drift detection
+    voice             TEXT NOT NULL
+    provider          TEXT NOT NULL
+    language          TEXT NOT NULL
+    media_key         TEXT NOT NULL           ← MinIO key
+    duration_ms       INT NOT NULL
+    created_at        TIMESTAMPTZ DEFAULT now()
+
+  INDEX: (chapter_id, language, voice, block_index)
+
+  Note: This table stores AI-generated audio only.
+  Recorded/uploaded audio is stored as block attrs (audio_url, audio_key)
+  directly in the Tiptap JSON — persisted when chapter is saved.
+
+
+MISMATCH DETECTION:
+
+  For text blocks with audio attachment:
+    blockText = extractText(block)
+    subtitle  = block.attrs.audio_subtitle
+    normalize = (s) => s.toLowerCase().replace(/[\s\p{P}]/gu, '')
+    isMismatch = subtitle && normalize(blockText) !== normalize(subtitle)
+
+
+PLAYBACK ENGINE (source priority per block):
+
+  for each block in chapter:
+    if block.type === 'audioBlock':
+      → play inline (not in TTS bar)
+    else if block.attrs.audio_url:
+      → play attached audio via &lt;audio&gt; element
+      → source badge: 'recorded' or 'uploaded' or 'ai'
+    else if aiSegments[block_index]:
+      → play AI-generated segment via &lt;audio&gt; element
+      → source badge: 'ai'
+    else:
+      → speak via Web Speech API (browser TTS)
+      → source badge: 'browser'
+
+
+COMPONENT TREE:
+
+  &lt;TTSProvider&gt;
+    state: { status, activeBlockId, source, speed, voice }
+    engines:
+      BrowserTTSEngine   ← Web Speech API
+      AudioFileEngine     ← plays attached/AI audio via &lt;audio&gt;
+    │
+    ├── &lt;TTSBar /&gt;          ← floating player (reads from context)
+    ├── &lt;TTSSettings /&gt;     ← voice, speed, mode toggles
+    └── &lt;AudioOverview /&gt;   ← per-block status panel
+
+
+FILES TO CREATE:
+
+  Editor:
+    frontend/src/components/editor/AudioBlockNode.tsx     ← new Tiptap node
+    frontend/src/components/editor/AudioAttachBar.tsx     ← mini player on text blocks
+    frontend/src/components/editor/AudioAttachActions.tsx  ← upload/record/generate buttons
+
+  Reader:
+    frontend/src/components/reader/blocks/AudioBlock.tsx   ← display component
+    frontend/src/components/reader/TTSBar.tsx
+    frontend/src/components/reader/TTSSettings.tsx
+    frontend/src/components/reader/AudioOverview.tsx
+
+  Hooks:
+    frontend/src/hooks/useTTS.ts          ← unified playback engine
+    frontend/src/hooks/useBlockScroll.ts  ← auto-scroll on block change
+    frontend/src/hooks/useAudioUpload.ts  ← upload/record audio to MinIO
+
+  Backend:
+    services/book-service migrate.go      ← chapter_audio_segments table
+    services/book-service server.go       ← audio CRUD + generate endpoints
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
