@@ -31,7 +31,7 @@
 
 ## Current Active Work
 
-**Phase:** Phase 8 — Unified Content Viewer & Reader Rewrite. RD-00 done, RD-01 next.
+**Phase:** Phase 8A — ContentRenderer + ReaderPage Rewrite COMPLETE (13/13 tasks). Next: Phase 8B (reader theme).
 
 **What was done in this session (2026-04-05, session 21):**
 
@@ -43,9 +43,21 @@ Phase 8 design + planning + RD-00. Design review of reader architecture, 3 HTML 
 | Design: reader-v2-part2 (TTS/audio player) | `design-drafts/screen-reader-v2-part2-audio-tts.html` (new) | pending |
 | Design: reader-v2-part3 (review modes) | `design-drafts/screen-reader-v2-part3-review-modes.html` (new) | pending |
 | Planning: Phase 8 breakdown (30 tasks, 7 sub-phases) | `docs/03_planning/99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | pending |
-| RD-00: Install 5 missing editor extensions (link, underline, highlight, sub, sup) | `TiptapEditor.tsx`, `FormatToolbar.tsx`, `package.json` | pending |
+| RD-00: Install 5 missing editor extensions (link, underline, highlight, sub, sup) | `TiptapEditor.tsx`, `FormatToolbar.tsx`, `package.json` | `544c047` |
+| RD-01: InlineRenderer — text marks display (9 marks + hardBreak) | `InlineRenderer.tsx` (new) | `bdfd177` |
+| RD-02: Text block display components (paragraph, heading, blockquote, list, hr) | `blocks/` (5 new files) | `1be9279` |
+| RD-03: Media block display components (image, video, code, callout) | `blocks/` (4 new files) | `2d961f4` |
+| RD-04: ContentRenderer orchestrator (block→component mapping) | `ContentRenderer.tsx` (new) | `cbc1113` |
+| RD-05: Reader CSS — full + compact mode styles | `reader.css` (new) | `83d4227` |
+| RD-06: ReaderPage rewrite — ContentRenderer replaces TiptapEditor | `ReaderPage.tsx` | `24d4b25` |
+| RD-07: Chapter header + end marker — metadata, reading time, CJK | `ReaderPage.tsx`, `reader.css` | `4a06029` |
+| RD-08: Extract TOCSidebar from ReaderPage | `TOCSidebar.tsx` (new) | `e62f25c` |
+| RD-09: Language selector in TOC — switch reading language | `TOCSidebar.tsx`, `ReaderPage.tsx`, `reader.css` | `4f08f20` |
+| RD-10: Top bar edit button — owner-only visibility | `ReaderPage.tsx` | `93b12b6` |
+| RD-11: Keyboard shortcuts (arrows, T, Escape, Home/End) | `ReaderPage.tsx` | `6d35e16` |
+| RD-12: Integration cleanup — remove old .tiptap-reader CSS, mark tasks done | `index.css`, planning doc | pending |
 
-**9-phase workflow followed for RD-00:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
+**9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
 **What was done in this session (2026-04-05, session 20):**
 

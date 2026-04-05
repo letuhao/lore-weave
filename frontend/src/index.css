@@ -360,14 +360,3 @@
   pointer-events: none;
   height: 0;
 }
-
-/* ── Reader mode (read-only Tiptap) ────────────────────────────────────── */
-.tiptap-reader .tiptap-content {
-  font-size: 17px;
-  line-height: 1.85;
-  padding: 0;
-}
-
-.tiptap-reader .tiptap-content p {
-  margin-bottom: 1.4em;
-}

@@ -2257,7 +2257,7 @@ Task order:
 ```
 
   RD-00: Install missing editor extensions [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Scope: Add 5 Tiptap inline mark extensions to the editor
     Packages: @tiptap/extension-link, @tiptap/extension-underline,
@@ -2279,7 +2279,7 @@ Task order:
       - [ ] Build passes, no new warnings
 
   RD-01: InlineRenderer — text marks display [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: RD-00
     Scope: Component that renders Tiptap inline content (text nodes + marks)
@@ -2301,7 +2301,7 @@ Task order:
       - [ ] Unknown mark types don't crash
 
   RD-02: Block display components — text types [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: RD-01
     Scope: Display components for text-based blocks
@@ -2322,7 +2322,7 @@ Task order:
       - [ ] Styling uses --reader-* CSS variables
 
   RD-03: Block display components — media types [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: RD-01
     Scope: Display components for media blocks
@@ -2342,7 +2342,7 @@ Task order:
       - [ ] Callout types (info, warning, success, danger) show correct colors
 
   RD-04: ContentRenderer — block orchestrator [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: RD-02, RD-03
     Scope: Main component that maps Tiptap JSON blocks to display components
@@ -2367,7 +2367,7 @@ Task order:
       - [ ] Unknown block type shows debug fallback (not crash)
 
   RD-05: ContentRenderer CSS — reader styles [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: RD-04
     Scope: CSS for all block types in reader context
@@ -2386,7 +2386,7 @@ Task order:
       - [ ] Dark theme + sepia theme both render well
 
   RD-06: ReaderPage rewrite — basic structure [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: RD-04, RD-05
     Scope: Rewrite ReaderPage.tsx to use ContentRenderer instead of TiptapEditor
@@ -2406,7 +2406,7 @@ Task order:
       - [ ] Loading state shows correctly
 
   RD-07: ReaderPage — chapter header + end marker [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: RD-06
     Scope: Chapter header (number, title, metadata) and end-of-chapter marker
@@ -2421,7 +2421,7 @@ Task order:
       - [ ] End marker visible after content
 
   RD-08: ReaderPage — TOC sidebar [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: RD-06
     Scope: Table of contents slide-in overlay (matches existing design)
@@ -2442,7 +2442,7 @@ Task order:
       - [ ] Navigation to other chapters works
 
   RD-09: ReaderPage — language selector in TOC [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: RD-08
     Scope: Language pills in TOC footer for switching reading language
@@ -2463,7 +2463,7 @@ Task order:
       - [ ] Graceful handling when no translations exist
 
   RD-10: ReaderPage — top bar actions [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: RD-06
     Scope: Top bar action buttons (theme, edit, close)
@@ -2478,7 +2478,7 @@ Task order:
       - [ ] Close button navigates back to book detail
 
   RD-11: ReaderPage — keyboard shortcuts [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: RD-06, RD-08
     Scope: Keyboard navigation for reader
@@ -2495,7 +2495,7 @@ Task order:
       - [ ] No conflict with browser defaults
 
   RD-12: Integration test + cleanup [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: RD-06..RD-11
     Scope: Verify full reader flow, clean up old CSS
