@@ -254,44 +254,45 @@
 
       <!-- Kind detail / Attribute editor (right side) -->
       <div class="panel">
+        <!-- Kind header: code + badges + actions -->
         <div class="panel-header">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <span class="panel-title">Character</span>
-            <span class="badge badge-system">
-              <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-              System Kind
-            </span>
-            <span class="attr-modified">2 attributes modified</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="font-mono" style="font-size: 10px; color: var(--muted-fg);">character</span>
+            <span class="badge badge-system" style="font-size: 9px;">system</span>
+            <span style="font-size: 10px; color: var(--muted-fg);">12 attrs &middot; 45 entities</span>
+            <span class="attr-modified">modified</span>
           </div>
           <div style="display: flex; align-items: center; gap: 6px;">
             <button class="btn-revert" title="Revert all changes to system defaults">
               <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 10h10a5 5 0 010 10H9m-6-10l4-4m-4 4l4 4"/></svg>
               Revert to Default
             </button>
-            <button class="btn btn-outline btn-sm">
-              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-              Edit Kind
+            <button class="btn btn-primary btn-sm" style="opacity: 0.4; pointer-events: none;">
+              <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+              Save
             </button>
           </div>
         </div>
 
-        <!-- Kind metadata -->
-        <div style="padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 24px; flex-wrap: wrap;">
-          <div>
-            <span style="font-size: 10px; color: var(--muted-fg); display: block; margin-bottom: 2px;">Display Name</span>
-            <span style="font-size: 13px;">Character</span>
+        <!-- Kind inline edit form (NOT a separate modal — always visible when kind selected) -->
+        <div style="padding: 14px 16px; border-bottom: 1px solid var(--border);">
+          <div style="display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: end; margin-bottom: 10px;">
+            <div>
+              <span style="font-size: 10px; color: var(--muted-fg); display: block; margin-bottom: 3px;">Icon</span>
+              <input class="input-field" value="👤" style="width: 48px; text-align: center; font-size: 16px; padding: 4px;" />
+            </div>
+            <div>
+              <span style="font-size: 10px; color: var(--muted-fg); display: block; margin-bottom: 3px;">Name</span>
+              <input class="input-field input-field-sm" value="Character" />
+            </div>
+            <div>
+              <span style="font-size: 10px; color: var(--muted-fg); display: block; margin-bottom: 3px;">Color</span>
+              <input type="color" value="#6366f1" style="width: 36px; height: 30px; border: 1px solid var(--border); border-radius: 4px; background: var(--input); cursor: pointer;" />
+            </div>
           </div>
           <div>
-            <span style="font-size: 10px; color: var(--muted-fg); display: block; margin-bottom: 2px;">Internal ID</span>
-            <span class="font-mono" style="font-size: 11px; color: var(--muted-fg);">character</span>
-          </div>
-          <div>
-            <span style="font-size: 10px; color: var(--muted-fg); display: block; margin-bottom: 2px;">Entities</span>
-            <span style="font-size: 13px;">45</span>
-          </div>
-          <div>
-            <span style="font-size: 10px; color: var(--muted-fg); display: block; margin-bottom: 2px;">Description</span>
-            <span style="font-size: 13px;">Named characters in the story with personality, appearance, and relationships.</span>
+            <span style="font-size: 10px; color: var(--muted-fg); display: block; margin-bottom: 3px;">Description</span>
+            <textarea class="input-field" rows="2" style="font-size: 12px; resize: none;" placeholder="What this kind represents...">Named characters in the story with personality, appearance, and relationships.</textarea>
           </div>
         </div>
 
@@ -381,17 +382,21 @@
             <div class="btn-icon"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></div>
           </div>
 
-          <!-- Appearance (system) -->
+          <!-- Appearance (system, has AI prompt configured) -->
           <div class="attr-row">
             <svg class="drag-handle" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/></svg>
             <div class="attr-name">
               <span>Appearance</span>
               <span class="attr-type">long_text</span>
               <span class="badge badge-system" style="font-size: 8px;">SYS</span>
+              <span style="display: inline-flex; align-items: center; gap: 2px; padding: 1px 5px; border-radius: 3px; font-size: 8px; font-weight: 600; background: rgba(61,166,146,0.12); color: var(--accent);">
+                <svg width="7" height="7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                AI
+              </span>
             </div>
             <span style="font-size: 10px; color: var(--muted-fg);">optional</span>
             <div class="toggle on"></div>
-            <div class="btn-icon"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5"/></svg></div>
+            <div class="btn-icon" title="Edit — opens Attribute Editor Modal"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></div>
           </div>
 
           <!-- Personality (system) -->
@@ -493,6 +498,20 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Design notes for kind editor -->
+    <div style="margin-top: 16px; padding: 14px 16px; border: 1px dashed var(--border); border-radius: 8px; font-size: 11px; color: var(--muted-fg); line-height: 1.7;">
+      <strong style="color: var(--foreground);">Kind Editor — Design Notes (updated P3-KE)</strong>
+      <ul style="margin: 6px 0 0 16px;">
+        <li><strong>Left panel:</strong> Kind list with drag handles, icon, name, System/Custom badge, "modified" indicator, attr count + entity count.</li>
+        <li><strong>Right panel — Kind edit:</strong> Inline editing (Icon, Name, Color, Description). NOT a modal — always visible for quick edits. Save button appears when dirty.</li>
+        <li><strong>Attr rows — inline toggle:</strong> Toggle switch (is_active) stays inline for quick on/off without opening a modal. This is QoL — most common attr action.</li>
+        <li><strong>Attr rows — pencil icon:</strong> Opens the <strong>Attribute Editor Modal</strong> (see <code>screen-attr-editor-modal.html</code>) — a floating modal with Core, Options, Genre Scoping, and AI Assistance sections.</li>
+        <li><strong>AI badge:</strong> Small teal "AI" pill on attr rows that have auto-fill or translation prompts configured. Tells the user at a glance which attrs have AI assistance.</li>
+        <li><strong>Delete icon:</strong> Only on user (custom) attrs. System attrs can be deactivated via toggle but not deleted.</li>
+        <li><strong>Revert to Default:</strong> Button in kind header (system kinds only, when modified). Resets name, icon, color + system attr names to seed values.</li>
+      </ul>
     </div>
   </div>
 

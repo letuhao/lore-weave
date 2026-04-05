@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Attribute Definition Editor Modal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --input: #242019; --ring: #d4952a;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --secondary-fg: #e0d8cc;
+      --muted: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --destructive: #dc4e4e; --success: #3dba6a; --warning: #e8a832; --info: #5496e8;
+      --system: #7c6cd4; --system-muted: #2a2540;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    /* Buttons */
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; font-family: inherit; }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+    .btn-outline:hover { background: var(--secondary); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); padding: 4px 8px; }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-sm { padding: 3px 8px; font-size: 11px; border-radius: 4px; }
+
+    /* Form elements */
+    .input-field { background: var(--input); border: 1px solid var(--border); color: var(--foreground); border-radius: 6px; padding: 7px 10px; font-size: 13px; font-family: inherit; width: 100%; transition: border-color 150ms; }
+    .input-field:focus { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px rgba(212,149,42,0.15); }
+    .input-field::placeholder { color: rgba(158,148,136,0.5); }
+    .input-field-sm { font-size: 12px; padding: 5px 8px; }
+    textarea.input-field { resize: vertical; min-height: 60px; line-height: 1.5; }
+
+    /* Badges */
+    .badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 500; }
+    .badge-system { background: var(--system-muted); color: var(--system); }
+    .badge-user { background: var(--primary-muted); color: var(--primary); }
+    .badge-muted { background: var(--secondary); color: var(--muted-fg); }
+
+    /* Genre pill */
+    .genre-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 500; }
+    .genre-pill .dot { width: 5px; height: 5px; border-radius: 2px; flex-shrink: 0; }
+    .genre-pill .remove { cursor: pointer; opacity: 0.5; font-size: 12px; margin-left: 2px; }
+    .genre-pill .remove:hover { opacity: 1; }
+
+    /* Toggle switch */
+    .toggle { width: 32px; height: 18px; border-radius: 9px; background: var(--secondary); position: relative; cursor: pointer; transition: all 150ms; flex-shrink: 0; }
+    .toggle.on { background: var(--success); }
+    .toggle::after { content: ''; position: absolute; width: 14px; height: 14px; border-radius: 50%; background: var(--foreground); top: 2px; left: 2px; transition: all 150ms; }
+    .toggle.on::after { left: 16px; }
+
+    /* Labels */
+    .field-label { font-size: 11px; font-weight: 500; color: var(--muted-fg); margin-bottom: 4px; display: block; }
+    .field-hint { font-size: 10px; color: var(--muted-fg); margin-top: 3px; opacity: 0.7; }
+
+    /* Section */
+    .section { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 16px; }
+    .section-header { padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; background: rgba(24,20,18,0.5); border-bottom: 1px solid var(--border); }
+    .section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; display: flex; align-items: center; gap: 6px; }
+    .section-body { padding: 14px; }
+    .section-body.disabled { opacity: 0.4; pointer-events: none; }
+
+    /* Showcase wrapper */
+    .showcase { max-width: 900px; margin: 0 auto; padding: 32px 24px; }
+    .showcase h1 { font-family: 'Lora', serif; font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+    .showcase-subtitle { font-size: 13px; color: var(--muted-fg); margin-bottom: 32px; }
+    .showcase-section { margin-bottom: 48px; }
+    .showcase-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .showcase-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* Modal */
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 40; }
+    .modal-container { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .modal { width: 100%; max-width: 640px; max-height: calc(100vh - 48px); border-radius: 12px; border: 1px solid var(--border); background: var(--background); box-shadow: 0 25px 50px rgba(0,0,0,0.5); display: flex; flex-direction: column; overflow: hidden; }
+    .modal-header { padding: 16px 20px; border-bottom: 1px solid var(--border); background: var(--card); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+    .modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+    .modal-footer { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; background: var(--card); }
+
+    /* Options list editor */
+    .option-item { display: flex; align-items: center; gap: 6px; padding: 4px 0; }
+    .option-item .drag-handle { color: var(--muted-fg); opacity: 0.3; cursor: grab; }
+    .option-item:hover .drag-handle { opacity: 0.7; }
+    .option-item .remove-btn { opacity: 0; transition: opacity 100ms; cursor: pointer; color: var(--destructive); }
+    .option-item:hover .remove-btn { opacity: 1; }
+
+    /* AI prompt section */
+    .ai-field { position: relative; }
+    .ai-field textarea { font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.6; }
+    .ai-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+    .ai-badge-active { background: rgba(61,166,146,0.15); color: var(--accent); }
+    .ai-badge-empty { background: var(--secondary); color: var(--muted-fg); }
+
+    /* Variable chip in prompt */
+    .var-chip { display: inline-flex; align-items: center; gap: 2px; padding: 1px 5px; border-radius: 3px; font-size: 10px; font-family: 'JetBrains Mono', monospace; background: var(--accent-muted); color: var(--accent); border: 1px solid rgba(61,166,146,0.2); cursor: pointer; }
+    .var-chip:hover { background: rgba(61,166,146,0.2); }
+
+    /* For static showcase only */
+    .static-showcase { position: relative; }
+  </style>
+</head>
+<body>
+
+<div class="showcase">
+
+  <h1>Attribute Definition Editor</h1>
+  <p class="showcase-subtitle">Modal for editing attribute definitions within entity kinds. Replaces the inline edit form. Designed for future AI assistance columns.</p>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       VARIANT 1: System Attribute (Character > Appearance)
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">1. System Attribute — editing a system attr with modifications</div>
+
+    <div class="static-showcase">
+      <!-- Modal -->
+      <div class="modal" style="position: relative; max-height: none;">
+        <!-- Header -->
+        <div class="modal-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 14px; font-weight: 600;">Edit Attribute</span>
+            <span class="badge badge-system">
+              <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+              System
+            </span>
+            <span style="font-size: 9px; font-weight: 500; color: var(--warning); font-style: italic;">modified</span>
+          </div>
+          <button class="btn-ghost" style="padding: 4px;">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <!-- Body -->
+        <div class="modal-body">
+
+          <!-- Section: Core -->
+          <div class="section">
+            <div class="section-header">
+              <span class="section-title" style="color: var(--foreground);">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                Core
+              </span>
+            </div>
+            <div class="section-body">
+              <div style="display: grid; grid-template-columns: 1fr auto; gap: 12px; margin-bottom: 12px;">
+                <div>
+                  <label class="field-label">Display Name</label>
+                  <input class="input-field" value="Physical Appearance" />
+                </div>
+                <div>
+                  <label class="field-label">Field Type</label>
+                  <select class="input-field" style="width: 140px;">
+                    <option>Text</option>
+                    <option selected>Long text</option>
+                    <option>Select</option>
+                    <option>Number</option>
+                    <option>Date</option>
+                    <option>Tags</option>
+                    <option>URL</option>
+                    <option>Boolean</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 16px; margin-bottom: 12px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <label class="field-label" style="margin: 0;">Internal Code</label>
+                  <span class="font-mono" style="font-size: 11px; color: var(--muted-fg); background: var(--secondary); padding: 2px 6px; border-radius: 3px;">appearance</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <label class="field-label" style="margin: 0;">Required</label>
+                  <div class="toggle"></div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <label class="field-label" style="margin: 0;">Active</label>
+                  <div class="toggle on"></div>
+                </div>
+              </div>
+
+              <div>
+                <label class="field-label">Description</label>
+                <textarea class="input-field" rows="2" placeholder="What this attribute represents...">Physical description of the character — height, build, eye color, distinguishing features.</textarea>
+                <p class="field-hint">Shown as help text when filling in entity attributes.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: Genre Scoping -->
+          <div class="section">
+            <div class="section-header">
+              <span class="section-title" style="color: var(--system);">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+                Genre Scoping
+              </span>
+              <span style="font-size: 10px; color: var(--muted-fg);">Empty = visible for all genres</span>
+            </div>
+            <div class="section-body">
+              <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+                <span class="genre-pill" style="background: rgba(139,92,246,0.15); color: #a78bfa;">
+                  <span class="dot" style="background: #8b5cf6;"></span>
+                  Fantasy
+                  <span class="remove">&times;</span>
+                </span>
+                <span class="genre-pill" style="background: rgba(6,182,212,0.15); color: #67e8f9;">
+                  <span class="dot" style="background: #06b6d4;"></span>
+                  Sci-Fi
+                  <span class="remove">&times;</span>
+                </span>
+                <button style="display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 999px; font-size: 10px; border: 1px dashed var(--border); background: transparent; color: var(--muted-fg); cursor: pointer; font-family: inherit;">
+                  <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+                  Add
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: Select Options (conditional — only for field_type=select) -->
+          <div class="section" style="display: none;">
+            <div class="section-header">
+              <span class="section-title" style="color: var(--foreground);">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+                Options
+              </span>
+              <button class="btn btn-sm btn-outline">
+                <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+                Add Option
+              </button>
+            </div>
+            <div class="section-body">
+              <p style="font-size: 11px; color: var(--muted-fg); font-style: italic;">Only shown when Field Type is "Select"</p>
+            </div>
+          </div>
+
+          <!-- Section: AI Assistance -->
+          <div class="section">
+            <div class="section-header">
+              <span class="section-title" style="color: var(--accent);">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                AI Assistance
+              </span>
+              <span class="ai-badge ai-badge-active">
+                <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+                Configured
+              </span>
+            </div>
+            <div class="section-body">
+              <div style="margin-bottom: 14px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                  <label class="field-label" style="margin: 0;">Auto-fill Prompt</label>
+                  <span style="font-size: 9px; color: var(--muted-fg);">Used when user clicks "AI Fill" on this attribute</span>
+                </div>
+                <div class="ai-field">
+                  <textarea class="input-field" rows="3" style="font-family: 'JetBrains Mono', monospace; font-size: 11px;">Based on the character's role as {{role}} and their background, generate a detailed physical description covering: height, build, facial features, hair, and any distinguishing marks. Style: literary, evocative.</textarea>
+                </div>
+                <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;">
+                  <span style="font-size: 9px; color: var(--muted-fg); margin-right: 4px;">Variables:</span>
+                  <span class="var-chip">{{entity_name}}</span>
+                  <span class="var-chip">{{role}}</span>
+                  <span class="var-chip">{{gender}}</span>
+                  <span class="var-chip">{{description}}</span>
+                  <span class="var-chip">{{book_title}}</span>
+                  <span class="var-chip">{{genre}}</span>
+                </div>
+              </div>
+
+              <div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                  <label class="field-label" style="margin: 0;">Translation Hint</label>
+                  <span style="font-size: 9px; color: var(--muted-fg);">Injected into translation system prompt for this attribute</span>
+                </div>
+                <div class="ai-field">
+                  <textarea class="input-field" rows="2" style="font-family: 'JetBrains Mono', monospace; font-size: 11px;">Preserve cultural context when translating physical descriptions. Adapt beauty standards references to target language conventions while maintaining the character's distinctiveness.</textarea>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Footer -->
+        <div class="modal-footer">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 10px; color: var(--muted-fg);">Kind: <strong>Character</strong></span>
+            <span style="font-size: 10px; color: var(--muted-fg);">&middot;</span>
+            <span style="font-size: 10px; color: var(--warning); cursor: pointer;">Revert to default name</span>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-outline">Cancel</button>
+            <button class="btn btn-primary">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+              Save Changes
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       VARIANT 2: User Attribute with Select type + Options editor
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">2. User Attribute — "Select" type with options editor + empty AI</div>
+
+    <div class="static-showcase">
+      <div class="modal" style="position: relative; max-height: none;">
+        <div class="modal-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 14px; font-weight: 600;">Edit Attribute</span>
+            <span class="badge badge-user">Custom</span>
+          </div>
+          <button class="btn-ghost" style="padding: 4px;">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Core -->
+          <div class="section">
+            <div class="section-header">
+              <span class="section-title" style="color: var(--foreground);">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                Core
+              </span>
+            </div>
+            <div class="section-body">
+              <div style="display: grid; grid-template-columns: 1fr auto; gap: 12px; margin-bottom: 12px;">
+                <div>
+                  <label class="field-label">Display Name</label>
+                  <input class="input-field" value="Power Level" />
+                </div>
+                <div>
+                  <label class="field-label">Field Type</label>
+                  <select class="input-field" style="width: 140px;">
+                    <option>Text</option>
+                    <option>Long text</option>
+                    <option selected>Select</option>
+                    <option>Number</option>
+                    <option>Date</option>
+                    <option>Tags</option>
+                    <option>URL</option>
+                    <option>Boolean</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 16px; margin-bottom: 12px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <label class="field-label" style="margin: 0;">Internal Code</label>
+                  <span class="font-mono" style="font-size: 11px; color: var(--muted-fg); background: var(--secondary); padding: 2px 6px; border-radius: 3px;">power_level</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <label class="field-label" style="margin: 0;">Required</label>
+                  <div class="toggle"></div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <label class="field-label" style="margin: 0;">Active</label>
+                  <div class="toggle on"></div>
+                </div>
+              </div>
+
+              <div>
+                <label class="field-label">Description</label>
+                <textarea class="input-field" rows="2" placeholder="What this attribute represents...">The character's combat power tier within the cultivation system.</textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Options (visible because type=select) -->
+          <div class="section">
+            <div class="section-header">
+              <span class="section-title" style="color: var(--foreground);">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+                Options
+              </span>
+              <span style="font-size: 10px; color: var(--muted-fg);">5 options</span>
+            </div>
+            <div class="section-body" style="padding: 8px 14px;">
+              <div class="option-item">
+                <svg class="drag-handle" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/></svg>
+                <input class="input-field input-field-sm" value="Qi Condensation" style="flex: 1;" />
+                <span class="remove-btn" style="opacity: 1;">&times;</span>
+              </div>
+              <div class="option-item">
+                <svg class="drag-handle" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/></svg>
+                <input class="input-field input-field-sm" value="Foundation Establishment" style="flex: 1;" />
+                <span class="remove-btn">&times;</span>
+              </div>
+              <div class="option-item">
+                <svg class="drag-handle" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/></svg>
+                <input class="input-field input-field-sm" value="Core Formation" style="flex: 1;" />
+                <span class="remove-btn">&times;</span>
+              </div>
+              <div class="option-item">
+                <svg class="drag-handle" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/></svg>
+                <input class="input-field input-field-sm" value="Nascent Soul" style="flex: 1;" />
+                <span class="remove-btn">&times;</span>
+              </div>
+              <div class="option-item">
+                <svg class="drag-handle" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/></svg>
+                <input class="input-field input-field-sm" value="Deity Transformation" style="flex: 1;" />
+                <span class="remove-btn">&times;</span>
+              </div>
+              <div style="margin-top: 6px;">
+                <button class="btn btn-sm btn-outline" style="width: 100%; justify-content: center;">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+                  Add Option
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Genre Scoping -->
+          <div class="section">
+            <div class="section-header">
+              <span class="section-title" style="color: var(--system);">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+                Genre Scoping
+              </span>
+              <span style="font-size: 10px; color: var(--muted-fg);">Empty = visible for all genres</span>
+            </div>
+            <div class="section-body">
+              <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+                <span class="genre-pill" style="background: rgba(139,92,246,0.15); color: #a78bfa;">
+                  <span class="dot" style="background: #8b5cf6;"></span>
+                  Fantasy
+                  <span class="remove">&times;</span>
+                </span>
+                <button style="display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 999px; font-size: 10px; border: 1px dashed var(--border); background: transparent; color: var(--muted-fg); cursor: pointer; font-family: inherit;">
+                  <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+                  Add
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI Assistance (empty state) -->
+          <div class="section">
+            <div class="section-header">
+              <span class="section-title" style="color: var(--accent);">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                AI Assistance
+              </span>
+              <span class="ai-badge ai-badge-empty">Not configured</span>
+            </div>
+            <div class="section-body">
+              <div style="margin-bottom: 14px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                  <label class="field-label" style="margin: 0;">Auto-fill Prompt</label>
+                </div>
+                <textarea class="input-field" rows="2" style="font-family: 'JetBrains Mono', monospace; font-size: 11px;" placeholder="Prompt template for AI auto-fill. Use {{variable}} for entity fields."></textarea>
+                <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;">
+                  <span style="font-size: 9px; color: var(--muted-fg); margin-right: 4px;">Variables:</span>
+                  <span class="var-chip">{{entity_name}}</span>
+                  <span class="var-chip">{{kind_name}}</span>
+                  <span class="var-chip">{{book_title}}</span>
+                  <span class="var-chip">{{genre}}</span>
+                </div>
+              </div>
+
+              <div>
+                <label class="field-label">Translation Hint</label>
+                <textarea class="input-field" rows="2" style="font-family: 'JetBrains Mono', monospace; font-size: 11px;" placeholder="Optional hint injected into translation prompts for this attribute."></textarea>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="modal-footer">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 10px; color: var(--muted-fg);">Kind: <strong>Character</strong></span>
+            <span style="font-size: 10px; color: var(--muted-fg);">&middot;</span>
+            <button class="btn-ghost" style="color: var(--destructive); font-size: 11px; padding: 2px 6px;">
+              <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+              Delete Attribute
+            </button>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-outline">Cancel</button>
+            <button class="btn btn-primary">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+              Save Changes
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       DESIGN NOTES
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">Design Notes</div>
+    <div style="font-size: 12px; color: var(--muted-fg); line-height: 1.8;">
+      <p><strong>Modal layout:</strong> 640px max-width, 4 collapsible sections. Scrollable body, sticky header/footer.</p>
+      <p><strong>Sections:</strong></p>
+      <ul style="margin-left: 16px; margin-top: 4px;">
+        <li><strong>Core</strong> — always visible: name, type, code (readonly), required toggle, active toggle, description</li>
+        <li><strong>Options</strong> — only when field_type = "select": drag-reorder list with add/remove</li>
+        <li><strong>Genre Scoping</strong> — genre tag pills with colored dots (from genre_groups)</li>
+        <li><strong>AI Assistance</strong> — auto-fill prompt + translation hint. Shows "Not configured" / "Configured" badge. Variable chips are clickable to insert into textarea.</li>
+      </ul>
+      <p style="margin-top: 8px;"><strong>Footer left:</strong> Kind name context + "Revert to default" (system attrs) or "Delete" (user attrs).</p>
+      <p><strong>Footer right:</strong> Cancel + Save.</p>
+      <p style="margin-top: 8px;"><strong>AI section notes:</strong></p>
+      <ul style="margin-left: 16px; margin-top: 4px;">
+        <li>Auto-fill prompt: template used when user clicks "AI Fill" on this attribute in the entity editor</li>
+        <li>Translation hint: injected into the translation system prompt when translating this attribute's value</li>
+        <li>Variables: resolved from entity context at runtime (entity_name, role, gender, etc.)</li>
+        <li>Prompt fields are stored as columns on attribute_definitions (future BE migration)</li>
+        <li>AI section is fully functional from day one — just no AI backend to consume the prompts yet</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
