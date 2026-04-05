@@ -31,7 +31,7 @@ function computeReadingStats(blocks: JSONContent[], language?: string) {
 
 export function ReaderPage() {
   const { bookId = '', chapterId = '' } = useParams();
-  const { accessToken } = useAuth();
+  const { accessToken, user } = useAuth();
   const navigate = useNavigate();
   const [originalBlocks, setOriginalBlocks] = useState<JSONContent[]>([]);
   const [blocks, setBlocks] = useState<JSONContent[]>([]);
@@ -154,7 +154,7 @@ export function ReaderPage() {
           <button className="rounded p-1.5 text-muted-foreground hover:bg-secondary" title="Reading theme (coming soon)" disabled>
             <Sun className="h-4 w-4" />
           </button>
-          {accessToken && (
+          {accessToken && user && book?.owner_user_id === user.user_id && (
             <Link to={`/books/${bookId}/chapters/${chapterId}/edit`} className="rounded p-1.5 text-muted-foreground hover:bg-secondary" title="Edit this chapter">
               <Pencil className="h-4 w-4" />
             </Link>
