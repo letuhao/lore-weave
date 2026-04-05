@@ -57,9 +57,28 @@ func (s *Server) Router() http.Handler {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
-	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		if s.pool != nil {
+			if err := s.pool.Ping(r.Context()); err != nil {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte("db ping failed"))
+				return
+			}
+		}
 		_, _ = w.Write([]byte("ok"))
+	})
+	r.Get("/health/ready", func(w http.ResponseWriter, r *http.Request) {
+		if s.pool == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not ready", "error": "no db pool"})
+			return
+		}
+		var n int
+		if err := s.pool.QueryRow(r.Context(), "SELECT 1").Scan(&n); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not ready", "error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 	r.Route("/v1/catalog", func(r chi.Router) {
 		r.Get("/books", s.listPublicBooks)
