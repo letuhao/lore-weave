@@ -5,10 +5,19 @@ import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { ConfirmDialog } from '@/components/shared';
-import { ChapterReadView } from '@/components/shared/ChapterReadView';
+import { ContentRenderer } from '@/components/reader/ContentRenderer';
+import type { JSONContent } from '@tiptap/react';
 
 type Revision = { revision_id: string; created_at: string; message?: string };
-type PreviewState = { revision: Revision; textContent: string } | null;
+type PreviewState = { revision: Revision; blocks: JSONContent[] } | null;
+
+/** Convert flat text to paragraph blocks (fallback for old plain-text revisions) */
+function textToBlocks(text: string): JSONContent[] {
+  return text.split(/\n\n+/).filter(Boolean).map((p) => ({
+    type: 'paragraph',
+    content: [{ type: 'text', text: p }],
+  }));
+}
 
 export function RevisionHistory({ bookId, chapterId, onRestore }: {
   bookId: string; chapterId: string; onRestore: () => void;
@@ -34,7 +43,10 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
     setPreviewLoading(true);
     try {
       const data = await booksApi.getRevision(accessToken, bookId, chapterId, rev.revision_id);
-      setPreview({ revision: rev, textContent: data.text_content ?? '' });
+      // Prefer Tiptap JSON body; fall back to text_content for old revisions
+      const body = data.body as JSONContent | null;
+      const blocks = body?.content ?? (data.text_content ? textToBlocks(data.text_content) : []);
+      setPreview({ revision: rev, blocks });
     } catch { /* ignore */ }
     setPreviewLoading(false);
   };
@@ -51,9 +63,6 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
       toast.error((e as Error).message);
     }
   };
-
-  const wordCount = (text: string) =>
-    text.trim() ? text.trim().split(/\s+/).length : 0;
 
   if (loading) {
     return (
@@ -116,8 +125,7 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
       {/* Esc to close preview */}
       {preview && <EscListener onEsc={() => setPreview(null)} />}
 
-      {/* Full-screen preview overlay — rendered via fixed positioning so it
-          escapes the constrained 300px right panel */}
+      {/* Full-screen preview overlay */}
       {preview && (
         <div className="fixed inset-0 z-50 flex flex-col bg-background">
           {/* Preview toolbar */}
@@ -143,9 +151,6 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-[10px] text-muted-foreground">
-                {wordCount(preview.textContent).toLocaleString()} words
-              </span>
               <button
                 onClick={() => setRestoreTarget(preview.revision)}
                 className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10"
@@ -156,9 +161,15 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
             </div>
           </div>
 
-          {/* Reading area — same layout as ReaderPage */}
+          {/* Reading area — ContentRenderer in compact mode */}
           <div className="flex flex-1 justify-center overflow-y-auto px-6 py-10">
-            <ChapterReadView body={preview.textContent} className="max-w-4xl" />
+            <div className="w-full max-w-4xl">
+              {preview.blocks.length > 0 ? (
+                <ContentRenderer blocks={preview.blocks} mode="compact" />
+              ) : (
+                <p className="text-center text-sm text-muted-foreground italic">Empty revision.</p>
+              )}
+            </div>
           </div>
         </div>
       )}
