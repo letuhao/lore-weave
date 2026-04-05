@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Settings2, Plus, Trash2, Save, Loader2, ChevronRight, X, Pencil } from 'lucide-react';
+import { Settings2, Plus, Trash2, Save, Loader2, ChevronRight, X, Pencil, GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
@@ -115,6 +115,10 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
   const [editAttrGenreTags, setEditAttrGenreTags] = useState<string[]>([]);
   const [savingAttr, setSavingAttr] = useState(false);
 
+  // Drag reorder kinds
+  const [dragKindId, setDragKindId] = useState<string | null>(null);
+  const [overKindId, setOverKindId] = useState<string | null>(null);
+
   // New attribute
   const [showNewAttr, setShowNewAttr] = useState(false);
   const [newAttrCode, setNewAttrCode] = useState('');
@@ -186,6 +190,25 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
       if (selectedId === deleteTarget.kind_id) setSelectedId(null);
       await loadKinds();
     } catch (e) { toast.error((e as Error).message); }
+  };
+
+  const handleKindDrop = async (fromId: string, toId: string) => {
+    if (!accessToken || fromId === toId) return;
+    const ordered = kinds.map((k) => k.kind_id);
+    const fromIdx = ordered.indexOf(fromId);
+    const toIdx = ordered.indexOf(toId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    ordered.splice(fromIdx, 1);
+    ordered.splice(toIdx, 0, fromId);
+    // Optimistic: reorder local state
+    const reordered = ordered.map((id) => kinds.find((k) => k.kind_id === id)!).filter(Boolean);
+    setKinds(reordered);
+    try {
+      await glossaryApi.reorderKinds(accessToken, ordered);
+    } catch (e) {
+      toast.error('Reorder failed');
+      await loadKinds();
+    }
   };
 
   const handleToggleAttr = async (attr: AttributeDefinition) => {
@@ -385,14 +408,25 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
                 {group.label}
               </div>
               {group.items.map((k) => (
-                <button
+                <div
                   key={k.kind_id}
-                  onClick={() => setSelectedId(k.kind_id)}
+                  draggable
+                  onDragStart={() => setDragKindId(k.kind_id)}
+                  onDragOver={(e) => { e.preventDefault(); setOverKindId(k.kind_id); }}
+                  onDragEnd={() => { setDragKindId(null); setOverKindId(null); }}
+                  onDrop={() => {
+                    if (dragKindId && dragKindId !== k.kind_id) void handleKindDrop(dragKindId, k.kind_id);
+                    setDragKindId(null);
+                    setOverKindId(null);
+                  }}
                   className={cn(
-                    'flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs transition-colors border-b',
+                    'flex w-full items-center gap-1.5 px-2 py-2.5 text-left text-xs transition-colors border-b cursor-pointer group/kind',
                     selectedId === k.kind_id ? 'bg-primary/5 border-l-2 border-l-primary' : 'hover:bg-card/50',
+                    overKindId === k.kind_id && dragKindId && dragKindId !== k.kind_id && 'border-t-2 border-t-primary',
                   )}
+                  onClick={() => setSelectedId(k.kind_id)}
                 >
+                  <GripVertical className="h-3 w-3 text-muted-foreground/30 group-hover/kind:text-muted-foreground/70 flex-shrink-0 cursor-grab" />
                   <span className="text-base">{k.icon}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
@@ -409,7 +443,7 @@ export function KindEditor({ onClose }: { onClose: () => void }) {
                     </span>
                   </div>
                   {selectedId === k.kind_id && <ChevronRight className="h-3 w-3 text-primary" />}
-                </button>
+                </div>
               ))}
             </div>
           ))}

@@ -87,6 +87,22 @@ export const glossaryApi = {
     return apiJson<void>(`${BASE}/kinds/${kindId}`, { method: 'DELETE', token });
   },
 
+  reorderKinds(token: string, kindIds: string[]) {
+    return apiJson<{ reordered: number }>(`${BASE}/kinds/reorder`, {
+      method: 'PATCH',
+      body: JSON.stringify({ kind_ids: kindIds }),
+      token,
+    });
+  },
+
+  reorderAttrDefs(token: string, kindId: string, attrDefIds: string[]) {
+    return apiJson<{ reordered: number }>(`${BASE}/kinds/${kindId}/attributes/reorder`, {
+      method: 'PATCH',
+      body: JSON.stringify({ attr_def_ids: attrDefIds }),
+      token,
+    });
+  },
+
   // ── Attribute Definition CRUD ─────────────────────────────────────────────
 
   createAttrDef(token: string, kindId: string, payload: { code: string; name: string; field_type?: string; is_required?: boolean; sort_order?: number; options?: string[]; genre_tags?: string[] }) {
