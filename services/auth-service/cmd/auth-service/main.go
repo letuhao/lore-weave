@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,18 +17,23 @@ import (
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "auth-service"))
+
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("config: %v", err)
+		slog.Error("config failed", "error", err)
+		os.Exit(1)
 	}
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("db: %v", err)
+		slog.Error("db connect failed", "error", err)
+		os.Exit(1)
 	}
 	defer pool.Close()
 	if err := migrate.Up(ctx, pool); err != nil {
-		log.Fatalf("migrate: %v", err)
+		slog.Error("migrate failed", "error", err)
+		os.Exit(1)
 	}
 	srv := api.NewServer(pool, cfg)
 	httpSrv := &http.Server{
@@ -37,9 +42,10 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
-		log.Printf("auth-service listening on %s", cfg.HTTPAddr)
+		slog.Info("listening", "addr", cfg.HTTPAddr)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("listen: %v", err)
+			slog.Error("listen failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 	stop := make(chan os.Signal, 1)
@@ -48,6 +54,6 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("shutdown: %v", err)
+		slog.Error("shutdown error", "error", err)
 	}
 }

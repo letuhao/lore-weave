@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,17 +17,22 @@ import (
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "catalog-service"))
+
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("config: %v", err)
+		slog.Error("config", "error", err)
+		os.Exit(1)
 	}
 	pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("db: %v", err)
+		slog.Error("db", "error", err)
+		os.Exit(1)
 	}
 	defer pool.Close()
 	if err := migrate.Up(context.Background(), pool); err != nil {
-		log.Fatalf("migrate: %v", err)
+		slog.Error("migrate", "error", err)
+		os.Exit(1)
 	}
 	srv := api.NewServer(pool, cfg)
 	httpSrv := &http.Server{
@@ -36,9 +41,10 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
-		log.Printf("catalog-service listening on %s", cfg.HTTPAddr)
+		slog.Info("catalog-service listening", "addr", cfg.HTTPAddr)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("listen: %v", err)
+			slog.Error("listen", "error", err)
+			os.Exit(1)
 		}
 	}()
 	stop := make(chan os.Signal, 1)

@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -70,12 +70,12 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.SMTPHost != "" {
 		token, err := s.insertVerificationTicket(ctx, uid)
 		if err != nil {
-			log.Printf("register: verification ticket: %v", err)
+			slog.Error("register: verification ticket", "error", err)
 		} else {
 			subject := "Verify your LoreWeave email"
 			bodyText := verifyEmailPlainBody(token, s.cfg.PublicAppURL)
 			if err := s.smtpSend(emailNorm, subject, bodyText); err != nil {
-				log.Printf("register: verify email smtp: %v", err)
+				slog.Error("register: verify email smtp", "error", err)
 			}
 			if s.cfg.DevLogEmailTokens {
 				fmt.Printf("[dev email] verify token for user %s (%s): %s\n", uid.String(), emailNorm, token)
@@ -469,7 +469,7 @@ func (s *Server) verifyEmailRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.cfg.SMTPHost != "" {
 		if err := s.smtpSend(email, "Verify your LoreWeave email", verifyEmailPlainBody(token, s.cfg.PublicAppURL)); err != nil {
-			log.Printf("verify email smtp: %v", err)
+			slog.Error("verify email smtp", "error", err)
 			writeErr(w, http.StatusBadGateway, "AUTH_EMAIL_SEND_FAILED", "could not send verification email")
 			return
 		}
@@ -566,7 +566,7 @@ func (s *Server) passwordResetRequest(w http.ResponseWriter, r *http.Request) {
 		subject := "Reset your LoreWeave password"
 		bodyText := passwordResetPlainBody(token, s.cfg.PublicAppURL)
 		if err := s.smtpSend(emailNorm, subject, bodyText); err != nil {
-			log.Printf("password reset smtp: %v", err)
+			slog.Error("password reset smtp", "error", err)
 		}
 	}
 	if s.cfg.DevLogEmailTokens {

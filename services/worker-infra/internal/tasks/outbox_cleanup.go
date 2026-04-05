@@ -2,7 +2,7 @@ package tasks
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,7 +19,7 @@ type OutboxCleanup struct {
 func (t *OutboxCleanup) Name() string { return "outbox-cleanup" }
 
 func (t *OutboxCleanup) Run(ctx context.Context) error {
-	log.Printf("[outbox-cleanup] starting, retain=%d days", t.RetainDays)
+	slog.Info("outbox-cleanup starting", "retain_days", t.RetainDays)
 
 	// Run once immediately, then daily
 	t.cleanup(ctx)
@@ -30,7 +30,7 @@ func (t *OutboxCleanup) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("[outbox-cleanup] shutting down")
+			slog.Info("outbox-cleanup shutting down")
 			return nil
 		case <-ticker.C:
 			t.cleanup(ctx)
@@ -49,11 +49,11 @@ DELETE FROM outbox_events
 WHERE published_at IS NOT NULL AND published_at < now() - ($1 || ' days')::interval
 `, t.RetainDays)
 		if err != nil {
-			log.Printf("[outbox-cleanup] %s: error: %v", src.Name, err)
+			slog.Error("outbox-cleanup error", "source", src.Name, "error", err)
 			continue
 		}
 		if tag.RowsAffected() > 0 {
-			log.Printf("[outbox-cleanup] %s: cleaned %d events", src.Name, tag.RowsAffected())
+			slog.Info("outbox-cleanup cleaned events", "source", src.Name, "count", tag.RowsAffected())
 		}
 	}
 }

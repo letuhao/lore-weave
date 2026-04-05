@@ -2,7 +2,8 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
+	"os"
 	"os/signal"
 	"syscall"
 
@@ -16,6 +17,8 @@ import (
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "worker-infra"))
+
 	cfg := config.Load()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -24,7 +27,8 @@ func main() {
 	// Connect to events DB and run migration
 	eventsPool, err := pgxpool.New(ctx, cfg.EventsDBURL)
 	if err != nil {
-		log.Fatalf("[main] events DB: %v", err)
+		slog.Error("events DB", "error", err)
+		os.Exit(1)
 	}
 	defer eventsPool.Close()
 	migrate.Up(ctx, eventsPool)
@@ -32,25 +36,28 @@ func main() {
 	// Connect to Redis
 	opts, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {
-		log.Fatalf("[main] redis URL: %v", err)
+		slog.Error("redis URL", "error", err)
+		os.Exit(1)
 	}
 	rdb := redis.NewClient(opts)
 	defer rdb.Close()
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		log.Fatalf("[main] redis ping: %v", err)
+		slog.Error("redis ping", "error", err)
+		os.Exit(1)
 	}
-	log.Println("[main] redis connected")
+	slog.Info("redis connected")
 
 	// Connect to each outbox source DB
 	sourcePools := make(map[string]*pgxpool.Pool, len(cfg.OutboxSources))
 	for _, src := range cfg.OutboxSources {
 		p, err := pgxpool.New(ctx, src.DBURL)
 		if err != nil {
-			log.Fatalf("[main] source DB %q: %v", src.Name, err)
+			slog.Error("source DB connection failed", "source", src.Name, "error", err)
+			os.Exit(1)
 		}
 		defer p.Close()
 		sourcePools[src.Name] = p
-		log.Printf("[main] source DB %q connected", src.Name)
+		slog.Info("source DB connected", "source", src.Name)
 	}
 
 	// Register tasks
@@ -68,9 +75,10 @@ func main() {
 	})
 
 	// Run selected tasks until signal
-	log.Printf("[main] running tasks: %v", cfg.WorkerTasks)
+	slog.Info("running tasks", "tasks", cfg.WorkerTasks)
 	if err := reg.RunSelected(ctx, cfg.WorkerTasks); err != nil {
-		log.Fatalf("[main] %v", err)
+		slog.Error("fatal", "error", err)
+		os.Exit(1)
 	}
-	log.Println("[main] shutdown complete")
+	slog.Info("shutdown complete")
 }

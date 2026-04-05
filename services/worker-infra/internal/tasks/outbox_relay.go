@@ -3,7 +3,7 @@ package tasks
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -28,7 +28,7 @@ type OutboxRelay struct {
 func (t *OutboxRelay) Name() string { return "outbox-relay" }
 
 func (t *OutboxRelay) Run(ctx context.Context) error {
-	log.Printf("[outbox-relay] starting with %d source(s)", len(t.Sources))
+	slog.Info("outbox-relay starting", "sources", len(t.Sources))
 
 	// Poll fallback loop — LISTEN/NOTIFY will be added in D1-10
 	ticker := time.NewTicker(30 * time.Second)
@@ -37,7 +37,7 @@ func (t *OutboxRelay) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("[outbox-relay] shutting down")
+			slog.Info("outbox-relay shutting down")
 			return nil
 		case <-ticker.C:
 			for _, src := range t.Sources {
@@ -47,11 +47,11 @@ func (t *OutboxRelay) Run(ctx context.Context) error {
 				}
 				n, err := t.processSource(ctx, src.Name, pool)
 				if err != nil {
-					log.Printf("[outbox-relay] %s: error: %v", src.Name, err)
+					slog.Error("outbox-relay error", "source", src.Name, "error", err)
 					continue
 				}
 				if n > 0 {
-					log.Printf("[outbox-relay] %s: relayed %d events", src.Name, n)
+					slog.Info("outbox-relay relayed events", "source", src.Name, "count", n)
 				}
 			}
 		}
@@ -100,7 +100,7 @@ LIMIT 100
 			},
 		}).Err()
 		if err != nil {
-			log.Printf("[outbox-relay] %s: redis XADD failed for %s: %v", sourceName, idStr, err)
+			slog.Error("outbox-relay redis XADD failed", "source", sourceName, "id", idStr, "error", err)
 			pool.Exec(ctx, `UPDATE outbox_events SET retry_count=retry_count+1, last_error=$2 WHERE id=$1`, id, err.Error())
 			continue
 		}

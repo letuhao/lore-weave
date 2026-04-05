@@ -2,7 +2,8 @@ package migrate
 
 import (
 	"context"
-	"log"
+	"log/slog"
+	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -69,7 +70,8 @@ CREATE INDEX IF NOT EXISTS idx_dead_letter_unresolved ON dead_letter_events (cre
 
 func Up(ctx context.Context, pool *pgxpool.Pool) {
 	if _, err := pool.Exec(ctx, ddl); err != nil {
-		log.Fatalf("[migrate] failed to run events schema: %v", err)
+		slog.Error("failed to run events schema", "error", err)
+		os.Exit(1)
 	}
-	log.Println("[migrate] loreweave_events schema ready")
+	slog.Info("loreweave_events schema ready")
 }

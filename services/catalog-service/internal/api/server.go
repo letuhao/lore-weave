@@ -3,7 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
@@ -348,12 +348,12 @@ func (s *Server) fetchBookLanguages(bookID uuid.UUID) []map[string]any {
 	u := fmt.Sprintf("%s/internal/books/%s/languages", strings.TrimRight(s.cfg.TranslationServiceInternalURL, "/"), bookID)
 	res, err := s.internalGet(u)
 	if err != nil {
-		log.Printf("[catalog] failed to fetch languages for book %s: %v", bookID, err)
+		slog.Error("failed to fetch languages", "book_id", bookID, "error", err)
 		return []map[string]any{}
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		log.Printf("[catalog] translation-service returned %d for book %s languages", res.StatusCode, bookID)
+		slog.Error("translation-service returned non-OK for languages", "status", res.StatusCode, "book_id", bookID)
 		return []map[string]any{}
 	}
 	var out struct {

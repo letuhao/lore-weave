@@ -3,7 +3,7 @@ package registry
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 )
 
@@ -37,12 +37,12 @@ func (r *Registry) RunSelected(ctx context.Context, names []string) error {
 		wg.Add(1)
 		go func(t Task) {
 			defer wg.Done()
-			log.Printf("[registry] starting task %q", t.Name())
+			slog.Info("starting task", "task", t.Name())
 			if err := t.Run(ctx); err != nil {
-				log.Printf("[registry] task %q exited with error: %v", t.Name(), err)
+				slog.Error("task exited with error", "task", t.Name(), "error", err)
 				errCh <- err
 			} else {
-				log.Printf("[registry] task %q stopped", t.Name())
+				slog.Info("task stopped", "task", t.Name())
 			}
 		}(task)
 	}

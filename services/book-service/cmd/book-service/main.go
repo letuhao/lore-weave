@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,20 +17,25 @@ import (
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "book-service"))
+
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("config: %v", err)
+		slog.Error("config", "error", err)
+		os.Exit(1)
 	}
 
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("db: %v", err)
+		slog.Error("db", "error", err)
+		os.Exit(1)
 	}
 	defer pool.Close()
 
 	if err := migrate.Up(ctx, pool); err != nil {
-		log.Fatalf("migrate: %v", err)
+		slog.Error("migrate", "error", err)
+		os.Exit(1)
 	}
 
 	srv := api.NewServer(pool, cfg)
@@ -41,9 +46,10 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("book-service listening on %s", cfg.HTTPAddr)
+		slog.Info("book-service listening", "addr", cfg.HTTPAddr)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("listen: %v", err)
+			slog.Error("listen", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -54,6 +60,6 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("shutdown: %v", err)
+		slog.Error("shutdown", "error", err)
 	}
 }

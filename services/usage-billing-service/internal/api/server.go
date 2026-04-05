@@ -7,7 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -494,20 +494,20 @@ FROM usage_log_details WHERE usage_log_id=$1
 		if sessionKey, err2 := decryptWithKey(s.secretKey, keyCipher); err2 == nil {
 			if inputPlain, err3 := decryptWithKey(sessionKey, inputCipher); err3 == nil {
 				if err4 := json.Unmarshal(inputPlain, &inputPayload); err4 != nil {
-					log.Printf("[billing] input unmarshal failed: %v (len=%d)", err4, len(inputPlain))
+					slog.Error("input unmarshal failed", "error", err4, "len", len(inputPlain))
 				}
 			} else {
-				log.Printf("[billing] input decrypt failed: %v", err3)
+				slog.Error("input decrypt failed", "error", err3)
 			}
 			if outputPlain, err3 := decryptWithKey(sessionKey, outputCipher); err3 == nil {
 				if err4 := json.Unmarshal(outputPlain, &outputPayload); err4 != nil {
-					log.Printf("[billing] output unmarshal failed: %v (len=%d)", err4, len(outputPlain))
+					slog.Error("output unmarshal failed", "error", err4, "len", len(outputPlain))
 				}
 			} else {
-				log.Printf("[billing] output decrypt failed: %v", err3)
+				slog.Error("output decrypt failed", "error", err3)
 			}
 		} else {
-			log.Printf("[billing] session key decrypt failed: %v", err2)
+			slog.Error("session key decrypt failed", "error", err2)
 		}
 	}
 	tx, err := s.pool.Begin(r.Context())
