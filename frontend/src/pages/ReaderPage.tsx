@@ -6,6 +6,7 @@ import { booksApi, type Book, type Chapter } from '@/features/books/api';
 import { versionsApi } from '@/features/translation/api';
 import { ContentRenderer } from '@/components/reader/ContentRenderer';
 import { TOCSidebar, type LanguageOption } from '@/components/reader/TOCSidebar';
+import { ThemeCustomizer } from '@/components/reader/ThemeCustomizer';
 import type { JSONContent } from '@tiptap/react';
 import { extractText } from '@/lib/tiptap-utils';
 import { useReaderTheme } from '@/providers/ThemeProvider';
@@ -41,6 +42,7 @@ export function ReaderPage() {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [book, setBook] = useState<Book | null>(null);
   const [tocOpen, setTocOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Language state
@@ -192,8 +194,8 @@ export function ReaderPage() {
           <button className="rounded p-1.5 text-muted-foreground hover:bg-secondary" title="Read aloud (coming soon)" disabled>
             <Volume2 className="h-4 w-4" />
           </button>
-          {/* Theme placeholder — wired in Phase 8B */}
-          <button className="rounded p-1.5 text-muted-foreground hover:bg-secondary" title="Reading theme (coming soon)" disabled>
+          {/* Theme customizer toggle */}
+          <button onClick={() => setThemeOpen((v) => !v)} className={`rounded p-1.5 transition-colors ${themeOpen ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary'}`} title="Reading theme">
             <Sun className="h-4 w-4" />
           </button>
           {accessToken && user && book?.owner_user_id === user.user_id && (
@@ -221,6 +223,9 @@ export function ReaderPage() {
         activeLanguage={activeLanguage}
         onLanguageChange={handleLanguageChange}
       />
+
+      {/* Theme customizer slide-over */}
+      <ThemeCustomizer open={themeOpen} onClose={() => setThemeOpen(false)} />
 
       {/* Reading area — reader theme applied here, chrome stays on app theme */}
       <div ref={scrollRef} className="flex flex-1 justify-center overflow-y-auto" style={{ padding: '64px 24px 120px', background: readerTheme.bg, color: readerTheme.fg, ...readerCssVars as React.CSSProperties }}>
