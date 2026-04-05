@@ -232,15 +232,10 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
       await glossaryApi.patchKind(accessToken, revertTarget.kind_id, {
         name: seed.name, icon: seed.icon, color: seed.color,
       });
-      for (const attr of revertTarget.default_attributes) {
-        if (!attr.is_system) continue;
-        const seedAttr = seed.attrs[attr.code];
-        if (seedAttr && attr.name !== seedAttr.name) {
-          await glossaryApi.patchAttrDef(accessToken, revertTarget.kind_id, attr.attr_def_id, {
-            name: seedAttr.name,
-          });
-        }
-      }
+      const attrPatches = revertTarget.default_attributes
+        .filter((a) => a.is_system && seed.attrs[a.code] && a.name !== seed.attrs[a.code].name)
+        .map((a) => glossaryApi.patchAttrDef(accessToken, revertTarget.kind_id, a.attr_def_id, { name: seed.attrs[a.code].name }));
+      await Promise.allSettled(attrPatches);
       toast.success('Reverted to defaults');
       setRevertTarget(null);
       await loadKinds();
@@ -620,16 +615,19 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
               <div className="flex items-center gap-2 border-b bg-card/30 px-6 py-2.5">
                 <span className="flex-shrink-0 text-[10px] font-medium text-muted-foreground">Genres:</span>
                 <div className="flex flex-1 flex-wrap items-center gap-1.5">
-                  {editGenreTags.map((tag) => (
+                  {editGenreTags.map((tag) => {
+                    const gColor = genreColorMap.get(tag);
+                    return (
                     <span
                       key={tag}
-                      className={cn(
-                        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium',
-                        tag === 'universal'
-                          ? 'bg-blue-500/15 text-blue-400'
-                          : 'bg-secondary text-foreground',
-                      )}
+                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                      style={tag === 'universal'
+                        ? { background: 'rgba(59,130,246,0.15)', color: '#60a5fa' }
+                        : gColor
+                          ? { background: gColor + '18', color: gColor }
+                          : { background: 'var(--secondary)', color: 'var(--foreground)' }}
                     >
+                      {gColor && <span className="h-1.5 w-1.5 rounded-sm flex-shrink-0" style={{ background: gColor }} />}
                       {tag}
                       <button
                         onClick={() => {
@@ -641,7 +639,7 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                         <X className="h-2.5 w-2.5" />
                       </button>
                     </span>
-                  ))}
+                  );})}
                   <input
                     placeholder="+ Add genre"
                     className="w-24 bg-transparent text-[10px] outline-none placeholder:text-muted-foreground/50"
