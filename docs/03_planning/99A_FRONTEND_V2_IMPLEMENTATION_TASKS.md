@@ -1070,36 +1070,207 @@ P3-22d: Recycle Bin — Wiki Pages Tab [FS]                   [ ] (future — af
 P4-01: Settings — Account Tab [FE]
 P4-02: Settings — Model Providers [FE] (uses existing provider-registry)
 P4-03: Settings — Translation Defaults [FE] (uses existing translation-service prefs)
-P4-04: Settings — Reading & Theme Unification [FS] ⚠️ BIG REFACTOR
+P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-first
   Deps: P2-08 (ReaderThemeProvider), MIG-05 (ReadingTab)
-  NOTE: This is a significant refactoring task. ReadingTab in Settings
-        currently uses standalone localStorage (font size, spacing, 3
-        themes, 3 fonts). ReaderThemeProvider has 6 presets with CSS
-        variables scoped to .reader-content. These must be unified.
-        Design draft: screen-theme-customizer.html (detailed design).
+  Design draft: screen-theme-customizer.html
 
-  Sub-tasks:
-    - [ ] P4-04a: BE — reading_preferences table (persist to DB, not just localStorage)
-    - [ ] P4-04b: Merge ReadingTab → ReaderThemeProvider
-          - Unify font size, line-height, font family, theme presets
-          - ReadingTab becomes the UI for ReaderThemeProvider settings
-          - Remove standalone localStorage approach in ReadingTab
-          - Support 6 theme presets (not 3) matching ReaderThemeProvider
-    - [ ] P4-04c: Theme customizer panel in Reader (inline, not in Settings)
-          - Quick-toggle dropdown in reader toolbar (P3-R1-D14)
-          - Font size control in reader (P3-R1-D15)
-          - Full customizer panel matching screen-theme-customizer.html
-    - [ ] P4-04d: Live preview in Settings ReadingTab
-          - Show reader-like preview with actual theme applied
-    - [ ] P4-04e: API persistence — save/load from BE instead of localStorage
-    - [ ] P4-04f: Sync — changes in reader customizer reflect in Settings and vice versa
+  ── Problem Statement ─────────────────────────────────────────────────────
 
-  Impact areas (refactor scope):
-    - providers/ReaderThemeProvider.tsx — core theme logic
-    - features/settings/ReadingTab.tsx — Settings UI
-    - pages/ReaderPage.tsx — reader toolbar integration
-    - CSS variables — unify .reader-content scoping
-    - localStorage migration — existing users' saved prefs
+  Current state has 3 disconnected theme systems:
+  1. index.css :root — warm literary theme (hardcoded, no toggle)
+  2. ReaderThemeProvider — 6 reader presets (localStorage, no UI to select)
+  3. ReadingTab (Settings) — 3 themes + 3 fonts (separate localStorage, not wired)
+
+  Goal: Unified theme system where:
+  - App UI supports dark/light/custom modes (affects sidebar, cards, all pages)
+  - Reader has its own theme layer (presets + custom overrides)
+  - Preferences persist to DB (not just localStorage)
+  - Settings and Reader customizer are in sync
+  - Existing warm theme = "Dark" preset (default)
+
+  ── Strategy ──────────────────────────────────────────────────────────────
+
+  Phase A: Backend (user_preferences table + API)
+  Phase B: Theme provider refactor (unified state, CSS variable system)
+  Phase C: Reader integration (toolbar customizer, preview)
+  Phase D: Settings UI (ReadingTab rewrite with live preview)
+
+  All backend first, then frontend in order B → C → D.
+
+  ── Backend Tasks ─────────────────────────────────────────────────────────
+
+  BE-TH-01: user_preferences table + CRUD API [BE]
+    Status: [ ]
+    Service: auth-service (owns user data)
+    DB:
+      CREATE TABLE IF NOT EXISTS user_preferences (
+        user_id    UUID PRIMARY KEY REFERENCES users(id),
+        prefs      JSONB NOT NULL DEFAULT '{}',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    Endpoints:
+      GET  /v1/me/preferences — returns { prefs: {...} }
+      PATCH /v1/me/preferences — merge-patch prefs JSONB, returns updated
+    JSONB structure (typed on FE, flexible on BE):
+      {
+        "app_theme": "dark" | "light" | "sepia" | "oled",
+        "reader_preset": "dark" | "sepia" | "light" | "oled" | "parchment" | "forest",
+        "reader_font": "Lora" | "Inter" | "Noto Serif JP" | "system-ui",
+        "reader_font_size": 16,
+        "reader_line_height": 1.8,
+        "reader_max_width": 680,
+        "reader_spacing": 1.2
+      }
+    AC:
+      - [ ] GET returns {} for new users (empty = use defaults)
+      - [ ] PATCH merges (not replaces) — can update one field without losing others
+      - [ ] Auth required (JWT user_id)
+      - [ ] Integration tests
+
+  BE-TH-02: Gateway proxy for /v1/me/preferences [BE]
+    Status: [ ]
+    Service: api-gateway-bff
+    Changes: Add proxy route for /v1/me/preferences → auth-service
+    AC:
+      - [ ] GET/PATCH /v1/me/preferences routed through gateway
+      - [ ] Auth header forwarded
+
+  ── Frontend Tasks ────────────────────────────────────────────────────────
+
+  FE-TH-01: App theme system — CSS variable swapping [FE]
+    Status: [ ]
+    Scope: Support dark/light/sepia/oled modes for the ENTIRE app UI (not just reader)
+    Changes:
+      - index.css: define 4 theme presets as CSS variable sets
+        :root (dark — current warm theme, default)
+        [data-theme="light"] { --background: ...; --foreground: ...; ... }
+        [data-theme="sepia"] { --background: ...; ... }
+        [data-theme="oled"] { --background: ...; ... }
+      - Add data-theme attribute to <html> element
+      - All existing Tailwind classes (bg-background, text-foreground, etc.) automatically
+        pick up the new values — NO component changes needed for basic theme support
+    AC:
+      - [ ] 4 app themes defined as CSS variable overrides
+      - [ ] data-theme on <html> switches entire app appearance
+      - [ ] All existing pages render correctly in all 4 themes
+      - [ ] No component code changes needed (CSS variables do the work)
+
+  FE-TH-02: Unified ThemeProvider — replace ReaderThemeProvider [FE]
+    Status: [ ]
+    Scope: New ThemeProvider that manages BOTH app theme + reader theme
+    Changes:
+      - New providers/ThemeProvider.tsx replaces ReaderThemeProvider.tsx
+      - State shape: { appTheme, readerPreset, readerOverrides }
+      - On mount: load from API (GET /v1/me/preferences), fallback to localStorage
+      - On change: save to API (PATCH), update localStorage cache
+      - Expose hooks: useAppTheme(), useReaderTheme()
+      - useAppTheme() → sets data-theme on <html>
+      - useReaderTheme() → returns CSS variables for reader content
+    AC:
+      - [ ] ThemeProvider replaces ReaderThemeProvider in App.tsx
+      - [ ] App theme changes reflect instantly across all pages
+      - [ ] Reader theme changes reflected in reader content
+      - [ ] Preferences persisted to API on change
+      - [ ] Graceful fallback when API unavailable (use localStorage)
+      - [ ] Migration: read old lw_reader_theme + lw_reading_prefs localStorage keys
+
+  FE-TH-03: Theme toggle in sidebar/navbar [FE]
+    Status: [ ]
+    Scope: Quick theme switcher accessible from main navigation
+    Changes:
+      - Add theme toggle button to AppNav/sidebar (sun/moon icon)
+      - Click cycles: dark → light → sepia → dark
+      - Long-press or dropdown for full theme list
+    AC:
+      - [ ] Theme toggle visible in sidebar
+      - [ ] Instant visual feedback on click
+      - [ ] Current theme persisted
+
+  FE-TH-04: Reader toolbar theme customizer [FE]
+    Status: [ ]
+    Scope: Inline customizer panel in ReaderPage toolbar
+    Design: screen-theme-customizer.html
+    Changes:
+      - ReaderPage.tsx: add toolbar button "Aa" that opens customizer panel
+      - CustomizerPanel component: preset selector, font picker, size slider,
+        line-height slider, width selector, spacing selector
+      - Live preview: changes apply instantly to reader content below
+      - Saves via ThemeProvider (auto-persists to API)
+    AC:
+      - [ ] "Aa" button in reader toolbar opens customizer
+      - [ ] 6 reader presets with visual swatches
+      - [ ] Font family picker (Lora, Inter, Noto Serif JP, Noto Serif TC, system)
+      - [ ] Font size slider (12-28px)
+      - [ ] Line height slider (1.4-2.2)
+      - [ ] Max width selector (Narrow/Medium/Wide/Full)
+      - [ ] Changes apply instantly to reader content
+      - [ ] Panel dismissable (click outside, Esc)
+
+  FE-TH-05: ReaderPage theme integration [FE]
+    Status: [ ]
+    Scope: Wire ReaderPage to use reader theme CSS variables
+    Changes:
+      - ReaderPage.tsx: apply --reader-* CSS variables to content area
+      - Chapter content uses reader theme (bg, fg, font, size, spacing)
+      - Toolbar and navigation keep app theme (sidebar colors)
+      - Reader can have different theme from app (e.g., app=dark, reader=sepia)
+    AC:
+      - [ ] Reader content styled by reader theme variables
+      - [ ] App chrome (toolbar, nav) unaffected by reader theme
+      - [ ] Different app + reader theme combinations work correctly
+
+  FE-TH-06: Settings ReadingTab rewrite [FE]
+    Status: [ ]
+    Scope: Replace current ReadingTab with unified theme settings
+    Changes:
+      - Remove old ReadingTab (standalone localStorage)
+      - New ReadingTab sections:
+        1. App Theme: 4 preset cards (dark/light/sepia/oled) with live preview
+        2. Reader Theme: 6 preset cards + custom overrides
+        3. Reader Typography: font family, size, line height, width, spacing
+      - Live preview panel showing sample reader text with current settings
+      - All changes go through ThemeProvider → API persistence
+    AC:
+      - [ ] App theme selector with 4 presets + instant preview
+      - [ ] Reader theme selector with 6 presets
+      - [ ] Typography controls with live preview
+      - [ ] Changes sync with reader customizer (same ThemeProvider)
+      - [ ] Old localStorage keys migrated on first load
+
+  FE-TH-07: CSS cleanup + theme audit [FE]
+    Status: [ ]
+    Scope: Audit all pages for hardcoded colors, ensure theme compatibility
+    Changes:
+      - Grep for hardcoded hex colors in JSX (e.g., style={{ color: '#xxx' }})
+      - Replace with CSS variables or Tailwind theme tokens
+      - Verify all pages in light/sepia/oled modes (not just dark)
+      - Fix any contrast or visibility issues
+    AC:
+      - [ ] No hardcoded colors in component styles (or documented exceptions)
+      - [ ] All 4 app themes pass visual review on key pages
+      - [ ] Chat, Editor, Browse, Usage pages verified
+
+  ── Impact Areas (refactor scope) ─────────────────────────────────────────
+
+  | Area | What changes |
+  |------|-------------|
+  | index.css | 4 theme presets as CSS variable overrides |
+  | providers/ | ThemeProvider replaces ReaderThemeProvider |
+  | App.tsx | ThemeProvider wrapping, remove old providers |
+  | AppNav / Sidebar | Theme toggle button |
+  | ReaderPage | Toolbar customizer, content theme variables |
+  | Settings/ReadingTab | Full rewrite |
+  | All pages | CSS audit for hardcoded colors |
+  | auth-service | user_preferences table + CRUD |
+  | gateway | Proxy route for preferences |
+
+  ── Task Order ────────────────────────────────────────────────────────────
+
+  BE-TH-01 → BE-TH-02 → FE-TH-01 → FE-TH-02 → FE-TH-03 → FE-TH-05 → FE-TH-04 → FE-TH-06 → FE-TH-07
+
+  BE first (preferences API), then CSS presets, then provider, then UI pieces.
+  FE-TH-05 (reader integration) before FE-TH-04 (customizer) — need the wiring before the controls.
+  FE-TH-07 (audit) last — catches issues introduced by the refactor.
 
 P4-05: Settings — Language + Notification Prefs [FE]
 
