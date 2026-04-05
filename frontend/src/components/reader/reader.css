@@ -470,6 +470,48 @@
 }
 
 
+/* ── Language selector (TOC footer) ────────────────────────────────────── */
+
+.lang-selector {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border, #332d28);
+}
+.lang-selector-label {
+  font-size: 10px;
+  color: var(--muted-fg, #9e9488);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.lang-pills {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.lang-pill {
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 120ms;
+  border: 1px solid var(--border, #332d28);
+  background: transparent;
+  color: var(--muted-fg, #9e9488);
+  font-family: inherit;
+}
+.lang-pill:hover {
+  background: var(--secondary, #282320);
+  color: var(--foreground, #f5efe8);
+}
+.lang-pill.active {
+  border-color: var(--primary, #e8a832);
+  background: var(--primary-muted, #3d2e12);
+  color: var(--primary, #e8a832);
+}
+
+
 /* ══════════════════════════════════════════════════════════════════════════
    COMPACT MODE — used by RevisionHistory, TranslationReview, excerpts
    ══════════════════════════════════════════════════════════════════════════ */

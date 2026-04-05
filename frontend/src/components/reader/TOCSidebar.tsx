@@ -1,7 +1,12 @@
 import { useNavigate } from 'react-router-dom';
-import { X } from 'lucide-react';
+import { X, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Book, Chapter } from '@/features/books/api';
+
+export interface LanguageOption {
+  code: string;
+  isOriginal: boolean;
+}
 
 interface TOCSidebarProps {
   open: boolean;
@@ -12,6 +17,12 @@ interface TOCSidebarProps {
   currentIdx: number;
   progress: number;
   bookId: string;
+  /** Available languages (original + translations) */
+  languages: LanguageOption[];
+  /** Currently selected reading language */
+  activeLanguage: string;
+  /** Called when user selects a language */
+  onLanguageChange: (lang: string) => void;
 }
 
 export function TOCSidebar({
@@ -23,6 +34,9 @@ export function TOCSidebar({
   currentIdx,
   progress,
   bookId,
+  languages,
+  activeLanguage,
+  onLanguageChange,
 }: TOCSidebarProps) {
   const navigate = useNavigate();
 
@@ -83,7 +97,26 @@ export function TOCSidebar({
           })}
         </div>
 
-        {/* Footer — language selector added in RD-09 */}
+        {/* Language selector */}
+        {languages.length > 1 && (
+          <div className="lang-selector">
+            <div className="lang-selector-label">
+              <Globe className="h-3 w-3" />
+              Reading language
+            </div>
+            <div className="lang-pills">
+              {languages.map((lang) => (
+                <button
+                  key={lang.code}
+                  className={cn('lang-pill', activeLanguage === lang.code && 'active')}
+                  onClick={() => onLanguageChange(lang.code)}
+                >
+                  {lang.code}{lang.isOriginal ? ' (original)' : ''}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { Menu, X, ChevronLeft, ChevronRight, Pencil, Volume2, Sun } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Book, type Chapter } from '@/features/books/api';
+import { versionsApi } from '@/features/translation/api';
 import { ContentRenderer } from '@/components/reader/ContentRenderer';
-import { TOCSidebar } from '@/components/reader/TOCSidebar';
+import { TOCSidebar, type LanguageOption } from '@/components/reader/TOCSidebar';
 import type { JSONContent } from '@tiptap/react';
 import { extractText } from '@/components/editor/TiptapEditor';
 
@@ -32,12 +33,19 @@ export function ReaderPage() {
   const { bookId = '', chapterId = '' } = useParams();
   const { accessToken } = useAuth();
   const navigate = useNavigate();
+  const [originalBlocks, setOriginalBlocks] = useState<JSONContent[]>([]);
   const [blocks, setBlocks] = useState<JSONContent[]>([]);
   const [chapter, setChapter] = useState<Chapter | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [book, setBook] = useState<Book | null>(null);
   const [tocOpen, setTocOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Language state
+  const [languages, setLanguages] = useState<LanguageOption[]>([]);
+  const [activeLanguage, setActiveLanguage] = useState('');
+  // Map: language code → active translation version ID
+  const [langVersionMap, setLangVersionMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!accessToken) return;
@@ -46,15 +54,65 @@ export function ReaderPage() {
       booksApi.getBook(accessToken, bookId),
       booksApi.getDraft(accessToken, bookId, chapterId),
       booksApi.listChapters(accessToken, bookId, { lifecycle_state: 'active', limit: 100 }),
-    ]).then(([b, d, chs]) => {
+      versionsApi.listChapterVersions(accessToken, chapterId).catch(() => null),
+    ]).then(([b, d, chs, versions]) => {
       setBook(b);
-      // Extract blocks from Tiptap JSON body
       const body = d.body as JSONContent | null;
-      setBlocks(body?.content ?? []);
+      const origBlocks = body?.content ?? [];
+      setOriginalBlocks(origBlocks);
+      setBlocks(origBlocks);
       setChapter(chs.items.find((c) => c.chapter_id === chapterId) ?? null);
       setChapters(chs.items);
+
+      // Build language options
+      const origLang = b.original_language ?? 'original';
+      const langs: LanguageOption[] = [{ code: origLang, isOriginal: true }];
+      const versionMap: Record<string, string> = {};
+      if (versions?.languages) {
+        for (const g of versions.languages) {
+          if (g.target_language !== origLang) {
+            langs.push({ code: g.target_language, isOriginal: false });
+          }
+          if (g.active_id) {
+            versionMap[g.target_language] = g.active_id;
+          }
+        }
+      }
+      setLanguages(langs);
+      setLangVersionMap(versionMap);
+      setActiveLanguage(origLang);
     }).catch(() => {}).finally(() => setLoading(false));
   }, [accessToken, bookId, chapterId]);
+
+  /** Convert flat translated text to paragraph blocks for ContentRenderer */
+  const textToBlocks = useCallback((text: string): JSONContent[] => {
+    return text.split(/\n\n+/).filter(Boolean).map((p) => ({
+      type: 'paragraph',
+      content: [{ type: 'text', text: p }],
+    }));
+  }, []);
+
+  /** Switch reading language */
+  const handleLanguageChange = useCallback(async (lang: string) => {
+    setActiveLanguage(lang);
+    const origLang = book?.original_language ?? 'original';
+    if (lang === origLang) {
+      setBlocks(originalBlocks);
+      return;
+    }
+    const versionId = langVersionMap[lang];
+    if (!versionId || !accessToken) return;
+    try {
+      const version = await versionsApi.getChapterVersion(accessToken, chapterId, versionId);
+      if (version.translated_body) {
+        setBlocks(textToBlocks(version.translated_body));
+      }
+    } catch {
+      // Silently fall back to original
+      setBlocks(originalBlocks);
+      setActiveLanguage(origLang);
+    }
+  }, [book, originalBlocks, langVersionMap, accessToken, chapterId, textToBlocks]);
 
   const currentIdx = chapters.findIndex((c) => c.chapter_id === chapterId);
   const prevCh = currentIdx > 0 ? chapters[currentIdx - 1] : null;
@@ -117,6 +175,9 @@ export function ReaderPage() {
         currentIdx={currentIdx}
         progress={progress}
         bookId={bookId}
+        languages={languages}
+        activeLanguage={activeLanguage}
+        onLanguageChange={handleLanguageChange}
       />
 
       {/* Reading area */}
