@@ -18,17 +18,19 @@ type EntityKind struct {
 
 // AttrDef describes one attribute field within a kind.
 type AttrDef struct {
-	AttrDefID   string   `json:"attr_def_id"`
-	Code        string   `json:"code"`
-	Name        string   `json:"name"`
-	Description *string  `json:"description"`
-	FieldType   string   `json:"field_type"`
-	IsRequired  bool     `json:"is_required"`
-	IsSystem    bool     `json:"is_system"`
-	IsActive    bool     `json:"is_active"`
-	SortOrder   int      `json:"sort_order"`
-	Options     []string `json:"options,omitempty"`
-	GenreTags   []string `json:"genre_tags"`
+	AttrDefID       string   `json:"attr_def_id"`
+	Code            string   `json:"code"`
+	Name            string   `json:"name"`
+	Description     *string  `json:"description"`
+	FieldType       string   `json:"field_type"`
+	IsRequired      bool     `json:"is_required"`
+	IsSystem        bool     `json:"is_system"`
+	IsActive        bool     `json:"is_active"`
+	SortOrder       int      `json:"sort_order"`
+	Options         []string `json:"options,omitempty"`
+	GenreTags       []string `json:"genre_tags"`
+	AutoFillPrompt  *string  `json:"auto_fill_prompt"`
+	TranslationHint *string  `json:"translation_hint"`
 }
 
 // SeedKind is the static definition used to seed entity_kinds + attribute_definitions.

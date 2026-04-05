@@ -689,6 +689,83 @@ T48_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$GATEWAY/v1/glossa
 assert_status "T48 reorder with unknown ID succeeds (no-op)" "200" "$T48_STATUS"
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# AI Prompt fields: auto_fill_prompt + translation_hint
+# ═══════════════════════════════════════════════════════════════════════════════
+header "AI Prompt fields on attributes"
+
+# T49: listKinds attrs have auto_fill_prompt key
+KINDS9=$(curl -s -H "$AUTH" "$GATEWAY/v1/glossary/kinds")
+T49_HAS=$(echo "$KINDS9" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    const a=j[0].default_attributes[0];
+    console.log('auto_fill_prompt' in a && 'translation_hint' in a ? 'HAS_KEYS' : 'MISSING');
+  });" 2>/dev/null)
+assert_eq "T49 attr has AI prompt keys" "HAS_KEYS" "$T49_HAS"
+
+# T50: Existing attrs have null prompts
+T50_VAL=$(echo "$KINDS9" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    const a=j[0].default_attributes[0];
+    console.log(a.auto_fill_prompt===null && a.translation_hint===null ? 'null' : 'NOT_NULL');
+  });" 2>/dev/null)
+assert_eq "T50 existing attrs have null AI prompts" "null" "$T50_VAL"
+
+# T51: Create attr with AI prompts
+A4=$(curl -s -X POST "$GATEWAY/v1/glossary/kinds/$NEW_KIND_ID/attributes" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"code":"ai_test","name":"AI Test","field_type":"textarea","auto_fill_prompt":"Generate {{entity_name}} details","translation_hint":"Keep cultural context"}')
+ATTR_ID4=$(echo "$A4" | jget .attr_def_id)
+assert_not_empty "T51 create attr with AI prompts (got id)" "$ATTR_ID4"
+assert_eq "T51 auto_fill_prompt" "Generate {{entity_name}} details" "$(echo "$A4" | jget .auto_fill_prompt)"
+assert_eq "T51 translation_hint" "Keep cultural context" "$(echo "$A4" | jget .translation_hint)"
+
+# T52: Create attr without AI prompts — null
+A5=$(curl -s -X POST "$GATEWAY/v1/glossary/kinds/$NEW_KIND_ID/attributes" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"code":"no_ai","name":"No AI","field_type":"text"}')
+T52_AFP=$(echo "$A5" | jget .auto_fill_prompt)
+T52_TH=$(echo "$A5" | jget .translation_hint)
+assert_empty_or_null "T52 auto_fill_prompt null when not set" "$T52_AFP"
+assert_empty_or_null "T52 translation_hint null when not set" "$T52_TH"
+
+# T53: Patch attr to set auto_fill_prompt
+APATCH_AI=$(curl -s -X PATCH "$GATEWAY/v1/glossary/kinds/$NEW_KIND_ID/attributes/$ATTR_ID4" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"auto_fill_prompt":"Updated prompt for {{entity_name}}"}')
+assert_eq "T53 patch auto_fill_prompt" "Updated prompt for {{entity_name}}" "$(echo "$APATCH_AI" | jget .auto_fill_prompt)"
+assert_eq "T53 translation_hint unchanged" "Keep cultural context" "$(echo "$APATCH_AI" | jget .translation_hint)"
+
+# T54: Patch attr to clear auto_fill_prompt
+APATCH_AI2=$(curl -s -X PATCH "$GATEWAY/v1/glossary/kinds/$NEW_KIND_ID/attributes/$ATTR_ID4" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"auto_fill_prompt":null}')
+T54_AFP=$(echo "$APATCH_AI2" | jget .auto_fill_prompt)
+assert_empty_or_null "T54 auto_fill_prompt cleared to null" "$T54_AFP"
+
+# T55: Patch translation_hint only
+APATCH_AI3=$(curl -s -X PATCH "$GATEWAY/v1/glossary/kinds/$NEW_KIND_ID/attributes/$ATTR_ID4" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"translation_hint":"New hint for translators"}')
+assert_eq "T55 translation_hint updated" "New hint for translators" "$(echo "$APATCH_AI3" | jget .translation_hint)"
+
+# T56: listKinds reflects AI prompts
+KINDS10=$(curl -s -H "$AUTH" "$GATEWAY/v1/glossary/kinds")
+T56_VAL=$(echo "$KINDS10" | node -e "
+  let d=''; process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>{
+    const j=JSON.parse(d);
+    const spell=j.find(k=>k.code==='test_spell');
+    if(!spell){console.log('NOT_FOUND');return;}
+    const a=spell.default_attributes.find(a=>a.code==='ai_test');
+    console.log(a ? a.translation_hint : 'NOT_FOUND');
+  });" 2>/dev/null)
+assert_eq "T56 listKinds shows translation_hint" "New hint for translators" "$T56_VAL"
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Cleanup: delete test kinds + book
 # ═══════════════════════════════════════════════════════════════════════════════
 header "Cleanup"

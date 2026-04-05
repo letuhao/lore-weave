@@ -22,16 +22,18 @@ type kindRow struct {
 }
 
 type attrRow struct {
-	AttrDefID   string
-	Code        string
-	Name        string
-	Description *string
-	FieldType   string
-	IsRequired  bool
-	IsSystem    bool
-	IsActive    bool
-	SortOrder   int
-	GenreTags   []string
+	AttrDefID       string
+	Code            string
+	Name            string
+	Description     *string
+	FieldType       string
+	IsRequired      bool
+	IsSystem        bool
+	IsActive        bool
+	SortOrder       int
+	GenreTags       []string
+	AutoFillPrompt  *string
+	TranslationHint *string
 }
 
 // listKinds handles GET /v1/glossary/kinds.
@@ -74,7 +76,7 @@ func (s *Server) listKinds(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch attribute definitions only for visible kinds
 	attrRowsQ, err := s.pool.Query(ctx, `
-		SELECT ad.attr_def_id, ad.kind_id, ad.code, ad.name, ad.description, ad.field_type, ad.is_required, ad.is_system, ad.is_active, ad.sort_order, ad.genre_tags
+		SELECT ad.attr_def_id, ad.kind_id, ad.code, ad.name, ad.description, ad.field_type, ad.is_required, ad.is_system, ad.is_active, ad.sort_order, ad.genre_tags, ad.auto_fill_prompt, ad.translation_hint
 		FROM attribute_definitions ad
 		JOIN entity_kinds ek ON ek.kind_id = ad.kind_id AND ek.is_hidden = false
 		ORDER BY ad.kind_id, ad.sort_order`)
@@ -90,7 +92,8 @@ func (s *Server) listKinds(w http.ResponseWriter, r *http.Request) {
 		var kindID string
 		var a attrRow
 		if err := attrRowsQ.Scan(&a.AttrDefID, &kindID, &a.Code, &a.Name, &a.Description,
-			&a.FieldType, &a.IsRequired, &a.IsSystem, &a.IsActive, &a.SortOrder, &a.GenreTags); err != nil {
+			&a.FieldType, &a.IsRequired, &a.IsSystem, &a.IsActive, &a.SortOrder, &a.GenreTags,
+			&a.AutoFillPrompt, &a.TranslationHint); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan attr error")
 			return
 		}
@@ -107,16 +110,18 @@ func (s *Server) listKinds(w http.ResponseWriter, r *http.Request) {
 		attrs := make([]domain.AttrDef, 0, len(attrsByKind[k.KindID]))
 		for _, a := range attrsByKind[k.KindID] {
 			attrs = append(attrs, domain.AttrDef{
-				AttrDefID:   a.AttrDefID,
-				Code:        a.Code,
-				Name:        a.Name,
-				Description: a.Description,
-				FieldType:   a.FieldType,
-				IsRequired:  a.IsRequired,
-				IsSystem:    a.IsSystem,
-				IsActive:    a.IsActive,
-				SortOrder:   a.SortOrder,
-				GenreTags:   a.GenreTags,
+				AttrDefID:       a.AttrDefID,
+				Code:            a.Code,
+				Name:            a.Name,
+				Description:     a.Description,
+				FieldType:       a.FieldType,
+				IsRequired:      a.IsRequired,
+				IsSystem:        a.IsSystem,
+				IsActive:        a.IsActive,
+				SortOrder:       a.SortOrder,
+				GenreTags:       a.GenreTags,
+				AutoFillPrompt:  a.AutoFillPrompt,
+				TranslationHint: a.TranslationHint,
 			})
 		}
 		out = append(out, domain.EntityKind{
