@@ -6,6 +6,27 @@ import { booksApi, type Book, type Chapter } from '@/features/books/api';
 import { ContentRenderer } from '@/components/reader/ContentRenderer';
 import { cn } from '@/lib/utils';
 import type { JSONContent } from '@tiptap/react';
+import { extractText } from '@/components/editor/TiptapEditor';
+
+/** CJK Unicode ranges: CJK Unified Ideographs, Hiragana, Katakana, Hangul */
+const CJK_REGEX = /[\u3000-\u9fff\uac00-\ud7af\uff00-\uffef]/;
+
+function computeReadingStats(blocks: JSONContent[], language?: string) {
+  const text = blocks.map((b) => extractText(b)).join(' ');
+  const isCJK = CJK_REGEX.test(text) || ['ja', 'zh', 'ko'].includes(language ?? '');
+
+  if (isCJK) {
+    // CJK: count characters (excluding spaces/punctuation), ~400 chars/min
+    const chars = text.replace(/[\s\p{P}]/gu, '').length;
+    const minutes = Math.max(1, Math.round(chars / 400));
+    return { count: chars.toLocaleString(), unit: 'chars', minutes };
+  }
+
+  // Latin: count words, ~230 wpm
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  const minutes = Math.max(1, Math.round(words / 230));
+  return { count: words.toLocaleString(), unit: 'words', minutes };
+}
 
 export function ReaderPage() {
   const { bookId = '', chapterId = '' } = useParams();
@@ -39,6 +60,8 @@ export function ReaderPage() {
   const prevCh = currentIdx > 0 ? chapters[currentIdx - 1] : null;
   const nextCh = currentIdx < chapters.length - 1 ? chapters[currentIdx + 1] : null;
   const progress = chapters.length > 0 ? ((currentIdx + 1) / chapters.length) * 100 : 0;
+  const chapterLang = chapter?.original_language;
+  const stats = computeReadingStats(blocks, chapterLang ?? undefined);
 
   if (loading) return <div className="flex h-screen items-center justify-center text-sm text-muted-foreground">Loading...</div>;
 
@@ -146,17 +169,26 @@ export function ReaderPage() {
         <article style={{ maxWidth: 'var(--reader-width, 680px)', width: '100%' }}>
 
           {/* Chapter header */}
-          <header className="mb-10 text-center">
-            <p className="mb-2 font-sans text-xs uppercase tracking-widest text-muted-foreground">
-              Chapter {currentIdx + 1}
-            </p>
+          <div className="chapter-header">
+            <p className="ch-label">Chapter {currentIdx + 1}</p>
             {(chapter?.title || chapter?.original_filename) && (
-              <h1 className="font-serif text-[calc(17px*1.8)] font-semibold leading-tight">
-                {chapter?.title || chapter?.original_filename}
-              </h1>
+              <h1 className="ch-title">{chapter?.title || chapter?.original_filename}</h1>
             )}
-            <div className="mx-auto mt-3 h-0.5 w-10 rounded bg-primary/50" />
-          </header>
+            <div className="ch-divider" />
+            <div className="ch-meta">
+              <span>{stats.count} {stats.unit}</span>
+              <span style={{ color: 'var(--border)' }}>&middot;</span>
+              <span>~{stats.minutes} min read</span>
+              {chapterLang && (
+                <>
+                  <span style={{ color: 'var(--border)' }}>&middot;</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                    <span className="lang-badge">{chapterLang}</span>
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
 
           {/* Chapter content — ContentRenderer */}
           {blocks.length > 0 ? (
@@ -168,8 +200,8 @@ export function ReaderPage() {
           )}
 
           {/* End of chapter marker */}
-          <div className="mt-12 border-t pt-6 text-center">
-            <p className="font-sans text-xs text-muted-foreground">End of Chapter {currentIdx + 1}</p>
+          <div className="chapter-end">
+            <p>End of Chapter {currentIdx + 1}</p>
           </div>
         </article>
       </div>
