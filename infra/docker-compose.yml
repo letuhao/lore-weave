@@ -94,12 +94,14 @@ services:
       MINIO_SECRET_KEY: loreweave_dev_minio_secret
       MINIO_USE_SSL: "false"
       MINIO_EXTERNAL_URL: http://localhost:9123
+      SHARING_INTERNAL_URL: http://sharing-service:8083
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
     depends_on:
       postgres:
         condition: service_healthy
-
+      sharing-service:
+        condition: service_healthy
       minio:
         condition: service_started
     ports:

@@ -74,7 +74,8 @@ export function TOCSidebar({
         <div className="flex-1 overflow-y-auto">
           {chapters.map((ch, i) => {
             const isCurrent = ch.chapter_id === currentChapterId;
-            const isRead = i < currentIdx;
+            // TODO: Read status requires backend tracking (reading_progress table)
+            // See Phase 8 plan — deferred to reading analytics feature
             return (
               <button
                 key={ch.chapter_id}
@@ -89,9 +90,6 @@ export function TOCSidebar({
                 <span className="w-5 flex-shrink-0 text-right font-mono text-[11px]">{i + 1}</span>
                 <span className="flex-1">{ch.title || ch.original_filename}</span>
                 {isCurrent && <span className="text-[9px] text-primary">reading</span>}
-                {isRead && (
-                  <svg className="h-3 w-3 flex-shrink-0 text-success" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" /></svg>
-                )}
               </button>
             );
           })}

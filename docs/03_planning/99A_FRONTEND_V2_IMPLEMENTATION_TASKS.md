@@ -2851,6 +2851,45 @@ Task order:
 
 ---
 
+### Phase 8H: Reading Analytics & Progress Tracking (future)
+
+> **Goal:** Backend-tracked reading progress, view counts, and reading time.
+> Replaces the fake "read" checkmarks (index-based) with real per-user tracking.
+> **Status:** Not broken down yet — needs its own planning session.
+>
+> **Backend (new table):**
+> ```sql
+> CREATE TABLE reading_progress (
+>   user_id        UUID NOT NULL,
+>   book_id        UUID NOT NULL,
+>   chapter_id     UUID NOT NULL,
+>   read_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+>   time_spent_ms  BIGINT DEFAULT 0,
+>   scroll_depth   REAL DEFAULT 0,   -- 0.0 to 1.0
+>   PRIMARY KEY (user_id, book_id, chapter_id)
+> );
+> CREATE TABLE book_views (
+>   book_id     UUID NOT NULL,
+>   user_id     UUID,               -- nullable for anonymous
+>   viewed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+>   referrer    TEXT
+> );
+> ```
+>
+> **Key features:**
+> - Track which chapters a user has actually read (not index-based guess)
+> - Record time spent per chapter (for leaderboard, author analytics)
+> - Record scroll depth (did they read the whole chapter or just the start?)
+> - Book view counts (for catalog popularity, leaderboard)
+> - Anonymous view tracking for public books
+> - TOC sidebar shows real read/unread status per chapter
+> - Author dashboard: reader engagement metrics
+>
+> **Deps:** None for backend. Frontend wiring depends on Phase 8A (reader).
+> **Related:** Leaderboard page, Author analytics page, Browse page sorting by popularity.
+
+---
+
 ### Phase 8 Summary
 
 | Sub-phase | Tasks | FE | BE | Deps |
