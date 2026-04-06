@@ -65,14 +65,22 @@ export function TTSSettings({ open, onClose }: TTSSettingsProps) {
     BrowserTTSEngine.waitForVoices().then(setVoices);
   }, []);
 
-  // Apply saved prefs on mount
+  // Apply saved prefs once on first open
+  const [prefsApplied, setPrefsApplied] = useState(false);
   useEffect(() => {
-    controls.setSpeed(prefs.speed);
-    if (prefs.voiceURI && voices.length > 0) {
-      const voice = voices.find((v) => v.voiceURI === prefs.voiceURI) || null;
-      controls.setVoice(voice);
-    }
-  }, [voices, prefs.speed, prefs.voiceURI, controls]);
+    if (prefsApplied || !open) return;
+    setPrefsApplied(true);
+    // Defer to avoid triggering store update during render cycle
+    const timer = setTimeout(() => {
+      const p = loadPrefs();
+      controls.setSpeed(p.speed);
+      if (p.voiceURI && voices.length > 0) {
+        const voice = voices.find((v) => v.voiceURI === p.voiceURI) || null;
+        controls.setVoice(voice);
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [open, prefsApplied, voices, controls]);
 
   const updatePref = <K extends keyof TTSPrefs>(key: K, value: TTSPrefs[K]) => {
     const next = { ...prefs, [key]: value };
