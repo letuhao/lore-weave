@@ -134,6 +134,23 @@ CREATE TABLE IF NOT EXISTS block_media_versions (
 );
 CREATE INDEX IF NOT EXISTS idx_bmv_chapter_block
   ON block_media_versions(chapter_id, block_id, version DESC);
+
+-- ── chapter_audio_segments: AI TTS / uploaded audio per block ───────────
+CREATE TABLE IF NOT EXISTS chapter_audio_segments (
+  segment_id       UUID PRIMARY KEY DEFAULT uuidv7(),
+  chapter_id       UUID NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+  block_index      INT NOT NULL,
+  source_text      TEXT NOT NULL,
+  source_text_hash VARCHAR(64) NOT NULL,
+  voice            TEXT NOT NULL,
+  provider         TEXT NOT NULL,
+  language         TEXT NOT NULL,
+  media_key        TEXT NOT NULL,
+  duration_ms      INT NOT NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_audio_seg_lookup
+  ON chapter_audio_segments(chapter_id, language, voice, block_index);
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

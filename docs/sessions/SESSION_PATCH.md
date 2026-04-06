@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-05 (session 21 end, final)
-- Updated By: Assistant (Phase 8A+8B+8C complete, 8D planned — 25 commits)
+- Last Updated: 2026-04-06 (session 22 start)
+- Updated By: Assistant (Phase 8D AU-01 complete — 1 commit)
 - Active Branch: `main`
-- HEAD: `f667955` — docs(plan): replace Phase 8D+8E with unified audio system
+- HEAD: pending commit — feat(book-service): AU-01 chapter_audio_segments table + CRUD
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -31,7 +31,17 @@
 
 ## Current Active Work
 
-**Phase:** Phase 8A (13/13) + 8B (3/3) + 8C (2/2) COMPLETE. Phase 8D (unified audio, 24 tasks) planned. Next: AU-01 BE.
+**Phase:** Phase 8D (unified audio) IN PROGRESS. AU-01 complete (1/24). Next: AU-02 BE.
+
+**What was done in this session (2026-04-06, session 22):**
+
+Phase 8D unified audio — AU-01 backend implementation.
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| AU-01: chapter_audio_segments table + CRUD (3 endpoints, 8 test cases) | `migrate.go`, `audio.go` (new), `server.go` | pending |
+
+**9-phase workflow followed for AU-01:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
 **What was done in this session (2026-04-05, session 21):**
 

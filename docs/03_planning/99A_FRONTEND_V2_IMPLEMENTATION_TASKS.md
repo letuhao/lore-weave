@@ -2621,7 +2621,7 @@ Task order:
   ── Backend (5 tasks) ────────────────────────────────────────────────────
 
   AU-01: BE — chapter_audio_segments table + CRUD [BE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Service: book-service
     DB:
