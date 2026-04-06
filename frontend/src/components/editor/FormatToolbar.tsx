@@ -2,7 +2,7 @@ import type { Editor } from '@tiptap/react';
 import {
   Bold, Italic, Strikethrough, Underline, Code, Code2, List, ListOrdered,
   Heading1, Heading2, Heading3, Minus, Undo2, Redo2, Quote, Pilcrow,
-  ImageIcon, Video, Link2, Highlighter, Subscript, Superscript,
+  ImageIcon, Video, Music, Link2, Highlighter, Subscript, Superscript,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { EditorMode } from './SlashMenu';
@@ -196,6 +196,12 @@ export function FormatToolbar({ editor, mode = 'classic' }: FormatToolbarProps) 
             title="Insert video"
           >
             <Video className="h-3.5 w-3.5" />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={() => editor.chain().focus().insertContent({ type: 'audioBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run()}
+            title="Insert audio"
+          >
+            <Music className="h-3.5 w-3.5" />
           </ToolbarButton>
         </>
       )}

@@ -8,7 +8,7 @@
 ## Document Metadata
 
 - Last Updated: 2026-04-06 (session 23)
-- Updated By: Assistant (Phase 8D AU-01..AU-09 — 11 commits total)
+- Updated By: Assistant (Phase 8D AU-01..AU-10 — 12 commits total)
 - Active Branch: `main`
 - HEAD: pending commit — feat(editor): AU-07 audio attachment attrs
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
@@ -31,7 +31,7 @@
 
 ## Current Active Work
 
-**Phase:** Phase 8D (unified audio) IN PROGRESS. AU-01..AU-09 complete (9/24). Next: AU-10 FE (slash menu + toolbar audio entries).
+**Phase:** Phase 8D (unified audio) IN PROGRESS. AU-01..AU-10 editor complete (10/24). Next: AU-11 FE (reader AudioBlock display).
 
 **What was done in this session (2026-04-06, session 23):**
 
@@ -45,7 +45,8 @@ Phase 8D unified audio — AU-04..AU-07 + bug fixes.
 | Fix: slash menu scroll positioning (fixed pos + max-height + flip) + sticky FormatToolbar | `SlashMenu.tsx`, `FormatToolbar.tsx` | `8d1462f` |
 | AU-07: Audio attachment attrs on text blocks (paragraph, heading, blockquote, callout) | `AudioAttrsExtension.ts` (new), `TiptapEditor.tsx` | `fb072f8` |
 | AU-08: AudioAttachBar — mini player widget decoration on text blocks with audio | `AudioAttachBarExtension.ts` (new), `TiptapEditor.tsx` | `2882ddf` |
-| AU-09: AudioAttachActions — hover upload/record/generate buttons on text blocks | `AudioAttachActionsExtension.ts` (new), `TiptapEditor.tsx` | pending |
+| AU-09: AudioAttachActions — hover upload/record/generate buttons on text blocks | `AudioAttachActionsExtension.ts` (new), `TiptapEditor.tsx` | `77b6b99` |
+| AU-10: FormatToolbar audio insert button (AI mode) — slash menu already in AU-06 | `FormatToolbar.tsx` | pending |
 
 **9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 

@@ -2782,16 +2782,16 @@ Task order:
       - [x] All update block attrs (audio_url, audio_subtitle, etc.)
 
   AU-10: Slash menu + FormatToolbar audio entries [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: AU-06
     Scope: Add audioBlock to slash menu and toolbar
     Changes:
-      - SlashMenu.tsx: add /audio command
+      - SlashMenu.tsx: add /audio command (done in AU-06)
       - FormatToolbar.tsx: add audio insert button (AI mode only)
     AC:
-      - [ ] /audio in slash menu inserts audioBlock
-      - [ ] Audio button in toolbar (AI mode)
+      - [x] /audio in slash menu inserts audioBlock (AU-06)
+      - [x] Audio button in toolbar (AI mode)
 
   ── Reader display (3 tasks) ─────────────────────────────────────────────
 
