@@ -8,7 +8,7 @@
 ## Document Metadata
 
 - Last Updated: 2026-04-06 (session 23)
-- Updated By: Assistant (Phase 8D AU-01..AU-07 — 9 commits total)
+- Updated By: Assistant (Phase 8D AU-01..AU-08 — 10 commits total)
 - Active Branch: `main`
 - HEAD: pending commit — feat(editor): AU-07 audio attachment attrs
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
@@ -31,7 +31,7 @@
 
 ## Current Active Work
 
-**Phase:** Phase 8D (unified audio) IN PROGRESS. AU-01..AU-07 complete (7/24). Next: AU-08 FE (AudioAttachBar mini player on text blocks).
+**Phase:** Phase 8D (unified audio) IN PROGRESS. AU-01..AU-08 complete (8/24). Next: AU-09 FE (AudioAttachActions — upload/record/generate).
 
 **What was done in this session (2026-04-06, session 23):**
 
@@ -43,7 +43,8 @@ Phase 8D unified audio — AU-04..AU-07 + bug fixes.
 | AU-05: Extended integration tests (12 new scenarios, 79/79 total) | `test-audio.sh` | `72a744d` |
 | AU-06: audioBlock Tiptap extension — standalone audio node with upload, player, subtitle, slash menu, media guard | `AudioBlockNode.tsx` (new), `TiptapEditor.tsx`, `SlashMenu.tsx`, `MediaGuardExtension.ts`, `api.ts` | `a273190` |
 | Fix: slash menu scroll positioning (fixed pos + max-height + flip) + sticky FormatToolbar | `SlashMenu.tsx`, `FormatToolbar.tsx` | `8d1462f` |
-| AU-07: Audio attachment attrs on text blocks (paragraph, heading, blockquote, callout) | `AudioAttrsExtension.ts` (new), `TiptapEditor.tsx` | pending |
+| AU-07: Audio attachment attrs on text blocks (paragraph, heading, blockquote, callout) | `AudioAttrsExtension.ts` (new), `TiptapEditor.tsx` | `fb072f8` |
+| AU-08: AudioAttachBar — mini player widget decoration on text blocks with audio | `AudioAttachBarExtension.ts` (new), `TiptapEditor.tsx` | pending |
 
 **9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 

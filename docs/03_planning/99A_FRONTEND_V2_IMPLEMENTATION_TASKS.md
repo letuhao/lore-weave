@@ -2751,19 +2751,19 @@ Task order:
       - [x] Attrs survive save/load cycle
 
   AU-08: AudioAttachBar — mini player on text blocks [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: AU-07
     Scope: When a text block has audio_url, show mini player bar below text
-    File: frontend/src/components/editor/AudioAttachBar.tsx
+    File: frontend/src/components/editor/AudioAttachBarExtension.ts
     Shows: play button, waveform, duration, source badge, mismatch indicator
     Replace/remove buttons
     AC:
-      - [ ] Bar appears when block has audio_url
-      - [ ] Play/pause audio
-      - [ ] Shows source badge (recorded/uploaded/AI)
-      - [ ] Mismatch warning when subtitle differs from text
-      - [ ] Replace and remove buttons work
+      - [x] Bar appears when block has audio_url
+      - [x] Play/pause audio
+      - [x] Shows source badge (recorded/uploaded/AI)
+      - [x] Mismatch warning when subtitle differs from text
+      - [x] Replace and remove buttons work
 
   AU-09: AudioAttachActions — upload/record/generate [FE]
     Status: [ ]
