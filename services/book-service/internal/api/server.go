@@ -133,6 +133,7 @@ func (s *Server) Router() http.Handler {
 				r.Get("/audio", s.listAudioSegments)
 				r.Get("/audio/{segment_id}", s.getAudioSegment)
 				r.Delete("/audio", s.deleteAudioSegments)
+				r.Post("/block-audio", s.uploadBlockAudio)
 			})
 		})
 	})

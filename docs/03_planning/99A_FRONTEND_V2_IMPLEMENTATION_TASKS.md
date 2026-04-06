@@ -2652,7 +2652,7 @@ Task order:
       - [ ] Integration tests
 
   AU-02: BE — Audio upload endpoint (attach to block) [BE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: AU-01
     Service: book-service (reuses existing MinIO upload infrastructure)

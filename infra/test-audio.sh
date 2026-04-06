@@ -1,12 +1,9 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────────────────────
-# LoreWeave — Audio Segments Integration Test (AU-01)
+# LoreWeave — Audio Integration Tests (AU-01 + AU-02)
 #
-# Tests chapter_audio_segments CRUD through the gateway:
-#   - List segments (GET with language+voice)
-#   - Get single segment (GET by segment_id)
-#   - Delete segments (DELETE with language+voice)
-#   - Auth, validation, edge cases
+# AU-01: chapter_audio_segments CRUD (list, get, delete)
+# AU-02: Block audio upload (multipart → MinIO)
 #
 # Prerequisites: all services running via docker compose
 # Usage: bash infra/test-audio.sh
@@ -301,6 +298,116 @@ assert_eq "T20 delete empty is idempotent" "0" "$DEL_EMPTY_CT"
 # T21: Delete missing params → 400
 S_DEL_BAD=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE -H "$AUTH" "$BASE")
 assert_status "T21 delete without params" "400" "$S_DEL_BAD"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AU-02: Upload block audio
+# ═══════════════════════════════════════════════════════════════════════════════
+header "AU-02: Upload block audio"
+
+UPLOAD_BASE="$GATEWAY/v1/books/$BOOK_ID/chapters/$CHAPTER_ID/block-audio"
+
+# Create a small test audio file
+TESTFILE="${TMPDIR:-${USERPROFILE:-/tmp}}/loreweave-test-audio.mp3"
+dd if=/dev/urandom bs=1024 count=5 of="$TESTFILE" 2>/dev/null
+
+# T22: Upload with subtitle
+UP1=$(curl -s -H "$AUTH" \
+  -F "file=@$TESTFILE;type=audio/mpeg" \
+  -F "block_index=0" \
+  -F "subtitle=First paragraph spoken" \
+  "$UPLOAD_BASE")
+UP1_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" \
+  -F "file=@$TESTFILE;type=audio/mpeg" \
+  -F "block_index=1" \
+  "$UPLOAD_BASE")
+assert_status "T22 upload returns 201" "201" "$UP1_STATUS"
+
+UP1_URL=$(echo "$UP1" | jget .audio_url)
+UP1_KEY=$(echo "$UP1" | jget .media_key)
+UP1_CT=$(echo "$UP1" | jget .content_type)
+UP1_SIZE=$(echo "$UP1" | jget .size_bytes)
+UP1_DUR=$(echo "$UP1" | jget .duration_ms)
+UP1_SUB=$(echo "$UP1" | jget .subtitle)
+assert_not_empty "T22a audio_url" "$UP1_URL"
+assert_not_empty "T22b media_key" "$UP1_KEY"
+assert_eq "T22c content_type" "audio/mpeg" "$UP1_CT"
+assert_eq "T22d size_bytes" "5120" "$UP1_SIZE"
+assert_eq "T22e duration_ms" "0" "$UP1_DUR"
+assert_eq "T22f subtitle" "First paragraph spoken" "$UP1_SUB"
+
+# T23: media_key follows expected path pattern
+KEY_PREFIX="audio/$CHAPTER_ID/attached/0_"
+KEY_MATCH=$(echo "$UP1_KEY" | node -e "
+  let d='';process.stdin.on('data',c=>d+=c);
+  process.stdin.on('end',()=>console.log(d.trim().startsWith('$KEY_PREFIX')));
+")
+assert_eq "T23 media_key path pattern" "true" "$KEY_MATCH"
+
+# T24: MinIO object accessible via audio_url
+MINIO_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$UP1_URL")
+assert_status "T24 MinIO object accessible" "200" "$MINIO_STATUS"
+
+# T25: Upload without subtitle (optional field)
+UP2=$(curl -s -H "$AUTH" \
+  -F "file=@$TESTFILE;type=audio/mpeg" \
+  -F "block_index=5" \
+  "$UPLOAD_BASE")
+UP2_SUB=$(echo "$UP2" | jget .subtitle)
+assert_eq "T25 subtitle empty when omitted" "" "$UP2_SUB"
+UP2_KEY=$(echo "$UP2" | jget .media_key)
+assert_not_empty "T25b media_key present" "$UP2_KEY"
+
+# T26: Upload WAV type
+TESTFILE_WAV="${TMPDIR:-${USERPROFILE:-/tmp}}/loreweave-test-audio.wav"
+dd if=/dev/urandom bs=1024 count=3 of="$TESTFILE_WAV" 2>/dev/null
+UP3_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" \
+  -F "file=@$TESTFILE_WAV;type=audio/wav" \
+  -F "block_index=0" \
+  "$UPLOAD_BASE")
+assert_status "T26 WAV upload" "201" "$UP3_STATUS"
+
+# T27: Missing block_index → 400
+BAD1_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" \
+  -F "file=@$TESTFILE;type=audio/mpeg" \
+  "$UPLOAD_BASE")
+assert_status "T27 missing block_index" "400" "$BAD1_STATUS"
+
+# T28: Negative block_index → 400
+BAD2_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" \
+  -F "file=@$TESTFILE;type=audio/mpeg" \
+  -F "block_index=-1" \
+  "$UPLOAD_BASE")
+assert_status "T28 negative block_index" "400" "$BAD2_STATUS"
+
+# T29: Non-audio MIME type → 415
+BAD3_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" \
+  -F "file=@$TESTFILE;type=image/png" \
+  -F "block_index=0" \
+  "$UPLOAD_BASE")
+assert_status "T29 non-audio type" "415" "$BAD3_STATUS"
+
+# T30: No file → 400
+BAD4_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" \
+  -F "block_index=0" \
+  "$UPLOAD_BASE")
+assert_status "T30 no file" "400" "$BAD4_STATUS"
+
+# T31: No auth → 401
+BAD5_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+  -F "file=@$TESTFILE;type=audio/mpeg" \
+  -F "block_index=0" \
+  "$UPLOAD_BASE")
+assert_status "T31 no auth" "401" "$BAD5_STATUS"
+
+# T32: Other user → 404
+BAD6_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH2" \
+  -F "file=@$TESTFILE;type=audio/mpeg" \
+  -F "block_index=0" \
+  "$UPLOAD_BASE")
+assert_status "T32 other user" "404" "$BAD6_STATUS"
+
+# Cleanup temp files
+rm -f "$TESTFILE" "$TESTFILE_WAV" 2>/dev/null
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Cleanup

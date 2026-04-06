@@ -1,13 +1,27 @@
 package api
 
 import (
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
 )
+
+const maxAudioSize = 20 << 20 // 20 MB
+
+var allowedAudioTypes = map[string]string{
+	"audio/mpeg": ".mp3",
+	"audio/wav":  ".wav",
+	"audio/ogg":  ".ogg",
+	"audio/webm": ".webm",
+	"audio/mp4":  ".m4a",
+}
 
 // ── Response types ─────────────────────────────────────────────────────────────
 
@@ -192,4 +206,111 @@ func (s *Server) deleteAudioSegments(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": tag.RowsAffected()})
+}
+
+// ── Upload block audio ─────────────────────────────────────────────────────────
+
+func (s *Server) uploadBlockAudio(w http.ResponseWriter, r *http.Request) {
+	if s.minio == nil {
+		writeError(w, http.StatusServiceUnavailable, "MEDIA_UNAVAILABLE", "media storage not configured")
+		return
+	}
+
+	ownerID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
+		return
+	}
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	chapterID := chi.URLParam(r, "chapter_id")
+	if chapterID == "" {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "chapter_id required")
+		return
+	}
+
+	lifecycle, okBook, st := s.ensureOwnerBook(r.Context(), bookID, ownerID)
+	if !okBook {
+		writeError(w, st, "BOOK_NOT_FOUND", "book not found")
+		return
+	}
+	if lifecycle != "active" {
+		writeError(w, http.StatusConflict, "BOOK_INVALID_LIFECYCLE", "book not active")
+		return
+	}
+
+	var exists bool
+	_ = s.pool.QueryRow(r.Context(),
+		`SELECT EXISTS(SELECT 1 FROM chapters WHERE id=$1 AND book_id=$2 AND lifecycle_state='active')`,
+		chapterID, bookID).Scan(&exists)
+	if !exists {
+		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
+		return
+	}
+
+	if err := r.ParseMultipartForm(maxAudioSize); err != nil {
+		writeError(w, http.StatusBadRequest, "AUDIO_TOO_LARGE", "file exceeds 20 MB limit")
+		return
+	}
+
+	// block_index is required
+	biStr := r.FormValue("block_index")
+	if biStr == "" {
+		writeError(w, http.StatusBadRequest, "AUDIO_VALIDATION_ERROR", "block_index is required")
+		return
+	}
+	blockIndex, err := strconv.Atoi(biStr)
+	if err != nil || blockIndex < 0 {
+		writeError(w, http.StatusBadRequest, "AUDIO_VALIDATION_ERROR", "block_index must be a non-negative integer")
+		return
+	}
+
+	f, fh, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "AUDIO_VALIDATION_ERROR", "file is required")
+		return
+	}
+	defer f.Close()
+
+	contentType := fh.Header.Get("Content-Type")
+	ext, ok := allowedAudioTypes[contentType]
+	if !ok {
+		writeError(w, http.StatusUnsupportedMediaType, "UNSUPPORTED_MEDIA_TYPE",
+			fmt.Sprintf("unsupported audio type %s; allowed: mp3, wav, ogg, webm, m4a", contentType))
+		return
+	}
+
+	if fh.Size > maxAudioSize {
+		writeError(w, http.StatusRequestEntityTooLarge, "AUDIO_TOO_LARGE", "file exceeds 20 MB limit")
+		return
+	}
+
+	ctx := r.Context()
+	if err := s.ensureMediaBucket(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "MEDIA_UPLOAD_FAILED", "storage init failed")
+		return
+	}
+
+	objectKey := fmt.Sprintf("audio/%s/attached/%d_%s%s", chapterID, blockIndex, uuid.New().String(), ext)
+
+	_, err = s.minio.PutObject(ctx, mediaBucket, objectKey, io.LimitReader(f, maxAudioSize), fh.Size,
+		minio.PutObjectOptions{ContentType: contentType})
+	if err != nil {
+		slog.Error("uploadBlockAudio minio put", "error", err)
+		writeError(w, http.StatusInternalServerError, "MEDIA_UPLOAD_FAILED", "upload failed")
+		return
+	}
+
+	subtitle := r.FormValue("subtitle")
+
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"audio_url":    s.mediaURL(objectKey),
+		"media_key":    objectKey,
+		"duration_ms":  0,
+		"size_bytes":   fh.Size,
+		"content_type": contentType,
+		"subtitle":     subtitle,
+	})
 }
