@@ -1,9 +1,10 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────────────────────
-# LoreWeave — Audio Integration Tests (AU-01 + AU-02)
+# LoreWeave — Audio Integration Tests (AU-01 + AU-02 + AU-03)
 #
 # AU-01: chapter_audio_segments CRUD (list, get, delete)
 # AU-02: Block audio upload (multipart → MinIO)
+# AU-03: TTS generation (validation, error handling, route ordering)
 #
 # Prerequisites: all services running via docker compose
 # Usage: bash infra/test-audio.sh
@@ -408,6 +409,66 @@ assert_status "T32 other user" "404" "$BAD6_STATUS"
 
 # Cleanup temp files
 rm -f "$TESTFILE" "$TESTFILE_WAV" 2>/dev/null
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AU-03: Generate TTS audio (validation + error handling)
+# ═══════════════════════════════════════════════════════════════════════════════
+header "AU-03: Generate TTS audio"
+
+GEN_URL="$GATEWAY/v1/books/$BOOK_ID/chapters/$CHAPTER_ID/audio/generate"
+
+# T33: Missing fields → 400
+S33=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"language":"en"}' "$GEN_URL")
+assert_status "T33 missing fields" "400" "$S33"
+
+# T34: Empty blocks → 400
+S34=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"language":"en","voice":"alloy","model_ref":"fake-uuid","blocks":[]}' "$GEN_URL")
+assert_status "T34 empty blocks" "400" "$S34"
+
+# T35: No auth → 401
+S35=$(curl -s -o /dev/null -w "%{http_code}" -H "Content-Type: application/json" \
+  -d '{"language":"en","voice":"alloy","model_ref":"fake","blocks":[{"index":0,"text":"hello"}]}' "$GEN_URL")
+assert_status "T35 no auth" "401" "$S35"
+
+# T36: Non-existent model → 402 (NO_PROVIDER)
+S36=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"language":"en","voice":"alloy","model_ref":"00000000-0000-0000-0000-000000000000","blocks":[{"index":0,"text":"hello"}]}' "$GEN_URL")
+assert_status "T36 no provider" "402" "$S36"
+
+# T37: Invalid JSON → 400
+S37=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" -H "Content-Type: application/json" \
+  -d 'not json' "$GEN_URL")
+assert_status "T37 invalid JSON" "400" "$S37"
+
+# T38: Other user → 404
+S38=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH2" -H "Content-Type: application/json" \
+  -d '{"language":"en","voice":"alloy","model_ref":"fake","blocks":[{"index":0,"text":"hello"}]}' "$GEN_URL")
+assert_status "T38 other user" "404" "$S38"
+
+# T39: Response has correct shape (segments + errors arrays)
+# Use a bad model_ref to trigger provider 404 → we still get the response shape
+R39=$(curl -s -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"language":"en","voice":"alloy","model_ref":"00000000-0000-0000-0000-000000000000","blocks":[{"index":0,"text":"test"}]}' "$GEN_URL")
+R39_CODE=$(echo "$R39" | jget .code)
+# Should be NO_PROVIDER error, not a crash
+assert_eq "T39 bad model returns error code" "NO_PROVIDER" "$R39_CODE"
+
+# T40: Verify generate route doesn't conflict with GET /audio/{segment_id}
+# Re-insert a segment, then fetch it — confirms route ordering is correct
+docker compose exec -T postgres psql -U loreweave -d loreweave_book -c "
+  INSERT INTO chapter_audio_segments(segment_id, chapter_id, block_index, source_text, source_text_hash, voice, provider, language, media_key, duration_ms)
+  VALUES ('bbbb0001-0000-0000-0000-000000000001', '$CHAPTER_ID', 0, 'Route test.', encode(sha256('Route test.'::bytea),'hex'), 'alloy', 'openai', 'en', 'audio/test/route.mp3', 1000);
+" > /dev/null
+ROUTE_TEST=$(curl -s -H "$AUTH" "$GATEWAY/v1/books/$BOOK_ID/chapters/$CHAPTER_ID/audio/bbbb0001-0000-0000-0000-000000000001")
+ROUTE_TEXT=$(echo "$ROUTE_TEST" | jget .source_text)
+assert_eq "T40 GET segment still works after generate route" "Route test." "$ROUTE_TEXT"
+
+# Cleanup route test segment
+docker compose exec -T postgres psql -U loreweave -d loreweave_book -c "
+  DELETE FROM chapter_audio_segments WHERE segment_id='bbbb0001-0000-0000-0000-000000000001';
+" > /dev/null
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Cleanup

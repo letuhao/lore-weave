@@ -2671,7 +2671,7 @@ Task order:
       - [ ] Integration tests
 
   AU-03: BE — AI TTS generation endpoint [BE]
-    Status: [ ]
+    Status: [✓]
     Size: M
     Deps: AU-01
     Service: book-service (calls provider-registry for AI credentials)

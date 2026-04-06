@@ -131,6 +131,7 @@ func (s *Server) Router() http.Handler {
 				r.Post("/media-versions", s.createMediaVersion)
 				r.Delete("/media-versions/{version_id}", s.deleteMediaVersion)
 				r.Get("/audio", s.listAudioSegments)
+				r.Post("/audio/generate", s.generateAudio)
 				r.Get("/audio/{segment_id}", s.getAudioSegment)
 				r.Delete("/audio", s.deleteAudioSegments)
 				r.Post("/block-audio", s.uploadBlockAudio)

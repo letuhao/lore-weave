@@ -8,7 +8,7 @@
 ## Document Metadata
 
 - Last Updated: 2026-04-06 (session 22 start)
-- Updated By: Assistant (Phase 8D AU-01+AU-02 complete — 3 commits)
+- Updated By: Assistant (Phase 8D AU-01..AU-03 complete — 4 commits)
 - Active Branch: `main`
 - HEAD: `770b123` — feat(book-service): AU-01 chapter_audio_segments table + CRUD
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
@@ -31,7 +31,7 @@
 
 ## Current Active Work
 
-**Phase:** Phase 8D (unified audio) IN PROGRESS. AU-01+AU-02 complete (2/24). Next: AU-03 BE.
+**Phase:** Phase 8D (unified audio) IN PROGRESS. AU-01..AU-03 complete (3/24). Next: AU-04 BE (gateway proxy).
 
 **What was done in this session (2026-04-06, session 22):**
 
@@ -41,7 +41,8 @@ Phase 8D unified audio — AU-01 backend implementation.
 | --------- | ------------- | ------ |
 | AU-01: chapter_audio_segments table + CRUD (3 endpoints) | `migrate.go`, `audio.go` (new), `server.go` | `770b123` |
 | AU-01: integration tests (41 scenarios, all pass) | `infra/test-audio.sh` (new) | `2c24bbe` |
-| AU-02: block audio upload endpoint + tests (59 total, all pass) | `audio.go`, `server.go`, `test-audio.sh` | pending |
+| AU-02: block audio upload endpoint + tests (59 total, all pass) | `audio.go`, `server.go`, `test-audio.sh` | `8644c16` |
+| AU-03: AI TTS generation endpoint + tests (67 total, all pass) | `audio.go`, `server.go`, `config.go`, `docker-compose.yml`, `test-audio.sh` | pending |
 
 **9-phase workflow followed for AU-01:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 

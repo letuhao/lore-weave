@@ -18,8 +18,9 @@ type Config struct {
 	MinioSecretKey     string
 	MinioUseSSL        bool
 	MinioExternalURL   string // URL prefix for browser-accessible media (e.g. http://localhost:9123)
-	ProviderRegistryURL  string
-	InternalServiceToken string
+	ProviderRegistryURL      string
+	UsageBillingServiceURL   string
+	InternalServiceToken     string
 }
 
 func Load() (*Config, error) {
@@ -35,8 +36,9 @@ func Load() (*Config, error) {
 		MinioSecretKey:     getEnv("MINIO_SECRET_KEY", ""),
 		MinioUseSSL:          getEnv("MINIO_USE_SSL", "false") == "true",
 		MinioExternalURL:     getEnv("MINIO_EXTERNAL_URL", ""),
-		ProviderRegistryURL:  getEnv("PROVIDER_REGISTRY_SERVICE_URL", "http://localhost:8085"),
-		InternalServiceToken: getEnv("INTERNAL_SERVICE_TOKEN", ""),
+		ProviderRegistryURL:    getEnv("PROVIDER_REGISTRY_SERVICE_URL", "http://localhost:8085"),
+		UsageBillingServiceURL: getEnv("USAGE_BILLING_SERVICE_URL", ""),
+		InternalServiceToken:   getEnv("INTERNAL_SERVICE_TOKEN", ""),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
