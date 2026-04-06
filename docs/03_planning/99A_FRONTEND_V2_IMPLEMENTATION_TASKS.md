@@ -2796,15 +2796,15 @@ Task order:
   ── Reader display (3 tasks) ─────────────────────────────────────────────
 
   AU-11: AudioBlock display component (reader) [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Scope: Render standalone audioBlock in ContentRenderer
     File: frontend/src/components/reader/blocks/AudioBlock.tsx
     Renders: embedded player with waveform, play button, time, subtitle
     AC:
-      - [ ] Audio plays on click
-      - [ ] Subtitle shown below player
-      - [ ] Styled per design draft (purple accent)
+      - [x] Audio plays on click
+      - [x] Subtitle shown below player
+      - [x] Styled per design draft (purple accent)
 
   AU-12: Audio indicator on text blocks (reader) [FE]
     Status: [ ]

@@ -4,6 +4,7 @@ import { ParagraphBlock } from './blocks/ParagraphBlock';
 import { HeadingBlock } from './blocks/HeadingBlock';
 import { ImageBlock } from './blocks/ImageBlock';
 import { VideoBlock } from './blocks/VideoBlock';
+import { AudioBlock } from './blocks/AudioBlock';
 import { CodeBlock } from './blocks/CodeBlock';
 import { CalloutBlock } from './blocks/CalloutBlock';
 import { BlockquoteBlock } from './blocks/BlockquoteBlock';
@@ -38,6 +39,8 @@ function renderBlockContent(node: JSONContent) {
       return <ImageBlock node={node} />;
     case 'videoBlock':
       return <VideoBlock node={node} />;
+    case 'audioBlock':
+      return <AudioBlock node={node} />;
     case 'codeBlock':
       return <CodeBlock node={node} />;
     case 'callout':
