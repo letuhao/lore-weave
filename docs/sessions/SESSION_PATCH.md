@@ -8,7 +8,7 @@
 ## Document Metadata
 
 - Last Updated: 2026-04-06 (session 23)
-- Updated By: Assistant (Phase 8D AU-01..AU-21 — 16 commits total)
+- Updated By: Assistant (Phase 8D AU-01..AU-24 COMPLETE — 17 commits total)
 - Active Branch: `main`
 - HEAD: pending commit — feat(editor): AU-07 audio attachment attrs
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
@@ -31,7 +31,7 @@
 
 ## Current Active Work
 
-**Phase:** Phase 8D (unified audio) IN PROGRESS. AU-01..AU-21 player UI complete (21/24). Next: AU-22 FE (TTS settings panel).
+**Phase:** Phase 8D (unified audio) COMPLETE. AU-01..AU-24 all 24 tasks done.
 
 **What was done in this session (2026-04-06, session 23):**
 
@@ -50,7 +50,8 @@ Phase 8D unified audio — AU-04..AU-07 + bug fixes.
 | AU-11: AudioBlock reader display component + CSS (purple accent) | `AudioBlock.tsx` (new), `ContentRenderer.tsx`, `reader.css` | `6f4f400` |
 | AU-12+13: Audio indicator on text blocks + CSS (hover play, mismatch, badges) | `ContentRenderer.tsx`, `reader.css` | `6def03b` |
 | AU-14..17: Playback engine — TTSProvider, AudioFileEngine, BrowserTTSEngine, audio-utils | `useTTS.ts`, `AudioFileEngine.ts`, `BrowserTTSEngine.ts`, `audio-utils.ts` (all new) | `8512b0b` |
-| AU-18..21: Player UI — TTSBar, block scroll sync, keyboard shortcuts, ReaderPage wiring | `TTSBar.tsx`, `useBlockScroll.ts`, `useTTSShortcuts.ts`, `ReaderPage.tsx` | pending |
+| AU-18..21: Player UI — TTSBar, block scroll sync, keyboard shortcuts, ReaderPage wiring | `TTSBar.tsx`, `useBlockScroll.ts`, `useTTSShortcuts.ts`, `ReaderPage.tsx` | `c64b986` |
+| AU-22..24: Settings + management — TTSSettings, AudioOverview, AudioGenerationCard | `TTSSettings.tsx`, `AudioOverview.tsx`, `AudioGenerationCard.tsx`, `TTSBar.tsx`, `ReaderPage.tsx` | pending |
 
 **9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 

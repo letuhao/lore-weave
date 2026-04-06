@@ -8,6 +8,7 @@ import { ContentRenderer } from '@/components/reader/ContentRenderer';
 import { TOCSidebar, type LanguageOption } from '@/components/reader/TOCSidebar';
 import { ThemeCustomizer } from '@/components/reader/ThemeCustomizer';
 import { TTSBar } from '@/components/reader/TTSBar';
+import { TTSSettings } from '@/components/reader/TTSSettings';
 import type { JSONContent } from '@tiptap/react';
 import { extractText } from '@/lib/tiptap-utils';
 import { useReaderTheme } from '@/providers/ThemeProvider';
@@ -48,6 +49,7 @@ export function ReaderPage() {
   const [book, setBook] = useState<Book | null>(null);
   const [tocOpen, setTocOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [ttsSettingsOpen, setTtsSettingsOpen] = useState(false);
   const [showIndices, setShowIndices] = useState(() => localStorage.getItem('lw_reader_indices') === 'true');
   const [loading, setLoading] = useState(true);
 
@@ -326,7 +328,10 @@ export function ReaderPage() {
       </div>
 
       {/* TTS floating player */}
-      <TTSBar activeBlockText={activeBlockText} />
+      <TTSBar activeBlockText={activeBlockText} onOpenSettings={() => setTtsSettingsOpen(true)} />
+
+      {/* TTS settings slide-over */}
+      <TTSSettings open={ttsSettingsOpen} onClose={() => setTtsSettingsOpen(false)} />
 
       {/* Bottom nav — gradient fade */}
       <div

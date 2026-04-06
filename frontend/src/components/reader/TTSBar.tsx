@@ -1,5 +1,5 @@
 import { useTTSState, useTTSControls, type AudioSource } from '@/hooks/useTTS';
-import { Play, Pause, SkipBack, SkipForward, X } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, X, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const SOURCE_COLORS: Record<AudioSource, string> = {
@@ -28,9 +28,11 @@ function formatTime(ms: number): string {
 interface TTSBarProps {
   /** Text preview of the currently active block */
   activeBlockText?: string;
+  /** Open TTS settings panel */
+  onOpenSettings?: () => void;
 }
 
-export function TTSBar({ activeBlockText }: TTSBarProps) {
+export function TTSBar({ activeBlockText, onOpenSettings }: TTSBarProps) {
   const state = useTTSState();
   const controls = useTTSControls();
 
@@ -132,6 +134,18 @@ export function TTSBar({ activeBlockText }: TTSBarProps) {
       >
         {state.speed}x
       </button>
+
+      {/* Settings */}
+      {onOpenSettings && (
+        <button
+          type="button"
+          onClick={onOpenSettings}
+          className="rounded p-1 text-muted-foreground transition hover:text-foreground"
+          title="TTS Settings"
+        >
+          <Settings className="h-3.5 w-3.5" />
+        </button>
+      )}
 
       {/* Close */}
       <button

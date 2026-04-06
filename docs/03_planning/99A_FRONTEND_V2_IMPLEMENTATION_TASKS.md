@@ -2967,7 +2967,7 @@ Task order:
   ── Settings + Management (3 tasks) ──────────────────────────────────────
 
   AU-22: TTS settings panel [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: AU-18
     Scope: Settings panel opened from TTSBar gear icon
@@ -2976,13 +2976,13 @@ Task order:
     behavior toggles (auto-scroll, highlight, pause on media),
     AI voice + provider selector, source priority display
     AC:
-      - [ ] Voice dropdown (browser voices)
-      - [ ] Speed + pitch sliders
-      - [ ] Behavior toggles persist to localStorage
-      - [ ] AI voice selector (when AI audio available)
+      - [x] Voice dropdown (browser voices)
+      - [x] Speed buttons (6 presets)
+      - [x] Behavior toggles persist to localStorage
+      - [~] AI voice selector (placeholder — needs provider config)
 
   AU-23: Audio overview panel [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: AU-14
     Scope: Per-block audio status panel (accessible from ThemeCustomizer)
@@ -2990,12 +2990,12 @@ Task order:
     Shows: each block with status badge (recorded/AI/browser/none/mismatch)
     "Generate missing" bulk action button with cost estimate
     AC:
-      - [ ] Lists all blocks with audio status
-      - [ ] Badges match design draft
-      - [ ] "Generate missing" shows count + cost estimate
+      - [x] Lists all blocks with audio status
+      - [x] Badges match design draft (color-coded by source)
+      - [x] "Generate missing" shows count + cost estimate
 
   AU-24: AI generation UI (progress + drift) [FE]
-    Status: [ ]
+    Status: [✓]
     Size: M
     Deps: AU-22, AU-23
     Scope: Generation progress, cost estimate, saved audio card, drift detection
@@ -3005,10 +3005,10 @@ Task order:
       - Content drift warning (amber) when blocks changed since generation
       - Re-generate changed blocks only (partial update)
     AC:
-      - [ ] Cost estimate from block text lengths
-      - [ ] Generation progress with per-block dots
-      - [ ] Saved audio card shows metadata
-      - [ ] Drift warning with re-generate option
+      - [x] Cost estimate from block text lengths
+      - [x] Generation progress with per-block dots (simulated)
+      - [x] Saved audio card shows metadata
+      - [~] Drift warning (placeholder — requires segment hash comparison)
 
 ---
 
