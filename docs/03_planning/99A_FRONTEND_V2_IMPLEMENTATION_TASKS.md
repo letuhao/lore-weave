@@ -3012,6 +3012,166 @@ Task order:
 
 ---
 
+### Phase 8E: AI Provider Capabilities + Media Generation (14 tasks)
+
+> **Goal:** Add capability-based model classification (tts, image_gen, video_gen)
+> to the provider registry, then wire image and video generation through the
+> same BYOK provider pattern used by chat and TTS.
+> **Design principle:** OpenAI-compatible API standards where they exist,
+> provider adapter layer where they don't.
+> **Deps:** Phase 8D (audio system provides the pattern), M03 (provider registry)
+
+  ── Provider capability flags (3 tasks) ──────────────────────────────────
+
+  PE-01: BE — Add capability flags to provider registry [BE]
+    Status: [ ]
+    Size: S
+    Service: provider-registry-service
+    Changes:
+      - capability_flags JSONB already exists on user_models
+      - Add migration: ensure known flags include tts, image_generation, video_generation
+      - Expose capability_flags in list/get endpoints (already done)
+      - Add ?capability=tts filter to listUserModels endpoint
+    AC:
+      - [ ] Filter by capability flag works
+      - [ ] Existing models unaffected (flags default to {})
+
+  PE-02: FE — Add media capabilities to CapabilityFlags UI [FE]
+    Status: [ ]
+    Size: S
+    File: frontend/src/features/settings/CapabilityFlags.tsx
+    Changes:
+      - Add 'tts', 'image_generation', 'video_generation' to KNOWN_FLAGS
+      - Model add/edit modal shows the new flags
+    AC:
+      - [ ] New flags visible in model editor
+      - [ ] Flags persist on save
+
+  PE-03: FE — Filter model selectors by capability [FE]
+    Status: [ ]
+    Size: S
+    Changes:
+      - TTSSettings: filter model dropdown to capability_flags.tts === true
+      - Chat NewChatDialog: filter to models without media-only flags
+      - Add capability_flags to aiModelsApi.UserModel type
+    AC:
+      - [ ] TTS settings only shows TTS-capable models
+      - [ ] Chat model selector unchanged for non-media models
+
+  ── Image generation (5 tasks) ───────────────────────────────────────────
+
+  PE-04: BE — Image generation endpoint on book-service [BE]
+    Status: [ ]
+    Size: M
+    Service: book-service
+    Scope: OpenAI-compatible image generation via provider credentials
+    Endpoint: POST /v1/books/{book_id}/chapters/{chapter_id}/generate-image
+    Flow:
+      1. Resolve provider creds via provider-registry (model_ref)
+      2. Call {base_url}/v1/images/generations (OpenAI standard)
+      3. Download result image → upload to MinIO
+      4. Return { image_url, media_key, size_bytes }
+      5. Record usage billing
+    API standard: OpenAI /v1/images/generations
+      - Request: { model, prompt, size, n, response_format }
+      - Response: { data: [{ url }] } or { data: [{ b64_json }] }
+    AC:
+      - [ ] Resolves credentials from provider-registry
+      - [ ] Calls OpenAI-compatible image API
+      - [ ] Stores result in MinIO
+      - [ ] Usage billing recorded
+      - [ ] Returns image URL
+
+  PE-05: BE — Image generation integration tests [BE]
+    Status: [ ]
+    Size: S
+    File: infra/test-image-gen.sh
+    AC:
+      - [ ] Validation tests (missing fields, bad model)
+      - [ ] Auth tests (401, 404 for other user)
+      - [ ] All pass
+
+  PE-06: FE — Wire image generation in editor [FE]
+    Status: [ ]
+    Size: S
+    Deps: PE-04
+    Changes:
+      - ImageBlockNode MediaPrompt: call generate-image endpoint
+      - Read image generation model from settings (new pref: imageModelId)
+      - Replace current videoGenApi call pattern
+    AC:
+      - [ ] AI generate button calls real endpoint
+      - [ ] Generated image appears in block
+      - [ ] Model selected from TTS-style settings
+
+  ── Video generation (4 tasks) ───────────────────────────────────────────
+
+  PE-07: BE — Video generation provider adapter [BE]
+    Status: [ ]
+    Size: M
+    Service: video-gen-service
+    Scope: Connect skeleton to provider-registry + real provider APIs
+    Changes:
+      - Resolve provider credentials via provider-registry (same pattern as TTS)
+      - Provider adapter layer:
+        - OpenAI Sora: POST /v1/video/generations (if standardized)
+        - Runway/Kling/Pika: per-provider adapter (async polling)
+      - Store result in MinIO
+      - Record usage billing
+    AC:
+      - [ ] Resolves credentials from provider-registry
+      - [ ] At least one provider adapter works (OpenAI or mock)
+      - [ ] Stores result in MinIO
+      - [ ] Returns video URL
+
+  PE-08: BE — Video generation integration tests [BE]
+    Status: [ ]
+    Size: S
+    File: infra/test-video-gen.sh
+    AC:
+      - [ ] Validation + auth tests
+      - [ ] All pass
+
+  PE-09: FE — Wire video generation in editor [FE]
+    Status: [ ]
+    Size: S
+    Deps: PE-07
+    Changes:
+      - VideoBlockNode: use provider-registry model instead of hardcoded
+      - Add videoModelId to settings prefs
+    AC:
+      - [ ] AI generate button calls real endpoint with user's provider
+      - [ ] Generated video appears in block
+
+  ── Settings + preconfig (2 tasks) ───────────────────────────────────────
+
+  PE-10: FE — Media generation settings in ReadingTab [FE]
+    Status: [ ]
+    Size: S
+    Changes:
+      - Add "AI Models" section to Settings > Reading tab (or new AI tab)
+      - TTS model selector (from PE-03)
+      - Image generation model selector
+      - Video generation model selector
+      - Default voice, image size, video duration prefs
+    AC:
+      - [ ] All three model selectors work
+      - [ ] Prefs persist to localStorage or user_preferences
+
+  PE-11: BE — Preconfig catalog for media models [BE]
+    Status: [ ]
+    Size: S
+    Service: provider-registry-service
+    Scope: Add TTS + image models to preconfig JSON catalogs
+    Changes:
+      - openai_models.json: add tts-1, tts-1-hd, dall-e-3, dall-e-2
+      - Set capability_flags appropriately
+    AC:
+      - [ ] TTS and image models appear in Add Model autocomplete
+      - [ ] Capability flags pre-set correctly
+
+---
+
 ### Phase 8F: Translation Pipeline Upgrade (future — needs separate planning)
 
 > **Goal:** Upgrade translation from flat TEXT to block-level JSONB.
@@ -3075,15 +3235,16 @@ Task order:
 
 ### Phase 8 Summary
 
-| Sub-phase | Tasks | FE | BE | Deps |
-|-----------|-------|----|----|------|
-| 8A: ContentRenderer + Reader | 13 | 13 | 0 | None |
-| 8B: Reader Theme | 3 | 3 | 0 | 8A |
-| 8C: RevisionHistory Cleanup | 2 | 2 | 0 | 8A |
-| 8D: Unified Audio System | 24 | 19 | 5 | 8A |
-| 8F: Translation Upgrade | TBD | — | — | 8A |
-| 8G: Translation Review | TBD | — | — | 8F |
-| 8H: Reading Analytics | TBD | — | — | 8A |
+| Sub-phase | Tasks | FE | BE | Deps | Status |
+|-----------|-------|----|----|------|--------|
+| 8A: ContentRenderer + Reader | 13 | 13 | 0 | None | Done |
+| 8B: Reader Theme | 3 | 3 | 0 | 8A | Done |
+| 8C: RevisionHistory Cleanup | 2 | 2 | 0 | 8A | Done |
+| 8D: Unified Audio System | 24 | 19 | 5 | 8A | Done |
+| 8E: AI Provider + Media Gen | 11 | 4 | 7 | 8D, M03 | Planned |
+| 8F: Translation Upgrade | TBD | — | — | 8A | Future |
+| 8G: Translation Review | TBD | — | — | 8F | Future |
+| 8H: Reading Analytics | TBD | — | — | 8A | Future |
 | **Total (8A-8D)** | **42** | **37** | **5** | |
 
 ---

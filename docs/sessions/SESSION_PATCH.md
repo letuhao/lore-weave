@@ -51,7 +51,9 @@ Phase 8D unified audio — AU-04..AU-07 + bug fixes.
 | AU-12+13: Audio indicator on text blocks + CSS (hover play, mismatch, badges) | `ContentRenderer.tsx`, `reader.css` | `6def03b` |
 | AU-14..17: Playback engine — TTSProvider, AudioFileEngine, BrowserTTSEngine, audio-utils | `useTTS.ts`, `AudioFileEngine.ts`, `BrowserTTSEngine.ts`, `audio-utils.ts` (all new) | `8512b0b` |
 | AU-18..21: Player UI — TTSBar, block scroll sync, keyboard shortcuts, ReaderPage wiring | `TTSBar.tsx`, `useBlockScroll.ts`, `useTTSShortcuts.ts`, `ReaderPage.tsx` | `c64b986` |
-| AU-22..24: Settings + management — TTSSettings, AudioOverview, AudioGenerationCard | `TTSSettings.tsx`, `AudioOverview.tsx`, `AudioGenerationCard.tsx`, `TTSBar.tsx`, `ReaderPage.tsx` | pending |
+| AU-22..24: Settings + management — TTSSettings, AudioOverview, AudioGenerationCard | `TTSSettings.tsx`, `AudioOverview.tsx`, `AudioGenerationCard.tsx`, `TTSBar.tsx`, `ReaderPage.tsx` | `dd130b5` |
+| Wire AI TTS generation to model settings (generate buttons call real AU-03 endpoint) | `api.ts`, `TTSSettings.tsx`, `AudioOverview.tsx`, `AudioAttachActionsExtension.ts` | `5a8cf9c` |
+| Plan: Phase 8E — AI Provider Capabilities + Media Generation (11 tasks: PE-01..PE-11) | `99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | pending |
 
 **9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
