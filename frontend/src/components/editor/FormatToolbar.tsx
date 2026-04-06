@@ -50,7 +50,7 @@ function Divider() {
 
 export function FormatToolbar({ editor, mode = 'classic' }: FormatToolbarProps) {
   return (
-    <div className="flex flex-shrink-0 flex-wrap items-center gap-0.5 border-b bg-card px-3 py-1">
+    <div className="sticky top-0 z-10 flex flex-shrink-0 flex-wrap items-center gap-0.5 border-b bg-card px-3 py-1">
       {/* Block type */}
       <ToolbarButton
         active={editor.isActive('paragraph')}

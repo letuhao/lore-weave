@@ -225,17 +225,21 @@ export function SlashMenuPopup({ editor, mode = 'ai' }: { editor: Editor; mode?:
 
   if (!state.active || filtered.length === 0) return null;
 
-  // Position the popup near the cursor
+  // Position the popup near the cursor using fixed positioning (viewport-relative)
+  // Flip above cursor if menu would overflow the viewport bottom
   const coords = editor.view.coordsAtPos(state.from);
-  const editorRect = editor.view.dom.closest('.tiptap-editor-wrapper')?.getBoundingClientRect();
-  const top = coords.bottom - (editorRect?.top ?? 0) + 4;
-  const left = coords.left - (editorRect?.left ?? 0);
+  const menuHeight = Math.min(filtered.length * 44 + 8, 320); // estimate: 44px per item + padding, max 320
+  const viewportH = window.innerHeight;
+  const spaceBelow = viewportH - coords.bottom - 4;
+  const flipUp = spaceBelow < menuHeight && coords.top > menuHeight;
+  const top = flipUp ? coords.top - menuHeight - 4 : coords.bottom + 4;
+  const left = coords.left;
 
   return (
     <div
       ref={menuRef}
-      className="absolute z-50 w-56 rounded-lg border bg-card shadow-lg"
-      style={{ top, left }}
+      className="fixed z-50 w-56 overflow-y-auto rounded-lg border bg-card shadow-lg"
+      style={{ top, left, maxHeight: Math.min(320, flipUp ? coords.top - 8 : spaceBelow) }}
     >
       <div className="p-1">
         {filtered.map((item, i) => (
