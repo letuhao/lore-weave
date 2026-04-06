@@ -2835,7 +2835,7 @@ Task order:
   ── Playback engine (4 tasks) ────────────────────────────────────────────
 
   AU-14: TTSProvider context + playback interface [FE]
-    Status: [ ]
+    Status: [✓]
     Size: M
     Scope: React context managing unified playback state
     File: frontend/src/hooks/useTTS.ts
@@ -2847,12 +2847,12 @@ Task order:
       3. text block → BrowserTTSEngine
       4. audioBlock → play inline, advance after
     AC:
-      - [ ] Context provides unified state + controls
-      - [ ] Source resolved per block based on priority
-      - [ ] Active block tracking works across source switches
+      - [x] Context provides unified state + controls
+      - [x] Source resolved per block based on priority
+      - [x] Active block tracking works across source switches
 
   AU-15: AudioFileEngine — plays attached/AI audio [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: AU-14
     Scope: Engine that plays audio files via <audio> element
@@ -2863,13 +2863,13 @@ Task order:
       - onEnd callback → advance to next block
       - Speed control via playbackRate
     AC:
-      - [ ] Plays audio URLs
-      - [ ] Reports progress
-      - [ ] Speed control works
-      - [ ] Calls onEnd when finished
+      - [x] Plays audio URLs
+      - [x] Reports progress
+      - [x] Speed control works
+      - [x] Calls onEnd when finished
 
   AU-16: BrowserTTSEngine — Web Speech API fallback [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: AU-14
     Scope: Engine that speaks text via SpeechSynthesisUtterance
@@ -2880,13 +2880,13 @@ Task order:
       - Speed control via rate property
       - onEnd callback → advance to next block
     AC:
-      - [ ] Speaks text blocks
-      - [ ] Voice list populated
-      - [ ] Speed control works
-      - [ ] Calls onEnd when finished
+      - [x] Speaks text blocks
+      - [x] Voice list populated
+      - [x] Speed control works
+      - [x] Calls onEnd when finished
 
   AU-17: Block text extraction utility [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Scope: Extract speakable text + audio source info per block
     File: frontend/src/lib/audio-utils.ts
@@ -2896,9 +2896,9 @@ Task order:
       - audioBlock: returns { type: 'audio', src, subtitle }
       - Text blocks: returns { type: 'text', text, audioUrl?, audioSubtitle? }
     AC:
-      - [ ] Correctly categorizes all block types
-      - [ ] Extracts audio attachment info from attrs
-      - [ ] Returns ordered list for playback queue
+      - [x] Correctly categorizes all block types
+      - [x] Extracts audio attachment info from attrs
+      - [x] Returns ordered list for playback queue
 
   ── Player UI (4 tasks) ──────────────────────────────────────────────────
 
