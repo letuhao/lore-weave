@@ -8,9 +8,9 @@
 ## Document Metadata
 
 - Last Updated: 2026-04-06 (session 23)
-- Updated By: Assistant (Phase 8D AU-04 complete — 5 commits total)
+- Updated By: Assistant (Phase 8D AU-01..AU-05 backend complete — 6 commits total)
 - Active Branch: `main`
-- HEAD: pending commit — test(gateway): AU-04 audio route proxy verification
+- HEAD: pending commit — test(audio): AU-05 extended integration tests
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -31,17 +31,18 @@
 
 ## Current Active Work
 
-**Phase:** Phase 8D (unified audio) IN PROGRESS. AU-01..AU-04 complete (4/24). Next: AU-05 BE (integration tests).
+**Phase:** Phase 8D (unified audio) IN PROGRESS. AU-01..AU-05 backend complete (5/24). Next: AU-06 FE (editor audio block type).
 
 **What was done in this session (2026-04-06, session 23):**
 
-Phase 8D unified audio — AU-04 gateway proxy verification.
+Phase 8D unified audio — AU-04 gateway proxy + AU-05 extended integration tests.
 
 | Work item | Files touched | Commit |
 | --------- | ------------- | ------ |
-| AU-04: Gateway audio route proxy test (5 assertions: list, get, generate, upload, delete) + fix pre-existing videoGenUrl compile error in both test files | `proxy-routing.spec.ts`, `health.spec.ts` | pending |
+| AU-04: Gateway audio route proxy test (5 assertions: list, get, generate, upload, delete) + fix pre-existing videoGenUrl compile error in both test files | `proxy-routing.spec.ts`, `health.spec.ts` | `d3ba6ff` |
+| AU-05: Extended integration tests (12 new scenarios: MinIO cleanup, OGG upload, non-existent resources, lifecycle checks) — 79/79 total | `test-audio.sh` | pending |
 
-**9-phase workflow followed for AU-04:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
+**9-phase workflow followed for AU-04 and AU-05:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
 **What was done in this session (2026-04-06, session 22):**
 

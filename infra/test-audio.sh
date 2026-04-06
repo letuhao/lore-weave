@@ -1,10 +1,11 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────────────────────
-# LoreWeave — Audio Integration Tests (AU-01 + AU-02 + AU-03)
+# LoreWeave — Audio Integration Tests (AU-01 + AU-02 + AU-03 + AU-05)
 #
 # AU-01: chapter_audio_segments CRUD (list, get, delete)
 # AU-02: Block audio upload (multipart → MinIO)
 # AU-03: TTS generation (validation, error handling, route ordering)
+# AU-05: Extended coverage (MinIO cleanup, round-trip, lifecycle, edge cases)
 #
 # Prerequisites: all services running via docker compose
 # Usage: bash infra/test-audio.sh
@@ -469,6 +470,141 @@ assert_eq "T40 GET segment still works after generate route" "Route test." "$ROU
 docker compose exec -T postgres psql -U loreweave -d loreweave_book -c "
   DELETE FROM chapter_audio_segments WHERE segment_id='bbbb0001-0000-0000-0000-000000000001';
 " > /dev/null
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AU-05: Extended integration tests
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── AU-05a: Upload → API round-trip ──────────────────────────────────────────
+header "AU-05a: Upload → API round-trip"
+
+# Create fresh temp file
+TESTFILE5="${TMPDIR:-${USERPROFILE:-/tmp}}/loreweave-test-audio5.mp3"
+dd if=/dev/urandom bs=1024 count=4 of="$TESTFILE5" 2>/dev/null
+
+# T41: Upload an MP3, then verify MinIO URL is accessible
+UP5=$(curl -s -H "$AUTH" \
+  -F "file=@$TESTFILE5;type=audio/mpeg" \
+  -F "block_index=10" \
+  -F "subtitle=Round-trip test" \
+  "$UPLOAD_BASE")
+UP5_URL=$(echo "$UP5" | jget .audio_url)
+UP5_KEY=$(echo "$UP5" | jget .media_key)
+MINIO5_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$UP5_URL")
+assert_status "T41 upload round-trip MinIO accessible" "200" "$MINIO5_STATUS"
+
+# T42: Upload OGG type
+TESTFILE_OGG="${TMPDIR:-${USERPROFILE:-/tmp}}/loreweave-test-audio5.ogg"
+dd if=/dev/urandom bs=1024 count=2 of="$TESTFILE_OGG" 2>/dev/null
+UP_OGG=$(curl -s -H "$AUTH" \
+  -F "file=@$TESTFILE_OGG;type=audio/ogg" \
+  -F "block_index=11" \
+  "$UPLOAD_BASE")
+UP_OGG_KEY=$(echo "$UP_OGG" | jget .media_key)
+UP_OGG_CT=$(echo "$UP_OGG" | jget .content_type)
+assert_eq "T42 OGG upload content_type" "audio/ogg" "$UP_OGG_CT"
+
+# ── AU-05b: MinIO cleanup on delete ──────────────────────────────────────────
+header "AU-05b: MinIO cleanup on delete"
+
+# T43: Insert segments with known media_keys matching the uploaded files,
+# then delete via API and verify MinIO objects are gone
+# First, insert DB rows pointing to the uploaded MinIO objects
+docker compose exec -T postgres psql -U loreweave -d loreweave_book -c "
+  INSERT INTO chapter_audio_segments(chapter_id, block_index, source_text, source_text_hash, voice, provider, language, media_key, duration_ms)
+  VALUES
+    ('$CHAPTER_ID', 10, 'Cleanup test 1.', encode(sha256('Cleanup test 1.'::bytea),'hex'), 'echo', 'openai', 'en', '$UP5_KEY', 0),
+    ('$CHAPTER_ID', 11, 'Cleanup test 2.', encode(sha256('Cleanup test 2.'::bytea),'hex'), 'echo', 'openai', 'en', '$UP_OGG_KEY', 0);
+" > /dev/null
+
+# Verify segments exist before delete
+PRE_DEL=$(curl -s -H "$AUTH" "$BASE?language=en&voice=echo")
+PRE_DEL_CT=$(echo "$PRE_DEL" | jlen .segments)
+assert_eq "T43 segments exist before delete" "2" "$PRE_DEL_CT"
+
+# T44: Delete via API
+DEL5=$(curl -s -X DELETE -H "$AUTH" "$BASE?language=en&voice=echo")
+DEL5_CT=$(echo "$DEL5" | jget .deleted)
+assert_eq "T44a delete returns 2" "2" "$DEL5_CT"
+
+# Verify MinIO objects removed
+MINIO5_AFTER=$(curl -s -o /dev/null -w "%{http_code}" "$UP5_URL")
+assert_status "T44b MinIO object 1 removed after delete" "404" "$MINIO5_AFTER"
+
+MINIO_OGG_URL=$(echo "$UP_OGG" | jget .audio_url)
+MINIO_OGG_AFTER=$(curl -s -o /dev/null -w "%{http_code}" "$MINIO_OGG_URL")
+assert_status "T44c MinIO object 2 removed after delete" "404" "$MINIO_OGG_AFTER"
+
+# Verify DB rows gone
+POST_DEL=$(curl -s -H "$AUTH" "$BASE?language=en&voice=echo")
+POST_DEL_CT=$(echo "$POST_DEL" | jlen .segments)
+assert_eq "T44d DB rows gone after delete" "0" "$POST_DEL_CT"
+
+# ── AU-05c: Non-existent resources ───────────────────────────────────────────
+header "AU-05c: Non-existent resources"
+
+FAKE_BOOK="00000000-0000-0000-0000-000000000099"
+FAKE_CHAPTER="00000000-0000-0000-0000-000000000088"
+
+# T45: Upload to non-existent book → 404
+S45=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" \
+  -F "file=@$TESTFILE5;type=audio/mpeg" \
+  -F "block_index=0" \
+  "$GATEWAY/v1/books/$FAKE_BOOK/chapters/$FAKE_CHAPTER/block-audio")
+assert_status "T45 upload non-existent book" "404" "$S45"
+
+# T46: Upload to non-existent chapter (real book) → 404
+S46=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" \
+  -F "file=@$TESTFILE5;type=audio/mpeg" \
+  -F "block_index=0" \
+  "$GATEWAY/v1/books/$BOOK_ID/chapters/$FAKE_CHAPTER/block-audio")
+assert_status "T46 upload non-existent chapter" "404" "$S46"
+
+# T47: Generate for non-existent book → 404
+S47=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"language":"en","voice":"alloy","model_ref":"fake","blocks":[{"index":0,"text":"hello"}]}' \
+  "$GATEWAY/v1/books/$FAKE_BOOK/chapters/$FAKE_CHAPTER/audio/generate")
+assert_status "T47 generate non-existent book" "404" "$S47"
+
+# ── AU-05d: Lifecycle checks (trashed book) ─────────────────────────────────
+header "AU-05d: Lifecycle checks"
+
+# Create a separate book + chapter, then trash the book
+TRASH_BOOK_RESP=$(curl -s -X POST "$GATEWAY/v1/books" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"title":"Trash Audio Test","original_language":"en"}')
+TRASH_BOOK_ID=$(echo "$TRASH_BOOK_RESP" | jget .book_id)
+
+TRASH_CH_ID=$(docker compose exec -T postgres psql -U loreweave -d loreweave_book -tA -c "
+  INSERT INTO chapters(book_id, title, original_filename, original_language, content_type, sort_order, storage_key)
+  VALUES ('$TRASH_BOOK_ID', 'Trash Ch', 'ch1.txt', 'en', 'text/plain', 1, 'test/trash-ch.txt')
+  RETURNING id;
+" | head -1 | tr -d '[:space:]')
+
+# Trash the book
+curl -s -X DELETE -H "$AUTH" "$GATEWAY/v1/books/$TRASH_BOOK_ID" > /dev/null
+
+# T48: Upload to trashed book → 409
+S48=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" \
+  -F "file=@$TESTFILE5;type=audio/mpeg" \
+  -F "block_index=0" \
+  "$GATEWAY/v1/books/$TRASH_BOOK_ID/chapters/$TRASH_CH_ID/block-audio")
+assert_status "T48 upload to trashed book" "409" "$S48"
+
+# T49: Generate for trashed book → 409
+S49=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"language":"en","voice":"alloy","model_ref":"fake","blocks":[{"index":0,"text":"hello"}]}' \
+  "$GATEWAY/v1/books/$TRASH_BOOK_ID/chapters/$TRASH_CH_ID/audio/generate")
+assert_status "T49 generate for trashed book" "409" "$S49"
+
+# Cleanup trash test book
+docker compose exec -T postgres psql -U loreweave -d loreweave_book -c "
+  DELETE FROM chapters WHERE id = '$TRASH_CH_ID';
+  DELETE FROM books WHERE id = '$TRASH_BOOK_ID';
+" > /dev/null
+
+# Cleanup temp files
+rm -f "$TESTFILE5" "$TESTFILE_OGG" 2>/dev/null
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Cleanup

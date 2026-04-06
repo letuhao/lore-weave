@@ -2705,15 +2705,15 @@ Task order:
       - [x] Auth header forwarded
 
   AU-05: BE — Audio integration tests [BE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: AU-01..AU-04
     File: infra/test-audio.sh
     Scenarios: upload, list, get single, delete, generate (mock or real provider),
     attach to block, verify MinIO objects exist/deleted
     AC:
-      - [ ] All endpoints tested
-      - [ ] All pass
+      - [x] All endpoints tested (79 scenarios)
+      - [x] All pass (79/79)
 
   ── Editor: audioBlock + audio attachment (5 tasks) ──────────────────────
 
