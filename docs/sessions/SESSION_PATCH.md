@@ -8,7 +8,7 @@
 ## Document Metadata
 
 - Last Updated: 2026-04-06 (session 23)
-- Updated By: Assistant (Phase 8D AU-01..AU-11 — 13 commits total)
+- Updated By: Assistant (Phase 8D AU-01..AU-13 — 14 commits total)
 - Active Branch: `main`
 - HEAD: pending commit — feat(editor): AU-07 audio attachment attrs
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
@@ -31,7 +31,7 @@
 
 ## Current Active Work
 
-**Phase:** Phase 8D (unified audio) IN PROGRESS. AU-01..AU-11 complete (11/24). Next: AU-12 FE (reader audio indicator on text blocks).
+**Phase:** Phase 8D (unified audio) IN PROGRESS. AU-01..AU-13 reader complete (13/24). Next: AU-14 FE (TTSProvider context + playback engine).
 
 **What was done in this session (2026-04-06, session 23):**
 
@@ -47,7 +47,8 @@ Phase 8D unified audio — AU-04..AU-07 + bug fixes.
 | AU-08: AudioAttachBar — mini player widget decoration on text blocks with audio | `AudioAttachBarExtension.ts` (new), `TiptapEditor.tsx` | `2882ddf` |
 | AU-09: AudioAttachActions — hover upload/record/generate buttons on text blocks | `AudioAttachActionsExtension.ts` (new), `TiptapEditor.tsx` | `77b6b99` |
 | AU-10: FormatToolbar audio insert button (AI mode) — slash menu already in AU-06 | `FormatToolbar.tsx` | `4326b2a` |
-| AU-11: AudioBlock reader display component + CSS (purple accent) | `AudioBlock.tsx` (new), `ContentRenderer.tsx`, `reader.css` | pending |
+| AU-11: AudioBlock reader display component + CSS (purple accent) | `AudioBlock.tsx` (new), `ContentRenderer.tsx`, `reader.css` | `6f4f400` |
+| AU-12+13: Audio indicator on text blocks + CSS (hover play, mismatch, badges) | `ContentRenderer.tsx`, `reader.css` | pending |
 
 **9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 

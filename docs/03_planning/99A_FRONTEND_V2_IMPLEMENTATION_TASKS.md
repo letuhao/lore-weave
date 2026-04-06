@@ -2807,7 +2807,7 @@ Task order:
       - [x] Styled per design draft (purple accent)
 
   AU-12: Audio indicator on text blocks (reader) [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: AU-11
     Scope: Show play button on hover for text blocks with audio_url
@@ -2816,21 +2816,21 @@ Task order:
       - Render inline play button on right side
       - Mismatch ⚠️ indicator when audio_subtitle differs from text
     AC:
-      - [ ] Play button appears on hover for blocks with audio
-      - [ ] Clicking plays attached audio
-      - [ ] Mismatch ⚠️ shown when subtitle differs
-      - [ ] No indicator on blocks without audio
+      - [x] Play button appears on hover for blocks with audio
+      - [x] Clicking plays attached audio
+      - [x] Mismatch ⚠️ shown when subtitle differs
+      - [x] No indicator on blocks without audio
 
   AU-13: Audio block + indicator CSS [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: AU-11, AU-12
     Scope: Reader CSS for audioBlock player, inline indicator, playing state
     File: frontend/src/components/reader/reader.css (extend)
     AC:
-      - [ ] AudioBlock styled with purple accent per design draft
-      - [ ] Inline play button positioned and styled
-      - [ ] Playing state highlight (purple left border)
+      - [x] AudioBlock styled with purple accent per design draft (AU-11)
+      - [x] Inline play button positioned and styled
+      - [x] Playing state highlight (purple left border)
 
   ── Playback engine (4 tasks) ────────────────────────────────────────────
 

@@ -287,6 +287,76 @@
   margin: 0.8em 0;
 }
 
+/* ── Audio indicator on text blocks ───────────────────────────────────── */
+
+.content-block.has-audio {
+  position: relative;
+  border-left: 2px solid #8b5cf6;
+  padding-left: 12px;
+}
+
+.reader-audio-indicator {
+  position: absolute;
+  right: -8px;
+  top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 150ms;
+  cursor: pointer;
+}
+
+.content-block.has-audio:hover .reader-audio-indicator {
+  opacity: 1;
+}
+
+.reader-inline-play {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #8b5cf6;
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  transition: all 120ms;
+  flex-shrink: 0;
+}
+.reader-inline-play:hover {
+  filter: brightness(1.15);
+}
+.reader-inline-play.playing {
+  background: #7c3aed;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25);
+}
+
+.reader-audio-badge {
+  font-size: 8px;
+  font-weight: 500;
+  padding: 1px 5px;
+  border-radius: 99px;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+.reader-audio-badge.uploaded,
+.reader-audio-badge.recorded {
+  background: rgba(139, 92, 246, 0.12);
+  color: #8b5cf6;
+}
+.reader-audio-badge.ai {
+  background: rgba(84, 150, 232, 0.12);
+  color: #5496e8;
+}
+
+.reader-audio-mismatch {
+  font-size: 11px;
+  color: #e8a832;
+  cursor: help;
+}
+
 /* ── Code block ────────────────────────────────────────────────────────── */
 
 .block-code {
