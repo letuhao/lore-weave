@@ -34,9 +34,10 @@ describe('Gateway proxy routing', () => {
   let translationServer: http.Server;
   let glossaryServer: http.Server;
   let chatServer: http.Server;
+  let videoGenServer: http.Server;
 
   beforeAll(async () => {
-    [authServer, bookServer, sharingServer, catalogServer, providerRegistryServer, usageBillingServer, translationServer, glossaryServer, chatServer] = await Promise.all([
+    [authServer, bookServer, sharingServer, catalogServer, providerRegistryServer, usageBillingServer, translationServer, glossaryServer, chatServer, videoGenServer] = await Promise.all([
       startUpstream('auth'),
       startUpstream('books'),
       startUpstream('sharing'),
@@ -46,6 +47,7 @@ describe('Gateway proxy routing', () => {
       startUpstream('translation'),
       startUpstream('glossary'),
       startUpstream('chat'),
+      startUpstream('video-gen'),
     ]);
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -63,6 +65,7 @@ describe('Gateway proxy routing', () => {
       translationUrl: urlOf(translationServer),
       glossaryUrl: urlOf(glossaryServer),
       chatUrl: urlOf(chatServer),
+      videoGenUrl: urlOf(videoGenServer),
     });
     await app.init();
   });
@@ -79,6 +82,7 @@ describe('Gateway proxy routing', () => {
       new Promise((resolve) => translationServer.close(resolve)),
       new Promise((resolve) => glossaryServer.close(resolve)),
       new Promise((resolve) => chatServer.close(resolve)),
+      new Promise((resolve) => videoGenServer.close(resolve)),
     ]);
   });
 
@@ -105,6 +109,14 @@ describe('Gateway proxy routing', () => {
 
   it('routes /v1/glossary/* paths to glossary service', async () => {
     await request(app.getHttpServer()).get('/v1/glossary/entities').expect(200).expect('glossary');
+  });
+
+  it('routes audio endpoints under /v1/books to book service', async () => {
+    await request(app.getHttpServer()).get('/v1/books/b1/chapters/c1/audio').expect(200).expect('books');
+    await request(app.getHttpServer()).get('/v1/books/b1/chapters/c1/audio/seg-1').expect(200).expect('books');
+    await request(app.getHttpServer()).post('/v1/books/b1/chapters/c1/audio/generate').expect(200).expect('books');
+    await request(app.getHttpServer()).post('/v1/books/b1/chapters/c1/block-audio').expect(200).expect('books');
+    await request(app.getHttpServer()).delete('/v1/books/b1/chapters/c1/audio').expect(200).expect('books');
   });
 
   it('routes /v1/chat/* paths to chat service', async () => {

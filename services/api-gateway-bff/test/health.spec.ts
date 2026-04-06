@@ -25,6 +25,7 @@ describe('Gateway (e2e)', () => {
       translationUrl: 'http://127.0.0.1:9',
       glossaryUrl: 'http://127.0.0.1:9',
       chatUrl: 'http://127.0.0.1:9',
+      videoGenUrl: 'http://127.0.0.1:9',
     });
     await app.init();
   });

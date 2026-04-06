@@ -2694,15 +2694,15 @@ Task order:
       - [ ] Integration tests
 
   AU-04: BE — Gateway proxy for audio endpoints [BE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: AU-01
     Service: api-gateway-bff
     Routes: /v1/books/:bookId/chapters/:chapterId/audio/* → book-service
             /v1/books/:bookId/chapters/:chapterId/block-audio → book-service
     AC:
-      - [ ] All audio endpoints proxied through gateway
-      - [ ] Auth header forwarded
+      - [x] All audio endpoints proxied through gateway
+      - [x] Auth header forwarded
 
   AU-05: BE — Audio integration tests [BE]
     Status: [ ]

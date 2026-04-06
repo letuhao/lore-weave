@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-06 (session 22 start)
-- Updated By: Assistant (Phase 8D AU-01..AU-03 complete — 4 commits)
+- Last Updated: 2026-04-06 (session 23)
+- Updated By: Assistant (Phase 8D AU-04 complete — 5 commits total)
 - Active Branch: `main`
-- HEAD: `397e199` — feat(book-service): AU-03 AI TTS generation endpoint
+- HEAD: pending commit — test(gateway): AU-04 audio route proxy verification
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -31,11 +31,21 @@
 
 ## Current Active Work
 
-**Phase:** Phase 8D (unified audio) IN PROGRESS. AU-01..AU-03 complete (3/24). Next: AU-04 BE (gateway proxy).
+**Phase:** Phase 8D (unified audio) IN PROGRESS. AU-01..AU-04 complete (4/24). Next: AU-05 BE (integration tests).
+
+**What was done in this session (2026-04-06, session 23):**
+
+Phase 8D unified audio — AU-04 gateway proxy verification.
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| AU-04: Gateway audio route proxy test (5 assertions: list, get, generate, upload, delete) + fix pre-existing videoGenUrl compile error in both test files | `proxy-routing.spec.ts`, `health.spec.ts` | pending |
+
+**9-phase workflow followed for AU-04:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
 **What was done in this session (2026-04-06, session 22):**
 
-Phase 8D unified audio — AU-01 backend implementation.
+Phase 8D unified audio — AU-01..AU-03 backend implementation.
 
 | Work item | Files touched | Commit |
 | --------- | ------------- | ------ |
@@ -44,7 +54,7 @@ Phase 8D unified audio — AU-01 backend implementation.
 | AU-02: block audio upload endpoint + tests (59 total, all pass) | `audio.go`, `server.go`, `test-audio.sh` | `8644c16` |
 | AU-03: AI TTS generation endpoint + tests (67 total, all pass) | `audio.go`, `server.go`, `config.go`, `docker-compose.yml`, `test-audio.sh` | `397e199` |
 
-**9-phase workflow followed for AU-01:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
+**9-phase workflow followed for AU-01..AU-03:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
 **What was done in this session (2026-04-05, session 21):**
 
