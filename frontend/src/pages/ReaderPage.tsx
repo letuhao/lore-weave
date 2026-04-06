@@ -7,9 +7,14 @@ import { versionsApi } from '@/features/translation/api';
 import { ContentRenderer } from '@/components/reader/ContentRenderer';
 import { TOCSidebar, type LanguageOption } from '@/components/reader/TOCSidebar';
 import { ThemeCustomizer } from '@/components/reader/ThemeCustomizer';
+import { TTSBar } from '@/components/reader/TTSBar';
 import type { JSONContent } from '@tiptap/react';
 import { extractText } from '@/lib/tiptap-utils';
 import { useReaderTheme } from '@/providers/ThemeProvider';
+import { useTTSState, useTTSControls } from '@/hooks/useTTS';
+import { useBlockScroll } from '@/hooks/useBlockScroll';
+import { useTTSShortcuts } from '@/hooks/useTTSShortcuts';
+import { extractSpeakableBlocks } from '@/lib/audio-utils';
 
 /** CJK Unicode ranges: CJK Unified Ideographs, Hiragana, Katakana, Hangul */
 const CJK_REGEX = /[\u3000-\u9fff\uac00-\ud7af\uff00-\uffef]/;
@@ -53,6 +58,34 @@ export function ReaderPage() {
   const [langVersionMap, setLangVersionMap] = useState<Record<string, string>>({});
   const [langLoading, setLangLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // TTS playback
+  const ttsState = useTTSState();
+  const ttsControls = useTTSControls();
+  useBlockScroll(scrollRef);
+  useTTSShortcuts();
+
+  const handleStartTTS = useCallback(() => {
+    if (ttsState.status !== 'idle') {
+      ttsControls.stop();
+    } else {
+      ttsControls.start(blocks);
+    }
+  }, [blocks, ttsState.status, ttsControls]);
+
+  const handleBlockClick = useCallback((blockId: string) => {
+    if (ttsState.status !== 'idle') {
+      ttsControls.seekBlock(blockId);
+    }
+  }, [ttsState.status, ttsControls]);
+
+  // Get active block text for TTSBar preview
+  const activeBlockText = useMemo(() => {
+    if (!ttsState.activeBlockId) return '';
+    const speakable = extractSpeakableBlocks(blocks);
+    const active = speakable.find((b) => b.blockId === ttsState.activeBlockId);
+    return active?.text || active?.subtitle || '';
+  }, [blocks, ttsState.activeBlockId]);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -195,8 +228,12 @@ export function ReaderPage() {
           </span>
         </div>
         <div className="flex gap-1">
-          {/* TTS placeholder — wired in Phase 8D */}
-          <button className="rounded p-1.5 text-muted-foreground hover:bg-secondary" title="Read aloud (coming soon)" disabled>
+          {/* TTS toggle */}
+          <button
+            onClick={handleStartTTS}
+            className={`rounded p-1.5 transition-colors ${ttsState.status !== 'idle' ? 'bg-purple-500/15 text-purple-400' : 'text-muted-foreground hover:bg-secondary'}`}
+            title={ttsState.status !== 'idle' ? 'Stop reading' : 'Read aloud'}
+          >
             <Volume2 className="h-4 w-4" />
           </button>
           {/* Theme customizer toggle */}
@@ -268,7 +305,13 @@ export function ReaderPage() {
             <div className="mb-6 text-center text-xs text-muted-foreground animate-pulse">Loading translation...</div>
           )}
           {blocks.length > 0 ? (
-            <ContentRenderer blocks={blocks} showIndices={showIndices} className={langLoading ? 'opacity-50 transition-opacity' : ''} />
+            <ContentRenderer
+              blocks={blocks}
+              showIndices={showIndices}
+              ttsActiveBlock={ttsState.activeBlockId ?? undefined}
+              onBlockClick={ttsState.status !== 'idle' ? handleBlockClick : undefined}
+              className={langLoading ? 'opacity-50 transition-opacity' : ''}
+            />
           ) : (
             <p className="text-center font-serif text-muted-foreground italic">
               Empty chapter — nothing written yet.
@@ -281,6 +324,9 @@ export function ReaderPage() {
           </div>
         </article>
       </div>
+
+      {/* TTS floating player */}
+      <TTSBar activeBlockText={activeBlockText} />
 
       {/* Bottom nav — gradient fade */}
       <div

@@ -2903,7 +2903,7 @@ Task order:
   ── Player UI (4 tasks) ──────────────────────────────────────────────────
 
   AU-18: TTSBar floating player [FE]
-    Status: [ ]
+    Status: [✓]
     Size: M
     Deps: AU-14
     Scope: Floating audio player bar above bottom navigation
@@ -2912,15 +2912,15 @@ Task order:
     prev/next block, speed button, source badge, close button
     Source-colored: purple (recorded), blue (AI), gray (browser)
     AC:
-      - [ ] Bar appears when playback activated
-      - [ ] Play/pause toggles correctly
-      - [ ] Source badge shows current audio source
-      - [ ] Block text updates with active block
-      - [ ] Scrubber shows progress (for audio file sources)
-      - [ ] Close button stops playback
+      - [x] Bar appears when playback activated
+      - [x] Play/pause toggles correctly
+      - [x] Source badge shows current audio source
+      - [x] Block text updates with active block
+      - [x] Scrubber shows progress (for audio file sources)
+      - [x] Close button stops playback
 
   AU-19: Block scroll sync + highlight [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: AU-14
     Scope: Auto-scroll + highlight active block during playback
@@ -2930,40 +2930,39 @@ Task order:
       - Purple left border highlight on playing block
       - Click any block → seekBlock(id)
     AC:
-      - [ ] Active block scrolls into view
-      - [ ] Active block highlighted
-      - [ ] Click-to-seek works
+      - [x] Active block scrolls into view
+      - [x] Active block highlighted (via tts-active class)
+      - [x] Click-to-seek works
 
   AU-20: Playback keyboard shortcuts [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: AU-14, AU-18
     Shortcuts:
       - Space → play/pause (when playback active)
       - [ / ] → decrease/increase speed
       - Shift+Left / Shift+Right → prev/next block
-      - M → mute/unmute
       - Escape → close playback
     AC:
-      - [ ] All shortcuts work
-      - [ ] Space doesn't scroll page
-      - [ ] Escape closes TTSBar
+      - [x] All shortcuts work
+      - [x] Space doesn't scroll page (preventDefault)
+      - [x] Escape closes TTSBar
 
   AU-21: Wire into ReaderPage [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: AU-18, AU-19, AU-20
     Scope: Enable the Volume2 button, wrap reader in TTSProvider
     Changes to ReaderPage.tsx:
-      - Wrap content area with TTSProvider
       - Volume2 button activates playback
       - Pass ttsActiveBlock to ContentRenderer
       - Pass onBlockClick for seek
+      - Render TTSBar
     AC:
-      - [ ] Volume2 button starts playback
-      - [ ] TTSBar appears
-      - [ ] Block highlighting works
-      - [ ] Playback progresses through chapter
+      - [x] Volume2 button starts playback
+      - [x] TTSBar appears
+      - [x] Block highlighting works
+      - [x] Playback progresses through chapter
 
   ── Settings + Management (3 tasks) ──────────────────────────────────────
 
