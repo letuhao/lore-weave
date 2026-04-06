@@ -207,11 +207,62 @@ function createActionBar(view: EditorView): HTMLElement {
   });
   bar.appendChild(recordBtn);
 
-  // AI Generate button (placeholder — full model selection deferred)
-  const aiBtn = makeBtn('\u2728', 'Generate AI audio (TTS)', () => {
-    // AI generation requires model selection UI — placeholder for now
-    // Will be fully wired when TTS settings are available
-    console.info('AI TTS generation: requires model selection (coming in AU-22+)');
+  // AI Generate button — uses TTS model from localStorage prefs
+  const aiBtn = makeBtn('\u2728', 'Generate AI audio (TTS)', async () => {
+    if (currentPos < 0) return;
+    const ctx = getUploadContext();
+    if (!ctx) return;
+
+    // Read TTS prefs from localStorage
+    let ttsModelId: string | null = null;
+    let ttsVoice = 'alloy';
+    try {
+      const raw = localStorage.getItem('lw_tts_prefs');
+      if (raw) {
+        const p = JSON.parse(raw);
+        ttsModelId = p.ttsModelId || null;
+        ttsVoice = p.ttsVoice || 'alloy';
+      }
+    } catch { /* ignore */ }
+
+    if (!ttsModelId) {
+      alert('Select a TTS model in Reader > TTS Settings first.');
+      return;
+    }
+
+    const node = view.state.doc.nodeAt(currentPos);
+    if (!node) return;
+    const text = node.textContent.trim();
+    if (!text) return;
+
+    let blockIndex = 0;
+    view.state.doc.forEach((_child, _offset, index) => {
+      if (_offset <= currentPos && currentPos < _offset + _child.nodeSize) blockIndex = index;
+    });
+
+    try {
+      const result = await booksApi.generateAudio(ctx.token, ctx.bookId, ctx.chapterId, {
+        language: 'en',
+        voice: ttsVoice,
+        model_ref: ttsModelId,
+        blocks: [{ index: blockIndex, text }],
+      });
+      if (result.segments.length > 0) {
+        const seg = result.segments[0];
+        setAudioAttrs(view, currentPos, {
+          audio_url: seg.media_url,
+          audio_key: seg.media_key,
+          audio_duration_ms: seg.duration_ms,
+          audio_source: 'ai',
+          audio_subtitle: text,
+        });
+      } else if (result.errors.length > 0) {
+        console.error('TTS generation error:', result.errors[0].error);
+      }
+    } catch (err) {
+      console.error('TTS generation failed:', err);
+    }
+    hide();
   });
   bar.appendChild(aiBtn);
 

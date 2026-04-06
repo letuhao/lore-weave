@@ -1,5 +1,8 @@
+import { useState } from 'react';
 import type { JSONContent } from '@tiptap/react';
 import { extractSpeakableBlocks, resolveAudioSource, type SpeakableBlock, type AudioSource } from '@/lib/audio-utils';
+import { booksApi } from '@/features/books/api';
+import { loadPrefs } from './TTSSettings';
 import { cn } from '@/lib/utils';
 
 const SOURCE_COLORS: Record<AudioSource | 'none', string> = {
@@ -21,9 +24,15 @@ const SOURCE_LABELS: Record<AudioSource | 'none', string> = {
 interface AudioOverviewProps {
   blocks: JSONContent[];
   aiSegments?: Map<number, string>;
+  bookId?: string;
+  chapterId?: string;
+  token?: string;
+  language?: string;
 }
 
-export function AudioOverview({ blocks, aiSegments }: AudioOverviewProps) {
+export function AudioOverview({ blocks, aiSegments, bookId, chapterId, token, language }: AudioOverviewProps) {
+  const [generating, setGenerating] = useState(false);
+  const [genProgress, setGenProgress] = useState(0);
   const speakable = extractSpeakableBlocks(blocks);
 
   // Count by source
@@ -83,16 +92,50 @@ export function AudioOverview({ blocks, aiSegments }: AudioOverviewProps) {
               <> · est. ${estimatedCost.toFixed(4)}</>
             )}
           </div>
-          <button
-            type="button"
-            className="mt-2 rounded-md bg-purple-600 px-3 py-1.5 text-[11px] font-medium text-white transition hover:bg-purple-500"
-            onClick={() => {
-              // Full generation wired in AU-24
-              console.info('Bulk TTS generation: requires model selection (AU-24)');
-            }}
-          >
-            Generate All ({missingCount})
-          </button>
+          {generating ? (
+            <div className="mt-2">
+              <div className="mb-1 text-[10px] text-muted-foreground">Generating... {genProgress}/{missingCount}</div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-border">
+                <div className="h-full rounded-full bg-purple-500 transition-[width]" style={{ width: `${missingCount > 0 ? (genProgress / missingCount) * 100 : 0}%` }} />
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="mt-2 rounded-md bg-purple-600 px-3 py-1.5 text-[11px] font-medium text-white transition hover:bg-purple-500 disabled:opacity-50"
+              disabled={!token || !bookId || !chapterId}
+              onClick={async () => {
+                const prefs = loadPrefs();
+                if (!prefs.ttsModelId || !token || !bookId || !chapterId) {
+                  alert('Select a TTS model in TTS Settings first.');
+                  return;
+                }
+                const missingBlocks = speakable.filter((b) => b.type === 'text' && !b.audioUrl && !aiSegments?.has(b.index));
+                if (missingBlocks.length === 0) return;
+
+                setGenerating(true);
+                setGenProgress(0);
+                try {
+                  const result = await booksApi.generateAudio(token, bookId, chapterId, {
+                    language: language || 'en',
+                    voice: prefs.ttsVoice || 'alloy',
+                    model_ref: prefs.ttsModelId,
+                    blocks: missingBlocks.map((b) => ({ index: b.index, text: b.text })),
+                  });
+                  setGenProgress(result.segments.length);
+                  if (result.errors.length > 0) {
+                    console.warn('TTS generation errors:', result.errors);
+                  }
+                } catch (err) {
+                  console.error('TTS generation failed:', err);
+                } finally {
+                  setGenerating(false);
+                }
+              }}
+            >
+              Generate All ({missingCount})
+            </button>
+          )}
         </div>
       )}
 

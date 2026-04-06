@@ -2,16 +2,22 @@ import { useState, useEffect } from 'react';
 import { X, Settings } from 'lucide-react';
 import { useTTSState, useTTSControls } from '@/hooks/useTTS';
 import { BrowserTTSEngine } from '@/hooks/engines/BrowserTTSEngine';
+import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
+import { useAuth } from '@/auth';
 import { cn } from '@/lib/utils';
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const LS_KEY = 'lw_tts_prefs';
 
-interface TTSPrefs {
+export interface TTSPrefs {
   speed: number;
   voiceURI: string | null;
   autoScroll: boolean;
   highlight: boolean;
+  /** User model ID for AI TTS generation */
+  ttsModelId: string | null;
+  /** Voice name for AI TTS (e.g. 'alloy', 'nova') */
+  ttsVoice: string;
 }
 
 function loadPrefs(): TTSPrefs {
@@ -31,6 +37,8 @@ const defaultPrefs: TTSPrefs = {
   voiceURI: null,
   autoScroll: true,
   highlight: true,
+  ttsModelId: null,
+  ttsVoice: 'alloy',
 };
 
 interface TTSSettingsProps {
@@ -41,8 +49,16 @@ interface TTSSettingsProps {
 export function TTSSettings({ open, onClose }: TTSSettingsProps) {
   const state = useTTSState();
   const controls = useTTSControls();
+  const { accessToken } = useAuth();
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [models, setModels] = useState<UserModel[]>([]);
   const [prefs, setPrefs] = useState<TTSPrefs>(loadPrefs);
+
+  // Load AI models
+  useEffect(() => {
+    if (!accessToken) return;
+    aiModelsApi.listUserModels(accessToken).then((r) => setModels(r.items)).catch(() => {});
+  }, [accessToken]);
 
   // Load browser voices
   useEffect(() => {
@@ -133,6 +149,49 @@ export function TTSSettings({ open, onClose }: TTSSettingsProps) {
           )}
         </div>
 
+        {/* AI TTS Model */}
+        <div>
+          <label className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            AI TTS Model
+          </label>
+          <select
+            value={prefs.ttsModelId || ''}
+            onChange={(e) => updatePref('ttsModelId', e.target.value || null)}
+            className="w-full rounded-md border bg-background px-2 py-1.5 text-xs text-foreground outline-none"
+          >
+            <option value="">None (browser TTS only)</option>
+            {models.filter((m) => m.is_active).map((m) => (
+              <option key={m.user_model_id} value={m.user_model_id}>
+                {m.alias || m.provider_model_name} ({m.provider_kind})
+              </option>
+            ))}
+          </select>
+          {models.length === 0 && accessToken && (
+            <p className="mt-1 text-[9px] text-muted-foreground">
+              No models configured. Add a provider in Settings &gt; Providers.
+            </p>
+          )}
+        </div>
+
+        {/* AI TTS Voice */}
+        {prefs.ttsModelId && (
+          <div>
+            <label className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              AI Voice
+            </label>
+            <input
+              type="text"
+              value={prefs.ttsVoice}
+              onChange={(e) => updatePref('ttsVoice', e.target.value)}
+              placeholder="alloy"
+              className="w-full rounded-md border bg-background px-2 py-1.5 text-xs text-foreground outline-none"
+            />
+            <p className="mt-1 text-[9px] text-muted-foreground">
+              OpenAI voices: alloy, echo, fable, onyx, nova, shimmer
+            </p>
+          </div>
+        )}
+
         {/* Behavior toggles */}
         <div>
           <label className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -207,4 +266,4 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
 }
 
 /** Export prefs loader for use by other components */
-export { loadPrefs, type TTSPrefs };
+export { loadPrefs };

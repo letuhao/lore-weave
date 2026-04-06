@@ -365,6 +365,30 @@ export const booksApi = {
     });
   },
 
+  /** Generate AI TTS audio for chapter blocks via AU-03 endpoint. */
+  async generateAudio(
+    token: string,
+    bookId: string,
+    chapterId: string,
+    body: {
+      language: string;
+      voice: string;
+      model_ref: string;
+      model_source?: string;
+      provider?: string;
+      blocks: Array<{ index: number; text: string }>;
+    },
+  ): Promise<{ segments: Array<{ block_index: number; media_url: string; media_key: string; duration_ms: number }>; errors: Array<{ block_index: number; error: string }> }> {
+    const res = await fetch(`${base()}/v1/books/${bookId}/chapters/${chapterId}/audio/generate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw Object.assign(new Error(data?.message || res.statusText), { status: res.status, code: data?.code });
+    return data;
+  },
+
   /** Upload block audio (mp3/wav/ogg/webm/m4a) to MinIO via AU-02 endpoint. */
   uploadBlockAudio(
     token: string,
