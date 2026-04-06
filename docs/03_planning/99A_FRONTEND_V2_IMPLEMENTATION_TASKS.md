@@ -2736,7 +2736,7 @@ Task order:
       - [x] Empty state shown when no src
 
   AU-07: Audio attachment attrs on text blocks [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: AU-06
     Scope: Extend paragraph/heading/blockquote/callout with audio attrs
@@ -2746,9 +2746,9 @@ Task order:
       - Attrs are null by default (no visual change to existing blocks)
       - Saved normally via patchDraft (attrs persist in Tiptap JSON)
     AC:
-      - [ ] Audio attrs added to paragraph/heading nodes
-      - [ ] Null by default (existing content unaffected)
-      - [ ] Attrs survive save/load cycle
+      - [x] Audio attrs added to paragraph/heading nodes
+      - [x] Null by default (existing content unaffected)
+      - [x] Attrs survive save/load cycle
 
   AU-08: AudioAttachBar — mini player on text blocks [FE]
     Status: [ ]

@@ -12,6 +12,7 @@ import { CodeBlockExtension } from './CodeBlockNode';
 import { ImageBlockExtension } from './ImageBlockNode';
 import { VideoBlockExtension } from './VideoBlockNode';
 import { AudioBlockExtension } from './AudioBlockNode';
+import { AudioAttrsExtension } from './AudioAttrsExtension';
 import { MediaGuardExtension } from './MediaGuardExtension';
 import Link from '@tiptap/extension-link';
 import Underline from '@tiptap/extension-underline';
@@ -61,6 +62,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         ImageBlockExtension,
         VideoBlockExtension,
         AudioBlockExtension,
+        AudioAttrsExtension,
         MediaGuardExtension,
         Link.configure({
           openOnClick: false,
