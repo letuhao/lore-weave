@@ -14,6 +14,7 @@ import { VideoBlockExtension } from './VideoBlockNode';
 import { AudioBlockExtension } from './AudioBlockNode';
 import { AudioAttrsExtension } from './AudioAttrsExtension';
 import { AudioAttachBarExtension } from './AudioAttachBarExtension';
+import { AudioAttachActionsExtension } from './AudioAttachActionsExtension';
 import { MediaGuardExtension } from './MediaGuardExtension';
 import Link from '@tiptap/extension-link';
 import Underline from '@tiptap/extension-underline';
@@ -65,6 +66,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         AudioBlockExtension,
         AudioAttrsExtension,
         AudioAttachBarExtension,
+        AudioAttachActionsExtension,
         MediaGuardExtension,
         Link.configure({
           openOnClick: false,

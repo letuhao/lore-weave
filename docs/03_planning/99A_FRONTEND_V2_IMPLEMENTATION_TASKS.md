@@ -2766,20 +2766,20 @@ Task order:
       - [x] Replace and remove buttons work
 
   AU-09: AudioAttachActions — upload/record/generate [FE]
-    Status: [ ]
+    Status: [✓]
     Size: M
     Deps: AU-07, AU-02
     Scope: Hover actions to attach audio to a text block
-    File: frontend/src/components/editor/AudioAttachActions.tsx
+    File: frontend/src/components/editor/AudioAttachActionsExtension.ts
     Actions:
       - Upload: file picker → AU-02 endpoint → set audio attrs
       - Record: MediaRecorder API → AU-02 endpoint → set audio attrs
       - Generate AI: calls AU-03 → stores as attachment + segment
     AC:
-      - [ ] Upload button opens file picker, uploads, sets attrs
-      - [ ] Record button records via mic, uploads, sets attrs
-      - [ ] Generate button calls AI TTS for single block
-      - [ ] All update block attrs (audio_url, audio_subtitle, etc.)
+      - [x] Upload button opens file picker, uploads, sets attrs
+      - [x] Record button records via mic, uploads, sets attrs
+      - [~] Generate button placeholder (full model selection in AU-22+)
+      - [x] All update block attrs (audio_url, audio_subtitle, etc.)
 
   AU-10: Slash menu + FormatToolbar audio entries [FE]
     Status: [ ]
