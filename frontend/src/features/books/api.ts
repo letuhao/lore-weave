@@ -365,6 +365,57 @@ export const booksApi = {
     });
   },
 
+  /** Upload block audio (mp3/wav/ogg/webm/m4a) to MinIO via AU-02 endpoint. */
+  uploadBlockAudio(
+    token: string,
+    bookId: string,
+    chapterId: string,
+    file: File,
+    blockIndex: number,
+    subtitle?: string,
+    onProgress?: (pct: number) => void,
+  ): Promise<{ audio_url: string; media_key: string; duration_ms: number; size_bytes: number; content_type: string; subtitle: string }> {
+    return new Promise((resolve, reject) => {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('block_index', String(blockIndex));
+      if (subtitle) form.append('subtitle', subtitle);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${base()}/v1/books/${bookId}/chapters/${chapterId}/block-audio`);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+      if (onProgress) {
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            onProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        });
+      }
+
+      xhr.addEventListener('load', () => {
+        try {
+          const body = JSON.parse(xhr.responseText);
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(body);
+          } else {
+            reject(Object.assign(new Error(body?.message || xhr.statusText), {
+              status: xhr.status,
+              code: body?.code,
+            }));
+          }
+        } catch {
+          reject(new Error('Invalid response'));
+        }
+      });
+
+      xhr.addEventListener('error', () => reject(new Error('Network error')));
+      xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')));
+
+      xhr.send(form);
+    });
+  },
+
   // ── Media Versions ──────────────────────────────────────────────────
 
   async listMediaVersions(token: string, bookId: string, chapterId: string, blockId: string) {

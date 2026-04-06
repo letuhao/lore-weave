@@ -6,10 +6,10 @@ import { toast } from 'sonner';
  * Media block types that are protected in Classic mode.
  * Backspace/Delete at boundaries of these nodes is blocked.
  */
-const MEDIA_NODE_TYPES = new Set(['imageBlock', 'codeBlock', 'videoBlock']);
+const MEDIA_NODE_TYPES = new Set(['imageBlock', 'codeBlock', 'videoBlock', 'audioBlock']);
 
 /** Atom nodes (no editable content inside) — need extra backspace protection in all modes */
-const ATOM_MEDIA_TYPES = new Set(['imageBlock', 'videoBlock']);
+const ATOM_MEDIA_TYPES = new Set(['imageBlock', 'videoBlock', 'audioBlock']);
 
 const mediaGuardKey = new PluginKey('mediaGuard');
 

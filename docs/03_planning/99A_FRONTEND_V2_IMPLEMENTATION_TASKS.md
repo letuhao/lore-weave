@@ -2718,7 +2718,7 @@ Task order:
   ── Editor: audioBlock + audio attachment (5 tasks) ──────────────────────
 
   AU-06: audioBlock Tiptap extension [FE]
-    Status: [ ]
+    Status: [✓]
     Size: M
     Scope: New Tiptap node type for standalone audio blocks
     File: frontend/src/components/editor/AudioBlockNode.tsx
@@ -2729,11 +2729,11 @@ Task order:
       - Empty state: upload/record prompt
       - Plays audio in editor for preview
     AC:
-      - [ ] /audio in slash menu inserts audioBlock
-      - [ ] Upload stores file via AU-02 endpoint
-      - [ ] Player plays/pauses audio in editor
-      - [ ] Subtitle field editable
-      - [ ] Empty state shown when no src
+      - [x] /audio in slash menu inserts audioBlock
+      - [x] Upload stores file via AU-02 endpoint
+      - [x] Player plays/pauses audio in editor
+      - [x] Subtitle field editable
+      - [x] Empty state shown when no src
 
   AU-07: Audio attachment attrs on text blocks [FE]
     Status: [ ]

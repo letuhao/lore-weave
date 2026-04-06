@@ -5,7 +5,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Editor } from '@tiptap/react';
 import {
   Pilcrow, Heading1, Heading2, Heading3, Minus, List, ListOrdered, Quote, MessageSquareText, Code2,
-  ImageIcon, Video,
+  ImageIcon, Video, Music,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -75,6 +75,13 @@ const SLASH_ITEMS: SlashMenuItem[] = [
     description: 'Upload video file',
     icon: <Video className="h-4 w-4" />,
     command: (editor) => editor.chain().focus().insertContent({ type: 'videoBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run(),
+    modes: ['ai'],
+  },
+  {
+    title: 'Audio',
+    description: 'Upload audio file',
+    icon: <Music className="h-4 w-4" />,
+    command: (editor) => editor.chain().focus().insertContent({ type: 'audioBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run(),
     modes: ['ai'],
   },
   {
