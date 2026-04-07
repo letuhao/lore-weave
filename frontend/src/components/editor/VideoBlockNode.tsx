@@ -12,6 +12,7 @@ import { getUploadContext } from './ImageBlockNode';
 import { MediaPrompt } from './MediaPrompt';
 import { useResize } from './useResize';
 import { videoGenApi } from '@/features/video-gen/api';
+import { aiModelsApi } from '@/features/ai-models/api';
 
 const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100 MB
 const ALLOWED_VIDEO_TYPES = new Set(['video/mp4', 'video/webm']);
@@ -246,14 +247,21 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
     setGenerating(true);
     setGenerateError(null);
     try {
+      // Fetch user's video_gen model
+      const { items: models } = await aiModelsApi.listUserModels(ctx.token, { capability: 'video_gen' });
+      const videoModel = models.find(m => m.is_active) ?? models[0];
+      if (!videoModel) {
+        setGenerateError('No video generation model configured. Add one in Settings > Providers.');
+        return;
+      }
       const result = await videoGenApi.generate(ctx.token, {
         prompt,
+        model_source: 'user_model',
+        model_ref: videoModel.user_model_id,
         duration_seconds: 5,
         aspect_ratio: '16:9',
       });
-      if (result.status === 'not_implemented') {
-        setGenerateError(result.message || 'Video generation not yet connected to a provider.');
-      } else if (result.status === 'completed' && result.video_url) {
+      if (result.status === 'completed' && result.video_url) {
         updateAttributes({
           src: result.video_url,
           duration: result.duration_seconds,
