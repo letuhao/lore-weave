@@ -184,6 +184,7 @@ export function ChapterTranslationsPage() {
         ) : (
           // Single translation viewer
           <TranslationViewer
+            bookId={bookId}
             chapterId={chapterId}
             versionId={currentVersion.id}
             isActive={isActive}

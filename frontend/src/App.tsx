@@ -39,6 +39,7 @@ import { BrowsePage } from '@/pages/BrowsePage';
 import { PublicBookDetailPage } from '@/pages/PublicBookDetailPage';
 import { SharedBookPage } from '@/pages/SharedBookPage';
 import { ChapterTranslationsPage } from '@/pages/ChapterTranslationsPage';
+import TranslationReviewPage from '@/pages/TranslationReviewPage';
 
 function AuthenticatedThemeProvider({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();
@@ -78,6 +79,9 @@ export function App() {
 
           {/* Reader — full screen, no sidebar */}
           <Route path="/books/:bookId/chapters/:chapterId/read" element={<ReaderPage />} />
+
+          {/* Translation review — full screen, auth required */}
+          <Route path="/books/:bookId/chapters/:chapterId/review/:versionId" element={<RequireAuth><TranslationReviewPage /></RequireAuth>} />
 
           {/* Public reader — unlisted/public books readable without login */}
           <Route element={<FullBleedLayout />}>

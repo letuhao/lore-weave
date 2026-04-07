@@ -1,18 +1,21 @@
 import { useEffect, useState } from 'react';
-import { Check, Copy } from 'lucide-react';
+import { Check, Copy, SplitSquareVertical } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { versionsApi, type ChapterTranslation } from '../api';
 import { useAuth } from '@/auth';
 import { ContentRenderer } from '@/components/reader/ContentRenderer';
 
 interface TranslationViewerProps {
+  bookId?: string;
   chapterId: string;
   versionId: string;
   isActive: boolean;
   onSetActive: (versionId: string) => void;
 }
 
-export function TranslationViewer({ chapterId, versionId, isActive, onSetActive }: TranslationViewerProps) {
+export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSetActive }: TranslationViewerProps) {
+  const navigate = useNavigate();
   const { accessToken } = useAuth();
   const [version, setVersion] = useState<ChapterTranslation | null>(null);
   const [loading, setLoading] = useState(true);
@@ -111,12 +114,22 @@ export function TranslationViewer({ chapterId, versionId, isActive, onSetActive 
           <button
             type="button"
             onClick={handleCopy}
-            disabled={!version.translated_body}
+            disabled={!version.translated_body && !version.translated_body_json}
             className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors disabled:opacity-30"
           >
             <Copy className="h-3 w-3" />
             Copy
           </button>
+          {bookId && version.status === 'completed' && (
+            <button
+              type="button"
+              onClick={() => navigate(`/books/${bookId}/chapters/${chapterId}/review/${versionId}`)}
+              className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-[#8b5cf6] hover:bg-[#8b5cf6]/10 transition-colors"
+            >
+              <SplitSquareVertical className="h-3 w-3" />
+              Review
+            </button>
+          )}
           {version.status === 'completed' && !isActive && (
             <button
               type="button"
