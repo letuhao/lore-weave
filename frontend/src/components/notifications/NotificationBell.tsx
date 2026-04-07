@@ -14,13 +14,7 @@ type Notification = {
   read: boolean;
 };
 
-// Mock data — real API in P2-09b
-const MOCK: Notification[] = [
-  { id: '1', type: 'translation', title: 'Translation complete — 5 chapters translated to English', meta: 'Claude Sonnet 4.6 · $0.12', time: '2m ago', read: false },
-  { id: '2', type: 'comment', title: 'SakuraPen commented on Ch.3', meta: 'The Demon Lord\'s Duty', time: '15m ago', read: false },
-  { id: '3', type: 'error', title: 'Translation failed — Ch.12 timeout', meta: 'GPT-4o · no tokens charged', time: '1h ago', read: true },
-  { id: '4', type: 'follow', title: 'JadePeak started following you', meta: '42 followers', time: '3h ago', read: true },
-];
+// No notifications backend yet — show empty state until notification service is built
 
 const ICONS: Record<NotifType, { icon: React.ElementType; color: string }> = {
   translation: { icon: Check, color: 'bg-success/10 text-success' },
@@ -34,7 +28,7 @@ const ICONS: Record<NotifType, { icon: React.ElementType; color: string }> = {
 
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
-  const [notifications] = useState<Notification[]>(MOCK);
+  const [notifications] = useState<Notification[]>([]);
   const unread = notifications.filter((n) => !n.read).length;
 
   return (
@@ -61,6 +55,12 @@ export function NotificationBell() {
               <button className="text-xs text-muted-foreground hover:text-foreground">Mark all read</button>
             </div>
             <div className="max-h-80 overflow-y-auto">
+              {notifications.length === 0 && (
+                <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
+                  <Bell className="h-6 w-6 opacity-30" />
+                  <p className="text-xs">No notifications yet</p>
+                </div>
+              )}
               {notifications.map((n) => {
                 const cfg = ICONS[n.type];
                 const Icon = cfg.icon;

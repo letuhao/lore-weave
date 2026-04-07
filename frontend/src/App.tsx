@@ -13,7 +13,6 @@ const queryClient = new QueryClient({
     },
   },
 });
-import { ModeProvider } from '@/providers/ModeProvider';
 import { DashboardLayout } from '@/layouts/DashboardLayout';
 import { FullBleedLayout } from '@/layouts/FullBleedLayout';
 import { EditorLayout } from '@/layouts/EditorLayout';
@@ -51,7 +50,6 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
     <AuthProvider>
-    <ModeProvider>
     <AuthenticatedThemeProvider>
     <SidebarProvider>
       <BrowserRouter>
@@ -136,7 +134,6 @@ export function App() {
       </BrowserRouter>
     </SidebarProvider>
     </AuthenticatedThemeProvider>
-    </ModeProvider>
     </AuthProvider>
     </QueryClientProvider>
   );

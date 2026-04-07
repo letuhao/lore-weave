@@ -202,7 +202,7 @@ export function PublicBookDetailPage() {
           <div className="mt-5 flex gap-2">
             {firstChapterId ? (
               <Link
-                to={`/read/${book.book_id}/${firstChapterId}`}
+                to={`/books/${book.book_id}/chapters/${firstChapterId}/read`}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:brightness-110"
               >
                 <BookOpen className="h-4 w-4" />
@@ -238,7 +238,7 @@ export function PublicBookDetailPage() {
             {chapters.map((ch) => (
               <Link
                 key={ch.chapter_id}
-                to={`/read/${book.book_id}/${ch.chapter_id}`}
+                to={`/books/${book.book_id}/chapters/${ch.chapter_id}/read`}
                 className="flex items-center border-b border-border px-4 py-3 transition-colors last:border-b-0 hover:bg-secondary/30"
               >
                 <span className="w-9 shrink-0 text-center text-xs font-medium text-muted-foreground">

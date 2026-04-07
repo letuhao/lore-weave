@@ -32,6 +32,22 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-tiptap': [
+            '@tiptap/react', '@tiptap/core', '@tiptap/starter-kit',
+            '@tiptap/extension-placeholder', '@tiptap/extension-highlight',
+          ],
+          'vendor-ui': ['lucide-react', 'sonner', 'recharts'],
+          'vendor-query': ['@tanstack/react-query'],
+        },
+      },
+    },
+  },
   test: {
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
