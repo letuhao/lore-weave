@@ -247,9 +247,10 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
     setGenerating(true);
     setGenerateError(null);
     try {
-      // Fetch user's video_gen model
+      // Get preferred or first available video model
       const { items: models } = await aiModelsApi.listUserModels(ctx.token, { capability: 'video_gen' });
-      const videoModel = models.find(m => m.is_active) ?? models[0];
+      const savedId = localStorage.getItem('loreweave:media-prefs') ? JSON.parse(localStorage.getItem('loreweave:media-prefs')!).videoModelId : '';
+      const videoModel = (savedId && models.find(m => m.user_model_id === savedId)) || models.find(m => m.is_active) || models[0];
       if (!videoModel) {
         setGenerateError('No video generation model configured. Add one in Settings > Providers.');
         return;

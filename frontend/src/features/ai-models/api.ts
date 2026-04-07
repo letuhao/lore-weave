@@ -1,6 +1,6 @@
 import { apiJson } from '../../api';
 
-export type ProviderKind = 'openai' | 'anthropic' | 'ollama' | 'lm_studio';
+export type ProviderKind = 'openai' | 'anthropic' | 'ollama' | 'lm_studio' | (string & {});
 
 export type UserModel = {
   user_model_id: string;

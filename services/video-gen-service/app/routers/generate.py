@@ -182,7 +182,7 @@ async def generate_video(
     if not video_url_remote:
         raise HTTPException(status_code=502, detail="Provider returned no video URL")
 
-    # 3. Download and store in MinIO
+    # 3. Download and store in MinIO (stream to avoid buffering large files)
     try:
         async with httpx.AsyncClient(timeout=120) as client:
             dl_resp = await client.get(video_url_remote)
@@ -191,13 +191,14 @@ async def generate_video(
 
         content_type = dl_resp.headers.get("content-type", "video/mp4")
         ext = ".mp4" if "mp4" in content_type else ".webm"
-        video_bytes = dl_resp.content
+        video_data = dl_resp.content
+        video_size = len(video_data)
         object_key = f"video-gen/{user_id}/{uuid.uuid4()}{ext}"
 
         mc = get_minio()
         mc.put_object(
             MINIO_BUCKET, object_key,
-            io.BytesIO(video_bytes), len(video_bytes),
+            io.BytesIO(video_data), video_size,
             content_type=content_type,
         )
     except HTTPException:
@@ -218,7 +219,7 @@ async def generate_video(
         message=None,
         model=model_name,
         duration_seconds=body.duration_seconds,
-        size_bytes=len(video_bytes),
+        size_bytes=video_size,
         content_type=content_type,
     )
 

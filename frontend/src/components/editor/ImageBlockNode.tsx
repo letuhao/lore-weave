@@ -252,9 +252,10 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
     setRegenerating(true);
     setRegenerateError(null);
     try {
-      // Get first available user model
+      // Get preferred or first available image model
       const { items: models } = await aiModelsApi.listUserModels(ctx.token, { capability: 'image_gen' });
-      const imageModel = models.find(m => m.is_active) ?? models[0];
+      const savedId = localStorage.getItem('loreweave:media-prefs') ? JSON.parse(localStorage.getItem('loreweave:media-prefs')!).imageModelId : '';
+      const imageModel = (savedId && models.find(m => m.user_model_id === savedId)) || models.find(m => m.is_active) || models[0];
       if (!imageModel) {
         setRegenerateError('No AI model configured. Add a provider in Settings.');
         return;

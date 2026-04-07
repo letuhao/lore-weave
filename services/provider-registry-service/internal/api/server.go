@@ -809,9 +809,19 @@ SELECT user_model_id FROM user_models WHERE owner_user_id=$1
 		argPos++
 	}
 	if capabilityFilter != "" {
-		query += fmt.Sprintf(` AND capability_flags @> $%d::jsonb`, argPos)
-		args = append(args, fmt.Sprintf(`{"%s": true}`, capabilityFilter))
-		argPos++
+		// Validate: only lowercase letters and underscores (prevent JSON injection)
+		valid := true
+		for _, c := range capabilityFilter {
+			if !((c >= 'a' && c <= 'z') || c == '_') {
+				valid = false
+				break
+			}
+		}
+		if valid && len(capabilityFilter) <= 30 {
+			query += fmt.Sprintf(` AND capability_flags @> $%d::jsonb`, argPos)
+			args = append(args, fmt.Sprintf(`{"%s": true}`, capabilityFilter))
+			argPos++
+		}
 	}
 	query += " ORDER BY created_at DESC"
 	rows, err := s.pool.Query(r.Context(), query, args...)
