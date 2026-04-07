@@ -92,32 +92,66 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
     chapter      = r.json()
     source_lang  = chapter.get("original_language") or "unknown"
     chapter_text = chapter.get("text_content") or ""
+    chapter_body = chapter.get("body")  # Tiptap JSONB (dict with "content" key) or None
     log.info(
-        "chapter %s: fetched %d chars, source_lang=%s",
-        chapter_id, len(chapter_text), source_lang,
+        "chapter %s: fetched %d chars, source_lang=%s, has_json_body=%s",
+        chapter_id, len(chapter_text), source_lang, bool(chapter_body and isinstance(chapter_body, dict)),
     )
 
     # Fetch model context window from provider-registry (best-effort)
     context_window = await _get_model_context_window(msg)
     log.info("chapter %s: context_window=%d", chapter_id, context_window)
 
-    # Run session-based chunked translation
-    log.info(
-        "chapter %s: starting translate_chapter (model=%s/%s)",
-        chapter_id, msg.get("model_source"), msg.get("model_ref"),
+    # Detect JSON body → use block pipeline, otherwise fall back to text pipeline
+    use_block_pipeline = (
+        isinstance(chapter_body, dict)
+        and isinstance(chapter_body.get("content"), list)
+        and len(chapter_body["content"]) > 0
     )
-    translated_body, input_tokens, output_tokens = await translate_chapter(
-        chapter_text=chapter_text,
-        source_lang=source_lang,
-        msg=msg,
-        pool=pool,
-        chapter_translation_id=chapter_translation_id,
-        context_window=context_window,
-    )
-    log.info(
-        "chapter %s: translate_chapter done — %d output chars, in_tokens=%s, out_tokens=%s",
-        chapter_id, len(translated_body), input_tokens, output_tokens,
-    )
+
+    if use_block_pipeline:
+        from .session_translator import translate_chapter_blocks
+        blocks = chapter_body["content"]
+        log.info(
+            "chapter %s: using BLOCK pipeline (%d blocks, model=%s/%s)",
+            chapter_id, len(blocks), msg.get("model_source"), msg.get("model_ref"),
+        )
+        translated_blocks, input_tokens, output_tokens = await translate_chapter_blocks(
+            blocks=blocks,
+            source_lang=source_lang,
+            msg=msg,
+            pool=pool,
+            chapter_translation_id=chapter_translation_id,
+            context_window=context_window,
+        )
+        # Store as JSONB
+        import json as json_mod
+        translated_body_json = json_mod.dumps(translated_blocks)
+        translated_body_text = None  # not used for block translations
+        translated_body_format = "json"
+        log.info(
+            "chapter %s: block pipeline done — %d blocks, in=%s out=%s",
+            chapter_id, len(translated_blocks), input_tokens, output_tokens,
+        )
+    else:
+        log.info(
+            "chapter %s: using TEXT pipeline (model=%s/%s)",
+            chapter_id, msg.get("model_source"), msg.get("model_ref"),
+        )
+        translated_body_text, input_tokens, output_tokens = await translate_chapter(
+            chapter_text=chapter_text,
+            source_lang=source_lang,
+            msg=msg,
+            pool=pool,
+            chapter_translation_id=chapter_translation_id,
+            context_window=context_window,
+        )
+        translated_body_json = None
+        translated_body_format = "text"
+        log.info(
+            "chapter %s: text pipeline done — %d output chars, in=%s out=%s",
+            chapter_id, len(translated_body_text or ""), input_tokens, output_tokens,
+        )
 
     # Persist final result
     log.info("chapter %s: persisting completed result to DB", chapter_id)
@@ -126,12 +160,15 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             """UPDATE chapter_translations SET
                  status='completed',
                  translated_body=$1,
-                 source_language=$2,
-                 input_tokens=$3,
-                 output_tokens=$4,
+                 translated_body_json=$2::jsonb,
+                 translated_body_format=$3,
+                 source_language=$4,
+                 input_tokens=$5,
+                 output_tokens=$6,
                  finished_at=now()
-               WHERE job_id=$5 AND chapter_id=$6""",
-            translated_body, source_lang,
+               WHERE job_id=$7 AND chapter_id=$8""",
+            translated_body_text, translated_body_json, translated_body_format,
+            source_lang,
             input_tokens or None, output_tokens or None,
             job_id, chapter_id,
         )
