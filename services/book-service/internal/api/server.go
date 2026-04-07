@@ -135,8 +135,14 @@ func (s *Server) Router() http.Handler {
 				r.Get("/audio/{segment_id}", s.getAudioSegment)
 				r.Delete("/audio", s.deleteAudioSegments)
 				r.Post("/block-audio", s.uploadBlockAudio)
+				r.Post("/progress", s.upsertReadingProgress)
 			})
 		})
+
+		// Analytics — at book level
+		r.Post("/{book_id}/view", s.recordBookView)
+		r.Get("/{book_id}/progress", s.listReadingProgress)
+		r.Get("/{book_id}/stats", s.getBookStats)
 	})
 	return r
 }

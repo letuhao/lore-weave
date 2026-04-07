@@ -151,6 +151,29 @@ CREATE TABLE IF NOT EXISTS chapter_audio_segments (
 );
 CREATE INDEX IF NOT EXISTS idx_audio_seg_lookup
   ON chapter_audio_segments(chapter_id, language, voice, block_index);
+
+-- ── Phase 8H: reading analytics ────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS reading_progress (
+  user_id        UUID NOT NULL,
+  book_id        UUID NOT NULL,
+  chapter_id     UUID NOT NULL,
+  read_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  time_spent_ms  BIGINT NOT NULL DEFAULT 0,
+  scroll_depth   REAL NOT NULL DEFAULT 0,
+  read_count     INT NOT NULL DEFAULT 1,
+  PRIMARY KEY (user_id, book_id, chapter_id)
+);
+CREATE INDEX IF NOT EXISTS idx_rp_user_book ON reading_progress(user_id, book_id);
+
+CREATE TABLE IF NOT EXISTS book_views (
+  id         UUID PRIMARY KEY DEFAULT uuidv7(),
+  book_id    UUID NOT NULL,
+  user_id    UUID,
+  session_id TEXT,
+  referrer   TEXT,
+  viewed_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_bv_book ON book_views(book_id, viewed_at DESC);
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {
