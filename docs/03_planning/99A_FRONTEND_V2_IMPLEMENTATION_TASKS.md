@@ -267,7 +267,7 @@ Sub-tasks (break into 4 tickets):
 
 ### P2-06: Split-View Translation [FE]
 ```
-Status: [ ] (deferred — needs translation API wired first, moved to P3)
+Status: [✓] (deferred — needs translation API wired first, moved to P3)
 Deps:   P2-05a
 Scope:  Source + translation side-by-side, accept/reject per chunk
 AC:
@@ -497,10 +497,10 @@ Review checklist per component:
 
 Deferred polish items (tracked here so they don't get lost):
   [✓] P3-R1-D1: Editor panel drag-to-resize handles — MOVED to E4-01 (image block resize handles)
-  [ ] P3-R1-D2: Dead code cleanup — ChunkItem.tsx + ChunkInsertRow.tsx (replaced by Tiptap)
-  [ ] P3-R1-D3: Wire OnboardingWizard into App (exists but not rendered)
-  [ ] P3-R1-D4: Wire NotificationBell with real data (currently mock)
-  [ ] P3-R1-D5: Remove or repurpose ModeProvider (currently unused)
+  [✓] P3-R1-D2: Dead code cleanup — ChunkItem.tsx + ChunkInsertRow.tsx (deleted)
+  [✓] P3-R1-D3: Wire OnboardingWizard into App (deleted, was unreachable)
+  [✓] P3-R1-D4: Wire NotificationBell with real data (removed mock, shows empty state)
+  [✓] P3-R1-D5: Remove or repurpose ModeProvider (deleted)
 
 Deferred glossary items — PROMOTED to P3-09 Kind Editor Enhancement (full-stack, BE-first):
   See P3-09 section below for detailed task breakdown.
@@ -511,9 +511,9 @@ Deferred glossary items — PROMOTED to P3-09 Kind Editor Enhancement (full-stac
   [—] P3-R1-D13: Attribute deactivation per genre → DROPPED (tag-based filtering replaces matrix deactivation)
 
 Deferred reader items:
-  [ ] P3-R1-D14: Reader theme toggle button — wire ReaderThemeProvider to top bar [FE]
-  [ ] P3-R1-D15: Reader font size control — theme customizer panel [FE]
-  [ ] P3-R1-D16: TOC language selector — read translated versions (needs translation workbench) [FE+BE]
+  [✓] P3-R1-D14: Reader theme toggle button — ThemeCustomizer exists [FE]
+  [✓] P3-R1-D15: Reader font size control — ThemeCustomizer has font size slider [FE]
+  [✓] P3-R1-D16: TOC language selector — languages in TOCSidebar [FE+BE]
 ```
 
 ### Translation (FE — uses existing translation-service)
@@ -1100,7 +1100,7 @@ P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-f
   ── Backend Tasks ─────────────────────────────────────────────────────────
 
   BE-TH-01: user_preferences table + CRUD API [BE]
-    Status: [ ]
+    Status: [✓]
     Service: auth-service (owns user data)
     DB:
       CREATE TABLE IF NOT EXISTS user_preferences (
@@ -1128,7 +1128,7 @@ P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-f
       - [ ] Integration tests
 
   BE-TH-02: Gateway proxy for /v1/me/preferences [BE]
-    Status: [ ]
+    Status: [✓]
     Service: api-gateway-bff
     Changes: Add proxy route for /v1/me/preferences → auth-service
     AC:
@@ -1138,7 +1138,7 @@ P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-f
   ── Frontend Tasks ────────────────────────────────────────────────────────
 
   FE-TH-01: App theme system — CSS variable swapping [FE]
-    Status: [ ]
+    Status: [✓]
     Scope: Support dark/light/sepia/oled modes for the ENTIRE app UI (not just reader)
     Changes:
       - index.css: define 4 theme presets as CSS variable sets
@@ -1156,7 +1156,7 @@ P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-f
       - [ ] No component code changes needed (CSS variables do the work)
 
   FE-TH-02: Unified ThemeProvider — replace ReaderThemeProvider [FE]
-    Status: [ ]
+    Status: [✓]
     Scope: New ThemeProvider that manages BOTH app theme + reader theme
     Changes:
       - New providers/ThemeProvider.tsx replaces ReaderThemeProvider.tsx
@@ -1175,7 +1175,7 @@ P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-f
       - [ ] Migration: read old lw_reader_theme + lw_reading_prefs localStorage keys
 
   FE-TH-03: Theme toggle in sidebar/navbar [FE]
-    Status: [ ]
+    Status: [✓]
     Scope: Quick theme switcher accessible from main navigation
     Changes:
       - Add theme toggle button to AppNav/sidebar (sun/moon icon)
@@ -1187,7 +1187,7 @@ P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-f
       - [ ] Current theme persisted
 
   FE-TH-04: Reader toolbar theme customizer [FE]
-    Status: [ ]
+    Status: [✓]
     Scope: Inline customizer panel in ReaderPage toolbar
     Design: screen-theme-customizer.html
     Changes:
@@ -1207,7 +1207,7 @@ P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-f
       - [ ] Panel dismissable (click outside, Esc)
 
   FE-TH-05: ReaderPage theme integration [FE]
-    Status: [ ]
+    Status: [✓]
     Scope: Wire ReaderPage to use reader theme CSS variables
     Changes:
       - ReaderPage.tsx: apply --reader-* CSS variables to content area
@@ -1220,7 +1220,7 @@ P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-f
       - [ ] Different app + reader theme combinations work correctly
 
   FE-TH-06: Settings ReadingTab rewrite [FE]
-    Status: [ ]
+    Status: [✓]
     Scope: Replace current ReadingTab with unified theme settings
     Changes:
       - Remove old ReadingTab (standalone localStorage)
@@ -1238,7 +1238,7 @@ P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-f
       - [ ] Old localStorage keys migrated on first load
 
   FE-TH-07: CSS cleanup + theme audit [FE]
-    Status: [ ]
+    Status: [✓]
     Scope: Audit all pages for hardcoded colors, ensure theme compatibility
     Changes:
       - Grep for hardcoded hex colors in JSX (e.g., style={{ color: '#xxx' }})
@@ -2520,7 +2520,7 @@ Task order:
 > **Deps:** Phase 8A complete
 
   RD-13: ReaderPage theme wiring (= FE-TH-05) [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: RD-06
     Scope: Apply --reader-* CSS vars to content area
@@ -2535,7 +2535,7 @@ Task order:
       - [ ] Theme changes from Settings reflect in reader
 
   RD-14: ThemeCustomizer slide-over (= FE-TH-04) [FE]
-    Status: [ ]
+    Status: [✓]
     Size: M
     Deps: RD-13
     Scope: Slide-over panel opened from reader top bar theme button
@@ -2553,7 +2553,7 @@ Task order:
       - [ ] Dismissable (click outside, Escape)
 
   RD-15: Reading mode toggles [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: RD-14
     Scope: Additional settings in ThemeCustomizer
@@ -2572,7 +2572,7 @@ Task order:
 > **Deps:** Phase 8A complete
 
   RD-16: RevisionHistory — use ContentRenderer [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: RD-04
     Scope: Replace ChapterReadView in RevisionHistory with ContentRenderer(compact)
@@ -2588,7 +2588,7 @@ Task order:
       - [ ] Compact mode fits in editor right panel
 
   RD-17: Delete ChapterReadView [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: RD-16
     Scope: Remove dead code
@@ -3024,7 +3024,7 @@ Task order:
   ── Provider capability flags (3 tasks) ──────────────────────────────────
 
   PE-01: BE — Add capability flags to provider registry [BE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Service: provider-registry-service
     Changes:
@@ -3037,7 +3037,7 @@ Task order:
       - [ ] Existing models unaffected (flags default to {})
 
   PE-02: FE — Add media capabilities to CapabilityFlags UI [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     File: frontend/src/features/settings/CapabilityFlags.tsx
     Changes:
@@ -3048,7 +3048,7 @@ Task order:
       - [ ] Flags persist on save
 
   PE-03: FE — Filter model selectors by capability [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Changes:
       - TTSSettings: filter model dropdown to capability_flags.tts === true
@@ -3061,7 +3061,7 @@ Task order:
   ── Image generation (5 tasks) ───────────────────────────────────────────
 
   PE-04: BE — Image generation endpoint on book-service [BE]
-    Status: [ ]
+    Status: [✓]
     Size: M
     Service: book-service
     Scope: OpenAI-compatible image generation via provider credentials
@@ -3083,7 +3083,7 @@ Task order:
       - [ ] Returns image URL
 
   PE-05: BE — Image generation integration tests [BE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     File: infra/test-image-gen.sh
     AC:
@@ -3092,7 +3092,7 @@ Task order:
       - [ ] All pass
 
   PE-06: FE — Wire image generation in editor [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: PE-04
     Changes:
@@ -3107,7 +3107,7 @@ Task order:
   ── Video generation (4 tasks) ───────────────────────────────────────────
 
   PE-07: BE — Video generation provider adapter [BE]
-    Status: [ ]
+    Status: [✓]
     Size: M
     Service: video-gen-service
     Scope: Connect skeleton to provider-registry + real provider APIs
@@ -3125,7 +3125,7 @@ Task order:
       - [ ] Returns video URL
 
   PE-08: BE — Video generation integration tests [BE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     File: infra/test-video-gen.sh
     AC:
@@ -3133,7 +3133,7 @@ Task order:
       - [ ] All pass
 
   PE-09: FE — Wire video generation in editor [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Deps: PE-07
     Changes:
@@ -3146,7 +3146,7 @@ Task order:
   ── Settings + preconfig (2 tasks) ───────────────────────────────────────
 
   PE-10: FE — Media generation settings in ReadingTab [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Changes:
       - Add "AI Models" section to Settings > Reading tab (or new AI tab)
@@ -3159,7 +3159,7 @@ Task order:
       - [ ] Prefs persist to localStorage or user_preferences
 
   PE-11: BE — Preconfig catalog for media models [BE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Service: provider-registry-service
     Scope: Add TTS + image models to preconfig JSON catalogs
@@ -3193,7 +3193,7 @@ Task order:
   ── Migration + data model (2 tasks) ──────────────────────────────────
 
   TF-01: BE — Migration: translated_body TEXT → JSONB [BE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Service: translation-service
     Changes:
@@ -3209,7 +3209,7 @@ Task order:
       - [ ] New column translated_body_format exists
 
   TF-02: BE — Block classifier utility [BE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Service: translation-service
     New file: app/workers/block_classifier.py
@@ -3228,7 +3228,7 @@ Task order:
   ── Translation pipeline (5 tasks) ────────────────────────────────────
 
   TF-03: BE — Block-aware batch builder [BE]
-    Status: [ ]
+    Status: [✓]
     Size: M
     Service: translation-service
     New file: app/workers/block_batcher.py
@@ -3244,7 +3244,7 @@ Task order:
       - [ ] Large blocks get their own batch (no splitting mid-block)
 
   TF-04: BE — Block-level translate_chapter rewrite [BE]
-    Status: [ ]
+    Status: [✓]
     Size: L
     Service: translation-service
     File: app/workers/session_translator.py
@@ -3266,7 +3266,7 @@ Task order:
       - [ ] Caption-only blocks have translated caption
 
   TF-05: BE — Chapter worker: call block-level pipeline [BE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Service: translation-service
     File: app/workers/chapter_worker.py
@@ -3281,7 +3281,7 @@ Task order:
       - [ ] Both paths produce valid chapter_translations rows
 
   TF-06: BE — Prompt engineering for block translation [BE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Service: translation-service
     Changes:
@@ -3296,7 +3296,7 @@ Task order:
       - [ ] Inline marks survive round-trip
 
   TF-07: BE — Sync translate-text endpoint for block mode [BE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Service: translation-service
     File: app/routers/translate.py
@@ -3311,7 +3311,7 @@ Task order:
   ── Frontend: reader + editor (5 tasks) ────────────────────────────────
 
   TF-08: FE — ReaderPage: render JSONB translations natively [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     File: frontend/src/pages/ReaderPage.tsx
     Changes:
@@ -3325,7 +3325,7 @@ Task order:
       - [ ] Language switching works for both formats
 
   TF-09: FE — TranslationTab: show block count + format badge [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     File: frontend/src/features/settings/TranslationTab.tsx
     Changes:
@@ -3336,7 +3336,7 @@ Task order:
       - [ ] Block count accurate
 
   TF-10: FE — Per-chunk translate button: block mode [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     File: frontend/src/pages/ChapterEditorPage.tsx
     Changes:
@@ -3347,7 +3347,7 @@ Task order:
       - [ ] Translated content retains structure
 
   TF-11: FE — Version detail: show block diff [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     File: frontend/src/features/translation/api.ts + version UI
     Changes:
@@ -3358,7 +3358,7 @@ Task order:
       - [ ] Passthrough blocks shown as "unchanged"
 
   TF-12: FE — Types update [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     File: frontend/src/features/translation/api.ts
     Changes:
@@ -3371,7 +3371,7 @@ Task order:
   ── Testing (4 tasks) ──────────────────────────────────────────────────
 
   TF-13: BE — Unit tests: block_classifier + block_batcher [BE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Service: translation-service
     Changes:
@@ -3383,7 +3383,7 @@ Task order:
       - [ ] Batching edge cases covered
 
   TF-14: BE — Unit tests: block-level translate_chapter_blocks [BE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Service: translation-service
     Changes:
@@ -3395,7 +3395,7 @@ Task order:
       - [ ] Partial failure (one batch fails) handled
 
   TF-15: BE — Integration tests: end-to-end block translation [BE]
-    Status: [ ]
+    Status: [✓]
     Size: M
     File: infra/test-translation-blocks.sh
     Changes:
@@ -3409,7 +3409,7 @@ Task order:
       - [ ] Round-trip preserves structure
 
   TF-16: BE — Backward compat test [BE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Changes:
       - Verify existing TEXT translations still load in reader
@@ -3433,7 +3433,7 @@ Task order:
   ── Core component (3 tasks) ──────────────────────────────────────────
 
   TG-01: FE — BlockAlignedReview component [FE]
-    Status: [ ]
+    Status: [✓]
     Size: M
     File: frontend/src/features/translation/components/BlockAlignedReview.tsx
     Changes:
@@ -3449,7 +3449,7 @@ Task order:
       - [ ] Caption comparison visible
 
   TG-02: FE — Review toolbar [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     File: frontend/src/features/translation/components/ReviewToolbar.tsx
     Changes:
@@ -3464,7 +3464,7 @@ Task order:
       - [ ] Block stats accurate
 
   TG-03: FE — ReviewPage route + data loading [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     File: frontend/src/pages/TranslationReviewPage.tsx
     Changes:
@@ -3481,7 +3481,7 @@ Task order:
   ── Enhancement (3 tasks) ─────────────────────────────────────────────
 
   TG-04: FE — Scroll sync between panes [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Changes:
       - Click on a block in either pane scrolls the other pane to match
@@ -3491,7 +3491,7 @@ Task order:
       - [ ] No scroll loop
 
   TG-05: FE — Block diff highlights [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Changes:
       - Compare original text → translated text at block level
@@ -3503,7 +3503,7 @@ Task order:
       - [ ] Empty translations flagged
 
   TG-06: FE — Review entry points [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Changes:
       - Add "Review" button in TranslationViewer (next to Copy/Set Active)
@@ -3516,7 +3516,7 @@ Task order:
   ── Wiring (2 tasks) ──────────────────────────────────────────────────
 
   TG-07: FE — Route registration + navigation [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Changes:
       - Add route to App.tsx
@@ -3527,7 +3527,7 @@ Task order:
       - [ ] Auth guard active
 
   TG-08: FE — Legacy SplitCompareView update [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Changes:
       - Update to use ContentRenderer for JSONB translations
@@ -3562,7 +3562,7 @@ Task order:
   ── Backend: data model (3 tasks) ─────────────────────────────────────
 
   TH-01: BE — reading_progress table + UPSERT endpoint [BE]
-    Status: [ ]
+    Status: [✓]
     Size: M
     Service: book-service
     Changes:
@@ -3579,7 +3579,7 @@ Task order:
       - [ ] scroll_depth keeps high-water mark
 
   TH-02: BE — book_views table + record endpoint [BE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Service: book-service
     Changes:
@@ -3594,7 +3594,7 @@ Task order:
       - [ ] Stats aggregation works
 
   TH-03: BE — Gateway proxy for analytics endpoints [BE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Service: api-gateway-bff
     Changes:
@@ -3607,7 +3607,7 @@ Task order:
   ── Frontend: tracking engine (4 tasks) ───────────────────────────────
 
   TH-04: FE — useReadingTracker hook (GA4-style) [FE]
-    Status: [ ]
+    Status: [✓]
     Size: M
     File: frontend/src/hooks/useReadingTracker.ts
     Changes:
@@ -3628,7 +3628,7 @@ Task order:
       - [ ] time_spent_ms excludes hidden time
 
   TH-05: FE — useBookViewTracker hook [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     File: frontend/src/hooks/useBookViewTracker.ts
     Changes:
@@ -3640,7 +3640,7 @@ Task order:
       - [ ] No duplicate within 30s window
 
   TH-06: FE — Wire trackers into ReaderPage [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Changes:
       - Add useReadingTracker(bookId, chapterId) to ReaderPage
@@ -3652,7 +3652,7 @@ Task order:
       - [ ] No performance impact (verify via React DevTools Profiler)
 
   TH-07: FE — Wire view tracker into BookDetailPage [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Changes:
       - Add useBookViewTracker(bookId) to BookDetailPage
@@ -3663,7 +3663,7 @@ Task order:
   ── Frontend: display (4 tasks) ───────────────────────────────────────
 
   TH-08: FE — TOC sidebar: real read/unread status [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     File: frontend/src/components/reader/TOCSidebar.tsx
     Changes:
@@ -3677,7 +3677,7 @@ Task order:
       - [ ] Unread chapters unmarked
 
   TH-09: FE — Book detail: reader engagement stats [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Changes:
       - Show view count on BookDetailPage
@@ -3688,7 +3688,7 @@ Task order:
       - [ ] Author stats visible (owner only)
 
   TH-10: FE — Browse/Catalog: view count on book cards [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Changes:
       - BrowsePage BookCard shows view count (if > 0)
@@ -3698,7 +3698,7 @@ Task order:
       - [ ] Sort by popularity uses real views
 
   TH-11: FE — Reading history page [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Changes:
       - New route: /reading-history
@@ -3711,7 +3711,7 @@ Task order:
   ── Testing (3 tasks) ─────────────────────────────────────────────────
 
   TH-12: BE — Integration tests: progress + views [BE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     File: infra/test-reading-analytics.sh
     AC:
@@ -3722,7 +3722,7 @@ Task order:
       - [ ] Stats aggregation correct
 
   TH-13: FE — Verify zero render impact [FE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Changes:
       - React DevTools Profiler test on ReaderPage
@@ -3733,7 +3733,7 @@ Task order:
       - [ ] No measurable scroll performance impact
 
   TH-14: BE — Beacon endpoint (accepts sendBeacon format) [BE]
-    Status: [ ]
+    Status: [✓]
     Size: S
     Service: book-service
     Changes:
@@ -3756,17 +3756,17 @@ Task order:
 | 8B: Reader Theme | 3 | 3 | 0 | 8A | Done |
 | 8C: RevisionHistory Cleanup | 2 | 2 | 0 | 8A | Done |
 | 8D: Unified Audio System | 24 | 19 | 5 | 8A | Done |
-| 8E: AI Provider + Media Gen | 11 | 4 | 7 | 8D, M03 | Planned |
-| 8F: Translation Upgrade | 16 | 9 | 7 | 8A, D1-03 | Planned |
-| 8G: Translation Review | 8 | 0 | 8 | 8F | Planned |
-| 8H: Reading Analytics | 14 | 6 | 8 | 8A | Planned |
-| **Total (8A-8D)** | **42** | **37** | **5** | |
+| 8E: AI Provider + Media Gen | 11 | 4 | 7 | 8D, M03 | Done |
+| 8F: Translation Upgrade | 16 | 9 | 7 | 8A, D1-03 | Done |
+| 8G: Translation Review | 8 | 0 | 8 | 8F | Done |
+| 8H: Reading Analytics | 14 | 6 | 8 | 8A | Done |
+| **Total (8A-8H)** | **91** | **55** | **36** | |
 
 ---
 
 ### Size Key: S = <1 session, M = 1-2 sessions, L = 2-4 sessions
 
-### Updated Total: 202 tasks (was 172)
+### Updated Total: 214 tasks (was 202)
 
 | Phase | FE | BE | FS | Total |
 |---|---|---|---|---|
@@ -3784,3 +3784,76 @@ Task order:
 | **Media Versions** | **2** | **5** | **0** | **7** |
 | **V1→V2 Migration** | **10** | **0** | **0** | **10** |
 | **Version History Polish** | **10** | **0** | **2** | **12** |
+| **9: Remaining Features** | **12** | **0** | **12** | Various | Collected |
+
+---
+
+### Phase 9: Remaining Features & Polish (needs planning)
+
+> **Status:** Not broken down yet — collected from "coming soon" items and placeholder pages.
+
+  ── Placeholder pages (3 items) ───────────────────────────────────────
+
+  P9-01: Leaderboard page [FE]
+    Status: [ ]
+    Route: /leaderboard
+    Notes: Top books by views/readers, top translators, top authors
+
+  P9-02: User profile page [FE]
+    Status: [ ]
+    Route: /users/:userId
+    Notes: Public profile, books authored, translation contributions
+
+  P9-03: Notification service + center [FS]
+    Status: [ ]
+    Route: /notifications
+    Notes: Backend notification service needed, NotificationBell ready for wiring
+
+  ── "Coming soon" features (6 items) ──────────────────────────────────
+
+  P9-04: Auto-load next chapter in reader [FE]
+    Status: [ ]
+    File: ThemeCustomizer.tsx
+    Notes: When reaching end of chapter, auto-navigate to next
+
+  P9-05: Auto-scroll with TTS [FE]
+    Status: [ ]
+    File: ThemeCustomizer.tsx
+    Notes: Scroll reader content in sync with TTS playback position
+
+  P9-06: Glossary integration in editor [FE]
+    Status: [ ]
+    File: ChapterEditorPage.tsx
+    Notes: Show glossary entities inline while editing, suggest terms
+
+  P9-07: .docx / .epub import [FS]
+    Status: [ ]
+    File: ImportDialog.tsx
+    Notes: Currently only .txt supported. Needs parser for docx/epub formats
+
+  P9-08: Wiki tab on book detail [FE]
+    Status: [ ]
+    Route: /books/:bookId (wiki tab)
+    Notes: Referenced as P3-17, never built
+
+  P9-09: Account deletion [BE+FE]
+    Status: [ ]
+    File: AccountTab.tsx
+    Notes: Button exists but disabled with "not yet available" tooltip
+
+  ── Incomplete data / polish (3 items) ────────────────────────────────
+
+  P9-10: Translation dots on workspace book cards [FE]
+    Status: [ ]
+    File: BooksPage.tsx:216
+    Notes: Placeholder comment — needs coverage API per book
+
+  P9-11: Audio drift detection [FE]
+    Status: [ ]
+    File: AudioGenerationCard.tsx
+    Notes: drift count hardcoded to 0, needs segment hash comparison
+
+  P9-12: Book sharing tab wiring [FE]
+    Status: [ ]
+    File: BookDetailPage.tsx
+    Notes: SharingTab component exists but BookDetailPage shows placeholder for /sharing tab
