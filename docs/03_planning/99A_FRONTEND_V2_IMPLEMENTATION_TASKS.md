@@ -3420,11 +3420,122 @@ Task order:
 
 ---
 
-### Phase 8G: Translation Review Mode (future — needs Phase 8F)
+### Phase 8G: Translation Review Mode (8 tasks)
 
 > **Goal:** Split-pane block-aligned review mode for translations.
-> **Status:** Not broken down yet — depends on Phase 8F data model.
+> **Deps:** Phase 8F (block-level JSONB translations)
 > **Design draft:** screen-reader-v2-part3-review-modes.html
+> **Architecture:** Rewrite SplitCompareView to use block-aligned rows.
+> Original block[i] and translated block[i] shown side by side.
+> Passthrough blocks (code, hr) shown once spanning both panes.
+> Media blocks: thumbnail + caption comparison.
+
+  ── Core component (3 tasks) ──────────────────────────────────────────
+
+  TG-01: FE — BlockAlignedReview component [FE]
+    Status: [ ]
+    Size: M
+    File: frontend/src/features/translation/components/BlockAlignedReview.tsx
+    Changes:
+      - Takes original blocks (JSONContent[]) + translated blocks (JSONContent[])
+      - Renders aligned rows: gutter (index + type badge) | source | translation
+      - Passthrough blocks span full width with "unchanged" label
+      - Caption-only blocks show image thumbnail + caption comparison
+      - Active row highlight on click/hover
+      - Keyboard navigation (↑/↓ arrows)
+    AC:
+      - [ ] Block rows aligned by index
+      - [ ] Passthrough blocks rendered once
+      - [ ] Caption comparison visible
+
+  TG-02: FE — Review toolbar [FE]
+    Status: [ ]
+    Size: S
+    File: frontend/src/features/translation/components/ReviewToolbar.tsx
+    Changes:
+      - Language pair display (source → target)
+      - Version selector dropdown
+      - Block count + progress stats (translated/passthrough/total)
+      - Toggle: show all blocks vs translatable only
+      - Back button to reader/translation list
+    AC:
+      - [ ] Language pair shown
+      - [ ] Version switch works
+      - [ ] Block stats accurate
+
+  TG-03: FE — ReviewPage route + data loading [FE]
+    Status: [ ]
+    Size: S
+    File: frontend/src/pages/TranslationReviewPage.tsx
+    Changes:
+      - New route: /books/:bookId/chapters/:chapterId/review/:versionId
+      - Load original chapter body (Tiptap JSON) + translation version
+      - Detect format: if translated_body_format='json' → block-aligned
+      - Fallback: if 'text' → legacy split view (existing SplitCompareView)
+      - Wire ReviewToolbar + BlockAlignedReview
+    AC:
+      - [ ] Route accessible
+      - [ ] Block mode renders aligned
+      - [ ] Text mode falls back to split
+
+  ── Enhancement (3 tasks) ─────────────────────────────────────────────
+
+  TG-04: FE — Scroll sync between panes [FE]
+    Status: [ ]
+    Size: S
+    Changes:
+      - Click on a block in either pane scrolls the other pane to match
+      - Optional: linked scroll (scroll one pane, other follows)
+    AC:
+      - [ ] Click-to-scroll works
+      - [ ] No scroll loop
+
+  TG-05: FE — Block diff highlights [FE]
+    Status: [ ]
+    Size: S
+    Changes:
+      - Compare original text → translated text at block level
+      - Highlight added/changed content in translation pane
+      - Show "unchanged" badge on passthrough blocks
+      - Mark empty translations with warning indicator
+    AC:
+      - [ ] Changed blocks visually distinct
+      - [ ] Empty translations flagged
+
+  TG-06: FE — Review entry points [FE]
+    Status: [ ]
+    Size: S
+    Changes:
+      - Add "Review" button in TranslationViewer (next to Copy/Set Active)
+      - Add "Review" column in translation coverage matrix
+      - Link from ReaderPage language switcher → review mode
+    AC:
+      - [ ] Review accessible from viewer
+      - [ ] Review accessible from coverage
+
+  ── Wiring (2 tasks) ──────────────────────────────────────────────────
+
+  TG-07: FE — Route registration + navigation [FE]
+    Status: [ ]
+    Size: S
+    Changes:
+      - Add route to App.tsx
+      - Navigation guards (auth required)
+      - Breadcrumb: Book → Chapter → Translation Review
+    AC:
+      - [ ] Route works
+      - [ ] Auth guard active
+
+  TG-08: FE — Legacy SplitCompareView update [FE]
+    Status: [ ]
+    Size: S
+    Changes:
+      - Update to use ContentRenderer for JSONB translations
+      - Keep plain text fallback for old translations
+      - Mark as deprecated in favor of BlockAlignedReview
+    AC:
+      - [ ] JSONB translations render rich content
+      - [ ] Old text translations still work
 
 ---
 
@@ -3477,7 +3588,7 @@ Task order:
 | 8D: Unified Audio System | 24 | 19 | 5 | 8A | Done |
 | 8E: AI Provider + Media Gen | 11 | 4 | 7 | 8D, M03 | Planned |
 | 8F: Translation Upgrade | 16 | 9 | 7 | 8A, D1-03 | Planned |
-| 8G: Translation Review | TBD | — | — | 8F | Future |
+| 8G: Translation Review | 8 | 0 | 8 | 8F | Planned |
 | 8H: Reading Analytics | TBD | — | — | 8A | Future |
 | **Total (8A-8D)** | **42** | **37** | **5** | |
 
