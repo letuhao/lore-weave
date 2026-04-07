@@ -1,8 +1,39 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppTheme, useReaderTheme, APP_THEMES, type AppTheme } from '@/providers/ThemeProvider';
+import { useAuth } from '@/auth';
+import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
 import { cn } from '@/lib/utils';
+
+type MediaPrefs = {
+  ttsModelId: string;
+  imageModelId: string;
+  videoModelId: string;
+  defaultVoice: string;
+  defaultImageSize: string;
+};
+
+const MEDIA_PREFS_KEY = 'loreweave:media-prefs';
+const DEFAULT_MEDIA_PREFS: MediaPrefs = {
+  ttsModelId: '',
+  imageModelId: '',
+  videoModelId: '',
+  defaultVoice: 'alloy',
+  defaultImageSize: '1024x1024',
+};
+
+function loadMediaPrefs(): MediaPrefs {
+  try {
+    return { ...DEFAULT_MEDIA_PREFS, ...JSON.parse(localStorage.getItem(MEDIA_PREFS_KEY) || '{}') };
+  } catch { return DEFAULT_MEDIA_PREFS; }
+}
+function saveMediaPrefs(prefs: MediaPrefs) {
+  localStorage.setItem(MEDIA_PREFS_KEY, JSON.stringify(prefs));
+}
+
+const VOICE_OPTIONS = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
+const IMAGE_SIZE_OPTIONS = ['256x256', '512x512', '1024x1024', '1024x1792', '1792x1024'];
 
 const READER_FONTS = [
   { value: "'Lora', Georgia, serif", label: 'Lora', cls: 'font-serif' },
@@ -34,6 +65,26 @@ export function ReadingTab() {
     customPresets, saveCustomPreset, deleteCustomPreset, loadCustomPreset,
   } = useReaderTheme();
   const [newPresetName, setNewPresetName] = useState('');
+  const { accessToken } = useAuth();
+
+  // AI model prefs
+  const [mediaPrefs, setMediaPrefs] = useState(loadMediaPrefs);
+  const [ttsModels, setTtsModels] = useState<UserModel[]>([]);
+  const [imageModels, setImageModels] = useState<UserModel[]>([]);
+  const [videoModels, setVideoModels] = useState<UserModel[]>([]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    aiModelsApi.listUserModels(accessToken, { capability: 'tts' }).then(r => setTtsModels(r.items)).catch(() => {});
+    aiModelsApi.listUserModels(accessToken, { capability: 'image_gen' }).then(r => setImageModels(r.items)).catch(() => {});
+    aiModelsApi.listUserModels(accessToken, { capability: 'video_gen' }).then(r => setVideoModels(r.items)).catch(() => {});
+  }, [accessToken]);
+
+  const updateMediaPref = (key: keyof MediaPrefs, value: string) => {
+    const next = { ...mediaPrefs, [key]: value };
+    setMediaPrefs(next);
+    saveMediaPrefs(next);
+  };
 
   return (
     <div className="space-y-8">
@@ -291,6 +342,114 @@ export function ReadingTab() {
           >
             Save
           </button>
+        </div>
+      </section>
+
+      {/* ── AI Models ─────────────────────────────────────────────── */}
+      <section>
+        <h2 className="text-sm font-semibold">AI Models</h2>
+        <p className="mb-4 text-xs text-muted-foreground">
+          Default models for media generation. Add models with the right capabilities in Settings &gt; Providers.
+        </p>
+        <div className="space-y-4 max-w-lg">
+          {/* TTS model */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium">TTS Model</label>
+            <select
+              value={mediaPrefs.ttsModelId}
+              onChange={e => updateMediaPref('ttsModelId', e.target.value)}
+              className="w-full rounded-md border bg-input px-3 py-1.5 text-xs focus:border-ring focus:outline-none"
+            >
+              <option value="">Auto (first available)</option>
+              {ttsModels.map(m => (
+                <option key={m.user_model_id} value={m.user_model_id}>
+                  {m.alias || m.provider_model_name} ({m.provider_kind})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Default voice */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium">Default Voice</label>
+            <div className="flex flex-wrap gap-1.5">
+              {VOICE_OPTIONS.map(v => (
+                <button
+                  key={v}
+                  onClick={() => updateMediaPref('defaultVoice', v)}
+                  className={cn(
+                    'rounded-md border px-3 py-1 text-[11px] font-medium capitalize transition-colors',
+                    mediaPrefs.defaultVoice === v
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:bg-secondary',
+                  )}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Image model */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium">Image Generation Model</label>
+            <select
+              value={mediaPrefs.imageModelId}
+              onChange={e => updateMediaPref('imageModelId', e.target.value)}
+              className="w-full rounded-md border bg-input px-3 py-1.5 text-xs focus:border-ring focus:outline-none"
+            >
+              <option value="">Auto (first available)</option>
+              {imageModels.map(m => (
+                <option key={m.user_model_id} value={m.user_model_id}>
+                  {m.alias || m.provider_model_name} ({m.provider_kind})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Default image size */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium">Default Image Size</label>
+            <div className="flex flex-wrap gap-1.5">
+              {IMAGE_SIZE_OPTIONS.map(s => (
+                <button
+                  key={s}
+                  onClick={() => updateMediaPref('defaultImageSize', s)}
+                  className={cn(
+                    'rounded-md border px-3 py-1 text-[11px] font-medium transition-colors',
+                    mediaPrefs.defaultImageSize === s
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:bg-secondary',
+                  )}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Video model */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium">Video Generation Model</label>
+            <select
+              value={mediaPrefs.videoModelId}
+              onChange={e => updateMediaPref('videoModelId', e.target.value)}
+              className="w-full rounded-md border bg-input px-3 py-1.5 text-xs focus:border-ring focus:outline-none"
+            >
+              <option value="">Auto (first available)</option>
+              {videoModels.map(m => (
+                <option key={m.user_model_id} value={m.user_model_id}>
+                  {m.alias || m.provider_model_name} ({m.provider_kind})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {(ttsModels.length === 0 && imageModels.length === 0 && videoModels.length === 0) && (
+            <p className="text-[11px] text-muted-foreground/70 italic">
+              No media-capable models found. Add models with TTS, image, or video capabilities in the Providers tab.
+            </p>
+          )}
         </div>
       </section>
 
