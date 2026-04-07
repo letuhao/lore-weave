@@ -90,7 +90,7 @@ def _inline_to_text(content: list[dict] | None) -> str:
     return "".join(parts)
 
 
-def _text_to_inline(text: str, original_content: list[dict] | None = None) -> list[dict]:
+def _text_to_inline(text: str) -> list[dict]:
     """Convert markdown-ish text back to Tiptap inline content array.
 
     Parses: **bold**, *italic*, `code`, ~~strike~~, __underline__, [text](url)

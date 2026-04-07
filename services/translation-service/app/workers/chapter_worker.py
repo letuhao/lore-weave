@@ -1,3 +1,4 @@
+import json
 import logging
 from uuid import UUID
 
@@ -125,8 +126,7 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             context_window=context_window,
         )
         # Store as JSONB
-        import json as json_mod
-        translated_body_json = json_mod.dumps(translated_blocks)
+        translated_body_json = json.dumps(translated_blocks)
         translated_body_text = None  # not used for block translations
         translated_body_format = "json"
         log.info(

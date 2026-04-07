@@ -101,7 +101,7 @@ def build_batch_plan(
 
         text_to_translate = entry.text
         if not text_to_translate:
-            # Empty translatable block — still include for alignment
+            # Empty block — skip (reassembly uses original for untranslated indices)
             continue
 
         tokens = estimate_tokens(text_to_translate)

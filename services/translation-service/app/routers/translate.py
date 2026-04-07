@@ -58,8 +58,8 @@ async def translate_text(
 
     # ── Block mode (Phase 8F) ──────────────────────────────────────────────
     if body.blocks and len(body.blocks) > 0:
-        from ..workers.block_classifier import classify_block, extract_translatable_text, rebuild_block
-        from ..workers.block_batcher import build_batch_plan, parse_translated_blocks, BLOCK_MARKER
+        from ..workers.block_classifier import rebuild_block
+        from ..workers.block_batcher import build_batch_plan, parse_translated_blocks
 
         plan = build_batch_plan(body.blocks, context_window_tokens=8192)
         if not plan.batches:
