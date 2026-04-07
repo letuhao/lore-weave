@@ -110,7 +110,8 @@ async def translate_text(
 
     try:
         resp = r.json()
-        translated_text = resp["output"]["content"]
+        from ..workers.content_extractor import extract_content
+        translated_text = extract_content(resp["output"])
     except (ValueError, KeyError, TypeError) as exc:
         logger.error("Malformed provider response: %s", exc)
         raise HTTPException(status_code=502, detail="Malformed response from translation provider")
