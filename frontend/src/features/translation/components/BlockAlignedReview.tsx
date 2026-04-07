@@ -1,7 +1,8 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useRef } from 'react';
 import type { JSONContent } from '@tiptap/react';
 import { cn } from '@/lib/utils';
 import { InlineRenderer } from '@/components/reader/InlineRenderer';
+import { ContentRenderer } from '@/components/reader/ContentRenderer';
 
 // ── Block type classification ──────────────────────────────────────────────
 
@@ -189,7 +190,6 @@ function BlockRow({ index, original, translated, action, isActive, onClick }: Bl
   }
 
   // Translatable block: source | translation side by side
-  const origText = extractText(original?.content);
   const transText = extractText(translated?.content);
   const isEmpty = !transText;
   const isHeading = block.type === 'heading';
@@ -209,7 +209,7 @@ function BlockRow({ index, original, translated, action, isActive, onClick }: Bl
           'flex-1 px-4 py-2.5 font-serif leading-[1.7] text-foreground/80',
           isHeading ? 'text-base font-semibold' : 'text-sm',
         )}>
-          {original?.content ? <InlineRenderer content={original.content} /> : <span className="text-xs text-muted-foreground italic">(missing)</span>}
+          {original ? <BlockContent block={original} /> : <span className="text-xs text-muted-foreground italic">(missing)</span>}
         </div>
         {/* Divider */}
         <div className="w-px bg-border/50 shrink-0" />
@@ -221,8 +221,8 @@ function BlockRow({ index, original, translated, action, isActive, onClick }: Bl
         )}>
           {isEmpty ? (
             '(not translated)'
-          ) : translated?.content ? (
-            <InlineRenderer content={translated.content} />
+          ) : translated ? (
+            <BlockContent block={translated} />
           ) : (
             transText
           )}
@@ -230,6 +230,17 @@ function BlockRow({ index, original, translated, action, isActive, onClick }: Bl
       </div>
     </div>
   );
+}
+
+// ── Block content renderer (picks inline vs full based on type) ────────────
+
+const COMPOUND_TYPES = new Set(['bulletList', 'orderedList', 'blockquote', 'callout']);
+
+function BlockContent({ block }: { block: JSONContent }) {
+  if (COMPOUND_TYPES.has(block.type ?? '')) {
+    return <ContentRenderer blocks={[block]} mode="compact" />;
+  }
+  return block.content ? <InlineRenderer content={block.content} /> : null;
 }
 
 // ── Gutter ─────────────────────────────────────────────────────────────────
