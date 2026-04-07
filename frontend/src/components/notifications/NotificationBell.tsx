@@ -1,35 +1,10 @@
 import { useState } from 'react';
-import { Bell, X, Check, MessageCircle, Languages, AlertTriangle, Heart, Star, BookOpen } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { cn } from '@/lib/utils';
-
-type NotifType = 'translation' | 'comment' | 'review' | 'follow' | 'error' | 'milestone' | 'chapter';
-
-type Notification = {
-  id: string;
-  type: NotifType;
-  title: string;
-  meta?: string;
-  time: string;
-  read: boolean;
-};
+import { Bell } from 'lucide-react';
 
 // No notifications backend yet — show empty state until notification service is built
 
-const ICONS: Record<NotifType, { icon: React.ElementType; color: string }> = {
-  translation: { icon: Check, color: 'bg-success/10 text-success' },
-  comment:     { icon: MessageCircle, color: 'bg-info/10 text-info' },
-  review:      { icon: Star, color: 'bg-primary/10 text-primary' },
-  follow:      { icon: Heart, color: 'bg-[#e85d75]/10 text-[#e85d75]' },
-  error:       { icon: AlertTriangle, color: 'bg-destructive/10 text-destructive' },
-  milestone:   { icon: Star, color: 'bg-primary/10 text-primary' },
-  chapter:     { icon: BookOpen, color: 'bg-accent/10 text-accent' },
-};
-
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
-  const [notifications] = useState<Notification[]>([]);
-  const unread = notifications.filter((n) => !n.read).length;
 
   return (
     <div className="relative">
@@ -39,49 +14,19 @@ export function NotificationBell() {
       >
         <Bell className="h-4 w-4" />
         <span>Notifications</span>
-        {unread > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-white">
-            {unread > 9 ? '9+' : unread}
-          </span>
-        )}
       </button>
 
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute bottom-full left-0 z-50 mb-2 w-80 rounded-lg border bg-card shadow-xl">
-            <div className="flex items-center justify-between border-b px-4 py-3">
+          <div className="absolute bottom-full left-0 z-50 mb-2 w-72 rounded-lg border bg-card shadow-xl">
+            <div className="border-b px-4 py-3">
               <span className="text-sm font-semibold">Notifications</span>
-              <button className="text-xs text-muted-foreground hover:text-foreground">Mark all read</button>
             </div>
-            <div className="max-h-80 overflow-y-auto">
-              {notifications.length === 0 && (
-                <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
-                  <Bell className="h-6 w-6 opacity-30" />
-                  <p className="text-xs">No notifications yet</p>
-                </div>
-              )}
-              {notifications.map((n) => {
-                const cfg = ICONS[n.type];
-                const Icon = cfg.icon;
-                return (
-                  <div key={n.id} className={cn('flex gap-3 border-b px-4 py-3 text-xs', !n.read && 'bg-primary/[0.02]')}>
-                    <div className={cn('flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg', cfg.color)}>
-                      <Icon className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="leading-relaxed">{n.title}</p>
-                      {n.meta && <p className="mt-0.5 text-muted-foreground">{n.meta}</p>}
-                    </div>
-                    <span className="flex-shrink-0 text-muted-foreground">{n.time}</span>
-                    {!n.read && <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary" />}
-                  </div>
-                );
-              })}
+            <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
+              <Bell className="h-6 w-6 opacity-30" />
+              <p className="text-xs">No notifications yet</p>
             </div>
-            <Link to="/notifications" onClick={() => setOpen(false)} className="block border-t px-4 py-2.5 text-center text-xs text-primary hover:bg-secondary">
-              View all notifications
-            </Link>
           </div>
         </>
       )}
