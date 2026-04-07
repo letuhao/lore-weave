@@ -119,8 +119,10 @@ export const providerApi = {
     );
   },
 
-  listUserModels(token: string) {
-    return apiJson<{ items: UserModel[] }>('/v1/model-registry/user-models?include_inactive=true', { token });
+  listUserModels(token: string, opts?: { capability?: string }) {
+    const params = new URLSearchParams({ include_inactive: 'true' });
+    if (opts?.capability) params.set('capability', opts.capability);
+    return apiJson<{ items: UserModel[] }>(`/v1/model-registry/user-models?${params}`, { token });
   },
 
   createUserModel(token: string, payload: {

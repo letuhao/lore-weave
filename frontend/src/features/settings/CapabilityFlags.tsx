@@ -1,4 +1,4 @@
-const KNOWN_FLAGS = ['vision', 'tool_calling', 'extended_thinking', 'json_mode', 'reasoning'] as const;
+const KNOWN_FLAGS = ['chat', 'vision', 'tool_calling', 'extended_thinking', 'json_mode', 'reasoning', 'tts', 'stt', 'image_gen', 'video_gen', 'embedding', 'moderation'] as const;
 
 type Props = {
   flags: Record<string, boolean>;
