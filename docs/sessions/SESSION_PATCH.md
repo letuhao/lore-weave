@@ -8,9 +8,9 @@
 ## Document Metadata
 
 - Last Updated: 2026-04-07 (session 24)
-- Updated By: Assistant (Phase 8E PE-01..PE-11 COMPLETE — 9 commits)
+- Updated By: Assistant (Phase 8E COMPLETE + Phase 8F COMPLETE — 23 commits)
 - Active Branch: `main`
-- HEAD: `5dcab71` — feat(settings): PE-10 media generation model selectors
+- HEAD: `40f2f98` — test(translation): TF-15+16 block translation integration + unit tests
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -31,9 +31,26 @@
 
 ## Current Active Work
 
-**Phase:** Phase 8E (AI provider capabilities + media generation) COMPLETE. PE-01..PE-11 all 11 tasks done.
+**Phase:** Phase 8F (block-level translation) COMPLETE. TF-01..TF-16 all tasks done.
 
 **What was done in this session (2026-04-07, session 24):**
+
+Phase 8F — block-level translation pipeline (10 commits).
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| TF-01: Migration — translated_body_json JSONB + format column | `migrate.py`, `models.py` | `27ea2f2` |
+| TF-02: Block classifier (translate/passthrough/caption_only + inline marks) | `block_classifier.py` (new) | `245b48e` |
+| TF-03: Block-aware batch builder ([BLOCK N] markers, token budget) | `block_batcher.py` (new) | `3c7d63d` |
+| TF-04+06: translate_chapter_blocks() pipeline + block translation prompts | `session_translator.py` | `16948ee` |
+| TF-05: Chapter worker routes JSON→block pipeline, TEXT→legacy | `chapter_worker.py` | `de49e96` |
+| TF-07: Sync translate-text endpoint block mode | `translate.py`, `models.py` | `5d880a8` |
+| TF-08+12: ReaderPage renders JSONB translations + types update | `ReaderPage.tsx`, `api.ts` | `e42017c` |
+| TF-09: TranslationViewer format badges + ContentRenderer | `TranslationViewer.tsx` | `ee4ba98` |
+| TF-13+14: Unit tests (45 pass — classifier + batcher) | `test_block_classifier.py`, `test_block_batcher.py` | `9769d47` |
+| TF-15+16: Integration tests (19 pass — e2e block translate + backward compat) | `test-translation-blocks.sh` | `40f2f98` |
+
+Also done: Phase 8E (9 commits), 8E review fixes, translate-text Ollama fix.
 
 Phase 8E — AI provider capabilities + media generation (9 commits).
 
