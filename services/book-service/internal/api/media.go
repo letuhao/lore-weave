@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -518,6 +520,32 @@ func (s *Server) generateChapterMedia(w http.ResponseWriter, r *http.Request) {
 	).Scan(&versionID)
 
 	mediaURL := s.mediaURL(objectKey)
+
+	// 6. Best-effort usage billing
+	if s.cfg.UsageBillingServiceURL != "" {
+		modelRefUUID, _ := uuid.Parse(body.ModelRef)
+		usagePayload, _ := json.Marshal(map[string]any{
+			"request_id":     uuid.New(),
+			"owner_user_id":  ownerID,
+			"provider_kind":  creds.ProviderKind,
+			"model_source":   body.ModelSource,
+			"model_ref":      modelRefUUID,
+			"input_tokens":   len(body.Prompt),
+			"output_tokens":  0,
+			"request_status": "success",
+			"purpose":        "image_generation",
+		})
+		billingURL := fmt.Sprintf("%s/internal/model-billing/record",
+			strings.TrimRight(s.cfg.UsageBillingServiceURL, "/"))
+		billingReq, _ := http.NewRequestWithContext(ctx, "POST", billingURL, bytes.NewReader(usagePayload))
+		billingReq.Header.Set("Content-Type", "application/json")
+		billingReq.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+		if resp, err := internalClient.Do(billingReq); err != nil {
+			slog.Warn("generateChapterMedia billing failed", "error", err)
+		} else {
+			resp.Body.Close()
+		}
+	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"url":          mediaURL,
