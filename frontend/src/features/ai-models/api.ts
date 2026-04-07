@@ -11,16 +11,18 @@ export type UserModel = {
   alias?: string | null;
   is_active: boolean;
   is_favorite: boolean;
+  capability_flags?: Record<string, boolean>;
   tags: Array<{ tag_name: string; note?: string }>;
   created_at: string;
 };
 
 export const aiModelsApi = {
-  listUserModels(token: string, params?: { only_favorites?: boolean; include_inactive?: boolean; provider_kind?: ProviderKind }) {
+  listUserModels(token: string, params?: { only_favorites?: boolean; include_inactive?: boolean; provider_kind?: ProviderKind; capability?: string }) {
     const qs = new URLSearchParams();
     if (params?.only_favorites !== undefined) qs.set('only_favorites', String(params.only_favorites));
     if (params?.include_inactive !== undefined) qs.set('include_inactive', String(params.include_inactive));
     if (params?.provider_kind) qs.set('provider_kind', params.provider_kind);
+    if (params?.capability) qs.set('capability', params.capability);
     return apiJson<{ items: UserModel[] }>(`/v1/model-registry/user-models${qs.toString() ? `?${qs.toString()}` : ''}`, { token });
   },
 };

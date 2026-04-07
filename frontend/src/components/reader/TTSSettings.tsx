@@ -57,7 +57,7 @@ export function TTSSettings({ open, onClose }: TTSSettingsProps) {
   // Load AI models
   useEffect(() => {
     if (!accessToken) return;
-    aiModelsApi.listUserModels(accessToken).then((r) => setModels(r.items)).catch(() => {});
+    aiModelsApi.listUserModels(accessToken, { capability: 'tts' }).then((r) => setModels(r.items)).catch(() => {});
   }, [accessToken]);
 
   // Load browser voices
