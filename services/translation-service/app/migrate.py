@@ -144,6 +144,13 @@ ALTER TABLE book_translation_settings
 ALTER TABLE translation_jobs
   ADD COLUMN IF NOT EXISTS compact_system_prompt   TEXT NOT NULL DEFAULT '',
   ADD COLUMN IF NOT EXISTS compact_user_prompt_tpl TEXT NOT NULL DEFAULT '';
+
+-- V4: Phase 8F — block-level translation (TF-01)
+-- New column for Tiptap JSONB translations (keeps TEXT column for backward compat)
+ALTER TABLE chapter_translations
+  ADD COLUMN IF NOT EXISTS translated_body_json JSONB,
+  ADD COLUMN IF NOT EXISTS translated_body_format TEXT NOT NULL DEFAULT 'text';
+-- format = 'text' (legacy flat text in translated_body) | 'json' (Tiptap blocks in translated_body_json)
 """
 
 

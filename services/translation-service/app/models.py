@@ -89,15 +89,17 @@ class ChapterTranslation(BaseModel):
     book_id: UUID
     owner_user_id: UUID
     status: str
-    translated_body: Optional[str]
-    source_language: Optional[str]
+    translated_body: Optional[str] = None
+    translated_body_json: Optional[list] = None
+    translated_body_format: str = "text"
+    source_language: Optional[str] = None
     target_language: str
-    input_tokens: Optional[int]
-    output_tokens: Optional[int]
-    usage_log_id: Optional[UUID]
-    error_message: Optional[str]
-    started_at: Optional[datetime]
-    finished_at: Optional[datetime]
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    usage_log_id: Optional[UUID] = None
+    error_message: Optional[str] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
     created_at: datetime
 
 
