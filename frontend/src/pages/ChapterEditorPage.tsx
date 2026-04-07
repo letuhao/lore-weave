@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   Save, PanelLeft, PanelRight, Clock, ChevronRight, ChevronLeft, ChevronRight as ChevronRightNav, SpellCheck,
-  BookOpen, FileText, BookMarked, Pen, Sparkles,
+  BookOpen, FileText, BookMarked, Pen, Sparkles, Languages,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
@@ -218,6 +218,43 @@ export function ChapterEditorPage() {
     return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); };
   }, [isDirty, tiptapJson, title]);
 
+  // ── Translate (block mode) ───────────────────────────────────────────────
+  const [translating, setTranslating] = useState(false);
+
+  const handleTranslate = useCallback(async () => {
+    if (!accessToken || !tiptapJson) return;
+    const blocks = (tiptapJson as any)?.content;
+    if (!Array.isArray(blocks) || blocks.length === 0) {
+      toast.error('No content to translate');
+      return;
+    }
+    setTranslating(true);
+    try {
+      const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
+      const res = await fetch(`${API_BASE}/v1/translation/translate-text`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+        body: JSON.stringify({ blocks }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data?.detail?.message || data?.detail || 'Translation failed');
+        return;
+      }
+      if (data.translated_blocks && Array.isArray(data.translated_blocks)) {
+        const newDoc = { type: 'doc', content: data.translated_blocks };
+        tiptapEditorRef.current?.setContent(newDoc);
+        toast.success(`Translated ${data.translated_blocks.length} blocks`);
+      } else if (data.translated_text) {
+        toast.info('Text translation received — block mode recommended');
+      }
+    } catch (e) {
+      toast.error((e as Error).message || 'Translation failed');
+    } finally {
+      setTranslating(false);
+    }
+  }, [accessToken, tiptapJson]);
+
   // ── Leave-page guard ──────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -339,6 +376,20 @@ export function ChapterEditorPage() {
             />
             <SpellCheck className="h-3.5 w-3.5" />
           </label>
+
+          {/* Translate (block mode) */}
+          <button
+            onClick={handleTranslate}
+            disabled={translating || !tiptapJson}
+            className={cn(
+              'flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors',
+              translating ? 'text-primary animate-pulse' : 'text-muted-foreground hover:text-foreground',
+            )}
+            title="Translate content using AI (block mode)"
+          >
+            <Languages className="h-3.5 w-3.5" />
+            {translating ? 'Translating...' : 'Translate'}
+          </button>
 
           <button
             onClick={panels.toggleLeft}
