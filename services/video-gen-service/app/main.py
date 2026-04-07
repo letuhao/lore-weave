@@ -5,8 +5,8 @@ from .routers.generate import router as generate_router
 
 app = FastAPI(
     title="LoreWeave Video Generation Service",
-    version="0.1.0",
-    description="Video generation from text prompts. Skeleton service — returns placeholder responses until a provider is connected.",
+    version="0.2.0",
+    description="Video generation from text prompts via BYOK provider credentials.",
 )
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -15,11 +15,12 @@ app.include_router(generate_router, prefix="/v1/video-gen", tags=["video-gen"])
 
 @app.get("/health")
 async def health():
+    provider_configured = bool(os.getenv("PROVIDER_REGISTRY_URL"))
     return {
         "status": "ok",
         "service": "video-gen-service",
-        "version": "0.1.0",
-        "provider_connected": False,
+        "version": "0.2.0",
+        "provider_connected": provider_configured,
     }
 
 

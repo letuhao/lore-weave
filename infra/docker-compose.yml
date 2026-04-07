@@ -269,6 +269,13 @@ services:
     environment:
       HTTP_PORT: "8088"
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      PROVIDER_REGISTRY_URL: http://provider-registry-service:8085
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_EXTERNAL_URL: ${MINIO_EXTERNAL_URL:-http://localhost:9123}
     ports:
       - "8213:8088"
     healthcheck:
