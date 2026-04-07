@@ -3539,40 +3539,210 @@ Task order:
 
 ---
 
-### Phase 8H: Reading Analytics & Progress Tracking (future)
+### Phase 8H: Reading Analytics & Progress Tracking (14 tasks)
 
 > **Goal:** Backend-tracked reading progress, view counts, and reading time.
 > Replaces the fake "read" checkmarks (index-based) with real per-user tracking.
-> **Status:** Not broken down yet — needs its own planning session.
+> **Deps:** Phase 8A (ReaderPage), book-service
 >
-> **Backend (new table):**
-> ```sql
-> CREATE TABLE reading_progress (
->   user_id        UUID NOT NULL,
->   book_id        UUID NOT NULL,
->   chapter_id     UUID NOT NULL,
->   read_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
->   time_spent_ms  BIGINT DEFAULT 0,
->   scroll_depth   REAL DEFAULT 0,   -- 0.0 to 1.0
->   PRIMARY KEY (user_id, book_id, chapter_id)
-> );
-> CREATE TABLE book_views (
->   book_id     UUID NOT NULL,
->   user_id     UUID,               -- nullable for anonymous
->   viewed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
->   referrer    TEXT
-> );
-> ```
+> **Architecture: GA4-inspired zero-impact tracking.**
+> All tracking is imperative side-effects outside React render cycle.
+> No useState for metrics, no re-renders, no blocking API calls.
 >
-> **Key features:**
-> - Track which chapters a user has actually read (not index-based guess)
-> - Record time spent per chapter (for leaderboard, author analytics)
-> - Record scroll depth (did they read the whole chapter or just the start?)
-> - Book view counts (for catalog popularity, leaderboard)
-> - Anonymous view tracking for public books
-> - TOC sidebar shows real read/unread status per chapter
-> - Author dashboard: reader engagement metrics
+> Pattern:
+> 1. **Collect** — timestamps + scroll position in plain refs (not state)
+> 2. **Queue** — push events to in-memory array via `dataLayer.push()`
+> 3. **Flush** — `navigator.sendBeacon()` on `visibilitychange` / `pagehide`,
+>    or batch POST every 30s idle
+> 4. **Zero React coupling** — tracking hook uses refs only, never setState
 >
+> This is the same pattern Google Analytics 4 uses — invisible to the user,
+> no scroll jank, no render overhead, survives tab close.
+
+  ── Backend: data model (3 tasks) ─────────────────────────────────────
+
+  TH-01: BE — reading_progress table + UPSERT endpoint [BE]
+    Status: [ ]
+    Size: M
+    Service: book-service
+    Changes:
+      - Migration: reading_progress table (user_id, book_id, chapter_id PK)
+        + read_at, time_spent_ms, scroll_depth, read_count
+      - POST /v1/books/{book_id}/chapters/{chapter_id}/progress
+        → UPSERT: update time_spent_ms (additive), scroll_depth (max),
+          read_count++, read_at = now()
+      - GET /v1/books/{book_id}/progress → list all chapter progress for user
+      - Internal: no auth required for anonymous view tracking
+    AC:
+      - [ ] UPSERT works (first read creates, subsequent updates)
+      - [ ] time_spent_ms accumulates across sessions
+      - [ ] scroll_depth keeps high-water mark
+
+  TH-02: BE — book_views table + record endpoint [BE]
+    Status: [ ]
+    Size: S
+    Service: book-service
+    Changes:
+      - Migration: book_views table (id, book_id, user_id nullable,
+        viewed_at, referrer, session_id)
+      - POST /v1/books/{book_id}/view — record one view
+        (auth optional — anonymous views tracked with session_id)
+      - GET /v1/books/{book_id}/stats → { view_count, unique_readers, avg_time }
+    AC:
+      - [ ] Anonymous views recorded
+      - [ ] Authenticated views linked to user
+      - [ ] Stats aggregation works
+
+  TH-03: BE — Gateway proxy for analytics endpoints [BE]
+    Status: [ ]
+    Size: S
+    Service: api-gateway-bff
+    Changes:
+      - Proxy /progress and /view routes to book-service
+      - /view accepts unauthenticated requests (public books)
+    AC:
+      - [ ] Progress endpoints proxied with auth
+      - [ ] View endpoint works without auth
+
+  ── Frontend: tracking engine (4 tasks) ───────────────────────────────
+
+  TH-04: FE — useReadingTracker hook (GA4-style) [FE]
+    Status: [ ]
+    Size: M
+    File: frontend/src/hooks/useReadingTracker.ts
+    Changes:
+      - Accepts: bookId, chapterId, accessToken (optional)
+      - On mount: record `engage_start = performance.now()`
+      - Scroll tracking: single IntersectionObserver on sentinel div at
+        bottom of content — records max scroll_depth (0.0 to 1.0)
+      - On `visibilitychange` (hidden) or `pagehide`:
+        compute time_spent_ms = performance.now() - engage_start,
+        send via navigator.sendBeacon() to /progress endpoint
+      - On visibility return (visible): reset engage_start
+      - All state in useRef — ZERO useState, ZERO re-renders
+      - Cleanup: remove observers + listeners on unmount
+    AC:
+      - [ ] No re-renders from tracking
+      - [ ] sendBeacon fires on tab close/switch
+      - [ ] scroll_depth accurate
+      - [ ] time_spent_ms excludes hidden time
+
+  TH-05: FE — useBookViewTracker hook [FE]
+    Status: [ ]
+    Size: S
+    File: frontend/src/hooks/useBookViewTracker.ts
+    Changes:
+      - Fires once on BookDetailPage mount: POST /view
+      - Debounce: skip if same book viewed in last 30s (sessionStorage)
+      - Works for both authenticated and anonymous users
+    AC:
+      - [ ] View recorded on book page visit
+      - [ ] No duplicate within 30s window
+
+  TH-06: FE — Wire trackers into ReaderPage [FE]
+    Status: [ ]
+    Size: S
+    Changes:
+      - Add useReadingTracker(bookId, chapterId) to ReaderPage
+      - Sentinel div at end of content for scroll depth
+      - Zero visual changes to reader
+    AC:
+      - [ ] Tracker active during reading
+      - [ ] No visible UI changes
+      - [ ] No performance impact (verify via React DevTools Profiler)
+
+  TH-07: FE — Wire view tracker into BookDetailPage [FE]
+    Status: [ ]
+    Size: S
+    Changes:
+      - Add useBookViewTracker(bookId) to BookDetailPage
+      - Add to PublicBookDetailPage (anonymous)
+    AC:
+      - [ ] Views recorded for both authenticated and public books
+
+  ── Frontend: display (4 tasks) ───────────────────────────────────────
+
+  TH-08: FE — TOC sidebar: real read/unread status [FE]
+    Status: [ ]
+    Size: S
+    File: frontend/src/components/reader/TOCSidebar.tsx
+    Changes:
+      - Fetch GET /progress on mount → chapter read status
+      - Replace fake index-based checkmarks with real read indicators
+      - Show progress ring or checkmark per chapter
+      - Show scroll_depth as mini progress bar
+    AC:
+      - [ ] Read chapters show checkmark
+      - [ ] Partially read chapters show progress
+      - [ ] Unread chapters unmarked
+
+  TH-09: FE — Book detail: reader engagement stats [FE]
+    Status: [ ]
+    Size: S
+    Changes:
+      - Show view count on BookDetailPage
+      - Show "X readers" or "X views" badge
+      - Author sees: avg reading time, completion rate
+    AC:
+      - [ ] View count visible
+      - [ ] Author stats visible (owner only)
+
+  TH-10: FE — Browse/Catalog: view count on book cards [FE]
+    Status: [ ]
+    Size: S
+    Changes:
+      - BrowsePage BookCard shows view count (if > 0)
+      - Catalog API returns view_count in book response
+    AC:
+      - [ ] View count on cards
+      - [ ] Sort by popularity uses real views
+
+  TH-11: FE — Reading history page [FE]
+    Status: [ ]
+    Size: S
+    Changes:
+      - New route: /reading-history
+      - List books with last read chapter, time spent, completion %
+      - "Continue Reading" button → jump to last chapter
+    AC:
+      - [ ] History list shows real data
+      - [ ] Continue reading works
+
+  ── Testing (3 tasks) ─────────────────────────────────────────────────
+
+  TH-12: BE — Integration tests: progress + views [BE]
+    Status: [ ]
+    Size: S
+    File: infra/test-reading-analytics.sh
+    AC:
+      - [ ] UPSERT progress works (create + update)
+      - [ ] time_spent accumulates
+      - [ ] scroll_depth keeps max
+      - [ ] Anonymous view works
+      - [ ] Stats aggregation correct
+
+  TH-13: FE — Verify zero render impact [FE]
+    Status: [ ]
+    Size: S
+    Changes:
+      - React DevTools Profiler test on ReaderPage
+      - Confirm useReadingTracker causes 0 additional renders
+      - Confirm no scroll jank with IntersectionObserver
+    AC:
+      - [ ] 0 re-renders from tracking hook
+      - [ ] No measurable scroll performance impact
+
+  TH-14: BE — Beacon endpoint (accepts sendBeacon format) [BE]
+    Status: [ ]
+    Size: S
+    Service: book-service
+    Changes:
+      - Progress endpoint accepts Content-Type: text/plain (sendBeacon default)
+      - Parse JSON from plain text body
+      - Also accept application/json (regular fetch)
+    AC:
+      - [ ] sendBeacon payload parsed correctly
+      - [ ] Regular JSON POST still works
 > **Deps:** None for backend. Frontend wiring depends on Phase 8A (reader).
 > **Related:** Leaderboard page, Author analytics page, Browse page sorting by popularity.
 
@@ -3589,7 +3759,7 @@ Task order:
 | 8E: AI Provider + Media Gen | 11 | 4 | 7 | 8D, M03 | Planned |
 | 8F: Translation Upgrade | 16 | 9 | 7 | 8A, D1-03 | Planned |
 | 8G: Translation Review | 8 | 0 | 8 | 8F | Planned |
-| 8H: Reading Analytics | TBD | — | — | 8A | Future |
+| 8H: Reading Analytics | 14 | 6 | 8 | 8A | Planned |
 | **Total (8A-8D)** | **42** | **37** | **5** | |
 
 ---
