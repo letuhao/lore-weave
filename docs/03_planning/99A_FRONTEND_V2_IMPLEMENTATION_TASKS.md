@@ -3172,17 +3172,251 @@ Task order:
 
 ---
 
-### Phase 8F: Translation Pipeline Upgrade (future — needs separate planning)
+### Phase 8F: Translation Pipeline Upgrade (16 tasks)
 
 > **Goal:** Upgrade translation from flat TEXT to block-level JSONB.
 > Preserves block structure, media references, and callout types.
-> **Status:** Not broken down yet — needs its own planning session.
-> **Key changes:**
-> - translated_body: TEXT → JSONB (same Tiptap block structure)
-> - Translation pipeline: chunk-based → block-by-block
-> - Media blocks: translate caption only, keep asset references
-> - Code blocks: keep as-is
-> - Callouts: translate content, keep type
+> **Deps:** Phase 8A (ContentRenderer), D1-03 (chapter_blocks table)
+> **Design principle:** Translate per-block, reassemble into Tiptap JSONB.
+> Non-text blocks pass through untouched. Inline marks preserved via
+> markdown-in-prompt instruction.
+>
+> **Architecture decision: Batched blocks, not one-by-one.**
+> Group consecutive text blocks into batches that fit ~1/4 of context window
+> (same ratio as current chunk splitter). Each batch gets a separator
+> (e.g. `---BLOCK_SEP---`) so the LLM returns them in order. This keeps
+> API call count low while maintaining block alignment.
+>
+> **Backward compat:** Existing TEXT translations still render — ReaderPage
+> detects string vs JSON and falls back to textToBlocks() for old data.
+
+  ── Migration + data model (2 tasks) ──────────────────────────────────
+
+  TF-01: BE — Migration: translated_body TEXT → JSONB [BE]
+    Status: [ ]
+    Size: S
+    Service: translation-service
+    Changes:
+      - ALTER TABLE chapter_translations ADD COLUMN translated_body_format TEXT DEFAULT 'text'
+      - ALTER TABLE chapter_translations ALTER COLUMN translated_body TYPE JSONB USING
+        CASE WHEN translated_body IS NULL THEN NULL
+             ELSE to_jsonb(translated_body) END
+      - Existing rows become JSONB strings (still valid, backward compat)
+      - New rows will store Tiptap block arrays with format='json'
+    AC:
+      - [ ] Migration runs without data loss
+      - [ ] Existing translations still readable
+      - [ ] New column translated_body_format exists
+
+  TF-02: BE — Block classifier utility [BE]
+    Status: [ ]
+    Size: S
+    Service: translation-service
+    New file: app/workers/block_classifier.py
+    Changes:
+      - classify_block(block) → 'translate' | 'passthrough' | 'caption_only'
+      - translate: paragraph, heading, blockquote, callout, bulletList, orderedList
+      - passthrough: horizontalRule, codeBlock
+      - caption_only: imageBlock, videoBlock, audioBlock (translate caption attr only)
+      - extract_translatable_text(block) → text string with inline marks as markdown
+      - rebuild_block(original_block, translated_text) → new block with translated content
+    AC:
+      - [ ] Classifies all known block types
+      - [ ] Passthrough blocks returned unchanged
+      - [ ] Caption-only extracts and reinserts caption
+
+  ── Translation pipeline (5 tasks) ────────────────────────────────────
+
+  TF-03: BE — Block-aware batch builder [BE]
+    Status: [ ]
+    Size: M
+    Service: translation-service
+    New file: app/workers/block_batcher.py
+    Changes:
+      - Takes Tiptap block array + context_window_tokens
+      - Groups consecutive translatable blocks into batches
+      - Each batch stays under 1/4 of context window (token estimate)
+      - Passthrough blocks tracked by index for reassembly
+      - Returns: list of BatchGroup { block_indices: int[], combined_text: str, separator: str }
+    AC:
+      - [ ] Batches respect token budget
+      - [ ] Single-block chapters produce one batch
+      - [ ] Large blocks get their own batch (no splitting mid-block)
+
+  TF-04: BE — Block-level translate_chapter rewrite [BE]
+    Status: [ ]
+    Size: L
+    Service: translation-service
+    File: app/workers/session_translator.py
+    Changes:
+      - New entry: translate_chapter_blocks(blocks, ...) alongside existing translate_chapter()
+      - Reads chapter body as Tiptap JSON (from book-service response)
+      - Calls block_classifier to separate translate vs passthrough
+      - Calls block_batcher to create batches
+      - Translates each batch (with BLOCK_SEP markers in prompt)
+      - Splits response on BLOCK_SEP → per-block translated text
+      - Calls rebuild_block() to reconstruct each block
+      - Reassembles full Tiptap JSON: translated blocks + passthrough blocks at original indices
+      - Rolling conversation history + compaction still works (per-batch, not per-block)
+      - Returns (translated_blocks: list[dict], input_tokens, output_tokens)
+    AC:
+      - [ ] Output is valid Tiptap JSONB
+      - [ ] Block count matches original
+      - [ ] Passthrough blocks unchanged
+      - [ ] Caption-only blocks have translated caption
+
+  TF-05: BE — Chapter worker: call block-level pipeline [BE]
+    Status: [ ]
+    Size: S
+    Service: translation-service
+    File: app/workers/chapter_worker.py
+    Changes:
+      - Detect if chapter body is JSON (has blocks) vs plain text
+      - If JSON: call translate_chapter_blocks(), store result as JSONB with format='json'
+      - If plain text: fall back to existing translate_chapter() with format='text'
+      - Write translated_body as JSON array, set translated_body_format='json'
+    AC:
+      - [ ] JSON chapters use block pipeline
+      - [ ] Plain text chapters use legacy pipeline
+      - [ ] Both paths produce valid chapter_translations rows
+
+  TF-06: BE — Prompt engineering for block translation [BE]
+    Status: [ ]
+    Size: S
+    Service: translation-service
+    Changes:
+      - New system prompt template for block translation mode
+      - Instructions: preserve BLOCK_SEP markers exactly, keep markdown formatting
+        (bold, italic, links), do not add/remove blocks
+      - Add inline mark encoding: **bold** → **bold**, *italic* → *italic*,
+        [link text](url) → [link text](url)
+      - Configure via user_translation_preferences (new field: block_mode_prompt)
+    AC:
+      - [ ] Default prompt produces correct BLOCK_SEP output
+      - [ ] Inline marks survive round-trip
+
+  TF-07: BE — Sync translate-text endpoint for block mode [BE]
+    Status: [ ]
+    Size: S
+    Service: translation-service
+    File: app/routers/translate.py
+    Changes:
+      - Accept optional `blocks` field in TranslateTextRequest (Tiptap block array)
+      - If blocks provided: run block_classifier + single-batch translate
+      - Return TranslateTextResponse with translated_blocks (JSON) instead of translated_text
+    AC:
+      - [ ] Existing text-only requests unchanged
+      - [ ] Block mode returns Tiptap JSON array
+
+  ── Frontend: reader + editor (5 tasks) ────────────────────────────────
+
+  TF-08: FE — ReaderPage: render JSONB translations natively [FE]
+    Status: [ ]
+    Size: S
+    File: frontend/src/pages/ReaderPage.tsx
+    Changes:
+      - When loading translated version: check if translated_body is array (JSON) or string (text)
+      - If array: pass directly to ContentRenderer (no textToBlocks conversion)
+      - If string: use existing textToBlocks() fallback
+      - Remove the textToBlocks() call for JSON translations
+    AC:
+      - [ ] JSONB translations show headings, callouts, code blocks, media
+      - [ ] Old TEXT translations still render as paragraphs
+      - [ ] Language switching works for both formats
+
+  TF-09: FE — TranslationTab: show block count + format badge [FE]
+    Status: [ ]
+    Size: S
+    File: frontend/src/features/settings/TranslationTab.tsx
+    Changes:
+      - Show badge per translation: "Block" (JSONB) or "Text" (legacy)
+      - Show block count from translated_body array length
+    AC:
+      - [ ] Badge visible on translation matrix rows
+      - [ ] Block count accurate
+
+  TF-10: FE — Per-chunk translate button: block mode [FE]
+    Status: [ ]
+    Size: S
+    File: frontend/src/pages/ChapterEditorPage.tsx
+    Changes:
+      - "Translate" button in editor sends blocks (not text_content) to translate-text endpoint
+      - Response replaces editor content with translated blocks
+    AC:
+      - [ ] Editor translate uses block pipeline
+      - [ ] Translated content retains structure
+
+  TF-11: FE — Version detail: show block diff [FE]
+    Status: [ ]
+    Size: S
+    File: frontend/src/features/translation/api.ts + version UI
+    Changes:
+      - Translation version detail shows block-level alignment
+      - Original block[i] ↔ translated block[i] side by side (preview for Phase 8G)
+    AC:
+      - [ ] Each block pair visible
+      - [ ] Passthrough blocks shown as "unchanged"
+
+  TF-12: FE — Types update [FE]
+    Status: [ ]
+    Size: S
+    File: frontend/src/features/translation/api.ts
+    Changes:
+      - ChapterTranslation type: translated_body → string | JSONContent[]
+      - Add translated_body_format field
+      - Update versionsApi response types
+    AC:
+      - [ ] Types match new backend response shape
+
+  ── Testing (4 tasks) ──────────────────────────────────────────────────
+
+  TF-13: BE — Unit tests: block_classifier + block_batcher [BE]
+    Status: [ ]
+    Size: S
+    Service: translation-service
+    Changes:
+      - Test classify_block for all block types
+      - Test batching respects token limits
+      - Test caption extraction and reinsertion
+    AC:
+      - [ ] All block types classified correctly
+      - [ ] Batching edge cases covered
+
+  TF-14: BE — Unit tests: block-level translate_chapter_blocks [BE]
+    Status: [ ]
+    Size: S
+    Service: translation-service
+    Changes:
+      - Mock provider invoke → return BLOCK_SEP-separated translations
+      - Verify output is valid Tiptap JSON with correct block count
+      - Verify passthrough blocks unchanged
+    AC:
+      - [ ] Happy path works
+      - [ ] Partial failure (one batch fails) handled
+
+  TF-15: BE — Integration tests: end-to-end block translation [BE]
+    Status: [ ]
+    Size: M
+    File: infra/test-translation-blocks.sh
+    Changes:
+      - Create chapter with Tiptap JSON (paragraph + heading + code + image)
+      - Trigger translation job
+      - Verify translated_body is JSONB array
+      - Verify code block unchanged, image caption translated
+      - Verify block count matches original
+    AC:
+      - [ ] All scenarios pass
+      - [ ] Round-trip preserves structure
+
+  TF-16: BE — Backward compat test [BE]
+    Status: [ ]
+    Size: S
+    Changes:
+      - Verify existing TEXT translations still load in reader
+      - Verify migration doesn't break old data
+    AC:
+      - [ ] Old translations render correctly
+      - [ ] No data loss
 
 ---
 
@@ -3242,7 +3476,7 @@ Task order:
 | 8C: RevisionHistory Cleanup | 2 | 2 | 0 | 8A | Done |
 | 8D: Unified Audio System | 24 | 19 | 5 | 8A | Done |
 | 8E: AI Provider + Media Gen | 11 | 4 | 7 | 8D, M03 | Planned |
-| 8F: Translation Upgrade | TBD | — | — | 8A | Future |
+| 8F: Translation Upgrade | 16 | 9 | 7 | 8A, D1-03 | Planned |
 | 8G: Translation Review | TBD | — | — | 8F | Future |
 | 8H: Reading Analytics | TBD | — | — | 8A | Future |
 | **Total (8A-8D)** | **42** | **37** | **5** | |
