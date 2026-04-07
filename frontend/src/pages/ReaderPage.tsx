@@ -62,6 +62,7 @@ export function ReaderPage() {
   // Map: language code → active translation version ID
   const [langVersionMap, setLangVersionMap] = useState<Record<string, string>>({});
   const [langLoading, setLangLoading] = useState(false);
+  const [readProgress, setReadProgress] = useState<import('@/features/books/api').ReadingProgress[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // TTS playback
@@ -100,7 +101,9 @@ export function ReaderPage() {
       booksApi.getDraft(accessToken, bookId, chapterId),
       booksApi.listChapters(accessToken, bookId, { lifecycle_state: 'active', limit: 100 }),
       versionsApi.listChapterVersions(accessToken, chapterId).catch(() => null),
-    ]).then(([b, d, chs, versions]) => {
+      booksApi.getReadingProgress(accessToken, bookId).catch(() => ({ items: [] })),
+    ]).then(([b, d, chs, versions, rp]) => {
+      setReadProgress(rp.items);
       setBook(b);
       const body = d.body as JSONContent | null;
       const origBlocks = body?.content ?? [];
@@ -273,6 +276,7 @@ export function ReaderPage() {
         languages={languages}
         activeLanguage={activeLanguage}
         onLanguageChange={handleLanguageChange}
+        readProgress={readProgress}
       />
 
       {/* Theme customizer slide-over */}

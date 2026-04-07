@@ -39,6 +39,13 @@ export function BookDetailPage() {
     enabled: !!accessToken && !!bookId,
   });
 
+  const { data: bookStats } = useQuery({
+    queryKey: ['book-stats', bookId],
+    queryFn: () => booksApi.getBookStats(accessToken!, bookId),
+    enabled: !!accessToken && !!bookId,
+    staleTime: 60_000,
+  });
+
   const handleTrash = async () => {
     if (!accessToken || !bookId) return;
     await booksApi.trashBook(accessToken, bookId);
@@ -80,6 +87,18 @@ export function BookDetailPage() {
               <>
                 <span className="text-border">·</span>
                 <span>Updated {new Date(book.updated_at).toLocaleDateString()}</span>
+              </>
+            )}
+            {bookStats && bookStats.view_count > 0 && (
+              <>
+                <span className="text-border">·</span>
+                <span>{bookStats.view_count} {bookStats.view_count === 1 ? 'view' : 'views'}</span>
+              </>
+            )}
+            {bookStats && bookStats.total_readers > 0 && (
+              <>
+                <span className="text-border">·</span>
+                <span>{bookStats.total_readers} {bookStats.total_readers === 1 ? 'reader' : 'readers'}</span>
               </>
             )}
           </span>

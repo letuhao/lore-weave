@@ -490,6 +490,40 @@ export const booksApi = {
       throw Object.assign(new Error(data?.message || res.statusText), { status: res.status });
     }
   },
+
+  // ── Reading Analytics ──────────────────────────────────────────────────
+
+  async getReadingProgress(token: string, bookId: string): Promise<{ items: ReadingProgress[] }> {
+    const res = await fetch(`${base()}/v1/books/${bookId}/progress`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return { items: [] };
+    return res.json();
+  },
+
+  async getBookStats(token: string, bookId: string): Promise<BookStats> {
+    const res = await fetch(`${base()}/v1/books/${bookId}/stats`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return { view_count: 0, unique_readers: 0, total_readers: 0, avg_time_ms: 0, avg_scroll_depth: 0 };
+    return res.json();
+  },
+};
+
+export type ReadingProgress = {
+  chapter_id: string;
+  read_at: string;
+  time_spent_ms: number;
+  scroll_depth: number;
+  read_count: number;
+};
+
+export type BookStats = {
+  view_count: number;
+  unique_readers: number;
+  total_readers: number;
+  avg_time_ms: number;
+  avg_scroll_depth: number;
 };
 
 // ── Types ───────────────────────────────────────────────────────────────
