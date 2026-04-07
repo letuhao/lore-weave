@@ -8,9 +8,9 @@
 ## Document Metadata
 
 - Last Updated: 2026-04-07 (session 24)
-- Updated By: Assistant (Phase 8E + 8F + 8G COMPLETE — 27 commits)
+- Updated By: Assistant (Phase 8E + 8F + 8G + 8H COMPLETE — 35 commits)
 - Active Branch: `main`
-- HEAD: `df72b04` — feat(translation): TG-01..08 translation review mode
+- HEAD: `367494e` — feat(analytics): TH-12 integration tests
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -31,9 +31,18 @@
 
 ## Current Active Work
 
-**Phase:** Phase 8G (translation review mode) COMPLETE. TG-01..TG-08 all tasks done.
+**Phase:** Phase 8H (reading analytics) COMPLETE. TH-01..TH-14 done (TH-10,11,13 deferred).
 
 **What was done in this session (2026-04-07, session 24):**
+
+Phase 8H — reading analytics, GA4-style (4 commits).
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| TH-01+02: reading_progress + book_views tables, 4 endpoints | `migrate.go`, `analytics.go` (new), `server.go` | `48b08cd` |
+| TH-04..07: useReadingTracker + useBookViewTracker hooks, page wiring | 5 FE files (2 new hooks) | `76cb8f9` |
+| TH-08+09: TOC read status + book detail stats | `TOCSidebar.tsx`, `BookDetailPage.tsx`, `api.ts` | `fdf4d07` |
+| TH-12: Integration tests (19/19 pass) + route/precision fixes | `test-reading-analytics.sh`, 3 BE files | `367494e` |
 
 Phase 8G — translation review mode (2 commits).
 
