@@ -787,6 +787,7 @@ func (s *Server) listUserModels(w http.ResponseWriter, r *http.Request) {
 	includeInactive := r.URL.Query().Get("include_inactive") != "false"
 	onlyFavorites := r.URL.Query().Get("only_favorites") == "true"
 	providerFilter := r.URL.Query().Get("provider_kind")
+	capabilityFilter := r.URL.Query().Get("capability")
 	query := `
 SELECT user_model_id FROM user_models WHERE owner_user_id=$1
 `
@@ -805,6 +806,11 @@ SELECT user_model_id FROM user_models WHERE owner_user_id=$1
 	if providerFilter != "" {
 		query += fmt.Sprintf(" AND provider_kind=$%d", argPos)
 		args = append(args, providerFilter)
+		argPos++
+	}
+	if capabilityFilter != "" {
+		query += fmt.Sprintf(` AND capability_flags @> $%d::jsonb`, argPos)
+		args = append(args, fmt.Sprintf(`{"%s": true}`, capabilityFilter))
 		argPos++
 	}
 	query += " ORDER BY created_at DESC"
