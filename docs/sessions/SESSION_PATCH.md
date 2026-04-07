@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-07 (session 24)
-- Updated By: Assistant (Phase 8E + 8F + 8G + 8H COMPLETE — 35 commits)
+- Last Updated: 2026-04-08 (session 24 end)
+- Updated By: Assistant (Phase 8E+8F+8G+8H COMPLETE, P3-R1 cleanup, bugs fixed, TF-10, plan audit — 45 commits)
 - Active Branch: `main`
-- HEAD: `367494e` — feat(analytics): TH-12 integration tests
+- HEAD: `b52e2a1` — docs: full plan audit — 135 done, 15 remaining + Phase 9 added
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -31,9 +31,26 @@
 
 ## Current Active Work
 
-**Phase:** Phase 8H (reading analytics) COMPLETE. TH-01..TH-14 done (TH-10,11,13 deferred).
+**Phase:** All phases 8A-8H COMPLETE. Phase 9 planned (12 remaining tasks).
 
-**What was done in this session (2026-04-07, session 24):**
+**What was done in this session (2026-04-07→08, session 24):**
+
+45 commits across 4 phases + cleanup + bugs + plan audit.
+
+| Phase / Work | Tasks | Commits |
+| ------------ | ----- | ------- |
+| Phase 8E — AI Provider + Media Gen | 11 | 10 |
+| Phase 8F — Block Translation Pipeline | 16 | 11 |
+| Phase 8G — Translation Review Mode | 8 | 3 |
+| Phase 8H — Reading Analytics (GA4) | 14 | 7 |
+| P3-R1 Cleanup — dead code, mock data, ModeProvider | 5 | 2 |
+| Bug fixes — public reader 404, Vite chunks | 2 | 1 |
+| TF-10 — Editor translate button | 1 | 1 |
+| Reviews (8E, 8F, 8G, 8H, deferred) | 5 rounds | 5 |
+| Plan audit — 135 done, Phase 9 added | - | 1 |
+| Translation fix — Ollama content_extractor | 1 | 1 |
+| Test fixes — image gen endpoint path | 1 | 1 |
+| Session/plan docs | - | 2 |
 
 Phase 8H — reading analytics, GA4-style (4 commits).
 
