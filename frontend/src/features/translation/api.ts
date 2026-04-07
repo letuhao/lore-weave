@@ -17,6 +17,8 @@ export type ChapterTranslation = {
   version_num: number;
   status: ChapterTranslationStatus;
   translated_body: string | null;
+  translated_body_json: Record<string, unknown>[] | null;
+  translated_body_format: 'text' | 'json';
   source_language: string | null;
   target_language: string;
   input_tokens: number | null;

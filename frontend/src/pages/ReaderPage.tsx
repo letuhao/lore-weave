@@ -147,7 +147,11 @@ export function ReaderPage() {
     setLangLoading(true);
     try {
       const version = await versionsApi.getChapterVersion(accessToken, chapterId, versionId);
-      if (version.translated_body) {
+      if (version.translated_body_format === 'json' && Array.isArray(version.translated_body_json)) {
+        // Phase 8F: block-level JSONB translation — render natively
+        setBlocks(version.translated_body_json as JSONContent[]);
+      } else if (version.translated_body) {
+        // Legacy: plain text → synthetic paragraph blocks
         setBlocks(textToBlocks(version.translated_body));
       }
     } catch {
