@@ -4,6 +4,7 @@ import { ArrowRight, BookOpen, ChevronRight, Heart, Share2 } from 'lucide-react'
 import { toast } from 'sonner';
 import { booksApi } from '@/features/books/api';
 import { Pagination } from '@/components/shared/Pagination';
+import { useBookViewTracker } from '@/hooks/useBookViewTracker';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -52,6 +53,7 @@ function hashGradient(id: string): string {
 
 export function PublicBookDetailPage() {
   const { bookId = '' } = useParams();
+  useBookViewTracker(bookId); // anonymous — no accessToken
   const [book, setBook] = useState<CatalogBook | null>(null);
   const [chapters, setChapters] = useState<CatalogChapter[]>([]);
   const [total, setTotal] = useState(0);

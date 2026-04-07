@@ -13,6 +13,7 @@ import type { JSONContent } from '@tiptap/react';
 import { extractText } from '@/lib/tiptap-utils';
 import { useReaderTheme } from '@/providers/ThemeProvider';
 import { useTTSState, useTTSControls } from '@/hooks/useTTS';
+import { useReadingTracker } from '@/hooks/useReadingTracker';
 import { useBlockScroll } from '@/hooks/useBlockScroll';
 import { useTTSShortcuts } from '@/hooks/useTTSShortcuts';
 import { extractSpeakableBlocks } from '@/lib/audio-utils';
@@ -40,6 +41,8 @@ function computeReadingStats(blocks: JSONContent[], language?: string) {
 export function ReaderPage() {
   const { bookId = '', chapterId = '' } = useParams();
   const { accessToken, user } = useAuth();
+  // GA4-style reading tracker — zero re-renders, flushes via sendBeacon
+  const sentinelRef = useReadingTracker({ bookId, chapterId, accessToken });
   const navigate = useNavigate();
   const { cssVars: readerCssVars, theme: readerTheme } = useReaderTheme();
   const [originalBlocks, setOriginalBlocks] = useState<JSONContent[]>([]);
@@ -328,6 +331,8 @@ export function ReaderPage() {
           <div className="chapter-end">
             <p>End of Chapter {currentIdx + 1}</p>
           </div>
+          {/* Reading tracker sentinel — invisible, triggers scroll depth */}
+          <div ref={sentinelRef} aria-hidden="true" />
         </article>
       </div>
 

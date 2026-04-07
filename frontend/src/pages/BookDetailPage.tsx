@@ -3,6 +3,7 @@ import { Link, useParams, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Settings, Plus, Trash2 } from 'lucide-react';
+import { useBookViewTracker } from '@/hooks/useBookViewTracker';
 import { useAuth } from '@/auth';
 import { booksApi, type Book } from '@/features/books/api';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -26,6 +27,7 @@ const tabs = [
 export function BookDetailPage() {
   const { bookId = '' } = useParams();
   const { accessToken } = useAuth();
+  useBookViewTracker(bookId, accessToken);
   const { t } = useTranslation('books');
   const location = useLocation();
   const queryClient = useQueryClient();
