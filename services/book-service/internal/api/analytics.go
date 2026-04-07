@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -96,7 +97,7 @@ func (s *Server) listReadingProgress(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, 0)
 	for rows.Next() {
 		var chapterID uuid.UUID
-		var readAt string
+		var readAt time.Time
 		var timeSpent int64
 		var scrollDepth float64
 		var readCount int

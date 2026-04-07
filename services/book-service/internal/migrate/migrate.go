@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS reading_progress (
   chapter_id     UUID NOT NULL,
   read_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   time_spent_ms  BIGINT NOT NULL DEFAULT 0,
-  scroll_depth   REAL NOT NULL DEFAULT 0,
+  scroll_depth   DOUBLE PRECISION NOT NULL DEFAULT 0,
   read_count     INT NOT NULL DEFAULT 1,
   PRIMARY KEY (user_id, book_id, chapter_id)
 );
