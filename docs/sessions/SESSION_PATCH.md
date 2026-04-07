@@ -8,9 +8,9 @@
 ## Document Metadata
 
 - Last Updated: 2026-04-07 (session 24)
-- Updated By: Assistant (Phase 8E COMPLETE + Phase 8F COMPLETE — 23 commits)
+- Updated By: Assistant (Phase 8E + 8F + 8G COMPLETE — 27 commits)
 - Active Branch: `main`
-- HEAD: `40f2f98` — test(translation): TF-15+16 block translation integration + unit tests
+- HEAD: `df72b04` — feat(translation): TG-01..08 translation review mode
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -31,9 +31,16 @@
 
 ## Current Active Work
 
-**Phase:** Phase 8F (block-level translation) COMPLETE. TF-01..TF-16 all tasks done.
+**Phase:** Phase 8G (translation review mode) COMPLETE. TG-01..TG-08 all tasks done.
 
 **What was done in this session (2026-04-07, session 24):**
+
+Phase 8G — translation review mode (2 commits).
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| TG-01..08: BlockAlignedReview, ReviewPage, route, toolbar, entry points, SplitCompareView upgrade | 6 files (2 new) | `df72b04` |
+| Plan: Phase 8G (8 tasks) | planning doc | `4b80c82` |
 
 Phase 8F — block-level translation pipeline (10 commits).
 
