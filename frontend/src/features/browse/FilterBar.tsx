@@ -11,6 +11,7 @@ const LANGUAGES = [
 
 const SORTS = [
   { value: 'recent', label: 'Most recent' },
+  { value: 'popular', label: 'Most popular' },
   { value: 'chapters', label: 'Most chapters' },
   { value: 'alpha', label: 'Alphabetical' },
 ];

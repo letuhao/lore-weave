@@ -119,6 +119,7 @@ type bookProjection struct {
 	ChapterCount     int        `json:"chapter_count"`
 	LifecycleState   string     `json:"lifecycle_state"`
 	GenreTags        []string   `json:"genre_tags"`
+	ViewCount        int64      `json:"view_count"`
 	CreatedAt        *time.Time `json:"created_at"`
 }
 
@@ -271,6 +272,7 @@ func (s *Server) listPublicBooks(w http.ResponseWriter, r *http.Request) {
 				"cover_url":         p.CoverURL,
 				"chapter_count":     p.ChapterCount,
 				"genre_tags":        genreTags,
+				"view_count":        p.ViewCount,
 				"visibility":        "public",
 				"created_at":        p.CreatedAt,
 			},
@@ -287,6 +289,10 @@ func (s *Server) listPublicBooks(w http.ResponseWriter, r *http.Request) {
 	case "chapters":
 		sort.Slice(all, func(i, j int) bool {
 			return all[i].proj.ChapterCount > all[j].proj.ChapterCount
+		})
+	case "popular":
+		sort.Slice(all, func(i, j int) bool {
+			return all[i].proj.ViewCount > all[j].proj.ViewCount
 		})
 	default: // "recent" or empty — newest first
 		sort.Slice(all, func(i, j int) bool {
