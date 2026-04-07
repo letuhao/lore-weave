@@ -3,7 +3,7 @@
  *
  * ZERO useState — all metrics stored in refs.
  * ZERO re-renders — tracking is invisible to React.
- * Flushes via navigator.sendBeacon() on visibilitychange / pagehide / unmount.
+ * Flushes via fetch+keepalive on visibilitychange / pagehide / unmount.
  *
  * Tracks:
  * - time_spent_ms: active reading time (excludes hidden/minimized tab)
@@ -39,33 +39,10 @@ export function useReadingTracker({ bookId, chapterId, accessToken, minFlushMs =
     maxScrollDepth.current = 0;
     flushed.current = false;
 
-    // ── Scroll depth via IntersectionObserver ────────────────────────
-    let observer: IntersectionObserver | null = null;
+    // ── Scroll depth tracking ─────────────────────────────────────────
     const scrollContainer = document.querySelector('[data-reader-content]');
 
-    if (scrollContainer) {
-      // Observe positions at 25%, 50%, 75%, 100% of content height
-      const thresholds = [0, 0.25, 0.5, 0.75, 1.0];
-      observer = new IntersectionObserver(
-        (entries) => {
-          for (const entry of entries) {
-            if (entry.isIntersecting) {
-              const ratio = entry.intersectionRatio;
-              if (ratio > maxScrollDepth.current) {
-                maxScrollDepth.current = ratio;
-              }
-            }
-          }
-        },
-        { root: scrollContainer as Element, threshold: thresholds },
-      );
-      // Observe the sentinel at the bottom of content
-      if (sentinelRef.current) {
-        observer.observe(sentinelRef.current);
-      }
-    }
-
-    // Fallback: simple scroll-based depth tracking
+    // Single passive scroll listener — continuous depth tracking
     const handleScroll = () => {
       const el = scrollContainer || document.documentElement;
       if (el instanceof HTMLElement) {
@@ -141,7 +118,6 @@ export function useReadingTracker({ bookId, chapterId, accessToken, minFlushMs =
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('pagehide', handlePageHide);
       (scrollContainer || window).removeEventListener('scroll', handleScroll);
-      observer?.disconnect();
     };
   }, [bookId, chapterId]); // re-run when chapter changes
 

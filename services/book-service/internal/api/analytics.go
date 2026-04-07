@@ -28,6 +28,16 @@ func (s *Server) upsertReadingProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate chapter belongs to book
+	var chapterExists bool
+	_ = s.pool.QueryRow(r.Context(),
+		`SELECT EXISTS(SELECT 1 FROM chapters WHERE id=$1 AND book_id=$2)`,
+		chapterID, bookID).Scan(&chapterExists)
+	if !chapterExists {
+		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found in this book")
+		return
+	}
+
 	// Accept both application/json and text/plain (sendBeacon sends text/plain)
 	bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, 4096))
 	if err != nil {
@@ -158,6 +168,11 @@ func (s *Server) recordBookView(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getBookStats(w http.ResponseWriter, r *http.Request) {
+	// Auth required — stats are only visible to authenticated users
+	if _, ok := s.requireUserID(r); !ok {
+		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
+		return
+	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
