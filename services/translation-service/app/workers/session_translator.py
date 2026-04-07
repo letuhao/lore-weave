@@ -589,3 +589,147 @@ async def _update_chunk_row(
         """,
         translated_text, in_tok or None, out_tok or None, chunk_row_id,
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 8F: Block-level translation pipeline
+# ══════════════════════════════════════════════════════════════════════════════
+
+_BLOCK_SYSTEM_PROMPT = """You are a professional {source_lang} ({source_code}) to {target_lang} ({target_code}) translator.
+
+CRITICAL RULES:
+1. Each text section is labeled [BLOCK N]. You MUST output the EXACT same [BLOCK N] labels in the EXACT same order.
+2. Translate ONLY the text after each [BLOCK N] label. Do NOT add, remove, or reorder blocks.
+3. Preserve inline formatting: **bold**, *italic*, `code`, ~~strikethrough~~, __underline__, [link text](url).
+4. Output ONLY the translated blocks. No explanations, no commentary, no extra text."""
+
+
+async def translate_chapter_blocks(
+    blocks: list[dict],
+    source_lang: str,
+    msg: dict,
+    pool,
+    chapter_translation_id: UUID,
+    *,
+    context_window: int = _FALLBACK_CONTEXT_WINDOW,
+) -> tuple[list[dict], int, int]:
+    """
+    Translate a chapter's Tiptap blocks using the block-level pipeline.
+
+    1. Classify blocks (translate / passthrough / caption_only)
+    2. Batch translatable blocks within token budget
+    3. Translate each batch via LLM with [BLOCK N] markers
+    4. Parse response, rebuild blocks
+    5. Reassemble full Tiptap content array
+
+    Args:
+        blocks:                 Tiptap content array (list of block dicts).
+        source_lang:            Source language code.
+        msg:                    Job message with model config, prompts, etc.
+        pool:                   asyncpg pool for chunk rows.
+        chapter_translation_id: UUID of the chapter_translations row.
+        context_window:         Model context window in tokens.
+
+    Returns:
+        (translated_blocks, total_input_tokens, total_output_tokens)
+    """
+    from .block_classifier import classify_block, extract_translatable_text, rebuild_block
+    from .block_batcher import build_batch_plan, parse_translated_blocks
+
+    plan = build_batch_plan(blocks, context_window_tokens=context_window)
+    log.info(
+        "block_translator: %d blocks (%d translate, %d pass, %d caption) → %d batches (ct=%s)",
+        len(plan.all_entries), plan.translatable_count, plan.passthrough_count,
+        plan.caption_count, len(plan.batches), chapter_translation_id,
+    )
+
+    if not plan.batches:
+        # All blocks are passthrough — return original
+        return blocks, 0, 0
+
+    timeout_secs = msg.get("invoke_timeout_secs") or 300
+    read_timeout = float(timeout_secs) if timeout_secs and timeout_secs > 0 else None
+    token = mint_user_jwt(msg["user_id"], settings.jwt_secret, ttl_seconds=_JWT_TTL)
+
+    # Build system prompt
+    target_code = msg.get("target_language", "")
+    system_content = _BLOCK_SYSTEM_PROMPT.format_map(_SafeFormatMap({
+        "source_lang": _lang_name(source_lang),
+        "source_code": source_lang,
+        "target_lang": _lang_name(target_code),
+        "target_code": target_code,
+    }))
+
+    # Per-block translated texts (index → translated text)
+    translated_texts: dict[int, str] = {}
+    total_input = 0
+    total_output = 0
+
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(connect=10.0, write=60.0, read=read_timeout, pool=5.0)
+    ) as client:
+        for batch_idx, batch in enumerate(plan.batches):
+            combined = batch.combined_text()
+            log.info(
+                "block_translator: batch %d/%d — %d blocks, ~%d tokens (ct=%s)",
+                batch_idx + 1, len(plan.batches), len(batch.entries),
+                batch.token_estimate, chapter_translation_id,
+            )
+
+            messages = [
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": f"Translate the following blocks from {_lang_name(source_lang)} to {_lang_name(target_code)}:\n\n{combined}"},
+            ]
+
+            invoke_payload = {
+                "model_source": msg["model_source"],
+                "model_ref": msg["model_ref"],
+                "input": {"messages": messages},
+            }
+
+            try:
+                raw_chunks: list[bytes] = []
+                async with client.stream(
+                    "POST",
+                    f"{settings.provider_registry_service_url}/v1/model-registry/invoke",
+                    json=invoke_payload,
+                    headers={"Authorization": f"Bearer {token}"},
+                ) as resp:
+                    if resp.status_code >= 400:
+                        log.error("block_translator: batch %d invoke returned %d", batch_idx + 1, resp.status_code)
+                        continue  # skip failed batch, blocks will use originals
+                    async for raw in resp.aiter_bytes():
+                        raw_chunks.append(raw)
+
+                full_response = json.loads(b"".join(raw_chunks))
+                response_text = extract_content(full_response.get("output") or {})
+                usage = full_response.get("usage") or {}
+                total_input += int(usage.get("input_tokens") or 0)
+                total_output += int(usage.get("output_tokens") or 0)
+
+                # Parse [BLOCK N] markers
+                parsed = parse_translated_blocks(response_text, batch.block_indices)
+                translated_texts.update(parsed)
+
+                log.info(
+                    "block_translator: batch %d done — parsed %d/%d blocks",
+                    batch_idx + 1, len(parsed), len(batch.entries),
+                )
+            except Exception as exc:
+                log.error("block_translator: batch %d failed: %s", batch_idx + 1, exc)
+                continue  # skip failed batch
+
+    # Reassemble: for each block, use translated text or keep original
+    result_blocks: list[dict] = []
+    for entry in plan.all_entries:
+        if entry.index in translated_texts:
+            result_blocks.append(rebuild_block(entry.block, translated_texts[entry.index]))
+        else:
+            result_blocks.append(entry.block)
+
+    log.info(
+        "block_translator: done — %d blocks, %d translated, in=%d out=%d (ct=%s)",
+        len(result_blocks), len(translated_texts), total_input, total_output,
+        chapter_translation_id,
+    )
+    return result_blocks, total_input, total_output
