@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-06 (session 23)
-- Updated By: Assistant (Phase 8D AU-01..AU-24 COMPLETE — 17 commits total)
+- Last Updated: 2026-04-07 (session 24)
+- Updated By: Assistant (Phase 8E PE-01..PE-11 COMPLETE — 9 commits)
 - Active Branch: `main`
-- HEAD: pending commit — feat(editor): AU-07 audio attachment attrs
+- HEAD: `5dcab71` — feat(settings): PE-10 media generation model selectors
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -31,7 +31,27 @@
 
 ## Current Active Work
 
-**Phase:** Phase 8D (unified audio) COMPLETE. AU-01..AU-24 all 24 tasks done.
+**Phase:** Phase 8E (AI provider capabilities + media generation) COMPLETE. PE-01..PE-11 all 11 tasks done.
+
+**What was done in this session (2026-04-07, session 24):**
+
+Phase 8E — AI provider capabilities + media generation (9 commits).
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| PE-01: BE — capability filter (`?capability=tts`) on listUserModels | `provider-registry-service/server.go` | `a310e83` |
+| PE-02: FE — media capabilities in CapabilityFlags (tts, stt, image_gen, video_gen, embedding, moderation) + capability param on API client | `CapabilityFlags.tsx`, `settings/api.ts` | `a6fd64c` |
+| PE-03: FE — filter TTSSettings to tts models, ImageBlockNode to image_gen models + capability_flags on UserModel type | `TTSSettings.tsx`, `ImageBlockNode.tsx`, `ai-models/api.ts` | `e00cf57` |
+| PE-04: BE — add usage billing (purpose=image_generation) to existing image gen endpoint | `media.go` | `7098e28` |
+| PE-05: BE — integration tests (27 scenarios: validation, auth, upload, versions, capability filter) | `test-image-gen.sh` (new) | `78b9858` |
+| PE-06: FE — wire image gen in editor (already done — verified) | — | — |
+| PE-07: BE — video-gen-service provider adapter (resolve creds, call Sora-compatible API, MinIO storage, billing) | `generate.py`, `main.py`, `requirements.txt`, `docker-compose.yml` | `9d2b239` |
+| PE-08: BE — video gen integration tests (13 scenarios) | `test-video-gen.sh` (new) | `0f9736f` |
+| PE-09: FE — wire VideoBlockNode to provider-registry video_gen model | `VideoBlockNode.tsx` | `fb6cb47` |
+| PE-10: FE — AI Models section in ReadingTab (TTS/image/video model selectors, voice picker, image size) | `ReadingTab.tsx` | `5dcab71` |
+| PE-11: BE — preconfig catalog (already done — tts-1, dall-e-3, gpt-image-1 in openai_models.json) | — | — |
+
+**9-phase workflow followed for each task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
 **What was done in this session (2026-04-06, session 23):**
 
