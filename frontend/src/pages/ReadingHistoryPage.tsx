@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { BookOpen, Clock, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type ReadingHistoryEntry } from '@/features/books/api';
-import { cn } from '@/lib/utils';
 
 type BookGroup = {
   book_id: string;
@@ -92,7 +91,7 @@ export default function ReadingHistoryPage() {
                         {formatTime(g.total_time_ms)}
                       </span>
                       <span>{g.chapters.length} {g.chapters.length === 1 ? 'chapter' : 'chapters'} read</span>
-                      <span>{completion}% complete</span>
+                      <span>{completion}% fully read</span>
                       <span className="text-muted-foreground/50">
                         Last read {new Date(g.last_read).toLocaleDateString()}
                       </span>
