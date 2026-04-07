@@ -131,13 +131,16 @@ class TranslationJob(BaseModel):
 
 
 class TranslateTextRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=30_000)
+    text: str = Field(default="", max_length=30_000)
+    blocks: list[dict] | None = None  # Tiptap block array (Phase 8F block mode)
     source_language: str = "auto"
     target_language: str | None = None  # None = use user's preference
 
 
 class TranslateTextResponse(BaseModel):
-    translated_text: str
+    translated_text: str | None = None  # text mode result
+    translated_blocks: list[dict] | None = None  # block mode result (Tiptap JSON)
+    translated_body_format: str = "text"  # "text" or "json"
     source_language: str
     target_language: str
     input_tokens: int | None = None

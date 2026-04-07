@@ -56,6 +56,86 @@ async def translate_text(
 
     source_language = body.source_language if body.source_language != "auto" else "auto-detect"
 
+    # ── Block mode (Phase 8F) ──────────────────────────────────────────────
+    if body.blocks and len(body.blocks) > 0:
+        from ..workers.block_classifier import classify_block, extract_translatable_text, rebuild_block
+        from ..workers.block_batcher import build_batch_plan, parse_translated_blocks, BLOCK_MARKER
+
+        plan = build_batch_plan(body.blocks, context_window_tokens=8192)
+        if not plan.batches:
+            return TranslateTextResponse(
+                translated_blocks=body.blocks,
+                translated_body_format="json",
+                source_language=source_language,
+                target_language=target_language,
+            )
+
+        token = mint_user_jwt(user_id, app_settings.jwt_secret, ttl_seconds=120)
+        invoke_timeout = prefs["invoke_timeout_secs"] if prefs else 120
+
+        from ..workers.session_translator import _BLOCK_SYSTEM_PROMPT, _SafeFormatMap, _lang_name
+        sys_content = _BLOCK_SYSTEM_PROMPT.format_map(_SafeFormatMap({
+            "source_lang": _lang_name(source_language),
+            "source_code": source_language,
+            "target_lang": _lang_name(target_language),
+            "target_code": target_language,
+        }))
+
+        translated_texts: dict[int, str] = {}
+        total_in = 0
+        total_out = 0
+
+        async with httpx.AsyncClient(timeout=invoke_timeout) as client:
+            for batch in plan.batches:
+                combined = batch.combined_text()
+                try:
+                    r = await client.post(
+                        f"{app_settings.provider_registry_service_url}/v1/model-registry/invoke",
+                        json={
+                            "model_source": model_source,
+                            "model_ref": str(model_ref),
+                            "input": {"messages": [
+                                {"role": "system", "content": sys_content},
+                                {"role": "user", "content": f"Translate the following blocks from {_lang_name(source_language)} to {_lang_name(target_language)}:\n\n{combined}"},
+                            ]},
+                        },
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
+                except httpx.TimeoutException:
+                    continue
+                except httpx.RequestError:
+                    continue
+                if not r.is_success:
+                    continue
+                resp = r.json()
+                from ..workers.content_extractor import extract_content
+                response_text = extract_content(resp.get("output") or {})
+                usage = resp.get("usage") or {}
+                total_in += int(usage.get("input_tokens") or 0)
+                total_out += int(usage.get("output_tokens") or 0)
+                parsed = parse_translated_blocks(response_text, batch.block_indices)
+                translated_texts.update(parsed)
+
+        result_blocks = []
+        for entry in plan.all_entries:
+            if entry.index in translated_texts:
+                result_blocks.append(rebuild_block(entry.block, translated_texts[entry.index]))
+            else:
+                result_blocks.append(entry.block)
+
+        return TranslateTextResponse(
+            translated_blocks=result_blocks,
+            translated_body_format="json",
+            source_language=source_language,
+            target_language=target_language,
+            input_tokens=total_in or None,
+            output_tokens=total_out or None,
+        )
+
+    # ── Text mode (legacy) ─────────────────────────────────────────────────
+    if not body.text:
+        raise HTTPException(status_code=422, detail="Either text or blocks is required")
+
     # Safe format_map that leaves unknown {placeholders} unchanged
     class _SafeMap(dict):
         def __missing__(self, key: str) -> str:
@@ -65,7 +145,6 @@ async def translate_text(
         source_language=source_language,
         target_language=target_language,
         chapter_text=body.text,
-        # Also support language code variants that some prompts use
         source_lang=source_language,
         target_lang=target_language,
         source_code=source_language,
@@ -75,7 +154,6 @@ async def translate_text(
     user_msg = user_prompt_tpl.format_map(fmt)
     system_msg = system_prompt.format_map(fmt)
 
-    # Mint JWT for provider-registry call
     token = mint_user_jwt(user_id, app_settings.jwt_secret, ttl_seconds=120)
     invoke_timeout = prefs["invoke_timeout_secs"] if prefs else 120
 
