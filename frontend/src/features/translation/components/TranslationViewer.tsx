@@ -3,6 +3,7 @@ import { Check, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { versionsApi, type ChapterTranslation } from '../api';
 import { useAuth } from '@/auth';
+import { ContentRenderer } from '@/components/reader/ContentRenderer';
 
 interface TranslationViewerProps {
   chapterId: string;
@@ -91,6 +92,15 @@ export function TranslationViewer({ chapterId, versionId, isActive, onSetActive 
               Active
             </span>
           )}
+          {version.translated_body_format === 'json' ? (
+            <span className="rounded-full bg-[#8b5cf6]/10 px-2 py-0.5 text-[10px] font-medium text-[#8b5cf6]">
+              Block {Array.isArray(version.translated_body_json) ? `(${version.translated_body_json.length})` : ''}
+            </span>
+          ) : version.status === 'completed' && (
+            <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+              Text
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {version.input_tokens != null && (
@@ -122,7 +132,11 @@ export function TranslationViewer({ chapterId, versionId, isActive, onSetActive 
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
-        {version.translated_body ? (
+        {version.translated_body_format === 'json' && Array.isArray(version.translated_body_json) ? (
+          <div className="mx-auto max-w-[680px]">
+            <ContentRenderer blocks={version.translated_body_json as any} />
+          </div>
+        ) : version.translated_body ? (
           <div className="mx-auto max-w-[680px] whitespace-pre-wrap font-serif text-[15px] leading-[1.9] text-foreground/90">
             {version.translated_body}
           </div>
