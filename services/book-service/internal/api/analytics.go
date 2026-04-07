@@ -206,4 +206,58 @@ func (s *Server) getBookStats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// nilIfEmpty is already defined in media.go — reused here
+// ── Reading History (all books) ──────────────────────────────────────────────
+
+func (s *Server) getReadingHistory(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
+		return
+	}
+
+	rows, err := s.pool.Query(r.Context(), `
+		SELECT rp.book_id, rp.chapter_id, rp.read_at, rp.time_spent_ms, rp.scroll_depth, rp.read_count,
+		       b.title AS book_title,
+		       ch.title AS chapter_title,
+		       ch.sort_order
+		FROM reading_progress rp
+		JOIN books b ON b.id = rp.book_id AND b.lifecycle_state = 'active'
+		LEFT JOIN chapters ch ON ch.id = rp.chapter_id
+		WHERE rp.user_id = $1
+		ORDER BY rp.read_at DESC
+		LIMIT 100
+	`, userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "ANALYTICS_ERROR", "query failed")
+		return
+	}
+	defer rows.Close()
+
+	items := make([]map[string]any, 0)
+	for rows.Next() {
+		var bookID, chapterID uuid.UUID
+		var readAt time.Time
+		var timeSpent int64
+		var scrollDepth float64
+		var readCount int
+		var bookTitle string
+		var chapterTitle *string
+		var sortOrder *int
+		if err := rows.Scan(&bookID, &chapterID, &readAt, &timeSpent, &scrollDepth, &readCount,
+			&bookTitle, &chapterTitle, &sortOrder); err != nil {
+			continue
+		}
+		items = append(items, map[string]any{
+			"book_id":       bookID,
+			"chapter_id":    chapterID,
+			"read_at":       readAt,
+			"time_spent_ms": timeSpent,
+			"scroll_depth":  scrollDepth,
+			"read_count":    readCount,
+			"book_title":    bookTitle,
+			"chapter_title": chapterTitle,
+			"sort_order":    sortOrder,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}

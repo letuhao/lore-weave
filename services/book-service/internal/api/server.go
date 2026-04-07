@@ -94,6 +94,7 @@ func (s *Server) Router() http.Handler {
 
 	r.Route("/v1/books", func(r chi.Router) {
 		r.Get("/storage-usage", s.getStorageUsage)
+		r.Get("/reading-history", s.getReadingHistory)
 		r.Post("/", s.createBook)
 		r.Get("/", s.listBooks)
 		r.Get("/trash", s.listTrashedBooks)

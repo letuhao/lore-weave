@@ -501,6 +501,14 @@ export const booksApi = {
     return res.json();
   },
 
+  async getReadingHistory(token: string): Promise<{ items: ReadingHistoryEntry[] }> {
+    const res = await fetch(`${base()}/v1/books/reading-history`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return { items: [] };
+    return res.json();
+  },
+
   async getBookStats(token: string, bookId: string): Promise<BookStats> {
     const res = await fetch(`${base()}/v1/books/${bookId}/stats`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -524,6 +532,18 @@ export type BookStats = {
   total_readers: number;
   avg_time_ms: number;
   avg_scroll_depth: number;
+};
+
+export type ReadingHistoryEntry = {
+  book_id: string;
+  chapter_id: string;
+  read_at: string;
+  time_spent_ms: number;
+  scroll_depth: number;
+  read_count: number;
+  book_title: string;
+  chapter_title: string | null;
+  sort_order: number | null;
 };
 
 // ── Types ───────────────────────────────────────────────────────────────
