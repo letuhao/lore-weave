@@ -131,13 +131,25 @@ func (s *Server) createNotification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userID, err := uuid.Parse(body.UserID)
-	if err != nil || body.Title == "" {
+	if err != nil || strings.TrimSpace(body.Title) == "" {
 		writeError(w, http.StatusBadRequest, "NOTIF_VALIDATION_ERROR", "user_id and title required")
+		return
+	}
+	if len(body.Title) > 500 {
+		writeError(w, http.StatusBadRequest, "NOTIF_VALIDATION_ERROR", "title exceeds 500 chars")
+		return
+	}
+	if len(body.Body) > 5000 {
+		writeError(w, http.StatusBadRequest, "NOTIF_VALIDATION_ERROR", "body exceeds 5000 chars")
 		return
 	}
 	category := body.Category
 	if category == "" {
 		category = "system"
+	}
+	if !validCategory(category) {
+		writeError(w, http.StatusBadRequest, "NOTIF_VALIDATION_ERROR", "invalid category")
+		return
 	}
 	meta, _ := json.Marshal(body.Metadata)
 	if body.Metadata == nil {
@@ -183,14 +195,20 @@ func (s *Server) createNotificationBatch(w http.ResponseWriter, r *http.Request)
 
 	ctx := r.Context()
 	created := 0
+	failed := 0
 	for _, n := range body.Notifications {
 		userID, err := uuid.Parse(n.UserID)
-		if err != nil || n.Title == "" {
+		if err != nil || strings.TrimSpace(n.Title) == "" || len(n.Title) > 500 {
+			failed++
 			continue
 		}
 		cat := n.Category
 		if cat == "" {
 			cat = "system"
+		}
+		if !validCategory(cat) {
+			failed++
+			continue
 		}
 		meta, _ := json.Marshal(n.Metadata)
 		if n.Metadata == nil {
@@ -202,9 +220,11 @@ func (s *Server) createNotificationBatch(w http.ResponseWriter, r *http.Request)
 			userID, cat, n.Title, n.Body, meta)
 		if err == nil {
 			created++
+		} else {
+			failed++
 		}
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"created": created})
+	writeJSON(w, http.StatusCreated, map[string]any{"created": created, "failed": failed})
 }
 
 // ── Public Handlers ───────────────────────────────────────────────────────
@@ -248,7 +268,7 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	items := make([]map[string]any, 0)
+	items := make([]map[string]any, 0, limit)
 	for rows.Next() {
 		var id uuid.UUID
 		var cat, title string
@@ -271,6 +291,10 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 			m["body"] = *body
 		}
 		items = append(items, m)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "NOTIF_INTERNAL_ERROR", "row iteration failed")
+		return
 	}
 
 	// Total count
@@ -369,6 +393,14 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, errorBody{Code: code, Message: message})
+}
+
+var allowedCategories = map[string]bool{
+	"translation": true, "social": true, "wiki": true, "system": true,
+}
+
+func validCategory(c string) bool {
+	return allowedCategories[c]
 }
 
 func queryInt(r *http.Request, key string, def int) int {

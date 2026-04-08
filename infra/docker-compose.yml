@@ -208,11 +208,12 @@ services:
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
+      NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       PORT: "8087"
     depends_on:
       postgres:
         condition: service_healthy
-
       rabbitmq:
         condition: service_healthy
       book-service:
@@ -232,6 +233,8 @@ services:
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
+      NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
     depends_on:
       postgres:
         condition: service_healthy

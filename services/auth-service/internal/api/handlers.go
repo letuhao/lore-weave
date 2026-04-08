@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -1100,7 +1101,7 @@ func (s *Server) sendNotification(userID, category, title, body string, metadata
 		"body":     body,
 		"metadata": metadata,
 	})
-	req, err := http.NewRequest(http.MethodPost, s.cfg.NotificationServiceInternalURL+"/internal/notifications", strings.NewReader(string(payload)))
+	req, err := http.NewRequest(http.MethodPost, s.cfg.NotificationServiceInternalURL+"/internal/notifications", bytes.NewReader(payload))
 	if err != nil {
 		return
 	}
