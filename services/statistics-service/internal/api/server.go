@@ -65,6 +65,7 @@ func (s *Server) Router() http.Handler {
 	r.Route("/v1/stats", func(r chi.Router) {
 		r.Get("/books/{book_id}", s.statsBook)
 		r.Get("/authors/{user_id}", s.statsAuthor)
+		r.Get("/translators/{user_id}", s.statsTranslator)
 		r.Get("/overview", s.statsOverview)
 	})
 
@@ -458,6 +459,50 @@ func (s *Server) statsAuthor(w http.ResponseWriter, r *http.Request) {
 		"avg_time_ms":    avgTimeMs,
 		"total_chapters": totalChapters,
 		"avg_rating":     avgRating,
+	})
+}
+
+func (s *Server) statsTranslator(w http.ResponseWriter, r *http.Request) {
+	userID, err := uuid.Parse(chi.URLParam(r, "user_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "STATS_VALIDATION_ERROR", "invalid user_id")
+		return
+	}
+
+	var totalTranslations, totalChaptersDone, translations7d, translations30d int
+	var languages []string
+	var displayName string
+
+	err = s.pool.QueryRow(r.Context(), `
+		SELECT display_name, total_translations, total_chapters_done,
+			translations_7d, translations_30d, languages
+		FROM translator_stats WHERE user_id=$1
+	`, userID).Scan(&displayName, &totalTranslations, &totalChaptersDone,
+		&translations7d, &translations30d, &languages)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"user_id":             userID,
+			"display_name":        "",
+			"total_translations":  0,
+			"total_chapters_done": 0,
+			"translations_7d":     0,
+			"translations_30d":    0,
+			"languages":           []string{},
+		})
+		return
+	}
+	if languages == nil {
+		languages = []string{}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user_id":             userID,
+		"display_name":        displayName,
+		"total_translations":  totalTranslations,
+		"total_chapters_done": totalChaptersDone,
+		"translations_7d":     translations7d,
+		"translations_30d":    translations30d,
+		"languages":           languages,
 	})
 }
 

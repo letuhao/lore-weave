@@ -1,0 +1,36 @@
+{
+  "anonymous": "匿名",
+  "joined": "{{date}}に参加",
+  "followers": "フォロワー",
+  "following": "フォロー中",
+  "follow": "フォロー",
+  "unfollow": "フォロー中",
+  "editProfile": "プロフィール編集",
+  "loading": "読み込み中...",
+  "noBooks": "まだ本が公開されていません。",
+  "noTranslations": "まだ翻訳がありません。",
+  "errorLoading": "プロフィールの読み込みに失敗しました。",
+  "userNotFound": "ユーザーが見つかりません。",
+  "achievements": "実績",
+  "comingSoon": "{{feature}} — 近日公開",
+  "chapters": "章",
+  "readers": "読者",
+  "recentActivity": "最近のアクティビティ",
+  "last7d": "過去7日間",
+  "last30d": "過去30日間",
+  "translationLanguages": "翻訳言語",
+  "stats": {
+    "books": "書籍",
+    "chaptersTranslated": "翻訳済み章数",
+    "totalReaders": "総読者数",
+    "followers": "フォロワー",
+    "totalTranslations": "総翻訳数",
+    "languages": "言語"
+  },
+  "tabs": {
+    "books": "書籍",
+    "translations": "翻訳",
+    "wiki": "Wiki貢献",
+    "reviews": "レビュー"
+  }
+}

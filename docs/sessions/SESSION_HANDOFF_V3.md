@@ -1,11 +1,11 @@
 # Session Handoff — Session 26
 
 > **Purpose:** Give the next agent complete context to continue.
-> **Date:** 2026-04-08 (session 26 end)
-> **Last commit:** `a6f5d53` — feat(statistics): add statistics-service with event-driven leaderboard pipeline
-> **Uncommitted work:** P9-01 leaderboard backend gaps + full frontend + review fixes (see below)
+> **Date:** 2026-04-08 (session 27 — corrected)
+> **Last commit:** `c190e03` — feat(leaderboard): P9-01 full-stack leaderboard — backend gaps + frontend + review fixes
+> **Uncommitted work:** None
 > **Previous focus:** P9-07 .docx/.epub import (session 25)
-> **Current focus:** P9-01 Leaderboard COMPLETE (build + review)
+> **Current focus:** Phase 9 remaining tasks (10 left)
 
 ---
 
@@ -51,23 +51,9 @@
 
 ---
 
-## 2. Uncommitted Changes
+## 2. Committed Changes
 
-All P9-01 work is uncommitted. The statistics-service skeleton was committed in session 25 (`a6f5d53`), but the backend gaps (A1-A3) and all frontend work are staged/unstaged changes.
-
-Key modified files:
-- `services/auth-service/internal/api/server.go` — internal route
-- `services/auth-service/internal/api/handlers.go` — internalGetUserProfile handler
-- `services/statistics-service/internal/migrate/migrate.go` — display_name + translation_count columns
-- `services/statistics-service/internal/consumer/consumer.go` — display name fetch, translation count, translator name refresh
-- `services/statistics-service/internal/api/server.go` — display_name + translation_count in responses, trending sort
-- `services/statistics-service/internal/config/config.go` — AuthServiceInternalURL
-- `infra/docker-compose.yml` — AUTH_SERVICE_INTERNAL_URL env + depends_on
-- `frontend/src/features/leaderboard/*` — 10 new files
-- `frontend/src/pages/LeaderboardPage.tsx` — new
-- `frontend/src/i18n/locales/*/leaderboard.json` — 4 new files
-- `frontend/src/i18n/index.ts` — leaderboard namespace registered
-- `frontend/src/App.tsx` — LeaderboardPage route
+All P9-01 work was committed at `c190e03` — feat(leaderboard): P9-01 full-stack leaderboard — backend gaps + frontend + review fixes. Working tree is clean.
 
 ---
 

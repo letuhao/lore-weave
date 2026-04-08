@@ -206,8 +206,9 @@ func (s *Server) listPublicBooks(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query().Get("q")
 	language := r.URL.Query().Get("language")
-	genre := r.URL.Query().Get("genre") // filter by genre tag (OR if comma-separated)
-	sortBy := r.URL.Query().Get("sort") // recent, chapters, alpha
+	genre := r.URL.Query().Get("genre")  // filter by genre tag (OR if comma-separated)
+	sortBy := r.URL.Query().Get("sort")  // recent, chapters, alpha
+	author := r.URL.Query().Get("author") // filter by owner_user_id
 
 	// Parse genre filter into a set for fast lookup
 	genreFilter := make(map[string]bool)
@@ -240,6 +241,12 @@ func (s *Server) listPublicBooks(w http.ResponseWriter, r *http.Request) {
 		if st != http.StatusOK || p.LifecycleState != "active" {
 			continue
 		}
+		// Author filter
+		if author != "" {
+			if aid, err := uuid.Parse(author); err == nil && p.OwnerUserID != aid {
+				continue
+			}
+		}
 		// Language filter
 		if language != "" && (p.OriginalLanguage == nil || *p.OriginalLanguage != language) {
 			continue
@@ -264,6 +271,7 @@ func (s *Server) listPublicBooks(w http.ResponseWriter, r *http.Request) {
 		all = append(all, entry{
 			data: map[string]any{
 				"book_id":           p.BookID,
+				"owner_user_id":     p.OwnerUserID,
 				"title":             p.Title,
 				"description":       p.Description,
 				"original_language": p.OriginalLanguage,

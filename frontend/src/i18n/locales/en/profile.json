@@ -1,0 +1,36 @@
+{
+  "anonymous": "Anonymous",
+  "joined": "Joined {{date}}",
+  "followers": "followers",
+  "following": "following",
+  "follow": "Follow",
+  "unfollow": "Following",
+  "editProfile": "Edit Profile",
+  "loading": "Loading...",
+  "noBooks": "No books published yet.",
+  "noTranslations": "No translations yet.",
+  "errorLoading": "Failed to load profile.",
+  "userNotFound": "User not found.",
+  "achievements": "Achievements",
+  "comingSoon": "{{feature}} — Coming soon",
+  "chapters": "chapters",
+  "readers": "readers",
+  "recentActivity": "Recent Activity",
+  "last7d": "Last 7 days",
+  "last30d": "Last 30 days",
+  "translationLanguages": "Translation Languages",
+  "stats": {
+    "books": "Books",
+    "chaptersTranslated": "Chapters translated",
+    "totalReaders": "Total readers",
+    "followers": "Followers",
+    "totalTranslations": "Total translations",
+    "languages": "Languages"
+  },
+  "tabs": {
+    "books": "Books",
+    "translations": "Translations",
+    "wiki": "Wiki Contributions",
+    "reviews": "Reviews"
+  }
+}

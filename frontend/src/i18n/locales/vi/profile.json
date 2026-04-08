@@ -1,0 +1,36 @@
+{
+  "anonymous": "Ẩn danh",
+  "joined": "Tham gia {{date}}",
+  "followers": "người theo dõi",
+  "following": "đang theo dõi",
+  "follow": "Theo dõi",
+  "unfollow": "Đang theo dõi",
+  "editProfile": "Chỉnh sửa hồ sơ",
+  "loading": "Đang tải...",
+  "noBooks": "Chưa có sách nào được xuất bản.",
+  "noTranslations": "Chưa có bản dịch nào.",
+  "errorLoading": "Không thể tải hồ sơ.",
+  "userNotFound": "Không tìm thấy người dùng.",
+  "achievements": "Thành tựu",
+  "comingSoon": "{{feature}} — Sắp ra mắt",
+  "chapters": "chương",
+  "readers": "độc giả",
+  "recentActivity": "Hoạt động gần đây",
+  "last7d": "7 ngày qua",
+  "last30d": "30 ngày qua",
+  "translationLanguages": "Ngôn ngữ dịch",
+  "stats": {
+    "books": "Sách",
+    "chaptersTranslated": "Chương đã dịch",
+    "totalReaders": "Tổng độc giả",
+    "followers": "Người theo dõi",
+    "totalTranslations": "Tổng bản dịch",
+    "languages": "Ngôn ngữ"
+  },
+  "tabs": {
+    "books": "Sách",
+    "translations": "Bản dịch",
+    "wiki": "Đóng góp Wiki",
+    "reviews": "Đánh giá"
+  }
+}

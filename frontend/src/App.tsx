@@ -41,6 +41,7 @@ import { ChapterTranslationsPage } from '@/pages/ChapterTranslationsPage';
 import TranslationReviewPage from '@/pages/TranslationReviewPage';
 import ReadingHistoryPage from '@/pages/ReadingHistoryPage';
 import { LeaderboardPage } from '@/pages/LeaderboardPage';
+import { ProfilePage } from '@/pages/ProfilePage';
 
 function AuthenticatedThemeProvider({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();
@@ -75,7 +76,7 @@ export function App() {
             <Route path="/browse/:bookId" element={<PublicBookDetailPage />} />
             <Route path="/reading-history" element={<ReadingHistoryPage />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
-            <Route path="/users/:userId" element={<PlaceholderPage title="User Profile" />} />
+            <Route path="/users/:userId" element={<ProfilePage />} />
           </Route>
 
           {/* Reader — full screen, no sidebar */}

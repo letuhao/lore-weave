@@ -193,6 +193,15 @@ CREATE TABLE IF NOT EXISTS import_jobs (
   completed_at     TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_import_jobs_book ON import_jobs(book_id, created_at DESC);
+
+-- P9-02: User favorites
+CREATE TABLE IF NOT EXISTS user_favorites (
+  user_id    UUID NOT NULL,
+  book_id    UUID NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, book_id)
+);
+CREATE INDEX IF NOT EXISTS idx_favorites_book ON user_favorites(book_id);
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

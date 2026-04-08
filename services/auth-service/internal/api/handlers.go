@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -288,22 +289,27 @@ func (s *Server) getProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	var email string
-	var displayName, locale, avatarURL *string
+	var displayName, locale, avatarURL, bio *string
+	var languages []string
 	var emailVerified bool
 	var updatedAt time.Time
 	err = s.pool.QueryRow(ctx, `
-		SELECT email, display_name, locale, avatar_url, email_verified, updated_at
+		SELECT email, display_name, locale, avatar_url, email_verified, updated_at, bio, languages
 		FROM users WHERE id = $1`, uid,
-	).Scan(&email, &displayName, &locale, &avatarURL, &emailVerified, &updatedAt)
+	).Scan(&email, &displayName, &locale, &avatarURL, &emailVerified, &updatedAt, &bio, &languages)
 	if err != nil {
 		writeErr(w, http.StatusUnauthorized, "AUTH_TOKEN_INVALID", "user not found")
 		return
+	}
+	if languages == nil {
+		languages = []string{}
 	}
 	m := map[string]any{
 		"user_id":        uid.String(),
 		"email":          email,
 		"email_verified": emailVerified,
 		"updated_at":     updatedAt.UTC().Format(time.RFC3339Nano),
+		"languages":      languages,
 	}
 	if displayName != nil {
 		m["display_name"] = *displayName
@@ -313,6 +319,9 @@ func (s *Server) getProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	if avatarURL != nil {
 		m["avatar_url"] = *avatarURL
+	}
+	if bio != nil {
+		m["bio"] = *bio
 	}
 	writeJSON(w, http.StatusOK, m)
 }
@@ -335,7 +344,7 @@ func (s *Server) patchProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	// simple patch: only known keys
-	var dn, loc, av *string
+	var dn, loc, av, bi *string
 	if v, ok := body["display_name"]; ok && v != nil {
 		s := fmt.Sprint(v)
 		dn = &s
@@ -348,14 +357,29 @@ func (s *Server) patchProfile(w http.ResponseWriter, r *http.Request) {
 		s := fmt.Sprint(v)
 		av = &s
 	}
+	if v, ok := body["bio"]; ok && v != nil {
+		s := fmt.Sprint(v)
+		bi = &s
+	}
+	// languages: expect []string
+	var langs []string
+	if v, ok := body["languages"]; ok && v != nil {
+		if arr, ok := v.([]any); ok {
+			for _, item := range arr {
+				langs = append(langs, fmt.Sprint(item))
+			}
+		}
+	}
 	_, err = s.pool.Exec(ctx, `
 		UPDATE users SET
 		  display_name = COALESCE($2, display_name),
 		  locale = COALESCE($3, locale),
 		  avatar_url = COALESCE($4, avatar_url),
+		  bio = COALESCE($5, bio),
+		  languages = COALESCE($6, languages),
 		  updated_at = now()
 		WHERE id = $1`,
-		uid, dn, loc, av)
+		uid, dn, loc, av, bi, langs)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "update failed")
 		return
@@ -821,6 +845,218 @@ func (s *Server) patchPreferences(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]json.RawMessage{"prefs": result})
+}
+
+// ── Public User Profile ───────────────────────────────────────────────────
+
+func (s *Server) getPublicProfile(w http.ResponseWriter, r *http.Request) {
+	userID, err := uuid.Parse(chi.URLParam(r, "user_id"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "invalid user_id")
+		return
+	}
+	ctx := r.Context()
+
+	var displayName, avatarURL, bio *string
+	var languages []string
+	var createdAt time.Time
+	err = s.pool.QueryRow(ctx, `
+		SELECT display_name, avatar_url, bio, languages, created_at
+		FROM users WHERE id = $1 AND account_status = 'active'`, userID,
+	).Scan(&displayName, &avatarURL, &bio, &languages, &createdAt)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "AUTH_USER_NOT_FOUND", "user not found")
+		return
+	}
+	if languages == nil {
+		languages = []string{}
+	}
+
+	var followerCount, followingCount int64
+	_ = s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM user_follows f JOIN users u ON u.id = f.follower_id AND u.account_status='active' WHERE f.following_id = $1`, userID).Scan(&followerCount)
+	_ = s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM user_follows f JOIN users u ON u.id = f.following_id AND u.account_status='active' WHERE f.follower_id = $1`, userID).Scan(&followingCount)
+
+	m := map[string]any{
+		"user_id":         userID.String(),
+		"languages":       languages,
+		"created_at":      createdAt.UTC().Format(time.RFC3339Nano),
+		"follower_count":  followerCount,
+		"following_count": followingCount,
+		"is_following":    false,
+	}
+	if displayName != nil {
+		m["display_name"] = *displayName
+	} else {
+		m["display_name"] = ""
+	}
+	if avatarURL != nil {
+		m["avatar_url"] = *avatarURL
+	}
+	if bio != nil {
+		m["bio"] = *bio
+	}
+
+	// Check is_following if caller is authenticated (optional JWT)
+	if tok := bearerToken(r); tok != "" {
+		if claims, err := authjwt.ParseAccess(s.secret, tok); err == nil {
+			if callerID, err := uuid.Parse(claims.Subject); err == nil && callerID != userID {
+				var exists bool
+				_ = s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM user_follows WHERE follower_id=$1 AND following_id=$2)`, callerID, userID).Scan(&exists)
+				m["is_following"] = exists
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, m)
+}
+
+// ── Follow System ─────────────────────────────────────────────────────────
+
+func (s *Server) followUser(w http.ResponseWriter, r *http.Request) {
+	claims, err := s.parseAccess(r)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, jwtErrorCode(err), "invalid access token")
+		return
+	}
+	followerID, _ := uuid.Parse(claims.Subject)
+	followingID, err := uuid.Parse(chi.URLParam(r, "user_id"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "invalid user_id")
+		return
+	}
+	if followerID == followingID {
+		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "cannot follow yourself")
+		return
+	}
+	// Verify target user exists
+	var exists bool
+	_ = s.pool.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND account_status='active')`, followingID).Scan(&exists)
+	if !exists {
+		writeErr(w, http.StatusNotFound, "AUTH_USER_NOT_FOUND", "user not found")
+		return
+	}
+	_, _ = s.pool.Exec(r.Context(), `
+		INSERT INTO user_follows (follower_id, following_id) VALUES ($1, $2)
+		ON CONFLICT DO NOTHING`, followerID, followingID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) unfollowUser(w http.ResponseWriter, r *http.Request) {
+	claims, err := s.parseAccess(r)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, jwtErrorCode(err), "invalid access token")
+		return
+	}
+	followerID, _ := uuid.Parse(claims.Subject)
+	followingID, err := uuid.Parse(chi.URLParam(r, "user_id"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "invalid user_id")
+		return
+	}
+	_, _ = s.pool.Exec(r.Context(), `DELETE FROM user_follows WHERE follower_id=$1 AND following_id=$2`, followerID, followingID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) listFollowers(w http.ResponseWriter, r *http.Request) {
+	userID, err := uuid.Parse(chi.URLParam(r, "user_id"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "invalid user_id")
+		return
+	}
+	limit := 20
+	offset := 0
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, e := strconv.Atoi(v); e == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if n, e := strconv.Atoi(v); e == nil && n >= 0 {
+			offset = n
+		}
+	}
+	rows, err := s.pool.Query(r.Context(), `
+		SELECT u.id, u.display_name, u.avatar_url FROM user_follows f
+		JOIN users u ON u.id = f.follower_id AND u.account_status = 'active'
+		WHERE f.following_id = $1
+		ORDER BY f.created_at DESC LIMIT $2 OFFSET $3`, userID, limit, offset)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL_ERROR", "query failed")
+		return
+	}
+	defer rows.Close()
+	items := make([]map[string]any, 0)
+	for rows.Next() {
+		var uid uuid.UUID
+		var dn, av *string
+		if err := rows.Scan(&uid, &dn, &av); err != nil {
+			continue
+		}
+		m := map[string]any{"user_id": uid.String()}
+		if dn != nil {
+			m["display_name"] = *dn
+		} else {
+			m["display_name"] = ""
+		}
+		if av != nil {
+			m["avatar_url"] = *av
+		}
+		items = append(items, m)
+	}
+	var total int64
+	_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM user_follows WHERE following_id=$1`, userID).Scan(&total)
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
+}
+
+func (s *Server) listFollowing(w http.ResponseWriter, r *http.Request) {
+	userID, err := uuid.Parse(chi.URLParam(r, "user_id"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "invalid user_id")
+		return
+	}
+	limit := 20
+	offset := 0
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, e := strconv.Atoi(v); e == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if n, e := strconv.Atoi(v); e == nil && n >= 0 {
+			offset = n
+		}
+	}
+	rows, err := s.pool.Query(r.Context(), `
+		SELECT u.id, u.display_name, u.avatar_url FROM user_follows f
+		JOIN users u ON u.id = f.following_id AND u.account_status = 'active'
+		WHERE f.follower_id = $1
+		ORDER BY f.created_at DESC LIMIT $2 OFFSET $3`, userID, limit, offset)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL_ERROR", "query failed")
+		return
+	}
+	defer rows.Close()
+	items := make([]map[string]any, 0)
+	for rows.Next() {
+		var uid uuid.UUID
+		var dn, av *string
+		if err := rows.Scan(&uid, &dn, &av); err != nil {
+			continue
+		}
+		m := map[string]any{"user_id": uid.String()}
+		if dn != nil {
+			m["display_name"] = *dn
+		} else {
+			m["display_name"] = ""
+		}
+		if av != nil {
+			m["avatar_url"] = *av
+		}
+		items = append(items, m)
+	}
+	var total int64
+	_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM user_follows WHERE follower_id=$1`, userID).Scan(&total)
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
 }
 
 // ── Internal (service-to-service) ──────────────────────────────────────────

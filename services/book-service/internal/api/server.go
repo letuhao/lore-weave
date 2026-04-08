@@ -100,12 +100,18 @@ func (s *Server) Router() http.Handler {
 		r.Get("/", s.listBooks)
 		r.Get("/trash", s.listTrashedBooks)
 
+		// Favorites
+		r.Get("/favorites", s.listFavorites)
+
 		r.Route("/{book_id}", func(r chi.Router) {
 			r.Get("/", s.getBook)
 			r.Patch("/", s.patchBook)
 			r.Delete("/", s.trashBook)
 			r.Post("/restore", s.restoreBook)
 			r.Delete("/purge", s.purgeBook)
+			r.Post("/favorite", s.addFavorite)
+			r.Delete("/favorite", s.removeFavorite)
+			r.Get("/favorite", s.checkFavorite)
 
 			r.Get("/cover", s.getCover)
 			r.Post("/cover", s.uploadCover)

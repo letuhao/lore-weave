@@ -3799,10 +3799,10 @@ Task order:
     Route: /leaderboard
     Notes: Full-stack — statistics-service backend (display name denormalization, translation counts, trending sort) + frontend (Podium, RankingList, AuthorList, TranslatorList, QuickStatsCards, filters, i18n 4 langs). Auth-service internal profile endpoint added.
 
-  P9-02: User profile page [FE]
-    Status: [ ]
+  P9-02: User profile page [FS]
+    Status: [✓]
     Route: /users/:userId
-    Notes: Public profile, books authored, translation contributions
+    Notes: Full-stack — auth-service (bio/languages, public profile, follow system), book-service (favorites), catalog (author filter), statistics (translator stats endpoint). Frontend: ProfileHeader, StatsRow, AchievementBar, BooksTab, TranslationsTab, StubTab, ProfilePage, i18n 4 langs. Gateway /v1/users proxy.
 
   P9-03: Notification service + center [FS]
     Status: [ ]

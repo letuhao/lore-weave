@@ -1,0 +1,36 @@
+{
+  "anonymous": "匿名",
+  "joined": "{{date}} 加入",
+  "followers": "粉絲",
+  "following": "追蹤中",
+  "follow": "追蹤",
+  "unfollow": "追蹤中",
+  "editProfile": "編輯個人資料",
+  "loading": "載入中...",
+  "noBooks": "尚未出版任何書籍。",
+  "noTranslations": "尚無翻譯。",
+  "errorLoading": "無法載入個人資料。",
+  "userNotFound": "找不到使用者。",
+  "achievements": "成就",
+  "comingSoon": "{{feature}} — 即將推出",
+  "chapters": "章節",
+  "readers": "讀者",
+  "recentActivity": "近期活動",
+  "last7d": "過去7天",
+  "last30d": "過去30天",
+  "translationLanguages": "翻譯語言",
+  "stats": {
+    "books": "書籍",
+    "chaptersTranslated": "已翻譯章節",
+    "totalReaders": "總讀者數",
+    "followers": "粉絲",
+    "totalTranslations": "總翻譯數",
+    "languages": "語言"
+  },
+  "tabs": {
+    "books": "書籍",
+    "translations": "翻譯",
+    "wiki": "Wiki 貢獻",
+    "reviews": "評論"
+  }
+}

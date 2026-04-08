@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-08 (session 26 end)
-- Updated By: Assistant (P9-01 Leaderboard COMPLETE — full-stack: statistics-service backend gaps + full frontend + review fixes)
+- Last Updated: 2026-04-08 (session 27)
+- Updated By: Assistant (P9-02 User Profile — full-stack: follow system, favorites, public profile, 6 components, i18n 4 langs)
 - Active Branch: `main`
-- HEAD: `a6f5d53` — feat(statistics): add statistics-service with event-driven leaderboard pipeline
+- HEAD: pending commit
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
 
 ---
@@ -31,11 +31,34 @@
 
 ## Current Active Work
 
-**Phase:** All phases 8A-8H COMPLETE. Phase 9 in progress (P9-01 + P9-07 done, 10 remaining tasks).
+**Phase:** All phases 8A-8H COMPLETE. Phase 9 in progress (P9-01, P9-02, P9-07 done, 9 remaining tasks).
 
-**What was done in this session (2026-04-08, session 26):**
+**What was done in this session (2026-04-08, session 27):**
 
-P9-01 Leaderboard — full-stack implementation. Backend gaps (display name denormalization, translation counts, trending sort, auth-service internal endpoint) + full frontend (12 components, i18n 4 languages, route). Then review pass fixing 6 issues. Not yet committed (pending user commit request).
+P9-02 User Profile — full-stack implementation. Backend: bio/languages fields, public profile endpoint, follow system (table + 4 endpoints), favorites system (table + 3 endpoints), catalog author filter, translator stats endpoint. Frontend: 6 components (ProfileHeader, StatsRow, AchievementBar, BooksTab, TranslationsTab, StubTab), ProfilePage, i18n 4 languages. Review: 4 fixes (active user filter on followers/following/counts, achievement dedup). Gateway: `/v1/users` proxy added.
+
+| Work item | Files touched | Status |
+| --------- | ------------- | ------ |
+| BE-01: bio + languages migration + profile CRUD | `auth-service/migrate.go`, `handlers.go` | Done |
+| BE-02: public profile endpoint | `auth-service/handlers.go`, `server.go` | Done |
+| BE-03: follow system (table + 4 endpoints) | `auth-service/migrate.go`, `handlers.go`, `server.go` | Done |
+| BE-04: favorites system (table + 3 endpoints) | `book-service/migrate.go`, `favorites.go` (new), `server.go` | Done |
+| BE-05: catalog author filter | `catalog-service/server.go` | Done |
+| BE-06: translator stats by user endpoint | `statistics-service/server.go` | Done |
+| Gateway: /v1/users proxy | `gateway-setup.ts` | Done |
+| FE-01: API layer | `features/profile/api.ts` (new) | Done |
+| FE-02: ProfileHeader | `features/profile/ProfileHeader.tsx` (new) | Done |
+| FE-03: StatsRow + AchievementBar | `features/profile/StatsRow.tsx`, `AchievementBar.tsx` (new) | Done |
+| FE-04: BooksTab | `features/profile/BooksTab.tsx` (new) | Done |
+| FE-05: TranslationsTab + StubTab | `features/profile/TranslationsTab.tsx`, `StubTab.tsx` (new) | Done |
+| FE-06: ProfilePage + route + i18n | `pages/ProfilePage.tsx` (new), `App.tsx`, `i18n/index.ts`, 4 locale files | Done |
+| Review fixes: active user filter, achievement dedup | `handlers.go`, `AchievementBar.tsx` | Done |
+
+**9-phase workflow followed for P9-02:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
+
+**What was done in previous session (2026-04-08, session 26):**
+
+P9-01 Leaderboard — full-stack implementation. Backend gaps (display name denormalization, translation counts, trending sort, auth-service internal endpoint) + full frontend (12 components, i18n 4 languages, route). Then review pass fixing 6 issues. Committed at `c190e03`.
 
 | Work item | Files touched | Status |
 | --------- | ------------- | ------ |

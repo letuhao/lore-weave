@@ -65,6 +65,20 @@ CREATE TABLE IF NOT EXISTS user_preferences (
   prefs      JSONB NOT NULL DEFAULT '{}',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- P9-02: Profile extensions
+ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS languages TEXT[] DEFAULT '{}';
+
+-- P9-02: Follow system
+CREATE TABLE IF NOT EXISTS user_follows (
+  follower_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  following_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (follower_id, following_id),
+  CHECK (follower_id != following_id)
+);
+CREATE INDEX IF NOT EXISTS idx_follows_following ON user_follows(following_id);
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

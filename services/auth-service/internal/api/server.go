@@ -89,6 +89,15 @@ func (s *Server) Router() http.Handler {
 
 		r.Get("/me/preferences", http.HandlerFunc(s.getPreferences))
 		r.Patch("/me/preferences", http.HandlerFunc(s.patchPreferences))
+
+		// Public user profiles + follow system
+		r.Route("/users/{user_id}", func(r chi.Router) {
+			r.Get("/", http.HandlerFunc(s.getPublicProfile))
+			r.Post("/follow", http.HandlerFunc(s.followUser))
+			r.Delete("/follow", http.HandlerFunc(s.unfollowUser))
+			r.Get("/followers", http.HandlerFunc(s.listFollowers))
+			r.Get("/following", http.HandlerFunc(s.listFollowing))
+		})
 	})
 	return r
 }

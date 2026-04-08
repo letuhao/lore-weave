@@ -32,7 +32,7 @@ export function configureGatewayApp(
     target: urls.authUrl,
     changeOrigin: true,
     pathFilter: (pathname: string) =>
-      pathname.startsWith('/v1/auth') || pathname.startsWith('/v1/account') || pathname.startsWith('/v1/me/preferences'),
+      pathname.startsWith('/v1/auth') || pathname.startsWith('/v1/account') || pathname.startsWith('/v1/me/preferences') || pathname.startsWith('/v1/users'),
   });
   const bookProxy = createProxyMiddleware({
     target: urls.bookUrl,
@@ -149,7 +149,7 @@ export function configureGatewayApp(
   ) => void;
 
   instance.use((req: Request, res: Response, next: NextFunction) => {
-    if (req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account') || req.path.startsWith('/v1/me/preferences')) {
+    if (req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account') || req.path.startsWith('/v1/me/preferences') || req.path.startsWith('/v1/users')) {
       return authProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/books')) {
