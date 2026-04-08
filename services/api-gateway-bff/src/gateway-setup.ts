@@ -19,6 +19,7 @@ export function configureGatewayApp(
     glossaryUrl: string;
     chatUrl: string;
     videoGenUrl: string;
+    statisticsUrl: string;
   },
 ): void {
   app.enableCors({
@@ -82,6 +83,12 @@ export function configureGatewayApp(
     changeOrigin: true,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/video-gen'),
   });
+  const statisticsProxy = createProxyMiddleware({
+    target: urls.statisticsUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) =>
+      pathname.startsWith('/v1/leaderboard') || pathname.startsWith('/v1/stats'),
+  });
 
   const httpAdapter = app.getHttpAdapter();
   const instance = httpAdapter.getInstance();
@@ -135,6 +142,11 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const statisticsProxyFn = statisticsProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
 
   instance.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account') || req.path.startsWith('/v1/me/preferences')) {
@@ -166,6 +178,9 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/video-gen')) {
       return videoGenProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/leaderboard') || req.path.startsWith('/v1/stats')) {
+      return statisticsProxyFn(req, res, next);
     }
     return next();
   });

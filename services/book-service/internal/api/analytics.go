@@ -64,7 +64,14 @@ func (s *Server) upsertReadingProgress(w http.ResponseWriter, r *http.Request) {
 		body.TimeSpentMs = 0
 	}
 
-	_, err = s.pool.Exec(r.Context(), `
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "ANALYTICS_ERROR", "failed to begin tx")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	_, err = tx.Exec(r.Context(), `
 		INSERT INTO reading_progress (user_id, book_id, chapter_id, time_spent_ms, scroll_depth, read_count)
 		VALUES ($1, $2, $3, $4, $5, 1)
 		ON CONFLICT (user_id, book_id, chapter_id) DO UPDATE SET
@@ -75,6 +82,20 @@ func (s *Server) upsertReadingProgress(w http.ResponseWriter, r *http.Request) {
 	`, userID, bookID, chapterID, body.TimeSpentMs, body.ScrollDepth)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "ANALYTICS_ERROR", "failed to save progress")
+		return
+	}
+
+	chUID, _ := uuid.Parse(chapterID)
+	_ = insertOutboxEvent(r.Context(), tx, "reading.progress", chUID, map[string]any{
+		"book_id":       bookID.String(),
+		"chapter_id":    chapterID,
+		"user_id":       userID.String(),
+		"time_spent_ms": body.TimeSpentMs,
+		"scroll_depth":  body.ScrollDepth,
+	})
+
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "ANALYTICS_ERROR", "failed to commit progress")
 		return
 	}
 
@@ -155,12 +176,26 @@ func (s *Server) recordBookView(w http.ResponseWriter, r *http.Request) {
 		body.SessionID = body.SessionID[:100]
 	}
 
-	_, err := s.pool.Exec(r.Context(), `
-		INSERT INTO book_views (book_id, user_id, session_id, referrer)
-		VALUES ($1, $2, $3, $4)
-	`, bookID, userID, nilIfEmpty(body.SessionID), nilIfEmpty(body.Referrer))
+	// Emit outbox event — statistics-service owns view storage and aggregation
+	tx, err := s.pool.Begin(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "ANALYTICS_ERROR", "failed to record view")
+		writeError(w, http.StatusInternalServerError, "ANALYTICS_ERROR", "failed to begin tx")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	var userIDStr string
+	if userID != nil {
+		userIDStr = userID.String()
+	}
+	_ = insertOutboxEvent(r.Context(), tx, "book.viewed", bookID, map[string]any{
+		"book_id":    bookID.String(),
+		"user_id":    userIDStr,
+		"session_id": body.SessionID,
+	})
+
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "ANALYTICS_ERROR", "failed to commit view")
 		return
 	}
 
@@ -168,7 +203,7 @@ func (s *Server) recordBookView(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getBookStats(w http.ResponseWriter, r *http.Request) {
-	// Auth required — stats are only visible to authenticated users
+	// Deprecated: book stats now served by statistics-service at /v1/stats/books/{book_id}
 	if _, ok := s.requireUserID(r); !ok {
 		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
 		return
@@ -178,15 +213,7 @@ func (s *Server) getBookStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Aggregate view stats
-	var viewCount int64
-	var uniqueReaders int64
-	_ = s.pool.QueryRow(r.Context(), `
-		SELECT COUNT(*), COUNT(DISTINCT user_id)
-		FROM book_views WHERE book_id=$1
-	`, bookID).Scan(&viewCount, &uniqueReaders)
-
-	// Aggregate reading stats
+	// Return reading progress data (domain data owned by book-service)
 	var avgTimeMs float64
 	var avgScrollDepth float64
 	var totalReaders int64
@@ -198,8 +225,6 @@ func (s *Server) getBookStats(w http.ResponseWriter, r *http.Request) {
 	`, bookID).Scan(&avgTimeMs, &avgScrollDepth, &totalReaders)
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"view_count":       viewCount,
-		"unique_readers":   uniqueReaders,
 		"total_readers":    totalReaders,
 		"avg_time_ms":      int64(avgTimeMs),
 		"avg_scroll_depth": avgScrollDepth,

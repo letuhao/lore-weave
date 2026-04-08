@@ -17,7 +17,8 @@ async function bootstrap() {
   const glossaryUrl = process.env.GLOSSARY_SERVICE_URL || 'http://localhost:8088';
   const chatUrl = process.env.CHAT_SERVICE_URL || 'http://localhost:8090';
   const videoGenUrl = process.env.VIDEO_GEN_SERVICE_URL || 'http://localhost:8088';
-  configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl, glossaryUrl, chatUrl, videoGenUrl });
+  const statisticsUrl = process.env.STATISTICS_SERVICE_URL || 'http://localhost:8089';
+  configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl, glossaryUrl, chatUrl, videoGenUrl, statisticsUrl });
 
   const port = parseInt(process.env.PORT || '3000', 10);
   await app.listen(port);

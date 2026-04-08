@@ -153,42 +153,53 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             chapter_id, len(translated_body_text or ""), input_tokens, output_tokens,
         )
 
-    # Persist final result
+    # Persist final result — all writes in one transaction for outbox atomicity
     log.info("chapter %s: persisting completed result to DB", chapter_id)
     async with pool.acquire() as db:
-        await db.execute(
-            """UPDATE chapter_translations SET
-                 status='completed',
-                 translated_body=$1,
-                 translated_body_json=$2::jsonb,
-                 translated_body_format=$3,
-                 source_language=$4,
-                 input_tokens=$5,
-                 output_tokens=$6,
-                 finished_at=now()
-               WHERE job_id=$7 AND chapter_id=$8""",
-            translated_body_text, translated_body_json, translated_body_format,
-            source_lang,
-            input_tokens or None, output_tokens or None,
-            job_id, chapter_id,
-        )
-        log.info("chapter %s: chapter_translations updated, incrementing job counter", chapter_id)
-        await db.execute(
-            "UPDATE translation_jobs SET completed_chapters=completed_chapters+1 WHERE job_id=$1",
-            job_id,
-        )
-        # Auto-set active: insert only if no active version exists yet for (chapter_id, target_language)
-        await db.execute(
-            """
-            INSERT INTO active_chapter_translation_versions
-              (chapter_id, target_language, chapter_translation_id, set_by_user_id)
-            SELECT $1, ct.target_language, $2, ct.owner_user_id
-            FROM chapter_translations ct
-            WHERE ct.id = $2
-            ON CONFLICT (chapter_id, target_language) DO NOTHING
-            """,
-            chapter_id, chapter_translation_id,
-        )
+        async with db.transaction():
+            await db.execute(
+                """UPDATE chapter_translations SET
+                     status='completed',
+                     translated_body=$1,
+                     translated_body_json=$2::jsonb,
+                     translated_body_format=$3,
+                     source_language=$4,
+                     input_tokens=$5,
+                     output_tokens=$6,
+                     finished_at=now()
+                   WHERE job_id=$7 AND chapter_id=$8""",
+                translated_body_text, translated_body_json, translated_body_format,
+                source_lang,
+                input_tokens or None, output_tokens or None,
+                job_id, chapter_id,
+            )
+            log.info("chapter %s: chapter_translations updated, incrementing job counter", chapter_id)
+            await db.execute(
+                "UPDATE translation_jobs SET completed_chapters=completed_chapters+1 WHERE job_id=$1",
+                job_id,
+            )
+            # Auto-set active: insert only if no active version exists yet for (chapter_id, target_language)
+            await db.execute(
+                """
+                INSERT INTO active_chapter_translation_versions
+                  (chapter_id, target_language, chapter_translation_id, set_by_user_id)
+                SELECT $1, ct.target_language, $2, ct.owner_user_id
+                FROM chapter_translations ct
+                WHERE ct.id = $2
+                ON CONFLICT (chapter_id, target_language) DO NOTHING
+                """,
+                chapter_id, chapter_translation_id,
+            )
+            # Emit outbox event for statistics-service
+            await _insert_outbox_event(db, "chapter.translated", chapter_id, {
+                "user_id": str(msg["user_id"]),
+                "book_id": str(msg["book_id"]),
+                "chapter_id": str(chapter_id),
+                "target_language": msg["target_language"],
+                "status": "completed",
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+            })
     log.info("chapter %s: DB persist complete", chapter_id)
 
     await _emit_chapter_done(publish_event, user_id, msg, "completed", None)
@@ -292,6 +303,15 @@ async def _emit_chapter_done(publish_event, user_id, msg, status, error_message)
             "error_message":  error_message,
         },
     })
+
+
+async def _insert_outbox_event(db, event_type: str, aggregate_id, payload: dict) -> None:
+    """Insert a transactional outbox event for worker-infra relay to Redis Streams."""
+    await db.execute(
+        """INSERT INTO outbox_events (event_type, aggregate_type, aggregate_id, payload)
+           VALUES ($1, 'chapter', $2, $3::jsonb)""",
+        event_type, aggregate_id, json.dumps(payload),
+    )
 
 
 class _TransientError(Exception):

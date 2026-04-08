@@ -327,7 +327,7 @@ services:
       WORKER_TASKS: "outbox-relay,outbox-cleanup,import-processor"
       EVENTS_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_events
       REDIS_URL: redis://redis:6379
-      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book"
+      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book,translation:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_translation"
       OUTBOX_CLEANUP_RETAIN_DAYS: "7"
       BOOK_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book
       PANDOC_URL: http://pandoc-server:3030
@@ -349,6 +349,27 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  statistics-service:
+    build:
+      context: ../services/statistics-service
+      dockerfile: Dockerfile
+    environment:
+      HTTP_ADDR: ":8089"
+      DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_statistics?sslmode=disable
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      REDIS_URL: redis://redis:6379
+      BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
+      REFRESH_INTERVAL: "600"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      book-service:
+        condition: service_healthy
+    ports:
+      - "8214:8089"
+
   api-gateway-bff:
     build:
       context: ../services/api-gateway-bff
@@ -365,6 +386,7 @@ services:
       GLOSSARY_SERVICE_URL: http://glossary-service:8088
       CHAT_SERVICE_URL: http://chat-service:8090
       VIDEO_GEN_SERVICE_URL: http://video-gen-service:8088
+      STATISTICS_SERVICE_URL: http://statistics-service:8089
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
@@ -386,6 +408,8 @@ services:
       glossary-service:
         condition: service_healthy
       chat-service:
+        condition: service_healthy
+      statistics-service:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy

@@ -1587,9 +1587,6 @@ FROM books b WHERE b.id=$1
 		u := fmt.Sprintf("/v1/books/%s/cover", bookID)
 		coverURL = &u
 	}
-	var viewCount int64
-	_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM book_views WHERE book_id=$1`, bookID).Scan(&viewCount)
-
 	writeJSON(w, http.StatusOK, map[string]any{
 		"book_id":           id,
 		"owner_user_id":     owner,
@@ -1602,7 +1599,6 @@ FROM books b WHERE b.id=$1
 		"chapter_count":     chapterCount,
 		"lifecycle_state":   state,
 		"genre_tags":        genreTags,
-		"view_count":        viewCount,
 		"created_at":        createdAt,
 	})
 }

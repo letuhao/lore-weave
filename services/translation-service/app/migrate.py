@@ -151,6 +151,21 @@ ALTER TABLE chapter_translations
   ADD COLUMN IF NOT EXISTS translated_body_json JSONB,
   ADD COLUMN IF NOT EXISTS translated_body_format TEXT NOT NULL DEFAULT 'text';
 -- format = 'text' (legacy flat text in translated_body) | 'json' (Tiptap blocks in translated_body_json)
+
+-- V5: Outbox events for statistics-service pipeline
+CREATE TABLE IF NOT EXISTS outbox_events (
+  id             UUID PRIMARY KEY DEFAULT uuidv7(),
+  event_type     TEXT NOT NULL,
+  aggregate_type TEXT NOT NULL DEFAULT 'chapter',
+  aggregate_id   UUID NOT NULL,
+  payload        JSONB NOT NULL DEFAULT '{}',
+  published_at   TIMESTAMPTZ,
+  retry_count    INT NOT NULL DEFAULT 0,
+  last_error     TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_outbox_pending
+  ON outbox_events(created_at) WHERE published_at IS NULL;
 """
 
 

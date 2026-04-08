@@ -26,7 +26,6 @@ type Props = {
     original_language?: string | null;
     summary_excerpt?: string | null;
     chapter_count?: number;
-    view_count?: number;
     has_cover?: boolean;
     cover_url?: string | null;
     genre_tags?: string[];
@@ -88,7 +87,7 @@ export function BookCard({ book }: Props) {
         )}
         <div className="mt-2 flex items-center justify-between">
           <span className="text-[10px] text-muted-foreground">
-            {book.chapter_count ?? 0} ch{book.view_count ? ` · ${book.view_count} views` : ''}
+            {book.chapter_count ?? 0} ch
           </span>
           {lang && (
             <span className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">

@@ -89,12 +89,6 @@ export function BookDetailPage() {
                 <span>Updated {new Date(book.updated_at).toLocaleDateString()}</span>
               </>
             )}
-            {bookStats && bookStats.view_count > 0 && (
-              <>
-                <span className="text-border">·</span>
-                <span>{bookStats.view_count} {bookStats.view_count === 1 ? 'view' : 'views'}</span>
-              </>
-            )}
             {bookStats && bookStats.total_readers > 0 && (
               <>
                 <span className="text-border">·</span>

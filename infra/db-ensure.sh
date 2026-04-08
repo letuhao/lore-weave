@@ -20,6 +20,7 @@ loreweave_translation
 loreweave_glossary
 loreweave_chat
 loreweave_events
+loreweave_statistics
 "
 
 for db in $DATABASES; do
