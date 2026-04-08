@@ -790,7 +790,7 @@ func (s *Server) listEntityNames(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.pool.Query(r.Context(), `
 		SELECT e.entity_id, eav.original_value AS display_name,
 			ek.code AS kind_code, ek.color AS kind_color, ek.icon AS kind_icon, ek.name AS kind_name
-		FROM entities e
+		FROM glossary_entities e
 		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
 		LEFT JOIN entity_attribute_values eav ON eav.entity_id = e.entity_id
 			AND eav.attr_def_id = (SELECT attr_def_id FROM attribute_definitions WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1)

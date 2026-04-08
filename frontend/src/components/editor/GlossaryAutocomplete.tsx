@@ -5,17 +5,19 @@ import type { EntityNameEntry } from '@/features/glossary/types';
 type Props = {
   entities: EntityNameEntry[];
   editorEl: HTMLElement | null;
+  /** Called with (triggerStart, triggerEnd, entityName) to replace [[query with entity name via editor commands */
+  onInsertEntity: (from: number, to: number, name: string) => void;
   onSelect: (entity: EntityNameEntry) => void;
   onCreateNew: (searchText: string) => void;
 };
 
-export function GlossaryAutocomplete({ entities, editorEl, onSelect, onCreateNew }: Props) {
+export function GlossaryAutocomplete({ entities, editorEl, onInsertEntity, onSelect, onCreateNew }: Props) {
   const { t } = useTranslation('glossaryEditor');
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const panelRef = useRef<HTMLDivElement>(null);
+  const [triggerRange, setTriggerRange] = useState<{ from: number; to: number } | null>(null);
 
   const filtered = useMemo(() => {
     if (!query) return entities.slice(0, 10);
@@ -25,7 +27,7 @@ export function GlossaryAutocomplete({ entities, editorEl, onSelect, onCreateNew
       .slice(0, 10);
   }, [entities, query]);
 
-  // Listen for [[ in the editor
+  // Listen for [[ in the editor via selection/input
   useEffect(() => {
     if (!editorEl) return;
 
@@ -58,6 +60,22 @@ export function GlossaryAutocomplete({ entities, editorEl, onSelect, onCreateNew
       setQuery(searchText);
       setSelectedIdx(0);
 
+      // Calculate ProseMirror positions for the trigger range
+      // Walk up from text node to find the offset in the document
+      const walker = document.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT);
+      let pmOffset = 0;
+      let found = false;
+      while (walker.nextNode()) {
+        if (walker.currentNode === textNode) {
+          found = true;
+          break;
+        }
+        pmOffset += (walker.currentNode.textContent || '').length;
+      }
+      if (found) {
+        setTriggerRange({ from: pmOffset + triggerIdx, to: pmOffset + offset });
+      }
+
       // Position popup near cursor
       const rect = range.getBoundingClientRect();
       setPos({ x: rect.left, y: rect.bottom + 4 });
@@ -70,7 +88,7 @@ export function GlossaryAutocomplete({ entities, editorEl, onSelect, onCreateNew
       editorEl.removeEventListener('input', handleInput);
       editorEl.removeEventListener('keyup', handleInput);
     };
-  }, [editorEl, open]);
+  }, [editorEl]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -79,7 +97,7 @@ export function GlossaryAutocomplete({ entities, editorEl, onSelect, onCreateNew
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setSelectedIdx((i) => Math.min(i + 1, filtered.length));
+        setSelectedIdx((i) => Math.min(i + 1, filtered.length - 1));
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         setSelectedIdx((i) => Math.max(i - 1, 0));
@@ -87,10 +105,6 @@ export function GlossaryAutocomplete({ entities, editorEl, onSelect, onCreateNew
         e.preventDefault();
         if (selectedIdx < filtered.length) {
           handleSelect(filtered[selectedIdx]);
-        } else {
-          // "Create new" is selected
-          onCreateNew(query);
-          cleanup();
         }
       } else if (e.key === 'Escape') {
         e.preventDefault();
@@ -100,52 +114,31 @@ export function GlossaryAutocomplete({ entities, editorEl, onSelect, onCreateNew
 
     editorEl.addEventListener('keydown', handleKeyDown, true);
     return () => editorEl.removeEventListener('keydown', handleKeyDown, true);
-  }, [open, editorEl, filtered, selectedIdx, query]);
+  }, [open, editorEl, filtered, selectedIdx]);
 
   const handleSelect = useCallback(
     (entity: EntityNameEntry) => {
-      // Remove the [[ trigger text and insert entity name
-      const sel = window.getSelection();
-      if (sel && sel.rangeCount > 0) {
-        const range = sel.getRangeAt(0);
-        const textNode = range.startContainer;
-        if (textNode.nodeType === Node.TEXT_NODE) {
-          const text = textNode.textContent || '';
-          const offset = range.startOffset;
-          const before = text.slice(0, offset);
-          const triggerIdx = before.lastIndexOf('[[');
-          if (triggerIdx !== -1) {
-            // Replace [[ + query with entity name
-            const newText = text.slice(0, triggerIdx) + entity.display_name + text.slice(offset);
-            textNode.textContent = newText;
-            // Set cursor after inserted name
-            const newRange = document.createRange();
-            newRange.setStart(textNode, triggerIdx + entity.display_name.length);
-            newRange.collapse(true);
-            sel.removeAllRanges();
-            sel.addRange(newRange);
-            // Trigger editor update
-            editorEl?.dispatchEvent(new Event('input', { bubbles: true }));
-          }
-        }
+      if (triggerRange) {
+        // Replace [[query with entity name via editor commands (safe, no DOM mutation)
+        onInsertEntity(triggerRange.from, triggerRange.to, entity.display_name);
       }
       onSelect(entity);
       cleanup();
     },
-    [editorEl, onSelect],
+    [triggerRange, onInsertEntity, onSelect],
   );
 
   const cleanup = () => {
     setOpen(false);
     setQuery('');
     setSelectedIdx(0);
+    setTriggerRange(null);
   };
 
   if (!open) return null;
 
   return (
     <div
-      ref={panelRef}
       className="fixed z-[100] w-[300px] rounded-lg border bg-card shadow-xl"
       style={{ left: pos.x, top: pos.y }}
     >

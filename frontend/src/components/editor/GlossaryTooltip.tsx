@@ -20,6 +20,7 @@ export function GlossaryTooltip({ bookId }: Props) {
   } | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout>>();
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController>();
 
   const handleMouseOver = useCallback(
     (e: MouseEvent) => {
@@ -34,14 +35,21 @@ export function GlossaryTooltip({ bookId }: Props) {
       setTooltip({ entityId, x: rect.left, y: rect.top - 8, loading: true });
 
       if (accessToken) {
+        // Cancel any in-flight request
+        abortRef.current?.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+
         glossaryApi
           .getEntity(bookId, entityId, accessToken)
           .then((entity) => {
+            if (controller.signal.aborted) return;
             setTooltip((prev) =>
               prev?.entityId === entityId ? { ...prev, entity, loading: false } : prev,
             );
           })
           .catch(() => {
+            if (controller.signal.aborted) return;
             setTooltip((prev) =>
               prev?.entityId === entityId ? { ...prev, loading: false } : prev,
             );

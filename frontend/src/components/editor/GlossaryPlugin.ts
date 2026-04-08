@@ -7,50 +7,59 @@ export const glossaryPluginKey = new PluginKey('glossary');
 
 export type GlossaryPluginState = {
   entities: EntityNameEntry[];
+  sorted: SortedEntity[];
   enabled: boolean;
   decorations: DecorationSet;
 };
 
-function buildDecorations(doc: any, entities: EntityNameEntry[]): DecorationSet {
-  if (entities.length === 0) return DecorationSet.empty;
+/** Pre-sorted entities for efficient scanning (sort once, reuse across doc changes) */
+type SortedEntity = EntityNameEntry & { nameLower: string };
+
+function sortEntities(entities: EntityNameEntry[]): SortedEntity[] {
+  return [...entities]
+    .filter((e) => e.display_name.length >= 2)
+    .sort((a, b) => b.display_name.length - a.display_name.length)
+    .map((e) => ({ ...e, nameLower: e.display_name.toLowerCase() }));
+}
+
+function buildDecorations(doc: any, sorted: SortedEntity[]): DecorationSet {
+  if (sorted.length === 0) return DecorationSet.empty;
 
   const decos: Decoration[] = [];
-
-  // Sort by name length descending so longer names match first (e.g. "Ancient Capital" before "Capital")
-  const sorted = [...entities].sort((a, b) => b.display_name.length - a.display_name.length);
 
   doc.descendants((node: any, pos: number) => {
     if (!node.isText || !node.text) return;
     const text = node.text as string;
+    const textLower = text.toLowerCase();
 
     // Track occupied positions to avoid overlapping decorations
     const occupied = new Set<number>();
 
     for (const entity of sorted) {
-      const name = entity.display_name;
-      if (name.length < 2) continue;
+      const nameLower = entity.nameLower;
 
       let searchFrom = 0;
       while (searchFrom < text.length) {
-        const idx = text.indexOf(name, searchFrom);
+        const idx = textLower.indexOf(nameLower, searchFrom);
         if (idx === -1) break;
 
         // Check word boundaries (don't match partial words)
+        const matchLen = entity.display_name.length;
         const before = idx > 0 ? text[idx - 1] : ' ';
-        const after = idx + name.length < text.length ? text[idx + name.length] : ' ';
+        const after = idx + matchLen < text.length ? text[idx + matchLen] : ' ';
         const isWord = /[\s.,;:!?()\[\]{}"""''—–\-\/]/.test(before) || idx === 0;
-        const isWordEnd = /[\s.,;:!?()\[\]{}"""''—–\-\/]/.test(after) || idx + name.length === text.length;
+        const isWordEnd = /[\s.,;:!?()\[\]{}"""''—–\-\/]/.test(after) || idx + matchLen === text.length;
 
         if (isWord && isWordEnd) {
           // Check no overlap
           let overlaps = false;
-          for (let i = idx; i < idx + name.length; i++) {
+          for (let i = idx; i < idx + matchLen; i++) {
             if (occupied.has(i)) { overlaps = true; break; }
           }
           if (!overlaps) {
             const from = pos + idx;
-            const to = pos + idx + name.length;
-            for (let i = idx; i < idx + name.length; i++) occupied.add(i);
+            const to = pos + idx + matchLen;
+            for (let i = idx; i < idx + matchLen; i++) occupied.add(i);
 
             decos.push(Decoration.inline(from, to, {
               class: `glossary-mark glossary-kind-${entity.kind_code || 'default'}`,
@@ -64,7 +73,7 @@ function buildDecorations(doc: any, entities: EntityNameEntry[]): DecorationSet 
           }
         }
 
-        searchFrom = idx + name.length;
+        searchFrom = idx + matchLen;
       }
     }
   });
@@ -92,6 +101,7 @@ export const GlossaryExtension = Extension.create({
           init(_, { doc }) {
             return {
               entities: storage.entities as EntityNameEntry[],
+              sorted: [] as SortedEntity[],
               enabled: storage.enabled as boolean,
               decorations: DecorationSet.empty,
             } satisfies GlossaryPluginState;
@@ -101,15 +111,17 @@ export const GlossaryExtension = Extension.create({
             if (meta) {
               const entities = meta.entities ?? prev.entities;
               const enabled = meta.enabled ?? prev.enabled;
+              // Re-sort only when entities change
+              const sorted = meta.entities ? sortEntities(entities) : prev.sorted;
               const decorations = enabled
-                ? buildDecorations(newState.doc, entities)
+                ? buildDecorations(newState.doc, sorted)
                 : DecorationSet.empty;
-              return { entities, enabled, decorations };
+              return { entities, sorted, enabled, decorations };
             }
             if (tr.docChanged && prev.enabled) {
               return {
                 ...prev,
-                decorations: buildDecorations(newState.doc, prev.entities),
+                decorations: buildDecorations(newState.doc, prev.sorted),
               };
             }
             return prev;
