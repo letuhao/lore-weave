@@ -7,11 +7,11 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-08 (session 25 end)
-- Updated By: Assistant (P9-07 .docx/.epub import COMPLETE — Pandoc sidecar, async worker, WS push, image extraction — 4 commits)
+- Last Updated: 2026-04-08 (session 26 end)
+- Updated By: Assistant (P9-01 Leaderboard COMPLETE — full-stack: statistics-service backend gaps + full frontend + review fixes)
 - Active Branch: `main`
-- HEAD: `e5cdc32` — fix(worker-infra): bump Dockerfile Go version to 1.25
-- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
+- HEAD: `a6f5d53` — feat(statistics): add statistics-service with event-driven leaderboard pipeline
+- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
 
 ---
 
@@ -31,9 +31,27 @@
 
 ## Current Active Work
 
-**Phase:** All phases 8A-8H COMPLETE. Phase 9 in progress (P9-07 done, 11 remaining tasks).
+**Phase:** All phases 8A-8H COMPLETE. Phase 9 in progress (P9-01 + P9-07 done, 10 remaining tasks).
 
-**What was done in this session (2026-04-08, session 25):**
+**What was done in this session (2026-04-08, session 26):**
+
+P9-01 Leaderboard — full-stack implementation. Backend gaps (display name denormalization, translation counts, trending sort, auth-service internal endpoint) + full frontend (12 components, i18n 4 languages, route). Then review pass fixing 6 issues. Not yet committed (pending user commit request).
+
+| Work item | Files touched | Status |
+| --------- | ------------- | ------ |
+| A1: Denormalize display names — auth-service internal endpoint + statistics-service consumer + migration + API responses | `auth-service/handlers.go`, `auth-service/server.go`, `statistics-service/migrate.go`, `consumer.go`, `api/server.go`, `config.go`, `docker-compose.yml` | Done |
+| A2: translation_count on book_stats | `migrate.go`, `consumer.go`, `api/server.go` | Done |
+| A3: Trending sort option | `api/server.go` | Done |
+| B1: API layer (types + fetch) | `features/leaderboard/api.ts` | Done |
+| B3: Components (RankMedal, TrendArrow, PeriodSelector, FilterChips, Podium, RankingList, AuthorList, TranslatorList, QuickStatsCards) | 9 new files in `features/leaderboard/` | Done |
+| B2: LeaderboardPage | `pages/LeaderboardPage.tsx` | Done |
+| B4: i18n (4 languages) | `i18n/locales/{en,ja,vi,zh-TW}/leaderboard.json`, `i18n/index.ts` | Done |
+| B5: Route update | `App.tsx` | Done |
+| Review fixes: statsBook fallback fields, translation count reset, translator name refresh, i18n Show more, quick-stats state overwrite, dead AbortController removal | `api/server.go`, `consumer.go`, `AuthorList.tsx`, `TranslatorList.tsx`, `LeaderboardPage.tsx` | Done |
+
+**9-phase workflow followed for P9-01:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
+
+**What was done in previous session (2026-04-08, session 25):**
 
 P9-07 .docx/.epub import — full-stack implementation via Pandoc sidecar + async worker-infra. 4 commits.
 

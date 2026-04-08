@@ -353,9 +353,12 @@ func (c *Consumer) refreshBookMetadata(ctx context.Context, bookID uuid.UUID) {
 		proj.GenreTags = []string{}
 	}
 
+	// Fetch owner display name from auth-service
+	ownerDisplayName := c.fetchUserDisplayName(ctx, proj.OwnerUserID)
+
 	_, _ = c.Pool.Exec(ctx, `
-		INSERT INTO book_stats (book_id, owner_user_id, title, genre_tags, original_language, chapter_count, has_cover, book_created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO book_stats (book_id, owner_user_id, title, genre_tags, original_language, chapter_count, has_cover, book_created_at, owner_display_name)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (book_id) DO UPDATE SET
 			owner_user_id = EXCLUDED.owner_user_id,
 			title = EXCLUDED.title,
@@ -363,8 +366,9 @@ func (c *Consumer) refreshBookMetadata(ctx context.Context, bookID uuid.UUID) {
 			original_language = EXCLUDED.original_language,
 			chapter_count = EXCLUDED.chapter_count,
 			has_cover = EXCLUDED.has_cover,
+			owner_display_name = EXCLUDED.owner_display_name,
 			updated_at = now()
-	`, proj.BookID, proj.OwnerUserID, proj.Title, proj.GenreTags, proj.Language, proj.ChapterCount, proj.HasCover, proj.CreatedAt)
+	`, proj.BookID, proj.OwnerUserID, proj.Title, proj.GenreTags, proj.Language, proj.ChapterCount, proj.HasCover, proj.CreatedAt, ownerDisplayName)
 }
 
 // refreshLoop periodically recalculates windowed stats and author aggregates.
@@ -383,10 +387,12 @@ func (c *Consumer) refreshLoop(ctx context.Context) {
 		case <-ticker.C:
 			c.recalculateWindowedStats(ctx)
 			c.recalculateEngagement(ctx)
+			c.recalculateTranslationCounts(ctx)
 			c.rollupDailyBookStats(ctx)
 			c.snapshotRanks(ctx)
 			c.recalculateAuthorStats(ctx)
 			c.recalculateTranslatorStats(ctx)
+			c.refreshTranslatorDisplayNames(ctx)
 			c.cleanupOldEvents(ctx)
 		}
 	}
@@ -599,10 +605,12 @@ func (c *Consumer) snapshotRanks(ctx context.Context) {
 func (c *Consumer) recalculateAuthorStats(ctx context.Context) {
 	slog.Info("statistics: recalculating author stats")
 
+	// Aggregate from book_stats — carry owner_display_name as display_name
 	_, err := c.Pool.Exec(ctx, `
-		INSERT INTO author_stats (user_id, total_books, total_views, views_7d, views_30d, total_readers, avg_time_ms, total_chapters, avg_rating, updated_at)
+		INSERT INTO author_stats (user_id, display_name, total_books, total_views, views_7d, views_30d, total_readers, avg_time_ms, total_chapters, avg_rating, updated_at)
 		SELECT
 			owner_user_id,
+			MAX(owner_display_name),
 			COUNT(*),
 			COALESCE(SUM(total_views), 0),
 			COALESCE(SUM(views_7d), 0),
@@ -615,6 +623,7 @@ func (c *Consumer) recalculateAuthorStats(ctx context.Context) {
 		FROM book_stats
 		GROUP BY owner_user_id
 		ON CONFLICT (user_id) DO UPDATE SET
+			display_name = EXCLUDED.display_name,
 			total_books = EXCLUDED.total_books,
 			total_views = EXCLUDED.total_views,
 			views_7d = EXCLUDED.views_7d,
@@ -630,4 +639,75 @@ func (c *Consumer) recalculateAuthorStats(ctx context.Context) {
 	}
 
 	slog.Info("statistics: author stats recalculated")
+}
+
+func (c *Consumer) recalculateTranslationCounts(ctx context.Context) {
+	// Count distinct target languages with completed translations per book
+	_, err := c.Pool.Exec(ctx, `
+		UPDATE book_stats bs SET translation_count = COALESCE(t.cnt, 0)
+		FROM (
+			SELECT book_id, COUNT(DISTINCT target_language) AS cnt
+			FROM translation_events WHERE status = 'completed'
+			GROUP BY book_id
+		) t WHERE bs.book_id = t.book_id
+	`)
+	if err != nil {
+		slog.Error("statistics: recalc translation counts", "error", err)
+	}
+
+	// Reset books that no longer have any completed translations
+	_, _ = c.Pool.Exec(ctx, `
+		UPDATE book_stats bs SET translation_count = 0
+		WHERE bs.translation_count > 0
+		AND NOT EXISTS (
+			SELECT 1 FROM translation_events te
+			WHERE te.book_id = bs.book_id AND te.status = 'completed'
+		)
+	`)
+}
+
+// fetchUserDisplayName calls auth-service to resolve a user_id to a display name.
+// Returns empty string on any error (best-effort).
+func (c *Consumer) fetchUserDisplayName(ctx context.Context, userID uuid.UUID) string {
+	url := fmt.Sprintf("%s/internal/users/%s/profile", strings.TrimRight(c.Cfg.AuthServiceInternalURL, "/"), userID)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return ""
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	var profile struct {
+		DisplayName string `json:"display_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&profile); err != nil {
+		return ""
+	}
+	return profile.DisplayName
+}
+
+// refreshTranslatorDisplayNames fetches display names for all translators.
+// Refreshes all rows (not just empty) so name changes propagate.
+func (c *Consumer) refreshTranslatorDisplayNames(ctx context.Context) {
+	rows, err := c.Pool.Query(ctx, `SELECT user_id FROM translator_stats`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var userID uuid.UUID
+		if err := rows.Scan(&userID); err != nil {
+			continue
+		}
+		name := c.fetchUserDisplayName(ctx, userID)
+		if name != "" {
+			_, _ = c.Pool.Exec(ctx, `UPDATE translator_stats SET display_name = $1 WHERE user_id = $2`, name, userID)
+		}
+	}
 }

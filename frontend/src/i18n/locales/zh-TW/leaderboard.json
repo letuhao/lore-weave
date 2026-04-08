@@ -1,0 +1,35 @@
+{
+  "title": "排行榜",
+  "subtitle": "探索社群中最受歡迎的書籍、作者和翻譯者。",
+  "tabs": {
+    "books": "熱門書籍",
+    "authors": "作者",
+    "translators": "翻譯者",
+    "trending": "趨勢"
+  },
+  "period": {
+    "7d": "本週",
+    "30d": "本月",
+    "all": "全部"
+  },
+  "filters": {
+    "allGenres": "所有類型",
+    "allLanguages": "所有語言"
+  },
+  "ranking": {
+    "fullRankings": "完整排名",
+    "readers": "讀者",
+    "favorites": "收藏",
+    "ratings": "則評價",
+    "chapters": "章",
+    "translations": "個翻譯",
+    "rating": "評分",
+    "showMore": "顯示更多",
+    "noResults": "尚無排名。開始閱讀和翻譯吧！"
+  },
+  "quickStats": {
+    "topAuthors": "熱門作者",
+    "topTranslators": "熱門翻譯者",
+    "viewAll": "查看全部"
+  }
+}

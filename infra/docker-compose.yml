@@ -359,6 +359,7 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       REDIS_URL: redis://redis:6379
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
+      AUTH_SERVICE_INTERNAL_URL: http://auth-service:8081
       REFRESH_INTERVAL: "600"
     depends_on:
       postgres:
@@ -366,6 +367,8 @@ services:
       redis:
         condition: service_healthy
       book-service:
+        condition: service_healthy
+      auth-service:
         condition: service_healthy
     ports:
       - "8214:8089"

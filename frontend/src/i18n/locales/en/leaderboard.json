@@ -1,0 +1,35 @@
+{
+  "title": "Leaderboard",
+  "subtitle": "Discover top books, authors, and translators in the community.",
+  "tabs": {
+    "books": "Top Books",
+    "authors": "Authors",
+    "translators": "Translators",
+    "trending": "Trending"
+  },
+  "period": {
+    "7d": "This Week",
+    "30d": "This Month",
+    "all": "All Time"
+  },
+  "filters": {
+    "allGenres": "All Genres",
+    "allLanguages": "All Languages"
+  },
+  "ranking": {
+    "fullRankings": "Full Rankings — Top Books",
+    "readers": "Readers",
+    "favorites": "Favorites",
+    "ratings": "ratings",
+    "chapters": "chapters",
+    "translations": "translations",
+    "rating": "Rating",
+    "showMore": "Show more rankings",
+    "noResults": "No rankings yet. Start reading and translating!"
+  },
+  "quickStats": {
+    "topAuthors": "Top Authors",
+    "topTranslators": "Top Translators",
+    "viewAll": "View all"
+  }
+}

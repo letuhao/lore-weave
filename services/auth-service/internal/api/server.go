@@ -56,6 +56,11 @@ func (s *Server) Router() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 
+	// Internal (service-to-service, no JWT required)
+	r.Route("/internal", func(r chi.Router) {
+		r.Get("/users/{user_id}/profile", http.HandlerFunc(s.internalGetUserProfile))
+	})
+
 	r.Route("/v1", func(r chi.Router) {
 		r.Post("/auth/register", func(w http.ResponseWriter, r *http.Request) {
 			ratelimit.Middleware(s.rl, "register", http.HandlerFunc(s.register)).ServeHTTP(w, r)

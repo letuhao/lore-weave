@@ -86,9 +86,9 @@ func (s *Server) leaderboardBooks(w http.ResponseWriter, r *http.Request) {
 
 	orderCol := bookOrderCol(period, sortBy)
 
-	query := fmt.Sprintf(`SELECT book_id, owner_user_id, title, genre_tags, original_language,
+	query := fmt.Sprintf(`SELECT book_id, owner_user_id, owner_display_name, title, genre_tags, original_language,
 		total_views, views_7d, views_30d, unique_readers,
-		avg_time_ms, avg_scroll_depth, chapter_count,
+		avg_time_ms, avg_scroll_depth, chapter_count, translation_count,
 		avg_rating, rating_count, favorites_count, rank_change, has_cover
 		FROM book_stats WHERE total_views > 0`)
 	args := []any{}
@@ -119,16 +119,16 @@ func (s *Server) leaderboardBooks(w http.ResponseWriter, r *http.Request) {
 	rank := offset + 1
 	for rows.Next() {
 		var bookID, ownerID uuid.UUID
-		var title string
+		var ownerDisplayName, title string
 		var genreTags []string
 		var lang *string
 		var totalViews, views7d, views30d, uniqueReaders, avgTimeMs int64
 		var avgScrollDepth, avgRating float64
-		var chapterCount, ratingCount, favoritesCount, rankChange int
+		var chapterCount, translationCount, ratingCount, favoritesCount, rankChange int
 		var hasCover bool
-		if err := rows.Scan(&bookID, &ownerID, &title, &genreTags, &lang,
+		if err := rows.Scan(&bookID, &ownerID, &ownerDisplayName, &title, &genreTags, &lang,
 			&totalViews, &views7d, &views30d, &uniqueReaders,
-			&avgTimeMs, &avgScrollDepth, &chapterCount,
+			&avgTimeMs, &avgScrollDepth, &chapterCount, &translationCount,
 			&avgRating, &ratingCount, &favoritesCount, &rankChange, &hasCover); err != nil {
 			continue
 		}
@@ -136,24 +136,26 @@ func (s *Server) leaderboardBooks(w http.ResponseWriter, r *http.Request) {
 			genreTags = []string{}
 		}
 		items = append(items, map[string]any{
-			"rank":              rank,
-			"book_id":           bookID,
-			"owner_user_id":     ownerID,
-			"title":             title,
-			"genre_tags":        genreTags,
-			"original_language": lang,
-			"views":             totalViews,
-			"views_7d":          views7d,
-			"views_30d":         views30d,
-			"unique_readers":    uniqueReaders,
-			"avg_time_ms":       avgTimeMs,
-			"avg_scroll_depth":  avgScrollDepth,
-			"chapter_count":     chapterCount,
-			"avg_rating":        avgRating,
-			"rating_count":      ratingCount,
-			"favorites_count":   favoritesCount,
-			"rank_change":       rankChange,
-			"has_cover":         hasCover,
+			"rank":               rank,
+			"book_id":            bookID,
+			"owner_user_id":      ownerID,
+			"owner_display_name": ownerDisplayName,
+			"title":              title,
+			"genre_tags":         genreTags,
+			"original_language":  lang,
+			"views":              totalViews,
+			"views_7d":           views7d,
+			"views_30d":          views30d,
+			"unique_readers":     uniqueReaders,
+			"avg_time_ms":        avgTimeMs,
+			"avg_scroll_depth":   avgScrollDepth,
+			"chapter_count":      chapterCount,
+			"translation_count":  translationCount,
+			"avg_rating":         avgRating,
+			"rating_count":       ratingCount,
+			"favorites_count":    favoritesCount,
+			"rank_change":        rankChange,
+			"has_cover":          hasCover,
 		})
 		rank++
 	}
@@ -198,7 +200,7 @@ func (s *Server) leaderboardAuthors(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := s.pool.Query(r.Context(), fmt.Sprintf(`
-		SELECT user_id, total_books, total_views, views_7d, views_30d,
+		SELECT user_id, display_name, total_books, total_views, views_7d, views_30d,
 			total_readers, avg_time_ms, total_chapters, avg_rating
 		FROM author_stats WHERE total_views > 0
 		ORDER BY %s DESC LIMIT $1 OFFSET $2
@@ -213,16 +215,18 @@ func (s *Server) leaderboardAuthors(w http.ResponseWriter, r *http.Request) {
 	rank := offset + 1
 	for rows.Next() {
 		var userID uuid.UUID
+		var displayName string
 		var totalBooks, totalChapters int
 		var totalViews, views7d, views30d, totalReaders, avgTimeMs int64
 		var avgRating float64
-		if err := rows.Scan(&userID, &totalBooks, &totalViews, &views7d, &views30d,
+		if err := rows.Scan(&userID, &displayName, &totalBooks, &totalViews, &views7d, &views30d,
 			&totalReaders, &avgTimeMs, &totalChapters, &avgRating); err != nil {
 			continue
 		}
 		items = append(items, map[string]any{
 			"rank":           rank,
 			"user_id":        userID,
+			"display_name":   displayName,
 			"total_books":    totalBooks,
 			"views":          totalViews,
 			"views_7d":       views7d,
@@ -262,7 +266,7 @@ func (s *Server) leaderboardTranslators(w http.ResponseWriter, r *http.Request) 
 	}
 
 	rows, err := s.pool.Query(r.Context(), fmt.Sprintf(`
-		SELECT user_id, total_translations, total_chapters_done,
+		SELECT user_id, display_name, total_translations, total_chapters_done,
 			translations_7d, translations_30d, languages
 		FROM translator_stats WHERE total_chapters_done > 0
 		ORDER BY %s DESC LIMIT $1 OFFSET $2
@@ -277,9 +281,10 @@ func (s *Server) leaderboardTranslators(w http.ResponseWriter, r *http.Request) 
 	rank := offset + 1
 	for rows.Next() {
 		var userID uuid.UUID
+		var displayName string
 		var totalTranslations, totalChaptersDone, translations7d, translations30d int
 		var languages []string
-		if err := rows.Scan(&userID, &totalTranslations, &totalChaptersDone,
+		if err := rows.Scan(&userID, &displayName, &totalTranslations, &totalChaptersDone,
 			&translations7d, &translations30d, &languages); err != nil {
 			continue
 		}
@@ -289,6 +294,7 @@ func (s *Server) leaderboardTranslators(w http.ResponseWriter, r *http.Request) 
 		items = append(items, map[string]any{
 			"rank":                rank,
 			"user_id":             userID,
+			"display_name":        displayName,
 			"total_translations":  totalTranslations,
 			"total_chapters_done": totalChaptersDone,
 			"translations_7d":     translations7d,
@@ -318,40 +324,42 @@ func (s *Server) statsBook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var ownerID uuid.UUID
-	var title string
+	var ownerDisplayName, title string
 	var genreTags []string
 	var lang *string
 	var totalViews, views7d, views30d, uniqueReaders, avgTimeMs int64
 	var avgScrollDepth, avgRating float64
-	var chapterCount, ratingCount, favoritesCount, rankChange int
+	var chapterCount, translationCount, ratingCount, favoritesCount, rankChange int
 	var hasCover bool
 
 	err = s.pool.QueryRow(r.Context(), `
-		SELECT owner_user_id, title, genre_tags, original_language,
+		SELECT owner_user_id, owner_display_name, title, genre_tags, original_language,
 			total_views, views_7d, views_30d, unique_readers,
-			avg_time_ms, avg_scroll_depth, chapter_count,
+			avg_time_ms, avg_scroll_depth, chapter_count, translation_count,
 			avg_rating, rating_count, favorites_count, rank_change, has_cover
 		FROM book_stats WHERE book_id=$1
-	`, bookID).Scan(&ownerID, &title, &genreTags, &lang,
+	`, bookID).Scan(&ownerID, &ownerDisplayName, &title, &genreTags, &lang,
 		&totalViews, &views7d, &views30d, &uniqueReaders,
-		&avgTimeMs, &avgScrollDepth, &chapterCount,
+		&avgTimeMs, &avgScrollDepth, &chapterCount, &translationCount,
 		&avgRating, &ratingCount, &favoritesCount, &rankChange, &hasCover)
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"book_id":          bookID,
-			"total_views":      0,
-			"views_7d":         0,
-			"views_30d":        0,
-			"unique_readers":   0,
-			"avg_time_ms":      0,
-			"avg_scroll_depth": 0,
-			"chapter_count":    0,
-			"avg_rating":       0,
-			"rating_count":     0,
-			"favorites_count":  0,
-			"rank_change":      0,
-			"has_cover":        false,
-			"daily_views":      []map[string]any{},
+			"book_id":              bookID,
+			"owner_display_name":   "",
+			"total_views":          0,
+			"views_7d":             0,
+			"views_30d":            0,
+			"unique_readers":       0,
+			"avg_time_ms":          0,
+			"avg_scroll_depth":     0,
+			"chapter_count":        0,
+			"translation_count":    0,
+			"avg_rating":           0,
+			"rating_count":         0,
+			"favorites_count":      0,
+			"rank_change":          0,
+			"has_cover":            false,
+			"daily_views":          []map[string]any{},
 		})
 		return
 	}
@@ -385,24 +393,26 @@ func (s *Server) statsBook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"book_id":           bookID,
-		"owner_user_id":     ownerID,
-		"title":             title,
-		"genre_tags":        genreTags,
-		"original_language": lang,
-		"total_views":       totalViews,
-		"views_7d":          views7d,
-		"views_30d":         views30d,
-		"unique_readers":    uniqueReaders,
-		"avg_time_ms":       avgTimeMs,
-		"avg_scroll_depth":  avgScrollDepth,
-		"chapter_count":     chapterCount,
-		"avg_rating":        avgRating,
-		"rating_count":      ratingCount,
-		"favorites_count":   favoritesCount,
-		"rank_change":       rankChange,
-		"has_cover":         hasCover,
-		"daily_views":       dailyViews,
+		"book_id":            bookID,
+		"owner_user_id":      ownerID,
+		"owner_display_name": ownerDisplayName,
+		"title":              title,
+		"genre_tags":         genreTags,
+		"original_language":  lang,
+		"total_views":        totalViews,
+		"views_7d":           views7d,
+		"views_30d":          views30d,
+		"unique_readers":     uniqueReaders,
+		"avg_time_ms":        avgTimeMs,
+		"avg_scroll_depth":   avgScrollDepth,
+		"chapter_count":      chapterCount,
+		"translation_count":  translationCount,
+		"avg_rating":         avgRating,
+		"rating_count":       ratingCount,
+		"favorites_count":    favoritesCount,
+		"rank_change":        rankChange,
+		"has_cover":          hasCover,
+		"daily_views":        dailyViews,
 	})
 }
 
@@ -530,6 +540,8 @@ func bookOrderCol(period, sortBy string) string {
 		return "avg_rating"
 	case "favorites":
 		return "favorites_count"
+	case "trending":
+		return "rank_change"
 	}
 	switch period {
 	case "7d":

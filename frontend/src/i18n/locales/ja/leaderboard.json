@@ -1,0 +1,35 @@
+{
+  "title": "ランキング",
+  "subtitle": "コミュニティの人気書籍、著者、翻訳者を発見しましょう。",
+  "tabs": {
+    "books": "人気書籍",
+    "authors": "著者",
+    "translators": "翻訳者",
+    "trending": "トレンド"
+  },
+  "period": {
+    "7d": "今週",
+    "30d": "今月",
+    "all": "全期間"
+  },
+  "filters": {
+    "allGenres": "全ジャンル",
+    "allLanguages": "全言語"
+  },
+  "ranking": {
+    "fullRankings": "ランキング一覧",
+    "readers": "読者数",
+    "favorites": "お気に入り",
+    "ratings": "件の評価",
+    "chapters": "章",
+    "translations": "件の翻訳",
+    "rating": "評価順",
+    "showMore": "もっと見る",
+    "noResults": "まだランキングがありません。読書や翻訳を始めましょう！"
+  },
+  "quickStats": {
+    "topAuthors": "人気著者",
+    "topTranslators": "人気翻訳者",
+    "viewAll": "すべて見る"
+  }
+}

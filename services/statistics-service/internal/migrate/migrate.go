@@ -151,6 +151,14 @@ CREATE TABLE IF NOT EXISTS daily_book_rollups (
   PRIMARY KEY (book_id, day)
 );
 CREATE INDEX IF NOT EXISTS idx_dbr_day ON daily_book_rollups(day DESC);
+
+-- Display name denormalization (for leaderboard rendering without N auth calls)
+ALTER TABLE book_stats ADD COLUMN IF NOT EXISTS owner_display_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE author_stats ADD COLUMN IF NOT EXISTS display_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE translator_stats ADD COLUMN IF NOT EXISTS display_name TEXT NOT NULL DEFAULT '';
+
+-- Translation count per book (distinct languages with completed translations)
+ALTER TABLE book_stats ADD COLUMN IF NOT EXISTS translation_count INT NOT NULL DEFAULT 0;
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

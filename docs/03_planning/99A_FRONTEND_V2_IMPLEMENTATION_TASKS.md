@@ -3794,10 +3794,10 @@ Task order:
 
   ── Placeholder pages (3 items) ───────────────────────────────────────
 
-  P9-01: Leaderboard page [FE]
-    Status: [ ]
+  P9-01: Leaderboard page [FS]
+    Status: [✓]
     Route: /leaderboard
-    Notes: Top books by views/readers, top translators, top authors
+    Notes: Full-stack — statistics-service backend (display name denormalization, translation counts, trending sort) + frontend (Podium, RankingList, AuthorList, TranslatorList, QuickStatsCards, filters, i18n 4 langs). Auth-service internal profile endpoint added.
 
   P9-02: User profile page [FE]
     Status: [ ]

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -820,4 +821,34 @@ func (s *Server) patchPreferences(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]json.RawMessage{"prefs": result})
+}
+
+// ── Internal (service-to-service) ──────────────────────────────────────────
+
+func (s *Server) internalGetUserProfile(w http.ResponseWriter, r *http.Request) {
+	userID, err := uuid.Parse(chi.URLParam(r, "user_id"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "invalid user_id")
+		return
+	}
+
+	var displayName, avatarURL *string
+	err = s.pool.QueryRow(r.Context(),
+		`SELECT display_name, avatar_url FROM users WHERE id = $1`, userID,
+	).Scan(&displayName, &avatarURL)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "AUTH_USER_NOT_FOUND", "user not found")
+		return
+	}
+
+	m := map[string]any{"user_id": userID.String()}
+	if displayName != nil {
+		m["display_name"] = *displayName
+	} else {
+		m["display_name"] = ""
+	}
+	if avatarURL != nil {
+		m["avatar_url"] = *avatarURL
+	}
+	writeJSON(w, http.StatusOK, m)
 }

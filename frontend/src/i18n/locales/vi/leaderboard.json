@@ -1,0 +1,35 @@
+{
+  "title": "Bảng xếp hạng",
+  "subtitle": "Khám phá sách, tác giả và dịch giả hàng đầu trong cộng đồng.",
+  "tabs": {
+    "books": "Sách nổi bật",
+    "authors": "Tác giả",
+    "translators": "Dịch giả",
+    "trending": "Xu hướng"
+  },
+  "period": {
+    "7d": "Tuần này",
+    "30d": "Tháng này",
+    "all": "Tất cả"
+  },
+  "filters": {
+    "allGenres": "Tất cả thể loại",
+    "allLanguages": "Tất cả ngôn ngữ"
+  },
+  "ranking": {
+    "fullRankings": "Bảng xếp hạng đầy đủ",
+    "readers": "Người đọc",
+    "favorites": "Yêu thích",
+    "ratings": "đánh giá",
+    "chapters": "chương",
+    "translations": "bản dịch",
+    "rating": "Đánh giá",
+    "showMore": "Xem thêm",
+    "noResults": "Chưa có xếp hạng. Hãy bắt đầu đọc và dịch!"
+  },
+  "quickStats": {
+    "topAuthors": "Tác giả hàng đầu",
+    "topTranslators": "Dịch giả hàng đầu",
+    "viewAll": "Xem tất cả"
+  }
+}

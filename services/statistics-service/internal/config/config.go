@@ -12,6 +12,7 @@ type Config struct {
 	InternalServiceToken   string
 	RedisURL               string
 	BookServiceInternalURL string
+	AuthServiceInternalURL string
 	RefreshIntervalSeconds int
 }
 
@@ -22,6 +23,7 @@ func Load() (*Config, error) {
 		InternalServiceToken:   getEnv("INTERNAL_SERVICE_TOKEN", ""),
 		RedisURL:               os.Getenv("REDIS_URL"),
 		BookServiceInternalURL: getEnv("BOOK_SERVICE_INTERNAL_URL", "http://localhost:8082"),
+		AuthServiceInternalURL: getEnv("AUTH_SERVICE_INTERNAL_URL", "http://localhost:8081"),
 		RefreshIntervalSeconds: getInt("REFRESH_INTERVAL", 600),
 	}
 	if c.DatabaseURL == "" {
