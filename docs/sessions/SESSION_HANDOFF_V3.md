@@ -1,78 +1,75 @@
-# Session Handoff — Session 26
+# Session Handoff — Session 27
 
 > **Purpose:** Give the next agent complete context to continue.
-> **Date:** 2026-04-08 (session 27 — corrected)
-> **Last commit:** `c190e03` — feat(leaderboard): P9-01 full-stack leaderboard — backend gaps + frontend + review fixes
+> **Date:** 2026-04-09 (session 27 end)
+> **Last commit:** `9072c01` — plan(wiki): P9-08 wiki system — 5 sub-phase plan + editor design draft
 > **Uncommitted work:** None
-> **Previous focus:** P9-07 .docx/.epub import (session 25)
-> **Current focus:** Phase 9 remaining tasks (10 left)
+> **Previous focus:** P9-01 Leaderboard (session 26)
+> **Current focus:** P9-08 Wiki system (planned, ready to build)
 
 ---
 
-## 1. What Happened This Session
+## 1. What Happened This Session (12 commits)
 
-### P9-01: Leaderboard — Full-Stack Implementation + Review
+| Commit | Task | What |
+|--------|------|------|
+| `0bb6026` | P9-02 | User profile — follow system, favorites, public profile, 6 FE components, i18n 4 langs |
+| `945f3c5` | P9-02 fix | 8 review fixes (validation, i18n, a11y, error handling) |
+| `3ac1458` | Tests | Integration tests — leaderboard 24 + profile 48 scenarios (72 total) |
+| `907e62a` | P9-03 | Notification service — new Go/Chi microservice (port 8091), bell dropdown, producers |
+| `dfe9de4` | P9-03 fix | 8 review fixes (category allowlist, validation, error handling) |
+| `63d7dd3` | P9-06 | Glossary editor integration — ProseMirror decorations, tooltip, `[[` autocomplete, panel |
+| `cd145ae` | P9-06 fix | 7 review fixes (critical SQL fix, DOM safety, case-insensitive, performance) |
+| `165a171` | P9-04/05/10 | Auto-next chapter, TTS scroll toggle, translation dots on book cards |
+| `126a7d3` | P9-04/10 fix | 3 review fixes (stale nav, stable deps, batched fetch) |
+| `9072c01` | P9-08 plan | Wiki system 5 sub-phase plan + editor design draft HTML |
 
-**Backend gaps closed (statistics-service + auth-service):**
-
-| Gap | What was done |
-|-----|---------------|
-| A1: Display name denormalization | Added `owner_display_name` to `book_stats`, `display_name` to `author_stats` + `translator_stats`. Auth-service got `GET /internal/users/{user_id}/profile` (no JWT). Consumer fetches names during refresh cycle. |
-| A2: Translation count | Added `translation_count INT` to `book_stats`. Consumer counts `DISTINCT target_language` from completed `translation_events`. Reset query for books with no translations. |
-| A3: Trending sort | `bookOrderCol("trending")` → `rank_change`. Reuses existing snapshot system. |
-
-**Frontend built (12 components + page + API + i18n):**
-
-| Component | File | Purpose |
-|-----------|------|---------|
-| API layer | `features/leaderboard/api.ts` | Types + 3 fetch functions (books/authors/translators) |
-| RankMedal | `features/leaderboard/RankMedal.tsx` | Gold/silver/bronze gradient medals for 1-3, number for 4+ |
-| TrendArrow | `features/leaderboard/TrendArrow.tsx` | Green up / red down / dash for rank_change |
-| PeriodSelector | `features/leaderboard/PeriodSelector.tsx` | 7d / 30d / all segmented buttons |
-| FilterChips | `features/leaderboard/FilterChips.tsx` | Genre + language filter chips |
-| Podium | `features/leaderboard/Podium.tsx` | Top 3 books (#2-left, #1-center, #3-right) |
-| RankingList | `features/leaderboard/RankingList.tsx` | Full ranking table with sort + pagination |
-| AuthorList | `features/leaderboard/AuthorList.tsx` | Author leaderboard rows |
-| TranslatorList | `features/leaderboard/TranslatorList.tsx` | Translator leaderboard rows |
-| QuickStatsCards | `features/leaderboard/QuickStatsCards.tsx` | Bottom preview cards (top 3 authors + translators) |
-| LeaderboardPage | `pages/LeaderboardPage.tsx` | Main page composing all components |
-| i18n | `i18n/locales/{en,ja,vi,zh-TW}/leaderboard.json` | 4-language translations |
-
-**Review fixes applied (6 issues):**
-
-1. `statsBook` zero-fallback now includes `owner_display_name` + `translation_count`
-2. `recalculateTranslationCounts` resets books with no completed translations to 0
-3. `refreshTranslatorDisplayNames` refreshes all rows (not just empty) so name changes propagate
-4. `AuthorList` + `TranslatorList` "Show more" uses `t('ranking.showMore')` instead of hardcoded English
-5. Quick-stats preview uses separate `previewAuthors`/`previewTranslators` state to avoid overwriting full list
-6. Removed dead `AbortController`/`useRef` code (apiJson doesn't support signal)
-
-**Build verification:** `go build ./...` and `go vet ./...` pass clean for both auth-service and statistics-service.
+**All integration tests pass:** Leaderboard 24 + Profile 48 + Notifications 29 = **101 tests**
 
 ---
 
-## 2. Committed Changes
+## 2. Phase 9 Status
 
-All P9-01 work was committed at `c190e03` — feat(leaderboard): P9-01 full-stack leaderboard — backend gaps + frontend + review fixes. Working tree is clean.
+| Task | Status | What |
+|------|--------|------|
+| P9-01 | **Done** | Leaderboard (session 26) |
+| P9-02 | **Done** | User profile — follow, favorites, public profile |
+| P9-03 | **Done** | Notification service + center |
+| P9-04 | **Done** | Auto-load next chapter in reader |
+| P9-05 | **Done** | Auto-scroll with TTS toggle |
+| P9-06 | **Done** | Glossary integration in editor |
+| P9-07 | **Done** | .docx/.epub import (session 25) |
+| **P9-08** | **Planned** | Wiki system — 5 sub-phases, ready to build |
+| P9-09 | Not started | Account deletion |
+| P9-10 | **Done** | Translation dots on book cards |
+| P9-11 | Not started | Audio drift detection |
+| P9-12 | Not started | Book sharing tab wiring |
+
+**Progress: 8/12 done, 1 planned, 3 not started**
 
 ---
 
-## 3. What's Next
+## 3. What's Next — P9-08 Wiki System
 
-### Phase 9: Remaining Features & Polish (10 tasks left)
+**Design drafts ready:**
+- `design-drafts/screen-wiki.html` — reader view, settings, community review (5 sections)
+- `design-drafts/screen-wiki-editor.html` — editor, media blocks, templates, revisions (4 sections)
 
-| Task | Type | Priority | What |
-|------|------|----------|------|
-| P9-02 | FE | Medium | User profile page |
-| P9-03 | FS | Medium | Notification service + center (backend needed) |
-| P9-04 | FE | Low | Auto-load next chapter in reader |
-| P9-05 | FE | Low | Auto-scroll with TTS |
-| P9-06 | FE | Medium | Glossary integration in editor |
-| P9-08 | FE | Low | Wiki tab on book detail |
-| P9-09 | BE+FE | Low | Account deletion |
-| P9-10 | FE | Low | Translation dots on book cards |
-| P9-11 | FE | Low | Audio drift detection |
-| P9-12 | FE | Low | Book sharing tab wiring |
+**Plan (5 sub-phases, BE priority):**
+
+| Sub-phase | Type | What | Status |
+|-----------|------|------|--------|
+| P9-08a | BE | Wiki article CRUD + revisions (glossary-service, 9 endpoints, 2 tables) | Ready to build |
+| P9-08b | BE | Wiki settings on books + public reader API | Blocked by P9-08a |
+| P9-08c | BE | Community suggestions (3 endpoints, 1 table) | Blocked by P9-08a |
+| P9-08d | FE | Wiki reader tab + article viewer | Blocked by P9-08a + P9-08b |
+| P9-08e | FE | Wiki editor + media blocks + community | Blocked by P9-08a + P9-08c |
+
+**Critical path:** P9-08a → P9-08b + P9-08c (parallel) → P9-08d → P9-08e
+
+**Architecture:** Wiki articles in glossary-service DB (1:1 with entities). Infobox from attribute_values. Wiki settings JSONB on book-service books table. Reuses TiptapEditor + P9-06 GlossaryPlugin.
+
+**Start with P9-08a** — migrations, CRUD endpoints, revisions. Full endpoint list in planning doc.
 
 ---
 
@@ -81,16 +78,26 @@ All P9-01 work was committed at `c190e03` — feat(leaderboard): P9-01 full-stac
 | File | Purpose |
 |------|---------|
 | `docs/sessions/SESSION_PATCH.md` | Current status |
-| `docs/03_planning/99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | Full task list (136 done, 14 remaining) |
-| `services/statistics-service/internal/consumer/consumer.go` | Event consumer + refresh cycle |
-| `services/statistics-service/internal/api/server.go` | Leaderboard + stats API endpoints |
-| `services/auth-service/internal/api/handlers.go` | Internal user profile endpoint |
-| `frontend/src/pages/LeaderboardPage.tsx` | Leaderboard main page |
-| `frontend/src/features/leaderboard/api.ts` | Leaderboard API types + fetch |
+| `docs/03_planning/99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | Full task list — P9-08 expanded with 5 sub-phases |
+| `design-drafts/screen-wiki.html` | Wiki reader + settings + community review design |
+| `design-drafts/screen-wiki-editor.html` | Wiki editor + media blocks + templates design |
+| `services/glossary-service/internal/api/server.go` | Glossary routes — add wiki endpoints here |
+| `services/glossary-service/internal/migrate/migrate.go` | Glossary migration — add wiki tables here |
+| `services/glossary-service/internal/api/entity_handler.go` | Entity handlers — wiki articles pattern |
+| `frontend/src/components/editor/GlossaryPlugin.ts` | Reuse for wiki [[links]] |
+| `frontend/src/components/editor/GlossaryAutocomplete.tsx` | Reuse for wiki [[ trigger |
 
 ---
 
-## 5. Test Suites
+## 5. New Services Added This Session
+
+| Service | Port | DB | Purpose |
+|---------|------|-----|---------|
+| notification-service | 8091 (host: 8215) | loreweave_notification | Notification CRUD + internal create |
+
+---
+
+## 6. Test Suites (updated)
 
 | Suite | Count | File |
 |-------|-------|------|
@@ -101,19 +108,19 @@ All P9-01 work was committed at `c190e03` — feat(leaderboard): P9-01 full-stac
 | Reading analytics (TH) | 19/19 | `infra/test-reading-analytics.sh` |
 | Block classifier unit | 45/45 | `tests/test_block_classifier.py` + `test_block_batcher.py` |
 | Import (P9-07) | 20/20 | `html_to_tiptap_test.go` |
-| **Total** | **228** | |
+| **Leaderboard (P9-01)** | **24/24** | `infra/test-leaderboard.sh` |
+| **Profile (P9-02)** | **48/48** | `infra/test-profile.sh` |
+| **Notifications (P9-03)** | **29/29** | `infra/test-notifications.sh` |
+| **Total** | **329** | |
 
 ---
 
-## 6. Known Issues / Tech Debt
+## 7. Known Issues / Tech Debt
 
 | Issue | Severity | Note |
 |-------|----------|------|
-| Gateway multipart proxy hangs on upload | Medium | Pre-existing — selfHandleResponse already false |
-| View count N+1 in catalog projection | Low | One COUNT per book — materialized view later |
-| Nested inline marks not round-trippable | Low | block_classifier _text_to_inline limitation |
-| Duplicate batch logic in translate.py vs session_translator | Low | Refactor to shared function later |
-| History LIMIT 100 hardcoded | Low | Add pagination later |
+| Gateway multipart proxy hangs on upload | Medium | Pre-existing |
+| View count N+1 in catalog projection | Low | Materialized view later |
 | translation-service fails to start in Docker | Low | Pre-existing dependency issue |
-| Translator "quality %" not implemented | Low | Draft shows 96% but no data source — deferred |
-| refreshTranslatorDisplayNames makes N HTTP calls | Low | Batch endpoint would be better but acceptable for refresh cycle |
+| refreshTranslatorDisplayNames makes N HTTP calls | Low | Batch endpoint acceptable for refresh cycle |
+| P9-10 translation dots: N+1 coverage fetch | Low | Batched 10 at a time, acceptable |

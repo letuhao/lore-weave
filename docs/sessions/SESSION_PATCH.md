@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-08 (session 27)
-- Updated By: Assistant (P9-02 + P9-03 — user profile + notification service)
+- Last Updated: 2026-04-09 (session 27 end)
+- Updated By: Assistant (P9-02, P9-03, P9-04, P9-05, P9-06, P9-10 done + P9-08 planned)
 - Active Branch: `main`
-- HEAD: pending commit
+- HEAD: `9072c01` — plan(wiki): P9-08 wiki system — 5 sub-phase plan + editor design draft
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
 
 ---
@@ -31,7 +31,7 @@
 
 ## Current Active Work
 
-**Phase:** All phases 8A-8H COMPLETE. Phase 9 in progress (P9-01, P9-02, P9-03, P9-04, P9-05, P9-06, P9-07, P9-10 done, 4 remaining tasks).
+**Phase:** All phases 8A-8H COMPLETE. Phase 9 in progress (P9-01, P9-02, P9-03, P9-04, P9-05, P9-06, P9-07, P9-10 done — 8/12). P9-08 planned (5 sub-phases). 3 remaining: P9-08 (wiki, planned), P9-09 (account deletion), P9-11 (audio drift), P9-12 (sharing tab wiring).
 
 **What was done in this session (2026-04-08, session 27):**
 
