@@ -27,6 +27,7 @@ type Config struct {
 	MinioBucket     string
 	BookServiceURL  string
 	InternalToken   string
+	RabbitMQURL     string
 }
 
 func Load() *Config {
@@ -42,6 +43,7 @@ func Load() *Config {
 		MinioBucket:       envOrDefault("MINIO_BUCKET", "loreweave-dev-books"),
 		BookServiceURL:    envOrDefault("BOOK_SERVICE_URL", "http://localhost:8082"),
 		InternalToken:     envOrDefault("INTERNAL_SERVICE_TOKEN", "dev_internal_token"),
+		RabbitMQURL:       envOrDefault("RABBITMQ_URL", ""),
 	}
 
 	if v := os.Getenv("WORKER_TASKS"); v != "" {

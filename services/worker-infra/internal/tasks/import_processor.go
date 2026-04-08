@@ -14,6 +14,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minio/minio-go/v7"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/loreweave/worker-infra/internal/config"
@@ -24,6 +25,8 @@ type ImportProcessor struct {
 	Redis   *redis.Client
 	BookDB  *pgxpool.Pool
 	Minio   *minio.Client
+
+	amqpCh *amqp.Channel
 }
 
 func (t *ImportProcessor) Name() string { return "import-processor" }
@@ -36,6 +39,23 @@ const (
 
 func (t *ImportProcessor) Run(ctx context.Context) error {
 	slog.Info("import-processor starting")
+
+	// Connect to RabbitMQ for WebSocket push events
+	if t.Cfg.RabbitMQURL != "" {
+		conn, err := amqp.Dial(t.Cfg.RabbitMQURL)
+		if err != nil {
+			slog.Warn("import-processor: AMQP connect failed (WS push disabled)", "error", err)
+		} else {
+			ch, err := conn.Channel()
+			if err != nil {
+				slog.Warn("import-processor: AMQP channel failed", "error", err)
+			} else {
+				_ = ch.ExchangeDeclare("loreweave.events", "topic", true, false, false, false, nil)
+				t.amqpCh = ch
+				slog.Info("import-processor: AMQP connected for WS push")
+			}
+		}
+	}
 
 	// Create consumer group (ignore error if already exists)
 	t.Redis.XGroupCreateMkStream(ctx, importStream, importGroup, "0").Err()
@@ -89,15 +109,18 @@ func (t *ImportProcessor) Run(ctx context.Context) error {
 
 				slog.Info("import-processor processing", "job_id", payload.JobID, "format", payload.FileFormat)
 				t.updateJobStatus(ctx, payload.JobID, "processing", 0, nil)
+				t.publishWSEvent(payload.UserID, payload.JobID, "processing", 0, nil)
 
 				chaptersCreated, procErr := t.processImport(ctx, payload)
 				if procErr != nil {
 					slog.Error("import-processor failed", "job_id", payload.JobID, "error", procErr)
 					errMsg := procErr.Error()
 					t.updateJobStatus(ctx, payload.JobID, "failed", chaptersCreated, &errMsg)
+					t.publishWSEvent(payload.UserID, payload.JobID, "failed", chaptersCreated, &errMsg)
 				} else {
 					slog.Info("import-processor completed", "job_id", payload.JobID, "chapters", chaptersCreated)
 					t.updateJobStatus(ctx, payload.JobID, "completed", chaptersCreated, nil)
+					t.publishWSEvent(payload.UserID, payload.JobID, "completed", chaptersCreated, nil)
 				}
 
 				t.Redis.XAck(ctx, importStream, importGroup, msg.ID)
@@ -143,6 +166,13 @@ func (t *ImportProcessor) processImport(ctx context.Context, payload struct {
 	count := 0
 	for i, ch := range chapters {
 		tiptapJSON := htmlToTiptapJSON(ch.Content)
+
+		// Extract embedded images (data: URIs) → upload to MinIO → replace src
+		imgPrefix := fmt.Sprintf("chapters/%s/import-%s-%d", payload.BookID, payload.JobID, i)
+		tiptapJSON, imgCount := extractAndUploadImages(ctx, tiptapJSON, t.Minio, t.Cfg.MinioBucket, imgPrefix, "")
+		if imgCount > 0 {
+			slog.Info("import: extracted images", "chapter", i, "count", imgCount)
+		}
 
 		sortOrder := i + 1
 		// Auto-assign sort_order after existing chapters
@@ -244,6 +274,32 @@ func (t *ImportProcessor) callPandoc(ctx context.Context, data []byte, format st
 	}
 
 	return result.Output, nil
+}
+
+// publishWSEvent publishes an import status event to RabbitMQ for WebSocket push.
+func (t *ImportProcessor) publishWSEvent(userID, jobID, status string, chaptersCreated int, errMsg *string) {
+	if t.amqpCh == nil {
+		return
+	}
+	event := map[string]any{
+		"type":             "import.status",
+		"user_id":          userID,
+		"job_id":           jobID,
+		"status":           status,
+		"chapters_created": chaptersCreated,
+	}
+	if errMsg != nil {
+		event["error"] = *errMsg
+	}
+	body, _ := json.Marshal(event)
+	routingKey := "user." + userID
+	err := t.amqpCh.Publish("loreweave.events", routingKey, false, false, amqp.Publishing{
+		ContentType: "application/json",
+		Body:        body,
+	})
+	if err != nil {
+		slog.Warn("import-processor: AMQP publish failed", "error", err)
+	}
 }
 
 // updateJobStatus calls book-service internal API to update import job status.

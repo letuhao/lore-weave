@@ -1,7 +1,8 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { Upload, X, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { FormDialog } from '@/components/shared/FormDialog';
 import { booksApi, ImportJob } from '@/features/books/api';
+import { useImportEvents } from '@/hooks/useImportEvents';
 
 interface ImportDialogProps {
   open: boolean;
@@ -25,7 +26,45 @@ export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportD
   const [fileIndex, setFileIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Resolve refs for the active job's promise settle callbacks
+  const resolveRef = useRef<(() => void) | null>(null);
+  const rejectRef = useRef<((err: Error) => void) | null>(null);
+  const activeJobIdRef = useRef<string | null>(null);
+
   const accept = `${ACCEPTED_EXTENSIONS},${ACCEPTED_MIME}`;
+
+  // Get auth token for WS connection
+  const token = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('lw_auth') ?? '{}').accessToken ?? null;
+    } catch {
+      return null;
+    }
+  })();
+
+  // WebSocket handler — instant status updates from worker-infra via RabbitMQ → gateway
+  const handleWSEvent = useCallback(
+    (event: { job_id: string; status: string; chapters_created: number; error?: string }) => {
+      if (event.job_id !== activeJobIdRef.current) return;
+
+      setCurrentJob((prev) =>
+        prev ? { ...prev, status: event.status as ImportJob['status'], chapters_created: event.chapters_created, error: event.error ?? null } : prev,
+      );
+
+      if (event.status === 'completed') {
+        resolveRef.current?.();
+        resolveRef.current = null;
+        rejectRef.current = null;
+      } else if (event.status === 'failed') {
+        rejectRef.current?.(new Error(event.error || 'Import failed'));
+        resolveRef.current = null;
+        rejectRef.current = null;
+      }
+    },
+    [],
+  );
+
+  useImportEvents(open ? token : null, handleWSEvent);
 
   const handleFiles = (fileList: FileList | null) => {
     if (!fileList) return;
@@ -56,7 +95,6 @@ export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportD
       return;
     }
 
-    const token = JSON.parse(localStorage.getItem('lw_auth') ?? '{}').accessToken;
     if (!token) {
       setError('Not authenticated');
       return;
@@ -67,7 +105,6 @@ export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportD
     setFileIndex(0);
 
     const errors: string[] = [];
-    let lastJob: ImportJob | null = null;
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -76,44 +113,55 @@ export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportD
 
       try {
         if (file.name.endsWith('.txt')) {
-          // .txt files use the existing direct upload path
           await booksApi.createChapterUpload(token, bookId, {
             file,
             original_language: 'auto',
             title: file.name.replace('.txt', ''),
           });
         } else {
-          // .docx/.epub use the new async import
           const job = await booksApi.startImport(token, bookId, file, 'auto', (pct) =>
             setUploadProgress(pct),
           );
-          lastJob = job;
           setCurrentJob(job);
           setImportState('processing');
+          activeJobIdRef.current = job.id;
 
-          // Wait for this job to complete before processing the next file
+          // Wait for completion — WS resolves instantly, poll is fallback (5s interval)
           await new Promise<void>((resolve, reject) => {
+            resolveRef.current = resolve;
+            rejectRef.current = reject;
+
+            // Fallback poll in case WS is not connected
             const interval = setInterval(async () => {
               try {
                 const updated = await booksApi.getImportJob(token, bookId, job.id);
                 setCurrentJob(updated);
                 if (updated.status === 'completed') {
                   clearInterval(interval);
-                  resolve();
+                  resolveRef.current?.();
+                  resolveRef.current = null;
+                  rejectRef.current = null;
                 } else if (updated.status === 'failed') {
                   clearInterval(interval);
-                  reject(new Error(updated.error || 'Import failed'));
+                  rejectRef.current?.(new Error(updated.error || 'Import failed'));
+                  resolveRef.current = null;
+                  rejectRef.current = null;
                 }
               } catch {
                 // keep polling
               }
-            }, 2000);
+            }, 5000); // 5s interval (WS handles instant updates)
+
             // Timeout after 10 minutes
             setTimeout(() => {
               clearInterval(interval);
-              reject(new Error('Import timed out'));
+              rejectRef.current?.(new Error('Import timed out'));
+              resolveRef.current = null;
+              rejectRef.current = null;
             }, 10 * 60 * 1000);
           });
+
+          activeJobIdRef.current = null;
         }
       } catch (e) {
         errors.push(`${file.name}: ${(e as Error).message}`);
@@ -136,6 +184,7 @@ export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportD
     setUploadProgress(0);
     setCurrentJob(null);
     setError('');
+    activeJobIdRef.current = null;
     onOpenChange(false);
   };
 
@@ -190,7 +239,7 @@ export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportD
           </div>
         )}
 
-        {/* Drop zone — hide when processing/completed */}
+        {/* Drop zone */}
         {!isProcessing && importState !== 'completed' && (
           <div
             onClick={() => inputRef.current?.click()}
@@ -243,7 +292,7 @@ export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportD
           </div>
         )}
 
-        {/* Progress during import */}
+        {/* Progress */}
         {isProcessing && (
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -258,10 +307,7 @@ export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportD
               <div
                 className="h-full rounded-full bg-primary transition-all"
                 style={{
-                  width:
-                    importState === 'uploading'
-                      ? `${uploadProgress}%`
-                      : '100%',
+                  width: importState === 'uploading' ? `${uploadProgress}%` : '100%',
                 }}
               />
             </div>
