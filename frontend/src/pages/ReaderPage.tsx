@@ -198,6 +198,11 @@ export function ReaderPage() {
     return () => observer.disconnect();
   }, [autoNextEnabled, nextCh, loading]);
 
+  // Reset countdown when chapter changes (prevents stale navigation)
+  useEffect(() => {
+    setAutoNextCountdown(null);
+  }, [chapterId]);
+
   // Countdown timer for auto-next
   useEffect(() => {
     if (autoNextCountdown === null || !nextCh) return;

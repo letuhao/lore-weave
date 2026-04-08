@@ -53,25 +53,33 @@ export function BooksPage() {
 
   useEffect(() => { void load(); }, [accessToken]);
 
-  // Fetch translation coverage per book (parallel, fire-and-forget)
+  // Fetch translation coverage per book (batched 10 at a time, fire-and-forget)
+  const bookIds = books.map((b) => b.book_id).join(',');
   useEffect(() => {
     if (!accessToken || books.length === 0) return;
+    let cancelled = false;
     const fetchCoverage = async () => {
       const results: Record<string, string[]> = {};
-      await Promise.allSettled(
-        books.map(async (book) => {
-          try {
-            const cov = await translationApi.getBookCoverage(accessToken, book.book_id);
-            if (cov.known_languages?.length > 0) {
-              results[book.book_id] = cov.known_languages;
-            }
-          } catch {}
-        }),
-      );
-      setBookLangs(results);
+      // Batch requests in groups of 10 to avoid overwhelming the server
+      for (let i = 0; i < books.length; i += 10) {
+        if (cancelled) break;
+        const batch = books.slice(i, i + 10);
+        await Promise.allSettled(
+          batch.map(async (book) => {
+            try {
+              const cov = await translationApi.getBookCoverage(accessToken, book.book_id);
+              if (cov.known_languages?.length > 0) {
+                results[book.book_id] = cov.known_languages;
+              }
+            } catch {}
+          }),
+        );
+      }
+      if (!cancelled) setBookLangs(results);
     };
     void fetchCoverage();
-  }, [accessToken, books]);
+    return () => { cancelled = true; };
+  }, [accessToken, bookIds]);
 
   const filteredBooks = books.filter((b) => {
     if (search && !b.title.toLowerCase().includes(search.toLowerCase())) return false;
