@@ -209,6 +209,12 @@ func (s *Server) listPublicBooks(w http.ResponseWriter, r *http.Request) {
 	genre := r.URL.Query().Get("genre")  // filter by genre tag (OR if comma-separated)
 	sortBy := r.URL.Query().Get("sort")  // recent, chapters, alpha
 	author := r.URL.Query().Get("author") // filter by owner_user_id
+	if author != "" {
+		if _, err := uuid.Parse(author); err != nil {
+			writeError(w, http.StatusBadRequest, "CATALOG_INVALID_QUERY", "invalid author id")
+			return
+		}
+	}
 
 	// Parse genre filter into a set for fast lookup
 	genreFilter := make(map[string]bool)

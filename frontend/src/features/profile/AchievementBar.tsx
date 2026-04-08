@@ -1,9 +1,11 @@
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import type { AuthorStats, TranslatorStats } from './api';
 
 type Achievement = { icon: string; label: string; highlight?: boolean };
 
 function computeAchievements(
+  t: TFunction,
   author: AuthorStats,
   translator: TranslatorStats | null,
   followerCount: number,
@@ -11,21 +13,21 @@ function computeAchievements(
   const list: Achievement[] = [];
 
   if (author.total_books >= 1) {
-    list.push({ icon: '\u{1F4DA}', label: `${author.total_books} Book${author.total_books > 1 ? 's' : ''} Published` });
+    list.push({ icon: '\u{1F4DA}', label: t('achievement.booksPublished', { count: author.total_books }) });
   }
   if (author.total_readers >= 1000) {
-    list.push({ icon: '\u{1F4D6}', label: `${Math.floor(author.total_readers / 1000)}K+ Readers` });
+    list.push({ icon: '\u{1F4D6}', label: t('achievement.kReaders', { count: Math.floor(author.total_readers / 1000) }) });
   } else if (author.total_readers >= 100) {
-    list.push({ icon: '\u{1F31F}', label: '100+ Readers' });
+    list.push({ icon: '\u{1F31F}', label: t('achievement.hundredReaders') });
   }
   if (followerCount >= 10) {
-    list.push({ icon: '\u{1F465}', label: `${followerCount} Followers`, highlight: true });
+    list.push({ icon: '\u{1F465}', label: t('achievement.followers', { count: followerCount }), highlight: true });
   }
   if (translator && translator.languages.length >= 3) {
-    list.push({ icon: '\u{1F310}', label: `${translator.languages.length}-Language Translator` });
+    list.push({ icon: '\u{1F310}', label: t('achievement.multiLangTranslator', { count: translator.languages.length }) });
   }
   if (translator && translator.total_chapters_done >= 50) {
-    list.push({ icon: '\u{1F3C6}', label: '50+ Chapters Translated', highlight: true });
+    list.push({ icon: '\u{1F3C6}', label: t('achievement.fiftyChapters'), highlight: true });
   }
 
   return list;
@@ -39,7 +41,7 @@ type Props = {
 
 export function AchievementBar({ author, translator, followerCount }: Props) {
   const { t } = useTranslation('profile');
-  const achievements = computeAchievements(author, translator, followerCount);
+  const achievements = computeAchievements(t, author, translator, followerCount);
 
   if (achievements.length === 0) return null;
 

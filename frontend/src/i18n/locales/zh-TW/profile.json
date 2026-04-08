@@ -10,6 +10,8 @@
   "noBooks": "尚未出版任何書籍。",
   "noTranslations": "尚無翻譯。",
   "errorLoading": "無法載入個人資料。",
+  "followError": "追蹤失敗。",
+  "unfollowError": "取消追蹤失敗。",
   "userNotFound": "找不到使用者。",
   "achievements": "成就",
   "comingSoon": "{{feature}} — 即將推出",
@@ -27,6 +29,15 @@
     "totalTranslations": "總翻譯數",
     "languages": "語言"
   },
+  "achievement": {
+    "booksPublished": "已出版 {{count}} 本書",
+    "kReaders": "{{count}}K+ 讀者",
+    "hundredReaders": "100+ 讀者",
+    "followers": "{{count}} 粉絲",
+    "multiLangTranslator": "{{count}} 語言翻譯者",
+    "fiftyChapters": "50+ 章節已翻譯"
+  },
+  "loadError": "無法載入書籍。",
   "tabs": {
     "books": "書籍",
     "translations": "翻譯",

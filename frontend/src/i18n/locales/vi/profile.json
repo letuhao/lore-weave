@@ -10,6 +10,8 @@
   "noBooks": "Chưa có sách nào được xuất bản.",
   "noTranslations": "Chưa có bản dịch nào.",
   "errorLoading": "Không thể tải hồ sơ.",
+  "followError": "Không thể theo dõi người dùng.",
+  "unfollowError": "Không thể bỏ theo dõi người dùng.",
   "userNotFound": "Không tìm thấy người dùng.",
   "achievements": "Thành tựu",
   "comingSoon": "{{feature}} — Sắp ra mắt",
@@ -27,6 +29,15 @@
     "totalTranslations": "Tổng bản dịch",
     "languages": "Ngôn ngữ"
   },
+  "achievement": {
+    "booksPublished": "{{count}} sách đã xuất bản",
+    "kReaders": "{{count}}K+ độc giả",
+    "hundredReaders": "100+ độc giả",
+    "followers": "{{count}} người theo dõi",
+    "multiLangTranslator": "Dịch giả {{count}} ngôn ngữ",
+    "fiftyChapters": "50+ chương đã dịch"
+  },
+  "loadError": "Không thể tải danh sách sách.",
   "tabs": {
     "books": "Sách",
     "translations": "Bản dịch",

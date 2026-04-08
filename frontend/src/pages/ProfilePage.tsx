@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import {
   fetchPublicProfile,
@@ -56,26 +57,36 @@ export function ProfilePage() {
   const handleFollow = useCallback(async () => {
     if (!userId || !accessToken) return;
     setFollowLoading(true);
+    setProfile((p) =>
+      p ? { ...p, is_following: true, follower_count: p.follower_count + 1 } : p,
+    );
     try {
       await followUser(userId, accessToken);
+    } catch {
       setProfile((p) =>
-        p ? { ...p, is_following: true, follower_count: p.follower_count + 1 } : p,
+        p ? { ...p, is_following: false, follower_count: Math.max(0, p.follower_count - 1) } : p,
       );
-    } catch {}
+      toast.error(t('followError'));
+    }
     setFollowLoading(false);
-  }, [userId, accessToken]);
+  }, [userId, accessToken, t]);
 
   const handleUnfollow = useCallback(async () => {
     if (!userId || !accessToken) return;
     setFollowLoading(true);
+    setProfile((p) =>
+      p ? { ...p, is_following: false, follower_count: Math.max(0, p.follower_count - 1) } : p,
+    );
     try {
       await unfollowUser(userId, accessToken);
+    } catch {
       setProfile((p) =>
-        p ? { ...p, is_following: false, follower_count: Math.max(0, p.follower_count - 1) } : p,
+        p ? { ...p, is_following: true, follower_count: p.follower_count + 1 } : p,
       );
-    } catch {}
+      toast.error(t('unfollowError'));
+    }
     setFollowLoading(false);
-  }, [userId, accessToken]);
+  }, [userId, accessToken, t]);
 
   if (loading) {
     return (

@@ -11,20 +11,26 @@ export function BooksTab({ userId }: Props) {
   const [books, setBooks] = useState<CatalogBook[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     setLoading(true);
+    setError(false);
     fetchUserBooks(userId, { limit: 50 })
       .then((res) => {
         setBooks(res.items);
         setTotal(res.total);
       })
-      .catch(() => {})
+      .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, [userId]);
 
   if (loading) {
     return <div className="py-8 text-center text-sm text-[var(--muted-fg)]">{t('loading')}</div>;
+  }
+
+  if (error) {
+    return <div className="py-8 text-center text-sm text-[var(--muted-fg)]">{t('loadError')}</div>;
   }
 
   if (books.length === 0) {

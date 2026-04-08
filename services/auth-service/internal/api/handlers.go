@@ -359,14 +359,26 @@ func (s *Server) patchProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	if v, ok := body["bio"]; ok && v != nil {
 		s := fmt.Sprint(v)
+		if len(s) > 1000 {
+			writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "bio must be 1000 characters or fewer")
+			return
+		}
 		bi = &s
 	}
-	// languages: expect []string
+	// languages: expect []string, max 20 items, max 50 chars each
 	var langs []string
 	if v, ok := body["languages"]; ok && v != nil {
 		if arr, ok := v.([]any); ok {
+			if len(arr) > 20 {
+				writeErr(w, http.StatusBadRequest, "AUTH_VALIDATION_ERROR", "languages must have 20 items or fewer")
+				return
+			}
 			for _, item := range arr {
-				langs = append(langs, fmt.Sprint(item))
+				l := strings.TrimSpace(fmt.Sprint(item))
+				if l == "" || len(l) > 50 {
+					continue
+				}
+				langs = append(langs, l)
 			}
 		}
 	}

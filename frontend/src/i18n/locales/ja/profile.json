@@ -10,6 +10,8 @@
   "noBooks": "まだ本が公開されていません。",
   "noTranslations": "まだ翻訳がありません。",
   "errorLoading": "プロフィールの読み込みに失敗しました。",
+  "followError": "フォローに失敗しました。",
+  "unfollowError": "フォロー解除に失敗しました。",
   "userNotFound": "ユーザーが見つかりません。",
   "achievements": "実績",
   "comingSoon": "{{feature}} — 近日公開",
@@ -27,6 +29,15 @@
     "totalTranslations": "総翻訳数",
     "languages": "言語"
   },
+  "achievement": {
+    "booksPublished": "{{count}}冊出版",
+    "kReaders": "{{count}}K+読者",
+    "hundredReaders": "100+読者",
+    "followers": "{{count}}フォロワー",
+    "multiLangTranslator": "{{count}}言語翻訳者",
+    "fiftyChapters": "50+章翻訳済み"
+  },
+  "loadError": "書籍の読み込みに失敗しました。",
   "tabs": {
     "books": "書籍",
     "translations": "翻訳",

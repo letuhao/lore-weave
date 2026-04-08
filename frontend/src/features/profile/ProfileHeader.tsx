@@ -36,7 +36,11 @@ export function ProfileHeader({ profile, isSelf, onFollow, onUnfollow, followLoa
           className="w-20 h-20 rounded-full border-[3px] border-[var(--primary)] object-cover flex-shrink-0"
         />
       ) : (
-        <div className="w-20 h-20 rounded-full bg-[var(--primary-muted)] text-[var(--primary)] text-[28px] font-bold flex items-center justify-center flex-shrink-0 border-[3px] border-[var(--primary)]">
+        <div
+          className="w-20 h-20 rounded-full bg-[var(--primary-muted)] text-[var(--primary)] text-[28px] font-bold flex items-center justify-center flex-shrink-0 border-[3px] border-[var(--primary)]"
+          role="img"
+          aria-label={profile.display_name || t('anonymous')}
+        >
           {initials(profile.display_name || '?')}
         </div>
       )}

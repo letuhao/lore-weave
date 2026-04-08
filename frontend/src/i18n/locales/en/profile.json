@@ -10,6 +10,8 @@
   "noBooks": "No books published yet.",
   "noTranslations": "No translations yet.",
   "errorLoading": "Failed to load profile.",
+  "followError": "Failed to follow user.",
+  "unfollowError": "Failed to unfollow user.",
   "userNotFound": "User not found.",
   "achievements": "Achievements",
   "comingSoon": "{{feature}} — Coming soon",
@@ -27,6 +29,16 @@
     "totalTranslations": "Total translations",
     "languages": "Languages"
   },
+  "achievement": {
+    "booksPublished": "{{count}} Book Published",
+    "booksPublished_other": "{{count}} Books Published",
+    "kReaders": "{{count}}K+ Readers",
+    "hundredReaders": "100+ Readers",
+    "followers": "{{count}} Followers",
+    "multiLangTranslator": "{{count}}-Language Translator",
+    "fiftyChapters": "50+ Chapters Translated"
+  },
+  "loadError": "Failed to load books.",
   "tabs": {
     "books": "Books",
     "translations": "Translations",
