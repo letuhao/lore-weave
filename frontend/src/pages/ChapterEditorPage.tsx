@@ -20,6 +20,11 @@ import { useEditorMode } from '@/hooks/useEditorMode';
 import { setImageUploadContext, setOnOpenHistory } from '@/components/editor/ImageBlockNode';
 import { setOnOpenVideoHistory } from '@/components/editor/VideoBlockNode';
 import { VersionHistoryPanel } from '@/components/editor/VersionHistoryPanel';
+import { GlossaryTooltip } from '@/components/editor/GlossaryTooltip';
+import { GlossaryAutocomplete } from '@/components/editor/GlossaryAutocomplete';
+import { GlossaryPanel } from '@/components/editor/GlossaryPanel';
+import { glossaryApi } from '@/features/glossary/api';
+import type { EntityNameEntry } from '@/features/glossary/types';
 
 function wordCount(text: string): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
@@ -53,8 +58,13 @@ export function ChapterEditorPage() {
   const [rightTab, setRightTab] = useState<'history' | 'ai'>('history');
   const [revKey, setRevKey] = useState(0);
 
+  // Glossary integration
+  const [glossaryEntities, setGlossaryEntities] = useState<EntityNameEntry[]>([]);
+  const [glossaryEnabled, setGlossaryEnabledState] = useState(true);
+  const editorElRef = useRef<HTMLElement | null>(null);
+
   // Left sidebar
-  const [leftTab, setLeftTab] = useState<'source' | 'chapters'>('chapters');
+  const [leftTab, setLeftTab] = useState<'source' | 'chapters' | 'glossary'>('chapters');
   const [originalContent, setOriginalContent] = useState<string | null>(null);
   const [originalLoading, setOriginalLoading] = useState(false);
   const [allChapters, setAllChapters] = useState<Chapter[]>([]);
@@ -153,6 +163,32 @@ export function ChapterEditorPage() {
       })
       .catch(() => {});
   }, [accessToken, bookId, chapterId]);
+
+  // Load glossary entities for decoration + autocomplete
+  const loadGlossaryEntities = useCallback(() => {
+    if (!accessToken || !bookId) return;
+    glossaryApi.listEntityNames(bookId, accessToken)
+      .then((entries) => {
+        setGlossaryEntities(entries);
+        tiptapEditorRef.current?.setGlossaryEntities(entries);
+      })
+      .catch(() => {});
+  }, [accessToken, bookId]);
+
+  useEffect(() => {
+    loadGlossaryEntities();
+  }, [loadGlossaryEntities]);
+
+  // Sync glossary enabled state to editor
+  useEffect(() => {
+    tiptapEditorRef.current?.setGlossaryEnabled(glossaryEnabled);
+  }, [glossaryEnabled]);
+
+  // Capture editor DOM element for autocomplete positioning
+  useEffect(() => {
+    const el = document.querySelector('.tiptap-content') as HTMLElement | null;
+    editorElRef.current = el;
+  });
 
   // Lazy-load original source when the Source tab is opened
   useEffect(() => {
@@ -471,11 +507,18 @@ export function ChapterEditorPage() {
                 <FileText className="h-3 w-3" />Original
               </button>
               <button
-                className="flex flex-1 cursor-not-allowed items-center justify-center gap-1.5 px-3 py-2 text-xs text-muted-foreground/35"
-                title="Glossary integration — coming soon"
-                disabled
+                onClick={() => setLeftTab('glossary')}
+                className={cn(
+                  'flex flex-1 items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors',
+                  leftTab === 'glossary' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground',
+                )}
               >
                 <BookMarked className="h-3 w-3" />Glossary
+                {glossaryEntities.length > 0 && (
+                  <span className="text-[9px] px-1 py-px rounded-full bg-[var(--primary-muted)] text-[var(--primary)]">
+                    {glossaryEntities.length}
+                  </span>
+                )}
               </button>
             </div>
 
@@ -547,6 +590,16 @@ export function ChapterEditorPage() {
                   )}
                 </div>
               </div>
+            )}
+
+            {leftTab === 'glossary' && (
+              <GlossaryPanel
+                entities={glossaryEntities.map((e) => ({ ...e, count: 0 }))}
+                glossaryEnabled={glossaryEnabled}
+                onToggleEnabled={() => setGlossaryEnabledState((v) => !v)}
+                onRefresh={loadGlossaryEntities}
+                onEntityClick={() => {}}
+              />
             )}
           </div>
         )}
@@ -693,6 +746,19 @@ export function ChapterEditorPage() {
         onDiscard={() => { discardChanges(); setEditorMode(pendingModeSwitch!); setPendingModeSwitch(null); }}
         saving={saving}
       />
+
+      {/* Glossary hover tooltip */}
+      {glossaryEnabled && <GlossaryTooltip bookId={bookId} />}
+
+      {/* Glossary [[ autocomplete */}
+      {glossaryEnabled && (
+        <GlossaryAutocomplete
+          entities={glossaryEntities}
+          editorEl={editorElRef.current}
+          onSelect={() => {}}
+          onCreateNew={() => {}}
+        />
+      )}
     </div>
   );
 }

@@ -86,6 +86,7 @@ func (s *Server) Router() http.Handler {
 				r.Post("/{entity_id}/restore", s.restoreEntity)
 				r.Delete("/{entity_id}", s.purgeEntity)
 			})
+			r.Get("/entity-names", s.listEntityNames)
 			r.Route("/entities", func(r chi.Router) {
 				r.Get("/", s.listEntities)
 				r.Post("/", s.createEntity)

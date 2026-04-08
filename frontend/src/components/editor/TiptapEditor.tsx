@@ -23,6 +23,7 @@ import Subscript from '@tiptap/extension-subscript';
 import Superscript from '@tiptap/extension-superscript';
 import GlobalDragHandle from 'tiptap-extension-global-drag-handle';
 import { GrammarExtension, setGrammarEnabled } from './GrammarPlugin';
+import { GlossaryExtension, setGlossaryEntities, setGlossaryEnabled, getGlossaryCount } from './GlossaryPlugin';
 
 export interface TiptapEditorHandle {
   /** Reset editor content from Tiptap JSON (e.g. revision restore, discard) */
@@ -31,6 +32,12 @@ export interface TiptapEditorHandle {
   setGrammarEnabled: (enabled: boolean) => void;
   /** Toggle source view */
   setSourceView: (show: boolean) => void;
+  /** Set glossary entities for decoration scanning */
+  setGlossaryEntities: (entities: import('@/features/glossary/types').EntityNameEntry[]) => void;
+  /** Toggle glossary highlights on/off */
+  setGlossaryEnabled: (enabled: boolean) => void;
+  /** Get current glossary match count */
+  getGlossaryCount: () => number;
 }
 
 interface TiptapEditorProps {
@@ -45,6 +52,7 @@ interface TiptapEditorProps {
 import { extractText, addTextSnapshots } from '@/lib/tiptap-utils';
 // Re-export from shared utility (keeps existing imports working)
 export { extractText, addTextSnapshots };
+export { setGlossaryEntities, setGlossaryEnabled, getGlossaryCount };
 
 export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
   function TiptapEditor({ content, onUpdate, editable = true, grammarEnabled = true, editorMode = 'classic', className }, ref) {
@@ -85,6 +93,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         Typography,
         CalloutExtension,
         GrammarExtension,
+        GlossaryExtension,
         SlashMenuExtension,
       ],
       content: initialContent.current,
@@ -154,6 +163,16 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         if (editor) setGrammarEnabled(editor, enabled);
       },
       setSourceView: (show: boolean) => setShowSource(show),
+      setGlossaryEntities: (entities) => {
+        if (editor) setGlossaryEntities(editor, entities);
+      },
+      setGlossaryEnabled: (enabled: boolean) => {
+        if (editor) setGlossaryEnabled(editor, enabled);
+      },
+      getGlossaryCount: () => {
+        if (editor) return getGlossaryCount(editor);
+        return 0;
+      },
     }), [setContentHandler, editor]);
 
     if (!editor) return null;

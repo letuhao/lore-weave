@@ -1,0 +1,19 @@
+{
+  "entities": "Entities",
+  "loading": "Loading...",
+  "appearsIn": "Appears in",
+  "suggestions": "Glossary suggestions for",
+  "noMatch": "No matching entities",
+  "navigate": "navigate",
+  "select": "select",
+  "dismiss": "dismiss",
+  "createNew": "Create new",
+  "filterEntities": "Filter entities...",
+  "noEntities": "No entities detected in this chapter",
+  "showHighlights": "Show glossary highlights",
+  "hideHighlights": "Hide glossary highlights",
+  "refresh": "Refresh entities",
+  "glossary": "Glossary",
+  "createEntity": "Create Entity",
+  "linkToEntity": "Link to Entity"
+}

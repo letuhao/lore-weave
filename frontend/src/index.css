@@ -192,6 +192,28 @@
   animation: content-fade-in 150ms ease-out;
 }
 
+/* ── Glossary entity highlights ──────────────────────────────────────────── */
+.glossary-mark {
+  border-bottom: 2px dotted;
+  cursor: pointer;
+  padding-bottom: 1px;
+  border-radius: 2px;
+  transition: background 120ms;
+}
+.glossary-mark:hover { padding: 1px 3px; margin: 0 -3px; }
+.glossary-kind-character { border-color: #e85d75; }
+.glossary-kind-character:hover { background: rgba(232,93,117,0.08); }
+.glossary-kind-place { border-color: #5496e8; }
+.glossary-kind-place:hover { background: rgba(84,150,232,0.08); }
+.glossary-kind-item { border-color: #e8a832; }
+.glossary-kind-item:hover { background: rgba(232,168,50,0.08); }
+.glossary-kind-concept { border-color: #7c6cd4; }
+.glossary-kind-concept:hover { background: rgba(124,108,212,0.08); }
+.glossary-kind-faction { border-color: #3da692; }
+.glossary-kind-faction:hover { background: rgba(61,166,146,0.08); }
+.glossary-kind-default { border-color: var(--muted-foreground); }
+.glossary-kind-default:hover { background: rgba(158,148,136,0.08); }
+
 /* ── Grammar check highlights ─────────────────────────────────────────────── */
 .grammar-issue {
   text-decoration-line: underline;

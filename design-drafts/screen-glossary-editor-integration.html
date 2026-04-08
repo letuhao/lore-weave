@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Glossary Editor Integration (P9-06)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a;
+      --destructive: #dc4e4e; --success: #3dba6a; --info: #5496e8;
+      --kind-character: #e85d75; --kind-character-bg: rgba(232,93,117,0.08);
+      --kind-place: #5496e8; --kind-place-bg: rgba(84,150,232,0.08);
+      --kind-item: #e8a832; --kind-item-bg: rgba(232,168,50,0.08);
+      --kind-concept: #7c6cd4; --kind-concept-bg: rgba(124,108,212,0.08);
+      --kind-faction: #3da692; --kind-faction-bg: rgba(61,166,146,0.08);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; font-family: inherit; }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+    .btn-outline:hover { background: var(--secondary); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); padding: 4px 8px; }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+
+    .showcase { max-width: 1400px; margin: 0 auto; padding: 32px 24px; }
+    .showcase h1 { font-family: 'Lora', serif; font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+    .showcase-subtitle { font-size: 13px; color: var(--muted-fg); margin-bottom: 32px; line-height: 1.6; }
+    .showcase-section { margin-bottom: 56px; }
+    .showcase-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .showcase-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    .panel { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--card); }
+
+    /* Glossary highlights in editor text */
+    .g-mark { border-bottom: 2px dotted; cursor: pointer; padding-bottom: 1px; transition: all 120ms; border-radius: 2px; }
+    .g-mark:hover { padding: 1px 3px; margin: 0 -3px; }
+    .g-mark.character { border-color: var(--kind-character); }
+    .g-mark.character:hover { background: var(--kind-character-bg); }
+    .g-mark.place { border-color: var(--kind-place); }
+    .g-mark.place:hover { background: var(--kind-place-bg); }
+    .g-mark.item { border-color: var(--kind-item); }
+    .g-mark.item:hover { background: var(--kind-item-bg); }
+    .g-mark.concept { border-color: var(--kind-concept); }
+    .g-mark.concept:hover { background: var(--kind-concept-bg); }
+    .g-mark.faction { border-color: var(--kind-faction); }
+    .g-mark.faction:hover { background: var(--kind-faction-bg); }
+
+    /* Kind icon badges */
+    .kind-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .kind-icon { width: 20px; height: 20px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0; }
+  </style>
+</head>
+<body>
+
+<div class="showcase">
+  <h1>Glossary × Editor Integration</h1>
+  <p class="showcase-subtitle">
+    Full integration: inline highlights, hover tooltips, autocomplete suggestions, entity panel, and quick-create.<br>
+    The writer's lore is alive inside the editor — not hidden in a separate tab.
+  </p>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 1: INLINE HIGHLIGHTS IN EDITOR
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">1. Inline Highlights — Glossary entities detected in text</div>
+
+    <div class="panel" style="max-width: 780px; padding: 32px 48px;">
+      <!-- Simulated editor content with glossary marks -->
+      <h2 class="font-serif" style="font-size: 20px; margin-bottom: 16px; font-weight: 600;">Chapter 3: The Clerk's Bargain</h2>
+      <div style="font-family: 'Lora', serif; font-size: 15px; line-height: 1.9; color: var(--foreground);">
+        <p style="margin-bottom: 16px;">
+          <span class="g-mark character">Aldric</span> stepped through the ancient archway into the
+          <span class="g-mark place">Hall of Records</span>, his worn boots echoing on marble floors
+          that had witnessed a thousand years of bureaucratic diligence. The air smelled of
+          cedar and old ink — the unmistakable perfume of the
+          <span class="g-mark faction">Clerk's Guild</span>.
+        </p>
+        <p style="margin-bottom: 16px;">
+          "You're late," said <span class="g-mark character">Magistrate Voss</span>, not looking up
+          from a stack of requisition forms. She adjusted her
+          <span class="g-mark item">Seal of Office</span> — a heavy bronze medallion that
+          could authorize anything from a tax exemption to an execution.
+        </p>
+        <p style="margin-bottom: 16px;">
+          <span class="g-mark character">Aldric</span> set the
+          <span class="g-mark item">Moonblade</span> on the desk. Its pale light flickered against
+          the <span class="g-mark concept">Ward Sigils</span> carved into every surface of the room.
+          "I need this registered," he said. "As a
+          <span class="g-mark concept">Class-VII Arcane Artifact</span>."
+        </p>
+        <p>
+          <span class="g-mark character">Voss</span> finally looked up, one eyebrow rising behind
+          wire-rimmed spectacles. "A Class-VII? In the
+          <span class="g-mark place">Ancient Capital</span>? Do you have any idea how much
+          paperwork that involves?"
+        </p>
+      </div>
+
+      <!-- Legend -->
+      <div style="display: flex; gap: 16px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted-fg); flex-wrap: wrap;">
+        <span><span class="kind-dot" style="background: var(--kind-character);"></span> Character (3)</span>
+        <span><span class="kind-dot" style="background: var(--kind-place);"></span> Place (2)</span>
+        <span><span class="kind-dot" style="background: var(--kind-item);"></span> Item (2)</span>
+        <span><span class="kind-dot" style="background: var(--kind-concept);"></span> Concept (2)</span>
+        <span><span class="kind-dot" style="background: var(--kind-faction);"></span> Faction (1)</span>
+        <span style="margin-left: auto; color: var(--primary);">10 entities detected</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 2: HOVER TOOLTIP
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">2. Hover Tooltip — Entity details on hover</div>
+
+    <div style="display: flex; gap: 24px; flex-wrap: wrap;">
+
+      <!-- Tooltip: Character -->
+      <div style="position: relative;">
+        <div class="panel" style="width: 320px; padding: 14px;">
+          <div style="display: flex; gap: 10px; align-items: flex-start;">
+            <div class="kind-icon" style="background: var(--kind-character-bg); color: var(--kind-character);">👤</div>
+            <div style="flex: 1; min-width: 0;">
+              <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                <span style="font-size: 14px; font-weight: 600;">Aldric</span>
+                <span style="font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--kind-character-bg); color: var(--kind-character);">Character</span>
+              </div>
+              <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 8px;">アルドリック</p>
+
+              <!-- Key attributes -->
+              <div style="display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 11px;">
+                <span style="color: var(--muted-fg);">Title</span>
+                <span>Senior Clerk, Third Division</span>
+                <span style="color: var(--muted-fg);">Age</span>
+                <span>34</span>
+                <span style="color: var(--muted-fg);">Trait</span>
+                <span>Methodical, secretly brave</span>
+              </div>
+
+              <!-- Chapter appearances -->
+              <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted-fg);">
+                <span>Appears in:</span>
+                <span style="padding: 1px 5px; border-radius: 3px; background: var(--secondary); font-family: 'JetBrains Mono', monospace;">Ch.1</span>
+                <span style="padding: 1px 5px; border-radius: 3px; background: var(--secondary); font-family: 'JetBrains Mono', monospace;">Ch.2</span>
+                <span style="padding: 1px 5px; border-radius: 3px; background: var(--primary-muted); color: var(--primary); font-family: 'JetBrains Mono', monospace;">Ch.3</span>
+                <span style="padding: 1px 5px; border-radius: 3px; background: var(--secondary); font-family: 'JetBrains Mono', monospace;">+5</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="text-align: center; margin-top: 8px; font-size: 10px; color: var(--muted-fg);">Hover on <span class="g-mark character" style="cursor: default;">Aldric</span></div>
+      </div>
+
+      <!-- Tooltip: Item -->
+      <div style="position: relative;">
+        <div class="panel" style="width: 320px; padding: 14px;">
+          <div style="display: flex; gap: 10px; align-items: flex-start;">
+            <div class="kind-icon" style="background: var(--kind-item-bg); color: var(--kind-item);">⚔️</div>
+            <div style="flex: 1; min-width: 0;">
+              <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                <span style="font-size: 14px; font-weight: 600;">Moonblade</span>
+                <span style="font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--kind-item-bg); color: var(--kind-item);">Item</span>
+              </div>
+              <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 8px;">月刃 · Nguyệt Kiếm</p>
+
+              <div style="display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 11px;">
+                <span style="color: var(--muted-fg);">Type</span>
+                <span>Longsword, Class-VII Arcane</span>
+                <span style="color: var(--muted-fg);">Owner</span>
+                <span>Aldric (inherited)</span>
+                <span style="color: var(--muted-fg);">Power</span>
+                <span>Emits pale moonlight, dispels illusions</span>
+              </div>
+
+              <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted-fg);">
+                <span>Appears in:</span>
+                <span style="padding: 1px 5px; border-radius: 3px; background: var(--primary-muted); color: var(--primary); font-family: 'JetBrains Mono', monospace;">Ch.3</span>
+                <span style="padding: 1px 5px; border-radius: 3px; background: var(--secondary); font-family: 'JetBrains Mono', monospace;">Ch.7</span>
+                <span style="padding: 1px 5px; border-radius: 3px; background: var(--secondary); font-family: 'JetBrains Mono', monospace;">Ch.12</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="text-align: center; margin-top: 8px; font-size: 10px; color: var(--muted-fg);">Hover on <span class="g-mark item" style="cursor: default;">Moonblade</span></div>
+      </div>
+
+      <!-- Tooltip: Place -->
+      <div style="position: relative;">
+        <div class="panel" style="width: 320px; padding: 14px;">
+          <div style="display: flex; gap: 10px; align-items: flex-start;">
+            <div class="kind-icon" style="background: var(--kind-place-bg); color: var(--kind-place);">📍</div>
+            <div style="flex: 1; min-width: 0;">
+              <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                <span style="font-size: 14px; font-weight: 600;">Hall of Records</span>
+                <span style="font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--kind-place-bg); color: var(--kind-place);">Place</span>
+              </div>
+              <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 8px;">記録庁 · Đại Sảnh Hồ Sơ</p>
+
+              <div style="display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 11px;">
+                <span style="color: var(--muted-fg);">Location</span>
+                <span>Central District, Ancient Capital</span>
+                <span style="color: var(--muted-fg);">Contains</span>
+                <span>Every legal document since founding</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="text-align: center; margin-top: 8px; font-size: 10px; color: var(--muted-fg);">Hover on <span class="g-mark place" style="cursor: default;">Hall of Records</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 3: AUTOCOMPLETE SUGGESTIONS
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">3. Autocomplete — Triggered by [[ or entity name typing</div>
+
+    <div style="display: flex; gap: 24px; flex-wrap: wrap;">
+
+      <!-- Autocomplete: typing "Ald" -->
+      <div>
+        <div style="font-size: 11px; color: var(--muted-fg); margin-bottom: 8px;">User types "Ald" in editor →</div>
+        <div class="panel" style="width: 300px;">
+          <div style="padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 10px; color: var(--muted-fg);">
+            Glossary suggestions for "<span style="color: var(--primary);">Ald</span>"
+          </div>
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--primary-muted); cursor: pointer;">
+              <span class="kind-dot" style="background: var(--kind-character);"></span>
+              <span style="font-size: 13px; font-weight: 500;"><span style="color: var(--primary);">Ald</span>ric</span>
+              <span style="font-size: 10px; color: var(--muted-fg); margin-left: auto;">Character</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer;" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+              <span class="kind-dot" style="background: var(--kind-character);"></span>
+              <span style="font-size: 13px;"><span style="color: var(--primary);">Ald</span>eran the Elder</span>
+              <span style="font-size: 10px; color: var(--muted-fg); margin-left: auto;">Character</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer;" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+              <span class="kind-dot" style="background: var(--kind-place);"></span>
+              <span style="font-size: 13px;"><span style="color: var(--primary);">Ald</span>heim Pass</span>
+              <span style="font-size: 10px; color: var(--muted-fg); margin-left: auto;">Place</span>
+            </div>
+          </div>
+          <div style="padding: 6px 12px; border-top: 1px solid var(--border); font-size: 10px; color: var(--muted-fg);">
+            ↑↓ navigate · Enter select · Esc dismiss
+          </div>
+        </div>
+      </div>
+
+      <!-- Autocomplete: [[ trigger -->
+      <div>
+        <div style="font-size: 11px; color: var(--muted-fg); margin-bottom: 8px;">User types "[[" → full entity search</div>
+        <div class="panel" style="width: 340px;">
+          <div style="padding: 8px 12px; border-bottom: 1px solid var(--border);">
+            <div style="display: flex; align-items: center; gap: 6px; background: var(--secondary); border-radius: 4px; padding: 4px 8px;">
+              <svg width="12" height="12" fill="none" stroke="var(--muted-fg)" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              <span style="font-size: 12px; color: var(--muted-fg);">Search entities...</span>
+            </div>
+          </div>
+          <!-- Kind filter chips -->
+          <div style="padding: 6px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 4px; flex-wrap: wrap;">
+            <span style="padding: 2px 8px; border-radius: 999px; font-size: 10px; background: var(--primary-muted); color: var(--primary); cursor: pointer;">All</span>
+            <span style="padding: 2px 8px; border-radius: 999px; font-size: 10px; background: var(--secondary); color: var(--muted-fg); cursor: pointer;">👤 Characters</span>
+            <span style="padding: 2px 8px; border-radius: 999px; font-size: 10px; background: var(--secondary); color: var(--muted-fg); cursor: pointer;">📍 Places</span>
+            <span style="padding: 2px 8px; border-radius: 999px; font-size: 10px; background: var(--secondary); color: var(--muted-fg); cursor: pointer;">⚔️ Items</span>
+            <span style="padding: 2px 8px; border-radius: 999px; font-size: 10px; background: var(--secondary); color: var(--muted-fg); cursor: pointer;">💡 Concepts</span>
+          </div>
+          <!-- Recent entities -->
+          <div style="padding: 4px 0; max-height: 200px; overflow-y: auto;">
+            <div style="display: flex; align-items: center; gap: 8px; padding: 7px 12px; cursor: pointer;" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+              <span class="kind-dot" style="background: var(--kind-character);"></span>
+              <div style="flex: 1;">
+                <span style="font-size: 13px;">Aldric</span>
+                <span style="font-size: 10px; color: var(--muted-fg); margin-left: 6px;">アルドリック</span>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; padding: 7px 12px; cursor: pointer;" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+              <span class="kind-dot" style="background: var(--kind-character);"></span>
+              <div style="flex: 1;">
+                <span style="font-size: 13px;">Magistrate Voss</span>
+                <span style="font-size: 10px; color: var(--muted-fg); margin-left: 6px;">ヴォス判事</span>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; padding: 7px 12px; cursor: pointer;" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+              <span class="kind-dot" style="background: var(--kind-item);"></span>
+              <div style="flex: 1;">
+                <span style="font-size: 13px;">Moonblade</span>
+                <span style="font-size: 10px; color: var(--muted-fg); margin-left: 6px;">月刃</span>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; padding: 7px 12px; cursor: pointer;" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+              <span class="kind-dot" style="background: var(--kind-place);"></span>
+              <div style="flex: 1;">
+                <span style="font-size: 13px;">Hall of Records</span>
+                <span style="font-size: 10px; color: var(--muted-fg); margin-left: 6px;">記録庁</span>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; padding: 7px 12px; cursor: pointer;" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+              <span class="kind-dot" style="background: var(--kind-concept);"></span>
+              <div style="flex: 1;">
+                <span style="font-size: 13px;">Ward Sigils</span>
+                <span style="font-size: 10px; color: var(--muted-fg); margin-left: 6px;">結界印</span>
+              </div>
+            </div>
+          </div>
+          <div style="padding: 6px 12px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; font-size: 10px; color: var(--muted-fg);">
+            <span>↑↓ navigate · Enter insert · Esc close</span>
+            <span style="color: var(--primary); cursor: pointer;">+ Create new</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 4: ENTITY PANEL (right sidebar)
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">4. Entity Panel — Right sidebar showing chapter entities</div>
+
+    <div class="panel" style="width: 300px;">
+      <!-- Header -->
+      <div style="padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 13px; font-weight: 600;">Entities</span>
+          <span style="font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--primary-muted); color: var(--primary);">10</span>
+        </div>
+        <div style="display: flex; gap: 4px;">
+          <button class="btn btn-ghost" style="font-size: 10px; padding: 3px 6px;" title="Toggle highlights">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+          </button>
+          <button class="btn btn-ghost" style="font-size: 10px; padding: 3px 6px;" title="Refresh">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Search -->
+      <div style="padding: 8px 14px; border-bottom: 1px solid var(--border);">
+        <div style="display: flex; align-items: center; gap: 6px; background: var(--secondary); border-radius: 4px; padding: 5px 8px;">
+          <svg width="12" height="12" fill="none" stroke="var(--muted-fg)" stroke-width="2" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <input style="background: transparent; border: none; outline: none; font-size: 11px; color: var(--foreground); width: 100%;" placeholder="Filter entities..." />
+        </div>
+      </div>
+
+      <!-- Grouped entity list -->
+      <div style="max-height: 500px; overflow-y: auto;">
+        <!-- Characters -->
+        <div style="padding: 8px 14px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--kind-character); display: flex; align-items: center; gap: 4px;">
+          <span class="kind-dot" style="background: var(--kind-character);"></span>
+          Characters (3)
+        </div>
+        <div style="padding: 4px 8px;">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer;" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+            <span style="font-size: 12px; flex: 1;">Aldric</span>
+            <span style="font-size: 9px; color: var(--muted-fg); font-family: 'JetBrains Mono', monospace;">×4</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer;" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+            <span style="font-size: 12px; flex: 1;">Magistrate Voss</span>
+            <span style="font-size: 9px; color: var(--muted-fg); font-family: 'JetBrains Mono', monospace;">×2</span>
+          </div>
+        </div>
+
+        <!-- Places -->
+        <div style="padding: 8px 14px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--kind-place); display: flex; align-items: center; gap: 4px;">
+          <span class="kind-dot" style="background: var(--kind-place);"></span>
+          Places (2)
+        </div>
+        <div style="padding: 4px 8px;">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer;" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+            <span style="font-size: 12px; flex: 1;">Hall of Records</span>
+            <span style="font-size: 9px; color: var(--muted-fg); font-family: 'JetBrains Mono', monospace;">×1</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer;" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+            <span style="font-size: 12px; flex: 1;">Ancient Capital</span>
+            <span style="font-size: 9px; color: var(--muted-fg); font-family: 'JetBrains Mono', monospace;">×1</span>
+          </div>
+        </div>
+
+        <!-- Items -->
+        <div style="padding: 8px 14px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--kind-item); display: flex; align-items: center; gap: 4px;">
+          <span class="kind-dot" style="background: var(--kind-item);"></span>
+          Items (2)
+        </div>
+        <div style="padding: 4px 8px;">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer;" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+            <span style="font-size: 12px; flex: 1;">Moonblade</span>
+            <span style="font-size: 9px; color: var(--muted-fg); font-family: 'JetBrains Mono', monospace;">×1</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer;" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+            <span style="font-size: 12px; flex: 1;">Seal of Office</span>
+            <span style="font-size: 9px; color: var(--muted-fg); font-family: 'JetBrains Mono', monospace;">×1</span>
+          </div>
+        </div>
+
+        <!-- Concepts -->
+        <div style="padding: 8px 14px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--kind-concept); display: flex; align-items: center; gap: 4px;">
+          <span class="kind-dot" style="background: var(--kind-concept);"></span>
+          Concepts (2)
+        </div>
+        <div style="padding: 4px 8px;">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer;" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+            <span style="font-size: 12px; flex: 1;">Ward Sigils</span>
+            <span style="font-size: 9px; color: var(--muted-fg); font-family: 'JetBrains Mono', monospace;">×1</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer;" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+            <span style="font-size: 12px; flex: 1;">Class-VII Arcane Artifact</span>
+            <span style="font-size: 9px; color: var(--muted-fg); font-family: 'JetBrains Mono', monospace;">×1</span>
+          </div>
+        </div>
+
+        <!-- Factions -->
+        <div style="padding: 8px 14px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--kind-faction); display: flex; align-items: center; gap: 4px;">
+          <span class="kind-dot" style="background: var(--kind-faction);"></span>
+          Factions (1)
+        </div>
+        <div style="padding: 4px 8px 8px;">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer;" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+            <span style="font-size: 12px; flex: 1;">Clerk's Guild</span>
+            <span style="font-size: 9px; color: var(--muted-fg); font-family: 'JetBrains Mono', monospace;">×1</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 5: QUICK CREATE FROM SELECTION
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">5. Quick Create — Select text → Create entity</div>
+
+    <div style="display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start;">
+      <!-- Step 1: Context menu -->
+      <div>
+        <div style="font-size: 11px; color: var(--muted-fg); margin-bottom: 8px;">Select "Moonblade" → right-click or toolbar button</div>
+        <div class="panel" style="width: 200px; padding: 4px;">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer; background: var(--card-hover);">
+            <svg width="12" height="12" fill="none" stroke="var(--primary)" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+            <span style="font-size: 12px;">Create Entity</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer;" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+            <svg width="12" height="12" fill="none" stroke="var(--muted-fg)" stroke-width="2" viewBox="0 0 24 24"><path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101"/></svg>
+            <span style="font-size: 12px;">Link to Entity</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2: Quick create modal -->
+      <div>
+        <div style="font-size: 11px; color: var(--muted-fg); margin-bottom: 8px;">Quick create modal (pre-filled name)</div>
+        <div class="panel" style="width: 360px; padding: 16px;">
+          <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Create Entity</h3>
+
+          <div style="margin-bottom: 10px;">
+            <label style="font-size: 11px; color: var(--muted-fg); display: block; margin-bottom: 4px;">Display Name</label>
+            <input style="width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--secondary); color: var(--foreground); font-size: 13px; outline: none;" value="Moonblade" />
+          </div>
+
+          <div style="margin-bottom: 10px;">
+            <label style="font-size: 11px; color: var(--muted-fg); display: block; margin-bottom: 4px;">Translation</label>
+            <input style="width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--secondary); color: var(--foreground); font-size: 13px; outline: none;" placeholder="月刃 / Nguyệt Kiếm" />
+          </div>
+
+          <div style="margin-bottom: 14px;">
+            <label style="font-size: 11px; color: var(--muted-fg); display: block; margin-bottom: 4px;">Kind</label>
+            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+              <span style="padding: 4px 10px; border-radius: 4px; font-size: 11px; background: var(--secondary); color: var(--muted-fg); cursor: pointer; border: 1px solid var(--border);">👤 Character</span>
+              <span style="padding: 4px 10px; border-radius: 4px; font-size: 11px; background: var(--secondary); color: var(--muted-fg); cursor: pointer; border: 1px solid var(--border);">📍 Place</span>
+              <span style="padding: 4px 10px; border-radius: 4px; font-size: 11px; background: var(--kind-item-bg); color: var(--kind-item); cursor: pointer; border: 1px solid var(--kind-item);">⚔️ Item</span>
+              <span style="padding: 4px 10px; border-radius: 4px; font-size: 11px; background: var(--secondary); color: var(--muted-fg); cursor: pointer; border: 1px solid var(--border);">💡 Concept</span>
+              <span style="padding: 4px 10px; border-radius: 4px; font-size: 11px; background: var(--secondary); color: var(--muted-fg); cursor: pointer; border: 1px solid var(--border);">🏛️ Faction</span>
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 6px;">
+            <button class="btn btn-outline">Cancel</button>
+            <button class="btn btn-primary">Create & Link</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 6: TOOLBAR INTEGRATION
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">6. Toolbar — Glossary toggle button + stats</div>
+
+    <div class="panel" style="max-width: 780px; padding: 8px 16px; display: flex; align-items: center; gap: 8px;">
+      <!-- Existing toolbar buttons (simplified) -->
+      <button class="btn btn-ghost" style="font-size: 11px; padding: 4px 6px;"><b>B</b></button>
+      <button class="btn btn-ghost" style="font-size: 11px; padding: 4px 6px;"><i>I</i></button>
+      <button class="btn btn-ghost" style="font-size: 11px; padding: 4px 6px;"><u>U</u></button>
+      <span style="width: 1px; height: 16px; background: var(--border); margin: 0 4px;"></span>
+      <button class="btn btn-ghost" style="font-size: 11px; padding: 4px 6px;">H1</button>
+      <button class="btn btn-ghost" style="font-size: 11px; padding: 4px 6px;">H2</button>
+
+      <!-- Spacer -->
+      <div style="flex: 1;"></div>
+
+      <!-- Glossary button (new) — toggle highlights on/off -->
+      <div style="display: flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 4px; background: var(--primary-muted); cursor: pointer;">
+        <svg width="14" height="14" fill="none" stroke="var(--primary)" stroke-width="2" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+        <span style="font-size: 11px; font-weight: 500; color: var(--primary);">Glossary</span>
+        <span style="font-size: 9px; padding: 1px 5px; border-radius: 999px; background: var(--primary); color: var(--primary-fg); font-weight: 600;">10</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 7: BEHAVIOR SUMMARY
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">7. Behavior Summary</div>
+
+    <div class="panel" style="max-width: 780px; padding: 20px;">
+      <div style="display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; font-size: 12px;">
+        <span style="color: var(--primary); font-weight: 500;">On chapter load</span>
+        <span>Fetch book entities, scan text for matches, apply decorations (non-destructive, not saved to doc)</span>
+
+        <span style="color: var(--primary); font-weight: 500;">On typing (debounced 500ms)</span>
+        <span>Re-scan current paragraph for new matches, show autocomplete if typing matches an entity name</span>
+
+        <span style="color: var(--primary); font-weight: 500;">[[ trigger</span>
+        <span>Open full entity search popup with kind filters, translation names, "Create new" option</span>
+
+        <span style="color: var(--primary); font-weight: 500;">Hover on highlight</span>
+        <span>Show tooltip with entity info: kind, translation, key attributes, chapter appearances</span>
+
+        <span style="color: var(--primary); font-weight: 500;">Click on highlight</span>
+        <span>Select entity in panel, scroll to it, show full detail</span>
+
+        <span style="color: var(--primary); font-weight: 500;">Select text → Create Entity</span>
+        <span>Opens quick-create modal with name pre-filled, creates entity + auto-links to current chapter</span>
+
+        <span style="color: var(--primary); font-weight: 500;">Select text → Link to Entity</span>
+        <span>Opens entity search, links selected text to existing entity, creates chapter-link</span>
+
+        <span style="color: var(--primary); font-weight: 500;">Toolbar Glossary toggle</span>
+        <span>On/off switch for highlights. Badge shows detected entity count. Click opens entity panel.</span>
+
+        <span style="color: var(--primary); font-weight: 500;">Performance</span>
+        <span>Entities cached in editor storage. Scan uses simple string matching per paragraph. 100+ entities is fine — Trie-based matching if needed later.</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

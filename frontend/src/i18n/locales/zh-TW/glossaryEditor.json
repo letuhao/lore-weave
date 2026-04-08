@@ -1,0 +1,19 @@
+{
+  "entities": "實體",
+  "loading": "載入中...",
+  "appearsIn": "出現於",
+  "suggestions": "術語建議",
+  "noMatch": "沒有匹配的實體",
+  "navigate": "導航",
+  "select": "選擇",
+  "dismiss": "關閉",
+  "createNew": "新建",
+  "filterEntities": "篩選實體...",
+  "noEntities": "本章未檢測到任何實體",
+  "showHighlights": "顯示術語高亮",
+  "hideHighlights": "隱藏術語高亮",
+  "refresh": "重新整理實體",
+  "glossary": "術語表",
+  "createEntity": "建立實體",
+  "linkToEntity": "連結實體"
+}

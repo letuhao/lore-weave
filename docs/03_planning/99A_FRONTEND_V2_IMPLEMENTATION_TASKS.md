@@ -3821,10 +3821,10 @@ Task order:
     File: ThemeCustomizer.tsx
     Notes: Scroll reader content in sync with TTS playback position
 
-  P9-06: Glossary integration in editor [FE]
-    Status: [ ]
-    File: ChapterEditorPage.tsx
-    Notes: Show glossary entities inline while editing, suggest terms
+  P9-06: Glossary integration in editor [FS]
+    Status: [✓]
+    File: ChapterEditorPage.tsx, GlossaryPlugin.ts, GlossaryTooltip.tsx, GlossaryAutocomplete.tsx, GlossaryPanel.tsx
+    Notes: Full integration — BE: entity-names lightweight endpoint. FE: ProseMirror decoration plugin (kind-colored highlights), hover tooltip with entity detail, [[ autocomplete with keyboard nav, left sidebar glossary panel grouped by kind, toggle highlights. i18n 4 langs. Design draft: screen-glossary-editor-integration.html.
 
   P9-07: .docx / .epub import [FS]
     Status: [ ]

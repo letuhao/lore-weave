@@ -1,0 +1,19 @@
+{
+  "entities": "エンティティ",
+  "loading": "読み込み中...",
+  "appearsIn": "登場箇所",
+  "suggestions": "用語の候補",
+  "noMatch": "一致するエンティティがありません",
+  "navigate": "移動",
+  "select": "選択",
+  "dismiss": "閉じる",
+  "createNew": "新規作成",
+  "filterEntities": "エンティティを検索...",
+  "noEntities": "この章にエンティティは検出されませんでした",
+  "showHighlights": "用語ハイライトを表示",
+  "hideHighlights": "用語ハイライトを非表示",
+  "refresh": "エンティティを更新",
+  "glossary": "用語集",
+  "createEntity": "エンティティを作成",
+  "linkToEntity": "エンティティにリンク"
+}

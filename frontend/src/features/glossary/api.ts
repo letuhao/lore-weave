@@ -1,6 +1,7 @@
 import { apiJson } from '../../api';
 import type {
   EntityKind,
+  EntityNameEntry,
   GenreGroup,
   GlossaryEntity,
   GlossaryEntityListResponse,
@@ -56,6 +57,11 @@ export const glossaryApi = {
       body: JSON.stringify(changes),
       token,
     });
+  },
+
+  /** Lightweight names-only list for editor decoration scanning */
+  listEntityNames(bookId: string, token: string): Promise<EntityNameEntry[]> {
+    return apiJson<EntityNameEntry[]>(`${BASE}/books/${bookId}/entity-names`, { token });
   },
 
   deleteEntity(bookId: string, entityId: string, token: string): Promise<void> {

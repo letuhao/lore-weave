@@ -121,6 +121,15 @@ export type GenreGroup = {
   created_at: string;
 };
 
+export type EntityNameEntry = {
+  entity_id: string;
+  display_name: string;
+  kind_code?: string;
+  kind_color?: string;
+  kind_icon?: string;
+  kind_name?: string;
+};
+
 export type FilterState = {
   kindCodes: string[];
   status: 'all' | EntityStatus;

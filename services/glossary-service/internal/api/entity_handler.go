@@ -769,6 +769,80 @@ func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ── GET /v1/glossary/books/{book_id}/entity-names ───────────────────────────
+// Lightweight endpoint for editor decoration scanning.
+// Returns only entity_id, display_name, display_name_translation, kind metadata.
+
+func (s *Server) listEntityNames(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
+		return
+	}
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+		return
+	}
+
+	rows, err := s.pool.Query(r.Context(), `
+		SELECT e.entity_id, eav.original_value AS display_name,
+			ek.code AS kind_code, ek.color AS kind_color, ek.icon AS kind_icon, ek.name AS kind_name
+		FROM entities e
+		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+		LEFT JOIN entity_attribute_values eav ON eav.entity_id = e.entity_id
+			AND eav.attr_def_id = (SELECT attr_def_id FROM attribute_definitions WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1)
+		WHERE e.book_id = $1 AND e.deleted_at IS NULL AND e.status = 'active'
+		ORDER BY eav.original_value
+		LIMIT 500`, bookID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "query failed")
+		return
+	}
+	defer rows.Close()
+
+	items := make([]map[string]any, 0, 100)
+	for rows.Next() {
+		var entityID uuid.UUID
+		var displayName, kindCode, kindColor, kindIcon, kindName *string
+		if err := rows.Scan(&entityID, &displayName, &kindCode, &kindColor, &kindIcon, &kindName); err != nil {
+			continue
+		}
+		dn := ""
+		if displayName != nil {
+			dn = *displayName
+		}
+		if dn == "" {
+			continue // skip entities without a name
+		}
+		m := map[string]any{
+			"entity_id":    entityID,
+			"display_name": dn,
+		}
+		if kindCode != nil {
+			m["kind_code"] = *kindCode
+		}
+		if kindColor != nil {
+			m["kind_color"] = *kindColor
+		}
+		if kindIcon != nil {
+			m["kind_icon"] = *kindIcon
+		}
+		if kindName != nil {
+			m["kind_name"] = *kindName
+		}
+		items = append(items, m)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "row iteration failed")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, items)
+}
+
 // parsePathUUID extracts and parses a UUID path parameter, writing a 400 on failure.
 func parsePathUUID(w http.ResponseWriter, r *http.Request, param string) (uuid.UUID, bool) {
 	id, err := uuid.Parse(chi.URLParam(r, param))

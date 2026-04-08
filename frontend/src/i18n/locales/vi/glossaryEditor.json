@@ -1,0 +1,19 @@
+{
+  "entities": "Thực thể",
+  "loading": "Đang tải...",
+  "appearsIn": "Xuất hiện tại",
+  "suggestions": "Gợi ý thuật ngữ cho",
+  "noMatch": "Không tìm thấy thực thể",
+  "navigate": "di chuyển",
+  "select": "chọn",
+  "dismiss": "đóng",
+  "createNew": "Tạo mới",
+  "filterEntities": "Lọc thực thể...",
+  "noEntities": "Không phát hiện thực thể nào trong chương này",
+  "showHighlights": "Hiện đánh dấu thuật ngữ",
+  "hideHighlights": "Ẩn đánh dấu thuật ngữ",
+  "refresh": "Làm mới thực thể",
+  "glossary": "Thuật ngữ",
+  "createEntity": "Tạo thực thể",
+  "linkToEntity": "Liên kết thực thể"
+}
