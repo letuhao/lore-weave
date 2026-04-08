@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { BookOpen, Plus, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Book } from '@/features/books/api';
+import { translationApi } from '@/features/translation/api';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { FilterToolbar, Pagination, EmptyState, FormDialog, StatusBadge, SkeletonCard } from '@/components/shared';
 import { LanguageDisplay } from '@/components/shared/LanguageDisplay';
@@ -33,6 +34,7 @@ export function BooksPage() {
   const [newDesc, setNewDesc] = useState('');
   const [newLang, setNewLang] = useState('');
   const [langFilter, setLangFilter] = useState('');
+  const [bookLangs, setBookLangs] = useState<Record<string, string[]>>({});
 
   const load = async () => {
     if (!accessToken) return;
@@ -50,6 +52,26 @@ export function BooksPage() {
   };
 
   useEffect(() => { void load(); }, [accessToken]);
+
+  // Fetch translation coverage per book (parallel, fire-and-forget)
+  useEffect(() => {
+    if (!accessToken || books.length === 0) return;
+    const fetchCoverage = async () => {
+      const results: Record<string, string[]> = {};
+      await Promise.allSettled(
+        books.map(async (book) => {
+          try {
+            const cov = await translationApi.getBookCoverage(accessToken, book.book_id);
+            if (cov.known_languages?.length > 0) {
+              results[book.book_id] = cov.known_languages;
+            }
+          } catch {}
+        }),
+      );
+      setBookLangs(results);
+    };
+    void fetchCoverage();
+  }, [accessToken, books]);
 
   const filteredBooks = books.filter((b) => {
     if (search && !b.title.toLowerCase().includes(search.toLowerCase())) return false;
@@ -213,10 +235,18 @@ export function BooksPage() {
                 )}
               </div>
 
-              {/* Translation dots (placeholder — real data needs coverage API per book) */}
-              <div className="flex items-center gap-1" title="Translation status">
-                <span className="h-2 w-2 rounded-full bg-success" />
-              </div>
+              {/* Translation language dots */}
+              {bookLangs[book.book_id] && bookLangs[book.book_id].length > 0 && (
+                <div className="flex items-center gap-1" title={`Translated to: ${bookLangs[book.book_id].join(', ')}`}>
+                  {bookLangs[book.book_id].map((lang) => (
+                    <span
+                      key={lang}
+                      className="h-2 w-2 rounded-full bg-success"
+                      title={lang}
+                    />
+                  ))}
+                </div>
+              )}
 
               <ChevronRight className="h-4 w-4 text-muted-foreground/30 transition-colors group-hover:text-muted-foreground" />
             </Link>

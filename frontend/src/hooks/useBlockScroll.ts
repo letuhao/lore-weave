@@ -3,13 +3,16 @@ import { useTTSState } from './useTTS';
 
 /**
  * Auto-scrolls the active block into view during TTS playback.
- * Attaches to a scroll container ref.
+ * Attaches to a scroll container ref. Can be toggled on/off.
  */
-export function useBlockScroll(containerRef: React.RefObject<HTMLElement | null>) {
+export function useBlockScroll(
+  containerRef: React.RefObject<HTMLElement | null>,
+  enabled: boolean = true,
+) {
   const { activeBlockId, status } = useTTSState();
 
   useEffect(() => {
-    if (!activeBlockId || status === 'idle') return;
+    if (!enabled || !activeBlockId || status === 'idle') return;
 
     const container = containerRef.current;
     if (!container) return;
@@ -18,5 +21,5 @@ export function useBlockScroll(containerRef: React.RefObject<HTMLElement | null>
     if (!blockEl) return;
 
     blockEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [activeBlockId, status, containerRef]);
+  }, [activeBlockId, status, containerRef, enabled]);
 }

@@ -1,5 +1,5 @@
 import { useTTSState, useTTSControls, type AudioSource } from '@/hooks/useTTS';
-import { Play, Pause, SkipBack, SkipForward, X, Settings } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, X, Settings, ScrollText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const SOURCE_COLORS: Record<AudioSource, string> = {
@@ -30,9 +30,12 @@ interface TTSBarProps {
   activeBlockText?: string;
   /** Open TTS settings panel */
   onOpenSettings?: () => void;
+  /** Auto-scroll sync toggle */
+  autoScroll?: boolean;
+  onToggleAutoScroll?: () => void;
 }
 
-export function TTSBar({ activeBlockText, onOpenSettings }: TTSBarProps) {
+export function TTSBar({ activeBlockText, onOpenSettings, autoScroll, onToggleAutoScroll }: TTSBarProps) {
   const state = useTTSState();
   const controls = useTTSControls();
 
@@ -134,6 +137,18 @@ export function TTSBar({ activeBlockText, onOpenSettings }: TTSBarProps) {
       >
         {state.speed}x
       </button>
+
+      {/* Auto-scroll toggle */}
+      {onToggleAutoScroll && (
+        <button
+          type="button"
+          onClick={onToggleAutoScroll}
+          className={`rounded p-1 transition ${autoScroll ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+          title={autoScroll ? 'Auto-scroll: ON' : 'Auto-scroll: OFF'}
+        >
+          <ScrollText className="h-3.5 w-3.5" />
+        </button>
+      )}
 
       {/* Settings */}
       {onOpenSettings && (

@@ -55,6 +55,10 @@ export function ReaderPage() {
   const [ttsSettingsOpen, setTtsSettingsOpen] = useState(false);
   const [showIndices, setShowIndices] = useState(() => localStorage.getItem('lw_reader_indices') === 'true');
   const [loading, setLoading] = useState(true);
+  const [autoNextEnabled] = useState(() => localStorage.getItem('lw_reader_auto_next') !== 'false');
+  const [autoScrollTTS, setAutoScrollTTS] = useState(() => localStorage.getItem('lw_reader_tts_scroll') !== 'false');
+  const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
+  const chapterEndRef = useRef<HTMLDivElement>(null);
 
   // Language state
   const [languages, setLanguages] = useState<LanguageOption[]>([]);
@@ -68,7 +72,7 @@ export function ReaderPage() {
   // TTS playback
   const ttsState = useTTSState();
   const ttsControls = useTTSControls();
-  useBlockScroll(scrollRef);
+  useBlockScroll(scrollRef, autoScrollTTS);
   useTTSShortcuts();
 
   const handleStartTTS = useCallback(() => {
@@ -176,6 +180,34 @@ export function ReaderPage() {
   const stats = useMemo(() => computeReadingStats(blocks, chapterLang ?? undefined), [blocks, chapterLang]);
 
   const anyOverlayOpen = tocOpen || themeOpen;
+
+  // Auto-load next chapter when reaching end
+  useEffect(() => {
+    if (!autoNextEnabled || !nextCh || !chapterEndRef.current || !scrollRef.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setAutoNextCountdown(5);
+        } else {
+          setAutoNextCountdown(null);
+        }
+      },
+      { root: scrollRef.current, threshold: 0.5 },
+    );
+    observer.observe(chapterEndRef.current);
+    return () => observer.disconnect();
+  }, [autoNextEnabled, nextCh, loading]);
+
+  // Countdown timer for auto-next
+  useEffect(() => {
+    if (autoNextCountdown === null || !nextCh) return;
+    if (autoNextCountdown <= 0) {
+      navigate(`/books/${bookId}/chapters/${nextCh.chapter_id}/read`);
+      return;
+    }
+    const timer = setTimeout(() => setAutoNextCountdown((c) => (c !== null ? c - 1 : null)), 1000);
+    return () => clearTimeout(timer);
+  }, [autoNextCountdown, nextCh, bookId, navigate]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -332,8 +364,21 @@ export function ReaderPage() {
           )}
 
           {/* End of chapter marker */}
-          <div className="chapter-end">
+          <div ref={chapterEndRef} className="chapter-end">
             <p>End of Chapter {currentIdx + 1}</p>
+            {autoNextCountdown !== null && nextCh && (
+              <div className="mt-3 flex flex-col items-center gap-2">
+                <p className="text-xs text-muted-foreground">
+                  Next chapter in {autoNextCountdown}s...
+                </p>
+                <button
+                  onClick={() => setAutoNextCountdown(null)}
+                  className="rounded border px-3 py-1 text-[11px] text-muted-foreground hover:bg-secondary"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
           {/* Reading tracker sentinel — invisible, triggers scroll depth */}
           <div ref={sentinelRef} aria-hidden="true" />
@@ -341,7 +386,17 @@ export function ReaderPage() {
       </div>
 
       {/* TTS floating player */}
-      <TTSBar activeBlockText={activeBlockText} onOpenSettings={() => setTtsSettingsOpen(true)} />
+      <TTSBar
+        activeBlockText={activeBlockText}
+        onOpenSettings={() => setTtsSettingsOpen(true)}
+        autoScroll={autoScrollTTS}
+        onToggleAutoScroll={() => {
+          setAutoScrollTTS((v) => {
+            localStorage.setItem('lw_reader_tts_scroll', String(!v));
+            return !v;
+          });
+        }}
+      />
 
       {/* TTS settings slide-over */}
       <TTSSettings open={ttsSettingsOpen} onClose={() => setTtsSettingsOpen(false)} />

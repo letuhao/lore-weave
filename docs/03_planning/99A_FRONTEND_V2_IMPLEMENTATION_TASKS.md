@@ -3812,14 +3812,14 @@ Task order:
   ── "Coming soon" features (6 items) ──────────────────────────────────
 
   P9-04: Auto-load next chapter in reader [FE]
-    Status: [ ]
-    File: ThemeCustomizer.tsx
-    Notes: When reaching end of chapter, auto-navigate to next
+    Status: [✓]
+    File: ReaderPage.tsx
+    Notes: IntersectionObserver on chapter-end marker → 5s countdown → auto-navigate to next chapter. Cancel button. localStorage toggle.
 
   P9-05: Auto-scroll with TTS [FE]
-    Status: [ ]
-    File: ThemeCustomizer.tsx
-    Notes: Scroll reader content in sync with TTS playback position
+    Status: [✓]
+    File: useBlockScroll.ts, TTSBar.tsx, ReaderPage.tsx
+    Notes: useBlockScroll accepts enabled flag. ScrollText toggle button in TTSBar. localStorage persisted.
 
   P9-06: Glossary integration in editor [FS]
     Status: [✓]
@@ -3844,9 +3844,9 @@ Task order:
   ── Incomplete data / polish (3 items) ────────────────────────────────
 
   P9-10: Translation dots on workspace book cards [FE]
-    Status: [ ]
-    File: BooksPage.tsx:216
-    Notes: Placeholder comment — needs coverage API per book
+    Status: [✓]
+    File: BooksPage.tsx
+    Notes: Fetches translationApi.getBookCoverage per book (parallel). Green dots per known_language with tooltip. No dots when no translations.
 
   P9-11: Audio drift detection [FE]
     Status: [ ]
