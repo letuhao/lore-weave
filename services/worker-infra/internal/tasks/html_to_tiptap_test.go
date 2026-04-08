@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -336,5 +337,216 @@ func TestHtmlToTiptapJSON_ComplexPandocOutput(t *testing.T) {
 		if node["type"] != exp {
 			t.Errorf("node %d: expected %s, got %v", i, exp, node["type"])
 		}
+	}
+}
+
+func TestHtmlToTiptapJSON_NestedMarks(t *testing.T) {
+	// Pandoc produces nested marks like <em><strong>text</strong></em>
+	html := `<p><em><strong>Important Notice:</strong></em> Normal text.</p>`
+
+	result := htmlToTiptapJSON(html)
+	var doc map[string]any
+	if err := json.Unmarshal(result, &doc); err != nil {
+		t.Fatal(err)
+	}
+
+	content := doc["content"].([]any)
+	if len(content) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(content))
+	}
+
+	p := content[0].(map[string]any)
+	inlines := p["content"].([]any)
+	if len(inlines) < 2 {
+		t.Fatalf("expected at least 2 inline nodes, got %d", len(inlines))
+	}
+
+	// First inline: "Important Notice:" with both italic and bold
+	first := inlines[0].(map[string]any)
+	if first["text"] != "Important Notice:" {
+		t.Errorf("expected 'Important Notice:', got %v", first["text"])
+	}
+	marks := first["marks"].([]any)
+	if len(marks) != 2 {
+		t.Fatalf("expected 2 marks (italic+bold), got %d", len(marks))
+	}
+	markTypes := make(map[string]bool)
+	for _, m := range marks {
+		markTypes[m.(map[string]any)["type"].(string)] = true
+	}
+	if !markTypes["italic"] || !markTypes["bold"] {
+		t.Errorf("expected italic+bold marks, got %v", marks)
+	}
+
+	// Second inline: " Normal text." with no marks
+	second := inlines[1].(map[string]any)
+	if second["text"] != " Normal text." {
+		t.Errorf("expected ' Normal text.', got %v", second["text"])
+	}
+	if second["marks"] != nil {
+		t.Errorf("expected no marks on normal text, got %v", second["marks"])
+	}
+}
+
+func TestHtmlToTiptapJSON_DeeplyNestedMarks(t *testing.T) {
+	// <strong>bold <em>bold+italic</em> bold</strong>
+	html := `<p><strong>bold <em>both</em> bold</strong></p>`
+
+	result := htmlToTiptapJSON(html)
+	var doc map[string]any
+	if err := json.Unmarshal(result, &doc); err != nil {
+		t.Fatal(err)
+	}
+
+	p := doc["content"].([]any)[0].(map[string]any)
+	inlines := p["content"].([]any)
+	if len(inlines) != 3 {
+		t.Fatalf("expected 3 inline nodes, got %d", len(inlines))
+	}
+
+	// "bold " — bold only
+	n0 := inlines[0].(map[string]any)
+	if n0["text"] != "bold " {
+		t.Errorf("node 0: expected 'bold ', got %v", n0["text"])
+	}
+	m0 := n0["marks"].([]any)
+	if len(m0) != 1 || m0[0].(map[string]any)["type"] != "bold" {
+		t.Errorf("node 0: expected [bold], got %v", m0)
+	}
+
+	// "both" — bold + italic
+	n1 := inlines[1].(map[string]any)
+	if n1["text"] != "both" {
+		t.Errorf("node 1: expected 'both', got %v", n1["text"])
+	}
+	m1 := n1["marks"].([]any)
+	if len(m1) != 2 {
+		t.Errorf("node 1: expected 2 marks, got %d", len(m1))
+	}
+
+	// " bold" — bold only
+	n2 := inlines[2].(map[string]any)
+	if n2["text"] != " bold" {
+		t.Errorf("node 2: expected ' bold', got %v", n2["text"])
+	}
+	m2 := n2["marks"].([]any)
+	if len(m2) != 1 || m2[0].(map[string]any)["type"] != "bold" {
+		t.Errorf("node 2: expected [bold], got %v", m2)
+	}
+}
+
+func TestHtmlToTiptapJSON_SpanUnwrap_NoTextLoss(t *testing.T) {
+	// Pandoc adds <span id="..."> for epub anchors — text must not be lost
+	html := `<p><span id="chapter1.xhtml"></span></p><h1>Title</h1><p>Content here.</p>`
+
+	result := htmlToTiptapJSON(html)
+	var doc map[string]any
+	if err := json.Unmarshal(result, &doc); err != nil {
+		t.Fatal(err)
+	}
+
+	content := doc["content"].([]any)
+	// Should have: empty paragraph (from span), heading, paragraph
+	foundHeading := false
+	foundContent := false
+	for _, n := range content {
+		node := n.(map[string]any)
+		if node["type"] == "heading" {
+			foundHeading = true
+			if node["_text"] != "Title" {
+				t.Errorf("heading text: expected 'Title', got %v", node["_text"])
+			}
+		}
+		if node["type"] == "paragraph" && node["_text"] == "Content here." {
+			foundContent = true
+		}
+	}
+	if !foundHeading {
+		t.Error("heading node not found — text lost!")
+	}
+	if !foundContent {
+		t.Error("content paragraph not found — text lost!")
+	}
+}
+
+func TestHtmlToTiptapJSON_StandaloneHTML(t *testing.T) {
+	// Pandoc --standalone output: DOCTYPE, html, head with style, body with content
+	html := `<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <title>Test</title>
+  <style>body { color: red; }</style>
+</head>
+<body>
+<p>Real content here.</p>
+<p><img src="data:image/png;base64,abc123" /></p>
+</body>
+</html>`
+
+	result := htmlToTiptapJSON(html)
+	var doc map[string]any
+	if err := json.Unmarshal(result, &doc); err != nil {
+		t.Fatal(err)
+	}
+
+	content := doc["content"].([]any)
+	// Should have paragraph + image, NO style/title/meta junk
+	foundContent := false
+	foundImage := false
+	for _, n := range content {
+		node := n.(map[string]any)
+		if node["type"] == "paragraph" && node["_text"] == "Real content here." {
+			foundContent = true
+		}
+		if node["type"] == "image" {
+			foundImage = true
+		}
+		// Must NOT have CSS rules as text content
+		if node["type"] == "paragraph" {
+			text, _ := node["_text"].(string)
+			if strings.Contains(text, "color: red") || strings.Contains(text, "body {") {
+				t.Error("CSS style leaked into content as paragraph text!")
+			}
+		}
+	}
+	if !foundContent {
+		t.Error("real content paragraph not found")
+	}
+	if !foundImage {
+		t.Error("image node not found")
+	}
+}
+
+func TestHtmlToTiptapJSON_BoldItalicLink(t *testing.T) {
+	// <a href="..."><strong>bold link</strong></a>
+	html := `<p><a href="http://example.com"><strong>click here</strong></a></p>`
+
+	result := htmlToTiptapJSON(html)
+	var doc map[string]any
+	if err := json.Unmarshal(result, &doc); err != nil {
+		t.Fatal(err)
+	}
+
+	p := doc["content"].([]any)[0].(map[string]any)
+	inlines := p["content"].([]any)
+	if len(inlines) != 1 {
+		t.Fatalf("expected 1 inline node, got %d", len(inlines))
+	}
+
+	n := inlines[0].(map[string]any)
+	if n["text"] != "click here" {
+		t.Errorf("expected 'click here', got %v", n["text"])
+	}
+	marks := n["marks"].([]any)
+	if len(marks) != 2 {
+		t.Fatalf("expected 2 marks (link+bold), got %d", len(marks))
+	}
+	markTypes := make(map[string]bool)
+	for _, m := range marks {
+		markTypes[m.(map[string]any)["type"].(string)] = true
+	}
+	if !markTypes["link"] || !markTypes["bold"] {
+		t.Errorf("expected link+bold marks, got %v", marks)
 	}
 }

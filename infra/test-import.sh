@@ -82,12 +82,12 @@ REGISTER_STATUS=$(echo "$REGISTER_RES" | tail -1)
 REGISTER_BODY=$(echo "$REGISTER_RES" | sed '$d')
 
 if [ "$REGISTER_STATUS" = "201" ]; then
-  TOKEN=$(echo "$REGISTER_BODY" | jget .accessToken)
+  TOKEN=$(echo "$REGISTER_BODY" | jget .access_token)
 elif [ "$REGISTER_STATUS" = "409" ]; then
   LOGIN_RES=$(curl -s -X POST "$GATEWAY/v1/auth/login" \
     -H 'Content-Type: application/json' \
     -d '{"email":"import-test@loreweave.dev","password":"ImportTest2026!"}')
-  TOKEN=$(echo "$LOGIN_RES" | jget .accessToken)
+  TOKEN=$(echo "$LOGIN_RES" | jget .access_token)
 else
   echo "Registration failed with status $REGISTER_STATUS"
   echo "$REGISTER_BODY"
@@ -106,7 +106,13 @@ assert_not_empty "Created test book" "$BOOK_ID"
 # ── Create temp test files ─────────────────────────────────────────────
 header "Creating test files"
 
-TMPDIR=$(mktemp -d)
+TMPDIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'import-test')
+# Convert to Windows path for Python compatibility (Git Bash /tmp → C:\Users\...\Temp)
+if command -v cygpath &> /dev/null; then
+  TMPDIR_WIN=$(cygpath -w "$TMPDIR")
+else
+  TMPDIR_WIN="$TMPDIR"
+fi
 trap "rm -rf $TMPDIR" EXIT
 
 # .txt file
@@ -137,7 +143,7 @@ header "Test 2: Validation"
 
 NOFILE_RES=$(curl -s -w "\n%{http_code}" -X POST "$GATEWAY/v1/books/$BOOK_ID/import" \
   -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: multipart/form-data')
+  -F "original_language=en")
 NOFILE_STATUS=$(echo "$NOFILE_RES" | tail -1)
 assert_status "No file returns 400" "400" "$NOFILE_STATUS"
 
@@ -167,8 +173,15 @@ assert_status "Wrong book returns 404" "404" "$WRONGBOOK_STATUS"
 header "Test 6: .docx import (async)"
 
 # Create a minimal valid .docx using Python if available, or use a pre-built one
+PYTHON_CMD=""
 if command -v python3 &> /dev/null; then
-  python3 -c "
+  PYTHON_CMD="python3"
+elif command -v python &> /dev/null; then
+  PYTHON_CMD="python"
+fi
+
+if [ -n "$PYTHON_CMD" ]; then
+  $PYTHON_CMD -c "
 import zipfile, io, os
 # Minimal .docx structure
 content_types = '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
@@ -191,7 +204,9 @@ document = '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
 </w:document>'''
 word_rels = '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
 <Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"/>'''
-with zipfile.ZipFile('$TMPDIR/test.docx', 'w', zipfile.ZIP_DEFLATED) as z:
+import sys, os
+docx_path = os.path.join(r'$TMPDIR_WIN', 'test.docx')
+with zipfile.ZipFile(docx_path, 'w', zipfile.ZIP_DEFLATED) as z:
     z.writestr('[Content_Types].xml', content_types)
     z.writestr('_rels/.rels', rels)
     z.writestr('word/document.xml', document)
@@ -200,7 +215,7 @@ print('docx created')
 " 2>&1
   HAVE_DOCX=true
 else
-  echo "python3 not available — skipping .docx test"
+  echo "python not available — skipping .docx test"
   HAVE_DOCX=false
 fi
 

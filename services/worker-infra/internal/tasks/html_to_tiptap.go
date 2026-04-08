@@ -157,6 +157,14 @@ func parseHTMLToNodes(html string) []any {
 		return nodes
 	}
 
+	// Strip <!DOCTYPE ...> declaration if present
+	if idx := strings.Index(strings.ToLower(html), "<!doctype"); idx != -1 {
+		end := strings.Index(html[idx:], ">")
+		if end != -1 {
+			html = html[:idx] + html[idx+end+1:]
+		}
+	}
+
 	// Process block-level elements
 	pos := 0
 	for pos < len(html) {
@@ -166,6 +174,16 @@ func parseHTMLToNodes(html string) []any {
 		}
 		if pos >= len(html) {
 			break
+		}
+
+		// Skip HTML comments (<!-- ... -->)
+		if strings.HasPrefix(html[pos:], "<!--") {
+			end := strings.Index(html[pos:], "-->")
+			if end == -1 {
+				break
+			}
+			pos = pos + end + 3
+			continue
 		}
 
 		if html[pos] != '<' {
@@ -228,6 +246,16 @@ func parseHTMLToNodes(html string) []any {
 
 		case tagName == "p":
 			inner, end := extractElement(html, pos, "p")
+			// Check if paragraph contains only an <img> — promote to block image
+			trimmedInner := strings.TrimSpace(inner)
+			if strings.Contains(trimmedInner, "<img") && strings.TrimSpace(stripTags(trimmedInner)) == "" {
+				imgNode := extractImgFromTag(trimmedInner[strings.Index(trimmedInner, "<img"):])
+				if imgNode != nil {
+					nodes = append(nodes, imgNode)
+					pos = end
+					break
+				}
+			}
 			text := stripTags(inner)
 			inlineContent := parseInlineContent(inner)
 			node := map[string]any{
@@ -316,7 +344,12 @@ func parseHTMLToNodes(html string) []any {
 				pos = pos + closeIdx + 1
 			}
 
-		case tagName == "div" || tagName == "section" || tagName == "article" || tagName == "main" || tagName == "body" || tagName == "html" || tagName == "head":
+		case tagName == "head" || tagName == "style" || tagName == "script" || tagName == "title" || tagName == "link":
+			// Skip metadata elements entirely — no content to extract
+			_, end := extractElement(html, pos, tagName)
+			pos = end
+
+		case tagName == "div" || tagName == "section" || tagName == "article" || tagName == "main" || tagName == "body" || tagName == "html":
 			// Unwrap container elements — parse their inner content
 			inner, end := extractElement(html, pos, tagName)
 			innerNodes := parseHTMLToNodes(inner)
@@ -400,6 +433,34 @@ func extractElement(html string, start int, tagName string) (inner string, endPo
 
 // parseInlineContent converts inline HTML to Tiptap text nodes with marks.
 func parseInlineContent(html string) []any {
+	return parseInlineWithMarks(html, nil)
+}
+
+// markTypeForTag maps HTML inline tags to Tiptap mark types.
+func markTypeForTag(tag string) string {
+	switch tag {
+	case "strong", "b":
+		return "bold"
+	case "em", "i":
+		return "italic"
+	case "u":
+		return "underline"
+	case "s", "del", "strike":
+		return "strike"
+	case "code":
+		return "code"
+	case "sup":
+		return "superscript"
+	case "sub":
+		return "subscript"
+	default:
+		return ""
+	}
+}
+
+// parseInlineWithMarks recursively parses inline HTML, accumulating marks from parent elements.
+// This correctly handles nested marks like <em><strong>text</strong></em> → [italic, bold].
+func parseInlineWithMarks(html string, parentMarks []any) []any {
 	html = strings.TrimSpace(html)
 	if html == "" {
 		return nil
@@ -419,7 +480,11 @@ func parseInlineContent(html string) []any {
 			}
 			text := decodeHTMLEntities(html[pos:end])
 			if text != "" {
-				result = append(result, map[string]any{"type": "text", "text": text})
+				node := map[string]any{"type": "text", "text": text}
+				if len(parentMarks) > 0 {
+					node["marks"] = copyMarks(parentMarks)
+				}
+				result = append(result, node)
 			}
 			pos = end
 			continue
@@ -443,82 +508,29 @@ func parseInlineContent(html string) []any {
 		}
 		tagName := strings.ToLower(html[pos+1 : pos+1+tagEnd])
 
+		// Check if this is a mark-producing tag
+		if markType := markTypeForTag(tagName); markType != "" {
+			inner, end := extractElement(html, pos, tagName)
+			newMark := map[string]any{"type": markType}
+			childMarks := append(copyMarks(parentMarks), newMark)
+			// Recurse into inner content with accumulated marks
+			innerNodes := parseInlineWithMarks(inner, childMarks)
+			result = append(result, innerNodes...)
+			pos = end
+			continue
+		}
+
 		switch tagName {
-		case "strong", "b":
-			inner, end := extractElement(html, pos, tagName)
-			text := decodeHTMLEntities(stripTags(inner))
-			if text != "" {
-				result = append(result, map[string]any{
-					"type": "text",
-					"text": text,
-					"marks": []any{map[string]any{"type": "bold"}},
-				})
-			}
-			pos = end
-
-		case "em", "i":
-			inner, end := extractElement(html, pos, tagName)
-			text := decodeHTMLEntities(stripTags(inner))
-			if text != "" {
-				result = append(result, map[string]any{
-					"type": "text",
-					"text": text,
-					"marks": []any{map[string]any{"type": "italic"}},
-				})
-			}
-			pos = end
-
-		case "u":
-			inner, end := extractElement(html, pos, tagName)
-			text := decodeHTMLEntities(stripTags(inner))
-			if text != "" {
-				result = append(result, map[string]any{
-					"type": "text",
-					"text": text,
-					"marks": []any{map[string]any{"type": "underline"}},
-				})
-			}
-			pos = end
-
-		case "s", "del", "strike":
-			inner, end := extractElement(html, pos, tagName)
-			text := decodeHTMLEntities(stripTags(inner))
-			if text != "" {
-				result = append(result, map[string]any{
-					"type": "text",
-					"text": text,
-					"marks": []any{map[string]any{"type": "strike"}},
-				})
-			}
-			pos = end
-
-		case "code":
-			inner, end := extractElement(html, pos, "code")
-			text := decodeHTMLEntities(stripTags(inner))
-			if text != "" {
-				result = append(result, map[string]any{
-					"type": "text",
-					"text": text,
-					"marks": []any{map[string]any{"type": "code"}},
-				})
-			}
-			pos = end
-
 		case "a":
 			href := extractAttr(html[pos:], "href")
 			inner, end := extractElement(html, pos, "a")
-			text := decodeHTMLEntities(stripTags(inner))
-			if text != "" {
-				marks := []any{map[string]any{
-					"type":  "link",
-					"attrs": map[string]any{"href": href},
-				}}
-				result = append(result, map[string]any{
-					"type":  "text",
-					"text":  text,
-					"marks": marks,
-				})
+			linkMark := map[string]any{
+				"type":  "link",
+				"attrs": map[string]any{"href": href},
 			}
+			childMarks := append(copyMarks(parentMarks), linkMark)
+			innerNodes := parseInlineWithMarks(inner, childMarks)
+			result = append(result, innerNodes...)
 			pos = end
 
 		case "br", "br/":
@@ -531,38 +543,14 @@ func parseInlineContent(html string) []any {
 			}
 
 		case "span":
-			// Unwrap spans — treat inner content as inline
+			// Unwrap spans — pass through parent marks
 			inner, end := extractElement(html, pos, "span")
-			innerContent := parseInlineContent(inner)
-			result = append(result, innerContent...)
-			pos = end
-
-		case "sup":
-			inner, end := extractElement(html, pos, "sup")
-			text := decodeHTMLEntities(stripTags(inner))
-			if text != "" {
-				result = append(result, map[string]any{
-					"type": "text",
-					"text": text,
-					"marks": []any{map[string]any{"type": "superscript"}},
-				})
-			}
-			pos = end
-
-		case "sub":
-			inner, end := extractElement(html, pos, "sub")
-			text := decodeHTMLEntities(stripTags(inner))
-			if text != "" {
-				result = append(result, map[string]any{
-					"type": "text",
-					"text": text,
-					"marks": []any{map[string]any{"type": "subscript"}},
-				})
-			}
+			innerNodes := parseInlineWithMarks(inner, parentMarks)
+			result = append(result, innerNodes...)
 			pos = end
 
 		default:
-			// Unknown inline element — extract text
+			// Unknown inline element — preserve text with parent marks
 			if isVoidElement(tagName) {
 				closeIdx := strings.Index(html[pos:], ">")
 				if closeIdx == -1 {
@@ -572,16 +560,25 @@ func parseInlineContent(html string) []any {
 				}
 			} else {
 				inner, end := extractElement(html, pos, tagName)
-				text := decodeHTMLEntities(stripTags(inner))
-				if text != "" {
-					result = append(result, map[string]any{"type": "text", "text": text})
-				}
+				// Recurse to preserve any nested marks/text
+				innerNodes := parseInlineWithMarks(inner, parentMarks)
+				result = append(result, innerNodes...)
 				pos = end
 			}
 		}
 	}
 
 	return result
+}
+
+// copyMarks creates a shallow copy of a marks slice to avoid mutation.
+func copyMarks(marks []any) []any {
+	if len(marks) == 0 {
+		return nil
+	}
+	cp := make([]any, len(marks))
+	copy(cp, marks)
+	return cp
 }
 
 // parseListItems parses <li> elements from inner HTML of ul/ol.

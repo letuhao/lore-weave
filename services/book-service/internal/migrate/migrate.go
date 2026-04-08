@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS chapter_revisions (
 );
 CREATE INDEX IF NOT EXISTS idx_chapter_revisions_chapter
   ON chapter_revisions(chapter_id, created_at DESC);
+ALTER TABLE chapter_revisions ADD COLUMN IF NOT EXISTS body_format TEXT NOT NULL DEFAULT 'json';
 
 CREATE TABLE IF NOT EXISTS user_storage_quota (
   owner_user_id UUID PRIMARY KEY,

@@ -236,9 +236,11 @@ func (t *ImportProcessor) callPandoc(ctx context.Context, data []byte, format st
 	}
 
 	reqBody, _ := json.Marshal(map[string]any{
-		"from": pandocFrom,
-		"to":   "html",
-		"text": base64.StdEncoding.EncodeToString(data),
+		"from":            pandocFrom,
+		"to":              "html",
+		"text":            base64.StdEncoding.EncodeToString(data),
+		"embed-resources": true,
+		"standalone":      true,
 	})
 
 	req, err := http.NewRequestWithContext(ctx, "POST", t.Cfg.PandocURL+"/", bytes.NewReader(reqBody))

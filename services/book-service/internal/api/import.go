@@ -99,6 +99,11 @@ func (s *Server) startImport(w http.ResponseWriter, r *http.Request) {
 	jobID := uuid.New()
 	storageKey := fmt.Sprintf("imports/%s/%s%s", bookID, jobID, ext)
 	if s.minio != nil {
+		// Ensure bucket exists
+		exists, _ := s.minio.BucketExists(r.Context(), s.cfg.BooksStorageBucket)
+		if !exists {
+			_ = s.minio.MakeBucket(r.Context(), s.cfg.BooksStorageBucket, minio.MakeBucketOptions{})
+		}
 		_, err = s.minio.PutObject(r.Context(), s.cfg.BooksStorageBucket, storageKey,
 			bytes.NewReader(data), int64(len(data)),
 			minio.PutObjectOptions{ContentType: fh.Header.Get("Content-Type")})

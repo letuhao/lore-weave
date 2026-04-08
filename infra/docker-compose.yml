@@ -420,10 +420,10 @@ services:
     ports:
       - "3030:3030"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3030/ || exit 1"]
+      test: ["CMD-SHELL", "wget -qS --spider http://127.0.0.1:3030/ 2>&1 | grep -q '405\\|200' || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
 
   frontend:
     build:

@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-08 (session 24 end)
-- Updated By: Assistant (Phase 8E+8F+8G+8H COMPLETE, P3-R1 cleanup, bugs fixed, TF-10, plan audit — 45 commits)
+- Last Updated: 2026-04-08 (session 25 end)
+- Updated By: Assistant (P9-07 .docx/.epub import COMPLETE — Pandoc sidecar, async worker, WS push, image extraction — 4 commits)
 - Active Branch: `main`
-- HEAD: `b52e2a1` — docs: full plan audit — 135 done, 15 remaining + Phase 9 added
+- HEAD: `e5cdc32` — fix(worker-infra): bump Dockerfile Go version to 1.25
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V2.md` — full context for next agent
 
 ---
@@ -31,7 +31,22 @@
 
 ## Current Active Work
 
-**Phase:** All phases 8A-8H COMPLETE. Phase 9 planned (12 remaining tasks).
+**Phase:** All phases 8A-8H COMPLETE. Phase 9 in progress (P9-07 done, 11 remaining tasks).
+
+**What was done in this session (2026-04-08, session 25):**
+
+P9-07 .docx/.epub import — full-stack implementation via Pandoc sidecar + async worker-infra. 4 commits.
+
+| Work item | Files touched | Commit |
+| --------- | ------------- | ------ |
+| P9-07 core: Pandoc sidecar, import_jobs table, book-service endpoints, worker-infra ImportProcessor, HTML→Tiptap converter, frontend ImportDialog rewrite | `docker-compose.yml`, `migrate.go`, `import.go` (new), `server.go`, `import_processor.go` (new), `html_to_tiptap.go` (new), `config.go`, `main.go`, `ImportDialog.tsx`, `api.ts` | `286eede` |
+| P9-07 improvements: image extraction from data: URIs → MinIO, WebSocket push via RabbitMQ | `image_extractor.go` (new), `import_processor.go`, `useImportEvents.ts` (new), `ImportDialog.tsx` | `6648fa4` |
+| Fix: go.sum missing checksums after adding minio-go + amqp091-go | `go.sum` | `63d6219` |
+| Fix: Dockerfile Go version bump 1.22→1.25 (minio-go requires it) | `Dockerfile` | `e5cdc32` |
+
+Unit tests: 20 tests in `html_to_tiptap_test.go` (all pass). Integration test script: `infra/test-import.sh`.
+
+**9-phase workflow followed for P9-07:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
 **What was done in this session (2026-04-07→08, session 24):**
 
