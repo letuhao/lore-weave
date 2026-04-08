@@ -90,6 +90,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/books/{book_id}/projection", s.getBookProjection)
 		r.Get("/books/{book_id}/chapters", s.getInternalBookChapters)
 		r.Get("/books/{book_id}/chapters/{chapter_id}", s.getInternalBookChapter)
+		r.Patch("/imports/{import_id}", s.updateImportJobStatus)
 	})
 
 	r.Route("/v1/books", func(r chi.Router) {
@@ -138,6 +139,11 @@ func (s *Server) Router() http.Handler {
 				r.Post("/block-audio", s.uploadBlockAudio)
 				r.Post("/progress", s.upsertReadingProgress)
 			})
+
+			// Import (.docx/.epub)
+			r.Post("/import", s.startImport)
+			r.Get("/imports", s.listImportJobs)
+			r.Get("/imports/{import_id}", s.getImportJob)
 
 			// Analytics — at book level
 			r.Post("/view", s.recordBookView)

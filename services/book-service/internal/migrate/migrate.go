@@ -174,6 +174,24 @@ CREATE TABLE IF NOT EXISTS book_views (
   viewed_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_bv_book ON book_views(book_id, viewed_at DESC);
+
+-- ── Phase 9: import jobs for .docx/.epub import ───────────────────────
+CREATE TABLE IF NOT EXISTS import_jobs (
+  id               UUID PRIMARY KEY DEFAULT uuidv7(),
+  book_id          UUID NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  user_id          UUID NOT NULL,
+  status           TEXT NOT NULL DEFAULT 'pending',
+  filename         TEXT NOT NULL,
+  file_format      TEXT NOT NULL,
+  file_size        BIGINT NOT NULL,
+  file_storage_key TEXT NOT NULL,
+  chapters_created INT NOT NULL DEFAULT 0,
+  error            TEXT,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  completed_at     TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_import_jobs_book ON import_jobs(book_id, created_at DESC);
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

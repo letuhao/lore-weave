@@ -324,15 +324,25 @@ services:
       context: ../services/worker-infra
       dockerfile: Dockerfile
     environment:
-      WORKER_TASKS: "outbox-relay,outbox-cleanup"
+      WORKER_TASKS: "outbox-relay,outbox-cleanup,import-processor"
       EVENTS_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_events
       REDIS_URL: redis://redis:6379
       OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book"
       OUTBOX_CLEANUP_RETAIN_DAYS: "7"
+      BOOK_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book
+      PANDOC_URL: http://pandoc-server:3030
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: loreweave
+      MINIO_SECRET_KEY: loreweave_dev_minio_secret
+      MINIO_BUCKET: loreweave-dev-books
+      BOOK_SERVICE_URL: http://book-service:8082
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      pandoc-server:
         condition: service_healthy
     restart: unless-stopped
 
@@ -400,6 +410,17 @@ services:
       - "8875:8010"
     volumes:
       - loreweave_languagetool:/LanguageTool/languagetool-data
+
+  pandoc-server:
+    image: pandoc/core:latest
+    entrypoint: ["pandoc-server"]
+    ports:
+      - "3030:3030"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3030/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   frontend:
     build:

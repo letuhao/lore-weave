@@ -17,6 +17,16 @@ type Config struct {
 	RedisURL          string
 	OutboxSources     []OutboxSource
 	CleanupRetainDays int
+
+	// Import processor config
+	BookDBURL       string
+	PandocURL       string
+	MinioEndpoint   string
+	MinioAccessKey  string
+	MinioSecretKey  string
+	MinioBucket     string
+	BookServiceURL  string
+	InternalToken   string
 }
 
 func Load() *Config {
@@ -24,6 +34,14 @@ func Load() *Config {
 		EventsDBURL:       envOrDefault("EVENTS_DB_URL", "postgres://loreweave:loreweave_dev@localhost:5432/loreweave_events"),
 		RedisURL:          envOrDefault("REDIS_URL", "redis://localhost:6379"),
 		CleanupRetainDays: 7,
+		BookDBURL:         envOrDefault("BOOK_DB_URL", ""),
+		PandocURL:         envOrDefault("PANDOC_URL", "http://localhost:3030"),
+		MinioEndpoint:     envOrDefault("MINIO_ENDPOINT", "localhost:9000"),
+		MinioAccessKey:    envOrDefault("MINIO_ACCESS_KEY", "loreweave"),
+		MinioSecretKey:    envOrDefault("MINIO_SECRET_KEY", ""),
+		MinioBucket:       envOrDefault("MINIO_BUCKET", "loreweave-dev-books"),
+		BookServiceURL:    envOrDefault("BOOK_SERVICE_URL", "http://localhost:8082"),
+		InternalToken:     envOrDefault("INTERNAL_SERVICE_TOKEN", "dev_internal_token"),
 	}
 
 	if v := os.Getenv("WORKER_TASKS"); v != "" {

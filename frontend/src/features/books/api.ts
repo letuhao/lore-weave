@@ -516,6 +516,63 @@ export const booksApi = {
     if (!res.ok) return { view_count: 0, unique_readers: 0, total_readers: 0, avg_time_ms: 0, avg_scroll_depth: 0 };
     return res.json();
   },
+
+  // ── Import (.docx/.epub) ──────────────────────────────────────────────
+
+  startImport(
+    token: string,
+    bookId: string,
+    file: File,
+    originalLanguage?: string,
+    onProgress?: (pct: number) => void,
+  ): Promise<ImportJob> {
+    return new Promise((resolve, reject) => {
+      const form = new FormData();
+      form.append('file', file);
+      if (originalLanguage) form.append('original_language', originalLanguage);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${base()}/v1/books/${bookId}/import`);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+      if (onProgress) {
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            onProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        });
+      }
+
+      xhr.addEventListener('load', () => {
+        try {
+          const body = JSON.parse(xhr.responseText);
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(body);
+          } else {
+            reject(Object.assign(new Error(body?.message || xhr.statusText), {
+              status: xhr.status,
+              code: body?.code,
+            }));
+          }
+        } catch {
+          reject(new Error('Invalid response'));
+        }
+      });
+
+      xhr.addEventListener('error', () => reject(new Error('Network error')));
+      xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')));
+
+      xhr.send(form);
+    });
+  },
+
+  getImportJob(token: string, bookId: string, importId: string) {
+    return apiJson<ImportJob>(`/v1/books/${bookId}/imports/${importId}`, { token });
+  },
+
+  listImportJobs(token: string, bookId: string) {
+    return apiJson<{ imports: ImportJob[] }>(`/v1/books/${bookId}/imports`, { token });
+  },
 };
 
 export type ReadingProgress = {
@@ -544,6 +601,20 @@ export type ReadingHistoryEntry = {
   book_title: string;
   chapter_title: string | null;
   sort_order: number | null;
+};
+
+export type ImportJob = {
+  id: string;
+  book_id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  filename: string;
+  file_format: string;
+  file_size: number;
+  chapters_created: number;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
 };
 
 // ── Types ───────────────────────────────────────────────────────────────

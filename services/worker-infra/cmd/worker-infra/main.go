@@ -8,6 +8,8 @@ import (
 	"syscall"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/loreweave/worker-infra/internal/config"
@@ -60,6 +62,34 @@ func main() {
 		slog.Info("source DB connected", "source", src.Name)
 	}
 
+	// Connect to book DB (for import-processor)
+	var bookPool *pgxpool.Pool
+	if cfg.BookDBURL != "" {
+		bp, err := pgxpool.New(ctx, cfg.BookDBURL)
+		if err != nil {
+			slog.Error("book DB connection failed", "error", err)
+			os.Exit(1)
+		}
+		defer bp.Close()
+		bookPool = bp
+		slog.Info("book DB connected")
+	}
+
+	// Connect to MinIO (for import-processor)
+	var minioClient *minio.Client
+	if cfg.MinioSecretKey != "" {
+		mc, err := minio.New(cfg.MinioEndpoint, &minio.Options{
+			Creds:  credentials.NewStaticV4(cfg.MinioAccessKey, cfg.MinioSecretKey, ""),
+			Secure: false,
+		})
+		if err != nil {
+			slog.Error("minio connection failed", "error", err)
+			os.Exit(1)
+		}
+		minioClient = mc
+		slog.Info("minio connected")
+	}
+
 	// Register tasks
 	reg := registry.New()
 	reg.Register(&tasks.OutboxRelay{
@@ -73,6 +103,14 @@ func main() {
 		SourcePools: sourcePools,
 		RetainDays:  cfg.CleanupRetainDays,
 	})
+	if bookPool != nil && minioClient != nil {
+		reg.Register(&tasks.ImportProcessor{
+			Cfg:    cfg,
+			Redis:  rdb,
+			BookDB: bookPool,
+			Minio:  minioClient,
+		})
+	}
 
 	// Run selected tasks until signal
 	slog.Info("running tasks", "tasks", cfg.WorkerTasks)
