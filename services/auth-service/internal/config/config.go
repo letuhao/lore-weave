@@ -26,6 +26,9 @@ type Config struct {
 	SMTPFrom     string
 	// Browser base URL for links in emails (e.g. http://localhost:5173).
 	PublicAppURL string
+	// Notification service internal URL for creating notifications on events.
+	NotificationServiceInternalURL string
+	InternalServiceToken           string
 }
 
 func Load() (*Config, error) {
@@ -41,7 +44,9 @@ func Load() (*Config, error) {
 		SMTPUser:          os.Getenv("SMTP_USER"),
 		SMTPPassword:      os.Getenv("SMTP_PASSWORD"),
 		SMTPFrom:          getEnv("SMTP_FROM", ""),
-		PublicAppURL:      getEnv("PUBLIC_APP_URL", ""),
+		PublicAppURL:                   getEnv("PUBLIC_APP_URL", ""),
+		NotificationServiceInternalURL: getEnv("NOTIFICATION_SERVICE_INTERNAL_URL", ""),
+		InternalServiceToken:           getEnv("INTERNAL_SERVICE_TOKEN", ""),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

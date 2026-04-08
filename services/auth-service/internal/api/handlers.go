@@ -947,9 +947,23 @@ func (s *Server) followUser(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "AUTH_USER_NOT_FOUND", "user not found")
 		return
 	}
-	_, _ = s.pool.Exec(r.Context(), `
+	tag, _ := s.pool.Exec(r.Context(), `
 		INSERT INTO user_follows (follower_id, following_id) VALUES ($1, $2)
 		ON CONFLICT DO NOTHING`, followerID, followingID)
+
+	// Fire-and-forget notification if a new follow was actually created
+	if tag.RowsAffected() > 0 {
+		var followerName string
+		_ = s.pool.QueryRow(r.Context(), `SELECT COALESCE(display_name, '') FROM users WHERE id=$1`, followerID).Scan(&followerName)
+		if followerName == "" {
+			followerName = "Someone"
+		}
+		go s.sendNotification(followingID.String(), "social", followerName+" started following you", "", map[string]any{
+			"actor_id": followerID.String(),
+			"type":     "new_follower",
+		})
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1069,6 +1083,37 @@ func (s *Server) listFollowing(w http.ResponseWriter, r *http.Request) {
 	var total int64
 	_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM user_follows WHERE follower_id=$1`, userID).Scan(&total)
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
+}
+
+// ── Notification Helper ───────────────────────────────────────────────────
+
+var notifClient = &http.Client{Timeout: 5 * time.Second}
+
+func (s *Server) sendNotification(userID, category, title, body string, metadata map[string]any) {
+	if s.cfg.NotificationServiceInternalURL == "" {
+		return
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"user_id":  userID,
+		"category": category,
+		"title":    title,
+		"body":     body,
+		"metadata": metadata,
+	})
+	req, err := http.NewRequest(http.MethodPost, s.cfg.NotificationServiceInternalURL+"/internal/notifications", strings.NewReader(string(payload)))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if s.cfg.InternalServiceToken != "" {
+		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	}
+	resp, err := notifClient.Do(req)
+	if err != nil {
+		slog.Error("send notification failed", "error", err)
+		return
+	}
+	resp.Body.Close()
 }
 
 // ── Internal (service-to-service) ──────────────────────────────────────────

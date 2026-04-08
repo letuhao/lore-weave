@@ -1,0 +1,19 @@
+{
+  "title": "Thông báo",
+  "markAllRead": "Đánh dấu tất cả đã đọc",
+  "markRead": "Đánh dấu đã đọc",
+  "delete": "Xóa",
+  "empty": "Chưa có thông báo",
+  "loading": "Đang tải...",
+  "justNow": "Vừa xong",
+  "minsAgo": "{{count}} phút trước",
+  "hrsAgo": "{{count}} giờ trước",
+  "daysAgo": "{{count}} ngày trước",
+  "category": {
+    "all": "Tất cả",
+    "translation": "Dịch thuật",
+    "social": "Xã hội",
+    "wiki": "Wiki",
+    "system": "Hệ thống"
+  }
+}

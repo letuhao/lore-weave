@@ -1,0 +1,19 @@
+{
+  "title": "Notifications",
+  "markAllRead": "Mark all read",
+  "markRead": "Mark as read",
+  "delete": "Delete",
+  "empty": "No notifications yet",
+  "loading": "Loading...",
+  "justNow": "Just now",
+  "minsAgo": "{{count}}m ago",
+  "hrsAgo": "{{count}}h ago",
+  "daysAgo": "{{count}}d ago",
+  "category": {
+    "all": "All",
+    "translation": "Translation",
+    "social": "Social",
+    "wiki": "Wiki",
+    "system": "System"
+  }
+}

@@ -269,6 +269,12 @@ async def _check_job_completion(pool, job_id, user_id, msg, publish_event) -> No
         },
     })
 
+    # Fire-and-forget notification
+    await _send_translation_notification(
+        user_id, msg.get("job_id", ""), msg.get("book_title", ""),
+        row["status"], row["completed_chapters"], row["failed_chapters"],
+    )
+
 
 async def _fail_chapter_idempotent(pool, job_id, chapter_id, reason: str) -> None:
     """
@@ -312,6 +318,41 @@ async def _insert_outbox_event(db, event_type: str, aggregate_id, payload: dict)
            VALUES ($1, 'chapter', $2, $3::jsonb)""",
         event_type, aggregate_id, json.dumps(payload),
     )
+
+
+async def _send_translation_notification(
+    user_id, job_id: str, book_title: str, status: str,
+    completed_chapters: int, failed_chapters: int,
+) -> None:
+    """Fire-and-forget notification to notification-service."""
+    try:
+        if status == "completed":
+            title = f"Translation complete — {completed_chapters} chapters of \"{book_title}\""
+            category = "translation"
+        elif status == "partial":
+            title = f"Translation partial — {completed_chapters} done, {failed_chapters} failed"
+            category = "translation"
+        else:
+            title = f"Translation failed — \"{book_title}\""
+            category = "translation"
+
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                f"{settings.notification_service_internal_url}/internal/notifications",
+                json={
+                    "user_id": str(user_id),
+                    "category": category,
+                    "title": title,
+                    "metadata": {
+                        "job_id": str(job_id),
+                        "status": status,
+                        "type": f"translation_{status}",
+                    },
+                },
+                headers={"X-Internal-Token": settings.internal_service_token},
+            )
+    except Exception as exc:
+        log.warning("Failed to send translation notification: %s", exc)
 
 
 class _TransientError(Exception):

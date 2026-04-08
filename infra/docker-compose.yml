@@ -71,10 +71,11 @@ services:
       SMTP_PORT: "1025"
       SMTP_FROM: "LoreWeave <noreply@loreweave.local>"
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:5296}
+      NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
     depends_on:
       postgres:
         condition: service_healthy
-
       mailhog:
         condition: service_started
     ports:
@@ -373,6 +374,21 @@ services:
     ports:
       - "8214:8089"
 
+  notification-service:
+    build:
+      context: ../services/notification-service
+      dockerfile: Dockerfile
+    environment:
+      HTTP_ADDR: ":8091"
+      DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_notification?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8215:8091"
+
   api-gateway-bff:
     build:
       context: ../services/api-gateway-bff
@@ -390,6 +406,7 @@ services:
       CHAT_SERVICE_URL: http://chat-service:8090
       VIDEO_GEN_SERVICE_URL: http://video-gen-service:8088
       STATISTICS_SERVICE_URL: http://statistics-service:8089
+      NOTIFICATION_SERVICE_URL: http://notification-service:8091
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
@@ -413,6 +430,8 @@ services:
       chat-service:
         condition: service_healthy
       statistics-service:
+        condition: service_healthy
+      notification-service:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy

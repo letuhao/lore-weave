@@ -21,6 +21,7 @@ loreweave_glossary
 loreweave_chat
 loreweave_events
 loreweave_statistics
+loreweave_notification
 "
 
 for db in $DATABASES; do

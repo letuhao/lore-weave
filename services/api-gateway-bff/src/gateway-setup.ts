@@ -20,6 +20,7 @@ export function configureGatewayApp(
     chatUrl: string;
     videoGenUrl: string;
     statisticsUrl: string;
+    notificationUrl: string;
   },
 ): void {
   app.enableCors({
@@ -89,6 +90,11 @@ export function configureGatewayApp(
     pathFilter: (pathname: string) =>
       pathname.startsWith('/v1/leaderboard') || pathname.startsWith('/v1/stats'),
   });
+  const notificationProxy = createProxyMiddleware({
+    target: urls.notificationUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/notifications'),
+  });
 
   const httpAdapter = app.getHttpAdapter();
   const instance = httpAdapter.getInstance();
@@ -147,6 +153,11 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const notificationProxyFn = notificationProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
 
   instance.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account') || req.path.startsWith('/v1/me/preferences') || req.path.startsWith('/v1/users')) {
@@ -181,6 +192,9 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/leaderboard') || req.path.startsWith('/v1/stats')) {
       return statisticsProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/notifications')) {
+      return notificationProxyFn(req, res, next);
     }
     return next();
   });

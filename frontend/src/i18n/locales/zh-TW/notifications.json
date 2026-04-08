@@ -1,0 +1,19 @@
+{
+  "title": "通知",
+  "markAllRead": "全部標為已讀",
+  "markRead": "標為已讀",
+  "delete": "刪除",
+  "empty": "尚無通知",
+  "loading": "載入中...",
+  "justNow": "剛剛",
+  "minsAgo": "{{count}}分鐘前",
+  "hrsAgo": "{{count}}小時前",
+  "daysAgo": "{{count}}天前",
+  "category": {
+    "all": "全部",
+    "translation": "翻譯",
+    "social": "社交",
+    "wiki": "Wiki",
+    "system": "系統"
+  }
+}

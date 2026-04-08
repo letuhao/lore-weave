@@ -3805,9 +3805,9 @@ Task order:
     Notes: Full-stack — auth-service (bio/languages, public profile, follow system), book-service (favorites), catalog (author filter), statistics (translator stats endpoint). Frontend: ProfileHeader, StatsRow, AchievementBar, BooksTab, TranslationsTab, StubTab, ProfilePage, i18n 4 langs. Gateway /v1/users proxy.
 
   P9-03: Notification service + center [FS]
-    Status: [ ]
-    Route: /notifications
-    Notes: Backend notification service needed, NotificationBell ready for wiring
+    Status: [✓]
+    Route: /notifications (sidebar bell dropdown)
+    Notes: New notification-service (Go/Chi, port 8091, own DB). Internal create + batch endpoints. Public API: list, unread-count, mark-read, mark-all-read, delete. Gateway proxy. Producers: auth-service follow event, translation-service job completion. Frontend: NotificationBell with polling, category filters, mark read, delete. i18n 4 langs.
 
   ── "Coming soon" features (6 items) ──────────────────────────────────
 

@@ -8,7 +8,7 @@
 ## Document Metadata
 
 - Last Updated: 2026-04-08 (session 27)
-- Updated By: Assistant (P9-02 User Profile — full-stack: follow system, favorites, public profile, 6 components, i18n 4 langs)
+- Updated By: Assistant (P9-02 + P9-03 — user profile + notification service)
 - Active Branch: `main`
 - HEAD: pending commit
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
@@ -31,7 +31,7 @@
 
 ## Current Active Work
 
-**Phase:** All phases 8A-8H COMPLETE. Phase 9 in progress (P9-01, P9-02, P9-07 done, 9 remaining tasks).
+**Phase:** All phases 8A-8H COMPLETE. Phase 9 in progress (P9-01, P9-02, P9-03, P9-07 done, 8 remaining tasks).
 
 **What was done in this session (2026-04-08, session 27):**
 

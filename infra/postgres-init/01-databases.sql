@@ -48,3 +48,7 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_chat')\gexe
 -- Statistics & Leaderboard
 SELECT 'CREATE DATABASE loreweave_statistics'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_statistics')\gexec
+
+-- Notifications
+SELECT 'CREATE DATABASE loreweave_notification'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_notification')\gexec
