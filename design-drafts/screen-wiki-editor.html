@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave v2 — Wiki Editor (Wikipedia-inspired)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a;
+      --destructive: #dc4e4e; --success: #3dba6a; --info: #5496e8;
+      --wiki-link: #7ab4f0; --system: #7c6cd4;
+      --kind-character: #e85d75; --kind-place: #5496e8; --kind-item: #e8a832;
+      --kind-concept: #7c6cd4; --kind-faction: #3da692;
+      --spoiler-bg: #2a1a1a; --spoiler-border: #4a2020;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--border); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; border: none; cursor: pointer; transition: all 120ms; font-family: inherit; }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+    .btn-outline:hover { background: var(--secondary); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); padding: 4px 8px; }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-accent { background: var(--accent); color: #f0faf8; }
+    .btn-sm { padding: 3px 8px; font-size: 11px; border-radius: 4px; }
+    .btn-icon { width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 5px; border: none; cursor: pointer; background: transparent; color: var(--muted-fg); transition: all 120ms; }
+    .btn-icon:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-icon.active { background: var(--primary-muted); color: var(--primary); }
+
+    .badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 500; }
+    .panel { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--card); }
+    .input-field { background: var(--background); border: 1px solid var(--border); color: var(--foreground); border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: inherit; width: 100%; }
+    .input-field:focus { outline: none; border-color: var(--primary); }
+
+    .showcase { max-width: 1400px; margin: 0 auto; padding: 32px 24px; }
+    .showcase h1 { font-family: 'Lora', serif; font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+    .showcase-subtitle { font-size: 13px; color: var(--muted-fg); margin-bottom: 32px; line-height: 1.6; }
+    .showcase-section { margin-bottom: 56px; }
+    .showcase-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-fg); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .showcase-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    .wiki-link { color: var(--wiki-link); text-decoration: none; border-bottom: 1px dashed rgba(122,180,240,0.3); cursor: pointer; }
+    .wiki-link:hover { border-bottom-color: var(--wiki-link); }
+    .wiki-link.red { color: var(--destructive); border-bottom-color: rgba(220,78,78,0.3); }
+
+    .toolbar-separator { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+    .tab { padding: 8px 14px; font-size: 12px; font-weight: 500; border-bottom: 2px solid transparent; color: var(--muted-fg); cursor: pointer; transition: all 120ms; background: none; border-top: none; border-left: none; border-right: none; }
+    .tab:hover { color: var(--foreground); }
+    .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+  </style>
+</head>
+<body>
+
+<div class="showcase">
+  <h1>Wiki Editor — Full Feature Draft</h1>
+  <p class="showcase-subtitle">
+    Wikipedia-inspired wiki editor for LoreWeave. Visual editing with Tiptap, infobox editor from glossary,<br>
+    spoiler protection, article templates, revision history, cross-references, and AI assist.
+  </p>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 1: EDITOR LAYOUT — Full-page 3-column
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">1. Wiki Editor Layout — full-page 3-column editing view</div>
+
+    <div style="display: grid; grid-template-columns: 260px 1fr 280px; gap: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; min-height: 600px;">
+
+      <!-- LEFT: Article structure + cross-references -->
+      <div style="background: var(--card); border-right: 1px solid var(--border); display: flex; flex-direction: column;">
+        <!-- Tabs -->
+        <div style="display: flex; border-bottom: 1px solid var(--border);">
+          <button class="tab active" style="flex: 1; text-align: center;">Structure</button>
+          <button class="tab" style="flex: 1; text-align: center;">Links</button>
+        </div>
+
+        <!-- Structure tab: section outline -->
+        <div style="padding: 8px; flex: 1; overflow-y: auto;">
+          <div style="padding: 6px 8px; border-radius: 4px; background: var(--primary-muted); font-size: 12px; font-weight: 500; color: var(--primary); margin-bottom: 2px; cursor: pointer;">
+            ↑ Introduction
+          </div>
+          <div style="padding: 6px 8px; border-radius: 4px; font-size: 12px; cursor: pointer; color: var(--muted-fg);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+            § Background
+          </div>
+          <div style="padding: 6px 16px; border-radius: 4px; font-size: 11px; cursor: pointer; color: var(--muted-fg);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+            § Early Life
+          </div>
+          <div style="padding: 6px 16px; border-radius: 4px; font-size: 11px; cursor: pointer; color: var(--muted-fg);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+            § Training
+          </div>
+          <div style="padding: 6px 8px; border-radius: 4px; font-size: 12px; cursor: pointer; color: var(--muted-fg);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+            § Personality
+          </div>
+          <div style="padding: 6px 8px; border-radius: 4px; font-size: 12px; cursor: pointer; color: var(--muted-fg);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+            § Relationships
+          </div>
+          <div style="padding: 6px 8px; border-radius: 4px; font-size: 12px; cursor: pointer; color: var(--muted-fg);" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+            § Abilities & Equipment
+          </div>
+          <div style="padding: 6px 8px; border-radius: 4px; font-size: 12px; cursor: pointer; color: var(--muted-fg); display: flex; align-items: center; gap: 4px;" onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background=''">
+            § Trivia
+            <span style="font-size: 9px; color: var(--destructive); padding: 1px 4px; border-radius: 3px; background: rgba(220,78,78,0.08);">spoiler</span>
+          </div>
+
+          <!-- Add section -->
+          <div style="padding: 8px; margin-top: 4px;">
+            <button class="btn btn-outline btn-sm" style="width: 100%; justify-content: center;">
+              + Add Section
+            </button>
+          </div>
+
+          <!-- Template info -->
+          <div style="padding: 8px; border-top: 1px solid var(--border); margin-top: 8px;">
+            <div style="font-size: 10px; color: var(--muted-fg); margin-bottom: 4px;">Article Template</div>
+            <div style="display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 4px; background: var(--secondary);">
+              <span style="font-size: 10px; color: var(--kind-character);">👤</span>
+              <span style="font-size: 11px; font-weight: 500;">Character</span>
+              <span style="font-size: 10px; color: var(--muted-fg); margin-left: auto;">Change</span>
+            </div>
+            <div style="font-size: 9px; color: var(--muted-fg); margin-top: 4px;">
+              Sections: Intro, Background, Personality, Relationships, Abilities, Trivia
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CENTER: Editor -->
+      <div style="display: flex; flex-direction: column; background: var(--background);">
+        <!-- Top bar: mode toggle + actions -->
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--card);">
+          <!-- Visual/Source toggle -->
+          <div style="display: flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden;">
+            <button style="padding: 4px 10px; font-size: 11px; font-weight: 500; background: var(--primary-muted); color: var(--primary); border: none; cursor: pointer;">Visual</button>
+            <button style="padding: 4px 10px; font-size: 11px; background: transparent; color: var(--muted-fg); border: none; border-left: 1px solid var(--border); cursor: pointer;">Source</button>
+          </div>
+
+          <span style="color: var(--border);">|</span>
+
+          <!-- Entity info -->
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <span style="font-size: 10px; color: var(--kind-character);">👤</span>
+            <span style="font-size: 13px; font-weight: 600;">Aldric</span>
+            <span style="font-size: 10px; color: var(--muted-fg);">· Character · 8 revisions</span>
+          </div>
+
+          <div style="flex: 1;"></div>
+
+          <!-- Actions -->
+          <button class="btn btn-ghost btn-sm">Preview</button>
+          <button class="btn btn-ghost btn-sm">History</button>
+          <button class="btn btn-outline btn-sm">Discard</button>
+          <button class="btn btn-primary btn-sm">Publish</button>
+        </div>
+
+        <!-- Toolbar -->
+        <div style="display: flex; align-items: center; gap: 2px; padding: 6px 12px; border-bottom: 1px solid var(--border); background: rgba(30,26,23,0.5); flex-wrap: wrap;">
+          <div class="btn-icon" title="Bold"><b style="font-size: 13px;">B</b></div>
+          <div class="btn-icon" title="Italic"><i style="font-size: 13px;">I</i></div>
+          <div class="btn-icon" title="Heading"><span style="font-size: 11px; font-weight: 700;">H</span></div>
+          <span class="toolbar-separator"></span>
+          <div class="btn-icon active" title="Wiki link [[">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101"/></svg>
+          </div>
+          <div class="btn-icon" title="Image">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          </div>
+          <div class="btn-icon" title="Bulleted list">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+          </div>
+          <div class="btn-icon" title="Quote">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z"/></svg>
+          </div>
+          <div class="btn-icon" title="Callout / Note box">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <span class="toolbar-separator"></span>
+          <!-- Media blocks -->
+          <div class="btn-icon" title="Insert image">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          </div>
+          <div class="btn-icon" title="Insert gallery">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2z"/></svg>
+          </div>
+          <div class="btn-icon" title="Insert video">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+          </div>
+          <div class="btn-icon" title="Insert comparison (before/after)">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 19V6l12-3v13"/></svg>
+          </div>
+          <div class="btn-icon" title="Insert map/diagram">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.447 2.724A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+          </div>
+          <span class="toolbar-separator"></span>
+          <!-- Spoiler section marker -->
+          <div class="btn-icon" title="Mark as spoiler section" style="color: var(--destructive);">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
+          </div>
+          <span class="toolbar-separator"></span>
+          <!-- AI tools -->
+          <button class="btn btn-accent btn-sm">
+            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            AI Generate Section
+          </button>
+          <button class="btn btn-outline btn-sm">Auto-link Terms</button>
+        </div>
+
+        <!-- Editor content area -->
+        <div style="flex: 1; overflow-y: auto; padding: 24px 40px;">
+          <!-- Title -->
+          <h1 class="font-serif" style="font-size: 26px; font-weight: 600; margin-bottom: 4px; outline: none;" contenteditable="true">Aldric</h1>
+          <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 20px;">Also known as: The Hero, 勇者アルドリック, Anh hùng Aldric</p>
+
+          <!-- Introduction -->
+          <div style="font-size: 14px; line-height: 1.9;">
+            <p contenteditable="true" style="outline: none; margin-bottom: 16px;">
+              <strong>Aldric</strong>, known as <strong>The Hero</strong>, is the protagonist of
+              <a class="wiki-link" href="#">The Demon Lord's Duty</a>. A graduate of both the
+              <a class="wiki-link" href="#">Royal Academy of Heroes</a> and the
+              <a class="wiki-link red" href="#">Clerk's Guild</a>, he is unique among heroes for
+              his deep belief that proper process is as important as justice itself.
+            </p>
+
+            <!-- Section: Background -->
+            <h2 class="font-serif" style="font-size: 18px; font-weight: 600; margin: 24px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border);">Background</h2>
+
+            <h3 class="font-serif" style="font-size: 15px; font-weight: 600; margin: 16px 0 6px; color: var(--foreground);">Early Life</h3>
+            <p contenteditable="true" style="outline: none; margin-bottom: 12px;">
+              Raised by two retired paladins — Ser Maren and Dame Elka — who ran a legal
+              practice in the merchant quarter of <a class="wiki-link" href="#">Brighthollow</a>.
+              From an early age, Aldric showed equal aptitude for swordplay and legal scholarship.
+            </p>
+
+            <h3 class="font-serif" style="font-size: 15px; font-weight: 600; margin: 16px 0 6px;">Training</h3>
+            <p contenteditable="true" style="outline: none; margin-bottom: 12px;">
+              He graduated simultaneously from the <a class="wiki-link" href="#">Royal Academy</a>
+              (combat honors) and the <a class="wiki-link red" href="#">Clerk's Guild</a>
+              (summa cum laude) — a feat never achieved before in the kingdom's history.
+            </p>
+
+            <!-- Section: Personality -->
+            <h2 class="font-serif" style="font-size: 18px; font-weight: 600; margin: 24px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border);">Personality</h2>
+            <p contenteditable="true" style="outline: none; margin-bottom: 12px;">
+              Aldric genuinely believes in justice and doing what's right — but he also
+              believes deeply in <em>process</em>. To him, slaying the
+              <a class="wiki-link" href="#">Demon Lord</a> without proper authorization
+              would be as wrong as the Demon Lord's crimes themselves.
+            </p>
+
+            <!-- Section: Relationships -->
+            <h2 class="font-serif" style="font-size: 18px; font-weight: 600; margin: 24px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border);">Relationships</h2>
+            <ul style="padding-left: 20px; margin-bottom: 12px; font-size: 14px; line-height: 1.9;">
+              <li style="margin-bottom: 6px;"><a class="wiki-link" href="#">The Demon Lord</a> — Rival turned reluctant friend, built over years of formal complaints and tea sessions.</li>
+              <li style="margin-bottom: 6px;"><a class="wiki-link" href="#">Chamberlain</a> — The Demon Lord's ancient servant who has grown to expect Aldric's visits.</li>
+              <li><a class="wiki-link red" href="#">Minister Thane</a> — Political rival. <span style="font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--secondary); color: var(--muted-fg);">stub</span></li>
+            </ul>
+
+            <!-- ═══ MEDIA BLOCKS ═══ -->
+
+            <!-- Section: Gallery -->
+            <h2 class="font-serif" style="font-size: 18px; font-weight: 600; margin: 24px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border);">Gallery</h2>
+
+            <!-- Image Gallery Block (new wiki-specific block) -->
+            <div style="border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 16px;">
+              <!-- Gallery header -->
+              <div style="padding: 8px 12px; background: var(--card); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <svg width="14" height="14" fill="none" stroke="var(--muted-fg)" stroke-width="2" viewBox="0 0 24 24"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                  <span style="font-size: 11px; font-weight: 500;">Image Gallery</span>
+                  <span style="font-size: 10px; color: var(--muted-fg);">· 3 images</span>
+                </div>
+                <div style="display: flex; gap: 4px;">
+                  <button class="btn btn-ghost btn-sm" style="font-size: 10px;">+ Add Image</button>
+                  <button class="btn btn-ghost btn-sm" style="font-size: 10px;">
+                    <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    AI Generate
+                  </button>
+                </div>
+              </div>
+              <!-- Gallery grid -->
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 2px;">
+                <div style="position: relative; aspect-ratio: 1; background: linear-gradient(135deg, #3d2e12, #1a1008); display: flex; align-items: center; justify-content: center;">
+                  <span class="font-serif" style="font-size: 36px; color: var(--primary); opacity: 0.3;">A</span>
+                  <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 6px 8px; background: linear-gradient(transparent, rgba(0,0,0,0.7)); font-size: 10px; color: #ccc;">
+                    Aldric in formal armor
+                  </div>
+                </div>
+                <div style="position: relative; aspect-ratio: 1; background: linear-gradient(135deg, #2a1a28, #140e14); display: flex; align-items: center; justify-content: center;">
+                  <span style="font-size: 28px; opacity: 0.2;">⚔️</span>
+                  <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 6px 8px; background: linear-gradient(transparent, rgba(0,0,0,0.7)); font-size: 10px; color: #ccc;">
+                    Aldric wielding <a class="wiki-link" href="#" style="color: var(--wiki-link); font-size: 10px;">Precedent</a>
+                  </div>
+                </div>
+                <div style="position: relative; aspect-ratio: 1; background: linear-gradient(135deg, #1a2828, #0e1818); display: flex; align-items: center; justify-content: center; cursor: pointer; border: 2px dashed var(--border);">
+                  <div style="text-align: center;">
+                    <svg width="20" height="20" fill="none" stroke="var(--muted-fg)" stroke-width="1.5" viewBox="0 0 24 24" style="margin: 0 auto;"><path d="M12 4v16m8-8H4"/></svg>
+                    <div style="font-size: 9px; color: var(--muted-fg); margin-top: 4px;">Drop image<br>or click</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Single Image Block (reused from chapter editor) -->
+            <div style="border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 16px;">
+              <div style="aspect-ratio: 16/9; background: linear-gradient(135deg, #1e2a1e, #0e140e); display: flex; align-items: center; justify-content: center; position: relative;">
+                <span style="font-size: 40px; opacity: 0.15;">🏰</span>
+                <!-- Resize handles -->
+                <div style="position: absolute; right: 4px; bottom: 4px; width: 12px; height: 12px; border-right: 2px solid var(--muted-fg); border-bottom: 2px solid var(--muted-fg); opacity: 0.4; cursor: nwse-resize;"></div>
+              </div>
+              <div style="padding: 8px 12px; border-top: 1px solid var(--border); background: var(--card);">
+                <div contenteditable="true" style="font-size: 12px; color: var(--muted-fg); outline: none;">
+                  The <a class="wiki-link" href="#">Obsidian Throne Room</a> where Aldric first confronted the <a class="wiki-link" href="#">Demon Lord</a>. Note the bureaucratic filing cabinets in the background.
+                </div>
+                <!-- Image actions -->
+                <div style="display: flex; gap: 4px; margin-top: 6px;">
+                  <span style="font-size: 9px; padding: 2px 6px; border-radius: 3px; background: var(--secondary); color: var(--muted-fg);">1200×675</span>
+                  <span style="font-size: 9px; padding: 2px 6px; border-radius: 3px; background: var(--secondary); color: var(--muted-fg);">AI prompt</span>
+                  <span style="font-size: 9px; padding: 2px 6px; border-radius: 3px; background: var(--secondary); color: var(--muted-fg);">Alt text</span>
+                  <span style="font-size: 9px; padding: 2px 6px; border-radius: 3px; background: var(--secondary); color: var(--muted-fg);">History</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Comparison Block (new wiki-specific block) -->
+            <div style="border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 16px;">
+              <div style="padding: 8px 12px; background: var(--card); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 6px;">
+                <svg width="14" height="14" fill="none" stroke="var(--muted-fg)" stroke-width="2" viewBox="0 0 24 24"><path d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/></svg>
+                <span style="font-size: 11px; font-weight: 500;">Comparison</span>
+                <span style="font-size: 10px; color: var(--muted-fg);">· Before / After</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2px;">
+                <div style="aspect-ratio: 4/3; background: linear-gradient(135deg, #2d1740, #1a1030); display: flex; align-items: center; justify-content: center; position: relative;">
+                  <span style="font-size: 28px; opacity: 0.15;">🌑</span>
+                  <div style="position: absolute; top: 6px; left: 8px; font-size: 9px; padding: 2px 6px; border-radius: 3px; background: rgba(0,0,0,0.6); color: #aaa;">Before — Ch.1</div>
+                </div>
+                <div style="aspect-ratio: 4/3; background: linear-gradient(135deg, #40301a, #302010); display: flex; align-items: center; justify-content: center; position: relative;">
+                  <span style="font-size: 28px; opacity: 0.15;">🌕</span>
+                  <div style="position: absolute; top: 6px; left: 8px; font-size: 9px; padding: 2px 6px; border-radius: 3px; background: rgba(0,0,0,0.6); color: #aaa;">After — Ch.24</div>
+                </div>
+              </div>
+              <div style="padding: 6px 12px; border-top: 1px solid var(--border); background: var(--card);">
+                <div contenteditable="true" style="font-size: 11px; color: var(--muted-fg); outline: none;">
+                  Aldric's armor evolution — from issued hero's plate (Ch.1) to custom-fitted bureaucratic battle-dress (Ch.24)
+                </div>
+              </div>
+            </div>
+
+            <!-- Video Block (reused from chapter editor) -->
+            <div style="border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 16px;">
+              <div style="aspect-ratio: 16/9; background: #0a0a0a; display: flex; align-items: center; justify-content: center; position: relative;">
+                <div style="width: 48px; height: 48px; border-radius: 50%; background: rgba(232,168,50,0.15); display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                  <svg width="20" height="20" fill="var(--primary)" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                </div>
+                <div style="position: absolute; bottom: 8px; right: 8px; font-size: 10px; padding: 2px 6px; border-radius: 3px; background: rgba(0,0,0,0.7); color: #aaa;">0:42</div>
+              </div>
+              <div style="padding: 6px 12px; border-top: 1px solid var(--border); background: var(--card);">
+                <div contenteditable="true" style="font-size: 11px; color: var(--muted-fg); outline: none;">
+                  Fan animation: Aldric's first filing complaint against the <a class="wiki-link" href="#">Demon Lord</a> (community contribution)
+                </div>
+              </div>
+            </div>
+
+            <!-- Map/Diagram Placeholder Block (new wiki-specific block) -->
+            <div style="border: 1px dashed var(--border); border-radius: 8px; padding: 20px; text-align: center; margin-bottom: 16px; background: rgba(84,150,232,0.03);">
+              <svg width="32" height="32" fill="none" stroke="var(--info)" stroke-width="1.5" viewBox="0 0 24 24" style="margin: 0 auto 8px;"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.447 2.724A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+              <p style="font-size: 13px; font-weight: 500; margin-bottom: 4px;">Relationship Map</p>
+              <p style="font-size: 11px; color: var(--muted-fg); margin-bottom: 12px;">Interactive diagram showing character relationships</p>
+              <div style="display: flex; justify-content: center; gap: 6px;">
+                <button class="btn btn-outline btn-sm">Upload SVG/PNG</button>
+                <button class="btn btn-accent btn-sm">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                  AI Generate Diagram
+                </button>
+              </div>
+            </div>
+
+            <!-- Spoiler-protected section -->
+            <div style="background: var(--spoiler-bg); border: 1px dashed var(--spoiler-border); border-radius: 8px; padding: 16px; margin: 16px 0; position: relative;">
+              <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+                <svg width="14" height="14" fill="none" stroke="var(--destructive)" stroke-width="2" viewBox="0 0 24 24"><path d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243"/></svg>
+                <span style="font-size: 11px; font-weight: 600; color: var(--destructive);">Spoiler: Chapter 18+</span>
+                <span style="font-size: 10px; color: var(--muted-fg); margin-left: auto;">Readers who haven't reached Ch.18 see a warning</span>
+              </div>
+              <h2 class="font-serif" style="font-size: 18px; font-weight: 600; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--spoiler-border);">Trivia</h2>
+              <ul style="padding-left: 20px; font-size: 14px; line-height: 1.9;">
+                <li contenteditable="true" style="outline: none; margin-bottom: 4px;">Aldric's full legal name is "Ser Aldric Maren-Elka of Brighthollow, Hero-Designate First Class"</li>
+                <li contenteditable="true" style="outline: none; margin-bottom: 4px;">He carries a copy of the <a class="wiki-link" href="#">Engagement Protocol</a> in his breast pocket at all times</li>
+                <li contenteditable="true" style="outline: none;">His sword <a class="wiki-link" href="#">Precedent</a> was actually named by <a class="wiki-link" href="#">The Demon Lord</a> as a joke during their third meeting</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer status bar -->
+        <div style="padding: 6px 16px; border-top: 1px solid var(--border); background: var(--card); display: flex; align-items: center; gap: 12px; font-size: 10px; color: var(--muted-fg);">
+          <span>1,247 words</span>
+          <span>·</span>
+          <span>8 sections</span>
+          <span>·</span>
+          <span>8 wiki links (2 <span style="color: var(--destructive);">red</span>)</span>
+          <span>·</span>
+          <span>5 media (1 gallery, 1 image, 1 comparison, 1 video, 1 diagram)</span>
+          <span>·</span>
+          <span>1 spoiler section</span>
+          <span style="margin-left: auto;">[[wiki link]] · /gallery · /compare · /map · /spoiler</span>
+        </div>
+      </div>
+
+      <!-- RIGHT: Infobox editor + metadata -->
+      <div style="background: var(--card); border-left: 1px solid var(--border); display: flex; flex-direction: column;">
+        <div style="display: flex; border-bottom: 1px solid var(--border);">
+          <button class="tab active" style="flex: 1; text-align: center;">Infobox</button>
+          <button class="tab" style="flex: 1; text-align: center;">Metadata</button>
+        </div>
+
+        <div style="flex: 1; overflow-y: auto; padding: 12px;">
+          <!-- Infobox preview -->
+          <div style="text-align: center; margin-bottom: 12px;">
+            <div style="width: 64px; height: 64px; border-radius: 8px; background: linear-gradient(135deg, #3d2e12, #2a1a08); margin: 0 auto 6px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); cursor: pointer; position: relative;">
+              <span class="font-serif" style="font-size: 24px; color: var(--primary);">A</span>
+              <div style="position: absolute; bottom: -4px; right: -4px; width: 18px; height: 18px; border-radius: 50%; background: var(--primary); color: var(--primary-fg); font-size: 10px; display: flex; align-items: center; justify-content: center; border: 2px solid var(--card);">+</div>
+            </div>
+            <span style="font-size: 10px; color: var(--muted-fg);">Click to upload portrait</span>
+          </div>
+
+          <!-- Infobox fields (from glossary attributes) -->
+          <div style="font-size: 11px;">
+            <div style="margin-bottom: 10px;">
+              <label style="display: block; color: var(--muted-fg); margin-bottom: 3px; font-weight: 500;">Display Name</label>
+              <input class="input-field" style="font-size: 12px; padding: 4px 8px;" value="Aldric" />
+            </div>
+            <div style="margin-bottom: 10px;">
+              <label style="display: block; color: var(--muted-fg); margin-bottom: 3px; font-weight: 500;">Title / Epithet</label>
+              <input class="input-field" style="font-size: 12px; padding: 4px 8px;" value="Ser Aldric of Brighthollow" />
+            </div>
+            <div style="margin-bottom: 10px;">
+              <label style="display: block; color: var(--muted-fg); margin-bottom: 3px; font-weight: 500;">Aliases</label>
+              <input class="input-field" style="font-size: 12px; padding: 4px 8px;" value="The Hero, 勇者アルドリック" />
+            </div>
+            <div style="margin-bottom: 10px;">
+              <label style="display: block; color: var(--muted-fg); margin-bottom: 3px; font-weight: 500;">Weapon</label>
+              <div style="display: flex; gap: 4px;">
+                <input class="input-field" style="font-size: 12px; padding: 4px 8px; flex: 1;" value="Precedent (sword)" />
+                <button class="btn btn-ghost btn-sm" title="Link to wiki page" style="flex-shrink: 0;">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656"/></svg>
+                </button>
+              </div>
+            </div>
+            <div style="margin-bottom: 10px;">
+              <label style="display: block; color: var(--muted-fg); margin-bottom: 3px; font-weight: 500;">Power Level</label>
+              <input class="input-field" style="font-size: 12px; padding: 4px 8px;" value="85" />
+            </div>
+            <div style="margin-bottom: 10px;">
+              <label style="display: block; color: var(--muted-fg); margin-bottom: 3px; font-weight: 500;">First Appearance</label>
+              <select style="width: 100%; padding: 4px 8px; font-size: 12px; background: var(--background); color: var(--foreground); border: 1px solid var(--border); border-radius: 6px;">
+                <option>Chapter 1: The Summons</option>
+                <option>Chapter 3: The Clerk's Bargain</option>
+              </select>
+            </div>
+
+            <div style="padding: 8px; border-top: 1px solid var(--border); margin-top: 12px;">
+              <div style="font-size: 10px; color: var(--muted-fg); margin-bottom: 6px;">Data source</div>
+              <div style="display: flex; gap: 4px;">
+                <span style="padding: 2px 6px; border-radius: 3px; font-size: 9px; background: rgba(124,108,212,0.1); color: #a78bfa;">Glossary: Aldric</span>
+                <span style="padding: 2px 6px; border-radius: 3px; font-size: 9px; background: var(--secondary); color: var(--muted-fg);">+ Manual edits</span>
+              </div>
+              <button class="btn btn-ghost btn-sm" style="margin-top: 6px; width: 100%; justify-content: center;">
+                Sync from Glossary
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 2: ARTICLE TEMPLATES
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">2. Article Templates — per entity kind, Wikipedia-style</div>
+
+    <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+      <!-- Character template -->
+      <div class="panel" style="width: 220px; padding: 14px;">
+        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 10px;">
+          <span style="font-size: 14px;">👤</span>
+          <span style="font-size: 13px; font-weight: 600;">Character</span>
+        </div>
+        <div style="font-size: 11px; color: var(--muted-fg); line-height: 1.6;">
+          <div style="padding: 3px 0;">§ Introduction</div>
+          <div style="padding: 3px 0;">§ Background</div>
+          <div style="padding: 3px 8px; font-size: 10px;">§ Early Life</div>
+          <div style="padding: 3px 8px; font-size: 10px;">§ Training</div>
+          <div style="padding: 3px 0;">§ Personality</div>
+          <div style="padding: 3px 0;">§ Relationships</div>
+          <div style="padding: 3px 0;">§ Abilities & Equipment</div>
+          <div style="padding: 3px 0;">§ Chapter Appearances</div>
+          <div style="padding: 3px 0;">§ Trivia</div>
+        </div>
+        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 10px; color: var(--muted-fg);">
+          Infobox: name, title, aliases, weapon, first appearance
+        </div>
+      </div>
+
+      <!-- Place template -->
+      <div class="panel" style="width: 220px; padding: 14px;">
+        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 10px;">
+          <span style="font-size: 14px;">📍</span>
+          <span style="font-size: 13px; font-weight: 600;">Place</span>
+        </div>
+        <div style="font-size: 11px; color: var(--muted-fg); line-height: 1.6;">
+          <div style="padding: 3px 0;">§ Introduction</div>
+          <div style="padding: 3px 0;">§ Geography</div>
+          <div style="padding: 3px 0;">§ History</div>
+          <div style="padding: 3px 0;">§ Notable Residents</div>
+          <div style="padding: 3px 0;">§ Points of Interest</div>
+          <div style="padding: 3px 0;">§ Chapter Appearances</div>
+        </div>
+        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 10px; color: var(--muted-fg);">
+          Infobox: name, region, ruler, population
+        </div>
+      </div>
+
+      <!-- Item template -->
+      <div class="panel" style="width: 220px; padding: 14px;">
+        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 10px;">
+          <span style="font-size: 14px;">⚔️</span>
+          <span style="font-size: 13px; font-weight: 600;">Item</span>
+        </div>
+        <div style="font-size: 11px; color: var(--muted-fg); line-height: 1.6;">
+          <div style="padding: 3px 0;">§ Introduction</div>
+          <div style="padding: 3px 0;">§ Description</div>
+          <div style="padding: 3px 0;">§ History & Origin</div>
+          <div style="padding: 3px 0;">§ Powers & Properties</div>
+          <div style="padding: 3px 0;">§ Known Owners</div>
+          <div style="padding: 3px 0;">§ Chapter Appearances</div>
+        </div>
+        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 10px; color: var(--muted-fg);">
+          Infobox: name, type, owner, origin, power
+        </div>
+      </div>
+
+      <!-- Concept template -->
+      <div class="panel" style="width: 220px; padding: 14px;">
+        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 10px;">
+          <span style="font-size: 14px;">💡</span>
+          <span style="font-size: 13px; font-weight: 600;">Concept</span>
+        </div>
+        <div style="font-size: 11px; color: var(--muted-fg); line-height: 1.6;">
+          <div style="padding: 3px 0;">§ Introduction</div>
+          <div style="padding: 3px 0;">§ Definition</div>
+          <div style="padding: 3px 0;">§ History & Context</div>
+          <div style="padding: 3px 0;">§ Related Concepts</div>
+          <div style="padding: 3px 0;">§ Usage in Story</div>
+        </div>
+        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 10px; color: var(--muted-fg);">
+          Infobox: name, category, related to
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 3: REVISION HISTORY — side-by-side diff
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">3. Revision History — Wikipedia-style diff comparison</div>
+
+    <div class="panel" style="max-width: 900px;">
+      <!-- Header -->
+      <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+        <span style="font-size: 13px; font-weight: 600;">Aldric — Revision History</span>
+        <span style="font-size: 11px; color: var(--muted-fg);">8 revisions</span>
+      </div>
+
+      <!-- Revision list -->
+      <div style="max-height: 200px; overflow-y: auto;">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--primary-muted); font-size: 12px;">
+          <input type="radio" name="rev-from" checked style="accent-color: var(--primary);" />
+          <input type="radio" name="rev-to" style="accent-color: var(--primary);" />
+          <span style="font-weight: 500;">v8 (current)</span>
+          <span style="color: var(--muted-fg);">NeneScarlet · 2 hours ago</span>
+          <span style="font-size: 10px; color: var(--success);">+42 words</span>
+          <span style="font-size: 10px; color: var(--muted-fg);">Added Trivia section</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--border); font-size: 12px;">
+          <input type="radio" name="rev-from" style="accent-color: var(--primary);" />
+          <input type="radio" name="rev-to" checked style="accent-color: var(--primary);" />
+          <span style="font-weight: 500;">v7</span>
+          <span style="color: var(--muted-fg);">TofuMaster (community) · Yesterday</span>
+          <span style="font-size: 10px; color: var(--success);">+28 words</span>
+          <span style="font-size: 10px; color: var(--muted-fg);">Expanded Early Life</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--border); font-size: 12px;">
+          <input type="radio" name="rev-from" style="accent-color: var(--primary);" />
+          <input type="radio" name="rev-to" style="accent-color: var(--primary);" />
+          <span style="font-weight: 500;">v6</span>
+          <span style="color: var(--muted-fg);">AI (auto-generated) · 3 days ago</span>
+          <span style="font-size: 10px; color: var(--success);">+156 words</span>
+          <span style="font-size: 10px; color: var(--muted-fg);">Initial generation from glossary</span>
+        </div>
+      </div>
+
+      <!-- Diff view (v7 → v8) -->
+      <div style="padding: 16px; border-top: 1px solid var(--border);">
+        <div style="font-size: 11px; color: var(--muted-fg); margin-bottom: 8px;">Comparing v7 → v8</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <!-- Old -->
+          <div style="padding: 10px 12px; background: var(--background); border-radius: 6px; font-size: 13px; line-height: 1.7;">
+            <div style="font-size: 10px; font-weight: 600; color: var(--muted-fg); margin-bottom: 6px;">v7 (TofuMaster)</div>
+            <p>Aldric was raised by two retired paladins, Ser Maren and Dame Elka, who ran a legal practice.</p>
+          </div>
+          <!-- New -->
+          <div style="padding: 10px 12px; background: var(--background); border-radius: 6px; font-size: 13px; line-height: 1.7;">
+            <div style="font-size: 10px; font-weight: 600; color: var(--muted-fg); margin-bottom: 6px;">v8 (NeneScarlet) — current</div>
+            <p>Aldric was raised by two retired paladins, Ser Maren and Dame Elka, who ran a <span style="background: rgba(61,186,106,0.15); padding: 1px 2px; border-radius: 2px;">small but respected</span> legal practice <span style="background: rgba(61,186,106,0.15); padding: 1px 2px; border-radius: 2px;">in the merchant quarter of Brighthollow</span>.</p>
+            <p style="margin-top: 8px;"><span style="background: rgba(61,186,106,0.15); padding: 1px 2px; border-radius: 2px;">From an early age, Aldric showed equal aptitude for swordplay and legal scholarship.</span></p>
+          </div>
+        </div>
+        <div style="display: flex; gap: 6px; margin-top: 10px;">
+          <button class="btn btn-outline btn-sm">Restore v7</button>
+          <button class="btn btn-ghost btn-sm">View full article at v7</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SECTION 4: BEHAVIOR SUMMARY
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <div class="showcase-label">4. Key Design Decisions</div>
+
+    <div class="panel" style="max-width: 900px; padding: 20px;">
+      <div style="display: grid; grid-template-columns: auto 1fr; gap: 10px 20px; font-size: 12px;">
+        <span style="color: var(--primary); font-weight: 500;">Editor engine</span>
+        <span>Reuses TiptapEditor with wiki-specific extensions (WikiLinkMark, SpoilerSection, InfoboxNode). Same tech stack as chapter editor.</span>
+
+        <span style="color: var(--primary); font-weight: 500;">Data model</span>
+        <span>Wiki articles stored as Tiptap JSON (like chapters). Linked to glossary entity via entity_id. Infobox fields come from glossary attribute_values.</span>
+
+        <span style="color: var(--primary); font-weight: 500;">Wiki links</span>
+        <span>[[Entity Name]] syntax in editor. Resolves to glossary entity. Blue = exists, red = stub/missing. Reuses GlossaryAutocomplete from P9-06.</span>
+
+        <span style="color: var(--primary); font-weight: 500;">Templates</span>
+        <span>Per entity kind. Writer can customize. Template defines default sections. New article auto-populates from template + glossary data.</span>
+
+        <span style="color: var(--primary); font-weight: 500;">Spoiler protection</span>
+        <span>Mark sections with /spoiler [chapter]. Readers see warning unless they've read past that chapter. Uses reading_progress data.</span>
+
+        <span style="color: var(--primary); font-weight: 500;">Revisions</span>
+        <span>Every edit creates a revision (like chapters). Full history with side-by-side diff. Restore any version.</span>
+
+        <span style="color: var(--primary); font-weight: 500;">Community flow</span>
+        <span>Community edits → suggestion queue → writer approves/rejects/edits. Already designed in screen-wiki.html section 5.</span>
+
+        <span style="color: var(--primary); font-weight: 500;">AI assist</span>
+        <span>Generate section from glossary data + chapter text. Uses reader's own API keys (BYOK). Cost transparency per operation.</span>
+
+        <span style="color: var(--primary); font-weight: 500;">Cross-references</span>
+        <span>"Pages that link here" panel (left sidebar Links tab). Shows which other wiki articles mention this entity.</span>
+
+        <span style="color: var(--primary); font-weight: 500;">Media blocks</span>
+        <span>Reuses chapter editor blocks (Image, Video, Audio) + new wiki-specific blocks: Gallery (multi-image grid with captions), Comparison (side-by-side before/after), Map/Diagram placeholder (SVG/PNG upload or AI generate). All captions support [[wiki links]].</span>
+
+        <span style="color: var(--primary); font-weight: 500;">Slash menu</span>
+        <span>Type / in editor: /gallery, /compare, /map, /spoiler, /image, /video, /audio, /callout, /quote. Same slash menu as chapter editor, extended with wiki-specific commands.</span>
+
+        <span style="color: var(--primary); font-weight: 500;">Auto-generate</span>
+        <span>One-click generate wiki stub from glossary entity. Pre-fills infobox from attributes, generates article skeleton from template.</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

@@ -3831,10 +3831,62 @@ Task order:
     File: ImportDialog.tsx
     Notes: Currently only .txt supported. Needs parser for docx/epub formats
 
-  P9-08: Wiki tab on book detail [FE]
+  P9-08: Wiki system [FS] — expanded to 5 sub-phases (BE priority)
     Status: [ ]
-    Route: /books/:bookId (wiki tab)
-    Notes: Referenced as P3-17, never built
+    Route: /books/:bookId (wiki tab) + /books/:bookId/wiki/:articleId (editor)
+    Design drafts: screen-wiki.html (reader + settings + community review), screen-wiki-editor.html (editor + media + templates + revisions)
+    Architecture: Extend glossary-service (wiki articles 1:1 with glossary entities). Wiki settings in book-service.
+
+    P9-08a: BE — Wiki article CRUD + revisions [BE]
+      Status: [ ]
+      Service: glossary-service
+      Tables: wiki_articles (entity_id FK, body_json, status, template_code, spoiler_chapters), wiki_revisions (article_id, version, body_json, author_id, author_type, summary)
+      Endpoints:
+        GET    /v1/glossary/books/{bookId}/wiki                — list wiki articles
+        POST   /v1/glossary/books/{bookId}/wiki                — create article (from entity_id + template)
+        GET    /v1/glossary/books/{bookId}/wiki/{articleId}     — get article with infobox (attribute_values)
+        PATCH  /v1/glossary/books/{bookId}/wiki/{articleId}     — update article body (creates revision)
+        DELETE /v1/glossary/books/{bookId}/wiki/{articleId}     — delete article
+        GET    /v1/glossary/books/{bookId}/wiki/{articleId}/revisions  — list revisions
+        GET    /v1/glossary/books/{bookId}/wiki/{articleId}/revisions/{revId}  — get revision
+        POST   /v1/glossary/books/{bookId}/wiki/{articleId}/revisions/{revId}/restore  — restore revision
+        POST   /v1/glossary/books/{bookId}/wiki/generate       — auto-generate stubs from glossary entities
+      Notes: Reuse chapter revision pattern. body_json is Tiptap JSON. Infobox data served from entity_attribute_values join.
+
+    P9-08b: BE — Wiki settings + public reader API [BE]
+      Status: [ ]
+      Service: book-service (settings), glossary-service (public reader)
+      Book-service changes:
+        - books table: ADD COLUMN wiki_settings JSONB DEFAULT '{}'
+        - wiki_settings schema: { visibility: 'off'|'public', community_mode: 'off'|'suggest'|'open', ai_assist: bool, glossary_exposure: 'names'|'partial'|'full', auto_generate: bool }
+        - PATCH /v1/books/{bookId} accepts wiki_settings field
+      Glossary-service public endpoints (no JWT, visibility check via book-service internal call):
+        GET /v1/glossary/books/{bookId}/wiki/public            — list published articles (respects visibility)
+        GET /v1/glossary/books/{bookId}/wiki/public/{articleId} — get published article (filters spoilers by reader progress)
+
+    P9-08c: BE — Community suggestions [BE]
+      Status: [ ]
+      Service: glossary-service
+      Table: wiki_suggestions (article_id, user_id, diff_json, reason, status)
+      Endpoints:
+        POST   /v1/glossary/books/{bookId}/wiki/{articleId}/suggestions  — submit suggestion (any authenticated user)
+        GET    /v1/glossary/books/{bookId}/wiki/suggestions              — list pending suggestions (owner only)
+        PATCH  /v1/glossary/books/{bookId}/wiki/suggestions/{sugId}      — accept/reject (owner only)
+      Notes: On accept, apply diff to article body, create revision with author_type='community'.
+
+    P9-08d: FE — Wiki reader tab + article viewer [FE]
+      Status: [ ]
+      Components: WikiTab (book detail tab), WikiArticleView (3-column: sidebar + article + ToC), WikiInfobox, WikiLink
+      Route: /books/:bookId (WikiTab as new tab in BookDetailPage)
+      Features: Article list sidebar, search, article body renderer (reuse ContentRenderer), infobox, wiki links (blue/red), chapter appearances, spoiler warnings, ToC
+      i18n: 4 languages
+
+    P9-08e: FE — Wiki editor + media + community [FE]
+      Status: [ ]
+      Components: WikiEditorPage (3-column: structure + editor + infobox), WikiGalleryBlock, WikiComparisonBlock, WikiMapBlock, WikiSpoilerSection, WikiSuggestionReview
+      Route: /books/:bookId/wiki/:articleId/edit
+      Features: TiptapEditor reuse + wiki extensions (WikiLinkMark, SpoilerSection, Gallery, Comparison, Map), infobox editor synced to glossary attributes, article templates per kind, revision history with side-by-side diff, community suggestion review panel, AI generate/improve/auto-link
+      Notes: Reuse P9-06 GlossaryPlugin for [[wiki links]]. Slash menu extended with /gallery /compare /map /spoiler.
 
   P9-09: Account deletion [BE+FE]
     Status: [ ]
