@@ -86,6 +86,23 @@ func (s *Server) Router() http.Handler {
 				r.Post("/{entity_id}/restore", s.restoreEntity)
 				r.Delete("/{entity_id}", s.purgeEntity)
 			})
+			r.Route("/wiki", func(r chi.Router) {
+				r.Get("/", s.listWikiArticles)
+				r.Post("/", s.createWikiArticle)
+				r.Post("/generate", s.generateWikiStubs)
+				r.Route("/{article_id}", func(r chi.Router) {
+					r.Get("/", s.getWikiArticle)
+					r.Patch("/", s.patchWikiArticle)
+					r.Delete("/", s.deleteWikiArticle)
+					r.Route("/revisions", func(r chi.Router) {
+						r.Get("/", s.listWikiRevisions)
+						r.Route("/{rev_id}", func(r chi.Router) {
+							r.Get("/", s.getWikiRevision)
+							r.Post("/restore", s.restoreWikiRevision)
+						})
+					})
+				})
+			})
 			r.Get("/entity-names", s.listEntityNames)
 			r.Route("/entities", func(r chi.Router) {
 				r.Get("/", s.listEntities)

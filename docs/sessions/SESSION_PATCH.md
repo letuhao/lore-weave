@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-09 (session 27 end)
-- Updated By: Assistant (P9-02, P9-03, P9-04, P9-05, P9-06, P9-10 done + P9-08 planned)
+- Last Updated: 2026-04-09 (session 28 — P9-08a in progress)
+- Updated By: Assistant (P9-08a wiki CRUD + revisions BE done)
 - Active Branch: `main`
-- HEAD: `9072c01` — plan(wiki): P9-08 wiki system — 5 sub-phase plan + editor design draft
+- HEAD: pending commit — P9-08a wiki backend
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
 
 ---
@@ -31,9 +31,24 @@
 
 ## Current Active Work
 
-**Phase:** All phases 8A-8H COMPLETE. Phase 9 in progress (P9-01, P9-02, P9-03, P9-04, P9-05, P9-06, P9-07, P9-10 done — 8/12). P9-08 planned (5 sub-phases). 3 remaining: P9-08 (wiki, planned), P9-09 (account deletion), P9-11 (audio drift), P9-12 (sharing tab wiring).
+**Phase:** All phases 8A-8H COMPLETE. Phase 9 in progress (P9-01..P9-07, P9-10 done — 8/12). P9-08a (wiki BE) done. 4 remaining sub-phases: P9-08b (wiki settings + public API), P9-08c (community suggestions), P9-08d (wiki FE reader), P9-08e (wiki FE editor). Also remaining: P9-09, P9-11, P9-12.
 
-**What was done in this session (2026-04-08, session 27):**
+**What was done in this session (2026-04-09, session 28):**
+
+P9-08a Wiki article CRUD + revisions — backend implementation in glossary-service. 2 tables (wiki_articles, wiki_revisions), 9 endpoints, wiki_handler.go (new), migration, routes. Review: 3 fixes (spoiler init, rows.Err checks). Integration tests: 75/75 pass.
+
+| Work item | Files touched | Status |
+| --------- | ------------- | ------ |
+| Migration: wiki_articles + wiki_revisions tables | `glossary-service/internal/migrate/migrate.go` | Done |
+| Wiki handler: 9 endpoints (list, create, get, patch, delete, list revisions, get revision, restore, generate) | `glossary-service/internal/api/wiki_handler.go` (new) | Done |
+| Route registration | `glossary-service/internal/api/server.go` | Done |
+| Migration call in main.go | `glossary-service/cmd/glossary-service/main.go` | Done |
+| Review fixes: spoiler init, rows.Err checks (2 locations) | `wiki_handler.go` | Done |
+| Integration tests: 75 scenarios | `infra/test-wiki.sh` (new) | Done |
+
+**9-phase workflow followed for P9-08a:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
+
+**What was done in previous session (2026-04-08, session 27):**
 
 P9-02 User Profile — full-stack implementation. Backend: bio/languages fields, public profile endpoint, follow system (table + 4 endpoints), favorites system (table + 3 endpoints), catalog author filter, translator stats endpoint. Frontend: 6 components (ProfileHeader, StatsRow, AchievementBar, BooksTab, TranslationsTab, StubTab), ProfilePage, i18n 4 languages. Review: 4 fixes (active user filter on followers/following/counts, achievement dedup). Gateway: `/v1/users` proxy added.
 

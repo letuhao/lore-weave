@@ -57,6 +57,10 @@ func main() {
 		slog.Error("migrate genre-groups", "error", err)
 		os.Exit(1)
 	}
+	if err := migrate.UpWiki(ctx, pool); err != nil {
+		slog.Error("migrate wiki", "error", err)
+		os.Exit(1)
+	}
 
 	srv := api.NewServer(pool, cfg)
 	httpSrv := &http.Server{

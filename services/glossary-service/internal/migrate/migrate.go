@@ -485,3 +485,42 @@ func UpGenreGroups(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	return nil
 }
+
+// ── wiki articles + revisions ───────────────────────────────────────────────
+
+const wikiSQL = `
+CREATE TABLE IF NOT EXISTS wiki_articles (
+  article_id       UUID PRIMARY KEY DEFAULT uuidv7(),
+  entity_id        UUID NOT NULL UNIQUE REFERENCES glossary_entities(entity_id) ON DELETE CASCADE,
+  book_id          UUID NOT NULL,
+  body_json        JSONB NOT NULL DEFAULT '{}',
+  status           TEXT NOT NULL DEFAULT 'draft',
+  template_code    TEXT,
+  spoiler_chapters UUID[] NOT NULL DEFAULT '{}',
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_wa_book   ON wiki_articles(book_id);
+CREATE INDEX IF NOT EXISTS idx_wa_entity ON wiki_articles(entity_id);
+CREATE INDEX IF NOT EXISTS idx_wa_status ON wiki_articles(book_id, status);
+
+CREATE TABLE IF NOT EXISTS wiki_revisions (
+  revision_id  UUID PRIMARY KEY DEFAULT uuidv7(),
+  article_id   UUID NOT NULL REFERENCES wiki_articles(article_id) ON DELETE CASCADE,
+  version      INT NOT NULL,
+  body_json    JSONB NOT NULL,
+  author_id    UUID NOT NULL,
+  author_type  TEXT NOT NULL DEFAULT 'owner',
+  summary      TEXT NOT NULL DEFAULT '',
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(article_id, version)
+);
+CREATE INDEX IF NOT EXISTS idx_wr_article ON wiki_revisions(article_id);
+`
+
+func UpWiki(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, wikiSQL); err != nil {
+		return fmt.Errorf("migrate wiki: %w", err)
+	}
+	return nil
+}
