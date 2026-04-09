@@ -25,5 +25,15 @@
   "redLinkHint": "赤いリンク＝まだ存在しないページ",
   "spoilerWarning": "この記事にはネタバレが含まれています",
   "noContent": "この記事にはまだ内容がありません。",
-  "edit": "編集"
+  "edit": "編集",
+  "generateFromGlossary": "用語集から生成",
+  "generateStubs": "スタブを生成",
+  "generatedCount": "{{count}}件の記事を生成しました",
+  "generatedCount_other": "{{count}}件の記事を生成しました",
+  "generatedNone": "すべてのアクティブなエンティティにはWiki記事があります",
+  "createArticle": "記事を作成",
+  "selectEntity": "Wiki記事を作成するエンティティを選択",
+  "deleteArticle": "記事を削除",
+  "deleteConfirm": "このWiki記事とすべてのリビジョンが完全に削除されます。",
+  "deleted": "記事を削除しました"
 }

@@ -25,5 +25,15 @@
   "redLinkHint": "Lien ket do = trang chua ton tai",
   "spoilerWarning": "Bai viet nay chua noi dung tiet lo",
   "noContent": "Bai viet nay chua co noi dung.",
-  "edit": "Chinh sua"
+  "edit": "Chinh sua",
+  "generateFromGlossary": "Tao tu bang chu giai",
+  "generateStubs": "Tao ban nhap",
+  "generatedCount": "Da tao {{count}} bai",
+  "generatedCount_other": "Da tao {{count}} bai",
+  "generatedNone": "Tat ca thuc the da co bai wiki",
+  "createArticle": "Tao bai viet",
+  "selectEntity": "Chon thuc the de tao bai wiki",
+  "deleteArticle": "Xoa bai viet",
+  "deleteConfirm": "Hanh dong nay se xoa vinh vien bai wiki va tat ca cac phien ban.",
+  "deleted": "Da xoa bai viet"
 }

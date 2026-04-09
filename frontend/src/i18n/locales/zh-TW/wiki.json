@@ -25,5 +25,15 @@
   "redLinkHint": "紅色連結 = 尚未建立的頁面",
   "spoilerWarning": "此文章包含劇透內容",
   "noContent": "此文章尚無內容。",
-  "edit": "編輯"
+  "edit": "編輯",
+  "generateFromGlossary": "從詞彙表生成",
+  "generateStubs": "生成草稿",
+  "generatedCount": "已生成 {{count}} 篇文章",
+  "generatedCount_other": "已生成 {{count}} 篇文章",
+  "generatedNone": "所有活躍實體已有 Wiki 文章",
+  "createArticle": "建立文章",
+  "selectEntity": "選擇實體以建立 Wiki 文章",
+  "deleteArticle": "刪除文章",
+  "deleteConfirm": "此操作將永久刪除此 Wiki 文章及所有版本。",
+  "deleted": "文章已刪除"
 }

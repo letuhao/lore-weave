@@ -25,5 +25,15 @@
   "redLinkHint": "Red links = pages that don't exist yet",
   "spoilerWarning": "This article contains spoilers",
   "noContent": "This article has no content yet.",
-  "edit": "Edit"
+  "edit": "Edit",
+  "generateFromGlossary": "Generate from Glossary",
+  "generateStubs": "Generate Stubs",
+  "generatedCount": "Generated {{count}} article",
+  "generatedCount_other": "Generated {{count}} articles",
+  "generatedNone": "All active entities already have wiki articles",
+  "createArticle": "Create Article",
+  "selectEntity": "Select an entity to create a wiki article",
+  "deleteArticle": "Delete Article",
+  "deleteConfirm": "This will permanently delete this wiki article and all its revisions.",
+  "deleted": "Article deleted"
 }

@@ -1,11 +1,13 @@
 import { useState, useMemo, useDeferredValue } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Search, BookOpen, Clock, Pencil } from 'lucide-react';
+import { Search, BookOpen, Clock, Pencil, Plus, Sparkles } from 'lucide-react';
+import { toast } from 'sonner';
 import type { JSONContent } from '@tiptap/react';
 import { useAuth } from '@/auth';
 import { wikiApi } from '@/features/wiki/api';
+import { glossaryApi } from '@/features/glossary/api';
 import type { WikiArticleListItem, WikiInfoboxAttr } from '@/features/wiki/types';
 import { ContentRenderer } from '@/components/reader/ContentRenderer';
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -91,7 +93,7 @@ function WikiToC({ headings }: { headings: { text: string; level: number; id: st
 
 /* ── Sidebar article list ────────────────────────────────────────────────── */
 
-function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKindFilter, search, onSearch, total, t }: {
+function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKindFilter, search, onSearch, total, t, onGenerate, generating, onCreateOpen }: {
   articles: WikiArticleListItem[];
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -102,6 +104,9 @@ function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKind
   onSearch: (s: string) => void;
   total: number;
   t: (key: string, opts?: Record<string, unknown>) => string;
+  onGenerate?: () => void;
+  generating?: boolean;
+  onCreateOpen?: () => void;
 }) {
   const grouped = useMemo(() => {
     const groups: Record<string, WikiArticleListItem[]> = {};
@@ -120,6 +125,27 @@ function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKind
         <div className="mb-1 flex items-center gap-1.5">
           <BookOpen className="h-3.5 w-3.5 text-primary" />
           <span className="text-xs font-semibold">{t('title')}</span>
+          <div className="ml-auto flex gap-1">
+            {onGenerate && (
+              <button
+                onClick={onGenerate}
+                disabled={generating}
+                title={t('generateStubs')}
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50"
+              >
+                <Sparkles className="h-3 w-3" />
+              </button>
+            )}
+            {onCreateOpen && (
+              <button
+                onClick={onCreateOpen}
+                title={t('createArticle')}
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-foreground"
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+            )}
+          </div>
         </div>
         <span className="text-[10px] text-muted-foreground">
           {t('articles', { count: total })}
@@ -309,15 +335,123 @@ function WikiArticleView({ bookId, articleId }: { bookId: string; articleId: str
   );
 }
 
+/* ── Create Article Dialog ────────────────────────────────────────────────── */
+
+function CreateArticleDialog({ bookId, open, onClose }: {
+  bookId: string;
+  open: boolean;
+  onClose: (articleId?: string) => void;
+}) {
+  const { accessToken } = useAuth();
+  const { t } = useTranslation('wiki');
+  const [entitySearch, setEntitySearch] = useState('');
+  const deferredEntitySearch = useDeferredValue(entitySearch);
+  const [creating, setCreating] = useState(false);
+
+  // Fetch entities that could have wiki articles
+  const { data: entityData } = useQuery({
+    queryKey: ['glossary-entity-names', bookId, deferredEntitySearch],
+    queryFn: () => glossaryApi.listEntityNames(bookId, accessToken!),
+    enabled: !!accessToken && open,
+    staleTime: 30_000,
+  });
+
+  // Fetch existing wiki articles to filter out entities that already have one
+  const { data: wikiData } = useQuery({
+    queryKey: ['wiki-articles', bookId, '', ''],
+    queryFn: () => wikiApi.listArticles(bookId, { limit: 200 }, accessToken!),
+    enabled: !!accessToken && open,
+    staleTime: 30_000,
+  });
+
+  const existingEntityIds = useMemo(
+    () => new Set((wikiData?.items ?? []).map(a => a.entity_id)),
+    [wikiData],
+  );
+
+  const availableEntities = useMemo(() => {
+    const all = entityData ?? [];
+    const filtered = all.filter(e => !existingEntityIds.has(e.entity_id));
+    if (!deferredEntitySearch) return filtered;
+    const q = deferredEntitySearch.toLowerCase();
+    return filtered.filter(e => e.display_name.toLowerCase().includes(q));
+  }, [entityData, existingEntityIds, deferredEntitySearch]);
+
+  const handleCreate = async (entityId: string, kindCode: string) => {
+    if (!accessToken || creating) return;
+    setCreating(true);
+    try {
+      const article = await wikiApi.createArticle(bookId, {
+        entity_id: entityId,
+        template_code: kindCode,
+      }, accessToken);
+      onClose(article.article_id);
+    } catch {
+      toast.error('Failed to create article');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => onClose()}>
+      <div className="w-[420px] rounded-lg border bg-card shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="border-b px-4 py-3">
+          <h3 className="text-sm font-semibold">{t('createArticle')}</h3>
+          <p className="text-[11px] text-muted-foreground">{t('selectEntity')}</p>
+        </div>
+        <div className="px-4 py-2">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+            <input
+              className="h-8 w-full rounded-md border bg-background pl-7 pr-2 text-xs focus:border-ring focus:outline-none"
+              placeholder="Search entities..."
+              value={entitySearch}
+              onChange={e => setEntitySearch(e.target.value)}
+              autoFocus
+            />
+          </div>
+        </div>
+        <div className="max-h-[300px] overflow-y-auto px-2 pb-2">
+          {availableEntities.length === 0 ? (
+            <p className="px-2 py-4 text-center text-xs text-muted-foreground">
+              {entityData?.length === 0
+                ? 'No glossary entities yet. Create entities in the Glossary tab first.'
+                : t('generatedNone')}
+            </p>
+          ) : (
+            availableEntities.map(e => (
+              <button
+                key={e.entity_id}
+                onClick={() => handleCreate(e.entity_id, e.kind_code ?? '')}
+                disabled={creating}
+                className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs transition-colors hover:bg-secondary disabled:opacity-50"
+              >
+                <span className="font-medium">{e.display_name || 'Untitled'}</span>
+                <span className="ml-auto text-[10px] text-muted-foreground">{e.kind_name}</span>
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Main WikiTab ────────────────────────────────────────────────────────── */
 
 export function WikiTab({ bookId }: { bookId: string }) {
   const { accessToken } = useAuth();
   const { t } = useTranslation('wiki');
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
   const [kindFilter, setKindFilter] = useState('');
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['wiki-articles', bookId, deferredSearch, kindFilter],
@@ -332,7 +466,6 @@ export function WikiTab({ bookId }: { bookId: string }) {
   const articles = data?.items ?? [];
   const total = data?.total ?? 0;
 
-  // Extract unique kinds for filter chips
   const kinds = useMemo(() => {
     const seen = new Map<string, WikiArticleListItem['kind']>();
     for (const a of articles) {
@@ -341,10 +474,35 @@ export function WikiTab({ bookId }: { bookId: string }) {
     return Array.from(seen.values());
   }, [articles]);
 
-  // Auto-select first article
   const effectiveSelected = selectedArticleId && articles.some(a => a.article_id === selectedArticleId)
     ? selectedArticleId
     : articles[0]?.article_id ?? null;
+
+  const handleGenerate = async () => {
+    if (!accessToken || generating) return;
+    setGenerating(true);
+    try {
+      const result = await wikiApi.generateStubs(bookId, {}, accessToken);
+      if (result.created > 0) {
+        toast.success(t('generatedCount', { count: result.created }));
+        queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
+      } else {
+        toast.info(t('generatedNone'));
+      }
+    } catch {
+      toast.error('Failed to generate');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleCreateClose = (articleId?: string) => {
+    setCreateOpen(false);
+    if (articleId) {
+      queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
+      setSelectedArticleId(articleId);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -359,42 +517,70 @@ export function WikiTab({ bookId }: { bookId: string }) {
 
   if (total === 0 && !search && !kindFilter) {
     return (
-      <EmptyState
-        icon={BookOpen}
-        title={t('noArticles')}
-        description={t('noArticlesDesc')}
-      />
+      <>
+        <EmptyState
+          icon={BookOpen}
+          title={t('noArticles')}
+          description={t('noArticlesDesc')}
+          action={
+            <div className="flex gap-2">
+              <button
+                onClick={handleGenerate}
+                disabled={generating}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:brightness-110 disabled:opacity-50"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                {generating ? 'Generating...' : t('generateFromGlossary')}
+              </button>
+              <button
+                onClick={() => setCreateOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {t('createArticle')}
+              </button>
+            </div>
+          }
+        />
+        <CreateArticleDialog bookId={bookId} open={createOpen} onClose={handleCreateClose} />
+      </>
     );
   }
 
   return (
-    <div className="flex overflow-hidden rounded-lg border" style={{ minHeight: 500 }}>
-      {/* Left sidebar */}
-      <div className="w-[220px] shrink-0">
-        <WikiSidebar
-          articles={articles}
-          selectedId={effectiveSelected}
-          onSelect={setSelectedArticleId}
-          kinds={kinds}
-          kindFilter={kindFilter}
-          onKindFilter={setKindFilter}
-          search={search}
-          onSearch={setSearch}
-          total={total}
-          t={t}
-        />
-      </div>
+    <>
+      <div className="flex overflow-hidden rounded-lg border" style={{ minHeight: 500 }}>
+        {/* Left sidebar */}
+        <div className="w-[220px] shrink-0">
+          <WikiSidebar
+            articles={articles}
+            selectedId={effectiveSelected}
+            onSelect={setSelectedArticleId}
+            kinds={kinds}
+            kindFilter={kindFilter}
+            onKindFilter={setKindFilter}
+            search={search}
+            onSearch={setSearch}
+            total={total}
+            t={t}
+            onGenerate={handleGenerate}
+            generating={generating}
+            onCreateOpen={() => setCreateOpen(true)}
+          />
+        </div>
 
-      {/* Article view */}
-      <div className="min-w-0 flex-1">
-        {effectiveSelected ? (
-          <WikiArticleView bookId={bookId} articleId={effectiveSelected} />
-        ) : (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            {t('noMatch')}
-          </div>
-        )}
+        {/* Article view */}
+        <div className="min-w-0 flex-1">
+          {effectiveSelected ? (
+            <WikiArticleView bookId={bookId} articleId={effectiveSelected} />
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              {t('noMatch')}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+      <CreateArticleDialog bookId={bookId} open={createOpen} onClose={handleCreateClose} />
+    </>
   );
 }

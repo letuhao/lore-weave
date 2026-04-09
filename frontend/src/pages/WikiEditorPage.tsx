@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Save, Eye, EyeOff, CheckCircle2, XCircle } from 'lucide-react';
+import { ArrowLeft, Save, Eye, EyeOff, CheckCircle2, XCircle, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { wikiApi } from '@/features/wiki/api';
@@ -234,6 +234,7 @@ export function WikiEditorPage() {
   const [body, setBody] = useState<unknown>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [rightPanel, setRightPanel] = useState<'infobox' | 'history' | 'suggestions'>('infobox');
 
   const { data: article, isLoading } = useQuery({
@@ -296,6 +297,18 @@ export function WikiEditorPage() {
     }
   }, [accessToken, article, bookId, articleId, queryClient]);
 
+  const handleDelete = useCallback(async () => {
+    if (!accessToken) return;
+    try {
+      await wikiApi.deleteArticle(bookId, articleId, accessToken);
+      toast.success(t('deleted'));
+      queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
+      navigate(`/books/${bookId}/wiki`);
+    } catch {
+      toast.error('Failed to delete');
+    }
+  }, [accessToken, bookId, articleId, queryClient, navigate, t]);
+
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -337,6 +350,15 @@ export function WikiEditorPage() {
         </span>
 
         <div className="flex-1" />
+
+        {/* Delete */}
+        <button
+          onClick={() => setDeleteOpen(true)}
+          className="inline-flex items-center gap-1 rounded-md border border-destructive/20 px-2 py-1 text-[11px] font-medium text-destructive hover:bg-destructive/10"
+        >
+          <Trash2 className="h-3 w-3" />
+          {t('deleteArticle')}
+        </button>
 
         {/* Status toggle */}
         <button
@@ -413,6 +435,17 @@ export function WikiEditorPage() {
           </div>
         </div>
       </div>
+      {deleteOpen && (
+        <ConfirmDialog
+          open
+          onOpenChange={(v) => { if (!v) setDeleteOpen(false); }}
+          title={t('deleteArticle')}
+          description={t('deleteConfirm')}
+          confirmLabel={t('deleteArticle')}
+          variant="destructive"
+          onConfirm={handleDelete}
+        />
+      )}
     </div>
   );
 }
