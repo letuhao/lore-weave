@@ -1329,16 +1329,16 @@ func (s *Server) publicGetWikiArticle(w http.ResponseWriter, r *http.Request) {
 // ── Community Suggestions ────────────────────────────────────────────────────
 
 type wikiSuggestionResp struct {
-	SuggestionID string           `json:"suggestion_id"`
-	ArticleID    string           `json:"article_id"`
-	UserID       string           `json:"user_id"`
-	DiffJSON     json.RawMessage  `json:"diff_json"`
-	Reason       string           `json:"reason"`
-	Status       string           `json:"status"`
-	ReviewerNote *string          `json:"reviewer_note"`
-	CreatedAt    time.Time        `json:"created_at"`
-	ReviewedAt   *time.Time       `json:"reviewed_at"`
-	DisplayName  string           `json:"display_name,omitempty"`
+	SuggestionID       string           `json:"suggestion_id"`
+	ArticleID          string           `json:"article_id"`
+	UserID             string           `json:"user_id"`
+	DiffJSON           json.RawMessage  `json:"diff_json"`
+	Reason             string           `json:"reason"`
+	Status             string           `json:"status"`
+	ReviewerNote       *string          `json:"reviewer_note"`
+	CreatedAt          time.Time        `json:"created_at"`
+	ReviewedAt         *time.Time       `json:"reviewed_at"`
+	ArticleDisplayName string           `json:"article_display_name,omitempty"`
 }
 
 // ── 1. submitWikiSuggestion ──────────────────────────────────────────────────
@@ -1510,7 +1510,7 @@ func (s *Server) listWikiSuggestions(w http.ResponseWriter, r *http.Request) {
 			&it.SuggestionID, &it.ArticleID, &it.UserID,
 			&it.DiffJSON, &it.Reason, &it.Status, &it.ReviewerNote,
 			&it.CreatedAt, &it.ReviewedAt,
-			&it.DisplayName,
+			&it.ArticleDisplayName,
 		); err != nil {
 			slog.Error("listWikiSuggestions scan", "error", err)
 			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
