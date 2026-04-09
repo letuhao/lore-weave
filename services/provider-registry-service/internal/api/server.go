@@ -1343,6 +1343,10 @@ WHERE platform_model_id=$1 AND status='active'
 		"request_id":    requestID,
 		"usage_log_id":  logID,
 		"output":        output,
+		"usage": map[string]any{
+			"input_tokens":  usage.InputTokens,
+			"output_tokens": usage.OutputTokens,
+		},
 		"billing_cost":  billedCost,
 		"billing_mode":  decision,
 		"provider_kind": providerKind,

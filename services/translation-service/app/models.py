@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json as _json
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
@@ -92,6 +93,13 @@ class ChapterTranslation(BaseModel):
     translated_body: Optional[str] = None
     translated_body_json: Optional[list] = None
     translated_body_format: str = "text"
+
+    @field_validator("translated_body_json", mode="before")
+    @classmethod
+    def _parse_json_string(cls, v):
+        if isinstance(v, str):
+            return _json.loads(v)
+        return v
     source_language: Optional[str] = None
     target_language: str
     input_tokens: Optional[int] = None
