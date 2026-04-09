@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-09 (session 28 end)
-- Updated By: Assistant (P9-08 wiki done + translation pipeline fixes + V2 design)
+- Last Updated: 2026-04-09 (session 28 end — Phase 9 COMPLETE)
+- Updated By: Assistant (Phase 9 complete: 12/12 tasks, translation fixes, V2 pipeline design)
 - Active Branch: `main`
-- HEAD: `e63585b` — docs: V2 review
+- HEAD: `d3eb25f` — fix: P9-09/11 review
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
 
 ---
@@ -31,9 +31,9 @@
 
 ## Current Active Work
 
-**Phase:** All phases 8A-8H COMPLETE. Phase 9 in progress (9/12 done). P9-08 COMPLETE (all 5 sub-phases). Remaining: P9-09 (account deletion), P9-11 (audio drift), P9-12 (sharing tab wiring). Translation Pipeline V2 designed (future phase, after P9).
+**Phase 9: COMPLETE (12/12).** All phases 8A-8H + Phase 9 done. No placeholder tabs remain.
 
-Also done this session: translation pipeline bug fixes (X-Internal-Token, model picker), UX fixes (creation flows, empty states), Translation Pipeline V2 design doc + MVTN comparison.
+**Next phase: Translation Pipeline V2** — design complete in `docs/03_planning/data_pipelines/`. Implementation priority: P1 (CJK token fix) → P2 (output validation) → P3 (token extraction) → P4 (glossary injection).
 
 **What was done in this session (2026-04-09, session 28):**
 
