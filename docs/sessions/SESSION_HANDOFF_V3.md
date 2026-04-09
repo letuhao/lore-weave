@@ -1,126 +1,150 @@
-# Session Handoff — Session 27
+# Session Handoff — Session 29
 
 > **Purpose:** Give the next agent complete context to continue.
-> **Date:** 2026-04-09 (session 27 end)
-> **Last commit:** `9072c01` — plan(wiki): P9-08 wiki system — 5 sub-phase plan + editor design draft
+> **Date:** 2026-04-10 (session 29 end)
+> **Last commit:** `6db8553` — fix: forward usage tokens in provider-registry, parse JSONB string
 > **Uncommitted work:** None
-> **Previous focus:** P9-01 Leaderboard (session 26)
-> **Current focus:** P9-08 Wiki system (planned, ready to build)
+> **Previous focus:** Phase 9 COMPLETE (session 28), V2 pipeline design
+> **Current focus:** Translation Pipeline V2 — IMPLEMENTED AND TESTED
 
 ---
 
-## 1. What Happened This Session (12 commits)
+## 1. What Happened This Session (3 commits)
 
-| Commit | Task | What |
-|--------|------|------|
-| `0bb6026` | P9-02 | User profile — follow system, favorites, public profile, 6 FE components, i18n 4 langs |
-| `945f3c5` | P9-02 fix | 8 review fixes (validation, i18n, a11y, error handling) |
-| `3ac1458` | Tests | Integration tests — leaderboard 24 + profile 48 scenarios (72 total) |
-| `907e62a` | P9-03 | Notification service — new Go/Chi microservice (port 8091), bell dropdown, producers |
-| `dfe9de4` | P9-03 fix | 8 review fixes (category allowlist, validation, error handling) |
-| `63d7dd3` | P9-06 | Glossary editor integration — ProseMirror decorations, tooltip, `[[` autocomplete, panel |
-| `cd145ae` | P9-06 fix | 7 review fixes (critical SQL fix, DOM safety, case-insensitive, performance) |
-| `165a171` | P9-04/05/10 | Auto-next chapter, TTS scroll toggle, translation dots on book cards |
-| `126a7d3` | P9-04/10 fix | 3 review fixes (stale nav, stable deps, batched fetch) |
-| `9072c01` | P9-08 plan | Wiki system 5 sub-phase plan + editor design draft HTML |
+| Commit | What |
+|--------|------|
+| `662cbf7` | Translation Pipeline V2 full implementation (P1-P8): CJK token fix, expansion-ratio budget, 40-block cap, output validation + retry, multi-provider token extraction, glossary injection, rolling context, auto-correct, chapter memo, quality metrics. 17 files, 2305 lines. |
+| `1aa25b3` | Glossary endpoint Tier 2 fallback — when no chapter_entity_links exist, return all active entities |
+| `6db8553` | Provider-registry forward usage tokens + translation-service JSONB string parse fix |
 
-**All integration tests pass:** Leaderboard 24 + Profile 48 + Notifications 29 = **101 tests**
+**Services touched:** translation-service, glossary-service, provider-registry-service
+
+**Integration tested:** Docker Compose with real Ollama gemma3:12b
+- Chapter 1 (132 blocks): 4 batches, all valid first attempt, ~68s
+- Chapter 2 (113 blocks): 3 batches, all valid, ~51s, in=5223 out=3670
+- Glossary: 12 entries (characters, locations, orgs, species), ~179 tokens overhead
 
 ---
 
-## 2. Phase 9 Status
+## 2. Translation Pipeline V2 — What Was Built
 
-| Task | Status | What |
-|------|--------|------|
-| P9-01 | **Done** | Leaderboard (session 26) |
-| P9-02 | **Done** | User profile — follow, favorites, public profile |
-| P9-03 | **Done** | Notification service + center |
-| P9-04 | **Done** | Auto-load next chapter in reader |
-| P9-05 | **Done** | Auto-scroll with TTS toggle |
-| P9-06 | **Done** | Glossary integration in editor |
-| P9-07 | **Done** | .docx/.epub import (session 25) |
-| **P9-08** | **Planned** | Wiki system — 5 sub-phases, ready to build |
-| P9-09 | Not started | Account deletion |
-| P9-10 | **Done** | Translation dots on book cards |
-| P9-11 | Not started | Audio drift detection |
-| P9-12 | Not started | Book sharing tab wiring |
+| Priority | Feature | Status |
+|----------|---------|--------|
+| P1 | CJK-aware token estimation (fixes 2.3x undercount) | **Done** |
+| P2 | Output validation + retry (2 retries with correction prompt) | **Done** |
+| P3 | Multi-provider token extraction (OpenAI/Anthropic/Ollama/LM Studio) | **Done** |
+| P4 | Glossary context injection (tiered, scored, JSONL from glossary-service) | **Done** |
+| P5 | Rolling summary context between batches | **Done** |
+| P6 | Auto-correct post-processing (source term replacement) | **Done** |
+| P7 | Cross-chapter memo table + load/save | **Done** |
+| P8 | Quality metrics columns on chunk rows | **Done** |
 
-**Progress: 8/12 done, 1 planned, 3 not started**
+**Key files:**
+- `translation-service/app/workers/chunk_splitter.py` — CJK-aware `estimate_tokens()`
+- `translation-service/app/workers/block_batcher.py` — expansion ratio budget, 40-block cap
+- `translation-service/app/workers/session_translator.py` — V2 block pipeline with validation, retry, glossary
+- `translation-service/app/workers/glossary_client.py` — **NEW** glossary fetch + context builder + auto-correct
+- `translation-service/app/workers/chapter_worker.py` — chapter memo load/save
+- `translation-service/app/migrate.py` — V6: memo table + metrics columns
+- `glossary-service/internal/api/server.go` — `GET /internal/books/{book_id}/translation-glossary`
+- `provider-registry-service/internal/api/server.go` — usage tokens in invoke response
 
----
-
-## 3. What's Next — P9-08 Wiki System
-
-**Design drafts ready:**
-- `design-drafts/screen-wiki.html` — reader view, settings, community review (5 sections)
-- `design-drafts/screen-wiki-editor.html` — editor, media blocks, templates, revisions (4 sections)
-
-**Plan (5 sub-phases, BE priority):**
-
-| Sub-phase | Type | What | Status |
-|-----------|------|------|--------|
-| P9-08a | BE | Wiki article CRUD + revisions (glossary-service, 9 endpoints, 2 tables) | Ready to build |
-| P9-08b | BE | Wiki settings on books + public reader API | Blocked by P9-08a |
-| P9-08c | BE | Community suggestions (3 endpoints, 1 table) | Blocked by P9-08a |
-| P9-08d | FE | Wiki reader tab + article viewer | Blocked by P9-08a + P9-08b |
-| P9-08e | FE | Wiki editor + media blocks + community | Blocked by P9-08a + P9-08c |
-
-**Critical path:** P9-08a → P9-08b + P9-08c (parallel) → P9-08d → P9-08e
-
-**Architecture:** Wiki articles in glossary-service DB (1:1 with entities). Infobox from attribute_values. Wiki settings JSONB on book-service books table. Reuses TiptapEditor + P9-06 GlossaryPlugin.
-
-**Start with P9-08a** — migrations, CRUD endpoints, revisions. Full endpoint list in planning doc.
+**Tests:** 280 pass (31 new V2 tests), 5 pre-existing chapter_worker mock failures
 
 ---
 
-## 4. Key Files for Next Agent
+## 3. What's Next
 
-| File | Purpose |
-|------|---------|
-| `docs/sessions/SESSION_PATCH.md` | Current status |
-| `docs/03_planning/99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md` | Full task list — P9-08 expanded with 5 sub-phases |
-| `design-drafts/screen-wiki.html` | Wiki reader + settings + community review design |
-| `design-drafts/screen-wiki-editor.html` | Wiki editor + media blocks + templates design |
-| `services/glossary-service/internal/api/server.go` | Glossary routes — add wiki endpoints here |
-| `services/glossary-service/internal/migrate/migrate.go` | Glossary migration — add wiki tables here |
-| `services/glossary-service/internal/api/entity_handler.go` | Entity handlers — wiki articles pattern |
-| `frontend/src/components/editor/GlossaryPlugin.ts` | Reuse for wiki [[links]] |
-| `frontend/src/components/editor/GlossaryAutocomplete.tsx` | Reuse for wiki [[ trigger |
+### Immediate candidates
 
----
+| Priority | Item | Notes |
+|----------|------|-------|
+| **P0** | **Translation quality review** | Read actual translated chapters in browser, check glossary name accuracy |
+| **P1** | **Chapter entity linking** | Currently no chapter_entity_links → Tier 2 fallback returns all entities. Entity linking would enable Tier 0+1 precision |
+| **P2** | **Glossary extraction pipeline** | Auto-discover entities from chapter text (separate from translation) |
+| **P2** | **Provider-registry token passthrough for text pipeline** | Text pipeline also uses `extract_token_counts()` — now works |
+| **P3** | **Frontend: translation progress with token counts** | Token data now available, can show in UI |
+| **P3** | **Quality dashboard** | validation_errors, retry_count, glossary_corrections now in DB |
 
-## 5. New Services Added This Session
+### Known issues
 
-| Service | Port | DB | Purpose |
-|---------|------|-----|---------|
-| notification-service | 8091 (host: 8215) | loreweave_notification | Notification CRUD + internal create |
+1. **Length warnings (too_long 4-5x):** CJK→Vietnamese expansion can be 4-5x for short blocks. Current threshold is 4.0x which triggers many false warnings. Consider raising to 6.0x for CJK→Latin pairs.
+2. **Pre-existing test failures:** 5 `test_chapter_worker.py` tests fail due to `db.transaction()` async mock issue — not V2-related.
+3. **Glossary entry status:** New entities default to `draft` status. Must be set to `active` to appear in translation glossary.
 
 ---
 
-## 6. Test Suites (updated)
+## 4. Architecture Context
 
-| Suite | Count | File |
-|-------|-------|------|
-| Audio (AU) | 79/79 | `infra/test-audio.sh` |
-| Image gen + capability (PE) | 32/32 | `infra/test-image-gen.sh` |
-| Video gen (PE) | 14/14 | `infra/test-video-gen.sh` |
-| Block translation (TF) | 19/19 | `infra/test-translation-blocks.sh` |
-| Reading analytics (TH) | 19/19 | `infra/test-reading-analytics.sh` |
-| Block classifier unit | 45/45 | `tests/test_block_classifier.py` + `test_block_batcher.py` |
-| Import (P9-07) | 20/20 | `html_to_tiptap_test.go` |
-| **Leaderboard (P9-01)** | **24/24** | `infra/test-leaderboard.sh` |
-| **Profile (P9-02)** | **48/48** | `infra/test-profile.sh` |
-| **Notifications (P9-03)** | **29/29** | `infra/test-notifications.sh` |
-| **Total** | **329** | |
+### Translation Pipeline V2 Data Flow
+
+```
+chapter_worker.py
+  → load previous chapter memo (from translation_chapter_memos)
+  → fetch chapter body from book-service
+  → detect JSON body → BLOCK pipeline (session_translator.py)
+    → build_batch_plan() — CJK-aware tokens, expansion ratio, 40-block cap
+    → fetch_translation_glossary() — GET glossary-service internal endpoint
+    → build_glossary_context() — score by occurrence, JSONL, token budget
+    → for each batch:
+        → build system prompt + glossary block
+        → invoke LLM (via provider-registry)
+        → extract_token_counts() — multi-provider
+        → parse [BLOCK N] markers
+        → validate_translation_output() — count, indices, length
+        → if invalid: retry with correction prompt (max 2)
+        → auto_correct_glossary() — replace untranslated source terms
+        → update rolling summary
+    → reassemble blocks
+  → persist to DB (chapter_translations)
+  → save chapter memo (for next chapter)
+  → emit events + notification
+```
+
+### Glossary Internal Endpoint
+
+```
+GET /internal/books/{book_id}/translation-glossary
+  ?target_language=vi
+  &chapter_id=... (optional)
+  &max_entries=50
+
+Auth: X-Internal-Token header
+
+Response: [{"zh":["伊斯坦莎"],"vi":["Isutansha"],"kind":"character"}, ...]
+
+Tiered query:
+  Tier 1: chapter_entity_links (if chapter_id given)
+  Tier 0: most-linked entities across book
+  Tier 2: all active entities (fallback when no links exist)
+```
 
 ---
 
-## 7. Known Issues / Tech Debt
+## 5. Project Constants (unchanged)
 
-| Issue | Severity | Note |
-|-------|----------|------|
-| Gateway multipart proxy hangs on upload | Medium | Pre-existing |
-| View count N+1 in catalog projection | Low | Materialized view later |
-| translation-service fails to start in Docker | Low | Pre-existing dependency issue |
-| refreshTranslatorDisplayNames makes N HTTP calls | Low | Batch endpoint acceptable for refresh cycle |
-| P9-10 translation dots: N+1 coverage fetch | Low | Batched 10 at a time, acceptable |
+```
+frontend_port:   5173
+gateway_port:    3123 (mapped from 3000)
+glossary_port:   8211 (mapped from 8088)
+translation_port: 8210 (mapped from 8087)
+```
+
+## 6. Test Glossary Data
+
+12 glossary entries created for book `019d5e35-d5df-7e89-964d-8d6d838ce302`:
+
+| ZH | VI | Kind |
+|----|-----|------|
+| 伊斯坦莎 | Isutansha | character |
+| 提拉米 | Tirami | character |
+| 索菲亞 | Sophia | character |
+| 卡洛 | Carlo | character |
+| 卡維佳 | Kavica | character |
+| 庫蘭尼斯 | Kuranis | character |
+| 西蒙 | Simon | character |
+| 希娜 | Hina | character |
+| 暗黑魔域 | Hắc Ám Ma Vực | location |
+| 白銀騎士團 | Bạch Ngân Kỵ Sĩ Đoàn | organization |
+| 光明聖教 | Giáo Hội Quang Minh | organization |
+| 魔族 | Ma tộc | species |

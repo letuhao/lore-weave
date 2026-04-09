@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-09 (session 29 — Translation Pipeline V2 implementation)
-- Updated By: Assistant (V2 pipeline: P1-P8 implemented, 280 tests pass, glossary injection proven)
+- Last Updated: 2026-04-10 (session 29 end — Translation Pipeline V2 COMPLETE)
+- Updated By: Assistant (V2 pipeline: P1-P8 implemented + integrated, real Docker test pass, 3 commits)
 - Active Branch: `main`
-- HEAD: pending commit
+- HEAD: `6db8553` — fix: forward usage tokens in provider-registry, parse JSONB string
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
 
 ---
@@ -56,6 +56,21 @@ Translation Pipeline V2 — full implementation (9-phase workflow). PoC first (3
 | Config: glossary-service URL | `config.py`, `docker-compose.yml` | Done |
 | Tests: 31 new V2 tests (280 total pass) | 4 test files | Done |
 | PoC: 3 real AI model scripts | `poc_v2_real.py`, `poc_v2_glossary.py` | Done |
+| Fix: glossary endpoint Tier 2 fallback (no chapter_entity_links) | `glossary-service/server.go` | Done |
+| Fix: provider-registry forward usage tokens in invoke response | `provider-registry-service/server.go` | Done |
+| Fix: translated_body_json JSONB string parse in Pydantic model | `models.py` | Done |
+| Docker integration test: 132-block chapter, glossary 12 entries, in=5223 out=3670 | real Ollama gemma3:12b | Pass |
+
+**3 commits:**
+- `662cbf7` feat: Translation Pipeline V2 — CJK fix, glossary injection, validation
+- `1aa25b3` fix: glossary endpoint fallback when no chapter_entity_links exist
+- `6db8553` fix: forward usage tokens in provider-registry, parse JSONB string in models
+
+**Integration test results (Docker Compose, real Ollama gemma3:12b):**
+- Chapter 1 (132 blocks): 4 batches (40+40+40+12), all valid first attempt, ~68s
+- Chapter 2 (113 blocks): 3 batches (40+40+33), all valid first attempt, ~51s, in=5223 out=3670
+- Glossary: 12 entries injected (~179 tokens), correction rules active
+- Token counts: now flowing correctly from Ollama → provider-registry → translation-service → DB
 
 **9-phase workflow followed:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
@@ -927,6 +942,7 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Date       | What happened | Key commits |
 | ---------- | ------------- | ----------- |
+| 2026-04-09→10 | Session 29: Translation Pipeline V2 — full implementation (P1-P8). CJK token fix (2.29x), glossary injection (1/6→6/6), output validation+retry, multi-provider tokens, rolling context, auto-correct, chapter memo, quality metrics. 3 services touched (translation, glossary, provider-registry). PoC with real Ollama gemma3:12b. Docker integration test: 132+113 blocks, all valid. 3 commits. | `662cbf7`..`6db8553` |
 | 2026-04-03 | Session 16: Phase 3.5 (E4+E5, 12 tasks), video-gen-service skeleton, M1-M6 (design draft gaps), MIG-01 (Trash page), MIG-02 (Chat page), code block fixes (5 iterations), image block fixes (upload wiring, MinIO URL, mode switch, hover overlay), removed localStorage cache persistence, planning docs (VG, MV, VH, TR, MIG). 53 commits. | `40bb7b1`..`bec9eef` |
 | 2026-04-02 | Session 15: Phase 3 FE complete (P3-18/19/20/21/22/22a+b), BE fixes (patchBook null, chat context field, gateway proxy), 5 integration test scripts (120 total scenarios), Docker fix | `911c249`..`eeee14c` |
 | 2026-04-02 | Session 14: D1 complete (D1-06→D1-12), Phase 3 FE (P3-01→P3-07), GUI review (5 drafts, 41 fixes), React Query, entity editor v2, Platform Mode plan | session 14 |
