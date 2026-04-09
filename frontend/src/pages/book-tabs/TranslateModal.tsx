@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { toast } from 'sonner';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
 import { translationApi, type BookTranslationSettings } from '@/features/translation/api';
+import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
 import { getLanguageName, LANGUAGE_NAMES } from '@/lib/languages';
 import { cn } from '@/lib/utils';
 
@@ -18,11 +20,13 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
   const { accessToken } = useAuth();
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [settings, setSettings] = useState<BookTranslationSettings | null>(null);
+  const [userModels, setUserModels] = useState<UserModel[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [selectedChapters, setSelectedChapters] = useState<Set<string>>(new Set());
-  const [submitting, setSubmitting] = useState(false);
   const [selectedLang, setSelectedLang] = useState('');
+  const [selectedModelRef, setSelectedModelRef] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!open || !accessToken) return;
@@ -30,16 +34,30 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
     Promise.all([
       booksApi.listChapters(accessToken, bookId, { lifecycle_state: 'active', limit: 200, offset: 0 }),
       translationApi.getBookSettings(accessToken, bookId).catch(() => null),
+      aiModelsApi.listUserModels(accessToken).catch(() => ({ items: [] })),
     ])
-      .then(([chs, bkSettings]) => {
+      .then(([chs, bkSettings, modelsResp]) => {
         setChapters(chs.items);
         setSettings(bkSettings);
+        setUserModels(modelsResp.items.filter((m) => m.is_active));
         setSelectedLang(bkSettings?.target_language || '');
+        setSelectedModelRef(bkSettings?.model_ref || '');
         setSelectedChapters(new Set(chs.items.map((c) => c.chapter_id)));
       })
       .catch((e) => toast.error((e as Error).message))
       .finally(() => setLoading(false));
   }, [open, accessToken, bookId]);
+
+  // Group models by provider
+  const modelsByProvider = useMemo(() => {
+    const map = new Map<string, UserModel[]>();
+    for (const m of userModels) {
+      const key = m.provider_kind;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(m);
+    }
+    return map;
+  }, [userModels]);
 
   const toggleChapter = (id: string) => {
     setSelectedChapters((prev) => {
@@ -58,25 +76,34 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
     }
   };
 
-  const handleLangChange = async (lang: string) => {
-    setSelectedLang(lang);
-    if (!accessToken || !lang) return;
+  const handleSaveSettings = async (lang: string, modelRef: string) => {
+    if (!accessToken) return;
     try {
-      const updated = await translationApi.putBookSettings(accessToken, bookId, { target_language: lang });
+      const payload: Record<string, unknown> = {};
+      if (lang) payload.target_language = lang;
+      if (modelRef) payload.model_ref = modelRef;
+      payload.model_source = 'user_model';
+      const updated = await translationApi.putBookSettings(accessToken, bookId, payload);
       setSettings(updated);
     } catch {
-      toast.error('Failed to save language setting');
+      // Silent — settings save is best-effort, job will use current values
     }
   };
 
-  const targetLang = selectedLang || settings?.target_language;
-  const hasModel = !!settings?.model_ref;
+  const handleLangChange = (lang: string) => {
+    setSelectedLang(lang);
+    void handleSaveSettings(lang, selectedModelRef);
+  };
 
-  // Available languages: exclude source language of the book
-  const availableLangs = Object.entries(LANGUAGE_NAMES);
+  const handleModelChange = (modelRef: string) => {
+    setSelectedModelRef(modelRef);
+    void handleSaveSettings(selectedLang, modelRef);
+  };
+
+  const canSubmit = !!selectedLang && !!selectedModelRef && selectedChapters.size > 0 && !submitting;
 
   const handleSubmit = async () => {
-    if (!accessToken || !targetLang || selectedChapters.size === 0 || !hasModel) return;
+    if (!accessToken || !canSubmit) return;
     setSubmitting(true);
     try {
       await translationApi.createJob(accessToken, bookId, {
@@ -86,19 +113,24 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
       onJobCreated();
       onClose();
     } catch (e) {
-      toast.error((e as Error).message);
+      const err = e as Error & { code?: string };
+      if (err.code === 'TRANSL_NO_MODEL_CONFIGURED') {
+        toast.error('No model configured. Please select a model above.');
+      } else {
+        toast.error(err.message || 'Translation failed');
+      }
     }
     setSubmitting(false);
   };
 
   if (!open) return null;
 
+  const availableLangs = Object.entries(LANGUAGE_NAMES);
+  const selectedModel = userModels.find((m) => m.user_model_id === selectedModelRef);
+
   return (
     <>
-      {/* Backdrop */}
       <div className="fixed inset-0 z-50 bg-black/50" onClick={onClose} />
-
-      {/* Modal */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div
           className="w-full max-w-lg rounded-lg border bg-background shadow-xl"
@@ -108,7 +140,7 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
           <div className="border-b px-5 py-4">
             <h2 className="text-sm font-semibold">Translate Chapters</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Select target language and chapters to translate
+              Select language, model, and chapters to translate
             </p>
           </div>
 
@@ -118,27 +150,74 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
             </div>
           ) : (
             <div className="px-5 py-4 space-y-4">
-              {/* Target language selector */}
-              <div className="rounded-md border bg-card px-4 py-3 space-y-2">
-                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block">
-                  Target Language
-                </label>
-                <select
-                  value={selectedLang}
-                  onChange={(e) => void handleLangChange(e.target.value)}
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm font-medium focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
-                >
-                  <option value="">Select a language...</option>
-                  {availableLangs.map(([code, name]) => (
-                    <option key={code} value={code}>{name} ({code})</option>
-                  ))}
-                </select>
-                {!hasModel && targetLang && (
-                  <p className="text-[10px] text-amber-400">
-                    No translation model configured. Set a model in Settings → Translation first.
-                  </p>
-                )}
+              {/* Language + Model row */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* Language */}
+                <div>
+                  <label className="mb-1 block text-xs font-medium">Target Language</label>
+                  <select
+                    value={selectedLang}
+                    onChange={(e) => handleLangChange(e.target.value)}
+                    className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+                  >
+                    <option value="">Select language...</option>
+                    {availableLangs.map(([code, name]) => (
+                      <option key={code} value={code}>{name} ({code})</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Model */}
+                <div>
+                  <label className="mb-1 block text-xs font-medium">Model</label>
+                  {userModels.length === 0 ? (
+                    <div className="flex h-9 items-center rounded-md border border-dashed bg-background px-3 text-[11px] text-muted-foreground">
+                      No models.{' '}
+                      <Link to="/settings" onClick={onClose} className="ml-1 text-primary hover:underline">
+                        Add in Settings
+                      </Link>
+                    </div>
+                  ) : (
+                    <select
+                      value={selectedModelRef}
+                      onChange={(e) => handleModelChange(e.target.value)}
+                      className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+                    >
+                      <option value="">Select model...</option>
+                      {Array.from(modelsByProvider.entries()).map(([provider, models]) => (
+                        <optgroup key={provider} label={provider}>
+                          {models.map((m) => (
+                            <option key={m.user_model_id} value={m.user_model_id}>
+                              {m.alias || m.provider_model_name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  )}
+                </div>
               </div>
+
+              {/* Model info */}
+              {selectedModel && (
+                <p className="text-[10px] text-muted-foreground -mt-2">
+                  {selectedModel.provider_kind} — <span className="font-mono">{selectedModel.provider_model_name}</span>
+                </p>
+              )}
+
+              {/* Warning: missing config */}
+              {(!selectedLang || !selectedModelRef) && (
+                <div className="flex items-center gap-2 rounded-md border border-amber-400/20 bg-amber-400/5 px-3 py-2">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+                  <p className="text-[11px] text-amber-400">
+                    {!selectedLang && !selectedModelRef
+                      ? 'Select a target language and model to start translating.'
+                      : !selectedLang
+                        ? 'Select a target language.'
+                        : 'Select a model to use for translation.'}
+                  </p>
+                </div>
+              )}
 
               {/* Chapter selection */}
               <div>
@@ -189,7 +268,7 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
             </button>
             <button
               onClick={() => void handleSubmit()}
-              disabled={submitting || !targetLang || !hasModel || selectedChapters.size === 0}
+              disabled={!canSubmit}
               className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
