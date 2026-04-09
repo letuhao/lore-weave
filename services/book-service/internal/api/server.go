@@ -456,13 +456,14 @@ func (s *Server) getBookByID(w http.ResponseWriter, ctx context.Context, bookID,
 	var trashedAt, purgeAt, createdAt, updatedAt *time.Time
 	var chapterCount int
 	var genreTags []string
+	var wikiSettings json.RawMessage
 	err := s.pool.QueryRow(ctx, `
 SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,b.lifecycle_state,b.trashed_at,b.purge_eligible_at,b.created_at,b.updated_at,
   COALESCE((SELECT COUNT(*) FROM chapters c WHERE c.book_id=b.id AND c.lifecycle_state='active'),0) AS chapter_count,
-  b.genre_tags
+  b.genre_tags, b.wiki_settings
 FROM books b
 WHERE b.id=$1 AND b.owner_user_id=$2
-`, bookID, ownerID).Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &chapterCount, &genreTags)
+`, bookID, ownerID).Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &chapterCount, &genreTags, &wikiSettings)
 	if errors.Is(err, pgx.ErrNoRows) || state == "purge_pending" {
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return
@@ -498,6 +499,7 @@ WHERE b.id=$1 AND b.owner_user_id=$2
 		"visibility":        s.fetchSharingVisibility(ctx, id),
 		"lifecycle_state":   state,
 		"genre_tags":        genreTags,
+		"wiki_settings":     json.RawMessage(wikiSettings),
 		"trashed_at":        trashedAt,
 		"purge_eligible_at": purgeAt,
 		"created_at":        createdAt,
@@ -569,6 +571,16 @@ func (s *Server) patchBook(w http.ResponseWriter, r *http.Request) {
 		}
 		setClauses = append(setClauses, fmt.Sprintf("genre_tags=$%d", paramIdx))
 		args = append(args, tags)
+		paramIdx++
+	}
+	if v, ok := in["wiki_settings"]; ok {
+		raw, err := json.Marshal(v)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid wiki_settings")
+			return
+		}
+		setClauses = append(setClauses, fmt.Sprintf("wiki_settings=$%d", paramIdx))
+		args = append(args, raw)
 		paramIdx++
 	}
 	query := fmt.Sprintf("UPDATE books SET %s WHERE id=$1 AND owner_user_id=$2", strings.Join(setClauses, ", "))
@@ -1567,12 +1579,13 @@ func (s *Server) getBookProjection(w http.ResponseWriter, r *http.Request) {
 	var chapterCount int
 	var createdAt time.Time
 	var genreTags []string
+	var wikiSettings json.RawMessage
 	err = s.pool.QueryRow(r.Context(), `
 SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,b.lifecycle_state,b.created_at,
   COALESCE((SELECT COUNT(*) FROM chapters c WHERE c.book_id=b.id AND c.lifecycle_state='active'),0),
-  b.genre_tags
+  b.genre_tags, b.wiki_settings
 FROM books b WHERE b.id=$1
-`, bookID).Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &createdAt, &chapterCount, &genreTags)
+`, bookID).Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &createdAt, &chapterCount, &genreTags, &wikiSettings)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return
@@ -1605,6 +1618,7 @@ FROM books b WHERE b.id=$1
 		"chapter_count":     chapterCount,
 		"lifecycle_state":   state,
 		"genre_tags":        genreTags,
+		"wiki_settings":     json.RawMessage(wikiSettings),
 		"created_at":        createdAt,
 	})
 }

@@ -15,9 +15,18 @@ import (
 // when book-service is slow or unreachable.
 var bookHTTPClient = &http.Client{Timeout: 5 * time.Second}
 
+type wikiSettingsProjection struct {
+	Visibility     string `json:"visibility"`
+	CommunityMode  string `json:"community_mode"`
+	AIAssist       bool   `json:"ai_assist"`
+	GlossaryExpose string `json:"glossary_exposure"`
+	AutoGenerate   bool   `json:"auto_generate"`
+}
+
 type bookProjection struct {
-	BookID      uuid.UUID `json:"book_id"`
-	OwnerUserID uuid.UUID `json:"owner_user_id"`
+	BookID       uuid.UUID               `json:"book_id"`
+	OwnerUserID  uuid.UUID               `json:"owner_user_id"`
+	WikiSettings *wikiSettingsProjection  `json:"wiki_settings"`
 }
 
 type chapterSummary struct {

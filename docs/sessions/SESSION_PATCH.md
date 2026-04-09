@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-09 (session 28 — P9-08a in progress)
-- Updated By: Assistant (P9-08a wiki CRUD + revisions BE done)
+- Last Updated: 2026-04-09 (session 28 — P9-08a + P9-08b done)
+- Updated By: Assistant (P9-08a wiki CRUD, P9-08b wiki settings + public reader)
 - Active Branch: `main`
-- HEAD: pending commit — P9-08a wiki backend
+- HEAD: pending commit — P9-08b wiki settings + public reader
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
 
 ---
@@ -31,7 +31,7 @@
 
 ## Current Active Work
 
-**Phase:** All phases 8A-8H COMPLETE. Phase 9 in progress (P9-01..P9-07, P9-10 done — 8/12). P9-08a (wiki BE) done. 4 remaining sub-phases: P9-08b (wiki settings + public API), P9-08c (community suggestions), P9-08d (wiki FE reader), P9-08e (wiki FE editor). Also remaining: P9-09, P9-11, P9-12.
+**Phase:** All phases 8A-8H COMPLETE. Phase 9 in progress (P9-01..P9-07, P9-10 done — 8/12). P9-08a + P9-08b done. 3 remaining sub-phases: P9-08c (community suggestions), P9-08d (wiki FE reader), P9-08e (wiki FE editor). Also remaining: P9-09, P9-11, P9-12.
 
 **What was done in this session (2026-04-09, session 28):**
 
@@ -47,6 +47,19 @@ P9-08a Wiki article CRUD + revisions — backend implementation in glossary-serv
 | Integration tests: 75 scenarios | `infra/test-wiki.sh` (new) | Done |
 
 **9-phase workflow followed for P9-08a:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
+
+P9-08b Wiki settings + public reader API — cross-service. book-service: wiki_settings JSONB column, PATCH support, projection + getBookByID include field. glossary-service: 2 public endpoints (list + get), visibility gate, spoiler filtering. 21 new integration tests (96 total).
+
+| Work item | Files touched | Status |
+| --------- | ------------- | ------ |
+| Migration: wiki_settings JSONB on books | `book-service/internal/migrate/migrate.go` | Done |
+| PATCH + GET + projection: wiki_settings field | `book-service/internal/api/server.go` | Done |
+| Glossary book_client: parse wiki_settings from projection | `glossary-service/internal/api/book_client.go` | Done |
+| Public endpoints: publicListWikiArticles + publicGetWikiArticle | `glossary-service/internal/api/wiki_handler.go` | Done |
+| Public routes: /wiki/public, /wiki/public/{article_id} | `glossary-service/internal/api/server.go` | Done |
+| Integration tests: 21 new (T47-T62), 96 total | `infra/test-wiki.sh` | Done |
+
+**9-phase workflow followed for P9-08b:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
 **What was done in previous session (2026-04-08, session 27):**
 

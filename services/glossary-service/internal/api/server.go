@@ -90,6 +90,8 @@ func (s *Server) Router() http.Handler {
 				r.Get("/", s.listWikiArticles)
 				r.Post("/", s.createWikiArticle)
 				r.Post("/generate", s.generateWikiStubs)
+				r.Get("/public", s.publicListWikiArticles)
+				r.Get("/public/{article_id}", s.publicGetWikiArticle)
 				r.Route("/{article_id}", func(r chi.Router) {
 					r.Get("/", s.getWikiArticle)
 					r.Patch("/", s.patchWikiArticle)

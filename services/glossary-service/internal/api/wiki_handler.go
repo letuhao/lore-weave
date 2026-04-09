@@ -1093,3 +1093,236 @@ func (s *Server) loadWikiArticleDetail(r *http.Request, bookID, articleID uuid.U
 
 	return &d, nil
 }
+
+// ── Public endpoints (no JWT) ────────────────────────────────────────────────
+
+// checkWikiPublic verifies the book has wiki visibility=public via book-service projection.
+// Returns the projection on success, nil + error written on failure.
+func (s *Server) checkWikiPublic(w http.ResponseWriter, r *http.Request, bookID uuid.UUID) *bookProjection {
+	proj, status := s.fetchBookProjection(r.Context(), bookID)
+	if status == http.StatusNotFound {
+		writeError(w, http.StatusNotFound, "WIKI_BOOK_NOT_FOUND", "book not found")
+		return nil
+	}
+	if status != http.StatusOK {
+		writeError(w, http.StatusServiceUnavailable, "WIKI_UPSTREAM_UNAVAILABLE", "book service unavailable")
+		return nil
+	}
+	if proj.WikiSettings == nil || proj.WikiSettings.Visibility != "public" {
+		writeError(w, http.StatusNotFound, "WIKI_NOT_PUBLIC", "wiki is not public")
+		return nil
+	}
+	return proj
+}
+
+// ── publicListWikiArticles ───────────────────────────────────────────────────
+
+func (s *Server) publicListWikiArticles(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	if s.checkWikiPublic(w, r, bookID) == nil {
+		return
+	}
+
+	q := r.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	offset, _ := strconv.Atoi(q.Get("offset"))
+	if offset < 0 {
+		offset = 0
+	}
+
+	// Build WHERE — only published articles, non-deleted entities
+	where := []string{"wa.book_id = $1", "wa.status = 'published'"}
+	args := []any{bookID}
+	argN := 2
+
+	if kindCode := q.Get("kind_code"); kindCode != "" {
+		where = append(where, fmt.Sprintf("ek.code = $%d", argN))
+		args = append(args, kindCode)
+		argN++
+	}
+	if search := q.Get("search"); search != "" {
+		where = append(where, fmt.Sprintf("dn.original_value ILIKE '%%' || $%d || '%%'", argN))
+		args = append(args, search)
+		argN++
+	}
+
+	whereClause := strings.Join(where, " AND ")
+
+	var total int
+	countSQL := fmt.Sprintf(`
+		SELECT COUNT(*)
+		FROM wiki_articles wa
+		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
+		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		LEFT JOIN entity_attribute_values dn ON dn.entity_id = ge.entity_id
+			AND dn.attr_def_id = (
+				SELECT ad.attr_def_id FROM attribute_definitions ad
+				WHERE ad.kind_id = ge.kind_id AND ad.code IN ('name','term')
+				ORDER BY ad.sort_order LIMIT 1
+			)
+		WHERE %s AND ge.deleted_at IS NULL`, whereClause)
+	if err := s.pool.QueryRow(r.Context(), countSQL, args...).Scan(&total); err != nil {
+		slog.Error("publicListWikiArticles count", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+
+	fetchSQL := fmt.Sprintf(`
+		SELECT
+			wa.article_id, wa.entity_id, wa.book_id,
+			COALESCE(dn.original_value, '') AS display_name,
+			ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
+			wa.status, wa.template_code,
+			wa.updated_at
+		FROM wiki_articles wa
+		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
+		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		LEFT JOIN entity_attribute_values dn ON dn.entity_id = ge.entity_id
+			AND dn.attr_def_id = (
+				SELECT ad.attr_def_id FROM attribute_definitions ad
+				WHERE ad.kind_id = ge.kind_id AND ad.code IN ('name','term')
+				ORDER BY ad.sort_order LIMIT 1
+			)
+		WHERE %s AND ge.deleted_at IS NULL
+		ORDER BY wa.updated_at DESC
+		LIMIT $%d OFFSET $%d`, whereClause, argN, argN+1)
+	args = append(args, limit, offset)
+
+	rows, err := s.pool.Query(r.Context(), fetchSQL, args...)
+	if err != nil {
+		slog.Error("publicListWikiArticles fetch", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	defer rows.Close()
+
+	type publicListItem struct {
+		ArticleID    string      `json:"article_id"`
+		EntityID     string      `json:"entity_id"`
+		DisplayName  string      `json:"display_name"`
+		Kind         kindSummary `json:"kind"`
+		TemplateCode *string     `json:"template_code"`
+		UpdatedAt    time.Time   `json:"updated_at"`
+	}
+	items := []publicListItem{}
+	for rows.Next() {
+		var it publicListItem
+		var status string
+		var bookIDScan string
+		if err := rows.Scan(
+			&it.ArticleID, &it.EntityID, &bookIDScan,
+			&it.DisplayName,
+			&it.Kind.KindID, &it.Kind.Code, &it.Kind.Name, &it.Kind.Icon, &it.Kind.Color,
+			&status, &it.TemplateCode,
+			&it.UpdatedAt,
+		); err != nil {
+			slog.Error("publicListWikiArticles scan", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		slog.Error("publicListWikiArticles rows", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items":  items,
+		"total":  total,
+		"limit":  limit,
+		"offset": offset,
+	})
+}
+
+// ── publicGetWikiArticle ─────────────────────────────────────────────────────
+
+func (s *Server) publicGetWikiArticle(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	if s.checkWikiPublic(w, r, bookID) == nil {
+		return
+	}
+	articleID, ok := parsePathUUID(w, r, "article_id")
+	if !ok {
+		return
+	}
+
+	// Verify article exists, belongs to book, AND is published
+	var exists bool
+	if err := s.pool.QueryRow(r.Context(),
+		`SELECT EXISTS(SELECT 1 FROM wiki_articles WHERE article_id=$1 AND book_id=$2 AND status='published')`,
+		articleID, bookID).Scan(&exists); err != nil || !exists {
+		writeError(w, http.StatusNotFound, "WIKI_NOT_FOUND", "wiki article not found")
+		return
+	}
+
+	// Parse max_chapter_index for spoiler filtering
+	maxChapterIndex := -1
+	if mci := r.URL.Query().Get("max_chapter_index"); mci != "" {
+		if v, err := strconv.Atoi(mci); err == nil && v >= 0 {
+			maxChapterIndex = v
+		}
+	}
+
+	// Load full article detail (reuse existing loader)
+	detail, err := s.loadWikiArticleDetail(r, bookID, articleID)
+	if err != nil {
+		slog.Error("publicGetWikiArticle load", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+
+	// Check spoiler: if article spoils chapters beyond reader's progress, redact body
+	spoilerWarning := false
+	if maxChapterIndex >= 0 && len(detail.SpoilerChapters) > 0 {
+		// We need to check if any spoiler chapter has an index > maxChapterIndex.
+		// spoiler_chapters are UUIDs — we need to resolve their indices.
+		// For simplicity, fetch chapter indices from book-service.
+		chapters, chStatus := s.fetchBookChapters(r.Context(), bookID)
+		if chStatus == http.StatusOK {
+			chapterIndexMap := make(map[string]int)
+			for _, ch := range chapters {
+				chapterIndexMap[ch.ChapterID.String()] = ch.SortOrder
+			}
+			for _, spoilerChID := range detail.SpoilerChapters {
+				if idx, ok := chapterIndexMap[spoilerChID]; ok && idx > maxChapterIndex {
+					spoilerWarning = true
+					break
+				}
+			}
+		}
+	}
+
+	// Build public response (strip revision_count, add spoiler_warning)
+	resp := map[string]any{
+		"article_id":       detail.ArticleID,
+		"entity_id":        detail.EntityID,
+		"display_name":     detail.DisplayName,
+		"kind":             detail.Kind,
+		"template_code":    detail.TemplateCode,
+		"spoiler_chapters": detail.SpoilerChapters,
+		"spoiler_warning":  spoilerWarning,
+		"infobox":          detail.Infobox,
+		"updated_at":       detail.UpdatedAt,
+		"created_at":       detail.CreatedAt,
+	}
+
+	if spoilerWarning {
+		// Redact body — return empty doc instead
+		resp["body_json"] = json.RawMessage(`{"type":"doc","content":[]}`)
+	} else {
+		resp["body_json"] = detail.BodyJSON
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}

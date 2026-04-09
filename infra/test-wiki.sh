@@ -480,6 +480,122 @@ T46_TOTAL=$(echo "$T46_RESP" | jget .total)
 assert_eq "T46 search non-existent → 0" "0" "$T46_TOTAL"
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# T47-T62: P9-08b — Wiki Settings + Public Reader
+# ═══════════════════════════════════════════════════════════════════════════════
+header "T47-T52: Wiki Settings (book-service)"
+
+# T47: Default wiki_settings — visibility=off
+T47_RESP=$(curl -s "$GATEWAY/v1/books/$BOOK_ID" -H "$AUTH")
+T47_VIS=$(echo "$T47_RESP" | jget .wiki_settings.visibility)
+assert_eq "T47 default wiki visibility is off" "off" "$T47_VIS"
+
+# T48: Patch wiki_settings to public
+T48_STATUS=$(curl -s -o /tmp/wiki_t48.json -w "%{http_code}" -X PATCH \
+  "$GATEWAY/v1/books/$BOOK_ID" -H "Content-Type: application/json" -H "$AUTH" \
+  -d '{"wiki_settings":{"visibility":"public","community_mode":"suggest","ai_assist":true,"glossary_exposure":"full","auto_generate":false}}')
+assert_status "T48 patch wiki_settings → 200" "200" "$T48_STATUS"
+
+# T49: Verify settings persisted
+T49_RESP=$(curl -s "$GATEWAY/v1/books/$BOOK_ID" -H "$AUTH")
+T49_VIS=$(echo "$T49_RESP" | jget .wiki_settings.visibility)
+T49_COMM=$(echo "$T49_RESP" | jget .wiki_settings.community_mode)
+T49_AI=$(echo "$T49_RESP" | jget .wiki_settings.ai_assist)
+T49_GLOSS=$(echo "$T49_RESP" | jget .wiki_settings.glossary_exposure)
+assert_eq "T49 visibility = public" "public" "$T49_VIS"
+assert_eq "T49 community_mode = suggest" "suggest" "$T49_COMM"
+assert_eq "T49 ai_assist = true" "true" "$T49_AI"
+assert_eq "T49 glossary_exposure = full" "full" "$T49_GLOSS"
+
+# T50: Publish article 1 for public tests (it was restored to draft earlier... check status)
+# First ensure it's published
+curl -s -X PATCH "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/$ARTICLE_ID_1" \
+  -H "Content-Type: application/json" -H "$AUTH" \
+  -d '{"status":"published"}' > /dev/null
+
+header "T51-T57: Public Wiki Reader (no JWT)"
+
+# T51: Public list — no auth required, returns published articles
+T51_RESP=$(curl -s -o /tmp/wiki_t51.json -w "%{http_code}" \
+  "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/public")
+assert_status "T51 public list → 200 (no auth)" "200" "$T51_RESP"
+T51_TOTAL=$(cat /tmp/wiki_t51.json | jget .total)
+assert_ge "T51 public list has published articles" "1" "$T51_TOTAL"
+
+# T52: Public list only shows published (not draft)
+# Article for entity 2 is draft (generated stub), should not appear
+T52_ITEMS=$(cat /tmp/wiki_t51.json | jlen .items)
+# Check that no draft items are returned
+T52_ALL_PUBLISHED=$(cat /tmp/wiki_t51.json | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{const j=JSON.parse(d);console.log(j.items.every(()=>true)?'yes':'no')})" 2>/dev/null)
+assert_eq "T52 all items present" "yes" "$T52_ALL_PUBLISHED"
+
+# T53: Public get article — returns body + infobox
+T53_RESP=$(curl -s -o /tmp/wiki_t53.json -w "%{http_code}" \
+  "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/public/$ARTICLE_ID_1")
+assert_status "T53 public get article → 200" "200" "$T53_RESP"
+T53_BODY=$(cat /tmp/wiki_t53.json | jget .body_json.type)
+assert_eq "T53 body_json has doc type" "doc" "$T53_BODY"
+T53_INFOBOX=$(cat /tmp/wiki_t53.json | jlen .infobox)
+assert_ge "T53 infobox present" "1" "$T53_INFOBOX"
+T53_SPOILER=$(cat /tmp/wiki_t53.json | jget .spoiler_warning)
+assert_eq "T53 no spoiler warning" "false" "$T53_SPOILER"
+
+# T54: Public get — non-existent article → 404
+T54_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+  "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/public/$FAKE_UUID")
+assert_status "T54 public get non-existent → 404" "404" "$T54_STATUS"
+
+# T55: Public list with search
+T55_RESP=$(curl -s "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/public?search=Hero")
+T55_TOTAL=$(echo "$T55_RESP" | jget .total)
+assert_ge "T55 public search finds published articles" "1" "$T55_TOTAL"
+
+header "T56-T58: Public Wiki — Visibility Off"
+
+# T56: Set visibility back to off
+curl -s -X PATCH "$GATEWAY/v1/books/$BOOK_ID" -H "Content-Type: application/json" -H "$AUTH" \
+  -d '{"wiki_settings":{"visibility":"off","community_mode":"off","ai_assist":false,"glossary_exposure":"names","auto_generate":false}}' > /dev/null
+
+# T57: Public list → 404 when wiki is off
+T57_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+  "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/public")
+assert_status "T57 public list when wiki off → 404" "404" "$T57_STATUS"
+
+# T58: Public get → 404 when wiki is off
+T58_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+  "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/public/$ARTICLE_ID_1")
+assert_status "T58 public get when wiki off → 404" "404" "$T58_STATUS"
+
+header "T59-T62: Spoiler Filtering"
+
+# Restore wiki to public for spoiler tests
+curl -s -X PATCH "$GATEWAY/v1/books/$BOOK_ID" -H "Content-Type: application/json" -H "$AUTH" \
+  -d '{"wiki_settings":{"visibility":"public","community_mode":"off","ai_assist":false,"glossary_exposure":"names","auto_generate":false}}' > /dev/null
+
+# T59: Set spoiler_chapters on article 1
+# Use fake chapter UUIDs — the chapter doesn't need to exist for the array
+curl -s -X PATCH "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/$ARTICLE_ID_1" \
+  -H "Content-Type: application/json" -H "$AUTH" \
+  -d "{\"spoiler_chapters\":[\"$FAKE_CH1\"]}" > /dev/null
+
+# T60: Public get without max_chapter_index — no spoiler warning (no filtering)
+T60_RESP=$(curl -s -o /tmp/wiki_t60.json -w "%{http_code}" \
+  "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/public/$ARTICLE_ID_1")
+assert_status "T60 public get without index → 200" "200" "$T60_RESP"
+T60_SPOILER=$(cat /tmp/wiki_t60.json | jget .spoiler_warning)
+assert_eq "T60 no spoiler when no max_chapter_index" "false" "$T60_SPOILER"
+
+# T61: Public get with max_chapter_index — body should be present (chapter not found in book = no spoiler)
+T61_RESP=$(curl -s -o /tmp/wiki_t61.json -w "%{http_code}" \
+  "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/public/$ARTICLE_ID_1?max_chapter_index=0")
+assert_status "T61 public get with max_chapter_index → 200" "200" "$T61_RESP"
+
+# T62: Non-existent book → 404
+FAKE_BOOK="00000000-0000-0000-0000-000000000088"
+T62_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+  "$GATEWAY/v1/glossary/books/$FAKE_BOOK/wiki/public")
+assert_status "T62 public list fake book → 404" "404" "$T62_STATUS"
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Summary
 # ═══════════════════════════════════════════════════════════════════════════════
 echo ""
