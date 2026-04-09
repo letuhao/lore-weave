@@ -173,6 +173,52 @@ The LLM needs to know:
 3. **HOW** — translation style/tone (from previous chapter memo)
 4. **LIMITS** — how much it can output (proper token budget)
 
+### Context Window Allocation (single LLM call)
+
+For a 32K token model translating CJK → Vietnamese:
+
+```
+┌─────────────────────────────────────────┐
+│          CONTEXT WINDOW (32000)          │
+├─────────────────────────────────────────┤
+│  System prompt          ~500 tokens     │ ← fixed
+│  Glossary context       ~1500 tokens    │ ← tiered, capped (see §4)
+│  Rolling summary        ~300 tokens     │ ← grows, compacted
+│  ─────────────────────────────────      │
+│  Fixed overhead         ~2300 tokens    │
+│                                         │
+│  Available for I/O      ~29700 tokens   │
+│    ├── Input (source)   ~12000 tokens   │ ← 40% of available
+│    └── Output (target)  ~17700 tokens   │ ← 60% (CJK→Latin expands)
+│                                         │
+│  Safety margin          included in 60% │
+└─────────────────────────────────────────┘
+```
+
+**Output expansion ratios by language pair:**
+
+| Source → Target | Output/Input ratio | Output allocation |
+|----------------|-------------------|-------------------|
+| CJK → Vietnamese | ~1.8-2.5x | 60% of available |
+| CJK → English | ~1.5-2.0x | 55% of available |
+| CJK → Japanese | ~1.0-1.2x | 50% of available |
+| CJK → Korean | ~1.0-1.3x | 50% of available |
+| Latin → Latin | ~1.0-1.3x | 50% of available |
+
+The split is: `input_budget = available * (1 / (1 + expansion_ratio))`
+
+### Degradation Strategy
+
+| Dependency | If unavailable | Behavior |
+|-----------|---------------|----------|
+| glossary-service | Translate without glossary | Warning logged, names may be inconsistent |
+| chapter_entity_links empty | Fall back to Tier 2 (name-scan only) | Slower but functional |
+| No translations for target language | Inject names_zh only (no names_vi) | LLM transliterates from context |
+| provider-registry slow | Retry with backoff, then fail chapter | Transient error, safe to retry |
+| Previous chapter memo missing | Skip rolling context | First chapter or re-translation |
+
+**Rule: Missing context = degraded quality, NOT a failure.** The pipeline always produces output; quality varies with available context.
+
 ### Architecture Overview
 
 ```
@@ -183,11 +229,14 @@ The LLM needs to know:
 │       │                                              │
 │       ├──→ Classify blocks (translate/pass/caption)  │
 │       ├──→ Extract translatable text                 │
-│       ├──→ Count REAL tokens (tiktoken)              │
+│       ├──→ Count REAL tokens (CJK-aware, see §5)     │
 │       │                                              │
-│       ├──→ Load glossary term map (from DB)          │
+│       ├──→ Load glossary (tiered, see §4)            │
+│       │    ↳ If glossary-service down: skip (warn)   │
 │       ├──→ Load previous chapter memo (from DB)      │
-│       └──→ Load book style reference                 │
+│       │    ↳ If missing: skip (first chapter)        │
+│       └──→ Compute output expansion ratio            │
+│            ↳ From source_language + target_language   │
 │                                                      │
 └──────────────────────┬───────────────────────────────┘
                        │
@@ -195,20 +244,14 @@ The LLM needs to know:
 │                      ▼                                │
 │              2. CONTEXT BUDGET                        │
 │                                                      │
-│  context_window    = 32000 (from model registry)     │
-│  system_prompt     =   ~500 tokens                   │
-│  glossary_context  =   ~800 tokens (scales w/ count) │
-│  style_memo        =   ~300 tokens                   │
-│  output_reserve    = chunk_input * 1.3               │
-│  ─────────────────────────────────                   │
-│  available_input   = context_window                  │
-│                    - system_prompt                    │
-│                    - glossary_context                 │
-│                    - style_memo                       │
-│                    - output_reserve                   │
+│  context_window    = from model registry             │
+│  fixed_overhead    = system + glossary + memo         │
+│  expansion_ratio   = from language pair table         │
+│  input_budget      = (ctx - overhead) / (1 + ratio)  │
 │                                                      │
-│  → Split blocks into chunks fitting available_input  │
+│  → Split blocks into chunks fitting input_budget     │
 │  → Keep semantic groups together (dialogue, scene)   │
+│  → Max blocks per chunk: 40 (prevents hallucination) │
 │                                                      │
 └──────────────────────┬───────────────────────────────┘
                        │
@@ -740,13 +783,51 @@ def extract_token_counts(response: dict, provider: str) -> tuple[int, int]:
 
 ---
 
-## 11. Comparison: Current vs Proposed
+## 11. Edge Cases
+
+### Very large chapters (500+ blocks)
+
+- Token estimation creates many chunks (e.g., 500 blocks → 10-15 chunks of ~40 blocks)
+- Each chunk gets the SAME glossary context (stable per chapter)
+- Rolling summary grows across chunks — if it exceeds budget, compact it (same as text pipeline's memo system)
+- Max 40 blocks per chunk as a hard cap to prevent LLM block-count confusion
+
+### New book (no glossary yet)
+
+- Tier 0: empty (no pinned entities)
+- Tier 1: empty (no chapter_entity_links)
+- Tier 2: empty (no entities to name-scan)
+- Result: translates without glossary context — names will be inconsistent
+- **This is expected.** Run Glossary Extraction pipeline first, then re-translate.
+
+### First translation for a target language
+
+- Glossary entities exist but `attribute_translations` has no rows for this language
+- Inject `names_zh` only: `{"zh":["伊斯坦莎"],"vi":[],"kind":"character"}`
+- LLM will transliterate from context — better than nothing
+- After translation, Glossary Extraction pipeline can harvest the names LLM used
+
+### Chapter with only media blocks
+
+- All blocks classified as `passthrough` or `caption_only`
+- Only captions get translated (few tokens)
+- Single chunk, tiny — fast, no chunking needed
+
+### Concurrent translations of same chapter
+
+- Each worker builds its own glossary block and chunks independently
+- Revision versioning in `chapter_translations` handles concurrent writes
+- Last one wins (by version_num) — acceptable for concurrent jobs
+
+---
+
+## 12. Comparison: Current vs Proposed
 
 | Aspect | Current Pipeline | Proposed V2 |
 |--------|-----------------|-------------|
 | Token counting | `len(text)/3.5` | CJK-aware: `cjk/1.5 + latin/4.0` |
-| Context budget | 25% of ctx, no reserves | Dynamic: ctx - system - glossary - memo - output |
-| Glossary | None | Injected in system prompt from glossary DB |
+| Context budget | 25% of ctx, no reserves | Dynamic: ctx - system - glossary - memo - output (language-pair-aware) |
+| Glossary | None | Tiered injection: pinned + chapter-linked + name-scan (see §4) |
 | Cross-chunk | None (each batch isolated) | Rolling summary between chunks |
 | Cross-chapter | None | Chapter memo stored in DB |
 | Output validation | Silent fallback | Strict check + retry with feedback |
@@ -756,4 +837,13 @@ def extract_token_counts(response: dict, provider: str) -> tuple[int, int]:
 | Retry | None | 2 retries with error feedback |
 | Quality metrics | None | Per-chunk: blocks ok/failed/corrected, glossary fixes |
 | Media blocks | Caption only | Caption + alt text |
-| Batch sizing | Token budget only | Semantic grouping (dialogue, scene) |
+| Batch sizing | Token budget only | Semantic grouping + 40-block hard cap |
+| Degradation | Crash on missing deps | Graceful: skip glossary/memo if unavailable, warn |
+
+---
+
+## Appendix A: Current Pipeline Bugs (reference)
+
+> Moved from main body. These are the bugs that motivated V2. See §1 for current pipeline description.
+
+(Bug details in sections 2.1-2.6 above remain as historical reference.)
