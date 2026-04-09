@@ -209,6 +209,11 @@ func (s *Server) listWikiArticles(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, it)
 	}
+	if err := rows.Err(); err != nil {
+		slog.Error("listWikiArticles rows", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, wikiArticleListResp{
 		Items:  items,
@@ -468,6 +473,14 @@ func (s *Server) patchWikiArticle(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 
+	// Lock the article row to prevent concurrent revision version conflicts
+	if _, err := tx.Exec(r.Context(),
+		`SELECT 1 FROM wiki_articles WHERE article_id=$1 FOR UPDATE`, articleID); err != nil {
+		slog.Error("patchWikiArticle lock", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+
 	updateSQL := fmt.Sprintf("UPDATE wiki_articles SET %s WHERE article_id = $1", strings.Join(sets, ", "))
 	if _, err := tx.Exec(r.Context(), updateSQL, args...); err != nil {
 		slog.Error("patchWikiArticle update", "error", err)
@@ -608,6 +621,11 @@ func (s *Server) listWikiRevisions(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, it)
 	}
+	if err := rows.Err(); err != nil {
+		slog.Error("listWikiRevisions rows", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, wikiRevisionListResp{
 		Items:  items,
@@ -713,6 +731,14 @@ func (s *Server) restoreWikiRevision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(r.Context())
+
+	// Lock the article row to prevent concurrent revision version conflicts
+	if _, err := tx.Exec(r.Context(),
+		`SELECT 1 FROM wiki_articles WHERE article_id=$1 FOR UPDATE`, articleID); err != nil {
+		slog.Error("restoreWikiRevision lock", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
 
 	// Update article body
 	if _, err := tx.Exec(r.Context(),
@@ -932,6 +958,11 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		items = append(items, it)
+	}
+	if err := fetchRows.Err(); err != nil {
+		slog.Error("generateWikiStubs fetch rows", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
