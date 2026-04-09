@@ -1,7 +1,8 @@
 import { useState, useMemo, useDeferredValue } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Search, BookOpen, Clock } from 'lucide-react';
+import { Search, BookOpen, Clock, Pencil } from 'lucide-react';
 import type { JSONContent } from '@tiptap/react';
 import { useAuth } from '@/auth';
 import { wikiApi } from '@/features/wiki/api';
@@ -211,6 +212,7 @@ function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKind
 function WikiArticleView({ bookId, articleId }: { bookId: string; articleId: string }) {
   const { accessToken } = useAuth();
   const { t } = useTranslation('wiki');
+  const navigate = useNavigate();
 
   const { data: article, isLoading } = useQuery({
     queryKey: ['wiki-article', bookId, articleId],
@@ -255,6 +257,13 @@ function WikiArticleView({ bookId, articleId }: { bookId: string; articleId: str
               </span>
             </div>
             <div className="flex gap-1">
+              <button
+                onClick={() => navigate(`/books/${bookId}/wiki/${articleId}/edit`)}
+                className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground hover:brightness-110"
+              >
+                <Pencil className="h-3 w-3" />
+                Edit
+              </button>
               <button className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium hover:bg-secondary">
                 <Clock className="h-3 w-3" />
                 {t('history')}

@@ -23,6 +23,7 @@ import { TrashPage } from '@/pages/TrashPage';
 import { ChatPage } from '@/pages/ChatPage';
 import { BookDetailPage } from '@/pages/BookDetailPage';
 import { ChapterEditorPage } from '@/pages/ChapterEditorPage';
+import { WikiEditorPage } from '@/pages/WikiEditorPage';
 import { ReaderPage } from '@/pages/ReaderPage';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { useAuth } from '@/auth';
@@ -96,6 +97,7 @@ export function App() {
           <Route element={<RequireAuth><EditorLayout /></RequireAuth>}>
             <Route path="/books/:bookId/chapters/:chapterId/edit" element={<ChapterEditorPage />} />
             <Route path="/books/:bookId/chapters/:chapterId/translations" element={<ChapterTranslationsPage />} />
+            <Route path="/books/:bookId/wiki/:articleId/edit" element={<WikiEditorPage />} />
           </Route>
 
           {/* Chat (app sidebar + full-bleed content, no padding) */}

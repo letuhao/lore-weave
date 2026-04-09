@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-09 (session 28 — P9-08a/b/c/d done)
-- Updated By: Assistant (P9-08a-d wiki BE + FE reader)
+- Last Updated: 2026-04-09 (session 28 — P9-08 complete, all 5 sub-phases done)
+- Updated By: Assistant (P9-08a-e wiki system complete)
 - Active Branch: `main`
-- HEAD: pending commit — P9-08d wiki FE reader tab
+- HEAD: pending commit — P9-08e wiki FE editor
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
 
 ---
@@ -31,7 +31,7 @@
 
 ## Current Active Work
 
-**Phase:** All phases 8A-8H COMPLETE. Phase 9 in progress (P9-01..P9-07, P9-10 done — 8/12). P9-08a/b/c/d done (wiki BE complete + FE reader). 1 remaining sub-phase: P9-08e (wiki FE editor). Also remaining: P9-09, P9-11, P9-12.
+**Phase:** All phases 8A-8H COMPLETE. Phase 9 in progress (P9-01..P9-07, P9-08, P9-10 done — 9/12). P9-08 COMPLETE (all 5 sub-phases). Remaining: P9-09 (account deletion), P9-11 (audio drift), P9-12 (sharing tab wiring).
 
 **What was done in this session (2026-04-09, session 28):**
 
@@ -85,6 +85,18 @@ P9-08d Wiki FE reader tab — frontend. WikiTab component (3-column: sidebar + a
 | BookDetailPage: wire WikiTab, remove placeholder | `pages/BookDetailPage.tsx` | Done |
 
 **9-phase workflow followed for P9-08d:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
+
+P9-08e Wiki FE editor — WikiEditorPage with TiptapEditor, save/publish, infobox sidebar, revision history, suggestion review. Full wiki API client (create, patch, delete, generate, revisions, suggestions). Route + edit button in WikiTab.
+
+| Work item | Files touched | Status |
+| --------- | ------------- | ------ |
+| Wiki API extensions: create, patch, delete, generate, getRevision, restore, suggestions | `features/wiki/api.ts` | Done |
+| Types: WikiRevisionDetail, WikiSuggestionResp, WikiSuggestionListResp | `features/wiki/types.ts` | Done |
+| WikiEditorPage: TiptapEditor, save, publish toggle, infobox, revision history, suggestions | `pages/WikiEditorPage.tsx` (new) | Done |
+| Route: /books/:bookId/wiki/:articleId/edit under EditorLayout | `App.tsx` | Done |
+| WikiTab: Edit button navigating to editor | `pages/book-tabs/WikiTab.tsx` | Done |
+
+**9-phase workflow followed for P9-08e:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
 **What was done in previous session (2026-04-08, session 27):**
 

@@ -88,3 +88,27 @@ export interface WikiRevisionListResp {
   limit: number;
   offset: number;
 }
+
+export interface WikiRevisionDetail extends WikiRevisionListItem {
+  body_json: Record<string, unknown>;
+}
+
+export interface WikiSuggestionResp {
+  suggestion_id: string;
+  article_id: string;
+  user_id: string;
+  diff_json: Record<string, unknown>;
+  reason: string;
+  status: string;
+  reviewer_note: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+  article_display_name?: string;
+}
+
+export interface WikiSuggestionListResp {
+  items: WikiSuggestionResp[];
+  total: number;
+  limit: number;
+  offset: number;
+}
