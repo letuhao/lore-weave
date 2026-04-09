@@ -524,3 +524,28 @@ func UpWiki(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	return nil
 }
+
+// ── wiki suggestions ────────────────────────────────────────────────────────
+
+const wikiSuggestionsSQL = `
+CREATE TABLE IF NOT EXISTS wiki_suggestions (
+  suggestion_id UUID PRIMARY KEY DEFAULT uuidv7(),
+  article_id    UUID NOT NULL REFERENCES wiki_articles(article_id) ON DELETE CASCADE,
+  user_id       UUID NOT NULL,
+  diff_json     JSONB NOT NULL,
+  reason        TEXT NOT NULL DEFAULT '',
+  status        TEXT NOT NULL DEFAULT 'pending',
+  reviewer_note TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  reviewed_at   TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_ws_article ON wiki_suggestions(article_id);
+CREATE INDEX IF NOT EXISTS idx_ws_status  ON wiki_suggestions(article_id, status);
+`
+
+func UpWikiSuggestions(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, wikiSuggestionsSQL); err != nil {
+		return fmt.Errorf("migrate wiki_suggestions: %w", err)
+	}
+	return nil
+}

@@ -596,6 +596,169 @@ T62_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
 assert_status "T62 public list fake book → 404" "404" "$T62_STATUS"
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# T63-T80: P9-08c — Community Suggestions
+# ═══════════════════════════════════════════════════════════════════════════════
+header "T63-T66: Suggestion Setup + Gates"
+
+# Ensure wiki is public with community_mode=suggest
+curl -s -X PATCH "$GATEWAY/v1/books/$BOOK_ID" -H "Content-Type: application/json" -H "$AUTH" \
+  -d '{"wiki_settings":{"visibility":"public","community_mode":"suggest","ai_assist":false,"glossary_exposure":"names","auto_generate":false}}' > /dev/null
+
+# Ensure article 1 is published
+curl -s -X PATCH "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/$ARTICLE_ID_1" \
+  -H "Content-Type: application/json" -H "$AUTH" \
+  -d '{"status":"published"}' > /dev/null
+
+# T63: Owner cannot submit suggestion to own book
+T63_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+  "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/$ARTICLE_ID_1/suggestions" \
+  -H "Content-Type: application/json" -H "$AUTH" \
+  -d '{"diff_json":{"type":"doc","content":[]},"reason":"test"}')
+assert_status "T63 owner cannot suggest → 403" "403" "$T63_STATUS"
+
+# T64: No auth → 401
+T64_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+  "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/$ARTICLE_ID_1/suggestions" \
+  -H "Content-Type: application/json" \
+  -d '{"diff_json":{"type":"doc","content":[]},"reason":"test"}')
+assert_status "T64 no auth suggest → 401" "401" "$T64_STATUS"
+
+# T65: Community user submits suggestion
+T65_RESP=$(curl -s -o /tmp/wiki_t65.json -w "%{http_code}" -X POST \
+  "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/$ARTICLE_ID_1/suggestions" \
+  -H "Content-Type: application/json" -H "$AUTH2" \
+  -d '{"diff_json":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Community edit."}]}]},"reason":"Fixed typo"}')
+assert_status "T65 community suggest → 201" "201" "$T65_RESP"
+SUG_ID_1=$(cat /tmp/wiki_t65.json | jget .suggestion_id)
+assert_not_empty "T65 got suggestion_id" "$SUG_ID_1"
+T65_STATUS_VAL=$(cat /tmp/wiki_t65.json | jget .status)
+assert_eq "T65 status is pending" "pending" "$T65_STATUS_VAL"
+T65_REASON=$(cat /tmp/wiki_t65.json | jget .reason)
+assert_eq "T65 reason saved" "Fixed typo" "$T65_REASON"
+
+# T66: Missing diff_json → 422
+T66_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+  "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/$ARTICLE_ID_1/suggestions" \
+  -H "Content-Type: application/json" -H "$AUTH2" \
+  -d '{"reason":"no diff"}')
+assert_status "T66 missing diff_json → 422" "422" "$T66_STATUS"
+
+header "T67-T69: List Suggestions"
+
+# Submit a second suggestion
+curl -s -X POST "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/$ARTICLE_ID_1/suggestions" \
+  -H "Content-Type: application/json" -H "$AUTH2" \
+  -d '{"diff_json":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Another edit."}]}]},"reason":"Added detail"}' > /tmp/wiki_sug2.json
+SUG_ID_2=$(cat /tmp/wiki_sug2.json | jget .suggestion_id)
+
+# T67: Owner lists all suggestions
+T67_RESP=$(curl -s -o /tmp/wiki_t67.json -w "%{http_code}" \
+  "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/suggestions" -H "$AUTH")
+assert_status "T67 list suggestions → 200" "200" "$T67_RESP"
+T67_TOTAL=$(cat /tmp/wiki_t67.json | jget .total)
+assert_eq "T67 total suggestions = 2" "2" "$T67_TOTAL"
+
+# T68: Non-owner cannot list suggestions
+T68_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+  "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/suggestions" -H "$AUTH2")
+assert_status "T68 non-owner list → 403" "403" "$T68_STATUS"
+
+# T69: Filter by status=pending
+T69_RESP=$(curl -s "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/suggestions?status=pending" -H "$AUTH")
+T69_TOTAL=$(echo "$T69_RESP" | jget .total)
+assert_eq "T69 pending suggestions = 2" "2" "$T69_TOTAL"
+
+header "T70-T74: Accept Suggestion"
+
+# T70: Accept first suggestion
+T70_RESP=$(curl -s -o /tmp/wiki_t70.json -w "%{http_code}" -X PATCH \
+  "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/$ARTICLE_ID_1/suggestions/$SUG_ID_1" \
+  -H "Content-Type: application/json" -H "$AUTH" \
+  -d '{"action":"accept","reviewer_note":"Good catch!"}')
+assert_status "T70 accept suggestion → 200" "200" "$T70_RESP"
+T70_STATUS_VAL=$(cat /tmp/wiki_t70.json | jget .status)
+assert_eq "T70 status = accepted" "accepted" "$T70_STATUS_VAL"
+T70_NOTE=$(cat /tmp/wiki_t70.json | jget .reviewer_note)
+assert_eq "T70 reviewer_note saved" "Good catch!" "$T70_NOTE"
+T70_REVIEWED=$(cat /tmp/wiki_t70.json | jget .reviewed_at)
+assert_not_empty "T70 reviewed_at set" "$T70_REVIEWED"
+
+# T71: Article body updated with suggestion content
+T71_RESP=$(curl -s "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/$ARTICLE_ID_1" -H "$AUTH")
+T71_BODY=$(echo "$T71_RESP" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{const j=JSON.parse(d);const t=j.body_json?.content?.[0]?.content?.[0]?.text||'';console.log(t)})" 2>/dev/null)
+assert_eq "T71 article body = suggestion content" "Community edit." "$T71_BODY"
+
+# T72: New revision created with author_type=community
+T72_RESP=$(curl -s "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/$ARTICLE_ID_1/revisions" -H "$AUTH")
+T72_LATEST=$(echo "$T72_RESP" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{const j=JSON.parse(d);const r=j.items[0];console.log(r?r.author_type:'')})" 2>/dev/null)
+assert_eq "T72 latest revision author_type = community" "community" "$T72_LATEST"
+
+# T73: Cannot accept already-reviewed suggestion
+T73_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH \
+  "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/$ARTICLE_ID_1/suggestions/$SUG_ID_1" \
+  -H "Content-Type: application/json" -H "$AUTH" \
+  -d '{"action":"accept"}')
+assert_status "T73 re-accept → 409" "409" "$T73_STATUS"
+
+# T74: Invalid action → 422
+T74_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH \
+  "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/$ARTICLE_ID_1/suggestions/$SUG_ID_2" \
+  -H "Content-Type: application/json" -H "$AUTH" \
+  -d '{"action":"maybe"}')
+assert_status "T74 invalid action → 422" "422" "$T74_STATUS"
+
+header "T75-T78: Reject Suggestion"
+
+# T75: Reject second suggestion
+T75_RESP=$(curl -s -o /tmp/wiki_t75.json -w "%{http_code}" -X PATCH \
+  "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/$ARTICLE_ID_1/suggestions/$SUG_ID_2" \
+  -H "Content-Type: application/json" -H "$AUTH" \
+  -d '{"action":"reject","reviewer_note":"Not relevant"}')
+assert_status "T75 reject suggestion → 200" "200" "$T75_RESP"
+T75_STATUS_VAL=$(cat /tmp/wiki_t75.json | jget .status)
+assert_eq "T75 status = rejected" "rejected" "$T75_STATUS_VAL"
+
+# T76: Article body NOT changed after reject
+T76_RESP=$(curl -s "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/$ARTICLE_ID_1" -H "$AUTH")
+T76_BODY=$(echo "$T76_RESP" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{const j=JSON.parse(d);const t=j.body_json?.content?.[0]?.content?.[0]?.text||'';console.log(t)})" 2>/dev/null)
+assert_eq "T76 body unchanged after reject" "Community edit." "$T76_BODY"
+
+# T77: Filter accepted
+T77_RESP=$(curl -s "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/suggestions?status=accepted" -H "$AUTH")
+T77_TOTAL=$(echo "$T77_RESP" | jget .total)
+assert_eq "T77 accepted = 1" "1" "$T77_TOTAL"
+
+# T78: Filter pending → 0
+T78_RESP=$(curl -s "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/suggestions?status=pending" -H "$AUTH")
+T78_TOTAL=$(echo "$T78_RESP" | jget .total)
+assert_eq "T78 pending = 0" "0" "$T78_TOTAL"
+
+header "T79-T80: Suggestion Gates"
+
+# T79: Disable community_mode → suggest fails
+curl -s -X PATCH "$GATEWAY/v1/books/$BOOK_ID" -H "Content-Type: application/json" -H "$AUTH" \
+  -d '{"wiki_settings":{"visibility":"public","community_mode":"off","ai_assist":false,"glossary_exposure":"names","auto_generate":false}}' > /dev/null
+T79_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+  "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/$ARTICLE_ID_1/suggestions" \
+  -H "Content-Type: application/json" -H "$AUTH2" \
+  -d '{"diff_json":{"type":"doc","content":[]},"reason":"test"}')
+assert_status "T79 suggest when mode=off → 403" "403" "$T79_STATUS"
+
+# T80: Non-owner cannot review
+curl -s -X PATCH "$GATEWAY/v1/books/$BOOK_ID" -H "Content-Type: application/json" -H "$AUTH" \
+  -d '{"wiki_settings":{"visibility":"public","community_mode":"suggest","ai_assist":false,"glossary_exposure":"names","auto_generate":false}}' > /dev/null
+# Submit one more suggestion for this test
+T80_SUG=$(curl -s -X POST "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/$ARTICLE_ID_1/suggestions" \
+  -H "Content-Type: application/json" -H "$AUTH2" \
+  -d '{"diff_json":{"type":"doc","content":[]},"reason":"test"}')
+SUG_ID_3=$(echo "$T80_SUG" | jget .suggestion_id)
+T80_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH \
+  "$GATEWAY/v1/glossary/books/$BOOK_ID/wiki/$ARTICLE_ID_1/suggestions/$SUG_ID_3" \
+  -H "Content-Type: application/json" -H "$AUTH2" \
+  -d '{"action":"accept"}')
+assert_status "T80 non-owner review → 403" "403" "$T80_STATUS"
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Summary
 # ═══════════════════════════════════════════════════════════════════════════════
 echo ""

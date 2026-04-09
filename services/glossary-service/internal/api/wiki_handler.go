@@ -1325,3 +1325,346 @@ func (s *Server) publicGetWikiArticle(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, resp)
 }
+
+// ── Community Suggestions ────────────────────────────────────────────────────
+
+type wikiSuggestionResp struct {
+	SuggestionID string           `json:"suggestion_id"`
+	ArticleID    string           `json:"article_id"`
+	UserID       string           `json:"user_id"`
+	DiffJSON     json.RawMessage  `json:"diff_json"`
+	Reason       string           `json:"reason"`
+	Status       string           `json:"status"`
+	ReviewerNote *string          `json:"reviewer_note"`
+	CreatedAt    time.Time        `json:"created_at"`
+	ReviewedAt   *time.Time       `json:"reviewed_at"`
+	DisplayName  string           `json:"display_name,omitempty"`
+}
+
+// ── 1. submitWikiSuggestion ──────────────────────────────────────────────────
+
+func (s *Server) submitWikiSuggestion(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	articleID, ok := parsePathUUID(w, r, "article_id")
+	if !ok {
+		return
+	}
+
+	// Check book exists and get wiki_settings + owner
+	proj, status := s.fetchBookProjection(r.Context(), bookID)
+	if status == http.StatusNotFound {
+		writeError(w, http.StatusNotFound, "WIKI_BOOK_NOT_FOUND", "book not found")
+		return
+	}
+	if status != http.StatusOK {
+		writeError(w, http.StatusServiceUnavailable, "WIKI_UPSTREAM_UNAVAILABLE", "book service unavailable")
+		return
+	}
+
+	// Owner cannot submit suggestions (they can edit directly)
+	if proj.OwnerUserID == userID {
+		writeError(w, http.StatusForbidden, "WIKI_OWNER_CANNOT_SUGGEST", "book owner should edit directly")
+		return
+	}
+
+	// Check community_mode allows suggestions
+	if proj.WikiSettings == nil || (proj.WikiSettings.CommunityMode != "suggest" && proj.WikiSettings.CommunityMode != "open") {
+		writeError(w, http.StatusForbidden, "WIKI_SUGGESTIONS_DISABLED", "community suggestions are not enabled")
+		return
+	}
+
+	// Verify article exists, belongs to book, and is published
+	var exists bool
+	if err := s.pool.QueryRow(r.Context(),
+		`SELECT EXISTS(SELECT 1 FROM wiki_articles WHERE article_id=$1 AND book_id=$2 AND status='published')`,
+		articleID, bookID).Scan(&exists); err != nil || !exists {
+		writeError(w, http.StatusNotFound, "WIKI_NOT_FOUND", "wiki article not found")
+		return
+	}
+
+	var req struct {
+		DiffJSON json.RawMessage `json:"diff_json"`
+		Reason   string          `json:"reason"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "WIKI_BAD_REQUEST", "invalid JSON body")
+		return
+	}
+	if req.DiffJSON == nil || len(req.DiffJSON) == 0 {
+		writeError(w, http.StatusUnprocessableEntity, "WIKI_MISSING_DIFF", "diff_json is required")
+		return
+	}
+
+	var sug wikiSuggestionResp
+	err := s.pool.QueryRow(r.Context(), `
+		INSERT INTO wiki_suggestions (article_id, user_id, diff_json, reason)
+		VALUES ($1, $2, $3, $4)
+		RETURNING suggestion_id, article_id, user_id, diff_json, reason, status, reviewer_note, created_at, reviewed_at`,
+		articleID, userID, req.DiffJSON, req.Reason,
+	).Scan(
+		&sug.SuggestionID, &sug.ArticleID, &sug.UserID,
+		&sug.DiffJSON, &sug.Reason, &sug.Status, &sug.ReviewerNote,
+		&sug.CreatedAt, &sug.ReviewedAt,
+	)
+	if err != nil {
+		slog.Error("submitWikiSuggestion insert", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, sug)
+}
+
+// ── 2. listWikiSuggestions (book-level) ──────────────────────────────────────
+
+func (s *Server) listWikiSuggestions(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+		return
+	}
+
+	q := r.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	offset, _ := strconv.Atoi(q.Get("offset"))
+	if offset < 0 {
+		offset = 0
+	}
+
+	// Optional status filter
+	where := []string{"wa.book_id = $1"}
+	args := []any{bookID}
+	argN := 2
+
+	if statusFilter := q.Get("status"); statusFilter != "" {
+		where = append(where, fmt.Sprintf("ws.status = $%d", argN))
+		args = append(args, statusFilter)
+		argN++
+	}
+
+	whereClause := strings.Join(where, " AND ")
+
+	var total int
+	countSQL := fmt.Sprintf(`
+		SELECT COUNT(*)
+		FROM wiki_suggestions ws
+		JOIN wiki_articles wa ON wa.article_id = ws.article_id
+		WHERE %s`, whereClause)
+	if err := s.pool.QueryRow(r.Context(), countSQL, args...).Scan(&total); err != nil {
+		slog.Error("listWikiSuggestions count", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+
+	fetchSQL := fmt.Sprintf(`
+		SELECT
+			ws.suggestion_id, ws.article_id, ws.user_id,
+			ws.diff_json, ws.reason, ws.status, ws.reviewer_note,
+			ws.created_at, ws.reviewed_at,
+			COALESCE(dn.original_value, '') AS display_name
+		FROM wiki_suggestions ws
+		JOIN wiki_articles wa ON wa.article_id = ws.article_id
+		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
+		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		LEFT JOIN entity_attribute_values dn ON dn.entity_id = ge.entity_id
+			AND dn.attr_def_id = (
+				SELECT ad.attr_def_id FROM attribute_definitions ad
+				WHERE ad.kind_id = ge.kind_id AND ad.code IN ('name','term')
+				ORDER BY ad.sort_order LIMIT 1
+			)
+		WHERE %s
+		ORDER BY ws.created_at DESC
+		LIMIT $%d OFFSET $%d`, whereClause, argN, argN+1)
+	args = append(args, limit, offset)
+
+	rows, err := s.pool.Query(r.Context(), fetchSQL, args...)
+	if err != nil {
+		slog.Error("listWikiSuggestions fetch", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	defer rows.Close()
+
+	items := []wikiSuggestionResp{}
+	for rows.Next() {
+		var it wikiSuggestionResp
+		if err := rows.Scan(
+			&it.SuggestionID, &it.ArticleID, &it.UserID,
+			&it.DiffJSON, &it.Reason, &it.Status, &it.ReviewerNote,
+			&it.CreatedAt, &it.ReviewedAt,
+			&it.DisplayName,
+		); err != nil {
+			slog.Error("listWikiSuggestions scan", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		slog.Error("listWikiSuggestions rows", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items":  items,
+		"total":  total,
+		"limit":  limit,
+		"offset": offset,
+	})
+}
+
+// ── 3. reviewWikiSuggestion (accept/reject) ──────────────────────────────────
+
+func (s *Server) reviewWikiSuggestion(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+		return
+	}
+	articleID, ok := parsePathUUID(w, r, "article_id")
+	if !ok {
+		return
+	}
+	if !s.verifyArticleInBook(w, r, articleID, bookID) {
+		return
+	}
+	sugID, ok := parsePathUUID(w, r, "sug_id")
+	if !ok {
+		return
+	}
+
+	// Verify suggestion exists and belongs to this article
+	var sugStatus string
+	var diffJSON json.RawMessage
+	var sugUserID uuid.UUID
+	err := s.pool.QueryRow(r.Context(),
+		`SELECT status, diff_json, user_id FROM wiki_suggestions WHERE suggestion_id=$1 AND article_id=$2`,
+		sugID, articleID).Scan(&sugStatus, &diffJSON, &sugUserID)
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusNotFound, "WIKI_SUGGESTION_NOT_FOUND", "suggestion not found")
+		return
+	}
+	if err != nil {
+		slog.Error("reviewWikiSuggestion fetch", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	if sugStatus != "pending" {
+		writeError(w, http.StatusConflict, "WIKI_SUGGESTION_ALREADY_REVIEWED", "suggestion already reviewed")
+		return
+	}
+
+	var req struct {
+		Action       string  `json:"action"`
+		ReviewerNote *string `json:"reviewer_note"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "WIKI_BAD_REQUEST", "invalid JSON body")
+		return
+	}
+	if req.Action != "accept" && req.Action != "reject" {
+		writeError(w, http.StatusUnprocessableEntity, "WIKI_INVALID_ACTION", "action must be accept or reject")
+		return
+	}
+
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		slog.Error("reviewWikiSuggestion tx begin", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	newStatus := req.Action + "ed" // "accepted" or "rejected"
+
+	// Update suggestion status
+	if _, err := tx.Exec(r.Context(), `
+		UPDATE wiki_suggestions SET status=$1, reviewer_note=$2, reviewed_at=now()
+		WHERE suggestion_id=$3`,
+		newStatus, req.ReviewerNote, sugID,
+	); err != nil {
+		slog.Error("reviewWikiSuggestion update", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+
+	if req.Action == "accept" {
+		// Lock article for revision version safety
+		if _, err := tx.Exec(r.Context(),
+			`SELECT 1 FROM wiki_articles WHERE article_id=$1 FOR UPDATE`, articleID); err != nil {
+			slog.Error("reviewWikiSuggestion lock", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+
+		// Apply diff_json to article body
+		if _, err := tx.Exec(r.Context(),
+			`UPDATE wiki_articles SET body_json=$1, updated_at=now() WHERE article_id=$2`,
+			diffJSON, articleID,
+		); err != nil {
+			slog.Error("reviewWikiSuggestion apply", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+
+		// Create community revision
+		if _, err := tx.Exec(r.Context(), `
+			INSERT INTO wiki_revisions (article_id, version, body_json, author_id, author_type, summary)
+			VALUES ($1, COALESCE((SELECT MAX(version) FROM wiki_revisions WHERE article_id=$1), 0) + 1, $2, $3, 'community', $4)`,
+			articleID, diffJSON, sugUserID, "Community suggestion accepted",
+		); err != nil {
+			slog.Error("reviewWikiSuggestion revision", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		slog.Error("reviewWikiSuggestion commit", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+
+	// Return updated suggestion
+	var sug wikiSuggestionResp
+	if err := s.pool.QueryRow(r.Context(), `
+		SELECT suggestion_id, article_id, user_id, diff_json, reason, status, reviewer_note, created_at, reviewed_at
+		FROM wiki_suggestions WHERE suggestion_id=$1`, sugID,
+	).Scan(
+		&sug.SuggestionID, &sug.ArticleID, &sug.UserID,
+		&sug.DiffJSON, &sug.Reason, &sug.Status, &sug.ReviewerNote,
+		&sug.CreatedAt, &sug.ReviewedAt,
+	); err != nil {
+		slog.Error("reviewWikiSuggestion reload", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, sug)
+}

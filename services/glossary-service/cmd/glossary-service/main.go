@@ -61,6 +61,10 @@ func main() {
 		slog.Error("migrate wiki", "error", err)
 		os.Exit(1)
 	}
+	if err := migrate.UpWikiSuggestions(ctx, pool); err != nil {
+		slog.Error("migrate wiki-suggestions", "error", err)
+		os.Exit(1)
+	}
 
 	srv := api.NewServer(pool, cfg)
 	httpSrv := &http.Server{
