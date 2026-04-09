@@ -1175,10 +1175,10 @@ func (s *Server) publicListWikiArticles(w http.ResponseWriter, r *http.Request) 
 
 	fetchSQL := fmt.Sprintf(`
 		SELECT
-			wa.article_id, wa.entity_id, wa.book_id,
+			wa.article_id, wa.entity_id,
 			COALESCE(dn.original_value, '') AS display_name,
 			ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
-			wa.status, wa.template_code,
+			wa.template_code,
 			wa.updated_at
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
@@ -1213,13 +1213,11 @@ func (s *Server) publicListWikiArticles(w http.ResponseWriter, r *http.Request) 
 	items := []publicListItem{}
 	for rows.Next() {
 		var it publicListItem
-		var status string
-		var bookIDScan string
 		if err := rows.Scan(
-			&it.ArticleID, &it.EntityID, &bookIDScan,
+			&it.ArticleID, &it.EntityID,
 			&it.DisplayName,
 			&it.Kind.KindID, &it.Kind.Code, &it.Kind.Name, &it.Kind.Icon, &it.Kind.Color,
-			&status, &it.TemplateCode,
+			&it.TemplateCode,
 			&it.UpdatedAt,
 		); err != nil {
 			slog.Error("publicListWikiArticles scan", "error", err)
@@ -1282,14 +1280,15 @@ func (s *Server) publicGetWikiArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check spoiler: if article spoils chapters beyond reader's progress, redact body
+	// Check spoiler: if article spoils chapters beyond reader's progress, redact body.
+	// Fail-closed: if we can't resolve chapter indices, assume spoiler to protect readers.
 	spoilerWarning := false
 	if maxChapterIndex >= 0 && len(detail.SpoilerChapters) > 0 {
-		// We need to check if any spoiler chapter has an index > maxChapterIndex.
-		// spoiler_chapters are UUIDs — we need to resolve their indices.
-		// For simplicity, fetch chapter indices from book-service.
 		chapters, chStatus := s.fetchBookChapters(r.Context(), bookID)
-		if chStatus == http.StatusOK {
+		if chStatus != http.StatusOK {
+			// Can't resolve chapter indices — fail-closed, assume spoiler
+			spoilerWarning = true
+		} else {
 			chapterIndexMap := make(map[string]int)
 			for _, ch := range chapters {
 				chapterIndexMap[ch.ChapterID.String()] = ch.SortOrder
