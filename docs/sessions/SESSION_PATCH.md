@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-09 (session 28 — P9-08 complete, all 5 sub-phases done)
-- Updated By: Assistant (P9-08a-e wiki system complete)
+- Last Updated: 2026-04-09 (session 28 end)
+- Updated By: Assistant (P9-08 wiki done + translation pipeline fixes + V2 design)
 - Active Branch: `main`
-- HEAD: pending commit — P9-08e wiki FE editor
+- HEAD: `e63585b` — docs: V2 review
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
 
 ---
@@ -31,7 +31,9 @@
 
 ## Current Active Work
 
-**Phase:** All phases 8A-8H COMPLETE. Phase 9 in progress (P9-01..P9-07, P9-08, P9-10 done — 9/12). P9-08 COMPLETE (all 5 sub-phases). Remaining: P9-09 (account deletion), P9-11 (audio drift), P9-12 (sharing tab wiring).
+**Phase:** All phases 8A-8H COMPLETE. Phase 9 in progress (9/12 done). P9-08 COMPLETE (all 5 sub-phases). Remaining: P9-09 (account deletion), P9-11 (audio drift), P9-12 (sharing tab wiring). Translation Pipeline V2 designed (future phase, after P9).
+
+Also done this session: translation pipeline bug fixes (X-Internal-Token, model picker), UX fixes (creation flows, empty states), Translation Pipeline V2 design doc + MVTN comparison.
 
 **What was done in this session (2026-04-09, session 28):**
 
