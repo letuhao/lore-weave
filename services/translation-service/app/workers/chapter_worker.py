@@ -104,6 +104,13 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
     context_window = await _get_model_context_window(msg)
     log.info("chapter %s: context_window=%d", chapter_id, context_window)
 
+    # V2: Load previous chapter memo for cross-chapter context
+    chapter_index = msg.get("chapter_index", 0)
+    target_language = msg.get("target_language", "")
+    prev_memo = await _load_chapter_memo(pool, msg["book_id"], chapter_index - 1, target_language)
+    if prev_memo:
+        log.info("chapter %s: loaded memo from chapter %d", chapter_id, chapter_index - 1)
+
     # Detect JSON body → use block pipeline, otherwise fall back to text pipeline
     use_block_pipeline = (
         isinstance(chapter_body, dict)
@@ -202,6 +209,12 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
                 "output_tokens": output_tokens,
             })
     log.info("chapter %s: DB persist complete", chapter_id)
+
+    # V2: Save chapter memo for next chapter's context
+    await _save_chapter_memo(
+        pool, msg["book_id"], chapter_index, target_language,
+        translated_body_text or "",
+    )
 
     await _emit_chapter_done(publish_event, user_id, msg, "completed", None)
     log.info("chapter %s: chapter_done event emitted", chapter_id)
@@ -354,6 +367,56 @@ async def _send_translation_notification(
             )
     except Exception as exc:
         log.warning("Failed to send translation notification: %s", exc)
+
+
+async def _load_chapter_memo(pool, book_id, chapter_index: int, target_language: str) -> dict | None:
+    """Load the translation memo from the previous chapter (if any)."""
+    if chapter_index < 0:
+        return None
+    try:
+        async with pool.acquire() as db:
+            row = await db.fetchrow(
+                """SELECT terms_used, story_summary, style_notes
+                   FROM translation_chapter_memos
+                   WHERE book_id = $1 AND chapter_index = $2 AND target_language = $3""",
+                UUID(str(book_id)), chapter_index, target_language,
+            )
+            if row:
+                return {
+                    "terms_used": json.loads(row["terms_used"]) if isinstance(row["terms_used"], str) else row["terms_used"],
+                    "story_summary": row["story_summary"],
+                    "style_notes": row["style_notes"],
+                }
+    except Exception as exc:
+        log.warning("chapter_memo load failed: %s — continuing without memo", exc)
+    return None
+
+
+async def _save_chapter_memo(
+    pool, book_id, chapter_index: int, target_language: str, translated_text: str,
+) -> None:
+    """Save a brief translation memo for the next chapter's context."""
+    if not translated_text:
+        return
+    # Extract last ~5 sentences as story summary
+    sentences = [s.strip() for s in translated_text.replace("\n", ". ").split(".") if s.strip()]
+    story_summary = ". ".join(sentences[-5:]) + "." if sentences else ""
+    # Cap at 500 chars
+    if len(story_summary) > 500:
+        story_summary = story_summary[-500:]
+
+    try:
+        async with pool.acquire() as db:
+            await db.execute(
+                """INSERT INTO translation_chapter_memos
+                     (book_id, chapter_index, target_language, story_summary)
+                   VALUES ($1, $2, $3, $4)
+                   ON CONFLICT (book_id, chapter_index, target_language)
+                   DO UPDATE SET story_summary = EXCLUDED.story_summary, created_at = now()""",
+                UUID(str(book_id)), chapter_index, target_language, story_summary,
+            )
+    except Exception as exc:
+        log.warning("chapter_memo save failed: %s — non-fatal", exc)
 
 
 class _TransientError(Exception):

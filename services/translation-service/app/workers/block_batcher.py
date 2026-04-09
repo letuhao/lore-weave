@@ -5,6 +5,13 @@ Groups consecutive translatable blocks into batches that fit within
 a token budget. Uses numbered [BLOCK N] markers for reliable block
 alignment after LLM translation.
 
+V2 improvements:
+- CJK-aware token estimation (via chunk_splitter.estimate_tokens)
+- Expansion-ratio-aware budget: reserves tokens for system prompt,
+  glossary context, and output based on language pair
+- Hard cap of MAX_BLOCKS_PER_BATCH (40) to prevent LLM block-count confusion
+- Context overhead reservation for system + glossary + rolling summary
+
 Non-translatable blocks (passthrough, caption_only) are tracked
 separately and reinserted during reassembly.
 """
@@ -17,6 +24,64 @@ from .chunk_splitter import estimate_tokens
 
 # Marker format: [BLOCK 0], [BLOCK 1], etc.
 BLOCK_MARKER = "[BLOCK {i}]"
+
+# Hard cap: LLMs start confusing block indices above this count
+MAX_BLOCKS_PER_BATCH = 40
+
+# Fixed overhead tokens reserved for system prompt + formatting
+_SYSTEM_PROMPT_OVERHEAD = 500
+# Glossary context budget (tiered injection — §4 of V2 design)
+_GLOSSARY_OVERHEAD = 1500
+# Rolling summary between batches
+_ROLLING_SUMMARY_OVERHEAD = 300
+
+# Output expansion ratios by language pair category.
+# Used to reserve enough output space in the context window.
+# Key: (source_category, target_category) → expansion ratio
+_EXPANSION_RATIOS: dict[tuple[str, str], float] = {
+    ("cjk", "latin"):  2.0,   # CJK → Vietnamese/English: output ~2x input
+    ("cjk", "cjk"):    1.2,   # CJK → CJK (e.g. Chinese → Japanese)
+    ("latin", "latin"): 1.3,  # Latin → Latin
+    ("latin", "cjk"):  0.7,   # English → Chinese: output shorter
+}
+_DEFAULT_EXPANSION_RATIO = 1.5
+
+
+def _lang_category(lang_code: str) -> str:
+    """Classify a language code as 'cjk' or 'latin' for expansion ratio lookup."""
+    code = lang_code.lower().split("-")[0] if lang_code else ""
+    if code in ("zh", "ja", "ko"):
+        return "cjk"
+    return "latin"
+
+
+def get_expansion_ratio(source_lang: str, target_lang: str) -> float:
+    """Get the expected output/input token expansion ratio for a language pair."""
+    src = _lang_category(source_lang)
+    tgt = _lang_category(target_lang)
+    return _EXPANSION_RATIOS.get((src, tgt), _DEFAULT_EXPANSION_RATIO)
+
+
+def compute_input_budget(
+    context_window: int,
+    source_lang: str = "",
+    target_lang: str = "",
+    glossary_tokens: int = _GLOSSARY_OVERHEAD,
+) -> int:
+    """Compute the max input tokens per batch given context window and overheads.
+
+    Budget formula:
+      available = context_window - system - glossary - rolling_summary
+      input_budget = available / (1 + expansion_ratio)
+    """
+    overhead = _SYSTEM_PROMPT_OVERHEAD + glossary_tokens + _ROLLING_SUMMARY_OVERHEAD
+    available = context_window - overhead
+    if available < 200:
+        available = 200
+
+    ratio = get_expansion_ratio(source_lang, target_lang)
+    input_budget = int(available / (1.0 + ratio))
+    return max(100, input_budget)
 
 
 @dataclass
@@ -69,18 +134,27 @@ def build_batch_plan(
     blocks: list[dict],
     context_window_tokens: int = 8192,
     budget_ratio: float = 0.25,
+    source_lang: str = "",
+    target_lang: str = "",
 ) -> BatchPlan:
     """Build a batch plan from a Tiptap block array.
 
     Args:
         blocks: Tiptap content array (top-level blocks only).
         context_window_tokens: Model's context window size.
-        budget_ratio: Fraction of context window per batch (default 1/4).
+        budget_ratio: Legacy param, ignored when source/target langs provided.
+        source_lang: Source language code (e.g. "zh", "ja").
+        target_lang: Target language code (e.g. "vi", "en").
 
     Returns:
         BatchPlan with batches and block entries.
     """
-    max_tokens = int(context_window_tokens * budget_ratio)
+    # V2: use expansion-ratio-aware budget when languages are known
+    if source_lang and target_lang:
+        max_tokens = compute_input_budget(context_window_tokens, source_lang, target_lang)
+    else:
+        # Legacy fallback
+        max_tokens = int(context_window_tokens * budget_ratio)
     if max_tokens < 100:
         max_tokens = 100
 
@@ -107,8 +181,11 @@ def build_batch_plan(
         tokens = estimate_tokens(text_to_translate)
         marker_overhead = estimate_tokens(BLOCK_MARKER.format(i=entry.index)) + 2  # newlines
 
-        # If adding this block would exceed budget, flush current batch
-        if current_batch.entries and (current_batch.token_estimate + tokens + marker_overhead > max_tokens):
+        # Flush if adding this block exceeds token budget OR block count cap
+        if current_batch.entries and (
+            current_batch.token_estimate + tokens + marker_overhead > max_tokens
+            or len(current_batch.entries) >= MAX_BLOCKS_PER_BATCH
+        ):
             batches.append(current_batch)
             current_batch = BatchGroup()
 

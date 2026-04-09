@@ -207,6 +207,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
+      GLOSSARY_SERVICE_INTERNAL_URL: http://glossary-service:8088
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
@@ -217,6 +218,8 @@ services:
       rabbitmq:
         condition: service_healthy
       book-service:
+        condition: service_healthy
+      glossary-service:
         condition: service_healthy
       provider-registry-service:
         condition: service_healthy
@@ -232,16 +235,18 @@ services:
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
+      GLOSSARY_SERVICE_INTERNAL_URL: http://glossary-service:8088
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
     depends_on:
       postgres:
         condition: service_healthy
-
       rabbitmq:
         condition: service_healthy
       book-service:
+        condition: service_healthy
+      glossary-service:
         condition: service_healthy
       provider-registry-service:
         condition: service_healthy

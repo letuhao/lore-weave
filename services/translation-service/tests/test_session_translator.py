@@ -15,7 +15,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, call
 from uuid import uuid4, UUID
 
-from app.workers.chunk_splitter import split_chapter, TOKEN_CHAR_RATIO
+from app.workers.chunk_splitter import split_chapter, TOKEN_CHAR_RATIO, _LATIN_CHARS_PER_TOKEN
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -191,7 +191,7 @@ async def test_multi_chunk_concatenated_with_double_newline():
     split_chapter() and translate_chapter() agree on the chunk count.
     """
     chunk_tokens  = 200                             # 700 chars per chunk (above 100-token floor)
-    chunk_chars   = int(chunk_tokens * TOKEN_CHAR_RATIO)
+    chunk_chars   = int(chunk_tokens * _LATIN_CHARS_PER_TOKEN)
     # 3 paragraphs, each clearly larger than one chunk
     chapter_text  = "\n\n".join(["Paragraph " + str(i) + ". " + "X" * (chunk_chars + 50)
                                   for i in range(3)])
@@ -280,7 +280,7 @@ async def test_compaction_fires_when_history_exceeds_half_context():
     """
     # Chapter that splits into exactly 2 chunks at chunk_size=50 tokens
     chunk_tokens = 50
-    chunk_chars  = int(chunk_tokens * TOKEN_CHAR_RATIO)         # 175 chars
+    chunk_chars  = int(chunk_tokens * _LATIN_CHARS_PER_TOKEN)         # 175 chars
     chapter_text = "A" * (chunk_chars + 10) + "\n\n" + "B" * (chunk_chars + 10)
 
     pool        = _make_pool()
@@ -367,7 +367,7 @@ async def test_compact_uses_translation_model_when_compact_ref_is_none():
         chunk_size_tokens=50,
     )
     chunk_tokens = 50
-    chunk_chars  = int(chunk_tokens * TOKEN_CHAR_RATIO)
+    chunk_chars  = int(chunk_tokens * _LATIN_CHARS_PER_TOKEN)
     chapter_text = "A" * (chunk_chars + 5) + "\n\n" + "B" * (chunk_chars + 5)
 
     pool = _make_pool()
@@ -412,7 +412,7 @@ async def test_compact_uses_dedicated_compact_model_when_configured():
         chunk_size_tokens=50,
     )
     chunk_tokens = 50
-    chunk_chars  = int(chunk_tokens * TOKEN_CHAR_RATIO)
+    chunk_chars  = int(chunk_tokens * _LATIN_CHARS_PER_TOKEN)
     chapter_text = "A" * (chunk_chars + 5) + "\n\n" + "B" * (chunk_chars + 5)
 
     pool = _make_pool()
@@ -454,7 +454,7 @@ async def test_compact_failure_does_not_abort_translation():
     translation must continue to completion — compaction is best-effort.
     """
     chunk_tokens = 50
-    chunk_chars  = int(chunk_tokens * TOKEN_CHAR_RATIO)
+    chunk_chars  = int(chunk_tokens * _LATIN_CHARS_PER_TOKEN)
     chapter_text = "A" * (chunk_chars + 5) + "\n\n" + "B" * (chunk_chars + 5)
 
     pool = _make_pool()
@@ -493,7 +493,7 @@ async def test_compact_failure_does_not_abort_translation():
 async def test_compact_http_error_does_not_abort_translation():
     """Compact returning 500 must be swallowed; translation continues."""
     chunk_tokens = 50
-    chunk_chars  = int(chunk_tokens * TOKEN_CHAR_RATIO)
+    chunk_chars  = int(chunk_tokens * _LATIN_CHARS_PER_TOKEN)
     chapter_text = "A" * (chunk_chars + 5) + "\n\n" + "B" * (chunk_chars + 5)
 
     pool = _make_pool()
@@ -535,7 +535,7 @@ async def test_chunk_rows_inserted_for_each_chunk():
     matches what translate_chapter will actually use.
     """
     chunk_tokens = 200
-    chunk_chars  = int(chunk_tokens * TOKEN_CHAR_RATIO)
+    chunk_chars  = int(chunk_tokens * _LATIN_CHARS_PER_TOKEN)
     chapter_text = "\n\n".join(["Para " + str(i) + " " + "X" * (chunk_chars + 50) for i in range(3)])
 
     pool = _make_pool()

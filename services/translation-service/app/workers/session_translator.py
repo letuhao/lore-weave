@@ -486,9 +486,8 @@ async def _translate_chunk(
 
     full_response   = json.loads(b"".join(raw_chunks))
     translated_text = extract_content(full_response.get("output") or {})
-    usage           = full_response.get("usage") or {}
-    in_tok          = int(usage.get("input_tokens")  or 0)
-    out_tok         = int(usage.get("output_tokens") or 0)
+    # V2: multi-provider token extraction (handles OpenAI/Anthropic/Ollama/LM Studio)
+    in_tok, out_tok = extract_token_counts(full_response)
 
     await _update_chunk_row(pool, chunk_row_id, translated_text, in_tok, out_tok)
     return translated_text, in_tok, out_tok
@@ -592,7 +591,7 @@ async def _update_chunk_row(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Phase 8F: Block-level translation pipeline
+# Phase 8F → V2: Block-level translation pipeline
 # ══════════════════════════════════════════════════════════════════════════════
 
 _BLOCK_SYSTEM_PROMPT = """You are a professional {source_lang} ({source_code}) to {target_lang} ({target_code}) translator.
@@ -601,7 +600,112 @@ CRITICAL RULES:
 1. Each text section is labeled [BLOCK N]. You MUST output the EXACT same [BLOCK N] labels in the EXACT same order.
 2. Translate ONLY the text after each [BLOCK N] label. Do NOT add, remove, or reorder blocks.
 3. Preserve inline formatting: **bold**, *italic*, `code`, ~~strikethrough~~, __underline__, [link text](url).
-4. Output ONLY the translated blocks. No explanations, no commentary, no extra text."""
+4. Output ONLY the translated blocks. No explanations, no commentary, no extra text.
+5. You MUST output exactly {block_count} blocks."""
+
+# Max retries per batch when validation fails
+_MAX_BATCH_RETRIES = 2
+
+
+# ── Output validation ────────────────────────────────────────────────────────
+
+class ValidationResult:
+    """Result of validating a translated batch output."""
+    __slots__ = ("valid", "errors", "warnings")
+
+    def __init__(self) -> None:
+        self.valid: bool = True
+        self.errors: list[str] = []
+        self.warnings: list[str] = []
+
+    def add_error(self, msg: str) -> None:
+        self.errors.append(msg)
+        self.valid = False
+
+    def add_warning(self, msg: str) -> None:
+        self.warnings.append(msg)
+
+
+def validate_translation_output(
+    parsed_blocks: dict[int, str],
+    expected_indices: list[int],
+    input_texts: dict[int, str],
+) -> ValidationResult:
+    """Validate LLM translation output for structural correctness.
+
+    Checks:
+    1. Block count matches expected
+    2. All expected indices present
+    3. No unexpected indices
+    4. Output length is sane (0.3x-4.0x of input per block)
+    """
+    result = ValidationResult()
+
+    # Rule 1: Block count
+    if len(parsed_blocks) != len(expected_indices):
+        result.add_error(
+            f"block_count_mismatch: expected {len(expected_indices)}, "
+            f"got {len(parsed_blocks)}"
+        )
+
+    # Rule 2: All indices present
+    missing = set(expected_indices) - set(parsed_blocks.keys())
+    if missing:
+        result.add_error(f"missing_blocks: {sorted(missing)}")
+
+    # Rule 3: No unexpected indices
+    extra = set(parsed_blocks.keys()) - set(expected_indices)
+    if extra:
+        result.add_error(f"extra_blocks: {sorted(extra)}")
+
+    # Rule 4: Length sanity per block
+    for idx, text in parsed_blocks.items():
+        if idx in input_texts and input_texts[idx]:
+            ratio = len(text) / max(1, len(input_texts[idx]))
+            if ratio > 4.0:
+                result.add_warning(f"block_{idx}_too_long: {ratio:.1f}x input")
+            if ratio < 0.3:
+                result.add_warning(f"block_{idx}_too_short: {ratio:.1f}x input")
+
+    return result
+
+
+# ── Multi-provider token extraction ──────────────────────────────────────────
+
+def extract_token_counts(response: dict) -> tuple[int, int]:
+    """Extract input/output token counts from provider response.
+
+    Handles different provider response formats:
+    - OpenAI:    {"usage": {"prompt_tokens": N, "completion_tokens": N}}
+    - Anthropic: {"usage": {"input_tokens": N, "output_tokens": N}}
+    - Ollama:    {"prompt_eval_count": N, "eval_count": N}
+    - LM Studio: {"usage": {"prompt_tokens": N, "completion_tokens": N}}
+    """
+    # Try nested "usage" object first (OpenAI/Anthropic/LM Studio)
+    usage = response.get("usage") or {}
+    input_tok = (
+        usage.get("input_tokens")       # Anthropic
+        or usage.get("prompt_tokens")    # OpenAI / LM Studio
+        or response.get("prompt_eval_count")  # Ollama (top-level)
+        or 0
+    )
+    output_tok = (
+        usage.get("output_tokens")        # Anthropic
+        or usage.get("completion_tokens")  # OpenAI / LM Studio
+        or response.get("eval_count")      # Ollama (top-level)
+        or 0
+    )
+
+    input_tok = int(input_tok)
+    output_tok = int(output_tok)
+
+    if input_tok == 0 and output_tok == 0:
+        log.warning(
+            "token_counts_missing: response_keys=%s, usage_keys=%s",
+            list(response.keys()), list(usage.keys()),
+        )
+
+    return input_tok, output_tok
 
 
 async def translate_chapter_blocks(
@@ -614,13 +718,15 @@ async def translate_chapter_blocks(
     context_window: int = _FALLBACK_CONTEXT_WINDOW,
 ) -> tuple[list[dict], int, int]:
     """
-    Translate a chapter's Tiptap blocks using the block-level pipeline.
+    Translate a chapter's Tiptap blocks using the block-level pipeline (V2).
 
-    1. Classify blocks (translate / passthrough / caption_only)
-    2. Batch translatable blocks within token budget
-    3. Translate each batch via LLM with [BLOCK N] markers
-    4. Parse response, rebuild blocks
-    5. Reassemble full Tiptap content array
+    V2 improvements over V1:
+    - CJK-aware token estimation
+    - Expansion-ratio-aware budget (reserves output + overhead tokens)
+    - 40-block hard cap per batch
+    - Output validation with retry + correction prompt
+    - Multi-provider token extraction (OpenAI/Anthropic/Ollama/LM Studio)
+    - Rolling summary context between batches
 
     Args:
         blocks:                 Tiptap content array (list of block dicts).
@@ -633,91 +739,227 @@ async def translate_chapter_blocks(
     Returns:
         (translated_blocks, total_input_tokens, total_output_tokens)
     """
-    from .block_classifier import classify_block, extract_translatable_text, rebuild_block
+    from .block_classifier import rebuild_block, extract_translatable_text
     from .block_batcher import build_batch_plan, parse_translated_blocks
 
-    plan = build_batch_plan(blocks, context_window_tokens=context_window)
+    target_code = msg.get("target_language", "")
+
+    plan = build_batch_plan(
+        blocks,
+        context_window_tokens=context_window,
+        source_lang=source_lang,
+        target_lang=target_code,
+    )
     log.info(
-        "block_translator: %d blocks (%d translate, %d pass, %d caption) → %d batches (ct=%s)",
+        "block_translator_v2: %d blocks (%d translate, %d pass, %d caption) → %d batches (ct=%s)",
         len(plan.all_entries), plan.translatable_count, plan.passthrough_count,
         plan.caption_count, len(plan.batches), chapter_translation_id,
     )
 
     if not plan.batches:
-        # All blocks are passthrough — return original
         return blocks, 0, 0
 
     timeout_secs = msg.get("invoke_timeout_secs") or 300
     read_timeout = float(timeout_secs) if timeout_secs and timeout_secs > 0 else None
     token = mint_user_jwt(msg["user_id"], settings.jwt_secret, ttl_seconds=_JWT_TTL)
 
-    # Build system prompt
-    target_code = msg.get("target_language", "")
-    system_content = _BLOCK_SYSTEM_PROMPT.format_map(_SafeFormatMap({
-        "source_lang": _lang_name(source_lang),
-        "source_code": source_lang,
-        "target_lang": _lang_name(target_code),
-        "target_code": target_code,
-    }))
+    # V2 P4: Fetch glossary context (once per chapter, stable across all batches)
+    from .glossary_client import (
+        fetch_translation_glossary, build_glossary_context, auto_correct_glossary,
+    )
+
+    # Extract all translatable text for glossary scoring
+    all_chapter_text = "\n".join(
+        extract_translatable_text(entry.block)
+        for entry in plan.all_entries
+        if entry.action != "passthrough"
+    )
+
+    raw_glossary = await fetch_translation_glossary(
+        book_id=msg.get("book_id", ""),
+        target_language=target_code,
+        chapter_id=msg.get("chapter_id", ""),
+    )
+    glossary_ctx = build_glossary_context(
+        raw_glossary, all_chapter_text, target_code,
+    )
+    log.info(
+        "block_translator_v2: glossary — %d entries, ~%d tokens, %d correction rules (ct=%s)",
+        len(glossary_ctx.entries), glossary_ctx.token_estimate,
+        len(glossary_ctx.correction_map), chapter_translation_id,
+    )
 
     # Per-block translated texts (index → translated text)
     translated_texts: dict[int, str] = {}
+    failed_blocks: set[int] = set()
     total_input = 0
     total_output = 0
+    total_glossary_corrections = 0
+
+    # Rolling summary for cross-batch context
+    rolling_summary = ""
 
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(connect=10.0, write=60.0, read=read_timeout, pool=5.0)
     ) as client:
         for batch_idx, batch in enumerate(plan.batches):
             combined = batch.combined_text()
+            # Build input_texts map for validation
+            input_texts = {e.index: e.text for e in batch.entries}
+
             log.info(
-                "block_translator: batch %d/%d — %d blocks, ~%d tokens (ct=%s)",
+                "block_translator_v2: batch %d/%d — %d blocks, ~%d tokens (ct=%s)",
                 batch_idx + 1, len(plan.batches), len(batch.entries),
                 batch.token_estimate, chapter_translation_id,
             )
 
-            messages = [
-                {"role": "system", "content": system_content},
-                {"role": "user", "content": f"Translate the following blocks from {_lang_name(source_lang)} to {_lang_name(target_code)}:\n\n{combined}"},
-            ]
+            # Build system prompt with block count + glossary
+            system_content = _BLOCK_SYSTEM_PROMPT.format_map(_SafeFormatMap({
+                "source_lang": _lang_name(source_lang),
+                "source_code": source_lang,
+                "target_lang": _lang_name(target_code),
+                "target_code": target_code,
+                "block_count": str(len(batch.entries)),
+            }))
+            if glossary_ctx.prompt_block:
+                system_content += "\n\n" + glossary_ctx.prompt_block
+                system_content += (
+                    "\n\nIMPORTANT: For names and terms listed in the GLOSSARY above, "
+                    "you MUST use the EXACT translations provided. Do NOT invent your own."
+                )
 
-            invoke_payload = {
-                "model_source": msg["model_source"],
-                "model_ref": msg["model_ref"],
-                "input": {"messages": messages},
-            }
+            # Build user message with optional rolling summary
+            user_parts = []
+            if rolling_summary:
+                user_parts.append(
+                    f"[Summary of previously translated content]\n{rolling_summary}\n"
+                )
+            user_parts.append(
+                f"Translate the following {len(batch.entries)} blocks "
+                f"from {_lang_name(source_lang)} to {_lang_name(target_code)}:\n\n{combined}"
+            )
+            user_content = "\n".join(user_parts)
 
-            try:
-                raw_chunks: list[bytes] = []
-                async with client.stream(
-                    "POST",
-                    f"{settings.provider_registry_service_url}/v1/model-registry/invoke",
-                    json=invoke_payload,
-                    headers={"Authorization": f"Bearer {token}"},
-                ) as resp:
-                    if resp.status_code >= 400:
-                        log.error("block_translator: batch %d invoke returned %d", batch_idx + 1, resp.status_code)
-                        continue  # skip failed batch, blocks will use originals
-                    async for raw in resp.aiter_bytes():
-                        raw_chunks.append(raw)
+            # Retry loop with validation
+            parsed = None
+            correction_hint = ""
+            for attempt in range(_MAX_BATCH_RETRIES + 1):
+                messages = [
+                    {"role": "system", "content": system_content},
+                ]
+                if correction_hint:
+                    # Add correction as assistant acknowledgment + user re-request
+                    messages.append({"role": "assistant", "content": "I understand. Let me fix the output."})
+                    messages.append({"role": "user", "content": correction_hint})
+                else:
+                    messages.append({"role": "user", "content": user_content})
 
-                full_response = json.loads(b"".join(raw_chunks))
-                response_text = extract_content(full_response.get("output") or {})
-                usage = full_response.get("usage") or {}
-                total_input += int(usage.get("input_tokens") or 0)
-                total_output += int(usage.get("output_tokens") or 0)
+                invoke_payload = {
+                    "model_source": msg["model_source"],
+                    "model_ref": msg["model_ref"],
+                    "input": {"messages": messages},
+                }
 
-                # Parse [BLOCK N] markers
-                parsed = parse_translated_blocks(response_text, batch.block_indices)
+                try:
+                    raw_chunks: list[bytes] = []
+                    async with client.stream(
+                        "POST",
+                        f"{settings.provider_registry_service_url}/v1/model-registry/invoke",
+                        json=invoke_payload,
+                        headers={"Authorization": f"Bearer {token}"},
+                    ) as resp:
+                        if resp.status_code >= 400:
+                            log.error(
+                                "block_translator_v2: batch %d attempt %d invoke returned %d",
+                                batch_idx + 1, attempt + 1, resp.status_code,
+                            )
+                            break  # don't retry on HTTP errors
+                        async for raw in resp.aiter_bytes():
+                            raw_chunks.append(raw)
+
+                    full_response = json.loads(b"".join(raw_chunks))
+                    response_text = extract_content(full_response.get("output") or {})
+
+                    # V2: Multi-provider token extraction
+                    in_tok, out_tok = extract_token_counts(full_response)
+                    total_input += in_tok
+                    total_output += out_tok
+
+                    # Parse [BLOCK N] markers
+                    parsed = parse_translated_blocks(response_text, batch.block_indices)
+
+                    # V2: Validate output
+                    validation = validate_translation_output(
+                        parsed, batch.block_indices, input_texts,
+                    )
+
+                    if validation.warnings:
+                        log.warning(
+                            "block_translator_v2: batch %d warnings: %s",
+                            batch_idx + 1, validation.warnings,
+                        )
+
+                    if validation.valid:
+                        log.info(
+                            "block_translator_v2: batch %d attempt %d — valid, %d/%d blocks",
+                            batch_idx + 1, attempt + 1, len(parsed), len(batch.entries),
+                        )
+                        break  # success
+                    else:
+                        log.warning(
+                            "block_translator_v2: batch %d attempt %d — validation failed: %s",
+                            batch_idx + 1, attempt + 1, validation.errors,
+                        )
+                        if attempt < _MAX_BATCH_RETRIES:
+                            # Build correction prompt for retry
+                            correction_hint = (
+                                f"Your previous output had errors: {'; '.join(validation.errors)}. "
+                                f"Please translate exactly {len(batch.entries)} blocks "
+                                f"with indices {batch.block_indices}. "
+                                f"Output each block with its [BLOCK N] marker.\n\n{combined}"
+                            )
+                        else:
+                            log.error(
+                                "block_translator_v2: batch %d failed after %d retries: %s",
+                                batch_idx + 1, _MAX_BATCH_RETRIES, validation.errors,
+                            )
+                            # Mark missing blocks as failed
+                            missing = set(batch.block_indices) - set(parsed.keys())
+                            failed_blocks.update(missing)
+
+                except Exception as exc:
+                    log.error("block_translator_v2: batch %d attempt %d failed: %s", batch_idx + 1, attempt + 1, exc)
+                    parsed = None
+                    if attempt == _MAX_BATCH_RETRIES:
+                        failed_blocks.update(batch.block_indices)
+                    continue
+
+            # Merge successfully parsed blocks + auto-correct glossary
+            if parsed:
+                # V2 P6: Auto-correct untranslated source terms
+                if glossary_ctx.correction_map:
+                    for idx in list(parsed.keys()):
+                        corrected, count = auto_correct_glossary(
+                            parsed[idx], glossary_ctx.correction_map,
+                        )
+                        if count > 0:
+                            parsed[idx] = corrected
+                            total_glossary_corrections += count
+
                 translated_texts.update(parsed)
 
-                log.info(
-                    "block_translator: batch %d done — parsed %d/%d blocks",
-                    batch_idx + 1, len(parsed), len(batch.entries),
+                # Update rolling summary (last ~3 sentences of translated text)
+                last_translated = " ".join(
+                    parsed[idx] for idx in sorted(parsed.keys())
                 )
-            except Exception as exc:
-                log.error("block_translator: batch %d failed: %s", batch_idx + 1, exc)
-                continue  # skip failed batch
+                sentences = [s.strip() for s in last_translated.replace("\n", ". ").split(".") if s.strip()]
+                rolling_summary = ". ".join(sentences[-5:]) + "." if sentences else ""
+
+    if total_glossary_corrections > 0:
+        log.info(
+            "block_translator_v2: auto-corrected %d glossary terms (ct=%s)",
+            total_glossary_corrections, chapter_translation_id,
+        )
 
     # Reassemble: for each block, use translated text or keep original
     result_blocks: list[dict] = []
@@ -727,9 +969,17 @@ async def translate_chapter_blocks(
         else:
             result_blocks.append(entry.block)
 
+    translated_count = len(translated_texts)
+    failed_count = len(failed_blocks)
     log.info(
-        "block_translator: done — %d blocks, %d translated, in=%d out=%d (ct=%s)",
-        len(result_blocks), len(translated_texts), total_input, total_output,
-        chapter_translation_id,
+        "block_translator_v2: done — %d blocks, %d translated, %d failed, in=%d out=%d (ct=%s)",
+        len(result_blocks), translated_count, failed_count,
+        total_input, total_output, chapter_translation_id,
     )
+    if failed_blocks:
+        log.warning(
+            "block_translator_v2: FAILED block indices (fell back to original): %s (ct=%s)",
+            sorted(failed_blocks), chapter_translation_id,
+        )
+
     return result_blocks, total_input, total_output

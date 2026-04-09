@@ -56,6 +56,12 @@ func (s *Server) Router() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 
+	// ── Internal service-to-service endpoints ─────────────────────────────
+	r.Route("/internal", func(r chi.Router) {
+		r.Use(s.requireInternalToken)
+		r.Get("/books/{book_id}/translation-glossary", s.internalTranslationGlossary)
+	})
+
 	r.Route("/v1/glossary", func(r chi.Router) {
 		r.Get("/kinds", s.listKinds)
 		r.Post("/kinds", s.createKind)
@@ -199,4 +205,168 @@ func (s *Server) requireUserID(r *http.Request) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return id, true
+}
+
+// requireInternalToken validates the X-Internal-Token header for service-to-service calls.
+func (s *Server) requireInternalToken(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.cfg.InternalServiceToken != "" && r.Header.Get("X-Internal-Token") != s.cfg.InternalServiceToken {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid internal token"})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// ── internal endpoints ────────────────────────────────────────────────────
+
+// internalTranslationGlossary returns a compact glossary for translation prompts.
+//
+//	GET /internal/books/{book_id}/translation-glossary
+//	Query: target_language (required), chapter_id (optional), max_entries (optional, default 50)
+//
+// Returns array of: {"zh":["name1","alias"],"vi":["translation"],"kind":"character"}
+func (s *Server) internalTranslationGlossary(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	targetLang := r.URL.Query().Get("target_language")
+	if targetLang == "" {
+		writeError(w, http.StatusBadRequest, "GLOSS_BAD_REQUEST", "target_language query param required")
+		return
+	}
+	chapterIDStr := r.URL.Query().Get("chapter_id")
+	maxEntries := 50
+	if v := r.URL.Query().Get("max_entries"); v != "" {
+		if n, err := fmt.Sscanf(v, "%d", &maxEntries); n != 1 || err != nil || maxEntries < 1 {
+			maxEntries = 50
+		}
+		if maxEntries > 200 {
+			maxEntries = 200
+		}
+	}
+
+	ctx := r.Context()
+
+	// Build query: fetch entities with original name + target translation + kind code.
+	// If chapter_id given, prioritize chapter-linked entities (Tier 1),
+	// then fill remaining budget with most-linked entities across book (Tier 0).
+	//
+	// Strategy: UNION of chapter-linked + globally-popular, deduped, limited.
+	var query string
+	var args []any
+
+	if chapterIDStr != "" {
+		chapterID, err := uuid.Parse(chapterIDStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "GLOSS_BAD_REQUEST", "invalid chapter_id")
+			return
+		}
+		// Tier 1 (chapter-linked) + Tier 0 (most-linked across book), deduped
+		query = `
+WITH chapter_entities AS (
+    -- Tier 1: entities linked to this chapter
+    SELECT e.entity_id, 1 AS tier
+    FROM glossary_entities e
+    JOIN chapter_entity_links cel ON cel.entity_id = e.entity_id AND cel.chapter_id = $3
+    WHERE e.book_id = $1 AND e.status = 'active' AND e.deleted_at IS NULL
+),
+popular_entities AS (
+    -- Tier 0: most-linked entities in the book (pinned)
+    SELECT e.entity_id, 0 AS tier
+    FROM glossary_entities e
+    JOIN chapter_entity_links cel ON cel.entity_id = e.entity_id
+    WHERE e.book_id = $1 AND e.status = 'active' AND e.deleted_at IS NULL
+    GROUP BY e.entity_id
+    ORDER BY COUNT(*) DESC
+    LIMIT $4
+),
+all_entities AS (
+    SELECT entity_id, MIN(tier) AS best_tier FROM (
+        SELECT * FROM chapter_entities
+        UNION ALL
+        SELECT * FROM popular_entities
+    ) combined GROUP BY entity_id
+)
+SELECT
+    eav.original_value AS name_zh,
+    COALESCE(at.value, '') AS name_target,
+    ek.code AS kind_code,
+    ae.best_tier
+FROM all_entities ae
+JOIN glossary_entities e ON e.entity_id = ae.entity_id
+JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+LEFT JOIN entity_attribute_values eav ON eav.entity_id = e.entity_id
+    AND eav.attr_def_id = (
+        SELECT attr_def_id FROM attribute_definitions
+        WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1
+    )
+LEFT JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
+    AND at.language_code = $2
+WHERE eav.original_value IS NOT NULL AND eav.original_value != ''
+ORDER BY ae.best_tier ASC, length(eav.original_value) DESC
+LIMIT $4`
+		args = []any{bookID, targetLang, chapterID, maxEntries}
+	} else {
+		// No chapter scoping — return most-linked entities across the book
+		query = `
+SELECT
+    eav.original_value AS name_zh,
+    COALESCE(at.value, '') AS name_target,
+    ek.code AS kind_code,
+    0 AS best_tier
+FROM glossary_entities e
+JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+LEFT JOIN entity_attribute_values eav ON eav.entity_id = e.entity_id
+    AND eav.attr_def_id = (
+        SELECT attr_def_id FROM attribute_definitions
+        WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1
+    )
+LEFT JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
+    AND at.language_code = $2
+LEFT JOIN chapter_entity_links cel ON cel.entity_id = e.entity_id
+WHERE e.book_id = $1 AND e.status = 'active' AND e.deleted_at IS NULL
+    AND eav.original_value IS NOT NULL AND eav.original_value != ''
+GROUP BY e.entity_id, eav.original_value, at.value, ek.code
+ORDER BY COUNT(cel.link_id) DESC, length(eav.original_value) DESC
+LIMIT $3`
+		args = []any{bookID, targetLang, maxEntries}
+	}
+
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "query failed")
+		return
+	}
+	defer rows.Close()
+
+	type glossaryEntry struct {
+		ZH   []string `json:"zh"`
+		Tgt  []string `json:"tgt,omitempty"`
+		Kind string   `json:"kind"`
+	}
+
+	items := make([]map[string]any, 0, maxEntries)
+	for rows.Next() {
+		var nameZH, nameTarget, kindCode string
+		var tier int
+		if err := rows.Scan(&nameZH, &nameTarget, &kindCode, &tier); err != nil {
+			continue
+		}
+		entry := map[string]any{
+			"zh":   []string{nameZH},
+			"kind": kindCode,
+		}
+		if nameTarget != "" {
+			entry[targetLang] = []string{nameTarget}
+		}
+		items = append(items, entry)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "row iteration failed")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, items)
 }

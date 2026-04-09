@@ -7,11 +7,11 @@ Splitting priority:
   3. Any whitespace
   4. Hard cut at max_chars (last resort — should rarely happen)
 
-Token estimation: 1 token ≈ TOKEN_CHAR_RATIO characters.
-This is a conservative estimate (actual ratio varies by model and language):
-  - English / Latin: ~4 chars/token
-  - CJK (Chinese/Japanese/Korean): ~1.5-2 chars/token
-  - Mixed: ~3.5 chars/token (default)
+Token estimation: CJK-aware heuristic.
+  - CJK characters (Chinese, Japanese kanji, Korean): ~1.5 chars/token
+  - Hiragana/Katakana: ~1.5 chars/token
+  - Latin/Cyrillic/other: ~4.0 chars/token
+  - Mixed text: computed per-character for accuracy
 """
 
 # Characters that mark the end of a sentence in any supported language
@@ -26,13 +26,42 @@ _SENTENCE_ENDS = frozenset(
     "⋯"
 )
 
-# Conservative chars-per-token ratio for mixed CJK/Latin text
+# Legacy constant kept for backward compat (split_chapter max_chars calculation)
 TOKEN_CHAR_RATIO = 3.5
+
+# CJK chars per token (conservative — real is ~1.5-2.0, we use 1.5 to overestimate)
+_CJK_CHARS_PER_TOKEN = 1.5
+# Latin/other chars per token
+_LATIN_CHARS_PER_TOKEN = 4.0
+
+
+def _is_cjk(char: str) -> bool:
+    """Return True if char is CJK, Hiragana, Katakana, Hangul, or CJK punctuation."""
+    cp = ord(char)
+    return (
+        0x4E00 <= cp <= 0x9FFF        # CJK Unified Ideographs
+        or 0x3400 <= cp <= 0x4DBF     # CJK Extension A
+        or 0x3000 <= cp <= 0x303F     # CJK Symbols and Punctuation
+        or 0x3040 <= cp <= 0x309F     # Hiragana
+        or 0x30A0 <= cp <= 0x30FF     # Katakana
+        or 0xAC00 <= cp <= 0xD7AF     # Hangul Syllables
+        or 0xFF00 <= cp <= 0xFFEF     # Fullwidth Forms
+        or 0x20000 <= cp <= 0x2A6DF   # CJK Extension B
+    )
 
 
 def estimate_tokens(text: str) -> int:
-    """Rough token count estimate — fast, no model dependency."""
-    return max(1, int(len(text) / TOKEN_CHAR_RATIO))
+    """CJK-aware token count estimate — fast, no model dependency.
+
+    Counts CJK and non-CJK characters separately, applies different
+    chars-per-token ratios. This fixes the ~2.3x underestimation bug
+    for CJK text that caused context window overflow and hallucination.
+    """
+    if not text:
+        return 0
+    cjk = sum(1 for c in text if _is_cjk(c))
+    other = len(text) - cjk
+    return max(1, int(cjk / _CJK_CHARS_PER_TOKEN + other / _LATIN_CHARS_PER_TOKEN))
 
 
 def split_chapter(text: str, max_tokens: int) -> list[str]:
@@ -45,7 +74,12 @@ def split_chapter(text: str, max_tokens: int) -> list[str]:
     if not text:
         return []
 
-    max_chars = max(1, int(max_tokens * TOKEN_CHAR_RATIO))
+    # Use CJK-aware estimate: if text is CJK-heavy, fewer chars fit per token.
+    # Conservative: use _CJK_CHARS_PER_TOKEN for the whole text if >30% CJK.
+    sample = text[:2000]
+    cjk_frac = sum(1 for c in sample if _is_cjk(c)) / max(1, len(sample))
+    chars_per_token = _CJK_CHARS_PER_TOKEN if cjk_frac > 0.3 else _LATIN_CHARS_PER_TOKEN
+    max_chars = max(1, int(max_tokens * chars_per_token))
 
     if len(text) <= max_chars:
         return [text]

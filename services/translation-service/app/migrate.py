@@ -166,6 +166,25 @@ CREATE TABLE IF NOT EXISTS outbox_events (
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_pending
   ON outbox_events(created_at) WHERE published_at IS NULL;
+
+-- V6: Translation Pipeline V2 — cross-chapter memo
+CREATE TABLE IF NOT EXISTS translation_chapter_memos (
+  book_id          UUID NOT NULL,
+  chapter_index    INT NOT NULL,
+  target_language  TEXT NOT NULL,
+  terms_used       JSONB NOT NULL DEFAULT '{}',
+  story_summary    TEXT NOT NULL DEFAULT '',
+  style_notes      TEXT NOT NULL DEFAULT '',
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (book_id, chapter_index, target_language)
+);
+
+-- V6: Translation Pipeline V2 — quality metrics on chunk rows
+ALTER TABLE chapter_translation_chunks
+  ADD COLUMN IF NOT EXISTS validation_errors   TEXT[] DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS validation_warnings TEXT[] DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS glossary_corrections INT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS retry_count         INT NOT NULL DEFAULT 0;
 """
 
 

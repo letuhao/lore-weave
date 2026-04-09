@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-09 (session 28 end — Phase 9 COMPLETE)
-- Updated By: Assistant (Phase 9 complete: 12/12 tasks, translation fixes, V2 pipeline design)
+- Last Updated: 2026-04-09 (session 29 — Translation Pipeline V2 implementation)
+- Updated By: Assistant (V2 pipeline: P1-P8 implemented, 280 tests pass, glossary injection proven)
 - Active Branch: `main`
-- HEAD: `d3eb25f` — fix: P9-09/11 review
+- HEAD: pending commit
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
 
 ---
@@ -33,9 +33,33 @@
 
 **Phase 9: COMPLETE (12/12).** All phases 8A-8H + Phase 9 done. No placeholder tabs remain.
 
-**Next phase: Translation Pipeline V2** — design complete in `docs/03_planning/data_pipelines/`. Implementation priority: P1 (CJK token fix) → P2 (output validation) → P3 (token extraction) → P4 (glossary injection).
+**Translation Pipeline V2: IMPLEMENTED (P1-P8).** All 8 priorities from V2 design doc implemented. Proven with real Ollama gemma3:12b model calls: CJK token fix (2.29x correction), glossary injection (1/6→6/6 name accuracy), output validation, multi-provider token extraction.
 
-**What was done in this session (2026-04-09, session 28):**
+**Next: Integration testing with Docker Compose stack + real chapter translations.**
+
+**What was done in this session (2026-04-09, session 29):**
+
+Translation Pipeline V2 — full implementation (9-phase workflow). PoC first (3 scripts with real AI model calls), then full implementation across 2 services.
+
+| Work item | Files touched | Status |
+| --------- | ------------- | ------ |
+| P1: CJK-aware token estimation | `chunk_splitter.py` | Done |
+| P1b: Expansion-ratio budget + 40-block cap | `block_batcher.py` | Done |
+| P2: Output validation + retry (2 retries with correction prompt) | `session_translator.py` | Done |
+| P3: Multi-provider token extraction (OpenAI/Anthropic/Ollama/LM Studio) | `session_translator.py` | Done |
+| P4: Glossary context injection (tiered, scored, JSONL) | `glossary_client.py` (new), `session_translator.py` | Done |
+| P4b: Internal glossary endpoint | `glossary-service/server.go` | Done |
+| P5: Rolling context between batches | `session_translator.py` | Done |
+| P6: Auto-correct post-processing (source term replacement) | `glossary_client.py` | Done |
+| P7: Cross-chapter memo table + load/save | `migrate.py`, `chapter_worker.py` | Done |
+| P8: Quality metrics columns (validation_errors, retry_count, etc.) | `migrate.py` | Done |
+| Config: glossary-service URL | `config.py`, `docker-compose.yml` | Done |
+| Tests: 31 new V2 tests (280 total pass) | 4 test files | Done |
+| PoC: 3 real AI model scripts | `poc_v2_real.py`, `poc_v2_glossary.py` | Done |
+
+**9-phase workflow followed:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
+
+**What was done in previous session (2026-04-09, session 28):**
 
 P9-08a Wiki article CRUD + revisions — backend implementation in glossary-service. 2 tables (wiki_articles, wiki_revisions), 9 endpoints, wiki_handler.go (new), migration, routes. Review: 3 fixes (spoiler init, rows.Err checks). Integration tests: 75/75 pass.
 
