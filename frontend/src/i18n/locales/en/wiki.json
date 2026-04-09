@@ -24,5 +24,6 @@
   "wikiLink": "Wiki link",
   "redLinkHint": "Red links = pages that don't exist yet",
   "spoilerWarning": "This article contains spoilers",
-  "noContent": "This article has no content yet."
+  "noContent": "This article has no content yet.",
+  "edit": "Edit"
 }

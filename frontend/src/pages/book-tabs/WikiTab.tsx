@@ -262,7 +262,7 @@ function WikiArticleView({ bookId, articleId }: { bookId: string; articleId: str
                 className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground hover:brightness-110"
               >
                 <Pencil className="h-3 w-3" />
-                Edit
+                {t('edit')}
               </button>
               <button className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium hover:bg-secondary">
                 <Clock className="h-3 w-3" />

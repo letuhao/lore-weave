@@ -1,13 +1,13 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Save, Eye, EyeOff, Clock, CheckCircle2, XCircle, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Save, Eye, EyeOff, CheckCircle2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { wikiApi } from '@/features/wiki/api';
 import type { WikiRevisionListItem, WikiSuggestionResp, WikiInfoboxAttr } from '@/features/wiki/types';
-import { TiptapEditor, type TiptapEditorHandle } from '@/components/editor/TiptapEditor';
+import { TiptapEditor } from '@/components/editor/TiptapEditor';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { ConfirmDialog } from '@/components/shared';
 import { cn } from '@/lib/utils';
@@ -59,11 +59,21 @@ function RevisionPanel({ bookId, articleId }: { bookId: string; articleId: strin
   const queryClient = useQueryClient();
   const [restoreTarget, setRestoreTarget] = useState<WikiRevisionListItem | null>(null);
 
-  const { data } = useQuery({
+  const { data, isLoading: revsLoading } = useQuery({
     queryKey: ['wiki-revisions', bookId, articleId],
     queryFn: () => wikiApi.listRevisions(bookId, articleId, { limit: 50 }, accessToken!),
     enabled: !!accessToken,
   });
+
+  if (revsLoading) {
+    return (
+      <div className="p-4 space-y-2">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-12 w-full" />
+        <Skeleton className="h-12 w-full" />
+      </div>
+    );
+  }
 
   const handleRestore = async () => {
     if (!restoreTarget || !accessToken) return;
@@ -139,11 +149,20 @@ function SuggestionPanel({ bookId, articleId }: { bookId: string; articleId: str
   const { t } = useTranslation('wiki');
   const queryClient = useQueryClient();
 
-  const { data } = useQuery({
+  const { data, isLoading: sugsLoading } = useQuery({
     queryKey: ['wiki-suggestions', bookId, 'pending'],
     queryFn: () => wikiApi.listSuggestions(bookId, { status: 'pending', limit: 50 }, accessToken!),
     enabled: !!accessToken,
   });
+
+  if (sugsLoading) {
+    return (
+      <div className="p-4 space-y-2">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-16 w-full" />
+      </div>
+    );
+  }
 
   const handleReview = async (sug: WikiSuggestionResp, action: 'accept' | 'reject') => {
     if (!accessToken) return;
@@ -211,9 +230,9 @@ export function WikiEditorPage() {
   const { t } = useTranslation('wiki');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const editorRef = useRef<TiptapEditorHandle>(null);
 
   const [body, setBody] = useState<unknown>(null);
+  const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [rightPanel, setRightPanel] = useState<'infobox' | 'history' | 'suggestions'>('infobox');
 
@@ -222,6 +241,27 @@ export function WikiEditorPage() {
     queryFn: () => wikiApi.getArticle(bookId, articleId, accessToken!),
     enabled: !!accessToken && !!articleId,
   });
+
+  // Sync editor body when article data changes (e.g., after restore)
+  useEffect(() => {
+    if (article) {
+      setBody(article.body_json);
+      setDirty(false);
+    }
+  }, [article]);
+
+  // Warn on unsaved changes before unload
+  useEffect(() => {
+    if (!dirty) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [dirty]);
+
+  const handleEditorUpdate = useCallback((json: unknown) => {
+    setBody(json);
+    setDirty(true);
+  }, []);
 
   const handleSave = useCallback(async (summary?: string) => {
     if (!accessToken || !article || body === null) return;
@@ -232,6 +272,7 @@ export function WikiEditorPage() {
         summary: summary || 'Updated article',
       }, accessToken);
       toast.success('Saved');
+      setDirty(false);
       queryClient.invalidateQueries({ queryKey: ['wiki-article', bookId, articleId] });
       queryClient.invalidateQueries({ queryKey: ['wiki-revisions', bookId, articleId] });
       queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
@@ -328,9 +369,8 @@ export function WikiEditorPage() {
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-[800px] px-10 py-8">
             <TiptapEditor
-              ref={editorRef}
               content={article.body_json}
-              onUpdate={(json: unknown) => setBody(json)}
+              onUpdate={handleEditorUpdate}
             />
           </div>
         </div>

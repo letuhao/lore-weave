@@ -294,8 +294,13 @@ func (s *Server) createWikiArticle(w http.ResponseWriter, r *http.Request) {
 		status = *req.Status
 	}
 
+	const maxBodySize = 2 * 1024 * 1024 // 2 MB
 	bodyJSON := json.RawMessage("{}")
 	if req.BodyJSON != nil && len(req.BodyJSON) > 0 {
+		if len(req.BodyJSON) > maxBodySize {
+			writeError(w, http.StatusRequestEntityTooLarge, "WIKI_BODY_TOO_LARGE", "body_json exceeds 2 MB limit")
+			return
+		}
 		bodyJSON = req.BodyJSON
 	}
 
@@ -436,6 +441,13 @@ func (s *Server) patchWikiArticle(w http.ResponseWriter, r *http.Request) {
 			}
 			spoilerUUIDs = append(spoilerUUIDs, id)
 		}
+	}
+
+	// Validate body size
+	const maxBodySize = 2 * 1024 * 1024 // 2 MB
+	if req.BodyJSON != nil && len(req.BodyJSON) > maxBodySize {
+		writeError(w, http.StatusRequestEntityTooLarge, "WIKI_BODY_TOO_LARGE", "body_json exceeds 2 MB limit")
+		return
 	}
 
 	// Build dynamic UPDATE
@@ -1400,6 +1412,11 @@ func (s *Server) submitWikiSuggestion(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.DiffJSON == nil || len(req.DiffJSON) == 0 {
 		writeError(w, http.StatusUnprocessableEntity, "WIKI_MISSING_DIFF", "diff_json is required")
+		return
+	}
+	const maxDiffSize = 2 * 1024 * 1024 // 2 MB
+	if len(req.DiffJSON) > maxDiffSize {
+		writeError(w, http.StatusRequestEntityTooLarge, "WIKI_BODY_TOO_LARGE", "diff_json exceeds 2 MB limit")
 		return
 	}
 
