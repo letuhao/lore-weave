@@ -3,6 +3,7 @@ import { Save, AlertTriangle, Eye, EyeOff, Mail, CheckCircle } from 'lucide-reac
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
+import { ConfirmDialog } from '@/components/shared';
 import { accountApi, type Profile } from './api';
 
 export function AccountTab() {
@@ -11,6 +12,20 @@ export function AccountTab() {
   const [loading, setLoading] = useState(true);
   const [displayName, setDisplayName] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Account deletion
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const handleDeleteAccount = async () => {
+    if (!accessToken) return;
+    try {
+      await accountApi.deleteAccount(accessToken);
+      toast.success('Account deleted');
+      localStorage.removeItem('lw_auth');
+      window.location.href = '/login';
+    } catch {
+      toast.error('Failed to delete account');
+    }
+  };
 
   // Password
   const [showPwForm, setShowPwForm] = useState(false);
@@ -274,15 +289,25 @@ export function AccountTab() {
             <p className="mt-0.5 text-[11px] text-muted-foreground">Permanently delete your account and all data. This cannot be undone.</p>
           </div>
           <button
-            disabled
-            className="flex items-center gap-1.5 rounded-md border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive opacity-50"
-            title="Account deletion is not yet available"
+            onClick={() => setDeleteOpen(true)}
+            className="flex items-center gap-1.5 rounded-md border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10"
           >
             <AlertTriangle className="h-3 w-3" />
             Delete Account
           </button>
         </div>
       </div>
+      {deleteOpen && (
+        <ConfirmDialog
+          open
+          onOpenChange={(v) => { if (!v) setDeleteOpen(false); }}
+          title="Delete Account"
+          description="This will permanently delete your account, revoke all sessions, and log you out. This cannot be undone."
+          confirmLabel="Delete My Account"
+          variant="destructive"
+          onConfirm={handleDeleteAccount}
+        />
+      )}
     </div>
   );
 }

@@ -1146,3 +1146,57 @@ func (s *Server) internalGetUserProfile(w http.ResponseWriter, r *http.Request) 
 	}
 	writeJSON(w, http.StatusOK, m)
 }
+
+func (s *Server) deleteAccount(w http.ResponseWriter, r *http.Request) {
+	claims, err := s.parseAccess(r)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, jwtErrorCode(err), "invalid access token")
+		return
+	}
+	uid, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, "AUTH_TOKEN_INVALID", "invalid subject")
+		return
+	}
+
+	ctx := r.Context()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		slog.Error("deleteAccount tx", "error", err)
+		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL", "internal error")
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	// Soft-delete: mark account as deleted
+	tag, err := tx.Exec(ctx,
+		`UPDATE users SET account_status = 'deleted', updated_at = now() WHERE id = $1 AND account_status = 'active'`,
+		uid)
+	if err != nil {
+		slog.Error("deleteAccount update", "error", err)
+		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL", "internal error")
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		writeErr(w, http.StatusNotFound, "AUTH_NOT_FOUND", "account not found or already deleted")
+		return
+	}
+
+	// Revoke all sessions
+	if _, err := tx.Exec(ctx,
+		`UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`,
+		uid); err != nil {
+		slog.Error("deleteAccount sessions", "error", err)
+		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL", "internal error")
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		slog.Error("deleteAccount commit", "error", err)
+		writeErr(w, http.StatusInternalServerError, "AUTH_INTERNAL", "internal error")
+		return
+	}
+
+	slog.Info("account deleted", "user_id", uid)
+	w.WriteHeader(http.StatusNoContent)
+}

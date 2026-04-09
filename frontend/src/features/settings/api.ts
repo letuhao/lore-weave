@@ -29,6 +29,10 @@ export const accountApi = {
     });
   },
 
+  deleteAccount(token: string) {
+    return apiJson<void>('/v1/account', { method: 'DELETE', token });
+  },
+
   requestVerifyEmail(token: string) {
     return apiJson<void>('/v1/auth/verify-email/request', { method: 'POST', token });
   },

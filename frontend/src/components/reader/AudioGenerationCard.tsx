@@ -1,29 +1,58 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import type { SpeakableBlock, AudioSource } from '@/lib/audio-utils';
 
 interface AudioGenerationCardProps {
   blocks: SpeakableBlock[];
   aiSegments?: Map<number, string>;
+  /** Map of block_index → source_text_hash from stored audio segments */
+  segmentHashes?: Map<number, string>;
 }
 
 type GenStatus = 'idle' | 'generating' | 'done';
+
+/** SHA-256 hash matching the book-service textHash() function */
+async function textHash(text: string): Promise<string> {
+  const data = new TextEncoder().encode(text);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 /**
  * Shows generation progress, saved audio status, and content drift warnings.
  * Rendered inside AudioOverview or TTSSettings.
  */
-export function AudioGenerationCard({ blocks, aiSegments }: AudioGenerationCardProps) {
+export function AudioGenerationCard({ blocks, aiSegments, segmentHashes }: AudioGenerationCardProps) {
   const [genStatus, setGenStatus] = useState<GenStatus>('idle');
   const [genProgress, setGenProgress] = useState(0);
+  const [driftIndices, setDriftIndices] = useState<number[]>([]);
 
   const textBlocks = blocks.filter((b) => b.type === 'text');
   const withAI = textBlocks.filter((b) => aiSegments?.has(b.index));
   const withoutAI = textBlocks.filter((b) => !aiSegments?.has(b.index) && !b.audioUrl);
 
-  // Drift detection: blocks that have AI audio but text may have changed
-  // (In a full implementation, compare source_text_hash from the segment)
-  const driftCount: number = 0; // Placeholder — requires fetching segment hashes
+  // Drift detection: compare current block text hash with stored segment hash
+  useMemo(() => {
+    if (!segmentHashes || segmentHashes.size === 0) {
+      setDriftIndices([]);
+      return;
+    }
+    const check = async () => {
+      const drifted: number[] = [];
+      for (const block of withAI) {
+        const storedHash = segmentHashes.get(block.index);
+        if (!storedHash || !block.text) continue;
+        const currentHash = await textHash(block.text);
+        if (currentHash !== storedHash) {
+          drifted.push(block.index);
+        }
+      }
+      setDriftIndices(drifted);
+    };
+    check();
+  }, [segmentHashes, withAI]);
+
+  const driftCount = driftIndices.length;
 
   if (textBlocks.length === 0) return null;
 

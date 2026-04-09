@@ -15,6 +15,7 @@ import { TranslationTab } from '@/pages/book-tabs/TranslationTab';
 import { GlossaryTab } from '@/pages/book-tabs/GlossaryTab';
 import { SettingsTab } from '@/pages/book-tabs/SettingsTab';
 import { WikiTab } from '@/pages/book-tabs/WikiTab';
+import { SharingTab } from '@/pages/book-tabs/SharingTab';
 
 const tabs = [
   { key: '', label: 'Chapters' },
@@ -157,8 +158,7 @@ function BookTabContent({ bookId, book, activeTab, onReload }: {
   bookId: string; book: Book; activeTab: string; onReload: () => void;
 }) {
   const placeholders: Record<string, string> = {
-    '/sharing': 'Sharing settings — coming in P3-20.',
-    // '/settings': now rendered as SettingsTab below
+    // all tabs now have real components
   };
 
   const placeholder = placeholders[activeTab];
@@ -186,6 +186,11 @@ function BookTabContent({ bookId, book, activeTab, onReload }: {
       {visited.has('/wiki') && (
         <div style={{ display: activeTab === '/wiki' ? undefined : 'none' }}>
           <WikiTab bookId={bookId} />
+        </div>
+      )}
+      {visited.has('/sharing') && (
+        <div style={{ display: activeTab === '/sharing' ? undefined : 'none' }}>
+          <SharingTab bookId={bookId} />
         </div>
       )}
       {visited.has('/settings') && (

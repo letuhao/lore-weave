@@ -89,6 +89,7 @@ func (s *Server) Router() http.Handler {
 
 		r.Get("/me/preferences", http.HandlerFunc(s.getPreferences))
 		r.Patch("/me/preferences", http.HandlerFunc(s.patchPreferences))
+		r.Delete("/account", http.HandlerFunc(s.deleteAccount))
 
 		// Public user profiles + follow system
 		r.Route("/users/{user_id}", func(r chi.Router) {
