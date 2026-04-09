@@ -1,11 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useDeferredValue } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Search, BookOpen, Clock, ChevronRight } from 'lucide-react';
+import { Search, BookOpen, Clock } from 'lucide-react';
 import type { JSONContent } from '@tiptap/react';
 import { useAuth } from '@/auth';
 import { wikiApi } from '@/features/wiki/api';
-import type { WikiArticleListItem, WikiArticleDetail, WikiInfoboxAttr } from '@/features/wiki/types';
+import type { WikiArticleListItem, WikiInfoboxAttr } from '@/features/wiki/types';
 import { ContentRenderer } from '@/components/reader/ContentRenderer';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { EmptyState } from '@/components/shared';
@@ -18,7 +18,6 @@ function WikiInfobox({ attrs, kindName, displayName }: {
   kindName: string;
   displayName: string;
 }) {
-  const { t } = useTranslation('wiki');
   const visibleAttrs = attrs.filter(a => a.original_value || a.translations.length > 0);
   if (visibleAttrs.length === 0) return null;
 
@@ -307,13 +306,14 @@ export function WikiTab({ bookId }: { bookId: string }) {
   const { accessToken } = useAuth();
   const { t } = useTranslation('wiki');
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
   const [kindFilter, setKindFilter] = useState('');
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['wiki-articles', bookId, search, kindFilter],
+    queryKey: ['wiki-articles', bookId, deferredSearch, kindFilter],
     queryFn: () => wikiApi.listArticles(bookId, {
-      search: search || undefined,
+      search: deferredSearch || undefined,
       kind_code: kindFilter || undefined,
       limit: 100,
     }, accessToken!),
