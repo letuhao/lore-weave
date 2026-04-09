@@ -4,7 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
 import { translationApi, type BookTranslationSettings } from '@/features/translation/api';
-import { getLanguageName } from '@/lib/languages';
+import { getLanguageName, LANGUAGE_NAMES } from '@/lib/languages';
 import { cn } from '@/lib/utils';
 
 interface TranslateModalProps {
@@ -22,6 +22,7 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
 
   const [selectedChapters, setSelectedChapters] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
+  const [selectedLang, setSelectedLang] = useState('');
 
   useEffect(() => {
     if (!open || !accessToken) return;
@@ -33,6 +34,7 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
       .then(([chs, bkSettings]) => {
         setChapters(chs.items);
         setSettings(bkSettings);
+        setSelectedLang(bkSettings?.target_language || '');
         setSelectedChapters(new Set(chs.items.map((c) => c.chapter_id)));
       })
       .catch((e) => toast.error((e as Error).message))
@@ -56,8 +58,22 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
     }
   };
 
-  const targetLang = settings?.target_language;
+  const handleLangChange = async (lang: string) => {
+    setSelectedLang(lang);
+    if (!accessToken || !lang) return;
+    try {
+      const updated = await translationApi.putBookSettings(accessToken, bookId, { target_language: lang });
+      setSettings(updated);
+    } catch {
+      toast.error('Failed to save language setting');
+    }
+  };
+
+  const targetLang = selectedLang || settings?.target_language;
   const hasModel = !!settings?.model_ref;
+
+  // Available languages: exclude source language of the book
+  const availableLangs = Object.entries(LANGUAGE_NAMES);
 
   const handleSubmit = async () => {
     if (!accessToken || !targetLang || selectedChapters.size === 0 || !hasModel) return;
@@ -102,32 +118,24 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
             </div>
           ) : (
             <div className="px-5 py-4 space-y-4">
-              {/* Translation settings summary */}
-              <div className="rounded-md border bg-card px-4 py-3 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Translation Settings</span>
-                </div>
-                <div className="flex items-center gap-4 text-xs">
-                  <span>
-                    <span className="text-muted-foreground">Language: </span>
-                    {targetLang ? (
-                      <span className="font-medium">{getLanguageName(targetLang)} ({targetLang})</span>
-                    ) : (
-                      <span className="text-amber-400">Not configured</span>
-                    )}
-                  </span>
-                  <span>
-                    <span className="text-muted-foreground">Model: </span>
-                    {hasModel ? (
-                      <span className="font-medium">{settings?.model_ref?.slice(0, 20)}</span>
-                    ) : (
-                      <span className="text-amber-400">Not configured</span>
-                    )}
-                  </span>
-                </div>
-                {(!targetLang || !hasModel) && (
-                  <p className="text-[10px] text-amber-400 mt-1">
-                    Configure target language and model in Translation Settings (P3-04) first.
+              {/* Target language selector */}
+              <div className="rounded-md border bg-card px-4 py-3 space-y-2">
+                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block">
+                  Target Language
+                </label>
+                <select
+                  value={selectedLang}
+                  onChange={(e) => void handleLangChange(e.target.value)}
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm font-medium focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+                >
+                  <option value="">Select a language...</option>
+                  {availableLangs.map(([code, name]) => (
+                    <option key={code} value={code}>{name} ({code})</option>
+                  ))}
+                </select>
+                {!hasModel && targetLang && (
+                  <p className="text-[10px] text-amber-400">
+                    No translation model configured. Set a model in Settings → Translation first.
                   </p>
                 )}
               </div>

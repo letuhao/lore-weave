@@ -67,7 +67,8 @@ async def create_job(
     async with httpx.AsyncClient(timeout=10) as client:
         try:
             r = await client.get(
-                f"{app_settings.book_service_internal_url}/internal/books/{book_id}/projection"
+                f"{app_settings.book_service_internal_url}/internal/books/{book_id}/projection",
+                headers={"X-Internal-Token": app_settings.internal_service_token},
             )
         except httpx.RequestError:
             raise HTTPException(status_code=502, detail={"code": "TRANSL_BOOK_SERVICE_UNAVAILABLE", "message": "Book service unavailable"})
