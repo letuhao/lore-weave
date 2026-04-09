@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-09 (session 28 — P9-08a + P9-08b + P9-08c done)
-- Updated By: Assistant (P9-08a wiki CRUD, P9-08b settings + public, P9-08c community suggestions)
+- Last Updated: 2026-04-09 (session 28 — P9-08a/b/c/d done)
+- Updated By: Assistant (P9-08a-d wiki BE + FE reader)
 - Active Branch: `main`
-- HEAD: pending commit — P9-08c community suggestions
+- HEAD: pending commit — P9-08d wiki FE reader tab
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
 
 ---
@@ -31,7 +31,7 @@
 
 ## Current Active Work
 
-**Phase:** All phases 8A-8H COMPLETE. Phase 9 in progress (P9-01..P9-07, P9-10 done — 8/12). P9-08a + P9-08b + P9-08c done (all wiki BE complete). 2 remaining sub-phases: P9-08d (wiki FE reader), P9-08e (wiki FE editor). Also remaining: P9-09, P9-11, P9-12.
+**Phase:** All phases 8A-8H COMPLETE. Phase 9 in progress (P9-01..P9-07, P9-10 done — 8/12). P9-08a/b/c/d done (wiki BE complete + FE reader). 1 remaining sub-phase: P9-08e (wiki FE editor). Also remaining: P9-09, P9-11, P9-12.
 
 **What was done in this session (2026-04-09, session 28):**
 
@@ -72,6 +72,19 @@ P9-08c Community suggestions — glossary-service. 1 table (wiki_suggestions), 3
 | Integration tests: 26 new (T63-T80), 122 total | `infra/test-wiki.sh` | Done |
 
 **9-phase workflow followed for P9-08c:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
+
+P9-08d Wiki FE reader tab — frontend. WikiTab component (3-column: sidebar + article + ToC), API client, types, i18n 4 languages. Wired into BookDetailPage tab system.
+
+| Work item | Files touched | Status |
+| --------- | ------------- | ------ |
+| Types: WikiArticleListItem, WikiArticleDetail, WikiInfoboxAttr, etc. | `features/wiki/types.ts` (new) | Done |
+| API client: listArticles, getArticle, listRevisions | `features/wiki/api.ts` (new) | Done |
+| WikiTab: sidebar (grouped by kind, search, filter), article view (ContentRenderer + infobox), ToC | `pages/book-tabs/WikiTab.tsx` (new) | Done |
+| i18n: 4 languages (en, vi, ja, zh-TW) | `i18n/locales/*/wiki.json` (4 new) | Done |
+| i18n registration | `i18n/index.ts` | Done |
+| BookDetailPage: wire WikiTab, remove placeholder | `pages/BookDetailPage.tsx` | Done |
+
+**9-phase workflow followed for P9-08d:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
 **What was done in previous session (2026-04-08, session 27):**
 
