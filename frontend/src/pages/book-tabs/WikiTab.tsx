@@ -340,26 +340,34 @@ function WikiArticleView({ bookId, articleId }: { bookId: string; articleId: str
 function CreateArticleDialog({ bookId, open, onClose }: {
   bookId: string;
   open: boolean;
-  onClose: (result?: string) => void;
+  onClose: (articleId?: string) => void;
 }) {
   const { accessToken } = useAuth();
   const { t } = useTranslation('wiki');
   const [entitySearch, setEntitySearch] = useState('');
   const deferredEntitySearch = useDeferredValue(entitySearch);
   const [creating, setCreating] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const pageSize = 20;
 
-  // Fetch entities that could have wiki articles
-  const { data: entityData } = useQuery({
-    queryKey: ['glossary-entity-names', bookId, deferredEntitySearch],
-    queryFn: () => glossaryApi.listEntityNames(bookId, accessToken!),
+  // Server-side search + pagination via listEntities
+  const { data: entityData, isLoading: entitiesLoading } = useQuery({
+    queryKey: ['glossary-entities-picker', bookId, deferredEntitySearch, offset],
+    queryFn: () => glossaryApi.listEntities(bookId, {
+      searchQuery: deferredEntitySearch,
+      kindCodes: [],
+      status: 'all',
+      limit: pageSize,
+      offset,
+    }, accessToken!),
     enabled: !!accessToken && open,
-    staleTime: 30_000,
+    staleTime: 15_000,
   });
 
-  // Fetch existing wiki articles to filter out entities that already have one
+  // Fetch existing wiki article entity_ids to mark which already have articles
   const { data: wikiData } = useQuery({
-    queryKey: ['wiki-articles', bookId, '', ''],
-    queryFn: () => wikiApi.listArticles(bookId, { limit: 200 }, accessToken!),
+    queryKey: ['wiki-articles-ids', bookId],
+    queryFn: () => wikiApi.listArticles(bookId, { limit: 500 }, accessToken!),
     enabled: !!accessToken && open,
     staleTime: 30_000,
   });
@@ -369,13 +377,10 @@ function CreateArticleDialog({ bookId, open, onClose }: {
     [wikiData],
   );
 
-  const availableEntities = useMemo(() => {
-    const all = entityData ?? [];
-    const filtered = all.filter(e => !existingEntityIds.has(e.entity_id));
-    if (!deferredEntitySearch) return filtered;
-    const q = deferredEntitySearch.toLowerCase();
-    return filtered.filter(e => e.display_name.toLowerCase().includes(q));
-  }, [entityData, existingEntityIds, deferredEntitySearch]);
+  const entities = entityData?.items ?? [];
+  const totalEntities = entityData?.total ?? 0;
+  const hasMore = offset + pageSize < totalEntities;
+  const hasPrev = offset > 0;
 
   const handleCreate = async (entityId: string, kindCode: string) => {
     if (!accessToken || creating) return;
@@ -397,56 +402,125 @@ function CreateArticleDialog({ bookId, open, onClose }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => onClose()}>
-      <div className="w-[420px] rounded-lg border bg-card shadow-xl" onClick={e => e.stopPropagation()}>
-        <div className="border-b px-4 py-3">
+      <div className="w-[560px] rounded-lg border bg-card shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="border-b px-5 py-3">
           <h3 className="text-sm font-semibold">{t('createArticle')}</h3>
           <p className="text-[11px] text-muted-foreground">{t('selectEntity')}</p>
         </div>
-        <div className="px-4 py-2">
+
+        {/* Search */}
+        <div className="border-b px-5 py-2.5">
           <div className="relative">
-            <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
-              className="h-8 w-full rounded-md border bg-background pl-7 pr-2 text-xs focus:border-ring focus:outline-none"
-              placeholder="Search entities..."
+              className="h-9 w-full rounded-md border bg-background pl-8 pr-3 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+              placeholder="Search entities by name..."
               value={entitySearch}
-              onChange={e => setEntitySearch(e.target.value)}
+              onChange={e => { setEntitySearch(e.target.value); setOffset(0); }}
               autoFocus
             />
           </div>
         </div>
-        <div className="max-h-[300px] overflow-y-auto px-2 pb-2">
-          {availableEntities.length === 0 ? (
-            <div className="px-4 py-6 text-center">
-              <p className="text-xs text-muted-foreground">
-                {entityData?.length === 0
+
+        {/* Entity list */}
+        <div className="max-h-[420px] min-h-[200px] overflow-y-auto">
+          {entitiesLoading ? (
+            <div className="space-y-1 p-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-10 w-full rounded" />
+              ))}
+            </div>
+          ) : entities.length === 0 ? (
+            <div className="px-5 py-10 text-center">
+              <p className="text-sm text-muted-foreground">
+                {totalEntities === 0 && !deferredEntitySearch
                   ? 'No glossary entities yet.'
-                  : 'All active entities already have wiki articles.'}
+                  : deferredEntitySearch
+                    ? 'No entities match your search.'
+                    : 'No entities found.'}
               </p>
-              <p className="mt-2 text-[11px] text-muted-foreground">
-                Create new entities in the <strong>Glossary</strong> tab first, then come back here.
-              </p>
-              <Link
-                to={`/books/${bookId}/glossary`}
-                onClick={() => onClose()}
-                className="mt-3 inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary"
-              >
-                Go to Glossary
-              </Link>
+              {totalEntities === 0 && !deferredEntitySearch && (
+                <>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Create entities in the <strong>Glossary</strong> tab first, then come back here.
+                  </p>
+                  <Link
+                    to={`/books/${bookId}/glossary`}
+                    onClick={() => onClose()}
+                    className="mt-3 inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary"
+                  >
+                    Go to Glossary
+                  </Link>
+                </>
+              )}
             </div>
           ) : (
-            availableEntities.map(e => (
-              <button
-                key={e.entity_id}
-                onClick={() => handleCreate(e.entity_id, e.kind_code ?? '')}
-                disabled={creating}
-                className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs transition-colors hover:bg-secondary disabled:opacity-50"
-              >
-                <span className="font-medium">{e.display_name || 'Untitled'}</span>
-                <span className="ml-auto text-[10px] text-muted-foreground">{e.kind_name}</span>
-              </button>
-            ))
+            <div className="p-1.5">
+              {entities.map(e => {
+                const hasArticle = existingEntityIds.has(e.entity_id);
+                return (
+                  <button
+                    key={e.entity_id}
+                    onClick={() => handleCreate(e.entity_id, e.kind.code)}
+                    disabled={creating || hasArticle}
+                    className={cn(
+                      'flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors',
+                      hasArticle
+                        ? 'cursor-not-allowed opacity-40'
+                        : 'hover:bg-secondary',
+                    )}
+                  >
+                    <span
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-medium"
+                      style={{ backgroundColor: e.kind.color + '18', color: e.kind.color }}
+                    >
+                      {e.kind.icon || e.kind.name.charAt(0)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">
+                        {e.display_name || 'Untitled'}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {e.kind.name}
+                        {e.status === 'draft' && ' · Draft'}
+                      </div>
+                    </div>
+                    {hasArticle && (
+                      <span className="shrink-0 text-[10px] text-muted-foreground">
+                        Has article
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           )}
         </div>
+
+        {/* Pagination footer */}
+        {totalEntities > 0 && (
+          <div className="flex items-center justify-between border-t px-5 py-2.5">
+            <span className="text-[11px] text-muted-foreground">
+              {offset + 1}–{Math.min(offset + pageSize, totalEntities)} of {totalEntities} entities
+            </span>
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => setOffset(Math.max(0, offset - pageSize))}
+                disabled={!hasPrev}
+                className="rounded border px-2.5 py-1 text-[11px] font-medium hover:bg-secondary disabled:opacity-30"
+              >
+                Prev
+              </button>
+              <button
+                onClick={() => setOffset(offset + pageSize)}
+                disabled={!hasMore}
+                className="rounded border px-2.5 py-1 text-[11px] font-medium hover:bg-secondary disabled:opacity-30"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
