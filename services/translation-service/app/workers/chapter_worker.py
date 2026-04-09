@@ -77,7 +77,8 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
         async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=5.0)) as client:
             r = await client.get(
                 f"{settings.book_service_internal_url}"
-                f"/internal/books/{msg['book_id']}/chapters/{chapter_id}"
+                f"/internal/books/{msg['book_id']}/chapters/{chapter_id}",
+                headers={"X-Internal-Token": settings.internal_service_token},
             )
     except httpx.RequestError as exc:
         log.error("chapter %s: book-service request failed: %s", chapter_id, exc)

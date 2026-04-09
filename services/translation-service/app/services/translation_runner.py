@@ -42,7 +42,8 @@ async def run_translation_job(job_id: UUID, user_id: str, pool: asyncpg.Pool) ->
                 # Fetch chapter from book-service
                 try:
                     r = await client.get(
-                        f"{settings.book_service_internal_url}/internal/books/{job['book_id']}/chapters/{chapter_id}"
+                        f"{settings.book_service_internal_url}/internal/books/{job['book_id']}/chapters/{chapter_id}",
+                        headers={"X-Internal-Token": settings.internal_service_token},
                     )
                 except httpx.RequestError as e:
                     await _mark_chapter_failed(db, job_id, chapter_id, "network_error")
