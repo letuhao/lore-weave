@@ -1,6 +1,6 @@
 import { useState, useMemo, useDeferredValue } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Search, BookOpen, Clock, Pencil, Plus, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
@@ -340,7 +340,7 @@ function WikiArticleView({ bookId, articleId }: { bookId: string; articleId: str
 function CreateArticleDialog({ bookId, open, onClose }: {
   bookId: string;
   open: boolean;
-  onClose: (articleId?: string) => void;
+  onClose: (result?: string) => void;
 }) {
   const { accessToken } = useAuth();
   const { t } = useTranslation('wiki');
@@ -416,11 +416,23 @@ function CreateArticleDialog({ bookId, open, onClose }: {
         </div>
         <div className="max-h-[300px] overflow-y-auto px-2 pb-2">
           {availableEntities.length === 0 ? (
-            <p className="px-2 py-4 text-center text-xs text-muted-foreground">
-              {entityData?.length === 0
-                ? 'No glossary entities yet. Create entities in the Glossary tab first.'
-                : t('generatedNone')}
-            </p>
+            <div className="px-4 py-6 text-center">
+              <p className="text-xs text-muted-foreground">
+                {entityData?.length === 0
+                  ? 'No glossary entities yet.'
+                  : 'All active entities already have wiki articles.'}
+              </p>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Create new entities in the <strong>Glossary</strong> tab first, then come back here.
+              </p>
+              <Link
+                to={`/books/${bookId}/glossary`}
+                onClick={() => onClose()}
+                className="mt-3 inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary"
+              >
+                Go to Glossary
+              </Link>
+            </div>
           ) : (
             availableEntities.map(e => (
               <button
@@ -445,6 +457,7 @@ function CreateArticleDialog({ bookId, open, onClose }: {
 export function WikiTab({ bookId }: { bookId: string }) {
   const { accessToken } = useAuth();
   const { t } = useTranslation('wiki');
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
