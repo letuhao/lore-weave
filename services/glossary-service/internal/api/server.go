@@ -263,7 +263,7 @@ func (s *Server) internalTranslationGlossary(w http.ResponseWriter, r *http.Requ
 			writeError(w, http.StatusBadRequest, "GLOSS_BAD_REQUEST", "invalid chapter_id")
 			return
 		}
-		// Tier 1 (chapter-linked) + Tier 0 (most-linked across book), deduped
+		// Tier 1 (chapter-linked) + Tier 0 (most-linked) + Tier 2 (all active), deduped
 		query = `
 WITH chapter_entities AS (
     -- Tier 1: entities linked to this chapter
@@ -282,11 +282,20 @@ popular_entities AS (
     ORDER BY COUNT(*) DESC
     LIMIT $4
 ),
+fallback_entities AS (
+    -- Tier 2: all active entities (fallback when no chapter links exist)
+    SELECT e.entity_id, 2 AS tier
+    FROM glossary_entities e
+    WHERE e.book_id = $1 AND e.status = 'active' AND e.deleted_at IS NULL
+    LIMIT $4
+),
 all_entities AS (
     SELECT entity_id, MIN(tier) AS best_tier FROM (
         SELECT * FROM chapter_entities
         UNION ALL
         SELECT * FROM popular_entities
+        UNION ALL
+        SELECT * FROM fallback_entities
     ) combined GROUP BY entity_id
 )
 SELECT
