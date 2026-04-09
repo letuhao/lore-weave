@@ -3,6 +3,15 @@
 > **Status:** Design proposal
 > **Author:** Session 28 (2026-04-09)
 > **Problem:** Current pipeline has zero context awareness, wrong token math, no output validation, and no glossary integration. LLM hallucinations go undetected.
+>
+> **Scope:** This pipeline is TRANSLATION ONLY. It reads glossary context but does NOT extract glossary, timeline, facts, relations, or scenes. Those are separate pipelines (see MVTN comparison doc). The old MVTN pipeline mixed all concerns into one monolith — we separate them cleanly:
+>
+> | Pipeline | Responsibility | Reads from | Writes to |
+> |----------|---------------|------------|-----------|
+> | **Translation V2** (this doc) | Translate chapter blocks | glossary-service (context) | chapter_translations |
+> | **Glossary Extraction** (future) | Discover entities from chapter text | chapter content | glossary-service |
+> | **Metadata Extraction** (future) | Timeline, facts, relations, scenes | chapter content + glossary | metadata tables |
+> | **Quality Validation** (future) | Post-hoc translation QA | chapter_translations + glossary | quality_logs |
 
 ---
 
