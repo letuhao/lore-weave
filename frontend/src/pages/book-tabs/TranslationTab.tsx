@@ -250,7 +250,20 @@ export function TranslationTab({ bookId }: { bookId: string }) {
       )}
 
       {visibleLangs.length === 0 ? (
-        <EmptyState icon={Languages} title="No translations yet" description="Select chapters and click 'Translate Selected' to start." />
+        <EmptyState
+          icon={Languages}
+          title="No translations yet"
+          description="Start by translating your chapters into another language."
+          action={
+            <button
+              onClick={() => setTranslateOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:brightness-110"
+            >
+              <Languages className="h-3.5 w-3.5" />
+              Start Translation
+            </button>
+          }
+        />
       ) : (
         <>
           {/* Matrix table */}
