@@ -323,51 +323,136 @@ The LLM needs to know:
 
 ## 4. Glossary Integration Design
 
-### Source Data
+### The Scale Problem
 
-Already exists in glossary-service DB:
-- `glossary_entities` — characters, places, items, concepts
-- `entity_attribute_values` — names, aliases, titles
-- `attribute_translations` — known translations per language
+A book can have 2000 chapters and 5000+ glossary entities (10MB+). That's ~2.5M tokens — impossible to inject into a 32K-128K context window. Even 1% would consume the entire window.
+
+**Rule: NEVER inject the full glossary. Always scope to what's relevant.**
+
+### Source Data (already exists)
+
+| Table | Service | What |
+|-------|---------|------|
+| `glossary_entities` | glossary-service | Characters, places, items, concepts |
+| `entity_attribute_values` | glossary-service | Names, aliases, titles |
+| `attribute_translations` | glossary-service | Known translations per language |
+| `chapter_entity_links` | glossary-service | **Which entities appear in which chapters** (the index) |
+
+The `chapter_entity_links` table is the key — it maps entities to chapters with relevance (major/appears/mentioned). This is our **relevance index** that avoids scanning the full glossary.
+
+### Tiered Glossary Injection Strategy
+
+```
+Tier 0: PINNED (always included, ~200 tokens)
+  ┌─────────────────────────────────────────────────────┐
+  │ 5-10 protagonist/antagonist entities                 │
+  │ Identified by: linked to most chapters (top N by     │
+  │ chapter_entity_links count) or manually flagged       │
+  │                                                       │
+  │ Example: 伊斯坦莎, 提拉米, 魔王 — always injected    │
+  └─────────────────────────────────────────────────────┘
+
+Tier 1: CHAPTER-LINKED (primary source, ~400-1500 tokens)
+  ┌─────────────────────────────────────────────────────┐
+  │ Entities linked to THIS chapter via chapter_entity_links │
+  │ Filter: relevance = major OR appears                     │
+  │ Typically 10-50 entities per chapter                     │
+  │                                                          │
+  │ SQL: SELECT entity_id FROM chapter_entity_links          │
+  │      WHERE chapter_id = $1 AND relevance IN ('major','appears') │
+  └─────────────────────────────────────────────────────┘
+
+Tier 2: NAME-MATCHED (fallback for unlinked mentions, ~200-500 tokens)
+  ┌─────────────────────────────────────────────────────┐
+  │ Scan chapter text for known entity names NOT already │
+  │ in Tier 0/1. Catches cross-references.               │
+  │                                                       │
+  │ Build name→entity_id index once per book.             │
+  │ For each name found in text, include that entity.     │
+  │ Cap: remaining token budget after Tier 0+1            │
+  └─────────────────────────────────────────────────────┘
+```
+
+**Total budget: 1200-2000 tokens** (fits in any context window with room for translation).
+
+### Scoring Within Tiers
+
+Within Tier 1+2, rank by relevance to the chapter:
+
+```python
+score = occurrences_in_chapter_text * max(1, len(name_zh))
+```
+
+- More occurrences = more important for this chapter
+- Longer names = more important to get right (伊斯坦莎 vs 王)
+- Sort by score descending, take top N within token budget
+
+This is the same approach MVTN used in `build_chapter_glossary_block()`.
 
 ### Glossary Context Builder
 
 ```python
-def build_glossary_context(book_id: str, target_language: str) -> str:
+def build_glossary_context(
+    book_id: str, 
+    chapter_id: str,
+    chapter_text: str,
+    target_language: str,
+    max_tokens: int = 1500,
+) -> str:
     """
-    Fetch glossary entities and build a term map for the LLM.
-    
-    Returns a formatted string like:
-    
-    GLOSSARY — Use these exact translations:
-    伊斯坦莎 → Isutansha (Demon Lord, female, character)
-    提拉米·蘇蘭特 → Tirami Sulant (Hero, male, character)
-    提拉米 → Tirami (short name for Tirami Sulant)
-    暗黑魔殿 → Dark Demon Palace (location)
-    煉獄之炎 → Inferno Flame (ability)
-    
-    Do NOT translate these names differently.
+    Build scoped glossary for one chapter's translation.
+    Uses chapter_entity_links as primary index, text scanning as fallback.
+    Returns formatted string for LLM system prompt injection.
     """
-    # 1. Fetch entities: GET /v1/glossary/books/{book_id}/export
-    # 2. For each entity with status='active':
-    #    - Get original name (from 'name' or 'term' attribute)
-    #    - Get known translation for target_language
-    #    - Get aliases
-    #    - Get kind (character, location, item, concept)
-    # 3. Format as term map
-    # 4. Estimate tokens, truncate if over budget
+    
+    # Tier 0: Pinned (most-linked entities across the book)
+    pinned = glossary_api.get_most_linked_entities(book_id, limit=10)
+    
+    # Tier 1: Chapter-linked
+    linked = glossary_api.get_chapter_entities(
+        book_id, chapter_id, relevance=['major', 'appears']
+    )
+    
+    # Tier 2: Name-scan for unlinked mentions
+    name_index = glossary_api.get_entity_name_index(book_id)  # cached
+    text_mentioned = [
+        eid for name, eid in name_index.items() 
+        if name in chapter_text
+    ]
+    
+    # Merge, dedupe, score by chapter_text occurrence
+    candidates = dedupe_entities(pinned + linked + text_mentioned)
+    scored = score_by_occurrence(candidates, chapter_text)
+    
+    # Project to minimal form + cap tokens
+    return format_glossary_block(scored, target_language, max_tokens)
 ```
 
-### Token Budget for Glossary
+### Minimal Projection (what gets injected)
 
-| Entities | Estimated tokens | Strategy |
-|----------|-----------------|----------|
-| < 50     | ~400            | Include all |
-| 50-200   | ~1600           | Include all, may need larger model |
-| 200-500  | ~4000           | Include only entities appearing in this chapter |
-| 500+     | ~8000+          | Filter by chapter_entity_links relevance |
+```json
+{"id":"aldric","zh":["提拉米","提拉米·蘇蘭特"],"vi":["Tirami","Tirami Sulant"],"kind":"character"}
+{"id":"demon-lord","zh":["伊斯坦莎"],"vi":["Isutansha"],"kind":"character"}
+{"id":"dark-palace","zh":["暗黑魔殿"],"vi":["Dark Demon Palace"],"kind":"location"}
+```
 
-For large glossaries, use `chapter_entity_links` to only include entities that appear in the current chapter + major recurring characters.
+Only `names_zh → names_vi + kind`. NOT full entity with descriptions, evidences, attributes. ~30-50 tokens per entity.
+
+### Stability Rule
+
+**Build glossary block ONCE per chapter, inject into EVERY chunk/batch.** Don't rebuild per-chunk — that causes inconsistency if different chunks match different entities.
+
+### Future: Glossary Extraction Pipeline (separate concern)
+
+The extraction pipeline discovers NEW entities from chapter text. It also needs existing glossary context to avoid re-discovering known entities:
+
+```
+Chapter text + EXISTING glossary (scoped) → NEW entities → glossary-service
+```
+
+Same tiered scoping applies: only inject existing entities whose names appear in the current text. Tell the LLM: "These entities are already known. Only extract NEW ones."
+
+This is a separate pipeline doc — not part of Translation V2.
 
 ---
 
