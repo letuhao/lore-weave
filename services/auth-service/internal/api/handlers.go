@@ -112,7 +112,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var displayName *string
 	var emailVerified bool
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, email, password_hash, display_name, email_verified FROM users WHERE lower(email) = lower($1)`,
+		SELECT id, email, password_hash, display_name, email_verified FROM users WHERE lower(email) = lower($1) AND account_status = 'active'`,
 		strings.TrimSpace(body.Email),
 	).Scan(&uid, &email, &hash, &displayName, &emailVerified)
 	if err != nil {

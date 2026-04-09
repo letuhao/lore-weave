@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import type { SpeakableBlock, AudioSource } from '@/lib/audio-utils';
 
@@ -32,11 +32,12 @@ export function AudioGenerationCard({ blocks, aiSegments, segmentHashes }: Audio
   const withoutAI = textBlocks.filter((b) => !aiSegments?.has(b.index) && !b.audioUrl);
 
   // Drift detection: compare current block text hash with stored segment hash
-  useMemo(() => {
+  useEffect(() => {
     if (!segmentHashes || segmentHashes.size === 0) {
       setDriftIndices([]);
       return;
     }
+    let cancelled = false;
     const check = async () => {
       const drifted: number[] = [];
       for (const block of withAI) {
@@ -47,10 +48,12 @@ export function AudioGenerationCard({ blocks, aiSegments, segmentHashes }: Audio
           drifted.push(block.index);
         }
       }
-      setDriftIndices(drifted);
+      if (!cancelled) setDriftIndices(drifted);
     };
     check();
-  }, [segmentHashes, withAI]);
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segmentHashes?.size, withAI.length]);
 
   const driftCount = driftIndices.length;
 
