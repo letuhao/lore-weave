@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
 import { useExtractionState, type WizardMode, type WizardStep } from './useExtractionState';
 import { StepProfile } from './StepProfile';
+import { StepBatchConfig } from './StepBatchConfig';
 import { cn } from '@/lib/utils';
 
 interface ExtractionWizardProps {
@@ -35,7 +36,10 @@ export function ExtractionWizard({
     goNext,
     goBack,
     setProfile,
+    setChapterIds,
     setModelRef,
+    setMaxEntities,
+    setContextFilters,
     canClose,
   } = useExtractionState(mode, preselectedChapterIds);
 
@@ -64,9 +68,15 @@ export function ExtractionWizard({
         );
       case 'chapters':
         return (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            Batch Config — GEP-FE-03
-          </div>
+          <StepBatchConfig
+            bookId={bookId}
+            chapterIds={state.chapterIds}
+            contextFilters={state.contextFilters}
+            maxEntitiesPerKind={state.maxEntitiesPerKind}
+            onChapterIdsChange={setChapterIds}
+            onContextFiltersChange={setContextFilters}
+            onMaxEntitiesChange={setMaxEntities}
+          />
         );
       case 'confirm':
         return (
