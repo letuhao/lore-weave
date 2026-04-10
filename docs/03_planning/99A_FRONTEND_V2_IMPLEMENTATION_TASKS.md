@@ -1360,6 +1360,55 @@ P4-16: Mobile Responsive [FE]
 
 ---
 
+## Voice Mode — Chat Voice Conversation (session 31)
+
+```
+Purpose: Practice English speaking with AI. STT (voice→text) + auto-TTS (AI→voice).
+Architecture: Web Speech API for STT (MVP), existing TTS engine for output.
+             Provider-registry STT/TTS models for future quality upgrade.
+Plan file: .claude/plans/starry-baking-wolf.md
+```
+
+### VM-01: `useSpeechRecognition` Hook [FE]
+  Status: [ ]
+  Scope: Web Speech API wrapper — continuous mode, interim results, silence detection, configurable lang/threshold
+  Files: hooks/useSpeechRecognition.ts (new)
+  Deps: none
+
+### VM-02: Voice Settings Panel + Preferences [FE]
+  Status: [ ]
+  Scope: Slide-over panel with STT model selector, TTS model selector, language, silence threshold,
+         auto-send, auto-TTS, speed, voice, pause-mic toggles. localStorage persistence.
+  Files: features/chat/components/VoiceSettingsPanel.tsx (new), features/chat/voicePrefs.ts (new), i18n (4 langs)
+  Deps: none (parallel with VM-01)
+
+### VM-03: `useVoiceMode` Orchestrator Hook [FE]
+  Status: [ ]
+  Scope: State machine (idle→listening→processing→speaking→listening). Wires STT + TTS + chat.send().
+         Auto-send on silence, auto-TTS on response, pause mic during playback.
+  Files: features/chat/hooks/useVoiceMode.ts (new)
+  Deps: VM-01, VM-02
+
+### VM-04: Push-to-Talk Mic Button in ChatInputBar [FE]
+  Status: [ ]
+  Scope: Mic icon in chat input bar. Press-hold or click-toggle. Inserts transcript into textarea.
+  Files: features/chat/components/ChatInputBar.tsx (modify)
+  Deps: VM-01
+
+### VM-05: Voice Mode Overlay UI [FE]
+  Status: [ ]
+  Scope: Full-screen overlay — waveform, live transcript, AI response, controls (exit/pause/settings).
+  Files: features/chat/components/VoiceModeOverlay.tsx (new), WaveformVisualizer.tsx (new)
+  Deps: VM-02, VM-03
+
+### VM-06: Integration — Wire into ChatWindow + ChatHeader [FE]
+  Status: [ ]
+  Scope: Voice toggle in header, overlay in ChatWindow, full conversation loop, session-change cleanup.
+  Files: ChatHeader.tsx (modify), ChatWindow.tsx (modify), ChatPage.tsx (modify)
+  Deps: VM-01..VM-05
+
+---
+
 ## Phase 5: Advanced (outline)
 
 ```
