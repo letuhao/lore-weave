@@ -91,6 +91,7 @@ export type GlossaryEntitySummary = {
   display_name: string;
   display_name_translation: string | null;
   status: EntityStatus;
+  alive?: boolean | null;
   tags: string[];
   chapter_link_count: number;
   translation_count: number;
