@@ -37,7 +37,7 @@
 
 **Glossary Extraction Pipeline: DESIGN COMPLETE.** Full design doc (1500+ lines), 4 review rounds (context/data engineer, security, cost), UI draft HTML, 20 implementation tasks (13 BE + 7 FE). Ready for BUILD phase.
 
-**GEP BUILD in progress:** GEP-BE-01..11 ✅. Next: GEP-BE-12 (gateway proxy), GEP-BE-13 (integration test).
+**GEP BUILD in progress:** GEP-BE-01..12 ✅ (all 12 tasks done). GEP-BE-13 (integration test) deferred — requires running services.
 
 **What was done in this session (2026-04-09, session 29):**
 
@@ -914,7 +914,7 @@ Session: 30 (2026-04-10) — design complete, 4 review rounds (context/data engi
 | **GEP-BE-09** | translation-service | `extraction_worker.py` — job consumer, per-chapter extraction loop, batch orchestration, segment splitting for long chapters, cooperative cancellation check | GEP-BE-07, GEP-BE-08 | [✓] |
 | **GEP-BE-10** | translation-service | Job creation endpoint `POST /api/v1/books/{book_id}/extract-glossary` with cost estimation in 202 response. Job cancellation `POST /api/v1/jobs/{job_id}/cancel` with ownership check | GEP-BE-09 | [✓] |
 | **GEP-BE-11** | translation-service | `glossary_client.py` — `post_extracted_entities()`, `get_extraction_profile()`, `get_known_entities()` | — | [✓] |
-| **GEP-BE-12** | api-gateway-bff | Proxy routes: `POST /v1/books/{book_id}/extract-glossary` → translation-service, `GET /v1/books/{book_id}/extraction-profile` → glossary-service | — | [ ] |
+| **GEP-BE-12** | api-gateway-bff | Proxy routes: `/v1/extraction/*` → translation-service, `/v1/glossary/*` already covers extraction-profile | — | [✓] |
 | **GEP-BE-13** | all | Integration test: single chapter extraction end-to-end (gateway → translation-service → LLM → glossary-service upsert) | GEP-BE-01..12 | [ ] |
 
 **FE tasks (after BE is stable):**
