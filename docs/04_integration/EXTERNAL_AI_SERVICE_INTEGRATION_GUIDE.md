@@ -138,11 +138,12 @@ Authorization: Bearer {api_key}
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `model` | string | Yes | Model name as registered in LoreWeave |
-| `voice` | string | Yes | Voice identifier (your service defines available voices) |
-| `input` | string | Yes | Text to synthesize (may be long — up to 4096 chars per block) |
-| `response_format` | string | No | `mp3` (default), `wav`, `opus`, `flac` |
-| `speed` | number | No | Playback speed multiplier: 0.25 to 4.0 (default 1.0) |
+| `model` | string | Yes | Model name as registered in LoreWeave (e.g., `tts-1`, `tts-1-hd`) |
+| `voice` | string | Yes | Voice identifier. OpenAI built-in: `alloy`, `ash`, `ballad`, `coral`, `echo`, `fable`, `onyx`, `nova`, `sage`, `shimmer`, `verse`, `marin`, `cedar`. Your service defines its own voices. |
+| `input` | string | Yes | Text to synthesize. **Max 4096 characters.** |
+| `instructions` | string | No | Additional voice control instructions (not supported by all models) |
+| `response_format` | string | No | `mp3` (default), `opus`, `aac`, `flac`, `wav`, `pcm` |
+| `speed` | number | No | Playback speed: **0.25 to 4.0** (default 1.0) |
 
 ### Response
 
@@ -243,11 +244,13 @@ Authorization: Bearer {api_key}
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `file` | file | Yes | Audio file (mp3, wav, webm, m4a, etc.) |
-| `model` | string | Yes | Model name as registered |
-| `language` | string | No | ISO language code (e.g., `en`, `ja`, `vi`) — hint for recognition |
-| `response_format` | string | No | `json` (default), `text`, `verbose_json` |
+| `file` | file | Yes | Audio file. Supported formats: `flac`, `mp3`, `mp4`, `mpeg`, `mpga`, `m4a`, `ogg`, `wav`, `webm` |
+| `model` | string | Yes | Model name (e.g., `whisper-1`, `gpt-4o-transcribe`) |
+| `language` | string | No | ISO-639-1 language code (e.g., `en`, `ja`, `vi`) — hint for recognition |
+| `response_format` | string | No | `json` (default), `text`, `srt`, `verbose_json`, `vtt` |
 | `temperature` | number | No | 0 to 1 (default 0) — lower = more deterministic |
+| `prompt` | string | No | Optional text to guide model style or provide context |
+| `timestamp_granularities` | array | No | `["word"]`, `["segment"]`, or both. Requires `verbose_json` format |
 
 ### Response (json format)
 
@@ -351,17 +354,21 @@ Authorization: Bearer {api_key}
   "prompt": "A mystical castle on a floating island at sunset",
   "size": "1024x1024",
   "n": 1,
-  "response_format": "url"
+  "response_format": "url",
+  "quality": "standard"
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `model` | string | Yes | Model name |
-| `prompt` | string | Yes | Text description of the image |
-| `size` | string | No | `256x256`, `512x512`, `1024x1024` (default), `1024x1792`, `1792x1024` |
-| `n` | integer | No | Number of images to generate (default 1) |
+| `model` | string | Yes | Model name (e.g., `dall-e-3`, `gpt-image-1`) |
+| `prompt` | string | Yes | Text description. **Max length:** 32K (GPT models), 4K (DALL-E-3), 1K (DALL-E-2) |
+| `size` | string | No | DALL-E-2: `256x256`, `512x512`, `1024x1024`. DALL-E-3: `1024x1024`, `1792x1024`, `1024x1792`. GPT: `auto`, `1024x1024`, `1536x1024`, `1024x1536` |
+| `n` | integer | No | Number of images (default 1). DALL-E-3/GPT: only `n=1` |
 | `response_format` | string | No | `url` (default) or `b64_json` |
+| `quality` | string | No | `standard` (default), `hd`, `high`, `medium`, `low` — model-dependent |
+| `style` | string | No | `vivid` (default) or `natural` — DALL-E-3 only |
+| `background` | string | No | `auto`, `transparent`, `opaque` — GPT image models only |
 
 ### Response
 
@@ -403,10 +410,12 @@ Or with `b64_json`:
 ### Endpoint
 
 ```
-POST {base_url}/v1/videos/generations
+POST {base_url}/v1/video/generations
 Content-Type: application/json
 Authorization: Bearer {api_key}
 ```
+
+> **Note:** The path is `/v1/video/generations` (singular "video"), matching the LoreWeave video-gen-service implementation.
 
 ### Request Body
 
@@ -414,19 +423,21 @@ Authorization: Bearer {api_key}
 {
   "model": "your-video-model",
   "prompt": "A dragon flying over a medieval city",
-  "size": "1280x720",
+  "size": "1920x1080",
   "duration": 5,
-  "fps": 24
+  "n": 1,
+  "style": "natural"
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `model` | string | Yes | Model name |
-| `prompt` | string | Yes | Text description |
-| `size` | string | No | Resolution (default `1280x720`) |
+| `prompt` | string | Yes | Text description of the video |
+| `size` | string | No | Resolution. Common: `1920x1080`, `1080x1920`, `1080x1080`, `1440x1080` (default `1920x1080`) |
 | `duration` | number | No | Duration in seconds (default 5) |
-| `fps` | integer | No | Frames per second (default 24) |
+| `n` | integer | No | Number of videos (default 1) |
+| `style` | string | No | Style hint (model-dependent) |
 | `image` | string | No | Base64 image for image-to-video |
 
 ### Response
@@ -448,13 +459,13 @@ Video generation is slow. Support async pattern:
 
 **Submit:**
 ```
-POST /v1/videos/generations → 202 Accepted
+POST /v1/video/generations → 202 Accepted
 { "id": "gen_abc123", "status": "processing" }
 ```
 
 **Poll:**
 ```
-GET /v1/videos/generations/gen_abc123
+GET /v1/video/generations/gen_abc123
 { "id": "gen_abc123", "status": "completed", "data": [{ "url": "..." }] }
 ```
 
@@ -827,4 +838,4 @@ type Adapter interface {
 
 ---
 
-*Last updated: 2026-04-11 — LoreWeave session 31*
+*Last updated: 2026-04-11 — LoreWeave session 31. Verified against OpenAI Python SDK (2025-12 spec).*
