@@ -185,6 +185,51 @@ ALTER TABLE chapter_translation_chunks
   ADD COLUMN IF NOT EXISTS validation_warnings TEXT[] DEFAULT '{}',
   ADD COLUMN IF NOT EXISTS glossary_corrections INT NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS retry_count         INT NOT NULL DEFAULT 0;
+
+-- V7: Glossary Extraction Pipeline — extraction jobs
+CREATE TABLE IF NOT EXISTS extraction_jobs (
+  job_id             UUID PRIMARY KEY DEFAULT uuidv7(),
+  book_id            UUID NOT NULL,
+  owner_user_id      UUID NOT NULL,
+  status             TEXT NOT NULL DEFAULT 'pending',
+  source_language    TEXT NOT NULL DEFAULT 'zh',
+  model_source       TEXT NOT NULL DEFAULT 'platform_model',
+  model_ref          UUID NOT NULL,
+  extraction_profile JSONB NOT NULL DEFAULT '{}',
+  context_filters    JSONB NOT NULL DEFAULT '{}',
+  chapter_ids        UUID[] NOT NULL,
+  total_chapters     INT NOT NULL DEFAULT 0,
+  completed_chapters INT NOT NULL DEFAULT 0,
+  failed_chapters    INT NOT NULL DEFAULT 0,
+  entities_created   INT NOT NULL DEFAULT 0,
+  entities_updated   INT NOT NULL DEFAULT 0,
+  entities_skipped   INT NOT NULL DEFAULT 0,
+  total_input_tokens BIGINT NOT NULL DEFAULT 0,
+  total_output_tokens BIGINT NOT NULL DEFAULT 0,
+  cost_estimate      JSONB,
+  error_message      TEXT,
+  started_at         TIMESTAMPTZ,
+  finished_at        TIMESTAMPTZ,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ej_owner ON extraction_jobs(owner_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ej_book  ON extraction_jobs(book_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS extraction_chapter_results (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  job_id          UUID NOT NULL REFERENCES extraction_jobs(job_id) ON DELETE CASCADE,
+  chapter_id      UUID NOT NULL,
+  book_id         UUID NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'pending',
+  entities_found  INT NOT NULL DEFAULT 0,
+  input_tokens    BIGINT NOT NULL DEFAULT 0,
+  output_tokens   BIGINT NOT NULL DEFAULT 0,
+  error_message   TEXT,
+  started_at      TIMESTAMPTZ,
+  completed_at    TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ecr_job ON extraction_chapter_results(job_id);
 """
 
 

@@ -11,6 +11,7 @@ from .routers import jobs as jobs_router
 from .routers import versions as versions_router
 from .routers import coverage as coverage_router
 from .routers import translate as translate_router
+from .routers import extraction as extraction_router
 
 
 @asynccontextmanager
@@ -41,6 +42,7 @@ app.include_router(jobs_router.router)
 app.include_router(versions_router.router)
 app.include_router(coverage_router.router)
 app.include_router(translate_router.router)
+app.include_router(extraction_router.router)
 
 
 @app.get("/health", response_class=PlainTextResponse)
