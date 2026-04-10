@@ -14,6 +14,8 @@ interface StepProfileProps {
   modelRef: string;
   onProfileChange: (profile: ExtractionProfile) => void;
   onModelChange: (modelRef: string) => void;
+  onKindsLoaded: (kinds: ExtractionProfileKind[]) => void;
+  onModelNameChange: (name: string) => void;
   onClose: () => void;
 }
 
@@ -23,6 +25,8 @@ export function StepProfile({
   modelRef,
   onProfileChange,
   onModelChange,
+  onKindsLoaded,
+  onModelNameChange,
   onClose,
 }: StepProfileProps) {
   const { t } = useTranslation('extraction');
@@ -42,7 +46,9 @@ export function StepProfile({
     ])
       .then(([profileResp, modelsResp]) => {
         setKinds(profileResp.kinds);
-        setUserModels(modelsResp.items.filter((m) => m.is_active));
+        onKindsLoaded(profileResp.kinds);
+        const activeModels = modelsResp.items.filter((m) => m.is_active);
+        setUserModels(activeModels);
 
         // Initialize profile from auto_selected if profile is empty
         if (Object.keys(profile).length === 0) {
@@ -139,7 +145,12 @@ export function StepProfile({
         ) : (
           <select
             value={modelRef}
-            onChange={(e) => onModelChange(e.target.value)}
+            onChange={(e) => {
+              const ref = e.target.value;
+              onModelChange(ref);
+              const m = userModels.find((u) => u.user_model_id === ref);
+              onModelNameChange(m ? (m.alias || m.provider_model_name) : '');
+            }}
             className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
           >
             <option value="">{t('profile.selectModel')}</option>

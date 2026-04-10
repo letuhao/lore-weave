@@ -3,7 +3,9 @@ import { X } from 'lucide-react';
 import { useExtractionState, type WizardMode, type WizardStep } from './useExtractionState';
 import { StepProfile } from './StepProfile';
 import { StepBatchConfig } from './StepBatchConfig';
+import { StepConfirm } from './StepConfirm';
 import { cn } from '@/lib/utils';
+import type { ExtractionProfileKind, CostEstimate } from './types';
 
 interface ExtractionWizardProps {
   open: boolean;
@@ -35,11 +37,15 @@ export function ExtractionWizard({
     state,
     goNext,
     goBack,
+    goToStep,
     setProfile,
     setChapterIds,
     setModelRef,
     setMaxEntities,
     setContextFilters,
+    setJobId,
+    setKinds,
+    setSelectedModelName,
     canClose,
   } = useExtractionState(mode, preselectedChapterIds);
 
@@ -63,6 +69,8 @@ export function ExtractionWizard({
             modelRef={state.modelRef}
             onProfileChange={setProfile}
             onModelChange={setModelRef}
+            onKindsLoaded={setKinds}
+            onModelNameChange={setSelectedModelName}
             onClose={handleClose}
           />
         );
@@ -80,9 +88,21 @@ export function ExtractionWizard({
         );
       case 'confirm':
         return (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            Estimate & Confirm — GEP-FE-04
-          </div>
+          <StepConfirm
+            bookId={bookId}
+            profile={state.profile}
+            chapterIds={state.chapterIds}
+            modelRef={state.modelRef}
+            maxEntitiesPerKind={state.maxEntitiesPerKind}
+            contextFilters={state.contextFilters}
+            kinds={state.kinds}
+            selectedModelName={state.selectedModelName}
+            onJobCreated={(jobId, costEstimate) => {
+              setJobId(jobId, costEstimate);
+              goNext();
+            }}
+            onEditProfile={() => goToStep('profile')}
+          />
         );
       case 'progress':
         return (
@@ -99,7 +119,7 @@ export function ExtractionWizard({
     }
   };
 
-  const showBackButton = state.stepIndex > 0 && state.step !== 'progress' && state.step !== 'results';
+  const showBackButton = state.stepIndex > 0 && state.step !== 'progress' && state.step !== 'results' && state.step !== 'confirm';
   const showNextButton = state.step === 'profile' || state.step === 'chapters';
   const canNext =
     state.step === 'profile' ? canProceedFromProfile :

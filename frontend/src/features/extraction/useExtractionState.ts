@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { ExtractionProfile, ContextFilters } from './types';
+import type { ExtractionProfile, ContextFilters, CostEstimate, ExtractionProfileKind } from './types';
 
 export type WizardMode = 'single' | 'batch';
 
@@ -19,6 +19,9 @@ export type WizardState = {
   maxEntitiesPerKind: number;
   contextFilters: ContextFilters;
   jobId: string | null;
+  costEstimate: CostEstimate | null;
+  kinds: ExtractionProfileKind[];
+  selectedModelName: string;
 };
 
 export function useExtractionState(mode: WizardMode, preselectedChapterIds?: string[]) {
@@ -35,6 +38,9 @@ export function useExtractionState(mode: WizardMode, preselectedChapterIds?: str
     maxEntitiesPerKind: 20,
     contextFilters: { alive: true, min_frequency: 2, recency_window: 100, limit: 50 },
     jobId: null,
+    costEstimate: null,
+    kinds: [],
+    selectedModelName: '',
   });
 
   const goNext = useCallback(() => {
@@ -79,8 +85,16 @@ export function useExtractionState(mode: WizardMode, preselectedChapterIds?: str
     setState((prev) => ({ ...prev, contextFilters }));
   }, []);
 
-  const setJobId = useCallback((jobId: string) => {
-    setState((prev) => ({ ...prev, jobId }));
+  const setJobId = useCallback((jobId: string, costEstimate?: CostEstimate) => {
+    setState((prev) => ({ ...prev, jobId, costEstimate: costEstimate ?? prev.costEstimate }));
+  }, []);
+
+  const setKinds = useCallback((kinds: ExtractionProfileKind[]) => {
+    setState((prev) => ({ ...prev, kinds }));
+  }, []);
+
+  const setSelectedModelName = useCallback((selectedModelName: string) => {
+    setState((prev) => ({ ...prev, selectedModelName }));
   }, []);
 
   /** Whether the dialog can be safely closed (not during active job) */
@@ -97,6 +111,8 @@ export function useExtractionState(mode: WizardMode, preselectedChapterIds?: str
     setMaxEntities,
     setContextFilters,
     setJobId,
+    setKinds,
+    setSelectedModelName,
     canClose,
   };
 }
