@@ -41,6 +41,8 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
             type="button"
             onClick={onToggleVoiceMode}
             title="Voice Mode"
+            aria-label="Voice Mode"
+            aria-pressed={isVoiceModeActive}
             className={cn(
               'rounded-md p-1.5 transition-colors',
               isVoiceModeActive

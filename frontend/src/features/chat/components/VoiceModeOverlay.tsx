@@ -65,7 +65,7 @@ export function VoiceModeOverlay({
   const isPaused = phase === 'paused';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+    <div role="dialog" aria-modal="true" aria-labelledby="voice-mode-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
       <div className="w-full max-w-lg mx-4 flex flex-col items-center gap-6">
 
         {/* Top controls */}
@@ -77,7 +77,7 @@ export function VoiceModeOverlay({
           >
             <Settings2 className="h-4 w-4" />
           </button>
-          <h2 className="text-sm font-medium text-white/80">{t('voice.voiceMode')}</h2>
+          <h2 id="voice-mode-title" className="text-sm font-medium text-white/80">{t('voice.voiceMode')}</h2>
           <button
             onClick={onExit}
             className="rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-white/10 transition-colors"
@@ -107,7 +107,7 @@ export function VoiceModeOverlay({
           <WaveformVisualizer active={isListening} />
 
           {/* Phase label */}
-          <p className={cn('text-sm font-medium', config.color)}>
+          <p aria-live="polite" className={cn('text-sm font-medium', config.color)}>
             {t(config.label)}
           </p>
         </div>
@@ -140,7 +140,7 @@ export function VoiceModeOverlay({
           {/* Empty state */}
           {!userTranscript && !interimText && !aiResponseText && (
             <p className="text-sm text-white/30 text-center">
-              {isListening ? 'Start speaking...' : isPaused ? 'Paused' : ''}
+              {isListening ? t('voice.tapToSpeak') : isPaused ? t('voice.paused') : ''}
             </p>
           )}
         </div>

@@ -5,7 +5,8 @@ interface WaveformVisualizerProps {
   className?: string;
 }
 
-/** Animated waveform bars — CSS-only, no AudioContext needed */
+/** Animated waveform bars — CSS-only, no AudioContext needed.
+ *  Keyframes defined in index.css as @keyframes waveform */
 export function WaveformVisualizer({ active, className }: WaveformVisualizerProps) {
   return (
     <div className={cn('flex items-end justify-center gap-[3px] h-10', className)}>
@@ -22,17 +23,6 @@ export function WaveformVisualizer({ active, className }: WaveformVisualizerProp
           } : undefined}
         />
       ))}
-      <style>{`
-        @keyframes waveform {
-          0%, 100% { height: 6px; opacity: 0.4; }
-          50% { height: 32px; opacity: 1; }
-        }
-        .animate-waveform {
-          animation-name: waveform;
-          animation-timing-function: ease-in-out;
-          animation-iteration-count: infinite;
-        }
-      `}</style>
     </div>
   );
 }

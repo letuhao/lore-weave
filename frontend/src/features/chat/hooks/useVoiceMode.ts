@@ -64,6 +64,10 @@ export function useVoiceMode({
   const ttsEngineRef = useRef<BrowserTTSEngine | null>(null);
   const pendingSendRef = useRef(false);
 
+  // Ref pattern for sendMessage — avoids stale closure in callbacks (Issue #1, #2)
+  const sendMessageRef = useRef(sendMessage);
+  sendMessageRef.current = sendMessage;
+
   // Keep phaseRef in sync
   useEffect(() => {
     phaseRef.current = phase;
@@ -86,33 +90,25 @@ export function useVoiceMode({
   }, [prefs.ttsSpeed, prefs.ttsVoiceURI]);
 
   // Speech recognition hook (own instance via factory pattern)
+  const onSilenceDetected = useCallback(
+    (text: string) => {
+      if (phaseRef.current !== 'listening') return;
+      if (!text.trim()) return;
+
+      // Transition to processing — send the message
+      pendingSendRef.current = true;
+      setPhase('processing');
+      // sttStop called below after hook is defined
+    },
+    [],
+  );
+
   const stt = useSpeechRecognition({
     lang: prefs.speechLang,
     continuous: true,
     interimResults: true,
     silenceThresholdMs: prefs.autoSendOnSilence ? prefs.silenceThresholdMs : 0,
-    onSilenceDetected: useCallback(
-      (text: string) => {
-        if (phaseRef.current !== 'listening') return;
-        if (!prefs.autoSendOnSilence) return;
-        if (!text.trim()) return;
-
-        // Transition to processing — send the message
-        pendingSendRef.current = true;
-        setPhase('processing');
-        sttStop();
-
-        void sendMessage(text.trim()).catch(() => {
-          // On error, go back to listening
-          if (phaseRef.current === 'processing') {
-            setPhase('listening');
-            sttStart();
-          }
-        });
-      },
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [prefs.autoSendOnSilence, prefs.silenceThresholdMs],
-    ),
+    onSilenceDetected,
   });
 
   // Shorthand refs for STT control (avoid stale closures)
@@ -127,7 +123,29 @@ export function useVoiceMode({
   const sttStop = useCallback(() => sttStopRef.current(), []);
   const sttReset = useCallback(() => sttResetRef.current(), []);
 
+  // When phase transitions to 'processing', stop STT and send the transcript
+  useEffect(() => {
+    if (phase !== 'processing' || !pendingSendRef.current) return;
+    sttStop();
+    const text = stt.transcript || stt.interimTranscript;
+    if (!text.trim()) {
+      setPhase('listening');
+      pendingSendRef.current = false;
+      sttStart();
+      return;
+    }
+    void sendMessageRef.current(text.trim()).catch(() => {
+      if (phaseRef.current === 'processing') {
+        pendingSendRef.current = false;
+        setPhase('listening');
+        sttReset();
+        sttStart();
+      }
+    });
+  }, [phase, stt.transcript, stt.interimTranscript, sttStop, sttStart, sttReset]);
+
   // Watch streaming status — when AI response completes, auto-TTS
+  // Only act if this was a voice-initiated send (pendingSendRef) — Issue #5, #6
   const prevStreamStatus = useRef(streamStatus);
   useEffect(() => {
     const wasStreaming = prevStreamStatus.current === 'streaming';
@@ -135,6 +153,7 @@ export function useVoiceMode({
 
     if (!wasStreaming || streamStatus !== 'idle') return;
     if (phaseRef.current !== 'processing') return;
+    if (!pendingSendRef.current) return; // Ignore manual sends — Issue #5
 
     // AI response is done
     pendingSendRef.current = false;
@@ -146,7 +165,7 @@ export function useVoiceMode({
       setPhase('speaking');
       const engine = getTTSEngine();
       engine.speak(responseText, () => {
-        // TTS finished — resume listening
+        // TTS finished or errored — resume listening (Issue #7)
         if (phaseRef.current === 'speaking') {
           setPhase('listening');
           sttReset();

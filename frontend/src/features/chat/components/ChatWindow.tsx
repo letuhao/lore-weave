@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { chatApi } from '../api';
@@ -53,6 +53,12 @@ export function ChatWindow({
     streamStatus: chat.streamStatus,
     streamingText: chat.streamingText,
   });
+
+  // Deactivate voice mode on session change (Issue #3)
+  useEffect(() => {
+    voiceMode.deactivate();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only on session change
+  }, [session.session_id]);
 
   function handleSend(content: string, thinking?: boolean) {
     onSendWithContext(content, thinking);
@@ -115,6 +121,7 @@ export function ChatWindow({
         onStop={chat.stop}
         isStreaming={chat.isStreaming}
         disabled={isArchived}
+        voiceModeActive={voiceMode.isActive}
         supportsThinking={true}
         thinkingDefault={session.generation_params?.thinking ?? false}
         onThinkingModeChange={(thinking) => {
