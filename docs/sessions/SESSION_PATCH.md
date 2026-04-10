@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-10 (session 30 — GEP BUILD: BE-01 + BE-06 done)
-- Updated By: Assistant (GEP backend build phase — migrations + book-service extraction_profile)
+- Last Updated: 2026-04-10 (session 30 end — GEP backend COMPLETE + REVIEWED)
+- Updated By: Assistant (GEP backend: 12 tasks built, 10 review fixes, session closed)
 - Active Branch: `main`
-- HEAD: pending commit — GEP-BE-06
+- HEAD: session 30 end commit (pending)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
 
 ---
@@ -37,9 +37,30 @@
 
 **Glossary Extraction Pipeline: DESIGN COMPLETE.** Full design doc (1500+ lines), 4 review rounds (context/data engineer, security, cost), UI draft HTML, 20 implementation tasks (13 BE + 7 FE). Ready for BUILD phase.
 
-**GEP BUILD in progress:** GEP-BE-01..12 ✅ (all 12 tasks done). GEP-BE-13 (integration test) deferred — requires running services.
+**GEP BUILD: COMPLETE + REVIEWED.** GEP-BE-01..12 ✅ (all 12 tasks done). Post-review: 10 issues found (3C + 4H + 3M), all fixed. GEP-BE-13 (integration test) deferred — requires running services.
 
-**What was done in this session (2026-04-09, session 29):**
+**What was done in this session (2026-04-10, session 30):**
+
+GEP backend build (BE-01..12) + post-implementation review. 3 parallel review agents found 10 real issues across 4 files. All fixed and committed.
+
+| Issue | Severity | Fix |
+| ----- | -------- | --- |
+| C1: Wrong config attr `provider_registry_url` | Critical | → `provider_registry_service_url` |
+| C2: Silent `_, _` on 4 DB inserts in glossary upsert | Critical | → `slog.Warn` on all 4 |
+| C3: Missing `json.RawMessage` cast in book-service | Critical | → Cast added in both GET responses |
+| H1: No top-level try/except in extraction worker | High | → Split into handler + inner runner |
+| H2: Silent batch failure in LLM invoke | High | → Log with batch index + kind codes |
+| H3: Unbounded known_entities accumulation | High | → Capped at 200 |
+| H4: `import json` inside function body | High | → Moved to top-level |
+| M1: Hardcoded cost estimate without context | Medium | → Added design reference comment |
+| M2: `ent.pop("relevance")` mutates parsed dict | Medium | → Changed to `ent.get()` |
+| M3: No upper bound on queryInt limits | Medium | → Clamp recency≤1000, limit≤500 |
+
+**Commits (session 30):**
+- Prior commits: GEP-BE-01..12 (see git log for full list)
+- `0a07766` fix: post-review fixes for GEP extraction pipeline (10 issues)
+
+**What was done in previous session (2026-04-09, session 29):**
 
 Translation Pipeline V2 — full implementation (9-phase workflow). PoC first (3 scripts with real AI model calls), then full implementation across 2 services.
 
