@@ -7,7 +7,7 @@ Pipeline designs for LoreWeave's data processing layer. Each pipeline is a separ
 | Pipeline | Status | Doc |
 |----------|--------|-----|
 | **Translation V2** | Design | [TRANSLATION_PIPELINE_V2.md](TRANSLATION_PIPELINE_V2.md) |
-| **Glossary Extraction** | Future | — |
+| **Glossary Extraction** | Design | [GLOSSARY_EXTRACTION_PIPELINE.md](GLOSSARY_EXTRACTION_PIPELINE.md) |
 | **Metadata Extraction** (timeline, facts, relations, scenes) | Future | — |
 | **Quality Validation** (post-hoc translation QA) | Future | — |
 
