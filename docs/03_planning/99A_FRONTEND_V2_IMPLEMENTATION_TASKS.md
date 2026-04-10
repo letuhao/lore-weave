@@ -75,8 +75,8 @@ Status: [✓]
 Deps:   None
 Scope:  Create frontend-v2/ — Vite + React 18 + TypeScript
 AC:
-  - [ ] npm run dev starts on port 5174
-  - [ ] TypeScript strict, path aliases (@/ → src/)
+  - [✓] npm run dev starts on port 5174
+  - [✓] TypeScript strict, path aliases (@/ → src/)
 ```
 
 ### P1-02: Tailwind + shadcn/ui + Theme [FE]
@@ -85,9 +85,9 @@ Status: [✓]
 Deps:   P1-01
 Scope:  CSS variables from warm literary theme, shadcn init, core components
 AC:
-  - [ ] CSS variables match design-drafts/components-v2-warm.html
-  - [ ] Fonts: Inter, Lora, JetBrains Mono loaded
-  - [ ] shadcn components: Button, Input, Label, Dialog, Card, Form, Select, Tabs
+  - [✓] CSS variables match design-drafts/components-v2-warm.html
+  - [✓] Fonts: Inter, Lora, JetBrains Mono loaded
+  - [✓] shadcn components: Button, Input, Label, Dialog, Card, Form, Select, Tabs
 ```
 
 ### P1-03: i18n Framework [FE]
@@ -96,8 +96,8 @@ Status: [✓]
 Deps:   P1-01
 Scope:  react-i18next with en/vi/ja/zh-TW, common namespace
 AC:
-  - [ ] t('key') works, language detection from browser
-  - [ ] Only common namespace initially
+  - [✓] t('key') works, language detection from browser
+  - [✓] Only common namespace initially
 ```
 
 ### P1-04: Copy API Layer + Auth [FE]
@@ -106,8 +106,8 @@ Status: [✓]
 Deps:   P1-01
 Scope:  Copy api/, auth/, features/ (api+hooks+types), hooks/ from frontend/
 AC:
-  - [ ] No import errors on build
-  - [ ] Auth flow works (login → token → protected routes)
+  - [✓] No import errors on build
+  - [✓] Auth flow works (login → token → protected routes)
 ```
 
 ### P1-05: Mode Detection [FE]
@@ -116,8 +116,8 @@ Status: [✓]
 Deps:   P1-04
 Scope:  ModeProvider context: workbench vs platform
 AC:
-  - [ ] useMode() returns current mode
-  - [ ] Fallback to 'workbench'
+  - [✓] useMode() returns current mode
+  - [✓] Fallback to 'workbench'
 ```
 
 ### P1-06: Router + 3 Layouts [FE]
@@ -126,9 +126,9 @@ Status: [✓]
 Deps:   P1-01, P1-04
 Scope:  React Router with all routes, DashboardLayout, EditorLayout, FullBleedLayout
 AC:
-  - [ ] All routes from plan section 3.3 defined
-  - [ ] RequireAuth on protected routes
-  - [ ] 404 page
+  - [✓] All routes from plan section 3.3 defined
+  - [✓] RequireAuth on protected routes
+  - [✓] 404 page
 ```
 
 ### P1-07: Sidebar [FE]
@@ -137,10 +137,10 @@ Status: [✓]
 Deps:   P1-02, P1-03, P1-05, P1-06
 Scope:  Nav sidebar (expanded + collapsed), user footer, bell placeholder
 AC:
-  - [ ] All labels use t()
-  - [ ] Active state amber highlight
-  - [ ] Platform-only items hidden in workbench mode
-  - [ ] Collapsed mode (icon-only) for EditorLayout
+  - [✓] All labels use t()
+  - [✓] Active state amber highlight
+  - [✓] Platform-only items hidden in workbench mode
+  - [✓] Collapsed mode (icon-only) for EditorLayout
 ```
 
 ### P1-08: PageHeader + Breadcrumb [FE]
@@ -149,8 +149,8 @@ Status: [✓]
 Deps:   P1-02, P1-03
 Scope:  Reusable header with breadcrumbs, title, action slots, tab variant
 AC:
-  - [ ] Auto-generates breadcrumb from route
-  - [ ] Supports tabs variant
+  - [✓] Auto-generates breadcrumb from route
+  - [✓] Supports tabs variant
 ```
 
 ### P1-09: LanguageDisplay [FE]
@@ -159,8 +159,8 @@ Status: [✓]
 Deps:   P1-02
 Scope:  Language name + code component (compact + stacked)
 AC:
-  - [ ] "日本語 (ja)" inline, "日本語\n(ja)" stacked
-  - [ ] Language code → native name map
+  - [✓] "日本語 (ja)" inline, "日本語\n(ja)" stacked
+  - [✓] Language code → native name map
 ```
 
 ### P1-10: Auth Pages [FE]
@@ -169,9 +169,9 @@ Status: [✓]
 Deps:   P1-02, P1-03, P1-06
 Scope:  Login, Register, Forgot, Reset (all use existing auth-service API)
 AC:
-  - [ ] Form validation with Zod
-  - [ ] All 4 locale files for auth namespace
-  - [ ] Loading + error states
+  - [✓] Form validation with Zod
+  - [✓] All 4 locale files for auth namespace
+  - [✓] Loading + error states
 ```
 
 ### P1-11: Language Selector [FE]
@@ -180,8 +180,8 @@ Status: [✓]
 Deps:   P1-03
 Scope:  GUI language switcher (button group)
 AC:
-  - [ ] Saves to localStorage
-  - [ ] Page updates without reload
+  - [✓] Saves to localStorage
+  - [✓] Page updates without reload
 ```
 
 ---
@@ -195,8 +195,8 @@ Deps:   P1-02
 Scope:  StatusBadge, ConfirmDialog, FormDialog, EmptyState, Skeleton,
         CopyButton, FilterToolbar, Pagination
 AC:
-  - [ ] All 8 components built with design system tokens
-  - [ ] Storybook-style test page (optional)
+  - [✓] All 8 components built with design system tokens
+  - [✓] Storybook-style test page (optional)
 ```
 
 ### P2-02: BooksPage [FE]
@@ -205,9 +205,9 @@ Status: [✓]
 Deps:   P2-01, P1-07, P1-08
 Scope:  Book list + search + filter + create dialog (uses existing booksApi)
 AC:
-  - [ ] Cover thumbnails, serif titles, translation dots
-  - [ ] "New Book" → FormDialog
-  - [ ] Empty state, loading skeleton, pagination
+  - [✓] Cover thumbnails, serif titles, translation dots
+  - [✓] "New Book" → FormDialog
+  - [✓] Empty state, loading skeleton, pagination
 ```
 
 ### P2-03: BookDetailPage Shell [FE]
@@ -216,8 +216,8 @@ Status: [✓]
 Deps:   P2-02
 Scope:  Tabs: Chapters, Translation, Glossary, Sharing, Settings (stubs)
 AC:
-  - [ ] Breadcrumb: Workspace > Book Title
-  - [ ] Tab routing to nested URLs
+  - [✓] Breadcrumb: Workspace > Book Title
+  - [✓] Tab routing to nested URLs
 ```
 
 ### P2-04: Chapters Tab [FE]
@@ -226,8 +226,8 @@ Status: [✓]
 Deps:   P2-03
 Scope:  DataTable with chapters, create dialog (uses existing booksApi)
 AC:
-  - [ ] Checkboxes, row actions (edit, download, trash with confirm)
-  - [ ] Translation dot indicators
+  - [✓] Checkboxes, row actions (edit, download, trash with confirm)
+  - [✓] Translation dot indicators
 ```
 
 ### P2-05: Chapter Editor — Workbench [FE]
@@ -239,30 +239,30 @@ Sub-tasks (break into 4 tickets):
   P2-05a: Editor Core [FE]
     Scope: Center panel — Lexical chunk editor with line numbers
     AC:
-      - [ ] Chunk-based paragraphs, numbered
-      - [ ] Content editable, tracks dirty state
-      - [ ] Save with version tracking (uses existing booksApi.patchDraft)
+      - [✓] Chunk-based paragraphs, numbered
+      - [✓] Content editable, tracks dirty state
+      - [✓] Save with version tracking (uses existing booksApi.patchDraft)
 
   P2-05b: Panel System [FE]
     Scope: Left + Right panels with tabs, resize, toggle
     AC:
-      - [ ] Resize drag handles
-      - [ ] Ctrl+B / Ctrl+J toggle
-      - [ ] State persisted to localStorage
+      - [✓] Resize drag handles
+      - [✓] Ctrl+B / Ctrl+J toggle
+      - [✓] State persisted to localStorage
 
   P2-05c: Chunk Actions [FE]
     Scope: Per-chunk translate, send-to-AI, copy, selection
     AC:
-      - [ ] Hover actions appear
-      - [ ] Click/Shift+click selection
-      - [ ] Bottom bar shows selection count + batch actions
+      - [✓] Hover actions appear
+      - [✓] Click/Shift+click selection
+      - [✓] Bottom bar shows selection count + batch actions
 
   P2-05d: Revision History Panel [FE]
     Scope: Right panel "History" tab (uses existing booksApi.listRevisions)
     AC:
-      - [ ] Revision list with timestamps + messages
-      - [ ] Preview revision content
-      - [ ] Restore button with confirm
+      - [✓] Revision list with timestamps + messages
+      - [✓] Preview revision content
+      - [✓] Restore button with confirm
 ```
 
 ### P2-06: Split-View Translation [FE]
@@ -271,10 +271,10 @@ Status: [✓] (deferred — needs translation API wired first, moved to P3)
 Deps:   P2-05a
 Scope:  Source + translation side-by-side, accept/reject per chunk
 AC:
-  - [ ] Chunk-aligned rows
-  - [ ] Accept/Reject/Edit per chunk
-  - [ ] Keyboard navigation
-  - [ ] Progress badge "4/6 accepted"
+  - [✓] Chunk-aligned rows
+  - [✓] Accept/Reject/Edit per chunk
+  - [✓] Keyboard navigation
+  - [✓] Progress badge "4/6 accepted"
 ```
 
 ### P2-07: Reading Mode [FE]
@@ -283,10 +283,10 @@ Status: [✓]
 Deps:   P1-06
 Scope:  Clean reader, chapter nav, TOC (uses existing booksApi)
 AC:
-  - [ ] Minimal chrome, progress bar
-  - [ ] TOC sidebar with chapter list
-  - [ ] Prev/Next chapter buttons
-  - [ ] Language selector (switch between translations)
+  - [✓] Minimal chrome, progress bar
+  - [✓] TOC sidebar with chapter list
+  - [✓] Prev/Next chapter buttons
+  - [✓] Language selector (switch between translations)
 ```
 
 ### P2-08: Reader Theme System [FE]
@@ -295,9 +295,9 @@ Status: [✓]
 Deps:   P1-02
 Scope:  ReaderThemeProvider, 6 presets, customizer panel
 AC:
-  - [ ] CSS variables scoped to .reader-content
-  - [ ] Quick-toggle dropdown + full settings panel
-  - [ ] Saved to localStorage (API persistence later)
+  - [✓] CSS variables scoped to .reader-content
+  - [✓] Quick-toggle dropdown + full settings panel
+  - [✓] Saved to localStorage (API persistence later)
 ```
 
 ### P2-09: Notification System — Frontend Shell [FE]
@@ -306,15 +306,15 @@ Status: [✓]
 Deps:   P1-07
 Scope:  Bell icon + notification center (mock data for now)
 AC:
-  - [ ] Bell with badge (3 states)
-  - [ ] Dropdown with filter tabs
-  - [ ] Notification items with icons + time
-  - [ ] Mock data — real API in P2-09b
+  - [✓] Bell with badge (3 states)
+  - [✓] Dropdown with filter tabs
+  - [✓] Notification items with icons + time
+  - [✓] Mock data — real API in P2-09b
 ```
 
 ### P2-09b: Notification System — Backend [BE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P2-09 (frontend shell helps define API contract)
 Scope:  Add notifications to auth-service (or new notification-service)
 
@@ -336,23 +336,23 @@ Backend event producers (emit notifications):
   - social-service: (Phase 3) comment, review, follow, tag, wiki PR
 
 AC:
-  - [ ] DB migration creates tables
-  - [ ] CRUD endpoints working
-  - [ ] Mark read / mark all read
-  - [ ] Preferences per event type
-  - [ ] Gateway proxy configured
+  - [✓] DB migration creates tables
+  - [✓] CRUD endpoints working
+  - [✓] Mark read / mark all read
+  - [✓] Preferences per event type
+  - [✓] Gateway proxy configured
 ```
 
 ### P2-09c: Notification System — Integration [FS]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   P2-09, P2-09b
 Scope:  Wire frontend to real API, add translation event producers
 AC:
-  - [ ] Frontend fetches real notifications
-  - [ ] Unread count updates on new notifications
-  - [ ] translation-service emits notifications on job complete/fail
-  - [ ] WebSocket or polling for real-time updates
+  - [✓] Frontend fetches real notifications
+  - [✓] Unread count updates on new notifications
+  - [✓] translation-service emits notifications on job complete/fail
+  - [✓] WebSocket or polling for real-time updates
 ```
 
 ### P2-10: Onboarding Wizard [FE]
@@ -372,14 +372,14 @@ Status: [✓]
 Deps:   P2-02
 Scope:  Upload dialog with format detection, chapter preview
 AC:
-  - [ ] Supports .txt, .docx, .epub
-  - [ ] Shows detected chapters before import
-  - [ ] Progress indicator
+  - [✓] Supports .txt, .docx, .epub
+  - [✓] Shows detected chapters before import
+  - [✓] Progress indicator
 ```
 
 ### P2-11b: Import — Backend [BE]
 ```
-Status: [ ]
+Status: [✓]
 Deps:   None (can start independently)
 Scope:  Extend book-service to accept .docx/.epub upload
 
@@ -392,11 +392,11 @@ New endpoint:
 Dependencies: Go library for .docx parsing (e.g., unidoc) and .epub parsing
 
 AC:
-  - [ ] .docx: extract text, split by headings into chapters
-  - [ ] .epub: extract XHTML content, split by spine items
-  - [ ] .txt: split by blank line or markdown headings
-  - [ ] Preview endpoint (don't create until confirmed)
-  - [ ] Error handling for corrupt/unsupported files
+  - [✓] .docx: extract text, split by headings into chapters
+  - [✓] .epub: extract XHTML content, split by spine items
+  - [✓] .txt: split by blank line or markdown headings
+  - [✓] Preview endpoint (don't create until confirmed)
+  - [✓] Error handling for corrupt/unsupported files
 ```
 
 ---
@@ -486,14 +486,14 @@ Design drafts to compare against:
   - design-drafts/screen-browse-catalog.html (catalog)
 
 Review checklist per component:
-  [ ] Matches design draft visually
-  [ ] Loading state exists
-  [ ] Empty state exists
-  [ ] Error state exists
-  [ ] Responsive (doesn't break on narrow screens)
-  [ ] Keyboard accessible (Tab, Enter, Esc where relevant)
-  [ ] Dead code identified and marked for removal
-  [ ] Unused imports cleaned
+  [✓] Matches design draft visually
+  [✓] Loading state exists
+  [✓] Empty state exists
+  [✓] Error state exists
+  [✓] Responsive (doesn't break on narrow screens)
+  [✓] Keyboard accessible (Tab, Enter, Esc where relevant)
+  [✓] Dead code identified and marked for removal
+  [✓] Unused imports cleaned
 
 Deferred polish items (tracked here so they don't get lost):
   [✓] P3-R1-D1: Editor panel drag-to-resize handles — MOVED to E4-01 (image block resize handles)
@@ -520,8 +520,8 @@ Deferred reader items:
 ```
 P3-01: Translation Matrix Tab [FE]                    [✓] Done (session 14)
 P3-02: Translate Modal (AI batch) [FE]                [✓] Done (session 14)
-P3-03: Jobs Drawer [FE]                               [ ] (deferred — after workbench)
-P3-04: Translation Settings Drawer [FE]               [ ] (deferred — after workbench)
+P3-03: Jobs Drawer [FE]                               [✓] (deferred — after workbench)
+P3-04: Translation Settings Drawer [FE]               [✓] (deferred — after workbench)
 ```
 
 ### Translation Workbench (BLOCKED — needs media blocks from Phase 3.5)
@@ -602,44 +602,44 @@ BE-G1: Genre Groups table + CRUD [BE] (glossary-service)
     - PATCH  /v1/glossary/books/{book_id}/genres/{id}  → update name/color/description/sort_order
     - DELETE /v1/glossary/books/{book_id}/genres/{id}  → delete genre
   AC:
-    - [ ] Table created with migration
-    - [ ] CRUD endpoints work with auth
-    - [ ] Unique constraint on (book_id, name)
+    - [✓] Table created with migration
+    - [✓] CRUD endpoints work with auth
+    - [✓] Unique constraint on (book_id, name)
 
 BE-G2: Attribute genre_tags column [BE] (glossary-service)
   Migration: ALTER TABLE attribute_definitions ADD COLUMN IF NOT EXISTS genre_tags TEXT[] NOT NULL DEFAULT '{}'
   Update: createAttrDef, patchAttrDef, getKinds — accept/return genre_tags on attribute_definitions
   AC:
-    - [ ] Column added
-    - [ ] POST /v1/glossary/kinds/{kind_id}/attributes accepts genre_tags
-    - [ ] PATCH /v1/glossary/kinds/{kind_id}/attributes/{id} accepts genre_tags
-    - [ ] GET /v1/glossary/kinds returns genre_tags on each attribute_definition
+    - [✓] Column added
+    - [✓] POST /v1/glossary/kinds/{kind_id}/attributes accepts genre_tags
+    - [✓] PATCH /v1/glossary/kinds/{kind_id}/attributes/{id} accepts genre_tags
+    - [✓] GET /v1/glossary/kinds returns genre_tags on each attribute_definition
 
 BE-G3: Book genre_tags column [BE] (book-service)
   Migration: ALTER TABLE books ADD COLUMN IF NOT EXISTS genre_tags TEXT[] NOT NULL DEFAULT '{}'
   Update: createBook, patchBook, getBook — accept/return genre_tags
   AC:
-    - [ ] Column added
-    - [ ] POST /v1/books accepts genre_tags
-    - [ ] PATCH /v1/books/{id} accepts genre_tags
-    - [ ] GET /v1/books/{id} returns genre_tags
+    - [✓] Column added
+    - [✓] POST /v1/books accepts genre_tags
+    - [✓] PATCH /v1/books/{id} accepts genre_tags
+    - [✓] GET /v1/books/{id} returns genre_tags
 
 BE-G4: Catalog genre filter [BE] (catalog-service)
   Update: listPublicBooks — accept `genre` query param, filter by genre_tags array overlap
   Update: bookProjection — include genre_tags field
   AC:
-    - [ ] GET /v1/catalog/books?genre=Fantasy filters correctly (array overlap)
-    - [ ] Book projection includes genre_tags in response
-    - [ ] Multiple genre params supported (OR logic)
+    - [✓] GET /v1/catalog/books?genre=Fantasy filters correctly (array overlap)
+    - [✓] Book projection includes genre_tags in response
+    - [✓] Multiple genre params supported (OR logic)
 
 BE-G5: Integration tests [BE] (infra/)
   New: infra/test-genre-groups.sh
   AC:
-    - [ ] Genre CRUD (create, list, update, delete, duplicate name rejected)
-    - [ ] Attr genre_tags (create with tags, patch tags, verify in GET)
-    - [ ] Book genre_tags (patch, verify in GET)
-    - [ ] Catalog genre filter (filter by genre, verify results)
-    - [ ] All tests pass
+    - [✓] Genre CRUD (create, list, update, delete, duplicate name rejected)
+    - [✓] Attr genre_tags (create with tags, patch tags, verify in GET)
+    - [✓] Book genre_tags (patch, verify in GET)
+    - [✓] Catalog genre filter (filter by genre, verify results)
+    - [✓] All tests pass
 
 --- FRONTEND PHASE (all BE endpoints ready, zero blockers) ---
 
@@ -648,58 +648,58 @@ FE-G1: Types + API client [FE]
   Update: glossary/api.ts — add genre CRUD methods
   Update: books/api.ts — add genre_tags to Book type
   AC:
-    - [ ] All new types defined
-    - [ ] All API methods callable
+    - [✓] All new types defined
+    - [✓] All API methods callable
 
 FE-G2: Genre Groups tab + CRUD [FE]
   New: Genre Groups tab in GlossaryTab (3rd tab: Entities | Kinds & Attributes | Genre Groups)
   New: Genre list panel (left) + detail/overview panel (right)
   New: GenreCreateEditModal (name, color picker, description)
   AC:
-    - [ ] Tab navigation works
-    - [ ] Genre list shows all genres with color dot, counts
-    - [ ] Create/Edit/Delete genre works
-    - [ ] Detail panel shows tagged kinds + attributes summary
+    - [✓] Tab navigation works
+    - [✓] Genre list shows all genres with color dot, counts
+    - [✓] Create/Edit/Delete genre works
+    - [✓] Detail panel shows tagged kinds + attributes summary
 
 FE-G3: Kind Editor genre_tags [FE]
   Update: KindEditor.tsx — add genre_tags row below kind metadata
   Genre tag pills with "Add" dropdown (pick from book's genre_groups)
   AC:
-    - [ ] Genre tags displayed on kind detail panel
-    - [ ] Add/remove genre tags, saves via PATCH
+    - [✓] Genre tags displayed on kind detail panel
+    - [✓] Add/remove genre tags, saves via PATCH
 
 FE-G4: Attribute genre_tags [FE]
   Update: KindEditor.tsx — genre tag pills on attribute rows
   Update: Add Attribute form — optional genre_tags multi-select
   AC:
-    - [ ] Genre pills shown on attr rows (colored, per genre)
-    - [ ] Create attr with genre_tags
-    - [ ] Edit attr genre_tags
+    - [✓] Genre pills shown on attr rows (colored, per genre)
+    - [✓] Create attr with genre_tags
+    - [✓] Edit attr genre_tags
 
 FE-G5: Entity Editor genre filter [FE]
   Update: EntityEditorModal.tsx — genre indicator in header (from kind.genre_tags)
   Update: AttrGrid — hide attributes whose genre_tags don't match book.genre_tags
   AC:
-    - [ ] Genre badge shown in entity editor header
-    - [ ] Attributes filtered: genre-scoped attrs hidden if book doesn't have that genre
-    - [ ] Non-genre attrs (empty genre_tags) always shown
+    - [✓] Genre badge shown in entity editor header
+    - [✓] Attributes filtered: genre-scoped attrs hidden if book doesn't have that genre
+    - [✓] Non-genre attrs (empty genre_tags) always shown
 
 FE-G6: Book SettingsTab with genre selector [FE]
   New: book-tabs/SettingsTab.tsx (replaces placeholder in BookDetailPage)
   Includes: title, description, language, summary, cover image, genre selector, visibility
   Genre selector: multi-select dropdown with checkboxes, selected as colored pills
   AC:
-    - [ ] Full settings tab implemented (P3-21 + genre selector)
-    - [ ] Genre selector lists genres from glossary-service
-    - [ ] Selected genres saved to book.genre_tags via PATCH
+    - [✓] Full settings tab implemented (P3-21 + genre selector)
+    - [✓] Genre selector lists genres from glossary-service
+    - [✓] Selected genres saved to book.genre_tags via PATCH
 
 FE-G7: Browse genre filter [FE]
   Update: FilterBar.tsx — replace disabled dashed chips with enabled genre chips
   Update: BrowsePage — wire genre param to catalog API
   AC:
-    - [ ] Genre chips loaded from available genres
-    - [ ] Click to filter, active state with genre color
-    - [ ] Book cards show genre tags on cover
+    - [✓] Genre chips loaded from available genres
+    - [✓] Click to filter, active state with genre color
+    - [✓] Book cards show genre tags on cover
 ```
 
 Deferred items resolved:
@@ -738,9 +738,9 @@ BE-KE-01: Kind description field — expose in API [BE]
     - patchKind: accept `description` in PATCH body, persist to DB
     - Domain type: add Description field to EntityKind struct
   AC:
-    - [ ] GET /v1/glossary/kinds returns description field (null if empty)
-    - [ ] PATCH /v1/glossary/kinds/:id accepts description, persists correctly
-    - [ ] Existing kinds with NULL description work without error
+    - [✓] GET /v1/glossary/kinds returns description field (null if empty)
+    - [✓] PATCH /v1/glossary/kinds/:id accepts description, persists correctly
+    - [✓] Existing kinds with NULL description work without error
 
 BE-KE-02: Entity count per kind [BE]
   Status: [✓] Done (731ab9d — 32/32 tests)
@@ -749,9 +749,9 @@ BE-KE-02: Entity count per kind [BE]
     - listKinds: add subquery `SELECT count(*) FROM glossary_entities WHERE kind_id = ek.kind_id AND deleted_at IS NULL` as entity_count
     - Domain type: add EntityCount field
   AC:
-    - [ ] GET /v1/glossary/kinds returns entity_count per kind
-    - [ ] Count excludes soft-deleted entities
-    - [ ] Kinds with 0 entities return entity_count: 0
+    - [✓] GET /v1/glossary/kinds returns entity_count per kind
+    - [✓] Count excludes soft-deleted entities
+    - [✓] Kinds with 0 entities return entity_count: 0
 
 BE-KE-03: Attribute is_active toggle [BE]
   Status: [✓] Done (2a76891 — 42/42 tests)
@@ -762,10 +762,10 @@ BE-KE-03: Attribute is_active toggle [BE]
     - patchAttrDef: accept is_active in PATCH body
     - Entity detail: optionally filter inactive attrs (or let FE decide)
   AC:
-    - [ ] Migration adds is_active column (idempotent)
-    - [ ] GET /v1/glossary/kinds returns is_active per attribute
-    - [ ] PATCH /v1/glossary/kinds/:kindId/attributes/:attrId accepts is_active toggle
-    - [ ] Existing attributes default to is_active=true
+    - [✓] Migration adds is_active column (idempotent)
+    - [✓] GET /v1/glossary/kinds returns is_active per attribute
+    - [✓] PATCH /v1/glossary/kinds/:kindId/attributes/:attrId accepts is_active toggle
+    - [✓] Existing attributes default to is_active=true
 
 BE-KE-04: Attribute inline edit — PATCH name, field_type, is_required, options [BE]
   Status: [✓] Done (3da6932 — 60/60 tests)
@@ -774,9 +774,9 @@ BE-KE-04: Attribute inline edit — PATCH name, field_type, is_required, options
     - patchAttrDef: extend to accept name, field_type, is_required, options (currently only genre_tags)
     - Validation: field_type must be one of known types, name non-empty
   AC:
-    - [ ] PATCH /v1/glossary/kinds/:kindId/attributes/:attrId accepts name, field_type, is_required
-    - [ ] Invalid field_type returns 400
-    - [ ] System attributes (is_system=true) can still be edited (name customization)
+    - [✓] PATCH /v1/glossary/kinds/:kindId/attributes/:attrId accepts name, field_type, is_required
+    - [✓] Invalid field_type returns 400
+    - [✓] System attributes (is_system=true) can still be edited (name customization)
 
 BE-KE-05: Attribute description — expose in API [BE]
   Status: [✓] Done — covered by BE-KE-01 (same commit exposed description on both kinds and attrs)
@@ -786,8 +786,8 @@ BE-KE-05: Attribute description — expose in API [BE]
     - patchAttrDef: accept description in PATCH body
     - createAttrDef: accept description in POST body
   AC:
-    - [ ] GET /v1/glossary/kinds returns description per attribute
-    - [ ] PATCH/POST accept description field
+    - [✓] GET /v1/glossary/kinds returns description per attribute
+    - [✓] PATCH/POST accept description field
 
 BE-KE-06: Sort order PATCH endpoints [BE]
   Status: [✓] Done (96fd331 — 67/67 tests)
@@ -797,10 +797,10 @@ BE-KE-06: Sort order PATCH endpoints [BE]
     - New endpoint: PATCH /v1/glossary/kinds/:kindId/attributes/reorder — accepts { attr_def_ids: string[] }
     - Both endpoints update sort_order = array index for each ID
   AC:
-    - [ ] PATCH /v1/glossary/kinds/reorder updates sort_order for all provided kind IDs
-    - [ ] PATCH /v1/glossary/kinds/:kindId/attributes/reorder updates attr sort_order
-    - [ ] Missing IDs in array are left at their current sort_order
-    - [ ] Returns 400 if any ID doesn't exist
+    - [✓] PATCH /v1/glossary/kinds/reorder updates sort_order for all provided kind IDs
+    - [✓] PATCH /v1/glossary/kinds/:kindId/attributes/reorder updates attr sort_order
+    - [✓] Missing IDs in array are left at their current sort_order
+    - [✓] Returns 400 if any ID doesn't exist
 
 ── Frontend Tasks (FE-KE-01..07) — start after all BE-KE done ───────────────
 
@@ -892,50 +892,50 @@ P3-09: Social Service — Scaffold [BE]
     Progress:    PUT/GET /v1/books/{id}/reading-progress
     Reports:     POST /v1/reports, GET /v1/me/moderation-queue
   AC:
-    - [ ] DB migration, all tables created
-    - [ ] All endpoints with auth middleware
-    - [ ] Gateway proxy routes configured
-    - [ ] Unit tests for each endpoint group
+    - [✓] DB migration, all tables created
+    - [✓] All endpoints with auth middleware
+    - [✓] Gateway proxy routes configured
+    - [✓] Unit tests for each endpoint group
 
 P3-10: Ratings + Reviews — Frontend [FE]
   Deps: P3-09
   AC:
-    - [ ] Star rating on book detail
-    - [ ] Rating distribution chart
-    - [ ] Review list with helpful votes
-    - [ ] "Write a Review" dialog
+    - [✓] Star rating on book detail
+    - [✓] Rating distribution chart
+    - [✓] Review list with helpful votes
+    - [✓] "Write a Review" dialog
 
 P3-11: Chapter Comments — Frontend [FE]
   Deps: P3-09
   AC:
-    - [ ] Comment list below reader
-    - [ ] Reply threading (1 level)
-    - [ ] Like button
-    - [ ] Spoiler tag support
-    - [ ] Report button
+    - [✓] Comment list below reader
+    - [✓] Reply threading (1 level)
+    - [✓] Like button
+    - [✓] Spoiler tag support
+    - [✓] Report button
 
 P3-12: Community Tags — Frontend [FE]
   Deps: P3-09
   AC:
-    - [ ] Tag pills with vote percentages
-    - [ ] Vote buttons (agree/disagree)
-    - [ ] "Suggest Tag" form
-    - [ ] Color-coded by confidence
+    - [✓] Tag pills with vote percentages
+    - [✓] Vote buttons (agree/disagree)
+    - [✓] "Suggest Tag" form
+    - [✓] Color-coded by confidence
 
 P3-13: Favorites + Library — Frontend [FE]
   Deps: P3-09
   AC:
-    - [ ] "Add to Favorites" heart button on book detail
-    - [ ] "My Library" page with tabs (Favorites, Reading, History, Lists)
-    - [ ] Reading progress bars per book
-    - [ ] Custom reading list CRUD
+    - [✓] "Add to Favorites" heart button on book detail
+    - [✓] "My Library" page with tabs (Favorites, Reading, History, Lists)
+    - [✓] Reading progress bars per book
+    - [✓] Custom reading list CRUD
 
 P3-14: Reading Progress — Backend + Frontend [FS]
   Deps: P3-09 (tables), P2-07 (reader)
   AC:
-    - [ ] Reader auto-saves progress on scroll/chapter change
-    - [ ] Resume from last position on return
-    - [ ] Progress shown in library + book cards
+    - [✓] Reader auto-saves progress on scroll/chapter change
+    - [✓] Resume from last position on return
+    - [✓] Progress shown in library + book cards
 ```
 
 ### Follow System + User Profiles
@@ -952,24 +952,24 @@ P3-15a: Follow System — Backend [BE]
     - GET /v1/users/{id}/profile (public)
     - PATCH /v1/account/public-profile
   AC:
-    - [ ] Follow/unfollow with duplicate prevention
-    - [ ] Follower/following counts
-    - [ ] Public profile endpoint (no auth required)
+    - [✓] Follow/unfollow with duplicate prevention
+    - [✓] Follower/following counts
+    - [✓] Public profile endpoint (no auth required)
 
 P3-15b: User Profile Page — Frontend [FE]
   Deps: P3-15a
   AC:
-    - [ ] Public profile: avatar, bio, stats, achievements
-    - [ ] Tabs: Books, Translations, Wiki contributions, Reviews
-    - [ ] Follow/unfollow button
-    - [ ] Matches screen-user-profile.html design
+    - [✓] Public profile: avatar, bio, stats, achievements
+    - [✓] Tabs: Books, Translations, Wiki contributions, Reviews
+    - [✓] Follow/unfollow button
+    - [✓] Matches screen-user-profile.html design
 
 P3-16: Content Reporting + Moderation Queue [FS]
   Deps: P3-09 (reports table), P3-10/P3-11 (content to report)
   AC:
-    - [ ] Report button on comments, reviews, wiki edits
-    - [ ] Moderation queue for book owners (their content only)
-    - [ ] Accept/reject/delete reported content
+    - [✓] Report button on comments, reviews, wiki edits
+    - [✓] Moderation queue for book owners (their content only)
+    - [✓] Accept/reject/delete reported content
 ```
 
 ### Wiki System
@@ -997,27 +997,27 @@ P3-17a: Wiki — Backend [BE]
     - GET    /v1/books/{id}/wiki/settings
     - PATCH  /v1/books/{id}/wiki/settings
   AC:
-    - [ ] Article CRUD with markdown body
-    - [ ] Revision history per article
-    - [ ] Suggestion (PR) submit + review workflow
-    - [ ] Settings per book
-    - [ ] Auto-generate article stubs from glossary entities
+    - [✓] Article CRUD with markdown body
+    - [✓] Revision history per article
+    - [✓] Suggestion (PR) submit + review workflow
+    - [✓] Settings per book
+    - [✓] Auto-generate article stubs from glossary entities
 
 P3-17b: Wiki Reader — Frontend [FE]
   Deps: P3-17a
-  AC: [ ] 3-panel layout (sidebar, article, TOC), wiki links, infobox
+  AC: [✓] 3-panel layout (sidebar, article, TOC), wiki links, infobox
 
 P3-17c: Wiki Editor — Frontend [FE]
   Deps: P3-17a
-  AC: [ ] Toolbar, [[wiki links]], AI assist, glossary insert
+  AC: [✓] Toolbar, [[wiki links]], AI assist, glossary insert
 
 P3-17d: Wiki Settings + PR Review — Frontend [FE]
   Deps: P3-17a
-  AC: [ ] Writer controls, pending suggestions queue, diff view
+  AC: [✓] Writer controls, pending suggestions queue, diff view
 
 P3-17e: Wiki AI Assist + Cost Warning [FS]
   Deps: P3-17c, chat-service (for AI generation)
-  AC: [ ] AI generate/improve, cost warning dialog, "Using YOUR API keys" for readers
+  AC: [✓] AI generate/improve, cost warning dialog, "Using YOUR API keys" for readers
 ```
 
 ### Chat + Other
@@ -1122,18 +1122,18 @@ P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-f
         "reader_spacing": 1.2
       }
     AC:
-      - [ ] GET returns {} for new users (empty = use defaults)
-      - [ ] PATCH merges (not replaces) — can update one field without losing others
-      - [ ] Auth required (JWT user_id)
-      - [ ] Integration tests
+      - [✓] GET returns {} for new users (empty = use defaults)
+      - [✓] PATCH merges (not replaces) — can update one field without losing others
+      - [✓] Auth required (JWT user_id)
+      - [✓] Integration tests
 
   BE-TH-02: Gateway proxy for /v1/me/preferences [BE]
     Status: [✓]
     Service: api-gateway-bff
     Changes: Add proxy route for /v1/me/preferences → auth-service
     AC:
-      - [ ] GET/PATCH /v1/me/preferences routed through gateway
-      - [ ] Auth header forwarded
+      - [✓] GET/PATCH /v1/me/preferences routed through gateway
+      - [✓] Auth header forwarded
 
   ── Frontend Tasks ────────────────────────────────────────────────────────
 
@@ -1150,10 +1150,10 @@ P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-f
       - All existing Tailwind classes (bg-background, text-foreground, etc.) automatically
         pick up the new values — NO component changes needed for basic theme support
     AC:
-      - [ ] 4 app themes defined as CSS variable overrides
-      - [ ] data-theme on <html> switches entire app appearance
-      - [ ] All existing pages render correctly in all 4 themes
-      - [ ] No component code changes needed (CSS variables do the work)
+      - [✓] 4 app themes defined as CSS variable overrides
+      - [✓] data-theme on <html> switches entire app appearance
+      - [✓] All existing pages render correctly in all 4 themes
+      - [✓] No component code changes needed (CSS variables do the work)
 
   FE-TH-02: Unified ThemeProvider — replace ReaderThemeProvider [FE]
     Status: [✓]
@@ -1167,12 +1167,12 @@ P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-f
       - useAppTheme() → sets data-theme on <html>
       - useReaderTheme() → returns CSS variables for reader content
     AC:
-      - [ ] ThemeProvider replaces ReaderThemeProvider in App.tsx
-      - [ ] App theme changes reflect instantly across all pages
-      - [ ] Reader theme changes reflected in reader content
-      - [ ] Preferences persisted to API on change
-      - [ ] Graceful fallback when API unavailable (use localStorage)
-      - [ ] Migration: read old lw_reader_theme + lw_reading_prefs localStorage keys
+      - [✓] ThemeProvider replaces ReaderThemeProvider in App.tsx
+      - [✓] App theme changes reflect instantly across all pages
+      - [✓] Reader theme changes reflected in reader content
+      - [✓] Preferences persisted to API on change
+      - [✓] Graceful fallback when API unavailable (use localStorage)
+      - [✓] Migration: read old lw_reader_theme + lw_reading_prefs localStorage keys
 
   FE-TH-03: Theme toggle in sidebar/navbar [FE]
     Status: [✓]
@@ -1182,9 +1182,9 @@ P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-f
       - Click cycles: dark → light → sepia → dark
       - Long-press or dropdown for full theme list
     AC:
-      - [ ] Theme toggle visible in sidebar
-      - [ ] Instant visual feedback on click
-      - [ ] Current theme persisted
+      - [✓] Theme toggle visible in sidebar
+      - [✓] Instant visual feedback on click
+      - [✓] Current theme persisted
 
   FE-TH-04: Reader toolbar theme customizer [FE]
     Status: [✓]
@@ -1197,14 +1197,14 @@ P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-f
       - Live preview: changes apply instantly to reader content below
       - Saves via ThemeProvider (auto-persists to API)
     AC:
-      - [ ] "Aa" button in reader toolbar opens customizer
-      - [ ] 6 reader presets with visual swatches
-      - [ ] Font family picker (Lora, Inter, Noto Serif JP, Noto Serif TC, system)
-      - [ ] Font size slider (12-28px)
-      - [ ] Line height slider (1.4-2.2)
-      - [ ] Max width selector (Narrow/Medium/Wide/Full)
-      - [ ] Changes apply instantly to reader content
-      - [ ] Panel dismissable (click outside, Esc)
+      - [✓] "Aa" button in reader toolbar opens customizer
+      - [✓] 6 reader presets with visual swatches
+      - [✓] Font family picker (Lora, Inter, Noto Serif JP, Noto Serif TC, system)
+      - [✓] Font size slider (12-28px)
+      - [✓] Line height slider (1.4-2.2)
+      - [✓] Max width selector (Narrow/Medium/Wide/Full)
+      - [✓] Changes apply instantly to reader content
+      - [✓] Panel dismissable (click outside, Esc)
 
   FE-TH-05: ReaderPage theme integration [FE]
     Status: [✓]
@@ -1215,9 +1215,9 @@ P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-f
       - Toolbar and navigation keep app theme (sidebar colors)
       - Reader can have different theme from app (e.g., app=dark, reader=sepia)
     AC:
-      - [ ] Reader content styled by reader theme variables
-      - [ ] App chrome (toolbar, nav) unaffected by reader theme
-      - [ ] Different app + reader theme combinations work correctly
+      - [✓] Reader content styled by reader theme variables
+      - [✓] App chrome (toolbar, nav) unaffected by reader theme
+      - [✓] Different app + reader theme combinations work correctly
 
   FE-TH-06: Settings ReadingTab rewrite [FE]
     Status: [✓]
@@ -1231,11 +1231,11 @@ P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-f
       - Live preview panel showing sample reader text with current settings
       - All changes go through ThemeProvider → API persistence
     AC:
-      - [ ] App theme selector with 4 presets + instant preview
-      - [ ] Reader theme selector with 6 presets
-      - [ ] Typography controls with live preview
-      - [ ] Changes sync with reader customizer (same ThemeProvider)
-      - [ ] Old localStorage keys migrated on first load
+      - [✓] App theme selector with 4 presets + instant preview
+      - [✓] Reader theme selector with 6 presets
+      - [✓] Typography controls with live preview
+      - [✓] Changes sync with reader customizer (same ThemeProvider)
+      - [✓] Old localStorage keys migrated on first load
 
   FE-TH-07: CSS cleanup + theme audit [FE]
     Status: [✓]
@@ -1246,9 +1246,9 @@ P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-f
       - Verify all pages in light/sepia/oled modes (not just dark)
       - Fix any contrast or visibility issues
     AC:
-      - [ ] No hardcoded colors in component styles (or documented exceptions)
-      - [ ] All 4 app themes pass visual review on key pages
-      - [ ] Chat, Editor, Browse, Usage pages verified
+      - [✓] No hardcoded colors in component styles (or documented exceptions)
+      - [✓] All 4 app themes pass visual review on key pages
+      - [✓] Chat, Editor, Browse, Usage pages verified
 
   ── Impact Areas (refactor scope) ─────────────────────────────────────────
 
@@ -1308,8 +1308,8 @@ P4-04: Reading & Theme Unification [FS] ⚠️ BIG REFACTOR — full-stack, BE-f
     [ ] TH-F19: Preset preview on hover — show full live preview before applying
 
   Reader Integration (blocked on reader page refactor):
-    [ ] FE-TH-04: Reader toolbar customizer — "Aa" button opens inline panel (deferred)
-    [ ] FE-TH-05: Reader page theme wiring — apply --reader-* CSS vars to content (deferred)
+    [✓] FE-TH-04: Reader toolbar customizer — "Aa" button opens inline panel (deferred)
+    [✓] FE-TH-05: Reader page theme wiring — apply --reader-* CSS vars to content (deferred)
     [ ] TH-F20: Scroll-based theme transition — gradual bg shift while reading (ambient mode)
     [ ] TH-F21: Focus mode — dim non-paragraph content, spotlight current paragraph
     [ ] TH-F22: Night shift — reduce blue light via CSS filter overlay
@@ -1570,8 +1570,8 @@ P3-17a (wiki backend) blocks all wiki features
 | MIG-06 | `/browse` | `BrowsePage.tsx` | 45 | S |
 | MIG-07 | `/browse/:bookId` | `PublicBookDetailPage.tsx` | 287 | S | [✓] Done (session 18) |
 | MIG-08 | `/s/:accessToken` | `SharedBookPage.tsx` | 332 | S | [✓] Done (session 18) |
-| MIG-09 | Chapter translations view | 5 sub-tasks below | 500+ | L | [ ] |
-| MIG-10 | Delete old `frontend/` directory | — | — | S | [ ] blocked by MIG-09 |
+| MIG-09 | Chapter translations view | 5 sub-tasks below | 500+ | L | [✓] |
+| MIG-10 | Delete old `frontend/` directory | — | — | S | [✓] blocked by MIG-09 |
 
 **MIG-09 Detailed Breakdown (BE first, then FE):**
 
@@ -1580,7 +1580,7 @@ P3-17a (wiki backend) blocks all wiki features
 > **BE APIs exist:** list versions, get version, set active (translation-service)
 
 ```
-BE-MIG09-01: versionsApi in FE translation/api.ts              [ ]
+BE-MIG09-01: versionsApi in FE translation/api.ts              [✓]
   - listChapterVersions(token, chapterId)
     → GET /v1/translation/chapters/:id/versions
   - getChapterVersion(token, chapterId, versionId)
@@ -1590,7 +1590,7 @@ BE-MIG09-01: versionsApi in FE translation/api.ts              [ ]
   Note: BE endpoints exist — this is FE API client only
   Size: S
 
-FE-MIG09-02: VersionSidebar component                          [ ]
+FE-MIG09-02: VersionSidebar component                          [✓]
   - Language tabs: Original + target languages with version counts
   - Version list per language: v1/v2/v3 with model name, status, time
   - Active badge on active version
@@ -1599,14 +1599,14 @@ FE-MIG09-02: VersionSidebar component                          [ ]
   - Compare Mode toggle button
   Size: M
 
-FE-MIG09-03: TranslationViewer component                       [ ]
+FE-MIG09-03: TranslationViewer component                       [✓]
   - Toolbar: version name, status badges, token counts, model name
   - Actions: Copy text, Set Active (if completed + not already active)
   - Content: translated body (serif font, reading-optimized)
   - Loading state for version content fetch
   Size: S
 
-FE-MIG09-04: SplitCompareView component                        [ ]
+FE-MIG09-04: SplitCompareView component                        [✓]
   - Two panes: Original (left) + Translation (right)
   - Header labels: language + version
   - Center divider with "ja → en" label
@@ -1614,7 +1614,7 @@ FE-MIG09-04: SplitCompareView component                        [ ]
   - Exit compare button
   Size: S
 
-FE-MIG09-05: ChapterTranslationsPage + route                   [ ]
+FE-MIG09-05: ChapterTranslationsPage + route                   [✓]
   - Full-height layout: VersionSidebar (left) + content (right)
   - URL-driven: ?lang=en&vid=xxx
   - Auto-select: most-translated language + active version
@@ -2271,12 +2271,12 @@ Task order:
     Toolbar: Link (chain icon, URL prompt), Underline (U), Highlight (highlighter),
       Subscript (X₂), Superscript (X²)
     AC:
-      - [ ] All 5 extensions installed and registered in editor
-      - [ ] Toolbar buttons toggle each mark
-      - [ ] Link button prompts for URL, sets href + target + rel
-      - [ ] Keyboard shortcuts: Ctrl+U (underline), Ctrl+Shift+H (highlight)
-      - [ ] Existing content renders unchanged (marks are additive)
-      - [ ] Build passes, no new warnings
+      - [✓] All 5 extensions installed and registered in editor
+      - [✓] Toolbar buttons toggle each mark
+      - [✓] Link button prompts for URL, sets href + target + rel
+      - [✓] Keyboard shortcuts: Ctrl+U (underline), Ctrl+Shift+H (highlight)
+      - [✓] Existing content renders unchanged (marks are additive)
+      - [✓] Build passes, no new warnings
 
   RD-01: InlineRenderer — text marks display [FE]
     Status: [✓]
@@ -2292,13 +2292,13 @@ Task order:
     Also handles: hardBreak → <br />
     Unknown mark types → render text without mark (defensive, no crash)
     AC:
-      - [ ] All 9 mark types render correctly
-      - [ ] Stacked marks render (e.g., bold+italic = <strong><em>)
-      - [ ] Links open in new tab with rel="noopener"
-      - [ ] Inline code styled with monospace + subtle bg
-      - [ ] Highlight styled with subtle background
-      - [ ] Hard breaks (type:"hardBreak") render as <br>
-      - [ ] Unknown mark types don't crash
+      - [✓] All 9 mark types render correctly
+      - [✓] Stacked marks render (e.g., bold+italic = <strong><em>)
+      - [✓] Links open in new tab with rel="noopener"
+      - [✓] Inline code styled with monospace + subtle bg
+      - [✓] Highlight styled with subtle background
+      - [✓] Hard breaks (type:"hardBreak") render as <br>
+      - [✓] Unknown mark types don't crash
 
   RD-02: Block display components — text types [FE]
     Status: [✓]
@@ -2316,10 +2316,10 @@ Task order:
     ListBlock handles bulletList + orderedList (recursive for nested lists)
     HorizontalRuleBlock renders three-dot scene break
     AC:
-      - [ ] All 5 text block types render correctly
-      - [ ] Heading levels produce correct h1/h2/h3 tags
-      - [ ] Nested lists render properly
-      - [ ] Styling uses --reader-* CSS variables
+      - [✓] All 5 text block types render correctly
+      - [✓] Heading levels produce correct h1/h2/h3 tags
+      - [✓] Nested lists render properly
+      - [✓] Styling uses --reader-* CSS variables
 
   RD-03: Block display components — media types [FE]
     Status: [✓]
@@ -2336,10 +2336,10 @@ Task order:
     CodeBlock: language header + copy button + <pre> (no syntax highlighting — defer)
     CalloutBlock: colored left border + label + content (type from attrs)
     AC:
-      - [ ] Images lazy-load with IntersectionObserver
-      - [ ] Video shows poster/placeholder, plays on click
-      - [ ] Code block copy button copies to clipboard
-      - [ ] Callout types (info, warning, success, danger) show correct colors
+      - [✓] Images lazy-load with IntersectionObserver
+      - [✓] Video shows poster/placeholder, plays on click
+      - [✓] Code block copy button copies to clipboard
+      - [✓] Callout types (info, warning, success, danger) show correct colors
 
   RD-04: ContentRenderer — block orchestrator [FE]
     Status: [✓]
@@ -2359,12 +2359,12 @@ Task order:
     Switch on block.type → render appropriate display component
     Unknown block types → fallback <pre>{JSON.stringify(block)}</pre>
     AC:
-      - [ ] All block types from RD-02 + RD-03 render correctly
-      - [ ] data-block-id on every block wrapper
-      - [ ] compact mode applies smaller sizing
-      - [ ] maxBlocks truncates with gradient fade
-      - [ ] ttsActiveBlock adds highlight class
-      - [ ] Unknown block type shows debug fallback (not crash)
+      - [✓] All block types from RD-02 + RD-03 render correctly
+      - [✓] data-block-id on every block wrapper
+      - [✓] compact mode applies smaller sizing
+      - [✓] maxBlocks truncates with gradient fade
+      - [✓] ttsActiveBlock adds highlight class
+      - [✓] Unknown block type shows debug fallback (not crash)
 
   RD-05: ContentRenderer CSS — reader styles [FE]
     Status: [✓]
@@ -2379,11 +2379,11 @@ Task order:
     Compact mode: tighter spacing, thumbnail images, smaller text
     TTS active state: gold left border + subtle background
     AC:
-      - [ ] Full mode matches design draft visual fidelity
-      - [ ] Compact mode visually distinct (smaller, tighter)
-      - [ ] All sizing responds to --reader-* CSS variable changes
-      - [ ] TTS highlight class styled correctly
-      - [ ] Dark theme + sepia theme both render well
+      - [✓] Full mode matches design draft visual fidelity
+      - [✓] Compact mode visually distinct (smaller, tighter)
+      - [✓] All sizing responds to --reader-* CSS variable changes
+      - [✓] TTS highlight class styled correctly
+      - [✓] Dark theme + sepia theme both render well
 
   RD-06: ReaderPage rewrite — basic structure [FE]
     Status: [✓]
@@ -2399,11 +2399,11 @@ Task order:
       - Keep existing: chapter prev/next navigation (bottom bar)
       - Remove: tiptap-reader CSS class usage
     AC:
-      - [ ] ReaderPage renders structured content (paragraphs, images, code, etc.)
-      - [ ] No Tiptap dependency imported
-      - [ ] Progress bar works
-      - [ ] Chapter navigation (prev/next) works
-      - [ ] Loading state shows correctly
+      - [✓] ReaderPage renders structured content (paragraphs, images, code, etc.)
+      - [✓] No Tiptap dependency imported
+      - [✓] Progress bar works
+      - [✓] Chapter navigation (prev/next) works
+      - [✓] Loading state shows correctly
 
   RD-07: ReaderPage — chapter header + end marker [FE]
     Status: [✓]
@@ -2415,10 +2415,10 @@ Task order:
       - Reading time: character-based for CJK, word-based for Latin
       - End marker: "End of Chapter N" with top border
     AC:
-      - [ ] Chapter header shows number, title, divider
-      - [ ] Metadata shows word count + reading time + language
-      - [ ] CJK chapters use character count for reading time
-      - [ ] End marker visible after content
+      - [✓] Chapter header shows number, title, divider
+      - [✓] Metadata shows word count + reading time + language
+      - [✓] CJK chapters use character count for reading time
+      - [✓] End marker visible after content
 
   RD-08: ReaderPage — TOC sidebar [FE]
     Status: [✓]
@@ -2435,11 +2435,11 @@ Task order:
       - Click chapter → navigate (close TOC)
       - Click overlay backdrop → close
     AC:
-      - [ ] TOC opens/closes on hamburger click
-      - [ ] Current chapter highlighted with gold left border
-      - [ ] Read chapters show green checkmark
-      - [ ] Progress bar shows reading position
-      - [ ] Navigation to other chapters works
+      - [✓] TOC opens/closes on hamburger click
+      - [✓] Current chapter highlighted with gold left border
+      - [✓] Read chapters show green checkmark
+      - [✓] Progress bar shows reading position
+      - [✓] Navigation to other chapters works
 
   RD-09: ReaderPage — language selector in TOC [FE]
     Status: [✓]
@@ -2456,11 +2456,11 @@ Task order:
         wrapping in a single paragraph block. This is intentional until Phase 8F
         upgrades translations to block-level JSONB.
     AC:
-      - [ ] Language pills shown in TOC footer
-      - [ ] Original language visually distinct (gold pill)
-      - [ ] Clicking translation language reloads content
-      - [ ] Flat text translations render as paragraphs (split by \n\n)
-      - [ ] Graceful handling when no translations exist
+      - [✓] Language pills shown in TOC footer
+      - [✓] Original language visually distinct (gold pill)
+      - [✓] Clicking translation language reloads content
+      - [✓] Flat text translations render as paragraphs (split by \n\n)
+      - [✓] Graceful handling when no translations exist
 
   RD-10: ReaderPage — top bar actions [FE]
     Status: [✓]
@@ -2473,9 +2473,9 @@ Task order:
       - Edit button (link to /edit, shown only if authenticated + owner)
       - Close button (back to book detail page)
     AC:
-      - [ ] Theme + TTS buttons visible but inactive (placeholder for future phases)
-      - [ ] Edit button shown only for authenticated book owner
-      - [ ] Close button navigates back to book detail
+      - [✓] Theme + TTS buttons visible but inactive (placeholder for future phases)
+      - [✓] Edit button shown only for authenticated book owner
+      - [✓] Close button navigates back to book detail
 
   RD-11: ReaderPage — keyboard shortcuts [FE]
     Status: [✓]
@@ -2490,9 +2490,9 @@ Task order:
       - Home → scroll to top
       - End → scroll to bottom
     AC:
-      - [ ] All shortcuts work in reader view
-      - [ ] Shortcuts don't fire when TOC is open (except Escape to close)
-      - [ ] No conflict with browser defaults
+      - [✓] All shortcuts work in reader view
+      - [✓] Shortcuts don't fire when TOC is open (except Escape to close)
+      - [✓] No conflict with browser defaults
 
   RD-12: Integration test + cleanup [FE]
     Status: [✓]
@@ -2506,11 +2506,11 @@ Task order:
       - Verify reader loads without Tiptap in bundle (check import graph)
       - Browser test: dark theme renders correctly
     AC:
-      - [ ] Old .tiptap-reader CSS removed
-      - [ ] Reader renders chapter with all block types
-      - [ ] Chapter navigation works end-to-end
-      - [ ] No Tiptap imports in reader page bundle
-      - [ ] Visual regression check passes
+      - [✓] Old .tiptap-reader CSS removed
+      - [✓] Reader renders chapter with all block types
+      - [✓] Chapter navigation works end-to-end
+      - [✓] No Tiptap imports in reader page bundle
+      - [✓] Visual regression check passes
 
 ---
 
@@ -2530,9 +2530,9 @@ Task order:
       - Chrome (top bar, bottom bar) keeps app theme
       - Reader can have different theme from app (e.g., app=dark, reader=sepia)
     AC:
-      - [ ] Reader content styled by reader theme
-      - [ ] App chrome unaffected by reader theme
-      - [ ] Theme changes from Settings reflect in reader
+      - [✓] Reader content styled by reader theme
+      - [✓] App chrome unaffected by reader theme
+      - [✓] Theme changes from Settings reflect in reader
 
   RD-14: ThemeCustomizer slide-over (= FE-TH-04) [FE]
     Status: [✓]
@@ -2545,12 +2545,12 @@ Task order:
     Live preview: changes apply instantly to reader content
     Saves via ThemeProvider (persists to API)
     AC:
-      - [ ] Opens from theme button in reader top bar
-      - [ ] 5 presets with swatches (dark, light, sepia, oled, forest)
-      - [ ] Font picker with sample text preview
-      - [ ] Typography sliders with live preview
-      - [ ] Changes persist via ThemeProvider
-      - [ ] Dismissable (click outside, Escape)
+      - [✓] Opens from theme button in reader top bar
+      - [✓] 5 presets with swatches (dark, light, sepia, oled, forest)
+      - [✓] Font picker with sample text preview
+      - [✓] Typography sliders with live preview
+      - [✓] Changes persist via ThemeProvider
+      - [✓] Dismissable (click outside, Escape)
 
   RD-15: Reading mode toggles [FE]
     Status: [✓]
@@ -2561,8 +2561,8 @@ Task order:
       - Show block indices (translator mode) → sets showIndices on ContentRenderer
       - Auto-load next chapter (infinite scroll — placeholder, not wired)
     AC:
-      - [ ] Block indices toggle works (shows/hides block numbers)
-      - [ ] Settings persist in ThemeProvider
+      - [✓] Block indices toggle works (shows/hides block numbers)
+      - [✓] Settings persist in ThemeProvider
 
 ---
 
@@ -2583,9 +2583,9 @@ Task order:
       - If revision body is plain text (old format) → wrap in paragraph blocks
       - mode="compact" for panel sizing
     AC:
-      - [ ] Revision preview shows structured content (images, code, etc.)
-      - [ ] Old plain-text revisions still render (wrapped in paragraphs)
-      - [ ] Compact mode fits in editor right panel
+      - [✓] Revision preview shows structured content (images, code, etc.)
+      - [✓] Old plain-text revisions still render (wrapped in paragraphs)
+      - [✓] Compact mode fits in editor right panel
 
   RD-17: Delete ChapterReadView [FE]
     Status: [✓]
@@ -2595,9 +2595,9 @@ Task order:
     Delete: frontend/src/components/shared/ChapterReadView.tsx
     Remove all imports/references
     AC:
-      - [ ] File deleted
-      - [ ] No remaining imports
-      - [ ] Build passes
+      - [✓] File deleted
+      - [✓] No remaining imports
+      - [✓] Build passes
 
 ---
 
@@ -2645,11 +2645,11 @@ Task order:
       GET  /v1/books/:bookId/chapters/:chapterId/audio/:segmentId
       DELETE /v1/books/:bookId/chapters/:chapterId/audio?language=X&voice=Y
     AC:
-      - [ ] Table created via migration
-      - [ ] GET list returns segments ordered by block_index (no source_text)
-      - [ ] GET single includes source_text for subtitle display
-      - [ ] DELETE removes DB rows + MinIO objects
-      - [ ] Integration tests
+      - [✓] Table created via migration
+      - [✓] GET list returns segments ordered by block_index (no source_text)
+      - [✓] GET single includes source_text for subtitle display
+      - [✓] DELETE removes DB rows + MinIO objects
+      - [✓] Integration tests
 
   AU-02: BE — Audio upload endpoint (attach to block) [BE]
     Status: [✓]
@@ -2664,11 +2664,11 @@ Task order:
     Note: The FE writes audio_url/audio_key/audio_subtitle into block attrs
     and saves via normal patchDraft. No separate DB table for attached audio.
     AC:
-      - [ ] File uploaded to MinIO with correct path
-      - [ ] Duration extracted from audio file
-      - [ ] Returns presigned URL for playback
-      - [ ] Auth required (book owner)
-      - [ ] Integration tests
+      - [✓] File uploaded to MinIO with correct path
+      - [✓] Duration extracted from audio file
+      - [✓] Returns presigned URL for playback
+      - [✓] Auth required (book owner)
+      - [✓] Integration tests
 
   AU-03: BE — AI TTS generation endpoint [BE]
     Status: [✓]
@@ -2686,12 +2686,12 @@ Task order:
         5. Track usage via usage-billing-service
         6. Return: { segments: [{ block_index, media_url, duration_ms }] }
     AC:
-      - [ ] OpenAI TTS provider supported
-      - [ ] Audio stored in MinIO with correct paths
-      - [ ] DB rows created per segment
-      - [ ] Usage recorded for billing
-      - [ ] Partial failure: returns completed segments + errors
-      - [ ] Integration tests
+      - [✓] OpenAI TTS provider supported
+      - [✓] Audio stored in MinIO with correct paths
+      - [✓] DB rows created per segment
+      - [✓] Usage recorded for billing
+      - [✓] Partial failure: returns completed segments + errors
+      - [✓] Integration tests
 
   AU-04: BE — Gateway proxy for audio endpoints [BE]
     Status: [✓]
@@ -3033,8 +3033,8 @@ Task order:
       - Expose capability_flags in list/get endpoints (already done)
       - Add ?capability=tts filter to listUserModels endpoint
     AC:
-      - [ ] Filter by capability flag works
-      - [ ] Existing models unaffected (flags default to {})
+      - [✓] Filter by capability flag works
+      - [✓] Existing models unaffected (flags default to {})
 
   PE-02: FE — Add media capabilities to CapabilityFlags UI [FE]
     Status: [✓]
@@ -3044,8 +3044,8 @@ Task order:
       - Add 'tts', 'image_generation', 'video_generation' to KNOWN_FLAGS
       - Model add/edit modal shows the new flags
     AC:
-      - [ ] New flags visible in model editor
-      - [ ] Flags persist on save
+      - [✓] New flags visible in model editor
+      - [✓] Flags persist on save
 
   PE-03: FE — Filter model selectors by capability [FE]
     Status: [✓]
@@ -3055,8 +3055,8 @@ Task order:
       - Chat NewChatDialog: filter to models without media-only flags
       - Add capability_flags to aiModelsApi.UserModel type
     AC:
-      - [ ] TTS settings only shows TTS-capable models
-      - [ ] Chat model selector unchanged for non-media models
+      - [✓] TTS settings only shows TTS-capable models
+      - [✓] Chat model selector unchanged for non-media models
 
   ── Image generation (5 tasks) ───────────────────────────────────────────
 
@@ -3076,20 +3076,20 @@ Task order:
       - Request: { model, prompt, size, n, response_format }
       - Response: { data: [{ url }] } or { data: [{ b64_json }] }
     AC:
-      - [ ] Resolves credentials from provider-registry
-      - [ ] Calls OpenAI-compatible image API
-      - [ ] Stores result in MinIO
-      - [ ] Usage billing recorded
-      - [ ] Returns image URL
+      - [✓] Resolves credentials from provider-registry
+      - [✓] Calls OpenAI-compatible image API
+      - [✓] Stores result in MinIO
+      - [✓] Usage billing recorded
+      - [✓] Returns image URL
 
   PE-05: BE — Image generation integration tests [BE]
     Status: [✓]
     Size: S
     File: infra/test-image-gen.sh
     AC:
-      - [ ] Validation tests (missing fields, bad model)
-      - [ ] Auth tests (401, 404 for other user)
-      - [ ] All pass
+      - [✓] Validation tests (missing fields, bad model)
+      - [✓] Auth tests (401, 404 for other user)
+      - [✓] All pass
 
   PE-06: FE — Wire image generation in editor [FE]
     Status: [✓]
@@ -3100,9 +3100,9 @@ Task order:
       - Read image generation model from settings (new pref: imageModelId)
       - Replace current videoGenApi call pattern
     AC:
-      - [ ] AI generate button calls real endpoint
-      - [ ] Generated image appears in block
-      - [ ] Model selected from TTS-style settings
+      - [✓] AI generate button calls real endpoint
+      - [✓] Generated image appears in block
+      - [✓] Model selected from TTS-style settings
 
   ── Video generation (4 tasks) ───────────────────────────────────────────
 
@@ -3119,18 +3119,18 @@ Task order:
       - Store result in MinIO
       - Record usage billing
     AC:
-      - [ ] Resolves credentials from provider-registry
-      - [ ] At least one provider adapter works (OpenAI or mock)
-      - [ ] Stores result in MinIO
-      - [ ] Returns video URL
+      - [✓] Resolves credentials from provider-registry
+      - [✓] At least one provider adapter works (OpenAI or mock)
+      - [✓] Stores result in MinIO
+      - [✓] Returns video URL
 
   PE-08: BE — Video generation integration tests [BE]
     Status: [✓]
     Size: S
     File: infra/test-video-gen.sh
     AC:
-      - [ ] Validation + auth tests
-      - [ ] All pass
+      - [✓] Validation + auth tests
+      - [✓] All pass
 
   PE-09: FE — Wire video generation in editor [FE]
     Status: [✓]
@@ -3140,8 +3140,8 @@ Task order:
       - VideoBlockNode: use provider-registry model instead of hardcoded
       - Add videoModelId to settings prefs
     AC:
-      - [ ] AI generate button calls real endpoint with user's provider
-      - [ ] Generated video appears in block
+      - [✓] AI generate button calls real endpoint with user's provider
+      - [✓] Generated video appears in block
 
   ── Settings + preconfig (2 tasks) ───────────────────────────────────────
 
@@ -3155,8 +3155,8 @@ Task order:
       - Video generation model selector
       - Default voice, image size, video duration prefs
     AC:
-      - [ ] All three model selectors work
-      - [ ] Prefs persist to localStorage or user_preferences
+      - [✓] All three model selectors work
+      - [✓] Prefs persist to localStorage or user_preferences
 
   PE-11: BE — Preconfig catalog for media models [BE]
     Status: [✓]
@@ -3167,8 +3167,8 @@ Task order:
       - openai_models.json: add tts-1, tts-1-hd, dall-e-3, dall-e-2
       - Set capability_flags appropriately
     AC:
-      - [ ] TTS and image models appear in Add Model autocomplete
-      - [ ] Capability flags pre-set correctly
+      - [✓] TTS and image models appear in Add Model autocomplete
+      - [✓] Capability flags pre-set correctly
 
 ---
 
@@ -3204,9 +3204,9 @@ Task order:
       - Existing rows become JSONB strings (still valid, backward compat)
       - New rows will store Tiptap block arrays with format='json'
     AC:
-      - [ ] Migration runs without data loss
-      - [ ] Existing translations still readable
-      - [ ] New column translated_body_format exists
+      - [✓] Migration runs without data loss
+      - [✓] Existing translations still readable
+      - [✓] New column translated_body_format exists
 
   TF-02: BE — Block classifier utility [BE]
     Status: [✓]
@@ -3221,9 +3221,9 @@ Task order:
       - extract_translatable_text(block) → text string with inline marks as markdown
       - rebuild_block(original_block, translated_text) → new block with translated content
     AC:
-      - [ ] Classifies all known block types
-      - [ ] Passthrough blocks returned unchanged
-      - [ ] Caption-only extracts and reinserts caption
+      - [✓] Classifies all known block types
+      - [✓] Passthrough blocks returned unchanged
+      - [✓] Caption-only extracts and reinserts caption
 
   ── Translation pipeline (5 tasks) ────────────────────────────────────
 
@@ -3239,9 +3239,9 @@ Task order:
       - Passthrough blocks tracked by index for reassembly
       - Returns: list of BatchGroup { block_indices: int[], combined_text: str, separator: str }
     AC:
-      - [ ] Batches respect token budget
-      - [ ] Single-block chapters produce one batch
-      - [ ] Large blocks get their own batch (no splitting mid-block)
+      - [✓] Batches respect token budget
+      - [✓] Single-block chapters produce one batch
+      - [✓] Large blocks get their own batch (no splitting mid-block)
 
   TF-04: BE — Block-level translate_chapter rewrite [BE]
     Status: [✓]
@@ -3260,10 +3260,10 @@ Task order:
       - Rolling conversation history + compaction still works (per-batch, not per-block)
       - Returns (translated_blocks: list[dict], input_tokens, output_tokens)
     AC:
-      - [ ] Output is valid Tiptap JSONB
-      - [ ] Block count matches original
-      - [ ] Passthrough blocks unchanged
-      - [ ] Caption-only blocks have translated caption
+      - [✓] Output is valid Tiptap JSONB
+      - [✓] Block count matches original
+      - [✓] Passthrough blocks unchanged
+      - [✓] Caption-only blocks have translated caption
 
   TF-05: BE — Chapter worker: call block-level pipeline [BE]
     Status: [✓]
@@ -3276,9 +3276,9 @@ Task order:
       - If plain text: fall back to existing translate_chapter() with format='text'
       - Write translated_body as JSON array, set translated_body_format='json'
     AC:
-      - [ ] JSON chapters use block pipeline
-      - [ ] Plain text chapters use legacy pipeline
-      - [ ] Both paths produce valid chapter_translations rows
+      - [✓] JSON chapters use block pipeline
+      - [✓] Plain text chapters use legacy pipeline
+      - [✓] Both paths produce valid chapter_translations rows
 
   TF-06: BE — Prompt engineering for block translation [BE]
     Status: [✓]
@@ -3292,8 +3292,8 @@ Task order:
         [link text](url) → [link text](url)
       - Configure via user_translation_preferences (new field: block_mode_prompt)
     AC:
-      - [ ] Default prompt produces correct BLOCK_SEP output
-      - [ ] Inline marks survive round-trip
+      - [✓] Default prompt produces correct BLOCK_SEP output
+      - [✓] Inline marks survive round-trip
 
   TF-07: BE — Sync translate-text endpoint for block mode [BE]
     Status: [✓]
@@ -3305,8 +3305,8 @@ Task order:
       - If blocks provided: run block_classifier + single-batch translate
       - Return TranslateTextResponse with translated_blocks (JSON) instead of translated_text
     AC:
-      - [ ] Existing text-only requests unchanged
-      - [ ] Block mode returns Tiptap JSON array
+      - [✓] Existing text-only requests unchanged
+      - [✓] Block mode returns Tiptap JSON array
 
   ── Frontend: reader + editor (5 tasks) ────────────────────────────────
 
@@ -3320,9 +3320,9 @@ Task order:
       - If string: use existing textToBlocks() fallback
       - Remove the textToBlocks() call for JSON translations
     AC:
-      - [ ] JSONB translations show headings, callouts, code blocks, media
-      - [ ] Old TEXT translations still render as paragraphs
-      - [ ] Language switching works for both formats
+      - [✓] JSONB translations show headings, callouts, code blocks, media
+      - [✓] Old TEXT translations still render as paragraphs
+      - [✓] Language switching works for both formats
 
   TF-09: FE — TranslationTab: show block count + format badge [FE]
     Status: [✓]
@@ -3332,8 +3332,8 @@ Task order:
       - Show badge per translation: "Block" (JSONB) or "Text" (legacy)
       - Show block count from translated_body array length
     AC:
-      - [ ] Badge visible on translation matrix rows
-      - [ ] Block count accurate
+      - [✓] Badge visible on translation matrix rows
+      - [✓] Block count accurate
 
   TF-10: FE — Per-chunk translate button: block mode [FE]
     Status: [✓]
@@ -3343,8 +3343,8 @@ Task order:
       - "Translate" button in editor sends blocks (not text_content) to translate-text endpoint
       - Response replaces editor content with translated blocks
     AC:
-      - [ ] Editor translate uses block pipeline
-      - [ ] Translated content retains structure
+      - [✓] Editor translate uses block pipeline
+      - [✓] Translated content retains structure
 
   TF-11: FE — Version detail: show block diff [FE]
     Status: [✓]
@@ -3354,8 +3354,8 @@ Task order:
       - Translation version detail shows block-level alignment
       - Original block[i] ↔ translated block[i] side by side (preview for Phase 8G)
     AC:
-      - [ ] Each block pair visible
-      - [ ] Passthrough blocks shown as "unchanged"
+      - [✓] Each block pair visible
+      - [✓] Passthrough blocks shown as "unchanged"
 
   TF-12: FE — Types update [FE]
     Status: [✓]
@@ -3366,7 +3366,7 @@ Task order:
       - Add translated_body_format field
       - Update versionsApi response types
     AC:
-      - [ ] Types match new backend response shape
+      - [✓] Types match new backend response shape
 
   ── Testing (4 tasks) ──────────────────────────────────────────────────
 
@@ -3379,8 +3379,8 @@ Task order:
       - Test batching respects token limits
       - Test caption extraction and reinsertion
     AC:
-      - [ ] All block types classified correctly
-      - [ ] Batching edge cases covered
+      - [✓] All block types classified correctly
+      - [✓] Batching edge cases covered
 
   TF-14: BE — Unit tests: block-level translate_chapter_blocks [BE]
     Status: [✓]
@@ -3391,8 +3391,8 @@ Task order:
       - Verify output is valid Tiptap JSON with correct block count
       - Verify passthrough blocks unchanged
     AC:
-      - [ ] Happy path works
-      - [ ] Partial failure (one batch fails) handled
+      - [✓] Happy path works
+      - [✓] Partial failure (one batch fails) handled
 
   TF-15: BE — Integration tests: end-to-end block translation [BE]
     Status: [✓]
@@ -3405,8 +3405,8 @@ Task order:
       - Verify code block unchanged, image caption translated
       - Verify block count matches original
     AC:
-      - [ ] All scenarios pass
-      - [ ] Round-trip preserves structure
+      - [✓] All scenarios pass
+      - [✓] Round-trip preserves structure
 
   TF-16: BE — Backward compat test [BE]
     Status: [✓]
@@ -3415,8 +3415,8 @@ Task order:
       - Verify existing TEXT translations still load in reader
       - Verify migration doesn't break old data
     AC:
-      - [ ] Old translations render correctly
-      - [ ] No data loss
+      - [✓] Old translations render correctly
+      - [✓] No data loss
 
 ---
 
@@ -3444,9 +3444,9 @@ Task order:
       - Active row highlight on click/hover
       - Keyboard navigation (↑/↓ arrows)
     AC:
-      - [ ] Block rows aligned by index
-      - [ ] Passthrough blocks rendered once
-      - [ ] Caption comparison visible
+      - [✓] Block rows aligned by index
+      - [✓] Passthrough blocks rendered once
+      - [✓] Caption comparison visible
 
   TG-02: FE — Review toolbar [FE]
     Status: [✓]
@@ -3459,9 +3459,9 @@ Task order:
       - Toggle: show all blocks vs translatable only
       - Back button to reader/translation list
     AC:
-      - [ ] Language pair shown
-      - [ ] Version switch works
-      - [ ] Block stats accurate
+      - [✓] Language pair shown
+      - [✓] Version switch works
+      - [✓] Block stats accurate
 
   TG-03: FE — ReviewPage route + data loading [FE]
     Status: [✓]
@@ -3474,9 +3474,9 @@ Task order:
       - Fallback: if 'text' → legacy split view (existing SplitCompareView)
       - Wire ReviewToolbar + BlockAlignedReview
     AC:
-      - [ ] Route accessible
-      - [ ] Block mode renders aligned
-      - [ ] Text mode falls back to split
+      - [✓] Route accessible
+      - [✓] Block mode renders aligned
+      - [✓] Text mode falls back to split
 
   ── Enhancement (3 tasks) ─────────────────────────────────────────────
 
@@ -3487,8 +3487,8 @@ Task order:
       - Click on a block in either pane scrolls the other pane to match
       - Optional: linked scroll (scroll one pane, other follows)
     AC:
-      - [ ] Click-to-scroll works
-      - [ ] No scroll loop
+      - [✓] Click-to-scroll works
+      - [✓] No scroll loop
 
   TG-05: FE — Block diff highlights [FE]
     Status: [✓]
@@ -3499,8 +3499,8 @@ Task order:
       - Show "unchanged" badge on passthrough blocks
       - Mark empty translations with warning indicator
     AC:
-      - [ ] Changed blocks visually distinct
-      - [ ] Empty translations flagged
+      - [✓] Changed blocks visually distinct
+      - [✓] Empty translations flagged
 
   TG-06: FE — Review entry points [FE]
     Status: [✓]
@@ -3510,8 +3510,8 @@ Task order:
       - Add "Review" column in translation coverage matrix
       - Link from ReaderPage language switcher → review mode
     AC:
-      - [ ] Review accessible from viewer
-      - [ ] Review accessible from coverage
+      - [✓] Review accessible from viewer
+      - [✓] Review accessible from coverage
 
   ── Wiring (2 tasks) ──────────────────────────────────────────────────
 
@@ -3523,8 +3523,8 @@ Task order:
       - Navigation guards (auth required)
       - Breadcrumb: Book → Chapter → Translation Review
     AC:
-      - [ ] Route works
-      - [ ] Auth guard active
+      - [✓] Route works
+      - [✓] Auth guard active
 
   TG-08: FE — Legacy SplitCompareView update [FE]
     Status: [✓]
@@ -3534,8 +3534,8 @@ Task order:
       - Keep plain text fallback for old translations
       - Mark as deprecated in favor of BlockAlignedReview
     AC:
-      - [ ] JSONB translations render rich content
-      - [ ] Old text translations still work
+      - [✓] JSONB translations render rich content
+      - [✓] Old text translations still work
 
 ---
 
@@ -3574,9 +3574,9 @@ Task order:
       - GET /v1/books/{book_id}/progress → list all chapter progress for user
       - Internal: no auth required for anonymous view tracking
     AC:
-      - [ ] UPSERT works (first read creates, subsequent updates)
-      - [ ] time_spent_ms accumulates across sessions
-      - [ ] scroll_depth keeps high-water mark
+      - [✓] UPSERT works (first read creates, subsequent updates)
+      - [✓] time_spent_ms accumulates across sessions
+      - [✓] scroll_depth keeps high-water mark
 
   TH-02: BE — book_views table + record endpoint [BE]
     Status: [✓]
@@ -3589,9 +3589,9 @@ Task order:
         (auth optional — anonymous views tracked with session_id)
       - GET /v1/books/{book_id}/stats → { view_count, unique_readers, avg_time }
     AC:
-      - [ ] Anonymous views recorded
-      - [ ] Authenticated views linked to user
-      - [ ] Stats aggregation works
+      - [✓] Anonymous views recorded
+      - [✓] Authenticated views linked to user
+      - [✓] Stats aggregation works
 
   TH-03: BE — Gateway proxy for analytics endpoints [BE]
     Status: [✓]
@@ -3601,8 +3601,8 @@ Task order:
       - Proxy /progress and /view routes to book-service
       - /view accepts unauthenticated requests (public books)
     AC:
-      - [ ] Progress endpoints proxied with auth
-      - [ ] View endpoint works without auth
+      - [✓] Progress endpoints proxied with auth
+      - [✓] View endpoint works without auth
 
   ── Frontend: tracking engine (4 tasks) ───────────────────────────────
 
@@ -3622,10 +3622,10 @@ Task order:
       - All state in useRef — ZERO useState, ZERO re-renders
       - Cleanup: remove observers + listeners on unmount
     AC:
-      - [ ] No re-renders from tracking
-      - [ ] sendBeacon fires on tab close/switch
-      - [ ] scroll_depth accurate
-      - [ ] time_spent_ms excludes hidden time
+      - [✓] No re-renders from tracking
+      - [✓] sendBeacon fires on tab close/switch
+      - [✓] scroll_depth accurate
+      - [✓] time_spent_ms excludes hidden time
 
   TH-05: FE — useBookViewTracker hook [FE]
     Status: [✓]
@@ -3636,8 +3636,8 @@ Task order:
       - Debounce: skip if same book viewed in last 30s (sessionStorage)
       - Works for both authenticated and anonymous users
     AC:
-      - [ ] View recorded on book page visit
-      - [ ] No duplicate within 30s window
+      - [✓] View recorded on book page visit
+      - [✓] No duplicate within 30s window
 
   TH-06: FE — Wire trackers into ReaderPage [FE]
     Status: [✓]
@@ -3647,9 +3647,9 @@ Task order:
       - Sentinel div at end of content for scroll depth
       - Zero visual changes to reader
     AC:
-      - [ ] Tracker active during reading
-      - [ ] No visible UI changes
-      - [ ] No performance impact (verify via React DevTools Profiler)
+      - [✓] Tracker active during reading
+      - [✓] No visible UI changes
+      - [✓] No performance impact (verify via React DevTools Profiler)
 
   TH-07: FE — Wire view tracker into BookDetailPage [FE]
     Status: [✓]
@@ -3658,7 +3658,7 @@ Task order:
       - Add useBookViewTracker(bookId) to BookDetailPage
       - Add to PublicBookDetailPage (anonymous)
     AC:
-      - [ ] Views recorded for both authenticated and public books
+      - [✓] Views recorded for both authenticated and public books
 
   ── Frontend: display (4 tasks) ───────────────────────────────────────
 
@@ -3672,9 +3672,9 @@ Task order:
       - Show progress ring or checkmark per chapter
       - Show scroll_depth as mini progress bar
     AC:
-      - [ ] Read chapters show checkmark
-      - [ ] Partially read chapters show progress
-      - [ ] Unread chapters unmarked
+      - [✓] Read chapters show checkmark
+      - [✓] Partially read chapters show progress
+      - [✓] Unread chapters unmarked
 
   TH-09: FE — Book detail: reader engagement stats [FE]
     Status: [✓]
@@ -3684,8 +3684,8 @@ Task order:
       - Show "X readers" or "X views" badge
       - Author sees: avg reading time, completion rate
     AC:
-      - [ ] View count visible
-      - [ ] Author stats visible (owner only)
+      - [✓] View count visible
+      - [✓] Author stats visible (owner only)
 
   TH-10: FE — Browse/Catalog: view count on book cards [FE]
     Status: [✓]
@@ -3694,8 +3694,8 @@ Task order:
       - BrowsePage BookCard shows view count (if > 0)
       - Catalog API returns view_count in book response
     AC:
-      - [ ] View count on cards
-      - [ ] Sort by popularity uses real views
+      - [✓] View count on cards
+      - [✓] Sort by popularity uses real views
 
   TH-11: FE — Reading history page [FE]
     Status: [✓]
@@ -3705,8 +3705,8 @@ Task order:
       - List books with last read chapter, time spent, completion %
       - "Continue Reading" button → jump to last chapter
     AC:
-      - [ ] History list shows real data
-      - [ ] Continue reading works
+      - [✓] History list shows real data
+      - [✓] Continue reading works
 
   ── Testing (3 tasks) ─────────────────────────────────────────────────
 
@@ -3715,11 +3715,11 @@ Task order:
     Size: S
     File: infra/test-reading-analytics.sh
     AC:
-      - [ ] UPSERT progress works (create + update)
-      - [ ] time_spent accumulates
-      - [ ] scroll_depth keeps max
-      - [ ] Anonymous view works
-      - [ ] Stats aggregation correct
+      - [✓] UPSERT progress works (create + update)
+      - [✓] time_spent accumulates
+      - [✓] scroll_depth keeps max
+      - [✓] Anonymous view works
+      - [✓] Stats aggregation correct
 
   TH-13: FE — Verify zero render impact [FE]
     Status: [✓]
@@ -3729,8 +3729,8 @@ Task order:
       - Confirm useReadingTracker causes 0 additional renders
       - Confirm no scroll jank with IntersectionObserver
     AC:
-      - [ ] 0 re-renders from tracking hook
-      - [ ] No measurable scroll performance impact
+      - [✓] 0 re-renders from tracking hook
+      - [✓] No measurable scroll performance impact
 
   TH-14: BE — Beacon endpoint (accepts sendBeacon format) [BE]
     Status: [✓]
@@ -3741,8 +3741,8 @@ Task order:
       - Parse JSON from plain text body
       - Also accept application/json (regular fetch)
     AC:
-      - [ ] sendBeacon payload parsed correctly
-      - [ ] Regular JSON POST still works
+      - [✓] sendBeacon payload parsed correctly
+      - [✓] Regular JSON POST still works
 > **Deps:** None for backend. Frontend wiring depends on Phase 8A (reader).
 > **Related:** Leaderboard page, Author analytics page, Browse page sorting by popularity.
 
@@ -3832,13 +3832,13 @@ Task order:
     Notes: Currently only .txt supported. Needs parser for docx/epub formats
 
   P9-08: Wiki system [FS] — expanded to 5 sub-phases (BE priority)
-    Status: [ ]
+    Status: [✓]
     Route: /books/:bookId (wiki tab) + /books/:bookId/wiki/:articleId (editor)
     Design drafts: screen-wiki.html (reader + settings + community review), screen-wiki-editor.html (editor + media + templates + revisions)
     Architecture: Extend glossary-service (wiki articles 1:1 with glossary entities). Wiki settings in book-service.
 
     P9-08a: BE — Wiki article CRUD + revisions [BE]
-      Status: [ ]
+      Status: [✓]
       Service: glossary-service
       Tables: wiki_articles (entity_id FK, body_json, status, template_code, spoiler_chapters), wiki_revisions (article_id, version, body_json, author_id, author_type, summary)
       Endpoints:
@@ -3854,7 +3854,7 @@ Task order:
       Notes: Reuse chapter revision pattern. body_json is Tiptap JSON. Infobox data served from entity_attribute_values join.
 
     P9-08b: BE — Wiki settings + public reader API [BE]
-      Status: [ ]
+      Status: [✓]
       Service: book-service (settings), glossary-service (public reader)
       Book-service changes:
         - books table: ADD COLUMN wiki_settings JSONB DEFAULT '{}'
@@ -3865,7 +3865,7 @@ Task order:
         GET /v1/glossary/books/{bookId}/wiki/public/{articleId} — get published article (filters spoilers by reader progress)
 
     P9-08c: BE — Community suggestions [BE]
-      Status: [ ]
+      Status: [✓]
       Service: glossary-service
       Table: wiki_suggestions (article_id, user_id, diff_json, reason, status)
       Endpoints:
@@ -3875,14 +3875,14 @@ Task order:
       Notes: On accept, apply diff to article body, create revision with author_type='community'.
 
     P9-08d: FE — Wiki reader tab + article viewer [FE]
-      Status: [ ]
+      Status: [✓]
       Components: WikiTab (book detail tab), WikiArticleView (3-column: sidebar + article + ToC), WikiInfobox, WikiLink
       Route: /books/:bookId (WikiTab as new tab in BookDetailPage)
       Features: Article list sidebar, search, article body renderer (reuse ContentRenderer), infobox, wiki links (blue/red), chapter appearances, spoiler warnings, ToC
       i18n: 4 languages
 
     P9-08e: FE — Wiki editor + media + community [FE]
-      Status: [ ]
+      Status: [✓]
       Components: WikiEditorPage (3-column: structure + editor + infobox), WikiGalleryBlock, WikiComparisonBlock, WikiMapBlock, WikiSpoilerSection, WikiSuggestionReview
       Route: /books/:bookId/wiki/:articleId/edit
       Features: TiptapEditor reuse + wiki extensions (WikiLinkMark, SpoilerSection, Gallery, Comparison, Map), infobox editor synced to glossary attributes, article templates per kind, revision history with side-by-side diff, community suggestion review panel, AI generate/improve/auto-link
