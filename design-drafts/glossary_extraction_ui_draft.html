@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Glossary Extraction Pipeline — UI Draft</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            bg: { DEFAULT: '#0f1117', card: '#181a24', hover: '#1e2030', border: '#2a2d3e' },
+            accent: { DEFAULT: '#818cf8', dim: '#6366f1', bright: '#a5b4fc' },
+            success: '#34d399',
+            warn: '#fbbf24',
+            danger: '#f87171',
+            muted: '#6b7280',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #0f1117; color: #e5e7eb; }
+    .step { display: none; }
+    .step.active { display: block; }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #181a24; }
+    ::-webkit-scrollbar-thumb { background: #2a2d3e; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3a3d4e; }
+    /* Slider styling */
+    input[type="range"] { -webkit-appearance: none; background: #2a2d3e; height: 4px; border-radius: 2px; outline: none; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #818cf8; cursor: pointer; }
+    /* Toggle */
+    .toggle-track { width: 36px; height: 20px; border-radius: 10px; background: #2a2d3e; position: relative; cursor: pointer; transition: background 0.2s; }
+    .toggle-track.on { background: #818cf8; }
+    .toggle-track .toggle-dot { width: 16px; height: 16px; border-radius: 50%; background: #e5e7eb; position: absolute; top: 2px; left: 2px; transition: transform 0.2s; }
+    .toggle-track.on .toggle-dot { transform: translateX(16px); }
+    /* Select */
+    select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%236b7280' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; }
+    /* Alive badge */
+    .alive-badge { font-size: 10px; padding: 1px 6px; border-radius: 9999px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+    /* Progress bar animation */
+    @keyframes progress-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+    .progress-active { animation: progress-pulse 1.5s ease-in-out infinite; }
+    /* Entry point cards */
+    .entry-card { transition: all 0.2s; }
+    .entry-card:hover { transform: translateY(-2px); border-color: #818cf8; }
+    /* Fade in */
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .fade-in { animation: fadeIn 0.3s ease-out; }
+  </style>
+</head>
+<body class="min-h-screen p-6">
+
+  <!-- ============================================================ -->
+  <!-- HEADER -->
+  <!-- ============================================================ -->
+  <div class="max-w-5xl mx-auto mb-6">
+    <div class="flex items-center gap-3 mb-1">
+      <div class="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center">
+        <svg class="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+      </div>
+      <h1 class="text-xl font-semibold text-white">Glossary Extraction Pipeline</h1>
+      <span class="text-xs px-2 py-0.5 rounded bg-accent/20 text-accent font-medium">UI Draft</span>
+    </div>
+    <p class="text-sm text-muted ml-11">Interactive prototype — all screens in the extraction flow</p>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- NAVIGATION TABS -->
+  <!-- ============================================================ -->
+  <div class="max-w-5xl mx-auto mb-6">
+    <div class="flex gap-1 bg-bg-card rounded-lg p-1 border border-bg-border">
+      <button onclick="goToStep(0)" data-tab="0" class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-colors">Entry Points</button>
+      <button onclick="goToStep(1)" data-tab="1" class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-colors">Extraction Profile</button>
+      <button onclick="goToStep(2)" data-tab="2" class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-colors">Batch Config</button>
+      <button onclick="goToStep(3)" data-tab="3" class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-colors">Estimate & Confirm</button>
+      <button onclick="goToStep(4)" data-tab="4" class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-colors">Progress</button>
+      <button onclick="goToStep(5)" data-tab="5" class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-colors">Results</button>
+      <button onclick="goToStep(6)" data-tab="6" class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-colors">Glossary List</button>
+    </div>
+  </div>
+
+  <div class="max-w-5xl mx-auto">
+
+    <!-- ============================================================ -->
+    <!-- STEP 0: ENTRY POINTS -->
+    <!-- ============================================================ -->
+    <div class="step active fade-in" data-step="0">
+      <div class="mb-4">
+        <h2 class="text-lg font-semibold text-white mb-1">Entry Points</h2>
+        <p class="text-sm text-muted">Three locations where users can trigger glossary extraction</p>
+      </div>
+
+      <div class="grid grid-cols-3 gap-4 mb-8">
+        <!-- Chapter Tab -->
+        <div class="entry-card bg-bg-card border border-bg-border rounded-xl p-5 cursor-pointer" onclick="goToStep(1)">
+          <div class="flex items-center gap-2 mb-3">
+            <div class="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+              <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            </div>
+            <h3 class="font-medium text-white">Chapter Tab</h3>
+          </div>
+          <p class="text-sm text-muted mb-3">Extract from single chapter's source text via chapter list actions</p>
+          <div class="bg-bg rounded-lg p-3 border border-bg-border">
+            <div class="flex items-center justify-between py-1.5 px-2 rounded hover:bg-bg-hover">
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-muted w-6">Ch.1</span>
+                <span class="text-sm">暗黑魔域的序章</span>
+              </div>
+              <div class="flex items-center gap-1">
+                <button class="p-1 rounded hover:bg-accent/20 text-muted hover:text-accent" title="Extract Glossary">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+                </button>
+                <button class="p-1 rounded hover:bg-bg-hover text-muted">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="flex items-center justify-between py-1.5 px-2 rounded bg-bg-hover">
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-muted w-6">Ch.2</span>
+                <span class="text-sm">銀髮騎士的覺醒</span>
+              </div>
+              <div class="flex items-center gap-1">
+                <button class="p-1 rounded bg-accent/20 text-accent" title="Extract Glossary">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+                </button>
+                <button class="p-1 rounded hover:bg-bg-hover text-muted">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="mt-3 flex items-center gap-1.5 text-xs text-accent">
+            <span>Single chapter</span>
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+
+        <!-- Translation Tab -->
+        <div class="entry-card bg-bg-card border border-bg-border rounded-xl p-5 cursor-pointer" onclick="goToStep(1)">
+          <div class="flex items-center gap-2 mb-3">
+            <div class="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
+              <svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/></svg>
+            </div>
+            <h3 class="font-medium text-white">Translation Tab</h3>
+          </div>
+          <p class="text-sm text-muted mb-3">Extract from source text while working on chapter translation</p>
+          <div class="bg-bg rounded-lg p-3 border border-bg-border">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm font-medium text-white">Ch.2 — 銀髮騎士的覺醒</span>
+              <span class="text-xs px-2 py-0.5 rounded bg-green-500/20 text-green-400">Translated</span>
+            </div>
+            <div class="flex gap-2 mt-2">
+              <button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent/20 text-accent text-xs font-medium hover:bg-accent/30">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+                Extract Glossary
+              </button>
+              <button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-bg-hover text-muted text-xs font-medium">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>
+                Re-translate
+              </button>
+            </div>
+          </div>
+          <div class="mt-3 flex items-center gap-1.5 text-xs text-accent">
+            <span>Single chapter</span>
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+
+        <!-- Glossary Tab -->
+        <div class="entry-card bg-bg-card border border-bg-border rounded-xl p-5 cursor-pointer" onclick="goToStep(2)">
+          <div class="flex items-center gap-2 mb-3">
+            <div class="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+              <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg>
+            </div>
+            <h3 class="font-medium text-white">Glossary Tab</h3>
+          </div>
+          <p class="text-sm text-muted mb-3">Batch extract from all or selected chapters at once</p>
+          <div class="bg-bg rounded-lg p-3 border border-bg-border">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm font-medium text-white">Book Glossary</span>
+              <span class="text-xs text-muted">48 entities</span>
+            </div>
+            <div class="flex gap-2">
+              <button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-dim">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></svg>
+                Batch Extract
+              </button>
+              <button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-bg-hover text-muted text-xs font-medium">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+                Add Entity
+              </button>
+            </div>
+          </div>
+          <div class="mt-3 flex items-center gap-1.5 text-xs text-purple-400">
+            <span>Batch (multi-chapter)</span>
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- STEP 1: EXTRACTION PROFILE DIALOG -->
+    <!-- ============================================================ -->
+    <div class="step fade-in" data-step="1">
+      <div class="bg-bg-card border border-bg-border rounded-xl overflow-hidden">
+        <!-- Dialog header -->
+        <div class="flex items-center justify-between px-6 py-4 border-b border-bg-border">
+          <div>
+            <h2 class="text-lg font-semibold text-white">Extraction Profile</h2>
+            <p class="text-sm text-muted mt-0.5">Select entity kinds and attributes to extract</p>
+          </div>
+          <button onclick="goToStep(0)" class="p-2 rounded-lg hover:bg-bg-hover text-muted">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <!-- Provider selector -->
+        <div class="px-6 py-4 border-b border-bg-border bg-bg/50">
+          <div class="flex gap-4">
+            <div class="flex-1">
+              <label class="text-xs font-medium text-muted block mb-1.5">AI Provider</label>
+              <select class="w-full bg-bg border border-bg-border rounded-lg px-3 py-2 text-sm text-white pr-8">
+                <option>OpenAI — GPT-4o</option>
+                <option>Anthropic — Claude Sonnet 4</option>
+                <option>Local — Ollama Qwen2.5</option>
+              </select>
+            </div>
+            <div class="flex-1">
+              <label class="text-xs font-medium text-muted block mb-1.5">Model</label>
+              <select class="w-full bg-bg border border-bg-border rounded-lg px-3 py-2 text-sm text-white pr-8">
+                <option>gpt-4o-2024-08-06</option>
+                <option>gpt-4o-mini</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Kind/Attribute list -->
+        <div class="px-6 py-4 max-h-[480px] overflow-y-auto">
+
+          <!-- Character kind -->
+          <div class="mb-4">
+            <div class="flex items-center justify-between py-2">
+              <div class="flex items-center gap-3">
+                <div class="toggle-track on" onclick="toggleKind(this, 'character')">
+                  <div class="toggle-dot"></div>
+                </div>
+                <span class="text-lg">👤</span>
+                <span class="font-medium text-white">Character</span>
+                <span class="text-xs text-muted">(6 attributes selected)</span>
+              </div>
+              <div class="flex gap-2">
+                <button class="text-xs px-2 py-1 rounded bg-bg-hover text-muted hover:text-white" onclick="bulkAction(this, 'fill')">All Fill</button>
+                <button class="text-xs px-2 py-1 rounded bg-bg-hover text-muted hover:text-white" onclick="bulkAction(this, 'overwrite')">All Overwrite</button>
+              </div>
+            </div>
+            <div class="ml-14 space-y-1" id="character-attrs">
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-white">name</span>
+                  <span class="text-xs px-1.5 py-0.5 rounded bg-accent/20 text-accent">required</span>
+                  <span class="text-xs text-muted">text</span>
+                </div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-white pr-6 opacity-50 cursor-not-allowed" disabled>
+                  <option>Extract + Fill missing</option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-white">aliases</span>
+                  <span class="text-xs text-muted">tags</span>
+                </div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-white pr-6">
+                  <option selected>Extract + Fill missing</option>
+                  <option>Extract + Overwrite</option>
+                  <option>Skip</option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-white">gender</span>
+                  <span class="text-xs text-muted">text</span>
+                </div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-white pr-6">
+                  <option selected>Extract + Fill missing</option>
+                  <option>Extract + Overwrite</option>
+                  <option>Skip</option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-white">role</span>
+                  <span class="text-xs text-muted">text</span>
+                </div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-white pr-6">
+                  <option selected>Extract + Fill missing</option>
+                  <option>Extract + Overwrite</option>
+                  <option>Skip</option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-white">occupation</span>
+                  <span class="text-xs text-muted">text</span>
+                </div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-muted pr-6">
+                  <option>Extract + Fill missing</option>
+                  <option>Extract + Overwrite</option>
+                  <option selected>Skip</option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg bg-bg-hover">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-white">appearance</span>
+                  <span class="text-xs text-muted">textarea</span>
+                </div>
+                <select class="bg-bg border border-accent/50 rounded px-2 py-1 text-xs text-accent pr-6">
+                  <option>Extract + Fill missing</option>
+                  <option selected>Extract + Overwrite</option>
+                  <option>Skip</option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-white">personality</span>
+                  <span class="text-xs text-muted">textarea</span>
+                </div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-white pr-6">
+                  <option selected>Extract + Fill missing</option>
+                  <option>Extract + Overwrite</option>
+                  <option>Skip</option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-white">social_class</span>
+                  <span class="text-xs text-muted">text</span>
+                </div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-muted pr-6">
+                  <option>Extract + Fill missing</option>
+                  <option>Extract + Overwrite</option>
+                  <option selected>Skip</option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-white">emotional_wound</span>
+                  <span class="text-xs text-muted">textarea</span>
+                  <span class="text-xs px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-400">not in genre</span>
+                </div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-muted pr-6">
+                  <option>Extract + Fill missing</option>
+                  <option>Extract + Overwrite</option>
+                  <option selected>Skip</option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-white">description</span>
+                  <span class="text-xs text-muted">textarea</span>
+                </div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-white pr-6">
+                  <option selected>Extract + Fill missing</option>
+                  <option>Extract + Overwrite</option>
+                  <option>Skip</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Location kind -->
+          <div class="mb-4">
+            <div class="flex items-center justify-between py-2">
+              <div class="flex items-center gap-3">
+                <div class="toggle-track on" onclick="toggleKind(this, 'location')">
+                  <div class="toggle-dot"></div>
+                </div>
+                <span class="text-lg">📍</span>
+                <span class="font-medium text-white">Location</span>
+                <span class="text-xs text-muted">(4 attributes selected)</span>
+              </div>
+              <div class="flex gap-2">
+                <button class="text-xs px-2 py-1 rounded bg-bg-hover text-muted hover:text-white">All Fill</button>
+                <button class="text-xs px-2 py-1 rounded bg-bg-hover text-muted hover:text-white">All Overwrite</button>
+              </div>
+            </div>
+            <div class="ml-14 space-y-1">
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-white">name</span>
+                  <span class="text-xs px-1.5 py-0.5 rounded bg-accent/20 text-accent">required</span>
+                  <span class="text-xs text-muted">text</span>
+                </div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-white pr-6 opacity-50 cursor-not-allowed" disabled>
+                  <option>Extract + Fill missing</option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-white">aliases</span>
+                  <span class="text-xs text-muted">tags</span>
+                </div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-white pr-6">
+                  <option selected>Extract + Fill missing</option>
+                  <option>Extract + Overwrite</option>
+                  <option>Skip</option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-white">type</span>
+                  <span class="text-xs text-muted">text</span>
+                </div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-white pr-6">
+                  <option selected>Extract + Fill missing</option>
+                  <option>Extract + Overwrite</option>
+                  <option>Skip</option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-white">description</span>
+                  <span class="text-xs text-muted">textarea</span>
+                </div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-white pr-6">
+                  <option selected>Extract + Fill missing</option>
+                  <option>Extract + Overwrite</option>
+                  <option>Skip</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Organization kind -->
+          <div class="mb-4">
+            <div class="flex items-center justify-between py-2">
+              <div class="flex items-center gap-3">
+                <div class="toggle-track on" onclick="toggleKind(this, 'organization')">
+                  <div class="toggle-dot"></div>
+                </div>
+                <span class="text-lg">🏛️</span>
+                <span class="font-medium text-white">Organization</span>
+                <span class="text-xs text-muted">(3 attributes selected)</span>
+              </div>
+              <div class="flex gap-2">
+                <button class="text-xs px-2 py-1 rounded bg-bg-hover text-muted hover:text-white">All Fill</button>
+                <button class="text-xs px-2 py-1 rounded bg-bg-hover text-muted hover:text-white">All Overwrite</button>
+              </div>
+            </div>
+            <div class="ml-14 space-y-1">
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2"><span class="text-sm text-white">name</span><span class="text-xs px-1.5 py-0.5 rounded bg-accent/20 text-accent">required</span><span class="text-xs text-muted">text</span></div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-white pr-6 opacity-50 cursor-not-allowed" disabled><option>Extract + Fill missing</option></select>
+              </div>
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2"><span class="text-sm text-white">aliases</span><span class="text-xs text-muted">tags</span></div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-white pr-6"><option selected>Extract + Fill missing</option><option>Extract + Overwrite</option><option>Skip</option></select>
+              </div>
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2"><span class="text-sm text-white">description</span><span class="text-xs text-muted">textarea</span></div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-white pr-6"><option selected>Extract + Fill missing</option><option>Extract + Overwrite</option><option>Skip</option></select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Power System (disabled) -->
+          <div class="mb-4 opacity-50">
+            <div class="flex items-center justify-between py-2">
+              <div class="flex items-center gap-3">
+                <div class="toggle-track" onclick="toggleKind(this, 'power_system')">
+                  <div class="toggle-dot"></div>
+                </div>
+                <span class="text-lg">⚡</span>
+                <span class="font-medium text-white">Power System</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-400">not in genre</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Species (disabled) -->
+          <div class="mb-4 opacity-50">
+            <div class="flex items-center justify-between py-2">
+              <div class="flex items-center gap-3">
+                <div class="toggle-track" onclick="toggleKind(this, 'species')">
+                  <div class="toggle-dot"></div>
+                </div>
+                <span class="text-lg">🐉</span>
+                <span class="font-medium text-white">Species</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-400">not in genre</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Event kind -->
+          <div class="mb-4">
+            <div class="flex items-center justify-between py-2">
+              <div class="flex items-center gap-3">
+                <div class="toggle-track on" onclick="toggleKind(this, 'event')">
+                  <div class="toggle-dot"></div>
+                </div>
+                <span class="text-lg">📅</span>
+                <span class="font-medium text-white">Event</span>
+                <span class="text-xs text-muted">(3 attributes selected)</span>
+              </div>
+              <div class="flex gap-2">
+                <button class="text-xs px-2 py-1 rounded bg-bg-hover text-muted hover:text-white">All Fill</button>
+                <button class="text-xs px-2 py-1 rounded bg-bg-hover text-muted hover:text-white">All Overwrite</button>
+              </div>
+            </div>
+            <div class="ml-14 space-y-1">
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2"><span class="text-sm text-white">name</span><span class="text-xs px-1.5 py-0.5 rounded bg-accent/20 text-accent">required</span><span class="text-xs text-muted">text</span></div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-white pr-6 opacity-50 cursor-not-allowed" disabled><option>Extract + Fill missing</option></select>
+              </div>
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2"><span class="text-sm text-white">type</span><span class="text-xs text-muted">text</span></div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-white pr-6"><option selected>Extract + Fill missing</option><option>Extract + Overwrite</option><option>Skip</option></select>
+              </div>
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2"><span class="text-sm text-white">description</span><span class="text-xs text-muted">textarea</span></div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-white pr-6"><option selected>Extract + Fill missing</option><option>Extract + Overwrite</option><option>Skip</option></select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Item kind -->
+          <div class="mb-2">
+            <div class="flex items-center justify-between py-2">
+              <div class="flex items-center gap-3">
+                <div class="toggle-track on" onclick="toggleKind(this, 'item')">
+                  <div class="toggle-dot"></div>
+                </div>
+                <span class="text-lg">🗡️</span>
+                <span class="font-medium text-white">Item</span>
+                <span class="text-xs text-muted">(3 attributes selected)</span>
+              </div>
+              <div class="flex gap-2">
+                <button class="text-xs px-2 py-1 rounded bg-bg-hover text-muted hover:text-white">All Fill</button>
+                <button class="text-xs px-2 py-1 rounded bg-bg-hover text-muted hover:text-white">All Overwrite</button>
+              </div>
+            </div>
+            <div class="ml-14 space-y-1">
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2"><span class="text-sm text-white">name</span><span class="text-xs px-1.5 py-0.5 rounded bg-accent/20 text-accent">required</span><span class="text-xs text-muted">text</span></div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-white pr-6 opacity-50 cursor-not-allowed" disabled><option>Extract + Fill missing</option></select>
+              </div>
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2"><span class="text-sm text-white">type</span><span class="text-xs text-muted">text</span></div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-white pr-6"><option selected>Extract + Fill missing</option><option>Extract + Overwrite</option><option>Skip</option></select>
+              </div>
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-bg-hover">
+                <div class="flex items-center gap-2"><span class="text-sm text-white">description</span><span class="text-xs text-muted">textarea</span></div>
+                <select class="bg-bg border border-bg-border rounded px-2 py-1 text-xs text-white pr-6"><option selected>Extract + Fill missing</option><option>Extract + Overwrite</option><option>Skip</option></select>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Dialog footer -->
+        <div class="flex items-center justify-between px-6 py-4 border-t border-bg-border bg-bg/50">
+          <button class="text-sm text-muted hover:text-white flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+            Save as default
+          </button>
+          <div class="flex gap-3">
+            <button onclick="goToStep(0)" class="px-4 py-2 rounded-lg text-sm text-muted hover:text-white hover:bg-bg-hover">Cancel</button>
+            <button onclick="goToStep(3)" class="px-4 py-2 rounded-lg text-sm font-medium bg-accent text-white hover:bg-accent-dim">Next: Review Estimate</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- STEP 2: BATCH CONFIG (Glossary Tab only) -->
+    <!-- ============================================================ -->
+    <div class="step fade-in" data-step="2">
+      <div class="bg-bg-card border border-bg-border rounded-xl overflow-hidden">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-bg-border">
+          <div>
+            <h2 class="text-lg font-semibold text-white">Batch Extraction Config</h2>
+            <p class="text-sm text-muted mt-0.5">Select chapters and configure context filtering</p>
+          </div>
+          <button onclick="goToStep(0)" class="p-2 rounded-lg hover:bg-bg-hover text-muted">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <div class="px-6 py-4">
+          <!-- Chapter selection -->
+          <div class="mb-6">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-medium text-white">Chapter Selection</h3>
+              <div class="flex gap-2">
+                <button class="text-xs px-2.5 py-1 rounded bg-accent/20 text-accent font-medium">All chapters</button>
+                <button class="text-xs px-2.5 py-1 rounded bg-bg-hover text-muted">Select range</button>
+                <button class="text-xs px-2.5 py-1 rounded bg-bg-hover text-muted">Pick chapters</button>
+              </div>
+            </div>
+            <div class="bg-bg rounded-lg border border-bg-border p-3 max-h-[180px] overflow-y-auto">
+              <div class="grid grid-cols-6 gap-1.5">
+                <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-accent/10 border border-accent/30 text-xs"><input type="checkbox" checked class="accent-accent"><span class="text-white">Ch.1</span></div>
+                <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-accent/10 border border-accent/30 text-xs"><input type="checkbox" checked class="accent-accent"><span class="text-white">Ch.2</span></div>
+                <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-accent/10 border border-accent/30 text-xs"><input type="checkbox" checked class="accent-accent"><span class="text-white">Ch.3</span></div>
+                <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-accent/10 border border-accent/30 text-xs"><input type="checkbox" checked class="accent-accent"><span class="text-white">Ch.4</span></div>
+                <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-accent/10 border border-accent/30 text-xs"><input type="checkbox" checked class="accent-accent"><span class="text-white">Ch.5</span></div>
+                <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-accent/10 border border-accent/30 text-xs"><input type="checkbox" checked class="accent-accent"><span class="text-white">Ch.6</span></div>
+                <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-accent/10 border border-accent/30 text-xs"><input type="checkbox" checked class="accent-accent"><span class="text-white">Ch.7</span></div>
+                <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-accent/10 border border-accent/30 text-xs"><input type="checkbox" checked class="accent-accent"><span class="text-white">Ch.8</span></div>
+                <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-accent/10 border border-accent/30 text-xs"><input type="checkbox" checked class="accent-accent"><span class="text-white">Ch.9</span></div>
+                <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-accent/10 border border-accent/30 text-xs"><input type="checkbox" checked class="accent-accent"><span class="text-white">Ch.10</span></div>
+                <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-bg-hover text-xs text-muted">... +190</div>
+              </div>
+            </div>
+            <p class="text-xs text-muted mt-2">200 chapters selected</p>
+          </div>
+
+          <!-- Context filters -->
+          <div class="mb-6">
+            <h3 class="text-sm font-medium text-white mb-3">Known Entities Context Filters</h3>
+            <p class="text-xs text-muted mb-4">Controls which existing entities are injected into the LLM prompt for cross-chapter dedup</p>
+
+            <div class="grid grid-cols-2 gap-6">
+              <!-- Frequency filter -->
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <label class="text-xs font-medium text-muted">Min. frequency (chapters)</label>
+                  <span class="text-sm font-mono text-accent" id="freq-val">2</span>
+                </div>
+                <input type="range" min="1" max="20" value="2" class="w-full" oninput="document.getElementById('freq-val').textContent=this.value">
+                <div class="flex justify-between text-xs text-muted mt-1">
+                  <span>1 (include all)</span>
+                  <span>20 (frequent only)</span>
+                </div>
+              </div>
+              <!-- Recency filter -->
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <label class="text-xs font-medium text-muted">Recency window (chapters)</label>
+                  <span class="text-sm font-mono text-accent" id="recency-val">100</span>
+                </div>
+                <input type="range" min="10" max="500" value="100" step="10" class="w-full" oninput="document.getElementById('recency-val').textContent=this.value">
+                <div class="flex justify-between text-xs text-muted mt-1">
+                  <span>10 (recent only)</span>
+                  <span>500 (wide window)</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Alive filter info -->
+            <div class="mt-4 p-3 rounded-lg bg-bg border border-bg-border flex items-start gap-3">
+              <svg class="w-4 h-4 text-accent mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <div>
+                <p class="text-xs text-white font-medium">Alive filter is always active</p>
+                <p class="text-xs text-muted mt-0.5">Entities marked as "not alive" in the glossary are automatically excluded from extraction context. Toggle alive status on individual entities in the Glossary tab.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-bg-border bg-bg/50">
+          <button onclick="goToStep(0)" class="px-4 py-2 rounded-lg text-sm text-muted hover:text-white hover:bg-bg-hover">Cancel</button>
+          <button onclick="goToStep(1)" class="px-4 py-2 rounded-lg text-sm font-medium bg-accent text-white hover:bg-accent-dim">Next: Extraction Profile</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- STEP 3: COST ESTIMATE & CONFIRM -->
+    <!-- ============================================================ -->
+    <div class="step fade-in" data-step="3">
+      <div class="bg-bg-card border border-bg-border rounded-xl overflow-hidden">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-bg-border">
+          <div>
+            <h2 class="text-lg font-semibold text-white">Review & Confirm</h2>
+            <p class="text-sm text-muted mt-0.5">Review extraction settings and estimated cost before starting</p>
+          </div>
+        </div>
+
+        <div class="px-6 py-5">
+          <!-- Summary cards -->
+          <div class="grid grid-cols-4 gap-4 mb-6">
+            <div class="bg-bg rounded-xl border border-bg-border p-4">
+              <p class="text-xs text-muted mb-1">Chapters</p>
+              <p class="text-2xl font-bold text-white">200</p>
+            </div>
+            <div class="bg-bg rounded-xl border border-bg-border p-4">
+              <p class="text-xs text-muted mb-1">Entity Kinds</p>
+              <p class="text-2xl font-bold text-white">5</p>
+              <p class="text-xs text-muted mt-1">character, location, org, event, item</p>
+            </div>
+            <div class="bg-bg rounded-xl border border-bg-border p-4">
+              <p class="text-xs text-muted mb-1">Batches / Chapter</p>
+              <p class="text-2xl font-bold text-white">2</p>
+              <p class="text-xs text-muted mt-1">400 total LLM calls</p>
+            </div>
+            <div class="bg-bg rounded-xl border border-bg-border p-4">
+              <p class="text-xs text-muted mb-1">Provider</p>
+              <p class="text-lg font-bold text-white">GPT-4o</p>
+              <p class="text-xs text-muted mt-1">OpenAI</p>
+            </div>
+          </div>
+
+          <!-- Token estimate -->
+          <div class="bg-bg rounded-xl border border-bg-border p-5 mb-6">
+            <h3 class="text-sm font-medium text-white mb-4">Token Estimate</h3>
+            <div class="grid grid-cols-3 gap-6">
+              <div>
+                <p class="text-xs text-muted mb-1">Input tokens</p>
+                <p class="text-xl font-bold text-white">~2.5M</p>
+                <div class="mt-2 space-y-1">
+                  <div class="flex justify-between text-xs"><span class="text-muted">Chapter text</span><span class="text-white">1.6M</span></div>
+                  <div class="flex justify-between text-xs"><span class="text-muted">Schema</span><span class="text-white">800K</span></div>
+                  <div class="flex justify-between text-xs"><span class="text-muted">Context entities</span><span class="text-white">100K</span></div>
+                </div>
+              </div>
+              <div>
+                <p class="text-xs text-muted mb-1">Output tokens</p>
+                <p class="text-xl font-bold text-white">~400K</p>
+                <div class="mt-2 space-y-1">
+                  <div class="flex justify-between text-xs"><span class="text-muted">Entity JSON</span><span class="text-white">400K</span></div>
+                </div>
+              </div>
+              <div>
+                <p class="text-xs text-muted mb-1">Estimated total</p>
+                <p class="text-xl font-bold text-accent">~2.9M tokens</p>
+                <div class="mt-2 p-2 rounded bg-yellow-500/10 border border-yellow-500/20">
+                  <p class="text-xs text-yellow-400">This is an estimate. Actual usage depends on chapter length and model tokenizer.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Profile summary -->
+          <div class="bg-bg rounded-xl border border-bg-border p-5 mb-6">
+            <h3 class="text-sm font-medium text-white mb-3">Profile Summary</h3>
+            <div class="grid grid-cols-5 gap-3">
+              <div class="text-center p-3 rounded-lg bg-bg-card border border-bg-border">
+                <span class="text-lg block mb-1">👤</span>
+                <p class="text-xs text-white font-medium">Character</p>
+                <p class="text-xs text-muted mt-0.5">6 attrs</p>
+                <p class="text-xs text-accent mt-0.5">1 overwrite</p>
+              </div>
+              <div class="text-center p-3 rounded-lg bg-bg-card border border-bg-border">
+                <span class="text-lg block mb-1">📍</span>
+                <p class="text-xs text-white font-medium">Location</p>
+                <p class="text-xs text-muted mt-0.5">4 attrs</p>
+              </div>
+              <div class="text-center p-3 rounded-lg bg-bg-card border border-bg-border">
+                <span class="text-lg block mb-1">🏛️</span>
+                <p class="text-xs text-white font-medium">Organization</p>
+                <p class="text-xs text-muted mt-0.5">3 attrs</p>
+              </div>
+              <div class="text-center p-3 rounded-lg bg-bg-card border border-bg-border">
+                <span class="text-lg block mb-1">📅</span>
+                <p class="text-xs text-white font-medium">Event</p>
+                <p class="text-xs text-muted mt-0.5">3 attrs</p>
+              </div>
+              <div class="text-center p-3 rounded-lg bg-bg-card border border-bg-border">
+                <span class="text-lg block mb-1">🗡️</span>
+                <p class="text-xs text-white font-medium">Item</p>
+                <p class="text-xs text-muted mt-0.5">3 attrs</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="flex items-center justify-between px-6 py-4 border-t border-bg-border bg-bg/50">
+          <button onclick="goToStep(1)" class="text-sm text-muted hover:text-white flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            Edit Profile
+          </button>
+          <div class="flex gap-3">
+            <button onclick="goToStep(0)" class="px-4 py-2 rounded-lg text-sm text-muted hover:text-white hover:bg-bg-hover">Cancel</button>
+            <button onclick="goToStep(4); startProgress()" class="px-5 py-2 rounded-lg text-sm font-medium bg-accent text-white hover:bg-accent-dim flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></svg>
+              Start Extraction
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- STEP 4: PROGRESS TRACKER -->
+    <!-- ============================================================ -->
+    <div class="step fade-in" data-step="4">
+      <div class="bg-bg-card border border-bg-border rounded-xl overflow-hidden">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-bg-border">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center progress-active">
+              <svg class="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></svg>
+            </div>
+            <div>
+              <h2 class="text-lg font-semibold text-white">Extracting Glossary</h2>
+              <p class="text-sm text-muted" id="progress-status">Processing chapter 42 of 200...</p>
+            </div>
+          </div>
+          <button onclick="cancelExtraction()" id="cancel-btn" class="px-4 py-2 rounded-lg text-sm font-medium border border-danger/50 text-danger hover:bg-danger/10 flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            Cancel
+          </button>
+        </div>
+
+        <div class="px-6 py-5">
+          <!-- Progress bar -->
+          <div class="mb-6">
+            <div class="flex justify-between text-sm mb-2">
+              <span class="text-white font-medium">Chapter progress</span>
+              <span class="text-accent font-mono" id="progress-pct">21%</span>
+            </div>
+            <div class="w-full h-2 bg-bg rounded-full overflow-hidden">
+              <div class="h-full bg-accent rounded-full transition-all duration-500 progress-active" id="progress-bar" style="width: 21%"></div>
+            </div>
+            <div class="flex justify-between text-xs text-muted mt-1.5">
+              <span id="progress-chapters">42 / 200 chapters</span>
+              <span id="progress-eta">~12 min remaining</span>
+            </div>
+          </div>
+
+          <!-- Stats grid -->
+          <div class="grid grid-cols-4 gap-4 mb-6">
+            <div class="bg-bg rounded-xl border border-bg-border p-4 text-center">
+              <p class="text-2xl font-bold text-success" id="stat-found">156</p>
+              <p class="text-xs text-muted mt-1">Entities Found</p>
+            </div>
+            <div class="bg-bg rounded-xl border border-bg-border p-4 text-center">
+              <p class="text-2xl font-bold text-accent" id="stat-created">98</p>
+              <p class="text-xs text-muted mt-1">New Created</p>
+            </div>
+            <div class="bg-bg rounded-xl border border-bg-border p-4 text-center">
+              <p class="text-2xl font-bold text-warn" id="stat-updated">42</p>
+              <p class="text-xs text-muted mt-1">Updated</p>
+            </div>
+            <div class="bg-bg rounded-xl border border-bg-border p-4 text-center">
+              <p class="text-2xl font-bold text-muted" id="stat-skipped">16</p>
+              <p class="text-xs text-muted mt-1">Skipped</p>
+            </div>
+          </div>
+
+          <!-- Live log -->
+          <div>
+            <h3 class="text-sm font-medium text-white mb-2">Activity Log</h3>
+            <div class="bg-bg rounded-lg border border-bg-border p-3 max-h-[200px] overflow-y-auto font-mono text-xs space-y-1" id="activity-log">
+              <div class="text-muted">[00:00] Starting extraction for 200 chapters...</div>
+              <div class="text-muted">[00:01] Batch config: 2 batches/chapter, 5 kinds</div>
+              <div class="text-muted">[00:02] Loaded 32 known entities (alive=true, freq>=2)</div>
+              <div class="text-success">[00:05] Ch.1 — found 8 entities (6 new, 2 updated)</div>
+              <div class="text-success">[00:08] Ch.2 — found 5 entities (3 new, 1 updated, 1 skipped)</div>
+              <div class="text-success">[00:11] Ch.3 — found 12 entities (8 new, 4 updated)</div>
+              <div class="text-muted">[00:11] Known entities list: 32 → 46</div>
+              <div class="text-success">[00:14] Ch.4 — found 3 entities (2 new, 1 skipped)</div>
+              <div class="text-warn">[00:17] Ch.5 — parse retry (markdown fence stripped)</div>
+              <div class="text-success">[00:18] Ch.5 — found 7 entities (4 new, 3 updated)</div>
+              <div class="text-success">[01:02] Ch.41 — found 4 entities (1 new, 2 updated, 1 skipped)</div>
+              <div class="text-accent">[01:05] Ch.42 — extracting batch 1/2 (character, location, organization)...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- STEP 5: RESULTS SUMMARY -->
+    <!-- ============================================================ -->
+    <div class="step fade-in" data-step="5">
+      <div class="bg-bg-card border border-bg-border rounded-xl overflow-hidden">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-bg-border">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-success/20 flex items-center justify-center">
+              <svg class="w-4 h-4 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <div>
+              <h2 class="text-lg font-semibold text-white">Extraction Complete</h2>
+              <p class="text-sm text-muted">200 chapters processed in 8 min 32 sec</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="px-6 py-5">
+          <!-- Result stats -->
+          <div class="grid grid-cols-5 gap-4 mb-6">
+            <div class="bg-bg rounded-xl border border-bg-border p-4 text-center">
+              <p class="text-3xl font-bold text-white">387</p>
+              <p class="text-xs text-muted mt-1">Total Found</p>
+            </div>
+            <div class="bg-bg rounded-xl border border-success/30 p-4 text-center">
+              <p class="text-3xl font-bold text-success">214</p>
+              <p class="text-xs text-muted mt-1">New Entities</p>
+            </div>
+            <div class="bg-bg rounded-xl border border-accent/30 p-4 text-center">
+              <p class="text-3xl font-bold text-accent">128</p>
+              <p class="text-xs text-muted mt-1">Updated</p>
+            </div>
+            <div class="bg-bg rounded-xl border border-bg-border p-4 text-center">
+              <p class="text-3xl font-bold text-muted">45</p>
+              <p class="text-xs text-muted mt-1">Skipped</p>
+            </div>
+            <div class="bg-bg rounded-xl border border-danger/30 p-4 text-center">
+              <p class="text-3xl font-bold text-danger">2</p>
+              <p class="text-xs text-muted mt-1">Failed Chapters</p>
+            </div>
+          </div>
+
+          <!-- Breakdown by kind -->
+          <div class="bg-bg rounded-xl border border-bg-border p-5 mb-6">
+            <h3 class="text-sm font-medium text-white mb-4">Breakdown by Kind</h3>
+            <div class="space-y-3">
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <div class="flex items-center gap-2"><span>👤</span><span class="text-sm text-white">Character</span></div>
+                  <span class="text-sm font-mono text-white">86 entities</span>
+                </div>
+                <div class="flex gap-1 h-3 rounded-full overflow-hidden">
+                  <div class="bg-success rounded-l-full" style="width: 55%" title="47 new"></div>
+                  <div class="bg-accent" style="width: 30%" title="26 updated"></div>
+                  <div class="bg-muted/30 rounded-r-full" style="width: 15%" title="13 skipped"></div>
+                </div>
+                <div class="flex gap-4 mt-1 text-xs text-muted">
+                  <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-success inline-block"></span>47 new</span>
+                  <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-accent inline-block"></span>26 updated</span>
+                  <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-muted/30 inline-block"></span>13 skipped</span>
+                </div>
+              </div>
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <div class="flex items-center gap-2"><span>📍</span><span class="text-sm text-white">Location</span></div>
+                  <span class="text-sm font-mono text-white">52 entities</span>
+                </div>
+                <div class="flex gap-1 h-3 rounded-full overflow-hidden">
+                  <div class="bg-success rounded-l-full" style="width: 62%" title="32 new"></div>
+                  <div class="bg-accent" style="width: 27%" title="14 updated"></div>
+                  <div class="bg-muted/30 rounded-r-full" style="width: 11%" title="6 skipped"></div>
+                </div>
+                <div class="flex gap-4 mt-1 text-xs text-muted">
+                  <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-success inline-block"></span>32 new</span>
+                  <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-accent inline-block"></span>14 updated</span>
+                  <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-muted/30 inline-block"></span>6 skipped</span>
+                </div>
+              </div>
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <div class="flex items-center gap-2"><span>🏛️</span><span class="text-sm text-white">Organization</span></div>
+                  <span class="text-sm font-mono text-white">28 entities</span>
+                </div>
+                <div class="flex gap-1 h-3 rounded-full overflow-hidden">
+                  <div class="bg-success rounded-l-full" style="width: 50%"></div>
+                  <div class="bg-accent" style="width: 36%"></div>
+                  <div class="bg-muted/30 rounded-r-full" style="width: 14%"></div>
+                </div>
+                <div class="flex gap-4 mt-1 text-xs text-muted">
+                  <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-success inline-block"></span>14 new</span>
+                  <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-accent inline-block"></span>10 updated</span>
+                  <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-muted/30 inline-block"></span>4 skipped</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Failed chapters -->
+          <div class="bg-bg rounded-xl border border-danger/30 p-4 mb-6">
+            <div class="flex items-center gap-2 mb-2">
+              <svg class="w-4 h-4 text-danger" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
+              <span class="text-sm font-medium text-danger">2 chapters failed</span>
+            </div>
+            <div class="space-y-1 text-xs">
+              <div class="flex items-center justify-between text-muted">
+                <span>Ch.87 — LLM output truncated (retry failed)</span>
+                <button class="text-accent hover:text-accent-bright">Retry</button>
+              </div>
+              <div class="flex items-center justify-between text-muted">
+                <span>Ch.156 — JSON parse error after correction attempt</span>
+                <button class="text-accent hover:text-accent-bright">Retry</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Token usage -->
+          <div class="bg-bg rounded-xl border border-bg-border p-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-medium text-white">Actual Token Usage</p>
+                <p class="text-xs text-muted mt-0.5">2.7M input + 380K output = 3.08M total</p>
+              </div>
+              <div class="text-right">
+                <p class="text-xs text-muted">Estimated: 2.9M</p>
+                <p class="text-xs text-success">6% over estimate</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="flex items-center justify-between px-6 py-4 border-t border-bg-border bg-bg/50">
+          <p class="text-xs text-muted">All 214 new entities created as <span class="text-accent">draft</span> — review in Glossary tab</p>
+          <div class="flex gap-3">
+            <button onclick="goToStep(6)" class="px-4 py-2 rounded-lg text-sm font-medium bg-accent text-white hover:bg-accent-dim flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg>
+              Review in Glossary
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- STEP 6: GLOSSARY ENTITY LIST (with alive flag) -->
+    <!-- ============================================================ -->
+    <div class="step fade-in" data-step="6">
+      <div class="bg-bg-card border border-bg-border rounded-xl overflow-hidden">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-bg-border">
+          <div>
+            <h2 class="text-lg font-semibold text-white">Book Glossary</h2>
+            <p class="text-sm text-muted">262 entities (214 draft, 48 active)</p>
+          </div>
+          <div class="flex gap-2">
+            <select class="bg-bg border border-bg-border rounded-lg px-3 py-1.5 text-xs text-white pr-8">
+              <option>All kinds</option>
+              <option>Character</option>
+              <option>Location</option>
+              <option>Organization</option>
+            </select>
+            <select class="bg-bg border border-bg-border rounded-lg px-3 py-1.5 text-xs text-white pr-8">
+              <option>All status</option>
+              <option selected>Draft (new)</option>
+              <option>Active</option>
+              <option>Archived</option>
+            </select>
+            <select class="bg-bg border border-bg-border rounded-lg px-3 py-1.5 text-xs text-white pr-8">
+              <option>All (alive & not)</option>
+              <option selected>Alive only</option>
+              <option>Not alive only</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Entity list -->
+        <div class="divide-y divide-bg-border">
+          <!-- Entity row 1 -->
+          <div class="px-6 py-3 hover:bg-bg-hover flex items-center gap-4">
+            <div class="w-10 h-10 rounded-lg bg-accent/20 flex items-center justify-center text-lg shrink-0">👤</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="font-medium text-white">伊斯坦莎</span>
+                <span class="text-xs text-muted">aliases: 小莎, 銀髮騎士</span>
+                <span class="alive-badge bg-success/20 text-success">alive</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-accent/20 text-accent">draft</span>
+              </div>
+              <p class="text-xs text-muted mt-0.5 truncate">正在尋找失去記憶的騎士，擁有被封印的神秘力量。</p>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+              <div class="text-right">
+                <p class="text-xs text-muted">42 chapters</p>
+                <p class="text-xs text-accent">major</p>
+              </div>
+              <div class="toggle-track on" onclick="toggleAlive(this)" title="Toggle alive status">
+                <div class="toggle-dot"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Entity row 2 -->
+          <div class="px-6 py-3 hover:bg-bg-hover flex items-center gap-4">
+            <div class="w-10 h-10 rounded-lg bg-accent/20 flex items-center justify-center text-lg shrink-0">👤</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="font-medium text-white">索菲亞</span>
+                <span class="text-xs text-muted">aliases: 暗影女王</span>
+                <span class="alive-badge bg-success/20 text-success">alive</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-accent/20 text-accent">draft</span>
+              </div>
+              <p class="text-xs text-muted mt-0.5 truncate">神秘的暗影魔法師，似乎認識伊斯坦莎的過去。</p>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+              <div class="text-right">
+                <p class="text-xs text-muted">28 chapters</p>
+                <p class="text-xs text-accent">major</p>
+              </div>
+              <div class="toggle-track on" onclick="toggleAlive(this)" title="Toggle alive status">
+                <div class="toggle-dot"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Entity row 3 — dead character -->
+          <div class="px-6 py-3 hover:bg-bg-hover flex items-center gap-4">
+            <div class="w-10 h-10 rounded-lg bg-accent/20 flex items-center justify-center text-lg shrink-0 opacity-60">👤</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="font-medium text-white/60">老騎士奧德</span>
+                <span class="alive-badge bg-danger/20 text-danger">not alive</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">active</span>
+              </div>
+              <p class="text-xs text-muted mt-0.5 truncate">伊斯坦莎的導師，在第12章保護她時犧牲。</p>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+              <div class="text-right">
+                <p class="text-xs text-muted">12 chapters</p>
+                <p class="text-xs text-muted">last: Ch.12</p>
+              </div>
+              <div class="toggle-track" onclick="toggleAlive(this)" title="Toggle alive status">
+                <div class="toggle-dot"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Entity row 4 — location -->
+          <div class="px-6 py-3 hover:bg-bg-hover flex items-center gap-4">
+            <div class="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center text-lg shrink-0">📍</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="font-medium text-white">暗黑魔域</span>
+                <span class="alive-badge bg-success/20 text-success">alive</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-accent/20 text-accent">draft</span>
+              </div>
+              <p class="text-xs text-muted mt-0.5 truncate">大崩壞後出現的黑暗領域，充滿瘴氣和魔物。</p>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+              <div class="text-right">
+                <p class="text-xs text-muted">15 chapters</p>
+              </div>
+              <div class="toggle-track on" onclick="toggleAlive(this)" title="Toggle alive status">
+                <div class="toggle-dot"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Entity row 5 — destroyed location -->
+          <div class="px-6 py-3 hover:bg-bg-hover flex items-center gap-4">
+            <div class="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center text-lg shrink-0 opacity-60">📍</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="font-medium text-white/60">銀月城</span>
+                <span class="alive-badge bg-danger/20 text-danger">not alive</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">active</span>
+              </div>
+              <p class="text-xs text-muted mt-0.5 truncate">曾是騎士團的總部，在大崩壞中被摧毀。</p>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+              <div class="text-right">
+                <p class="text-xs text-muted">8 chapters</p>
+                <p class="text-xs text-muted">last: Ch.5</p>
+              </div>
+              <div class="toggle-track" onclick="toggleAlive(this)" title="Toggle alive status">
+                <div class="toggle-dot"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Entity row 6 — organization -->
+          <div class="px-6 py-3 hover:bg-bg-hover flex items-center gap-4">
+            <div class="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center text-lg shrink-0">🏛️</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="font-medium text-white">白銀騎士團</span>
+                <span class="text-xs text-muted">aliases: 白銀團</span>
+                <span class="alive-badge bg-success/20 text-success">alive</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-accent/20 text-accent">draft</span>
+              </div>
+              <p class="text-xs text-muted mt-0.5 truncate">守護王國的精銳騎士團，伊斯坦莎曾是其成員。</p>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+              <div class="text-right">
+                <p class="text-xs text-muted">35 chapters</p>
+              </div>
+              <div class="toggle-track on" onclick="toggleAlive(this)" title="Toggle alive status">
+                <div class="toggle-dot"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Entity row 7 — low frequency (will be filtered) -->
+          <div class="px-6 py-3 hover:bg-bg-hover flex items-center gap-4">
+            <div class="w-10 h-10 rounded-lg bg-accent/20 flex items-center justify-center text-lg shrink-0 opacity-40">👤</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="font-medium text-white/50">路人甲</span>
+                <span class="alive-badge bg-success/20 text-success">alive</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-accent/20 text-accent">draft</span>
+              </div>
+              <p class="text-xs text-muted mt-0.5 truncate">在市場上與伊斯坦莎交談的商人。</p>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+              <div class="text-right">
+                <p class="text-xs text-danger">1 chapter</p>
+                <p class="text-xs text-muted">low freq</p>
+              </div>
+              <div class="toggle-track on" onclick="toggleAlive(this)" title="Toggle alive status">
+                <div class="toggle-dot"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="flex items-center justify-between px-6 py-3 border-t border-bg-border bg-bg/50">
+          <p class="text-xs text-muted">Showing 7 of 262 entities</p>
+          <div class="flex gap-2">
+            <button class="px-3 py-1.5 rounded-lg text-xs font-medium bg-success/20 text-success hover:bg-success/30">Activate All Drafts</button>
+            <button class="px-3 py-1.5 rounded-lg text-xs font-medium bg-danger/20 text-danger hover:bg-danger/30">Delete Selected</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- JAVASCRIPT -->
+  <!-- ============================================================ -->
+  <script>
+    let currentStep = 0;
+    let progressInterval = null;
+
+    function goToStep(step) {
+      document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+      document.querySelector(`[data-step="${step}"]`).classList.add('active');
+
+      // Update tabs
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('bg-accent/20', 'text-accent');
+        btn.classList.add('text-muted', 'hover:text-white', 'hover:bg-bg-hover');
+      });
+      const activeTab = document.querySelector(`[data-tab="${step}"]`);
+      if (activeTab) {
+        activeTab.classList.add('bg-accent/20', 'text-accent');
+        activeTab.classList.remove('text-muted');
+      }
+      currentStep = step;
+    }
+
+    function toggleKind(el, kindCode) {
+      el.classList.toggle('on');
+      const isOn = el.classList.contains('on');
+      const parent = el.closest('.mb-4');
+      if (!isOn) {
+        parent.classList.add('opacity-50');
+      } else {
+        parent.classList.remove('opacity-50');
+      }
+    }
+
+    function toggleAlive(el) {
+      el.classList.toggle('on');
+      const row = el.closest('.flex.items-center.gap-4') || el.closest('[class*="px-6 py-3"]');
+      const badge = row.querySelector('.alive-badge');
+      const nameEl = row.querySelector('.font-medium');
+      const iconContainer = row.querySelector('.w-10');
+
+      if (el.classList.contains('on')) {
+        badge.className = 'alive-badge bg-success/20 text-success';
+        badge.textContent = 'alive';
+        if (nameEl) nameEl.classList.remove('text-white/60');
+        if (nameEl) nameEl.classList.add('text-white');
+        if (iconContainer) iconContainer.classList.remove('opacity-60');
+      } else {
+        badge.className = 'alive-badge bg-danger/20 text-danger';
+        badge.textContent = 'not alive';
+        if (nameEl) nameEl.classList.remove('text-white');
+        if (nameEl) nameEl.classList.add('text-white/60');
+        if (iconContainer) iconContainer.classList.add('opacity-60');
+      }
+    }
+
+    function startProgress() {
+      let progress = 21;
+      let found = 156, created = 98, updated = 42, skipped = 16;
+
+      progressInterval = setInterval(() => {
+        progress += Math.random() * 3;
+        if (progress >= 100) {
+          progress = 100;
+          clearInterval(progressInterval);
+          document.getElementById('progress-status').textContent = 'Extraction complete!';
+          document.getElementById('progress-eta').textContent = 'Done';
+          document.getElementById('cancel-btn').style.display = 'none';
+          document.querySelector('.progress-active')?.classList.remove('progress-active');
+
+          // Add completion log entry
+          const log = document.getElementById('activity-log');
+          const entry = document.createElement('div');
+          entry.className = 'text-success font-bold';
+          entry.textContent = '[08:32] Extraction complete — 387 entities found, 214 new, 128 updated';
+          log.appendChild(entry);
+          log.scrollTop = log.scrollHeight;
+          return;
+        }
+
+        const chap = Math.floor(progress * 2);
+        found += Math.floor(Math.random() * 5);
+        created += Math.floor(Math.random() * 3);
+        updated += Math.floor(Math.random() * 2);
+        skipped += Math.random() > 0.7 ? 1 : 0;
+        const remaining = Math.max(1, Math.floor((100 - progress) * 0.5));
+
+        document.getElementById('progress-bar').style.width = progress + '%';
+        document.getElementById('progress-pct').textContent = Math.floor(progress) + '%';
+        document.getElementById('progress-chapters').textContent = `${chap} / 200 chapters`;
+        document.getElementById('progress-status').textContent = `Processing chapter ${chap} of 200...`;
+        document.getElementById('progress-eta').textContent = `~${remaining} min remaining`;
+        document.getElementById('stat-found').textContent = found;
+        document.getElementById('stat-created').textContent = created;
+        document.getElementById('stat-updated').textContent = updated;
+        document.getElementById('stat-skipped').textContent = skipped;
+      }, 800);
+    }
+
+    function cancelExtraction() {
+      if (progressInterval) clearInterval(progressInterval);
+
+      document.getElementById('progress-status').textContent = 'Extraction cancelled by user';
+      document.getElementById('progress-eta').textContent = 'Cancelled';
+      document.getElementById('cancel-btn').innerHTML = '<span class="text-muted">Cancelled</span>';
+      document.getElementById('cancel-btn').disabled = true;
+      document.getElementById('cancel-btn').classList.remove('border-danger/50', 'text-danger', 'hover:bg-danger/10');
+      document.getElementById('cancel-btn').classList.add('border-bg-border', 'cursor-not-allowed');
+      document.querySelector('.progress-active')?.classList.remove('progress-active');
+
+      const log = document.getElementById('activity-log');
+      const entry = document.createElement('div');
+      entry.className = 'text-warn font-bold';
+      entry.textContent = '[--:--] Extraction cancelled. Entities from completed chapters have been saved.';
+      log.appendChild(entry);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    // Init first tab
+    goToStep(0);
+  </script>
+
+</body>
+</html>

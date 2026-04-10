@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-10 (session 29 end — Translation Pipeline V2 COMPLETE)
-- Updated By: Assistant (V2 pipeline: P1-P8 implemented + integrated, real Docker test pass, 3 commits)
+- Last Updated: 2026-04-10 (session 30 — Glossary Extraction Pipeline DESIGN COMPLETE)
+- Updated By: Assistant (pipeline design doc + 4 review rounds + UI draft + task plan)
 - Active Branch: `main`
-- HEAD: `6db8553` — fix: forward usage tokens in provider-registry, parse JSONB string
+- HEAD: `ee6d64e` — feat: Glossary Extraction Pipeline design doc
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
 
 ---
@@ -33,9 +33,11 @@
 
 **Phase 9: COMPLETE (12/12).** All phases 8A-8H + Phase 9 done. No placeholder tabs remain.
 
-**Translation Pipeline V2: IMPLEMENTED (P1-P8).** All 8 priorities from V2 design doc implemented. Proven with real Ollama gemma3:12b model calls: CJK token fix (2.29x correction), glossary injection (1/6→6/6 name accuracy), output validation, multi-provider token extraction.
+**Translation Pipeline V2: IMPLEMENTED (P1-P8).** All 8 priorities from V2 design doc implemented. Proven with real Ollama gemma3:12b model calls.
 
-**Next: Integration testing with Docker Compose stack + real chapter translations.**
+**Glossary Extraction Pipeline: DESIGN COMPLETE.** Full design doc (1500+ lines), 4 review rounds (context/data engineer, security, cost), UI draft HTML, 20 implementation tasks (13 BE + 7 FE). Ready for BUILD phase.
+
+**Next: GEP-BE-01..13 (backend implementation, high priority).**
 
 **What was done in this session (2026-04-09, session 29):**
 
@@ -891,15 +893,63 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 | Phase 1-3 | Backend + frontend chat (sessions, streaming, editing) | ✅ Done |
 | Phase 4 | File attachments + multi-modal | Planned (after frontend-v2 Phase 3) |
 
+### Glossary Extraction Pipeline
+
+Design document: `docs/03_planning/data_pipelines/GLOSSARY_EXTRACTION_PIPELINE.md`
+UI draft: `design-drafts/glossary_extraction_ui_draft.html`
+Session: 30 (2026-04-10) — design complete, 4 review rounds (context/data engineer, security, cost)
+
+**BE tasks (high priority — must complete before FE):**
+
+| Task | Service | Scope | Deps | Status |
+|------|---------|-------|------|--------|
+| **GEP-BE-01** | glossary-service | Migration: `alive BOOLEAN` on glossary_entities + `extraction_audit_log` table | — | [ ] |
+| **GEP-BE-02** | glossary-service | `GET /api/v1/books/{book_id}/extraction-profile` — auto-resolve kinds+attrs by genre, return full metadata. Dual route: public (JWT) + internal (service token) | — | [ ] |
+| **GEP-BE-03** | glossary-service | `POST /internal/books/{book_id}/extract-entities` — bulk upsert with normalized dedup, fill/overwrite per attribute, evidence creation, audit log, chapter links | GEP-BE-01 | [ ] |
+| **GEP-BE-04** | glossary-service | `GET /internal/books/{book_id}/known-entities` — filtered by alive, min_frequency, recency_window, limit. Frequency derived from chapter_entity_links COUNT | GEP-BE-01 | [ ] |
+| **GEP-BE-05** | glossary-service | Entity alive toggle: `PATCH /api/v1/entities/{entity_id}` support `alive` field | GEP-BE-01 | [ ] |
+| **GEP-BE-06** | book-service | Migration: `extraction_profile JSONB` on books table + PATCH support | — | [ ] |
+| **GEP-BE-07** | translation-service | `extraction_preprocessor.py` — `tiptap_to_extraction_text()`, `prepare_chapter_text()` | — | [ ] |
+| **GEP-BE-08** | translation-service | `extraction_prompt.py` — dynamic prompt builder, auto-batch by kind groups, known entities context builder, output parser + validator (whitelist validation for kind/attr codes) | — | [ ] |
+| **GEP-BE-09** | translation-service | `extraction_worker.py` — job consumer, per-chapter extraction loop, batch orchestration, segment splitting for long chapters, cooperative cancellation check | GEP-BE-07, GEP-BE-08 | [ ] |
+| **GEP-BE-10** | translation-service | Job creation endpoint `POST /api/v1/books/{book_id}/extract-glossary` with cost estimation in 202 response. Job cancellation `POST /api/v1/jobs/{job_id}/cancel` with ownership check | GEP-BE-09 | [ ] |
+| **GEP-BE-11** | translation-service | `glossary_client.py` — `post_extracted_entities()`, `get_extraction_profile()`, `get_known_entities()` | — | [ ] |
+| **GEP-BE-12** | api-gateway-bff | Proxy routes: `POST /v1/books/{book_id}/extract-glossary` → translation-service, `GET /v1/books/{book_id}/extraction-profile` → glossary-service | — | [ ] |
+| **GEP-BE-13** | all | Integration test: single chapter extraction end-to-end (gateway → translation-service → LLM → glossary-service upsert) | GEP-BE-01..12 | [ ] |
+
+**FE tasks (after BE is stable):**
+
+| Task | Scope | Deps | Status |
+|------|-------|------|--------|
+| **GEP-FE-01** | `ExtractionProfileDialog` — fetch profile, render kind toggles + per-attribute 3-state dropdowns (skip/fill/overwrite), bulk actions, save as default | GEP-BE-02, GEP-BE-06 | [ ] |
+| **GEP-FE-02** | `BatchExtractionConfig` — chapter selection (all/range/pick), frequency + recency sliders, alive filter info | GEP-BE-04 | [ ] |
+| **GEP-FE-03** | `ExtractionEstimate` — cost estimation display (tokens, LLM calls, profile summary), confirm/cancel | GEP-BE-10 | [ ] |
+| **GEP-FE-04** | `ExtractionProgress` — live progress bar, real-time stats (found/created/updated/skipped), activity log, cancel button | GEP-BE-10 | [ ] |
+| **GEP-FE-05** | `ExtractionResults` — summary with per-kind breakdown bars, failed chapters with retry, actual vs estimated tokens | GEP-BE-10 | [ ] |
+| **GEP-FE-06** | `ExtractGlossaryButton` — reusable trigger component, integrations in Chapter tab, Translation tab, Glossary tab toolbar | GEP-FE-01..05 | [ ] |
+| **GEP-FE-07** | Glossary entity list: alive toggle per entity, alive/not-alive badge, frequency display, alive filter in list filters | GEP-BE-05 | [ ] |
+
+**Suggested build order:**
+1. GEP-BE-01 + GEP-BE-06 (migrations, parallel)
+2. GEP-BE-02 + GEP-BE-04 + GEP-BE-05 (glossary-service endpoints, parallel)
+3. GEP-BE-03 (bulk upsert — largest task, depends on migration)
+4. GEP-BE-07 + GEP-BE-08 + GEP-BE-11 (translation-service core, parallel)
+5. GEP-BE-09 + GEP-BE-10 (worker + job endpoints)
+6. GEP-BE-12 (gateway proxy)
+7. GEP-BE-13 (integration test)
+8. GEP-FE-01..07 (frontend, sequential)
+
 ### Immediate candidates
 
 | Priority | Item | Notes |
 | -------- | ---- | ----- |
 | **P0** | **MIG-03..MIG-09: Remaining V1→V2 page migrations** | 7 pages: Usage, Settings, Browse, Public Book, Unlisted, Chapter Translations |
 | **P0** | **MIG-10: Delete old `frontend/` directory** | After all migrations complete |
-| **P1** | **P3-08a/b: Genre Groups [BE+FE]** | Needs new backend tables, unblocks glossary polish |
+| **P1** | **Glossary Extraction Pipeline [BE]** | 13 BE tasks, design complete (4 review rounds). See GEP-BE-01..13 above |
+| **P1** | **P3-08a/b: Genre Groups [BE+FE]** | Needs new backend tables, unblocks glossary polish + extraction profile auto-resolve |
 | P1 | Translation Workbench | Block-level translation (design draft exists), Phase 3.5 done |
 | P1 | Phase 4: Settings, Usage, Browse + polish | Overlaps with MIG-03..08 |
+| P2 | **Glossary Extraction Pipeline [FE]** | 7 FE tasks, blocked on BE completion. UI draft exists |
 | P2 | GUI Review deferred items (D1-D22) | Editor polish, glossary polish, reader polish |
 | P2 | Platform Mode (103_PLATFORM_MODE_PLAN.md) | 35 tasks, deferred |
 | P2 | Phase 4.5: Audio/TTS | Per-paragraph narration (design draft exists) |
@@ -942,6 +992,7 @@ Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
 
 | Date       | What happened | Key commits |
 | ---------- | ------------- | ----------- |
+| 2026-04-10 | Session 30: Glossary Extraction Pipeline — full design doc (1500+ lines), 4 review rounds (context/data, security, cost → 22 issues found and fixed), UI draft HTML (7 interactive screens), implementation task plan (13 BE + 7 FE tasks). Design artifacts: `GLOSSARY_EXTRACTION_PIPELINE.md`, `glossary_extraction_ui_draft.html`. Key decisions: source language SSOT, alive flag for entities, 3-layer known entities filtering, extraction_audit_log table, prompt injection mitigation, cost estimation. | `ee6d64e` |
 | 2026-04-09→10 | Session 29: Translation Pipeline V2 — full implementation (P1-P8). CJK token fix (2.29x), glossary injection (1/6→6/6), output validation+retry, multi-provider tokens, rolling context, auto-correct, chapter memo, quality metrics. 3 services touched (translation, glossary, provider-registry). PoC with real Ollama gemma3:12b. Docker integration test: 132+113 blocks, all valid. 3 commits. | `662cbf7`..`6db8553` |
 | 2026-04-03 | Session 16: Phase 3.5 (E4+E5, 12 tasks), video-gen-service skeleton, M1-M6 (design draft gaps), MIG-01 (Trash page), MIG-02 (Chat page), code block fixes (5 iterations), image block fixes (upload wiring, MinIO URL, mode switch, hover overlay), removed localStorage cache persistence, planning docs (VG, MV, VH, TR, MIG). 53 commits. | `40bb7b1`..`bec9eef` |
 | 2026-04-02 | Session 15: Phase 3 FE complete (P3-18/19/20/21/22/22a+b), BE fixes (patchBook null, chat context field, gateway proxy), 5 integration test scripts (120 total scenarios), Docker fix | `911c249`..`eeee14c` |
