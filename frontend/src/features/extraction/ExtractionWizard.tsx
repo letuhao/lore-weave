@@ -4,6 +4,8 @@ import { useExtractionState, type WizardMode, type WizardStep } from './useExtra
 import { StepProfile } from './StepProfile';
 import { StepBatchConfig } from './StepBatchConfig';
 import { StepConfirm } from './StepConfirm';
+import { StepProgress } from './StepProgress';
+import { StepResults } from './StepResults';
 import { cn } from '@/lib/utils';
 import type { ExtractionProfileKind, CostEstimate } from './types';
 
@@ -46,6 +48,7 @@ export function ExtractionWizard({
     setJobId,
     setKinds,
     setSelectedModelName,
+    setFinalJobStatus,
     canClose,
   } = useExtractionState(mode, preselectedChapterIds);
 
@@ -105,17 +108,25 @@ export function ExtractionWizard({
           />
         );
       case 'progress':
-        return (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            Progress — GEP-FE-05
-          </div>
-        );
+        return state.jobId ? (
+          <StepProgress
+            jobId={state.jobId}
+            onComplete={(finalStatus) => {
+              setFinalJobStatus(finalStatus);
+              goNext();
+              onComplete?.();
+            }}
+          />
+        ) : null;
       case 'results':
-        return (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            Results — GEP-FE-05
-          </div>
-        );
+        return state.finalJobStatus ? (
+          <StepResults
+            jobStatus={state.finalJobStatus}
+            costEstimate={state.costEstimate}
+            onClose={handleClose}
+            onViewGlossary={handleClose}
+          />
+        ) : null;
     }
   };
 

@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { ExtractionProfile, ContextFilters, CostEstimate, ExtractionProfileKind } from './types';
+import type { ExtractionProfile, ContextFilters, CostEstimate, ExtractionProfileKind, ExtractionJobStatus } from './types';
 
 export type WizardMode = 'single' | 'batch';
 
@@ -22,6 +22,7 @@ export type WizardState = {
   costEstimate: CostEstimate | null;
   kinds: ExtractionProfileKind[];
   selectedModelName: string;
+  finalJobStatus: ExtractionJobStatus | null;
 };
 
 export function useExtractionState(mode: WizardMode, preselectedChapterIds?: string[]) {
@@ -41,6 +42,7 @@ export function useExtractionState(mode: WizardMode, preselectedChapterIds?: str
     costEstimate: null,
     kinds: [],
     selectedModelName: '',
+    finalJobStatus: null,
   });
 
   const goNext = useCallback(() => {
@@ -97,6 +99,10 @@ export function useExtractionState(mode: WizardMode, preselectedChapterIds?: str
     setState((prev) => ({ ...prev, selectedModelName }));
   }, []);
 
+  const setFinalJobStatus = useCallback((finalJobStatus: ExtractionJobStatus) => {
+    setState((prev) => ({ ...prev, finalJobStatus }));
+  }, []);
+
   /** Whether the dialog can be safely closed (not during active job) */
   const canClose = state.step !== 'progress';
 
@@ -113,6 +119,7 @@ export function useExtractionState(mode: WizardMode, preselectedChapterIds?: str
     setJobId,
     setKinds,
     setSelectedModelName,
+    setFinalJobStatus,
     canClose,
   };
 }
