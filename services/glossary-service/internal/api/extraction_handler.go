@@ -1,10 +1,17 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"golang.org/x/text/unicode/norm"
 )
 
 // getExtractionProfile auto-resolves entity kinds + attributes for extraction
@@ -310,6 +317,525 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, result)
 }
+
+// ── GEP-BE-03: Bulk upsert endpoint ─────────────────────────────────────────
+
+// bulkUpsertRequest is the request body for POST /internal/books/{book_id}/extract-entities.
+type bulkUpsertRequest struct {
+	SourceLanguage   string                       `json:"source_language"`
+	AttributeActions map[string]map[string]string  `json:"attribute_actions"` // kind_code → attr_code → "fill"|"overwrite"
+	Entities         []extractedEntity             `json:"entities"`
+}
+
+type extractedEntity struct {
+	KindCode     string            `json:"kind_code"`
+	Name         string            `json:"name"`
+	Attributes   map[string]any    `json:"attributes"`
+	Evidence     string            `json:"evidence"`
+	ChapterLinks []chapterLinkIn   `json:"chapter_links"`
+}
+
+type chapterLinkIn struct {
+	ChapterID    string `json:"chapter_id"`
+	ChapterTitle string `json:"chapter_title"`
+	ChapterIndex int    `json:"chapter_index"`
+	Relevance    string `json:"relevance"`
+}
+
+type entityResult struct {
+	EntityID          string   `json:"entity_id"`
+	Name              string   `json:"name"`
+	KindCode          string   `json:"kind_code"`
+	Status            string   `json:"status"` // "created" | "updated" | "skipped"
+	AttributesWritten []string `json:"attributes_written"`
+	AttributesSkipped []string `json:"attributes_skipped"`
+}
+
+// bulkExtractEntities receives extracted entities from translation-service and upserts them.
+//
+//	POST /internal/books/{book_id}/extract-entities
+func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+
+	var req bulkUpsertRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON body")
+		return
+	}
+	if req.SourceLanguage == "" {
+		req.SourceLanguage = "zh"
+	}
+	if len(req.Entities) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"created": 0, "updated": 0, "skipped": 0, "entities": []entityResult{},
+		})
+		return
+	}
+
+	// Pre-load kind_id map (code → kind_id)
+	kindMap, err := s.loadKindMap(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to load kinds")
+		return
+	}
+
+	// Pre-load attr_def map (kind_id+code → attr_def_id)
+	attrDefMap, err := s.loadAttrDefMap(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to load attribute definitions")
+		return
+	}
+
+	var (
+		results  []entityResult
+		created  int
+		updated  int
+		skipped  int
+	)
+
+	for _, ent := range req.Entities {
+		kindID, kindOK := kindMap[ent.KindCode]
+		if !kindOK {
+			continue // unknown kind, skip
+		}
+		if ent.Name == "" {
+			continue
+		}
+
+		actions := req.AttributeActions[ent.KindCode]
+		if actions == nil {
+			actions = map[string]string{}
+		}
+
+		// 1. Find existing entity by normalized name or alias match
+		existingID, err := s.findEntityByNameOrAlias(ctx, bookID, kindID, ent.Name)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "entity lookup failed")
+			return
+		}
+
+		var result entityResult
+		result.Name = ent.Name
+		result.KindCode = ent.KindCode
+
+		if existingID == uuid.Nil {
+			// 2. CREATE new entity
+			entityID, err := s.createExtractedEntity(ctx, bookID, kindID, ent, actions, attrDefMap, req.SourceLanguage)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to create entity: "+err.Error())
+				return
+			}
+			result.EntityID = entityID.String()
+			result.Status = "created"
+			// All provided attributes are written on create
+			result.AttributesWritten = make([]string, 0, len(ent.Attributes)+1)
+			result.AttributesWritten = append(result.AttributesWritten, "name")
+			for code := range ent.Attributes {
+				result.AttributesWritten = append(result.AttributesWritten, code)
+			}
+			result.AttributesSkipped = []string{}
+			created++
+		} else {
+			// 3. MERGE with existing entity
+			written, skippedAttrs, err := s.mergeExtractedEntity(ctx, existingID, kindID, ent, actions, attrDefMap, req.SourceLanguage)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to merge entity: "+err.Error())
+				return
+			}
+			result.EntityID = existingID.String()
+			result.AttributesWritten = written
+			result.AttributesSkipped = skippedAttrs
+			if len(written) > 0 {
+				result.Status = "updated"
+				updated++
+			} else {
+				result.Status = "skipped"
+				skipped++
+			}
+		}
+
+		// 4. Add chapter links
+		for _, cl := range ent.ChapterLinks {
+			chID, err := uuid.Parse(cl.ChapterID)
+			if err != nil {
+				continue
+			}
+			entID, _ := uuid.Parse(result.EntityID)
+			relevance := cl.Relevance
+			if relevance == "" {
+				relevance = "appears"
+			}
+			_, _ = s.pool.Exec(ctx, `
+				INSERT INTO chapter_entity_links (entity_id, chapter_id, chapter_title, chapter_index, relevance)
+				VALUES ($1, $2, $3, $4, $5)
+				ON CONFLICT (entity_id, chapter_id) DO UPDATE SET
+					chapter_title = EXCLUDED.chapter_title,
+					chapter_index = EXCLUDED.chapter_index,
+					relevance = EXCLUDED.relevance
+			`, entID, chID, cl.ChapterTitle, cl.ChapterIndex, relevance)
+		}
+
+		// 5. Add evidence (extraction quote)
+		if ent.Evidence != "" {
+			entID, _ := uuid.Parse(result.EntityID)
+			nameAttrDefID, nameOK := attrDefMap[kindID.String()+":name"]
+			if nameOK {
+				// Get the name attr_value_id
+				var nameAVID uuid.UUID
+				err := s.pool.QueryRow(ctx, `
+					SELECT attr_value_id FROM entity_attribute_values
+					WHERE entity_id = $1 AND attr_def_id = $2
+				`, entID, nameAttrDefID).Scan(&nameAVID)
+				if err == nil {
+					_, _ = s.pool.Exec(ctx, `
+						INSERT INTO evidences (attr_value_id, chapter_id, evidence_type, original_language, original_text, note)
+						VALUES ($1, $2, 'extraction_quote', $3, $4, 'auto-extracted by glossary extraction pipeline')
+					`, nameAVID, s.firstChapterID(ent.ChapterLinks), req.SourceLanguage, ent.Evidence)
+				}
+			}
+		}
+
+		results = append(results, result)
+	}
+
+	if results == nil {
+		results = []entityResult{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"created":  created,
+		"updated":  updated,
+		"skipped":  skipped,
+		"entities": results,
+	})
+}
+
+// loadKindMap returns a map of kind code → kind_id.
+func (s *Server) loadKindMap(ctx context.Context) (map[string]uuid.UUID, error) {
+	rows, err := s.pool.Query(ctx, `SELECT kind_id, code FROM entity_kinds`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	m := make(map[string]uuid.UUID)
+	for rows.Next() {
+		var id uuid.UUID
+		var code string
+		if err := rows.Scan(&id, &code); err != nil {
+			return nil, err
+		}
+		m[code] = id
+	}
+	return m, nil
+}
+
+// loadAttrDefMap returns a map of "kind_id:code" → attr_def_id.
+func (s *Server) loadAttrDefMap(ctx context.Context) (map[string]uuid.UUID, error) {
+	rows, err := s.pool.Query(ctx, `SELECT attr_def_id, kind_id, code FROM attribute_definitions`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	m := make(map[string]uuid.UUID)
+	for rows.Next() {
+		var attrDefID, kindID uuid.UUID
+		var code string
+		if err := rows.Scan(&attrDefID, &kindID, &code); err != nil {
+			return nil, err
+		}
+		m[kindID.String()+":"+code] = attrDefID
+	}
+	return m, nil
+}
+
+// findEntityByNameOrAlias looks up an existing entity by normalized name match,
+// then by alias match if not found. Returns uuid.Nil if no match.
+func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uuid.UUID, name string) (uuid.UUID, error) {
+	normalizedName := normalizeEntity(name)
+
+	// Step 1: Try exact name match (normalized)
+	rows, err := s.pool.Query(ctx, `
+		SELECT ge.entity_id, eav.original_value
+		FROM glossary_entities ge
+		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
+		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		WHERE ge.book_id = $1
+		  AND ge.kind_id = $2
+		  AND ad.code = 'name'
+	`, bookID, kindID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	defer rows.Close()
+
+	type nameEntry struct {
+		entityID uuid.UUID
+		name     string
+	}
+	var entries []nameEntry
+	for rows.Next() {
+		var e nameEntry
+		if err := rows.Scan(&e.entityID, &e.name); err != nil {
+			return uuid.Nil, err
+		}
+		if normalizeEntity(e.name) == normalizedName {
+			return e.entityID, nil
+		}
+		entries = append(entries, e)
+	}
+
+	// Step 2: Check aliases (app-layer JSON parsing per design C1)
+	aliasRows, err := s.pool.Query(ctx, `
+		SELECT ge.entity_id, eav.original_value
+		FROM glossary_entities ge
+		JOIN entity_attribute_values eav ON eav.entity_id = ge.entity_id
+		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		WHERE ge.book_id = $1
+		  AND ge.kind_id = $2
+		  AND ad.code = 'aliases'
+		  AND eav.original_value != ''
+	`, bookID, kindID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	defer aliasRows.Close()
+
+	for aliasRows.Next() {
+		var entityID uuid.UUID
+		var aliasRaw string
+		if err := aliasRows.Scan(&entityID, &aliasRaw); err != nil {
+			return uuid.Nil, err
+		}
+		var aliases []string
+		if err := json.Unmarshal([]byte(aliasRaw), &aliases); err != nil {
+			continue // not a valid JSON array, skip
+		}
+		for _, alias := range aliases {
+			if normalizeEntity(alias) == normalizedName {
+				return entityID, nil
+			}
+		}
+	}
+
+	return uuid.Nil, nil
+}
+
+// createExtractedEntity creates a new entity with all provided attributes.
+func (s *Server) createExtractedEntity(
+	ctx context.Context,
+	bookID, kindID uuid.UUID,
+	ent extractedEntity,
+	actions map[string]string,
+	attrDefMap map[string]uuid.UUID,
+	sourceLang string,
+) (uuid.UUID, error) {
+	var entityID uuid.UUID
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO glossary_entities (book_id, kind_id, status)
+		VALUES ($1, $2, 'draft')
+		RETURNING entity_id
+	`, bookID, kindID).Scan(&entityID)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("insert entity: %w", err)
+	}
+
+	// Insert name attribute
+	nameDefID, ok := attrDefMap[kindID.String()+":name"]
+	if ok {
+		_, err = s.pool.Exec(ctx, `
+			INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (entity_id, attr_def_id) DO NOTHING
+		`, entityID, nameDefID, sourceLang, ent.Name)
+		if err != nil {
+			return uuid.Nil, fmt.Errorf("insert name attr: %w", err)
+		}
+	}
+
+	// Insert other attributes
+	for code, val := range ent.Attributes {
+		defID, ok := attrDefMap[kindID.String()+":"+code]
+		if !ok {
+			continue
+		}
+		serialized := serializeValue(val)
+		_, err = s.pool.Exec(ctx, `
+			INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (entity_id, attr_def_id) DO NOTHING
+		`, entityID, defID, sourceLang, serialized)
+		if err != nil {
+			return uuid.Nil, fmt.Errorf("insert attr %s: %w", code, err)
+		}
+	}
+
+	return entityID, nil
+}
+
+// mergeExtractedEntity merges attributes into an existing entity based on fill/overwrite actions.
+func (s *Server) mergeExtractedEntity(
+	ctx context.Context,
+	entityID, kindID uuid.UUID,
+	ent extractedEntity,
+	actions map[string]string,
+	attrDefMap map[string]uuid.UUID,
+	sourceLang string,
+) (written, skippedAttrs []string, err error) {
+	for code, val := range ent.Attributes {
+		defID, ok := attrDefMap[kindID.String()+":"+code]
+		if !ok {
+			continue
+		}
+		action := actions[code]
+		if action == "" || action == "skip" {
+			skippedAttrs = append(skippedAttrs, code)
+			continue
+		}
+
+		serialized := serializeValue(val)
+
+		// Check existing value
+		var existingValue string
+		var attrValueExists bool
+		err := s.pool.QueryRow(ctx, `
+			SELECT original_value FROM entity_attribute_values
+			WHERE entity_id = $1 AND attr_def_id = $2
+		`, entityID, defID).Scan(&existingValue)
+		if err == nil {
+			attrValueExists = true
+		}
+
+		if action == "fill" {
+			if attrValueExists && existingValue != "" {
+				skippedAttrs = append(skippedAttrs, code)
+				continue
+			}
+			// Fill empty value
+			if attrValueExists {
+				_, err = s.pool.Exec(ctx, `
+					UPDATE entity_attribute_values SET original_value = $1, original_language = $2
+					WHERE entity_id = $3 AND attr_def_id = $4
+				`, serialized, sourceLang, entityID, defID)
+			} else {
+				_, err = s.pool.Exec(ctx, `
+					INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
+					VALUES ($1, $2, $3, $4)
+				`, entityID, defID, sourceLang, serialized)
+			}
+			if err != nil {
+				return nil, nil, fmt.Errorf("fill attr %s: %w", code, err)
+			}
+			written = append(written, code)
+		} else if action == "overwrite" {
+			// Log to extraction_audit_log before overwriting
+			if attrValueExists {
+				chapterID := firstChapterIDFromLinks(ent.ChapterLinks)
+				_, _ = s.pool.Exec(ctx, `
+					INSERT INTO extraction_audit_log (entity_id, attr_def_id, chapter_id, old_value, new_value)
+					VALUES ($1, $2, $3, $4, $5)
+				`, entityID, defID, chapterID, existingValue, serialized)
+
+				_, err = s.pool.Exec(ctx, `
+					UPDATE entity_attribute_values SET original_value = $1, original_language = $2
+					WHERE entity_id = $3 AND attr_def_id = $4
+				`, serialized, sourceLang, entityID, defID)
+			} else {
+				_, err = s.pool.Exec(ctx, `
+					INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
+					VALUES ($1, $2, $3, $4)
+				`, entityID, defID, sourceLang, serialized)
+			}
+			if err != nil {
+				return nil, nil, fmt.Errorf("overwrite attr %s: %w", code, err)
+			}
+			written = append(written, code)
+		}
+	}
+
+	// Touch updated_at
+	if len(written) > 0 {
+		_, _ = s.pool.Exec(ctx, `UPDATE glossary_entities SET updated_at = now() WHERE entity_id = $1`, entityID)
+	}
+
+	if written == nil {
+		written = []string{}
+	}
+	if skippedAttrs == nil {
+		skippedAttrs = []string{}
+	}
+	return written, skippedAttrs, nil
+}
+
+// firstChapterID extracts the first chapter UUID from chapter links input.
+func (s *Server) firstChapterID(links []chapterLinkIn) *uuid.UUID {
+	if len(links) == 0 {
+		return nil
+	}
+	id, err := uuid.Parse(links[0].ChapterID)
+	if err != nil {
+		return nil
+	}
+	return &id
+}
+
+// firstChapterIDFromLinks extracts the first chapter UUID (nullable) from chapter links.
+func firstChapterIDFromLinks(links []chapterLinkIn) *uuid.UUID {
+	if len(links) == 0 {
+		return nil
+	}
+	id, err := uuid.Parse(links[0].ChapterID)
+	if err != nil {
+		return nil
+	}
+	return &id
+}
+
+// serializeValue converts an LLM output value to string for storage.
+// Tags arrays are JSON-serialized; scalars are stringified.
+func serializeValue(val any) string {
+	switch v := val.(type) {
+	case string:
+		return v
+	case []any:
+		b, _ := json.Marshal(v)
+		return string(b)
+	case []string:
+		b, _ := json.Marshal(v)
+		return string(b)
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case bool:
+		if v {
+			return "true"
+		}
+		return "false"
+	case nil:
+		return ""
+	default:
+		b, _ := json.Marshal(v)
+		return string(b)
+	}
+}
+
+// ── Name normalization ──────────────────────────────────────────────────────
+
+var wsCollapse = regexp.MustCompile(`\s+`)
+
+// normalizeEntity prepares a name string for dedup comparison.
+// Unicode NFC, trim, collapse whitespace, lowercase.
+func normalizeEntity(s string) string {
+	s = norm.NFC.String(s)
+	s = strings.TrimSpace(s)
+	s = wsCollapse.ReplaceAllString(s, " ")
+	s = strings.ToLower(s)
+	return s
+}
+
+// Ensure pgx import is used
+var _ = pgx.ErrNoRows
 
 // queryInt parses a query string value as int, returning defaultVal on failure.
 func queryInt(s string, defaultVal int) int {
