@@ -189,6 +189,116 @@ def build_glossary_context(
     )
 
 
+# ── GEP-BE-11: Extraction pipeline client functions ──────────────────────────
+
+
+async def fetch_extraction_profile(book_id: str) -> dict | None:
+    """Fetch the extraction profile (kinds + attributes) for a book.
+
+    Calls: GET /internal/books/{book_id}/extraction-profile
+
+    Returns the response dict with 'kinds' array, or None on failure.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=_GLOSSARY_FETCH_TIMEOUT) as client:
+            resp = await client.get(
+                f"{settings.glossary_service_internal_url}"
+                f"/internal/books/{book_id}/extraction-profile",
+                headers={"X-Internal-Token": settings.internal_service_token},
+            )
+            if resp.status_code != 200:
+                log.warning(
+                    "extraction profile fetch returned %d for book=%s",
+                    resp.status_code, book_id,
+                )
+                return None
+            return resp.json()
+    except Exception as exc:
+        log.warning("extraction profile fetch failed for book=%s: %s", book_id, exc)
+        return None
+
+
+async def fetch_known_entities(
+    book_id: str,
+    alive: bool = True,
+    min_frequency: int = 2,
+    before_chapter_index: int | None = None,
+    recency_window: int = 100,
+    limit: int = 50,
+) -> list[dict]:
+    """Fetch filtered known entities for extraction prompt context.
+
+    Calls: GET /internal/books/{book_id}/known-entities
+
+    Returns list of entity dicts (name, kind_code, aliases, frequency),
+    or empty list on failure.
+    """
+    params: dict[str, str] = {
+        "alive": str(alive).lower(),
+        "min_frequency": str(min_frequency),
+        "recency_window": str(recency_window),
+        "limit": str(limit),
+    }
+    if before_chapter_index is not None:
+        params["before_chapter_index"] = str(before_chapter_index)
+
+    try:
+        async with httpx.AsyncClient(timeout=_GLOSSARY_FETCH_TIMEOUT) as client:
+            resp = await client.get(
+                f"{settings.glossary_service_internal_url}"
+                f"/internal/books/{book_id}/known-entities",
+                params=params,
+                headers={"X-Internal-Token": settings.internal_service_token},
+            )
+            if resp.status_code != 200:
+                log.warning(
+                    "known entities fetch returned %d for book=%s",
+                    resp.status_code, book_id,
+                )
+                return []
+            return resp.json()
+    except Exception as exc:
+        log.warning("known entities fetch failed for book=%s: %s", book_id, exc)
+        return []
+
+
+async def post_extracted_entities(
+    book_id: str,
+    source_language: str,
+    attribute_actions: dict[str, dict[str, str]],
+    entities: list[dict],
+) -> dict | None:
+    """Post extracted entities to glossary-service for upsert.
+
+    Calls: POST /internal/books/{book_id}/extract-entities
+
+    Returns the response dict with created/updated/skipped counts,
+    or None on failure.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{settings.glossary_service_internal_url}"
+                f"/internal/books/{book_id}/extract-entities",
+                json={
+                    "source_language": source_language,
+                    "attribute_actions": attribute_actions,
+                    "entities": entities,
+                },
+                headers={"X-Internal-Token": settings.internal_service_token},
+            )
+            if resp.status_code != 200:
+                log.error(
+                    "entity upsert failed: status=%d body=%s",
+                    resp.status_code, resp.text[:200],
+                )
+                return None
+            return resp.json()
+    except Exception as exc:
+        log.error("entity upsert request failed: %s", exc)
+        return None
+
+
 def auto_correct_glossary(
     translated_text: str,
     correction_map: dict[str, str],

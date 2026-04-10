@@ -37,7 +37,7 @@
 
 **Glossary Extraction Pipeline: DESIGN COMPLETE.** Full design doc (1500+ lines), 4 review rounds (context/data engineer, security, cost), UI draft HTML, 20 implementation tasks (13 BE + 7 FE). Ready for BUILD phase.
 
-**GEP BUILD in progress:** GEP-BE-01..06 ✅ (all glossary-service + book-service tasks). Next: GEP-BE-07..11 (translation-service: preprocessor, prompt builder, worker, jobs, client).
+**GEP BUILD in progress:** GEP-BE-01..08, BE-11 ✅. Next: GEP-BE-09 (extraction worker), GEP-BE-10 (job endpoints).
 
 **What was done in this session (2026-04-09, session 29):**
 
@@ -909,11 +909,11 @@ Session: 30 (2026-04-10) — design complete, 4 review rounds (context/data engi
 | **GEP-BE-04** | glossary-service | `GET /internal/books/{book_id}/known-entities` — filtered by alive, min_frequency, recency_window, limit. Frequency derived from chapter_entity_links COUNT | GEP-BE-01 | [✓] |
 | **GEP-BE-05** | glossary-service | Entity alive toggle: `PATCH /api/v1/entities/{entity_id}` support `alive` field | GEP-BE-01 | [✓] |
 | **GEP-BE-06** | book-service | Migration: `extraction_profile JSONB` on books table + PATCH/GET support | — | [✓] |
-| **GEP-BE-07** | translation-service | `extraction_preprocessor.py` — `tiptap_to_extraction_text()`, `prepare_chapter_text()` | — | [ ] |
-| **GEP-BE-08** | translation-service | `extraction_prompt.py` — dynamic prompt builder, auto-batch by kind groups, known entities context builder, output parser + validator (whitelist validation for kind/attr codes) | — | [ ] |
+| **GEP-BE-07** | translation-service | `extraction_preprocessor.py` — `tiptap_to_extraction_text()`, `prepare_chapter_text()` | — | [✓] |
+| **GEP-BE-08** | translation-service | `extraction_prompt.py` — dynamic prompt builder, auto-batch by kind groups, known entities context builder, output parser + validator (whitelist validation for kind/attr codes) | — | [✓] |
 | **GEP-BE-09** | translation-service | `extraction_worker.py` — job consumer, per-chapter extraction loop, batch orchestration, segment splitting for long chapters, cooperative cancellation check | GEP-BE-07, GEP-BE-08 | [ ] |
 | **GEP-BE-10** | translation-service | Job creation endpoint `POST /api/v1/books/{book_id}/extract-glossary` with cost estimation in 202 response. Job cancellation `POST /api/v1/jobs/{job_id}/cancel` with ownership check | GEP-BE-09 | [ ] |
-| **GEP-BE-11** | translation-service | `glossary_client.py` — `post_extracted_entities()`, `get_extraction_profile()`, `get_known_entities()` | — | [ ] |
+| **GEP-BE-11** | translation-service | `glossary_client.py` — `post_extracted_entities()`, `get_extraction_profile()`, `get_known_entities()` | — | [✓] |
 | **GEP-BE-12** | api-gateway-bff | Proxy routes: `POST /v1/books/{book_id}/extract-glossary` → translation-service, `GET /v1/books/{book_id}/extraction-profile` → glossary-service | — | [ ] |
 | **GEP-BE-13** | all | Integration test: single chapter extraction end-to-end (gateway → translation-service → LLM → glossary-service upsert) | GEP-BE-01..12 | [ ] |
 
