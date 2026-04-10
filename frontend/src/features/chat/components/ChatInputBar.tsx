@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { ArrowUp, Brain, Square, Zap } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { ArrowUp, Brain, Square, Zap, Mic, MicOff } from 'lucide-react';
+import { useSpeechRecognition, SPEECH_RECOGNITION_SUPPORTED } from '@/hooks/useSpeechRecognition';
 import TextareaAutosize from 'react-textarea-autosize';
 import { ContextBar } from '../context/ContextBar';
 import type { ContextItem } from '../context/types';
@@ -44,6 +45,28 @@ export function ChatInputBar({
   const [showTemplates, setShowTemplates] = useState(false);
   const [templateFilter, setTemplateFilter] = useState('');
   const [attachPickerOpen, setAttachPickerOpen] = useState(false);
+
+  // Push-to-talk mic — inserts transcript into textarea (does NOT auto-send)
+  const [micActive, setMicActive] = useState(false);
+  const stt = useSpeechRecognition({
+    continuous: false,
+    interimResults: true,
+    onFinalTranscript: useCallback((text: string) => {
+      setValue((prev) => (prev ? prev + ' ' + text : text));
+      setMicActive(false);
+    }, []),
+  });
+
+  const toggleMic = useCallback(() => {
+    if (micActive) {
+      stt.stop();
+      setMicActive(false);
+    } else {
+      stt.resetTranscript();
+      stt.start();
+      setMicActive(true);
+    }
+  }, [micActive, stt]);
 
   function handleTemplateSelect(template: PromptTemplate) {
     setValue(template.prompt);
@@ -162,6 +185,21 @@ export function ChatInputBar({
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" /></svg>
               </button>
+              {/* Push-to-talk mic button */}
+              {SPEECH_RECOGNITION_SUPPORTED && (
+                <button
+                  type="button"
+                  onClick={toggleMic}
+                  className={`rounded-md p-1.5 transition-colors ${
+                    micActive
+                      ? 'bg-red-500/10 text-red-500 animate-pulse'
+                      : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                  }`}
+                  title={micActive ? 'Stop recording' : 'Voice input'}
+                >
+                  {micActive ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                </button>
+              )}
               {/* Think/Fast toggle */}
               {supportsThinking && (
                 <div className="inline-flex rounded-md bg-secondary p-0.5 gap-0.5">
