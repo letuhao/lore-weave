@@ -262,7 +262,8 @@ async def _process_extraction_chapter(
     pool,
 ) -> dict:
     """Extract entities from a single chapter via LLM."""
-    log.info("extraction: chapter %s (index %d)", chapter_id, chapter_index)
+    import time as _time
+    _ch_start = _time.monotonic()
 
     # 1. Fetch chapter from book-service
     async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=30, write=30, pool=5)) as client:
@@ -282,10 +283,17 @@ async def _process_extraction_chapter(
 
     # 2. Plan batches
     batches = plan_kind_batches(extraction_profile, kinds_metadata)
-    log.info("extraction: chapter %s — %d batch(es)", chapter_id, len(batches))
+    log.info("extraction: chapter %s (index %d) — %d batch(es), text_len=%d",
+             chapter_id, chapter_index, len(batches), len(chapter_text))
 
     # 3. Build known entities context
     known_ctx = build_known_entities_context(known_entities) if known_entities else ""
+
+    # Resolve owner user_id once for internal invoke auth
+    async with pool.acquire() as db:
+        owner_user_id = await db.fetchval(
+            "SELECT owner_user_id FROM extraction_jobs WHERE job_id=$1", job_id
+        )
 
     all_entities: list[dict] = []
     total_input_tokens = 0
@@ -311,12 +319,13 @@ async def _process_extraction_chapter(
                 {"role": "user", "content": user_prompt},
             ],
             "temperature": 0.1,
-            "max_tokens": 4096,
+            "max_tokens": 12000,
         }
 
-        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=120, write=10, pool=5)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=300, write=10, pool=5)) as client:
             resp = await client.post(
                 f"{settings.provider_registry_service_url}/internal/invoke",
+                params={"user_id": str(owner_user_id)},
                 json=invoke_payload,
                 headers={"X-Internal-Token": settings.internal_service_token},
             )
@@ -329,11 +338,23 @@ async def _process_extraction_chapter(
             continue
 
         resp_data = resp.json()
-        response_text = extract_content(resp_data)
-        input_tokens = resp_data.get("usage", {}).get("prompt_tokens", 0)
-        output_tokens = resp_data.get("usage", {}).get("completion_tokens", 0)
+        raw_output = resp_data.get("output", {})
+        response_text = extract_content(raw_output)
+        input_tokens = resp_data.get("usage", {}).get("input_tokens", 0)
+        output_tokens = resp_data.get("usage", {}).get("output_tokens", 0)
         total_input_tokens += input_tokens
         total_output_tokens += output_tokens
+
+        # Log LLM response stats for monitoring model quality / token budget tuning
+        choices = raw_output.get("choices", []) if isinstance(raw_output, dict) else []
+        if choices and isinstance(choices[0], dict):
+            msg = choices[0].get("message", {})
+            content_len = len(msg.get("content", "") or "")
+            reasoning_len = len(msg.get("reasoning_content", "") or "")
+            source = "content" if content_len > 0 else "reasoning"
+            log.info("extraction: chapter %s batch %d/%d — in=%d out=%d response=%d chars (source=%s, reasoning=%d chars)",
+                     chapter_id, batch_idx + 1, len(batches), input_tokens, output_tokens,
+                     len(response_text), source, reasoning_len)
 
         # 6. Parse + validate
         entities = parse_and_validate(response_text, batch, extraction_profile)
@@ -351,7 +372,10 @@ async def _process_extraction_chapter(
 
         all_entities.extend(entities)
 
+    _ch_elapsed = _time.monotonic() - _ch_start
+
     if not all_entities:
+        log.info("extraction: chapter %s done in %.1fs — 0 entities (empty LLM output)", chapter_id, _ch_elapsed)
         return {"created": 0, "updated": 0, "skipped": 0, "entities": [], "input_tokens": total_input_tokens, "output_tokens": total_output_tokens}
 
     # 7. Post to glossary-service
@@ -364,6 +388,11 @@ async def _process_extraction_chapter(
 
     if upsert_result is None:
         raise RuntimeError("glossary-service upsert failed")
+
+    log.info("extraction: chapter %s done in %.1fs — created=%d updated=%d skipped=%d (in=%d out=%d)",
+             chapter_id, _ch_elapsed,
+             upsert_result.get("created", 0), upsert_result.get("updated", 0), upsert_result.get("skipped", 0),
+             total_input_tokens, total_output_tokens)
 
     upsert_result["input_tokens"] = total_input_tokens
     upsert_result["output_tokens"] = total_output_tokens

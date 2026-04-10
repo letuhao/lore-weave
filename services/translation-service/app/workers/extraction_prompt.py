@@ -239,6 +239,76 @@ def build_user_prompt(chapter_text: str) -> str:
 # ── Output parser + validator ────────────────────────────────────────────────
 
 _MARKDOWN_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)\s*```")
+_JSON_ARRAY_RE = re.compile(r"\[\s*\{[\s\S]*\}\s*\]")
+
+
+def _extract_json_from_text(text: str) -> str | None:
+    """Try to extract a JSON array from text that may contain reasoning/thinking.
+
+    Reasoning models often embed JSON within their thinking output.
+    Strategy: find markdown fences first, then try raw JSON array extraction,
+    then handle truncated arrays (missing closing bracket).
+    """
+    text = text.strip()
+
+    # Try markdown fences first
+    fence_match = _MARKDOWN_FENCE_RE.search(text)
+    if fence_match:
+        return fence_match.group(1).strip()
+
+    # Try to find a complete JSON array directly
+    arr_match = _JSON_ARRAY_RE.search(text)
+    if arr_match:
+        return arr_match.group(0)
+
+    # If starts with bracket, use as-is (may need closing bracket)
+    if text.startswith("["):
+        if text.endswith("]"):
+            return text
+        # Truncated array — try to repair by closing incomplete trailing entry
+        return _repair_truncated_array(text)
+
+    return None
+
+
+def _repair_truncated_array(text: str) -> str:
+    """Repair a truncated JSON array by finding the last complete object.
+
+    When a reasoning model runs out of tokens, the JSON array may be cut off
+    mid-object. We find the last complete `}` that closes an object and
+    close the array there.
+    """
+    # Find the position of the last complete object (last `},` or `}`)
+    last_complete = -1
+    depth = 0
+    in_string = False
+    escape_next = False
+
+    for i, ch in enumerate(text):
+        if escape_next:
+            escape_next = False
+            continue
+        if ch == '\\' and in_string:
+            escape_next = True
+            continue
+        if ch == '"' and not escape_next:
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0:
+                last_complete = i
+
+    if last_complete > 0:
+        repaired = text[:last_complete + 1] + "\n]"
+        log.info("extraction: repaired truncated JSON array (cut at %d/%d chars)", last_complete + 1, len(text))
+        return repaired
+
+    return text + "\n]"  # fallback: just close it
 
 
 def parse_and_validate(
@@ -249,22 +319,22 @@ def parse_and_validate(
     """Parse LLM output and validate against extraction profile.
 
     Steps (design §6.8):
-    1. Strip markdown code fences
+    1. Extract JSON from response (handles markdown fences, reasoning text, raw arrays)
     2. Parse JSON array
     3. Validate + transform each entry (whitelist kind/attr codes)
     4. Strip extra fields
     """
-    # Step 0: strip markdown wrapping
-    text = response_text.strip()
-    fence_match = _MARKDOWN_FENCE_RE.search(text)
-    if fence_match:
-        text = fence_match.group(1).strip()
+    # Step 0: extract JSON from response text (may contain reasoning/thinking)
+    json_text = _extract_json_from_text(response_text)
+    if json_text is None:
+        log.warning("extraction parse failed: no JSON array found in response (len=%d)", len(response_text))
+        return []
 
     # Step 1: parse JSON
     try:
-        data = json.loads(text)
+        data = json.loads(json_text)
     except json.JSONDecodeError:
-        log.warning("extraction parse failed: invalid JSON")
+        log.warning("extraction parse failed: invalid JSON (extracted len=%d)", len(json_text))
         return []
 
     if not isinstance(data, list):

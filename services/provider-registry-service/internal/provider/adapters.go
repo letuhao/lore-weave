@@ -241,10 +241,19 @@ func (a *openaiAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, mod
 	if base == "" {
 		base = openaiBaseURL
 	}
+	maxTokens := 8192
+	if v, ok := input["max_tokens"]; ok {
+		if mt := int(toFloat(v)); mt > 0 {
+			maxTokens = mt
+		}
+	}
 	payload := map[string]any{
 		"model":      modelName,
 		"messages":   extractMessages(input),
-		"max_tokens": 8192,
+		"max_tokens": maxTokens,
+	}
+	if v, ok := input["temperature"]; ok {
+		payload["temperature"] = v
 	}
 	out, err := postJSON(ctx, a.client, base+"/v1/chat/completions",
 		map[string]string{"Authorization": "Bearer " + secret},
@@ -362,10 +371,19 @@ func (a *anthropicAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, 
 	if base == "" {
 		base = anthropicBaseURL
 	}
+	maxTokens := 8192
+	if v, ok := input["max_tokens"]; ok {
+		if mt := int(toFloat(v)); mt > 0 {
+			maxTokens = mt
+		}
+	}
 	payload := map[string]any{
 		"model":      modelName,
 		"messages":   extractMessages(input),
-		"max_tokens": 8192,
+		"max_tokens": maxTokens,
+	}
+	if v, ok := input["temperature"]; ok {
+		payload["temperature"] = v
 	}
 	out, err := postJSON(ctx, a.client, base+"/v1/messages",
 		map[string]string{
@@ -444,6 +462,16 @@ func (a *ollamaAdapter) Invoke(ctx context.Context, endpointBaseURL, _ string, m
 		"model":    modelName,
 		"messages": extractMessages(input),
 		"stream":   false,
+	}
+	options := map[string]any{}
+	if v, ok := input["temperature"]; ok {
+		options["temperature"] = v
+	}
+	if v, ok := input["max_tokens"]; ok {
+		options["num_predict"] = v
+	}
+	if len(options) > 0 {
+		payload["options"] = options
 	}
 	out, err := postJSON(ctx, a.client, base+"/api/chat", nil, payload)
 	if err != nil {
@@ -568,10 +596,19 @@ func (a *lmStudioAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, m
 	if base == "" {
 		base = lmStudioDefaultBase
 	}
+	maxTokens := 8192
+	if v, ok := input["max_tokens"]; ok {
+		if mt := int(toFloat(v)); mt > 0 {
+			maxTokens = mt
+		}
+	}
 	payload := map[string]any{
 		"model":      modelName,
 		"messages":   extractMessages(input),
-		"max_tokens": 8192,
+		"max_tokens": maxTokens,
+	}
+	if v, ok := input["temperature"]; ok {
+		payload["temperature"] = v
 	}
 	headers := map[string]string{}
 	if secret != "" {

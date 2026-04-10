@@ -26,6 +26,7 @@ from app.migrate import run_migrations
 from app.broker import connect_broker, publish, publish_event
 from app.workers.coordinator import handle_job_message
 from app.workers.chapter_worker import handle_chapter_message, _TransientError
+from app.workers.extraction_worker import handle_extraction_job
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -97,8 +98,9 @@ async def main() -> None:
     channel = await conn.channel()
     await channel.set_qos(prefetch_count=1)
 
-    job_queue     = await channel.get_queue("translation.jobs")
-    chapter_queue = await channel.get_queue("translation.chapters")
+    job_queue        = await channel.get_queue("translation.jobs")
+    chapter_queue    = await channel.get_queue("translation.chapters")
+    extraction_queue = await channel.get_queue("extraction.jobs")
 
     async def on_job(message: aio_pika.IncomingMessage) -> None:
         # Coordinator is fast (< 1s). Use process() for simple ack-on-success / requeue-on-error.
@@ -156,9 +158,17 @@ async def main() -> None:
             log.error("Chapter %s permanent error: %s", chapter_id, exc)
             await message.ack()
 
+    async def on_extraction(message: aio_pika.IncomingMessage) -> None:
+        async with message.process(requeue=True):
+            msg = json.loads(message.body)
+            log.info("Extraction worker: job %s (%d chapters)", msg["job_id"], len(msg["chapter_ids"]))
+            await handle_extraction_job(msg, get_pool(), publish, publish_event)
+            log.info("Extraction worker: job %s done", msg["job_id"])
+
     await job_queue.consume(on_job)
     await chapter_queue.consume(on_chapter)
-    log.info("Worker ready — consuming translation.jobs and translation.chapters")
+    await extraction_queue.consume(on_extraction)
+    log.info("Worker ready — consuming translation.jobs, translation.chapters, extraction.jobs")
 
     await asyncio.Future()  # run forever
 

@@ -124,6 +124,7 @@ func (s *Server) Router() http.Handler {
 	r.Route("/internal", func(r chi.Router) {
 		r.Use(s.requireInternalToken)
 		r.Get("/credentials/{model_source}/{model_ref}", s.getInternalCredentials)
+		r.Post("/invoke", s.internalInvokeModel)
 	})
 
 	return r
@@ -1318,6 +1319,144 @@ WHERE platform_model_id=$1 AND status='active'
 		writeError(w, http.StatusBadGateway, "M03_PROVIDER_INVOKE_FAILED", "provider invoke failed")
 		return
 	}
+	requestID := uuid.New()
+	logID, decision, billedCost, err := s.recordInvocation(r.Context(), map[string]any{
+		"request_id":     requestID,
+		"owner_user_id":  userID,
+		"provider_kind":  providerKind,
+		"model_source":   in.ModelSource,
+		"model_ref":      modelID,
+		"input_tokens":   usage.InputTokens,
+		"output_tokens":  usage.OutputTokens,
+		"input_payload":  in.Input,
+		"output_payload": output,
+		"request_status": "success",
+	})
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "M03_BILLING_RECORD_FAILED", "failed to write usage log")
+		return
+	}
+	if decision == "rejected" {
+		writeError(w, http.StatusPaymentRequired, "M03_BILLING_REJECTED", "quota and credits exhausted")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"request_id":    requestID,
+		"usage_log_id":  logID,
+		"output":        output,
+		"usage": map[string]any{
+			"input_tokens":  usage.InputTokens,
+			"output_tokens": usage.OutputTokens,
+		},
+		"billing_cost":  billedCost,
+		"billing_mode":  decision,
+		"provider_kind": providerKind,
+	})
+}
+
+// internalInvokeModel handles service-to-service model invocation.
+// Accepts user_id as query param (required). The request body uses a flat format:
+// { model_source, model_ref, messages, temperature, max_tokens }
+// which gets remapped to the adapter's input map.
+func (s *Server) internalInvokeModel(w http.ResponseWriter, r *http.Request) {
+	userIDStr := r.URL.Query().Get("user_id")
+	if userIDStr == "" {
+		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "user_id query param required")
+		return
+	}
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid user_id")
+		return
+	}
+
+	var in struct {
+		ModelSource string         `json:"model_source"`
+		ModelRef    string         `json:"model_ref"`
+		Input       map[string]any `json:"input"`
+		// Flat fields (extraction worker format) — remapped into Input if Input is nil
+		Messages    any     `json:"messages"`
+		Temperature *float64 `json:"temperature"`
+		MaxTokens   *int     `json:"max_tokens"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
+		return
+	}
+
+	// Support flat format: remap messages/temperature/max_tokens into input map
+	if in.Input == nil {
+		in.Input = make(map[string]any)
+		if in.Messages != nil {
+			in.Input["messages"] = in.Messages
+		}
+		if in.Temperature != nil {
+			in.Input["temperature"] = *in.Temperature
+		}
+		if in.MaxTokens != nil {
+			in.Input["max_tokens"] = *in.MaxTokens
+		}
+	}
+
+	modelRef, err := uuid.Parse(in.ModelRef)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid model_ref")
+		return
+	}
+
+	var providerKind, providerModelName, endpointBaseURL, secret string
+	var modelID uuid.UUID
+	if in.ModelSource == "user_model" {
+		var secretCipher string
+		err = s.pool.QueryRow(r.Context(), `
+SELECT um.user_model_id, um.provider_kind, um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,'')
+FROM user_models um
+JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
+WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
+`, modelRef, userID).Scan(&modelID, &providerKind, &providerModelName, &endpointBaseURL, &secretCipher)
+		if err == pgx.ErrNoRows {
+			writeError(w, http.StatusNotFound, "M03_MODEL_NOT_FOUND", "user model not found or inactive")
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "M03_MODEL_QUERY_FAILED", "failed to resolve user model")
+			return
+		}
+		secret, err = s.decryptSecret(secretCipher)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "M03_SECRET_DECRYPT_FAILED", "failed to decrypt provider secret")
+			return
+		}
+	} else if in.ModelSource == "platform_model" {
+		err = s.pool.QueryRow(r.Context(), `
+SELECT platform_model_id, provider_kind, provider_model_name
+FROM platform_models
+WHERE platform_model_id=$1 AND status='active'
+`, modelRef).Scan(&modelID, &providerKind, &providerModelName)
+		if err == pgx.ErrNoRows {
+			writeError(w, http.StatusNotFound, "M03_MODEL_NOT_FOUND", "platform model not found or inactive")
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "M03_MODEL_QUERY_FAILED", "failed to resolve platform model")
+			return
+		}
+	} else {
+		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid model_source")
+		return
+	}
+
+	adapter, err := provider.ResolveAdapter(providerKind, s.invokeClient)
+	if err != nil {
+		writeError(w, http.StatusConflict, "M03_PROVIDER_ROUTE_VIOLATION", "model route violation")
+		return
+	}
+	output, usage, err := adapter.Invoke(r.Context(), endpointBaseURL, secret, providerModelName, in.Input)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "M03_PROVIDER_INVOKE_FAILED", "provider invoke failed")
+		return
+	}
+
 	requestID := uuid.New()
 	logID, decision, billedCost, err := s.recordInvocation(r.Context(), map[string]any{
 		"request_id":     requestID,
