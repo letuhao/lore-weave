@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Download, Trash2, Upload } from 'lucide-react';
+import { Plus, Pencil, Download, Trash2, Upload, Sparkles } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
 import { DataTable, type Column } from '@/components/data/DataTable';
@@ -11,6 +11,7 @@ import { FormDialog, ConfirmDialog, EmptyState, Pagination, StatusBadge } from '
 import { LanguageDisplay } from '@/components/shared/LanguageDisplay';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { ImportDialog } from '@/components/import/ImportDialog';
+import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
 
 interface ChaptersTabProps {
   bookId: string;
@@ -33,6 +34,9 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
 
   // Import dialog
   const [importOpen, setImportOpen] = useState(false);
+
+  // Extraction wizard
+  const [extractChapterId, setExtractChapterId] = useState<string | null>(null);
 
   // Trash dialog
   const [trashTarget, setTrashTarget] = useState<Chapter | null>(null);
@@ -143,6 +147,13 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
           >
             <Pencil className="h-3.5 w-3.5" />
           </Link>
+          <button
+            onClick={() => setExtractChapterId(ch.chapter_id)}
+            className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+            title="Extract Glossary"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+          </button>
           <button
             onClick={() => void handleDownload(ch)}
             className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
@@ -301,6 +312,14 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
         onOpenChange={setImportOpen}
         bookId={bookId}
         onImported={() => invalidate()}
+      />
+
+      <ExtractionWizard
+        open={!!extractChapterId}
+        onOpenChange={(open) => { if (!open) setExtractChapterId(null); }}
+        bookId={bookId}
+        mode="single"
+        preselectedChapterIds={extractChapterId ? [extractChapterId] : undefined}
       />
     </div>
   );

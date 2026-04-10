@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Plus, Search, Filter, Trash2, Settings2, Layers } from 'lucide-react';
+import { BookOpen, Plus, Search, Filter, Trash2, Settings2, Layers, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { KindEditor } from './KindEditor';
 import { GenreGroupsPanel } from '@/features/glossary/components/GenreGroupsPanel';
 import { EntityEditorModal } from '@/components/entity-editor';
+import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
 
 type GlossaryView = 'entities' | 'kinds' | 'genres';
 
@@ -41,6 +42,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [] }: { bookId: string; bo
   const [createKindOpen, setCreateKindOpen] = useState(false);
   const [view, setView] = useState<GlossaryView>('entities');
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+  const [extractionOpen, setExtractionOpen] = useState(false);
 
   const { data: entityData, isLoading: entitiesLoading, error: entitiesError } = useQuery({
     queryKey: ['glossary-entities', bookId, filters],
@@ -134,6 +136,13 @@ export function GlossaryTab({ bookId, bookGenreTags = [] }: { bookId: string; bo
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setExtractionOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Extract
+          </button>
           <button
             onClick={() => setView('genres')}
             className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
@@ -335,6 +344,14 @@ export function GlossaryTab({ bookId, bookGenreTags = [] }: { bookId: string; bo
           />
         );
       })()}
+
+      <ExtractionWizard
+        open={extractionOpen}
+        onOpenChange={setExtractionOpen}
+        bookId={bookId}
+        mode="batch"
+        onComplete={() => invalidate()}
+      />
     </div>
   );
 }

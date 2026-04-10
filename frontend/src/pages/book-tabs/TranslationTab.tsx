@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Languages, Check, Clock, AlertCircle, Loader2, Plus, Filter, X } from 'lucide-react';
+import { Languages, Check, Clock, AlertCircle, Loader2, Plus, Filter, X, Sparkles } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
 import { translationApi, type BookCoverageResponse, type CoverageCell } from '@/features/translation/api';
@@ -9,6 +9,7 @@ import { EmptyState, FloatingActionBar, FloatingActionDivider } from '@/componen
 import { cn } from '@/lib/utils';
 import { getLanguageName } from '@/lib/languages';
 import { TranslateModal } from './TranslateModal';
+import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
 
 function cellContent(cell: CoverageCell | undefined) {
   if (!cell || cell.version_count === 0) {
@@ -90,6 +91,7 @@ export function TranslationTab({ bookId }: { bookId: string }) {
   const [selectedLangs, setSelectedLangs] = useState<Set<string> | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [translateOpen, setTranslateOpen] = useState(false);
+  const [extractionOpen, setExtractionOpen] = useState(false);
   const [selectedChapters, setSelectedChapters] = useState<Set<string>>(new Set());
 
   const { data: coverageData, isLoading: coverageLoading, error: coverageError } = useQuery({
@@ -381,10 +383,25 @@ export function TranslationTab({ bookId }: { bookId: string }) {
           <Languages className="h-3.5 w-3.5" />
           Translate Selected
         </button>
+        <button
+          onClick={() => setExtractionOpen(true)}
+          className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-4 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          Extract Glossary
+        </button>
         <button onClick={clearSelection} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
           Clear
         </button>
       </FloatingActionBar>
+
+      <ExtractionWizard
+        open={extractionOpen}
+        onOpenChange={setExtractionOpen}
+        bookId={bookId}
+        mode={selectedChapters.size <= 1 ? 'single' : 'batch'}
+        preselectedChapterIds={[...selectedChapters]}
+      />
     </div>
   );
 }
