@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-10 (session 30 end — GEP backend COMPLETE + REVIEWED)
-- Updated By: Assistant (GEP backend: 12 tasks built, 10 review fixes, session closed)
+- Last Updated: 2026-04-10 (session 31 end — GEP COMPLETE: BE+FE+tests+smoke)
+- Updated By: Assistant (GEP: 10 BE fixes, 49 integration tests, 7 FE tasks, browser smoke test)
 - Active Branch: `main`
-- HEAD: session 30 end commit (pending)
+- HEAD: `90a7410` (GEP-FE-07)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
 
 ---
@@ -35,13 +35,29 @@
 
 **Translation Pipeline V2: IMPLEMENTED (P1-P8).** All 8 priorities from V2 design doc implemented. Proven with real Ollama gemma3:12b model calls.
 
-**Glossary Extraction Pipeline: DESIGN COMPLETE.** Full design doc (1500+ lines), 4 review rounds (context/data engineer, security, cost), UI draft HTML, 20 implementation tasks (13 BE + 7 FE). Ready for BUILD phase.
+**Glossary Extraction Pipeline: FULLY COMPLETE (BE + FE + TESTED).** 13 BE tasks + 7 FE tasks + 49 integration test assertions + browser smoke test. Tested with real Qwen 3.5 9B model via LM Studio. 90 entities extracted from 5 chapters.
 
-**GEP BUILD: COMPLETE + REVIEWED.** GEP-BE-01..12 ✅ (all 12 tasks done). Post-review: 10 issues found (3C + 4H + 3M), all fixed. GEP-BE-13 (integration test) deferred — requires running services.
+**What was done in this session (2026-04-10, session 31):**
 
-**What was done in this session (2026-04-10, session 30):**
+GEP end-to-end: real AI model testing → 10 bug fixes → integration test script → 7 FE tasks → browser smoke test → session/plan doc audit.
 
-GEP backend build (BE-01..12) + post-implementation review. 3 parallel review agents found 10 real issues across 4 files. All fixed and committed.
+| Work item | Files | Commit |
+| --------- | ----- | ------ |
+| GEP BE fixes: 10 bugs from real AI model testing (worker wiring, internal invoke, reasoning model support, truncated JSON repair, adapter params) | 6 files across 3 services | `3c5202a` |
+| GEP-BE-13: Integration test script (49 assertions: cancellation, multi-batch, concurrent, dedup, API validation) | `infra/test-gep-integration.sh` | `5b66021` |
+| GEP-FE-01: Extraction types + API layer | `features/extraction/types.ts`, `api.ts` | `d6f2a14` |
+| GEP-FE-02: Wizard shell + extraction profile step + i18n (4 languages) | `ExtractionWizard.tsx`, `StepProfile.tsx`, `useExtractionState.ts`, 4 locale files | `10ee995` |
+| GEP-FE-03: Batch config step | `StepBatchConfig.tsx` | `5b11bfb` |
+| GEP-FE-04: Estimate & confirm step | `StepConfirm.tsx` | `9693a7a` |
+| GEP-FE-05: Progress + results steps | `StepProgress.tsx`, `StepResults.tsx`, `useExtractionPolling.ts` | `be7e7e1` |
+| GEP-FE-06: Entry point wiring (GlossaryTab, ChaptersTab, TranslationTab) | 3 tab files | `8a4ce0b` |
+| GEP-FE-07: Alive badge + toggle on entity list | `GlossaryTab.tsx`, `glossary/api.ts` | `90a7410` |
+| Browser smoke test: 9 screens verified (Playwright MCP) | — | — |
+| Session/plan audit: SESSION_PATCH + 99A planning doc markers updated | docs | this commit |
+
+**9-phase workflow followed for each FE task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
+
+**What was done in previous session (2026-04-10, session 30):**
 
 | Issue | Severity | Fix |
 | ----- | -------- | --- |
@@ -890,111 +906,45 @@ frontend/src/components/chunk-editor/
 
 ## What Is Next
 
-### Frontend V2 Rebuild
+### Completion Summary (as of session 31)
 
-Design document: `docs/03_planning/99_FRONTEND_V2_REBUILD_PLAN.md`
-Visual drafts: `design-drafts/components-v2-warm.html` (approved)
+| Area | Status |
+| ---- | ------ |
+| Frontend V2 Phase 1 (Foundation) | ✅ Done |
+| Frontend V2 Phase 2 (Core Screens) | ✅ Done |
+| Frontend V2 Phase 2.5 (Tiptap Editor) | ✅ Done |
+| Frontend V2 Phase 3 (Features: Translation, Glossary, Chat, Wiki) | ✅ Done |
+| Frontend V2 Phase 3.5 (Media Blocks) | ✅ Done |
+| Frontend V2 Phase 4 (Settings, Usage, Browse) | ✅ Done |
+| Phase 4.5 / 8D (Audio/TTS system) | ✅ Done |
+| P4-04 Reading/Theme Unification (9 tasks) | ✅ Done |
+| Phase 8A-8H (Reader v2, Translation Pipeline, Review Mode, Analytics) | ✅ Done |
+| Phase 9 (Leaderboard, Profile, Wiki, Import, Audio, Account) | ✅ Done |
+| MIG-03..MIG-10 (V1→V2 page migrations + old frontend deleted) | ✅ Done |
+| P3-08 Genre Groups (BE+FE) | ✅ Done |
+| P3-KE Kind Editor Enhancement (13 tasks) | ✅ Done |
+| Data Re-Engineering D1 (JSONB, blocks, events, worker-infra) | ✅ Done |
+| Translation Pipeline V2 (CJK fix, glossary, validation, memo) | ✅ Done |
+| Chat Service Phase 1-3 | ✅ Done |
+| Glossary Extraction Pipeline — BE (13 tasks) | ✅ Done |
+| Glossary Extraction Pipeline — FE (7 tasks) | ✅ Done |
+| GEP Integration Test (49 assertions) | ✅ Done |
+| GEP Browser Smoke Test | ✅ Done |
+| INF-01..03 (Service auth, HTTP client, structured logging) | ✅ Done |
 
-| Phase | Scope | Status |
-| ----- | ----- | ------ |
-| Phase 1 | Scaffold, layout shell, sidebar, routing, auth pages, copy API layer | **Done** |
-| Phase 2 | Core screens: Books list, Book Detail (tabs), Chapter Editor | **Done** |
-| **Phase 2.5** | **Editor Engine: Tiptap migration, block JSON, grammar, mode toggle** | **E1 Done (GATE passed), E2+E3 → moved to Data Re-Engineering** |
-| Phase 3 | Feature screens: Translation, Glossary, Chat, Sharing | **Done** |
-| **Phase 3.5** | **Media Blocks: image/video/code, AI prompt, version tracking** | **Done (E4: 8 tasks + E5: 4 tasks = 12 tasks, session 16)** |
-| Phase 4 | Secondary: Settings, Usage, Browse + polish | Planned |
-| **Phase 4.5** | **Audio/TTS: per-paragraph narration, bulk generate, audiobook export** | After Phase 4 |
+### Remaining Work
 
-### Chat Service (paused — frontend rebuild takes priority)
+| Priority | Item | Scope | Notes |
+| -------- | ---- | ----- | ----- |
+| **P1** | **Translation Workbench** (P3-T1..T8) | 8 tasks (BE+FE) | Block-level translation UI. Design draft exists. Blocker removed (media blocks done). |
+| P2 | GUI Review deferred (D1-D22) | FE polish | Editor, glossary, reader polish items |
+| P2 | Chat Service Phase 4 | BE+FE | File attachments + multi-modal |
+| P2 | Platform Mode | 35 tasks | `103_PLATFORM_MODE_PLAN.md` — multi-tenant SaaS features |
+| P2 | Onboarding Wizard (P2-10) | FE | New user first-run experience |
+| P3 | Phase 5: Advanced | Wishlist | Ambient mode, focus mode, night shift, knowledge graph |
+| P3 | Formal acceptance evidence packs (M01-M05) | QA | Currently smoke-only |
 
-Design document: `docs/03_planning/98_CHAT_SERVICE_DESIGN.md`
-
-| Phase | Scope | Status |
-| ----- | ----- | ------ |
-| Phase 1-3 | Backend + frontend chat (sessions, streaming, editing) | ✅ Done |
-| Phase 4 | File attachments + multi-modal | Planned (after frontend-v2 Phase 3) |
-
-### Glossary Extraction Pipeline
-
-Design document: `docs/03_planning/data_pipelines/GLOSSARY_EXTRACTION_PIPELINE.md`
-UI draft: `design-drafts/glossary_extraction_ui_draft.html`
-Session: 30 (2026-04-10) — design complete, 4 review rounds (context/data engineer, security, cost)
-
-**BE tasks (high priority — must complete before FE):**
-
-| Task | Service | Scope | Deps | Status |
-|------|---------|-------|------|--------|
-| **GEP-BE-01** | glossary-service | Migration: `alive BOOLEAN` on glossary_entities + `extraction_audit_log` table | — | [✓] |
-| **GEP-BE-02** | glossary-service | `GET /api/v1/books/{book_id}/extraction-profile` — auto-resolve kinds+attrs by genre, return full metadata. Dual route: public (JWT) + internal (service token) | — | [✓] |
-| **GEP-BE-03** | glossary-service | `POST /internal/books/{book_id}/extract-entities` — bulk upsert with normalized dedup, fill/overwrite per attribute, evidence creation, audit log, chapter links | GEP-BE-01 | [✓] |
-| **GEP-BE-04** | glossary-service | `GET /internal/books/{book_id}/known-entities` — filtered by alive, min_frequency, recency_window, limit. Frequency derived from chapter_entity_links COUNT | GEP-BE-01 | [✓] |
-| **GEP-BE-05** | glossary-service | Entity alive toggle: `PATCH /api/v1/entities/{entity_id}` support `alive` field | GEP-BE-01 | [✓] |
-| **GEP-BE-06** | book-service | Migration: `extraction_profile JSONB` on books table + PATCH/GET support | — | [✓] |
-| **GEP-BE-07** | translation-service | `extraction_preprocessor.py` — `tiptap_to_extraction_text()`, `prepare_chapter_text()` | — | [✓] |
-| **GEP-BE-08** | translation-service | `extraction_prompt.py` — dynamic prompt builder, auto-batch by kind groups, known entities context builder, output parser + validator (whitelist validation for kind/attr codes) | — | [✓] |
-| **GEP-BE-09** | translation-service | `extraction_worker.py` — job consumer, per-chapter extraction loop, batch orchestration, segment splitting for long chapters, cooperative cancellation check | GEP-BE-07, GEP-BE-08 | [✓] |
-| **GEP-BE-10** | translation-service | Job creation endpoint `POST /api/v1/books/{book_id}/extract-glossary` with cost estimation in 202 response. Job cancellation `POST /api/v1/jobs/{job_id}/cancel` with ownership check | GEP-BE-09 | [✓] |
-| **GEP-BE-11** | translation-service | `glossary_client.py` — `post_extracted_entities()`, `get_extraction_profile()`, `get_known_entities()` | — | [✓] |
-| **GEP-BE-12** | api-gateway-bff | Proxy routes: `/v1/extraction/*` → translation-service, `/v1/glossary/*` already covers extraction-profile | — | [✓] |
-| **GEP-BE-13** | all | Integration test: single chapter extraction end-to-end (gateway → translation-service → LLM → glossary-service upsert) | GEP-BE-01..12 | [ ] |
-
-**FE tasks (after BE is stable):**
-
-| Task | Scope | Deps | Status |
-|------|-------|------|--------|
-| **GEP-FE-01** | `ExtractionProfileDialog` — fetch profile, render kind toggles + per-attribute 3-state dropdowns (skip/fill/overwrite), bulk actions, save as default | GEP-BE-02, GEP-BE-06 | [ ] |
-| **GEP-FE-02** | `BatchExtractionConfig` — chapter selection (all/range/pick), frequency + recency sliders, alive filter info | GEP-BE-04 | [ ] |
-| **GEP-FE-03** | `ExtractionEstimate` — cost estimation display (tokens, LLM calls, profile summary), confirm/cancel | GEP-BE-10 | [ ] |
-| **GEP-FE-04** | `ExtractionProgress` — live progress bar, real-time stats (found/created/updated/skipped), activity log, cancel button | GEP-BE-10 | [ ] |
-| **GEP-FE-05** | `ExtractionResults` — summary with per-kind breakdown bars, failed chapters with retry, actual vs estimated tokens | GEP-BE-10 | [ ] |
-| **GEP-FE-06** | `ExtractGlossaryButton` — reusable trigger component, integrations in Chapter tab, Translation tab, Glossary tab toolbar | GEP-FE-01..05 | [ ] |
-| **GEP-FE-07** | Glossary entity list: alive toggle per entity, alive/not-alive badge, frequency display, alive filter in list filters | GEP-BE-05 | [ ] |
-
-**Suggested build order:**
-1. GEP-BE-01 + GEP-BE-06 (migrations, parallel)
-2. GEP-BE-02 + GEP-BE-04 + GEP-BE-05 (glossary-service endpoints, parallel)
-3. GEP-BE-03 (bulk upsert — largest task, depends on migration)
-4. GEP-BE-07 + GEP-BE-08 + GEP-BE-11 (translation-service core, parallel)
-5. GEP-BE-09 + GEP-BE-10 (worker + job endpoints)
-6. GEP-BE-12 (gateway proxy)
-7. GEP-BE-13 (integration test)
-8. GEP-FE-01..07 (frontend, sequential)
-
-### Immediate candidates
-
-| Priority | Item | Notes |
-| -------- | ---- | ----- |
-| **P0** | **MIG-03..MIG-09: Remaining V1→V2 page migrations** | 7 pages: Usage, Settings, Browse, Public Book, Unlisted, Chapter Translations |
-| **P0** | **MIG-10: Delete old `frontend/` directory** | After all migrations complete |
-| **P1** | **Glossary Extraction Pipeline [BE]** | 13 BE tasks, design complete (4 review rounds). See GEP-BE-01..13 above |
-| **P1** | **P3-08a/b: Genre Groups [BE+FE]** | Needs new backend tables, unblocks glossary polish + extraction profile auto-resolve |
-| P1 | Translation Workbench | Block-level translation (design draft exists), Phase 3.5 done |
-| P1 | Phase 4: Settings, Usage, Browse + polish | Overlaps with MIG-03..08 |
-| P2 | **Glossary Extraction Pipeline [FE]** | 7 FE tasks, blocked on BE completion. UI draft exists |
-| P2 | GUI Review deferred items (D1-D22) | Editor polish, glossary polish, reader polish |
-| P2 | Platform Mode (103_PLATFORM_MODE_PLAN.md) | 35 tasks, deferred |
-| P2 | Phase 4.5: Audio/TTS | Per-paragraph narration (design draft exists) |
-| P3 | Full acceptance evidence pack for M01-M05 | Currently smoke only |
-
-> **Architecture decision (session 12):** Frontend V2 Phase 3 paused. The glossary/wiki/chat features
-> depend on a knowledge layer that doesn't exist yet. Building GUI against the current schema would be
-> throwaway work. Data re-engineering plan executes first:
-> - Postgres JSONB for chapter content (replaces TEXT body)
-> - Event-driven pipeline (Redis Streams) for extensible processing
-> - chapter_blocks table for RAG-ready denormalized text
-> - Neo4j knowledge graph for entities/events/relations (future knowledge-service)
-> - Qdrant vector DB for embeddings (future RAG pipeline)
-> See `docs/03_planning/101_DATA_RE_ENGINEERING_PLAN.md` for full plan.
-
-### M05 Sub-Phase Roadmap (all complete)
-
-| Sub-Phase | Goal | Status |
-| --------- | ---- | ------ |
-| SP-1 | glossary-service skeleton + kind enumeration (AT-01, AT-34) | ✅ Done |
-| SP-2 | Entity CRUD + filters (AT-02 to AT-15, AT-32 to AT-35) | ✅ Done |
-| SP-3 | Chapter link management (AT-16 to AT-20) | ✅ Done |
-| SP-4 | Attribute values + translations (AT-21 to AT-26) | ✅ Done |
-| SP-5 | Evidences + RAG export + smoke test (AT-27 to AT-31) | ✅ Done |
+> **Note:** The 99A planning doc (`99A_FRONTEND_V2_IMPLEMENTATION_TASKS.md`) task markers are stale — 176/712 marked `[✓]` but ~640+ are actually done. The planning doc should be treated as historical reference, not active tracker.
 
 ---
 
@@ -1013,6 +963,7 @@ Session: 30 (2026-04-10) — design complete, 4 review rounds (context/data engi
 
 | Date       | What happened | Key commits |
 | ---------- | ------------- | ----------- |
+| 2026-04-10 | Session 31: GEP end-to-end complete. Real AI model testing (Qwen 3.5 9B, LM Studio) → 10 BE fixes (worker wiring, internal invoke, reasoning model, truncated JSON, adapter params). Integration test (49 assertions: cancel, multi-batch, concurrent, dedup). 7 FE tasks (wizard: profile/batch/confirm/progress/results + entry points + alive badge). Browser smoke test (9 screens). Session/plan audit. | `3c5202a`..`90a7410` (10 commits) |
 | 2026-04-10 | Session 30: Glossary Extraction Pipeline — full design doc (1500+ lines), 4 review rounds (context/data, security, cost → 22 issues found and fixed), UI draft HTML (7 interactive screens), implementation task plan (13 BE + 7 FE tasks). Design artifacts: `GLOSSARY_EXTRACTION_PIPELINE.md`, `glossary_extraction_ui_draft.html`. Key decisions: source language SSOT, alive flag for entities, 3-layer known entities filtering, extraction_audit_log table, prompt injection mitigation, cost estimation. | `ee6d64e` |
 | 2026-04-09→10 | Session 29: Translation Pipeline V2 — full implementation (P1-P8). CJK token fix (2.29x), glossary injection (1/6→6/6), output validation+retry, multi-provider tokens, rolling context, auto-correct, chapter memo, quality metrics. 3 services touched (translation, glossary, provider-registry). PoC with real Ollama gemma3:12b. Docker integration test: 132+113 blocks, all valid. 3 commits. | `662cbf7`..`6db8553` |
 | 2026-04-03 | Session 16: Phase 3.5 (E4+E5, 12 tasks), video-gen-service skeleton, M1-M6 (design draft gaps), MIG-01 (Trash page), MIG-02 (Chat page), code block fixes (5 iterations), image block fixes (upload wiring, MinIO URL, mode switch, hover overlay), removed localStorage cache persistence, planning docs (VG, MV, VH, TR, MIG). 53 commits. | `40bb7b1`..`bec9eef` |
