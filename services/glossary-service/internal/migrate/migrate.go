@@ -162,6 +162,7 @@ BEGIN
       'color',  k.color
     ),
     'status', e.status,
+    'alive',  e.alive,
     'tags',   to_jsonb(e.tags),
     'attributes', COALESCE((
       SELECT jsonb_agg(
@@ -302,6 +303,7 @@ CREATE OR REPLACE FUNCTION trig_fn_entity_self_snapshot()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW.status     IS DISTINCT FROM OLD.status
+  OR NEW.alive      IS DISTINCT FROM OLD.alive
   OR NEW.tags       IS DISTINCT FROM OLD.tags
   OR NEW.kind_id    IS DISTINCT FROM OLD.kind_id
   OR NEW.updated_at IS DISTINCT FROM OLD.updated_at
@@ -546,6 +548,39 @@ CREATE INDEX IF NOT EXISTS idx_ws_status  ON wiki_suggestions(article_id, status
 func UpWikiSuggestions(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err := pool.Exec(ctx, wikiSuggestionsSQL); err != nil {
 		return fmt.Errorf("migrate wiki_suggestions: %w", err)
+	}
+	return nil
+}
+
+// ── glossary extraction pipeline ───────────────────────────────────────────
+
+const extractionSQL = `
+-- Narrative-level alive flag on entities.
+-- Different from status (active/archived) which is system-level.
+-- Used by extraction pipeline to filter known entities context.
+-- Default = true (assume alive until user marks otherwise).
+ALTER TABLE glossary_entities ADD COLUMN IF NOT EXISTS alive BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- Overwrite audit log for extraction pipeline.
+-- Tracks old/new values when "overwrite" action replaces existing attribute values.
+-- Separate from evidences table (different semantics: audit trail vs source quotes).
+CREATE TABLE IF NOT EXISTS extraction_audit_log (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  entity_id   UUID NOT NULL REFERENCES glossary_entities(entity_id) ON DELETE CASCADE,
+  attr_def_id UUID NOT NULL REFERENCES attribute_definitions(attr_def_id),
+  chapter_id  UUID,
+  old_value   TEXT,
+  new_value   TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_eal_entity ON extraction_audit_log(entity_id);
+`
+
+// UpExtraction adds the alive column to glossary_entities and creates
+// the extraction_audit_log table. Safe to call on every startup (idempotent).
+func UpExtraction(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, extractionSQL); err != nil {
+		return fmt.Errorf("migrate extraction: %w", err)
 	}
 	return nil
 }
