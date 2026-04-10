@@ -12,6 +12,7 @@ import {
 } from '@/hooks/useSpeechRecognition';
 import { useBackendSTT, MEDIA_RECORDER_SUPPORTED } from '@/hooks/useBackendSTT';
 import { BrowserTTSEngine } from '@/hooks/engines/BrowserTTSEngine';
+import { useStreamingTTS } from '@/hooks/useStreamingTTS';
 import { useAuth } from '@/auth';
 import { loadVoicePrefs, type VoicePrefs } from '../voicePrefs';
 
@@ -62,7 +63,8 @@ export function useVoiceMode({
   const [phase, setPhase] = useState<VoicePhase>('idle');
   const [aiResponseText, setAiResponseText] = useState('');
   const [prefs, setPrefs] = useState<VoicePrefs>(loadVoicePrefs);
-  const useBackend = prefs.sttSource === 'ai_model';
+  const useBackendSTTSource = prefs.sttSource === 'ai_model';
+  const useBackendTTSSource = prefs.ttsSource === 'ai_model';
 
   const phaseRef = useRef<VoicePhase>('idle');
   const ttsEngineRef = useRef<BrowserTTSEngine | null>(null);
@@ -126,8 +128,16 @@ export function useVoiceMode({
     token: accessToken,
   });
 
+  // Backend TTS (streaming from /v1/audio/speech)
+  const streamingTTS = useStreamingTTS({
+    model: prefs.ttsModelRef || undefined,
+    voice: prefs.ttsVoiceURI || 'alloy',
+    speed: prefs.ttsSpeed,
+    token: accessToken,
+  });
+
   // Unified STT interface — switch based on preference
-  const stt = useBackend ? backendSTT : browserSTT;
+  const stt = useBackendSTTSource ? backendSTT : browserSTT;
 
   // Shorthand refs for STT control (avoid stale closures)
   const sttStartRef = useRef(stt.start);
@@ -179,17 +189,21 @@ export function useVoiceMode({
     setAiResponseText(responseText);
 
     if (prefs.autoTTSResponses && responseText.trim()) {
-      // Speak the response
+      // Speak the response — use backend or browser TTS
       setPhase('speaking');
-      const engine = getTTSEngine();
-      engine.speak(responseText, () => {
-        // TTS finished or errored — resume listening (Issue #7)
+      const onTTSEnd = () => {
         if (phaseRef.current === 'speaking') {
           setPhase('listening');
           sttReset();
           sttStart();
         }
-      });
+      };
+      if (useBackendTTSSource) {
+        streamingTTS.speak(responseText, onTTSEnd);
+      } else {
+        const engine = getTTSEngine();
+        engine.speak(responseText, onTTSEnd);
+      }
     } else {
       // No TTS — go straight back to listening
       setPhase('listening');
@@ -226,8 +240,9 @@ export function useVoiceMode({
     setPhase('idle');
     sttStop();
     ttsEngineRef.current?.stop();
+    streamingTTS.stop();
     setAiResponseText('');
-  }, [sttStop]);
+  }, [sttStop, streamingTTS]);
 
   const pause = useCallback(() => {
     if (phaseRef.current === 'listening') {
@@ -259,7 +274,7 @@ export function useVoiceMode({
   return {
     phase,
     isActive: phase !== 'idle',
-    supported: useBackend ? MEDIA_RECORDER_SUPPORTED : SPEECH_RECOGNITION_SUPPORTED,
+    supported: useBackendSTTSource ? MEDIA_RECORDER_SUPPORTED : SPEECH_RECOGNITION_SUPPORTED,
     userTranscript: stt.transcript,
     interimText: prefs.showInterimResults ? stt.interimTranscript : '',
     aiResponseText,
