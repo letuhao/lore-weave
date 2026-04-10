@@ -4,9 +4,9 @@
  * Features:
  * - Continuous listening with interim results
  * - Configurable silence detection (auto-finalize after pause)
- * - Auto-restart on recoverable errors
+ * - Auto-restart on recoverable errors (with max retry cap)
  * - Browser compatibility check
- * - External store pattern (matches useTTS.ts)
+ * - Factory pattern — each consumer gets its own instance (no singleton conflicts)
  */
 
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
@@ -82,12 +82,14 @@ function getSpeechRecognitionClass(): (new () => NativeSpeechRecognition) | null
     (new () => NativeSpeechRecognition) | null ?? null;
 }
 
-const SUPPORTED = typeof window !== 'undefined' && getSpeechRecognitionClass() !== null;
+export const SPEECH_RECOGNITION_SUPPORTED =
+  typeof window !== 'undefined' && getSpeechRecognitionClass() !== null;
 
 // Recoverable errors — auto-restart after these
 const RECOVERABLE_ERRORS = new Set(['network', 'no-speech', 'aborted']);
+const MAX_CONSECUTIVE_RESTARTS = 5;
 
-// ── Store ──────────────────────────────────────────────────────────────
+// ── Store (factory — each consumer gets its own instance) ──────────────
 
 type Listener = () => void;
 
@@ -96,16 +98,17 @@ const INITIAL_STATE: SpeechRecognitionState = {
   transcript: '',
   interimTranscript: '',
   error: null,
-  supported: SUPPORTED,
+  supported: SPEECH_RECOGNITION_SUPPORTED,
 };
 
-class SpeechRecognitionStore {
+export class SpeechRecognitionStore {
   private state: SpeechRecognitionState = { ...INITIAL_STATE };
   private listeners = new Set<Listener>();
   private recognition: NativeSpeechRecognition | null = null;
   private silenceTimer: ReturnType<typeof setTimeout> | null = null;
   private shouldRestart = false;
-  private options: SpeechRecognitionOptions = {};
+  private restartCount = 0;
+  private optionsRef: { current: SpeechRecognitionOptions } = { current: {} };
 
   getState(): SpeechRecognitionState {
     return this.state;
@@ -121,23 +124,26 @@ class SpeechRecognitionStore {
     for (const l of this.listeners) l();
   }
 
-  configure(options: SpeechRecognitionOptions) {
-    this.options = options;
+  /** Update options reference (used by callbacks to avoid stale closures) */
+  setOptions(options: SpeechRecognitionOptions) {
+    this.optionsRef.current = options;
   }
 
   start() {
-    if (!SUPPORTED) return;
+    if (!SPEECH_RECOGNITION_SUPPORTED) return;
     if (this.recognition) {
       this.recognition.abort();
     }
 
     const Ctor = getSpeechRecognitionClass()!;
     const rec = new Ctor();
-    rec.continuous = this.options.continuous ?? true;
-    rec.interimResults = this.options.interimResults ?? true;
-    rec.lang = this.options.lang || 'en-US';
+    const opts = this.optionsRef.current;
+    rec.continuous = opts.continuous ?? true;
+    rec.interimResults = opts.interimResults ?? true;
+    rec.lang = opts.lang || 'en-US';
 
     rec.onstart = () => {
+      this.restartCount = 0; // Reset on successful start
       this.state.isListening = true;
       this.state.error = null;
       this.emit();
@@ -158,7 +164,7 @@ class SpeechRecognitionStore {
 
       if (finalText && finalText !== this.state.transcript) {
         this.state.transcript = finalText;
-        this.options.onFinalTranscript?.(finalText);
+        this.optionsRef.current.onFinalTranscript?.(finalText);
       }
       this.state.interimTranscript = interimText;
       this.emit();
@@ -169,10 +175,17 @@ class SpeechRecognitionStore {
 
     rec.onerror = (event: SpeechRecognitionErrorEvent) => {
       if (RECOVERABLE_ERRORS.has(event.error) && this.shouldRestart) {
-        // Auto-restart after a brief delay
+        this.restartCount++;
+        if (this.restartCount > MAX_CONSECUTIVE_RESTARTS) {
+          this.state.error = `Too many restart attempts (${event.error})`;
+          this.state.isListening = false;
+          this.shouldRestart = false;
+          this.emit();
+          return;
+        }
         setTimeout(() => {
           if (this.shouldRestart) this.start();
-        }, 300);
+        }, 300 * this.restartCount); // Exponential-ish backoff
         return;
       }
       this.state.error = event.error;
@@ -185,6 +198,13 @@ class SpeechRecognitionStore {
       this.emit();
       // Auto-restart if we should still be listening (browser sometimes stops)
       if (this.shouldRestart) {
+        this.restartCount++;
+        if (this.restartCount > MAX_CONSECUTIVE_RESTARTS) {
+          this.state.error = 'Recognition stopped unexpectedly';
+          this.shouldRestart = false;
+          this.emit();
+          return;
+        }
         setTimeout(() => {
           if (this.shouldRestart) this.start();
         }, 100);
@@ -206,6 +226,7 @@ class SpeechRecognitionStore {
 
   stop() {
     this.shouldRestart = false;
+    this.restartCount = 0;
     this.clearSilenceTimer();
     if (this.recognition) {
       this.recognition.stop();
@@ -223,13 +244,18 @@ class SpeechRecognitionStore {
 
   private resetSilenceTimer() {
     this.clearSilenceTimer();
-    const threshold = this.options.silenceThresholdMs ?? 1500;
+    const threshold = this.optionsRef.current.silenceThresholdMs ?? 1500;
     if (threshold <= 0) return;
 
     this.silenceTimer = setTimeout(() => {
-      const full = (this.state.transcript + ' ' + this.state.interimTranscript).trim();
-      if (full) {
-        this.options.onSilenceDetected?.(full);
+      // Use the latest state at the time the timer fires (not stale closure)
+      const currentState = this.state;
+      // Prefer interim if available (hasn't been promoted to final yet),
+      // otherwise use the accumulated final transcript
+      const text = currentState.interimTranscript.trim()
+        || currentState.transcript.trim();
+      if (text) {
+        this.optionsRef.current.onSilenceDetected?.(text);
       }
     }, threshold);
   }
@@ -242,44 +268,47 @@ class SpeechRecognitionStore {
   }
 }
 
-// Singleton store
-const store = new SpeechRecognitionStore();
+/** Create a new speech recognition store instance */
+export function createSpeechRecognitionStore(): SpeechRecognitionStore {
+  return new SpeechRecognitionStore();
+}
 
 // ── React Hook ─────────────────────────────────────────────────────────
 
 export function useSpeechRecognition(options: SpeechRecognitionOptions = {}) {
-  const optionsRef = useRef(options);
-  optionsRef.current = options;
+  // Each hook instance gets its own store — no singleton conflicts
+  const storeRef = useRef<SpeechRecognitionStore | null>(null);
+  if (!storeRef.current) {
+    storeRef.current = createSpeechRecognitionStore();
+  }
+  const store = storeRef.current;
 
-  // Keep store options in sync
-  useEffect(() => {
-    store.configure(optionsRef.current);
-  }, [options.lang, options.continuous, options.interimResults, options.silenceThresholdMs]);
+  // Keep options in sync on every render (avoids stale closures in callbacks)
+  store.setOptions(options);
 
   const state = useSyncExternalStore(
-    useCallback((cb: () => void) => store.subscribe(cb), []),
+    useCallback((cb: () => void) => store.subscribe(cb), [store]),
     () => store.getState(),
   );
 
   const start = useCallback(() => {
-    store.configure(optionsRef.current);
     store.start();
-  }, []);
+  }, [store]);
 
   const stop = useCallback(() => {
     store.stop();
-  }, []);
+  }, [store]);
 
   const resetTranscript = useCallback(() => {
     store.resetTranscript();
-  }, []);
+  }, [store]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       store.stop();
     };
-  }, []);
+  }, [store]);
 
   return {
     ...state,

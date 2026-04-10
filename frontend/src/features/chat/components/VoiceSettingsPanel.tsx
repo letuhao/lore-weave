@@ -46,15 +46,16 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
     return () => speechSynthesis?.removeEventListener('voiceschanged', loadVoices);
   }, []);
 
-  // Load AI models
+  // Load AI models (single call, filter client-side)
   useEffect(() => {
     if (!accessToken) return;
-    aiModelsApi.listUserModels(accessToken, { capability: 'stt' })
-      .then((r) => setSttModels(r.items.filter((m) => m.is_active)))
-      .catch(() => setSttModels([]));
-    aiModelsApi.listUserModels(accessToken, { capability: 'tts' })
-      .then((r) => setTtsModels(r.items.filter((m) => m.is_active)))
-      .catch(() => setTtsModels([]));
+    aiModelsApi.listUserModels(accessToken)
+      .then((r) => {
+        const active = r.items.filter((m) => m.is_active);
+        setSttModels(active.filter((m) => m.capability_flags?.stt));
+        setTtsModels(active.filter((m) => m.capability_flags?.tts));
+      })
+      .catch(() => { setSttModels([]); setTtsModels([]); });
   }, [accessToken]);
 
   const update = <K extends keyof VoicePrefs>(key: K, value: VoicePrefs[K]) => {
@@ -68,6 +69,9 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
   if (!open) return null;
 
   return (
+    <>
+    {/* Backdrop — click to close */}
+    <div className="fixed inset-0 z-[39]" onClick={onClose} />
     <div className="fixed inset-y-0 right-0 z-40 flex w-72 flex-col border-l bg-card shadow-xl">
       {/* Header */}
       <div className="flex items-center justify-between border-b px-4 py-3">
@@ -264,6 +268,7 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
         </button>
       </div>
     </div>
+    </>
   );
 }
 
