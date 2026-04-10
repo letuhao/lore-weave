@@ -9,6 +9,7 @@ Design reference: GLOSSARY_EXTRACTION_PIPELINE.md §5.2, §5.3
 """
 from __future__ import annotations
 
+import json
 from uuid import UUID
 
 import asyncpg
@@ -91,7 +92,9 @@ async def create_extraction_job(
     kinds_metadata = profile_data.get("kinds", []) if profile_data else []
 
     # Compute cost estimate
-    chapters_meta = [{"text_length": 8000}] * len(payload.chapter_ids)  # rough estimate
+    # Rough estimate: assumes ~8K chars per chapter. Actual sizes would require fetching
+    # from book-service. This is intentionally approximate per design §6.7.1 ("estimate, not quote").
+    chapters_meta = [{"text_length": 8000}] * len(payload.chapter_ids)
     cost_estimate = estimate_extraction_cost(
         chapters_meta, payload.extraction_profile, kinds_metadata
     )
@@ -99,7 +102,6 @@ async def create_extraction_job(
     context_filters = payload.context_filters or {}
 
     # Insert job + chapter result rows
-    import json as _json
     job_row = await db.fetchrow(
         """
         INSERT INTO extraction_jobs
@@ -109,11 +111,11 @@ async def create_extraction_job(
         RETURNING *
         """,
         book_id, uid, source_language, model_source, model_ref,
-        _json.dumps(payload.extraction_profile),
-        _json.dumps(context_filters),
+        json.dumps(payload.extraction_profile),
+        json.dumps(context_filters),
         payload.chapter_ids,
         len(payload.chapter_ids),
-        _json.dumps(cost_estimate),
+        json.dumps(cost_estimate),
     )
     job_id = job_row["job_id"]
 
@@ -210,7 +212,7 @@ async def get_extraction_job(
         "entities_skipped": row["entities_skipped"],
         "total_input_tokens": row["total_input_tokens"],
         "total_output_tokens": row["total_output_tokens"],
-        "cost_estimate": _json.loads(row["cost_estimate"]) if row["cost_estimate"] else None,
+        "cost_estimate": json.loads(row["cost_estimate"]) if row["cost_estimate"] else None,
         "error_message": row["error_message"],
         "started_at": row["started_at"].isoformat() if row["started_at"] else None,
         "finished_at": row["finished_at"].isoformat() if row["finished_at"] else None,

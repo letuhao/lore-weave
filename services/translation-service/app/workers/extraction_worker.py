@@ -42,6 +42,25 @@ async def handle_extraction_job(msg: dict, pool, publish, publish_event) -> None
     """
     job_id = UUID(msg["job_id"])
     user_id = msg["user_id"]
+    try:
+        await _run_extraction_job(msg, job_id, user_id, pool, publish, publish_event)
+    except Exception as exc:
+        log.exception("extraction_worker: job %s failed unexpectedly: %s", job_id, exc)
+        async with pool.acquire() as db:
+            await db.execute(
+                "UPDATE extraction_jobs SET status='failed', error_message=$2, finished_at=now() WHERE job_id=$1",
+                job_id, str(exc)[:500],
+            )
+        await publish_event(user_id, {
+            "event": "job.status_changed",
+            "job_id": str(job_id),
+            "job_type": "extract_glossary",
+            "payload": {"status": "failed", "error": str(exc)[:200]},
+        })
+
+
+async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publish, publish_event) -> None:
+    """Inner extraction job runner — separated for top-level error handling."""
     book_id = msg["book_id"]
     chapter_ids = msg["chapter_ids"]
     extraction_profile = msg.get("extraction_profile", {})
@@ -129,9 +148,11 @@ async def handle_extraction_job(msg: dict, pool, publish, publish_event) -> None
                 max_entities_per_kind=max_entities_per_kind,
                 pool=pool,
             )
-            # Update known entities with newly created entities
+            # Update known entities with newly created entities (capped at 200 to prevent
+            # unbounded prompt growth — design §7 says ~50 entities ≈ 250 tokens)
+            _KNOWN_ENTITIES_CAP = 200
             for ent in result.get("entities", []):
-                if ent.get("status") == "created":
+                if ent.get("status") == "created" and len(known_entities) < _KNOWN_ENTITIES_CAP:
                     known_entities.append({
                         "name": ent["name"],
                         "kind_code": ent["kind_code"],
@@ -295,13 +316,16 @@ async def _process_extraction_chapter(
 
         async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=120, write=10, pool=5)) as client:
             resp = await client.post(
-                f"{settings.provider_registry_url}/internal/invoke",
+                f"{settings.provider_registry_service_url}/internal/invoke",
                 json=invoke_payload,
                 headers={"X-Internal-Token": settings.internal_service_token},
             )
 
         if resp.status_code != 200:
-            log.error("extraction: LLM invoke failed status=%d for chapter %s batch %d", resp.status_code, chapter_id, batch_idx)
+            log.error(
+                "extraction: LLM invoke failed status=%d for chapter %s batch %d/%d — skipping batch (kinds: %s)",
+                resp.status_code, chapter_id, batch_idx + 1, len(batches), batch,
+            )
             continue
 
         resp_data = resp.json()
@@ -314,14 +338,15 @@ async def _process_extraction_chapter(
         # 6. Parse + validate
         entities = parse_and_validate(response_text, batch, extraction_profile)
 
-        # Add chapter_links to each entity
+        # Add chapter_links to each entity (use .get() to avoid mutating parsed dict)
         chapter_title = chapter.get("title", "")
         for ent in entities:
+            relevance = ent.get("relevance", "appears")
             ent["chapter_links"] = [{
                 "chapter_id": str(chapter_id),
                 "chapter_title": chapter_title,
                 "chapter_index": chapter_index,
-                "relevance": ent.pop("relevance", "appears"),
+                "relevance": relevance,
             }]
 
         all_entities.extend(entities)

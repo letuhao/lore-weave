@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -196,7 +197,13 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 	minFreq := queryInt(q.Get("min_frequency"), 2)
 	beforeIdx := queryInt(q.Get("before_chapter_index"), -1)
 	recencyWindow := queryInt(q.Get("recency_window"), 100)
+	if recencyWindow > 1000 {
+		recencyWindow = 1000
+	}
 	limit := queryInt(q.Get("limit"), 50)
+	if limit > 500 {
+		limit = 500
+	}
 
 	// Build the query dynamically based on filters.
 	// We join glossary_entities with entity_kinds and aggregate chapter_entity_links
@@ -469,14 +476,16 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			if relevance == "" {
 				relevance = "appears"
 			}
-			_, _ = s.pool.Exec(ctx, `
+			if _, err := s.pool.Exec(ctx, `
 				INSERT INTO chapter_entity_links (entity_id, chapter_id, chapter_title, chapter_index, relevance)
 				VALUES ($1, $2, $3, $4, $5)
 				ON CONFLICT (entity_id, chapter_id) DO UPDATE SET
 					chapter_title = EXCLUDED.chapter_title,
 					chapter_index = EXCLUDED.chapter_index,
 					relevance = EXCLUDED.relevance
-			`, entID, chID, cl.ChapterTitle, cl.ChapterIndex, relevance)
+			`, entID, chID, cl.ChapterTitle, cl.ChapterIndex, relevance); err != nil {
+				slog.Warn("extraction: failed to insert chapter_entity_link", "entity_id", entID, "chapter_id", chID, "error", err)
+			}
 		}
 
 		// 5. Add evidence (extraction quote)
@@ -491,10 +500,12 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 					WHERE entity_id = $1 AND attr_def_id = $2
 				`, entID, nameAttrDefID).Scan(&nameAVID)
 				if err == nil {
-					_, _ = s.pool.Exec(ctx, `
+					if _, err := s.pool.Exec(ctx, `
 						INSERT INTO evidences (attr_value_id, chapter_id, evidence_type, original_language, original_text, note)
 						VALUES ($1, $2, 'extraction_quote', $3, $4, 'auto-extracted by glossary extraction pipeline')
-					`, nameAVID, s.firstChapterID(ent.ChapterLinks), req.SourceLanguage, ent.Evidence)
+					`, nameAVID, s.firstChapterID(ent.ChapterLinks), req.SourceLanguage, ent.Evidence); err != nil {
+						slog.Warn("extraction: failed to insert evidence", "entity", ent.Name, "error", err)
+					}
 				}
 			}
 		}
@@ -733,10 +744,12 @@ func (s *Server) mergeExtractedEntity(
 			// Log to extraction_audit_log before overwriting
 			if attrValueExists {
 				chapterID := firstChapterIDFromLinks(ent.ChapterLinks)
-				_, _ = s.pool.Exec(ctx, `
+				if _, auditErr := s.pool.Exec(ctx, `
 					INSERT INTO extraction_audit_log (entity_id, attr_def_id, chapter_id, old_value, new_value)
 					VALUES ($1, $2, $3, $4, $5)
-				`, entityID, defID, chapterID, existingValue, serialized)
+				`, entityID, defID, chapterID, existingValue, serialized); auditErr != nil {
+					slog.Warn("extraction: failed to insert audit log", "entity_id", entityID, "attr", code, "error", auditErr)
+				}
 
 				_, err = s.pool.Exec(ctx, `
 					UPDATE entity_attribute_values SET original_value = $1, original_language = $2
@@ -757,7 +770,9 @@ func (s *Server) mergeExtractedEntity(
 
 	// Touch updated_at
 	if len(written) > 0 {
-		_, _ = s.pool.Exec(ctx, `UPDATE glossary_entities SET updated_at = now() WHERE entity_id = $1`, entityID)
+		if _, err := s.pool.Exec(ctx, `UPDATE glossary_entities SET updated_at = now() WHERE entity_id = $1`, entityID); err != nil {
+			slog.Warn("extraction: failed to touch updated_at", "entity_id", entityID, "error", err)
+		}
 	}
 
 	if written == nil {

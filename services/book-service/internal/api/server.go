@@ -501,7 +501,7 @@ WHERE b.id=$1 AND b.owner_user_id=$2
 		"lifecycle_state":   state,
 		"genre_tags":        genreTags,
 		"wiki_settings":        json.RawMessage(wikiSettings),
-		"extraction_profile":   extractionProfile,
+		"extraction_profile":   json.RawMessage(extractionProfile),
 		"trashed_at":           trashedAt,
 		"purge_eligible_at": purgeAt,
 		"created_at":        createdAt,
@@ -1637,7 +1637,7 @@ FROM books b WHERE b.id=$1
 		"lifecycle_state":   state,
 		"genre_tags":        genreTags,
 		"wiki_settings":        json.RawMessage(wikiSettings),
-		"extraction_profile":   extractionProfile,
+		"extraction_profile":   json.RawMessage(extractionProfile),
 		"created_at":           createdAt,
 	})
 }
