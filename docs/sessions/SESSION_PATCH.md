@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-10 (session 31 end — GEP COMPLETE: BE+FE+tests+smoke)
-- Updated By: Assistant (GEP: 10 BE fixes, 49 integration tests, 7 FE tasks, browser smoke test)
+- Last Updated: 2026-04-11 (session 31 end — GEP + Voice Mode + AI Service Readiness)
+- Updated By: Assistant (29 commits: GEP complete, Voice Mode 6 tasks, AISR 5 tasks, integration guide)
 - Active Branch: `main`
-- HEAD: `90a7410` (GEP-FE-07)
+- HEAD: `e54557e` (AISR-03+04 review fixes)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
 
 ---
@@ -37,9 +37,9 @@
 
 **Glossary Extraction Pipeline: FULLY COMPLETE (BE + FE + TESTED).** 13 BE tasks + 7 FE tasks + 49 integration test assertions + browser smoke test. Tested with real Qwen 3.5 9B model via LM Studio. 90 entities extracted from 5 chapters.
 
-**What was done in this session (2026-04-10, session 31):**
+**What was done in this session (2026-04-10→11, session 31):**
 
-GEP end-to-end: real AI model testing → 10 bug fixes → integration test script → 7 FE tasks → browser smoke test → session/plan doc audit.
+Three major features completed: GEP end-to-end, Voice Mode for chat, AI Service Readiness infrastructure. 29 commits total.
 
 | Work item | Files | Commit |
 | --------- | ----- | ------ |
@@ -53,7 +53,26 @@ GEP end-to-end: real AI model testing → 10 bug fixes → integration test scri
 | GEP-FE-06: Entry point wiring (GlossaryTab, ChaptersTab, TranslationTab) | 3 tab files | `8a4ce0b` |
 | GEP-FE-07: Alive badge + toggle on entity list | `GlossaryTab.tsx`, `glossary/api.ts` | `90a7410` |
 | Browser smoke test: 9 screens verified (Playwright MCP) | — | — |
-| Session/plan audit: SESSION_PATCH + 99A planning doc markers updated | docs | this commit |
+| Session/plan audit: SESSION_PATCH + 99A planning doc markers updated | docs | `3f33d69`, `79264c4` |
+| **Voice Mode (VM-01..VM-06):** | | |
+| VM-01: useSpeechRecognition hook (Web Speech API, factory pattern) | `hooks/useSpeechRecognition.ts` | `077d97d` |
+| VM-02: Voice settings panel + STT/TTS model selectors, i18n 4 langs | `VoiceSettingsPanel.tsx`, `voicePrefs.ts`, 4 locale files | `ba2242f` |
+| VM-01+02 review: 4 issues (singleton→factory, stale closure, restart cap, backdrop) | 2 files | `b03ef0b` |
+| VM-03+04: Voice mode orchestrator + push-to-talk mic button | `useVoiceMode.ts`, `ChatInputBar.tsx` | `eaac89f` |
+| VM-05: Voice mode overlay (waveform, transcript, controls) | `VoiceModeOverlay.tsx`, `WaveformVisualizer.tsx` | `5f265ff` |
+| VM-06: Integration wiring (ChatHeader + ChatWindow) | `ChatHeader.tsx`, `ChatWindow.tsx` | `1542208` |
+| VM review: 13 issues (stale closures, session change, ARIA, dual STT) | 7 files | `0d7318a` |
+| **External AI Service Integration Guide:** | | |
+| Integration guide: 830 lines, 4 service types (TTS/STT/Image/Video) | `docs/04_integration/` | `d62c4c4` |
+| Spec alignment: verified against OpenAI Python SDK (2025-12) | docs | `a37ff4e` |
+| Streaming TTS/STT contracts + known limitations section | docs | `75e1b4f` |
+| **AI Service Readiness (AISR-01..05):** | | |
+| AISR-01: Gateway /v1/audio/* proxy routes (TTS, STT, voices) | `gateway-setup.ts`, `docker-compose.yml` | `89bfc74` |
+| AISR-02: Mock audio service (Python/FastAPI, sine-wave TTS, mock STT) | `infra/mock-audio-service/` | `96b8b10`, `d17f7fd` |
+| AISR-03: useBackendSTT hook (MediaRecorder → multipart upload) | `hooks/useBackendSTT.ts` | `114358b` |
+| AISR-04: useStreamingTTS hook (fetch → AudioContext playback) | `hooks/useStreamingTTS.ts` | `14541fc` |
+| AISR-05: Integration test script (19 assertions) | `infra/test-audio-service.sh` | `bdb2153` |
+| AISR-03+04 review: 20 issues (AudioContext leaks, race conditions, Safari) | 3 files | `e54557e` |
 
 **9-phase workflow followed for each FE task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 
@@ -931,12 +950,16 @@ frontend/src/components/chunk-editor/
 | GEP Integration Test (49 assertions) | ✅ Done |
 | GEP Browser Smoke Test | ✅ Done |
 | INF-01..03 (Service auth, HTTP client, structured logging) | ✅ Done |
+| Voice Mode — Chat (VM-01..VM-06) | ✅ Done |
+| AI Service Readiness — Gateway + Mock + FE hooks (AISR-01..05) | ✅ Done |
+| External AI Service Integration Guide (1096 lines) | ✅ Done |
 
 ### Remaining Work
 
 | Priority | Item | Scope | Notes |
 | -------- | ---- | ----- | ----- |
 | **P1** | **Translation Workbench** (P3-T1..T8) | 8 tasks (BE+FE) | Block-level translation UI. Design draft exists. Blocker removed (media blocks done). |
+| **P1** | **Build external TTS/STT services** (separate repos) | New repos | Integration guide ready. Gateway proxy + frontend hooks done. Need: Whisper STT service, Coqui/XTTS TTS service. |
 | P2 | GUI Review deferred (D1-D22) | FE polish | Editor, glossary, reader polish items |
 | P2 | Chat Service Phase 4 | BE+FE | File attachments + multi-modal |
 | P2 | Platform Mode | 35 tasks | `103_PLATFORM_MODE_PLAN.md` — multi-tenant SaaS features |
@@ -963,7 +986,7 @@ frontend/src/components/chunk-editor/
 
 | Date       | What happened | Key commits |
 | ---------- | ------------- | ----------- |
-| 2026-04-10 | Session 31: GEP end-to-end complete. Real AI model testing (Qwen 3.5 9B, LM Studio) → 10 BE fixes (worker wiring, internal invoke, reasoning model, truncated JSON, adapter params). Integration test (49 assertions: cancel, multi-batch, concurrent, dedup). 7 FE tasks (wizard: profile/batch/confirm/progress/results + entry points + alive badge). Browser smoke test (9 screens). Session/plan audit. | `3c5202a`..`90a7410` (10 commits) |
+| 2026-04-10→11 | Session 31: Three features. **GEP** — 10 BE fixes from real AI testing, integration test (49 assertions), 7 FE tasks (extraction wizard), smoke test. **Voice Mode** — 6 tasks (useSpeechRecognition, VoiceSettingsPanel with STT/TTS model selectors, useVoiceMode orchestrator, push-to-talk mic, overlay UI, integration wiring), 2 review passes (17 issues fixed). **AI Service Readiness** — gateway audio proxy, mock audio service, useBackendSTT, useStreamingTTS, integration test (19 assertions), review (20 issues fixed). **Docs** — integration guide (1096 lines), 99A bulk update (464 markers), session audit. | `3c5202a`..`e54557e` (29 commits) |
 | 2026-04-10 | Session 30: Glossary Extraction Pipeline — full design doc (1500+ lines), 4 review rounds (context/data, security, cost → 22 issues found and fixed), UI draft HTML (7 interactive screens), implementation task plan (13 BE + 7 FE tasks). Design artifacts: `GLOSSARY_EXTRACTION_PIPELINE.md`, `glossary_extraction_ui_draft.html`. Key decisions: source language SSOT, alive flag for entities, 3-layer known entities filtering, extraction_audit_log table, prompt injection mitigation, cost estimation. | `ee6d64e` |
 | 2026-04-09→10 | Session 29: Translation Pipeline V2 — full implementation (P1-P8). CJK token fix (2.29x), glossary injection (1/6→6/6), output validation+retry, multi-provider tokens, rolling context, auto-correct, chapter memo, quality metrics. 3 services touched (translation, glossary, provider-registry). PoC with real Ollama gemma3:12b. Docker integration test: 132+113 blocks, all valid. 3 commits. | `662cbf7`..`6db8553` |
 | 2026-04-03 | Session 16: Phase 3.5 (E4+E5, 12 tasks), video-gen-service skeleton, M1-M6 (design draft gaps), MIG-01 (Trash page), MIG-02 (Chat page), code block fixes (5 iterations), image block fixes (upload wiring, MinIO URL, mode switch, hover overlay), removed localStorage cache persistence, planning docs (VG, MV, VH, TR, MIG). 53 commits. | `40bb7b1`..`bec9eef` |
