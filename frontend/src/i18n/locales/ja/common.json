@@ -32,5 +32,38 @@
   "placeholder": {
     "coming_soon": "{{title}} — 近日公開。",
     "phase": "{{phase}}で実装予定。"
+  },
+  "voice": {
+    "settingsTitle": "音声設定",
+    "sttSection": "音声認識",
+    "sttSource": "STTソース",
+    "sttModel": "STTモデル",
+    "ttsSection": "テキスト読み上げ",
+    "ttsSource": "TTSソース",
+    "ttsModel": "TTSモデル",
+    "browser": "ブラウザ（無料）",
+    "aiModel": "AIモデル",
+    "noModels": "モデル未設定",
+    "selectModel": "モデルを選択...",
+    "language": "言語",
+    "silenceThreshold": "無音しきい値",
+    "autoSend": "無音時に自動送信",
+    "showInterim": "中間結果を表示",
+    "browserVoice": "ブラウザ音声",
+    "defaultVoice": "デフォルト",
+    "speed": "速度",
+    "autoTTS": "AI応答を自動再生",
+    "pauseMic": "TTS中にマイクを停止",
+    "resetDefaults": "デフォルトに戻す",
+    "voiceMode": "音声モード",
+    "listening": "聞いています...",
+    "processing": "処理中...",
+    "speaking": "話しています...",
+    "paused": "一時停止",
+    "tapToSpeak": "タップして話す",
+    "holdToSpeak": "長押しして話す",
+    "recording": "録音中...",
+    "exitVoiceMode": "音声モードを終了",
+    "pauseResume": "一時停止 / 再開"
   }
 }

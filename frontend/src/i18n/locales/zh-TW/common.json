@@ -32,5 +32,38 @@
   "placeholder": {
     "coming_soon": "{{title}} — 即將推出。",
     "phase": "將在{{phase}}實作。"
+  },
+  "voice": {
+    "settingsTitle": "語音設定",
+    "sttSection": "語音辨識",
+    "sttSource": "STT 來源",
+    "sttModel": "STT 模型",
+    "ttsSection": "文字轉語音",
+    "ttsSource": "TTS 來源",
+    "ttsModel": "TTS 模型",
+    "browser": "瀏覽器（免費）",
+    "aiModel": "AI 模型",
+    "noModels": "未設定模型",
+    "selectModel": "選擇模型...",
+    "language": "語言",
+    "silenceThreshold": "靜音門檻",
+    "autoSend": "靜音時自動發送",
+    "showInterim": "顯示中間結果",
+    "browserVoice": "瀏覽器語音",
+    "defaultVoice": "預設",
+    "speed": "速度",
+    "autoTTS": "自動播放 AI 回應",
+    "pauseMic": "TTS 時暫停麥克風",
+    "resetDefaults": "恢復預設值",
+    "voiceMode": "語音模式",
+    "listening": "聆聽中...",
+    "processing": "處理中...",
+    "speaking": "朗讀中...",
+    "paused": "已暫停",
+    "tapToSpeak": "點擊說話",
+    "holdToSpeak": "長按說話",
+    "recording": "錄音中...",
+    "exitVoiceMode": "退出語音模式",
+    "pauseResume": "暫停 / 繼續"
   }
 }

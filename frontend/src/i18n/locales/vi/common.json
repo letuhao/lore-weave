@@ -32,5 +32,38 @@
   "placeholder": {
     "coming_soon": "{{title}} — sắp ra mắt.",
     "phase": "Sẽ có trong {{phase}}."
+  },
+  "voice": {
+    "settingsTitle": "Cài đặt giọng nói",
+    "sttSection": "Nhận dạng giọng nói",
+    "sttSource": "Nguồn STT",
+    "sttModel": "Mô hình STT",
+    "ttsSection": "Chuyển văn bản thành giọng nói",
+    "ttsSource": "Nguồn TTS",
+    "ttsModel": "Mô hình TTS",
+    "browser": "Trình duyệt (miễn phí)",
+    "aiModel": "Mô hình AI",
+    "noModels": "Chưa cấu hình mô hình",
+    "selectModel": "Chọn mô hình...",
+    "language": "Ngôn ngữ",
+    "silenceThreshold": "Ngưỡng im lặng",
+    "autoSend": "Tự động gửi khi im lặng",
+    "showInterim": "Hiển thị kết quả tạm thời",
+    "browserVoice": "Giọng trình duyệt",
+    "defaultVoice": "Mặc định",
+    "speed": "Tốc độ",
+    "autoTTS": "Tự động phát phản hồi AI",
+    "pauseMic": "Tạm dừng mic khi TTS",
+    "resetDefaults": "Đặt lại mặc định",
+    "voiceMode": "Chế độ giọng nói",
+    "listening": "Đang nghe...",
+    "processing": "Đang xử lý...",
+    "speaking": "Đang nói...",
+    "paused": "Tạm dừng",
+    "tapToSpeak": "Nhấn để nói",
+    "holdToSpeak": "Giữ để nói",
+    "recording": "Đang ghi...",
+    "exitVoiceMode": "Thoát chế độ giọng nói",
+    "pauseResume": "Tạm dừng / Tiếp tục"
   }
 }

@@ -33,5 +33,38 @@
   "placeholder": {
     "coming_soon": "{{title}} — coming soon.",
     "phase": "Coming in {{phase}}."
+  },
+  "voice": {
+    "settingsTitle": "Voice Settings",
+    "sttSection": "Speech Recognition",
+    "sttSource": "STT Source",
+    "sttModel": "STT Model",
+    "ttsSection": "Text-to-Speech",
+    "ttsSource": "TTS Source",
+    "ttsModel": "TTS Model",
+    "browser": "Browser (free)",
+    "aiModel": "AI Model",
+    "noModels": "No models configured",
+    "selectModel": "Select model...",
+    "language": "Language",
+    "silenceThreshold": "Silence threshold",
+    "autoSend": "Auto-send on silence",
+    "showInterim": "Show interim results",
+    "browserVoice": "Browser Voice",
+    "defaultVoice": "Default",
+    "speed": "Speed",
+    "autoTTS": "Auto-play AI responses",
+    "pauseMic": "Pause mic during TTS",
+    "resetDefaults": "Reset to defaults",
+    "voiceMode": "Voice Mode",
+    "listening": "Listening...",
+    "processing": "Processing...",
+    "speaking": "Speaking...",
+    "paused": "Paused",
+    "tapToSpeak": "Tap to speak",
+    "holdToSpeak": "Hold to speak",
+    "recording": "Recording...",
+    "exitVoiceMode": "Exit Voice Mode",
+    "pauseResume": "Pause / Resume"
   }
 }
