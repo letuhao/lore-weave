@@ -60,6 +60,7 @@ func (s *Server) Router() http.Handler {
 	r.Route("/internal", func(r chi.Router) {
 		r.Use(s.requireInternalToken)
 		r.Get("/books/{book_id}/translation-glossary", s.internalTranslationGlossary)
+		r.Get("/books/{book_id}/extraction-profile", s.internalExtractionProfile)
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {
@@ -78,6 +79,7 @@ func (s *Server) Router() http.Handler {
 		})
 
 		r.Route("/books/{book_id}", func(r chi.Router) {
+			r.Get("/extraction-profile", s.getExtractionProfile)
 			r.Get("/export", s.exportGlossary)
 			r.Route("/genres", func(r chi.Router) {
 				r.Get("/", s.listGenres)

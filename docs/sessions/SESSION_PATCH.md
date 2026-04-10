@@ -37,7 +37,7 @@
 
 **Glossary Extraction Pipeline: DESIGN COMPLETE.** Full design doc (1500+ lines), 4 review rounds (context/data engineer, security, cost), UI draft HTML, 20 implementation tasks (13 BE + 7 FE). Ready for BUILD phase.
 
-**GEP BUILD in progress:** GEP-BE-01 ✅, GEP-BE-06 ✅. Next: GEP-BE-02..05 (glossary-service endpoints).
+**GEP BUILD in progress:** GEP-BE-01 ✅, GEP-BE-02 ✅, GEP-BE-06 ✅. Next: GEP-BE-04, BE-05 (glossary-service endpoints), then BE-03 (bulk upsert).
 
 **What was done in this session (2026-04-09, session 29):**
 
@@ -904,7 +904,7 @@ Session: 30 (2026-04-10) — design complete, 4 review rounds (context/data engi
 | Task | Service | Scope | Deps | Status |
 |------|---------|-------|------|--------|
 | **GEP-BE-01** | glossary-service | Migration: `alive BOOLEAN` on glossary_entities + `extraction_audit_log` table | — | [✓] |
-| **GEP-BE-02** | glossary-service | `GET /api/v1/books/{book_id}/extraction-profile` — auto-resolve kinds+attrs by genre, return full metadata. Dual route: public (JWT) + internal (service token) | — | [ ] |
+| **GEP-BE-02** | glossary-service | `GET /api/v1/books/{book_id}/extraction-profile` — auto-resolve kinds+attrs by genre, return full metadata. Dual route: public (JWT) + internal (service token) | — | [✓] |
 | **GEP-BE-03** | glossary-service | `POST /internal/books/{book_id}/extract-entities` — bulk upsert with normalized dedup, fill/overwrite per attribute, evidence creation, audit log, chapter links | GEP-BE-01 | [ ] |
 | **GEP-BE-04** | glossary-service | `GET /internal/books/{book_id}/known-entities` — filtered by alive, min_frequency, recency_window, limit. Frequency derived from chapter_entity_links COUNT | GEP-BE-01 | [ ] |
 | **GEP-BE-05** | glossary-service | Entity alive toggle: `PATCH /api/v1/entities/{entity_id}` support `alive` field | GEP-BE-01 | [ ] |
