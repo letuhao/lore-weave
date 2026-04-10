@@ -50,6 +50,21 @@ services:
     volumes:
       - loreweave_minio:/data
 
+  # Mock audio service (TTS/STT) — optional, activate with: docker compose --profile audio up
+  mock-audio-service:
+    build:
+      context: ../infra/mock-audio-service
+      dockerfile: Dockerfile
+    ports:
+      - "8600:8600"
+    profiles:
+      - audio
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8600/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   mailhog:
     image: mailhog/mailhog:latest
     ports:
