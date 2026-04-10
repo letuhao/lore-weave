@@ -49,7 +49,7 @@ export const glossaryApi = {
   patchEntity(
     bookId: string,
     entityId: string,
-    changes: { status?: string; tags?: string[] },
+    changes: { status?: string; tags?: string[]; alive?: boolean },
     token: string,
   ): Promise<GlossaryEntity> {
     return apiJson<GlossaryEntity>(`${BASE}/books/${bookId}/entities/${entityId}`, {

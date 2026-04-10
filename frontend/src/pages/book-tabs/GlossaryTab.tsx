@@ -102,6 +102,16 @@ export function GlossaryTab({ bookId, bookGenreTags = [] }: { bookId: string; bo
     }
   };
 
+  const handleToggleAlive = async (entity: GlossaryEntitySummary) => {
+    if (!accessToken) return;
+    try {
+      await glossaryApi.patchEntity(bookId, entity.entity_id, { alive: !entity.alive }, accessToken);
+      invalidate();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
   const activeFilterCount = (filters.kindCodes.length > 0 ? 1 : 0) + (filters.status !== 'all' ? 1 : 0);
 
   if (view === 'kinds') {
@@ -296,6 +306,20 @@ export function GlossaryTab({ bookId, bookGenreTags = [] }: { bookId: string; bo
                   <span className={cn('rounded-full px-1.5 py-0.5 text-[9px] font-medium', STATUS_COLORS[e.status])}>
                     {e.status}
                   </span>
+                  {e.alive != null && (
+                    <button
+                      onClick={(ev) => { ev.stopPropagation(); void handleToggleAlive(e); }}
+                      className={cn(
+                        'rounded-full px-1.5 py-0.5 text-[9px] font-medium transition-colors',
+                        e.alive
+                          ? 'bg-green-500/10 text-green-500 hover:bg-green-500/20'
+                          : 'bg-muted text-muted-foreground hover:bg-muted/80',
+                      )}
+                      title={e.alive ? 'Alive — click to mark dead' : 'Dead — click to revive'}
+                    >
+                      {e.alive ? 'alive' : 'dead'}
+                    </button>
+                  )}
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 text-[10px] text-muted-foreground">
                   {e.chapter_link_count > 0 && <span>{e.chapter_link_count} chapter{e.chapter_link_count !== 1 ? 's' : ''}</span>}
