@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { chatApi } from '../api';
@@ -9,6 +9,9 @@ import { ChatHeader } from './ChatHeader';
 import { ChatInputBar } from './ChatInputBar';
 import { MessageList } from './MessageList';
 import { SessionSettingsPanel } from './SessionSettingsPanel';
+import { VoiceModeOverlay } from './VoiceModeOverlay';
+import { VoiceSettingsPanel } from './VoiceSettingsPanel';
+import { useVoiceMode } from '../hooks/useVoiceMode';
 
 interface ChatWindowProps {
   session: ChatSession;
@@ -37,7 +40,19 @@ export function ChatWindow({
 }: ChatWindowProps) {
   const { accessToken } = useAuth();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false);
   const isArchived = session.status === 'archived';
+
+  // Voice mode
+  const sendForVoice = useCallback(
+    (content: string) => chat.send(content),
+    [chat],
+  );
+  const voiceMode = useVoiceMode({
+    sendMessage: sendForVoice,
+    streamStatus: chat.streamStatus,
+    streamingText: chat.streamingText,
+  });
 
   function handleSend(content: string, thinking?: boolean) {
     onSendWithContext(content, thinking);
@@ -71,6 +86,11 @@ export function ChatWindow({
         messageCount={chat.messages.length}
         onRename={onRename}
         onOpenSettings={() => setSettingsOpen(true)}
+        isVoiceModeActive={voiceMode.isActive}
+        onToggleVoiceMode={() => {
+          if (voiceMode.isActive) voiceMode.deactivate();
+          else voiceMode.activate();
+        }}
       />
 
       <MessageList
@@ -116,6 +136,28 @@ export function ChatWindow({
           onClose={() => setSettingsOpen(false)}
         />
       )}
+
+      {voiceMode.isActive && (
+        <VoiceModeOverlay
+          phase={voiceMode.phase}
+          userTranscript={voiceMode.userTranscript}
+          interimText={voiceMode.interimText}
+          aiResponseText={voiceMode.aiResponseText}
+          error={voiceMode.error}
+          onExit={voiceMode.deactivate}
+          onPause={voiceMode.pause}
+          onResume={voiceMode.resume}
+          onOpenSettings={() => setVoiceSettingsOpen(true)}
+        />
+      )}
+
+      <VoiceSettingsPanel
+        open={voiceSettingsOpen}
+        onClose={() => {
+          setVoiceSettingsOpen(false);
+          voiceMode.reloadPrefs();
+        }}
+      />
     </div>
   );
 }
