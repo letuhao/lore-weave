@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-10 (session 30 — Glossary Extraction Pipeline DESIGN COMPLETE)
-- Updated By: Assistant (pipeline design doc + 4 review rounds + UI draft + task plan)
+- Last Updated: 2026-04-10 (session 30 — GEP BUILD: BE-01 + BE-06 done)
+- Updated By: Assistant (GEP backend build phase — migrations + book-service extraction_profile)
 - Active Branch: `main`
-- HEAD: `ee6d64e` — feat: Glossary Extraction Pipeline design doc
+- HEAD: pending commit — GEP-BE-06
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
 
 ---
@@ -37,7 +37,7 @@
 
 **Glossary Extraction Pipeline: DESIGN COMPLETE.** Full design doc (1500+ lines), 4 review rounds (context/data engineer, security, cost), UI draft HTML, 20 implementation tasks (13 BE + 7 FE). Ready for BUILD phase.
 
-**Next: GEP-BE-01..13 (backend implementation, high priority).**
+**GEP BUILD in progress:** GEP-BE-01 ✅, GEP-BE-06 ✅. Next: GEP-BE-02..05 (glossary-service endpoints).
 
 **What was done in this session (2026-04-09, session 29):**
 
@@ -903,12 +903,12 @@ Session: 30 (2026-04-10) — design complete, 4 review rounds (context/data engi
 
 | Task | Service | Scope | Deps | Status |
 |------|---------|-------|------|--------|
-| **GEP-BE-01** | glossary-service | Migration: `alive BOOLEAN` on glossary_entities + `extraction_audit_log` table | — | [ ] |
+| **GEP-BE-01** | glossary-service | Migration: `alive BOOLEAN` on glossary_entities + `extraction_audit_log` table | — | [✓] |
 | **GEP-BE-02** | glossary-service | `GET /api/v1/books/{book_id}/extraction-profile` — auto-resolve kinds+attrs by genre, return full metadata. Dual route: public (JWT) + internal (service token) | — | [ ] |
 | **GEP-BE-03** | glossary-service | `POST /internal/books/{book_id}/extract-entities` — bulk upsert with normalized dedup, fill/overwrite per attribute, evidence creation, audit log, chapter links | GEP-BE-01 | [ ] |
 | **GEP-BE-04** | glossary-service | `GET /internal/books/{book_id}/known-entities` — filtered by alive, min_frequency, recency_window, limit. Frequency derived from chapter_entity_links COUNT | GEP-BE-01 | [ ] |
 | **GEP-BE-05** | glossary-service | Entity alive toggle: `PATCH /api/v1/entities/{entity_id}` support `alive` field | GEP-BE-01 | [ ] |
-| **GEP-BE-06** | book-service | Migration: `extraction_profile JSONB` on books table + PATCH support | — | [ ] |
+| **GEP-BE-06** | book-service | Migration: `extraction_profile JSONB` on books table + PATCH/GET support | — | [✓] |
 | **GEP-BE-07** | translation-service | `extraction_preprocessor.py` — `tiptap_to_extraction_text()`, `prepare_chapter_text()` | — | [ ] |
 | **GEP-BE-08** | translation-service | `extraction_prompt.py` — dynamic prompt builder, auto-batch by kind groups, known entities context builder, output parser + validator (whitelist validation for kind/attr codes) | — | [ ] |
 | **GEP-BE-09** | translation-service | `extraction_worker.py` — job consumer, per-chapter extraction loop, batch orchestration, segment splitting for long chapters, cooperative cancellation check | GEP-BE-07, GEP-BE-08 | [ ] |

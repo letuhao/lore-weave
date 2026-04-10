@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS book_cover_assets (
 ALTER TABLE book_cover_assets ADD COLUMN IF NOT EXISTS data BYTEA;
 ALTER TABLE books ADD COLUMN IF NOT EXISTS genre_tags TEXT[] NOT NULL DEFAULT '{}';
 ALTER TABLE books ADD COLUMN IF NOT EXISTS wiki_settings JSONB NOT NULL DEFAULT '{"visibility":"off","community_mode":"off","ai_assist":false,"glossary_exposure":"names","auto_generate":false}';
+ALTER TABLE books ADD COLUMN IF NOT EXISTS extraction_profile JSONB;
 
 CREATE TABLE IF NOT EXISTS chapters (
   id UUID PRIMARY KEY DEFAULT uuidv7(),
