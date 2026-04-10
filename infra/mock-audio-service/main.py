@@ -4,8 +4,8 @@ Mock Audio Service — implements OpenAI-compatible TTS/STT endpoints for testin
 This is NOT a real TTS/STT service. It returns:
 - TTS: a short sine-wave WAV file (440Hz, 1 second)
 - STT: a hardcoded mock transcription
-- Voices: 2 dummy voices
-- Models: 2 dummy model entries
+- Voices: 3 dummy voices (alloy, nova, echo)
+- Models: 2 dummy model entries (mock-tts-v1, mock-stt-v1)
 
 Usage:
   pip install -r requirements.txt
@@ -15,7 +15,6 @@ Or via Docker Compose:
   AUDIO_SERVICE_URL=http://mock-audio-service:8600 docker compose up
 """
 
-import io
 import math
 import struct
 import logging
@@ -27,9 +26,6 @@ from pydantic import BaseModel
 
 app = FastAPI(title="Mock Audio Service", version="0.1.0")
 log = logging.getLogger("mock-audio")
-
-MOCK_API_KEY = "mock-audio-key"
-
 
 def check_auth(authorization: Optional[str]):
     """Validate Bearer token (accepts any non-empty token for testing)."""
@@ -49,7 +45,7 @@ class TTSRequest(BaseModel):
     instructions: Optional[str] = None
 
 
-def generate_wav(text: str, duration_s: float = 1.0, sample_rate: int = 24000) -> bytes:
+def generate_wav(duration_s: float = 1.0, sample_rate: int = 24000) -> bytes:
     """Generate a simple sine-wave WAV file (440Hz tone)."""
     n_samples = int(sample_rate * duration_s)
     freq = 440.0
@@ -97,7 +93,7 @@ async def tts_generate(
 
     # Duration proportional to text length (min 0.5s, max 5s)
     duration = max(0.5, min(5.0, len(req.input) / 100.0))
-    wav_bytes = generate_wav(req.input, duration_s=duration)
+    wav_bytes = generate_wav(duration_s=duration)
 
     log.info("TTS: model=%s voice=%s input_len=%d duration=%.1fs", req.model, req.voice, len(req.input), duration)
 
@@ -107,9 +103,21 @@ async def tts_generate(
         for i in range(0, len(wav_bytes), chunk_size):
             yield wav_bytes[i : i + chunk_size]
 
+    # Map requested format to content-type (always returns WAV internally, but
+    # sets the correct content-type header so clients can test format handling)
+    format_to_mime = {
+        "mp3": "audio/mpeg",
+        "wav": "audio/wav",
+        "opus": "audio/opus",
+        "aac": "audio/aac",
+        "flac": "audio/flac",
+        "pcm": "audio/pcm",
+    }
+    mime = format_to_mime.get(req.response_format, "audio/wav")
+
     return StreamingResponse(
         chunked(),
-        media_type="audio/wav",
+        media_type=mime,
         headers={
             "Transfer-Encoding": "chunked",
             "X-Mock-Duration": f"{duration:.1f}",
