@@ -145,7 +145,7 @@ Authorization: Bearer {api_key}
 | `response_format` | string | No | `mp3` (default), `opus`, `aac`, `flac`, `wav`, `pcm` |
 | `speed` | number | No | Playback speed: **0.25 to 4.0** (default 1.0) |
 
-### Response
+### Response (Non-Streaming)
 
 Return raw audio bytes with appropriate content type:
 
@@ -155,6 +155,187 @@ Content-Type: audio/mpeg
 Transfer-Encoding: chunked
 
 <binary audio data>
+```
+
+### Streaming TTS (Critical for Voice Mode)
+
+Streaming TTS is **essential for low-latency voice conversations**. Instead of waiting for the full audio to generate, the service streams audio chunks as they're produced. This reduces time-to-first-audio from seconds to ~200ms.
+
+#### Option A: Raw Audio Streaming (recommended for simplicity)
+
+The same endpoint returns chunked audio when the client sets `Accept: audio/mpeg` (or the requested format). Audio chunks are sent as they're generated — the client can start playback immediately.
+
+```
+POST {base_url}/v1/audio/speech
+Content-Type: application/json
+Authorization: Bearer {api_key}
+
+{
+  "model": "your-tts-model",
+  "voice": "alloy",
+  "input": "Long text that will be streamed as audio chunks...",
+  "response_format": "mp3",
+  "speed": 1.0
+}
+```
+
+Response — chunked transfer:
+```
+HTTP/1.1 200 OK
+Content-Type: audio/mpeg
+Transfer-Encoding: chunked
+
+<chunk 1: audio bytes>
+<chunk 2: audio bytes>
+...
+```
+
+**Implementation notes:**
+- Use HTTP chunked transfer encoding — most frameworks support this natively
+- Each chunk should be a valid audio segment (for MP3: complete frames; for PCM: raw samples)
+- The client reads the stream and feeds chunks to an `AudioContext` or `MediaSource` for real-time playback
+- **MP3 is ideal for streaming** — each frame is self-contained and decodable independently
+- **PCM** (`response_format: "pcm"`) is simplest for streaming — raw 24kHz 16-bit LE mono samples
+
+#### Option B: Server-Sent Events (SSE) with base64 chunks
+
+For clients that prefer event-based streaming (e.g., browser EventSource):
+
+```
+POST {base_url}/v1/audio/speech
+Content-Type: application/json
+
+{
+  "model": "your-tts-model",
+  "voice": "alloy",
+  "input": "Text to synthesize...",
+  "response_format": "pcm",
+  "stream_format": "sse"
+}
+```
+
+Response — SSE stream:
+```
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+
+data: {"type":"audio","data":"<base64 encoded audio chunk>","index":0}
+
+data: {"type":"audio","data":"<base64 encoded audio chunk>","index":1}
+
+data: {"type":"audio","data":"<base64 encoded audio chunk>","index":2}
+
+data: {"type":"done","duration_ms":3450}
+
+```
+
+| SSE Event Type | Fields | Description |
+|---------------|--------|-------------|
+| `audio` | `data` (base64), `index` (int) | Audio chunk — decode and append to playback buffer |
+| `done` | `duration_ms` (int) | Stream complete — total audio duration |
+| `error` | `message` (string) | Error occurred — abort playback |
+
+#### Option C: WebSocket (for bidirectional voice)
+
+For full-duplex voice conversations (speak while AI responds):
+
+```
+WS {base_url}/v1/audio/speech/ws
+```
+
+Client sends:
+```json
+{"type": "config", "model": "your-tts-model", "voice": "alloy", "response_format": "pcm", "speed": 1.0}
+{"type": "text", "content": "First sentence to speak."}
+{"type": "text", "content": "Second sentence."}
+{"type": "flush"}
+```
+
+Server sends:
+```json
+{"type": "audio", "data": "<base64 pcm chunk>"}
+{"type": "audio", "data": "<base64 pcm chunk>"}
+{"type": "done", "duration_ms": 2100}
+```
+
+#### Recommended Implementation Priority
+
+1. **Non-streaming** — implement first, simplest, works everywhere
+2. **Raw audio streaming (Option A)** — implement second, biggest latency win, minimal code change
+3. **SSE streaming (Option B)** — implement if clients prefer event-based APIs
+4. **WebSocket (Option C)** — implement last, only if bidirectional voice is needed
+
+#### Example: Streaming TTS in Python/FastAPI
+
+```python
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+import asyncio
+
+app = FastAPI()
+
+class TTSRequest(BaseModel):
+    model: str
+    voice: str
+    input: str
+    response_format: str = "mp3"
+    speed: float = 1.0
+
+@app.post("/v1/audio/speech")
+async def generate_speech(req: TTSRequest):
+    async def audio_stream():
+        # Split text into sentences for incremental synthesis
+        sentences = split_into_sentences(req.input)
+        for sentence in sentences:
+            # Generate audio for one sentence (your TTS engine)
+            chunk = await your_tts_engine.synthesize_chunk(
+                text=sentence,
+                voice=req.voice,
+                speed=req.speed,
+                format=req.response_format,
+            )
+            yield chunk
+    
+    content_type = {
+        "mp3": "audio/mpeg",
+        "pcm": "audio/pcm",
+        "wav": "audio/wav",
+        "opus": "audio/opus",
+    }.get(req.response_format, "audio/mpeg")
+    
+    return StreamingResponse(
+        audio_stream(),
+        media_type=content_type,
+    )
+```
+
+#### Client-Side Playback (Browser)
+
+```javascript
+// Fetch streaming audio and play in real-time
+const response = await fetch('/v1/audio/speech', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ...' },
+  body: JSON.stringify({ model: 'tts-v1', voice: 'alloy', input: text }),
+});
+
+const reader = response.body.getReader();
+const audioContext = new AudioContext({ sampleRate: 24000 });
+let nextStartTime = audioContext.currentTime;
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  
+  // Decode chunk and schedule playback
+  const audioBuffer = await audioContext.decodeAudioData(value.buffer);
+  const source = audioContext.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(audioContext.destination);
+  source.start(nextStartTime);
+  nextStartTime += audioBuffer.duration;
+}
 ```
 
 ### Available Voices Endpoint (recommended)
@@ -281,6 +462,51 @@ Authorization: Bearer {api_key}
   ]
 }
 ```
+
+### Streaming STT (for real-time voice mode)
+
+For voice conversations, the client sends audio in real-time as the user speaks, and receives partial transcriptions incrementally.
+
+#### WebSocket Streaming (recommended)
+
+```
+WS {base_url}/v1/audio/transcriptions/ws
+```
+
+Client sends:
+```json
+{"type": "config", "model": "your-stt-model", "language": "en", "temperature": 0}
+```
+
+Then streams raw audio chunks (binary frames, PCM 16kHz 16-bit mono):
+```
+<binary audio chunk 1>
+<binary audio chunk 2>
+...
+```
+
+Client sends when user stops speaking:
+```json
+{"type": "flush"}
+```
+
+Server sends partial transcriptions as they're ready:
+```json
+{"type": "partial", "text": "The transcr"}
+{"type": "partial", "text": "The transcribed text"}
+{"type": "final", "text": "The transcribed text from the audio.", "language": "en", "duration": 3.45}
+```
+
+| Event Type | Fields | Description |
+|-----------|--------|-------------|
+| `partial` | `text` | Interim transcription (may change) |
+| `final` | `text`, `language`, `duration` | Finalized transcription for this segment |
+| `error` | `message` | Error occurred |
+
+#### Implementation Priority
+
+1. **Non-streaming** (`POST /v1/audio/transcriptions`) — implement first
+2. **WebSocket streaming** — implement for real-time voice mode
 
 ### Usage Reporting
 
@@ -835,6 +1061,35 @@ type Adapter interface {
 - [ ] Register as a provider in LoreWeave Settings UI
 - [ ] Set correct capability flags on the model
 - [ ] Test end-to-end via `POST /v1/model-registry/invoke`
+
+---
+
+---
+
+## 16. Known Limitations & Future Work
+
+### Current limitations in LoreWeave
+
+| Area | Limitation | Impact |
+|------|-----------|--------|
+| **STT backend** | No STT endpoint in LoreWeave yet — frontend uses browser Web Speech API | STT services can be built but need a new backend route to connect |
+| **Provider invoke: file upload** | `Invoke()` adapter interface only handles JSON (`map[string]any`), not multipart file upload | STT services that need audio file input must be called directly (like video-gen-service), not through the generic invoke path |
+| **Streaming TTS in provider-registry** | The provider-registry invoke endpoint returns JSON, not streaming audio | Streaming TTS must be called directly by the frontend or a dedicated service, bypassing provider-registry |
+| **Video API not standardized** | `/v1/video/generations` follows a Sora-compatible guess, not an official OpenAI spec | Video service developers should expect this path may change |
+
+### Planned improvements
+
+- **STT proxy route** in api-gateway-bff for provider-based STT
+- **Multipart invoke** path in provider-registry for file-based AI calls
+- **Streaming audio proxy** for real-time TTS through the gateway
+- **WebSocket relay** in gateway for bidirectional voice (STT + TTS)
+
+### Building ahead of these limitations
+
+If you're building a TTS or STT service now:
+1. **Implement the standard endpoints** documented above — they'll work when LoreWeave adds the routes
+2. **Also expose a simple health check** at `GET /health` so Docker can monitor it
+3. **For streaming**: implement raw chunked audio first (Option A) — it's the simplest and works with a direct URL connection even before the gateway proxy exists
 
 ---
 
