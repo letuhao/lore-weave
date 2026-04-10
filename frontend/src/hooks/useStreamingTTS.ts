@@ -1,19 +1,17 @@
 /**
  * Streaming TTS hook — fetches audio from POST /v1/audio/speech and plays
- * it in real-time via AudioContext as chunks arrive.
+ * it via AudioContext.
  *
  * For use when ttsSource === 'ai_model' in voice mode preferences.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 
 export type StreamingTTSStatus = 'idle' | 'loading' | 'playing' | 'error';
 
 export interface StreamingTTSControls {
   status: StreamingTTSStatus;
-  /** Speak text via the backend TTS service. Resolves when playback finishes. */
   speak: (text: string, onEnd?: () => void) => void;
-  /** Stop current playback */
   stop: () => void;
   error: string | null;
 }
@@ -31,6 +29,7 @@ export function useStreamingTTS(options: StreamingTTSOptions = {}): StreamingTTS
 
   const abortRef = useRef<AbortController | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const onEndRef = useRef<(() => void) | null>(null);
   const optionsRef = useRef(options);
   optionsRef.current = options;
@@ -42,9 +41,23 @@ export function useStreamingTTS(options: StreamingTTSOptions = {}): StreamingTTS
     return audioCtxRef.current;
   }, []);
 
+  const stopCurrentPlayback = useCallback(() => {
+    // Stop audio source if playing (#10)
+    if (sourceRef.current) {
+      try { sourceRef.current.stop(); } catch { /* already stopped */ }
+      sourceRef.current = null;
+    }
+    // Abort in-flight fetch
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+  }, []);
+
   const speak = useCallback((text: string, onEnd?: () => void) => {
-    // Abort any in-progress request
-    abortRef.current?.abort();
+    // Stop any in-progress playback first (#10)
+    stopCurrentPlayback();
+
     const controller = new AbortController();
     abortRef.current = controller;
     onEndRef.current = onEnd ?? null;
@@ -65,7 +78,7 @@ export function useStreamingTTS(options: StreamingTTSOptions = {}): StreamingTTS
         model: opts.model || 'tts-1',
         voice: opts.voice || 'alloy',
         input: text,
-        response_format: 'wav', // WAV is easiest to decode in chunks
+        response_format: 'wav',
         speed: opts.speed || 1.0,
       }),
       signal: controller.signal,
@@ -76,35 +89,36 @@ export function useStreamingTTS(options: StreamingTTSOptions = {}): StreamingTTS
           throw new Error(`TTS failed: ${resp.status} ${detail}`);
         }
 
-        setStatus('playing');
         const audioCtx = getAudioContext();
+        // Resume if suspended — browsers auto-suspend before user gesture (#12)
+        if (audioCtx.state === 'suspended') {
+          await audioCtx.resume();
+        }
 
-        // Read the entire response as ArrayBuffer and decode
-        // (For true streaming with partial decoding, we'd need raw PCM + manual scheduling,
-        // but decodeAudioData works reliably across browsers for the MVP)
+        setStatus('playing');
+
         const arrayBuffer = await resp.arrayBuffer();
-
         if (controller.signal.aborted) return;
 
         const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-
         if (controller.signal.aborted) return;
 
         const source = audioCtx.createBufferSource();
         source.buffer = audioBuffer;
         source.connect(audioCtx.destination);
-        source.playbackRate.value = opts.speed || 1.0;
+        // Speed is already applied server-side — don't double-apply (#11)
+        sourceRef.current = source;
 
         source.onended = () => {
-          setStatus('idle');
-          onEndRef.current?.();
+          // Only fire callback if this source is still the current one (#10)
+          if (sourceRef.current === source) {
+            sourceRef.current = null;
+            setStatus('idle');
+            onEndRef.current?.();
+          }
         };
 
         source.start();
-
-        // Store source for stop()
-        abortRef.current = controller;
-        (controller as any)._source = source;
       })
       .catch((err) => {
         if ((err as Error).name === 'AbortError') {
@@ -113,22 +127,25 @@ export function useStreamingTTS(options: StreamingTTSOptions = {}): StreamingTTS
         }
         setError((err as Error).message);
         setStatus('error');
-        onEndRef.current?.();
+        // Don't call onEnd on error — let orchestrator see error state (#13)
       });
-  }, [getAudioContext]);
+  }, [getAudioContext, stopCurrentPlayback]);
 
   const stop = useCallback(() => {
-    if (abortRef.current) {
-      // Stop audio playback if source exists
-      const source = (abortRef.current as any)?._source as AudioBufferSourceNode | undefined;
-      if (source) {
-        try { source.stop(); } catch { /* already stopped */ }
-      }
-      abortRef.current.abort();
-      abortRef.current = null;
-    }
+    stopCurrentPlayback();
     setStatus('idle');
-  }, []);
+  }, [stopCurrentPlayback]);
+
+  // Cleanup on unmount (#9)
+  useEffect(() => {
+    return () => {
+      stopCurrentPlayback();
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
+      }
+    };
+  }, [stopCurrentPlayback]);
 
   return { status, speak, stop, error };
 }

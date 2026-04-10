@@ -109,22 +109,21 @@ export function useVoiceMode({
     [],
   );
 
-  // Browser STT (Web Speech API)
+  // Browser STT (Web Speech API) — pass callbacks only when active (#15)
   const browserSTT = useSpeechRecognition({
     lang: prefs.speechLang,
     continuous: true,
     interimResults: true,
-    silenceThresholdMs: prefs.autoSendOnSilence ? prefs.silenceThresholdMs : 0,
-    onSilenceDetected,
+    silenceThresholdMs: !useBackendSTTSource && prefs.autoSendOnSilence ? prefs.silenceThresholdMs : 0,
+    onSilenceDetected: !useBackendSTTSource ? onSilenceDetected : undefined,
   });
 
-  // Backend STT (MediaRecorder → /v1/audio/transcriptions)
+  // Backend STT (MediaRecorder → /v1/audio/transcriptions) — only onSilenceDetected, not both (#17)
   const backendSTT = useBackendSTT({
     lang: prefs.speechLang,
     model: prefs.sttModelRef || undefined,
-    silenceThresholdMs: prefs.autoSendOnSilence ? prefs.silenceThresholdMs : 0,
-    onSilenceDetected,
-    onFinalTranscript: onSilenceDetected, // Same handler — backend STT fires once per recording
+    silenceThresholdMs: useBackendSTTSource && prefs.autoSendOnSilence ? prefs.silenceThresholdMs : 0,
+    onSilenceDetected: useBackendSTTSource ? onSilenceDetected : undefined,
     token: accessToken,
   });
 
@@ -139,12 +138,14 @@ export function useVoiceMode({
   // Unified STT interface — switch based on preference
   const stt = useBackendSTTSource ? backendSTT : browserSTT;
 
-  // Shorthand refs for STT control (avoid stale closures)
+  // Shorthand refs for STT/TTS control (avoid stale closures)
   const sttStartRef = useRef(stt.start);
   const sttStopRef = useRef(stt.stop);
   const sttResetRef = useRef(stt.resetTranscript);
+  const streamingTTSStopRef = useRef(streamingTTS.stop);
   sttStartRef.current = stt.start;
   sttStopRef.current = stt.stop;
+  streamingTTSStopRef.current = streamingTTS.stop;
   sttResetRef.current = stt.resetTranscript;
 
   const sttStart = useCallback(() => sttStartRef.current(), []);
@@ -229,7 +230,10 @@ export function useVoiceMode({
   // ── Public API ──────────────────────────────────────────────────────
 
   const activate = useCallback(() => {
-    setPrefs(loadVoicePrefs()); // Reload latest prefs
+    // Stop any ongoing TTS before starting mic (#19)
+    ttsEngineRef.current?.stop();
+    streamingTTSStopRef.current();
+    setPrefs(loadVoicePrefs());
     setPhase('listening');
     setAiResponseText('');
     sttReset();
@@ -240,9 +244,9 @@ export function useVoiceMode({
     setPhase('idle');
     sttStop();
     ttsEngineRef.current?.stop();
-    streamingTTS.stop();
+    streamingTTSStopRef.current();
     setAiResponseText('');
-  }, [sttStop, streamingTTS]);
+  }, [sttStop]);
 
   const pause = useCallback(() => {
     if (phaseRef.current === 'listening') {
@@ -263,11 +267,12 @@ export function useVoiceMode({
     setPrefs(loadVoicePrefs());
   }, []);
 
-  // Cleanup on unmount
+  // Cleanup on unmount (#20)
   useEffect(() => {
     return () => {
       sttStopRef.current();
       ttsEngineRef.current?.stop();
+      streamingTTSStopRef.current();
     };
   }, []);
 
