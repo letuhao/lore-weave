@@ -10,7 +10,9 @@ import {
   useSpeechRecognition,
   SPEECH_RECOGNITION_SUPPORTED,
 } from '@/hooks/useSpeechRecognition';
+import { useBackendSTT, MEDIA_RECORDER_SUPPORTED } from '@/hooks/useBackendSTT';
 import { BrowserTTSEngine } from '@/hooks/engines/BrowserTTSEngine';
+import { useAuth } from '@/auth';
 import { loadVoicePrefs, type VoicePrefs } from '../voicePrefs';
 
 export type VoicePhase = 'idle' | 'listening' | 'processing' | 'speaking' | 'paused';
@@ -56,9 +58,11 @@ export function useVoiceMode({
   streamStatus,
   streamingText,
 }: UseVoiceModeOptions): VoiceModeControls {
+  const { accessToken } = useAuth();
   const [phase, setPhase] = useState<VoicePhase>('idle');
   const [aiResponseText, setAiResponseText] = useState('');
   const [prefs, setPrefs] = useState<VoicePrefs>(loadVoicePrefs);
+  const useBackend = prefs.sttSource === 'ai_model';
 
   const phaseRef = useRef<VoicePhase>('idle');
   const ttsEngineRef = useRef<BrowserTTSEngine | null>(null);
@@ -103,13 +107,27 @@ export function useVoiceMode({
     [],
   );
 
-  const stt = useSpeechRecognition({
+  // Browser STT (Web Speech API)
+  const browserSTT = useSpeechRecognition({
     lang: prefs.speechLang,
     continuous: true,
     interimResults: true,
     silenceThresholdMs: prefs.autoSendOnSilence ? prefs.silenceThresholdMs : 0,
     onSilenceDetected,
   });
+
+  // Backend STT (MediaRecorder → /v1/audio/transcriptions)
+  const backendSTT = useBackendSTT({
+    lang: prefs.speechLang,
+    model: prefs.sttModelRef || undefined,
+    silenceThresholdMs: prefs.autoSendOnSilence ? prefs.silenceThresholdMs : 0,
+    onSilenceDetected,
+    onFinalTranscript: onSilenceDetected, // Same handler — backend STT fires once per recording
+    token: accessToken,
+  });
+
+  // Unified STT interface — switch based on preference
+  const stt = useBackend ? backendSTT : browserSTT;
 
   // Shorthand refs for STT control (avoid stale closures)
   const sttStartRef = useRef(stt.start);
@@ -241,7 +259,7 @@ export function useVoiceMode({
   return {
     phase,
     isActive: phase !== 'idle',
-    supported: SPEECH_RECOGNITION_SUPPORTED,
+    supported: useBackend ? MEDIA_RECORDER_SUPPORTED : SPEECH_RECOGNITION_SUPPORTED,
     userTranscript: stt.transcript,
     interimText: prefs.showInterimResults ? stt.interimTranscript : '',
     aiResponseText,
