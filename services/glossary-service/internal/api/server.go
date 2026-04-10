@@ -61,6 +61,7 @@ func (s *Server) Router() http.Handler {
 		r.Use(s.requireInternalToken)
 		r.Get("/books/{book_id}/translation-glossary", s.internalTranslationGlossary)
 		r.Get("/books/{book_id}/extraction-profile", s.internalExtractionProfile)
+		r.Get("/books/{book_id}/known-entities", s.getKnownEntities)
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {

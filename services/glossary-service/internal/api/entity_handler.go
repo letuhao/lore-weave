@@ -687,6 +687,17 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 		argN++
 	}
 
+	if raw, ok := in["alive"]; ok {
+		var alive bool
+		if err := json.Unmarshal(raw, &alive); err != nil {
+			writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "alive must be boolean")
+			return
+		}
+		setClauses = append(setClauses, fmt.Sprintf("alive = $%d", argN))
+		args = append(args, alive)
+		argN++
+	}
+
 	if raw, ok := in["tags"]; ok {
 		var tags []string
 		if err := json.Unmarshal(raw, &tags); err != nil {
