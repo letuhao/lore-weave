@@ -1,9 +1,14 @@
 /**
- * Backend STT hook — records audio via MediaRecorder, sends to
- * POST /v1/audio/transcriptions, returns transcript.
+ * Backend STT hook — uses Silero VAD for speech detection, then sends
+ * the speech segment to POST /v1/audio/transcriptions via provider-registry.
  *
- * Same interface as useSpeechRecognition so the voice mode orchestrator
- * can swap between browser STT and backend STT transparently.
+ * Flow:
+ * 1. Silero VAD runs locally in the browser (ONNX/WASM, ~1ms per frame)
+ * 2. onSpeechEnd fires with Float32Array of speech audio (16kHz)
+ * 3. Convert to WAV blob → send to STT service
+ * 4. Return transcript via onSilenceDetected callback
+ *
+ * No more noise loops — VAD only fires for real speech.
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
@@ -19,26 +24,48 @@ export interface BackendSTTState {
 export interface BackendSTTOptions {
   lang?: string;
   model?: string;
-  /** user_model_id for provider-registry credential resolution */
   modelRef?: string;
   silenceThresholdMs?: number;
   onSilenceDetected?: (text: string) => void;
-  /** Called with STT performance metrics (audioKB, durationMs) */
   onMetrics?: (audioKB: number, durationMs: number) => void;
   token?: string | null;
 }
 
-/** Check if MediaRecorder is available */
 export const MEDIA_RECORDER_SUPPORTED =
   typeof window !== 'undefined' && typeof MediaRecorder !== 'undefined';
 
-/** Detect best supported mimeType for audio recording */
-function getBestMimeType(): string {
-  if (typeof MediaRecorder === 'undefined') return 'audio/webm';
-  for (const mime of ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg']) {
-    if (MediaRecorder.isTypeSupported(mime)) return mime;
+/** Convert Float32Array (16kHz mono) to WAV blob */
+function float32ToWav(samples: Float32Array, sampleRate = 16000): Blob {
+  const numSamples = samples.length;
+  const dataSize = numSamples * 2; // 16-bit = 2 bytes per sample
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  // WAV header
+  const writeStr = (offset: number, str: string) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); // byte rate
+  view.setUint16(32, 2, true); // block align
+  view.setUint16(34, 16, true); // bits per sample
+  writeStr(36, 'data');
+  view.setUint32(40, dataSize, true);
+
+  // Convert float32 [-1,1] to int16
+  for (let i = 0; i < numSamples; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
   }
-  return 'audio/webm';
+
+  return new Blob([buffer], { type: 'audio/wav' });
 }
 
 export function useBackendSTT(options: BackendSTTOptions = {}) {
@@ -50,89 +77,38 @@ export function useBackendSTT(options: BackendSTTOptions = {}) {
     supported: MEDIA_RECORDER_SUPPORTED,
   });
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const animFrameRef = useRef<number | null>(null);
-  const isListeningRef = useRef(false);
+  const vadRef = useRef<any>(null); // MicVAD instance
   const transcribingRef = useRef(false);
-  const mimeTypeRef = useRef('audio/webm');
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
-  // Keep isListeningRef in sync
-  useEffect(() => {
-    isListeningRef.current = state.isListening;
-  }, [state.isListening]);
-
-  const stopSilenceDetection = useCallback(() => {
-    if (animFrameRef.current) {
-      cancelAnimationFrame(animFrameRef.current);
-      animFrameRef.current = null;
-    }
-    analyserRef.current = null;
-    if (audioCtxRef.current) {
-      audioCtxRef.current.close().catch(() => {});
-      audioCtxRef.current = null;
-    }
-  }, []);
-
-  const stopAndTranscribe = useCallback(async () => {
-    // Guard against concurrent transcription (#3)
+  /** Send speech audio to STT service */
+  const transcribe = useCallback(async (audio: Float32Array) => {
     if (transcribingRef.current) return;
     transcribingRef.current = true;
 
-    // Stop silence detection during transcription
-    stopSilenceDetection();
+    // Convert to WAV
+    const blob = float32ToWav(audio);
+    const audioSizeKB = blob.size / 1024;
 
-    // Stop recorder and wait for final data via onstop event (#4)
-    const recorder = mediaRecorderRef.current;
-    if (recorder && recorder.state === 'recording') {
-      await new Promise<void>((resolve) => {
-        recorder.onstop = () => resolve();
-        recorder.stop();
-      });
-    }
-
-    const chunks = chunksRef.current;
-    chunksRef.current = [];
-    if (chunks.length === 0) {
+    // Skip very short audio (< 0.3s at 16kHz = 4800 samples)
+    if (audio.length < 4800) {
+      console.log(`[STT] Skipping short speech (${audio.length} samples)`);
       transcribingRef.current = false;
-      // No auto-restart — orchestrator controls lifecycle
       return;
     }
 
-    // Use actual mimeType from recorder (#6)
-    const blob = new Blob(chunks, { type: mimeTypeRef.current });
-
-    // Skip tiny recordings (likely just noise/silence — prevent Whisper hallucinations)
-    const MIN_AUDIO_BYTES = 5000; // ~0.3s of webm audio
-    if (blob.size < MIN_AUDIO_BYTES) {
-      console.log(`[STT] Skipping tiny audio (${blob.size} bytes < ${MIN_AUDIO_BYTES})`);
-      transcribingRef.current = false;
-      // No auto-restart — orchestrator controls lifecycle
-      return;
-    }
-
-    const ext = mimeTypeRef.current.includes('mp4') ? '.mp4'
-      : mimeTypeRef.current.includes('ogg') ? '.ogg'
-      : '.webm';
-
-    const audioSizeKB = (blob.size / 1024).toFixed(1);
     const t0 = performance.now();
-    let t1 = t0;
+    console.log(`[STT] Speech detected: ${audio.length} samples (${(audio.length / 16000).toFixed(1)}s), ${audioSizeKB.toFixed(1)}KB WAV`);
 
-    setState((prev) => ({ ...prev, interimTranscript: `Transcribing (${audioSizeKB}KB)...` }));
+    setState((prev) => ({ ...prev, interimTranscript: `Transcribing (${audioSizeKB.toFixed(0)}KB)...` }));
 
     try {
       const formData = new FormData();
-      formData.append('file', blob, `recording${ext}`);
+      formData.append('file', blob, 'speech.wav');
       formData.append('model', optionsRef.current.model || 'whisper-1');
       if (optionsRef.current.lang) {
-        const lang = optionsRef.current.lang.split('-')[0];
-        formData.append('language', lang);
+        formData.append('language', optionsRef.current.lang.split('-')[0]);
       }
 
       const headers: Record<string, string> = {};
@@ -146,132 +122,37 @@ export function useBackendSTT(options: BackendSTTOptions = {}) {
       }
       const proxyUrl = `/v1/model-registry/proxy/v1/audio/transcriptions?${params}`;
 
-      t1 = performance.now();
-      console.log(`[STT] Sending ${audioSizeKB}KB audio — prep took ${(t1 - t0).toFixed(0)}ms`);
-
-      const resp = await fetch(proxyUrl, {
-        method: 'POST',
-        headers,
-        body: formData,
-      });
+      const t1 = performance.now();
+      const resp = await fetch(proxyUrl, { method: 'POST', headers, body: formData });
       const t2 = performance.now();
-      console.log(`[STT] Fetch completed in ${(t2 - t1).toFixed(0)}ms (HTTP ${resp.status})`);
 
       if (!resp.ok) {
         const detail = await resp.text().catch(() => resp.statusText);
         throw new Error(`STT failed: ${resp.status} ${detail}`);
       }
 
-      const t3 = performance.now();
       const data = await resp.json();
       const text = data.text || '';
-      const totalMs = t3 - t0;
-      const fetchMs = t3 - t1;
-      console.log(`[STT] Done — total ${totalMs.toFixed(0)}ms (fetch ${fetchMs.toFixed(0)}ms) — "${text.slice(0, 80)}${text.length > 80 ? '...' : ''}"`);
-      optionsRef.current.onMetrics?.(blob.size / 1024, totalMs);
+      const totalMs = performance.now() - t0;
+      console.log(`[STT] Done — total ${totalMs.toFixed(0)}ms (fetch ${(t2 - t1).toFixed(0)}ms) — "${text.slice(0, 80)}"`);
+      optionsRef.current.onMetrics?.(audioSizeKB, totalMs);
 
-      setState((prev) => ({
-        ...prev,
-        transcript: text,
-        interimTranscript: '',
-      }));
+      setState((prev) => ({ ...prev, transcript: text, interimTranscript: '' }));
 
-      // Only fire callback for meaningful transcripts (skip Whisper hallucinations)
+      // Fire callback for meaningful transcripts only
       const cleaned = text.trim();
       if (cleaned && cleaned.length > 1) {
         optionsRef.current.onSilenceDetected?.(cleaned);
       }
     } catch (err) {
-      setState((prev) => ({
-        ...prev,
-        error: (err as Error).message,
-        interimTranscript: '',
-      }));
+      console.error('[STT] Error:', (err as Error).message);
+      setState((prev) => ({ ...prev, error: (err as Error).message, interimTranscript: '' }));
     }
 
     transcribingRef.current = false;
+  }, []);
 
-    // Do NOT auto-restart — let the voice mode orchestrator control STT lifecycle.
-    // The orchestrator calls start() again when it's ready for the next turn
-    // (e.g., after TTS finishes playing via onAllPlayed callback).
-    console.log('[STT] Transcription complete — waiting for orchestrator to restart');
-  }, [stopSilenceDetection]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const startSilenceDetection = useCallback((stream: MediaStream) => {
-    try {
-      // Close previous AudioContext if any (#1)
-      if (audioCtxRef.current) {
-        audioCtxRef.current.close().catch(() => {});
-      }
-
-      const audioCtx = new AudioContext();
-      audioCtxRef.current = audioCtx;
-      const source = audioCtx.createMediaStreamSource(stream);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 512;
-      source.connect(analyser);
-      analyserRef.current = analyser;
-
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-      let lastSpeechTime = Date.now();
-
-      const check = () => {
-        if (!analyserRef.current) return;
-        analyser.getByteFrequencyData(dataArray);
-
-        const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
-        const threshold = 10;
-
-        if (avg > threshold) {
-          lastSpeechTime = Date.now();
-          setState((prev) => ({ ...prev, interimTranscript: '🎤 Recording...' }));
-        }
-
-        const silenceMs = optionsRef.current.silenceThresholdMs ?? 1500;
-        if (silenceMs > 0 && Date.now() - lastSpeechTime > silenceMs && chunksRef.current.length > 0) {
-          void stopAndTranscribe();
-          return;
-        }
-
-        animFrameRef.current = requestAnimationFrame(check);
-      };
-
-      animFrameRef.current = requestAnimationFrame(check);
-    } catch {
-      // AudioContext not available — skip silence detection
-    }
-  }, [stopAndTranscribe]);
-
-  const startRecording = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-
-      const mimeType = getBestMimeType();
-      mimeTypeRef.current = mimeType;
-
-      const recorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = recorder;
-      chunksRef.current = [];
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunksRef.current.push(e.data);
-        }
-      };
-
-      recorder.start(250);
-      startSilenceDetection(stream);
-    } catch (err) {
-      setState((prev) => ({
-        ...prev,
-        error: (err as Error).message,
-        isListening: false,
-      }));
-    }
-  }, [startSilenceDetection]);
-
-  const start = useCallback(() => {
+  const start = useCallback(async () => {
     setState((prev) => ({
       ...prev,
       isListening: true,
@@ -279,32 +160,47 @@ export function useBackendSTT(options: BackendSTTOptions = {}) {
       interimTranscript: '',
       error: null,
     }));
-    void startRecording();
-  }, [startRecording]);
+
+    try {
+      // Dynamic import to avoid bundling ONNX runtime when not using backend STT
+      const { MicVAD } = await import('@ricky0123/vad-web');
+
+      const vad = await MicVAD.new({
+        // Self-hosted model and worklet files
+        baseAssetPath: '/vad/',
+        onnxWASMBasePath: '/vad/',
+        onSpeechStart: () => {
+          console.log('[VAD] Speech started');
+          setState((prev) => ({ ...prev, interimTranscript: '🎤 Listening...' }));
+        },
+        onSpeechEnd: (audio: Float32Array) => {
+          console.log(`[VAD] Speech ended: ${audio.length} samples (${(audio.length / 16000).toFixed(1)}s)`);
+          void transcribe(audio);
+        },
+      });
+
+      vad.start();
+      vadRef.current = vad;
+      console.log('[VAD] Started — Silero VAD active');
+    } catch (err) {
+      console.error('[VAD] Failed to initialize:', (err as Error).message);
+      setState((prev) => ({
+        ...prev,
+        error: `VAD init failed: ${(err as Error).message}`,
+        isListening: false,
+      }));
+    }
+  }, [transcribe]);
 
   const stop = useCallback(() => {
-    stopSilenceDetection();
-
-    // Stop recorder (#8 — clear handler before nulling)
-    if (mediaRecorderRef.current) {
-      if (mediaRecorderRef.current.state === 'recording') {
-        mediaRecorderRef.current.stop();
-      }
-      mediaRecorderRef.current.ondataavailable = null;
-      mediaRecorderRef.current = null;
+    if (vadRef.current) {
+      vadRef.current.pause();
+      vadRef.current.destroy?.();
+      vadRef.current = null;
     }
-
-    // Stop media stream tracks
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-
-    chunksRef.current = [];
     transcribingRef.current = false;
-    isListeningRef.current = false; // Set ref immediately (don't wait for React effect)
     setState((prev) => ({ ...prev, isListening: false, interimTranscript: '' }));
-  }, [stopSilenceDetection]);
+  }, []);
 
   const resetTranscript = useCallback(() => {
     setState((prev) => ({ ...prev, transcript: '', interimTranscript: '' }));
@@ -313,9 +209,13 @@ export function useBackendSTT(options: BackendSTTOptions = {}) {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      stop();
+      if (vadRef.current) {
+        vadRef.current.pause();
+        vadRef.current.destroy?.();
+        vadRef.current = null;
+      }
     };
-  }, [stop]);
+  }, []);
 
   return {
     ...state,
