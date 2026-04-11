@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     book_service_internal_url: str = "http://book-service:8082"
     provider_registry_service_url: str = "http://provider-registry-service:8085"
     glossary_service_internal_url: str = "http://glossary-service:8088"
-    rabbitmq_url: str = "amqp://guest:guest@localhost:5672/"
+    rabbitmq_url: str
     notification_service_internal_url: str = "http://notification-service:8091"
     internal_service_token: str
     port: int = 8087
