@@ -15,7 +15,8 @@ export interface VoicePrefs {
   // Text-to-Speech
   ttsSource: TTSSource;
   ttsModelRef: string;       // user_model_id when ttsSource='ai_model'
-  ttsVoiceURI: string;       // browser voice URI
+  ttsVoiceURI: string;       // browser voice URI (when ttsSource='browser')
+  ttsVoiceId: string;        // provider voice ID (when ttsSource='ai_model', e.g. 'af_heart')
   ttsSpeed: number;
   autoTTSResponses: boolean;
 
@@ -34,6 +35,7 @@ export const DEFAULT_VOICE_PREFS: VoicePrefs = {
   ttsSource: 'browser',
   ttsModelRef: '',
   ttsVoiceURI: '',
+  ttsVoiceId: '',
   ttsSpeed: 1,
   autoTTSResponses: true,
 

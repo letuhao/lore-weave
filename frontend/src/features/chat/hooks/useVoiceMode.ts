@@ -159,7 +159,7 @@ export function useVoiceMode({
   const streamingTTS = useStreamingTTS({
     model: prefs.ttsModelRef || undefined,
     modelRef: prefs.ttsModelRef || undefined,
-    voice: prefs.ttsVoiceURI || 'alloy',
+    voice: prefs.ttsVoiceId || prefs.ttsVoiceURI || 'alloy',
     speed: prefs.ttsSpeed,
     token: accessToken,
   });
@@ -256,7 +256,7 @@ export function useVoiceMode({
           .submit({
             text: sentence,
             modelRef: p.ttsModelRef || '',
-            voice: p.ttsVoiceURI || 'auto',
+            voice: p.ttsVoiceId || p.ttsVoiceURI || 'auto',
             speed: p.ttsSpeed,
             token: t,
           })

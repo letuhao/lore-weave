@@ -338,21 +338,64 @@ while (true) {
 }
 ```
 
-### Available Voices Endpoint (recommended)
+### Available Voices Endpoint (required for TTS services)
+
+LoreWeave's frontend fetches the voice list to populate a voice selector dropdown.
+This endpoint is called when the user opens Voice Settings.
 
 ```
 GET {base_url}/v1/voices
+Authorization: Bearer {api_key}
 ```
+
+Optional query parameters:
+- `language` — filter by language code (e.g., `?language=en`)
 
 Response:
 ```json
 {
   "voices": [
-    { "voice_id": "alloy", "name": "Alloy", "language": "en", "gender": "neutral", "preview_url": "..." },
-    { "voice_id": "nova", "name": "Nova", "language": "en", "gender": "female", "preview_url": "..." }
+    {
+      "voice_id": "af_heart",
+      "name": "Heart",
+      "language": "en",
+      "gender": "female",
+      "preview_url": "https://your-service.com/previews/af_heart.mp3"
+    },
+    {
+      "voice_id": "am_adam",
+      "name": "Adam",
+      "language": "en",
+      "gender": "male",
+      "preview_url": null
+    },
+    {
+      "voice_id": "jf_alpha",
+      "name": "Alpha",
+      "language": "ja",
+      "gender": "female",
+      "preview_url": null
+    }
   ]
 }
 ```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `voice_id` | string | Yes | Unique identifier — this is the value passed to `POST /v1/audio/speech` as `voice` |
+| `name` | string | Yes | Human-readable display name |
+| `language` | string | Yes | ISO language code (e.g., `en`, `ja`, `zh`, `vi`) |
+| `gender` | string | No | `male`, `female`, `neutral` — used for grouping in the UI |
+| `preview_url` | string\|null | No | URL to a short audio preview (~3s). If null, "Play Preview" button is hidden. Format: MP3 or WAV. Must be accessible without auth (or use a signed URL). |
+
+**Voice ID in TTS requests:** The `voice` field in `POST /v1/audio/speech` must match a `voice_id` from this endpoint. If an invalid voice is passed, return:
+
+```json
+HTTP 400
+{"detail": "Unknown voice: xyz. Use GET /v1/voices to list available voices."}
+```
+
+**Default voice:** If the `voice` field is omitted or set to `"auto"`, the service should use its default voice (typically the first voice in the list).
 
 ### Usage Reporting
 

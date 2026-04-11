@@ -50,6 +50,7 @@
     "silenceThreshold": "Silence threshold",
     "autoSend": "Auto-send on silence",
     "showInterim": "Show interim results",
+    "providerVoice": "Voice",
     "browserVoice": "Browser Voice",
     "defaultVoice": "Default",
     "speed": "Speed",

@@ -1,11 +1,21 @@
-import { useState, useEffect } from 'react';
-import { X, Settings2, Mic, Volume2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Settings2, Mic, Volume2, Play, Square } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
+import { apiJson } from '@/api';
 import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
 import { BrowserTTSEngine } from '@/hooks/engines/BrowserTTSEngine';
 import { type VoicePrefs, loadVoicePrefs, saveVoicePrefs, DEFAULT_VOICE_PREFS } from '../voicePrefs';
 import { cn } from '@/lib/utils';
+
+/** Voice entry from GET /v1/voices (via provider-registry proxy) */
+type ProviderVoice = {
+  voice_id: string;
+  name: string;
+  language: string;
+  gender?: string;
+  preview_url?: string | null;
+};
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
@@ -37,6 +47,10 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [sttModels, setSttModels] = useState<UserModel[]>([]);
   const [ttsModels, setTtsModels] = useState<UserModel[]>([]);
+  const [providerVoices, setProviderVoices] = useState<ProviderVoice[]>([]);
+  const [voicesLoading, setVoicesLoading] = useState(false);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [previewPlaying, setPreviewPlaying] = useState<string | null>(null);
 
   // Load browser voices
   useEffect(() => {
@@ -57,6 +71,47 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
       })
       .catch(() => { setSttModels([]); setTtsModels([]); });
   }, [accessToken]);
+
+  // Fetch provider voices when TTS model is selected
+  useEffect(() => {
+    if (!accessToken || prefs.ttsSource !== 'ai_model' || !prefs.ttsModelRef) {
+      setProviderVoices([]);
+      return;
+    }
+    setVoicesLoading(true);
+    const params = new URLSearchParams({ model_source: 'user_model', model_ref: prefs.ttsModelRef });
+    fetch(`/v1/model-registry/proxy/v1/voices?${params}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+      .then((r) => r.ok ? r.json() : Promise.reject(new Error(`${r.status}`)))
+      .then((data: { voices: ProviderVoice[] }) => {
+        setProviderVoices(data.voices || []);
+        // Auto-select first voice if none selected
+        if (!prefs.ttsVoiceId && data.voices?.length > 0) {
+          update('ttsVoiceId', data.voices[0].voice_id);
+        }
+      })
+      .catch(() => setProviderVoices([]))
+      .finally(() => setVoicesLoading(false));
+  }, [accessToken, prefs.ttsSource, prefs.ttsModelRef]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const stopPreview = () => {
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current = null;
+    }
+    setPreviewPlaying(null);
+  };
+
+  const playPreview = (url: string, voiceId: string) => {
+    stopPreview();
+    const audio = new Audio(url);
+    audio.onended = () => setPreviewPlaying(null);
+    audio.onerror = () => setPreviewPlaying(null);
+    audio.play().catch(() => setPreviewPlaying(null));
+    previewAudioRef.current = audio;
+    setPreviewPlaying(voiceId);
+  };
 
   const update = <K extends keyof VoicePrefs>(key: K, value: VoicePrefs[K]) => {
     setPrefs((prev) => {
@@ -199,6 +254,65 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
                   </option>
                 ))}
               </select>
+            )}
+          </FieldGroup>
+        )}
+
+        {/* Provider Voice (when ai_model) */}
+        {prefs.ttsSource === 'ai_model' && prefs.ttsModelRef && (
+          <FieldGroup label={t('voice.providerVoice', 'Voice')}>
+            {voicesLoading ? (
+              <p className="text-[10px] text-muted-foreground">Loading voices...</p>
+            ) : providerVoices.length === 0 ? (
+              <p className="text-[10px] text-muted-foreground">No voices available</p>
+            ) : (
+              <div className="space-y-1.5">
+                <select
+                  value={prefs.ttsVoiceId}
+                  onChange={(e) => { update('ttsVoiceId', e.target.value); stopPreview(); }}
+                  className="h-8 w-full rounded-md border bg-background px-2 text-xs focus:border-ring focus:outline-none"
+                >
+                  <option value="">Auto (default)</option>
+                  {/* Group by language */}
+                  {Array.from(new Set(providerVoices.map((v) => v.language))).sort().map((lang) => (
+                    <optgroup key={lang} label={lang.toUpperCase()}>
+                      {providerVoices.filter((v) => v.language === lang).map((v) => (
+                        <option key={v.voice_id} value={v.voice_id}>
+                          {v.name} {v.gender ? `(${v.gender})` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                {/* Preview button */}
+                {(() => {
+                  const selectedVoice = providerVoices.find((v) => v.voice_id === prefs.ttsVoiceId);
+                  if (!selectedVoice?.preview_url) return null;
+                  return (
+                    <button
+                      onClick={() => {
+                        if (previewPlaying === selectedVoice.voice_id) {
+                          stopPreview();
+                        } else {
+                          playPreview(selectedVoice.preview_url!, selectedVoice.voice_id);
+                        }
+                      }}
+                      className={cn(
+                        'inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors',
+                        previewPlaying === selectedVoice.voice_id
+                          ? 'bg-primary/10 text-primary'
+                          : 'bg-secondary text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      {previewPlaying === selectedVoice.voice_id ? (
+                        <><Square className="h-2.5 w-2.5" /> Stop</>
+                      ) : (
+                        <><Play className="h-2.5 w-2.5" /> Preview</>
+                      )}
+                    </button>
+                  );
+                })()}
+              </div>
             )}
           </FieldGroup>
         )}
