@@ -18,9 +18,9 @@ func Load() (*Config, error) {
 	c := &Config{
 		HTTPAddr:                      getEnv("HTTP_ADDR", ":8084"),
 		DatabaseURL:                   os.Getenv("DATABASE_URL"),
-		BookServiceInternalURL:        getEnv("BOOK_SERVICE_INTERNAL_URL", "http://localhost:8082"),
-		SharingServiceInternalURL:     getEnv("SHARING_SERVICE_INTERNAL_URL", "http://localhost:8083"),
-		TranslationServiceInternalURL: getEnv("TRANSLATION_SERVICE_INTERNAL_URL", "http://localhost:8087"),
+		BookServiceInternalURL:        os.Getenv("BOOK_SERVICE_INTERNAL_URL"),
+		SharingServiceInternalURL:     os.Getenv("SHARING_SERVICE_INTERNAL_URL"),
+		TranslationServiceInternalURL: os.Getenv("TRANSLATION_SERVICE_INTERNAL_URL"),
 		InternalServiceToken:          os.Getenv("INTERNAL_SERVICE_TOKEN"),
 	}
 	if c.DatabaseURL == "" {
@@ -28,6 +28,15 @@ func Load() (*Config, error) {
 	}
 	if c.InternalServiceToken == "" {
 		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
+	}
+	if c.BookServiceInternalURL == "" {
+		return nil, fmt.Errorf("BOOK_SERVICE_INTERNAL_URL is required")
+	}
+	if c.SharingServiceInternalURL == "" {
+		return nil, fmt.Errorf("SHARING_SERVICE_INTERNAL_URL is required")
+	}
+	if c.TranslationServiceInternalURL == "" {
+		return nil, fmt.Errorf("TRANSLATION_SERVICE_INTERNAL_URL is required")
 	}
 	return c, nil
 }

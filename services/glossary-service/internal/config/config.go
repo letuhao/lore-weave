@@ -19,8 +19,8 @@ func Load() (*Config, error) {
 		HTTPAddr:       getEnv("HTTP_ADDR", ":8088"),
 		DatabaseURL:    os.Getenv("DATABASE_URL"),
 		JWTSecret:      os.Getenv("JWT_SECRET"),
-		AuthServiceURL: getEnv("AUTH_SERVICE_URL", "http://localhost:8081"),
-		BookServiceURL:       getEnv("BOOK_SERVICE_URL", "http://localhost:8082"),
+		AuthServiceURL: os.Getenv("AUTH_SERVICE_URL"),
+		BookServiceURL: os.Getenv("BOOK_SERVICE_URL"),
 		InternalServiceToken: os.Getenv("INTERNAL_SERVICE_TOKEN"),
 	}
 	if c.DatabaseURL == "" {
@@ -31,6 +31,12 @@ func Load() (*Config, error) {
 	}
 	if c.InternalServiceToken == "" {
 		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
+	}
+	if c.AuthServiceURL == "" {
+		return nil, fmt.Errorf("AUTH_SERVICE_URL is required")
+	}
+	if c.BookServiceURL == "" {
+		return nil, fmt.Errorf("BOOK_SERVICE_URL is required")
 	}
 	return c, nil
 }

@@ -22,8 +22,8 @@ func Load() (*Config, error) {
 		DatabaseURL:            os.Getenv("DATABASE_URL"),
 		InternalServiceToken:   os.Getenv("INTERNAL_SERVICE_TOKEN"),
 		RedisURL:               os.Getenv("REDIS_URL"),
-		BookServiceInternalURL: getEnv("BOOK_SERVICE_INTERNAL_URL", "http://localhost:8082"),
-		AuthServiceInternalURL: getEnv("AUTH_SERVICE_INTERNAL_URL", "http://localhost:8081"),
+		BookServiceInternalURL: os.Getenv("BOOK_SERVICE_INTERNAL_URL"),
+		AuthServiceInternalURL: os.Getenv("AUTH_SERVICE_INTERNAL_URL"),
 		RefreshIntervalSeconds: getInt("REFRESH_INTERVAL", 600),
 	}
 	if c.DatabaseURL == "" {
@@ -34,6 +34,12 @@ func Load() (*Config, error) {
 	}
 	if c.InternalServiceToken == "" {
 		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
+	}
+	if c.BookServiceInternalURL == "" {
+		return nil, fmt.Errorf("BOOK_SERVICE_INTERNAL_URL is required")
+	}
+	if c.AuthServiceInternalURL == "" {
+		return nil, fmt.Errorf("AUTH_SERVICE_INTERNAL_URL is required")
 	}
 	return c, nil
 }

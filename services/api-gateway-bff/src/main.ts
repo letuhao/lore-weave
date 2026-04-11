@@ -3,22 +3,28 @@ import { WsAdapter } from '@nestjs/platform-ws';
 import { AppModule } from './app.module';
 import { configureGatewayApp } from './gateway-setup';
 
+function requireEnv(key: string): string {
+  const v = process.env[key];
+  if (!v) throw new Error(`Required environment variable ${key} is not set`);
+  return v;
+}
+
 async function bootstrap() {
   // Body must stream to auth-service; default JSON parser would consume /v1 bodies.
   const app = await NestFactory.create(AppModule, { bodyParser: false });
   app.useWebSocketAdapter(new WsAdapter(app));
-  const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:8081';
-  const bookUrl = process.env.BOOK_SERVICE_URL || 'http://localhost:8082';
-  const sharingUrl = process.env.SHARING_SERVICE_URL || 'http://localhost:8083';
-  const catalogUrl = process.env.CATALOG_SERVICE_URL || 'http://localhost:8084';
-  const providerRegistryUrl = process.env.PROVIDER_REGISTRY_SERVICE_URL || 'http://localhost:8085';
-  const usageBillingUrl = process.env.USAGE_BILLING_SERVICE_URL || 'http://localhost:8086';
-  const translationUrl = process.env.TRANSLATION_SERVICE_URL || 'http://localhost:8087';
-  const glossaryUrl = process.env.GLOSSARY_SERVICE_URL || 'http://localhost:8088';
-  const chatUrl = process.env.CHAT_SERVICE_URL || 'http://localhost:8090';
-  const videoGenUrl = process.env.VIDEO_GEN_SERVICE_URL || 'http://localhost:8088';
-  const statisticsUrl = process.env.STATISTICS_SERVICE_URL || 'http://localhost:8089';
-  const notificationUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:8091';
+  const authUrl = requireEnv('AUTH_SERVICE_URL');
+  const bookUrl = requireEnv('BOOK_SERVICE_URL');
+  const sharingUrl = requireEnv('SHARING_SERVICE_URL');
+  const catalogUrl = requireEnv('CATALOG_SERVICE_URL');
+  const providerRegistryUrl = requireEnv('PROVIDER_REGISTRY_SERVICE_URL');
+  const usageBillingUrl = requireEnv('USAGE_BILLING_SERVICE_URL');
+  const translationUrl = requireEnv('TRANSLATION_SERVICE_URL');
+  const glossaryUrl = requireEnv('GLOSSARY_SERVICE_URL');
+  const chatUrl = requireEnv('CHAT_SERVICE_URL');
+  const videoGenUrl = requireEnv('VIDEO_GEN_SERVICE_URL');
+  const statisticsUrl = requireEnv('STATISTICS_SERVICE_URL');
+  const notificationUrl = requireEnv('NOTIFICATION_SERVICE_URL');
   configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl, glossaryUrl, chatUrl, videoGenUrl, statisticsUrl, notificationUrl });
 
   app.enableShutdownHooks();

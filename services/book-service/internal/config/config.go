@@ -31,13 +31,13 @@ func Load() (*Config, error) {
 		JWTSecret:          os.Getenv("JWT_SECRET"),
 		BooksStorageBucket: getEnv("BOOKS_STORAGE_BUCKET", "loreweave-dev-books"),
 		QuotaBytesDefault:  getInt64("QUOTA_BYTES_DEFAULT", 100*1024*1024),
-		SharingInternalURL: getEnv("SHARING_INTERNAL_URL", "http://localhost:8083"),
+		SharingInternalURL: os.Getenv("SHARING_INTERNAL_URL"),
 		MinioEndpoint:      getEnv("MINIO_ENDPOINT", "localhost:9000"),
 		MinioAccessKey:     getEnv("MINIO_ACCESS_KEY", "loreweave"),
 		MinioSecretKey:     os.Getenv("MINIO_SECRET_KEY"),
 		MinioUseSSL:          getEnv("MINIO_USE_SSL", "false") == "true",
 		MinioExternalURL:     strings.TrimRight(os.Getenv("MINIO_EXTERNAL_URL"), "/"),
-		ProviderRegistryURL:    getEnv("PROVIDER_REGISTRY_SERVICE_URL", "http://localhost:8085"),
+		ProviderRegistryURL:    os.Getenv("PROVIDER_REGISTRY_SERVICE_URL"),
 		UsageBillingServiceURL: getEnv("USAGE_BILLING_SERVICE_URL", ""),
 		InternalServiceToken:   os.Getenv("INTERNAL_SERVICE_TOKEN"),
 	}
@@ -55,6 +55,12 @@ func Load() (*Config, error) {
 	}
 	if c.MinioExternalURL == "" {
 		return nil, fmt.Errorf("MINIO_EXTERNAL_URL is required")
+	}
+	if c.SharingInternalURL == "" {
+		return nil, fmt.Errorf("SHARING_INTERNAL_URL is required")
+	}
+	if c.ProviderRegistryURL == "" {
+		return nil, fmt.Errorf("PROVIDER_REGISTRY_SERVICE_URL is required")
 	}
 	return c, nil
 }

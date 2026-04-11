@@ -18,7 +18,7 @@ func Load() (*Config, error) {
 		HTTPAddr:               getEnv("HTTP_ADDR", ":8085"),
 		DatabaseURL:            os.Getenv("DATABASE_URL"),
 		JWTSecret:              os.Getenv("JWT_SECRET"),
-		UsageBillingServiceURL: getEnv("USAGE_BILLING_SERVICE_URL", "http://localhost:8086"),
+		UsageBillingServiceURL: os.Getenv("USAGE_BILLING_SERVICE_URL"),
 		InternalServiceToken:   os.Getenv("INTERNAL_SERVICE_TOKEN"),
 	}
 	if c.DatabaseURL == "" {
@@ -29,6 +29,9 @@ func Load() (*Config, error) {
 	}
 	if c.InternalServiceToken == "" {
 		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
+	}
+	if c.UsageBillingServiceURL == "" {
+		return nil, fmt.Errorf("USAGE_BILLING_SERVICE_URL is required")
 	}
 	return c, nil
 }
