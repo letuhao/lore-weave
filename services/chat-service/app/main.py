@@ -7,7 +7,7 @@ from fastapi.responses import PlainTextResponse
 from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool, get_pool
-from app.routers import messages, outputs, sessions
+from app.routers import messages, outputs, sessions, voice
 from app.storage.minio_client import ensure_bucket
 
 
@@ -36,6 +36,7 @@ app.add_middleware(
 app.include_router(sessions.router)
 app.include_router(messages.router)
 app.include_router(outputs.router)
+app.include_router(voice.router)
 
 
 @app.get("/health", response_class=PlainTextResponse)
