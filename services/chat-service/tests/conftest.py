@@ -85,6 +85,8 @@ def make_session_record(
         "model_source": "user_model",
         "model_ref": TEST_MODEL_REF,
         "system_prompt": None,
+        "generation_params": {},
+        "is_pinned": False,
         "status": "active",
         "message_count": 0,
         "last_message_at": None,

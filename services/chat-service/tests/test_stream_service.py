@@ -15,24 +15,31 @@ from tests.conftest import TEST_SESSION_ID, TEST_USER_ID, TEST_MODEL_REF
 
 def _make_creds(**overrides) -> ProviderCredentials:
     defaults = {
-        "provider_kind": "openai",
-        "provider_model_name": "gpt-4",
-        "base_url": "https://api.openai.com",
-        "api_key": "sk-test",
+        "provider_kind": "anthropic",
+        "provider_model_name": "claude-sonnet-4-5",
+        "base_url": "",
+        "api_key": "sk-ant-test",
         "context_length": 8192,
     }
     defaults.update(overrides)
     return ProviderCredentials(**defaults)
 
 
-def _make_chunk(content: str | None = None, usage=None):
-    """Create a fake LiteLLM streaming chunk."""
-    chunk = MagicMock()
-    choice = MagicMock()
-    choice.delta.content = content
-    chunk.choices = [choice] if content is not None else []
-    chunk.usage = usage
-    return chunk
+def _make_chunk(content: str | None = None, usage=None, finish_reason=None):
+    """Create a fake LiteLLM streaming chunk with proper attribute access."""
+    class FakeDelta:
+        def __init__(self, c):
+            self.content = c
+            self.reasoning_content = ""
+    class FakeChoice:
+        def __init__(self, c, fr):
+            self.delta = FakeDelta(c)
+            self.finish_reason = fr
+    class FakeChunk:
+        def __init__(self, c, u, fr):
+            self.choices = [FakeChoice(c, fr)] if c is not None else []
+            self.usage = u
+    return FakeChunk(content, usage, finish_reason)
 
 
 def _make_pool_with_conn():
@@ -45,6 +52,11 @@ def _make_pool_with_conn():
         yield conn
 
     pool.acquire = fake_acquire
+    # Default fetchrow returns a session-like record with required fields
+    pool.fetchrow.return_value = {
+        "system_prompt": None,
+        "generation_params": {},
+    }
     return pool, conn
 
 
@@ -163,6 +175,7 @@ class TestStreamResponse:
     async def test_error_yields_error_event(self):
         pool = AsyncMock()
         pool.fetch.return_value = []
+        pool.fetchrow.return_value = {"system_prompt": None, "generation_params": {}}
 
         billing = AsyncMock()
 
@@ -192,26 +205,27 @@ class TestStreamResponse:
         conn.fetchval.return_value = 1
 
         billing = AsyncMock()
-        captured_model = []
+        captured_kwargs = []
 
-        async def fake_acompletion(**kwargs):
-            captured_model.append(kwargs["model"])
-            yield _make_chunk("ok")
+        async def fake_stream(model, messages, api_key, base_url, gen_params):
+            captured_kwargs.append({"model": model, "base_url": base_url})
+            yield {"content": "ok", "reasoning_content": "", "finish_reason": "stop", "usage": None}
 
-        with patch("app.services.stream_service.acompletion", side_effect=fake_acompletion):
+        with patch("app.services.stream_service._stream_openai_compatible", side_effect=fake_stream):
             async for _ in stream_response(
                 session_id=TEST_SESSION_ID,
                 user_message_content="Hi",
                 user_id=TEST_USER_ID,
                 model_source="user_model",
                 model_ref=TEST_MODEL_REF,
-                creds=_make_creds(provider_kind="lm_studio", provider_model_name="local-model"),
+                creds=_make_creds(provider_kind="lm_studio", provider_model_name="local-model", base_url="http://localhost:1234"),
                 pool=pool,
                 billing=billing,
             ):
                 pass
 
-        assert captured_model[0] == "openai/local-model"
+        assert captured_kwargs[0]["model"] == "local-model"
+        assert captured_kwargs[0]["base_url"].endswith("/v1")
 
     @pytest.mark.asyncio
     async def test_parent_message_id_in_assistant_insert(self):

@@ -140,10 +140,10 @@ class TestSendMessage:
 
         mock_pool.fetchrow.return_value = make_session_record()
         # All ops inside transaction run on conn:
-        # 1st fetchval → parent_message_id, 2nd fetchval → next sequence_num
-        conn.fetchval.side_effect = [parent_msg_id, 3]
-        # 1st execute → DELETE, 2nd execute → INSERT, 3rd execute → UPDATE
-        conn.execute.side_effect = ["DELETE 2", "INSERT", "UPDATE"]
+        # 1st fetchval → parent_message_id, 2nd fetchval → next_branch, 3rd fetchval → sequence_num
+        conn.fetchval.side_effect = [parent_msg_id, 1, 3]
+        # 1st execute → UPDATE (branch move), 2nd execute → INSERT, 3rd execute → UPDATE session
+        conn.execute.side_effect = ["UPDATE 2", "INSERT", "UPDATE"]
 
         from app.models import ProviderCredentials
         mock_provider.return_value.resolve = AsyncMock(return_value=ProviderCredentials(
@@ -165,12 +165,12 @@ class TestSendMessage:
         )
         assert resp.status_code == 200
 
-        # All ops (DELETE, INSERT, UPDATE) now run on conn inside transaction
-        delete_calls = [
+        # All ops (branch UPDATE, INSERT, session UPDATE) run on conn inside transaction
+        branch_calls = [
             c for c in conn.execute.call_args_list
-            if "DELETE FROM chat_messages" in str(c)
+            if "SET branch_id" in str(c)
         ]
-        assert len(delete_calls) == 1
+        assert len(branch_calls) == 1
 
         insert_calls = [
             c for c in conn.execute.call_args_list
