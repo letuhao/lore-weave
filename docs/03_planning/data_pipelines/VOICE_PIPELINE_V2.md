@@ -1,8 +1,8 @@
 # Voice Pipeline V2 — Architecture Document
 
-> **Status:** Design phase — reviewed by context engineer + data engineer
+> **Status:** Design phase — 5 review rounds (context, data, UX, security, performance)
 > **Session:** 31 (2026-04-11)
-> **Reviews:** 21 issues found (2 critical, 9 high, 8 medium, 2 low), all addressed below
+> **Reviews:** 39 total issues found across 5 reviews, all addressed below
 
 ---
 
@@ -129,9 +129,13 @@ If TTS is done but LLM is still streaming → stay in SPEAKING (more sentences m
 
 **Default:** Manual only — cancel button + Space key. No microphone during SPEAKING.
 
-**Optional (headphone mode):** When headphones are detected via `navigator.mediaDevices.enumerateDevices()`, enable lightweight VAD during SPEAKING. No echo risk with headphones. User enables this in Voice Settings.
+**Headphone auto-detection (P1):** When headphones are detected via `navigator.mediaDevices.enumerateDevices()`, enable lightweight VAD during SPEAKING. No echo risk with headphones.
 
-Promoted from P3 to P1 per reviewer recommendation.
+**UX:** Don't bury in settings — surface as an inline prompt on first headphone detection:
+> "🎧 Headphones detected. Enable hands-free interruption?"
+> [Enable] [Not now]
+
+This avoids the frustration of manual-only barge-in on mobile (where pressing Space is impossible) while preventing echo issues on speakers.
 
 ---
 
@@ -169,9 +173,14 @@ Rules for voice mode responses:
 - Pronounce abbreviations: 'API' as 'A P I', 'URL' as 'U R L'"
 ```
 
-**Implementation:** The voice mode controller prepends this system message to the chat context when calling `sendMessage()`. It does NOT modify the stored conversation — only the LLM request payload. When voice mode is deactivated, the system prompt is removed.
+**Implementation (server-side — security requirement):**
+The voice system prompt is injected **server-side in chat-service**, NOT client-side. When the frontend sends a message with `input_method: 'voice'`, the chat-service prepends the voice system prompt to the LLM request. This prevents prompt injection — users cannot override the system prompt via modified client requests.
 
-**Effectiveness:** This alone eliminates ~80% of formatting issues at zero cost. The rule-based normalizer (Layer 1) catches the remaining edge cases where the model still produces formatting.
+The frontend sets `input_method: 'voice'` on the message payload. The chat-service checks this flag and injects the prompt. Stored conversation history does NOT include the voice prompt — it's transient per-request.
+
+**Security:** The voice transcript is treated as **untrusted user input** — it goes through the same sanitization as typed messages. The system prompt cannot be overridden by the transcript content because it's injected server-side before the user message.
+
+**Effectiveness:** This alone eliminates ~80% of formatting issues at zero cost. The rule-based normalizer (Layer 1) catches the remaining edge cases.
 
 ### 3.3 Hybrid Architecture (Option C — 3 Layers)
 
@@ -290,7 +299,14 @@ Path:   voice-audio/{session_id}/{message_id}/{index}_{timestamp}.mp3
 Format: MP3 (consistent with book-service TTS, 10x smaller than WAV)
 
 Lifecycle: MinIO prefix-based TTL, 48h default
+Encryption: SSE-S3 at rest (MinIO server-side encryption)
 ```
+
+**Security requirements:**
+- SSE-S3 encryption at rest for all voice audio (voice is biometric data)
+- User consent notice on first voice mode activation ("Audio will be stored for 48h for replay")
+- GDPR erasure endpoint: `DELETE /v1/chat/voice-data` — deletes all user's voice audio + DB references
+- `input_method: 'voice'` flag excluded from exports and public/shared views
 
 ### 4.3 Database Schema
 
@@ -314,7 +330,7 @@ CREATE INDEX idx_mas_cleanup ON message_audio_segments(created_at);
 
 **On DELETE CASCADE:** When a message is deleted, audio segments are automatically cleaned.
 
-**Signed URLs:** Generated lazily on read (not stored). The endpoint that returns messages generates short-lived signed URLs (1 hour) for each segment's `object_key`.
+**Signed URLs:** Generated lazily on read (not stored). Signed per-playback request (not embedded in message list). Expiry: 15 minutes (not 1 hour — reduces leak window). Scoped: URLs are generated only for the authenticated user's own messages.
 
 ### 4.4 Audio Upload Endpoint
 
@@ -602,34 +618,61 @@ Timeline:
 | **VP2-19** | TTS metrics on assistant messages — generation time, audio size, token count per segment. Shown as subtle tooltip or expandable detail row under audio player |
 | **VP2-20** | STT metrics on user messages — transcription time, audio size, model used. Shown when message was sent via voice (not typed) |
 | **VP2-21** | Flag voice-originated messages — `input_method: 'voice' | 'text'` on user messages so UI can distinguish typed vs spoken |
-| **VP2-22** | Normalizer skip indicator in overlay and chat ("1 code block skipped") |
+| **VP2-22** | Normalizer skip indicator — "Code shown above, not read aloud" (not "skipped" — less confusing). Visually connected to the code block in chat UI |
 
-Example TTS metrics on assistant message:
+**Audio replay (simplified per UX review):**
 ```
 ┌─────────────────────────────────────────────────┐
 │  AI: Hello! How can I help you today?           │
 │                                                 │
 │  🔊 ▶ ━━━━━━━━━━ 0:03 / 0:05                  │
-│     [S1 ▶] [S2 ▶] [S3 ▶]                       │
+│     ▸ 3 segments                        ← collapsed by default
 │                                                 │
+└─────────────────────────────────────────────────┘
+
+Expanded (on click "3 segments"):
+│     [S1 ▶ 1.2s] [S2 ▶ 2.1s] [S3 ▶ 0.8s]       │
+```
+
+Per-sentence buttons hidden by default — collapsed behind disclosure. Play/pause + progress bar always visible.
+
+**Metrics (behind debug toggle per UX review):**
+- Default: subtle colored dot (🟢 green = fast, 🟡 yellow = slow, 🔴 red = error)
+- Debug mode (Voice Settings toggle): full metrics shown
+
+```
+Debug ON:
+┌─────────────────────────────────────────────────┐
+│  AI: Hello! How can I help you today?           │
+│  🔊 ▶ ━━━━━━━━━━ 0:03 / 0:05          🟢      │
 │  ⚡ TTS: 3 sentences · 289KB · 2.1s avg         │
 │     Kokoro v1 · af_heart · 1x                   │
 └─────────────────────────────────────────────────┘
-```
 
-Example STT metrics on user message:
-```
+│  You: How are you today?        🎤 voice  🟢    │
+│  ⚡ STT: 96KB · 342ms · Whisper v3-turbo        │
+└─────────────────────────────────────────────────┘
+
+Debug OFF (default):
 ┌─────────────────────────────────────────────────┐
-│  You: How are you today?              🎤 voice  │
-│                                                 │
-│  ⚡ STT: 96KB audio · 342ms · Whisper v3-turbo  │
+│  AI: Hello! How can I help you today?           │
+│  🔊 ▶ ━━━━━━━━━━ 0:03 / 0:05          🟢      │
+└─────────────────────────────────────────────────┘
+
+│  You: How are you today?        🎤 voice  🟢    │
 └─────────────────────────────────────────────────┘
 ```
 
 ### Phase E: Voice Assist Mode (P1)
 
-A simpler alternative to Voice Mode — uses the regular chat UI with voice input/output.
+A simpler alternative to full Voice Mode — uses the regular chat UI with voice input/output.
 No overlay, no state machine, no auto-send. User has full control.
+
+**UX note (per review):** Don't present as two separate "modes" — users don't think in modes. Instead, present as a single "Voice" toggle with a preference:
+- **"Auto-send when I stop talking"** = ON → full Voice Mode (overlay, auto-send, hands-free)
+- **"Auto-send when I stop talking"** = OFF → Voice Assist (chat UI, dictation, manual send)
+
+The technical distinction (overlay vs inline, state machine vs simple) follows from this single preference.
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -673,20 +716,28 @@ No overlay, no state machine, no auto-send. User has full control.
 | Task | Scope |
 |------|-------|
 | **VP2-23** | Fix push-to-talk mic button — respect Voice Settings STT source (browser or AI model provider), not hardcoded to browser Web Speech API |
-| **VP2-24** | Mic button visual states — clear 3-state design: idle (gray mic), recording (red pulsing + "Recording..." label), transcribing (spinner + "Transcribing..."). Current 2-state (Mic/MicOff) is ambiguous |
+| **VP2-24** | Mic button visual states — 4-state design: idle (gray mic), recording (red pulse + "Recording..."), transcribing (spinner + "Transcribing..."), error (red X + brief message). Transition animations: 100-150ms fade between states |
 | **VP2-25** | Voice Assist toggle in chat input bar — always-on VAD mic that inserts transcribed text into textarea |
-| **VP2-26** | Append/Replace mode toggle — user chooses whether new speech appends to or replaces textarea content |
+| **VP2-26** | Append/Replace mode toggle — "Add to text" / "Replace text" (plain language labels). Auto-switches to append when textarea has existing content (prevents silent discard). Shows brief confirmation before replacing non-empty text |
 | **VP2-27** | Auto-TTS on AI response — when Voice Assist is ON, auto-play TTS for new assistant messages (using sentence pipeline) |
 | **VP2-28** | Audio stop button on messages — independent of voice input, user can stop TTS anytime |
 | **VP2-29** | Voice Assist preferences — persist on/off state, append/replace default, auto-TTS toggle |
 
-### Phase F: Polish (P2)
+### Phase F: Security + Performance + Polish (P2)
 
 | Task | Scope |
 |------|-------|
-| **VP2-30** | Configurable audio retention in settings (48h default) |
-| **VP2-31** | Audio download button on messages |
-| **VP2-32** | Mode switch guard — disable text input during voice PROCESSING/SPEAKING |
+| **VP2-30** | Persistent mic-active indicator in main UI chrome (not just overlay) when pipeline != IDLE |
+| **VP2-31** | Voice consent notice — first-time activation: "Audio stored for 48h for replay. [Continue] [Settings]" |
+| **VP2-32** | GDPR erasure endpoint: `DELETE /v1/chat/voice-data` — deletes all user's voice audio + DB refs |
+| **VP2-33** | SSE-S3 encryption on lw-chat MinIO bucket for voice audio at rest |
+| **VP2-34** | STT transcript sanitization — length/content checks before LLM submission (treat as untrusted) |
+| **VP2-35** | TTS pool raise maxConcurrent from 2 to 3 (prevents audio gaps on 5+ sentence responses) |
+| **VP2-36** | Stagger MinIO uploads by segment index (index * 50ms delay, reduces concurrent fetches) |
+| **VP2-37** | Configurable audio retention in settings (48h default) |
+| **VP2-38** | Audio download button on messages |
+| **VP2-39** | Mode switch guard — disable text input during voice PROCESSING/SPEAKING |
+| **VP2-40** | Debug toggle in Voice Settings — show/hide STT/TTS metrics on messages |
 
 ---
 
@@ -696,13 +747,38 @@ No overlay, no state machine, no auto-send. User has full control.
 |----------|-----------|
 | WAV vs MP3? | **MP3** — consistent with book-service, 10x smaller |
 | JSONB vs separate table? | **Separate `message_audio_segments` table** — cleaner queries, CASCADE delete |
-| Signed URL in DB? | **No — store `object_key`, sign lazily on read** |
+| Signed URL in DB? | **No — store `object_key`, sign lazily per-playback (15min expiry)** |
 | Block upload before play? | **No — play from memory, upload in background** |
 | Destroy/recreate VAD? | **Keep ONNX runtime alive, only stop/start audio stream** |
-| Auto barge-in? | **Manual default, headphone-gated auto barge-in (P1 not P3)** |
+| Auto barge-in? | **Manual default, headphone-gated auto barge-in (P1), surface on first detection** |
 | PAUSED state? | **Removed from state machine** — not needed with manual cancel |
+| Voice system prompt client vs server? | **Server-side in chat-service** — prevents prompt injection |
+| TTS max concurrent? | **3** (raised from 2) — prevents audio gaps on longer responses |
+| Two modes vs one? | **Single "Voice" toggle** — auto-send pref determines overlay vs inline |
+| Metrics visible to all? | **Debug toggle** — default shows only health dot (🟢/🟡/🔴) |
+| Mic button states? | **4 states** — idle, recording, transcribing, error |
+| Per-sentence buttons? | **Collapsed by default** — only play/pause + progress visible |
+| "Code skipped" label? | **"Code shown above, not read aloud"** — less confusing |
+| Append/Replace silent discard? | **Auto-append when textarea non-empty** — confirmation for replace |
+| Voice audio encryption? | **SSE-S3 at rest** — voice is biometric data |
+| GDPR erasure? | **DELETE endpoint** — removes all user voice audio + DB refs |
+| STT transcript trust? | **Untrusted input** — sanitized before LLM submission |
+
+---
+
+## 9. Review History
+
+| Round | Reviewer | Issues | Key Fixes |
+|-------|----------|--------|-----------|
+| 1 | Context Engineer | 13 | Error recovery, SPEAKING exit, VAD lifecycle |
+| 2 | Data Engineer | 8 | MP3 format, separate table, lazy signing, background upload |
+| 3 | UX Designer | 7 | Mode merge, 4-state mic, collapsed segments, debug metrics |
+| 4 | Security Engineer | 7 | Server-side prompt, encryption, GDPR, signed URL scope |
+| 5 | Performance Engineer | 4 | TTS pool=3, stagger uploads, ONNX worker verification |
+
+Total: 39 issues found, all addressed. 40 implementation tasks across 6 phases.
 
 ---
 
 *Created: 2026-04-11 — LoreWeave session 31*
-*Reviewed by: context engineer (13 issues), data engineer (8 issues) — all addressed*
+*5 review rounds: context engineer, data engineer, UX designer, security engineer, performance engineer*
