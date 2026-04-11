@@ -127,7 +127,7 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
     <>
     {/* Backdrop — click to close */}
     <div className="fixed inset-0 z-[39]" onClick={onClose} />
-    <div className="fixed inset-y-0 right-0 z-40 flex w-72 flex-col border-l bg-card shadow-xl">
+    <div className="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l bg-card shadow-xl sm:w-72">
       {/* Header */}
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-medium">

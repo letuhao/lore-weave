@@ -158,7 +158,7 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
   return (
     <div
       ref={panelRef}
-      className="fixed top-0 right-0 bottom-0 z-50 flex w-[380px] flex-col border-l border-border bg-card shadow-[-8px_0_30px_rgba(0,0,0,0.4)]"
+      className="fixed top-0 right-0 bottom-0 z-50 flex w-full flex-col border-l border-border bg-card shadow-[-8px_0_30px_rgba(0,0,0,0.4)] sm:w-[380px]"
     >
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-5 py-4">

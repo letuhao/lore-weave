@@ -182,6 +182,9 @@ interface SessionSidebarProps {
   onArchive: (sessionId: string) => void;
   onDelete: (sessionId: string) => void;
   onTogglePin?: (sessionId: string, pinned: boolean) => void;
+  /** Mobile overlay mode */
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
 // ── Temporal grouping ──────────────────────────────────────────────────────────
@@ -229,6 +232,8 @@ export function SessionSidebar({
   onArchive,
   onDelete,
   onTogglePin,
+  mobileOpen,
+  onMobileClose,
 }: SessionSidebarProps) {
   const { accessToken } = useAuth();
   const [search, setSearch] = useState('');
@@ -261,8 +266,26 @@ export function SessionSidebar({
 
   const groups = useMemo(() => groupSessions(filtered), [filtered]);
 
+  const handleSelect = (session: ChatSession) => {
+    onSelect(session);
+    onMobileClose?.();
+  };
+
   return (
-    <div className="flex h-full w-[270px] shrink-0 flex-col border-r border-border bg-card">
+    <>
+      {/* Mobile backdrop */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={onMobileClose}
+        />
+      )}
+      <div className={cn(
+        'flex h-full w-[270px] shrink-0 flex-col border-r border-border bg-card',
+        // Mobile: fixed overlay, hidden by default
+        'max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:shadow-2xl max-md:transition-transform max-md:duration-200',
+        mobileOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full',
+      )}>
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <span className="text-[13px] font-semibold text-foreground">Conversations</span>
@@ -329,7 +352,7 @@ export function SessionSidebar({
                 key={r.session_id}
                 onClick={() => {
                   const match = sessions.find((s) => s.session_id === r.session_id);
-                  if (match) onSelect(match);
+                  if (match) handleSelect(match);
                 }}
                 className="cursor-pointer border-l-2 border-transparent px-4 py-2 transition-colors hover:bg-card-foreground/5"
               >
@@ -354,7 +377,7 @@ export function SessionSidebar({
                 session={s}
                 isActive={s.session_id === activeSessionId}
                 modelNameMap={modelNameMap}
-                onSelect={() => onSelect(s)}
+                onSelect={() => handleSelect(s)}
                 onRename={(title) => onRename(s.session_id, title)}
                 onArchive={() => onArchive(s.session_id)}
                 onDelete={() => onDelete(s.session_id)}
@@ -365,5 +388,6 @@ export function SessionSidebar({
         ))}
       </div>
     </div>
+    </>
   );
 }

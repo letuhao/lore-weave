@@ -39,15 +39,14 @@ LoreWeave is moving from Docker Compose development to AWS cloud production depl
 - **Problem:** `MINIO_EXTERNAL_URL` defaulted to empty string, with fallback to internal MinIO endpoint — browsers can't reach internal endpoints in prod.
 - **Fix:** Made `MINIO_EXTERNAL_URL` required in both services. Removed internal-endpoint fallback from `mediaURL()` / `media_url()`. Docker-compose provides `http://localhost:9123` for dev.
 
-### CRA-04: Chat layout — responsive sidebar for mobile
-- **Files:** `frontend/src/pages/ChatPage.tsx`, `SessionSidebar`
-- **Problem:** Two sidebars (270px + 240px) render at all viewport widths. On 375px phone = 0px for content.
-- **Fix:** Mobile breakpoint: hide sidebars behind hamburger/drawer overlay. Show on `md:` and above.
-
-### CRA-05: Settings panels — responsive width
-- **Files:** `SessionSettingsPanel.tsx` (w-[380px]), `VoiceSettingsPanel.tsx` (w-72)
-- **Problem:** Fixed-width panels wider than phone viewport. Content cut off.
-- **Fix:** `max-w-full` or `w-full sm:w-[380px]` with full-screen drawer on mobile.
+### CRA-04+05: Chat layout + settings panels responsive for mobile [DONE]
+- **Files:** `ChatPage.tsx`, `SessionSidebar.tsx`, `SessionSettingsPanel.tsx`, `VoiceSettingsPanel.tsx`
+- **Problem:** Session sidebar (270px) + app sidebar (240px) = 510px, overflows 375px phone. Settings panels also wider than viewport.
+- **Fix:**
+  - SessionSidebar: hidden on `< md`, shown as slide-in overlay with backdrop when hamburger button tapped. Auto-closes on session select.
+  - ChatPage: added mobile hamburger bar (`md:hidden`) with Menu icon + active session title.
+  - SessionSettingsPanel: `w-full sm:w-[380px]` (full-width on mobile).
+  - VoiceSettingsPanel: `w-full sm:w-72` (full-width on mobile).
 
 ---
 

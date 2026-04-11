@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { MessageSquareText } from 'lucide-react';
+import { Menu, MessageSquareText } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 
@@ -32,6 +32,7 @@ export function ChatPage() {
   const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [contextItems, setContextItems] = useState<ContextItem[]>([]);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Model name resolver: model_ref UUID → display name
   const [modelNameMap, setModelNameMap] = useState<Map<string, string>>(new Map());
@@ -216,9 +217,26 @@ export function ChatPage() {
           onArchive={handleArchive}
           onDelete={handleDelete}
           onTogglePin={(sessionId, pinned) => void togglePin(sessionId, pinned)}
+          mobileOpen={mobileSidebarOpen}
+          onMobileClose={() => setMobileSidebarOpen(false)}
         />
 
         <div className="flex flex-1 flex-col overflow-hidden">
+          {/* Mobile hamburger — only visible below md */}
+          <div className="flex items-center border-b border-border px-3 py-2 md:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(true)}
+              className="rounded-md p-2 text-muted-foreground hover:bg-muted"
+              aria-label="Open conversations"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <span className="ml-2 truncate text-sm font-medium text-foreground">
+              {activeSession?.title ?? 'Chat'}
+            </span>
+          </div>
+
           {activeSession && chat.isLoading ? (
             <div className="flex flex-1 items-center justify-center">
               <div className="space-y-3 text-center">
