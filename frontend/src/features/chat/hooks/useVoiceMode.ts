@@ -23,6 +23,25 @@ import type { OnStreamDelta } from './useChatMessages';
 
 export type VoicePhase = 'idle' | 'listening' | 'processing' | 'speaking' | 'paused';
 
+export interface VoicePipelineMetrics {
+  /** STT audio size in KB */
+  sttAudioKB: number | null;
+  /** STT processing time in ms */
+  sttMs: number | null;
+  /** Time to first LLM content token in ms */
+  llmFirstTokenMs: number | null;
+  /** Total LLM tokens received */
+  llmTokenCount: number;
+  /** Total LLM stream duration in ms */
+  llmTotalMs: number | null;
+  /** Number of sentences emitted by buffer */
+  sentenceCount: number;
+  /** Per-sentence TTS times in ms */
+  ttsSentenceMs: number[];
+  /** Total TTS audio generated in KB */
+  ttsAudioKB: number;
+}
+
 export interface VoiceModeControls {
   /** Current phase of the voice loop */
   phase: VoicePhase;
@@ -48,6 +67,8 @@ export interface VoiceModeControls {
   resume: () => void;
   /** Reload preferences (after settings change) */
   reloadPrefs: () => void;
+  /** Live performance metrics for the current turn */
+  metrics: VoicePipelineMetrics;
 }
 
 interface UseVoiceModeOptions {
@@ -90,6 +111,22 @@ export function useVoiceMode({
   // Barge-in detection (RTV-04)
   const bargeInRef = useRef<BargeInDetector | null>(null);
   const bargeInStreamRef = useRef<MediaStream | null>(null);
+
+  // Live metrics
+  const [metrics, setMetrics] = useState<VoicePipelineMetrics>({
+    sttAudioKB: null, sttMs: null,
+    llmFirstTokenMs: null, llmTokenCount: 0, llmTotalMs: null,
+    sentenceCount: 0, ttsSentenceMs: [], ttsAudioKB: 0,
+  });
+  const metricsRef = useRef(metrics);
+  metricsRef.current = metrics;
+  const resetMetrics = useCallback(() => {
+    setMetrics({
+      sttAudioKB: null, sttMs: null,
+      llmFirstTokenMs: null, llmTokenCount: 0, llmTotalMs: null,
+      sentenceCount: 0, ttsSentenceMs: [], ttsAudioKB: 0,
+    });
+  }, []);
 
   // Ref pattern — avoids stale closures in pipeline callbacks (#1, #5, #10)
   const sendMessageRef = useRef(sendMessage);
@@ -152,6 +189,9 @@ export function useVoiceMode({
     modelRef: prefs.sttModelRef || undefined,
     silenceThresholdMs: useBackendSTTSource && prefs.autoSendOnSilence ? prefs.silenceThresholdMs : 0,
     onSilenceDetected: useBackendSTTSource ? onSilenceDetected : undefined,
+    onMetrics: useBackendSTTSource ? (audioKB, durationMs) => {
+      setMetrics((prev) => ({ ...prev, sttAudioKB: +audioKB.toFixed(1), sttMs: Math.round(durationMs) }));
+    } : undefined,
     token: accessToken,
   });
 
@@ -237,6 +277,13 @@ export function useVoiceMode({
       onError: (text, err) => {
         console.warn('TTS pipeline: skipping sentence:', text.slice(0, 50), err.message);
       },
+      onComplete: (durationMs, audioSizeBytes) => {
+        setMetrics((prev) => ({
+          ...prev,
+          ttsSentenceMs: [...prev.ttsSentenceMs, Math.round(durationMs)],
+          ttsAudioKB: prev.ttsAudioKB + audioSizeBytes / 1024,
+        }));
+      },
     });
     ttsPoolRef.current = pool;
 
@@ -244,6 +291,8 @@ export function useVoiceMode({
     const buffer = new SentenceBuffer(
       (sentence) => {
         if (!pipelineActiveRef.current) return;
+        console.log('[VoiceMode] Sentence emitted:', sentence.slice(0, 60));
+        setMetrics((prev) => ({ ...prev, sentenceCount: prev.sentenceCount + 1 }));
         // First sentence triggers speaking phase
         if (phaseRef.current === 'processing') {
           setPhase('speaking');
@@ -265,13 +314,17 @@ export function useVoiceMode({
               queue.enqueue(audio).catch(() => {});
             }
           })
-          .catch(() => {
-            // Sentence skipped (cancelled or failed) — pipeline continues
+          .catch((err) => {
+            // Log TTS errors for debugging (don't crash the pipeline)
+            if ((err as Error).message !== 'cancelled') {
+              console.error('TTS pipeline error:', (err as Error).message);
+            }
           });
       },
     );
     sentenceBufferRef.current = buffer;
     pipelineActiveRef.current = true;
+    console.log('[VoiceMode] Pipeline started, ttsModelRef:', prefsRef.current.ttsModelRef, 'voice:', prefsRef.current.ttsVoiceId);
   }, []); // #10: no deps — reads everything from refs
 
   /** Stop the pipeline and clean up */
@@ -287,11 +340,25 @@ export function useVoiceMode({
   }, []);
 
   // Wire onStreamDeltaRef to feed tokens into the pipeline (runs once on mount — #11)
+  const llmFirstTokenRef = useRef<number | null>(null);
+  const llmTokenCountRef = useRef(0);
   useEffect(() => {
     if (!onStreamDeltaRef) return;
     onStreamDeltaRef.current = (delta, type) => {
-      if (type !== 'content') return; // Skip reasoning tokens
+      if (type !== 'content') return;
       if (!pipelineActiveRef.current) return;
+      // Track first content token timing
+      if (llmFirstTokenRef.current === null) {
+        llmFirstTokenRef.current = performance.now();
+        console.log('[LLM] First content token received');
+        setMetrics((prev) => ({ ...prev, llmFirstTokenMs: 0 }));
+      }
+      llmTokenCountRef.current++;
+      setMetrics((prev) => ({
+        ...prev,
+        llmTokenCount: llmTokenCountRef.current,
+        llmFirstTokenMs: prev.llmFirstTokenMs === null ? 0 : prev.llmFirstTokenMs,
+      }));
       sentenceBufferRef.current?.addToken(delta);
     };
     return () => {
@@ -326,6 +393,11 @@ export function useVoiceMode({
 
     if (pipelineActiveRef.current) {
       // Streaming pipeline path — flush remaining buffer, close queue
+      const llmDuration = llmFirstTokenRef.current ? Math.round(performance.now() - llmFirstTokenRef.current) : null;
+      console.log(`[LLM] Stream complete — ${llmTokenCountRef.current} tokens in ${llmDuration ?? '?'}ms`);
+      setMetrics((prev) => ({ ...prev, llmTotalMs: llmDuration }));
+      llmFirstTokenRef.current = null;
+      llmTokenCountRef.current = 0;
       sentenceBufferRef.current?.markStreamComplete();
       ttsQueueRef.current?.close();
       // Pipeline's onAllPlayed callback handles transition to listening
@@ -438,9 +510,10 @@ export function useVoiceMode({
     setPrefs(loadVoicePrefs());
     setPhase('listening');
     setAiResponseText('');
+    resetMetrics();
     sttReset();
     sttStart();
-  }, [sttStart, sttReset, stopPipeline]);
+  }, [sttStart, sttReset, stopPipeline, resetMetrics]);
 
   const deactivate = useCallback(() => {
     pendingSendRef.current = false;
@@ -510,5 +583,6 @@ export function useVoiceMode({
     pause,
     resume,
     reloadPrefs,
+    metrics,
   };
 }

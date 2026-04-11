@@ -1,7 +1,7 @@
 import { useEffect, useCallback } from 'react';
 import { X, Pause, Play, Settings2, Loader2, Volume2, Mic } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { VoicePhase } from '../hooks/useVoiceMode';
+import type { VoicePhase, VoicePipelineMetrics } from '../hooks/useVoiceMode';
 import { WaveformVisualizer } from './WaveformVisualizer';
 import { cn } from '@/lib/utils';
 
@@ -15,6 +15,7 @@ interface VoiceModeOverlayProps {
   onPause: () => void;
   onResume: () => void;
   onOpenSettings: () => void;
+  metrics?: VoicePipelineMetrics;
 }
 
 const PHASE_CONFIG: Record<VoicePhase, { icon: typeof Mic; label: string; color: string }> = {
@@ -35,6 +36,7 @@ export function VoiceModeOverlay({
   onPause,
   onResume,
   onOpenSettings,
+  metrics,
 }: VoiceModeOverlayProps) {
   const { t } = useTranslation('common');
 
@@ -171,6 +173,37 @@ export function VoiceModeOverlay({
             {t('voice.exitVoiceMode')}
           </button>
         </div>
+
+        {/* Live performance metrics */}
+        {metrics && (metrics.sttMs !== null || metrics.llmTokenCount > 0 || metrics.sentenceCount > 0) && (
+          <div className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-[10px] text-white/40 space-y-0.5">
+            {metrics.sttMs !== null && (
+              <div className="flex justify-between">
+                <span>STT</span>
+                <span className="text-white/60">{metrics.sttAudioKB?.toFixed(1)}KB &rarr; {metrics.sttMs}ms</span>
+              </div>
+            )}
+            {metrics.llmTokenCount > 0 && (
+              <div className="flex justify-between">
+                <span>LLM</span>
+                <span className="text-white/60">
+                  {metrics.llmTokenCount} tokens
+                  {metrics.llmTotalMs != null && ` in ${(metrics.llmTotalMs / 1000).toFixed(1)}s`}
+                </span>
+              </div>
+            )}
+            {metrics.sentenceCount > 0 && (
+              <div className="flex justify-between">
+                <span>TTS</span>
+                <span className="text-white/60">
+                  {metrics.sentenceCount} sentence{metrics.sentenceCount !== 1 ? 's' : ''}
+                  {metrics.ttsAudioKB > 0 && ` · ${metrics.ttsAudioKB.toFixed(0)}KB`}
+                  {metrics.ttsSentenceMs.length > 0 && ` · avg ${Math.round(metrics.ttsSentenceMs.reduce((a, b) => a + b, 0) / metrics.ttsSentenceMs.length)}ms`}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Keyboard hints */}
         <p className="text-[10px] text-white/20">

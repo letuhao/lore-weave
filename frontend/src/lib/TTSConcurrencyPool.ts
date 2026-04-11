@@ -20,6 +20,8 @@ export interface TTSConcurrencyPoolOptions {
   maxQueueDepth?: number;
   /** Called when a sentence TTS fails (sentence is skipped) */
   onError?: (text: string, error: Error) => void;
+  /** Called when a sentence TTS completes (durationMs, audioSizeBytes) */
+  onComplete?: (durationMs: number, audioSizeBytes: number) => void;
 }
 
 interface QueueItem {
@@ -35,11 +37,13 @@ export class TTSConcurrencyPool {
   private readonly maxConcurrent: number;
   private readonly maxQueueDepth: number;
   private readonly onError?: (text: string, error: Error) => void;
+  private readonly onComplete?: (durationMs: number, audioSizeBytes: number) => void;
 
   constructor(options: TTSConcurrencyPoolOptions = {}) {
     this.maxConcurrent = Math.max(1, options.maxConcurrent ?? 2); // CP-08: clamp min 1
     this.maxQueueDepth = options.maxQueueDepth ?? 20; // CP-06: bounded queue
     this.onError = options.onError;
+    this.onComplete = options.onComplete;
   }
 
   /** Submit a sentence for TTS. Returns the audio ArrayBuffer. */
@@ -90,7 +94,10 @@ export class TTSConcurrencyPool {
   private async execute(options: TTSRequestOptions): Promise<ArrayBuffer> {
     this.inFlight++;
     const controller = new AbortController();
-    this.abortControllers.add(controller); // CP-05: add to Set
+    this.abortControllers.add(controller);
+    const ttsStart = performance.now();
+    const textPreview = options.text.slice(0, 50) + (options.text.length > 50 ? '...' : '');
+    console.log(`[TTS] Requesting: "${textPreview}" (voice: ${options.voice})`);
 
     try {
       const params = new URLSearchParams({
@@ -122,7 +129,12 @@ export class TTSConcurrencyPool {
         throw new Error(`TTS ${resp.status}: ${detail.slice(0, 200)}`);
       }
 
-      return await resp.arrayBuffer();
+      const audio = await resp.arrayBuffer();
+      const ttsDuration = performance.now() - ttsStart;
+      const audioKB = (audio.byteLength / 1024).toFixed(1);
+      console.log(`[TTS] Done in ${ttsDuration.toFixed(0)}ms — ${audioKB}KB audio for "${textPreview}"`);
+      this.onComplete?.(ttsDuration, audio.byteLength);
+      return audio;
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
         this.onError?.(options.text, err as Error);

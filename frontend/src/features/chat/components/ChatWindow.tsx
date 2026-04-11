@@ -159,6 +159,7 @@ export function ChatWindow({
           onPause={voiceMode.pause}
           onResume={voiceMode.resume}
           onOpenSettings={() => setVoiceSettingsOpen(true)}
+          metrics={voiceMode.metrics}
         />
       )}
 

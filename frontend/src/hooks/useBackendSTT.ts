@@ -23,6 +23,8 @@ export interface BackendSTTOptions {
   modelRef?: string;
   silenceThresholdMs?: number;
   onSilenceDetected?: (text: string) => void;
+  /** Called with STT performance metrics (audioKB, durationMs) */
+  onMetrics?: (audioKB: number, durationMs: number) => void;
   token?: string | null;
 }
 
@@ -110,7 +112,11 @@ export function useBackendSTT(options: BackendSTTOptions = {}) {
       : mimeTypeRef.current.includes('ogg') ? '.ogg'
       : '.webm';
 
-    setState((prev) => ({ ...prev, interimTranscript: 'Transcribing...' }));
+    const audioSizeKB = (blob.size / 1024).toFixed(1);
+    console.log(`[STT] Sending ${audioSizeKB}KB audio (${mimeTypeRef.current}) to STT...`);
+    const sttStartTime = performance.now();
+
+    setState((prev) => ({ ...prev, interimTranscript: `Transcribing (${audioSizeKB}KB)...` }));
 
     try {
       const formData = new FormData();
@@ -147,6 +153,10 @@ export function useBackendSTT(options: BackendSTTOptions = {}) {
 
       const data = await resp.json();
       const text = data.text || '';
+      const sttDurationMs = performance.now() - sttStartTime;
+      const audioKB = blob.size / 1024;
+      console.log(`[STT] Done in ${sttDurationMs.toFixed(0)}ms — "${text.slice(0, 80)}${text.length > 80 ? '...' : ''}"`);
+      optionsRef.current.onMetrics?.(audioKB, sttDurationMs);
 
       setState((prev) => ({
         ...prev,
