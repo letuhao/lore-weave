@@ -22,6 +22,7 @@ export interface TTSPlaybackQueueOptions {
 
 export class TTSPlaybackQueue {
   private audioCtx: AudioContext | null = null;
+  private ownsAudioCtx: boolean; // true if we created it, false if shared
   private nextStartTime = 0;
   private sources: AudioBufferSourceNode[] = [];
   private pendingCount = 0;
@@ -40,6 +41,7 @@ export class TTSPlaybackQueue {
   constructor(options: TTSPlaybackQueueOptions = {}) {
     this.sentencePadMs = options.sentencePadMs ?? 80;
     this.audioCtx = options.audioContext ?? null;
+    this.ownsAudioCtx = !options.audioContext; // Only close if we created it
     this.onAllPlayed = options.onAllPlayed;
     this.onChunkStart = options.onChunkStart;
     this.onChunkEnd = options.onChunkEnd;
@@ -143,13 +145,13 @@ export class TTSPlaybackQueue {
     return this.pendingCount > 0;
   }
 
-  /** Clean up AudioContext */
+  /** Clean up AudioContext (only closes if we created it — shared contexts are owned by caller) */
   dispose(): void {
     this.cancelAll();
-    if (this.audioCtx) {
+    if (this.audioCtx && this.ownsAudioCtx) {
       this.audioCtx.close().catch(() => {});
-      this.audioCtx = null;
     }
+    this.audioCtx = null;
   }
 
   // PQ-07: centralized check prevents double-fire

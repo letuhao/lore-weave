@@ -540,7 +540,12 @@ export function useVoiceMode({
     ctx.resume().catch(() => {});
     audioCtxRef.current = ctx;
 
-    setPrefs(loadVoicePrefs());
+    // Auto-switch to backend STT if browser speech recognition unavailable
+    const loaded = loadVoicePrefs();
+    if (loaded.sttSource === 'browser' && !SPEECH_RECOGNITION_SUPPORTED) {
+      loaded.sttSource = 'ai_model';
+    }
+    setPrefs(loaded);
     setPhase('listening');
     setAiResponseText('');
     resetMetrics();
