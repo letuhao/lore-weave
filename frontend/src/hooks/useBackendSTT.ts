@@ -191,10 +191,10 @@ export function useBackendSTT(options: BackendSTTOptions = {}) {
 
     transcribingRef.current = false;
 
-    // Auto-restart if still supposed to be listening (#2 — use ref not state)
-    if (isListeningRef.current) {
-      void startRecording();
-    }
+    // Do NOT auto-restart — let the voice mode orchestrator control STT lifecycle.
+    // The orchestrator calls start() again when it's ready for the next turn
+    // (e.g., after TTS finishes playing via onAllPlayed callback).
+    console.log('[STT] Transcription complete — waiting for orchestrator to restart');
   }, [stopSilenceDetection]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startSilenceDetection = useCallback((stream: MediaStream) => {
