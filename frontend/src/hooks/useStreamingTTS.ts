@@ -18,6 +18,8 @@ export interface StreamingTTSControls {
 
 export interface StreamingTTSOptions {
   model?: string;
+  /** user_model_id for provider-registry credential resolution */
+  modelRef?: string;
   voice?: string;
   speed?: number;
   token?: string | null;
@@ -71,7 +73,13 @@ export function useStreamingTTS(options: StreamingTTSOptions = {}): StreamingTTS
       headers.Authorization = `Bearer ${opts.token}`;
     }
 
-    fetch('/v1/audio/speech', {
+    // Route through provider-registry proxy for credential resolution
+    const params = new URLSearchParams({ model_source: 'user_model' });
+    if (opts.modelRef) {
+      params.set('model_ref', opts.modelRef);
+    }
+
+    fetch(`/v1/model-registry/proxy/v1/audio/speech?${params}`, {
       method: 'POST',
       headers,
       body: JSON.stringify({

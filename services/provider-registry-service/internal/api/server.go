@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -117,6 +118,9 @@ func (s *Server) Router() http.Handler {
 
 		r.Post("/invoke", s.invokeModel)
 		r.Get("/models/{model_ref}/context-window", s.getModelContextWindow)
+		// Public proxy — forwards any content-type to provider with JWT auth.
+		// Used for STT (multipart file upload) and TTS (binary response).
+		r.HandleFunc("/proxy/*", s.publicProxy)
 	})
 
 	// Internal service-to-service routes — NOT proxied by api-gateway-bff.
@@ -125,6 +129,9 @@ func (s *Server) Router() http.Handler {
 		r.Use(s.requireInternalToken)
 		r.Get("/credentials/{model_source}/{model_ref}", s.getInternalCredentials)
 		r.Post("/invoke", s.internalInvokeModel)
+		// Transparent proxy — forwards any content-type (multipart, binary, JSON) to provider
+		// with credential injection. Used for STT (file upload) and TTS (binary response).
+		r.HandleFunc("/proxy/*", s.internalProxy)
 	})
 
 	return r
@@ -205,6 +212,147 @@ WHERE platform_model_id=$1 AND status='active'
 	}
 
 	writeJSON(w, http.StatusOK, out)
+}
+
+// publicProxy is the JWT-authenticated version of the transparent proxy.
+// Used by the frontend via gateway: POST /v1/model-registry/proxy/v1/audio/transcriptions?model_source=user_model&model_ref=...
+// The user_id is extracted from the JWT token (same as invokeModel).
+func (s *Server) publicProxy(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := s.auth(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
+		return
+	}
+
+	modelSource := r.URL.Query().Get("model_source")
+	modelRefStr := r.URL.Query().Get("model_ref")
+
+	if modelSource == "" || modelRefStr == "" {
+		writeError(w, http.StatusBadRequest, "PROXY_VALIDATION_ERROR", "model_source and model_ref query params required")
+		return
+	}
+
+	// Delegate to shared proxy logic
+	s.doProxy(w, r, userID, modelSource, modelRefStr)
+}
+
+// internalProxy is the X-Internal-Token authenticated version of the transparent proxy.
+// URL pattern: /internal/proxy/{target_path...}?user_id=X&model_source=Y&model_ref=Z
+func (s *Server) internalProxy(w http.ResponseWriter, r *http.Request) {
+	userIDStr := r.URL.Query().Get("user_id")
+	modelSource := r.URL.Query().Get("model_source")
+	modelRefStr := r.URL.Query().Get("model_ref")
+
+	if userIDStr == "" || modelSource == "" || modelRefStr == "" {
+		writeError(w, http.StatusBadRequest, "PROXY_VALIDATION_ERROR", "user_id, model_source, and model_ref query params required")
+		return
+	}
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "PROXY_VALIDATION_ERROR", "invalid user_id")
+		return
+	}
+
+	s.doProxy(w, r, userID, modelSource, modelRefStr)
+}
+
+// doProxy is the shared transparent proxy logic used by both publicProxy and internalProxy.
+// Resolves provider credentials, forwards the request body as-is (any content-type),
+// injects the provider API key, and streams the response back.
+func (s *Server) doProxy(w http.ResponseWriter, r *http.Request, userID uuid.UUID, modelSource string, modelRefStr string) {
+	modelRef, err := uuid.Parse(modelRefStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "PROXY_VALIDATION_ERROR", "invalid model_ref")
+		return
+	}
+
+	// Resolve credentials
+	var providerKind, providerModelName, endpointBaseURL, secretCipher string
+	if modelSource == "user_model" {
+		err = s.pool.QueryRow(r.Context(), `
+SELECT um.provider_kind, um.provider_model_name,
+       COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,'')
+FROM user_models um
+JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
+WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
+`, modelRef, userID).Scan(&providerKind, &providerModelName, &endpointBaseURL, &secretCipher)
+	} else if modelSource == "platform_model" {
+		err = s.pool.QueryRow(r.Context(), `
+SELECT provider_kind, provider_model_name, '', ''
+FROM platform_models
+WHERE platform_model_id=$1 AND status='active'
+`, modelRef).Scan(&providerKind, &providerModelName, &endpointBaseURL, &secretCipher)
+	} else {
+		writeError(w, http.StatusBadRequest, "PROXY_VALIDATION_ERROR", "invalid model_source")
+		return
+	}
+
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusNotFound, "PROXY_MODEL_NOT_FOUND", "model not found or inactive")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "PROXY_QUERY_FAILED", "failed to resolve model")
+		return
+	}
+
+	_ = providerKind
+	_ = providerModelName
+
+	secret := ""
+	if secretCipher != "" {
+		secret, err = s.decryptSecret(secretCipher)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "PROXY_DECRYPT_FAILED", "failed to decrypt secret")
+			return
+		}
+	}
+
+	// Build target URL: {base_url}/{target_path}
+	targetPath := chi.URLParam(r, "*")
+	if targetPath == "" {
+		writeError(w, http.StatusBadRequest, "PROXY_VALIDATION_ERROR", "target path required")
+		return
+	}
+	baseURL := strings.TrimRight(endpointBaseURL, "/")
+	targetURL := baseURL + "/" + targetPath
+
+	// Forward the request body as-is
+	proxyReq, err := http.NewRequestWithContext(r.Context(), r.Method, targetURL, r.Body)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "PROXY_REQUEST_FAILED", "failed to create proxy request")
+		return
+	}
+
+	// Copy content-type and content-length headers
+	if ct := r.Header.Get("Content-Type"); ct != "" {
+		proxyReq.Header.Set("Content-Type", ct)
+	}
+	if cl := r.Header.Get("Content-Length"); cl != "" {
+		proxyReq.Header.Set("Content-Length", cl)
+	}
+
+	// Set auth with decrypted provider API key
+	if secret != "" {
+		proxyReq.Header.Set("Authorization", "Bearer "+secret)
+	}
+
+	// Execute
+	resp, err := s.invokeClient.Do(proxyReq)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "PROXY_UPSTREAM_ERROR", "provider request failed: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	// Stream response back as-is (headers + body)
+	for key, vals := range resp.Header {
+		for _, val := range vals {
+			w.Header().Add(key, val)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
 }
 
 type errorBody struct {

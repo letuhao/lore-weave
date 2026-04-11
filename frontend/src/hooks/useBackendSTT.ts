@@ -19,6 +19,8 @@ export interface BackendSTTState {
 export interface BackendSTTOptions {
   lang?: string;
   model?: string;
+  /** user_model_id for provider-registry credential resolution */
+  modelRef?: string;
   silenceThresholdMs?: number;
   onSilenceDetected?: (text: string) => void;
   token?: string | null;
@@ -123,7 +125,14 @@ export function useBackendSTT(options: BackendSTTOptions = {}) {
         headers.Authorization = `Bearer ${optionsRef.current.token}`;
       }
 
-      const resp = await fetch('/v1/audio/transcriptions', {
+      // Route through provider-registry proxy for credential resolution
+      const params = new URLSearchParams({ model_source: 'user_model' });
+      if (optionsRef.current.modelRef) {
+        params.set('model_ref', optionsRef.current.modelRef);
+      }
+      const proxyUrl = `/v1/model-registry/proxy/v1/audio/transcriptions?${params}`;
+
+      const resp = await fetch(proxyUrl, {
         method: 'POST',
         headers,
         body: formData,

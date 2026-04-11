@@ -122,6 +122,7 @@ export function useVoiceMode({
   const backendSTT = useBackendSTT({
     lang: prefs.speechLang,
     model: prefs.sttModelRef || undefined,
+    modelRef: prefs.sttModelRef || undefined,
     silenceThresholdMs: useBackendSTTSource && prefs.autoSendOnSilence ? prefs.silenceThresholdMs : 0,
     onSilenceDetected: useBackendSTTSource ? onSilenceDetected : undefined,
     token: accessToken,
@@ -130,6 +131,7 @@ export function useVoiceMode({
   // Backend TTS (streaming from /v1/audio/speech)
   const streamingTTS = useStreamingTTS({
     model: prefs.ttsModelRef || undefined,
+    modelRef: prefs.ttsModelRef || undefined,
     voice: prefs.ttsVoiceURI || 'alloy',
     speed: prefs.ttsSpeed,
     token: accessToken,

@@ -21,8 +21,6 @@ export function configureGatewayApp(
     videoGenUrl: string;
     statisticsUrl: string;
     notificationUrl: string;
-    audioServiceUrl: string;
-    audioServiceApiKey: string;
   },
 ): void {
   app.enableCors({
@@ -103,25 +101,6 @@ export function configureGatewayApp(
     pathFilter: (pathname: string) => pathname.startsWith('/v1/notifications'),
   });
 
-  // Audio service proxy (TTS/STT) — optional, returns 503 if not configured
-  const audioServiceConfigured = !!urls.audioServiceUrl;
-  const audioServiceApiKey = urls.audioServiceApiKey || '';
-  const audioProxy = audioServiceConfigured
-    ? createProxyMiddleware({
-        target: urls.audioServiceUrl,
-        changeOrigin: true,
-        // Allow streaming audio responses (chunked transfer for TTS)
-        selfHandleResponse: false,
-        pathFilter: (pathname: string) => pathname.startsWith('/v1/audio'),
-        // Swap user JWT for the audio service's own API key
-        on: audioServiceApiKey ? {
-          proxyReq: (proxyReq) => {
-            proxyReq.setHeader('Authorization', `Bearer ${audioServiceApiKey}`);
-          },
-        } : undefined,
-      })
-    : null;
-
   const httpAdapter = app.getHttpAdapter();
   const instance = httpAdapter.getInstance();
   const authProxyFn = authProxy as unknown as (
@@ -189,12 +168,6 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
-  const audioProxyFn = audioProxy as unknown as ((
-    req: Request,
-    res: Response,
-    next: NextFunction,
-  ) => void) | null;
-
   instance.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account') || req.path.startsWith('/v1/me/preferences') || req.path.startsWith('/v1/users')) {
       return authProxyFn(req, res, next);
@@ -234,12 +207,6 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/notifications')) {
       return notificationProxyFn(req, res, next);
-    }
-    if (req.path.startsWith('/v1/audio')) {
-      if (!audioProxyFn) {
-        return res.status(503).json({ code: 'AUDIO_SERVICE_UNAVAILABLE', message: 'Audio service not configured. Set AUDIO_SERVICE_URL to enable TTS/STT.' });
-      }
-      return audioProxyFn(req, res, next);
     }
     return next();
   });
