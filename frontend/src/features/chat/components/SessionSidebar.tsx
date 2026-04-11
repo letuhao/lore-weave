@@ -130,7 +130,10 @@ function SessionItem({
 
       {/* Hover actions */}
       {!isEditing && (
-        <div className="mt-1 hidden items-center gap-1 group-hover:flex max-md:flex">
+        <div className={cn(
+          'mt-1 hidden items-center gap-1 group-hover:flex',
+          isActive && 'max-md:flex',
+        )}>
           <button
             title={session.is_pinned ? 'Unpin' : 'Pin'}
             onClick={(e) => { e.stopPropagation(); onTogglePin(); }}
