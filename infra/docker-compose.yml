@@ -93,6 +93,11 @@ services:
         condition: service_healthy
       mailhog:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     ports:
       - "8204:8081"
 
@@ -119,6 +124,11 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     ports:
       - "8205:8082"
 
@@ -138,6 +148,11 @@ services:
 
       book-service:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8083/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     ports:
       - "8206:8083"
 
@@ -159,6 +174,11 @@ services:
         condition: service_healthy
       sharing-service:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8084/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     ports:
       - "8207:8084"
 
@@ -178,6 +198,11 @@ services:
 
       usage-billing-service:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8085/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     ports:
       - "8208:8085"
 
@@ -194,6 +219,11 @@ services:
       postgres:
         condition: service_healthy
 
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8086/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     ports:
       - "8209:8086"
 
@@ -238,6 +268,11 @@ services:
         condition: service_healthy
       provider-registry-service:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8087/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     ports:
       - "8210:8087"
 
@@ -283,6 +318,11 @@ services:
 
       book-service:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8088/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     ports:
       - "8211:8088"
 
@@ -394,6 +434,11 @@ services:
         condition: service_healthy
       auth-service:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8089/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     ports:
       - "8214:8089"
 
@@ -409,6 +454,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8091/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     ports:
       - "8215:8091"
 
@@ -458,6 +508,11 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     ports:
       - "3123:3000"
 

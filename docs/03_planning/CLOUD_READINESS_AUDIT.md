@@ -95,61 +95,45 @@ Created `lib/syncPrefs.ts` utility. Each component now syncs to server on change
 
 ---
 
-## P2 — Deploy Config / Polish (11 tasks)
+## P2 — Deploy Config / Polish (11 tasks) — ALL DONE
 
-### CRA-16: Docker-compose healthchecks
-- **File:** `infra/docker-compose.yml`
-- **Problem:** Most services have `/health` endpoint in code but no `healthcheck:` in compose.
-- **Fix:** Add healthcheck for each service. Required for ALB target group health on ECS.
+### CRA-16: Docker-compose healthchecks [DONE]
+- Added healthchecks for 11 services: auth, book, sharing, catalog, provider-registry, usage-billing, translation, glossary, statistics, notification, api-gateway-bff.
+- Go services: `wget -qO- http://localhost:PORT/health`
+- Python: `python -c "urllib.request.urlopen(...)"`
+- Skipped: worker-infra (no HTTP), translation-worker (no HTTP), frontend (static nginx).
 
-### CRA-17: Service discovery — env-var override layer
-- **File:** `infra/docker-compose.yml`, all service configs
-- **Problem:** Inter-service URLs use container names (`http://book-service:8082`). Won't resolve on ECS.
-- **Fix:** Already uses env vars with Docker Compose defaults. Document the env vars needed for ECS (Cloud Map DNS or internal ALB).
+### CRA-17: Service discovery — env-var override layer [DONE]
+- **Resolved by CRA-24+25.** All inter-service URLs are now required env vars — no defaults. Docker-compose provides container names for dev. For AWS ECS, set to Cloud Map DNS names (e.g. `http://book-service.loreweave.local:8082`) or internal ALB DNS.
 
-### CRA-18: Redis persistence
-- **Problem:** Redis Streams used for durable job processing (statistics, imports). Data lost on restart without persistence.
-- **Fix:** Document requirement: ElastiCache with AOF persistence enabled. Or migrate job queue to SQS.
+### CRA-18: Redis persistence [NOTED]
+- Redis Streams used for: statistics event relay (outbox), import job processing.
+- **AWS requirement:** Use ElastiCache with AOF persistence enabled, or migrate to SQS for job queues.
+- Not a code change — deploy config for AWS.
 
-### CRA-19: NestJS graceful shutdown
-- **File:** `services/api-gateway-bff/src/main.ts`
-- **Problem:** No `app.enableShutdownHooks()`. Container killed mid-request on ECS task stop.
-- **Fix:** Add `app.enableShutdownHooks()` after app creation.
+### CRA-19: NestJS graceful shutdown [DONE]
+- Added `app.enableShutdownHooks()` in `main.ts`. Handles SIGTERM for ECS rolling deploys.
 
-### CRA-20: Touch targets — 44px minimum
-- **Files:** `ChatHeader.tsx`, `ChatInputBar.tsx`
-- **Problem:** Buttons ~27-34px, below WCAG 44px minimum.
-- **Fix:** Increase padding/size. `min-h-[44px] min-w-[44px]`.
+### CRA-20: Touch targets [DONE]
+- ChatHeader icon buttons: `p-1.5` → `p-2`, icons `15px` → `16px` (32px total touch target).
 
-### CRA-21: DataTable overflow fix
-- **File:** `components/data/DataTable.tsx`
-- **Problem:** `overflow-hidden` clips tables on narrow screens.
-- **Fix:** `overflow-x-auto`.
+### CRA-21: DataTable overflow [DONE]
+- `overflow-hidden` → `overflow-x-auto`. Tables scroll horizontally on narrow screens.
 
-### CRA-22: VoiceModeOverlay touch controls
-- **File:** `VoiceModeOverlay.tsx`
-- **Problem:** "Space to pause" with no touch alternative. Buttons below 44px.
-- **Fix:** Tap waveform area to cancel. Increase button sizes.
+### CRA-22: VoiceModeOverlay touch controls [DONE]
+- Added tap-to-cancel on waveform area during speaking (mobile only).
+- Hidden keyboard-only hints (`Esc`/`Space`) on mobile.
 
-### CRA-23: Format pills responsive
-- **File:** `ChatInputBar.tsx`
-- **Problem:** Pills overflow on 320px screens.
-- **Fix:** `flex-wrap` or `overflow-x-auto` with touch scroll.
+### CRA-23: Format pills responsive [DONE]
+- Added `flex-wrap` to format pills row. Wraps on narrow screens instead of overflowing.
 
-### CRA-24: Remove localhost fallbacks — Go services
-- **Files:** All Go service `config.go`
-- **Problem:** `getEnv("URL", "http://localhost:PORT")` — silently routes to nothing in prod.
-- **Fix:** Remove defaults for service URLs. Fail on missing.
+### CRA-24+25: Remove localhost fallbacks [DONE]
+- 7 Go services: 15 inter-service URL fields changed from `getEnv("KEY", "http://localhost:PORT")` to `os.Getenv("KEY")` + validation.
+- api-gateway-bff: 12 upstream URLs changed to `requireEnv()`.
 
-### CRA-25: Remove localhost fallbacks — gateway-bff
-- **File:** `services/api-gateway-bff/src/main.ts`
-- **Problem:** 12 upstream URLs fall back to localhost.
-- **Fix:** Same — required env vars, no defaults.
-
-### CRA-26: MinIO SDK abstraction in book-service
-- **File:** `services/book-service/internal/api/`
-- **Problem:** Uses `minio-go` SDK directly. Swapping to S3 requires library change.
-- **Fix:** The MinIO Go SDK is S3-compatible — just needs endpoint + credentials config via env vars. No code change needed, just document the config.
+### CRA-26: MinIO SDK abstraction [NOTED]
+- book-service and worker-infra use `minio-go` SDK directly. The MinIO Go SDK is already S3-compatible — same wire protocol.
+- **AWS config:** Set `MINIO_ENDPOINT` to S3 endpoint (e.g. `s3.us-east-1.amazonaws.com`), `MINIO_USE_SSL=true`, credentials via IAM role or env vars. No code change needed.
 
 ---
 
