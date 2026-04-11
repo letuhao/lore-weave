@@ -95,6 +95,18 @@ class TestSendVoiceMessage:
         assert "invalid config" in resp.json()["detail"]
 
     @pytest.mark.asyncio
+    async def test_wrong_content_type_returns_400(self, client, mock_pool):
+        mock_pool.fetchrow.return_value = make_session_record()
+
+        resp = await client.post(
+            f"/v1/chat/sessions/{TEST_SESSION_ID}/voice-message",
+            files={"audio": ("photo.jpg", b"\xff\xd8" * 50, "image/jpeg")},
+            data={"config": "{}"},
+        )
+        assert resp.status_code == 400
+        assert "unsupported content type" in resp.json()["detail"]
+
+    @pytest.mark.asyncio
     async def test_oversized_audio_returns_413(self, client, mock_pool):
         mock_pool.fetchrow.return_value = make_session_record()
 

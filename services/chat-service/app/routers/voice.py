@@ -43,12 +43,15 @@ async def send_voice_message(
     if session["status"] == "archived":
         raise HTTPException(status_code=409, detail="session is archived")
 
-    # Read audio file
+    # Read and validate audio file
     audio_bytes = await audio.read()
     if len(audio_bytes) > _MAX_AUDIO_SIZE:
         raise HTTPException(status_code=413, detail="audio file too large (max 10MB)")
     if len(audio_bytes) == 0:
         raise HTTPException(status_code=400, detail="audio file is empty")
+    ct = (audio.content_type or "").lower()
+    if ct and not ct.startswith("audio/") and ct != "application/octet-stream":
+        raise HTTPException(status_code=400, detail=f"unsupported content type: {ct}")
 
     # Resolve provider credentials (same as send_message)
     model_source = session["model_source"]
@@ -57,8 +60,8 @@ async def send_voice_message(
         creds = await get_provider_client().resolve(model_source, model_ref, user_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"credential resolution failed: {exc}")
+    except Exception:
+        raise HTTPException(status_code=502, detail="credential resolution failed")
 
     billing = get_billing_client()
 
