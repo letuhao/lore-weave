@@ -1863,12 +1863,31 @@ func (s *Server) verifySTT(ctx context.Context, baseURL, secret, modelName strin
 }
 
 // verifyTTS sends a short text to the TTS endpoint and checks for audio bytes.
+// Fetches /v1/voices first to pick a valid voice name (avoids hardcoding "alloy").
 func (s *Server) verifyTTS(ctx context.Context, baseURL, secret, modelName string) map[string]any {
 	base := strings.TrimRight(baseURL, "/")
 
+	// Try to fetch the first available voice
+	voiceName := "alloy" // fallback
+	voiceReq, _ := http.NewRequestWithContext(ctx, "GET", base+"/v1/voices", nil)
+	if secret != "" {
+		voiceReq.Header.Set("Authorization", "Bearer "+secret)
+	}
+	if voiceResp, err := s.client.Do(voiceReq); err == nil {
+		defer voiceResp.Body.Close()
+		var voiceData struct {
+			Voices []struct {
+				VoiceID string `json:"voice_id"`
+			} `json:"voices"`
+		}
+		if voiceBody, _ := io.ReadAll(voiceResp.Body); json.Unmarshal(voiceBody, &voiceData) == nil && len(voiceData.Voices) > 0 {
+			voiceName = voiceData.Voices[0].VoiceID
+		}
+	}
+
 	payload, _ := json.Marshal(map[string]any{
 		"model":           modelName,
-		"voice":           "alloy",
+		"voice":           voiceName,
 		"input":           "Hello",
 		"response_format": "wav",
 	})
