@@ -105,8 +105,18 @@ export function VoiceModeOverlay({
             )} />
           </div>
 
-          {/* Waveform */}
-          <WaveformVisualizer active={isListening} />
+          {/* Waveform — tap to cancel during speaking (mobile) */}
+          <div
+            onClick={phase === 'speaking' ? onPause : undefined}
+            className={phase === 'speaking' ? 'cursor-pointer' : ''}
+            role={phase === 'speaking' ? 'button' : undefined}
+            aria-label={phase === 'speaking' ? 'Tap to stop' : undefined}
+          >
+            <WaveformVisualizer active={isListening} />
+            {phase === 'speaking' && (
+              <p className="mt-1 text-[10px] text-white/30 md:hidden">Tap to stop</p>
+            )}
+          </div>
 
           {/* Phase label */}
           <p aria-live="polite" className={cn('text-sm font-medium', config.color)}>
@@ -206,7 +216,7 @@ export function VoiceModeOverlay({
         )}
 
         {/* Keyboard hints */}
-        <p className="text-[10px] text-white/20">
+        <p className="hidden text-[10px] text-white/20 md:block">
           Esc to exit &middot; Space to pause/resume
         </p>
       </div>

@@ -18,7 +18,7 @@ interface DataTableProps<T> {
 
 export function DataTable<T>({ columns, data, rowKey, onRowClick, className }: DataTableProps<T>) {
   return (
-    <div className={cn('overflow-hidden rounded-lg border', className)}>
+    <div className={cn('overflow-x-auto rounded-lg border', className)}>
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b bg-muted/30">

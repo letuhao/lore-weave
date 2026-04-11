@@ -60,13 +60,13 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
             aria-label="Voice Mode"
             aria-pressed={isVoiceModeActive}
             className={cn(
-              'rounded-md p-1.5 transition-colors',
+              'rounded-md p-2 transition-colors',
               isVoiceModeActive
                 ? 'bg-primary/10 text-primary'
                 : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
             )}
           >
-            <Mic className="h-[15px] w-[15px]" />
+            <Mic className="h-4 w-4" />
           </button>
         )}
         {onOpenVoiceSettings && session.status !== 'archived' && (
@@ -74,27 +74,27 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
             type="button"
             onClick={onOpenVoiceSettings}
             title="Voice Settings"
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+            className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           >
-            <SlidersHorizontal className="h-[15px] w-[15px]" />
+            <SlidersHorizontal className="h-4 w-4" />
           </button>
         )}
         <button
           type="button"
           onClick={() => handleExport('markdown')}
           title="Export"
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
         >
-          <Download className="h-[15px] w-[15px]" />
+          <Download className="h-4 w-4" />
         </button>
         {onRename && (
           <button
             type="button"
             onClick={onRename}
             title="Rename"
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+            className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           >
-            <Pencil className="h-[15px] w-[15px]" />
+            <Pencil className="h-4 w-4" />
           </button>
         )}
         {onOpenSettings && (
@@ -102,9 +102,9 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
             type="button"
             onClick={onOpenSettings}
             title="Session Settings"
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+            className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           >
-            <Settings className="h-[15px] w-[15px]" />
+            <Settings className="h-4 w-4" />
           </button>
         )}
       </div>

@@ -21,6 +21,7 @@ async function bootstrap() {
   const notificationUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:8091';
   configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl, glossaryUrl, chatUrl, videoGenUrl, statisticsUrl, notificationUrl });
 
+  app.enableShutdownHooks();
   const port = parseInt(process.env.PORT || '3000', 10);
   await app.listen(port);
   console.log(

@@ -113,7 +113,7 @@ export function ChatInputBar({
     <div className="shrink-0 border-t border-border bg-card px-8 py-4">
       <div className="mx-auto max-w-full px-4 md:max-w-[720px] 2xl:max-w-[900px]">
         {/* Format pills */}
-        <div className="mb-1.5 flex items-center gap-1.5">
+        <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
           <span className="text-[10px] text-muted-foreground">Format:</span>
           {['Auto', 'Concise', 'Detailed', 'Bullets', 'Table'].map((fmt) => (
             <button
