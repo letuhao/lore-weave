@@ -5,6 +5,7 @@ import { useAppTheme, useReaderTheme, APP_THEMES, type AppTheme } from '@/provid
 import { useAuth } from '@/auth';
 import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
 import { cn } from '@/lib/utils';
+import { syncPrefsToServer } from '@/lib/syncPrefs';
 
 type MediaPrefs = {
   ttsModelId: string;
@@ -28,8 +29,9 @@ function loadMediaPrefs(): MediaPrefs {
     return { ...DEFAULT_MEDIA_PREFS, ...JSON.parse(localStorage.getItem(MEDIA_PREFS_KEY) || '{}') };
   } catch { return DEFAULT_MEDIA_PREFS; }
 }
-function saveMediaPrefs(prefs: MediaPrefs) {
+function saveMediaPrefs(prefs: MediaPrefs, token?: string | null) {
   localStorage.setItem(MEDIA_PREFS_KEY, JSON.stringify(prefs));
+  syncPrefsToServer('media_prefs', prefs, token);
 }
 
 const VOICE_OPTIONS = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
@@ -83,7 +85,7 @@ export function ReadingTab() {
   const updateMediaPref = (key: keyof MediaPrefs, value: string) => {
     const next = { ...mediaPrefs, [key]: value };
     setMediaPrefs(next);
-    saveMediaPrefs(next);
+    saveMediaPrefs(next, accessToken);
   };
 
   return (

@@ -1,4 +1,7 @@
+import { syncPrefsToServer, loadPrefFromServer } from '@/lib/syncPrefs';
+
 const STORAGE_KEY = 'lw_voice_prefs';
+const SERVER_KEY = 'voice_prefs';
 
 export type STTSource = 'browser' | 'ai_model';
 export type TTSSource = 'browser' | 'ai_model';
@@ -52,6 +55,17 @@ export function loadVoicePrefs(): VoicePrefs {
   }
 }
 
-export function saveVoicePrefs(prefs: VoicePrefs): void {
+export function saveVoicePrefs(prefs: VoicePrefs, token?: string | null): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
+  syncPrefsToServer(SERVER_KEY, prefs, token);
+}
+
+export async function loadVoicePrefsFromServer(token: string | null | undefined): Promise<VoicePrefs> {
+  const server = await loadPrefFromServer<Partial<VoicePrefs>>(SERVER_KEY, token);
+  if (server) {
+    const merged = { ...DEFAULT_VOICE_PREFS, ...server };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+    return merged;
+  }
+  return loadVoicePrefs();
 }

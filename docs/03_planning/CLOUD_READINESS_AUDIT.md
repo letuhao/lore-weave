@@ -56,15 +56,17 @@ LoreWeave is moving from Docker Compose development to AWS cloud production depl
 
 All 5 share the same pattern — the existing `ThemeProvider` already syncs to `/v1/me/preferences`. These keys need the same treatment: read from server on login, write-through on change, localStorage as fast cache.
 
-| Task | Key | File | Data |
-|------|-----|------|------|
-| CRA-06 | `lw_tts_prefs` | `components/reader/TTSSettings.tsx` | TTS voice, speed, model |
-| CRA-07 | `lw_voice_prefs` | `features/chat/voicePrefs.ts` | Chat STT/TTS model selection |
-| CRA-08 | `lw_language` | `features/settings/LanguageTab.tsx` | UI language |
-| CRA-09 | `loreweave:media-prefs` | `features/settings/ReadingTab.tsx` | Image/video generation model IDs |
-| CRA-10 | `lw_reader_theme` | `providers/ReaderThemeProvider.tsx` | Reader theme overrides (migrate into ThemeProvider) |
+### CRA-06..10: Sync localStorage preferences to server [DONE]
 
-**Server endpoint:** `/v1/me/preferences` already exists. Add new preference keys to the schema.
+Created `lib/syncPrefs.ts` utility. Each component now syncs to server on change via `PATCH /v1/me/preferences` (same pattern as ThemeProvider). localStorage remains as fast cache.
+
+| Task | Server key | File | Status |
+|------|-----------|------|--------|
+| CRA-06 | `tts_prefs` | `components/reader/TTSSettings.tsx` | Done |
+| CRA-07 | `voice_prefs` | `features/chat/voicePrefs.ts` | Done |
+| CRA-08 | `ui_language` | `features/settings/LanguageTab.tsx` | Done |
+| CRA-09 | `media_prefs` | `features/settings/ReadingTab.tsx` | Done |
+| CRA-10 | — | `providers/ReaderThemeProvider.tsx` | N/A — dead code, ThemeProvider already syncs reader theme |
 
 ### CRA-11: DB connection pool tuning — Go services
 - **Files:** All Go service `config.go` / `main.go` files

@@ -5,9 +5,11 @@ import { BrowserTTSEngine } from '@/hooks/engines/BrowserTTSEngine';
 import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
 import { useAuth } from '@/auth';
 import { cn } from '@/lib/utils';
+import { syncPrefsToServer } from '@/lib/syncPrefs';
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const LS_KEY = 'lw_tts_prefs';
+const SERVER_KEY = 'tts_prefs';
 
 export interface TTSPrefs {
   speed: number;
@@ -28,8 +30,9 @@ function loadPrefs(): TTSPrefs {
   return defaultPrefs;
 }
 
-function savePrefs(prefs: TTSPrefs) {
+function savePrefs(prefs: TTSPrefs, token?: string | null) {
   localStorage.setItem(LS_KEY, JSON.stringify(prefs));
+  syncPrefsToServer(SERVER_KEY, prefs, token);
 }
 
 const defaultPrefs: TTSPrefs = {
@@ -85,7 +88,7 @@ export function TTSSettings({ open, onClose }: TTSSettingsProps) {
   const updatePref = <K extends keyof TTSPrefs>(key: K, value: TTSPrefs[K]) => {
     const next = { ...prefs, [key]: value };
     setPrefs(next);
-    savePrefs(next);
+    savePrefs(next, accessToken);
 
     if (key === 'speed') controls.setSpeed(value as number);
     if (key === 'voiceURI') {

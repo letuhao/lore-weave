@@ -116,7 +116,7 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
   const update = <K extends keyof VoicePrefs>(key: K, value: VoicePrefs[K]) => {
     setPrefs((prev) => {
       const next = { ...prev, [key]: value };
-      saveVoicePrefs(next);
+      saveVoicePrefs(next, accessToken);
       return next;
     });
   };
@@ -374,7 +374,7 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
         <button
           onClick={() => {
             setPrefs({ ...DEFAULT_VOICE_PREFS });
-            saveVoicePrefs(DEFAULT_VOICE_PREFS);
+            saveVoicePrefs(DEFAULT_VOICE_PREFS, accessToken);
           }}
           className="w-full rounded-md border py-1.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
         >

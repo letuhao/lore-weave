@@ -1,6 +1,8 @@
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/auth';
+import { syncPrefsToServer } from '@/lib/syncPrefs';
 
 const GUI_LANGUAGES = [
   { code: 'en', label: 'English', native: 'English' },
@@ -11,11 +13,13 @@ const GUI_LANGUAGES = [
 
 export function LanguageTab() {
   const { i18n } = useTranslation();
+  const { accessToken } = useAuth();
   const current = i18n.language;
 
   function handleChange(code: string) {
     i18n.changeLanguage(code);
     localStorage.setItem('lw_language', code);
+    syncPrefsToServer('ui_language', code, accessToken);
     toast.success(`Language changed to ${GUI_LANGUAGES.find((l) => l.code === code)?.native ?? code}`);
   }
 
