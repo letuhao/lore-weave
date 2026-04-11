@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-12 (session 32 end — V2 redesign + Cloud Readiness Audit COMPLETE)
-- Updated By: Assistant (21 commits: V2 redesign, CRA 26/26 tasks + reviews)
+- Last Updated: 2026-04-12 (session 32 — V2 redesign + CRA complete + V2 Phase A backend)
+- Updated By: Assistant (30+ commits: V2 redesign, CRA 26/26, VP2 Phase A backend 6/6 tasks)
 - Active Branch: `main`
-- HEAD: `e1851d9` (CRA-16..26 review fix)
+- HEAD: `5f59329` (VP2-04 review fix)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
 
 ---
@@ -37,7 +37,7 @@
 
 **Glossary Extraction Pipeline: FULLY COMPLETE (BE + FE + TESTED).** 13 BE tasks + 7 FE tasks + 49 integration test assertions + browser smoke test. Tested with real Qwen 3.5 9B model via LM Studio. 90 entities extracted from 5 chapters.
 
-**Voice Pipeline V2: DESIGN COMPLETE (v2.2 — chat-service integration).** Architecture redesigned in session 32. Implementation NOT started — next priority after CRA.
+**Voice Pipeline V2: PHASE A BACKEND COMPLETE (6/43 tasks).** Architecture v2.2 (chat-service integration). Phase A backend implemented: migration, TextNormalizer (24 tests), SentenceBuffer (31 tests), voice_stream_response() pipeline, POST /voice-message endpoint (7 tests). 133 total chat-service tests pass (including 14 pre-existing failures fixed). Next: Phase A frontend (VP2-06..11).
 
 **Cloud Readiness Audit: COMPLETE (26/26 tasks).** All P0+P1+P2 tasks implemented + reviewed. 21 commits across 12 Go services, 2 Python services, 1 NestJS gateway, 8 frontend components, docker-compose.
 
@@ -63,9 +63,24 @@
 
 Each task followed: PLAN → BUILD → TEST → REVIEW → COMMIT → REVIEW IMPLEMENTATION ISSUES → FIX.
 
+**Part 4 — Voice Pipeline V2 Phase A backend (6 tasks, 10 commits):**
+
+| Task | Commit | Tests | Summary |
+|------|--------|-------|---------|
+| VP2-12 | `6dd0461` | — | `message_audio_segments` table migration |
+| VP2-01 | `59bddab`, `3c02c9c` | 24 | TextNormalizer (markdown/code/emoji stripping + review fixes) |
+| VP2-02 | `5af56ea`, `b4de4ef` | 31 | SentenceBuffer (sentence + clause + CJK + review fixes) |
+| VP2-03 | `e0ad004`, `145a10a` | — | `voice_stream_response()` core pipeline + review fixes |
+| VP2-05 | (in VP2-03) | — | Voice system prompt injection (Layer 0) |
+| VP2-04 | `f29a811`, `5f59329` | 7 | `POST /voice-message` endpoint + review fixes |
+| Test fixes | `324e70a` | +71 | Fixed 14 pre-existing test failures |
+
+133 chat-service tests pass (0 failures).
+
 | Work item | Files | Status |
 | --------- | ----- | ------ |
-| V2 architecture doc | `VOICE_PIPELINE_V2.md` | Design complete (43 tasks, not started) |
+| V2 architecture doc | `VOICE_PIPELINE_V2.md` | Design complete (43 tasks) |
+| V2 Phase A backend | `voice_stream_service.py`, `voice.py`, `text_normalizer.py`, `sentence_buffer.py`, `migrate.py` | 6/43 tasks done |
 | Cloud readiness audit doc | `CLOUD_READINESS_AUDIT.md` | 26/26 tasks complete |
 | Hosting direction | Memory | Cloud (AWS), multi-device |
 
@@ -74,7 +89,7 @@ Each task followed: PLAN → BUILD → TEST → REVIEW → COMMIT → REVIEW IMP
 - All user preferences sync to server (DB), localStorage is cache only
 - No platform lock-in (Vercel Workflow rejected)
 - All services fail-fast on missing required env vars (no silent defaults)
-- Voice Pipeline V2 is next priority
+- Voice Pipeline V2 Phase A backend complete — next: Phase A frontend (VP2-06..11)
 
 **What was done in previous session (2026-04-10→11, session 31):**
 
