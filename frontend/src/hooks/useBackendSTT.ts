@@ -121,8 +121,8 @@ export function useBackendSTT(options: BackendSTTOptions = {}) {
       : '.webm';
 
     const audioSizeKB = (blob.size / 1024).toFixed(1);
-    console.log(`[STT] Sending ${audioSizeKB}KB audio (${mimeTypeRef.current}) to STT...`);
-    const sttStartTime = performance.now();
+    const t0 = performance.now();
+    let t1 = t0;
 
     setState((prev) => ({ ...prev, interimTranscript: `Transcribing (${audioSizeKB}KB)...` }));
 
@@ -131,7 +131,6 @@ export function useBackendSTT(options: BackendSTTOptions = {}) {
       formData.append('file', blob, `recording${ext}`);
       formData.append('model', optionsRef.current.model || 'whisper-1');
       if (optionsRef.current.lang) {
-        // STT services expect ISO-639-1 (e.g., "en"), not locale (e.g., "en-US")
         const lang = optionsRef.current.lang.split('-')[0];
         formData.append('language', lang);
       }
@@ -141,30 +140,35 @@ export function useBackendSTT(options: BackendSTTOptions = {}) {
         headers.Authorization = `Bearer ${optionsRef.current.token}`;
       }
 
-      // Route through provider-registry proxy for credential resolution
       const params = new URLSearchParams({ model_source: 'user_model' });
       if (optionsRef.current.modelRef) {
         params.set('model_ref', optionsRef.current.modelRef);
       }
       const proxyUrl = `/v1/model-registry/proxy/v1/audio/transcriptions?${params}`;
 
+      t1 = performance.now();
+      console.log(`[STT] Sending ${audioSizeKB}KB audio — prep took ${(t1 - t0).toFixed(0)}ms`);
+
       const resp = await fetch(proxyUrl, {
         method: 'POST',
         headers,
         body: formData,
       });
+      const t2 = performance.now();
+      console.log(`[STT] Fetch completed in ${(t2 - t1).toFixed(0)}ms (HTTP ${resp.status})`);
 
       if (!resp.ok) {
         const detail = await resp.text().catch(() => resp.statusText);
         throw new Error(`STT failed: ${resp.status} ${detail}`);
       }
 
+      const t3 = performance.now();
       const data = await resp.json();
       const text = data.text || '';
-      const sttDurationMs = performance.now() - sttStartTime;
-      const audioKB = blob.size / 1024;
-      console.log(`[STT] Done in ${sttDurationMs.toFixed(0)}ms — "${text.slice(0, 80)}${text.length > 80 ? '...' : ''}"`);
-      optionsRef.current.onMetrics?.(audioKB, sttDurationMs);
+      const totalMs = t3 - t0;
+      const fetchMs = t3 - t1;
+      console.log(`[STT] Done — total ${totalMs.toFixed(0)}ms (fetch ${fetchMs.toFixed(0)}ms) — "${text.slice(0, 80)}${text.length > 80 ? '...' : ''}"`);
+      optionsRef.current.onMetrics?.(blob.size / 1024, totalMs);
 
       setState((prev) => ({
         ...prev,
