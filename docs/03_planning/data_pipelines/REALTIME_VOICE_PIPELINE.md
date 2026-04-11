@@ -88,22 +88,31 @@ LOOP:
 CONCURRENT:
   1. Send finalized transcript to LLM via SSE stream
   2. Initialize SentenceBuffer (empty)
-  3. Initialize TTSQueue (FIFO)
+  3. Initialize TTSQueue (FIFO, max 2 concurrent TTS requests)
   
-  FOR EACH LLM token:
-    a. Append token to SentenceBuffer
-    b. Check for sentence boundary:
+  FOR EACH LLM delta (via onStreamDelta callback):
+    a. SKIP if delta type is 'reasoning' (thinking tokens)
+    b. ONLY process deltas with type 'content'
+    c. Append token to SentenceBuffer
+    d. Check for sentence boundary:
        - Boundaries: . ! ? 。！？ \n (and ." !" ?" for quoted speech)
        - Minimum sentence length: 10 chars (avoid single-word fragments)
-    c. If boundary detected:
+       - Short sentence timeout: if <10 chars, wait 500ms for more tokens
+       - Long sentence force-split: if >300 chars with no boundary, split at nearest comma/space
+    e. If boundary detected:
        - Extract completed sentence from buffer
-       - Submit sentence to TTS (async, non-blocking)
+       - Submit sentence to TTS concurrency pool (max 2 in-flight)
        - TTS result goes into TTSQueue
        - If first sentence: transition to SPEAKING as soon as audio ready
   
   4. On LLM stream complete:
-     - Flush remaining buffer to TTS (last partial sentence)
+     - Flush remaining buffer to TTS (regardless of length)
      - Mark queue as "no more items coming"
+  
+  5. On TTS failure for a sentence:
+     - Log warning, skip failed sentence
+     - Continue with next sentence in queue (no retry, no fallback voice)
+     - Text is still visible in UI — user can read what they missed
 ```
 
 ### 3.3 Phase: Speaking (Concurrent TTS Playback)
@@ -112,16 +121,25 @@ CONCURRENT:
 CONCURRENT WITH PROCESSING:
   1. TTSQueue consumer:
      - Take next audio chunk from queue
-     - Play via AudioContext (schedule at end of previous chunk)
+     - Add 50-100ms silence pad between sentences (masks prosody jumps)
+     - Play via AudioContext (schedule at end of previous chunk + pad)
      - Track playback position for interruption
   
-  2. Barge-in detection:
+  2. Barge-in detection (with echo prevention):
      - Keep VAD active during playback (but don't send to STT yet)
-     - If user speaks (volume > barge_threshold for > 200ms):
+     - Echo prevention measures:
+       a. Browser AEC: getUserMedia({ audio: { echoCancellation: true } })
+          (already enabled — handles most speaker-to-mic bleed)
+       b. Raised threshold: barge_threshold = 3-4x normal VAD threshold
+          (speaker at 30cm ≈ 40-60dB, speech at mic ≈ 70-80dB)
+       c. Cooldown: ignore VAD triggers for 300ms after each audio chunk ends
+          (catches reverb/echo tail)
+     - If user speaks (volume > barge_threshold for > 200ms, past cooldown):
        a. Stop current TTS playback immediately
-       b. Cancel remaining TTS requests in queue
+       b. Abort all in-flight TTS requests (AbortController per slot)
        c. Cancel LLM generation (abort SSE stream)
-       d. Transition to LISTENING (user's speech becomes next turn)
+       d. Clear TTSQueue
+       e. Transition to LISTENING (user's speech becomes next turn)
   
   3. On queue empty + all audio played:
      - Transition to LISTENING
@@ -189,23 +207,21 @@ Client                          STT Service (HTTP POST)
 **Latency:** Recording time + STT processing (1-17s depending on model/length)
 **Optimization:** Use smaller Whisper model (tiny/base) for faster transcription
 
-### 4.3 Option C: Browser STT + Server STT Hybrid (Recommended MVP)
+### 4.3 Recommended MVP: Single Source (User Choice)
 
-```
-Browser Web Speech API          Server Whisper (background)
-  │                                    │
-  │ ◀── instant partial ──            │
-  │ ◀── instant final ────            │ (used for real-time display + send)
-  │                                    │
-  │ ──── same audio (async) ──────▶   │
-  │                         ◀────── higher-accuracy transcript
-  │                                    │ (used for history correction)
-```
+The user picks ONE STT source in Voice Settings — no hybrid complexity:
 
-**Best of both worlds:**
-- Browser STT for instant response (drive the conversation loop)
-- Server Whisper runs in background for higher accuracy transcription
-- Correct the chat history after Whisper returns (if different from browser)
+| Setting | Use case | Latency | Accuracy |
+|---------|----------|---------|----------|
+| **Browser** (Web Speech API) | Conversation practice, fast turns | ~100ms | Good (Google ASR) |
+| **AI Model** (Whisper via provider) | Accurate transcription, accented speech | 1-17s | Excellent |
+
+**Rationale:** Hybrid STT (browser + Whisper in parallel) was considered but rejected:
+- Browser Web Speech API doesn't expose raw audio — can't send same audio to Whisper
+- Running MediaRecorder alongside browser STT means two audio captures
+- Complexity doesn't justify the benefit for MVP
+
+**Future option (Phase C):** Post-hoc accuracy correction — record audio via MediaRecorder during browser STT, send to Whisper after the turn, update chat history if transcript differs. This is a background optimization, not part of the real-time loop.
 
 ---
 
@@ -217,17 +233,31 @@ Browser Web Speech API          Server Whisper (background)
 class SentenceBuffer {
   private buffer = '';
   private onSentence: (sentence: string) => void;
+  private shortTimer: ReturnType<typeof setTimeout> | null = null;
+  private streamComplete = false;
   
   // Sentence-ending patterns
   private BOUNDARIES = /([.!?。！？\n][\s"'」）)]*)/;
-  private MIN_LENGTH = 10; // Avoid fragments like "Hi."
+  private MIN_LENGTH = 10;         // Avoid fragments
+  private MAX_LENGTH = 300;        // Force-split long sentences
+  private SHORT_TIMEOUT_MS = 500;  // Flush short sentences after timeout
   
   addToken(token: string) {
     this.buffer += token;
+    this.clearShortTimer();
     this.tryFlush();
   }
   
   private tryFlush() {
+    // Force-split very long sentences (no boundary found)
+    if (this.buffer.length > this.MAX_LENGTH) {
+      const splitAt = this.findSplitPoint(this.buffer, this.MAX_LENGTH);
+      const chunk = this.buffer.slice(0, splitAt).trim();
+      this.buffer = this.buffer.slice(splitAt);
+      if (chunk) this.onSentence(chunk);
+      return;
+    }
+    
     const match = this.buffer.match(this.BOUNDARIES);
     if (!match) return;
     
@@ -235,21 +265,59 @@ class SentenceBuffer {
     const sentence = this.buffer.slice(0, boundaryIndex).trim();
     this.buffer = this.buffer.slice(boundaryIndex);
     
-    if (sentence.length >= this.MIN_LENGTH) {
+    if (sentence.length >= this.MIN_LENGTH || this.streamComplete) {
       this.onSentence(sentence);
     } else {
-      // Too short — keep accumulating
-      this.buffer = sentence + this.buffer;
+      // Short sentence — wait for more tokens or timeout
+      this.buffer = sentence + ' ' + this.buffer;
+      this.shortTimer = setTimeout(() => {
+        // No more tokens arrived — flush what we have
+        const pending = this.buffer.trim();
+        if (pending) {
+          this.onSentence(pending);
+          this.buffer = '';
+        }
+      }, this.SHORT_TIMEOUT_MS);
     }
   }
   
+  /** Find a natural split point (comma, space) near maxLen */
+  private findSplitPoint(text: string, maxLen: number): number {
+    // Try comma first
+    const commaIdx = text.lastIndexOf(',', maxLen);
+    if (commaIdx > maxLen * 0.5) return commaIdx + 1;
+    // Fall back to space
+    const spaceIdx = text.lastIndexOf(' ', maxLen);
+    if (spaceIdx > maxLen * 0.5) return spaceIdx + 1;
+    // Hard split
+    return maxLen;
+  }
+  
+  markStreamComplete() {
+    this.streamComplete = true;
+    this.flush();
+  }
+  
   flush() {
-    // Called when LLM stream ends — send remaining text
+    this.clearShortTimer();
     const remaining = this.buffer.trim();
     if (remaining.length > 0) {
       this.onSentence(remaining);
     }
     this.buffer = '';
+  }
+  
+  cancel() {
+    this.clearShortTimer();
+    this.buffer = '';
+    this.streamComplete = false;
+  }
+  
+  private clearShortTimer() {
+    if (this.shortTimer) {
+      clearTimeout(this.shortTimer);
+      this.shortTimer = null;
+    }
   }
 }
 ```
@@ -294,13 +362,17 @@ Prefetch depth: 2 sentences ahead
   - When Sentence 1 ends, Sentence 2 starts instantly (no gap)
 ```
 
-### 6.3 AudioContext Scheduling
+### 6.3 AudioContext Scheduling + Silence Padding
 
 ```typescript
 class TTSPlaybackQueue {
   private audioCtx: AudioContext;
   private nextStartTime: number;
   private sources: AudioBufferSourceNode[] = [];
+  private SENTENCE_PAD_MS = 80; // Silence between sentences (masks prosody jumps)
+  private onAllPlayed?: () => void;
+  private pendingCount = 0;
+  private closed = false; // No more items coming
   
   async enqueue(audioData: ArrayBuffer) {
     const buffer = await this.audioCtx.decodeAudioData(audioData);
@@ -308,12 +380,29 @@ class TTSPlaybackQueue {
     source.buffer = buffer;
     source.connect(this.audioCtx.destination);
     
-    // Schedule at end of previous audio (gapless playback)
-    const startTime = Math.max(this.nextStartTime, this.audioCtx.currentTime);
+    // Schedule at end of previous audio + silence pad
+    const padSeconds = this.SENTENCE_PAD_MS / 1000;
+    const startTime = Math.max(this.nextStartTime + padSeconds, this.audioCtx.currentTime);
     source.start(startTime);
     this.nextStartTime = startTime + buffer.duration;
     
+    this.pendingCount++;
+    source.onended = () => {
+      this.pendingCount--;
+      if (this.pendingCount === 0 && this.closed) {
+        this.onAllPlayed?.();
+      }
+    };
+    
     this.sources.push(source);
+  }
+  
+  /** Mark that no more items will be enqueued */
+  close() {
+    this.closed = true;
+    if (this.pendingCount === 0) {
+      this.onAllPlayed?.();
+    }
   }
   
   cancelAll() {
@@ -321,7 +410,66 @@ class TTSPlaybackQueue {
       try { source.stop(); } catch {}
     }
     this.sources = [];
+    this.pendingCount = 0;
+    this.closed = false;
     this.nextStartTime = this.audioCtx.currentTime;
+  }
+}
+```
+
+### 6.4 TTS Concurrency Pool
+
+```typescript
+class TTSConcurrencyPool {
+  private maxConcurrent = 2;
+  private inFlight = 0;
+  private queue: Array<{ text: string; resolve: (audio: ArrayBuffer) => void; reject: (err: Error) => void }> = [];
+  private abortControllers: AbortController[] = [];
+  
+  async submit(text: string, modelRef: string, token: string): Promise<ArrayBuffer> {
+    if (this.inFlight < this.maxConcurrent) {
+      return this.execute(text, modelRef, token);
+    }
+    // Queue and wait for a slot
+    return new Promise((resolve, reject) => {
+      this.queue.push({ text, resolve, reject });
+    });
+  }
+  
+  private async execute(text: string, modelRef: string, token: string): Promise<ArrayBuffer> {
+    this.inFlight++;
+    const controller = new AbortController();
+    this.abortControllers.push(controller);
+    
+    try {
+      const resp = await fetch(
+        `/v1/model-registry/proxy/v1/audio/speech?model_source=user_model&model_ref=${modelRef}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ model: 'auto', voice: 'auto', input: text, response_format: 'wav' }),
+          signal: controller.signal,
+        },
+      );
+      if (!resp.ok) throw new Error(`TTS ${resp.status}`);
+      return await resp.arrayBuffer();
+    } finally {
+      this.inFlight--;
+      this.abortControllers = this.abortControllers.filter((c) => c !== controller);
+      // Process next queued item
+      if (this.queue.length > 0) {
+        const next = this.queue.shift()!;
+        this.execute(next.text, modelRef, token).then(next.resolve).catch(next.reject);
+      }
+    }
+  }
+  
+  cancelAll() {
+    for (const c of this.abortControllers) c.abort();
+    this.abortControllers = [];
+    for (const q of this.queue) q.reject(new Error('cancelled'));
+    this.queue = [];
+    this.inFlight = 0;
   }
 }
 ```
@@ -338,13 +486,16 @@ Component               Target      Current     Notes
 VAD silence detection   200ms       1500ms      Reduce threshold
 STT (browser)           100ms       instant     Web Speech API
 STT (Whisper)           1-3s        17s         Use tiny/base model or streaming
-LLM first token         300-500ms   300ms       Already fast (SSE)
+LLM first token (warm)  300-500ms   300ms       Already fast (SSE)
+LLM first token (cold)  2-5s        2-5s        Local models on first request — show "thinking..."
 Sentence buffer fill    200-500ms   N/A         First sentence ~5-15 tokens
 TTS first sentence      200-300ms   228ms       Kokoro is fast!
+TTS silence pad         80ms        N/A         Between sentences (masks prosody jumps)
 Audio decode + play     50ms        50ms        AudioContext
 ─────────────────────────────────────────────────────────────
-TOTAL (browser STT)     ~0.9s       N/A         ✅ Under 1s
-TOTAL (Whisper STT)     ~2.0s       17s+        Need streaming Whisper
+TOTAL (browser STT, warm LLM)    ~0.9s    ✅ Under 1s
+TOTAL (browser STT, cold LLM)    ~3-6s    ⚠️ Acceptable for first turn
+TOTAL (Whisper STT, warm LLM)    ~2.0s    Need streaming Whisper
 ```
 
 ### 7.2 What Dominates Latency
@@ -367,26 +518,27 @@ Tier 2 (Whisper stream): VAD(0.2s) + STT(0.5s) + LLM_first(0.3s) + Buffer(0.3s) 
 
 | Task | Scope | Deps |
 |------|-------|------|
-| **RTV-01** | `SentenceBuffer` class — accumulates LLM tokens, emits on sentence boundary | None |
-| **RTV-02** | `TTSPlaybackQueue` — FIFO audio queue with gapless AudioContext scheduling | None |
-| **RTV-03** | Wire into `useVoiceMode` — tap SSE token stream, feed through SentenceBuffer → TTS → Queue | RTV-01, RTV-02 |
-| **RTV-04** | Barge-in detection — VAD during playback, cancel on speech | RTV-03 |
+| **RTV-01** | `SentenceBuffer` class — accumulates LLM tokens, emits on sentence boundary. Handles: short sentence timeout (500ms), force-split at 300 chars, stream-complete flush, `cancel()` for barge-in | None |
+| **RTV-02** | `TTSPlaybackQueue` + `TTSConcurrencyPool` — FIFO audio queue with gapless AudioContext scheduling, 80ms silence pad between sentences, max 2 concurrent TTS requests, `cancelAll()` aborts in-flight | None |
+| **RTV-03** | Add `onStreamDelta(delta, type)` callback to `useChatMessages` — emit raw SSE deltas with type ('content' or 'reasoning'). Wire into `useVoiceMode`: filter reasoning tokens, feed content deltas to SentenceBuffer → TTS pool → Queue | RTV-01, RTV-02 |
+| **RTV-04** | Barge-in detection — VAD during playback with echo prevention (raised threshold 3-4x, 300ms cooldown after chunk end, browser AEC via `echoCancellation: true`). On barge-in: cancel TTS pool + queue + LLM stream | RTV-03 |
 
 ### Phase B: Optimized STT
 
 | Task | Scope | Deps |
 |------|-------|------|
-| **RTV-05** | Reduce VAD silence threshold to 500ms (configurable) | None |
-| **RTV-06** | Hybrid STT — browser for speed, Whisper for accuracy correction | None |
+| **RTV-05** | Reduce VAD silence threshold to 500ms (configurable in Voice Settings) | None |
+| **RTV-06** | "Thinking..." indicator in overlay when LLM first token takes >2s (cold model UX) | RTV-03 |
 | **RTV-07** | WebSocket streaming STT endpoint in Whisper service (future, separate repo) | External |
 
 ### Phase C: Advanced
 
 | Task | Scope | Deps |
 |------|-------|------|
-| **RTV-08** | TTS prefetch — start synthesizing sentence N+1 while N plays | RTV-02 |
+| **RTV-08** | TTS prefetch depth 2 — start synthesizing sentences N+1, N+2 while N plays | RTV-02 |
 | **RTV-09** | Adaptive silence threshold — shorter when conversation is rapid, longer for thinking | RTV-05 |
 | **RTV-10** | Conversation context — include last N turns in LLM prompt for continuity | RTV-03 |
+| **RTV-11** | Post-hoc accuracy correction — record audio via MediaRecorder alongside browser STT, send to Whisper after turn, update chat history if transcript differs | RTV-03 |
 
 ### Suggested Build Order
 
@@ -394,12 +546,28 @@ Tier 2 (Whisper stream): VAD(0.2s) + STT(0.5s) + LLM_first(0.3s) + Buffer(0.3s) 
 1. RTV-01 + RTV-02 (parallel — pure logic, no integration)
 2. RTV-03 (wire into voice mode — biggest latency improvement)
 3. RTV-04 (barge-in — UX polish)
-4. RTV-05 (quick win — reduce silence threshold)
-5. RTV-06 (hybrid STT)
-6. RTV-08 (prefetch — remove gaps between sentences)
+4. RTV-05 + RTV-06 (quick wins — silence threshold + cold model UX)
+5. RTV-08 (prefetch — remove gaps between sentences)
 ```
 
 **Phase A alone (RTV-01..04) should bring latency from 5-20s down to ~1-1.5s** when using browser STT + Kokoro TTS.
+
+---
+
+## 11. Review: Resolved Design Gaps
+
+| # | Gap | Resolution |
+|---|-----|-----------|
+| 1 | No per-token access to LLM stream | Add `onStreamDelta` callback to `useChatMessages` (RTV-03) |
+| 2 | Concurrent TTS rate limits | `TTSConcurrencyPool` with max 2 slots (RTV-02) |
+| 3 | Echo causes false barge-in | Browser AEC + raised threshold + 300ms cooldown (RTV-04) |
+| 4 | Reasoning tokens fed to TTS | Filter by delta type in `onStreamDelta` — only 'content' (RTV-03) |
+| 5 | Hybrid STT overengineered | Dropped for MVP — single source (browser or Whisper). Post-hoc correction in Phase C (RTV-11) |
+| 6 | TTS voice prosody jumps | 80ms silence pad between sentences (RTV-02) |
+| 7 | TTS failure for one sentence | Skip and continue — text visible in UI (§3.2 step 5) |
+| 8 | Cold model latency | "Thinking..." indicator (RTV-06), updated budget with cold row |
+| 9 | Short responses (Yes. No.) | 500ms timeout flush + stream-complete check (§5.1 SentenceBuffer) |
+| 10 | UI overlay sync | Already works — text from SSE (word-by-word), audio from queue (sentence-by-sentence) |
 
 ---
 
