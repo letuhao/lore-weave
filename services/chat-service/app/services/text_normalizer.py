@@ -14,13 +14,13 @@ class TextNormalizer:
     """Strip markdown/code/emoji from LLM output before TTS."""
 
     _BOLD = re.compile(r'\*\*(.+?)\*\*')
-    _ITALIC = re.compile(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)')
+    _ITALIC = re.compile(r'(?<!\*)\*(\w(?:.*?\w)?)\*(?!\*)')
     _STRIKE = re.compile(r'~~(.+?)~~')
     _CODE_INLINE = re.compile(r'`([^`]+)`')
-    _HEADING = re.compile(r'#{1,6}\s*')
+    _HEADING = re.compile(r'^#{1,6}\s+', re.MULTILINE)
     _LINK = re.compile(r'\[([^\]]+)\]\([^)]+\)')
     _CODE_BLOCK = re.compile(r'```[\s\S]*?```')
-    _SPECIAL_CHARS = re.compile(r'[*_~`#>|]')
+    _SPECIAL_CHARS = re.compile(r'[*_~`#|]')
     _MULTI_SPACE = re.compile(r'\s{2,}')
 
     _EMOJIS = [

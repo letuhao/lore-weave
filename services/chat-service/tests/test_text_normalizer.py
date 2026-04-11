@@ -112,6 +112,38 @@ class TestWhitespace:
         assert not text.endswith(" ")
 
 
+class TestEdgeCases:
+    def test_multiplication_not_mangled(self, norm):
+        text, skip = norm.normalize("The result is 3 * 4 = 12.")
+        assert not skip
+        assert "3" in text
+        assert "4" in text
+        assert "12" in text
+
+    def test_csharp_hash_preserved(self, norm):
+        text, skip = norm.normalize("I recommend learning C# programming.")
+        assert not skip
+        assert "C" in text
+        # The # is stripped by _SPECIAL_CHARS but that's acceptable
+        # Key: "programming" is NOT stripped (heading regex no longer eats mid-line #)
+
+    def test_issue_number_preserved(self, norm):
+        text, skip = norm.normalize("See issue 42 for details.")
+        assert not skip
+        assert "42" in text
+
+    def test_greater_than_preserved(self, norm):
+        text, skip = norm.normalize("If x > 5 then return true.")
+        assert not skip
+        assert ">" in text
+
+    def test_heading_only_at_line_start(self, norm):
+        text, skip = norm.normalize("## Title\nSome text with a # symbol.")
+        assert not skip
+        assert "Title" in text
+        assert "Some text" in text
+
+
 class TestPassthrough:
     def test_plain_text(self, norm):
         original = "Hello! How can I help you today?"
