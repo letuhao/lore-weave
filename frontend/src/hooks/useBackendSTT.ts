@@ -34,6 +34,31 @@ export interface BackendSTTOptions {
 export const MEDIA_RECORDER_SUPPORTED =
   typeof window !== 'undefined' && typeof MediaRecorder !== 'undefined';
 
+const VAD_CDN_URL = 'https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/bundle.min.js';
+
+/** Load @ricky0123/vad-web from CDN to avoid Vite/ONNX WASM bundling issues */
+async function loadVADFromCDN(): Promise<any> {
+  // Check if already loaded
+  if ((window as any).vad?.MicVAD) {
+    return (window as any).vad.MicVAD;
+  }
+
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = VAD_CDN_URL;
+    script.onload = () => {
+      const MicVAD = (window as any).vad?.MicVAD;
+      if (MicVAD) {
+        resolve(MicVAD);
+      } else {
+        reject(new Error('VAD loaded but MicVAD not found on window.vad'));
+      }
+    };
+    script.onerror = () => reject(new Error('Failed to load VAD from CDN'));
+    document.head.appendChild(script);
+  });
+}
+
 /** Convert Float32Array (16kHz mono) to WAV blob */
 function float32ToWav(samples: Float32Array, sampleRate = 16000): Blob {
   const numSamples = samples.length;
@@ -162,12 +187,10 @@ export function useBackendSTT(options: BackendSTTOptions = {}) {
     }));
 
     try {
-      // Dynamic import to avoid bundling ONNX runtime when not using backend STT
-      const { MicVAD } = await import('@ricky0123/vad-web');
+      // Load VAD from CDN script tag to avoid Vite bundling issues with ONNX WASM
+      const MicVAD = await loadVADFromCDN();
 
       const vad = await MicVAD.new({
-        // All model/WASM/worklet files loaded from CDN (default behavior)
-        // Self-hosting fails due to Docker nginx MIME type issues with .mjs/.onnx
         onSpeechStart: () => {
           console.log('[VAD] Speech started');
           setState((prev) => ({ ...prev, interimTranscript: '🎤 Listening...' }));
