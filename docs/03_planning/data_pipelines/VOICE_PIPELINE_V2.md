@@ -647,11 +647,13 @@ No overlay, no state machine, no auto-send. User has full control.
 
 | Task | Scope |
 |------|-------|
-| **VP2-23** | Voice Assist toggle in chat input bar — always-on VAD mic that inserts transcribed text into textarea |
-| **VP2-24** | Append/Replace mode toggle — user chooses whether new speech appends to or replaces textarea content |
-| **VP2-25** | Auto-TTS on AI response — when Voice Assist is ON, auto-play TTS for new assistant messages (using sentence pipeline) |
-| **VP2-26** | Audio stop button on messages — independent of voice input, user can stop TTS anytime |
-| **VP2-27** | Voice Assist preferences — persist on/off state, append/replace default, auto-TTS toggle |
+| **VP2-23** | Fix push-to-talk mic button — respect Voice Settings STT source (browser or AI model provider), not hardcoded to browser Web Speech API |
+| **VP2-24** | Mic button visual states — clear 3-state design: idle (gray mic), recording (red pulsing + "Recording..." label), transcribing (spinner + "Transcribing..."). Current 2-state (Mic/MicOff) is ambiguous |
+| **VP2-25** | Voice Assist toggle in chat input bar — always-on VAD mic that inserts transcribed text into textarea |
+| **VP2-26** | Append/Replace mode toggle — user chooses whether new speech appends to or replaces textarea content |
+| **VP2-27** | Auto-TTS on AI response — when Voice Assist is ON, auto-play TTS for new assistant messages (using sentence pipeline) |
+| **VP2-28** | Audio stop button on messages — independent of voice input, user can stop TTS anytime |
+| **VP2-29** | Voice Assist preferences — persist on/off state, append/replace default, auto-TTS toggle |
 
 ### Phase F: Polish (P2)
 
