@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import io
 import json
 import logging
 import time
@@ -18,8 +19,6 @@ from uuid import uuid4
 
 import asyncpg
 import httpx
-from openai import AsyncOpenAI
-from litellm import acompletion
 
 from app.client.billing_client import BillingClient
 from app.config import settings
@@ -27,7 +26,7 @@ from app.models import ProviderCredentials
 from app.services.sentence_buffer import SentenceBuffer
 from app.services.text_normalizer import TextNormalizer
 from app.services.stream_service import _is_openai_compatible, _stream_openai_compatible, _stream_litellm
-from app.storage.minio_client import upload_file, generate_presigned_url
+from app.storage.minio_client import upload_file
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +120,7 @@ async def _generate_tts_chunks(
     }
     proxy_url = f"{settings.provider_registry_internal_url}/internal/proxy/v1/audio/speech"
 
+    chunk_index = 0
     async with httpx.AsyncClient(timeout=30) as client:
         async with client.stream(
             "POST",
@@ -133,7 +133,6 @@ async def _generate_tts_chunks(
             },
         ) as resp:
             resp.raise_for_status()
-            chunk_index = 0
             async for chunk in resp.aiter_bytes(chunk_size=4096):
                 event = {
                     "sentenceIndex": sentence_index,
@@ -166,7 +165,6 @@ async def _upload_audio_segment(
     if not audio_data:
         return
     try:
-        import io
         object_key = f"voice-audio/{session_id}/{message_id}/{segment_index}_{int(time.time())}.mp3"
         await upload_file(object_key, io.BytesIO(audio_data), content_type="audio/mpeg")
 
@@ -223,9 +221,9 @@ async def voice_stream_response(
             audio_bytes, audio_content_type, user_id,
             stt_model_source, stt_model_ref,
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("STT failed for session %s", session_id)
-        yield _sse("error", {"errorText": f"Speech recognition failed: {exc}"})
+        yield _sse("error", {"errorText": "Speech recognition failed. Please try again."})
         yield "data: [DONE]\n\n"
         return
 
