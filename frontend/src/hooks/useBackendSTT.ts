@@ -117,7 +117,9 @@ export function useBackendSTT(options: BackendSTTOptions = {}) {
       formData.append('file', blob, `recording${ext}`);
       formData.append('model', optionsRef.current.model || 'whisper-1');
       if (optionsRef.current.lang) {
-        formData.append('language', optionsRef.current.lang);
+        // STT services expect ISO-639-1 (e.g., "en"), not locale (e.g., "en-US")
+        const lang = optionsRef.current.lang.split('-')[0];
+        formData.append('language', lang);
       }
 
       const headers: Record<string, string> = {};
