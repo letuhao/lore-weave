@@ -593,13 +593,38 @@ Timeline:
 | **VP2-15** | Message API: return segments with lazily-signed URLs |
 | **VP2-16** | Cleanup task: periodic delete expired segments from DB + MinIO |
 
-### Phase D: Chat UI Audio (P1)
+### Phase D: Chat UI Audio + Metrics (P1)
 
 | Task | Scope |
 |------|-------|
 | **VP2-17** | Audio indicator (🔊) on assistant messages with segments |
 | **VP2-18** | Audio replay player — play/pause, progress bar, per-sentence segments |
-| **VP2-19** | Normalizer skip indicator in overlay ("1 code block skipped") |
+| **VP2-19** | TTS metrics on assistant messages — generation time, audio size, token count per segment. Shown as subtle tooltip or expandable detail row under audio player |
+| **VP2-20** | STT metrics on user messages — transcription time, audio size, model used. Shown when message was sent via voice (not typed) |
+| **VP2-21** | Flag voice-originated messages — `input_method: 'voice' | 'text'` on user messages so UI can distinguish typed vs spoken |
+| **VP2-22** | Normalizer skip indicator in overlay and chat ("1 code block skipped") |
+
+Example TTS metrics on assistant message:
+```
+┌─────────────────────────────────────────────────┐
+│  AI: Hello! How can I help you today?           │
+│                                                 │
+│  🔊 ▶ ━━━━━━━━━━ 0:03 / 0:05                  │
+│     [S1 ▶] [S2 ▶] [S3 ▶]                       │
+│                                                 │
+│  ⚡ TTS: 3 sentences · 289KB · 2.1s avg         │
+│     Kokoro v1 · af_heart · 1x                   │
+└─────────────────────────────────────────────────┘
+```
+
+Example STT metrics on user message:
+```
+┌─────────────────────────────────────────────────┐
+│  You: How are you today?              🎤 voice  │
+│                                                 │
+│  ⚡ STT: 96KB audio · 342ms · Whisper v3-turbo  │
+└─────────────────────────────────────────────────┘
+```
 
 ### Phase E: Voice Assist Mode (P1)
 
@@ -659,9 +684,9 @@ No overlay, no state machine, no auto-send. User has full control.
 
 | Task | Scope |
 |------|-------|
-| **VP2-20** | Configurable audio retention in settings (48h default) |
-| **VP2-21** | Audio download button on messages |
-| **VP2-22** | Mode switch guard — disable text input during voice PROCESSING/SPEAKING |
+| **VP2-30** | Configurable audio retention in settings (48h default) |
+| **VP2-31** | Audio download button on messages |
+| **VP2-32** | Mode switch guard — disable text input during voice PROCESSING/SPEAKING |
 
 ---
 
