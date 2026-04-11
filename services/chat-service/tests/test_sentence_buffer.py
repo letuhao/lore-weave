@@ -179,3 +179,23 @@ class TestEdgeCases:
         buf = SentenceBuffer()
         result = buf.push('She said "hello." ')
         assert len(result) == 1
+
+    def test_incremental_two_sentences(self):
+        """Simulate real LLM token streaming across two sentences."""
+        buf = SentenceBuffer()
+        tokens = ["Hello", " world", ".", " ", "How", " are", " you", "?", " "]
+        all_sentences = []
+        for tok in tokens:
+            all_sentences.extend(buf.push(tok))
+        assert len(all_sentences) == 2
+        assert all_sentences[0] == "Hello world."
+        assert all_sentences[1] == "How are you?"
+
+    def test_clause_forward_search(self):
+        """Clause mode should emit the FIRST clause >= 40 chars (forward search)."""
+        buf = SentenceBuffer(clause_mode=True)
+        text = "First part of the sentence is quite long enough, second part also long enough, tiny end"
+        result = buf.push(text)
+        assert len(result) >= 1
+        # First emitted clause should end at the first comma (not the last)
+        assert result[0].endswith(",")

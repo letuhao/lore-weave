@@ -21,7 +21,8 @@ _ABBREVIATIONS = frozenset([
 ])
 
 # Clause delimiters for voice mode (lower latency splitting)
-_CLAUSE_DELIMS = [', ', ' — ', '; ', ' but ', ' and ', ' so ', ' because ']
+# Only punctuation-based — word-based (but/and/so) cause unnatural TTS pauses
+_CLAUSE_DELIMS = [', ', ' — ', '; ']
 _CJK_CLAUSE_DELIMS = ['、', '，']
 
 _CLAUSE_MIN_LENGTH = 40
@@ -106,18 +107,27 @@ class SentenceBuffer:
         return None
 
     def _try_clause_split(self) -> str | None:
-        """Try clause-level splitting when buffer is long enough."""
+        """Try clause-level splitting when buffer is long enough.
+
+        Uses forward search (find) to emit the first clause >= 40 chars,
+        minimizing time-to-first-audio.
+        """
         if len(self._buffer) <= _CLAUSE_MIN_LENGTH:
             return None
 
         all_delims = _CLAUSE_DELIMS + _CJK_CLAUSE_DELIMS
+        best_end: int | None = None
         for delim in all_delims:
-            idx = self._buffer.rfind(delim)
-            if idx > _CLAUSE_MIN_LENGTH:
+            idx = self._buffer.find(delim, _CLAUSE_MIN_LENGTH)
+            if idx >= _CLAUSE_MIN_LENGTH:
                 end = idx + len(delim)
-                clause = self._buffer[:end].strip()
-                self._buffer = self._buffer[end:]
-                return clause
+                if best_end is None or end < best_end:
+                    best_end = end
+
+        if best_end is not None:
+            clause = self._buffer[:best_end].strip()
+            self._buffer = self._buffer[best_end:]
+            return clause
 
         return None
 
