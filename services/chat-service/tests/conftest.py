@@ -13,6 +13,8 @@ from httpx import ASGITransport, AsyncClient
 # Set required env vars before importing app modules
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 os.environ.setdefault("JWT_SECRET", "test-secret-key-for-unit-tests")
+os.environ.setdefault("MINIO_SECRET_KEY", "test-minio-secret")
+os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test-internal-token")
 
 from app.deps import get_current_user, get_db  # noqa: E402
 from app.main import app  # noqa: E402

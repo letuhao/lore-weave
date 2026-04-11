@@ -42,7 +42,7 @@ func Load() *Config {
 		MinioSecretKey:    envOrDefault("MINIO_SECRET_KEY", ""),
 		MinioBucket:       envOrDefault("MINIO_BUCKET", "loreweave-dev-books"),
 		BookServiceURL:    envOrDefault("BOOK_SERVICE_URL", "http://localhost:8082"),
-		InternalToken:     envOrDefault("INTERNAL_SERVICE_TOKEN", "dev_internal_token"),
+		InternalToken:     requireEnv("INTERNAL_SERVICE_TOKEN"),
 		RabbitMQURL:       envOrDefault("RABBITMQ_URL", ""),
 	}
 
@@ -76,4 +76,12 @@ func envOrDefault(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func requireEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		panic("required environment variable " + key + " is not set")
+	}
+	return v
 }

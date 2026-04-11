@@ -8,10 +8,10 @@ class Settings(BaseSettings):
     usage_billing_service_url: str = "http://usage-billing-service:8086"
     minio_endpoint: str = "minio:9000"
     minio_access_key: str = "loreweave"
-    minio_secret_key: str = "loreweave_dev_minio_secret"
+    minio_secret_key: str
     minio_bucket: str = "lw-chat"
     minio_use_ssl: bool = False
-    internal_service_token: str = "dev_internal_token"
+    internal_service_token: str
     port: int = 8090
 
     class Config:

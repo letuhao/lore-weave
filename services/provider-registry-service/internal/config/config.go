@@ -19,7 +19,7 @@ func Load() (*Config, error) {
 		DatabaseURL:            os.Getenv("DATABASE_URL"),
 		JWTSecret:              os.Getenv("JWT_SECRET"),
 		UsageBillingServiceURL: getEnv("USAGE_BILLING_SERVICE_URL", "http://localhost:8086"),
-		InternalServiceToken:   getEnv("INTERNAL_SERVICE_TOKEN", "dev_internal_token"),
+		InternalServiceToken:   requireEnv("INTERNAL_SERVICE_TOKEN"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
@@ -35,4 +35,12 @@ func getEnv(k, def string) string {
 		return v
 	}
 	return def
+}
+
+func requireEnv(k string) string {
+	v := os.Getenv(k)
+	if v == "" {
+		panic(fmt.Sprintf("required environment variable %s is not set", k))
+	}
+	return v
 }
