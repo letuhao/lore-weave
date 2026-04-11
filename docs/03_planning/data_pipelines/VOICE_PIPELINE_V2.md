@@ -147,15 +147,46 @@ Bad TTS: "Here's a asterisk asterisk great asterisk asterisk example colon
           backtick backtick backtick python print open paren quote hello..."
 ```
 
-### 3.2 Hybrid Architecture (Option C)
+### 3.2 Layer 0: Voice Mode System Prompt (Proactive)
+
+When voice mode activates, inject a system prompt that tells the LLM to respond in conversational speech style. This prevents most formatting at the source — the model simply won't generate markdown/code/tables when it knows the output goes to TTS.
 
 ```
-SentenceBuffer emits sentence
-  → Rule-based normalizer (instant, ~0ms, handles 90% of cases)
-    → Clean text? → send to TTS
-    → Mild formatting? → strip and send to TTS
-    → Code block / JSON / table? → skip TTS, show text only
-    → Complex (formulas, mixed)? → LLM rewriter (optional, user-enabled)
+Injected when voice mode is active:
+
+"You are in a voice conversation. The user is speaking to you and will hear
+your response as speech via text-to-speech.
+
+Rules for voice mode responses:
+- Respond in natural, conversational speech — as if talking to a friend
+- Do NOT use markdown formatting (no **, *, #, ```, etc.)
+- Do NOT output code blocks — describe what code does instead
+- Do NOT use bullet points or numbered lists — use flowing sentences
+- Do NOT use tables or JSON — describe data verbally
+- Keep responses concise (2-4 sentences for simple questions)
+- Use natural speech patterns: contractions, filler words are OK
+- If the user asks about code, explain the concept verbally
+- Pronounce abbreviations: 'API' as 'A P I', 'URL' as 'U R L'"
+```
+
+**Implementation:** The voice mode controller prepends this system message to the chat context when calling `sendMessage()`. It does NOT modify the stored conversation — only the LLM request payload. When voice mode is deactivated, the system prompt is removed.
+
+**Effectiveness:** This alone eliminates ~80% of formatting issues at zero cost. The rule-based normalizer (Layer 1) catches the remaining edge cases where the model still produces formatting.
+
+### 3.3 Hybrid Architecture (Option C — 3 Layers)
+
+```
+Layer 0: Voice system prompt → LLM generates speech-friendly text (~80% clean)
+Layer 1: Rule-based normalizer → strips remaining formatting (~19% caught)
+Layer 2: LLM rewriter (optional) → handles complex cases (~1%, user-enabled)
+
+Pipeline:
+  voice mode active → inject system prompt → LLM generates
+  → SentenceBuffer emits sentence
+    → TextNormalizer.normalize(sentence)      [Layer 1, ~0ms]
+      → Clean? → TTS
+      → Code/JSON? → skip TTS
+      → Complex + rewriter enabled? → LLM rewriter [Layer 2, +500ms]
 ```
 
 ### 3.3 Rule-Based Normalizer (Default)
@@ -540,42 +571,43 @@ Timeline:
 | **VP2-03** | SPEAKING exit condition — requires BOTH `llmComplete` AND `allAudioPlayed` |
 | **VP2-04** | Remove BargeInDetector — manual cancel button only (Space key) |
 
-### Phase B: Text Normalizer + Barge-in (P1)
+### Phase B: Text Preprocessing + Barge-in (P1)
 
 | Task | Scope |
 |------|-------|
-| **VP2-05** | `TextNormalizer` class — rule-based markdown/code/emoji stripping |
-| **VP2-06** | Wire normalizer into pipeline between SentenceBuffer and TTS pool |
-| **VP2-07** | Normalizer stats in metrics (sentences skipped, code blocks, etc.) |
-| **VP2-08** | Headphone detection — enable auto barge-in when headphones connected |
-| **VP2-09** | "Thinking..." indicator during PROCESSING when LLM first token > 2s |
+| **VP2-05** | Voice mode system prompt injection — prepend speech-style instructions to LLM request when voice mode is active (Layer 0) |
+| **VP2-06** | `TextNormalizer` class — rule-based markdown/code/emoji stripping (Layer 1) |
+| **VP2-07** | Wire normalizer into pipeline between SentenceBuffer and TTS pool |
+| **VP2-08** | Normalizer stats in metrics (sentences skipped, code blocks, etc.) |
+| **VP2-09** | Optional LLM rewriter — "Explain code blocks with AI" setting (Layer 2) |
+| **VP2-10** | Headphone detection — enable auto barge-in when headphones connected |
+| **VP2-11** | "Thinking..." indicator during PROCESSING when LLM first token > 2s |
 
 ### Phase C: Audio Persistence (P1)
 
 | Task | Scope |
 |------|-------|
-| **VP2-10** | `message_audio_segments` table migration in chat-service |
-| **VP2-11** | Audio upload endpoint `POST /v1/chat/.../audio-segments` (MinIO + DB) |
-| **VP2-12** | Pipeline: upload TTS audio to MinIO in background (fire-and-forget, non-blocking) |
-| **VP2-13** | Message API: return segments with lazily-signed URLs |
-| **VP2-14** | Cleanup task: periodic delete expired segments from DB + MinIO |
+| **VP2-12** | `message_audio_segments` table migration in chat-service |
+| **VP2-13** | Audio upload endpoint `POST /v1/chat/.../audio-segments` (MinIO + DB) |
+| **VP2-14** | Pipeline: upload TTS audio to MinIO in background (fire-and-forget, non-blocking) |
+| **VP2-15** | Message API: return segments with lazily-signed URLs |
+| **VP2-16** | Cleanup task: periodic delete expired segments from DB + MinIO |
 
 ### Phase D: Chat UI Audio (P1)
 
 | Task | Scope |
 |------|-------|
-| **VP2-15** | Audio indicator (🔊) on assistant messages with segments |
-| **VP2-16** | Audio replay player — play/pause, progress bar, per-sentence segments |
-| **VP2-17** | Normalizer skip indicator in overlay ("1 code block skipped") |
+| **VP2-17** | Audio indicator (🔊) on assistant messages with segments |
+| **VP2-18** | Audio replay player — play/pause, progress bar, per-sentence segments |
+| **VP2-19** | Normalizer skip indicator in overlay ("1 code block skipped") |
 
 ### Phase E: Polish (P2)
 
 | Task | Scope |
 |------|-------|
-| **VP2-18** | LLM rewriter option — "Explain code blocks with AI" in Voice Settings |
-| **VP2-19** | Configurable audio retention in settings (48h default) |
-| **VP2-20** | Audio download button on messages |
-| **VP2-21** | Mode switch guard — disable text input during voice PROCESSING/SPEAKING |
+| **VP2-20** | Configurable audio retention in settings (48h default) |
+| **VP2-21** | Audio download button on messages |
+| **VP2-22** | Mode switch guard — disable text input during voice PROCESSING/SPEAKING |
 
 ---
 
