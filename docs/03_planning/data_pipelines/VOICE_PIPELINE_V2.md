@@ -601,7 +601,59 @@ Timeline:
 | **VP2-18** | Audio replay player — play/pause, progress bar, per-sentence segments |
 | **VP2-19** | Normalizer skip indicator in overlay ("1 code block skipped") |
 
-### Phase E: Polish (P2)
+### Phase E: Voice Assist Mode (P1)
+
+A simpler alternative to Voice Mode — uses the regular chat UI with voice input/output.
+No overlay, no state machine, no auto-send. User has full control.
+
+```
+┌──────────────────────────────────────────────────────┐
+│  Chat UI (normal — no overlay)                       │
+│                                                      │
+│  ┌─ AI message ─────────────────────────────────┐   │
+│  │ Hello! How can I help you today?              │   │
+│  │ 🔊 ▶ ━━━━━━ 0:03                             │   │
+│  └───────────────────────────────────────────────┘   │
+│                                                      │
+│  ┌─ Input bar ───────────────────────────────────┐   │
+│  │ Tell me about Python| ← cursor (dictated)     │   │
+│  │                                               │   │
+│  │ 📎 🎤(ON) [Append|Replace] Think Fast    ➤   │   │
+│  │      ↑                          ↑             │   │
+│  │   always                   user presses       │   │
+│  │   listening                enter to send      │   │
+│  └───────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────┘
+```
+
+**How it works:**
+
+| Step | Voice Mode (Full) | Voice Assist (New) |
+|------|------------------|--------------------|
+| Activate | Opens overlay, takes over UI | Toggles mic icon ON in chat input bar |
+| Listen | VAD → auto-record → auto-STT | VAD → auto-record → STT → insert text in textarea |
+| Send | Auto-send on silence | User presses Enter (or edits text first) |
+| AI response | Plays in overlay, blocks input | Appears in chat, auto-TTS plays alongside |
+| Interrupt | Cancel button / Space | Just keep typing or click stop audio |
+| Text editing | Not possible | Full editing before send |
+
+**Key differences:**
+- No state machine needed (just STT + TTS as independent services)
+- No phase locking (user can type, edit, scroll while TTS plays)
+- No overlay (uses normal chat UI)
+- STT → inserts into textarea (append or replace mode, user toggle)
+- TTS → plays automatically on AI responses (can be stopped independently)
+- Much simpler to implement — reuses existing `ChatInputBar` + `useBackendSTT` + `TTSPlaybackQueue`
+
+| Task | Scope |
+|------|-------|
+| **VP2-23** | Voice Assist toggle in chat input bar — always-on VAD mic that inserts transcribed text into textarea |
+| **VP2-24** | Append/Replace mode toggle — user chooses whether new speech appends to or replaces textarea content |
+| **VP2-25** | Auto-TTS on AI response — when Voice Assist is ON, auto-play TTS for new assistant messages (using sentence pipeline) |
+| **VP2-26** | Audio stop button on messages — independent of voice input, user can stop TTS anytime |
+| **VP2-27** | Voice Assist preferences — persist on/off state, append/replace default, auto-TTS toggle |
+
+### Phase F: Polish (P2)
 
 | Task | Scope |
 |------|-------|
