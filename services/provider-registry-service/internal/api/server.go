@@ -1652,13 +1652,15 @@ func (s *Server) verifyUserModel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var providerKind, providerModelName, endpointBaseURL, secretCipher string
+	var capabilityFlagsJSON []byte
 	err := s.pool.QueryRow(r.Context(), `
 SELECT um.provider_kind, um.provider_model_name,
-       COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,'')
+       COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,''),
+       COALESCE(um.capability_flags, '{}')
 FROM user_models um
 JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
 WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
-`, modelID, userID).Scan(&providerKind, &providerModelName, &endpointBaseURL, &secretCipher)
+`, modelID, userID).Scan(&providerKind, &providerModelName, &endpointBaseURL, &secretCipher, &capabilityFlagsJSON)
 	if err == pgx.ErrNoRows {
 		writeError(w, http.StatusNotFound, "M03_MODEL_NOT_FOUND", "user model not found or inactive")
 		return
@@ -1674,6 +1676,54 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		return
 	}
 
+	// Parse capability flags to determine verification strategy
+	var caps map[string]any
+	json.Unmarshal(capabilityFlagsJSON, &caps)
+
+	capability := detectPrimaryCapability(caps)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
+
+	start := time.Now()
+
+	switch capability {
+	case "stt":
+		// STT verify: send a tiny WAV with silence → expect JSON with "text" field
+		result := s.verifySTT(ctx, endpointBaseURL, secret, providerModelName)
+		result["latency_ms"] = time.Since(start).Milliseconds()
+		result["capability"] = "stt"
+		writeJSON(w, http.StatusOK, result)
+		return
+
+	case "tts":
+		// TTS verify: send short text → expect audio bytes back
+		result := s.verifyTTS(ctx, endpointBaseURL, secret, providerModelName)
+		result["latency_ms"] = time.Since(start).Milliseconds()
+		result["capability"] = "tts"
+		writeJSON(w, http.StatusOK, result)
+		return
+
+	case "image_gen":
+		// Image verify: just check models endpoint (generation is too slow/costly)
+		result := s.verifyModelsEndpoint(ctx, endpointBaseURL, secret)
+		result["latency_ms"] = time.Since(start).Milliseconds()
+		result["capability"] = "image_gen"
+		writeJSON(w, http.StatusOK, result)
+		return
+
+	case "video_gen":
+		// Video verify: just check models endpoint
+		result := s.verifyModelsEndpoint(ctx, endpointBaseURL, secret)
+		result["latency_ms"] = time.Since(start).Milliseconds()
+		result["capability"] = "video_gen"
+		writeJSON(w, http.StatusOK, result)
+		return
+
+	default:
+		// Chat / unknown: use existing adapter invoke with "Hi"
+	}
+
 	verifyClient := &http.Client{Timeout: 5 * time.Minute}
 	adapter, err := provider.ResolveAdapter(providerKind, verifyClient)
 	if err != nil {
@@ -1687,11 +1737,6 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		},
 	}
 
-	// Give the model up to 5 minutes to respond.
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
-	defer cancel()
-
-	start := time.Now()
 	output, _, invokeErr := adapter.Invoke(ctx, endpointBaseURL, secret, providerModelName, pingInput)
 
 	latencyMs := time.Since(start).Milliseconds()
@@ -1700,12 +1745,12 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		writeJSON(w, http.StatusOK, map[string]any{
 			"verified":   false,
 			"latency_ms": latencyMs,
+			"capability": "chat",
 			"error":      invokeErr.Error(),
 		})
 		return
 	}
 
-	// Extract a short preview from the output.
 	preview := ""
 	if content, ok := output["content"]; ok {
 		preview = fmt.Sprintf("%v", content)
@@ -1719,9 +1764,182 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 	writeJSON(w, http.StatusOK, map[string]any{
 		"verified":         true,
 		"latency_ms":       latencyMs,
+		"capability":       "chat",
 		"response_preview": preview,
 	})
 }
+
+// detectPrimaryCapability determines which verification strategy to use based on capability_flags.
+// Priority: stt > tts > image_gen > video_gen > chat (default)
+func detectPrimaryCapability(caps map[string]any) string {
+	for _, cap := range []string{"stt", "tts", "image_gen", "video_gen"} {
+		if v, ok := caps[cap]; ok {
+			if b, ok := v.(bool); ok && b {
+				return cap
+			}
+		}
+	}
+	return "chat"
+}
+
+// verifySTT sends a tiny silent WAV to the STT endpoint and checks for a text response.
+func (s *Server) verifySTT(ctx context.Context, baseURL, secret, modelName string) map[string]any {
+	base := strings.TrimRight(baseURL, "/")
+
+	// Generate a 0.5s silent WAV (16kHz mono 16-bit)
+	sampleRate := 16000
+	nSamples := sampleRate / 2 // 0.5 seconds
+	audioData := make([]byte, nSamples*2)
+	dataSize := len(audioData)
+	// WAV header
+	header := make([]byte, 44)
+	copy(header[0:4], "RIFF")
+	putLE32(header[4:], uint32(36+dataSize))
+	copy(header[8:12], "WAVE")
+	copy(header[12:16], "fmt ")
+	putLE32(header[16:], 16)
+	putLE16(header[20:], 1)     // PCM
+	putLE16(header[22:], 1)     // mono
+	putLE32(header[24:], uint32(sampleRate))
+	putLE32(header[28:], uint32(sampleRate*2))
+	putLE16(header[32:], 2)     // block align
+	putLE16(header[34:], 16)    // bits per sample
+	copy(header[36:40], "data")
+	putLE32(header[40:], uint32(dataSize))
+
+	wavData := append(header, audioData...)
+
+	// Build multipart form
+	var body bytes.Buffer
+	boundary := "----LoreWeaveVerifyBoundary"
+	body.WriteString("--" + boundary + "\r\n")
+	body.WriteString("Content-Disposition: form-data; name=\"file\"; filename=\"verify.wav\"\r\n")
+	body.WriteString("Content-Type: audio/wav\r\n\r\n")
+	body.Write(wavData)
+	body.WriteString("\r\n--" + boundary + "\r\n")
+	body.WriteString("Content-Disposition: form-data; name=\"model\"\r\n\r\n")
+	body.WriteString(modelName)
+	body.WriteString("\r\n--" + boundary + "\r\n")
+	body.WriteString("Content-Disposition: form-data; name=\"language\"\r\n\r\n")
+	body.WriteString("en")
+	body.WriteString("\r\n--" + boundary + "--\r\n")
+
+	req, err := http.NewRequestWithContext(ctx, "POST", base+"/v1/audio/transcriptions", &body)
+	if err != nil {
+		return map[string]any{"verified": false, "error": "failed to create request: " + err.Error()}
+	}
+	req.Header.Set("Content-Type", "multipart/form-data; boundary="+boundary)
+	if secret != "" {
+		req.Header.Set("Authorization", "Bearer "+secret)
+	}
+
+	resp, err := s.invokeClient.Do(req)
+	if err != nil {
+		return map[string]any{"verified": false, "error": "request failed: " + err.Error()}
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != 200 {
+		preview := string(respBody)
+		if len(preview) > 200 {
+			preview = preview[:200]
+		}
+		return map[string]any{"verified": false, "error": fmt.Sprintf("STT returned %d: %s", resp.StatusCode, preview)}
+	}
+
+	// Check response has "text" field
+	var result map[string]any
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return map[string]any{"verified": false, "error": "response is not valid JSON"}
+	}
+
+	text, _ := result["text"].(string)
+	return map[string]any{
+		"verified":         true,
+		"response_preview": text,
+	}
+}
+
+// verifyTTS sends a short text to the TTS endpoint and checks for audio bytes.
+func (s *Server) verifyTTS(ctx context.Context, baseURL, secret, modelName string) map[string]any {
+	base := strings.TrimRight(baseURL, "/")
+
+	payload, _ := json.Marshal(map[string]any{
+		"model":           modelName,
+		"voice":           "alloy",
+		"input":           "Hello",
+		"response_format": "wav",
+	})
+
+	req, err := http.NewRequestWithContext(ctx, "POST", base+"/v1/audio/speech", bytes.NewReader(payload))
+	if err != nil {
+		return map[string]any{"verified": false, "error": "failed to create request: " + err.Error()}
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if secret != "" {
+		req.Header.Set("Authorization", "Bearer "+secret)
+	}
+
+	resp, err := s.invokeClient.Do(req)
+	if err != nil {
+		return map[string]any{"verified": false, "error": "request failed: " + err.Error()}
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != 200 {
+		preview := string(respBody)
+		if len(preview) > 200 {
+			preview = preview[:200]
+		}
+		return map[string]any{"verified": false, "error": fmt.Sprintf("TTS returned %d: %s", resp.StatusCode, preview)}
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	return map[string]any{
+		"verified":         true,
+		"response_preview": fmt.Sprintf("%d bytes audio (%s)", len(respBody), contentType),
+	}
+}
+
+// verifyModelsEndpoint checks if the provider's /v1/models endpoint is reachable.
+// Used for image_gen and video_gen where actual generation is too slow/costly for verification.
+func (s *Server) verifyModelsEndpoint(ctx context.Context, baseURL, secret string) map[string]any {
+	base := strings.TrimRight(baseURL, "/")
+
+	// Try /v1/models first, then /health
+	for _, path := range []string{"/v1/models", "/health"} {
+		req, err := http.NewRequestWithContext(ctx, "GET", base+path, nil)
+		if err != nil {
+			continue
+		}
+		if secret != "" {
+			req.Header.Set("Authorization", "Bearer "+secret)
+		}
+
+		resp, err := s.client.Do(req) // use short-timeout client
+		if err != nil {
+			continue
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode == 200 {
+			return map[string]any{
+				"verified":         true,
+				"response_preview": fmt.Sprintf("%s returned 200", path),
+			}
+		}
+	}
+
+	return map[string]any{"verified": false, "error": "neither /v1/models nor /health returned 200"}
+}
+
+// WAV header helpers
+func putLE16(b []byte, v uint16) { b[0] = byte(v); b[1] = byte(v >> 8) }
+func putLE32(b []byte, v uint32) { b[0] = byte(v); b[1] = byte(v >> 8); b[2] = byte(v >> 16); b[3] = byte(v >> 24) }
 
 // getModelContextWindow returns the context window size (in tokens) for a given model.
 // Called internally by the translation-worker before chunking a chapter.
