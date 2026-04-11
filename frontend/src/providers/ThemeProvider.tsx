@@ -152,14 +152,22 @@ export function ThemeProvider({ children, accessToken }: { children: ReactNode; 
   }, [prefs.app_theme]);
 
   // Load from API on mount (if authenticated)
+  // Also populates other preference keys (voice, tts, language, media) into localStorage
   useEffect(() => {
     if (!accessToken || apiLoaded) return;
-    apiJson<{ prefs: Partial<ThemePrefs> }>('/v1/me/preferences', { token: accessToken })
+    apiJson<{ prefs: Record<string, unknown> }>('/v1/me/preferences', { token: accessToken })
       .then((res) => {
         if (res.prefs && Object.keys(res.prefs).length > 0) {
-          const merged = { ...prefs, ...res.prefs };
+          // Theme prefs (owned by this provider)
+          const merged = { ...prefs, ...res.prefs as Partial<ThemePrefs> };
           setPrefs(merged);
           saveLocal(merged);
+
+          // Sync other preference keys to localStorage for cross-device support
+          if (res.prefs.voice_prefs) localStorage.setItem('lw_voice_prefs', JSON.stringify(res.prefs.voice_prefs));
+          if (res.prefs.tts_prefs) localStorage.setItem('lw_tts_prefs', JSON.stringify(res.prefs.tts_prefs));
+          if (res.prefs.ui_language) localStorage.setItem('lw_language', res.prefs.ui_language as string);
+          if (res.prefs.media_prefs) localStorage.setItem('loreweave:media-prefs', JSON.stringify(res.prefs.media_prefs));
         }
         setApiLoaded(true);
       })
