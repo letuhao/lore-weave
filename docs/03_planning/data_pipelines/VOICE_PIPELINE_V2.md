@@ -278,6 +278,55 @@ LLM token → SentenceBuffer → sentence emitted
 
 ## 4. Audio Persistence Architecture
 
+### 3.6 Streaming TTS Playback (Sub-Sentence Latency)
+
+**Problem:** Even with sentence-level TTS pipelining, each sentence waits for the FULL TTS audio to generate (1-5s) before playback starts. For long sentences this is unacceptable.
+
+**Solution:** Stream TTS audio chunk-by-chunk and start playback as the first chunk arrives (~200ms).
+
+```
+Current (buffered):
+  "It sounds like you're referring to..." → TTS generates (3s) → play
+
+Streaming:
+  "It sounds like you're..." → TTS starts generating
+    → 200ms: chunk 1 arrives → PLAY NOW
+    → 400ms: chunk 2 → queue
+    → 600ms: chunk 3 → queue
+    → user hears audio at 200ms, not 3000ms
+```
+
+**Requirements:**
+- TTS service must return `Transfer-Encoding: chunked` (Kokoro already does ✅)
+- Use `response_format: "pcm"` (raw 16-bit 16kHz samples, each chunk independently playable) or `"mp3"` (each frame independently decodable). WAV headers prevent chunk-level decoding.
+- Frontend reads response body with `ReadableStream` reader, feeds chunks to AudioContext `AudioWorkletNode` or manual PCM scheduling
+
+**Frontend implementation:**
+```typescript
+// Instead of: const audio = await resp.arrayBuffer()
+// Do:
+const reader = resp.body!.getReader();
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  // value is a Uint8Array chunk of PCM/MP3 data
+  // Schedule immediately in AudioContext
+  await playbackQueue.enqueueChunk(value);
+}
+```
+
+**Integration with audio persistence:** Each chunk is accumulated into a buffer. After all chunks received, the complete audio is uploaded to MinIO in background (same fire-and-forget pattern).
+
+**Latency impact:**
+```
+Without streaming TTS:  sentence buffer (300ms) + TTS full gen (2000ms) + decode (50ms) = 2350ms
+With streaming TTS:     sentence buffer (300ms) + TTS first chunk (200ms) + decode (10ms) = 510ms
+```
+
+This brings time-to-first-audio from ~2.3s down to ~0.5s per sentence.
+
+---
+
 ### 4.1 Flow (Play First, Store Later)
 
 ```
@@ -733,11 +782,12 @@ The technical distinction (overlay vs inline, state machine vs simple) follows f
 | **VP2-33** | SSE-S3 encryption on lw-chat MinIO bucket for voice audio at rest |
 | **VP2-34** | STT transcript sanitization — length/content checks before LLM submission (treat as untrusted) |
 | **VP2-35** | TTS pool raise maxConcurrent from 2 to 3 (prevents audio gaps on 5+ sentence responses) |
-| **VP2-36** | Stagger MinIO uploads by segment index (index * 50ms delay, reduces concurrent fetches) |
-| **VP2-37** | Configurable audio retention in settings (48h default) |
-| **VP2-38** | Audio download button on messages |
-| **VP2-39** | Mode switch guard — disable text input during voice PROCESSING/SPEAKING |
-| **VP2-40** | Debug toggle in Voice Settings — show/hide STT/TTS metrics on messages |
+| **VP2-36** | Streaming TTS playback — read response body with ReadableStream, feed PCM/MP3 chunks to AudioContext as they arrive (time-to-first-audio from ~2.3s to ~0.5s per sentence) |
+| **VP2-37** | Stagger MinIO uploads by segment index (index * 50ms delay, reduces concurrent fetches) |
+| **VP2-38** | Configurable audio retention in settings (48h default) |
+| **VP2-39** | Audio download button on messages |
+| **VP2-40** | Mode switch guard — disable text input during voice PROCESSING/SPEAKING |
+| **VP2-41** | Debug toggle in Voice Settings — show/hide STT/TTS metrics on messages |
 
 ---
 
@@ -763,6 +813,7 @@ The technical distinction (overlay vs inline, state machine vs simple) follows f
 | Voice audio encryption? | **SSE-S3 at rest** — voice is biometric data |
 | GDPR erasure? | **DELETE endpoint** — removes all user voice audio + DB refs |
 | STT transcript trust? | **Untrusted input** — sanitized before LLM submission |
+| TTS streaming? | **Yes** — read chunked response via ReadableStream, play PCM/MP3 chunks as they arrive. Reduces per-sentence TTFA from ~2.3s to ~0.5s |
 
 ---
 
