@@ -89,6 +89,24 @@ DO $$ BEGIN
     ALTER TABLE chat_sessions ADD COLUMN is_pinned BOOLEAN NOT NULL DEFAULT false;
   END IF;
 END $$;
+
+-- Voice Pipeline V2: Audio segments for TTS replay
+CREATE TABLE IF NOT EXISTS message_audio_segments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  message_id UUID NOT NULL REFERENCES chat_messages(message_id) ON DELETE CASCADE,
+  session_id UUID NOT NULL,
+  user_id UUID NOT NULL,
+  segment_index INT NOT NULL,
+  object_key TEXT NOT NULL,
+  sentence_text TEXT NOT NULL,
+  duration_s REAL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (message_id, segment_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_mas_message ON message_audio_segments(message_id);
+CREATE INDEX IF NOT EXISTS idx_mas_user ON message_audio_segments(user_id);
+CREATE INDEX IF NOT EXISTS idx_mas_cleanup ON message_audio_segments(created_at);
 """
 
 
