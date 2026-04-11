@@ -20,7 +20,8 @@ async function bootstrap() {
   const statisticsUrl = process.env.STATISTICS_SERVICE_URL || 'http://localhost:8089';
   const notificationUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:8091';
   const audioServiceUrl = process.env.AUDIO_SERVICE_URL || '';
-  configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl, glossaryUrl, chatUrl, videoGenUrl, statisticsUrl, notificationUrl, audioServiceUrl });
+  const audioServiceApiKey = process.env.AUDIO_SERVICE_API_KEY || '';
+  configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl, glossaryUrl, chatUrl, videoGenUrl, statisticsUrl, notificationUrl, audioServiceUrl, audioServiceApiKey });
 
   const port = parseInt(process.env.PORT || '3000', 10);
   await app.listen(port);

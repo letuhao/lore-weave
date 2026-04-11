@@ -431,6 +431,7 @@ services:
       STATISTICS_SERVICE_URL: http://statistics-service:8089
       NOTIFICATION_SERVICE_URL: http://notification-service:8091
       AUDIO_SERVICE_URL: ${AUDIO_SERVICE_URL:-}
+      AUDIO_SERVICE_API_KEY: ${AUDIO_SERVICE_API_KEY:-}
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}

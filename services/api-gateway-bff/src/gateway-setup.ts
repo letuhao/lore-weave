@@ -22,6 +22,7 @@ export function configureGatewayApp(
     statisticsUrl: string;
     notificationUrl: string;
     audioServiceUrl: string;
+    audioServiceApiKey: string;
   },
 ): void {
   app.enableCors({
@@ -104,6 +105,7 @@ export function configureGatewayApp(
 
   // Audio service proxy (TTS/STT) — optional, returns 503 if not configured
   const audioServiceConfigured = !!urls.audioServiceUrl;
+  const audioServiceApiKey = urls.audioServiceApiKey || '';
   const audioProxy = audioServiceConfigured
     ? createProxyMiddleware({
         target: urls.audioServiceUrl,
@@ -111,6 +113,12 @@ export function configureGatewayApp(
         // Allow streaming audio responses (chunked transfer for TTS)
         selfHandleResponse: false,
         pathFilter: (pathname: string) => pathname.startsWith('/v1/audio'),
+        // Swap user JWT for the audio service's own API key
+        on: audioServiceApiKey ? {
+          proxyReq: (proxyReq) => {
+            proxyReq.setHeader('Authorization', `Bearer ${audioServiceApiKey}`);
+          },
+        } : undefined,
       })
     : null;
 
