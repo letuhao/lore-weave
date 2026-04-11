@@ -159,19 +159,9 @@ export function useVoiceMode({
     return engine;
   }, [prefs.ttsSpeed, prefs.ttsVoiceURI]);
 
-  // Speech recognition hook (own instance via factory pattern)
-  const onSilenceDetected = useCallback(
-    (text: string) => {
-      if (phaseRef.current !== 'listening') return;
-      if (!text.trim()) return;
-
-      // Transition to processing — send the message
-      pendingSendRef.current = true;
-      setPhase('processing');
-      // sttStop called below after hook is defined
-    },
-    [],
-  );
+  // onSilenceDetected ref — the callback is defined after startPipeline/stopPipeline
+  // but the STT hooks need it now. Use a ref so hooks get the latest version.
+  const onSilenceDetectedRef = useRef<((text: string) => void) | undefined>(undefined);
 
   // Browser STT (Web Speech API) — pass callbacks only when active (#15)
   const browserSTT = useSpeechRecognition({
@@ -179,7 +169,7 @@ export function useVoiceMode({
     continuous: true,
     interimResults: true,
     silenceThresholdMs: !useBackendSTTSource && prefs.autoSendOnSilence ? prefs.silenceThresholdMs : 0,
-    onSilenceDetected: !useBackendSTTSource ? onSilenceDetected : undefined,
+    onSilenceDetected: !useBackendSTTSource ? (text: string) => onSilenceDetectedRef.current?.(text) : undefined,
   });
 
   // Backend STT (MediaRecorder → /v1/audio/transcriptions) — only onSilenceDetected, not both (#17)
@@ -188,7 +178,7 @@ export function useVoiceMode({
     model: prefs.sttModelRef || undefined,
     modelRef: prefs.sttModelRef || undefined,
     silenceThresholdMs: useBackendSTTSource && prefs.autoSendOnSilence ? prefs.silenceThresholdMs : 0,
-    onSilenceDetected: useBackendSTTSource ? onSilenceDetected : undefined,
+    onSilenceDetected: useBackendSTTSource ? (text: string) => onSilenceDetectedRef.current?.(text) : undefined,
     onMetrics: useBackendSTTSource ? (audioKB, durationMs) => {
       setMetrics((prev) => ({ ...prev, sttAudioKB: +audioKB.toFixed(1), sttMs: Math.round(durationMs) }));
     } : undefined,
@@ -221,26 +211,8 @@ export function useVoiceMode({
   const sttStop = useCallback(() => sttStopRef.current(), []);
   const sttReset = useCallback(() => sttResetRef.current(), []);
 
-  // When phase transitions to 'processing', stop STT and send the transcript
-  useEffect(() => {
-    if (phase !== 'processing' || !pendingSendRef.current) return;
-    sttStop();
-    const text = stt.transcript || stt.interimTranscript;
-    if (!text.trim()) {
-      setPhase('listening');
-      pendingSendRef.current = false;
-      sttStart();
-      return;
-    }
-    void sendMessageRef.current(text.trim()).catch(() => {
-      if (phaseRef.current === 'processing') {
-        pendingSendRef.current = false;
-        setPhase('listening');
-        sttReset();
-        sttStart();
-      }
-    });
-  }, [phase, stt.transcript, stt.interimTranscript, sttStop, sttStart, sttReset]);
+  // No processing-phase effect needed — onSilenceDetected handles everything
+  // synchronously (send, pipeline arm, STT stop) in a single callback.
 
   // ── Streaming TTS Pipeline (RTV-03) ─────────────────────────────
 
@@ -339,6 +311,44 @@ export function useVoiceMode({
     ttsQueueRef.current = null;
   }, []);
 
+  // Speech recognition — silence detected means user finished speaking.
+  // Everything happens synchronously — no React effects for control flow.
+  const onSilenceDetected = useCallback(
+    (text: string) => {
+      if (phaseRef.current !== 'listening') return;
+      if (!text.trim()) return;
+
+      // 1. Stop STT immediately (prevents auto-restart and double-send)
+      sttStopRef.current();
+
+      // 2. Set flags and phase
+      pendingSendRef.current = true;
+      resetMetrics();
+      setPhase('processing');
+
+      // 3. Arm the streaming TTS pipeline BEFORE sending (so tokens are captured)
+      const p = prefsRef.current;
+      if (p.autoTTSResponses && p.ttsSource === 'ai_model') {
+        stopPipeline();
+        startPipeline();
+      }
+
+      // 4. Send the message — use text from callback arg, not from React state
+      console.log('[VoiceMode] Sending:', text.trim().slice(0, 60));
+      void sendMessageRef.current(text.trim()).catch(() => {
+        if (phaseRef.current === 'processing') {
+          pendingSendRef.current = false;
+          stopPipeline();
+          setPhase('listening');
+          sttResetRef.current();
+          sttStartRef.current();
+        }
+      });
+    },
+    [startPipeline, stopPipeline, resetMetrics],
+  );
+  onSilenceDetectedRef.current = onSilenceDetected;
+
   // Wire onStreamDeltaRef to feed tokens into the pipeline (runs once on mount — #11)
   const llmFirstTokenRef = useRef<number | null>(null);
   const llmTokenCountRef = useRef(0);
@@ -366,15 +376,7 @@ export function useVoiceMode({
     };
   }, [onStreamDeltaRef]);
 
-  // #3: Arm pipeline eagerly when processing phase begins (before fetch starts)
-  // This eliminates the token delivery gap between SSE start and React state flush
-  useEffect(() => {
-    if (phase !== 'processing' || !pendingSendRef.current) return;
-    if (!prefsRef.current.autoTTSResponses) return;
-    if (prefsRef.current.ttsSource !== 'ai_model') return;
-    stopPipeline(); // #6: cancel any previous pipeline first
-    startPipeline();
-  }, [phase, startPipeline, stopPipeline]);
+  // Pipeline is now armed synchronously in onSilenceDetected — no effect needed.
 
   // Watch streaming status — handle stream-end for both pipeline and legacy TTS paths
   const prevStreamStatus = useRef(streamStatus);
@@ -384,6 +386,7 @@ export function useVoiceMode({
 
     // Only handle stream-end transitions
     if (!wasStreaming || streamStatus !== 'idle') return;
+    console.log('[VoiceMode] Stream ended — phase:', phaseRef.current, 'pending:', pendingSendRef.current, 'pipeline:', pipelineActiveRef.current);
     if (phaseRef.current !== 'processing' && phaseRef.current !== 'speaking') return;
     if (!pendingSendRef.current) return; // Ignore manual sends
 
