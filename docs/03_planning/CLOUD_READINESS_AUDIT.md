@@ -34,10 +34,10 @@ LoreWeave is moving from Docker Compose development to AWS cloud production depl
   - `services/worker-infra/internal/config/config.go` — `InternalToken` (`requireEnv()`)
 - **Behavior:** All services now fail to start if secret env vars are missing. Docker-compose already provides dev values.
 
-### CRA-03: MINIO_EXTERNAL_URL must not default to localhost
-- **File:** `infra/docker-compose.yml`
-- **Problem:** `MINIO_EXTERNAL_URL: http://localhost:9123` — presigned URLs sent to browsers point to localhost in prod.
-- **Fix:** Remove default. In prod, set to S3 bucket URL or CloudFront distribution.
+### CRA-03: MINIO_EXTERNAL_URL must not default to localhost [DONE]
+- **Files:** `services/book-service/internal/config/config.go`, `services/book-service/internal/api/media.go`, `services/video-gen-service/app/routers/generate.py`
+- **Problem:** `MINIO_EXTERNAL_URL` defaulted to empty string, with fallback to internal MinIO endpoint — browsers can't reach internal endpoints in prod.
+- **Fix:** Made `MINIO_EXTERNAL_URL` required in both services. Removed internal-endpoint fallback from `mediaURL()` / `media_url()`. Docker-compose provides `http://localhost:9123` for dev.
 
 ### CRA-04: Chat layout — responsive sidebar for mobile
 - **Files:** `frontend/src/pages/ChatPage.tsx`, `SessionSidebar`

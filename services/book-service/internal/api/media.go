@@ -600,13 +600,9 @@ func (s *Server) setBucketPublicRead(ctx context.Context) error {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-// mediaURL returns the browser-accessible URL for a MinIO object.
-// Uses MINIO_EXTERNAL_URL if set (e.g. http://localhost:9123), falls back to internal endpoint.
+// mediaURL returns the browser-accessible URL for a MinIO/S3 object.
 func (s *Server) mediaURL(objectKey string) string {
-	if s.cfg.MinioExternalURL != "" {
-		return fmt.Sprintf("%s/%s/%s", s.cfg.MinioExternalURL, mediaBucket, objectKey)
-	}
-	return fmt.Sprintf("http://%s/%s/%s", s.cfg.MinioEndpoint, mediaBucket, objectKey)
+	return fmt.Sprintf("%s/%s/%s", s.cfg.MinioExternalURL, mediaBucket, objectKey)
 }
 
 func nilIfEmpty(s string) *string {

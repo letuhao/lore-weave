@@ -35,7 +35,7 @@ func Load() (*Config, error) {
 		MinioAccessKey:     getEnv("MINIO_ACCESS_KEY", "loreweave"),
 		MinioSecretKey:     getEnv("MINIO_SECRET_KEY", ""),
 		MinioUseSSL:          getEnv("MINIO_USE_SSL", "false") == "true",
-		MinioExternalURL:     getEnv("MINIO_EXTERNAL_URL", ""),
+		MinioExternalURL:     os.Getenv("MINIO_EXTERNAL_URL"),
 		ProviderRegistryURL:    getEnv("PROVIDER_REGISTRY_SERVICE_URL", "http://localhost:8085"),
 		UsageBillingServiceURL: getEnv("USAGE_BILLING_SERVICE_URL", ""),
 		InternalServiceToken:   os.Getenv("INTERNAL_SERVICE_TOKEN"),
@@ -48,6 +48,9 @@ func Load() (*Config, error) {
 	}
 	if c.InternalServiceToken == "" {
 		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
+	}
+	if c.MinioExternalURL == "" {
+		return nil, fmt.Errorf("MINIO_EXTERNAL_URL is required")
 	}
 	return c, nil
 }

@@ -19,7 +19,7 @@ USAGE_BILLING_URL = os.getenv("USAGE_BILLING_SERVICE_URL", "")
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "minio:9000")
 MINIO_ACCESS_KEY = os.environ["MINIO_ACCESS_KEY"]
 MINIO_SECRET_KEY = os.environ["MINIO_SECRET_KEY"]
-MINIO_EXTERNAL_URL = os.getenv("MINIO_EXTERNAL_URL", "")
+MINIO_EXTERNAL_URL = os.environ["MINIO_EXTERNAL_URL"]
 MINIO_BUCKET = "loreweave-media"
 
 _minio: Optional[Minio] = None
@@ -40,9 +40,7 @@ def get_minio() -> Minio:
 
 
 def media_url(object_key: str) -> str:
-    if MINIO_EXTERNAL_URL:
-        return f"{MINIO_EXTERNAL_URL}/{MINIO_BUCKET}/{object_key}"
-    return f"http://{MINIO_ENDPOINT}/{MINIO_BUCKET}/{object_key}"
+    return f"{MINIO_EXTERNAL_URL}/{MINIO_BUCKET}/{object_key}"
 
 
 async def resolve_credentials(model_source: str, model_ref: str, user_id: str) -> dict:
