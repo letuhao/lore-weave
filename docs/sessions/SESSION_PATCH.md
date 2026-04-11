@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-11 (session 31 end — GEP + Voice Mode + AI Service Readiness)
-- Updated By: Assistant (29 commits: GEP complete, Voice Mode 6 tasks, AISR 5 tasks, integration guide)
+- Last Updated: 2026-04-11 (session 31 end — GEP + Voice Mode + AISR + RTV pipeline + V2 pipeline design)
+- Updated By: Assistant (50+ commits: GEP complete, Voice Mode 6 tasks, AISR 5 tasks, RTV pipeline, V2 design)
 - Active Branch: `main`
-- HEAD: `e54557e` (AISR-03+04 review fixes)
+- HEAD: `6e1d81e` (V2 streaming TTS doc)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
 
 ---
@@ -39,7 +39,7 @@
 
 **What was done in this session (2026-04-10→11, session 31):**
 
-Three major features completed: GEP end-to-end, Voice Mode for chat, AI Service Readiness infrastructure. 29 commits total.
+Five major areas completed: GEP end-to-end, Voice Mode for chat, AI Service Readiness infrastructure, Real-Time Voice pipeline (RTV), Voice Pipeline V2 architecture design. 50+ commits total.
 
 | Work item | Files | Commit |
 | --------- | ----- | ------ |
@@ -73,6 +73,19 @@ Three major features completed: GEP end-to-end, Voice Mode for chat, AI Service 
 | AISR-04: useStreamingTTS hook (fetch → AudioContext playback) | `hooks/useStreamingTTS.ts` | `14541fc` |
 | AISR-05: Integration test script (19 assertions) | `infra/test-audio-service.sh` | `bdb2153` |
 | AISR-03+04 review: 20 issues (AudioContext leaks, race conditions, Safari) | 3 files | `e54557e` |
+| **Real-Time Voice Pipeline (RTV-01..04):** | | |
+| RTV-01+02: SentenceBuffer + TTSPlaybackQueue (18 unit tests) | `lib/SentenceBuffer.ts`, `lib/TTSPlaybackQueue.ts` | (earlier commits) |
+| RTV-03: Wire streaming TTS pipeline into voice mode + review (16 issues) | `useVoiceMode.ts`, `TTSConcurrencyPool.ts` | `b9beb86`, `4f8d50b` |
+| RTV-04: Barge-in detection + review (16 issues) | `BargeInDetector.ts` | `02409b1`, `0098584` |
+| Voice settings button in chat header + TTS voice selector | `ChatHeader.tsx`, `VoiceSettingsPanel.tsx` | `e425587`, `6b48cb3` |
+| Fix: STT language region strip, live metrics overlay | `useBackendSTT.ts`, `VoiceModeOverlay.tsx` | `91edae5`, `8ff758c` |
+| Fix: double-send (imperative pipeline), infinite loop (noise), generation counter | `useVoiceMode.ts` | `425b05d`, `eaa66e5`, `8827928` |
+| Fix: Silero VAD integration (4 iterations: nginx MIME, CDN, vite-plugin-static-copy) | `useBackendSTT.ts`, `nginx.conf`, `vite.config.ts` | `e117db6` + 5 fix commits |
+| **Voice Pipeline V2 Architecture (design-only):** | | |
+| V2 architecture doc: strict state machine, audio persistence, text normalizer | `VOICE_PIPELINE_V2.md` | `ee77ac8`, `5fac900` |
+| 5 review rounds (context/data/UX/security/performance): 39 issues addressed | `VOICE_PIPELINE_V2.md` | `5b666c8` |
+| Phase E (voice assist mode), Phase D (metrics), streaming TTS | `VOICE_PIPELINE_V2.md` | `4a05419`, `2fa1f40`, `6e1d81e` |
+| Competitor review (OpenAI Realtime, Pipecat, LiveKit, ElevenLabs) + 5 latency optimizations | `VOICE_PIPELINE_V2.md` | uncommitted |
 
 **9-phase workflow followed for each FE task:** PLAN → DESIGN → REVIEW → BUILD → TEST → REVIEW → QC → SESSION → COMMIT
 

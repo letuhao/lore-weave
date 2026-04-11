@@ -627,26 +627,31 @@ Timeline:
 
 ## 7. Implementation Tasks
 
-### Phase A: Fix Pipeline (P0)
+### Phase A: Fix Pipeline + Latency (P0)
 
-| Task | Scope |
-|------|-------|
-| **VP2-01** | `VoicePipelineController` class — strict state machine with transition validation, timeout guards, error recovery |
-| **VP2-02** | Phase locking — VAD audio stream stopped in PROCESSING/SPEAKING, ONNX runtime kept alive for fast restart |
-| **VP2-03** | SPEAKING exit condition — requires BOTH `llmComplete` AND `allAudioPlayed` |
-| **VP2-04** | Remove BargeInDetector — manual cancel button only (Space key) |
+| Task | Scope | Dep |
+|------|-------|-----|
+| **VP2-01** | `VoicePipelineController` class — strict state machine with transition validation, timeout guards, error recovery | — |
+| **VP2-42** | Persistent MediaStream — acquire mic once on activation, reuse across all phases. VAD pause/resume controls frame analysis only (stream stays alive). Release mic only on `deactivate()` | VP2-01 |
+| **VP2-02** | Phase locking — VAD frame analysis paused in PROCESSING/SPEAKING (NOT stream stopped). ONNX runtime kept alive across all phases for instant resume | VP2-42 |
+| **VP2-03** | SPEAKING exit condition — requires BOTH `llmComplete` AND `allAudioPlayed` | VP2-01 |
+| **VP2-04** | Remove BargeInDetector — manual cancel button only (Space key) | VP2-01 |
+| **VP2-36** | Streaming TTS playback — read response body with ReadableStream, feed PCM/MP3 chunks to AudioContext as they arrive (TTFA from ~2.3s to ~0.5s per sentence) | VP2-01 |
+| **VP2-45** | Clause-level SentenceBuffer — add `clauseMode` (voice-only) that splits on `, ` `; ` ` — ` when buffer > 40 chars. Reduces time-to-first-audio by 300-500ms | — |
+| **VP2-43** | TTS pre-warm + filler audio — on activation: fire minimal TTS request to warm connection, cache result as filler phrase. Played after 1.5s LLM silence, cancelled if LLM responds faster | VP2-36 |
+| **VP2-44** | Adaptive silence threshold — start 500ms, increase on false triggers, decrease on long segments. Disable when user sets manual override. Add "Learner mode: 800ms" preset | VP2-02 |
 
 ### Phase B: Text Preprocessing + Barge-in (P1)
 
-| Task | Scope |
-|------|-------|
-| **VP2-05** | Voice mode system prompt injection — prepend speech-style instructions to LLM request when voice mode is active (Layer 0) |
-| **VP2-06** | `TextNormalizer` class — rule-based markdown/code/emoji stripping (Layer 1) |
-| **VP2-07** | Wire normalizer into pipeline between SentenceBuffer and TTS pool |
-| **VP2-08** | Normalizer stats in metrics (sentences skipped, code blocks, etc.) |
-| **VP2-09** | Optional LLM rewriter — "Explain code blocks with AI" setting (Layer 2) |
-| **VP2-10** | Headphone detection — enable auto barge-in when headphones connected |
-| **VP2-11** | "Thinking..." indicator during PROCESSING when LLM first token > 2s |
+| Task | Scope | Dep |
+|------|-------|-----|
+| **VP2-05** | Voice mode system prompt injection — prepend speech-style instructions to LLM request when voice mode is active (Layer 0) | — |
+| **VP2-06** | `TextNormalizer` class — rule-based markdown/code/emoji stripping (Layer 1) | — |
+| **VP2-07** | Wire normalizer into pipeline between SentenceBuffer and TTS pool | VP2-06, Phase A |
+| **VP2-08** | Normalizer stats in metrics (sentences skipped, code blocks, etc.) | VP2-07 |
+| **VP2-09** | Optional LLM rewriter — "Explain code blocks with AI" setting (Layer 2) | VP2-07 |
+| **VP2-10** | Headphone detection — enable auto barge-in when headphones connected | Phase A |
+| **VP2-11** | "Thinking..." indicator during PROCESSING when LLM first token > 2s | Phase A |
 
 ### Phase C: Audio Persistence (P1)
 
@@ -782,7 +787,7 @@ The technical distinction (overlay vs inline, state machine vs simple) follows f
 | **VP2-33** | SSE-S3 encryption on lw-chat MinIO bucket for voice audio at rest |
 | **VP2-34** | STT transcript sanitization — length/content checks before LLM submission (treat as untrusted) |
 | **VP2-35** | TTS pool raise maxConcurrent from 2 to 3 (prevents audio gaps on 5+ sentence responses) |
-| **VP2-36** | Streaming TTS playback — read response body with ReadableStream, feed PCM/MP3 chunks to AudioContext as they arrive (time-to-first-audio from ~2.3s to ~0.5s per sentence) |
+| ~~**VP2-36**~~ | ~~Streaming TTS playback~~ — **Promoted to Phase A** (critical for latency) |
 | **VP2-37** | Stagger MinIO uploads by segment index (index * 50ms delay, reduces concurrent fetches) |
 | **VP2-38** | Configurable audio retention in settings (48h default) |
 | **VP2-39** | Audio download button on messages |
@@ -791,7 +796,226 @@ The technical distinction (overlay vs inline, state machine vs simple) follows f
 
 ---
 
-## 8. Open Questions (Resolved)
+## 8. Latency Optimizations (Post-Competitor Review)
+
+After comparing against OpenAI Realtime API, Pipecat, LiveKit, and ElevenLabs, these optimizations close the biggest latency gaps while keeping our self-hosted BYOK architecture.
+
+### 8.1 Clause-Level SentenceBuffer (Time-to-First-Audio: -300-500ms)
+
+**Problem:** Current SentenceBuffer waits for full sentence boundaries (`.!?`). Long sentences like "Well, I think the translation looks good, but you might want to reconsider the third paragraph." take 3-5s of LLM tokens before TTS starts.
+
+**Solution:** Add `clauseMode` that also splits on clause boundaries when accumulated text exceeds a threshold:
+
+```typescript
+// SentenceBuffer clause-level splits (voice mode only)
+const CLAUSE_DELIMITERS = [', ', ' — ', '; ', ' but ', ' and ', ' so ', ' because '];
+const CLAUSE_MIN_LENGTH = 40; // Don't split short text
+
+// Only active during voice mode (written TTS replay uses full sentences)
+if (this.clauseMode && this.buffer.length > CLAUSE_MIN_LENGTH) {
+  for (const delim of CLAUSE_DELIMITERS) {
+    const idx = this.buffer.lastIndexOf(delim);
+    if (idx > CLAUSE_MIN_LENGTH) {
+      const clause = this.buffer.slice(0, idx + delim.length);
+      this.buffer = this.buffer.slice(idx + delim.length);
+      this.emit(clause);
+      break;
+    }
+  }
+}
+```
+
+**Latency impact:**
+```
+Without clause split: "Well, I think the translation looks good, but..."
+  → waits for period → TTS fires at ~3s → first audio at ~5s
+
+With clause split: "Well, I think the translation looks good,"
+  → fires at comma (40+ chars) → TTS at ~1.2s → first audio at ~1.6s
+```
+
+**Guard rails:**
+- Only active in voice mode (replay uses full sentences for natural prosody)
+- Min 40 chars before considering clause split (prevents tiny fragments)
+- Comma-only splits don't trigger for numbers ("1,000") or quoted speech
+
+### 8.2 Speculative Filler TTS (Eliminates Dead Silence)
+
+**Problem:** Between STT completing and LLM producing first token, there's 1-3s of dead silence. Users think the system is broken.
+
+**Solution:** Pre-generate a short filler phrase. Play it only if LLM doesn't respond within 1.5s.
+
+```typescript
+// During PROCESSING phase
+private fillerTimeout: ReturnType<typeof setTimeout> | null = null;
+private fillerAudio: AudioBuffer | null = null;
+
+onEnterProcessing() {
+  // Start filler timer
+  this.fillerTimeout = setTimeout(() => {
+    if (this.phase === 'processing' && !this.firstTTSPlayed) {
+      this.playFiller();
+    }
+  }, 1500);
+}
+
+onFirstTTSReady() {
+  // Cancel filler if LLM was fast enough
+  clearTimeout(this.fillerTimeout);
+  this.firstTTSPlayed = true;
+}
+```
+
+**Filler phrases (rotated):**
+- "Let me think..."
+- "Hmm..."
+- "One moment..."
+
+**Pre-warming:** Filler audio is pre-generated on voice mode activation (one TTS call, ~200ms of audio, cached in memory). No latency when needed.
+
+**Cost:** One extra TTS call on activation (~0.5KB audio). Discarded most of the time. Negligible.
+
+### 8.3 Persistent MediaStream (VAD Resume: -100-200ms)
+
+**Problem:** Current plan stops/starts the microphone audio stream between phases. `getUserMedia()` re-acquisition takes 100-200ms.
+
+**Solution:** Keep the MediaStream alive for the entire voice session. Control VAD processing at the analysis level, not the stream level.
+
+```typescript
+class VoicePipelineController {
+  private mediaStream: MediaStream | null = null;  // Lives across all phases
+  private vadProcessing = false;  // Controls whether VAD analyzes frames
+
+  async activate() {
+    // Acquire mic ONCE for entire session
+    this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // Pass stream to VAD
+    this.vad = await MicVAD.new({
+      stream: this.mediaStream,  // Reuse same stream
+      onSpeechEnd: (audio) => this.onSpeechEnd(audio),
+    });
+  }
+
+  private startVADProcessing() {
+    this.vad?.start();  // Resume frame analysis (instant — stream already flowing)
+    this.vadProcessing = true;
+  }
+
+  private stopVADProcessing() {
+    this.vad?.pause();  // Stop analysis but stream stays alive
+    this.vadProcessing = false;
+  }
+
+  deactivate() {
+    this.vad?.destroy();
+    this.mediaStream?.getTracks().forEach(t => t.stop());  // Release mic only on full exit
+    this.mediaStream = null;
+  }
+}
+```
+
+**Benefit:** Phase transitions (SPEAKING → LISTENING) are instant. No mic re-acquisition delay.
+
+### 8.4 Adaptive Silence Threshold
+
+**Problem:** Fixed VAD silence threshold doesn't account for:
+- Language learners who pause longer between words
+- Noisy environments that cause false triggers
+- Fast speakers who need shorter thresholds
+
+**Solution:** Start with 500ms default, adapt based on observed behavior:
+
+```typescript
+class AdaptiveSilenceThreshold {
+  private baseMs = 500;
+  private recentSegments: number[] = [];  // speech segment durations
+  private falseTriggersInRow = 0;
+
+  /** Called after each STT result */
+  update(speechDurationMs: number, wasEmpty: boolean) {
+    if (wasEmpty) {
+      // STT returned nothing useful — probably a false trigger
+      this.falseTriggersInRow++;
+      if (this.falseTriggersInRow >= 2) {
+        this.baseMs = Math.min(this.baseMs + 100, 1200);  // Max 1.2s
+        this.falseTriggersInRow = 0;
+      }
+    } else {
+      this.falseTriggersInRow = 0;
+      this.recentSegments.push(speechDurationMs);
+      if (this.recentSegments.length > 10) this.recentSegments.shift();
+
+      // Short average segments → learner speaking slowly → increase threshold
+      const avgDuration = this.recentSegments.reduce((a, b) => a + b, 0) / this.recentSegments.length;
+      if (avgDuration < 2000) {
+        this.baseMs = Math.min(this.baseMs + 50, 1000);
+      } else if (avgDuration > 5000) {
+        this.baseMs = Math.max(this.baseMs - 50, 300);
+      }
+    }
+  }
+
+  get currentMs() { return this.baseMs; }
+}
+```
+
+**UX:** Show current threshold in debug metrics. User can still override manually in Voice Settings (which disables adaptation).
+
+### 8.5 TTS Pre-Warm on Activation
+
+**Problem:** First TTS request is always slowest due to cold HTTP connection and provider-side model loading (200-500ms extra).
+
+**Solution:** On voice mode activation, fire a minimal TTS request in background:
+
+```typescript
+async activate() {
+  // ... VAD setup ...
+
+  // Pre-warm TTS connection (fire and forget)
+  this.preWarmTTS();
+}
+
+private async preWarmTTS() {
+  try {
+    const resp = await fetch(ttsUrl, {
+      method: 'POST',
+      headers: this.ttsHeaders,
+      body: JSON.stringify({
+        input: '.',          // Minimal text — tiny response
+        voice: this.voice,
+        model: this.model,
+        response_format: 'mp3',
+      }),
+    });
+    // Discard response — we just want the connection warm
+    await resp.arrayBuffer();
+    // Also cache the filler audio here (§8.2)
+    console.log('[Pipeline] TTS pre-warmed');
+  } catch {
+    // Non-critical — ignore
+  }
+}
+```
+
+**Bonus:** Combine with filler phrase generation (§8.2) — the pre-warm request generates the filler audio, serving both purposes in one call.
+
+### 8.6 Competitor Comparison Summary
+
+| Dimension | LoreWeave V2 (with optimizations) | OpenAI Realtime | Pipecat | LiveKit | ElevenLabs |
+|-----------|----------------------------------|-----------------|---------|---------|------------|
+| Time-to-first-audio | ~800ms (clause split + streaming TTS) | ~300ms | ~1.2s | ~800ms | ~500ms |
+| Dead silence gap | Eliminated (filler TTS) | N/A (full-duplex) | Possible | Possible | N/A |
+| VAD resume latency | <5ms (persistent stream) | N/A (server) | ~50ms | ~50ms | N/A |
+| False trigger handling | Adaptive threshold | Server-side | Manual config | Manual config | Server-side |
+| First-request penalty | Eliminated (pre-warm) | N/A (persistent WS) | Cold start | Cold start | N/A |
+| Audio persistence | Yes (MinIO + replay) | No | No | No | No |
+| Self-hosted BYOK | Yes | No | Yes | Partial | No |
+
+**Verdict:** With these 5 optimizations, our perceived latency drops from ~2.3s to ~800ms — competitive with LiveKit and approaching ElevenLabs, while maintaining full self-hosted BYOK control and audio persistence that no competitor offers.
+
+---
+
+## 9. Open Questions (Resolved)
 
 | Question | Resolution |
 |----------|-----------|
@@ -813,7 +1037,10 @@ The technical distinction (overlay vs inline, state machine vs simple) follows f
 | Voice audio encryption? | **SSE-S3 at rest** — voice is biometric data |
 | GDPR erasure? | **DELETE endpoint** — removes all user voice audio + DB refs |
 | STT transcript trust? | **Untrusted input** — sanitized before LLM submission |
-| TTS streaming? | **Yes** — read chunked response via ReadableStream, play PCM/MP3 chunks as they arrive. Reduces per-sentence TTFA from ~2.3s to ~0.5s |
+| TTS streaming? | **Yes** — read chunked response via ReadableStream, play PCM/MP3 chunks as they arrive. Reduces per-sentence TTFA from ~2.3s to ~0.5s. **Promoted to Phase A** (critical path) |
+| Filler vs pre-warm? | **Merged into VP2-43** — pre-warm request generates filler audio ("Let me think..."), serves both purposes in one TTS call |
+| Clause vs sentence split? | **Both** — clauseMode for voice (split at 40+ chars on commas), full sentence for replay (better prosody) |
+| Adaptive vs manual threshold? | **Both** — adaptive default + "Learner mode: 800ms" preset + manual override (disables adaptation) |
 
 ---
 
@@ -826,10 +1053,11 @@ The technical distinction (overlay vs inline, state machine vs simple) follows f
 | 3 | UX Designer | 7 | Mode merge, 4-state mic, collapsed segments, debug metrics |
 | 4 | Security Engineer | 7 | Server-side prompt, encryption, GDPR, signed URL scope |
 | 5 | Performance Engineer | 4 | TTS pool=3, stagger uploads, ONNX worker verification |
+| 6 | Competitor Review | 5 | Clause-level splits, speculative filler, persistent stream, adaptive threshold, TTS pre-warm |
 
-Total: 39 issues found, all addressed. 40 implementation tasks across 6 phases.
+Total: 44 issues found, all addressed. 45 implementation tasks across 6 phases (VP2-36 promoted to Phase A, VP2-46 merged into VP2-43).
 
 ---
 
 *Created: 2026-04-11 — LoreWeave session 31*
-*5 review rounds: context engineer, data engineer, UX designer, security engineer, performance engineer*
+*6 review rounds: context engineer, data engineer, UX designer, security engineer, performance engineer, competitor review*
