@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { ArrowUp, Brain, Square, Zap, Mic, MicOff } from 'lucide-react';
 import { useSpeechRecognition, SPEECH_RECOGNITION_SUPPORTED } from '@/hooks/useSpeechRecognition';
+import { MEDIA_RECORDER_SUPPORTED } from '@/hooks/useBackendSTT';
 import TextareaAutosize from 'react-textarea-autosize';
 import { ContextBar } from '../context/ContextBar';
 import type { ContextItem } from '../context/types';
@@ -189,7 +190,7 @@ export function ChatInputBar({
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" /></svg>
               </button>
               {/* Push-to-talk mic button (hidden when voice mode owns STT) */}
-              {SPEECH_RECOGNITION_SUPPORTED && !voiceModeActive && (
+              {(SPEECH_RECOGNITION_SUPPORTED || MEDIA_RECORDER_SUPPORTED) && !voiceModeActive && (
                 <button
                   type="button"
                   onClick={toggleMic}

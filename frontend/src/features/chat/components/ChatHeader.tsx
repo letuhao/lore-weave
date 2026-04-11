@@ -1,5 +1,6 @@
 import { Download, Menu, Pencil, Settings, Mic, SlidersHorizontal } from 'lucide-react';
 import { SPEECH_RECOGNITION_SUPPORTED } from '@/hooks/useSpeechRecognition';
+import { MEDIA_RECORDER_SUPPORTED } from '@/hooks/useBackendSTT';
 import { cn } from '@/lib/utils';
 import { chatApi } from '../api';
 import type { ChatSession } from '../types';
@@ -51,7 +52,7 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
         </div>
       </div>
       <div className="flex items-center gap-1.5">
-        {SPEECH_RECOGNITION_SUPPORTED && onToggleVoiceMode && session.status !== 'archived' && (
+        {(SPEECH_RECOGNITION_SUPPORTED || MEDIA_RECORDER_SUPPORTED) && onToggleVoiceMode && session.status !== 'archived' && (
           <button
             type="button"
             onClick={onToggleVoiceMode}

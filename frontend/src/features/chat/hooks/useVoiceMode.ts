@@ -111,6 +111,7 @@ export function useVoiceMode({
 
   // Barge-in detection (RTV-04)
   const bargeInRef = useRef<BargeInDetector | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const bargeInStreamRef = useRef<MediaStream | null>(null);
 
   // Live metrics
@@ -231,6 +232,7 @@ export function useVoiceMode({
 
     // Create playback queue
     const queue = new TTSPlaybackQueue({
+      audioContext: audioCtxRef.current ?? undefined,
       onChunkEnd: () => {
         // RTV-04: notify barge-in detector for cooldown
         bargeInRef.current?.notifyChunkEnd();
@@ -532,6 +534,12 @@ export function useVoiceMode({
     ttsEngineRef.current?.stop();
     streamingTTSStopRef.current();
     stopPipeline();
+
+    // Create + resume AudioContext in user gesture (required for iOS Safari)
+    const ctx = new AudioContext({ sampleRate: 24000 });
+    ctx.resume().catch(() => {});
+    audioCtxRef.current = ctx;
+
     setPrefs(loadVoicePrefs());
     setPhase('listening');
     setAiResponseText('');
@@ -552,6 +560,11 @@ export function useVoiceMode({
     if (bargeInStreamRef.current) {
       bargeInStreamRef.current.getTracks().forEach((t) => t.stop());
       bargeInStreamRef.current = null;
+    }
+    // Close AudioContext created on activation
+    if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+      audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current = null;
     }
     setAiResponseText('');
   }, [sttStop, stopPipeline]);

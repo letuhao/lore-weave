@@ -8,6 +8,8 @@
 export interface TTSPlaybackQueueOptions {
   /** Silence padding between sentences in ms (default 80, 0 for first chunk) */
   sentencePadMs?: number;
+  /** Pre-created AudioContext (resumed in user gesture for iOS compatibility) */
+  audioContext?: AudioContext;
   /** Called when all enqueued audio has finished playing and close() was called */
   onAllPlayed?: () => void;
   /** Called when a chunk starts playing (index) */
@@ -37,6 +39,7 @@ export class TTSPlaybackQueue {
 
   constructor(options: TTSPlaybackQueueOptions = {}) {
     this.sentencePadMs = options.sentencePadMs ?? 80;
+    this.audioCtx = options.audioContext ?? null;
     this.onAllPlayed = options.onAllPlayed;
     this.onChunkStart = options.onChunkStart;
     this.onChunkEnd = options.onChunkEnd;
@@ -59,10 +62,12 @@ export class TTSPlaybackQueue {
     // Resume if suspended (browser auto-suspend policy)
     try {
       if (ctx.state === 'suspended') {
-        await ctx.resume(); // PQ-04: wrapped in try/catch
+        console.log('[TTSQueue] AudioContext suspended — attempting resume...');
+        await ctx.resume();
+        console.log('[TTSQueue] AudioContext resumed:', ctx.state);
       }
-    } catch {
-      // Can't resume without user gesture — audio won't play but won't crash
+    } catch (e) {
+      console.error('[TTSQueue] AudioContext resume failed:', (e as Error).message);
     }
 
     // PQ-02: bail if cancelled during resume
@@ -72,13 +77,16 @@ export class TTSPlaybackQueue {
     try {
       buffer = await ctx.decodeAudioData(audioData.slice(0)); // PQ-03: try/catch
     } catch (err) {
-      this.onChunkError?.(idx, err as Error); // PQ-03: report, don't stall
+      console.error(`[TTSQueue] Decode failed for chunk ${idx}:`, (err as Error).message);
+      this.onChunkError?.(idx, err as Error);
       this.checkAllPlayed();
       return;
     }
 
     // PQ-02: bail if cancelled during decode
     if (gen !== this.generation) return;
+
+    console.log(`[TTSQueue] Decoded chunk ${idx}: ${buffer.duration.toFixed(1)}s, ctx.state=${ctx.state}`);
 
     const source = ctx.createBufferSource();
     source.buffer = buffer;
