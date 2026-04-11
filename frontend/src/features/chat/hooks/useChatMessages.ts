@@ -6,6 +6,11 @@ import type { ChatMessage } from '../types';
 type StreamStatus = 'idle' | 'streaming' | 'error';
 type StreamPhase = 'idle' | 'thinking' | 'responding';
 
+/** Delta type emitted during SSE streaming */
+export type StreamDeltaType = 'content' | 'reasoning';
+/** Callback for each SSE delta token */
+export type OnStreamDelta = (delta: string, type: StreamDeltaType) => void;
+
 /**
  * Unified hook: owns message list + SSE streaming for send/edit/regenerate.
  * Supports reasoning-delta (thinking) and text-delta (content) events.
@@ -22,6 +27,8 @@ export function useChatMessages(sessionId: string | null) {
   const abortRef = useRef<AbortController | null>(null);
   const thinkingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const thinkingStartRef = useRef<number>(0);
+  /** Settable callback for per-token deltas (used by voice mode pipeline) */
+  const onStreamDeltaRef = useRef<OnStreamDelta | null>(null);
 
   // ── Fetch messages on session change ──────────────────────────────────────────
 
@@ -134,6 +141,7 @@ export function useChatMessages(sessionId: string | null) {
                 }
                 accumulatedReasoning += event.delta;
                 setStreamingReasoning(accumulatedReasoning);
+                onStreamDeltaRef.current?.(event.delta, 'reasoning');
               } else if (event.type === 'text-delta' && event.delta) {
                 if (accumulatedContent === '' && accumulatedReasoning !== '') {
                   // Transition from thinking → responding
@@ -144,6 +152,7 @@ export function useChatMessages(sessionId: string | null) {
                 }
                 accumulatedContent += event.delta;
                 setStreamingText(accumulatedContent);
+                onStreamDeltaRef.current?.(event.delta, 'content');
               } else if (event.type === 'data' && event.data?.[0]) {
                 streamMessageId = event.data[0].message_id || null;
               } else if (event.type === 'finish-message') {
@@ -299,5 +308,7 @@ export function useChatMessages(sessionId: string | null) {
     stop,
     refresh: fetchMessages,
     refreshBranch: (branchId: number) => fetchMessages(branchId),
+    /** Set a callback to receive per-token deltas during streaming */
+    onStreamDeltaRef,
   };
 }

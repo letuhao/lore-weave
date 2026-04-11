@@ -52,6 +52,7 @@ export function ChatWindow({
     sendMessage: sendForVoice,
     streamStatus: chat.streamStatus,
     streamingText: chat.streamingText,
+    onStreamDeltaRef: chat.onStreamDeltaRef,
   });
 
   // Deactivate voice mode on session change (Issue #3)
