@@ -100,7 +100,7 @@ export function useBackendSTT(options: BackendSTTOptions = {}) {
     chunksRef.current = [];
     if (chunks.length === 0) {
       transcribingRef.current = false;
-      if (isListeningRef.current) void startRecording();
+      // No auto-restart — orchestrator controls lifecycle
       return;
     }
 
@@ -112,7 +112,7 @@ export function useBackendSTT(options: BackendSTTOptions = {}) {
     if (blob.size < MIN_AUDIO_BYTES) {
       console.log(`[STT] Skipping tiny audio (${blob.size} bytes < ${MIN_AUDIO_BYTES})`);
       transcribingRef.current = false;
-      if (isListeningRef.current) void startRecording();
+      // No auto-restart — orchestrator controls lifecycle
       return;
     }
 
