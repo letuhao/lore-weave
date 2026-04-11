@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minio/minio-go/v7"
@@ -27,7 +28,24 @@ func main() {
 	defer stop()
 
 	// Connect to events DB and run migration
-	eventsPool, err := pgxpool.New(ctx, cfg.EventsDBURL)
+	eventsPoolCfg, err := pgxpool.ParseConfig(cfg.EventsDBURL)
+	if err != nil {
+		slog.Error("db config parse failed", "error", err)
+		os.Exit(1)
+	}
+	if eventsPoolCfg.MaxConns == 0 || eventsPoolCfg.MaxConns == 4 {
+		eventsPoolCfg.MaxConns = 10
+	}
+	if eventsPoolCfg.MinConns == 0 {
+		eventsPoolCfg.MinConns = 2
+	}
+	if eventsPoolCfg.MaxConnLifetime == 0 {
+		eventsPoolCfg.MaxConnLifetime = 30 * time.Minute
+	}
+	if eventsPoolCfg.MaxConnIdleTime == 0 {
+		eventsPoolCfg.MaxConnIdleTime = 5 * time.Minute
+	}
+	eventsPool, err := pgxpool.NewWithConfig(ctx, eventsPoolCfg)
 	if err != nil {
 		slog.Error("events DB", "error", err)
 		os.Exit(1)
@@ -52,7 +70,24 @@ func main() {
 	// Connect to each outbox source DB
 	sourcePools := make(map[string]*pgxpool.Pool, len(cfg.OutboxSources))
 	for _, src := range cfg.OutboxSources {
-		p, err := pgxpool.New(ctx, src.DBURL)
+		pCfg, err := pgxpool.ParseConfig(src.DBURL)
+		if err != nil {
+			slog.Error("db config parse failed", "source", src.Name, "error", err)
+			os.Exit(1)
+		}
+		if pCfg.MaxConns == 0 || pCfg.MaxConns == 4 {
+			pCfg.MaxConns = 10
+		}
+		if pCfg.MinConns == 0 {
+			pCfg.MinConns = 2
+		}
+		if pCfg.MaxConnLifetime == 0 {
+			pCfg.MaxConnLifetime = 30 * time.Minute
+		}
+		if pCfg.MaxConnIdleTime == 0 {
+			pCfg.MaxConnIdleTime = 5 * time.Minute
+		}
+		p, err := pgxpool.NewWithConfig(ctx, pCfg)
 		if err != nil {
 			slog.Error("source DB connection failed", "source", src.Name, "error", err)
 			os.Exit(1)
@@ -65,7 +100,24 @@ func main() {
 	// Connect to book DB (for import-processor)
 	var bookPool *pgxpool.Pool
 	if cfg.BookDBURL != "" {
-		bp, err := pgxpool.New(ctx, cfg.BookDBURL)
+		bpCfg, err := pgxpool.ParseConfig(cfg.BookDBURL)
+		if err != nil {
+			slog.Error("db config parse failed", "error", err)
+			os.Exit(1)
+		}
+		if bpCfg.MaxConns == 0 || bpCfg.MaxConns == 4 {
+			bpCfg.MaxConns = 10
+		}
+		if bpCfg.MinConns == 0 {
+			bpCfg.MinConns = 2
+		}
+		if bpCfg.MaxConnLifetime == 0 {
+			bpCfg.MaxConnLifetime = 30 * time.Minute
+		}
+		if bpCfg.MaxConnIdleTime == 0 {
+			bpCfg.MaxConnIdleTime = 5 * time.Minute
+		}
+		bp, err := pgxpool.NewWithConfig(ctx, bpCfg)
 		if err != nil {
 			slog.Error("book DB connection failed", "error", err)
 			os.Exit(1)

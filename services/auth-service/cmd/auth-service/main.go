@@ -25,7 +25,24 @@ func main() {
 		os.Exit(1)
 	}
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	poolCfg, err := pgxpool.ParseConfig(cfg.DatabaseURL)
+	if err != nil {
+		slog.Error("db config parse failed", "error", err)
+		os.Exit(1)
+	}
+	if poolCfg.MaxConns == 0 || poolCfg.MaxConns == 4 { // 4 is pgx default
+		poolCfg.MaxConns = 10
+	}
+	if poolCfg.MinConns == 0 {
+		poolCfg.MinConns = 2
+	}
+	if poolCfg.MaxConnLifetime == 0 {
+		poolCfg.MaxConnLifetime = 30 * time.Minute
+	}
+	if poolCfg.MaxConnIdleTime == 0 {
+		poolCfg.MaxConnIdleTime = 5 * time.Minute
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		slog.Error("db connect failed", "error", err)
 		os.Exit(1)
