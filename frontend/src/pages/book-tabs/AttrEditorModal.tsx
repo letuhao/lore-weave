@@ -245,7 +245,7 @@ export function AttrEditorModal({ kindId, kindCode, attr, existingAttrCount = 0,
                       />
                       <button
                         onClick={() => setOptions(options.filter((_, i) => i !== idx))}
-                        className="opacity-0 group-hover:opacity-100 text-destructive transition-opacity"
+                        className="opacity-0 group-hover:opacity-100 max-md:opacity-100 text-destructive transition-opacity"
                       >
                         <X className="h-3 w-3" />
                       </button>

@@ -94,7 +94,7 @@ export function AssistantMessage({
 
       {/* Token footer + action buttons */}
       {!isStreaming && (
-        <div className="mt-1.5 flex items-center justify-between opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="mt-1.5 flex items-center justify-between opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
           {/* Token counts + timing */}
           {hasMetrics && (
             <div className="flex items-center gap-2 font-mono text-[10px] text-muted-foreground">

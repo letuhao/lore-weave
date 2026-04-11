@@ -191,7 +191,7 @@ export function NotificationBell() {
                       >
                         {timeAgo(n.created_at)}
                       </span>
-                      <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
                         {!n.read && (
                           <button
                             onClick={(e) => { e.stopPropagation(); void handleMarkRead(n.id); }}

@@ -163,7 +163,7 @@ export function ReadingTab() {
                   </button>
                   <button
                     onClick={() => deleteCustomPreset(cp.name)}
-                    className="opacity-0 group-hover:opacity-100 ml-1 text-muted-foreground hover:text-destructive transition-all"
+                    className="opacity-0 group-hover:opacity-100 max-md:opacity-100 ml-1 text-muted-foreground hover:text-destructive transition-all"
                   >
                     <Trash2 className="h-3 w-3" />
                   </button>

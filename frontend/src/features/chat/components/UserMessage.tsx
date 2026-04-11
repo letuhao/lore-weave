@@ -90,7 +90,7 @@ export function UserMessage({ content, onEdit, onDelete, disabled }: UserMessage
     <div className="group relative">
       <p className="whitespace-pre-wrap text-sm leading-relaxed">{content}</p>
       {!disabled && (onEdit || onDelete) && (
-        <div className="absolute -bottom-1 -right-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-70 hover:!opacity-100">
+        <div className="absolute -bottom-1 -right-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-70 hover:!opacity-100 max-md:opacity-70">
           {onEdit && (
             <button
               type="button"
