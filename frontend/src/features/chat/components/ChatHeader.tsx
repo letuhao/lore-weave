@@ -1,4 +1,4 @@
-import { Download, Pencil, Settings, Mic } from 'lucide-react';
+import { Download, Pencil, Settings, Mic, SlidersHorizontal } from 'lucide-react';
 import { SPEECH_RECOGNITION_SUPPORTED } from '@/hooks/useSpeechRecognition';
 import { cn } from '@/lib/utils';
 import { chatApi } from '../api';
@@ -13,9 +13,10 @@ interface ChatHeaderProps {
   onOpenSettings?: () => void;
   isVoiceModeActive?: boolean;
   onToggleVoiceMode?: () => void;
+  onOpenVoiceSettings?: () => void;
 }
 
-export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOpenSettings, isVoiceModeActive, onToggleVoiceMode }: ChatHeaderProps) {
+export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOpenSettings, isVoiceModeActive, onToggleVoiceMode, onOpenVoiceSettings }: ChatHeaderProps) {
   function handleExport(format: 'markdown' | 'json') {
     const url = chatApi.exportUrl(session.session_id, format);
     window.open(url, '_blank');
@@ -51,6 +52,16 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
             )}
           >
             <Mic className="h-[15px] w-[15px]" />
+          </button>
+        )}
+        {onOpenVoiceSettings && session.status !== 'archived' && (
+          <button
+            type="button"
+            onClick={onOpenVoiceSettings}
+            title="Voice Settings"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          >
+            <SlidersHorizontal className="h-[15px] w-[15px]" />
           </button>
         )}
         <button

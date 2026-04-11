@@ -100,6 +100,7 @@ export function ChatWindow({
           if (voiceMode.isActive) voiceMode.deactivate();
           else voiceMode.activate();
         }}
+        onOpenVoiceSettings={() => setVoiceSettingsOpen(true)}
       />
 
       <MessageList
