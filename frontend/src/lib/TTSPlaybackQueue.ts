@@ -12,6 +12,8 @@ export interface TTSPlaybackQueueOptions {
   onAllPlayed?: () => void;
   /** Called when a chunk starts playing (index) */
   onChunkStart?: (index: number) => void;
+  /** Called when a chunk finishes playing (index) — used for barge-in cooldown */
+  onChunkEnd?: (index: number) => void;
   /** Called when a chunk fails to decode/play (index, error) */
   onChunkError?: (index: number, error: Error) => void;
 }
@@ -30,12 +32,14 @@ export class TTSPlaybackQueue {
   private readonly sentencePadMs: number;
   private readonly onAllPlayed?: () => void;
   private readonly onChunkStart?: (index: number) => void;
+  private readonly onChunkEnd?: (index: number) => void;
   private readonly onChunkError?: (index: number, error: Error) => void;
 
   constructor(options: TTSPlaybackQueueOptions = {}) {
     this.sentencePadMs = options.sentencePadMs ?? 80;
     this.onAllPlayed = options.onAllPlayed;
     this.onChunkStart = options.onChunkStart;
+    this.onChunkEnd = options.onChunkEnd;
     this.onChunkError = options.onChunkError;
   }
 
@@ -97,6 +101,7 @@ export class TTSPlaybackQueue {
       this.pendingCount--;
       const i = this.sources.indexOf(source);
       if (i !== -1) this.sources.splice(i, 1);
+      this.onChunkEnd?.(idx);
       this.checkAllPlayed();
     };
 

@@ -16,6 +16,7 @@ import { useStreamingTTS } from '@/hooks/useStreamingTTS';
 import { SentenceBuffer } from '@/lib/SentenceBuffer';
 import { TTSPlaybackQueue } from '@/lib/TTSPlaybackQueue';
 import { TTSConcurrencyPool } from '@/lib/TTSConcurrencyPool';
+import { BargeInDetector } from '@/lib/BargeInDetector';
 import { useAuth } from '@/auth';
 import { loadVoicePrefs, type VoicePrefs } from '../voicePrefs';
 import type { OnStreamDelta } from './useChatMessages';
@@ -82,6 +83,10 @@ export function useVoiceMode({
   const ttsPoolRef = useRef<TTSConcurrencyPool | null>(null);
   const ttsQueueRef = useRef<TTSPlaybackQueue | null>(null);
   const pipelineActiveRef = useRef(false);
+
+  // Barge-in detection (RTV-04)
+  const bargeInRef = useRef<BargeInDetector | null>(null);
+  const bargeInStreamRef = useRef<MediaStream | null>(null);
 
   // Ref pattern — avoids stale closures in pipeline callbacks (#1, #5, #10)
   const sendMessageRef = useRef(sendMessage);
@@ -204,6 +209,10 @@ export function useVoiceMode({
 
     // Create playback queue
     const queue = new TTSPlaybackQueue({
+      onChunkEnd: () => {
+        // RTV-04: notify barge-in detector for cooldown
+        bargeInRef.current?.notifyChunkEnd();
+      },
       onAllPlayed: () => {
         pipelineActiveRef.current = false;
         if (phaseRef.current === 'speaking') {
@@ -340,12 +349,61 @@ export function useVoiceMode({
     }
   }, [streamStatus, streamingText]);
 
-  // Pause mic during TTS playback
+  // Pause mic during TTS playback + start barge-in detection (RTV-04)
   useEffect(() => {
-    if (phase === 'speaking' && prefs.pauseMicDuringTTS && stt.isListening) {
-      sttStop();
+    if (phase === 'speaking') {
+      // Stop STT (don't transcribe while AI talks)
+      if (prefsRef.current.pauseMicDuringTTS && stt.isListening) {
+        sttStop();
+      }
+      // Start barge-in detection — monitors mic volume for user speech
+      const startBargeIn = async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true },
+          });
+          bargeInStreamRef.current = stream;
+
+          const detector = new BargeInDetector({
+            threshold: 40, // Raised threshold (echo prevention)
+            sustainedMs: 200,
+            cooldownMs: 300,
+            onBargeIn: () => {
+              // User spoke during AI playback — interrupt everything
+              stopPipeline();
+              ttsEngineRef.current?.stop();
+              streamingTTSStopRef.current();
+              // Stop barge-in monitoring
+              bargeInRef.current?.stop();
+              if (bargeInStreamRef.current) {
+                bargeInStreamRef.current.getTracks().forEach((t) => t.stop());
+                bargeInStreamRef.current = null;
+              }
+              // Transition to listening — user's speech becomes next turn
+              setPhase('listening');
+              sttResetRef.current();
+              sttStartRef.current();
+            },
+          });
+          detector.start(stream);
+          bargeInRef.current = detector;
+        } catch {
+          // Can't get mic — barge-in disabled silently
+        }
+      };
+      void startBargeIn();
+
+      return () => {
+        // Cleanup barge-in on phase change
+        bargeInRef.current?.stop();
+        bargeInRef.current = null;
+        if (bargeInStreamRef.current) {
+          bargeInStreamRef.current.getTracks().forEach((t) => t.stop());
+          bargeInStreamRef.current = null;
+        }
+      };
     }
-  }, [phase, prefs.pauseMicDuringTTS, stt.isListening, sttStop]);
+  }, [phase, stt.isListening, sttStop, stopPipeline]);
 
   // ── Public API ──────────────────────────────────────────────────────
 
@@ -363,12 +421,18 @@ export function useVoiceMode({
   }, [sttStart, sttReset, stopPipeline]);
 
   const deactivate = useCallback(() => {
-    pendingSendRef.current = false; // #8
+    pendingSendRef.current = false;
     setPhase('idle');
     sttStop();
     ttsEngineRef.current?.stop();
     streamingTTSStopRef.current();
     stopPipeline();
+    bargeInRef.current?.stop();
+    bargeInRef.current = null;
+    if (bargeInStreamRef.current) {
+      bargeInStreamRef.current.getTracks().forEach((t) => t.stop());
+      bargeInStreamRef.current = null;
+    }
     setAiResponseText('');
   }, [sttStop, stopPipeline]);
 
