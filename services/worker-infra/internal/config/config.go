@@ -32,7 +32,7 @@ type Config struct {
 
 func Load() *Config {
 	cfg := &Config{
-		EventsDBURL:       envOrDefault("EVENTS_DB_URL", "postgres://loreweave:loreweave_dev@localhost:5432/loreweave_events"),
+		EventsDBURL:       requireEnv("EVENTS_DB_URL"),
 		RedisURL:          envOrDefault("REDIS_URL", "redis://localhost:6379"),
 		CleanupRetainDays: 7,
 		BookDBURL:         envOrDefault("BOOK_DB_URL", ""),

@@ -20,7 +20,7 @@ func Load() (*Config, error) {
 	c := &Config{
 		HTTPAddr:               getEnv("HTTP_ADDR", ":8089"),
 		DatabaseURL:            os.Getenv("DATABASE_URL"),
-		InternalServiceToken:   getEnv("INTERNAL_SERVICE_TOKEN", ""),
+		InternalServiceToken:   os.Getenv("INTERNAL_SERVICE_TOKEN"),
 		RedisURL:               os.Getenv("REDIS_URL"),
 		BookServiceInternalURL: getEnv("BOOK_SERVICE_INTERNAL_URL", "http://localhost:8082"),
 		AuthServiceInternalURL: getEnv("AUTH_SERVICE_INTERNAL_URL", "http://localhost:8081"),
@@ -31,6 +31,9 @@ func Load() (*Config, error) {
 	}
 	if c.RedisURL == "" {
 		return nil, fmt.Errorf("REDIS_URL is required")
+	}
+	if c.InternalServiceToken == "" {
+		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
 	}
 	return c, nil
 }

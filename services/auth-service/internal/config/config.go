@@ -46,7 +46,7 @@ func Load() (*Config, error) {
 		SMTPFrom:          getEnv("SMTP_FROM", ""),
 		PublicAppURL:                   getEnv("PUBLIC_APP_URL", ""),
 		NotificationServiceInternalURL: getEnv("NOTIFICATION_SERVICE_INTERNAL_URL", ""),
-		InternalServiceToken:           getEnv("INTERNAL_SERVICE_TOKEN", ""),
+		InternalServiceToken:           os.Getenv("INTERNAL_SERVICE_TOKEN"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
@@ -62,6 +62,9 @@ func Load() (*Config, error) {
 	c.RateLimitWindow = time.Duration(rlWin) * time.Second
 	if c.SMTPHost != "" && strings.TrimSpace(c.SMTPFrom) == "" {
 		return nil, fmt.Errorf("SMTP_FROM is required when SMTP_HOST is set")
+	}
+	if c.InternalServiceToken == "" {
+		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
 	}
 	return c, nil
 }

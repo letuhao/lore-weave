@@ -38,13 +38,16 @@ func Load() (*Config, error) {
 		MinioExternalURL:     getEnv("MINIO_EXTERNAL_URL", ""),
 		ProviderRegistryURL:    getEnv("PROVIDER_REGISTRY_SERVICE_URL", "http://localhost:8085"),
 		UsageBillingServiceURL: getEnv("USAGE_BILLING_SERVICE_URL", ""),
-		InternalServiceToken:   getEnv("INTERNAL_SERVICE_TOKEN", ""),
+		InternalServiceToken:   os.Getenv("INTERNAL_SERVICE_TOKEN"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
 	}
 	if len(c.JWTSecret) < 32 {
 		return nil, fmt.Errorf("JWT_SECRET must be at least 32 characters")
+	}
+	if c.InternalServiceToken == "" {
+		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
 	}
 	return c, nil
 }

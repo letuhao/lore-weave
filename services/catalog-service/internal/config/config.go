@@ -21,10 +21,13 @@ func Load() (*Config, error) {
 		BookServiceInternalURL:        getEnv("BOOK_SERVICE_INTERNAL_URL", "http://localhost:8082"),
 		SharingServiceInternalURL:     getEnv("SHARING_SERVICE_INTERNAL_URL", "http://localhost:8083"),
 		TranslationServiceInternalURL: getEnv("TRANSLATION_SERVICE_INTERNAL_URL", "http://localhost:8087"),
-		InternalServiceToken:          getEnv("INTERNAL_SERVICE_TOKEN", ""),
+		InternalServiceToken:          os.Getenv("INTERNAL_SERVICE_TOKEN"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
+	}
+	if c.InternalServiceToken == "" {
+		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
 	}
 	return c, nil
 }

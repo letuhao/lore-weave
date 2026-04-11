@@ -19,13 +19,16 @@ func Load() (*Config, error) {
 		DatabaseURL:            os.Getenv("DATABASE_URL"),
 		JWTSecret:              os.Getenv("JWT_SECRET"),
 		UsageBillingServiceURL: getEnv("USAGE_BILLING_SERVICE_URL", "http://localhost:8086"),
-		InternalServiceToken:   requireEnv("INTERNAL_SERVICE_TOKEN"),
+		InternalServiceToken:   os.Getenv("INTERNAL_SERVICE_TOKEN"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
 	}
 	if len(c.JWTSecret) < 32 {
 		return nil, fmt.Errorf("JWT_SECRET must be at least 32 characters")
+	}
+	if c.InternalServiceToken == "" {
+		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
 	}
 	return c, nil
 }
@@ -37,10 +40,3 @@ func getEnv(k, def string) string {
 	return def
 }
 
-func requireEnv(k string) string {
-	v := os.Getenv(k)
-	if v == "" {
-		panic(fmt.Sprintf("required environment variable %s is not set", k))
-	}
-	return v
-}

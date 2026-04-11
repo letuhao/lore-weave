@@ -14,7 +14,7 @@ router = APIRouter()
 logger = logging.getLogger("video-gen")
 
 PROVIDER_REGISTRY_URL = os.getenv("PROVIDER_REGISTRY_URL", "")
-INTERNAL_SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN", "")
+INTERNAL_SERVICE_TOKEN = os.environ["INTERNAL_SERVICE_TOKEN"]
 USAGE_BILLING_URL = os.getenv("USAGE_BILLING_SERVICE_URL", "")
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "minio:9000")
 MINIO_ACCESS_KEY = os.environ["MINIO_ACCESS_KEY"]
