@@ -289,6 +289,7 @@ export function useBackendSTT(options: BackendSTTOptions = {}) {
 
     chunksRef.current = [];
     transcribingRef.current = false;
+    isListeningRef.current = false; // Set ref immediately (don't wait for React effect)
     setState((prev) => ({ ...prev, isListening: false, interimTranscript: '' }));
   }, [stopSilenceDetection]);
 

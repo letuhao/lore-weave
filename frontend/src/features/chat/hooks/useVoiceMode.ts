@@ -318,6 +318,13 @@ export function useVoiceMode({
       if (phaseRef.current !== 'listening') return;
       if (!text.trim()) return;
 
+      // Filter Whisper hallucinations — short garbage from silence/ambient noise
+      const cleaned = text.trim().replace(/[.!?,;:\s]+$/g, '').trim();
+      if (cleaned.length < 2) {
+        console.log('[VoiceMode] Ignoring short/garbage STT result:', JSON.stringify(text));
+        return;
+      }
+
       // 1. Stop STT immediately (prevents auto-restart and double-send)
       sttStopRef.current();
 
