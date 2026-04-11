@@ -24,6 +24,7 @@ interface ChatWindowProps {
   onDetachContext: (id: string) => void;
   onClearContext: () => void;
   onSendWithContext: (content: string, thinking?: boolean) => void;
+  onOpenSidebar?: () => void;
 }
 
 export function ChatWindow({
@@ -37,6 +38,7 @@ export function ChatWindow({
   onDetachContext,
   onClearContext,
   onSendWithContext,
+  onOpenSidebar,
 }: ChatWindowProps) {
   const { accessToken } = useAuth();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -95,6 +97,7 @@ export function ChatWindow({
         messageCount={chat.messages.length}
         onRename={onRename}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSidebar={onOpenSidebar}
         isVoiceModeActive={voiceMode.isActive}
         onToggleVoiceMode={() => {
           if (voiceMode.isActive) voiceMode.deactivate();

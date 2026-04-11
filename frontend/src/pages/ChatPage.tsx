@@ -212,7 +212,7 @@ export function ChatPage() {
           isLoading={sessionsLoading}
           modelNameMap={modelNameMap}
           onSelect={setActiveSession}
-          onCreate={() => setShowNewDialog(true)}
+          onCreate={() => { setShowNewDialog(true); setMobileSidebarOpen(false); }}
           onRename={handleRename}
           onArchive={handleArchive}
           onDelete={handleDelete}
@@ -222,21 +222,6 @@ export function ChatPage() {
         />
 
         <div className="flex flex-1 flex-col overflow-hidden">
-          {/* Mobile hamburger — only visible below md */}
-          <div className="flex items-center border-b border-border px-3 py-2 md:hidden">
-            <button
-              type="button"
-              onClick={() => setMobileSidebarOpen(true)}
-              className="rounded-md p-2 text-muted-foreground hover:bg-muted"
-              aria-label="Open conversations"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <span className="ml-2 truncate text-sm font-medium text-foreground">
-              {activeSession?.title ?? 'Chat'}
-            </span>
-          </div>
-
           {activeSession && chat.isLoading ? (
             <div className="flex flex-1 items-center justify-center">
               <div className="space-y-3 text-center">
@@ -256,9 +241,18 @@ export function ChatPage() {
               onDetachContext={handleDetachContext}
               onClearContext={handleClearContext}
               onSendWithContext={(content, thinking) => void handleSendWithContext(content, thinking)}
+              onOpenSidebar={() => setMobileSidebarOpen(true)}
             />
           ) : (
-            <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+            <div className="relative flex flex-1 flex-col items-center justify-center gap-4 text-center">
+              <button
+                type="button"
+                onClick={() => setMobileSidebarOpen(true)}
+                className="absolute left-3 top-3 rounded-md p-2 text-muted-foreground hover:bg-muted md:hidden"
+                aria-label="Open conversations"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
               <MessageSquareText className="h-12 w-12 text-muted-foreground/30" />
               <div>
                 <p className="text-sm font-medium text-foreground">No chat selected</p>

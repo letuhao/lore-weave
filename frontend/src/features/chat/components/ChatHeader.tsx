@@ -1,4 +1,4 @@
-import { Download, Pencil, Settings, Mic, SlidersHorizontal } from 'lucide-react';
+import { Download, Menu, Pencil, Settings, Mic, SlidersHorizontal } from 'lucide-react';
 import { SPEECH_RECOGNITION_SUPPORTED } from '@/hooks/useSpeechRecognition';
 import { cn } from '@/lib/utils';
 import { chatApi } from '../api';
@@ -14,17 +14,30 @@ interface ChatHeaderProps {
   isVoiceModeActive?: boolean;
   onToggleVoiceMode?: () => void;
   onOpenVoiceSettings?: () => void;
+  /** Mobile: open session sidebar */
+  onOpenSidebar?: () => void;
 }
 
-export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOpenSettings, isVoiceModeActive, onToggleVoiceMode, onOpenVoiceSettings }: ChatHeaderProps) {
+export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOpenSettings, isVoiceModeActive, onToggleVoiceMode, onOpenVoiceSettings, onOpenSidebar }: ChatHeaderProps) {
   function handleExport(format: 'markdown' | 'json') {
     const url = chatApi.exportUrl(session.session_id, format);
     window.open(url, '_blank');
   }
 
   return (
-    <div className="flex shrink-0 items-center justify-between border-b border-border bg-card px-6 py-3">
-      <div>
+    <div className="flex shrink-0 items-center justify-between border-b border-border bg-card px-3 py-3 md:px-6">
+      <div className="flex items-center gap-2">
+        {onOpenSidebar && (
+          <button
+            type="button"
+            onClick={onOpenSidebar}
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted md:hidden"
+            aria-label="Open conversations"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+        )}
+        <div>
         <h2 className="text-sm font-semibold text-foreground">{session.title}</h2>
         <p className="mt-0.5 text-[11px] text-muted-foreground">
           {modelNameMap?.get(session.model_ref) ?? (session.model_source === 'user_model' ? 'My Model' : 'Platform')} &middot;{' '}
@@ -35,6 +48,7 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
             </span>
           )}
         </p>
+        </div>
       </div>
       <div className="flex items-center gap-1.5">
         {SPEECH_RECOGNITION_SUPPORTED && onToggleVoiceMode && session.status !== 'archived' && (
