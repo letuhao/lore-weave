@@ -53,6 +53,8 @@ export interface VoiceModeControls {
 interface UseVoiceModeOptions {
   /** Function to send a message — should return the AI response text */
   sendMessage: (content: string) => Promise<string>;
+  /** Function to stop the current LLM stream (for barge-in) */
+  stopStream?: () => void;
   /** Current streaming status from chat hook */
   streamStatus: 'idle' | 'streaming' | 'error';
   /** Current streaming text (live AI response) */
@@ -63,6 +65,7 @@ interface UseVoiceModeOptions {
 
 export function useVoiceMode({
   sendMessage,
+  stopStream,
   streamStatus,
   streamingText,
   onStreamDeltaRef,
@@ -93,6 +96,8 @@ export function useVoiceMode({
   sendMessageRef.current = sendMessage;
   const accessTokenRef = useRef(accessToken);
   accessTokenRef.current = accessToken;
+  const stopStreamRef = useRef(stopStream);
+  stopStreamRef.current = stopStream;
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
 
@@ -214,10 +219,11 @@ export function useVoiceMode({
         bargeInRef.current?.notifyChunkEnd();
       },
       onAllPlayed: () => {
+        // H-3: guard against firing after deactivate (phaseRef lags setPhase)
+        if (!pipelineActiveRef.current) return;
         pipelineActiveRef.current = false;
         if (phaseRef.current === 'speaking') {
           setPhase('listening');
-          // #5: use stable refs, not closure-captured functions
           sttResetRef.current();
           sttStartRef.current();
         }
@@ -349,61 +355,77 @@ export function useVoiceMode({
     }
   }, [streamStatus, streamingText]);
 
-  // Pause mic during TTS playback + start barge-in detection (RTV-04)
+  // Pause mic during TTS playback (separate from barge-in to avoid dep issues — H-2)
   useEffect(() => {
-    if (phase === 'speaking') {
-      // Stop STT (don't transcribe while AI talks)
-      if (prefsRef.current.pauseMicDuringTTS && stt.isListening) {
-        sttStop();
-      }
-      // Start barge-in detection — monitors mic volume for user speech
-      const startBargeIn = async () => {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true },
-          });
-          bargeInStreamRef.current = stream;
-
-          const detector = new BargeInDetector({
-            threshold: 40, // Raised threshold (echo prevention)
-            sustainedMs: 200,
-            cooldownMs: 300,
-            onBargeIn: () => {
-              // User spoke during AI playback — interrupt everything
-              stopPipeline();
-              ttsEngineRef.current?.stop();
-              streamingTTSStopRef.current();
-              // Stop barge-in monitoring
-              bargeInRef.current?.stop();
-              if (bargeInStreamRef.current) {
-                bargeInStreamRef.current.getTracks().forEach((t) => t.stop());
-                bargeInStreamRef.current = null;
-              }
-              // Transition to listening — user's speech becomes next turn
-              setPhase('listening');
-              sttResetRef.current();
-              sttStartRef.current();
-            },
-          });
-          detector.start(stream);
-          bargeInRef.current = detector;
-        } catch {
-          // Can't get mic — barge-in disabled silently
-        }
-      };
-      void startBargeIn();
-
-      return () => {
-        // Cleanup barge-in on phase change
-        bargeInRef.current?.stop();
-        bargeInRef.current = null;
-        if (bargeInStreamRef.current) {
-          bargeInStreamRef.current.getTracks().forEach((t) => t.stop());
-          bargeInStreamRef.current = null;
-        }
-      };
+    if (phase === 'speaking' && prefsRef.current.pauseMicDuringTTS && stt.isListening) {
+      sttStop();
     }
-  }, [phase, stt.isListening, sttStop, stopPipeline]);
+  }, [phase, stt.isListening, sttStop]);
+
+  // Barge-in detection during speaking phase (RTV-04)
+  useEffect(() => {
+    if (phase !== 'speaking') return;
+
+    let cancelled = false; // C-3: guard against async getUserMedia resolve after cleanup
+
+    const startBargeIn = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true },
+        });
+
+        // C-3: if cleaned up while waiting for mic permission, release immediately
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        bargeInStreamRef.current = stream;
+
+        const detector = new BargeInDetector({
+          threshold: 40,
+          sustainedMs: 200,
+          cooldownMs: 400, // H-4: increased from 300 to account for rAF jitter
+          onBargeIn: () => {
+            if (cancelled) return; // C-2: prevent stale callback
+            // C-1: abort LLM stream + reset pending flag
+            pendingSendRef.current = false;
+            stopStreamRef.current?.(); // C-1: abort in-flight LLM SSE stream
+            // Stop everything
+            stopPipeline();
+            ttsEngineRef.current?.stop();
+            streamingTTSStopRef.current();
+            // Stop barge-in monitoring
+            bargeInRef.current?.stop();
+            bargeInRef.current = null;
+            if (bargeInStreamRef.current) {
+              bargeInStreamRef.current.getTracks().forEach((t) => t.stop());
+              bargeInStreamRef.current = null;
+            }
+            // Transition to listening — user's speech becomes next turn
+            setPhase('listening');
+            sttResetRef.current();
+            sttStartRef.current();
+          },
+        });
+        detector.start(stream);
+        bargeInRef.current = detector;
+      } catch {
+        // Can't get mic — barge-in disabled silently
+      }
+    };
+    void startBargeIn();
+
+    return () => {
+      cancelled = true; // C-3
+      bargeInRef.current?.stop();
+      bargeInRef.current = null;
+      if (bargeInStreamRef.current) {
+        bargeInStreamRef.current.getTracks().forEach((t) => t.stop());
+        bargeInStreamRef.current = null;
+      }
+    };
+  }, [phase, stopPipeline]); // H-2: removed stt.isListening from deps
 
   // ── Public API ──────────────────────────────────────────────────────
 
@@ -458,7 +480,7 @@ export function useVoiceMode({
     setPrefs(loadVoicePrefs());
   }, []);
 
-  // Cleanup on unmount
+  // Cleanup on unmount (M-2: includes barge-in stream cleanup)
   useEffect(() => {
     return () => {
       sttStopRef.current();
@@ -468,6 +490,10 @@ export function useVoiceMode({
       sentenceBufferRef.current?.cancel();
       ttsPoolRef.current?.cancelAll();
       ttsQueueRef.current?.dispose();
+      bargeInRef.current?.stop();
+      bargeInRef.current = null;
+      bargeInStreamRef.current?.getTracks().forEach((t) => t.stop());
+      bargeInStreamRef.current = null;
     };
   }, []);
 

@@ -51,6 +51,7 @@ export function ChatWindow({
   );
   const voiceMode = useVoiceMode({
     sendMessage: sendForVoice,
+    stopStream: chat.stop,
     streamStatus: chat.streamStatus,
     streamingText: chat.streamingText,
     onStreamDeltaRef: chat.onStreamDeltaRef,
