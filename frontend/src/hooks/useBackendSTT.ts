@@ -97,16 +97,24 @@ export function useBackendSTT(options: BackendSTTOptions = {}) {
     }
 
     const chunks = chunksRef.current;
+    chunksRef.current = [];
     if (chunks.length === 0) {
       transcribingRef.current = false;
-      // Auto-restart if still listening
       if (isListeningRef.current) void startRecording();
       return;
     }
 
     // Use actual mimeType from recorder (#6)
     const blob = new Blob(chunks, { type: mimeTypeRef.current });
-    chunksRef.current = [];
+
+    // Skip tiny recordings (likely just noise/silence — prevent Whisper hallucinations)
+    const MIN_AUDIO_BYTES = 5000; // ~0.3s of webm audio
+    if (blob.size < MIN_AUDIO_BYTES) {
+      console.log(`[STT] Skipping tiny audio (${blob.size} bytes < ${MIN_AUDIO_BYTES})`);
+      transcribingRef.current = false;
+      if (isListeningRef.current) void startRecording();
+      return;
+    }
 
     const ext = mimeTypeRef.current.includes('mp4') ? '.mp4'
       : mimeTypeRef.current.includes('ogg') ? '.ogg'
@@ -164,9 +172,10 @@ export function useBackendSTT(options: BackendSTTOptions = {}) {
         interimTranscript: '',
       }));
 
-      // Only fire onSilenceDetected (not both callbacks — #17)
-      if (text) {
-        optionsRef.current.onSilenceDetected?.(text);
+      // Only fire callback for meaningful transcripts (skip Whisper hallucinations)
+      const cleaned = text.trim();
+      if (cleaned && cleaned.length > 1) {
+        optionsRef.current.onSilenceDetected?.(cleaned);
       }
     } catch (err) {
       setState((prev) => ({
