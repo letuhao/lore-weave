@@ -7,8 +7,8 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-11 (session 31 end — GEP + Voice Mode + AISR + RTV pipeline + V2 pipeline design)
-- Updated By: Assistant (50+ commits: GEP complete, Voice Mode 6 tasks, AISR 5 tasks, RTV pipeline, V2 design)
+- Last Updated: 2026-04-11 (session 32 — V2 redesign + cloud readiness audit)
+- Updated By: Assistant (V2 architecture redesign, cloud/mobile audit — 46 issues found)
 - Active Branch: `main`
 - HEAD: `6e1d81e` (V2 streaming TTS doc)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
@@ -37,7 +37,82 @@
 
 **Glossary Extraction Pipeline: FULLY COMPLETE (BE + FE + TESTED).** 13 BE tasks + 7 FE tasks + 49 integration test assertions + browser smoke test. Tested with real Qwen 3.5 9B model via LM Studio. 90 entities extracted from 5 chapters.
 
-**What was done in this session (2026-04-10→11, session 31):**
+**Voice Pipeline V2: DESIGN COMPLETE (v2.2 — chat-service integration).** Architecture redesigned in session 32. Implementation NOT started — blocked by cloud readiness work below.
+
+**Cloud Readiness & Multi-Device Audit: HIGHEST PRIORITY.** Full codebase audit found 46 issues across 4 categories. Must fix before new feature work.
+
+### Cloud Readiness Task List
+
+**P0 — Security / Broken (fix immediately):**
+
+| Task | Scope | Files |
+|------|-------|-------|
+| **CRA-01** | Remove hardcoded secret defaults in chat-service config | `services/chat-service/app/config.py` |
+| **CRA-02** | Remove hardcoded `minioadmin` defaults in video-gen-service | `services/video-gen-service/app/routers/generate.py` |
+| **CRA-03** | Make `MINIO_EXTERNAL_URL` env-only, no localhost default | `infra/docker-compose.yml` |
+| **CRA-04** | Chat layout mobile — responsive sidebar (drawer/overlay on mobile) | `pages/ChatPage.tsx`, `SessionSidebar` |
+| **CRA-05** | Settings panels — responsive width (max-w-full on mobile) | `SessionSettingsPanel.tsx`, `VoiceSettingsPanel.tsx` |
+
+**P1 — Data Sync / Scalability / Usability:**
+
+| Task | Scope | Files |
+|------|-------|-------|
+| **CRA-06** | Sync `lw_tts_prefs` to server via `/v1/me/preferences` | `components/reader/TTSSettings.tsx` |
+| **CRA-07** | Sync `lw_voice_prefs` to server via `/v1/me/preferences` | `features/chat/voicePrefs.ts` |
+| **CRA-08** | Sync `lw_language` to server via `/v1/me/preferences` | `features/settings/LanguageTab.tsx` |
+| **CRA-09** | Sync `loreweave:media-prefs` to server via `/v1/me/preferences` | `features/settings/ReadingTab.tsx` |
+| **CRA-10** | Migrate `lw_reader_theme` to ThemeProvider (which already syncs) | `providers/ReaderThemeProvider.tsx` |
+| **CRA-11** | DB connection pool tuning — all Go services (set `pool_max_conns`) | All Go service `config.go` files |
+| **CRA-12** | DB connection pool tuning — Python services (`pool_size`, `max_overflow`) | `chat-service`, `translation-service` |
+| **CRA-13** | Hover-only buttons → visible on touch (long-press or always-visible on mobile) | `AssistantMessage`, `UserMessage`, `SessionSidebar`, `NotificationBell`, `GlossaryTab`, `KindEditor` |
+| **CRA-14** | AudioContext autoplay fix — call `resume()` inside user-gesture handler | `lib/TTSPlaybackQueue.ts`, `BargeInDetector.ts` |
+| **CRA-15** | Voice mode fallback message for unsupported browsers (Firefox, Samsung Internet) | `hooks/useSpeechRecognition.ts` |
+
+**P2 — Deploy Config / Polish:**
+
+| Task | Scope | Files |
+|------|-------|-------|
+| **CRA-16** | Add healthcheck blocks to docker-compose for all services | `infra/docker-compose.yml` |
+| **CRA-17** | Service discovery — env-var override layer for ECS/Cloud Map | `infra/docker-compose.yml`, all service configs |
+| **CRA-18** | Redis persistence — document ElastiCache AOF requirement | `infra/` docs |
+| **CRA-19** | NestJS graceful shutdown — `app.enableShutdownHooks()` | `services/api-gateway-bff/src/main.ts` |
+| **CRA-20** | Touch targets — increase button sizes to 44px minimum | `ChatHeader.tsx`, `ChatInputBar.tsx` |
+| **CRA-21** | DataTable — `overflow-x-auto` instead of `overflow-hidden` | `components/data/DataTable.tsx` |
+| **CRA-22** | VoiceModeOverlay — add tap-to-cancel, increase control sizes | `VoiceModeOverlay.tsx` |
+| **CRA-23** | Format pills — flex-wrap or horizontal scroll on mobile | `ChatInputBar.tsx` |
+| **CRA-24** | Remove localhost fallbacks from Go service configs (fail on missing env) | All Go service `config.go` files |
+| **CRA-25** | Remove localhost fallbacks from gateway-bff config | `services/api-gateway-bff/src/main.ts` |
+| **CRA-26** | MinIO SDK abstraction in book-service (swap to S3-compatible interface) | `services/book-service/internal/api/` |
+
+**Total: 26 tasks (5 P0, 10 P1, 11 P2)**
+
+### What was done in this session (2026-04-11, session 32):
+
+**Part 1 — Voice Pipeline V2 architecture redesign (3 iterations):**
+1. Original V2 (session 31): client-side `VoicePipelineController` state machine
+2. V2.1: Vercel Workflow server-side orchestration → **rejected** (Vercel-only platform, doesn't run on AWS, wrong abstraction for voice)
+3. V2.2: chat-service integration → **accepted** — voice is a new endpoint in existing chat-service, extends `stream_response()` with STT input + TTS output. No new service, no framework, ~70% code shared with text chat
+4. 6-perspective review (architecture, cloud/infra, performance, security, data, UX) found 46 V2 issues → all resolved
+
+**Part 2 — Cloud readiness & multi-device audit:**
+- 4-perspective parallel audit: frontend local storage, backend cloud issues, multi-device compat, platform lock-in
+- Found 46 issues across the codebase (separate from V2 issues)
+- Created CRA-01..26 task list as highest priority work
+
+| Work item | Files | Status |
+| --------- | ----- | ------ |
+| V2 architecture doc — 3 iterations + 46-issue review | `docs/03_planning/data_pipelines/VOICE_PIPELINE_V2.md` | Design complete |
+| Cloud readiness audit — 4 perspectives, 46 issues | SESSION_PATCH.md (this section) | Audit complete, tasks created |
+| Hosting direction decision | Memory: project_hosting_direction.md | Cloud (AWS), not local-only |
+
+**Key decisions:**
+- LoreWeave targets cloud hosting (AWS) — multi-device (PC, mobile, tablet)
+- All user preferences must sync to server (DB), localStorage is cache only
+- No platform lock-in (Vercel Workflow rejected, no Vercel dependencies found except 1 header string)
+- Cloud readiness (CRA-01..26) is highest priority — before Voice Pipeline V2 implementation
+- Voice Pipeline V2 (43 tasks) blocked until CRA work complete
+
+**What was done in previous session (2026-04-10→11, session 31):**
 
 Five major areas completed: GEP end-to-end, Voice Mode for chat, AI Service Readiness infrastructure, Real-Time Voice pipeline (RTV), Voice Pipeline V2 architecture design. 50+ commits total.
 
