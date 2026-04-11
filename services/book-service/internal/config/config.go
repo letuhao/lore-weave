@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -33,9 +34,9 @@ func Load() (*Config, error) {
 		SharingInternalURL: getEnv("SHARING_INTERNAL_URL", "http://localhost:8083"),
 		MinioEndpoint:      getEnv("MINIO_ENDPOINT", "localhost:9000"),
 		MinioAccessKey:     getEnv("MINIO_ACCESS_KEY", "loreweave"),
-		MinioSecretKey:     getEnv("MINIO_SECRET_KEY", ""),
+		MinioSecretKey:     os.Getenv("MINIO_SECRET_KEY"),
 		MinioUseSSL:          getEnv("MINIO_USE_SSL", "false") == "true",
-		MinioExternalURL:     os.Getenv("MINIO_EXTERNAL_URL"),
+		MinioExternalURL:     strings.TrimRight(os.Getenv("MINIO_EXTERNAL_URL"), "/"),
 		ProviderRegistryURL:    getEnv("PROVIDER_REGISTRY_SERVICE_URL", "http://localhost:8085"),
 		UsageBillingServiceURL: getEnv("USAGE_BILLING_SERVICE_URL", ""),
 		InternalServiceToken:   os.Getenv("INTERNAL_SERVICE_TOKEN"),
@@ -48,6 +49,9 @@ func Load() (*Config, error) {
 	}
 	if c.InternalServiceToken == "" {
 		return nil, fmt.Errorf("INTERNAL_SERVICE_TOKEN is required")
+	}
+	if c.MinioSecretKey == "" {
+		return nil, fmt.Errorf("MINIO_SECRET_KEY is required")
 	}
 	if c.MinioExternalURL == "" {
 		return nil, fmt.Errorf("MINIO_EXTERNAL_URL is required")

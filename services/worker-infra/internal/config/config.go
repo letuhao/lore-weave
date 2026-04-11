@@ -39,7 +39,7 @@ func Load() *Config {
 		PandocURL:         envOrDefault("PANDOC_URL", "http://localhost:3030"),
 		MinioEndpoint:     envOrDefault("MINIO_ENDPOINT", "localhost:9000"),
 		MinioAccessKey:    envOrDefault("MINIO_ACCESS_KEY", "loreweave"),
-		MinioSecretKey:    envOrDefault("MINIO_SECRET_KEY", ""),
+		MinioSecretKey:    requireEnv("MINIO_SECRET_KEY"),
 		MinioBucket:       envOrDefault("MINIO_BUCKET", "loreweave-dev-books"),
 		BookServiceURL:    envOrDefault("BOOK_SERVICE_URL", "http://localhost:8082"),
 		InternalToken:     requireEnv("INTERNAL_SERVICE_TOKEN"),
