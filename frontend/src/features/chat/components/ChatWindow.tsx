@@ -44,9 +44,10 @@ export function ChatWindow({
   const isArchived = session.status === 'archived';
 
   // Voice mode
+  // #15: depend on chat.send directly (stable ref) not the chat object
   const sendForVoice = useCallback(
     (content: string) => chat.send(content),
-    [chat],
+    [chat.send],
   );
   const voiceMode = useVoiceMode({
     sendMessage: sendForVoice,

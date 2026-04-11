@@ -83,9 +83,13 @@ export function useVoiceMode({
   const ttsQueueRef = useRef<TTSPlaybackQueue | null>(null);
   const pipelineActiveRef = useRef(false);
 
-  // Ref pattern for sendMessage — avoids stale closure in callbacks (Issue #1, #2)
+  // Ref pattern — avoids stale closures in pipeline callbacks (#1, #5, #10)
   const sendMessageRef = useRef(sendMessage);
   sendMessageRef.current = sendMessage;
+  const accessTokenRef = useRef(accessToken);
+  accessTokenRef.current = accessToken;
+  const prefsRef = useRef(prefs);
+  prefsRef.current = prefs;
 
   // Keep phaseRef in sync
   useEffect(() => {
@@ -192,7 +196,11 @@ export function useVoiceMode({
 
   /** Start the sentence→TTS→audio pipeline for one AI response */
   const startPipeline = useCallback(() => {
-    if (!accessToken || !useBackendTTSSource || !prefs.autoTTSResponses) return;
+    // #2: guard against double pipeline
+    if (pipelineActiveRef.current) return;
+
+    const token = accessTokenRef.current;
+    if (!token) return;
 
     // Create playback queue
     const queue = new TTSPlaybackQueue({
@@ -200,8 +208,9 @@ export function useVoiceMode({
         pipelineActiveRef.current = false;
         if (phaseRef.current === 'speaking') {
           setPhase('listening');
-          sttReset();
-          sttStart();
+          // #5: use stable refs, not closure-captured functions
+          sttResetRef.current();
+          sttStartRef.current();
         }
       },
     });
@@ -224,14 +233,17 @@ export function useVoiceMode({
         if (phaseRef.current === 'processing') {
           setPhase('speaking');
         }
-        // Submit sentence to TTS pool
+        // #1: read latest prefs/token from refs (not stale closure)
+        const p = prefsRef.current;
+        const t = accessTokenRef.current;
+        if (!t) return;
         pool
           .submit({
             text: sentence,
-            modelRef: prefs.ttsModelRef || '',
-            voice: prefs.ttsVoiceURI || 'auto',
-            speed: prefs.ttsSpeed,
-            token: accessToken!,
+            modelRef: p.ttsModelRef || '',
+            voice: p.ttsVoiceURI || 'auto',
+            speed: p.ttsSpeed,
+            token: t,
           })
           .then((audio) => {
             if (pipelineActiveRef.current) {
@@ -245,7 +257,7 @@ export function useVoiceMode({
     );
     sentenceBufferRef.current = buffer;
     pipelineActiveRef.current = true;
-  }, [accessToken, useBackendTTSSource, prefs, sttStart, sttReset]);
+  }, []); // #10: no deps — reads everything from refs
 
   /** Stop the pipeline and clean up */
   const stopPipeline = useCallback(() => {
@@ -253,9 +265,13 @@ export function useVoiceMode({
     sentenceBufferRef.current?.cancel();
     ttsPoolRef.current?.cancelAll();
     ttsQueueRef.current?.cancelAll();
+    // #4: null refs to prevent stale object retention
+    sentenceBufferRef.current = null;
+    ttsPoolRef.current = null;
+    ttsQueueRef.current = null;
   }, []);
 
-  // Wire onStreamDeltaRef to feed tokens into the pipeline
+  // Wire onStreamDeltaRef to feed tokens into the pipeline (runs once on mount — #11)
   useEffect(() => {
     if (!onStreamDeltaRef) return;
     onStreamDeltaRef.current = (delta, type) => {
@@ -268,22 +284,26 @@ export function useVoiceMode({
     };
   }, [onStreamDeltaRef]);
 
-  // Watch streaming status — handle both pipeline and legacy TTS paths
+  // #3: Arm pipeline eagerly when processing phase begins (before fetch starts)
+  // This eliminates the token delivery gap between SSE start and React state flush
+  useEffect(() => {
+    if (phase !== 'processing' || !pendingSendRef.current) return;
+    if (!prefsRef.current.autoTTSResponses) return;
+    if (prefsRef.current.ttsSource !== 'ai_model') return;
+    stopPipeline(); // #6: cancel any previous pipeline first
+    startPipeline();
+  }, [phase, startPipeline, stopPipeline]);
+
+  // Watch streaming status — handle stream-end for both pipeline and legacy TTS paths
   const prevStreamStatus = useRef(streamStatus);
   useEffect(() => {
     const wasStreaming = prevStreamStatus.current === 'streaming';
-    const wasIdle = prevStreamStatus.current === 'idle';
     prevStreamStatus.current = streamStatus;
 
-    // Stream started — start pipeline if backend TTS
-    if (wasIdle && streamStatus === 'streaming' && pendingSendRef.current && useBackendTTSSource) {
-      startPipeline();
-    }
-
-    // Stream ended
+    // Only handle stream-end transitions
     if (!wasStreaming || streamStatus !== 'idle') return;
     if (phaseRef.current !== 'processing' && phaseRef.current !== 'speaking') return;
-    if (!pendingSendRef.current) return;
+    if (!pendingSendRef.current) return; // Ignore manual sends
 
     pendingSendRef.current = false;
     const responseText = aiResponseText || streamingText;
@@ -294,14 +314,14 @@ export function useVoiceMode({
       sentenceBufferRef.current?.markStreamComplete();
       ttsQueueRef.current?.close();
       // Pipeline's onAllPlayed callback handles transition to listening
-    } else if (prefs.autoTTSResponses && responseText.trim()) {
+    } else if (prefsRef.current.autoTTSResponses && responseText.trim()) {
       // Legacy path — browser TTS (speak full response at once)
       setPhase('speaking');
       const onTTSEnd = () => {
         if (phaseRef.current === 'speaking') {
           setPhase('listening');
-          sttReset();
-          sttStart();
+          sttResetRef.current();
+          sttStartRef.current();
         }
       };
       const engine = getTTSEngine();
@@ -311,7 +331,7 @@ export function useVoiceMode({
       sttReset();
       sttStart();
     }
-  }, [streamStatus, streamingText, prefs.autoTTSResponses, useBackendTTSSource, getTTSEngine, sttStart, sttReset, aiResponseText, startPipeline]);
+  }, [streamStatus, streamingText, getTTSEngine, sttStart, sttReset, aiResponseText]);
 
   // Track streaming text for AI response display
   useEffect(() => {
@@ -331,6 +351,7 @@ export function useVoiceMode({
 
   const activate = useCallback(() => {
     // Stop any ongoing TTS before starting mic
+    pendingSendRef.current = false; // #8
     ttsEngineRef.current?.stop();
     streamingTTSStopRef.current();
     stopPipeline();
@@ -342,6 +363,7 @@ export function useVoiceMode({
   }, [sttStart, sttReset, stopPipeline]);
 
   const deactivate = useCallback(() => {
+    pendingSendRef.current = false; // #8
     setPhase('idle');
     sttStop();
     ttsEngineRef.current?.stop();
@@ -350,10 +372,13 @@ export function useVoiceMode({
     setAiResponseText('');
   }, [sttStop, stopPipeline]);
 
+  // #7: pause works in both listening and speaking phases
   const pause = useCallback(() => {
-    if (phaseRef.current === 'listening') {
+    if (phaseRef.current === 'listening' || phaseRef.current === 'speaking') {
       setPhase('paused');
       sttStop();
+      // If speaking, pipeline audio continues but mic stays off
+      // resume() will wait for audio to finish before restarting mic
     }
   }, [sttStop]);
 
