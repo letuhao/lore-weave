@@ -166,9 +166,8 @@ export function useBackendSTT(options: BackendSTTOptions = {}) {
       const { MicVAD } = await import('@ricky0123/vad-web');
 
       const vad = await MicVAD.new({
-        // Self-hosted model and worklet files
-        baseAssetPath: '/vad/',
-        onnxWASMBasePath: '/vad/',
+        // Use default CDN paths for ONNX WASM runtime (self-hosting .mjs has MIME issues)
+        // Model and worklet files served from our public/vad/ dir
         onSpeechStart: () => {
           console.log('[VAD] Speech started');
           setState((prev) => ({ ...prev, interimTranscript: '🎤 Listening...' }));
