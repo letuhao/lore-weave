@@ -107,6 +107,7 @@ export function useVoiceMode({
   const ttsPoolRef = useRef<TTSConcurrencyPool | null>(null);
   const ttsQueueRef = useRef<TTSPlaybackQueue | null>(null);
   const pipelineActiveRef = useRef(false);
+  const pipelineGenRef = useRef(0); // Generation counter — increments on each pipeline start
 
   // Barge-in detection (RTV-04)
   const bargeInRef = useRef<BargeInDetector | null>(null);
@@ -224,6 +225,10 @@ export function useVoiceMode({
     const token = accessTokenRef.current;
     if (!token) return;
 
+    // Capture generation for this pipeline instance
+    pipelineGenRef.current++;
+    const gen = pipelineGenRef.current;
+
     // Create playback queue
     const queue = new TTSPlaybackQueue({
       onChunkEnd: () => {
@@ -282,8 +287,12 @@ export function useVoiceMode({
             token: t,
           })
           .then((audio) => {
-            if (pipelineActiveRef.current) {
-              queue.enqueue(audio).catch(() => {});
+            const currentGen = pipelineGenRef.current;
+            console.log(`[VoiceMode] TTS audio received: ${(audio.byteLength/1024).toFixed(0)}KB, gen=${gen}/${currentGen}`);
+            if (gen === currentGen) {
+              queue.enqueue(audio).catch((e) => console.error('[VoiceMode] Enqueue failed:', (e as Error).message));
+            } else {
+              console.warn(`[VoiceMode] Stale pipeline (gen ${gen} vs current ${currentGen}) — audio discarded`);
             }
           })
           .catch((err) => {
@@ -296,7 +305,7 @@ export function useVoiceMode({
     );
     sentenceBufferRef.current = buffer;
     pipelineActiveRef.current = true;
-    console.log('[VoiceMode] Pipeline started, ttsModelRef:', prefsRef.current.ttsModelRef, 'voice:', prefsRef.current.ttsVoiceId);
+    console.log('[VoiceMode] Pipeline started (gen=' + gen + '), ttsModelRef:', prefsRef.current.ttsModelRef, 'voice:', prefsRef.current.ttsVoiceId);
   }, []); // #10: no deps — reads everything from refs
 
   /** Stop the pipeline and clean up */
@@ -315,7 +324,11 @@ export function useVoiceMode({
   // Everything happens synchronously — no React effects for control flow.
   const onSilenceDetected = useCallback(
     (text: string) => {
-      if (phaseRef.current !== 'listening') return;
+      console.log('[VoiceMode] onSilenceDetected — phase:', phaseRef.current, 'text:', text.slice(0, 40));
+      if (phaseRef.current !== 'listening') {
+        console.log('[VoiceMode] Not in listening phase — ignoring');
+        return;
+      }
       if (!text.trim()) return;
 
       // Filter Whisper hallucinations — short garbage from silence/ambient noise
@@ -325,7 +338,7 @@ export function useVoiceMode({
         return;
       }
 
-      // 1. Stop STT immediately (prevents auto-restart and double-send)
+      // 1. Stop STT (VAD destroyed to prevent events during processing/speaking)
       sttStopRef.current();
 
       // 2. Set flags and phase
@@ -336,7 +349,9 @@ export function useVoiceMode({
       // 3. Arm the streaming TTS pipeline BEFORE sending (so tokens are captured)
       const p = prefsRef.current;
       if (p.autoTTSResponses && p.ttsSource === 'ai_model') {
-        stopPipeline();
+        // Don't stopPipeline() here — let previous pipeline's TTS finish playing
+        // The startPipeline guard (pipelineActiveRef) handles overlap
+        pipelineActiveRef.current = false; // Allow new pipeline to start
         startPipeline();
       }
 
