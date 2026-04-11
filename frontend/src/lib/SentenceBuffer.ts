@@ -17,7 +17,11 @@ export interface SentenceBufferOptions {
 }
 
 // Sentence-ending punctuation + optional trailing quotes/parens
-const BOUNDARY_RE = /([.!?。！？\n]["'」）)\s]*)/;
+// Note: \n is NOT included — paragraph breaks handled separately (SB-01 fix)
+const BOUNDARY_RE = /([.!?。！？]["'」）)\s]*)/;
+
+// Paragraph break — double newline or single newline followed by content
+const PARAGRAPH_RE = /(\n\s*\n|\n(?=[A-Z\u4e00-\u9fff]))/;
 
 // Common abbreviations that end with "." but aren't sentence ends
 const ABBREVIATIONS = new Set([
@@ -30,6 +34,7 @@ export class SentenceBuffer {
   private onSentence: SentenceCallback;
   private shortTimer: ReturnType<typeof setTimeout> | null = null;
   private streamComplete = false;
+  private cancelled = false; // SB-03: prevent reuse after cancel
 
   private readonly minLength: number;
   private readonly maxLength: number;
@@ -44,6 +49,7 @@ export class SentenceBuffer {
 
   /** Add a token delta from the LLM stream */
   addToken(token: string): void {
+    if (this.cancelled) return; // SB-03
     this.buffer += token;
     this.clearShortTimer();
     this.tryFlush();
@@ -53,9 +59,7 @@ export class SentenceBuffer {
   markStreamComplete(): void {
     this.streamComplete = true;
     this.clearShortTimer();
-    // Try boundary-based flush first (streamComplete bypasses minLength)
     this.tryFlush();
-    // Then flush any remaining text that has no boundary
     this.flush();
   }
 
@@ -64,6 +68,14 @@ export class SentenceBuffer {
     this.clearShortTimer();
     this.buffer = '';
     this.streamComplete = false;
+    this.cancelled = true; // SB-03
+  }
+
+  /** Reset for reuse (after cancel, for a new stream) */
+  reset(): void {
+    this.cancel();
+    this.cancelled = false;
+    this.streamComplete = false; // SB-05
   }
 
   /** Force-flush whatever is in the buffer */
@@ -74,6 +86,7 @@ export class SentenceBuffer {
       this.onSentence(remaining);
     }
     this.buffer = '';
+    this.streamComplete = false; // SB-05
   }
 
   /** Current buffer contents (for debugging/display) */
@@ -84,96 +97,90 @@ export class SentenceBuffer {
   // ── Internal ──────────────────────────────────────────────────────
 
   private tryFlush(): void {
-    // Force-split very long text without boundaries
-    if (this.buffer.length > this.maxLength) {
-      this.forceSplit();
-      return;
-    }
+    // SB-04 + SB-06: use while-loop instead of recursion
+    while (this.buffer.length > 0) {
+      // Force-split very long text without boundaries
+      if (this.buffer.length > this.maxLength) {
+        const splitAt = this.findSplitPoint(this.buffer, this.maxLength);
+        const chunk = this.buffer.slice(0, splitAt).trim();
+        this.buffer = this.buffer.slice(splitAt).trimStart();
+        if (chunk) this.onSentence(chunk);
+        continue;
+      }
 
-    // Scan for the first real sentence boundary (skip abbreviations)
+      // Check for paragraph break first (SB-01: handle \n separately)
+      const paraMatch = this.buffer.match(PARAGRAPH_RE);
+      if (paraMatch && paraMatch.index !== undefined) {
+        const sentence = this.buffer.slice(0, paraMatch.index).trim();
+        this.buffer = this.buffer.slice(paraMatch.index + paraMatch[0].length);
+        if (sentence.length > 0) {
+          this.onSentence(sentence);
+          continue;
+        }
+      }
+
+      // Scan for sentence boundary (skip abbreviations)
+      const emitted = this.tryBoundaryFlush();
+      if (!emitted) break;
+    }
+  }
+
+  /** Try to find and emit at a sentence boundary. Returns true if emitted. */
+  private tryBoundaryFlush(): boolean {
     let searchFrom = 0;
     while (searchFrom < this.buffer.length) {
       const sub = this.buffer.slice(searchFrom);
       const match = sub.match(BOUNDARY_RE);
-      if (!match || match.index === undefined) return; // No boundary found
+      if (!match || match.index === undefined) return false;
 
       const boundaryEnd = searchFrom + match.index + match[0].length;
       const sentence = this.buffer.slice(0, boundaryEnd).trim();
 
-      // Check for false boundary (abbreviation like "Dr." "Mr.")
+      // SB-02: check abbreviation on trimmed sentence
       if (this.isAbbreviation(sentence)) {
-        // Skip past this boundary and keep looking
         searchFrom = boundaryEnd;
         continue;
       }
 
       const rest = this.buffer.slice(boundaryEnd);
 
-      // Check minimum length
       if (sentence.length >= this.minLength || this.streamComplete) {
         this.buffer = rest;
         this.onSentence(sentence);
-        // Recursively check if rest has more boundaries
-        if (this.buffer.length > 0) {
-          this.tryFlush();
-        }
+        return true;
       } else {
-        // Short sentence — wait for more tokens or timeout
         this.startShortTimer();
+        return false;
       }
-      return;
     }
+    return false;
   }
 
-  private forceSplit(): void {
-    const splitAt = this.findSplitPoint(this.buffer, this.maxLength);
-    const chunk = this.buffer.slice(0, splitAt).trim();
-    this.buffer = this.buffer.slice(splitAt).trimStart();
-    if (chunk) {
-      this.onSentence(chunk);
-    }
-    // Continue checking remainder
-    if (this.buffer.length > this.maxLength) {
-      this.forceSplit();
-    }
-  }
-
-  /** Find a natural split point near maxLen (comma > space > hard cut) */
+  /** Find a natural split point near maxLen (comma > semicolon > space > hard cut) */
   private findSplitPoint(text: string, maxLen: number): number {
     const halfMax = Math.floor(maxLen * 0.5);
-
-    // Prefer comma
-    const commaIdx = text.lastIndexOf(',', maxLen);
-    if (commaIdx > halfMax) return commaIdx + 1;
-
-    // Prefer semicolon / colon
-    const semiIdx = text.lastIndexOf(';', maxLen);
-    if (semiIdx > halfMax) return semiIdx + 1;
-    const colonIdx = text.lastIndexOf(':', maxLen);
-    if (colonIdx > halfMax) return colonIdx + 1;
-
-    // Fall back to space
-    const spaceIdx = text.lastIndexOf(' ', maxLen);
-    if (spaceIdx > halfMax) return spaceIdx + 1;
-
-    // Hard cut
+    for (const char of [',', ';', ':', ' ']) {
+      const idx = text.lastIndexOf(char, maxLen);
+      if (idx > halfMax) return idx + 1;
+    }
     return maxLen;
   }
 
   /** Check if the "." at the end is an abbreviation, not a sentence end */
   private isAbbreviation(sentence: string): boolean {
-    if (!sentence.endsWith('.')) return false;
-    // Extract the last word before the period
-    const words = sentence.trimEnd().split(/\s+/);
+    const trimmed = sentence.trimEnd(); // SB-02: use trimmed version
+    if (!trimmed.endsWith('.')) return false;
+    const words = trimmed.split(/\s+/);
     const lastWord = words[words.length - 1]?.replace(/\.$/, '');
     if (!lastWord) return false;
     return ABBREVIATIONS.has(lastWord);
   }
 
   private startShortTimer(): void {
-    if (this.shortTimer) return; // Already waiting
+    if (this.shortTimer || this.cancelled) return; // SB-03
     this.shortTimer = setTimeout(() => {
       this.shortTimer = null;
+      if (this.cancelled) return; // SB-03
       const pending = this.buffer.trim();
       if (pending) {
         this.buffer = '';

@@ -14,8 +14,10 @@ export interface TTSRequestOptions {
 }
 
 export interface TTSConcurrencyPoolOptions {
-  /** Max concurrent TTS requests (default 2) */
+  /** Max concurrent TTS requests (default 2, min 1) */
   maxConcurrent?: number;
+  /** Max queued requests before rejecting (default 20) */
+  maxQueueDepth?: number;
   /** Called when a sentence TTS fails (sentence is skipped) */
   onError?: (text: string, error: Error) => void;
 }
@@ -29,12 +31,14 @@ interface QueueItem {
 export class TTSConcurrencyPool {
   private inFlight = 0;
   private queue: QueueItem[] = [];
-  private abortControllers: AbortController[] = [];
+  private abortControllers = new Set<AbortController>(); // CP-05: use Set for cleaner lifecycle
   private readonly maxConcurrent: number;
+  private readonly maxQueueDepth: number;
   private readonly onError?: (text: string, error: Error) => void;
 
   constructor(options: TTSConcurrencyPoolOptions = {}) {
-    this.maxConcurrent = options.maxConcurrent ?? 2;
+    this.maxConcurrent = Math.max(1, options.maxConcurrent ?? 2); // CP-08: clamp min 1
+    this.maxQueueDepth = options.maxQueueDepth ?? 20; // CP-06: bounded queue
     this.onError = options.onError;
   }
 
@@ -43,7 +47,12 @@ export class TTSConcurrencyPool {
     if (this.inFlight < this.maxConcurrent) {
       return this.execute(options);
     }
-    // Queue and wait for a slot
+    // CP-06: reject if queue is full
+    if (this.queue.length >= this.maxQueueDepth) {
+      const err = new Error('TTS queue full');
+      this.onError?.(options.text, err);
+      throw err;
+    }
     return new Promise((resolve, reject) => {
       this.queue.push({ options, resolve, reject });
     });
@@ -51,15 +60,19 @@ export class TTSConcurrencyPool {
 
   /** Cancel all in-flight and queued requests */
   cancelAll(): void {
+    // Abort in-flight requests — let their finally blocks decrement inFlight naturally (CP-02)
     for (const c of this.abortControllers) {
       c.abort();
     }
-    this.abortControllers = [];
+    // Don't clear abortControllers here — finally blocks will remove them (CP-05)
+    // Don't set inFlight = 0 — finally blocks will decrement naturally (CP-02)
+
+    // Reject and clear queued items
     for (const q of this.queue) {
+      this.onError?.(q.options.text, new Error('cancelled')); // CP-07: notify on cancel
       q.reject(new Error('cancelled'));
     }
     this.queue = [];
-    this.inFlight = 0;
   }
 
   /** Number of in-flight requests */
@@ -77,7 +90,7 @@ export class TTSConcurrencyPool {
   private async execute(options: TTSRequestOptions): Promise<ArrayBuffer> {
     this.inFlight++;
     const controller = new AbortController();
-    this.abortControllers.push(controller);
+    this.abortControllers.add(controller); // CP-05: add to Set
 
     try {
       const params = new URLSearchParams({
@@ -116,15 +129,22 @@ export class TTSConcurrencyPool {
       }
       throw err;
     } finally {
+      this.abortControllers.delete(controller); // CP-05: remove from Set
       this.inFlight--;
-      this.abortControllers = this.abortControllers.filter((c) => c !== controller);
-      this.processNext(options);
+      // CP-01: processNext is called AFTER inFlight decrement.
+      // This is safe because processNext calls execute which increments inFlight
+      // before yielding. The gap between -- and ++ is synchronous (no await),
+      // so submit() cannot observe the decremented value in between.
+      this.processNext();
     }
   }
 
-  private processNext(templateOptions: TTSRequestOptions): void {
+  // CP-04: no parameter — reads from queue directly
+  private processNext(): void {
     if (this.queue.length === 0) return;
+    if (this.inFlight >= this.maxConcurrent) return; // CP-01: guard against over-allocation
     const next = this.queue.shift()!;
+    // execute increments inFlight synchronously before first await
     this.execute(next.options)
       .then(next.resolve)
       .catch(next.reject);
