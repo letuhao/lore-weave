@@ -30,7 +30,7 @@ export interface VoiceChatResult {
 
 const CONSENT_KEY = 'lw_voice_consent_at';
 
-export function useVoiceChat(sessionId: string | null): VoiceChatResult {
+export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => void): VoiceChatResult {
   const { accessToken } = useAuth();
   const [state, setState] = useState<VoiceChatState>('inactive');
   const [sttText, setSttText] = useState('');
@@ -46,6 +46,8 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
   const consecutiveFailsRef = useRef(0);
+  const onTurnCompleteRef = useRef(onTurnComplete);
+  onTurnCompleteRef.current = onTurnComplete;
   const sentenceChunksRef = useRef<Map<number, Uint8Array[]>>(new Map());
 
   const doActivate = useCallback(async () => {
@@ -191,6 +193,8 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
         }
       },
       onFinish: () => {
+        // Refresh chat message list so voice messages appear
+        onTurnCompleteRef.current?.();
         playbackRef.current?.close();
         // State will transition to 'listening' via onAllPlayed callback
         // If no audio was generated, resume listening now
