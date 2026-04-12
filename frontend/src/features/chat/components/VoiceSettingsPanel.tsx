@@ -370,6 +370,67 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
           onChange={(v) => update('pauseMicDuringTTS', v)}
         />
 
+        {/* Advanced VAD Settings */}
+        <div className="border-t pt-3 mt-2">
+          <p className="text-[11px] font-medium mb-2">{t('voice.vadSettings', 'Voice Detection (Advanced)')}</p>
+
+          {/* Presets */}
+          <div className="flex gap-1.5 mb-3">
+            {[
+              { label: 'Fast', silence: 5, minDuration: 300, desc: 'Quick response, may misfire in noise' },
+              { label: 'Normal', silence: 8, minDuration: 500, desc: 'Balanced (default)' },
+              { label: 'Patient', silence: 12, minDuration: 700, desc: 'Waits longer, good for slow speakers' },
+              { label: 'Learner', silence: 16, minDuration: 1000, desc: 'Long pauses OK, for language practice' },
+            ].map((preset) => (
+              <button
+                key={preset.label}
+                onClick={() => {
+                  update('vadSilenceFrames', preset.silence);
+                  update('minSpeechDurationMs', preset.minDuration);
+                }}
+                title={preset.desc}
+                className={`flex-1 rounded border px-2 py-1 text-[10px] transition-colors ${
+                  prefs.vadSilenceFrames === preset.silence
+                    ? 'border-accent/50 bg-accent/10 text-accent'
+                    : 'border-border text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Manual sliders */}
+          <div className="space-y-2">
+            <div>
+              <div className="flex justify-between text-[10px] text-muted-foreground mb-0.5">
+                <span>{t('voice.silenceDuration', 'Silence before send')}</span>
+                <span>{Math.round((prefs.vadSilenceFrames ?? 8) * 96)}ms</span>
+              </div>
+              <input
+                type="range"
+                min={3} max={20} step={1}
+                value={prefs.vadSilenceFrames ?? 8}
+                onChange={(e) => update('vadSilenceFrames', parseInt(e.target.value))}
+                className="w-full h-1 accent-accent"
+              />
+            </div>
+            <div>
+              <div className="flex justify-between text-[10px] text-muted-foreground mb-0.5">
+                <span>{t('voice.minSpeechDuration', 'Min speech duration')}</span>
+                <span>{prefs.minSpeechDurationMs ?? 500}ms</span>
+              </div>
+              <input
+                type="range"
+                min={100} max={2000} step={100}
+                value={prefs.minSpeechDurationMs ?? 500}
+                onChange={(e) => update('minSpeechDurationMs', parseInt(e.target.value))}
+                className="w-full h-1 accent-accent"
+              />
+            </div>
+          </div>
+        </div>
+
         {/* Reset */}
         <button
           onClick={() => {

@@ -66,8 +66,11 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
     const apiBase = import.meta.env.VITE_API_BASE || '';
     clientRef.current = new VoiceClient(apiBase, accessToken);
 
-    // Create VAD
+    // Create VAD with user's advanced settings
+    const prefs = loadVoicePrefs();
     const vad = new VadController({
+      silenceFrames: prefs.vadSilenceFrames,
+      minSpeechDurationMs: prefs.minSpeechDurationMs,
       onSpeechEnd: (audio) => {
         if (!activeRef.current) return;
         vad.pause();

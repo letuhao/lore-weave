@@ -25,6 +25,10 @@ export interface VoicePrefs {
 
   // Behavior
   pauseMicDuringTTS: boolean;
+
+  // Advanced VAD settings
+  minSpeechDurationMs: number;  // Discard audio shorter than this (noise filter)
+  vadSilenceFrames: number;     // Silero VAD redemptionFrames (frames × ~96ms = silence before speech-end)
 }
 
 export const DEFAULT_VOICE_PREFS: VoicePrefs = {
@@ -43,6 +47,9 @@ export const DEFAULT_VOICE_PREFS: VoicePrefs = {
   autoTTSResponses: true,
 
   pauseMicDuringTTS: true,
+
+  minSpeechDurationMs: 500,  // 500ms default — discard very short audio
+  vadSilenceFrames: 8,       // ~768ms silence before speech-end (Silero default)
 };
 
 export function loadVoicePrefs(): VoicePrefs {
