@@ -7,11 +7,11 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-12 (session 33 end — Voice Pipeline V2 COMPLETE)
-- Updated By: Assistant (29 commits: VP2 all 48 tasks + analytics pipeline + reviews)
+- Last Updated: 2026-04-12 (session 33 end — V2 complete + bug fixes + architecture review)
+- Updated By: Assistant (51 commits: VP2 48 tasks, analytics, V1 cleanup, bug fixes, state machine, chat review)
 - Active Branch: `main`
-- HEAD: `236727c` (VP2-32+33 review fix)
-- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V4.md` — full context for next agent
+- HEAD: `7829608` (chat page architecture review)
+- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V5.md` — full context for next agent
 
 ---
 
@@ -37,7 +37,9 @@
 
 **Glossary Extraction Pipeline: FULLY COMPLETE (BE + FE + TESTED).** 13 BE tasks + 7 FE tasks + 49 integration test assertions + browser smoke test. Tested with real Qwen 3.5 9B model via LM Studio. 90 entities extracted from 5 chapters.
 
-**Voice Pipeline V2: COMPLETE (48/48 tasks).** All 5 phases implemented + voice analytics pipeline (5 bonus tasks). 137 chat-service tests pass. Wired into ChatWindow, tested in browser. TTS quality debugging deferred to next session.
+**Voice Pipeline V2: COMPLETE + DEBUGGED.** All 48 tasks + 5 analytics tasks. V1 code cleaned up (1576 lines deleted). Pipeline state machine added. Multiple race conditions fixed (self-chat loop, overlay closing, queue state, FK ordering). Chat page architecture review written — refactoring needed.
+
+**Next priority:** Chat page re-architecture (see `docs/03_planning/CHAT_PAGE_REVIEW.md`) + TTS quality investigation.
 
 Phases completed:
 - **A: Core Pipeline (11)** — TextNormalizer, SentenceBuffer, voice_stream_response, POST /voice-message, VoiceClient, VadController, useVoiceChat, VoiceChatOverlay
