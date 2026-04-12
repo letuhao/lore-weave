@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     minio_bucket: str = "lw-chat"
     minio_use_ssl: bool = False
     internal_service_token: str
+    redis_url: str = "redis://redis:6379"
     port: int = 8090
 
     class Config:

@@ -364,10 +364,12 @@ services:
       MINIO_BUCKET: lw-chat
       MINIO_USE_SSL: "false"
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
         condition: service_healthy
-
+      redis:
+        condition: service_healthy
       provider-registry-service:
         condition: service_healthy
       usage-billing-service:

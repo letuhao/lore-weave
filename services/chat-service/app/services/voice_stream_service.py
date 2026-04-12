@@ -23,6 +23,7 @@ import httpx
 from app.client.billing_client import BillingClient
 from app.client.provider_client import get_provider_client
 from app.config import settings
+from app.events.voice_events import emit_voice_turn
 from app.models import ProviderCredentials
 from app.services.sentence_buffer import SentenceBuffer
 from app.services.text_normalizer import TextNormalizer
@@ -239,6 +240,11 @@ async def voice_stream_response(
         except Exception:
             logger.warning("TTS model resolution failed for %s — audio will be skipped", tts_model_ref)
 
+    # Track voice config for analytics
+    vad_silence_frames = voice_config.get("vad_silence_frames", 8)
+    vad_min_duration_ms = voice_config.get("vad_min_duration_ms", 500)
+    audio_size_kb = round(len(audio_bytes) / 1024)
+
     # ── Step 1: STT ──────────────────────────────────────────────────
     try:
         transcript, stt_ms = await _transcribe_audio(
@@ -247,6 +253,11 @@ async def voice_stream_response(
         )
     except Exception:
         logger.exception("STT failed for session %s", session_id)
+        asyncio.create_task(emit_voice_turn(
+            user_id=user_id, session_id=session_id, stt_success=False, stt_duration_ms=0,
+            audio_size_kb=audio_size_kb, threshold_silence_frames=vad_silence_frames,
+            threshold_min_duration_ms=vad_min_duration_ms,
+        ))
         yield _sse("error", {"errorText": "Speech recognition failed. Please try again."})
         yield "data: [DONE]\n\n"
         return
@@ -254,11 +265,17 @@ async def voice_stream_response(
     yield _sse("stt-transcript", {
         "text": transcript,
         "durationMs": stt_ms,
-        "audioSizeKB": round(len(audio_bytes) / 1024),
+        "audioSizeKB": audio_size_kb,
     })
 
     # Reject empty/garbage
     if not transcript or len(transcript.strip()) < 2:
+        asyncio.create_task(emit_voice_turn(
+            user_id=user_id, session_id=session_id, stt_success=False,
+            stt_duration_ms=stt_ms, audio_size_kb=audio_size_kb,
+            threshold_silence_frames=vad_silence_frames,
+            threshold_min_duration_ms=vad_min_duration_ms,
+        ))
         yield _sse("error", {"errorText": "Could not understand speech. Try again."})
         yield "data: [DONE]\n\n"
         return
@@ -477,6 +494,16 @@ async def voice_stream_response(
                 output_payload={"content": final_text},
             )
         )
+
+        # Voice analytics event (background)
+        asyncio.create_task(emit_voice_turn(
+            user_id=user_id, session_id=session_id, stt_success=True,
+            stt_duration_ms=stt_ms, audio_size_kb=audio_size_kb,
+            llm_first_token_ms=round(ttft) if ttft else None,
+            tts_sentence_count=sentence_index, tts_skipped_count=skipped_count,
+            threshold_silence_frames=vad_silence_frames,
+            threshold_min_duration_ms=vad_min_duration_ms,
+        ))
 
     except Exception as exc:
         logger.exception("Voice stream error for session %s", session_id)
