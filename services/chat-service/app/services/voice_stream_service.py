@@ -510,3 +510,133 @@ async def voice_stream_response(
         yield _sse("error", {"errorText": "An error occurred during voice response."})
 
     yield "data: [DONE]\n\n"
+
+
+async def generate_tts_for_message(
+    session_id: str,
+    message_id: str,
+    user_id: str,
+    tts_model_source: str,
+    tts_model_ref: str,
+    tts_voice: str,
+    pool: asyncpg.Pool,
+) -> AsyncGenerator[str, None]:
+    """Generate TTS for an existing assistant message. Stores audio in S3.
+
+    Used by Voice Assist mode: text chat already happened, now add TTS after the fact.
+    Reuses the same TTS pipeline as voice_stream_response (sentence buffer, normalizer,
+    _generate_tts_chunks, _upload_audio_segment).
+    """
+    # Read message content
+    row = await pool.fetchrow(
+        "SELECT content, role FROM chat_messages WHERE message_id=$1 AND session_id=$2 AND owner_user_id=$3",
+        message_id, session_id, user_id,
+    )
+    if not row:
+        yield _sse("error", {"errorText": "Message not found"})
+        yield "data: [DONE]\n\n"
+        return
+    if row["role"] != "assistant":
+        yield _sse("error", {"errorText": "TTS only available for assistant messages"})
+        yield "data: [DONE]\n\n"
+        return
+
+    content = row["content"] or ""
+    if len(content.strip()) < 5:
+        yield _sse("error", {"errorText": "Message too short for TTS"})
+        yield "data: [DONE]\n\n"
+        return
+
+    # Resolve TTS model
+    provider = get_provider_client()
+    try:
+        tts_creds = await provider.resolve(tts_model_source, tts_model_ref, user_id)
+        tts_model_name = tts_creds.provider_model_name
+    except Exception:
+        logger.exception("TTS model resolution failed for %s", tts_model_ref)
+        yield _sse("error", {"errorText": "TTS model not found. Check Voice Settings."})
+        yield "data: [DONE]\n\n"
+        return
+
+    # Split into sentences, normalize, generate TTS
+    normalizer = TextNormalizer()
+    sentence_buffer = SentenceBuffer(clause_mode=False)
+    sentence_index = 0
+    pending_segments: list[tuple[int, str, bytes]] = []
+
+    try:
+        # Feed entire content through sentence buffer
+        for sentence in sentence_buffer.push(content):
+            speakable, was_skipped = normalizer.normalize(sentence)
+            if was_skipped:
+                yield _sse("audio-skip", {
+                    "sentenceIndex": sentence_index,
+                    "reason": "Code shown above, not read aloud",
+                    "text": sentence[:60],
+                })
+                sentence_index += 1
+                continue
+
+            audio_chunks: list[bytes] = []
+            try:
+                async for event, raw in _generate_tts_chunks(
+                    speakable, user_id, tts_model_source, tts_model_ref, tts_voice, tts_model_name, sentence_index,
+                ):
+                    yield _sse("audio-chunk", event)
+                    if raw:
+                        audio_chunks.append(raw)
+            except Exception:
+                logger.warning("TTS failed for sentence %d", sentence_index, exc_info=True)
+
+            if audio_chunks:
+                pending_segments.append((sentence_index, speakable, b"".join(audio_chunks)))
+            sentence_index += 1
+
+        # Flush remaining
+        remaining = sentence_buffer.flush()
+        if remaining:
+            speakable, was_skipped = normalizer.normalize(remaining)
+            if not was_skipped:
+                audio_chunks = []
+                try:
+                    async for event, raw in _generate_tts_chunks(
+                        speakable, user_id, tts_model_source, tts_model_ref, tts_voice, tts_model_name, sentence_index,
+                    ):
+                        yield _sse("audio-chunk", event)
+                        if raw:
+                            audio_chunks.append(raw)
+                except Exception:
+                    logger.warning("TTS failed for final sentence %d", sentence_index, exc_info=True)
+
+                if audio_chunks:
+                    pending_segments.append((sentence_index, speakable, b"".join(audio_chunks)))
+                sentence_index += 1
+
+        # Upload audio segments to S3
+        if pending_segments:
+            upload_tasks = [
+                asyncio.create_task(
+                    _upload_audio_segment(pool, session_id, message_id, user_id, idx, text, data)
+                )
+                for idx, text, data in pending_segments
+            ]
+            await asyncio.gather(*upload_tasks, return_exceptions=True)
+
+        # Update content_parts with TTS info
+        await pool.execute(
+            """
+            UPDATE chat_messages
+            SET content_parts = COALESCE(content_parts, '{}'::jsonb) || $1::jsonb
+            WHERE message_id = $2
+            """,
+            json.dumps({"voice_tts_sentences": sentence_index, "voice_tts_voice": tts_voice}),
+            message_id,
+        )
+
+        yield _sse("finish-tts", {"totalSentences": sentence_index, "messageId": message_id})
+
+    except Exception:
+        logger.exception("TTS generation failed for message %s", message_id)
+        yield _sse("error", {"errorText": "TTS generation failed"})
+
+    yield "data: [DONE]\n\n"

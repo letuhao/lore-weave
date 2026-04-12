@@ -1,6 +1,10 @@
 /**
- * useAutoTTS — automatically plays TTS for new assistant messages when Voice Assist is enabled.
- * Watches for completed (non-streaming) assistant messages and calls TTS via provider-registry proxy.
+ * useAutoTTS — automatically generates TTS for new assistant messages via backend.
+ * Calls POST /generate-tts which runs TTS server-side, stores audio in S3,
+ * and streams audio chunks back for client playback. Same pipeline as Voice Mode.
+ *
+ * After completion, the message's content_parts.voice_tts_sentences is set,
+ * so AudioReplayPlayer will show on next render.
  */
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useAuth } from '@/auth';
@@ -19,6 +23,7 @@ export function useAutoTTS(
   isStreaming: boolean,
   voiceModeActive: boolean = false,
   voiceAssistEnabled: boolean = false,
+  onTTSComplete?: () => void,
 ): AutoTTSControls {
   const { accessToken } = useAuth();
   const queueRef = useRef<TTSPlaybackQueue | null>(null);
@@ -27,6 +32,8 @@ export function useAutoTTS(
   const initialCountRef = useRef<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
+  const onTTSCompleteRef = useRef(onTTSComplete);
+  onTTSCompleteRef.current = onTTSComplete;
 
   // Track initial message count to skip history messages
   if (initialCountRef.current === null) {
@@ -41,16 +48,12 @@ export function useAutoTTS(
     setPlayingMessageId(null);
   }, []);
 
-  // Use messages.length as dep instead of messages array ref
   const msgCount = messages.length;
 
   useEffect(() => {
     if (isStreaming) return;
-    // Voice mode handles its own TTS — don't double-play
     if (voiceModeActive) return;
-    // Only fire when Voice Assist is explicitly enabled by user
     if (!voiceAssistEnabled) return;
-    // Skip if no new messages beyond initial load
     if (initialCountRef.current !== null && msgCount <= initialCountRef.current) return;
 
     const prefs = loadVoicePrefs();
@@ -59,6 +62,8 @@ export function useAutoTTS(
     const lastMsg = messages[messages.length - 1];
     if (!lastMsg || lastMsg.role !== 'assistant') return;
     if (lastMsg.message_id === lastPlayedIdRef.current) return;
+    // Skip optimistic messages (not yet saved to DB)
+    if (lastMsg.message_id.startsWith('opt-') || lastMsg.message_id.startsWith('done-')) return;
     lastPlayedIdRef.current = lastMsg.message_id;
 
     const text = lastMsg.content;
@@ -72,6 +77,7 @@ export function useAutoTTS(
           onAllPlayed: () => {
             setIsPlaying(false);
             setPlayingMessageId(null);
+            onTTSCompleteRef.current?.();
           },
         });
       }
@@ -84,14 +90,13 @@ export function useAutoTTS(
       setIsPlaying(true);
       setPlayingMessageId(lastMsg.message_id);
 
+      // Accumulate binary audio per sentence for proper MP3 decoding
+      const sentenceChunks = new Map<number, Uint8Array[]>();
+
       try {
         const apiBase = import.meta.env.VITE_API_BASE || '';
-        const params = new URLSearchParams({
-          model_source: 'user_model',
-          model_ref: prefs.ttsModelRef,
-        });
         const resp = await fetch(
-          `${apiBase}/v1/model-registry/proxy/v1/audio/speech?${params}`,
+          `${apiBase}/v1/chat/sessions/${lastMsg.session_id}/messages/${lastMsg.message_id}/generate-tts`,
           {
             method: 'POST',
             headers: {
@@ -99,10 +104,9 @@ export function useAutoTTS(
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              model: prefs.ttsModelName || 'tts-1',
-              input: text.slice(0, 4096),
-              voice: prefs.ttsVoiceId || 'af_heart',
-              response_format: 'mp3',
+              tts_model_source: 'user_model',
+              tts_model_ref: prefs.ttsModelRef,
+              tts_voice: prefs.ttsVoiceId || 'af_heart',
             }),
             signal: abort.signal,
           },
@@ -114,14 +118,60 @@ export function useAutoTTS(
           return;
         }
 
+        // Parse SSE stream — same format as Voice Mode
         const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
         try {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            await queueRef.current?.enqueue(value.buffer);
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() ?? '';
+
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              const payload = line.slice(6).trim();
+              if (payload === '[DONE]') continue;
+
+              try {
+                const event = JSON.parse(payload);
+                if (event.type === 'audio-chunk') {
+                  if (event.data) {
+                    const binary = Uint8Array.from(atob(event.data), (c) => c.charCodeAt(0));
+                    const key = event.sentenceIndex;
+                    if (!sentenceChunks.has(key)) sentenceChunks.set(key, []);
+                    sentenceChunks.get(key)!.push(binary);
+                  }
+                  if (event.final) {
+                    // Sentence complete — combine chunks, enqueue for playback
+                    const chunks = sentenceChunks.get(event.sentenceIndex);
+                    sentenceChunks.delete(event.sentenceIndex);
+                    if (chunks && chunks.length > 0) {
+                      const totalLen = chunks.reduce((sum, c) => sum + c.length, 0);
+                      const combined = new Uint8Array(totalLen);
+                      let offset = 0;
+                      for (const chunk of chunks) {
+                        combined.set(chunk, offset);
+                        offset += chunk.length;
+                      }
+                      queueRef.current?.enqueue(combined.buffer);
+                    }
+                  }
+                } else if (event.type === 'finish-tts') {
+                  queueRef.current?.close();
+                } else if (event.type === 'error') {
+                  setIsPlaying(false);
+                  setPlayingMessageId(null);
+                }
+              } catch {
+                // Malformed JSON — skip
+              }
+            }
           }
-          queueRef.current?.close();
         } finally {
           reader.releaseLock();
         }

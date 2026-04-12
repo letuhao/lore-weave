@@ -13,7 +13,7 @@ from app.client.billing_client import get_billing_client
 from app.client.provider_client import get_provider_client
 from app.config import settings
 from app.deps import get_current_user, get_db
-from app.services.voice_stream_service import voice_stream_response
+from app.services.voice_stream_service import voice_stream_response, generate_tts_for_message
 from app.storage.minio_client import delete_object, generate_presigned_url
 
 router = APIRouter(prefix="/v1/chat/sessions", tags=["voice"])
@@ -80,6 +80,49 @@ async def send_voice_message(
             pool=pool,
             billing=billing,
             voice_config=voice_config,
+        ),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/{session_id}/messages/{message_id}/generate-tts")
+async def generate_tts(
+    session_id: UUID,
+    message_id: UUID,
+    body: dict,
+    user_id: str = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db),
+) -> StreamingResponse:
+    """Generate TTS audio for an existing assistant message.
+
+    Used by Voice Assist mode: text chat already completed, now generate + store TTS.
+    Audio segments are saved to S3 and content_parts.voice_tts_sentences is updated.
+    """
+    # Verify session ownership
+    session = await pool.fetchrow(
+        "SELECT 1 FROM chat_sessions WHERE session_id=$1 AND owner_user_id=$2",
+        str(session_id), user_id,
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    tts_model_source = body.get("tts_model_source", "user_model")
+    tts_model_ref = body.get("tts_model_ref", "")
+    tts_voice = body.get("tts_voice", "af_heart")
+
+    if not tts_model_ref:
+        raise HTTPException(status_code=400, detail="tts_model_ref is required")
+
+    return StreamingResponse(
+        generate_tts_for_message(
+            session_id=str(session_id),
+            message_id=str(message_id),
+            user_id=user_id,
+            tts_model_source=tts_model_source,
+            tts_model_ref=tts_model_ref,
+            tts_voice=tts_voice,
+            pool=pool,
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},

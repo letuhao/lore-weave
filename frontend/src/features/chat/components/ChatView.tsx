@@ -64,7 +64,8 @@ export function ChatView({ className }: ChatViewProps) {
   // Voice mode (full overlay)
   const voiceChat = useVoiceChat(activeSession?.session_id ?? null, chat.refresh);
   // Auto-TTS: fires when voice assist is ON (and voice mode overlay is not active)
-  const autoTTS = useAutoTTS(chat.messages, chat.isStreaming, voiceChat.isActive, voiceAssistOn);
+  // onTTSComplete refreshes messages to pick up content_parts.voice_tts_sentences → shows replay button
+  const autoTTS = useAutoTTS(chat.messages, chat.isStreaming, voiceChat.isActive, voiceAssistOn, chat.refresh);
 
   // Deactivate voice mode on session change
   useEffect(() => {
