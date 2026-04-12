@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { chatApi } from '../api';
@@ -9,9 +9,9 @@ import { ChatHeader } from './ChatHeader';
 import { ChatInputBar } from './ChatInputBar';
 import { MessageList } from './MessageList';
 import { SessionSettingsPanel } from './SessionSettingsPanel';
-import { VoiceModeOverlay } from './VoiceModeOverlay';
+import { VoiceChatOverlay } from './VoiceChatOverlay';
 import { VoiceSettingsPanel } from './VoiceSettingsPanel';
-import { useVoiceMode } from '../hooks/useVoiceMode';
+import { useVoiceChat } from '../hooks/useVoiceChat';
 
 interface ChatWindowProps {
   session: ChatSession;
@@ -47,21 +47,11 @@ export function ChatWindow({
 
   // Voice mode
   // #15: depend on chat.send directly (stable ref) not the chat object
-  const sendForVoice = useCallback(
-    (content: string) => chat.send(content),
-    [chat.send],
-  );
-  const voiceMode = useVoiceMode({
-    sendMessage: sendForVoice,
-    stopStream: chat.stop,
-    streamStatus: chat.streamStatus,
-    streamingText: chat.streamingText,
-    onStreamDeltaRef: chat.onStreamDeltaRef,
-  });
+  const voiceChat = useVoiceChat(session.session_id);
 
-  // Deactivate voice mode on session change (Issue #3)
+  // Deactivate voice mode on session change
   useEffect(() => {
-    voiceMode.deactivate();
+    voiceChat.deactivate();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- only on session change
   }, [session.session_id]);
 
@@ -98,10 +88,10 @@ export function ChatWindow({
         onRename={onRename}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenSidebar={onOpenSidebar}
-        isVoiceModeActive={voiceMode.isActive}
+        isVoiceModeActive={voiceChat.state !== 'inactive'}
         onToggleVoiceMode={() => {
-          if (voiceMode.isActive) voiceMode.deactivate();
-          else voiceMode.activate();
+          if (voiceChat.state !== 'inactive') voiceChat.deactivate();
+          else voiceChat.activate();
         }}
         onOpenVoiceSettings={() => setVoiceSettingsOpen(true)}
       />
@@ -128,7 +118,7 @@ export function ChatWindow({
         onStop={chat.stop}
         isStreaming={chat.isStreaming}
         disabled={isArchived}
-        voiceModeActive={voiceMode.isActive}
+        voiceModeActive={voiceChat.state !== 'inactive'}
         supportsThinking={true}
         thinkingDefault={session.generation_params?.thinking ?? false}
         onThinkingModeChange={(thinking) => {
@@ -151,27 +141,20 @@ export function ChatWindow({
         />
       )}
 
-      {voiceMode.isActive && (
-        <VoiceModeOverlay
-          phase={voiceMode.phase}
-          userTranscript={voiceMode.userTranscript}
-          interimText={voiceMode.interimText}
-          aiResponseText={voiceMode.aiResponseText}
-          error={voiceMode.error}
-          onExit={voiceMode.deactivate}
-          onPause={voiceMode.pause}
-          onResume={voiceMode.resume}
-          onOpenSettings={() => setVoiceSettingsOpen(true)}
-          metrics={voiceMode.metrics}
+      {voiceChat.state !== 'inactive' && (
+        <VoiceChatOverlay
+          state={voiceChat.state}
+          sttText={voiceChat.sttText}
+          aiText={voiceChat.aiText}
+          error={voiceChat.error}
+          onExit={voiceChat.deactivate}
+          onCancel={voiceChat.cancel}
         />
       )}
 
       <VoiceSettingsPanel
         open={voiceSettingsOpen}
-        onClose={() => {
-          setVoiceSettingsOpen(false);
-          voiceMode.reloadPrefs();
-        }}
+        onClose={() => setVoiceSettingsOpen(false)}
       />
     </div>
   );
