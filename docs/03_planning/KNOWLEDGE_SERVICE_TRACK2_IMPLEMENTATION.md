@@ -588,6 +588,14 @@ do it as part of K11.
           POST /internal/books/{book_id}/extract-entities
         - propose_wiki_stub(book_id, entity_id, topic, content_md, author_type="ai")
           POST /v1/glossary/books/{book_id}/wiki/generate
+        - create_evidence(book_id, entity_id, attr_value_id, chapter_id, block_or_line,
+                          original_text, original_language, evidence_type="quote", note=None)
+          POST /v1/glossary/books/{book_id}/entities/{entity_id}/attributes/{attr_value_id}/evidences
+          Writes human-readable provenance alongside KS-extracted attribute values so
+          the glossary reviewer sees the supporting chapter quote inline when approving
+          the draft. This is DIFFERENT from KS's EVIDENCED_BY edges (machine provenance
+          for extraction jobs) — glossary evidences are authored-grade quotes intended
+          for reader-visible UI. Both coexist; do not conflate.
         All calls use X-Internal-Token auth, exponential backoff on 5xx,
         queue in extraction_pending on prolonged outage (do NOT block extraction job).
       
@@ -614,6 +622,9 @@ do it as part of K11.
       - Redelivered event is no-op (processed_events guard)
       - glossary.entity_deleted handler soft-archives, does NOT cascade-delete
       - Missed events are caught by startup reconciler
+      - create_evidence correctly pairs each proposed attribute value with its
+        supporting chapter quote; if evidence POST fails, proposal still succeeds
+        (evidence is best-effort, not blocking)
     Test:
       - Integration: shut down glossary-service, run extraction job,
          verify proposals queue and job completes successfully
@@ -623,13 +634,26 @@ do it as part of K11.
          can be manually restored (restore_entity RPC)
       - Integration: redeliver same glossary.entity_updated event,
          verify single effective update
-    Dependencies: K11.5, K11.8
+      - Integration: extract an attribute value from a known chapter chunk,
+         verify the proposed glossary draft has an attached evidence row
+         containing the exact chapter quote and block_or_line reference
+    Dependencies: K11.5, K11.8, G-EV-1 (glossary FE evidence browser — so reviewers
+                  can actually see the quotes KS creates)
     Est: L
     Notes:
       Contract documented in KSA §6.0 (Cross-Service Sync Contract).
       This task REPLACES any earlier draft that had KS owning its own
       candidates/wiki storage — the two-layer anchor pattern uses
       glossary-service as authored SSOT.
+
+      **Evidence distinction (do not conflate):**
+      - `glossary.evidences` table = human-readable quotes backing an attribute
+        value. Reader-visible. Created manually today; KS extends with automatic
+        quote capture.
+      - `:Entity-[:EVIDENCED_BY]->(:ExtractionSource)` in Neo4j = machine
+        extraction provenance. Job-id/model/confidence metadata for cascade
+        cleanup (see KSA §3.4.C). Not reader-visible.
+      Both exist independently and serve different purposes.
 ```
 
 ```

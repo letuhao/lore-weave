@@ -7,11 +7,11 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-12 (session 33 end — V2 complete + bug fixes + architecture review)
-- Updated By: Assistant (51 commits: VP2 48 tasks, analytics, V1 cleanup, bug fixes, state machine, chat review)
+- Last Updated: 2026-04-13 (session 34 end — chat refactor + knowledge-service design complete)
+- Updated By: Assistant (22 commits: chat MVC refactor, voice assist fixes, Knowledge Service Architecture, 3 Track plans, UI mockup, two-layer anchoring pattern)
 - Active Branch: `main`
-- HEAD: `7829608` (chat page architecture review)
-- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V5.md` — full context for next agent
+- HEAD: `0f1fcc3` (knowledge-service two-layer glossary anchoring)
+- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V6.md` — full context for next agent
 
 ---
 
@@ -37,9 +37,17 @@
 
 **Glossary Extraction Pipeline: FULLY COMPLETE (BE + FE + TESTED).** 13 BE tasks + 7 FE tasks + 49 integration test assertions + browser smoke test. Tested with real Qwen 3.5 9B model via LM Studio. 90 entities extracted from 5 chapters.
 
-**Voice Pipeline V2: COMPLETE + DEBUGGED.** All 48 tasks + 5 analytics tasks. V1 code cleaned up (1576 lines deleted). Pipeline state machine added. Multiple race conditions fixed (self-chat loop, overlay closing, queue state, FK ordering). Chat page architecture review written — refactoring needed.
+**Voice Pipeline V2: COMPLETE + DEBUGGED + REFACTORED.** All 48 tasks + 5 analytics tasks. V1 code cleaned up (1576 lines deleted). Pipeline state machine added. **Chat page re-architected** (session 34): MVC separation, ChatSessionContext + ChatStreamContext split by update frequency, ChatView replaces ChatWindow (never unmounts), useVoiceAssistMic unified with VadController + backend STT. Voice Assist button now wired end-to-end with backend STT + backend TTS (audio stored in S3 for replay).
 
-**Next priority:** Chat page re-architecture (see `docs/03_planning/CHAT_PAGE_REVIEW.md`) + TTS quality investigation.
+**Knowledge Service: DESIGN COMPLETE — implementation not started.** (Session 34)
+- Architecture doc: `docs/03_planning/KNOWLEDGE_SERVICE_ARCHITECTURE.md` (~5500 lines). 5 review rounds (data eng, context eng, solution architect, 6-perspective, research validation).
+- Three PM-grade implementation plans: `KNOWLEDGE_SERVICE_TRACK1_IMPLEMENTATION.md` (K0-K9, 64 tasks), `TRACK2` (K10-K18, 81+ tasks), `TRACK3` (K19-K22, 69 tasks). Total ~215 tasks across 22 gates.
+- UI mockup: `design-drafts/screen-knowledge-service.html` (1767 lines, 14 sections, 3-step build wizard with glossary picker + pending proposals + gap report).
+- **Two-layer anchoring pattern** adopted and documented: glossary-service remains authored SSOT; KS adds fuzzy/semantic entity layer with `glossary_entity_id` FK. Validated by GraphRAG seed-graph (arXiv:2404.16130, ~34% duplicate reduction), HippoRAG (arXiv:2405.14831, 18-25% multi-hop QA gain), Lettria Qdrant case study (20% KG-QA improvement).
+- **Wiki is inside glossary-service**, not a separate service (`wiki_articles`, `wiki_revisions`, `wiki_suggestions` tables). KS proposes stubs via existing `/wiki/generate` endpoint — no duplicate storage.
+- **Evidence storage**: existing `glossary.evidences` table already stores rich per-attribute provenance (chapter_id, block_or_line, evidence_type, original_text, translations, confidence). API returns nested array. FE currently only renders the count.
+
+**Next priority:** G-EV-1 (glossary FE evidence browser) BEFORE knowledge-service implementation — unblocks KS-EV-1 (automatic quote capture on extraction proposals). Then start Track 1 K0.
 
 Phases completed:
 - **A: Core Pipeline (11)** — TextNormalizer, SentenceBuffer, voice_stream_response, POST /voice-message, VoiceClient, VadController, useVoiceChat, VoiceChatOverlay
@@ -1063,6 +1071,7 @@ frontend/src/components/chunk-editor/
 
 | Date       | What happened | Key commits |
 | ---------- | ------------- | ----------- |
+| 2026-04-12→13 | Session 34: Chat page MVC refactor (ChatSessionContext/ChatStreamContext split, ChatView always-mounted), voice assist unified (VAD + backend STT + backend TTS with S3 replay), 422 STT/TTS fixes (model field). **Knowledge Service design end-to-end**: MemPalace review, architecture doc (5 review rounds), Track 1/2/3 implementation plans (~215 tasks), UI mockup (14 sections), 3-step build wizard with glossary picker + pending proposals + gap report. **Two-layer anchoring pattern** adopted — glossary as authored SSOT, KS as fuzzy/semantic layer with `glossary_entity_id` FK, validated by GraphRAG/HippoRAG research. Wiki confirmed inside glossary-service. Evidence storage investigated — rich table exists, FE only needs browser UI (G-EV-1 added as next-session pre-req). | `eb4b798`..`0f1fcc3` (22 commits) |
 | 2026-04-10→11 | Session 31: Three features. **GEP** — 10 BE fixes from real AI testing, integration test (49 assertions), 7 FE tasks (extraction wizard), smoke test. **Voice Mode** — 6 tasks (useSpeechRecognition, VoiceSettingsPanel with STT/TTS model selectors, useVoiceMode orchestrator, push-to-talk mic, overlay UI, integration wiring), 2 review passes (17 issues fixed). **AI Service Readiness** — gateway audio proxy, mock audio service, useBackendSTT, useStreamingTTS, integration test (19 assertions), review (20 issues fixed). **Docs** — integration guide (1096 lines), 99A bulk update (464 markers), session audit. | `3c5202a`..`e54557e` (29 commits) |
 | 2026-04-10 | Session 30: Glossary Extraction Pipeline — full design doc (1500+ lines), 4 review rounds (context/data, security, cost → 22 issues found and fixed), UI draft HTML (7 interactive screens), implementation task plan (13 BE + 7 FE tasks). Design artifacts: `GLOSSARY_EXTRACTION_PIPELINE.md`, `glossary_extraction_ui_draft.html`. Key decisions: source language SSOT, alive flag for entities, 3-layer known entities filtering, extraction_audit_log table, prompt injection mitigation, cost estimation. | `ee6d64e` |
 | 2026-04-09→10 | Session 29: Translation Pipeline V2 — full implementation (P1-P8). CJK token fix (2.29x), glossary injection (1/6→6/6), output validation+retry, multi-provider tokens, rolling context, auto-correct, chapter memo, quality metrics. 3 services touched (translation, glossary, provider-registry). PoC with real Ollama gemma3:12b. Docker integration test: 132+113 blocks, all valid. 3 commits. | `662cbf7`..`6db8553` |
