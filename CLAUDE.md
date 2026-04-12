@@ -2,7 +2,7 @@
 
 ## What This Project Is
 
-LoreWeave is a multi-agent platform for multilingual novel workflows (translation, analysis, knowledge building, assisted creation). Self-hosted, Docker Compose-based monorepo.
+LoreWeave is a multi-agent platform for multilingual novel workflows (translation, analysis, knowledge building, assisted creation). Cloud-hosted (AWS) monorepo with Docker Compose for local development. Serves multiple users across multiple devices (PC, mobile, tablet).
 
 Source of truth for current status: `docs/sessions/SESSION_PATCH.md`
 
@@ -40,6 +40,23 @@ Data: Postgres (per-service DBs), Redis Streams (jobs), MinIO (objects).
 - **Provider gateway invariant**: NO direct provider SDK calls — all AI calls go through adapter layer
 - **Language rule**: Go for domain services, Python for AI/LLM services, TypeScript for gateway/BFF
 - Each microservice owns its own Postgres database
+- **No hardcoded secrets** — all secrets via env vars, services fail to start if missing
+- **No hardcoded model names** — model names resolved from provider-registry (user's registered config)
+
+### Data Persistence Rules
+- **Server is the source of truth** — all user data in Postgres, all files in S3/MinIO
+- **No localStorage for user data** — localStorage is ONLY a fast cache for preferences that are also synced to server via `/v1/me/preferences`
+- **Multi-device support** — user logs in on any device, sees the same data. Nothing stored only locally.
+- **UI state that must persist** — save to DB (e.g., last active session, reading position). NOT localStorage.
+- **UI state that is per-device** — OK in localStorage (e.g., sidebar collapsed, editor panel widths)
+- **Preferences** — read from server on login, write-through to server on change, localStorage as cache only
+
+### Hosting Model
+- **Cloud-hosted on AWS** (ECS/EC2, RDS, S3, ElastiCache) — NOT local-machine-only
+- **Docker Compose for development** — same services, same architecture, local ports
+- **Self-hosted does NOT mean local PC** — it means user controls the infrastructure (could be AWS, GCP, VPS, homelab)
+- **Multi-device, multi-user** — design for users accessing from PC, phone, tablet simultaneously
+- **No platform lock-in** — no Vercel, no Cloudflare-specific APIs. Standard Docker + Postgres + S3
 
 ---
 
