@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Menu, MessageSquareText } from 'lucide-react';
 import { toast } from 'sonner';
@@ -28,6 +28,7 @@ export function ChatPage() {
     archiveSession,
     deleteSession,
     togglePin,
+    refresh: refreshSessions,
   } = useSessions();
 
   const { sessionId: urlSessionId } = useParams<{ sessionId?: string }>();
@@ -73,6 +74,16 @@ export function ChatPage() {
   }, [accessToken]);
 
   const chat = useChatMessages(activeSession?.session_id ?? null);
+
+  // Refresh session list after streaming ends (picks up auto-generated title)
+  const prevStreamingRef = useRef(false);
+  useEffect(() => {
+    if (prevStreamingRef.current && !chat.isStreaming) {
+      const timer = setTimeout(() => { void refreshSessions(); }, 2000);
+      return () => clearTimeout(timer);
+    }
+    prevStreamingRef.current = chat.isStreaming;
+  }, [chat.isStreaming, refreshSessions]);
 
   // ── Context management ────────────────────────────────────────────────────
 
