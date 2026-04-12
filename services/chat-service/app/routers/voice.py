@@ -8,6 +8,7 @@ import asyncpg
 import httpx
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from app.client.billing_client import get_billing_client
 from app.client.provider_client import get_provider_client
@@ -86,11 +87,17 @@ async def send_voice_message(
     )
 
 
+class GenerateTTSRequest(BaseModel):
+    tts_model_source: str = "user_model"
+    tts_model_ref: str
+    tts_voice: str = "af_heart"
+
+
 @router.post("/{session_id}/messages/{message_id}/generate-tts")
 async def generate_tts(
     session_id: UUID,
     message_id: UUID,
-    body: dict,
+    body: GenerateTTSRequest,
     user_id: str = Depends(get_current_user),
     pool: asyncpg.Pool = Depends(get_db),
 ) -> StreamingResponse:
@@ -107,21 +114,14 @@ async def generate_tts(
     if not session:
         raise HTTPException(status_code=404, detail="session not found")
 
-    tts_model_source = body.get("tts_model_source", "user_model")
-    tts_model_ref = body.get("tts_model_ref", "")
-    tts_voice = body.get("tts_voice", "af_heart")
-
-    if not tts_model_ref:
-        raise HTTPException(status_code=400, detail="tts_model_ref is required")
-
     return StreamingResponse(
         generate_tts_for_message(
             session_id=str(session_id),
             message_id=str(message_id),
             user_id=user_id,
-            tts_model_source=tts_model_source,
-            tts_model_ref=tts_model_ref,
-            tts_voice=tts_voice,
+            tts_model_source=body.tts_model_source,
+            tts_model_ref=body.tts_model_ref,
+            tts_voice=body.tts_voice,
             pool=pool,
         ),
         media_type="text/event-stream",

@@ -43,10 +43,12 @@ export function ChatView({ className }: ChatViewProps) {
 
   const toggleVoiceAssist = useCallback(() => {
     const prefs = loadVoicePrefs();
-    // First-time: if enabling but no TTS model configured, open settings instead
-    if (!prefs.voiceAssistEnabled && !prefs.ttsModelRef) {
+    // First-time: if enabling but models not configured, open settings instead
+    if (!prefs.voiceAssistEnabled && (!prefs.ttsModelRef || !prefs.sttModelRef)) {
       setVoiceSettingsOpen(true);
-      toast.info('Configure a TTS model to enable Voice Assist');
+      const missing = !prefs.sttModelRef && !prefs.ttsModelRef ? 'STT and TTS models'
+        : !prefs.sttModelRef ? 'an STT model' : 'a TTS model';
+      toast.info(`Configure ${missing} to enable Voice Assist`);
       return;
     }
     const next = !prefs.voiceAssistEnabled;

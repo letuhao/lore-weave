@@ -529,7 +529,7 @@ async def generate_tts_for_message(
     """
     # Read message content
     row = await pool.fetchrow(
-        "SELECT content, role FROM chat_messages WHERE message_id=$1 AND session_id=$2 AND owner_user_id=$3",
+        "SELECT content, role, content_parts FROM chat_messages WHERE message_id=$1 AND session_id=$2 AND owner_user_id=$3",
         message_id, session_id, user_id,
     )
     if not row:
@@ -538,6 +538,15 @@ async def generate_tts_for_message(
         return
     if row["role"] != "assistant":
         yield _sse("error", {"errorText": "TTS only available for assistant messages"})
+        yield "data: [DONE]\n\n"
+        return
+
+    # Idempotency: skip if TTS already generated for this message
+    existing_parts = row["content_parts"] or {}
+    if isinstance(existing_parts, str):
+        existing_parts = json.loads(existing_parts)
+    if existing_parts.get("voice_tts_sentences", 0) > 0:
+        yield _sse("finish-tts", {"totalSentences": existing_parts["voice_tts_sentences"], "messageId": message_id, "cached": True})
         yield "data: [DONE]\n\n"
         return
 

@@ -4,7 +4,7 @@
  * captures speech → WAV → backend STT → returns transcript text.
  * Does NOT send to LLM or trigger TTS — caller inserts text into the input box.
  */
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/auth';
 import { VadController } from '@/lib/VadController';
 import { float32ToWavBlob, transcribeAudio } from '@/lib/audioUtils';
@@ -25,6 +25,9 @@ export function useVoiceAssistMic(
   const [micState, setMicState] = useState<MicState>('idle');
   const vadRef = useRef<VadController | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Ref avoids stale closure — onTranscript captured at VadController creation time
+  const onTranscriptRef = useRef(onTranscript);
+  onTranscriptRef.current = onTranscript;
 
   const stop = useCallback(() => {
     vadRef.current?.deactivate();
@@ -32,6 +35,16 @@ export function useVoiceAssistMic(
     abortRef.current?.abort();
     abortRef.current = null;
     setMicState('idle');
+  }, []);
+
+  // Cleanup VAD on unmount — release microphone stream
+  useEffect(() => {
+    return () => {
+      vadRef.current?.deactivate();
+      vadRef.current = null;
+      abortRef.current?.abort();
+      abortRef.current = null;
+    };
   }, []);
 
   const start = useCallback(async () => {
@@ -63,9 +76,10 @@ export function useVoiceAssistMic(
           const abort = new AbortController();
           abortRef.current = abort;
 
-          const text = await transcribeAudio(blob, prefs.sttModelRef, prefs.sttModelName, accessToken, abort.signal);
+          const currentPrefs = loadVoicePrefs();
+          const text = await transcribeAudio(blob, currentPrefs.sttModelRef, currentPrefs.sttModelName, accessToken, abort.signal);
           if (text) {
-            onTranscript(text);
+            onTranscriptRef.current(text);
           }
         } catch (err) {
           if ((err as Error).name === 'AbortError') return;
@@ -89,7 +103,7 @@ export function useVoiceAssistMic(
     await vad.activate();
     vad.resume();
     setMicState('listening');
-  }, [accessToken, onTranscript]);
+  }, [accessToken]);
 
   const toggleMic = useCallback(() => {
     if (micState === 'idle' || micState === 'error') {

@@ -49,6 +49,7 @@ export function useAutoTTS(
   }, []);
 
   const msgCount = messages.length;
+  const lastMsgId = messages[messages.length - 1]?.message_id ?? '';
 
   useEffect(() => {
     if (isStreaming) return;
@@ -62,8 +63,10 @@ export function useAutoTTS(
     const lastMsg = messages[messages.length - 1];
     if (!lastMsg || lastMsg.role !== 'assistant') return;
     if (lastMsg.message_id === lastPlayedIdRef.current) return;
-    // Skip optimistic messages (not yet saved to DB)
-    if (lastMsg.message_id.startsWith('opt-') || lastMsg.message_id.startsWith('done-')) return;
+    // Skip optimistic/placeholder messages — they don't exist in the DB yet.
+    // Don't set lastPlayedIdRef so we retry when the real message arrives via refresh.
+    if (lastMsg.message_id.startsWith('opt-') || lastMsg.message_id.startsWith('done-')
+        || lastMsg.message_id.startsWith('edit-')) return;
     lastPlayedIdRef.current = lastMsg.message_id;
 
     const text = lastMsg.content;
@@ -184,7 +187,7 @@ export function useAutoTTS(
     };
 
     void playTTS();
-  }, [msgCount, isStreaming, voiceModeActive, voiceAssistEnabled, accessToken]);
+  }, [msgCount, lastMsgId, isStreaming, voiceModeActive, voiceAssistEnabled, accessToken]);
 
   useEffect(() => {
     return () => {
