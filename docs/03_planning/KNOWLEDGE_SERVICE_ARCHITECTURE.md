@@ -410,6 +410,154 @@ tradeoff:
 1. **Pass 1 — Pattern-based (fast, free)** — catches obvious facts immediately
 2. **Pass 2 — LLM-based (slower, accurate)** — runs async in background, corrects and supplements
 
+Both passes go through the **entity resolution layer** (§5.0) before writing to Neo4j.
+Both passes must follow the **idempotency rules** defined in [`101 §3.5.4`](101_DATA_RE_ENGINEERING_PLAN.md).
+
+### 5.0 Entity Resolution (Canonicalization + Alias Handling)
+
+The same entity can be extracted from multiple sources with different surface forms:
+- **Glossary-service:** user manually creates "Kai" with description
+- **Book mining (D3-01):** LLM extracts "Master Kai" from chapter text
+- **Chat mining (K5):** pattern extractor finds "kai" in a chat turn
+- **Pass 2 LLM:** refines "the protagonist" → "Kai"
+
+All four refer to the **same entity**. Without explicit resolution, Neo4j ends up
+with duplicate nodes and fragmented relationships.
+
+#### Canonicalization Function
+
+```python
+import hashlib
+import re
+
+HONORIFICS = {
+    "master ", "lord ", "lady ", "sir ", "dame ", "mr. ", "mrs. ", "ms. ",
+    "dr. ", "prof. ", "captain ", "commander ", "general ", "shifu ", "sensei ",
+    "-shifu", "-sensei", "-sama", "-san", "-kun",
+}
+
+def canonicalize_entity_name(name: str) -> str:
+    """Normalize an entity name for deduplication matching.
+
+    The canonical form is used to generate deterministic IDs. The original
+    name is preserved as the primary display name, and any other spellings
+    seen later are added to the `aliases` list.
+    """
+    normalized = name.strip().lower()
+
+    # Strip honorifics (prefix and suffix)
+    for h in HONORIFICS:
+        if normalized.startswith(h):
+            normalized = normalized[len(h):]
+        if normalized.endswith(h):
+            normalized = normalized[: -len(h)]
+
+    # Collapse whitespace, strip punctuation (except apostrophes in names like O'Neill)
+    normalized = re.sub(r"\s+", " ", normalized)
+    normalized = re.sub(r"[^\w\s']", "", normalized)
+
+    return normalized.strip()
+
+
+def entity_canonical_id(
+    user_id: str,
+    project_id: str | None,
+    name: str,
+    kind: str,
+    canonical_version: int = 1,
+) -> str:
+    """Deterministic ID for an entity — same canonical name + kind = same node.
+
+    Scoped by user_id + project_id for multi-tenant isolation. Version suffix
+    lets us migrate entity IDs when canonicalization rules change.
+    """
+    canonical = canonicalize_entity_name(name)
+    key = f"v{canonical_version}:{user_id}:{project_id or 'global'}:{kind}:{canonical}"
+    return hashlib.sha256(key.encode()).hexdigest()[:32]
+```
+
+**Example:**
+
+| Input name | Canonical | ID (sha256, truncated) |
+|---|---|---|
+| "Kai" | `kai` | `a3f2...` |
+| "Master Kai" | `kai` | `a3f2...` (same!) |
+| "kai-shifu" | `kai` | `a3f2...` (same!) |
+| "KAI" | `kai` | `a3f2...` (same!) |
+| "Kai the Flame" | `kai the flame` | `b891...` (different — sub-identity) |
+
+#### Upsert Pattern (Cypher)
+
+Every entity write goes through this pattern:
+
+```cypher
+MERGE (e:Entity {id: $canonical_id})
+ON CREATE SET
+  e.user_id = $user_id,
+  e.project_id = $project_id,
+  e.name = $display_name,              // original, preserving case
+  e.kind = $kind,
+  e.aliases = [$display_name],
+  e.canonical_version = 1,
+  e.source_types = [$source_type],     // book_content, chat, glossary, manual
+  e.confidence = $confidence,
+  e.created_at = datetime()
+ON MATCH SET
+  // Add new spelling to aliases if unseen
+  e.aliases = CASE
+    WHEN $display_name IN e.aliases THEN e.aliases
+    ELSE e.aliases + $display_name
+  END,
+  // Track which sources have mentioned this entity
+  e.source_types = CASE
+    WHEN $source_type IN e.source_types THEN e.source_types
+    ELSE e.source_types + $source_type
+  END,
+  // Confidence uses a max across sources
+  e.confidence = CASE WHEN $confidence > e.confidence THEN $confidence ELSE e.confidence END,
+  e.updated_at = datetime()
+RETURN e
+```
+
+#### Conflict Resolution (properties disagree across sources)
+
+When multiple sources set different values for the same property (e.g., age):
+
+| Scenario | Resolution |
+|---|---|
+| Glossary (user-curated) vs LLM extraction | **User-curated wins.** Store LLM suggestion in `disputed_properties` for user review. |
+| Two LLM extractions disagree | **Higher-confidence wins.** If tied, most recent wins. |
+| Pattern extraction (Pass 1) vs LLM (Pass 2) | **LLM wins.** Pattern extraction is a placeholder until Pass 2 catches up. |
+| Temporal facts (age over time) | **Both preserved** with `valid_from`/`valid_until` windows. |
+
+#### Provenance Preservation
+
+Even after merging, every fact tracks its source. When a user asks "where did you
+learn this?", we can answer:
+
+```cypher
+MATCH (e:Entity {id: $entity_id})-[r:EXTRACTED_FROM]->(source)
+RETURN source, r.extracted_at, r.model, r.confidence
+ORDER BY r.extracted_at DESC
+```
+
+Sources include `(:Chapter)`, `(:ChatMessage)`, `(:GlossaryEntry)`, `(:ManualEntry)`.
+
+#### When Canonicalization Rules Change
+
+The `canonical_version` field lets us migrate entity IDs safely:
+
+1. Bump `CANONICAL_VERSION` constant in knowledge-service
+2. Run the §3.8.3 rebuild procedure with the new version
+3. Old entities with `canonical_version: 1` get recomputed IDs under `canonical_version: 2`
+4. `MERGE` behavior: new ID matches nothing → creates new node with merged data
+5. Delete old `canonical_version: 1` entities after rebuild completes
+
+This is a rare operation but critical for long-term evolution (new honorifics,
+language support, etc.).
+
+---
+
 ### 5.1 Pattern-Based Extractor (Pass 1)
 
 **Inspired by MemPalace's `general_extractor.py`.** Runs synchronously in the
@@ -611,11 +759,134 @@ await conn.execute(
 worker-infra relays this to Redis Streams → knowledge-service consumes → runs
 pattern extraction → schedules LLM extraction. Chat-service never waits on this.
 
-### 7.3 Graceful Degradation
+### 7.3 Graceful Degradation with Timeouts & Circuit Breaker
 
-chat-service **must not crash** if knowledge-service is unavailable. Fall back to:
-1. Skip memory context (use plain system prompt)
-2. Skip outbox event (extraction can resume when service recovers — events are replayable)
+chat-service **must not crash or stall** if knowledge-service is slow or unavailable.
+Three protection layers:
+
+**Layer 1: Layer-level timeouts (best-effort return)**
+
+Context building asks knowledge-service for L0-L3 with individual budgets:
+
+```python
+LAYER_TIMEOUTS = {
+    "L0": 0.1,   # 100ms — Postgres read
+    "L1": 0.1,   # 100ms — Postgres read
+    "L2": 0.2,   # 200ms — Neo4j graph traversal (1-hop + 2-hop)
+    "L3": 0.2,   # 200ms — Neo4j filtered vector search
+}
+TOTAL_BUDGET = 0.5  # 500ms total ceiling
+
+async def build_context_with_timeouts(user_id, project_id, session_id, message):
+    parts = []
+    deadline = time.monotonic() + TOTAL_BUDGET
+
+    for layer in ["L0", "L1", "L2", "L3"]:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break  # Budget exhausted — skip remaining layers
+        try:
+            result = await asyncio.wait_for(
+                fetch_layer(layer, user_id, project_id, session_id, message),
+                timeout=min(LAYER_TIMEOUTS[layer], remaining),
+            )
+            if result:
+                parts.append(result)
+        except asyncio.TimeoutError:
+            metrics.inc("knowledge_layer_timeout", layer=layer)
+            continue  # Don't block — skip this layer, try the next
+
+    return "\n\n".join(parts)
+```
+
+**Layer 2: Cache for hot data**
+
+L0 (global identity) and L1 (project context) change rarely — cache them in
+chat-service memory with short TTL:
+
+```python
+# In-process LRU cache, 60s TTL
+_l0_cache: TTLCache = TTLCache(maxsize=1000, ttl=60)
+_l1_cache: TTLCache = TTLCache(maxsize=1000, ttl=60)
+
+async def get_l0(user_id):
+    if user_id in _l0_cache:
+        return _l0_cache[user_id]
+    value = await knowledge_client.get_global_summary(user_id)
+    _l0_cache[user_id] = value
+    return value
+```
+
+Cache invalidation: when the user edits their identity via memory UI, emit a
+`knowledge.summary_invalidated` event. chat-service subscribes and evicts the cache.
+
+**Layer 3: Circuit breaker for total outages**
+
+If knowledge-service fails 3 consecutive calls, open the circuit for 60 seconds.
+During open state, chat-service skips memory context entirely and returns a normal
+LLM response. After 60s, a single probe call determines whether to close the circuit.
+
+```python
+from purgatory import CircuitBreaker  # or any Python circuit breaker library
+
+knowledge_cb = CircuitBreaker(
+    fail_max=3,
+    timeout_duration=60,
+    expected_exception=(httpx.RequestError, httpx.HTTPStatusError, asyncio.TimeoutError),
+)
+
+async def build_system_prompt(session, user_message):
+    base_prompt = session.system_prompt or ""
+    try:
+        async with knowledge_cb:
+            context = await build_context_with_timeouts(
+                session.owner_user_id,
+                session.project_id,
+                session.session_id,
+                user_message,
+            )
+            return f"{base_prompt}\n\n{context}" if context else base_prompt
+    except CircuitBreakerError:
+        metrics.inc("knowledge_circuit_open")
+        return base_prompt  # Circuit open — degrade gracefully
+    except Exception as e:
+        logger.warning(f"knowledge-service error: {e}, falling back")
+        return base_prompt
+```
+
+**Observability:** every degradation path increments a metric. Prometheus alerts
+fire when `knowledge_circuit_open` / `knowledge_layer_timeout` exceed a threshold,
+indicating an operational issue.
+
+### 7.4 Raw Messages vs Derived Knowledge — Invariants
+
+A critical invariant for trust and GDPR compliance:
+
+> **Raw `chat_messages` and `chapter_drafts` are the source of truth.
+> Neo4j knowledge is always a derived view, never primary data.**
+
+**Rules:**
+
+1. **Raw data is preserved unchanged.** Memory extraction never modifies or deletes
+   raw messages/chapters. Users always have a complete record of what they said.
+2. **Memory is derivative.** Every `(:Fact)`, `(:Entity)`, `(:Event)` in Neo4j has
+   a provenance edge back to its source (`message_id`, `chapter_id`, `glossary_entity_id`).
+3. **Deletion cascades:** when raw data is deleted, derived memory is invalidated.
+   See [`101 §3.8.4`](101_DATA_RE_ENGINEERING_PLAN.md) for the cascade matrix.
+4. **No silent paraphrasing.** Knowledge-service never rewrites user content into
+   facts that differ from what the user actually said. Extraction adds metadata
+   ("Kai killed Zhao"), it does not replace source content.
+5. **User visibility:** the memory UI shows provenance for every fact. Clicking
+   a fact shows the source message/chapter it came from. Users can audit what
+   the AI "knows" and why.
+6. **GDPR erasure:** deleting a user (via `DELETE /v1/knowledge/user-data`) removes
+   both raw and derived data atomically. Events flow: Postgres delete → outbox
+   event → Neo4j cascade. Completion verified by a consistency check job.
+
+**Practical consequence for chat history cutoff:** even when memory provides
+L0-L3 context, we **keep the last 20 raw messages** in the LLM prompt. Memory
+provides depth; recent messages provide conversational flow. Users never see
+"the AI forgot what I just said 5 seconds ago."
 
 ---
 
@@ -755,35 +1026,43 @@ Chat memory (this doc):
 
 ## 11. Open Questions
 
-1. **Embedding dimension:** Neo4j indexes are defined at 1536-dim in 101 §3.6. Should
-   we support multiple dimensions per user's BYOK embedding model, or normalize
-   everything to 1536 via padding/truncation?
+**Answered by data engineer review (2026-04-13):**
 
-2. **Pass 1 vs Pass 2 conflict resolution:** When LLM extraction contradicts pattern
-   extraction (same subject/predicate, different object), which wins? Confidence-based,
-   recency-based, or LLM wins by default?
+- ~~**Embedding dimension / BYOK:**~~ Resolved by [`101 decision #27`](101_DATA_RE_ENGINEERING_PLAN.md).
+  Server-chosen embedding model (`BAAI/bge-m3` or `intfloat/multilingual-e5-large`,
+  1024-dim, self-hosted). No BYOK for embeddings. LLMs stay BYOK.
 
-3. **Cross-project entities:** A character appearing in multiple books (e.g., a shared
-   universe). Does the entity get duplicated per project, or does it become a "tunnel"
-   entity visible across projects?
+- ~~**Pass 1 vs Pass 2 conflict resolution:**~~ Resolved in §5.0 conflict resolution
+  table. LLM (Pass 2) wins over pattern (Pass 1); glossary (user-curated) wins over LLM.
 
-4. **Session-to-project promotion:** Unassigned sessions accumulate session-level
+- ~~**Chat history cutoff when memory is active:**~~ Resolved in §7.4 invariants.
+  Keep last 20 raw messages in the prompt; memory adds depth on top.
+
+**Still open:**
+
+1. **Cross-project entities:** A character appearing in multiple books (shared
+   universe). Current answer: duplicate per project (entity ID includes `project_id`).
+   Alternative: "global" entity linked via `ALSO_KNOWN_AS` edges to per-project nodes.
+   Revisit when we have a real user with multi-book series.
+
+2. **Session-to-project promotion:** Unassigned sessions accumulate session-level
    knowledge. Should the system auto-suggest creating a project after N turns? Or
    auto-promote high-confidence facts to global memory?
 
-5. **Default "Personal" project:** Should every user have a default catch-all project,
+3. **Default "Personal" project:** Should every user have a default catch-all project,
    or allow truly unscoped sessions (session-level memory only)?
 
-6. **Memory retention:** Should drawers have a TTL (e.g., session-level drawers expire
-   after 30 days of inactivity)? Or persist indefinitely until user deletes?
+4. **Memory retention:** Should session-level drawers have a TTL (e.g., expire
+   after 30 days of inactivity)? Project-level drawers should persist indefinitely.
 
-7. **Chat history cutoff when memory is active:** Once memory provides L0-L3 context,
-   can we reduce the message replay from 50 to 10-20? (Memory provides deep context,
-   recent messages provide conversational flow.)
+5. **Memory toggle scope:** When a user disables memory, do we stop writing new
+   knowledge, stop reading existing knowledge, or both? Soft-delete or just hide?
+   Data engineer recommendation: **stop writing + stop reading + keep existing data**.
+   Re-enabling resumes both paths. Data is only deleted via explicit GDPR erasure.
 
-8. **Memory toggle scope:** When a user disables memory, do we stop writing new
-   knowledge, stop reading existing knowledge, or both? Do existing memories get
-   soft-deleted or just hidden?
+6. **Pattern extraction quality threshold:** Pass 1 will write noisy facts. Should
+   we set a minimum confidence threshold (e.g., 0.5) to avoid polluting Neo4j with
+   low-quality extractions? Or let Pass 2 clean them up asynchronously?
 
 ---
 

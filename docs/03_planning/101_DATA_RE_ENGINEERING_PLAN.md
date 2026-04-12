@@ -458,7 +458,29 @@ _, _ = tx.Exec(ctx, `
 
 **Consumer idempotency:** At-least-once delivery means consumers may see duplicates.
 Each event has a unique `id` (uuidv7). Consumers track `last_processed_event_id`.
-Neo4j `MERGE` is naturally idempotent. Block extraction UPSERT is idempotent.
+Neo4j `MERGE` with deterministic IDs is idempotent. Block extraction UPSERT is idempotent.
+See §3.5.4 for the mandatory idempotency layer all consumers must implement.
+
+**Consumer catch-up strategy (Redis + event_log hybrid):**
+
+Redis Streams have `MAXLEN ~ 10000` retention (§3.5.5) to bound memory. But consumers
+may be offline longer than 10K events. To prevent data loss, consumers use a two-source
+catch-up pattern:
+
+1. On startup, read `event_consumers.last_processed_event_id` from `loreweave_events`
+2. Attempt `XREAD` from Redis Stream starting after `last_processed_event_id`
+3. If Redis returns "ID too old" or the event is no longer in the stream:
+   - Fall back to reading from `event_log` table (permanent history)
+   - `SELECT * FROM event_log WHERE id > $last_processed ORDER BY id LIMIT 1000`
+   - Process batch, update `last_processed_event_id`
+   - Repeat until caught up
+4. Once caught up to Redis-available events, switch to real-time `XREAD` with blocking
+5. Update `last_processed_event_id` after each successfully processed event
+
+This guarantees:
+- Consumer can recover from any downtime duration (bounded only by `event_log` retention)
+- Real-time latency when healthy (Redis XREAD is sub-millisecond)
+- No silent event loss when Redis evicts old entries
 
 **Outbox location:** Each microservice owns its own `outbox_events` table in its own
 database (same-transaction atomicity). A centralized `loreweave_events` database stores
@@ -565,6 +587,217 @@ Prod:   worker-relay  WORKER_TASKS=outbox-relay          (high priority, dedicat
         worker-ai-3   WORKER_TASKS=translation-worker    (scale horizontally)
 ```
 
+### 3.5.4 Consumer Idempotency Layer (mandatory for all AI consumers)
+
+At-least-once delivery + non-deterministic LLM output = duplicate / conflicting writes
+unless consumers implement explicit idempotency. This section defines the mandatory
+pattern for all Redis/event_log consumers that write to Neo4j.
+
+**Problem:** Running the same LLM extraction twice on the same input may produce:
+- Different entity names (LLM temperature > 0)
+- Different relation wording ("killed" vs "slew")
+- Different coreference resolutions ("the princess" → Elena vs Melena)
+
+Without a canonicalization + idempotency layer, duplicate processing creates
+garbage buildup in Neo4j — multiple nodes for the same entity, conflicting facts.
+
+**Rule 1: Deterministic node IDs.** Every Neo4j node gets an ID derived from
+canonical form, not from the LLM output:
+
+```python
+def entity_canonical_id(user_id: str, project_id: str, name: str, kind: str) -> str:
+    """Deterministic ID for an entity — same name + kind = same node."""
+    normalized = name.lower().strip()
+    # Strip common honorifics/titles for matching (kept as alias)
+    for prefix in ("master ", "lord ", "lady ", "sir ", "dame ", "mr. ", "mrs. ", "dr. "):
+        normalized = normalized.removeprefix(prefix)
+    key = f"{user_id}:{project_id or 'global'}:{kind}:{normalized}"
+    return hashlib.sha256(key.encode()).hexdigest()[:32]
+```
+
+Cypher write uses this ID with `MERGE`:
+```cypher
+MERGE (e:Entity {id: $canonical_id})
+ON CREATE SET
+  e.name = $display_name,
+  e.kind = $kind,
+  e.user_id = $user_id,
+  e.project_id = $project_id,
+  e.aliases = [$display_name],
+  e.created_at = datetime()
+ON MATCH SET
+  e.aliases = CASE
+    WHEN $display_name IN e.aliases THEN e.aliases
+    ELSE e.aliases + $display_name
+  END,
+  e.updated_at = datetime()
+RETURN e
+```
+
+Running the same extraction twice = no duplicate nodes. Different spellings of the
+same name accumulate into `aliases`.
+
+**Rule 2: Event-level idempotency key.** Every fact/relation write records the source
+event ID. If a consumer retries the same event, writes are no-ops:
+
+```cypher
+MERGE (e1:Entity {id: $subject_id})
+MERGE (e2:Entity {id: $object_id})
+MERGE (e1)-[r:RELATES_TO {
+  type: $relation_type,
+  source_event_id: $event_id   // idempotency key — unique per (subject, object, type, event)
+}]->(e2)
+ON CREATE SET
+  r.confidence = $confidence,
+  r.valid_from = $valid_from,
+  r.created_at = datetime()
+```
+
+The `source_event_id` in the relationship match means rerunning the same event
+creates zero new edges.
+
+**Rule 3: Consumer state tracking.** Each consumer maintains its position in
+`event_consumers`:
+
+```sql
+INSERT INTO event_consumers (consumer_name, stream_name, last_processed_event_id, last_processed_at)
+VALUES ('knowledge-extractor', 'loreweave:events:chapter', $event_id, now())
+ON CONFLICT (consumer_name, stream_name) DO UPDATE
+  SET last_processed_event_id = EXCLUDED.last_processed_event_id,
+      last_processed_at = EXCLUDED.last_processed_at;
+```
+
+This is updated **after** the Neo4j write succeeds, in the same logical operation.
+If the consumer crashes between Neo4j write and state update, the next run will
+re-process the event — and idempotency rules 1 and 2 ensure no duplicate data.
+
+**Rule 4: Canonicalization is versioned.** If the canonicalization function changes
+(e.g., new honorific added), existing entity IDs become stale. Record the canonicalization
+version on each entity:
+
+```cypher
+(:Entity { ..., canonical_version: 1 })
+```
+
+A migration task can rebuild affected entity IDs when the version bumps. Start at
+version 1; bump only when rules change materially.
+
+### 3.5.5 Redis Stream Retention & Catch-Up
+
+Redis Streams use `MAXLEN ~ 10000` per stream (approximate trim). This bounds memory
+but means consumers offline for >10K events miss data if they only read from Redis.
+
+**Retention target:** ~7 days at expected throughput.
+- Chapter saves: ~50/day × 7 = 350 events
+- Chat turns: ~5000/day × 7 = 35000 events (CHAT STREAM needs higher MAXLEN: ~50000)
+- Other: ~1000/day × 7 = 7000 events
+
+**Streams and their MAXLEN:**
+```
+loreweave:events:chapter    MAXLEN ~ 10000    (conservative, low throughput)
+loreweave:events:chat       MAXLEN ~ 50000    (high throughput chat turns)
+loreweave:events:glossary   MAXLEN ~ 10000
+loreweave:events:generic    MAXLEN ~ 10000
+```
+
+**Catch-up procedure (applies to all AI consumers):**
+
+```python
+async def catch_up_and_stream(consumer_name: str, stream_name: str):
+    # 1. Load last processed position from Postgres
+    last_id = await get_last_processed(consumer_name, stream_name)
+
+    # 2. Try to resume from Redis
+    try:
+        events = await redis.xread({stream_name: last_id}, block=0, count=100)
+        if events:
+            return events  # Redis has them, stream live
+    except RedisStreamTruncated:
+        pass  # Fall through to event_log catch-up
+
+    # 3. Fall back: replay from event_log table
+    while True:
+        rows = await pool.fetch(
+            """
+            SELECT id, event_type, aggregate_type, aggregate_id, payload, created_at
+            FROM event_log
+            WHERE id > $1 AND event_type IN (SELECT event_type FROM stream_filter WHERE stream = $2)
+            ORDER BY id
+            LIMIT 1000
+            """,
+            last_id, stream_name,
+        )
+        if not rows:
+            break  # Caught up from table
+
+        for row in rows:
+            await process_event(row)
+            last_id = row["id"]
+            await update_last_processed(consumer_name, stream_name, last_id)
+
+    # 4. Switch to real-time Redis reads
+    while True:
+        events = await redis.xread({stream_name: last_id}, block=5000)
+        for event in events:
+            await process_event(event)
+            last_id = event["id"]
+            await update_last_processed(consumer_name, stream_name, last_id)
+```
+
+This guarantees:
+- Real-time latency when healthy (sub-ms Redis)
+- Recovery from any downtime (bounded by event_log retention, ~1 year)
+- No silent event loss from Redis eviction
+
+### 3.5.6 Outbox Table Partitioning
+
+High-throughput outbox tables need partitioning to manage cleanup and autovacuum.
+
+**Problem at scale:**
+- 100 users × 50 chat turns/day = 5K chat events/day
+- 1000 users = 50K/day
+- 7-day retention before cleanup = 350K rows in `chat_outbox_events`
+- Heavy DELETE churn causes bloat in the partial index on `published_at IS NULL`
+
+**Fix: monthly partitioning by `created_at`.**
+
+```sql
+-- Parent table (no data)
+CREATE TABLE outbox_events (
+  id UUID NOT NULL,
+  aggregate_type TEXT NOT NULL,
+  aggregate_id UUID NOT NULL,
+  event_type TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  published_at TIMESTAMPTZ,
+  retry_count INT NOT NULL DEFAULT 0,
+  last_error TEXT,
+  PRIMARY KEY (id, created_at)
+) PARTITION BY RANGE (created_at);
+
+-- Auto-create monthly partitions via pg_partman or manual cron
+CREATE TABLE outbox_events_2026_04 PARTITION OF outbox_events
+  FOR VALUES FROM ('2026-04-01') TO ('2026-05-01');
+
+-- Partial index on current partition (where churn happens)
+CREATE INDEX idx_outbox_2026_04_unpublished
+  ON outbox_events_2026_04 (created_at)
+  WHERE published_at IS NULL;
+```
+
+**Cleanup:** `DROP TABLE outbox_events_2026_03` when partition is older than retention.
+No DELETE churn, no vacuum pressure, O(1) cleanup.
+
+**Autovacuum tuning for the active partition:**
+```sql
+ALTER TABLE outbox_events_2026_04 SET (
+  autovacuum_vacuum_scale_factor = 0.01,   -- vacuum after 1% dead tuples
+  autovacuum_vacuum_cost_delay = 0,        -- no throttling (latency critical)
+  autovacuum_analyze_scale_factor = 0.02
+);
+```
+
 ### 3.6 Neo4j Knowledge Graph (designed now, built in Phase D3)
 
 ```cypher
@@ -626,19 +859,56 @@ Prod:   worker-relay  WORKER_TASKS=outbox-relay          (high priority, dedicat
   model: String
 }]->(:Chapter)
 
+// ── Multi-Tenancy Note ────────────────────────────────
+// ALL nodes include user_id for tenant isolation. Every query must filter by user_id.
+// Entities also have project_id (new — for KSA project scoping) in addition to book_id.
+// See KNOWLEDGE_SERVICE_ARCHITECTURE §3.4 for project/session scoping amendments.
+
+(:Entity { ..., user_id: String, project_id: String })  // amended
+(:Event  { ..., user_id: String })                       // amended
+
 // ── Vector Indexes (Neo4j v2026.01) ────────────────────
 
 CREATE VECTOR INDEX entity_embeddings FOR (e:Entity) ON (e.embedding)
 OPTIONS { indexConfig: {
-  `vector.dimensions`: 1536,
+  `vector.dimensions`: 1024,                             // see §7 decision #27
   `vector.similarity_function`: 'cosine'
 }};
 
 CREATE VECTOR INDEX event_embeddings FOR (e:Event) ON (e.embedding)
 OPTIONS { indexConfig: {
-  `vector.dimensions`: 1536,
+  `vector.dimensions`: 1024,
   `vector.similarity_function`: 'cosine'
 }};
+
+// ── Composite Indexes for Multi-Tenant Queries (mandatory) ──────
+
+// Entity primary lookup (user_id is always the prefix filter)
+CREATE INDEX entity_user_canonical FOR (e:Entity) ON (e.user_id, e.id);
+CREATE INDEX entity_user_name FOR (e:Entity) ON (e.user_id, e.name);
+CREATE INDEX entity_user_project FOR (e:Entity) ON (e.user_id, e.project_id);
+
+// Event primary lookup
+CREATE INDEX event_user_order FOR (e:Event) ON (e.user_id, e.narrative_order);
+CREATE INDEX event_user_chapter FOR (e:Event) ON (e.user_id, e.chapter_id);
+
+// Unique constraints (Neo4j enforces uniqueness)
+CREATE CONSTRAINT entity_id_unique FOR (e:Entity) REQUIRE e.id IS UNIQUE;
+CREATE CONSTRAINT event_id_unique  FOR (e:Event)  REQUIRE e.id IS UNIQUE;
+CREATE CONSTRAINT chapter_id_unique FOR (c:Chapter) REQUIRE c.id IS UNIQUE;
+CREATE CONSTRAINT book_id_unique    FOR (b:Book)    REQUIRE b.id IS UNIQUE;
+```
+
+**Query pattern rule:** Every Cypher query that touches `:Entity`, `:Event`, or
+user data MUST include `user_id` as the first filter predicate. Reviewers must
+reject any PR that issues a cross-tenant query.
+
+```cypher
+-- GOOD (uses entity_user_name index)
+MATCH (e:Entity) WHERE e.user_id = $user_id AND e.name = $name RETURN e
+
+-- BAD (full scan across all users)
+MATCH (e:Entity {name: $name}) RETURN e
 ```
 
 ### 3.7 Example: Hybrid Graph + Vector Query (Neo4j v2026.01)
@@ -671,6 +941,144 @@ WHERE first_ch.sort_order > ch.sort_order
   AND e.book_id = $bookId
 RETURN e.name, ch.title AS referenced_in, first_ch.title AS introduced_in
 ```
+
+---
+
+## 3.8 Consistency Model & Recovery
+
+Postgres is the source of truth; Neo4j is a derived view. This section documents
+the consistency contract and rebuild procedures.
+
+### 3.8.1 Consistency Model
+
+**Postgres writes are strongly consistent:**
+- `chapter_drafts`, `chat_messages`, `glossary_entities`, `knowledge_projects`, etc.
+- Transactional outbox writes are atomic with the data change.
+- Read-after-write: immediate.
+
+**Neo4j writes are eventually consistent:**
+- Relay worker publishes events → knowledge-service consumes → writes Neo4j.
+- Target lag: p50 < 1s, p95 < 5s, p99 < 30s.
+- Read-after-write: **not guaranteed via the event path**. Users may query Neo4j
+  and not see changes they just made via Postgres.
+
+**Two write paths to Neo4j:**
+
+| Path | When used | Consistency |
+|---|---|---|
+| **Async (event pipeline)** | Background mining, chat turn extraction, chapter re-extraction | Eventual (p95 < 5s) |
+| **Sync (knowledge-service direct)** | User manually edits an entity in memory UI, user manually adds a fact via "remember this" | Strong — returns after Neo4j write completes |
+
+For user-facing actions that require read-after-write (e.g., "I just told the AI to
+remember X, now I ask about X"), chat-service calls knowledge-service synchronously
+with a 500ms timeout. For background extraction, async is fine.
+
+### 3.8.2 Consistency SLA
+
+| Operation | Path | SLA |
+|---|---|---|
+| User manually adds a fact via memory UI | Sync | 200ms p95 |
+| User asks about fact in next chat turn | Async after auto-extract | 5s p95 |
+| Chapter save → character appears in L2 context | Async | 10s p95 |
+| Glossary edit → reflected in Neo4j | Async | 5s p95 |
+| Consumer catch-up after 1-hour downtime | Event log replay | Full catch-up within 5 minutes |
+
+**Enforcement:** OpenTelemetry traces span the full path from Postgres write to
+Neo4j write. Prometheus metric `knowledge_consumer_lag_seconds{consumer="..."}`
+alerts when lag exceeds SLA.
+
+### 3.8.3 Neo4j Rebuild from Event Log
+
+Neo4j must be rebuildable from scratch using only `loreweave_events.event_log`. This
+is the disaster recovery story and the "re-embed with new model" story.
+
+**Procedure:**
+
+```python
+async def rebuild_neo4j_from_events(
+    from_event_id: str = None,
+    consumer_name: str = "knowledge-extractor-rebuild",
+    batch_size: int = 1000,
+):
+    """Replay all events from the log to rebuild Neo4j.
+
+    Safe to run on live system — uses a separate consumer name so it doesn't
+    conflict with the production consumer. After completion, atomically swap
+    the rebuild into place or switch the primary consumer's state.
+    """
+    # 1. Start from event_id or beginning
+    last_id = from_event_id or "00000000-0000-0000-0000-000000000000"
+
+    # 2. Fetch events in uuidv7 order (time-ordered)
+    while True:
+        rows = await pool.fetch(
+            """
+            SELECT id, event_type, aggregate_type, aggregate_id, payload, created_at
+            FROM event_log
+            WHERE id > $1
+              AND event_type IN ('chapter.saved', 'chapter.deleted',
+                                 'chat.turn_completed', 'glossary.entity_updated',
+                                 'knowledge.fact_added')
+            ORDER BY id
+            LIMIT $2
+            """,
+            last_id, batch_size,
+        )
+        if not rows:
+            break
+
+        # 3. Process through the same knowledge pipeline (idempotent by design)
+        for row in rows:
+            await process_event(row)  # uses §3.5.4 idempotency — safe to replay
+            last_id = row["id"]
+
+        # 4. Progress tracking
+        await update_last_processed(consumer_name, last_id)
+        print(f"Rebuilt through {last_id}")
+```
+
+**Why this works safely on a running system:**
+- §3.5.4 idempotency: re-processing the same event is a no-op in Neo4j
+- Deterministic entity IDs: rebuilt entities get the same `id`, so `MERGE` finds them
+- `source_event_id` on relationships: duplicate relation writes are no-ops
+
+**When to rebuild:**
+1. Neo4j database corruption or restore from older backup
+2. Embedding model change (see §7 decision #27)
+3. Canonicalization rule change (bump `canonical_version`)
+4. Schema migration that can't be done in-place
+5. Extraction algorithm improvement (Pass 2 LLM model change)
+
+**Partial rebuild (specific book or project):**
+```sql
+-- Rebuild only a specific book's entities
+UPDATE event_consumers
+  SET last_processed_event_id = NULL
+  WHERE consumer_name = 'knowledge-extractor-rebuild';
+
+SELECT * FROM event_log
+  WHERE payload->>'book_id' = $target_book_id
+  ORDER BY id;
+```
+
+### 3.8.4 Deletion Cascade
+
+Raw data in Postgres is the source of truth. Derived data in Neo4j must reflect
+deletions. Cascade rules:
+
+| Postgres delete | Event | Neo4j effect |
+|---|---|---|
+| `chapter_drafts` row removed | `chapter.deleted` | Invalidate `(:Event)` nodes tied to chapter; invalidate `(:Fact)` with only-this-chapter provenance |
+| `chat_messages` row removed | `chat.message_deleted` (new) | Invalidate facts/entities sourced from this message only |
+| `knowledge_projects` row removed | `project.deleted` | Delete project-scoped entities (not global); keep entities referenced by other projects |
+| `users` row removed (GDPR) | `user.deleted` | Delete all user-scoped entities, events, facts, embeddings (hard delete) |
+
+**Invariant:** A fact/entity derived solely from deleted source data must be deleted
+from Neo4j within 5 minutes of the Postgres deletion. Enforced by consumer watchdog.
+
+**GDPR requirement:** `user.deleted` event must trigger complete user data removal
+from Neo4j within 30 days (regulatory requirement). A daily cleanup job scans for
+orphaned user data as a safety net.
 
 ---
 
@@ -724,18 +1132,22 @@ If D0-04 reveals breaking SQL patterns, document each and add refactor tasks.
 |---|---|---|---|---|
 | D2-01 | Infra | Add Neo4j v2026.01 to docker-compose | None | S |
 | D2-02 | BE | knowledge-service scaffold (Python/FastAPI, connects to Neo4j + Postgres + Redis) | D2-01 | M |
-| D2-03 | BE | Neo4j schema init: create constraints, vector indexes | D2-01 | S |
+| D2-03 | BE | Neo4j schema init: constraints (§3.6), vector indexes (§3.6 + §7 #27 dimension), composite indexes on `(user_id, ...)`. Mandatory per §3.6 query rule. | D2-01 | S |
+| D2-04 | BE | Self-hosted embedding model service (BAAI/bge-m3 or multilingual-e5-large) as a task in worker-ai or standalone container. See §7 decision #27. | D2-01 | M |
 
 ### Phase D3: Knowledge Pipeline (future — after D1 + D2)
 
 | Task | Type | Scope | Deps | Est |
 |---|---|---|---|---|
-| D3-01 | BE | Entity extraction: LLM NER + coreference → Neo4j entities | D2-02, D1-08 | L |
+| D3-00 | BE | **Idempotency layer (blocker for all other D3 tasks).** Canonicalization function (§3.5.4 Rule 1), deterministic entity ID generator, `source_event_id` pattern on relation writes. Unit tests for canonicalization edge cases. | D2-02 | M |
+| D3-01 | BE | Entity extraction: LLM NER + coreference → Neo4j entities (uses D3-00 canonicalization) | D3-00, D1-08 | L |
 | D3-02 | BE | Event extraction: LLM → Neo4j events + temporal ordering | D3-01 | L |
-| D3-03 | BE | Relation extraction: LLM → Neo4j relationship edges | D3-01 | M |
+| D3-03 | BE | Relation extraction: LLM → Neo4j relationship edges (uses D3-00 idempotency keys) | D3-01 | M |
 | D3-04 | BE | Fact extraction: atomic statements with provenance | D3-03 | M |
-| D3-05 | BE | Embedding generation: embed entities + events → Neo4j vector indexes | D3-01, D2-03 | M |
+| D3-05 | BE | Embedding generation: embed entities + events → Neo4j vector indexes (uses D2-04 embedding service) | D3-01, D2-04 | M |
 | D3-06 | BE | Glossary-service evolution: read from Neo4j, user curates AI suggestions | D3-01 | L |
+| D3-07 | BE | **Backfill existing chapters:** iterate `chapter_drafts`, emit synthetic `chapter.saved` outbox events for chapters created before the knowledge pipeline existed. Knowledge consumer processes them via normal path. | D3-01, D3-05 | S |
+| D3-08 | BE | Neo4j rebuild tool: CLI/API that replays `event_log` to reconstruct Neo4j from scratch (§3.8.3). Used for disaster recovery and embedding model migration. | D3-01, D3-05 | M |
 
 ### Phase D4: RAG Integration (future — after D3)
 
@@ -813,6 +1225,13 @@ Steps:
 | 24 | **Internal API adds `text_content` field** (Option C) | `getInternalBookChapter` returns both JSONB `body` + plain `text_content` (from chapter_blocks). Downstream services pick what they need. Translation worker reads `text_content`, unchanged. | 2026-04-01 |
 | 25 | **Trust frontend `_text` snapshots** | No server-side validation. Frontend is authority on editor content. Add unit test on `extractText` to prevent regressions. | 2026-04-01 |
 | 26 | **Service discovery for worker-infra** | `OUTBOX_SOURCES` env var: `book:postgres://...loreweave_book,glossary:postgres://...loreweave_glossary`. Future: proper service registry when scaling beyond docker-compose. | 2026-04-01 |
+| 27 | **Server-chosen embedding model** (not BYOK) | Vector spaces are model-specific — mixing models breaks similarity queries. Self-host one embedding model (`BAAI/bge-m3` or `intfloat/multilingual-e5-large`, 1024-dim, multilingual, free). BYOK for LLMs stays intact; embedding is a platform capability. Neo4j vector index dimension is fixed at deployment; model changes require §3.8.3 rebuild. | 2026-04-13 |
+| 28 | **Consumer idempotency is mandatory** (§3.5.4) | At-least-once delivery + non-deterministic LLM output requires explicit idempotency. Rules: deterministic node IDs from canonicalized names, `source_event_id` on relation writes, `canonical_version` for migration. D3-00 is a blocker for all other D3 tasks. | 2026-04-13 |
+| 29 | **Hybrid consumer catch-up** (§3.5.5) | Redis Streams have bounded retention; consumers fall back to `event_log` table when Redis has evicted events. Prevents silent data loss during extended consumer downtime. Implemented once in a shared helper, reused by all AI consumers. | 2026-04-13 |
+| 30 | **Outbox table partitioning by month** (§3.5.6) | High-throughput outbox tables (chat at 50K events/day) need partitioning to avoid DELETE churn and vacuum pressure. `DROP PARTITION` replaces `DELETE WHERE old`. Monthly granularity. Autovacuum tuned per-partition for the active month. | 2026-04-13 |
+| 31 | **Neo4j multi-tenant query rule** (§3.6) | Every Cypher query on `:Entity`/`:Event` must filter by `user_id` as the first predicate. Enforced via composite indexes `entity_user_*`. PR review rejects any cross-tenant query. Alternative (database-per-user) requires Enterprise license — not justified at current scale. | 2026-04-13 |
+| 32 | **Postgres SSOT deletion cascades to Neo4j** (§3.8.4) | Raw data is authoritative; derived data in Neo4j must reflect deletions within SLA. `chapter.deleted`, `chat.message_deleted`, `project.deleted`, `user.deleted` events drive Neo4j cleanup. Daily orphan-scan watchdog as safety net. | 2026-04-13 |
+| 33 | **Rebuild-from-event-log is a first-class feature** (§3.8.3) | Neo4j must be reconstructible from `event_log`. Enables disaster recovery, embedding model migration, canonicalization rule changes, and algorithm improvements without data loss. D3-08 delivers the rebuild tool. | 2026-04-13 |
 
 ---
 
