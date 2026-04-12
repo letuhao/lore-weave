@@ -220,20 +220,24 @@ async def voice_stream_response(
     tts_voice = voice_config.get("tts_voice", "af_heart")
 
     # Resolve STT/TTS provider credentials to get actual model names
+    # These come from the user's registered models — no hardcoded fallbacks
     provider = get_provider_client()
-    stt_model_name = "whisper-1"
-    tts_model_name = "tts-1"
     try:
         stt_creds = await provider.resolve(stt_model_source, stt_model_ref, user_id)
-        stt_model_name = stt_creds.provider_model_name
     except Exception:
-        logger.warning("Could not resolve STT model name, using fallback")
+        logger.exception("STT model resolution failed for %s", stt_model_ref)
+        yield _sse("error", {"errorText": "STT model not found. Check Voice Settings."})
+        yield "data: [DONE]\n\n"
+        return
+    stt_model_name = stt_creds.provider_model_name
+
+    tts_model_name = ""
     if tts_model_ref:
         try:
             tts_creds = await provider.resolve(tts_model_source, tts_model_ref, user_id)
             tts_model_name = tts_creds.provider_model_name
         except Exception:
-            logger.warning("Could not resolve TTS model name, using fallback")
+            logger.warning("TTS model resolution failed for %s — audio will be skipped", tts_model_ref)
 
     # ── Step 1: STT ──────────────────────────────────────────────────
     try:
