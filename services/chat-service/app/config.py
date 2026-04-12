@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     minio_bucket: str = "lw-chat"
     minio_use_ssl: bool = False
     minio_external_url: str = ""  # Browser-accessible MinIO URL for presigned URLs
+    audio_ttl_hours: int = 48         # Voice audio retention period
+    audio_cleanup_interval_hours: int = 4  # How often to run cleanup
     internal_service_token: str
     statistics_service_internal_url: str = "http://statistics-service:8089"
     redis_url: str = "redis://redis:6379"

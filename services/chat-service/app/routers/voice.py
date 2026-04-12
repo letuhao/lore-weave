@@ -183,11 +183,8 @@ async def cleanup_expired_audio(
     2. S3 objects deleted (if fails, S3 lifecycle is safety net)
     """
     rows = await pool.fetch(
-        """
-        DELETE FROM message_audio_segments
-        WHERE created_at < now() - interval '48 hours'
-        RETURNING object_key
-        """,
+        "DELETE FROM message_audio_segments WHERE created_at < now() - make_interval(hours => $1) RETURNING object_key",
+        settings.audio_ttl_hours,
     )
     deleted = 0
     for r in rows:

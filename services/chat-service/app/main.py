@@ -14,19 +14,18 @@ from app.storage.minio_client import delete_object, ensure_bucket
 
 logger = logging.getLogger(__name__)
 
-_CLEANUP_INTERVAL = 4 * 3600  # 4 hours
-_AUDIO_TTL = "48 hours"
-
-
 async def _audio_cleanup_loop():
-    """Periodically delete expired voice audio segments (48h TTL)."""
+    """Periodically delete expired voice audio segments. Config via AUDIO_TTL_HOURS + AUDIO_CLEANUP_INTERVAL_HOURS."""
     from app.db.pool import get_pool
+    interval = settings.audio_cleanup_interval_hours * 3600
+    ttl_hours = settings.audio_ttl_hours
     while True:
-        await asyncio.sleep(_CLEANUP_INTERVAL)
+        await asyncio.sleep(interval)
         try:
             pool = get_pool()
             rows = await pool.fetch(
-                f"DELETE FROM message_audio_segments WHERE created_at < now() - interval '{_AUDIO_TTL}' RETURNING object_key",
+                "DELETE FROM message_audio_segments WHERE created_at < now() - make_interval(hours => $1) RETURNING object_key",
+                ttl_hours,
             )
             for r in rows:
                 try:
