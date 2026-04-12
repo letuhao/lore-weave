@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { ArrowUp, Brain, Square, Zap, Mic, MicOff, Loader2 } from 'lucide-react';
 import { useSpeechRecognition, SPEECH_RECOGNITION_SUPPORTED } from '@/hooks/useSpeechRecognition';
 import { MEDIA_RECORDER_SUPPORTED } from '@/hooks/useBackendSTT';
@@ -81,24 +81,30 @@ export function ChatInputBar({
       setMicState('recording');
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        // Choose supported MIME type (Safari doesn't support webm)
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
+          : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
+        const recorder = mimeType
+          ? new MediaRecorder(stream, { mimeType })
+          : new MediaRecorder(stream);
+        const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
         mediaRecorderRef.current = recorder;
         const chunks: Blob[] = [];
         recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
         recorder.onstop = async () => {
           stream.getTracks().forEach((t) => t.stop());
+          mediaRecorderRef.current = null;
           if (chunks.length === 0) { setMicState('idle'); return; }
           setMicState('transcribing');
           try {
-            const blob = new Blob(chunks, { type: 'audio/webm' });
+            const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
             const apiBase = import.meta.env.VITE_API_BASE || '';
             const params = new URLSearchParams({
               model_source: 'user_model',
               model_ref: prefs.sttModelRef,
             });
             const formData = new FormData();
-            formData.append('file', blob, 'audio.webm');
-            formData.append('model', 'whisper-1');
+            formData.append('file', blob, `audio.${ext}`);
             const resp = await fetch(
               `${apiBase}/v1/model-registry/proxy/v1/audio/transcriptions?${params}`,
               { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, body: formData },
@@ -107,8 +113,16 @@ export function ChatInputBar({
               const result = await resp.json();
               const text = result.text || '';
               if (text.trim()) setValue((prev) => (prev ? prev + ' ' + text : text));
+            } else {
+              setMicState('error');
+              setTimeout(() => setMicState('idle'), 2000);
+              return;
             }
-          } catch { /* silent */ }
+          } catch {
+            setMicState('error');
+            setTimeout(() => setMicState('idle'), 2000);
+            return;
+          }
           setMicState('idle');
         };
         recorder.start();
@@ -125,6 +139,15 @@ export function ChatInputBar({
       setMicState('recording');
     }
   }, [micState, stt, accessToken]);
+
+  // Cleanup mic on unmount
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
+    };
+  }, []);
 
   function handleTemplateSelect(template: PromptTemplate) {
     setValue(template.prompt);
