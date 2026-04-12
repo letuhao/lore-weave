@@ -118,6 +118,13 @@ export class TTSPlaybackQueue {
     this.sources.push(source);
   }
 
+  /** Enqueue a base64-encoded audio chunk (from SSE voice pipeline). */
+  async enqueueBase64(base64Data: string): Promise<void> {
+    if (!base64Data) return;
+    const binary = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+    await this.enqueue(binary.buffer);
+  }
+
   /** Mark that no more items will be enqueued */
   close(): void {
     this.closed = true;
