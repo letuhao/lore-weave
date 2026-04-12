@@ -90,36 +90,96 @@ LoreWeave's current chat is a **stateless replay buffer** — it sends the last 
 
 ### Design Principles
 
-- **Server-side only** — all memory logic in backend services, frontend is a renderer
-- **No new services** — memory tables live in chat-service's Postgres database
+- **Dedicated microservice** — `memory-service` (Python/FastAPI) owns all memory logic and data
+- **Shared infrastructure layer** — consumed by chat-service, writing-assistant, translation-service, and any future AI pipeline
+- **Per-service DB** — memory-service owns `memory_db` (follows LoreWeave's per-service DB rule)
+- **Server-side only** — all memory logic in backend, frontend is a renderer
 - **pgvector for embeddings** — no external vector DB (ChromaDB, Pinecone)
-- **Pattern-based extraction** — no LLM calls for memory operations (zero incremental cost)
-- **Multi-user, multi-book** — every memory scoped to `user_id`, optionally to `book_id`
+- **Pattern-based extraction** — no LLM calls for memory ops (zero incremental cost)
+- **Multi-user, multi-project** — every memory scoped to `user_id`, optionally to `project_id`/`session_id`
 - **Temporal validity** — triples have `valid_from`/`valid_until` for timeline queries
-- **Existing integration** — plugs into `stream_service.py` context builder, exposed via tool calling
+- **Provider-registry for embeddings** — BYOK model via existing proxy pattern
+- **Gateway invariant preserved** — all external traffic through api-gateway-bff
+
+### Why a Separate Service (not in chat-service)
+
+LoreWeave has multiple AI pipelines that need memory:
+
+| Service | Needs memory for |
+|---|---|
+| chat-service | Context injection + extraction per chat turn |
+| writing-assistant-service (future) | Book context, character consistency, writing style |
+| translation-service | Term consistency, previous translation choices |
+| glossary-service | Auto-populate entity descriptions from chat |
+| video-gen-service (future) | Scene + character appearance consistency |
+
+Putting memory inside chat-service would force every other AI service to call into
+chat-service for memory operations — wrong coupling (they're peers, not dependents)
+and it violates the per-service DB rule. Memory must be a **shared infrastructure
+service** owned by nobody and used by everybody.
+
+### Why Python (not Go)
+
+Per `CLAUDE.md`: "Go for domain services, Python for AI/LLM services." Memory sits in
+the middle, but the Python choice is clear because:
+
+1. **Pattern-based extraction** is the core value-add — regex + text processing is
+   Python-native. We're porting patterns from MemPalace which is Python.
+2. **Embedding pipeline** uses provider-registry the same way chat-service does —
+   same async HTTP patterns, same credential resolution.
+3. **LLM-assisted summarization** (L0/L1 regeneration) needs the same provider
+   infrastructure as chat-service.
+4. **Pydantic + FastAPI + asyncpg + pgvector** are all first-class in Python.
+5. **Consistency with chat-service** — same language, same async patterns, easy
+   knowledge transfer.
 
 ### System Context
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│ chat-service (Python / FastAPI)                         │
-│                                                         │
-│  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐  │
-│  │ stream_      │  │ memory_      │  │ memory_       │  │
-│  │ service.py   │──│ context.py   │  │ extractor.py  │  │
-│  │ (LLM loop)  │  │ (L0-L3 load) │  │ (background)  │  │
-│  └──────┬───────┘  └──────┬───────┘  └───────┬───────┘  │
-│         │                 │                   │          │
-│  ┌──────▼─────────────────▼───────────────────▼───────┐  │
-│  │ Postgres (chat-service DB)                         │  │
-│  │  ├── chat_messages (existing)                      │  │
-│  │  ├── memory_entities                               │  │
-│  │  ├── memory_triples                                │  │
-│  │  ├── memory_drawers (+ pgvector)                   │  │
-│  │  └── memory_summaries                              │  │
-│  └────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│ api-gateway-bff (NestJS — external entry point)                 │
+└───┬─────────────────────────────┬───────────────────────────────┘
+    │                             │
+    │ /v1/memory/*                │ /v1/chat/*
+    │ (user-facing CRUD)          │
+    │                             │
+┌───▼──────────────┐  ┌───────────▼────────────┐  ┌──────────────┐
+│ memory-service   │◄─┤ chat-service           │  │ writing-     │
+│ (Python/FastAPI) │  │ (Python/FastAPI)       │  │ assistant    │
+│                  │  │                        │  │ (future)     │
+│ • Extraction     │  │ • Chat sessions        │  │              │
+│ • Context build  │  │ • Voice pipeline       │  │              │
+│ • CRUD + search  │  │ • Calls memory-service │  │              │
+│ • Embedding      │  │                        │  │              │
+└───┬──────────────┘  └────────────────────────┘  └──────┬───────┘
+    │                                                      │
+    │◄─────────────────────────────────────────────────────┘
+    │           (internal API — X-Internal-Token)
+    │
+┌───▼──────────────┐      ┌─────────────────────────────┐
+│ memory_db        │      │ provider-registry-service   │
+│ Postgres +       │      │ (embedding proxy for        │
+│ pgvector         │      │  BYOK models)               │
+└──────────────────┘      └─────────────────────────────┘
 ```
+
+### Service Responsibilities
+
+**memory-service owns:**
+- 5 Postgres tables: `memory_projects`, `memory_entities`, `memory_triples`, `memory_drawers`, `memory_summaries`
+- Extraction pipeline (pattern-based, no LLM)
+- Context builder (L0-L3 assembly with token budgets)
+- Embedding generation (proxies through provider-registry)
+- Summary regeneration (periodic, uses LLM sparingly)
+- Memory CRUD API (projects, entities, timeline, manual entries)
+- GDPR erasure
+
+**chat-service consumes memory-service:**
+- Calls `POST /internal/context/build` before LLM call → gets assembled context string
+- Calls `POST /internal/extract` after LLM response → fires-and-forgets extraction
+- No memory logic or tables in chat-service
+
+**Future services** (writing-assistant, translation, etc.) consume the same internal API.
 
 ---
 
@@ -497,7 +557,147 @@ When glossary entities are created/updated/deleted:
 
 ---
 
-## 6. Integration with Chat Service
+## 6. Memory-Service API
+
+### 6.0 Internal API (service-to-service, `X-Internal-Token` auth)
+
+These endpoints are called by chat-service, writing-assistant-service, and other
+AI pipelines. Not exposed through api-gateway-bff.
+
+#### `POST /internal/context/build`
+
+Build assembled memory context for an LLM call.
+
+**Request:**
+```json
+{
+  "user_id": "uuid",
+  "project_id": "uuid | null",
+  "session_id": "uuid",
+  "message": "user message text",
+  "layers": ["L0", "L1", "L2", "L3"],
+  "token_budget": 1050
+}
+```
+
+**Response:**
+```json
+{
+  "context": "=== Memory Context ===\n[About the user]...",
+  "layers_loaded": ["L0", "L1", "L2"],
+  "token_count": 487,
+  "cache_key": "optional — for request deduplication"
+}
+```
+
+#### `POST /internal/extract`
+
+Extract and store memories from a conversation turn. Fire-and-forget — returns 202.
+
+**Request:**
+```json
+{
+  "user_id": "uuid",
+  "project_id": "uuid | null",
+  "session_id": "uuid",
+  "user_message": "...",
+  "assistant_message": "...",
+  "message_id": "uuid"
+}
+```
+
+**Response:** `202 Accepted` (extraction runs in background)
+
+#### `POST /internal/embed`
+
+Generate embedding for text via user's BYOK embedding model.
+
+**Request:**
+```json
+{
+  "user_id": "uuid",
+  "text": "text to embed",
+  "model_source": "user_model",
+  "model_ref": "uuid"
+}
+```
+
+**Response:**
+```json
+{
+  "embedding": [0.123, 0.456, ...],
+  "dimension": 1536,
+  "model_name": "text-embedding-3-small"
+}
+```
+
+#### `POST /internal/summarize`
+
+Regenerate a summary (L0/L1) using LLM. Called by scheduled background job,
+not on the chat hot path.
+
+**Request:**
+```json
+{
+  "user_id": "uuid",
+  "scope_type": "global | project",
+  "scope_id": "uuid | null",
+  "model_source": "user_model",
+  "model_ref": "uuid"
+}
+```
+
+**Response:**
+```json
+{
+  "summary_id": "uuid",
+  "content": "...",
+  "token_count": 180,
+  "version": 3
+}
+```
+
+---
+
+### 6.1 Public API (user-facing, JWT auth via api-gateway-bff)
+
+Exposed at `/v1/memory/*` through the gateway.
+
+#### Projects
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/v1/memory/projects` | List user's projects |
+| `POST` | `/v1/memory/projects` | Create a project |
+| `GET` | `/v1/memory/projects/{id}` | Get project details |
+| `PATCH` | `/v1/memory/projects/{id}` | Update project (name, description, instructions) |
+| `DELETE` | `/v1/memory/projects/{id}` | Delete project (cascade deletes scoped memories) |
+| `POST` | `/v1/memory/projects/{id}/archive` | Archive a project |
+
+#### Memories
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/v1/memory/summaries` | Get L0 (global) and L1 (per project) summaries |
+| `GET` | `/v1/memory/entities?project_id=...` | List entities scoped to project (or global) |
+| `GET` | `/v1/memory/triples?subject=...&project_id=...` | Query triples by subject/object |
+| `GET` | `/v1/memory/drawers?project_id=...&room=...` | List drawers in a project/room |
+| `GET` | `/v1/memory/timeline?project_id=...&from=...&to=...` | Temporal query — events in chronological order |
+| `POST` | `/v1/memory/remember` | Manual memory entry (user tells AI "remember this") |
+| `DELETE` | `/v1/memory/drawers/{id}` | Forget a specific memory |
+| `POST` | `/v1/memory/triples/{id}/invalidate` | Mark a triple as no longer true (sets valid_until) |
+| `DELETE` | `/v1/memory/user-data` | GDPR erasure (delete all memory for user) |
+
+#### Project instructions
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/v1/memory/projects/{id}/instructions` | Get custom instructions for a project |
+| `PUT` | `/v1/memory/projects/{id}/instructions` | Set custom instructions (markdown text) |
+
+---
+
+## 7. Integration with Chat Service
 
 ### 6.1 Context Builder (before LLM call)
 
@@ -600,7 +800,7 @@ This allows the AI to proactively search its memory when needed, rather than rel
 
 ---
 
-## 7. Embedding Strategy
+## 8. Embedding Strategy
 
 ### 7.1 Embedding Model
 
@@ -622,7 +822,7 @@ Use the user's configured embedding model via provider-registry proxy (same BYOK
 
 ---
 
-## 8. Summary Regeneration
+## 9. Summary Regeneration
 
 L0 and L1 summaries become stale as conversations accumulate. Regeneration strategy:
 
@@ -637,27 +837,48 @@ Regeneration is a background job — never blocks the chat flow.
 
 ---
 
-## 9. Implementation Phases
+## 10. Implementation Phases
 
 | Phase | Scope | Effort | Dependencies |
 |---|---|---|---|
-| **P1** | Postgres schema + migrations | Small | pgvector extension |
-| **P2** | Pattern-based extractor (triples + drawers from chat) | Medium | P1 |
-| **P3** | Context builder (L0-L3 injection into LLM calls) | Medium | P1, P2 |
-| **P4** | Glossary sync (auto-populate from existing data) | Small | P1 |
-| **P5** | Book content mining (chapter text → drawers) | Medium | P1 |
-| **P6** | Embedding pipeline (pgvector semantic search for L3) | Medium | P1, embedding model |
-| **P7** | Summary regeneration (L0/L1 periodic refresh) | Medium | P3, P6 |
-| **P8** | Tool calling integration (memory tools for LLM) | Medium | P3 |
-| **P9** | Memory UI (view/edit/delete memories, timeline) | Large | P1-P3 |
+| **P0** | Service scaffolding: new `memory-service` FastAPI app, Dockerfile, docker-compose entry, `memory_db` Postgres + pgvector extension, health check, internal token auth | Small | — |
+| **P1** | Database schema + migrations: 5 tables (projects, entities, triples, drawers, summaries) + indexes | Small | P0 |
+| **P2** | Internal API: `/internal/context/build` + `/internal/extract` + `/internal/embed` endpoints (stubs OK initially) | Small | P1 |
+| **P3** | Pattern-based extractor: port MemPalace regex patterns for decisions/preferences/milestones, entity detector, triple extractor | Medium | P2 |
+| **P4** | Context builder: L0-L3 assembly with token budgets, scope resolution (project + global) | Medium | P2, P3 |
+| **P5** | chat-service integration: add memory client, call `build_context` before LLM and `extract` after (background) | Small | P4 |
+| **P6** | Public API: projects CRUD, memory CRUD, `/v1/memory/*` routes, gateway proxy setup | Medium | P1 |
+| **P7** | Glossary sync: listen to glossary-service events, auto-populate entities/drawers for book-linked projects | Small | P1 |
+| **P8** | Embedding pipeline: provider-registry proxy for embeddings, populate `memory_drawers.embedding`, pgvector semantic search (L3) | Medium | P4 |
+| **P9** | Book content mining: chapter text → chunks → drawers | Medium | P8 |
+| **P10** | Summary regeneration: scheduled job, LLM-assisted L0/L1 refresh | Medium | P4, P8 |
+| **P11** | Tool calling integration: expose memory tools to LLMs via chat-service tool loop | Medium | P5 |
+| **P12** | Memory UI in frontend: projects list, memory viewer, timeline, manual edit/delete | Large | P6 |
+| **P13** | Writing-assistant-service integration (when that service is built) | Small | P2 |
 
-**MVP (P1-P3):** Pattern-based extraction + L0-L2 context loading. No embeddings needed. The AI gets structured memory without any LLM cost for extraction.
+**MVP (P0-P5):** New service running, pattern extraction working, chat-service uses it.
+No embeddings yet — L0-L2 context loading only, which covers 80% of the value.
 
-**Full system (P1-P8):** Adds semantic search (L3), book mining, glossary sync, summary regeneration, and LLM tool access to memory.
+**Full system (P0-P12):** Adds semantic search (L3), book mining, glossary sync,
+summary regeneration, LLM tool access, and UI.
+
+### Incremental Path for Chat-Service Migration
+
+P5 is critical: chat-service must gracefully handle memory-service being unavailable
+(degraded mode — fall back to current 50-message replay). This is the "no bricks in
+production" guarantee:
+
+```python
+try:
+    context = await memory_client.build_context(...)
+except (httpx.RequestError, httpx.HTTPStatusError):
+    logger.warning("memory-service unavailable, falling back to message replay")
+    context = ""  # proceed without memory context
+```
 
 ---
 
-## 10. Cost Analysis
+## 11. Cost Analysis
 
 | Approach | Tokens per turn | Annual cost (100 turns/day) |
 |---|---|---|
@@ -671,7 +892,7 @@ Summary regeneration: ~$0.50/month (infrequent LLM calls for L0/L1 refresh).
 
 ---
 
-## 11. Open Questions
+## 12. Open Questions
 
 1. **Embedding dimension:** Should we standardize on 1536 (OpenAI compatible) or support variable dimensions per user model?
 2. **Conflict resolution:** When a new triple contradicts an old one, auto-invalidate the old one? Or flag for user review?
