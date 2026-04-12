@@ -59,6 +59,7 @@ export class TTSPlaybackQueue {
   async enqueue(audioData: ArrayBuffer): Promise<void> {
     const gen = this.generation; // PQ-02: capture generation
     const idx = this.chunkIndex++;
+    this.pendingCount++; // Increment BEFORE async decode to prevent premature onAllPlayed
     const ctx = this.getAudioContext();
 
     // Resume if suspended (browser auto-suspend policy)
@@ -73,20 +74,21 @@ export class TTSPlaybackQueue {
     }
 
     // PQ-02: bail if cancelled during resume
-    if (gen !== this.generation) return;
+    if (gen !== this.generation) { this.pendingCount--; this.checkAllPlayed(); return; }
 
     let buffer: AudioBuffer;
     try {
       buffer = await ctx.decodeAudioData(audioData.slice(0)); // PQ-03: try/catch
     } catch (err) {
       console.error(`[TTSQueue] Decode failed for chunk ${idx}:`, (err as Error).message);
+      this.pendingCount--;
       this.onChunkError?.(idx, err as Error);
       this.checkAllPlayed();
       return;
     }
 
     // PQ-02: bail if cancelled during decode
-    if (gen !== this.generation) return;
+    if (gen !== this.generation) { this.pendingCount--; this.checkAllPlayed(); return; }
 
     console.log(`[TTSQueue] Decoded chunk ${idx}: ${buffer.duration.toFixed(1)}s, ctx.state=${ctx.state}`);
 
@@ -102,7 +104,6 @@ export class TTSPlaybackQueue {
     source.start(startTime);
     this.nextStartTime = startTime + buffer.duration;
 
-    this.pendingCount++;
     this.onChunkStart?.(idx);
 
     source.onended = () => {
