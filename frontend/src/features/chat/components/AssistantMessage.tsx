@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import { toast } from 'sonner';
 import { ThinkingBlock } from './ThinkingBlock';
+import { AudioReplayPlayer } from './AudioReplayPlayer';
 import { firePasteToEditor } from '../utils/pasteToEditor';
 
 interface AssistantMessageProps {
@@ -23,6 +24,10 @@ interface AssistantMessageProps {
   /** Timing metrics from content_parts */
   responseTimeMs?: number | null;
   timeToFirstTokenMs?: number | null;
+  /** Audio replay (voice pipeline V2) */
+  sessionId?: string;
+  messageId?: string;
+  voiceTtsSentences?: number;
 }
 
 export function AssistantMessage({
@@ -37,6 +42,9 @@ export function AssistantMessage({
   outputTokens,
   responseTimeMs,
   timeToFirstTokenMs,
+  sessionId,
+  messageId,
+  voiceTtsSentences,
 }: AssistantMessageProps) {
   const [showMore, setShowMore] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
@@ -91,6 +99,11 @@ export function AssistantMessage({
           <span className="inline-block h-4 w-1.5 animate-pulse rounded-sm bg-accent opacity-80" />
         )}
       </div>
+
+      {/* Audio replay (voice pipeline V2) */}
+      {!isStreaming && sessionId && messageId && voiceTtsSentences && voiceTtsSentences > 0 && (
+        <AudioReplayPlayer sessionId={sessionId} messageId={messageId} />
+      )}
 
       {/* Token footer + action buttons */}
       {!isStreaming && (

@@ -74,6 +74,7 @@ export function MessageBubble({
     reasoning?: string;
     response_time_ms?: number;
     time_to_first_token_ms?: number;
+    voice_tts_sentences?: number;
   } | null;
 
   // Extract code blocks from assistant messages to show as OutputCards
@@ -150,6 +151,9 @@ export function MessageBubble({
                 outputTokens={message.output_tokens}
                 responseTimeMs={contentParts?.response_time_ms}
                 timeToFirstTokenMs={contentParts?.time_to_first_token_ms}
+                sessionId={sessionId}
+                messageId={message.message_id}
+                voiceTtsSentences={contentParts?.voice_tts_sentences}
               />
               {codeOutputs.length > 0 && (
                 <div className="mt-2 space-y-1.5">
