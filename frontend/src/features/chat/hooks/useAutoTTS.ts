@@ -2,18 +2,15 @@
  * useAutoTTS — automatically plays TTS for new assistant messages when Voice Assist is enabled.
  * Watches for completed (non-streaming) assistant messages and calls TTS via provider-registry proxy.
  */
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useAuth } from '@/auth';
 import { TTSPlaybackQueue } from '@/lib/TTSPlaybackQueue';
 import { loadVoicePrefs } from '../voicePrefs';
 import type { ChatMessage } from '../types';
 
 export interface AutoTTSControls {
-  /** Stop any currently playing TTS */
   stop: () => void;
-  /** Whether TTS is currently playing */
   isPlaying: boolean;
-  /** Message ID of the currently playing message (null if not playing) */
   playingMessageId: string | null;
 }
 
@@ -24,48 +21,62 @@ export function useAutoTTS(
   const { accessToken } = useAuth();
   const queueRef = useRef<TTSPlaybackQueue | null>(null);
   const lastPlayedIdRef = useRef<string | null>(null);
-  const playingIdRef = useRef<string | null>(null);
-  const isPlayingRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const initialCountRef = useRef<number | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
+
+  // Track initial message count to skip history messages
+  if (initialCountRef.current === null) {
+    initialCountRef.current = messages.length;
+  }
 
   const stop = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
     queueRef.current?.cancelAll();
-    isPlayingRef.current = false;
-    playingIdRef.current = null;
+    setIsPlaying(false);
+    setPlayingMessageId(null);
   }, []);
 
+  // Use messages.length as dep instead of messages array ref
+  const msgCount = messages.length;
+
   useEffect(() => {
-    // Only trigger when streaming finishes (new message completed)
     if (isStreaming) return;
+    // Skip if no new messages beyond initial load
+    if (initialCountRef.current !== null && msgCount <= initialCountRef.current) return;
 
     const prefs = loadVoicePrefs();
     if (!prefs.voiceAssistAutoTTS || !prefs.ttsModelRef) return;
 
-    // Find the last assistant message
-    const lastMsg = [...messages].reverse().find((m) => m.role === 'assistant');
-    if (!lastMsg) return;
-    if (lastMsg.message_id === lastPlayedIdRef.current) return; // Already played
+    const lastMsg = messages[messages.length - 1];
+    if (!lastMsg || lastMsg.role !== 'assistant') return;
+    if (lastMsg.message_id === lastPlayedIdRef.current) return;
     lastPlayedIdRef.current = lastMsg.message_id;
 
-    // Play TTS for this message
     const text = lastMsg.content;
     if (!text || text.trim().length < 5) return;
 
     const playTTS = async () => {
       if (!accessToken) return;
 
-      // Create queue if needed
       if (!queueRef.current) {
         queueRef.current = new TTSPlaybackQueue({
           onAllPlayed: () => {
-            isPlayingRef.current = false;
-            playingIdRef.current = null;
+            setIsPlaying(false);
+            setPlayingMessageId(null);
           },
         });
       }
 
       queueRef.current.cancelAll();
-      isPlayingRef.current = true;
-      playingIdRef.current = lastMsg.message_id;
+      abortRef.current?.abort();
+      const abort = new AbortController();
+      abortRef.current = abort;
+
+      setIsPlaying(true);
+      setPlayingMessageId(lastMsg.message_id);
 
       try {
         const apiBase = import.meta.env.VITE_API_BASE || '';
@@ -82,48 +93,49 @@ export function useAutoTTS(
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              input: text.slice(0, 4096), // Cap length
+              input: text.slice(0, 4096),
               voice: prefs.ttsVoiceId || 'af_heart',
               response_format: 'mp3',
             }),
+            signal: abort.signal,
           },
         );
 
         if (!resp.ok || !resp.body) {
-          isPlayingRef.current = false;
-          playingIdRef.current = null;
+          setIsPlaying(false);
+          setPlayingMessageId(null);
           return;
         }
 
-        // Stream audio chunks to playback queue
         const reader = resp.body.getReader();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (!isPlayingRef.current) { reader.cancel(); break; } // Stopped
-          await queueRef.current?.enqueue(value.buffer);
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            await queueRef.current?.enqueue(value.buffer);
+          }
+          queueRef.current?.close();
+        } finally {
+          reader.releaseLock();
         }
-        queueRef.current?.close();
-      } catch {
-        isPlayingRef.current = false;
-        playingIdRef.current = null;
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          setIsPlaying(false);
+          setPlayingMessageId(null);
+        }
       }
     };
 
     void playTTS();
-  }, [messages, isStreaming, accessToken]);
+  }, [msgCount, isStreaming, accessToken]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
+      abortRef.current?.abort();
       queueRef.current?.dispose();
       queueRef.current = null;
     };
   }, []);
 
-  return {
-    stop,
-    isPlaying: isPlayingRef.current,
-    playingMessageId: playingIdRef.current,
-  };
+  return { stop, isPlaying, playingMessageId };
 }
