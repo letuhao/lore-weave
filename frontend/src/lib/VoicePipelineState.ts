@@ -9,8 +9,7 @@
 export type PipelinePhase =
   | 'idle'          // Voice mode off
   | 'activating'    // Setting up VAD + AudioContext
-  | 'listening'     // VAD active, waiting for speech
-  | 'recording'     // VAD detected speech, recording audio
+  | 'listening'     // VAD active, waiting for speech (VAD records internally)
   | 'sending'       // Audio captured, sending to server
   | 'transcribing'  // Server doing STT
   | 'thinking'      // Server doing LLM (text streaming)
@@ -41,8 +40,7 @@ export interface PipelineSnapshot {
 const ALLOWED_TRANSITIONS: Record<PipelinePhase, PipelinePhase[]> = {
   idle:         ['activating'],
   activating:   ['listening', 'error', 'idle'],
-  listening:    ['recording', 'idle'],
-  recording:    ['sending', 'listening', 'idle'],  // listening = misfire (too short)
+  listening:    ['sending', 'idle'],              // VAD fires speech-end → sending
   sending:      ['transcribing', 'error', 'idle'],
   transcribing: ['thinking', 'listening', 'error', 'idle'],  // listening = empty transcript
   thinking:     ['speaking', 'listening', 'error', 'idle'],   // listening = no audio generated
@@ -54,7 +52,6 @@ const PHASE_LABELS: Record<PipelinePhase, string> = {
   idle: 'Idle',
   activating: 'Activating...',
   listening: 'Listening',
-  recording: 'Recording',
   sending: 'Sending audio',
   transcribing: 'Transcribing',
   thinking: 'AI thinking',
@@ -70,7 +67,6 @@ export class VoicePipelineState {
   private _aiText = '';
   private _turnIndex = 0;
   private _listeners: Set<PipelineListener> = new Set();
-  private _locked = false; // Guard: prevents any transition while processing
 
   get phase(): PipelinePhase { return this._phase; }
   get isActive(): boolean { return this._phase !== 'idle'; }
@@ -101,11 +97,6 @@ export class VoicePipelineState {
    * This is the ONLY way to change state — no direct mutations.
    */
   transition(to: PipelinePhase, error?: string): boolean {
-    if (this._locked && to !== 'idle') {
-      console.warn(`[Pipeline] BLOCKED: ${this._phase} → ${to} (locked)`);
-      return false;
-    }
-
     const allowed = ALLOWED_TRANSITIONS[this._phase];
     if (!allowed?.includes(to)) {
       console.warn(`[Pipeline] INVALID: ${this._phase} → ${to}`);
@@ -158,10 +149,6 @@ export class VoicePipelineState {
     return true;
   }
 
-  /** Lock transitions (e.g., during async operation). Only 'idle' can break the lock. */
-  lock(): void { this._locked = true; }
-  unlock(): void { this._locked = false; }
-
   /** Set STT transcript (only valid in transcribing/thinking phase) */
   setSttText(text: string): void {
     this._sttText = text;
@@ -176,7 +163,6 @@ export class VoicePipelineState {
 
   /** Force reset to idle (emergency escape) */
   forceIdle(): void {
-    this._locked = false;
     this._phase = 'idle';
     this._steps = [];
     this._sttText = '';

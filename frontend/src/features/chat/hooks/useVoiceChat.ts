@@ -16,6 +16,20 @@ import { syncPrefsToServer } from '@/lib/syncPrefs';
 
 export type VoiceChatState = 'inactive' | 'listening' | 'sending' | 'receiving' | 'error';
 
+/** Derive VoiceChatState from PipelinePhase */
+function phaseToState(phase: import('@/lib/VoicePipelineState').PipelinePhase): VoiceChatState {
+  switch (phase) {
+    case 'idle': return 'inactive';
+    case 'activating': return 'sending';
+    case 'listening': return 'listening';
+    case 'sending': return 'sending';
+    case 'transcribing': return 'receiving';
+    case 'thinking': return 'receiving';
+    case 'speaking': return 'receiving';
+    case 'error': return 'error';
+  }
+}
+
 export interface VoiceChatResult {
   state: VoiceChatState;
   sttText: string;
@@ -34,13 +48,15 @@ const CONSENT_KEY = 'lw_voice_consent_at';
 
 export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => void): VoiceChatResult {
   const { accessToken } = useAuth();
-  const [state, setState] = useState<VoiceChatState>('inactive');
   const [sttText, setSttText] = useState('');
   const [aiText, setAiText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [showConsent, setShowConsent] = useState(false);
   const [pipelineSnapshot, setPipelineSnapshot] = useState<PipelineSnapshot | null>(null);
   const pipelineRef = useRef(new VoicePipelineState());
+
+  // Derive state from pipeline — single source of truth
+  const state: VoiceChatState = pipelineSnapshot ? phaseToState(pipelineSnapshot.phase) : 'inactive';
 
   // Subscribe to pipeline state changes
   useEffect(() => {
@@ -77,7 +93,6 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
         onTurnCompleteRef.current?.();
         if (activeRef.current) {
           pipelineRef.current.transition('listening');
-          setState('listening');
           vadRef.current?.resume();
         }
       },
@@ -104,7 +119,6 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
       },
       onError: (err) => {
         setError(`Microphone error: ${err.message}`);
-        setState('error');
       },
     });
     vadRef.current = vad;
@@ -112,7 +126,6 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
     await vad.activate();
     vad.resume();
     pipelineRef.current.transition('listening');
-    setState('listening');
     setSttText('');
     setAiText('');
     setError(null);
@@ -143,7 +156,6 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
     const sid = sessionIdRef.current;
     if (!clientRef.current || !sid) return;
     pipelineRef.current.transition('sending');
-    setState('sending');
 
     // Convert Float32Array to WAV blob
     const blob = float32ToWavBlob(audio, 16000);
@@ -152,7 +164,8 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
     // V2 pipeline requires STT model configured
     if (!prefs.sttModelRef) {
       setError('STT model not configured. Open Voice Settings and select a Speech-to-Text model.');
-      setState('listening');
+      pipelineRef.current.transition('error', 'STT model not configured');
+      pipelineRef.current.transition('listening');
       vadRef.current?.resume();
       return;
     }
@@ -179,7 +192,6 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
         pipelineRef.current.setSttText(text);
         pipelineRef.current.transition('thinking');
         setSttText(text);
-        setState('receiving');
         consecutiveFailsRef.current = 0;
       },
       onTextDelta: (delta) => {
@@ -188,7 +200,7 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
       },
       onAudioChunk: (event: AudioChunkEvent) => {
         if (event.data) {
-          pipelineRef.current.transition('speaking'); // First chunk → speaking
+          if (pipelineRef.current.phase !== 'speaking') pipelineRef.current.transition('speaking');
           // Decode base64 to binary, accumulate per sentence
           const binary = Uint8Array.from(atob(event.data), (c) => c.charCodeAt(0));
           const key = event.sentenceIndex;
@@ -218,7 +230,7 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
         if (!playbackRef.current?.isPlaying) {
           onTurnCompleteRef.current?.();
           if (activeRef.current) {
-            setState('listening');
+            pipelineRef.current.transition('listening');
             vadRef.current?.resume();
           }
         }
@@ -231,8 +243,9 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
           setError(errorText || "Didn't catch that — try again.");
         }
         // Resume listening after error
+        pipelineRef.current.transition('error', errorText);
         if (activeRef.current) {
-          setState('listening');
+          pipelineRef.current.transition('listening');
           vadRef.current?.resume();
         }
       },
@@ -251,7 +264,6 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
       audioCtxRef.current.close().catch(() => {});
       audioCtxRef.current = null;
     }
-    setState('inactive');
     setSttText('');
     setAiText('');
     setError(null);
@@ -262,9 +274,10 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
   const cancel = useCallback(() => {
     clientRef.current?.abort();
     playbackRef.current?.cancelAll();
-    // Resume listening
     if (activeRef.current) {
-      setState('listening');
+      pipelineRef.current.forceIdle();
+      pipelineRef.current.transition('activating');
+      pipelineRef.current.transition('listening');
       vadRef.current?.resume();
     }
   }, []);
