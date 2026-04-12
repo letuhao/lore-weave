@@ -5,11 +5,12 @@ import json
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.client.billing_client import get_billing_client
 from app.client.provider_client import get_provider_client
+from app.config import settings
 from app.deps import get_current_user, get_db
 from app.services.voice_stream_service import voice_stream_response
 from app.storage.minio_client import delete_object, generate_presigned_url
@@ -139,8 +140,11 @@ voice_mgmt_router = APIRouter(prefix="/v1/chat/voice", tags=["voice"])
 
 @voice_mgmt_router.post("/cleanup")
 async def cleanup_expired_audio(
+    x_internal_token: str = Header(..., alias="X-Internal-Token"),
     pool: asyncpg.Pool = Depends(get_db),
 ) -> dict:
+    if x_internal_token != settings.internal_service_token:
+        raise HTTPException(status_code=403, detail="invalid internal token")
     """Delete expired audio segments (48h+). Called by cron/scheduler.
 
     Two-layer cleanup:

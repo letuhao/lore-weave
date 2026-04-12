@@ -50,7 +50,10 @@ export function AudioReplayPlayer({ sessionId, messageId }: AudioReplayPlayerPro
     }
   }, [sessionId, messageId, accessToken, segments]);
 
-  const playSegment = useCallback((segs: AudioSegment[], index: number) => {
+  const segmentsRef = useRef<AudioSegment[] | null>(null);
+  const pausedRef = useRef(false);
+
+  const playFromIndex = useCallback((segs: AudioSegment[], index: number) => {
     if (index >= segs.length) {
       setPlaying(false);
       setCurrentIndex(0);
@@ -59,30 +62,60 @@ export function AudioReplayPlayer({ sessionId, messageId }: AudioReplayPlayerPro
     setCurrentIndex(index);
     const audio = new Audio(segs[index].url);
     audioRef.current = audio;
-    audio.onended = () => playSegment(segs, index + 1);
-    audio.onerror = () => playSegment(segs, index + 1);
+    audio.onended = () => {
+      const nextIdx = index + 1;
+      if (nextIdx < segs.length) {
+        playFromIndex(segs, nextIdx);
+      } else {
+        setPlaying(false);
+        setCurrentIndex(0);
+      }
+    };
+    audio.onerror = () => {
+      // Skip failed segment, try next
+      const nextIdx = index + 1;
+      if (nextIdx < segs.length) {
+        playFromIndex(segs, nextIdx);
+      } else {
+        setPlaying(false);
+        setCurrentIndex(0);
+      }
+    };
     audio.play().catch(() => setPlaying(false));
+    pausedRef.current = false;
   }, []);
 
   const handleToggle = useCallback(async () => {
     if (playing) {
+      // Pause — remember position for resume
       audioRef.current?.pause();
+      pausedRef.current = true;
       setPlaying(false);
       return;
     }
+    // Resume from paused position
+    if (pausedRef.current && audioRef.current) {
+      audioRef.current.play().catch(() => setPlaying(false));
+      pausedRef.current = false;
+      setPlaying(true);
+      return;
+    }
+    // First play — fetch segments
     const segs = await fetchSegments();
     if (!segs || segs.length === 0) return;
+    segmentsRef.current = segs;
     setPlaying(true);
-    playSegment(segs, 0);
-  }, [playing, fetchSegments, playSegment]);
+    playFromIndex(segs, 0);
+  }, [playing, fetchSegments, playFromIndex]);
 
   const handleSegmentClick = useCallback(async (index: number) => {
     const segs = segments || await fetchSegments();
     if (!segs) return;
     audioRef.current?.pause();
+    pausedRef.current = false;
     setPlaying(true);
-    playSegment(segs, index);
-  }, [segments, fetchSegments, playSegment]);
+    playFromIndex(segs, index);
+  }, [segments, fetchSegments, playFromIndex]);
 
   // Cleanup on unmount
   useEffect(() => {

@@ -133,7 +133,10 @@ class TestSendVoiceMessage:
         """Cleanup endpoint returns deletion counts."""
         mock_pool.fetch.return_value = []
 
-        resp = await client.post("/v1/chat/voice/cleanup")
+        resp = await client.post(
+            "/v1/chat/voice/cleanup",
+            headers={"X-Internal-Token": "test-internal-token"},
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["deletedSegments"] == 0
