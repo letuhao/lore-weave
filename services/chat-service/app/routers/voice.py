@@ -138,6 +138,37 @@ async def get_audio_segments(
 voice_mgmt_router = APIRouter(prefix="/v1/chat/voice", tags=["voice"])
 
 
+@voice_mgmt_router.get("/recommended-settings")
+async def get_recommended_voice_settings(
+    user_id: str = Depends(get_current_user),
+) -> dict:
+    """Get recommended VAD settings based on user's voice analytics history."""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(
+                f"{settings.statistics_service_internal_url}/internal/voice-stats/{user_id}",
+                headers={"X-Internal-Token": settings.internal_service_token},
+            )
+            if resp.status_code == 200:
+                stats = resp.json()
+                return {
+                    "recommendedSilenceFrames": stats.get("recommended_silence_frames", 8),
+                    "recommendedMinDurationMs": stats.get("recommended_min_duration_ms", 500),
+                    "misfireRate": stats.get("misfire_rate", 0),
+                    "totalTurns": stats.get("total_turns", 0),
+                }
+    except Exception:
+        pass
+    # Default if stats unavailable
+    return {
+        "recommendedSilenceFrames": 8,
+        "recommendedMinDurationMs": 500,
+        "misfireRate": 0,
+        "totalTurns": 0,
+    }
+
+
 @voice_mgmt_router.post("/cleanup")
 async def cleanup_expired_audio(
     x_internal_token: str = Header(..., alias="X-Internal-Token"),
