@@ -368,47 +368,382 @@
 
     <!-- ==================== Build dialog (modal example) ==================== -->
     <section class="demo-section" id="build-dialog">
-      <h2>Build Knowledge Graph — Dialog</h2>
-      <p class="subtitle">User sees cost estimate before spending any AI credits. Explicit confirmation required.</p>
+      <h2>Build Knowledge Graph — 3-Step Wizard</h2>
+      <p class="subtitle">
+        A generic "build everything" button doesn't work at 5,000-chapter scale.
+        Each extraction target has its own shape, and sparse-but-critical entities
+        (e.g., a god who appears in ch1 and ch5000 only) must be pinnable so the
+        LLM always sees them regardless of chapter window.
+      </p>
 
-      <div style="background: var(--background); border: 1px dashed var(--border); padding: 40px; border-radius: 12px; display: flex; justify-content: center;">
-        <div class="modal" style="max-width: 520px;">
-          <div style="padding: 20px 24px; border-bottom: 1px solid var(--border);">
-            <h3 style="margin: 0; font-size: 16px;">Build Knowledge Graph</h3>
-            <div style="color: var(--muted-fg); font-size: 12px; margin-top: 4px;">
-              for "Winds of the Eastern Sea"
+      <!-- ============ STEP 1 — Pick target ============ -->
+      <div style="background: var(--background); border: 1px dashed var(--border); padding: 32px; border-radius: 12px; margin-bottom: 24px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+          <div>
+            <div style="color: var(--muted-fg); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 500;">Step 1 of 3</div>
+            <h3 style="margin: 4px 0 0; font-size: 18px;">What do you want to build?</h3>
+          </div>
+          <span style="color: var(--muted-fg); font-size: 12px;">for "Winds of the Eastern Sea" · 5,000 chapters · 1,650 glossary entries</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px;">
+          <div style="background: var(--muted); border: 2px solid var(--primary); border-radius: 10px; padding: 16px; cursor: pointer;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <div style="font-size: 20px;">📅</div>
+              <span class="badge badge-full" style="font-size: 10px;">SELECTED</span>
+            </div>
+            <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">Event Timeline</div>
+            <div style="color: var(--muted-fg); font-size: 11.5px; line-height: 1.5;">
+              Extract chronological events tied to entities, places, and arcs.
+              Needs: chapter range + pinned glossary for sparse critical figures.
             </div>
           </div>
 
-          <div style="padding: 24px;">
-            <div style="margin-bottom: 18px;">
-              <p class="label">Scope</p>
-              <div style="display: flex; flex-direction: column; gap: 8px;">
-                <label style="display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer;">
-                  <input type="checkbox" checked> Chapters (45 in this book)
+          <div style="background: var(--muted); border: 1px solid var(--border); border-radius: 10px; padding: 16px; cursor: pointer;">
+            <div style="font-size: 20px; margin-bottom: 8px;">👤</div>
+            <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">Entities</div>
+            <div style="color: var(--muted-fg); font-size: 11.5px; line-height: 1.5;">
+              Characters, places, items, factions. Dedups against existing glossary.
+              Needs: chapter range + entity type whitelist.
+            </div>
+          </div>
+
+          <div style="background: var(--muted); border: 1px solid var(--border); border-radius: 10px; padding: 16px; cursor: pointer;">
+            <div style="font-size: 20px; margin-bottom: 8px;">🔗</div>
+            <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">Relationships</div>
+            <div style="color: var(--muted-fg); font-size: 11.5px; line-height: 1.5;">
+              Edges between existing entities (ally, rival, parent, owns).
+              Requires entity extraction first. Needs: relation type whitelist.
+            </div>
+          </div>
+
+          <div style="background: var(--muted); border: 1px solid var(--border); border-radius: 10px; padding: 16px; cursor: pointer;">
+            <div style="font-size: 20px; margin-bottom: 8px;">🌍</div>
+            <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">Lore &amp; Worldbuilding</div>
+            <div style="color: var(--muted-fg); font-size: 11.5px; line-height: 1.5;">
+              Free-form facts: magic systems, geography, history, rules.
+              Can run without prior entities. Needs: topic hints.
+            </div>
+          </div>
+
+          <div style="background: var(--muted); border: 1px solid var(--border); border-radius: 10px; padding: 16px; cursor: pointer;">
+            <div style="font-size: 20px; margin-bottom: 8px;">📖</div>
+            <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">Chapter Summaries</div>
+            <div style="color: var(--muted-fg); font-size: 11.5px; line-height: 1.5;">
+              Short recap per chapter for fast context injection.
+              Needs: chapter range + length target + dialogue flag.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ STEP 2 — Scope & glossary picker ============ -->
+      <div style="background: var(--background); border: 1px dashed var(--border); padding: 32px; border-radius: 12px; margin-bottom: 24px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+          <div>
+            <div style="color: var(--muted-fg); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 500;">Step 2 of 3 · Event Timeline</div>
+            <h3 style="margin: 4px 0 0; font-size: 18px;">Scope — chapters &amp; pinned glossary</h3>
+          </div>
+          <div style="color: var(--muted-fg); font-size: 12px;">420 chapters selected · 12 pinned</div>
+        </div>
+
+        <!-- Chapter range -->
+        <div style="background: var(--muted); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 20px;">
+          <p class="label">Chapter range</p>
+          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <button class="btn btn-secondary btn-sm">All (5,000)</button>
+            <button class="btn btn-primary btn-sm">Range 1,000–1,420</button>
+            <button class="btn btn-secondary btn-sm">Multi-select arcs…</button>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--muted-fg);">
+            <span>From: <input type="text" class="input" value="1000" style="width: 70px; display: inline-block; padding: 4px 8px; font-size: 12px;"></span>
+            <span>To: <input type="text" class="input" value="1420" style="width: 70px; display: inline-block; padding: 4px 8px; font-size: 12px;"></span>
+            <span style="color: var(--muted-fg);">= 420 chapters, ~2.1M tokens</span>
+          </div>
+        </div>
+
+        <!-- Dual-list glossary picker -->
+        <p class="label" style="margin-bottom: 8px;">Pinned glossary — <span style="color: var(--accent); text-transform: none; letter-spacing: 0;">entries that must be in every extraction window regardless of chapter range</span></p>
+
+        <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: stretch;">
+          <!-- ---- AVAILABLE (left) ---- -->
+          <div style="background: var(--muted); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column;">
+            <div style="padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+              <div style="font-size: 13px; font-weight: 600;">Available <span style="color: var(--muted-fg); font-weight: 400;">· 1,247 matching</span></div>
+              <span style="color: var(--muted-fg); font-size: 10px;">of 1,650 total</span>
+            </div>
+            <div style="padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px;">
+              <input type="text" class="input" placeholder="🔍 Search name or alias…" style="padding: 6px 10px; font-size: 12px;">
+              <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <select class="select" style="padding: 4px 8px; font-size: 11px; flex: 1; min-width: 90px;">
+                  <option>Type: all</option>
+                  <option>Character</option>
+                  <option>Place</option>
+                  <option>Item</option>
+                  <option>Faction</option>
+                  <option>Concept</option>
+                </select>
+                <select class="select" style="padding: 4px 8px; font-size: 11px; flex: 1; min-width: 90px;">
+                  <option>Freq: all</option>
+                  <option>Frequent (&gt;50ch)</option>
+                  <option>Occasional (5–50ch)</option>
+                  <option>★ Sparse (&lt;5ch)</option>
+                </select>
+                <select class="select" style="padding: 4px 8px; font-size: 11px; flex: 1; min-width: 90px;">
+                  <option>Sort: least freq ▾</option>
+                  <option>Most freq</option>
+                  <option>Name A–Z</option>
+                  <option>First appearance</option>
+                  <option>Last appearance</option>
+                </select>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--muted-fg);">
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                  <input type="checkbox"> In selected range only
                 </label>
-                <label style="display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer;">
-                  <input type="checkbox" checked> Past chat turns (423 pending in queue)
-                </label>
-                <label style="display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer;">
-                  <input type="checkbox" checked> Glossary entities (1,650)
-                </label>
+                <button class="btn btn-ghost btn-sm" style="font-size: 10px; padding: 2px 6px;">Select all matching</button>
               </div>
             </div>
 
-            <div style="margin-bottom: 18px;">
-              <p class="label">Embedding model</p>
-              <select class="select">
-                <option>bge-m3 (free, self-hosted, multilingual) — recommended</option>
-                <option>text-embedding-3-small (OpenAI, BYOK)</option>
-                <option>text-embedding-3-large (OpenAI, BYOK, premium)</option>
-                <option>voyage-3 (Voyage AI, BYOK)</option>
-                <option>embed-english-v3 (Cohere, BYOK)</option>
+            <!-- Rows -->
+            <div style="flex: 1; overflow-y: auto; min-height: 340px;">
+              <!-- Sparse critical — highlighted -->
+              <label style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer; background: var(--warning-muted);">
+                <input type="checkbox" checked>
+                <div style="flex: 1; min-width: 0;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 13px; font-weight: 500;">The Creator</span>
+                    <span class="badge" style="background: var(--primary-muted); color: var(--primary); font-size: 9px;">god</span>
+                    <span class="badge" style="background: var(--warning-muted); color: var(--warning); font-size: 9px;">★ sparse · 2ch</span>
+                  </div>
+                  <div style="color: var(--muted-fg); font-size: 11px; margin-top: 2px;">First: ch1 · Last: ch5000 · spans 100% of book</div>
+                </div>
+                <span style="color: var(--muted-fg); font-size: 10px;">→ pin</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer; background: var(--warning-muted);">
+                <input type="checkbox">
+                <div style="flex: 1; min-width: 0;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 13px; font-weight: 500;">Void Crown</span>
+                    <span class="badge" style="background: var(--primary-muted); color: var(--primary); font-size: 9px;">item</span>
+                    <span class="badge" style="background: var(--warning-muted); color: var(--warning); font-size: 9px;">★ sparse · 3ch</span>
+                  </div>
+                  <div style="color: var(--muted-fg); font-size: 11px; margin-top: 2px;">First: ch1 · Last: ch4998 · spans 99% of book</div>
+                </div>
+              </label>
+              <label style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer; background: var(--warning-muted);">
+                <input type="checkbox">
+                <div style="flex: 1; min-width: 0;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 13px; font-weight: 500;">Oracle of Dust</span>
+                    <span class="badge" style="background: var(--primary-muted); color: var(--primary); font-size: 9px;">char</span>
+                    <span class="badge" style="background: var(--warning-muted); color: var(--warning); font-size: 9px;">★ sparse · 4ch</span>
+                  </div>
+                  <div style="color: var(--muted-fg); font-size: 11px; margin-top: 2px;">First: ch47 · Last: ch4872 · spans 96% of book</div>
+                </div>
+              </label>
+              <!-- Normal rows -->
+              <label style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer;">
+                <input type="checkbox">
+                <div style="flex: 1; min-width: 0;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 13px; font-weight: 500;">Elder Mira</span>
+                    <span class="badge" style="background: var(--primary-muted); color: var(--primary); font-size: 9px;">char</span>
+                    <span class="badge" style="background: var(--muted); color: var(--muted-fg); font-size: 9px;">12ch</span>
+                  </div>
+                  <div style="color: var(--muted-fg); font-size: 11px; margin-top: 2px;">First: ch203 · Last: ch1890</div>
+                </div>
+              </label>
+              <label style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer;">
+                <input type="checkbox">
+                <div style="flex: 1; min-width: 0;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 13px; font-weight: 500;">Kai</span>
+                    <span class="badge" style="background: var(--primary-muted); color: var(--primary); font-size: 9px;">char · MC</span>
+                    <span class="badge" style="background: var(--success-muted); color: var(--success); font-size: 9px;">auto-included · 4,812ch</span>
+                  </div>
+                  <div style="color: var(--muted-fg); font-size: 11px; margin-top: 2px;">Appears in selected range (420/420 chapters) — no pin needed</div>
+                </div>
+              </label>
+              <label style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer;">
+                <input type="checkbox">
+                <div style="flex: 1; min-width: 0;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 13px; font-weight: 500;">Aria Kessen</span>
+                    <span class="badge" style="background: var(--primary-muted); color: var(--primary); font-size: 9px;">char</span>
+                    <span class="badge" style="background: var(--success-muted); color: var(--success); font-size: 9px;">auto-included · 3,201ch</span>
+                  </div>
+                  <div style="color: var(--muted-fg); font-size: 11px; margin-top: 2px;">Appears in selected range (418/420 chapters)</div>
+                </div>
+              </label>
+              <label style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer;">
+                <input type="checkbox">
+                <div style="flex: 1; min-width: 0;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 13px; font-weight: 500;">Stormhold Citadel</span>
+                    <span class="badge" style="background: var(--primary-muted); color: var(--primary); font-size: 9px;">place</span>
+                    <span class="badge" style="background: var(--muted); color: var(--muted-fg); font-size: 9px;">1,455ch</span>
+                  </div>
+                  <div style="color: var(--muted-fg); font-size: 11px; margin-top: 2px;">First: ch12 · Last: ch4931</div>
+                </div>
+              </label>
+              <label style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer;">
+                <input type="checkbox">
+                <div style="flex: 1; min-width: 0;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 13px; font-weight: 500;">Crimson Order</span>
+                    <span class="badge" style="background: var(--primary-muted); color: var(--primary); font-size: 9px;">faction</span>
+                    <span class="badge" style="background: var(--muted); color: var(--muted-fg); font-size: 9px;">872ch</span>
+                  </div>
+                  <div style="color: var(--muted-fg); font-size: 11px; margin-top: 2px;">First: ch156 · Last: ch4700</div>
+                </div>
+              </label>
+            </div>
+
+            <!-- Pagination -->
+            <div style="padding: 8px 14px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--muted-fg);">
+              <span>Page 1 of 25</span>
+              <div style="display: flex; gap: 4px; align-items: center;">
+                <button class="btn btn-ghost btn-sm" style="font-size: 11px; padding: 2px 8px;">◀</button>
+                <span class="font-mono">1</span>
+                <span>2</span><span>3</span><span>…</span><span>25</span>
+                <button class="btn btn-ghost btn-sm" style="font-size: 11px; padding: 2px 8px;">▶</button>
+                <select class="select" style="padding: 2px 6px; font-size: 10px; margin-left: 8px;">
+                  <option>50/page</option>
+                  <option>25/page</option>
+                  <option>100/page</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- ---- MOVE BUTTONS ---- -->
+          <div style="display: flex; flex-direction: column; justify-content: center; gap: 8px;">
+            <button class="btn btn-primary btn-sm" title="Pin selected" style="padding: 8px 10px;">→</button>
+            <button class="btn btn-secondary btn-sm" title="Pin all filtered" style="padding: 8px 10px; font-size: 10px;">⇉ all</button>
+            <div style="height: 12px;"></div>
+            <button class="btn btn-secondary btn-sm" title="Unpin selected" style="padding: 8px 10px;">←</button>
+            <button class="btn btn-ghost btn-sm" title="Unpin all" style="padding: 8px 10px; font-size: 10px;">⇇ all</button>
+          </div>
+
+          <!-- ---- PINNED (right) ---- -->
+          <div style="background: var(--muted); border: 1px solid var(--primary); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column;">
+            <div style="padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+              <div style="font-size: 13px; font-weight: 600; color: var(--primary);">⭐ Pinned · 12</div>
+              <span style="color: var(--muted-fg); font-size: 10px;">~48k tokens/window</span>
+            </div>
+            <div style="padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; gap: 6px;">
+              <input type="text" class="input" placeholder="🔍 Filter pinned…" style="padding: 6px 10px; font-size: 12px; flex: 1;">
+              <select class="select" style="padding: 4px 8px; font-size: 11px;">
+                <option>Sort: added ▾</option>
+                <option>Name A–Z</option>
+                <option>Frequency</option>
               </select>
             </div>
 
-            <div style="margin-bottom: 18px;">
-              <p class="label">LLM for extraction (your BYOK model)</p>
+            <div style="flex: 1; overflow-y: auto; min-height: 340px;">
+              <!-- Auto-pin suggestion -->
+              <div style="padding: 10px 14px; background: var(--accent-muted); border-bottom: 1px solid var(--border); font-size: 11px; color: var(--accent-fg); display: flex; align-items: center; justify-content: space-between;">
+                <span>💡 3 sparse-but-long-reaching entries auto-suggested</span>
+                <button class="btn btn-ghost btn-sm" style="font-size: 10px; padding: 2px 6px; color: var(--accent-fg);">dismiss</button>
+              </div>
+
+              <div style="padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 10px;">
+                <span style="color: var(--primary); font-size: 14px;">⭐</span>
+                <div style="flex: 1;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 13px; font-weight: 500;">The Creator</span>
+                    <span class="badge" style="background: var(--primary-muted); color: var(--primary); font-size: 9px;">god</span>
+                    <span class="badge" style="background: var(--warning-muted); color: var(--warning); font-size: 9px;">auto ✨</span>
+                  </div>
+                  <div style="color: var(--muted-fg); font-size: 11px; margin-top: 2px;">ch1, ch5000 · spans 100% · ~4.2k tokens</div>
+                </div>
+                <button class="btn btn-ghost btn-sm" style="padding: 2px 6px;">✕</button>
+              </div>
+              <div style="padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 10px;">
+                <span style="color: var(--primary); font-size: 14px;">⭐</span>
+                <div style="flex: 1;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 13px; font-weight: 500;">Void Crown</span>
+                    <span class="badge" style="background: var(--primary-muted); color: var(--primary); font-size: 9px;">item</span>
+                    <span class="badge" style="background: var(--warning-muted); color: var(--warning); font-size: 9px;">auto ✨</span>
+                  </div>
+                  <div style="color: var(--muted-fg); font-size: 11px; margin-top: 2px;">ch1, ch12, ch4998 · spans 99% · ~3.1k tokens</div>
+                </div>
+                <button class="btn btn-ghost btn-sm" style="padding: 2px 6px;">✕</button>
+              </div>
+              <div style="padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 10px;">
+                <span style="color: var(--primary); font-size: 14px;">⭐</span>
+                <div style="flex: 1;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 13px; font-weight: 500;">Oracle of Dust</span>
+                    <span class="badge" style="background: var(--primary-muted); color: var(--primary); font-size: 9px;">char</span>
+                    <span class="badge" style="background: var(--warning-muted); color: var(--warning); font-size: 9px;">auto ✨</span>
+                  </div>
+                  <div style="color: var(--muted-fg); font-size: 11px; margin-top: 2px;">ch47, ch203, ch2140, ch4872 · spans 96% · ~2.8k tokens</div>
+                </div>
+                <button class="btn btn-ghost btn-sm" style="padding: 2px 6px;">✕</button>
+              </div>
+              <div style="padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 10px;">
+                <span style="color: var(--primary); font-size: 14px;">⭐</span>
+                <div style="flex: 1;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 13px; font-weight: 500;">Blood Pact Scroll</span>
+                    <span class="badge" style="background: var(--primary-muted); color: var(--primary); font-size: 9px;">item</span>
+                    <span class="badge" style="background: var(--muted); color: var(--muted-fg); font-size: 9px;">manual</span>
+                  </div>
+                  <div style="color: var(--muted-fg); font-size: 11px; margin-top: 2px;">ch88, ch3921 · ~2.4k tokens</div>
+                </div>
+                <button class="btn btn-ghost btn-sm" style="padding: 2px 6px;">✕</button>
+              </div>
+              <div style="padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 10px; opacity: 0.85;">
+                <span style="color: var(--primary); font-size: 14px;">⭐</span>
+                <div style="flex: 1;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 13px; font-weight: 500;">Eternal Flame Sect</span>
+                    <span class="badge" style="background: var(--primary-muted); color: var(--primary); font-size: 9px;">faction</span>
+                  </div>
+                  <div style="color: var(--muted-fg); font-size: 11px; margin-top: 2px;">6 chapters · ~1.9k tokens</div>
+                </div>
+                <button class="btn btn-ghost btn-sm" style="padding: 2px 6px;">✕</button>
+              </div>
+            </div>
+
+            <div style="padding: 10px 14px; border-top: 1px solid var(--border); background: var(--background);">
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted-fg); cursor: pointer;">
+                <input type="checkbox" checked>
+                <span>Treat pinned entities as persistent across the whole range (inject in every chunk)</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ STEP 3 — Budget & models ============ -->
+      <div style="background: var(--background); border: 1px dashed var(--border); padding: 32px; border-radius: 12px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+          <div>
+            <div style="color: var(--muted-fg); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 500;">Step 3 of 3</div>
+            <h3 style="margin: 4px 0 0; font-size: 18px;">Budget &amp; models</h3>
+          </div>
+          <span style="color: var(--muted-fg); font-size: 12px;">cost estimate updates live as scope changes</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+          <div>
+            <div style="margin-bottom: 16px;">
+              <p class="label">Embedding model (stored in project, cannot change later)</p>
+              <select class="select">
+                <option>bge-m3 (free, self-hosted, multilingual, 1024d) — recommended</option>
+                <option>text-embedding-3-small (OpenAI, BYOK, 1536d)</option>
+                <option>text-embedding-3-large (OpenAI, BYOK, 3072d)</option>
+                <option>voyage-3 (Voyage AI, BYOK, 1024d)</option>
+                <option>embed-english-v3 (Cohere, BYOK, 1024d)</option>
+              </select>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+              <p class="label">LLM for extraction (BYOK)</p>
               <select class="select">
                 <option>claude-haiku-4.5 (recommended — fast, cheap, accurate)</option>
                 <option>claude-sonnet-4.6</option>
@@ -418,47 +753,65 @@
               </select>
             </div>
 
-            <div style="margin-bottom: 18px;">
+            <div style="margin-bottom: 16px;">
               <p class="label">Maximum spending for this job</p>
               <div style="display: flex; gap: 10px; align-items: center;">
                 <input type="text" class="input" value="$10.00" style="max-width: 120px;">
-                <span style="color: var(--muted-fg); font-size: 11px;">job will auto-pause when reached</span>
+                <span style="color: var(--muted-fg); font-size: 11px;">job auto-pauses when reached</span>
               </div>
             </div>
 
-            <div style="background: var(--background); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 18px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <span style="font-size: 12px; font-weight: 500;">Cost estimate</span>
-                <span style="font-size: 11px; color: var(--muted-fg);">based on item count × model pricing</span>
+            <div style="margin-bottom: 16px;">
+              <p class="label">Concurrency</p>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" class="input" value="4" style="max-width: 80px;">
+                <span style="color: var(--muted-fg); font-size: 11px;">parallel LLM calls (lower = cheaper rate-limit risk)</span>
               </div>
-              <div class="cost-line"><span class="label">Chapters extraction</span><span class="value">$2.60 – $4.80</span></div>
-              <div class="cost-line"><span class="label">Chat turn processing</span><span class="value">$0.80 – $1.40</span></div>
-              <div class="cost-line"><span class="label">Glossary sync</span><span class="value">$0.15 – $0.25</span></div>
+            </div>
+          </div>
+
+          <div>
+            <div style="background: var(--muted); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <span style="font-size: 13px; font-weight: 600;">Cost estimate</span>
+                <span style="font-size: 10px; color: var(--muted-fg);">420 chapters × 12 pinned entries</span>
+              </div>
+              <div class="cost-line"><span class="label">Chapter extraction (timeline)</span><span class="value">$8.40 – $12.60</span></div>
+              <div class="cost-line"><span class="label">Pinned context injection (48k tok × 420 chunks)</span><span class="value">$3.20 – $4.80</span></div>
+              <div class="cost-line"><span class="label">Event dedup &amp; link pass</span><span class="value">$0.60 – $1.00</span></div>
               <div class="cost-line"><span class="label">Embeddings (bge-m3)</span><span class="value" style="color: var(--success);">$0.00</span></div>
               <div class="divider" style="margin: 10px 0;"></div>
               <div class="cost-line" style="font-size: 13px;">
                 <span class="label" style="color: var(--foreground); font-weight: 500;">Estimated total</span>
-                <span class="value" style="font-size: 14px; font-weight: 600;">$3.55 – $6.45</span>
+                <span class="value" style="font-size: 15px; font-weight: 600;">$12.20 – $18.40</span>
               </div>
               <div class="cost-line" style="margin-top: 4px;">
+                <span class="label">Cap enforcement</span>
+                <span class="value" style="color: var(--warning);">⚠️ exceeds $10 cap — raise cap or reduce scope</span>
+              </div>
+              <div class="cost-line">
                 <span class="label">Monthly budget remaining</span>
                 <span class="value" style="color: var(--success);">$47.80 of $50.00</span>
               </div>
               <div class="cost-line">
                 <span class="label">Estimated duration</span>
-                <span class="value">~45 minutes</span>
+                <span class="value">~2h 40m</span>
               </div>
             </div>
 
             <div style="color: var(--warning); background: var(--warning-muted); padding: 10px 12px; border-radius: 8px; font-size: 11.5px; line-height: 1.5;">
-              ⚠️ Extraction uses your own BYOK API credits. You can pause or cancel anytime.
-              Partial extraction is preserved on cancel.
+              ⚠️ Pinned context is injected per-chunk. 12 entries × 420 chapters drives most of the cost.
+              Unpin low-value entries or narrow the chapter range to reduce.
             </div>
           </div>
+        </div>
 
-          <div style="padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px;">
+        <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+          <button class="btn btn-ghost">← Back to scope</button>
+          <div style="display: flex; gap: 10px;">
             <button class="btn btn-ghost">Cancel</button>
-            <button class="btn btn-primary">Build Knowledge Graph →</button>
+            <button class="btn btn-secondary">Save as draft</button>
+            <button class="btn btn-primary">Start Timeline Build →</button>
           </div>
         </div>
       </div>
