@@ -35,6 +35,8 @@ export class VadController {
       const { MicVAD } = await import('@ricky0123/vad-web');
       this.vad = await MicVAD.new({
         getStream: () => Promise.resolve(stream),
+        baseAssetPath: '/vad/',
+        onnxWASMBasePath: '/vad/',
         onSpeechStart: () => {
           if (this.active) this.callbacks.onSpeechStart?.();
         },
