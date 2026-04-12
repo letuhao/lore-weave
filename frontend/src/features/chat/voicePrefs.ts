@@ -34,6 +34,9 @@ export interface VoicePrefs {
   voiceAssistEnabled: boolean;  // Always-on VAD mic in input bar (dictation mode)
   voiceAssistAppend: boolean;   // true = append to textarea, false = replace
   voiceAssistAutoTTS: boolean;  // Auto-play TTS on new AI responses
+
+  // Debug
+  showVoiceMetrics: boolean;    // Show STT/TTS timing on messages
 }
 
 export const DEFAULT_VOICE_PREFS: VoicePrefs = {
@@ -59,6 +62,8 @@ export const DEFAULT_VOICE_PREFS: VoicePrefs = {
   voiceAssistEnabled: false,
   voiceAssistAppend: true,   // Append by default (safer — doesn't discard existing text)
   voiceAssistAutoTTS: true,
+
+  showVoiceMetrics: false,
 };
 
 export function loadVoicePrefs(): VoicePrefs {

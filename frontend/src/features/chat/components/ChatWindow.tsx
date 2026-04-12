@@ -152,6 +152,34 @@ export function ChatWindow({
         />
       )}
 
+      {/* Voice consent dialog — shown on first activation */}
+      {voiceChat.showConsent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="mx-4 max-w-sm rounded-lg border border-border bg-card p-6 shadow-xl">
+            <h3 className="text-sm font-semibold text-foreground">Enable Voice Mode</h3>
+            <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
+              Voice mode will use your microphone for speech recognition.
+              Audio may be stored for up to 48 hours to enable replay.
+              You can delete all voice data anytime from Settings.
+            </p>
+            <div className="mt-4 flex gap-2 justify-end">
+              <button
+                onClick={voiceChat.deactivate}
+                className="rounded-md border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={voiceChat.acceptConsent}
+                className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground hover:brightness-110"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <VoiceSettingsPanel
         open={voiceSettingsOpen}
         onClose={() => setVoiceSettingsOpen(false)}

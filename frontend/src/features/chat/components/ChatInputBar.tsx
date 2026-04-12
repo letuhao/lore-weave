@@ -234,7 +234,7 @@ export function ChatInputBar({
             placeholder="Ask about your story, characters, world-building..."
             minRows={3}
             maxRows={8}
-            disabled={disabled || isStreaming}
+            disabled={disabled || isStreaming || voiceModeActive}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
                 e.preventDefault();

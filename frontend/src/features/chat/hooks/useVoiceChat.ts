@@ -11,6 +11,7 @@ import { VoiceClient, type VoiceConfig, type AudioChunkEvent } from '@/lib/Voice
 import { VadController } from '@/lib/VadController';
 import { TTSPlaybackQueue } from '@/lib/TTSPlaybackQueue';
 import { loadVoicePrefs, type VoicePrefs } from '../voicePrefs';
+import { syncPrefsToServer } from '@/lib/syncPrefs';
 
 export type VoiceChatState = 'inactive' | 'listening' | 'sending' | 'receiving' | 'error';
 
@@ -19,10 +20,14 @@ export interface VoiceChatResult {
   sttText: string;
   aiText: string;
   error: string | null;
+  showConsent: boolean;
   activate: () => Promise<void>;
+  acceptConsent: () => void;
   deactivate: () => void;
   cancel: () => void;
 }
+
+const CONSENT_KEY = 'lw_voice_consent_at';
 
 export function useVoiceChat(sessionId: string | null): VoiceChatResult {
   const { accessToken } = useAuth();
@@ -30,6 +35,7 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
   const [sttText, setSttText] = useState('');
   const [aiText, setAiText] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [showConsent, setShowConsent] = useState(false);
 
   const vadRef = useRef<VadController | null>(null);
   const playbackRef = useRef<TTSPlaybackQueue | null>(null);
@@ -40,7 +46,15 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
   sessionIdRef.current = sessionId;
   const consecutiveFailsRef = useRef(0);
 
-  const activate = useCallback(async () => {
+  const acceptConsent = useCallback(() => {
+    localStorage.setItem(CONSENT_KEY, new Date().toISOString());
+    syncPrefsToServer('voice_consent_at', new Date().toISOString(), accessToken);
+    setShowConsent(false);
+    // Re-trigger activate after consent
+    void doActivate();
+  }, [accessToken]);
+
+  const doActivate = useCallback(async () => {
     if (!sessionId || !accessToken || activeRef.current) return;
     activeRef.current = true;
 
@@ -95,6 +109,15 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
     setError(null);
     consecutiveFailsRef.current = 0;
   }, [sessionId, accessToken]);
+
+  const activate = useCallback(async () => {
+    // Check consent before first activation
+    if (!localStorage.getItem(CONSENT_KEY)) {
+      setShowConsent(true);
+      return;
+    }
+    await doActivate();
+  }, [doActivate]);
 
   const handleSpeechEnd = useCallback(async (audio: Float32Array) => {
     const sid = sessionIdRef.current;
@@ -200,7 +223,7 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
     }
   }, []);
 
-  return { state, sttText, aiText, error, activate, deactivate, cancel };
+  return { state, sttText, aiText, error, showConsent, activate, acceptConsent, deactivate, cancel };
 }
 
 /** Convert Float32Array (16kHz mono) to WAV blob. */
