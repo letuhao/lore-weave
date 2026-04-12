@@ -103,6 +103,7 @@ export function App() {
           {/* Chat (app sidebar + full-bleed content, no padding) */}
           <Route element={<RequireAuth><ChatLayout /></RequireAuth>}>
             <Route path="/chat" element={<ChatPage />} />
+            <Route path="/chat/:sessionId" element={<ChatPage />} />
           </Route>
 
           {/* Dashboard pages (full sidebar) */}
