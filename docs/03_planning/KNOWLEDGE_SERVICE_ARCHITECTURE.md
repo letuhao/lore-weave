@@ -293,112 +293,586 @@ Working on "The Three Kingdoms" series. Timezone UTC+7.
 
 **Populated by:** Background consolidation job or manual edit via memory UI.
 
-### 4.1 Layer 1 — Project Context (loaded when session has project, ~200 tokens)
+### 4.1 Layer 1 — Project Context (loaded when session has project, ~200–400 tokens)
 
 **Source:**
 - Static: `knowledge_projects.instructions` (Postgres, user-editable)
 - Dynamic: `knowledge_summaries WHERE scope_type='project' AND scope_id=$project_id`
+- Optional: top 2–3 user writing samples (for style matching via few-shot learning)
 
-**Content examples:**
+**Content format (XML-tagged, see §4.4 for full structure):**
 
+```xml
+<project type="book" name="Winds of the Eastern Sea">
+  <description>
+    Fantasy, 45 chapters. Protagonist Kai (17, fire elemental) trained by
+    Master Lin (deceased ch.12). Magic system: five elements, unlocked by
+    emotional triggers. Current arc: Kai infiltrating Water Kingdom.
+    Antagonist: Empress Yun. Unresolved: Lin's secret identity, the
+    Sixth Element prophecy.
+  </description>
+  <instructions>
+    Formal prose style. Avoid modern idioms. Third-person limited POV.
+  </instructions>
+  <style_examples>
+    <example>The wind carried the scent of pine and distant fires, and Kai knew the hunt had begun.</example>
+    <example>Master Lin spoke no words, yet his silence held a thousand unspoken lessons.</example>
+  </style_examples>
+</project>
 ```
-[Book project]
-Project: "Winds of the Eastern Sea" (fantasy, 45 chapters).
-Protagonist Kai (17, fire elemental) trained by Master Lin (deceased ch.12).
-Magic system: five elements, unlocked by emotional triggers.
-Current arc: Kai infiltrating Water Kingdom. Antagonist Empress Yun.
-Instructions: Formal prose style. Avoid modern idioms.
+
+**Few-shot style examples (Rec #2):**
+Project summary alone tells the LLM *what* to write about, but not *how*. Two or
+three short excerpts from the user's actual writing (extracted from recent
+high-quality chapter content) show the model the prose rhythm, voice, and
+vocabulary. Dramatically improves style matching vs. plain instructions.
+
+**Content example — Translation project:**
+
+```xml
+<project type="translation" name="Vietnamese-English xianxia">
+  <description>
+    Source: Vietnamese xianxia web novels. Target: English cultivation-novel
+    readers. 47 glossary terms established (dao, qi, jianghu, etc.).
+  </description>
+  <instructions>
+    Preserve cultural terms, footnote first mentions. Never localize character
+    names. Keep Chinese honorifics. Formal register.
+  </instructions>
+  <style_examples>
+    <example>His qi surged through the meridians like a coiled dragon awakening from centuries of slumber.</example>
+  </style_examples>
+</project>
 ```
 
-```
-[Translation project]
-Project: Vietnamese→English xianxia translation.
-Preserve cultural terms (dao, qi, jianghu), footnote first mentions.
-Never localize character names. Keep Chinese honorifics.
-```
+**When loaded:** When the chat session has `project_id` set. Style examples are
+omitted if the project doesn't need them (coding, general chat).
 
-**When loaded:** When the chat session has `project_id` set.
+### 4.2 Layer 2 — Relevant Facts (on-demand, ~300–500 tokens)
 
-### 4.2 Layer 2 — Relevant Facts (on-demand, ~300 tokens)
-
-**Source:** Neo4j graph traversal filtered by entities detected in the user message.
+**Source:** Neo4j graph traversal filtered by entities detected in the user message,
+filtered further by quality threshold (see §5.1 quarantine rules).
 
 This is where **Neo4j's graph-native queries** shine. Main-character queries often
-need 2-hop traversal (Kai's enemies' allies, relationships of related entities),
-which Postgres handles poorly. See [`101_DATA_RE_ENGINEERING_PLAN.md` §3.7](101_DATA_RE_ENGINEERING_PLAN.md)
+need 2-hop traversal, which Postgres handles poorly. See [`101 §3.7`](101_DATA_RE_ENGINEERING_PLAN.md)
 for the hybrid graph + vector query pattern.
 
 **Query logic:**
 
 1. Extract entity names from user message (pattern-based, no LLM — see §5.1)
-2. Cypher query: 1-hop direct facts + 2-hop contextual facts
-3. Format as compact fact list with temporal markers
+2. Cypher query: 1-hop direct facts + 2-hop contextual facts, filtered by
+   `confidence >= 0.8` (excludes quarantined Pass 1 facts)
+3. Rank facts by relevance (subject/object match + temporal proximity to current chapter)
+4. Deduplicate against L1 project summary (see §4.4)
+5. Group by temporal category (current / recent / background)
+6. Format with XML structure
 
 **Cypher example:**
 
 ```cypher
-// 1-hop: direct facts about Kai
+// 1-hop: direct facts about Kai (high-confidence only)
 MATCH (kai:Entity {name: 'Kai'})-[r:RELATES_TO]->(target)
 WHERE kai.user_id = $user_id
   AND (kai)-[:BELONGS_TO]->(:Project {id: $project_id})
   AND r.valid_until IS NULL
-RETURN 'Kai' AS subject, r.type AS predicate, target.name AS object, r.valid_from
+  AND r.confidence >= 0.8              // quarantined Pass 1 facts excluded
+RETURN 'Kai' AS subject, r.type AS predicate, target.name AS object,
+       r.valid_from AS established, r.source_chapter AS chapter, r.confidence
 
 UNION
 
-// 2-hop: Kai's allies' loyalties (context)
+// 2-hop: Kai's allies' loyalties (contextual)
 MATCH (kai:Entity {name: 'Kai'})-[:RELATES_TO {type: 'ally'}]->(ally)
       -[r2:RELATES_TO]->(target)
 WHERE kai.user_id = $user_id
   AND r2.type IN ['loyal_to', 'enemy_of', 'member_of']
   AND r2.valid_until IS NULL
-RETURN ally.name AS subject, r2.type AS predicate, target.name AS object, r2.valid_from
+  AND r2.confidence >= 0.8
+RETURN ally.name AS subject, r2.type AS predicate, target.name AS object,
+       r2.valid_from AS established, r2.source_chapter AS chapter, r2.confidence
 ```
 
-**Content example (user mentions "Kai" and "Water Kingdom"):**
+**Formatted output with temporal grouping and negative facts (fixes Issue #2):**
+
+LLMs have a recency bias — facts at the end of a list get more attention weight.
+We group facts by temporal category so the model foregrounds what's currently
+true, not what the sort order happens to surface.
+
+```xml
+<facts>
+  <!-- What's true right now — highest attention weight -->
+  <current>
+    <fact source="ch.38">Kai is infiltrating Water Kingdom</fact>
+    <fact source="ch.38">Kai's cover identity: merchant's apprentice</fact>
+    <fact source="ch.1" type="trait">Kai is a fire elemental</fact>
+    <fact source="ch.1" type="trait">Empress Yun rules Water Kingdom (ice elemental)</fact>
+    <fact source="ch.5" type="location">Water Kingdom capital: Hailong City</fact>
+  </current>
+
+  <!-- Recent events — for conversational continuity -->
+  <recent>
+    <fact source="ch.35">Kai killed Commander Zhao</fact>
+    <fact source="ch.37">Kai learned Lin was loyal to the Sixth Element order</fact>
+  </recent>
+
+  <!-- Background — only when directly needed -->
+  <background>
+    <fact source="ch.12">Master Lin died</fact>
+    <fact source="ch.8">Kai first manifested fire elemental powers</fact>
+  </background>
+
+  <!-- What characters DON'T know — critical for consistency (Rec #4) -->
+  <negative>
+    <fact source="ch.35">Water Kingdom does NOT know Kai killed Commander Zhao</fact>
+    <fact source="ch.37">Kai does NOT know why Lin kept the Sixth Element secret</fact>
+    <fact source="ch.1">Empress Yun does NOT know Kai is a fire elemental</fact>
+  </negative>
+</facts>
+
+<instructions>
+Before answering, silently note which facts are relevant to the user's question.
+Characters can only know what their POV has witnessed. If a character is about to
+reveal information listed in &lt;negative&gt;, flag the inconsistency.
+</instructions>
 ```
-Known facts:
-- Kai is a fire elemental (since ch.1)
-- Kai is infiltrating Water Kingdom (since ch.38)
-- Kai's cover identity: merchant's apprentice (since ch.38)
-- Water Kingdom capital: Hailong City
-- Empress Yun rules Water Kingdom
-- Kai killed Commander Zhao in ch.35 (Water Kingdom unaware)
-- [2-hop] Kai's ally Lin was secretly loyal to the Sixth Element order
+
+**Why temporal grouping matters:**
+- `<current>` facts are what the model should foreground when writing new content
+- `<recent>` provides conversational continuity ("yesterday we discussed...")
+- `<background>` is retrieved but deprioritized (last attention weight)
+- `<negative>` prevents the LLM from having characters reveal things they shouldn't know
+
+**CoT anchoring (Rec #3):**
+The `<instructions>` block forces the model to engage with facts before answering,
+not treat them as passive background. Measurable improvement in fact retention.
+
+**Compression rollover (Rec #5) — when L2 has too many facts:**
+
+Main characters can have 50+ established facts. Dumping all of them blows the
+token budget and gives the LLM too much to process. Instead:
+
+```python
+def format_l2_with_rollover(facts: list, max_inline: int = 15) -> str:
+    # Rank facts by relevance to the current message
+    ranked = rank_facts(facts, query=user_message, recency_weight=0.4)
+
+    if len(ranked) <= max_inline:
+        return format_all(ranked)
+
+    # Top N inline, rest as a compressed summary
+    inline = ranked[:max_inline]
+    tail = ranked[max_inline:]
+
+    summary = compress_tail(tail)  # "40+ additional facts including relationships with..."
+    return f"{format_all(inline)}\n<more>{summary}</more>"
 ```
+
+Example:
+
+```xml
+<facts>
+  <current>...</current>
+  <recent>...</recent>
+  <background>...</background>
+  <more>
+    Kai has 38 additional established relationships including: ties to 4 other
+    factions (Twilight Guild, Mountain Sect, Silver Merchants, Sparrow Riders),
+    5 training milestones, 12 secondary characters, and 8 plot events not
+    directly relevant to the current query. Ask about any to retrieve details.
+  </more>
+</facts>
+```
+
+**Cross-layer deduplication (fixes Issue #4):**
+
+If L1 already contains "Kai is 17, fire elemental, trained by Lin," the L2 loader
+filters those facts out to avoid redundancy. See §4.4 for the dedup algorithm.
 
 **When loaded:** When the user message contains recognized entity names.
 
 ### 4.3 Layer 3 — Deep Semantic Search (on-demand, ~500 tokens)
 
 **Source:** Neo4j native vector search over `entity_embeddings` and `event_embeddings`
-indexes (defined in [`101_DATA_RE_ENGINEERING_PLAN.md` §3.6](101_DATA_RE_ENGINEERING_PLAN.md)),
-plus drawer chunks from chat/book content.
+indexes (defined in [`101 §3.6`](101_DATA_RE_ENGINEERING_PLAN.md)), plus drawer
+chunks from chat/book content.
 
-**Cypher example (hybrid filtered vector search):**
+#### Hybrid Scoring: Relevance + Recency (fixes Issue #8)
 
-```cypher
-CALL db.index.vector.queryNodes('entity_embeddings', 10, $query_embedding)
-YIELD node, score
-WHERE node.user_id = $user_id
-  AND (node)-[:BELONGS_TO]->(:Project {id: $project_id})
-  AND score > 0.7
-RETURN node.name, node.description, score
-ORDER BY score DESC LIMIT 5
+Pure cosine similarity over-weights old content. When a user asks "what did Kai do
+recently?" the highest-similarity passages may be from chapter 3 simply because
+they share vocabulary. We combine similarity with recency decay:
+
+```python
+def hybrid_score(similarity: float, age_days: int, query_type: str) -> float:
+    """
+    query_type:
+      - "recent" (user said "yesterday", "last chapter", "recently") → recency_weight=0.6
+      - "historical" (user said "originally", "first", "backstory") → recency_weight=0.1
+      - "general" (default) → recency_weight=0.3
+    """
+    recency_weight = {
+        "recent": 0.6,
+        "historical": 0.1,
+        "general": 0.3,
+    }[query_type]
+
+    # Exponential decay with 14-day half-life
+    recency_score = 0.5 ** (age_days / 14)
+
+    return (1 - recency_weight) * similarity + recency_weight * recency_score
 ```
 
-**When loaded:** When L2 returns fewer than 3 relevant facts, or when the user asks a
-broad question ("what happened in the early chapters?").
+**Query type detection:** simple keyword matching on the user message. No LLM
+needed. Examples:
+- "what did Kai do yesterday" → `recent`
+- "how did Kai originally meet Lin" → `historical`
+- "tell me about the jade amulet" → `general`
+
+If the user mentions a specific chapter number ("in chapter 12..."), apply a
+hard temporal filter before vector search.
+
+#### Cypher with Hybrid Scoring
+
+```cypher
+CALL db.index.vector.queryNodes('entity_embeddings', 20, $query_embedding)
+YIELD node, score AS similarity
+WHERE node.user_id = $user_id
+  AND (node)-[:BELONGS_TO]->(:Project {id: $project_id})
+  AND similarity > 0.65                          // noise floor
+
+WITH node, similarity,
+     duration.between(node.last_seen, datetime()).days AS age_days
+
+// Hybrid score applied in client code or via Cypher UDF
+WITH node, similarity, age_days,
+     (1 - $recency_weight) * similarity +
+     $recency_weight * exp(-age_days * 0.0495) AS hybrid
+
+WHERE hybrid > 0.5
+RETURN node.name, node.description, node.source_chapter AS chapter,
+       similarity, age_days, hybrid
+ORDER BY hybrid DESC
+LIMIT 5
+```
+
+#### Structured Passage Format (fixes Issue #3)
+
+L3 returns text chunks that need attribution. Dumping raw prose into the prompt
+causes hallucination amplification and quote confusion. Use XML-tagged passages
+with metadata so the LLM can cite sources and distinguish content types:
+
+```xml
+<related_passages>
+  <passage
+    source="Winds of the Eastern Sea, ch.12"
+    type="chapter_content"
+    relevance="0.91"
+    age_days="8"
+  >
+    The jade amulet was ancient, carved with runes that predated the Sixth Element
+    itself. Master Lin had kept it locked away, never speaking of its origin, yet
+    Kai had sensed its presence long before he had seen it.
+  </passage>
+
+  <passage
+    source="chat 2026-04-08"
+    type="conversation"
+    relevance="0.85"
+    age_days="5"
+  >
+    <user>Kai held the amulet up to the light...</user>
+    <assistant>The runes seemed to resonate when exposed to flame, as though responding to Kai's elemental nature. You noted this was the first time anyone had seen it react.</assistant>
+  </passage>
+
+  <passage
+    source="glossary: jade amulet"
+    type="user_curated"
+    relevance="1.00"
+    age_days="30"
+  >
+    Ancient artifact. Activates in response to elemental energy. Linked to the Sixth Element prophecy (hypothesized). Kai possesses it as of ch.12.
+  </passage>
+</related_passages>
+```
+
+**Passage types and their meaning to the LLM:**
+
+| type | What it means | LLM should... |
+|---|---|---|
+| `chapter_content` | Text from a saved chapter | Cite as canon, may quote |
+| `conversation` | Previous chat with this user | Reference context, don't quote as if user said now |
+| `user_curated` | Glossary entry or manual memory | Treat as authoritative |
+| `draft_note` | Author's notes or outline | Use as guidance, not narrative |
+
+**When loaded:** When L2 returns fewer than 3 relevant facts, or when the user
+asks a broad "tell me about X" question, or when query type is `historical`.
 
 ### Token Budget Summary
 
 | Layer | Tokens | Trigger | Source |
 |---|---|---|---|
 | L0 | ~50 | Always | Postgres `knowledge_summaries` (global) |
-| L1 | ~200 | Session has project | Postgres `knowledge_projects` + `knowledge_summaries` (project) |
-| L2 | ~300 | Entities detected | Neo4j graph traversal (1-hop + 2-hop) |
+| L1 | ~200–400 | Session has project | Postgres projects + style examples |
+| L2 | ~300–500 | Entities detected | Neo4j graph traversal (1-hop + 2-hop) |
 | L3 | ~500 | L2 insufficient | Neo4j vector search + drawer chunks |
-| **Total** | **~200–1050** | | vs ~5000 for 50-message replay |
+| **Total** | **~200–1450** | | vs ~5000 for 50-message replay |
+
+---
+
+## 4.4 Prompt Structure — How Memory Is Injected into the LLM Call
+
+Where and how memory is placed in the prompt matters enormously for LLM behavior.
+This section defines the mandatory prompt structure used by all memory consumers.
+
+### 4.4.1 Memory Block Placement (fixes Issue #1)
+
+**Rule:** memory is injected as an **XML-tagged block at the start of the system
+prompt**, before the user's session system prompt. Both Claude and GPT-4 strongly
+respect XML structure, and stable-content-at-the-start enables prompt caching
+(see §7.5).
+
+**Mandatory prompt layout:**
+
+```
+system:
+<memory>
+  {L0 global identity}
+  {L1 project context + instructions + style examples}
+  {L2 facts, grouped by temporal category, with CoT anchor}
+  {L3 related passages, attributed with type/source/relevance}
+  {Absence markers — see §4.5}
+</memory>
+
+<session_instructions>
+{user's session system prompt, if any}
+</session_instructions>
+
+user: {current user message}
+assistant: {recent messages, last N pairs}
+... (conversation continues)
+user: {current turn}
+```
+
+**Why XML tags, not free text:**
+Claude 3 and GPT-4 are trained to respect XML structure and use it as semantic
+boundaries. Facts inside `<facts>` are treated as known facts; instructions
+inside `<instructions>` are treated as rules; passages inside `<passage>` are
+treated as quotable references. Free text gets mixed semantics.
+
+**Why at the start of the system prompt, not prepended as a separate message:**
+- Survives system-prompt priority weighting across most models
+- Enables prompt caching (stable prefix, cached across turns within a session)
+- Doesn't confuse role-based models (no orphan message without a role)
+- Claude explicitly recommends "put stable context at the beginning" in their
+  prompt engineering guide
+
+### 4.4.2 Full Memory Block Example
+
+```xml
+<memory>
+  <!-- L0: Global identity (~50 tokens, always) -->
+  <user>
+    Vietnamese novelist. Writes fantasy and sci-fi. Prefers formal prose.
+    Working on "The Three Kingdoms" series. Timezone UTC+7.
+  </user>
+
+  <!-- L1: Project context (~200-400 tokens, when session has project) -->
+  <project type="book" name="Winds of the Eastern Sea">
+    <description>
+      Fantasy, 45 chapters. Protagonist Kai (17, fire elemental) trained by
+      Master Lin (deceased ch.12). Magic system: five elements, unlocked by
+      emotional triggers. Current arc: Water Kingdom infiltration.
+    </description>
+    <instructions>Formal prose. Third-person limited POV. No modern idioms.</instructions>
+    <style_examples>
+      <example>The wind carried the scent of pine and distant fires, and Kai knew the hunt had begun.</example>
+      <example>Master Lin spoke no words, yet his silence held a thousand unspoken lessons.</example>
+    </style_examples>
+  </project>
+
+  <!-- L2: Relevant facts (~300-500 tokens, when entities detected) -->
+  <facts>
+    <current>
+      <fact source="ch.38">Kai is infiltrating Water Kingdom</fact>
+      <fact source="ch.1" type="trait">Kai is a fire elemental</fact>
+    </current>
+    <recent>
+      <fact source="ch.35">Kai killed Commander Zhao</fact>
+    </recent>
+    <background>
+      <fact source="ch.12">Master Lin died</fact>
+    </background>
+    <negative>
+      <fact source="ch.35">Water Kingdom does NOT know Kai killed Commander Zhao</fact>
+    </negative>
+  </facts>
+
+  <!-- L3: Related passages (~500 tokens, when needed) -->
+  <related_passages>
+    <passage source="Eastern Sea, ch.12" type="chapter_content" relevance="0.91">
+      Master Lin had kept the jade amulet locked away, never speaking of its origin...
+    </passage>
+  </related_passages>
+
+  <!-- Absence markers — see §4.5 -->
+  <no_memory_for>jade amulet activation sequence, Sixth Element prophecy text</no_memory_for>
+
+  <instructions>
+    Before answering, silently note which facts are relevant to the user's question.
+    Characters can only know what their POV has witnessed — check &lt;negative&gt; before
+    revealing information. Cite sources from &lt;related_passages&gt; when quoting.
+    If a topic appears in &lt;no_memory_for&gt;, ask the user instead of inventing.
+  </instructions>
+</memory>
+
+<session_instructions>
+You are assisting with chapter 12 rewrite. Focus on pacing and emotional beats.
+</session_instructions>
+```
+
+### 4.4.3 Cross-Layer Deduplication (fixes Issue #4)
+
+L1 project summary and L2 facts often overlap. Before injecting L2, filter out
+facts already covered by L1.
+
+**Dedup algorithm:**
+
+```python
+def deduplicate_l2_against_l1(l1_text: str, l2_facts: list[Fact]) -> list[Fact]:
+    """Filter L2 facts that are already expressed in L1 summary."""
+    l1_lower = l1_text.lower()
+    filtered = []
+
+    for fact in l2_facts:
+        # Build a minimal phrase from the fact
+        phrase = f"{fact.subject} {fact.predicate} {fact.object}".lower()
+
+        # Check if all significant words from the fact appear in L1
+        keywords = [
+            w for w in phrase.split()
+            if len(w) > 3 and w not in STOPWORDS
+        ]
+        if keywords and all(kw in l1_lower for kw in keywords):
+            metrics.inc("l2_fact_deduplicated")
+            continue  # Already in L1, skip
+
+        filtered.append(fact)
+
+    return filtered
+```
+
+This is approximate but cheap. Perfect dedup would require semantic matching,
+but keyword overlap catches 80-90% of duplicates at near-zero cost.
+
+**Alternative (cleaner):** make L1 and L2 roles **explicitly disjoint**:
+- L1 = stable narrative backbone (doesn't include recent events)
+- L2 = dynamic facts not yet promoted to L1
+
+Requires the L1 regeneration job (K11) to know which facts belong in L2, and
+exclude them. Higher quality but more complex. Defer as a future optimization.
+
+### 4.4.4 Total Prompt Budget (fixes Issue #6)
+
+Memory is not the only thing in the prompt. We must budget the whole thing:
+
+```python
+PROMPT_BUDGET = {
+    # Model context window → usable fraction
+    "claude-opus-4-6":      int(200_000 * 0.8),   # 160K usable
+    "claude-sonnet-4-6":    int(200_000 * 0.8),   # 160K usable
+    "gpt-4o":                int(128_000 * 0.8),   # 102K usable
+    "gemma-3-27b":           int(8_192 * 0.75),    # 6K usable
+    "llama-3-70b":           int(128_000 * 0.8),
+}
+
+ALLOCATION = {
+    "system_base":      0.10,  # Session system prompt + base instructions
+    "memory_l0_l1":     0.15,  # Stable memory layers (~15%)
+    "memory_l2_l3":     0.15,  # Dynamic memory layers (~15%)
+    "recent_messages":  0.40,  # Last 20 messages (~40%)
+    "current_message":  0.05,  # User's current turn (~5%)
+    "response_buffer":  0.15,  # Space for LLM response (~15%)
+}
+```
+
+**Allocation strategy:**
+1. Start with ideal allocations for the active model
+2. Build context in priority order: system_base → memory L0 → memory L1 → current_message → last 10 messages → memory L2 → memory L3 → older messages
+3. If allocation exceeds budget, drop in reverse priority order
+4. Never drop: system_base, current_message, last 10 messages, response_buffer
+
+**Why this order:**
+- System prompt and current message are non-negotiable
+- Last 10 messages preserve conversational flow (the user's immediate context)
+- L0/L1 are cheap and always useful (cache-friendly)
+- L2/L3 are variable cost — drop first when budget is tight
+- Older messages are the most sacrificeable
+
+**Small-model degradation:**
+When the model is small (e.g., 8K context), drop L2/L3 entirely and only use
+L0+L1+recent_messages. This keeps memory working even on constrained deployments.
+
+---
+
+## 4.5 Absence Signaling — "I Don't Know What I Don't Know"
+
+**Fixes Issue #10.** When memory returns nothing for a topic the user is asking
+about, the LLM will hallucinate a plausible answer unless we explicitly signal
+absence.
+
+### 4.5.1 Detecting Absence
+
+The context builder extracts entity candidates from the user message (same logic
+as L2 entity detection). For each candidate:
+
+1. Query L2 (Neo4j) for matching entities
+2. Query L3 (vector search) for matching passages
+3. If both return empty for a specific candidate → the candidate is an "absence"
+
+```python
+async def detect_absences(message: str, l2_entities: set, l3_hits: list) -> list[str]:
+    """Find entities in user message that have zero memory coverage."""
+    candidates = extract_entity_candidates(message)  # pattern-based, no LLM
+    l3_hit_names = {hit.entity_name for hit in l3_hits if hit.relevance > 0.7}
+    covered = l2_entities | l3_hit_names
+    return [c for c in candidates if c.lower() not in {x.lower() for x in covered}]
+```
+
+### 4.5.2 Signaling Absence in the Prompt
+
+Inject a `<no_memory_for>` element listing topics the user is asking about but
+which have zero coverage:
+
+```xml
+<memory>
+  <user>...</user>
+  <project>...</project>
+  <facts>
+    <current>
+      <fact source="ch.38">Kai is infiltrating Water Kingdom</fact>
+    </current>
+  </facts>
+  <no_memory_for>jade amulet, the Sixth Element prophecy</no_memory_for>
+  <instructions>
+    If a topic appears in &lt;no_memory_for&gt;, do NOT invent details.
+    Say "I don't have that in memory — can you remind me?" instead.
+  </instructions>
+</memory>
+```
+
+### 4.5.3 Behavioral Impact
+
+Without absence signaling, models tend to:
+- Invent plausible-sounding details
+- Mix the user's question into an answer that wasn't in memory
+- Hallucinate with high confidence
+
+With explicit absence signaling + instruction, models:
+- Ask clarifying questions when memory is empty
+- Say "I don't know" when appropriate
+- Reduce hallucination rate significantly (measurable in evals)
+
+**Cost:** ~30-50 tokens for the absence block. Well worth it for correctness.
 
 ---
 
@@ -527,8 +1001,10 @@ When multiple sources set different values for the same property (e.g., age):
 |---|---|
 | Glossary (user-curated) vs LLM extraction | **User-curated wins.** Store LLM suggestion in `disputed_properties` for user review. |
 | Two LLM extractions disagree | **Higher-confidence wins.** If tied, most recent wins. |
-| Pattern extraction (Pass 1) vs LLM (Pass 2) | **LLM wins.** Pattern extraction is a placeholder until Pass 2 catches up. |
+| Pattern (Pass 1, quarantined) vs LLM (Pass 2) | **LLM wins absolutely.** Pattern extraction never overrides LLM. Pass 2 confirms or contradicts quarantined Pass 1 facts (§5.1 quarantine). |
+| Pattern (Pass 1) vs Pattern (Pass 1) | **Both quarantined until Pass 2.** Neither reaches L2 context. |
 | Temporal facts (age over time) | **Both preserved** with `valid_from`/`valid_until` windows. |
+| User manual edit vs any extraction | **User manual edit always wins.** Pause auto-extraction for that entity property for 7 days after manual edit. |
 
 #### Provenance Preservation
 
@@ -558,43 +1034,153 @@ language support, etc.).
 
 ---
 
-### 5.1 Pattern-Based Extractor (Pass 1)
+### 5.1 Pattern-Based Extractor (Pass 1) — with Quarantine
 
 **Inspired by MemPalace's `general_extractor.py`.** Runs synchronously in the
 knowledge-service event consumer. Zero LLM cost.
 
-**Memory types detected by regex patterns:**
+**Critical warning:** pattern extraction is dumb. Regex cannot distinguish intent
+from fact, hypothetical from reality, reported speech from direct observation:
 
-| Type | Markers (examples) | Neo4j label / property |
+| Sentence | Regex match | Reality |
+|---|---|---|
+| `Kai killed Zhao` | ✓ | Correct — use it |
+| `Kai said he killed Zhao` | ✓ | **Wrong** — reported speech, not fact |
+| `What if Kai killed Zhao?` | ✓ | **Wrong** — hypothetical |
+| `Kai would have killed Zhao` | ✓ | **Wrong** — counterfactual |
+| `Kai killed Zhao in the dream` | ✓ | **Wrong** — non-canon |
+| `Kai wanted to kill Zhao` | ✓ | **Wrong** — intent, not action |
+
+Without protection, these false extractions pollute L2 and the LLM hallucinates
+based on memory the user never created.
+
+#### Quarantine Mode (fixes Issue #5)
+
+Pass 1 facts are written to Neo4j with **low confidence** (`confidence=0.5`) and a
+`pending_validation: true` flag. They are NOT loaded into L2 until Pass 2 validates
+them (see §5.2).
+
+**Quarantine rules:**
+
+1. Pattern extractor writes facts with `confidence=0.5`, `pending_validation=true`
+2. L2 context loader filters `WHERE confidence >= 0.8 AND NOT pending_validation`
+3. Pass 2 LLM extraction runs within seconds (async via worker-ai)
+4. Pass 2 either confirms the fact (promote to `confidence=0.9+`, clear pending)
+   or contradicts it (write a new fact with higher confidence; old fact stays
+   in quarantine for user review)
+5. Facts stuck in quarantine for >24h with no Pass 2 verdict → auto-invalidated
+
+**Why quarantine instead of rejection:**
+- Pattern extraction is still useful for entity discovery (Kai is mentioned → track as candidate)
+- Memory UI can show quarantined facts for power users to review
+- Analytics: track Pass 1 → Pass 2 agreement rate to tune patterns
+
+**Visibility:**
+
+```cypher
+// L2 loader (excludes quarantine)
+MATCH (e:Entity)-[r:RELATES_TO]->(target)
+WHERE e.user_id = $user_id
+  AND r.confidence >= 0.8
+  AND r.pending_validation IS NOT TRUE
+RETURN ...
+
+// Memory UI "Quarantine" tab (shows pending)
+MATCH (e:Entity)-[r:RELATES_TO]->(target)
+WHERE e.user_id = $user_id
+  AND r.pending_validation = true
+RETURN ...
+```
+
+#### Pattern Types
+
+**Memory types detected by regex patterns (Pass 1, quarantined):**
+
+| Type | Markers (examples) | Neo4j target |
 |---|---|---|
 | Decision | "let's use", "we decided", "instead of", "trade-off" | `(:Fact {type:'decision'})` |
 | Preference | "I prefer", "always use", "never use", "my rule is" | `(:Fact {type:'preference'})` |
 | Milestone | "it works", "fixed", "breakthrough", "finished chapter N" | `(:Fact {type:'milestone'})` |
-| Entity | Capitalized proper nouns, quoted names, glossary matches | `(:Entity)` |
-| Relation | SVO patterns: "Kai killed Zhao", "Lin trained Kai" | `(:Entity)-[:RELATES_TO]->(:Entity)` |
+| Entity | Capitalized proper nouns, quoted names, glossary matches | `(:Entity)` (also pending) |
+| Relation | SVO patterns (excluding hypothetical markers) | `(:Entity)-[:RELATES_TO]->(:Entity)` |
 | Event | "in chapter N", "after the battle", "when X happened" | `(:Event)` |
+| **Negation** (Rec #4) | "does not know", "is unaware", "never told", "has no idea" | `(:Fact {type:'negation'})` |
+
+**Negation patterns matter for novel consistency.** When the extractor finds
+"Water Kingdom does not know that Kai killed Commander Zhao," it creates a
+negative fact. These are loaded into L2's `<negative>` block (§4.2) so the
+LLM doesn't have characters reveal things they shouldn't know.
+
+**Hypothetical/counterfactual filters (skip extraction):**
+
+Before extracting any SVO, the pattern extractor checks the sentence for:
+
+```python
+SKIP_MARKERS = [
+    # Hypothetical
+    r"\bif\b", r"\bwhat if\b", r"\bsuppose\b", r"\bhypothetically\b",
+    # Counterfactual
+    r"\bwould have\b", r"\bcould have\b", r"\bmight have\b",
+    # Reported speech (unreliable for direct extraction)
+    r"\bsaid\b", r"\bclaimed\b", r"\bthought\b", r"\bbelieved\b",
+    # Non-canon markers
+    r"\bin the dream\b", r"\bin a vision\b", r"\bdraft\b", r"\bdeleted scene\b",
+    # Intent, not action
+    r"\bwanted to\b", r"\bplanned to\b", r"\btried to\b", r"\babout to\b",
+]
+
+def should_extract(sentence: str) -> bool:
+    lower = sentence.lower()
+    return not any(re.search(pattern, lower) for pattern in SKIP_MARKERS)
+```
+
+This is approximate but catches 80% of false positives. The remaining 20% are
+filtered by the quarantine mechanism.
 
 **Entity extraction:** Two-pass system (MemPalace pattern):
 
 1. **Candidate extraction** — capitalized words, quoted names, known glossary entities, repeated noun phrases
 2. **Signal scoring** — frequency, position in sentence, co-occurrence with verbs, matches existing entities
 
-**Triple extraction:** Pattern matching on SVO sentences:
-- `Kai killed Commander Zhao` → `(Kai)-[:killed]->(Commander Zhao)`
-- `The capital is Hailong City` → `(Water Kingdom)-[:has_capital]->(Hailong City)`
-- `We decided to use fire magic` → `(:Fact {type:'decision', content:'use fire magic'})`
+**Triple extraction examples (quarantined until Pass 2 confirms):**
+- `Kai killed Commander Zhao` → `(Kai)-[:killed {confidence:0.5, pending:true}]->(Commander Zhao)`
+- `The capital is Hailong City` → `(Water Kingdom)-[:has_capital {confidence:0.5, pending:true}]->(Hailong City)`
+- `We decided to use fire magic` → `(:Fact {type:'decision', confidence:0.5, pending:true})`
+- `Water Kingdom does not know Kai killed Zhao` → `(:Fact {type:'negation', content:'Water Kingdom unaware of Zhao killing', confidence:0.6, pending:true})`
 
-### 5.2 LLM-Based Extractor (Pass 2)
+### 5.2 LLM-Based Extractor (Pass 2) — Validates Quarantine
 
-**Defined in [`101_DATA_RE_ENGINEERING_PLAN.md` Phase D3](101_DATA_RE_ENGINEERING_PLAN.md) (D3-01 to D3-04).**
+**Defined in [`101 Phase D3`](101_DATA_RE_ENGINEERING_PLAN.md) (D3-01 to D3-04).**
 
-Runs asynchronously via worker-ai. Takes longer but extracts nuanced relationships,
-resolves coreferences, merges entity variants, and produces higher-confidence facts.
+Runs asynchronously via worker-ai. Extracts nuanced relationships, resolves
+coreferences, merges entity variants, and — critically — **validates Pass 1
+quarantine**.
+
+**Validation flow:**
+
+1. worker-ai consumes `chat.turn_completed` event (low priority queue)
+2. Reads the full conversation turn from Postgres
+3. Runs LLM extraction with context awareness (understands reported speech, negation, hypotheticals)
+4. For each Pass 1 quarantined fact from this turn:
+   - If LLM confirms → update: `confidence=0.95`, `pending_validation=false`
+   - If LLM contradicts → create new fact with higher confidence, leave quarantined fact for user review
+   - If LLM has no opinion (fact is ambiguous) → keep quarantined, eventually auto-invalidated at 24h
+5. Writes new facts (beyond what Pass 1 saw) with `confidence=0.9`, not quarantined
+
+**Agreement tracking:**
+
+```python
+metrics.inc("pass1_confirmed")    # Pass 2 agreed
+metrics.inc("pass1_contradicted") # Pass 2 disagreed
+metrics.inc("pass1_ambiguous")    # Pass 2 couldn't tell
+```
+
+Low agreement rate → tune Pass 1 patterns. High ambiguous rate → tune Pass 2 prompt.
 
 The two passes complement each other:
-- Pass 1 gives **immediate** context (the user sees results in the next chat turn)
-- Pass 2 **corrects and enriches** Pass 1 within seconds (background)
-- Facts from Pass 2 can override or merge with Pass 1 facts (`confidence` field disambiguates)
+- Pass 1 gives **discovery** (fast entity/relation detection for UI and eventual validation)
+- Pass 2 gives **authority** (high-confidence facts that flow into L2)
+- User never sees Pass 1 output in chat; they see Pass 2 (or a mix if Pass 1 > 24h old and uncontested)
 
 ### 5.3 Event Consumers
 
@@ -616,6 +1202,145 @@ The knowledge-service subscribes to multiple outbox event streams:
 4. knowledge-service consumes event, reads full turn from Postgres
 5. Runs pattern extractor → emits facts to Neo4j immediately
 6. Schedules LLM extraction (worker-ai, lower priority)
+
+### 5.4 Multilingual Extraction (fixes Issue #7)
+
+LoreWeave is explicitly multilingual (Vietnamese, English, Chinese, Japanese,
+Korean, and more — see `frontend/public/locales/`). Memory extraction must
+handle non-English content correctly.
+
+#### Language Detection
+
+Every extraction call detects the dominant language of the input text before
+selecting patterns and canonicalization rules:
+
+```python
+# Use fast-text or langdetect — no LLM call needed
+from langdetect import detect_langs
+
+def detect_primary_language(text: str) -> str:
+    """Return ISO 639-1 code for the dominant language, or 'mixed' if ambiguous."""
+    try:
+        langs = detect_langs(text)
+        if len(langs) > 1 and langs[0].prob < 0.7:
+            return "mixed"
+        return langs[0].lang
+    except Exception:
+        return "en"  # fallback
+```
+
+For mixed-language content (e.g., a Vietnamese novelist chatting in English about
+Chinese character names), each sentence is detected separately and extracted
+using its own language pattern set.
+
+#### Per-Language Pattern Sets
+
+The pattern extractor loads different regex sets per language. Each set is a
+Python module under `knowledge_service/extractors/patterns/`:
+
+```
+patterns/
+├── en.py      (decision, preference, milestone, negation, SKIP markers)
+├── vi.py      ("chúng ta quyết định", "tôi thích", "không biết", ...)
+├── zh.py      ("我们决定", "我喜欢", "不知道", ...)
+├── ja.py      ("決めた", "好き", "知らない", ...)
+├── ko.py      ("결정했어", "좋아해", "모르다", ...)
+└── base.py    (shared: chapter numbers, quoted text, dates)
+```
+
+Each language pattern module exports the same interface:
+
+```python
+# en.py
+DECISION_MARKERS = [r"\blet's use\b", r"\bwe decided\b", r"\binstead of\b", ...]
+PREFERENCE_MARKERS = [r"\bI prefer\b", r"\balways use\b", ...]
+NEGATION_MARKERS = [r"\bdoes not know\b", r"\bis unaware\b", ...]
+SKIP_MARKERS = [r"\bif\b", r"\bwould have\b", r"\bsaid\b", ...]
+
+# vi.py
+DECISION_MARKERS = [r"\bchúng ta quyết định\b", r"\bchúng tôi sẽ\b", r"\bthay vì\b", ...]
+PREFERENCE_MARKERS = [r"\btôi thích\b", r"\bluôn dùng\b", ...]
+NEGATION_MARKERS = [r"\bkhông biết\b", r"\bchưa nghe\b", ...]
+SKIP_MARKERS = [r"\bnếu\b", r"\bcó thể\b", r"\bnói rằng\b", ...]
+```
+
+#### CJK Canonicalization
+
+The canonicalization function in §5.0 uses `.lower()` which is meaningless for
+Chinese, Japanese, and Korean. Add per-script rules:
+
+```python
+import unicodedata
+
+CJK_RANGES = [
+    (0x4E00, 0x9FFF),   # CJK Unified Ideographs
+    (0x3040, 0x309F),   # Hiragana
+    (0x30A0, 0x30FF),   # Katakana
+    (0xAC00, 0xD7AF),   # Hangul Syllables
+]
+
+def is_cjk(text: str) -> bool:
+    return any(
+        any(start <= ord(c) <= end for start, end in CJK_RANGES)
+        for c in text
+    )
+
+def canonicalize_entity_name(name: str) -> str:
+    """Normalize an entity name across scripts."""
+    normalized = unicodedata.normalize("NFKC", name).strip()
+
+    if is_cjk(normalized):
+        # CJK: strip whitespace and honorifics, keep characters as-is
+        for honorific in ["先生", "様", "さん", "君", "ちゃん", "씨", "선생", "大人"]:
+            normalized = normalized.replace(honorific, "")
+        return normalized.strip()
+
+    # Latin/Cyrillic: lowercase + strip honorifics
+    normalized = normalized.lower()
+    for h in HONORIFICS_LATIN:
+        normalized = normalized.removeprefix(h)
+        normalized = normalized.removesuffix(h)
+
+    # Collapse whitespace, strip punctuation
+    normalized = re.sub(r"\s+", " ", normalized)
+    normalized = re.sub(r"[^\w\s']", "", normalized)
+    return normalized.strip()
+```
+
+#### Multilingual Embedding Model
+
+Decision [#27](101_DATA_RE_ENGINEERING_PLAN.md) already specifies `BAAI/bge-m3`
+or `intfloat/multilingual-e5-large`. Both support 100+ languages with shared
+semantic space — a Vietnamese query can retrieve English chunks and vice versa.
+
+**bge-m3 is preferred** because:
+- Explicit multilingual training (100+ languages)
+- 1024-dim (matches Neo4j index target)
+- Strong CJK performance
+- Dense + sparse hybrid retrieval support
+
+#### Summary Language Preference
+
+User's L0/L1 summaries are regenerated in their preferred language, not mixed:
+
+```sql
+-- New column on knowledge_summaries
+ALTER TABLE knowledge_summaries ADD COLUMN language TEXT DEFAULT 'en';
+```
+
+The regeneration job reads `users.preferred_locale` or falls back to auto-detect
+over recent messages. When a user switches locale, summaries are regenerated on
+next trigger (not retroactively).
+
+#### Context Builder Language Alignment
+
+When building the memory block (§4.4), the context builder formats metadata
+labels (`<facts>`, `<current>`, etc.) as XML — language-neutral. But the free-text
+content inside each element is in whatever language the source used.
+
+For the `<instructions>` CoT anchor and the `<no_memory_for>` absence signal,
+the language matches the user's preferred locale so the LLM follows the
+instructions correctly.
 
 ---
 
@@ -887,6 +1612,156 @@ A critical invariant for trust and GDPR compliance:
 L0-L3 context, we **keep the last 20 raw messages** in the LLM prompt. Memory
 provides depth; recent messages provide conversational flow. Users never see
 "the AI forgot what I just said 5 seconds ago."
+
+### 7.5 Prompt Caching Strategy (Rec #1)
+
+Both Anthropic and OpenAI support prompt caching — the provider hashes the prefix
+of your prompt and caches the attention state, charging ~10% cost for cache hits.
+Memory context is a prime candidate because L0/L1 are stable across many turns.
+
+**Cache structure:**
+
+```
+[CACHEABLE — stable, TTL ~5 minutes]
+  <memory>
+    <user>...</user>                        ← L0, changes rarely
+    <project>...</project>                  ← L1, changes rarely
+  </memory>
+  <session_instructions>...</session_instructions>
+
+[BREAKPOINT — cache cut here]
+
+[VOLATILE — changes every turn]
+  <memory>
+    <facts>...</facts>                      ← L2, depends on user message
+    <related_passages>...</related_passages> ← L3, depends on user message
+    <no_memory_for>...</no_memory_for>      ← depends on user message
+    <instructions>...</instructions>         ← dynamic CoT anchor
+  </memory>
+
+[CONVERSATION HISTORY — partially cached]
+  user: ...
+  assistant: ...
+  (recent messages)
+```
+
+**Provider-specific cache hints:**
+
+```python
+# Anthropic Claude
+messages = [
+    {
+        "role": "system",
+        "content": [
+            {
+                "type": "text",
+                "text": stable_memory_prefix,  # L0 + L1 + instructions
+                "cache_control": {"type": "ephemeral"}  # ← cache this
+            },
+            {
+                "type": "text",
+                "text": volatile_memory + recent_messages_rendered,
+                # No cache — changes every turn
+            }
+        ]
+    },
+    {"role": "user", "content": current_message}
+]
+
+# OpenAI GPT-4 (automatic prompt caching — just put stable content first)
+# No explicit markers needed, but ordering matters: stable prefix → volatile suffix
+```
+
+**Expected savings:**
+- L0 + L1 + style examples = ~500 tokens, constant across ~10-30 turns per session
+- With caching: 10% × 500 = 50 tokens effective cost per turn instead of 500
+- **~80-90% reduction in memory-layer cost** for active sessions
+
+**Cache invalidation:**
+- Session-level cache implicit (provider cache TTL is usually 5 min)
+- L0/L1 edits in memory UI → emit `knowledge.summary_invalidated` event → chat-service evicts in-process cache → next call rebuilds stable prefix
+- Project switch or session end → cache expires naturally
+
+**Measurement:**
+- Prometheus metric `llm_prompt_cache_hit_ratio` per consumer service
+- Target: >70% hit rate for chat-service after first few turns in a session
+
+### 7.6 Summary Regeneration — Drift Prevention (fixes Issue #9)
+
+L0/L1 summaries are regenerated periodically to incorporate new knowledge. Without
+guardrails, this becomes an echo chamber: "User prefers formal prose" gets
+reinforced every regeneration, drowning out any experiment the user tries.
+
+**Problem scenario:**
+1. Initial L0: "User writes fantasy"
+2. User writes formally for 20 sessions → L0: "User prefers formal fantasy prose"
+3. User tries modern prose in session 21 → extraction sees mixed signals
+4. Next regen ignores the 1 modern session → L0: "User exclusively writes formal fantasy"
+5. LLM now aggressively avoids modern style, pushing user back to formal
+6. User can't escape their own frozen identity
+
+**Fix: regeneration uses raw source messages, not extracted facts:**
+
+```python
+async def regenerate_l1_project_summary(user_id: str, project_id: str):
+    # 1. Fetch the raw content that inspired the summary
+    chapters = await fetch_recent_chapters(project_id, limit=10)
+    chat_turns = await fetch_recent_chat_turns(user_id, project_id, limit=50)
+    user_edits = await fetch_summary_edits(user_id, project_id)
+
+    # 2. Check for user override — respect it
+    if user_edits and user_edits.latest.created_at > 30.days.ago:
+        return  # Skip regen — user recently edited, don't fight them
+
+    # 3. Build LLM prompt from raw content (not from current summary)
+    llm_prompt = f"""
+    Summarize this project for use as AI context. Focus on what's established,
+    active, and unresolved. Do not infer user preferences — only describe the
+    project itself.
+
+    Recent chapters:
+    {format_chapters(chapters)}
+
+    Recent conversation:
+    {format_chat_turns(chat_turns)}
+    """
+
+    new_summary = await llm.generate(llm_prompt, max_tokens=400)
+
+    # 4. Diversity check — if the new summary is >95% similar to the old one,
+    # no point writing a new version
+    old_summary = await get_current_summary(user_id, project_id)
+    if old_summary and similarity(new_summary, old_summary.content) > 0.95:
+        metrics.inc("summary_regen_no_op")
+        return
+
+    # 5. Write new version (old versions preserved for audit)
+    await write_summary(user_id, project_id, new_summary, version=old_summary.version + 1)
+```
+
+**Drift prevention rules:**
+
+1. **Regeneration reads raw source**, not the current summary. This prevents
+   recursive amplification.
+2. **User edit wins for 30 days.** If the user manually edits a summary, the
+   auto-regeneration job skips that scope until 30 days pass.
+3. **Diversity check.** Skip regen if the new output is near-identical to the
+   existing one — no churn, no drift.
+4. **Preference extraction is conservative.** The LLM prompt explicitly says
+   "do not infer preferences unless stated 3+ times." A single message
+   doesn't flip an identity.
+5. **Global L0 explicitly separated from project L1.** User identity
+   ("Vietnamese, formal prose") lives in L0. Project characteristics
+   ("Winds of the Eastern Sea is formal") live in L1. Editing one doesn't
+   affect the other.
+6. **Undo via version history.** `knowledge_summaries.version` increments on
+   every regen. UI lets users roll back to a previous version if the new one
+   is worse.
+
+**Observability:**
+- `summary_regen_count{scope_type}` — how often regen runs
+- `summary_regen_no_op{scope_type}` — how often diversity check skips
+- `summary_user_override_respected{scope_type}` — user edits protected from regen
 
 ---
 
