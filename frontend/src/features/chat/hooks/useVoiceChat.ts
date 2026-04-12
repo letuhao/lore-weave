@@ -11,6 +11,7 @@ import { VoiceClient, type VoiceConfig, type AudioChunkEvent } from '@/lib/Voice
 import { VadController } from '@/lib/VadController';
 import { TTSPlaybackQueue } from '@/lib/TTSPlaybackQueue';
 import { VoicePipelineState, type PipelineSnapshot } from '@/lib/VoicePipelineState';
+import { float32ToWavBlob } from '@/lib/audioUtils';
 import { loadVoicePrefs, type VoicePrefs } from '../voicePrefs';
 import { syncPrefsToServer } from '@/lib/syncPrefs';
 
@@ -291,41 +292,3 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
   return { isActive, state, sttText, aiText, error, showConsent, pipelineSnapshot, activate, acceptConsent, dismissConsent, deactivate, cancel };
 }
 
-/** Convert Float32Array (16kHz mono) to WAV blob. */
-function float32ToWavBlob(samples: Float32Array, sampleRate: number): Blob {
-  const numChannels = 1;
-  const bitsPerSample = 16;
-  const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
-  const blockAlign = numChannels * (bitsPerSample / 8);
-  const dataSize = samples.length * (bitsPerSample / 8);
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
-
-  // WAV header
-  const writeString = (offset: number, s: string) => {
-    for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
-  };
-  writeString(0, 'RIFF');
-  view.setUint32(4, 36 + dataSize, true);
-  writeString(8, 'WAVE');
-  writeString(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // PCM
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, byteRate, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, bitsPerSample, true);
-  writeString(36, 'data');
-  view.setUint32(40, dataSize, true);
-
-  // Write samples (float32 → int16)
-  let offset = 44;
-  for (let i = 0; i < samples.length; i++) {
-    const s = Math.max(-1, Math.min(1, samples[i]));
-    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-    offset += 2;
-  }
-
-  return new Blob([buffer], { type: 'audio/wav' });
-}

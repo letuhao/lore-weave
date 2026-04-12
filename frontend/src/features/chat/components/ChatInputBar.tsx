@@ -1,9 +1,7 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { ArrowUp, Brain, Square, Zap, Mic, MicOff, Loader2, Volume2, VolumeX } from 'lucide-react';
-import { useSpeechRecognition, SPEECH_RECOGNITION_SUPPORTED } from '@/hooks/useSpeechRecognition';
-import { MEDIA_RECORDER_SUPPORTED } from '@/hooks/useBackendSTT';
-import { useAuth } from '@/auth';
 import { loadVoicePrefs } from '../voicePrefs';
+import { useVoiceAssistMic } from '../hooks/useVoiceAssistMic';
 import TextareaAutosize from 'react-textarea-autosize';
 import { ContextBar } from '../context/ContextBar';
 import type { ContextItem } from '../context/types';
@@ -62,106 +60,14 @@ export function ChatInputBar({
   const [templateFilter, setTemplateFilter] = useState('');
   const [attachPickerOpen, setAttachPickerOpen] = useState(false);
 
-  // Push-to-talk mic — inserts transcript into textarea (does NOT auto-send)
-  // Supports both browser Web Speech API and backend STT via provider-registry
-  const { accessToken } = useAuth();
-  const [micState, setMicState] = useState<'idle' | 'recording' | 'transcribing' | 'error'>('idle');
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const stt = useSpeechRecognition({
-    continuous: false,
-    interimResults: true,
-    onFinalTranscript: useCallback((text: string) => {
+  // Push-to-talk mic — uses same VAD + backend STT pipeline as Voice Mode.
+  // Captures speech via Silero VAD → WAV → backend STT → inserts transcript into textarea.
+  const { micState, toggleMic } = useVoiceAssistMic(
+    useCallback((text: string) => {
       const append = loadVoicePrefs().voiceAssistAppend;
       setValue((prev) => (append && prev) ? prev + ' ' + text : text);
-      setMicState('idle');
     }, []),
-  });
-
-  const toggleMic = useCallback(async () => {
-    if (micState === 'recording' || micState === 'transcribing') {
-      // Stop
-      stt.stop();
-      mediaRecorderRef.current?.stop();
-      setMicState('idle');
-      return;
-    }
-
-    const prefs = loadVoicePrefs();
-    if (prefs.sttSource === 'ai_model' && prefs.sttModelRef && MEDIA_RECORDER_SUPPORTED) {
-      // Backend STT via provider-registry proxy
-      setMicState('recording');
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        // Choose supported MIME type (Safari doesn't support webm)
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
-          : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
-        const recorder = mimeType
-          ? new MediaRecorder(stream, { mimeType })
-          : new MediaRecorder(stream);
-        const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
-        mediaRecorderRef.current = recorder;
-        const chunks: Blob[] = [];
-        recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-        recorder.onstop = async () => {
-          stream.getTracks().forEach((t) => t.stop());
-          mediaRecorderRef.current = null;
-          if (chunks.length === 0) { setMicState('idle'); return; }
-          setMicState('transcribing');
-          try {
-            const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
-            const apiBase = import.meta.env.VITE_API_BASE || '';
-            const params = new URLSearchParams({
-              model_source: 'user_model',
-              model_ref: prefs.sttModelRef,
-            });
-            const formData = new FormData();
-            formData.append('file', blob, `audio.${ext}`);
-            const resp = await fetch(
-              `${apiBase}/v1/model-registry/proxy/v1/audio/transcriptions?${params}`,
-              { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, body: formData },
-            );
-            if (resp.ok) {
-              const result = await resp.json();
-              const text = result.text || '';
-              if (text.trim()) {
-                const append = prefs.voiceAssistAppend;
-                setValue((prev) => (append && prev) ? prev + ' ' + text : text);
-              }
-            } else {
-              setMicState('error');
-              setTimeout(() => setMicState('idle'), 2000);
-              return;
-            }
-          } catch {
-            setMicState('error');
-            setTimeout(() => setMicState('idle'), 2000);
-            return;
-          }
-          setMicState('idle');
-        };
-        recorder.start();
-        // Auto-stop after 30s
-        setTimeout(() => { if (recorder.state === 'recording') recorder.stop(); }, 30000);
-      } catch {
-        setMicState('error');
-        setTimeout(() => setMicState('idle'), 2000);
-      }
-    } else if (SPEECH_RECOGNITION_SUPPORTED) {
-      // Browser Web Speech API
-      stt.resetTranscript();
-      stt.start();
-      setMicState('recording');
-    }
-  }, [micState, stt, accessToken]);
-
-  // Cleanup mic on unmount
-  useEffect(() => {
-    return () => {
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-        mediaRecorderRef.current.stop();
-      }
-    };
-  }, []);
+  );
 
   function handleTemplateSelect(template: PromptTemplate) {
     setValue(template.prompt);
@@ -281,7 +187,7 @@ export function ChatInputBar({
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" /></svg>
               </button>
               {/* Voice Assist toggle + Push-to-talk mic (hidden when voice mode overlay owns STT) */}
-              {(SPEECH_RECOGNITION_SUPPORTED || MEDIA_RECORDER_SUPPORTED) && !voiceModeActive && (
+              {!voiceModeActive && (
                 <div className="flex items-center gap-0.5">
                   {/* Voice Assist ON/OFF toggle */}
                   {onToggleVoiceAssist && (
@@ -302,32 +208,35 @@ export function ChatInputBar({
                         : <><VolumeX className="mr-1 inline h-3 w-3" />Assist</>}
                     </button>
                   )}
-                  {/* Push-to-talk mic button */}
+                  {/* Push-to-talk mic — VAD + backend STT (same pipeline as Voice Mode) */}
                   <button
                     type="button"
                     onClick={toggleMic}
-                    disabled={micState === 'transcribing'}
+                    disabled={micState === 'transcribing' || micState === 'activating'}
                     className={`rounded-md p-1.5 transition-colors ${
-                      micState === 'recording'
+                      micState === 'listening'
                         ? 'bg-red-500/10 text-red-500 animate-pulse'
-                        : micState === 'transcribing'
+                        : micState === 'activating'
                           ? 'text-amber-400'
-                          : micState === 'error'
-                            ? 'text-red-500'
-                            : voiceAssistOn
-                              ? 'bg-primary/10 text-primary hover:bg-primary/20'
-                              : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                          : micState === 'transcribing'
+                            ? 'text-amber-400'
+                            : micState === 'error'
+                              ? 'text-red-500'
+                              : voiceAssistOn
+                                ? 'bg-primary/10 text-primary hover:bg-primary/20'
+                                : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
                     }`}
                     title={
-                      micState === 'recording' ? 'Stop recording' :
+                      micState === 'activating' ? 'Starting mic...' :
+                      micState === 'listening' ? 'Listening... (click to stop)' :
                       micState === 'transcribing' ? 'Transcribing...' :
-                      micState === 'error' ? 'Microphone error' :
+                      micState === 'error' ? 'Mic error — check STT model in Voice Settings' :
                       voiceAssistOn ? 'Speak (Voice Assist)' : 'Voice input'
                     }
-                    aria-label={micState === 'recording' ? 'Stop recording' : 'Voice input'}
+                    aria-label={micState === 'listening' ? 'Stop recording' : 'Voice input'}
                   >
-                    {micState === 'recording' ? <MicOff className="h-4 w-4" /> :
-                     micState === 'transcribing' ? <Loader2 className="h-4 w-4 animate-spin" /> :
+                    {micState === 'listening' ? <MicOff className="h-4 w-4" /> :
+                     micState === 'activating' || micState === 'transcribing' ? <Loader2 className="h-4 w-4 animate-spin" /> :
                      <Mic className="h-4 w-4" />}
                   </button>
                 </div>
