@@ -12,6 +12,7 @@ import { SessionSettingsPanel } from './SessionSettingsPanel';
 import { VoiceChatOverlay } from './VoiceChatOverlay';
 import { VoiceSettingsPanel } from './VoiceSettingsPanel';
 import { useVoiceChat } from '../hooks/useVoiceChat';
+import { useAutoTTS } from '../hooks/useAutoTTS';
 
 interface ChatWindowProps {
   session: ChatSession;
@@ -48,6 +49,7 @@ export function ChatWindow({
   // Voice mode
   // #15: depend on chat.send directly (stable ref) not the chat object
   const voiceChat = useVoiceChat(session.session_id);
+  const autoTTS = useAutoTTS(chat.messages, chat.isStreaming);
 
   // Deactivate voice mode on session change
   useEffect(() => {
@@ -119,6 +121,8 @@ export function ChatWindow({
         isStreaming={chat.isStreaming}
         disabled={isArchived}
         voiceModeActive={voiceChat.state !== 'inactive'}
+        ttsPlaying={autoTTS.isPlaying}
+        onStopTTS={autoTTS.stop}
         supportsThinking={true}
         thinkingDefault={session.generation_params?.thinking ?? false}
         onThinkingModeChange={(thinking) => {

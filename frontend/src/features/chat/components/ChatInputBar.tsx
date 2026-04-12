@@ -28,6 +28,9 @@ interface ChatInputBarProps {
   onClearContext: () => void;
   /** When true, disable push-to-talk mic (voice mode owns STT) */
   voiceModeActive?: boolean;
+  /** Auto-TTS is playing — show stop button */
+  ttsPlaying?: boolean;
+  onStopTTS?: () => void;
 }
 
 export function ChatInputBar({
@@ -44,6 +47,8 @@ export function ChatInputBar({
   onDetachContext,
   onClearContext,
   voiceModeActive,
+  ttsPlaying,
+  onStopTTS,
 }: ChatInputBarProps) {
   const [value, setValue] = useState('');
   const [thinkingMode, setThinkingMode] = useState(thinkingDefault ?? false);
@@ -291,6 +296,16 @@ export function ChatInputBar({
                   {micState === 'recording' ? <MicOff className="h-4 w-4" /> :
                    micState === 'transcribing' ? <Loader2 className="h-4 w-4 animate-spin" /> :
                    <Mic className="h-4 w-4" />}
+                </button>
+              )}
+              {/* Stop TTS button (Voice Assist auto-TTS) */}
+              {ttsPlaying && onStopTTS && (
+                <button
+                  type="button"
+                  onClick={onStopTTS}
+                  className="rounded-md bg-red-500/10 px-2 py-1 text-[10px] font-medium text-red-400 hover:bg-red-500/20 transition-colors"
+                >
+                  Stop Audio
                 </button>
               )}
               {/* Think/Fast toggle */}
