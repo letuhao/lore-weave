@@ -57,6 +57,11 @@ export class TTSPlaybackQueue {
 
   /** Enqueue audio data for playback. Schedules gaplessly after previous chunk. */
   async enqueue(audioData: ArrayBuffer): Promise<void> {
+    // Reset close/fired state on new enqueue (new turn reuses the same queue)
+    if (this.closed) {
+      this.closed = false;
+      this.allPlayedFired = false;
+    }
     const gen = this.generation; // PQ-02: capture generation
     const idx = this.chunkIndex++;
     this.pendingCount++; // Increment BEFORE async decode to prevent premature onAllPlayed
