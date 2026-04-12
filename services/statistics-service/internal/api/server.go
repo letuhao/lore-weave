@@ -627,32 +627,65 @@ func (s *Server) voiceStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Direct query on raw events — no pre-aggregated table needed
 	var stats struct {
-		TotalTurns              int     `json:"total_turns"`
-		SuccessfulTurns         int     `json:"successful_turns"`
-		FailedTurns             int     `json:"failed_turns"`
-		AvgSTTDurationMs        int     `json:"avg_stt_duration_ms"`
-		AvgSpeechDurationMs     int     `json:"avg_speech_duration_ms"`
-		AvgLLMFirstTokenMs      int     `json:"avg_llm_first_token_ms"`
-		MisfireRate             float64 `json:"misfire_rate"`
-		RecommendedSilenceFrames int    `json:"recommended_silence_frames"`
-		RecommendedMinDurationMs int    `json:"recommended_min_duration_ms"`
+		TotalTurns       int     `json:"total_turns"`
+		FailedTurns      int     `json:"failed_turns"`
+		MisfireRate      float64 `json:"misfire_rate"`
+		AvgSpeechMs      int     `json:"avg_speech_duration_ms"`
+		// Correlation: misfire rate at different threshold levels
+		MisfireAtNormal  float64 `json:"misfire_at_normal"`
+		MisfireAtPatient float64 `json:"misfire_at_patient"`
+		// Recommendation
+		RecommendedSilenceFrames int `json:"recommended_silence_frames"`
+		RecommendedMinDurationMs int `json:"recommended_min_duration_ms"`
 	}
 
 	err = s.pool.QueryRow(r.Context(), `
-		SELECT total_turns, successful_turns, failed_turns,
-			avg_stt_duration_ms, avg_speech_duration_ms, avg_llm_first_token_ms,
-			misfire_rate, recommended_silence_frames, recommended_min_duration_ms
-		FROM voice_user_stats WHERE user_id = $1
+		WITH recent AS (
+			SELECT * FROM voice_turn_events
+			WHERE user_id = $1 AND recorded_at > now() - interval '30 days'
+			ORDER BY recorded_at DESC LIMIT 100
+		)
+		SELECT
+			COUNT(*),
+			COUNT(*) FILTER (WHERE NOT stt_success),
+			CASE WHEN COUNT(*) > 0
+				THEN COUNT(*) FILTER (WHERE NOT stt_success)::float / COUNT(*)
+				ELSE 0 END,
+			COALESCE(AVG(speech_duration_ms) FILTER (WHERE stt_success AND speech_duration_ms IS NOT NULL), 0)::int,
+			CASE WHEN COUNT(*) FILTER (WHERE threshold_silence_frames <= 8) > 0
+				THEN COUNT(*) FILTER (WHERE NOT stt_success AND threshold_silence_frames <= 8)::float
+					/ COUNT(*) FILTER (WHERE threshold_silence_frames <= 8)
+				ELSE 0 END,
+			CASE WHEN COUNT(*) FILTER (WHERE threshold_silence_frames > 8) > 0
+				THEN COUNT(*) FILTER (WHERE NOT stt_success AND threshold_silence_frames > 8)::float
+					/ COUNT(*) FILTER (WHERE threshold_silence_frames > 8)
+				ELSE 0 END
+		FROM recent
 	`, userID).Scan(
-		&stats.TotalTurns, &stats.SuccessfulTurns, &stats.FailedTurns,
-		&stats.AvgSTTDurationMs, &stats.AvgSpeechDurationMs, &stats.AvgLLMFirstTokenMs,
-		&stats.MisfireRate, &stats.RecommendedSilenceFrames, &stats.RecommendedMinDurationMs,
+		&stats.TotalTurns, &stats.FailedTurns, &stats.MisfireRate,
+		&stats.AvgSpeechMs, &stats.MisfireAtNormal, &stats.MisfireAtPatient,
 	)
 	if err != nil {
-		// No stats yet — return defaults
 		stats.RecommendedSilenceFrames = 8
 		stats.RecommendedMinDurationMs = 500
+		writeJSON(w, http.StatusOK, stats)
+		return
+	}
+
+	// Recommend based on correlation data
+	stats.RecommendedSilenceFrames = 8
+	stats.RecommendedMinDurationMs = 500
+	if stats.MisfireRate > 0.3 {
+		stats.RecommendedSilenceFrames = 16
+		stats.RecommendedMinDurationMs = 1000
+	} else if stats.MisfireRate > 0.15 {
+		stats.RecommendedSilenceFrames = 12
+		stats.RecommendedMinDurationMs = 700
+	} else if stats.MisfireRate < 0.05 && stats.AvgSpeechMs > 3000 {
+		stats.RecommendedSilenceFrames = 5
+		stats.RecommendedMinDurationMs = 300
 	}
 
 	writeJSON(w, http.StatusOK, stats)

@@ -243,6 +243,7 @@ async def voice_stream_response(
     # Track voice config for analytics
     vad_silence_frames = voice_config.get("vad_silence_frames", 8)
     vad_min_duration_ms = voice_config.get("vad_min_duration_ms", 500)
+    speech_duration_ms = voice_config.get("speech_duration_ms")
     audio_size_kb = round(len(audio_bytes) / 1024)
 
     # ── Step 1: STT ──────────────────────────────────────────────────
@@ -255,7 +256,8 @@ async def voice_stream_response(
         logger.exception("STT failed for session %s", session_id)
         asyncio.create_task(emit_voice_turn(
             user_id=user_id, session_id=session_id, stt_success=False, stt_duration_ms=0,
-            audio_size_kb=audio_size_kb, threshold_silence_frames=vad_silence_frames,
+            speech_duration_ms=speech_duration_ms,
+            threshold_silence_frames=vad_silence_frames,
             threshold_min_duration_ms=vad_min_duration_ms,
         ))
         yield _sse("error", {"errorText": "Speech recognition failed. Please try again."})
@@ -272,7 +274,7 @@ async def voice_stream_response(
     if not transcript or len(transcript.strip()) < 2:
         asyncio.create_task(emit_voice_turn(
             user_id=user_id, session_id=session_id, stt_success=False,
-            stt_duration_ms=stt_ms, audio_size_kb=audio_size_kb,
+            stt_duration_ms=stt_ms, speech_duration_ms=speech_duration_ms,
             threshold_silence_frames=vad_silence_frames,
             threshold_min_duration_ms=vad_min_duration_ms,
         ))
@@ -498,9 +500,8 @@ async def voice_stream_response(
         # Voice analytics event (background)
         asyncio.create_task(emit_voice_turn(
             user_id=user_id, session_id=session_id, stt_success=True,
-            stt_duration_ms=stt_ms, audio_size_kb=audio_size_kb,
+            stt_duration_ms=stt_ms, speech_duration_ms=speech_duration_ms,
             llm_first_token_ms=round(ttft) if ttft else None,
-            tts_sentence_count=sentence_index, tts_skipped_count=skipped_count,
             threshold_silence_frames=vad_silence_frames,
             threshold_min_duration_ms=vad_min_duration_ms,
         ))

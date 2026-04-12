@@ -160,39 +160,24 @@ ALTER TABLE translator_stats ADD COLUMN IF NOT EXISTS display_name TEXT NOT NULL
 -- Translation count per book (distinct languages with completed translations)
 ALTER TABLE book_stats ADD COLUMN IF NOT EXISTS translation_count INT NOT NULL DEFAULT 0;
 
--- Voice Pipeline V2: raw voice turn events for analytics
+-- Voice Pipeline V2: raw voice turn events for analytics + adaptive thresholds
 CREATE TABLE IF NOT EXISTS voice_turn_events (
-  id                       UUID PRIMARY KEY DEFAULT uuidv7(),
-  user_id                  UUID NOT NULL,
-  session_id               UUID NOT NULL,
-  stt_success              BOOLEAN NOT NULL,
-  stt_duration_ms          INT NOT NULL DEFAULT 0,
-  speech_duration_ms       INT,
-  audio_size_kb            INT,
-  llm_first_token_ms       INT,
-  tts_sentence_count       INT NOT NULL DEFAULT 0,
-  tts_skipped_count        INT NOT NULL DEFAULT 0,
-  threshold_silence_frames INT NOT NULL DEFAULT 8,
+  id                        UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id                   UUID NOT NULL,
+  session_id                UUID NOT NULL,
+  stt_success               BOOLEAN NOT NULL,
+  speech_duration_ms        INT,
+  threshold_silence_frames  INT NOT NULL DEFAULT 8,
   threshold_min_duration_ms INT NOT NULL DEFAULT 500,
-  recorded_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+  stt_duration_ms           INT NOT NULL DEFAULT 0,
+  llm_first_token_ms        INT,
+  recorded_at               TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_vte_user ON voice_turn_events(user_id, recorded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_vte_time ON voice_turn_events(recorded_at DESC);
 
--- Voice Pipeline V2: per-user aggregated voice stats (for adaptive thresholds)
-CREATE TABLE IF NOT EXISTS voice_user_stats (
-  user_id                  UUID PRIMARY KEY,
-  total_turns              INT NOT NULL DEFAULT 0,
-  successful_turns         INT NOT NULL DEFAULT 0,
-  failed_turns             INT NOT NULL DEFAULT 0,
-  avg_stt_duration_ms      INT NOT NULL DEFAULT 0,
-  avg_speech_duration_ms   INT NOT NULL DEFAULT 0,
-  avg_llm_first_token_ms   INT NOT NULL DEFAULT 0,
-  misfire_rate             DOUBLE PRECISION NOT NULL DEFAULT 0,
-  recommended_silence_frames INT NOT NULL DEFAULT 8,
-  recommended_min_duration_ms INT NOT NULL DEFAULT 500,
-  updated_at               TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+-- Drop legacy aggregated table if exists (replaced by direct query on raw events)
+DROP TABLE IF EXISTS voice_user_stats;
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

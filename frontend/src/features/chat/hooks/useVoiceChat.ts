@@ -113,12 +113,18 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
       return;
     }
 
+    // Calculate speech duration from audio samples (16kHz mono)
+    const speechDurationMs = Math.round((audio.length / 16000) * 1000);
+
     const voiceConfig: VoiceConfig = {
       stt_model_source: 'user_model',
       stt_model_ref: prefs.sttModelRef,
       tts_model_source: prefs.ttsModelRef ? 'user_model' : undefined,
       tts_model_ref: prefs.ttsModelRef || undefined,
       tts_voice: prefs.ttsVoiceId || 'af_heart',
+      speech_duration_ms: speechDurationMs,
+      vad_silence_frames: prefs.vadSilenceFrames,
+      vad_min_duration_ms: prefs.minSpeechDurationMs,
     };
 
     setAiText('');

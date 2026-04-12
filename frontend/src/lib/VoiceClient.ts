@@ -45,6 +45,9 @@ export interface VoiceConfig {
   tts_model_source?: string;
   tts_model_ref?: string;
   tts_voice?: string;
+  speech_duration_ms?: number;
+  vad_silence_frames?: number;
+  vad_min_duration_ms?: number;
 }
 
 export class VoiceClient {

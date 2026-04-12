@@ -763,14 +763,11 @@ func (c *Consumer) handleVoiceTurn(ctx context.Context, payloadStr string) {
 		UserID                 string `json:"user_id"`
 		SessionID              string `json:"session_id"`
 		STTSuccess             bool   `json:"stt_success"`
-		STTDurationMs          int    `json:"stt_duration_ms"`
 		SpeechDurationMs       *int   `json:"speech_duration_ms"`
-		AudioSizeKB            *int   `json:"audio_size_kb"`
-		LLMFirstTokenMs        *int   `json:"llm_first_token_ms"`
-		TTSSentenceCount       int    `json:"tts_sentence_count"`
-		TTSSkippedCount        int    `json:"tts_skipped_count"`
 		ThresholdSilenceFrames int    `json:"threshold_silence_frames"`
 		ThresholdMinDurationMs int    `json:"threshold_min_duration_ms"`
+		STTDurationMs          int    `json:"stt_duration_ms"`
+		LLMFirstTokenMs        *int   `json:"llm_first_token_ms"`
 	}
 	if err := json.Unmarshal([]byte(payloadStr), &p); err != nil {
 		slog.Error("voice: bad payload", "error", err)
@@ -782,98 +779,20 @@ func (c *Consumer) handleVoiceTurn(ctx context.Context, payloadStr string) {
 		slog.Error("voice: bad user_id", "error", err)
 		return
 	}
-
 	sessionID, _ := uuid.Parse(p.SessionID)
 
-	// Insert raw event
+	// Insert raw event — no aggregation, queried directly by recommendation endpoint
 	_, err = c.Pool.Exec(ctx, `
 		INSERT INTO voice_turn_events
-		  (user_id, session_id, stt_success, stt_duration_ms, speech_duration_ms,
-		   audio_size_kb, llm_first_token_ms, tts_sentence_count, tts_skipped_count,
-		   threshold_silence_frames, threshold_min_duration_ms)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-		userID, sessionID, p.STTSuccess, p.STTDurationMs, p.SpeechDurationMs,
-		p.AudioSizeKB, p.LLMFirstTokenMs, p.TTSSentenceCount, p.TTSSkippedCount,
+		  (user_id, session_id, stt_success, speech_duration_ms,
+		   threshold_silence_frames, threshold_min_duration_ms,
+		   stt_duration_ms, llm_first_token_ms)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		userID, sessionID, p.STTSuccess, p.SpeechDurationMs,
 		p.ThresholdSilenceFrames, p.ThresholdMinDurationMs,
+		p.STTDurationMs, p.LLMFirstTokenMs,
 	)
 	if err != nil {
 		slog.Error("voice: insert event failed", "error", err)
-		return
-	}
-
-	// Recalculate user stats every 5 turns (debounce)
-	var turnCount int
-	_ = c.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM voice_turn_events WHERE user_id = $1`, userID).Scan(&turnCount)
-	if turnCount%5 == 0 || !p.STTSuccess {
-		// Recalc on every 5th turn, or immediately on failure (for fast adaptation)
-		c.recalcVoiceUserStats(ctx, userID)
-	}
-}
-
-func (c *Consumer) recalcVoiceUserStats(ctx context.Context, userID uuid.UUID) {
-	// Aggregate from recent events (last 100 turns)
-	var totalTurns, successTurns, failedTurns int
-	var avgSTTMs, avgSpeechMs, avgLLMMs int
-	var misfireRate float64
-
-	err := c.Pool.QueryRow(ctx, `
-		WITH recent AS (
-			SELECT * FROM voice_turn_events
-			WHERE user_id = $1
-			ORDER BY recorded_at DESC LIMIT 100
-		)
-		SELECT
-			COUNT(*),
-			COUNT(*) FILTER (WHERE stt_success),
-			COUNT(*) FILTER (WHERE NOT stt_success),
-			COALESCE(AVG(stt_duration_ms) FILTER (WHERE stt_success), 0)::int,
-			COALESCE(AVG(speech_duration_ms) FILTER (WHERE stt_success AND speech_duration_ms IS NOT NULL), 0)::int,
-			COALESCE(AVG(llm_first_token_ms) FILTER (WHERE stt_success AND llm_first_token_ms IS NOT NULL), 0)::int,
-			CASE WHEN COUNT(*) > 0
-				THEN COUNT(*) FILTER (WHERE NOT stt_success)::float / COUNT(*)
-				ELSE 0 END
-		FROM recent
-	`, userID).Scan(&totalTurns, &successTurns, &failedTurns, &avgSTTMs, &avgSpeechMs, &avgLLMMs, &misfireRate)
-	if err != nil {
-		slog.Error("voice: recalc stats failed", "error", err)
-		return
-	}
-
-	// Calculate recommended thresholds based on misfire rate
-	recommendedSilence := 8 // Normal default
-	recommendedMinDuration := 500
-	if misfireRate > 0.3 {
-		recommendedSilence = 16  // Learner mode — lots of misfires
-		recommendedMinDuration = 1000
-	} else if misfireRate > 0.15 {
-		recommendedSilence = 12 // Patient mode
-		recommendedMinDuration = 700
-	} else if misfireRate < 0.05 && avgSpeechMs > 3000 {
-		recommendedSilence = 5 // Fast mode — reliable speaker
-		recommendedMinDuration = 300
-	}
-
-	_, err = c.Pool.Exec(ctx, `
-		INSERT INTO voice_user_stats
-			(user_id, total_turns, successful_turns, failed_turns,
-			 avg_stt_duration_ms, avg_speech_duration_ms, avg_llm_first_token_ms,
-			 misfire_rate, recommended_silence_frames, recommended_min_duration_ms, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
-		ON CONFLICT (user_id) DO UPDATE SET
-			total_turns = EXCLUDED.total_turns,
-			successful_turns = EXCLUDED.successful_turns,
-			failed_turns = EXCLUDED.failed_turns,
-			avg_stt_duration_ms = EXCLUDED.avg_stt_duration_ms,
-			avg_speech_duration_ms = EXCLUDED.avg_speech_duration_ms,
-			avg_llm_first_token_ms = EXCLUDED.avg_llm_first_token_ms,
-			misfire_rate = EXCLUDED.misfire_rate,
-			recommended_silence_frames = EXCLUDED.recommended_silence_frames,
-			recommended_min_duration_ms = EXCLUDED.recommended_min_duration_ms,
-			updated_at = now()
-	`, userID, totalTurns, successTurns, failedTurns, avgSTTMs, avgSpeechMs, avgLLMMs,
-		misfireRate, recommendedSilence, recommendedMinDuration,
-	)
-	if err != nil {
-		slog.Error("voice: upsert user stats failed", "error", err)
 	}
 }
