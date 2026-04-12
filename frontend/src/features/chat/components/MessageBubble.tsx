@@ -80,6 +80,8 @@ export function MessageBubble({
     stt_ms?: number;
   } | null;
 
+  const showMetrics = loadVoicePrefs().showVoiceMetrics;
+
   // Extract code blocks from assistant messages to show as OutputCards
   const codeOutputs = useMemo<ChatOutput[]>(() => {
     if (isUser || isStreamingMsg) return [];
@@ -184,7 +186,7 @@ export function MessageBubble({
                   (contentParts.time_to_first_token_ms ?? 0) < 2000 ? 'bg-emerald-400' :
                   (contentParts.time_to_first_token_ms ?? 0) < 5000 ? 'bg-amber-400' : 'bg-red-400',
                 )} title={`TTFT: ${contentParts.time_to_first_token_ms ?? '?'}ms`} />
-                {loadVoicePrefs().showVoiceMetrics && (
+                {showMetrics && (
                   <span className="text-muted-foreground/40">
                     TTFT {contentParts.time_to_first_token_ms ?? '?'}ms
                     · {contentParts.response_time_ms ?? '?'}ms total
@@ -193,7 +195,7 @@ export function MessageBubble({
                 )}
               </>
             )}
-            {isUser && contentParts?.input_method === 'voice' && loadVoicePrefs().showVoiceMetrics && contentParts.stt_ms != null && (
+            {isUser && contentParts?.input_method === 'voice' && showMetrics && contentParts.stt_ms != null && (
               <span className="text-muted-foreground/40">STT {contentParts.stt_ms}ms</span>
             )}
             {new Date(message.created_at).toLocaleTimeString()}

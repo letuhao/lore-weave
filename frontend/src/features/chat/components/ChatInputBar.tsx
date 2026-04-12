@@ -66,7 +66,8 @@ export function ChatInputBar({
     continuous: false,
     interimResults: true,
     onFinalTranscript: useCallback((text: string) => {
-      setValue((prev) => (prev ? prev + ' ' + text : text));
+      const append = loadVoicePrefs().voiceAssistAppend;
+      setValue((prev) => (append && prev) ? prev + ' ' + text : text);
       setMicState('idle');
     }, []),
   });
@@ -117,7 +118,10 @@ export function ChatInputBar({
             if (resp.ok) {
               const result = await resp.json();
               const text = result.text || '';
-              if (text.trim()) setValue((prev) => (prev ? prev + ' ' + text : text));
+              if (text.trim()) {
+                const append = prefs.voiceAssistAppend;
+                setValue((prev) => (append && prev) ? prev + ' ' + text : text);
+              }
             } else {
               setMicState('error');
               setTimeout(() => setMicState('idle'), 2000);

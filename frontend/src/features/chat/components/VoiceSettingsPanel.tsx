@@ -457,8 +457,7 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
 
         {/* ── Audio Retention Info ── */}
         <p className="text-[9px] text-muted-foreground/50 mt-2">
-          Voice audio is stored for {48} hours for replay, then automatically deleted.
-          You can delete all voice data from Settings.
+          Voice audio is stored for 48 hours for replay, then automatically deleted.
         </p>
 
         {/* Reset */}
