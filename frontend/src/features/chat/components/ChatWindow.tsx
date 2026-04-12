@@ -49,7 +49,7 @@ export function ChatWindow({
   // Voice mode
   // #15: depend on chat.send directly (stable ref) not the chat object
   const voiceChat = useVoiceChat(session.session_id, chat.refresh);
-  const autoTTS = useAutoTTS(chat.messages, chat.isStreaming);
+  const autoTTS = useAutoTTS(chat.messages, chat.isStreaming, voiceChat.state !== 'inactive');
 
   // Deactivate voice mode on session change
   useEffect(() => {

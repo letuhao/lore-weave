@@ -63,7 +63,8 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
     const playback = new TTSPlaybackQueue({
       audioContext: ctx,
       onAllPlayed: () => {
-        // Audio done — resume listening if still active
+        // Audio done — NOW safe to refresh messages and resume VAD
+        onTurnCompleteRef.current?.();
         if (activeRef.current) {
           setState('listening');
           vadRef.current?.resume();
@@ -193,12 +194,11 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
         }
       },
       onFinish: () => {
-        // Refresh chat message list so voice messages appear
-        onTurnCompleteRef.current?.();
         playbackRef.current?.close();
         // State will transition to 'listening' via onAllPlayed callback
         // If no audio was generated, resume listening now
         if (!playbackRef.current?.isPlaying) {
+          onTurnCompleteRef.current?.();
           if (activeRef.current) {
             setState('listening');
             vadRef.current?.resume();
