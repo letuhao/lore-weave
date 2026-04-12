@@ -125,53 +125,119 @@ LoreWeave's current chat is a **stateless replay buffer** — it sends the last 
 
 ## 3. Data Model
 
-### 3.1 Palace Hierarchy → LoreWeave Domain Mapping
+### 3.1 Scope Model
+
+LoreWeave serves multiple purposes (novel writing, translation, worldbuilding, coding,
+general AI chat). Memory must be scoped to reflect this — not locked to books.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Global Memory (user-wide)                                   │
+│  "User is Vietnamese", "prefers formal English"             │
+│                                                             │
+│  ┌───────────────────┐  ┌───────────────────┐              │
+│  │ Project:           │  │ Project:           │  ...        │
+│  │ "Eastern Sea" book │  │ "Translation Work" │             │
+│  │                    │  │                    │             │
+│  │ ┌──────┐ ┌──────┐ │  │ ┌──────┐ ┌──────┐ │             │
+│  │ │Sess 1│ │Sess 2│ │  │ │Sess 3│ │Sess 4│ │             │
+│  │ └──────┘ └──────┘ │  │ └──────┘ └──────┘ │             │
+│  └───────────────────┘  └───────────────────┘              │
+│                                                             │
+│  ┌──────┐ ┌──────┐  (unassigned sessions — no project)     │
+│  │Sess 5│ │Sess 6│                                          │
+│  └──────┘ └──────┘                                          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Four memory scopes:**
+
+| Scope | Lifetime | What it stores | Example |
+|---|---|---|---|
+| **Global** | Permanent, cross-project | User identity, preferences, habits | "User is Vietnamese novelist, UTC+7" |
+| **Project** | Lives with the project | Domain knowledge, rules, entities | "5 kingdoms, fire magic, Kai is 17" |
+| **Session** | Lives with the chat session | Conversation-specific decisions | "Rewriting ch.12, trying approach B" |
+| **Turn** | Discarded after response | Recent messages (last 10-20) | Current replay buffer |
+
+**Projects are explicit containers** — a user creates them like ChatGPT Projects.
+A project can link to a book (`book_id`), a codebase, a translation job, or nothing
+(general-purpose). Sessions can optionally belong to a project.
+
+### 3.2 Palace Hierarchy → LoreWeave Mapping
 
 ```
 MemPalace           LoreWeave
 ─────────           ─────────
-Wing          →     Book (or "global" for cross-book knowledge)
-Room          →     Chapter / Character / Topic / Glossary entity
+Wing          →     Project (book, translation job, codebase, general)
+Room          →     Topic / Chapter / Character / Module
 Hall          →     Memory type: fact, decision, event, preference, milestone
-Tunnel        →     Cross-book entity (same character appears in multiple books)
+Tunnel        →     Cross-project entity (same character in multiple books)
 Closet        →     memory_summaries (compressed context per scope)
 Drawer        →     memory_drawers (verbatim text chunks with embeddings)
 ```
 
-### 3.2 Postgres Schema
+### 3.3 Postgres Schema
 
 ```sql
 -- Extension required
 CREATE EXTENSION IF NOT EXISTS vector;
 
 -- ═══════════════════════════════════════════════════════════════
--- Entities: characters, places, concepts, projects
+-- Projects: explicit containers for scoping memory
+-- (like ChatGPT Projects — a book, a codebase, a translation job, or general)
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE memory_projects (
+    project_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID NOT NULL REFERENCES users(user_id),
+    name            TEXT NOT NULL,
+    description     TEXT DEFAULT '',
+    project_type    TEXT DEFAULT 'general', -- book, translation, code, general
+    book_id         UUID,                   -- optional link to existing book
+    instructions    TEXT DEFAULT '',         -- persistent project instructions (like ChatGPT custom instructions)
+    is_archived     BOOLEAN DEFAULT false,
+    created_at      TIMESTAMPTZ DEFAULT now(),
+    updated_at      TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_memory_projects_user ON memory_projects(user_id);
+
+-- ═══════════════════════════════════════════════════════════════
+-- Link sessions to projects (optional — sessions can be unassigned)
+-- ═══════════════════════════════════════════════════════════════
+-- This is a column addition to existing chat_sessions table:
+-- ALTER TABLE chat_sessions ADD COLUMN project_id UUID REFERENCES memory_projects(project_id);
+
+-- ═══════════════════════════════════════════════════════════════
+-- Entities: characters, places, concepts, terms
+-- Scoped to project (or global if project_id is NULL)
 -- ═══════════════════════════════════════════════════════════════
 CREATE TABLE memory_entities (
     entity_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         UUID NOT NULL REFERENCES users(user_id),
-    book_id         UUID REFERENCES books(book_id),  -- NULL = global
+    project_id      UUID REFERENCES memory_projects(project_id),  -- NULL = global
     name            TEXT NOT NULL,
     entity_type     TEXT NOT NULL,       -- person, place, concept, item, event
     aliases         TEXT[] DEFAULT '{}', -- alternative names / spellings
     properties      JSONB DEFAULT '{}',  -- flexible metadata
     created_at      TIMESTAMPTZ DEFAULT now(),
     updated_at      TIMESTAMPTZ DEFAULT now(),
-    UNIQUE(user_id, book_id, name, entity_type)
+    UNIQUE(user_id, project_id, name, entity_type)
 );
 
-CREATE INDEX idx_memory_entities_user_book ON memory_entities(user_id, book_id);
+CREATE INDEX idx_memory_entities_user ON memory_entities(user_id, project_id);
 CREATE INDEX idx_memory_entities_name ON memory_entities(user_id, name);
 
 -- ═══════════════════════════════════════════════════════════════
 -- Triples: subject → predicate → object (temporal knowledge graph)
+-- Scoped to project + optionally session
 -- ═══════════════════════════════════════════════════════════════
 CREATE TABLE memory_triples (
     triple_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         UUID NOT NULL REFERENCES users(user_id),
-    book_id         UUID REFERENCES books(book_id),
+    project_id      UUID REFERENCES memory_projects(project_id),  -- NULL = global
+    session_id      UUID,               -- NULL = project-level, set = session-level
     subject         TEXT NOT NULL,       -- entity name or free text
-    predicate       TEXT NOT NULL,       -- relationship verb: "is", "lives_in", "killed", "decided_to"
+    predicate       TEXT NOT NULL,       -- "is", "lives_in", "killed", "decided_to", "prefers"
     object          TEXT NOT NULL,       -- entity name or free text
     confidence      REAL DEFAULT 1.0 CHECK (confidence BETWEEN 0 AND 1),
     valid_from      TIMESTAMPTZ DEFAULT now(),
@@ -181,30 +247,34 @@ CREATE TABLE memory_triples (
     created_at      TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX idx_memory_triples_user_book ON memory_triples(user_id, book_id);
+CREATE INDEX idx_memory_triples_user_project ON memory_triples(user_id, project_id);
+CREATE INDEX idx_memory_triples_session ON memory_triples(user_id, session_id);
 CREATE INDEX idx_memory_triples_subject ON memory_triples(user_id, subject);
 CREATE INDEX idx_memory_triples_object ON memory_triples(user_id, object);
 CREATE INDEX idx_memory_triples_temporal ON memory_triples(user_id, valid_from, valid_until);
 
 -- ═══════════════════════════════════════════════════════════════
 -- Drawers: verbatim text chunks with vector embeddings
+-- Scoped to project + optionally session
 -- ═══════════════════════════════════════════════════════════════
 CREATE TABLE memory_drawers (
     drawer_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         UUID NOT NULL REFERENCES users(user_id),
-    book_id         UUID REFERENCES books(book_id),    -- wing
-    room            TEXT NOT NULL,                      -- chapter/character/topic
-    hall            TEXT DEFAULT 'facts',               -- facts, decisions, events, preferences, milestones
+    project_id      UUID REFERENCES memory_projects(project_id),  -- wing
+    session_id      UUID,               -- NULL = project-level, set = session-level
+    room            TEXT NOT NULL,       -- topic / chapter / character / module
+    hall            TEXT DEFAULT 'facts',-- facts, decisions, events, preferences, milestones
     content         TEXT NOT NULL,
-    embedding       vector(1536),                      -- pgvector (dimension depends on embedding model)
-    source_type     TEXT DEFAULT 'chat',                -- chat, book_content, glossary, manual
-    source_id       UUID,                              -- message_id, chapter_id, etc.
+    embedding       vector(1536),        -- pgvector (dimension depends on embedding model)
+    source_type     TEXT DEFAULT 'chat', -- chat, book_content, glossary, manual
+    source_id       UUID,                -- message_id, chapter_id, etc.
     token_count     INT,
     filed_at        TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX idx_memory_drawers_user_book ON memory_drawers(user_id, book_id);
-CREATE INDEX idx_memory_drawers_room ON memory_drawers(user_id, book_id, room);
+CREATE INDEX idx_memory_drawers_user_project ON memory_drawers(user_id, project_id);
+CREATE INDEX idx_memory_drawers_session ON memory_drawers(user_id, session_id);
+CREATE INDEX idx_memory_drawers_room ON memory_drawers(user_id, project_id, room);
 CREATE INDEX idx_memory_drawers_embedding ON memory_drawers
     USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
@@ -214,9 +284,8 @@ CREATE INDEX idx_memory_drawers_embedding ON memory_drawers
 CREATE TABLE memory_summaries (
     summary_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         UUID NOT NULL REFERENCES users(user_id),
-    book_id         UUID REFERENCES books(book_id),
-    scope_type      TEXT NOT NULL,       -- identity, book, character, chapter, session
-    scope_id        UUID,                -- book_id, character entity_id, chapter_id, session_id
+    scope_type      TEXT NOT NULL,       -- global, project, session, entity
+    scope_id        UUID,                -- project_id, session_id, entity_id (NULL for global)
     content         TEXT NOT NULL,
     token_count     INT,
     version         INT DEFAULT 1,       -- incremented on regeneration
@@ -226,18 +295,57 @@ CREATE TABLE memory_summaries (
 );
 ```
 
-### 3.3 Glossary Integration
+### 3.4 Scope Resolution at Query Time
 
-LoreWeave already has a glossary system with entities, kinds, and descriptions. Memory should sync with it:
+When building memory context for a chat turn, the system queries multiple scopes
+and merges results by priority:
+
+```
+Session S belongs to Project P, owned by User U.
+
+L0 (identity):
+  memory_summaries WHERE user_id=U AND scope_type='global'
+
+L1 (project context):
+  memory_summaries WHERE user_id=U AND scope_type='project' AND scope_id=P
+
+L2 (relevant facts):
+  memory_triples WHERE user_id=U AND (project_id=P OR project_id IS NULL)
+                   AND valid_until IS NULL
+                   AND subject IN (detected_entities)
+
+L3 (semantic search):
+  memory_drawers WHERE user_id=U AND (project_id=P OR project_id IS NULL)
+                  ORDER BY embedding <=> query_embedding
+                  LIMIT 5
+
+Turn context:
+  chat_messages WHERE session_id=S ORDER BY sequence_num DESC LIMIT 20
+```
+
+**Note:** Queries always include `project_id IS NULL` (global memories) alongside
+project-scoped memories. Global memories apply everywhere. Project memories
+only apply within that project. Session-level memories are included when
+querying within that session.
+
+### 3.5 Glossary Integration
+
+LoreWeave already has a glossary system tied to books. When a project is linked to a
+book (`memory_projects.book_id`), the glossary auto-syncs to project memory:
 
 | Glossary concept | Memory equivalent |
 |---|---|
-| Glossary entity | `memory_entities` row (sync on create/update) |
+| Glossary entity | `memory_entities` row (sync on create/update, scoped to project) |
 | Entity description | `memory_drawers` row (room = entity name, hall = 'facts') |
 | Entity relationships | `memory_triples` rows |
 | Entity kind | `memory_entities.entity_type` |
 
-When a glossary entity is created/updated, a background job syncs to `memory_entities` and `memory_drawers`. This means the AI automatically knows about characters, places, and concepts from the glossary without the user needing to attach context manually.
+When a glossary entity is created/updated, a background job syncs to `memory_entities`
+and `memory_drawers` under the project that links to that book. This means the AI
+automatically knows about characters, places, and concepts from the glossary without
+the user needing to attach context manually.
+
+Projects without a linked book (translation jobs, general chat) don't use glossary sync.
 
 ---
 
@@ -259,29 +367,45 @@ Working on "The Three Kingdoms" series. Uses LoreWeave for translation and world
 
 **How populated:** Extracted from early conversations, editable by user in settings.
 
-### 4.1 Layer 1 — Book Context (loaded when book attached, ~200 tokens)
+### 4.1 Layer 1 — Project Context (loaded when session is in a project, ~200 tokens)
 
-**Source:** `memory_summaries WHERE scope_type = 'book' AND scope_id = active_book_id`
+**Source:** `memory_summaries WHERE scope_type = 'project' AND scope_id = active_project_id`
 
-**Content example:**
+Plus project instructions from `memory_projects.instructions` (user-editable, like ChatGPT custom instructions).
+
+**Content example — Book project:**
 ```
-"Winds of the Eastern Sea" — fantasy novel, 45 chapters. Protagonist Kai (17, fire elemental)
+Project: "Winds of the Eastern Sea" (book, 45 chapters). Protagonist Kai (17, fire elemental)
 trained by Master Lin (deceased ch.12). Magic system: five elements, unlocked by emotional triggers.
 Current arc: Kai infiltrating the Water Kingdom. Antagonist: Empress Yun (ice elemental, political).
 Key unresolved: Lin's secret identity, the Sixth Element prophecy.
+Instructions: Respond in formal prose style. Avoid modern idioms.
 ```
 
-**When loaded:** When the user has a book attached to the chat session or sends a message referencing book content.
+**Content example — Translation project:**
+```
+Project: "Vietnamese-English translation work". Source genre: xianxia web novels.
+Target audience: English-speaking cultivation novel readers. Style: preserve cultural terms
+(dao, qi, jianghu), use footnotes for first mentions. Previous glossary includes 47 terms.
+Instructions: Never localize character names. Keep Chinese honorifics.
+```
 
-**How populated:** Background job after every N conversation turns about the book. Uses pattern extraction + periodic LLM summarization (cheap, infrequent).
+**Content example — General project (or no project):**
+```
+(L1 is empty or skipped when session has no project)
+```
+
+**When loaded:** When the session is linked to a project (`chat_sessions.project_id IS NOT NULL`).
+
+**How populated:** Background job after every N conversation turns in the project. Uses pattern extraction + periodic LLM summarization (cheap, infrequent). User can also edit `memory_projects.instructions` directly for the static portion.
 
 ### 4.2 Layer 2 — Relevant Facts (on-demand, ~300 tokens)
 
-**Source:** `memory_triples` filtered by entities detected in user message.
+**Source:** `memory_triples` filtered by entities detected in user message, scoped to current project + global.
 
 **Query logic:**
 1. Extract entity names from user message (pattern-based, no LLM)
-2. `SELECT * FROM memory_triples WHERE user_id = $1 AND subject IN (entities) AND valid_until IS NULL`
+2. `SELECT * FROM memory_triples WHERE user_id = $1 AND (project_id = $2 OR project_id IS NULL) AND subject IN (entities) AND valid_until IS NULL`
 3. Also reverse: `WHERE object IN (entities)`
 4. Format as compact fact list
 
@@ -300,12 +424,12 @@ Known facts:
 
 ### 4.3 Layer 3 — Deep Search (on-demand, ~500 tokens)
 
-**Source:** `memory_drawers` via pgvector cosine similarity search.
+**Source:** `memory_drawers` via pgvector cosine similarity search, scoped to project + global.
 
 **Query logic:**
 1. Embed user message (via embedding model from provider-registry)
-2. `SELECT content, 1 - (embedding <=> $query_embedding) AS similarity FROM memory_drawers WHERE user_id = $1 ORDER BY similarity DESC LIMIT 5`
-3. Optionally filter by `book_id`, `room`, `hall`
+2. `SELECT content, 1 - (embedding <=> $query_embedding) AS similarity FROM memory_drawers WHERE user_id = $1 AND (project_id = $2 OR project_id IS NULL) ORDER BY similarity DESC LIMIT 5`
+3. Optionally filter by `room`, `hall`
 
 **When loaded:** When L2 returns fewer than 3 relevant facts, or when the user asks a broad question ("what happened in the early chapters?").
 
@@ -384,34 +508,38 @@ async def build_memory_context(
     user_id: str,
     session_id: str,
     user_message: str,
-    book_id: str | None,
+    project_id: str | None,
     pool: asyncpg.Pool,
 ) -> str:
     """Build layered memory context for the LLM system prompt."""
     parts = []
 
-    # L0: Identity (always)
-    identity = await get_summary(pool, user_id, 'identity')
+    # L0: Global identity (always)
+    identity = await get_summary(pool, user_id, 'global', None)
     if identity:
         parts.append(f"[About the user]\n{identity.content}")
 
-    # L1: Book context (if book attached or detected)
-    if book_id:
-        book_ctx = await get_summary(pool, user_id, 'book', book_id)
-        if book_ctx:
-            parts.append(f"[Current book context]\n{book_ctx.content}")
+    # L1: Project context (if session is in a project)
+    if project_id:
+        project = await get_project(pool, user_id, project_id)
+        if project and project.instructions:
+            parts.append(f"[Project instructions]\n{project.instructions}")
 
-    # L2: Relevant triples (entity-based)
+        project_ctx = await get_summary(pool, user_id, 'project', project_id)
+        if project_ctx:
+            parts.append(f"[Project context]\n{project_ctx.content}")
+
+    # L2: Relevant triples (entity-based, project + global scope)
     entities = extract_entities_from_text(user_message)
     if entities:
-        triples = await search_active_triples(pool, user_id, book_id, entities, limit=20)
+        triples = await search_active_triples(pool, user_id, project_id, entities, limit=20)
         if triples:
             formatted = "\n".join(f"- {t.subject} {t.predicate} {t.object}" for t in triples)
             parts.append(f"[Known facts]\n{formatted}")
 
-    # L3: Semantic search (if L2 thin)
+    # L3: Semantic search (project + global scope)
     if len(parts) < 3:
-        drawers = await vector_search_drawers(pool, user_id, book_id, user_message, limit=5)
+        drawers = await vector_search_drawers(pool, user_id, project_id, user_message, limit=5)
         if drawers:
             formatted = "\n".join(f"- {d.content[:200]}" for d in drawers)
             parts.append(f"[Related memories]\n{formatted}")
@@ -426,24 +554,34 @@ async def build_memory_context(
 ```python
 async def extract_and_store_memories(
     user_id: str,
-    book_id: str | None,
+    project_id: str | None,
+    session_id: str,
     user_message: str,
     assistant_message: str,
     message_id: str,
     pool: asyncpg.Pool,
 ):
-    """Background task: extract memories from conversation turn."""
+    """Background task: extract memories from conversation turn.
+
+    Memories are scoped:
+    - Project-level if session belongs to a project (persistent across sessions)
+    - Session-level otherwise (lives with this specific conversation)
+    - Global preferences/identity can be promoted from session → global via consolidation
+    """
     combined = f"User: {user_message}\nAssistant: {assistant_message}"
 
     # Pattern-based memory extraction (no LLM)
     memories = extract_memories(combined)
     for mem in memories:
-        await upsert_drawer(pool, user_id, book_id, mem.room, mem.hall, mem.content, message_id)
+        await upsert_drawer(
+            pool, user_id, project_id, session_id,
+            mem.room, mem.hall, mem.content, message_id,
+        )
 
     # Entity + triple extraction (no LLM)
     triples = extract_triples(combined)
     for triple in triples:
-        await upsert_triple(pool, user_id, book_id, triple, message_id)
+        await upsert_triple(pool, user_id, project_id, session_id, triple, message_id)
 ```
 
 ### 6.3 Tool Calling Integration (future)
@@ -537,8 +675,11 @@ Summary regeneration: ~$0.50/month (infrequent LLM calls for L0/L1 refresh).
 
 1. **Embedding dimension:** Should we standardize on 1536 (OpenAI compatible) or support variable dimensions per user model?
 2. **Conflict resolution:** When a new triple contradicts an old one, auto-invalidate the old one? Or flag for user review?
-3. **Cross-book entities:** How to handle a character that appears in multiple books (tunnel concept)?
+3. **Cross-project entities:** How to handle a character that appears in multiple projects (tunnel concept)?
 4. **Privacy scope:** Should memory be per-user only, or support shared memories for collaborative projects?
+5. **Session-to-project promotion:** When a session isn't assigned to a project, should we auto-suggest creating a project after N turns? Or keep sessions unassigned indefinitely?
+6. **Global memory extraction:** How do facts get promoted from session → project → global? Auto-consolidation on threshold, or manual "remember this" command?
+7. **Default "Personal" project:** Should every user have a default project, or allow truly unscoped sessions?
 5. **Memory retention:** Should memories have a TTL, or persist indefinitely until invalidated?
 6. **Chat history cutoff:** Once memory is active, reduce the message replay from 50 to 10-20? (Memory provides the deep context, recent messages provide the conversation flow.)
 
