@@ -38,6 +38,7 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
   const activeRef = useRef(false);
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
+  const consecutiveFailsRef = useRef(0);
 
   const activate = useCallback(async () => {
     if (!sessionId || !accessToken || activeRef.current) return;
@@ -121,6 +122,7 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
       onTranscript: (text) => {
         setSttText(text);
         setState('receiving');
+        consecutiveFailsRef.current = 0; // Reset on successful transcript
       },
       onTextDelta: (delta) => {
         setAiText((prev) => prev + delta);
@@ -145,7 +147,12 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
         }
       },
       onError: (errorText) => {
-        setError(errorText);
+        consecutiveFailsRef.current++;
+        if (consecutiveFailsRef.current >= 3) {
+          setError('Multiple failures. Check your microphone and STT model settings.');
+        } else {
+          setError(errorText || "Didn't catch that — try again.");
+        }
         // Resume listening after error
         if (activeRef.current) {
           setState('listening');

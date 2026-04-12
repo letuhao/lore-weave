@@ -124,11 +124,20 @@ export function VoiceChatOverlay({
             </div>
           )}
 
+          {/* Thinking indicator — receiving state but no AI text yet */}
+          {state === 'receiving' && sttText && !aiText && (
+            <p className="text-center text-sm text-white/40 animate-pulse">
+              {t('voice.thinking', 'Thinking...')}
+            </p>
+          )}
+
           {!sttText && !aiText && (
             <p className="text-center text-sm text-white/30">
               {state === 'listening'
                 ? t('voice.startSpeaking', 'Start speaking...')
-                : ''}
+                : state === 'sending'
+                  ? t('voice.processing', 'Processing...')
+                  : ''}
             </p>
           )}
         </div>
