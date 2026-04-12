@@ -164,7 +164,7 @@ export function ChatWindow({
             </p>
             <div className="mt-4 flex gap-2 justify-end">
               <button
-                onClick={voiceChat.deactivate}
+                onClick={voiceChat.dismissConsent}
                 className="rounded-md border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
               >
                 Cancel

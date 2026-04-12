@@ -23,6 +23,7 @@ export interface VoiceChatResult {
   showConsent: boolean;
   activate: () => Promise<void>;
   acceptConsent: () => void;
+  dismissConsent: () => void;
   deactivate: () => void;
   cancel: () => void;
 }
@@ -45,14 +46,6 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
   const consecutiveFailsRef = useRef(0);
-
-  const acceptConsent = useCallback(() => {
-    localStorage.setItem(CONSENT_KEY, new Date().toISOString());
-    syncPrefsToServer('voice_consent_at', new Date().toISOString(), accessToken);
-    setShowConsent(false);
-    // Re-trigger activate after consent
-    void doActivate();
-  }, [accessToken]);
 
   const doActivate = useCallback(async () => {
     if (!sessionId || !accessToken || activeRef.current) return;
@@ -110,8 +103,19 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
     consecutiveFailsRef.current = 0;
   }, [sessionId, accessToken]);
 
+  const acceptConsent = useCallback(() => {
+    const ts = new Date().toISOString();
+    localStorage.setItem(CONSENT_KEY, ts);
+    syncPrefsToServer('voice_consent_at', ts, accessToken);
+    setShowConsent(false);
+    void doActivate();
+  }, [doActivate, accessToken]);
+
+  const dismissConsent = useCallback(() => {
+    setShowConsent(false);
+  }, []);
+
   const activate = useCallback(async () => {
-    // Check consent before first activation
     if (!localStorage.getItem(CONSENT_KEY)) {
       setShowConsent(true);
       return;
@@ -211,6 +215,7 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
     setSttText('');
     setAiText('');
     setError(null);
+    setShowConsent(false);
   }, []);
 
   const cancel = useCallback(() => {
@@ -223,7 +228,7 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
     }
   }, []);
 
-  return { state, sttText, aiText, error, showConsent, activate, acceptConsent, deactivate, cancel };
+  return { state, sttText, aiText, error, showConsent, activate, acceptConsent, dismissConsent, deactivate, cancel };
 }
 
 /** Convert Float32Array (16kHz mono) to WAV blob. */
