@@ -7,11 +7,11 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-12 (session 33 — VP2 Phase A frontend complete)
-- Updated By: Assistant (VP2-06..11: VoiceClient, VadController, useVoiceChat, VoiceChatOverlay)
+- Last Updated: 2026-04-12 (session 33 end — Voice Pipeline V2 COMPLETE)
+- Updated By: Assistant (29 commits: VP2 all 48 tasks + analytics pipeline + reviews)
 - Active Branch: `main`
-- HEAD: `ecfad58` (VP2-10 VoiceChatOverlay)
-- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
+- HEAD: `236727c` (VP2-32+33 review fix)
+- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V4.md` — full context for next agent
 
 ---
 
@@ -37,7 +37,15 @@
 
 **Glossary Extraction Pipeline: FULLY COMPLETE (BE + FE + TESTED).** 13 BE tasks + 7 FE tasks + 49 integration test assertions + browser smoke test. Tested with real Qwen 3.5 9B model via LM Studio. 90 entities extracted from 5 chapters.
 
-**Voice Pipeline V2: PHASE A COMPLETE (11/43 tasks).** Architecture v2.2 (chat-service integration). Backend: migration, TextNormalizer (24 tests), SentenceBuffer (31 tests), voice_stream_response(), POST /voice-message (7 tests). 133 chat-service tests pass. Frontend: VoiceClient, VadController, TTSPlaybackQueue.enqueueBase64, useVoiceChat hook, VoiceChatOverlay. Next: Phase B (audio persistence + replay).
+**Voice Pipeline V2: COMPLETE (48/48 tasks).** All 5 phases implemented + voice analytics pipeline (5 bonus tasks). 137 chat-service tests pass. Wired into ChatWindow, tested in browser. TTS quality debugging deferred to next session.
+
+Phases completed:
+- **A: Core Pipeline (11)** — TextNormalizer, SentenceBuffer, voice_stream_response, POST /voice-message, VoiceClient, VadController, useVoiceChat, VoiceChatOverlay
+- **B: Audio Persistence (8)** — message_audio_segments migration, S3 upload, audio segments GET endpoint, AudioReplayPlayer, cleanup + GDPR erasure
+- **C: UX Polish (8)** — mic badge, health dot, "Thinking..." indicator, error recovery, VAD presets + adaptive settings
+- **D: Voice Assist (7)** — push-to-talk with backend STT, 4-state mic button, auto-TTS on AI response, stop audio button
+- **E: Security (9)** — voice consent dialog, textarea guard, debug metrics toggle, headphone detection utility
+- **Analytics (5)** — voice.turn events to Redis, statistics-service consumer, correlation-based recommendations, lean schema optimization
 
 **Cloud Readiness Audit: COMPLETE (26/26 tasks).** All P0+P1+P2 tasks implemented + reviewed. 21 commits across 12 Go services, 2 Python services, 1 NestJS gateway, 8 frontend components, docker-compose.
 

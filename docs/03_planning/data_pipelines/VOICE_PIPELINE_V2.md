@@ -1,10 +1,10 @@
 # Voice Pipeline V2 — Architecture Document
 
-> **Status:** Design phase — server-side chat-service integration
-> **Session:** 32 (2026-04-11)
+> **Status:** IMPLEMENTED — all 48 tasks + 5 analytics bonus tasks complete
+> **Sessions:** 32 (design + CRA), 33 (implementation)
 > **Previous:** 6 review rounds (context, data, UX, security, performance, competitor) — 44 issues resolved
 > **Change v2.1:** Client-side controller → Vercel Workflow (rejected — Vercel-only, unnecessary state engine)
-> **Change v2.2:** Vercel Workflow → chat-service integration (current — extends existing message pipeline with audio I/O)
+> **Change v2.2:** Vercel Workflow → chat-service integration (implemented — extends existing message pipeline with audio I/O)
 
 ---
 
