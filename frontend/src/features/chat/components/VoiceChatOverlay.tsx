@@ -5,7 +5,7 @@
  * Design ref: VOICE_PIPELINE_V2.md §8.2
  */
 import { useEffect, useCallback } from 'react';
-import { X, Mic, Loader2, Volume2, Send } from 'lucide-react';
+import { X, Mic, Loader2, Send } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { WaveformVisualizer } from './WaveformVisualizer';
 import { cn } from '@/lib/utils';

@@ -48,10 +48,18 @@ export interface VoiceConfig {
 }
 
 export class VoiceClient {
+  private abortController: AbortController | null = null;
+
   constructor(
     private apiBase: string,
     private token: string,
   ) {}
+
+  /** Abort any in-flight voice request. */
+  abort(): void {
+    this.abortController?.abort();
+    this.abortController = null;
+  }
 
   /**
    * Send voice audio to the server, receive SSE stream of events.
@@ -64,8 +72,12 @@ export class VoiceClient {
     callbacks: VoiceCallbacks,
   ): Promise<void> {
     const formData = new FormData();
-    formData.append('audio', audioBlob, 'audio.webm');
+    const ext = audioBlob.type.includes('wav') ? 'wav' : audioBlob.type.includes('webm') ? 'webm' : 'ogg';
+    formData.append('audio', audioBlob, `audio.${ext}`);
     formData.append('config', JSON.stringify(voiceConfig));
+
+    this.abortController?.abort();
+    this.abortController = new AbortController();
 
     let resp: Response;
     try {
@@ -75,9 +87,11 @@ export class VoiceClient {
           method: 'POST',
           headers: { Authorization: `Bearer ${this.token}` },
           body: formData,
+          signal: this.abortController.signal,
         },
       );
     } catch (err) {
+      if ((err as Error).name === 'AbortError') return; // Intentional cancel
       callbacks.onError(`Connection failed: ${(err as Error).message}`);
       return;
     }

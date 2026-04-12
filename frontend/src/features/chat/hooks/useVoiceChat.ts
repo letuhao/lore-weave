@@ -36,6 +36,8 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
   const clientRef = useRef<VoiceClient | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const activeRef = useRef(false);
+  const sessionIdRef = useRef(sessionId);
+  sessionIdRef.current = sessionId;
 
   const activate = useCallback(async () => {
     if (!sessionId || !accessToken || activeRef.current) return;
@@ -89,7 +91,8 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
   }, [sessionId, accessToken]);
 
   const handleSpeechEnd = useCallback(async (audio: Float32Array) => {
-    if (!clientRef.current || !sessionId) return;
+    const sid = sessionIdRef.current;
+    if (!clientRef.current || !sid) return;
     setState('sending');
 
     // Convert Float32Array to WAV blob
@@ -105,7 +108,7 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
 
     setAiText('');
 
-    await clientRef.current.sendVoiceMessage(sessionId, blob, voiceConfig, {
+    await clientRef.current.sendVoiceMessage(sid, blob, voiceConfig, {
       onTranscript: (text) => {
         setSttText(text);
         setState('receiving');
@@ -141,10 +144,11 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
         }
       },
     });
-  }, [sessionId]);
+  }, []); // sessionId accessed via ref to avoid stale closure in VAD callback
 
   const deactivate = useCallback(() => {
     activeRef.current = false;
+    clientRef.current?.abort();
     vadRef.current?.deactivate();
     vadRef.current = null;
     playbackRef.current?.dispose();
@@ -160,6 +164,7 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
   }, []);
 
   const cancel = useCallback(() => {
+    clientRef.current?.abort();
     playbackRef.current?.cancelAll();
     // Resume listening
     if (activeRef.current) {
