@@ -864,22 +864,49 @@ ALTER TABLE outbox_events_2026_04 SET (
 // Entities also have project_id (new — for KSA project scoping) in addition to book_id.
 // See KNOWLEDGE_SERVICE_ARCHITECTURE §3.4 for project/session scoping amendments.
 
-(:Entity { ..., user_id: String, project_id: String })  // amended
-(:Event  { ..., user_id: String })                       // amended
+(:Entity { ...,
+  user_id: String,
+  project_id: String,
+  embedding_model: String,       // which curated model produced this entity's embedding
+  // Dimension-indexed embedding properties (only ONE is populated per entity)
+  embedding_384: [Float],        // populated if embedding_model is 384-dim
+  embedding_1024: [Float],       // populated if embedding_model is 1024-dim (default: bge-m3)
+  embedding_1536: [Float],       // populated if embedding_model is 1536-dim (OpenAI small)
+  embedding_3072: [Float]        // populated if embedding_model is 3072-dim (OpenAI large)
+})
+(:Event { ..., user_id: String })
 
 // ── Vector Indexes (Neo4j v2026.01) ────────────────────
+// Four indexes, one per supported dimension. See KSA §4.3 for supported model list.
+// Model change = delete project graph + rebuild (§3.8.3).
 
-CREATE VECTOR INDEX entity_embeddings FOR (e:Entity) ON (e.embedding)
+CREATE VECTOR INDEX entity_embeddings_384 FOR (e:Entity) ON (e.embedding_384)
 OPTIONS { indexConfig: {
-  `vector.dimensions`: 1024,                             // see §7 decision #27
+  `vector.dimensions`: 384,
   `vector.similarity_function`: 'cosine'
 }};
 
-CREATE VECTOR INDEX event_embeddings FOR (e:Event) ON (e.embedding)
+CREATE VECTOR INDEX entity_embeddings_1024 FOR (e:Entity) ON (e.embedding_1024)
 OPTIONS { indexConfig: {
   `vector.dimensions`: 1024,
   `vector.similarity_function`: 'cosine'
 }};
+
+CREATE VECTOR INDEX entity_embeddings_1536 FOR (e:Entity) ON (e.embedding_1536)
+OPTIONS { indexConfig: {
+  `vector.dimensions`: 1536,
+  `vector.similarity_function`: 'cosine'
+}};
+
+CREATE VECTOR INDEX entity_embeddings_3072 FOR (e:Entity) ON (e.embedding_3072)
+OPTIONS { indexConfig: {
+  `vector.dimensions`: 3072,
+  `vector.similarity_function`: 'cosine'
+}};
+
+// Same pattern for events (populated when event_embeddings are enabled)
+CREATE VECTOR INDEX event_embeddings_1024 FOR (e:Event) ON (e.embedding_1024)
+OPTIONS { indexConfig: { `vector.dimensions`: 1024, `vector.similarity_function`: 'cosine' }};
 
 // ── Composite Indexes for Multi-Tenant Queries (mandatory) ──────
 
@@ -887,6 +914,7 @@ OPTIONS { indexConfig: {
 CREATE INDEX entity_user_canonical FOR (e:Entity) ON (e.user_id, e.id);
 CREATE INDEX entity_user_name FOR (e:Entity) ON (e.user_id, e.name);
 CREATE INDEX entity_user_project FOR (e:Entity) ON (e.user_id, e.project_id);
+CREATE INDEX entity_project_model FOR (e:Entity) ON (e.project_id, e.embedding_model);
 
 // Event primary lookup
 CREATE INDEX event_user_order FOR (e:Event) ON (e.user_id, e.narrative_order);
@@ -897,6 +925,34 @@ CREATE CONSTRAINT entity_id_unique FOR (e:Entity) REQUIRE e.id IS UNIQUE;
 CREATE CONSTRAINT event_id_unique  FOR (e:Event)  REQUIRE e.id IS UNIQUE;
 CREATE CONSTRAINT chapter_id_unique FOR (c:Chapter) REQUIRE c.id IS UNIQUE;
 CREATE CONSTRAINT book_id_unique    FOR (b:Book)    REQUIRE b.id IS UNIQUE;
+
+// ── Provenance (EVIDENCED_BY edges) for partial operations ───────
+// See KSA §3.4.C and §3.8.5 below for the cascade rules.
+
+(:ExtractionSource {
+  id: String,                    // uuidv7
+  source_type: String,           // 'chapter' | 'chat_message' | 'glossary_entity' | 'manual'
+  source_id: String,             // chapter_id, message_id, etc.
+  project_id: String,
+  user_id: String
+})
+
+(:Entity)-[:EVIDENCED_BY {
+  extracted_at: DateTime,
+  extraction_model: String,      // which LLM produced this extraction
+  confidence: Float,
+  job_id: String                 // extraction job that created this edge
+}]->(:ExtractionSource)
+
+(:Event)-[:EVIDENCED_BY { ... }]->(:ExtractionSource)
+(:Fact)-[:EVIDENCED_BY { ... }]->(:ExtractionSource)
+
+CREATE CONSTRAINT extraction_source_id_unique
+    FOR (s:ExtractionSource) REQUIRE s.id IS UNIQUE;
+CREATE INDEX extraction_source_by_source_id
+    FOR (s:ExtractionSource) ON (s.source_type, s.source_id);
+CREATE INDEX extraction_source_project
+    FOR (s:ExtractionSource) ON (s.project_id, s.source_type);
 ```
 
 **Query pattern rule:** Every Cypher query that touches `:Entity`, `:Event`, or
@@ -1077,8 +1133,85 @@ deletions. Cascade rules:
 from Neo4j within 5 minutes of the Postgres deletion. Enforced by consumer watchdog.
 
 **GDPR requirement:** `user.deleted` event must trigger complete user data removal
-from Neo4j within 30 days (regulatory requirement). A daily cleanup job scans for
-orphaned user data as a safety net.
+from Neo4j within 30 days. A daily cleanup job scans for orphaned user data as a
+safety net.
+
+### 3.8.5 Provenance Cascade Rules (for partial operations)
+
+LoreWeave supports **partial extraction operations** per KSA §5.5 — users can
+re-extract a chapter range, delete a subplot, append new chapters, or pause
+and resume extraction. These operations require explicit provenance tracking
+via `EVIDENCED_BY` edges (see §3.6).
+
+**Core invariant:** An entity/event/fact is deleted if and only if its
+`EVIDENCED_BY` edge count reaches zero. All partial operations reduce to
+this single rule.
+
+#### Partial Operation Cascade Table
+
+| Operation | Step 1 | Step 2 | Step 3 |
+|---|---|---|---|
+| **Append (new chapter saved)** | Create new `:ExtractionSource` | Run extraction → creates new entities (via MERGE) and EVIDENCED_BY edges | (no cleanup needed) |
+| **Partial re-extract (ch.123)** | Delete EVIDENCED_BY edges from ch.123's ExtractionSource | Delete entities/events/facts with zero remaining EVIDENCED_BY edges | Re-run extraction on ch.123 current content |
+| **Partial delete (ch.400-450)** | Cascade delete ExtractionSource nodes for the range | EVIDENCED_BY edges cascade-delete | Delete entities/events/facts with zero remaining evidence |
+| **Stop mid-extraction** | Save cursor position to `extraction_jobs.current_cursor` | Leave all existing EVIDENCED_BY edges untouched | Next run resumes from cursor |
+| **Cancel extraction** | Save job status = 'cancelled' | Keep partial graph (all edges intact) | User can resume or rebuild later |
+| **Full rebuild** | Delete all ExtractionSource nodes for the project | All provenance edges cascade | Re-run full extraction |
+| **Disable extraction (keep graph)** | Set `extraction_enabled = false` | Stop consumer processing | Existing graph stays queryable |
+| **Change embedding model** | Warning dialog | Delete all ExtractionSource + entities for the project | User must trigger new extraction with new model |
+
+#### Example Cypher: Partial Re-Extract
+
+```cypher
+// Step 1: Remove evidence from chapter 123's source
+MATCH (src:ExtractionSource {source_id: 'ch123', project_id: $project_id})
+      <-[e:EVIDENCED_BY]-(n)
+DELETE e
+
+// Step 2: Delete entities with zero remaining evidence
+MATCH (n:Entity)
+WHERE n.project_id = $project_id AND NOT (n)-[:EVIDENCED_BY]->()
+DETACH DELETE n
+
+// Same for Events and Facts
+MATCH (e:Event) WHERE e.user_id = $user_id AND NOT (e)-[:EVIDENCED_BY]->() DETACH DELETE e
+MATCH (f:Fact)  WHERE f.user_id = $user_id AND NOT (f)-[:EVIDENCED_BY]->() DETACH DELETE f
+
+// Step 3: Remove the ExtractionSource itself
+MATCH (src:ExtractionSource {source_id: 'ch123', project_id: $project_id}) DETACH DELETE src
+
+// Step 4: (application code) trigger new extraction job on ch.123
+```
+
+#### Example Cypher: Append (no cleanup)
+
+```cypher
+// Chapter 46 saved → extraction runs → MERGE creates new nodes if needed,
+// or adds EVIDENCED_BY edges to existing canonical entities.
+// No deletion, just additive writes.
+
+MERGE (src:ExtractionSource {id: $source_uuid})
+  SET src.source_type = 'chapter',
+      src.source_id = 'ch46',
+      src.project_id = $project_id,
+      src.user_id = $user_id
+
+// For each entity extracted from ch.46
+MERGE (e:Entity {id: $canonical_id})
+  ON CREATE SET e.name = $display_name, e.project_id = $project_id, ...
+MERGE (e)-[r:EVIDENCED_BY]->(src)
+  ON CREATE SET r.extracted_at = datetime(),
+                r.extraction_model = $model,
+                r.confidence = $confidence,
+                r.job_id = $job_id
+```
+
+#### Why This Works Safely
+
+- **Idempotent:** re-running the same extraction on the same source produces zero new nodes (§3.5.4)
+- **Concurrent-safe:** partial delete operations only touch entities with matching provenance, not unrelated ones
+- **Recoverable:** at any point the system can rebuild from event_log (§3.8.3)
+- **Transparent:** every fact can be traced back to its source via EVIDENCED_BY
 
 ---
 
@@ -1135,19 +1268,28 @@ If D0-04 reveals breaking SQL patterns, document each and add refactor tasks.
 | D2-03 | BE | Neo4j schema init: constraints (§3.6), vector indexes (§3.6 + §7 #27 dimension), composite indexes on `(user_id, ...)`. Mandatory per §3.6 query rule. | D2-01 | S |
 | D2-04 | BE | Self-hosted embedding model service (BAAI/bge-m3 or multilingual-e5-large) as a task in worker-ai or standalone container. See §7 decision #27. | D2-01 | M |
 
-### Phase D3: Knowledge Pipeline (future — after D1 + D2)
+### Phase D3: Knowledge Pipeline (future — after D1 + D2, gated by per-project opt-in)
+
+**Important:** Per decision #34, extraction is opt-in per project. D3 tasks build
+the **infrastructure** for extraction, but the infrastructure only runs on projects
+where the user has explicitly enabled extraction via KSA §5.5 Extraction Jobs.
+
+All D3 consumers must check `knowledge_projects.extraction_enabled` before
+processing events. Events for disabled projects go to `extraction_pending` queue
+(KSA §3.3) for later backfill.
 
 | Task | Type | Scope | Deps | Est |
 |---|---|---|---|---|
 | D3-00 | BE | **Idempotency layer (blocker for all other D3 tasks).** Canonicalization function (§3.5.4 Rule 1), deterministic entity ID generator, `source_event_id` pattern on relation writes. Unit tests for canonicalization edge cases. | D2-02 | M |
-| D3-01 | BE | Entity extraction: LLM NER + coreference → Neo4j entities (uses D3-00 canonicalization) | D3-00, D1-08 | L |
-| D3-02 | BE | Event extraction: LLM → Neo4j events + temporal ordering | D3-01 | L |
-| D3-03 | BE | Relation extraction: LLM → Neo4j relationship edges (uses D3-00 idempotency keys) | D3-01 | M |
-| D3-04 | BE | Fact extraction: atomic statements with provenance | D3-03 | M |
-| D3-05 | BE | Embedding generation: embed entities + events → Neo4j vector indexes (uses D2-04 embedding service) | D3-01, D2-04 | M |
-| D3-06 | BE | Glossary-service evolution: read from Neo4j, user curates AI suggestions | D3-01 | L |
-| D3-07 | BE | **Backfill existing chapters:** iterate `chapter_drafts`, emit synthetic `chapter.saved` outbox events for chapters created before the knowledge pipeline existed. Knowledge consumer processes them via normal path. | D3-01, D3-05 | S |
-| D3-08 | BE | Neo4j rebuild tool: CLI/API that replays `event_log` to reconstruct Neo4j from scratch (§3.8.3). Used for disaster recovery and embedding model migration. | D3-01, D3-05 | M |
+| D3-01 | BE | Entity extraction: LLM NER + coreference → Neo4j entities (uses D3-00 canonicalization). **Gated by `extraction_enabled`.** | D3-00, D1-08 | L |
+| D3-02 | BE | Event extraction: LLM → Neo4j events + temporal ordering. **Gated.** | D3-01 | L |
+| D3-03 | BE | Relation extraction: LLM → Neo4j relationship edges (uses D3-00 idempotency keys). **Gated.** | D3-01 | M |
+| D3-04 | BE | Fact extraction: atomic statements with provenance via EVIDENCED_BY edges (§3.8.5). **Gated.** | D3-03 | M |
+| D3-05 | BE | Embedding generation: embed entities + events → Neo4j vector indexes. **Uses D2-04 embedding service, routes to dimension-indexed property based on project's chosen model (KSA §4.3).** | D3-01, D2-04 | M |
+| D3-06 | BE | Glossary-service evolution: read from Neo4j, user curates AI suggestions. Also maintains `short_description` field for chat fallback (KSA §4.2.5). | D3-01 | L |
+| D3-07 | BE | **Backfill for chapters + pending queue:** process historical `chapter_drafts` AND drain `extraction_pending` table for the project. Progress tracking with cost cap (KSA §5.5). | D3-01, D3-05 | M |
+| D3-08 | BE | Neo4j rebuild tool: CLI/API that replays `event_log` to reconstruct Neo4j from scratch (§3.8.3). Supports project-scoped rebuild (not full system-wide). Used for disaster recovery and embedding model migration. | D3-01, D3-05 | M |
+| D3-09 | BE | **Extraction Job engine:** scope handling (`chapters` / `chat` / `glossary_sync` / `all`), cursor-based resume, pause/cancel, `max_spend_usd` enforcement, progress updates via event_log. KSA §5.5. | D3-01..04, D3-07 | L |
 
 ### Phase D4: RAG Integration (future — after D3)
 
@@ -1232,6 +1374,14 @@ Steps:
 | 31 | **Neo4j multi-tenant query rule** (§3.6) | Every Cypher query on `:Entity`/`:Event` must filter by `user_id` as the first predicate. Enforced via composite indexes `entity_user_*`. PR review rejects any cross-tenant query. Alternative (database-per-user) requires Enterprise license — not justified at current scale. | 2026-04-13 |
 | 32 | **Postgres SSOT deletion cascades to Neo4j** (§3.8.4) | Raw data is authoritative; derived data in Neo4j must reflect deletions within SLA. `chapter.deleted`, `chat.message_deleted`, `project.deleted`, `user.deleted` events drive Neo4j cleanup. Daily orphan-scan watchdog as safety net. | 2026-04-13 |
 | 33 | **Rebuild-from-event-log is a first-class feature** (§3.8.3) | Neo4j must be reconstructible from `event_log`. Enables disaster recovery, embedding model migration, canonicalization rule changes, and algorithm improvements without data loss. D3-08 delivers the rebuild tool. | 2026-04-13 |
+| 34 | **Opt-in extraction (not automatic)** | Knowledge graph extraction is disabled by default per project (`knowledge_projects.extraction_enabled = false`). No LLM calls happen for a project until the user explicitly triggers an Extraction Job (KSA §5.5). Prevents surprise AI bills. | 2026-04-13 |
+| 35 | **Events queued when extraction disabled** (KSA §5.3) | When extraction is off for a project, knowledge-service still receives events but queues them in `extraction_pending` table instead of processing. When user enables extraction later, backfill processes the queue. Enables "opt-in with full history" flow. | 2026-04-13 |
+| 36 | **Glossary fallback for static memory** (KSA §4.2.5) | When extraction is disabled, chat uses Postgres FTS to select top-20 relevant glossary entities per query, plus `short_description` field for compact injection. Provides free "dumb but useful" memory using already-curated user data. | 2026-04-13 |
+| 37 | **Curated embedding model list (not open BYOK)** (KSA §4.3) | Users select from a vetted list of 5 embedding models (bge-m3, text-embedding-3-small/large, voyage-3, embed-english-v3). Supports 4 dimensions (384, 1024, 1536, 3072) with one Neo4j vector index per dimension. Extending the list adds a model config entry, not a schema change. | 2026-04-13 |
+| 38 | **Per-project embedding model** (KSA §4.3) | Each project picks its own embedding model. Different dimensions stored in dimension-indexed Neo4j properties (`embedding_384`, `embedding_1024`, etc.). Changing model = delete project graph + rebuild (with warning). No cross-model semantic search. | 2026-04-13 |
+| 39 | **Provenance edges (EVIDENCED_BY) for partial operations** (§3.8.5, KSA §3.4.C) | Every extracted entity/event/fact has EVIDENCED_BY edges to its sources. Partial re-extraction, append, and delete operations are reduced to a single invariant: "delete if evidence count reaches zero." Enables safe incremental extraction for live novels. | 2026-04-13 |
+| 40 | **L0 and L1 are plain text (no embeddings)** (KSA §4.0-4.1) | Global identity and project context are always-loaded short summaries stored as plain text in Postgres `knowledge_summaries`. No embedding model needed. Works identically regardless of per-project embedding choices. Only L2/L3 use embeddings. | 2026-04-13 |
+| 41 | **Honest "Trust Me" privacy model** (KSA §7.7) | Hobby project acknowledges no SOC 2, no HIPAA BAA, no enterprise audit. Relies on BYOK (user's AI provider account), self-hosting, local-first defaults, and open source code for trust. Documented honestly rather than marketed. Enterprise escape hatch requires separate engineering effort. | 2026-04-13 |
 
 ---
 
