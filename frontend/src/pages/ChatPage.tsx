@@ -255,7 +255,7 @@ export function ChatPage() {
         />
 
         <div className="flex flex-1 flex-col overflow-hidden">
-          {activeSession && chat.isLoading ? (
+          {activeSession && chat.isLoading && chat.messages.length === 0 ? (
             <div className="flex flex-1 items-center justify-center">
               <div className="space-y-3 text-center">
                 <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-accent" />
