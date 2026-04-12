@@ -30,7 +30,7 @@ Monorepo layout:
 | `translation-service` | Go / Chi | Translation pipeline |
 | `glossary-service` | Go / Chi | Glossary & lore management |
 | `chat-service` | Python / FastAPI | Chat with LLMs via LiteLLM |
-| `memory-service` | Python / FastAPI | Memory layer (extraction, context build, pgvector) — planned, see `docs/03_planning/MEMORY_SERVICE_ARCHITECTURE.md` |
+| `knowledge-service` | Python / FastAPI | Knowledge graph + memory (Postgres SSOT + Neo4j derived, via event pipeline) — planned, see `docs/03_planning/101_DATA_RE_ENGINEERING_PLAN.md` and `docs/03_planning/KNOWLEDGE_SERVICE_ARCHITECTURE.md` |
 | `video-gen-service` | Python / FastAPI | Video generation (skeleton — provider TBD) |
 
 Data: Postgres (per-service DBs), Redis Streams (jobs), MinIO (objects).
