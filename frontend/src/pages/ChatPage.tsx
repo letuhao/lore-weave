@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Menu, MessageSquareText } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
+import { syncPrefsToServer, loadPrefFromServer } from '@/lib/syncPrefs';
 
 
 import { providerApi, type UserModel } from '@/features/settings/api';
@@ -33,6 +34,27 @@ export function ChatPage() {
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [contextItems, setContextItems] = useState<ContextItem[]>([]);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const restoredRef = useRef(false);
+
+  // Restore last active session from server preferences on mount
+  useEffect(() => {
+    if (!accessToken || restoredRef.current || sessions.length === 0) return;
+    restoredRef.current = true;
+    loadPrefFromServer<string>('last_active_chat_session', accessToken).then((savedId) => {
+      if (savedId) {
+        const match = sessions.find((s) => s.session_id === savedId);
+        if (match) setActiveSession(match);
+      }
+    });
+  }, [accessToken, sessions]);
+
+  // Persist active session to server on change
+  const handleSelectSession = useCallback((session: ChatSession | null) => {
+    setActiveSession(session);
+    if (session && accessToken) {
+      syncPrefsToServer('last_active_chat_session', session.session_id, accessToken);
+    }
+  }, [accessToken]);
 
   // Model name resolver: model_ref UUID → display name
   const [modelNameMap, setModelNameMap] = useState<Map<string, string>>(new Map());
@@ -158,7 +180,7 @@ export function ChatPage() {
         title: 'New Chat',
         system_prompt: systemPrompt,
       });
-      setActiveSession(session);
+      handleSelectSession(session);
       setShowNewDialog(false);
       setContextItems([]);
     } catch (err) {
@@ -211,7 +233,7 @@ export function ChatPage() {
           activeSessionId={activeSession?.session_id ?? null}
           isLoading={sessionsLoading}
           modelNameMap={modelNameMap}
-          onSelect={setActiveSession}
+          onSelect={handleSelectSession}
           onCreate={() => { setShowNewDialog(true); setMobileSidebarOpen(false); }}
           onRename={handleRename}
           onArchive={handleArchive}
