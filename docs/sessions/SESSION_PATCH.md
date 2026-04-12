@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-12 (session 32 — V2 redesign + CRA complete + V2 Phase A backend)
-- Updated By: Assistant (30+ commits: V2 redesign, CRA 26/26, VP2 Phase A backend 6/6 tasks)
+- Last Updated: 2026-04-12 (session 33 — VP2 Phase A frontend complete)
+- Updated By: Assistant (VP2-06..11: VoiceClient, VadController, useVoiceChat, VoiceChatOverlay)
 - Active Branch: `main`
-- HEAD: `5f59329` (VP2-04 review fix)
+- HEAD: `ecfad58` (VP2-10 VoiceChatOverlay)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V3.md` — full context for next agent
 
 ---
@@ -37,7 +37,7 @@
 
 **Glossary Extraction Pipeline: FULLY COMPLETE (BE + FE + TESTED).** 13 BE tasks + 7 FE tasks + 49 integration test assertions + browser smoke test. Tested with real Qwen 3.5 9B model via LM Studio. 90 entities extracted from 5 chapters.
 
-**Voice Pipeline V2: PHASE A BACKEND COMPLETE (6/43 tasks).** Architecture v2.2 (chat-service integration). Phase A backend implemented: migration, TextNormalizer (24 tests), SentenceBuffer (31 tests), voice_stream_response() pipeline, POST /voice-message endpoint (7 tests). 133 total chat-service tests pass (including 14 pre-existing failures fixed). Next: Phase A frontend (VP2-06..11).
+**Voice Pipeline V2: PHASE A COMPLETE (11/43 tasks).** Architecture v2.2 (chat-service integration). Backend: migration, TextNormalizer (24 tests), SentenceBuffer (31 tests), voice_stream_response(), POST /voice-message (7 tests). 133 chat-service tests pass. Frontend: VoiceClient, VadController, TTSPlaybackQueue.enqueueBase64, useVoiceChat hook, VoiceChatOverlay. Next: Phase B (audio persistence + replay).
 
 **Cloud Readiness Audit: COMPLETE (26/26 tasks).** All P0+P1+P2 tasks implemented + reviewed. 21 commits across 12 Go services, 2 Python services, 1 NestJS gateway, 8 frontend components, docker-compose.
 
