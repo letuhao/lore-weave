@@ -1,0 +1,1414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoreWeave — Knowledge Service UI (Design Draft)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: #181412; --background-alt: #1e1a17; --foreground: #f5efe8;
+      --card: #1e1a17; --card-hover: #272220; --border: #332d28; --border-hover: #4a423b;
+      --input: #242019; --ring: #d4952a;
+      --primary: #e8a832; --primary-fg: #141010; --primary-muted: #3d2e12;
+      --secondary: #282320; --secondary-fg: #e0d8cc;
+      --muted: #282320; --muted-fg: #9e9488;
+      --accent: #3da692; --accent-muted: #1a2e2a; --accent-fg: #c8ede6;
+      --destructive: #dc4e4e; --destructive-muted: #3d1a1a;
+      --success: #3dba6a; --success-muted: #1a3d24;
+      --info: #5496e8; --info-muted: #1a2e3d;
+      --warning: #e89a4c; --warning-muted: #3d2a1a;
+      --thinking: #a78bfa; --thinking-muted: #1e1633; --thinking-border: #3b2d6b;
+    }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; margin: 0; }
+    .font-serif { font-family: 'Lora', Georgia, serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    * { border-color: var(--border); box-sizing: border-box; }
+    ::selection { background: rgba(232,168,50,0.25); }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    /* Layout */
+    .page-shell { display: flex; min-height: 100vh; }
+    .page-nav { width: 200px; border-right: 1px solid var(--border); background: var(--background-alt); padding: 20px 0; flex-shrink: 0; }
+    .page-main { flex: 1; min-width: 0; }
+
+    /* Nav */
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; color: var(--muted-fg); font-size: 14px; cursor: pointer; transition: all 150ms; border-left: 2px solid transparent; }
+    .nav-item:hover { background: var(--card); color: var(--foreground); }
+    .nav-item.active { background: var(--primary-muted); color: var(--primary); border-left-color: var(--primary); font-weight: 500; }
+
+    /* Sections */
+    .demo-section { display: none; padding: 32px 40px; }
+    .demo-section.active { display: block; }
+    .demo-section h2 { font-size: 24px; font-weight: 600; color: var(--foreground); margin: 0 0 6px; }
+    .demo-section h3 { font-size: 16px; font-weight: 600; color: var(--foreground); margin: 24px 0 12px; display: flex; align-items: center; gap: 8px; }
+    .demo-section .subtitle { color: var(--muted-fg); font-size: 13px; margin: 0 0 24px; }
+    .demo-section .label { color: var(--muted-fg); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 8px; font-weight: 500; }
+
+    /* Cards */
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
+    .card-hover:hover { border-color: var(--border-hover); }
+
+    /* Tabs inside knowledge page */
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+    .tab { padding: 10px 16px; font-size: 13px; color: var(--muted-fg); cursor: pointer; border-bottom: 2px solid transparent; transition: all 150ms; }
+    .tab:hover { color: var(--foreground); }
+    .tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 500; }
+    .tab-count { display: inline-block; padding: 1px 6px; border-radius: 8px; background: var(--border); color: var(--muted-fg); font-size: 10px; margin-left: 6px; }
+    .tab.active .tab-count { background: var(--primary-muted); color: var(--primary); }
+
+    /* State badges */
+    .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 500; }
+    .badge-static { background: var(--warning-muted); color: var(--warning); }
+    .badge-full { background: var(--success-muted); color: var(--success); }
+    .badge-building { background: var(--info-muted); color: var(--info); animation: pulse 2s ease-in-out infinite; }
+    .badge-disabled { background: var(--muted); color: var(--muted-fg); }
+    .badge-paused { background: var(--warning-muted); color: var(--warning); }
+    .badge-failed { background: var(--destructive-muted); color: var(--destructive); }
+    .badge-stale { background: var(--info-muted); color: var(--info); }
+
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+    /* Progress bar */
+    .progress { height: 6px; background: var(--secondary); border-radius: 3px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--primary); transition: width 300ms; border-radius: 3px; }
+    .progress-fill.accent { background: var(--accent); }
+    .progress-fill.success { background: var(--success); }
+
+    /* Buttons */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 150ms; }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-secondary { background: var(--secondary); color: var(--foreground); border-color: var(--border); }
+    .btn-secondary:hover { background: var(--card-hover); }
+    .btn-ghost { background: transparent; color: var(--muted-fg); }
+    .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+    .btn-danger { background: var(--destructive-muted); color: var(--destructive); border-color: rgba(220,78,78,0.3); }
+    .btn-danger:hover { background: var(--destructive); color: #fff; }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+
+    /* Inputs */
+    .input, .textarea, .select { width: 100%; background: var(--input); border: 1px solid var(--border); color: var(--foreground); padding: 9px 12px; border-radius: 8px; font-size: 13px; transition: border-color 150ms; font-family: inherit; }
+    .input:focus, .textarea:focus, .select:focus { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px rgba(212,149,42,0.2); }
+    .textarea { resize: vertical; min-height: 100px; font-family: 'Inter', system-ui, sans-serif; }
+
+    /* Modal */
+    .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 200; padding: 20px; }
+    .modal-bg.open { display: flex; }
+    .modal { background: var(--card); border: 1px solid var(--border); border-radius: 12px; max-width: 560px; width: 100%; max-height: 90vh; overflow-y: auto; }
+
+    /* Slide-over */
+    .slide-over-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: none; z-index: 150; }
+    .slide-over-bg.open { display: block; }
+    .slide-over { position: fixed; top: 0; right: 0; bottom: 0; width: 440px; background: var(--card); border-left: 1px solid var(--border); z-index: 200; box-shadow: -8px 0 30px rgba(0,0,0,0.4); overflow-y: auto; transform: translateX(100%); transition: transform 250ms ease-out; }
+    .slide-over-bg.open + .slide-over, .slide-over.open { transform: translateX(0); }
+
+    /* Chat popover */
+    .popover { position: absolute; background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,0.5); padding: 16px; width: 340px; z-index: 50; }
+
+    /* Entity row */
+    .entity-row { display: grid; grid-template-columns: 2fr 1fr 1.5fr 0.8fr 0.8fr 1fr; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); align-items: center; cursor: pointer; transition: background 150ms; font-size: 13px; }
+    .entity-row:hover { background: var(--card-hover); }
+    .entity-row.header { font-size: 11px; color: var(--muted-fg); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500; cursor: default; }
+    .entity-row.header:hover { background: transparent; }
+
+    /* Fact item (XML preview) */
+    .xml-preview { background: var(--background); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; line-height: 1.65; color: #c0b8ac; overflow-x: auto; white-space: pre; }
+    .xml-preview .tag { color: #8faadc; }
+    .xml-preview .attr { color: #dcbb65; }
+    .xml-preview .str { color: #9ecd8f; }
+    .xml-preview .comment { color: #6a6458; font-style: italic; }
+
+    /* Timeline */
+    .timeline { position: relative; padding-left: 24px; }
+    .timeline::before { content: ''; position: absolute; left: 7px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+    .timeline-item { position: relative; padding: 12px 0 16px; }
+    .timeline-item::before { content: ''; position: absolute; left: -22px; top: 16px; width: 12px; height: 12px; border-radius: 50%; background: var(--background); border: 2px solid var(--primary); }
+    .timeline-item.major::before { background: var(--primary); }
+
+    /* Mobile preview frame */
+    .phone-frame { width: 340px; height: 640px; background: var(--background-alt); border: 8px solid #2a2420; border-radius: 28px; overflow: hidden; position: relative; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+    .phone-frame::before { content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 120px; height: 20px; background: #2a2420; border-radius: 0 0 12px 12px; z-index: 10; }
+
+    /* Utility */
+    .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; }
+    .dot-green { background: var(--success); }
+    .dot-yellow { background: var(--warning); }
+    .dot-red { background: var(--destructive); }
+    .dot-gray { background: var(--muted-fg); }
+    .dot-blue { background: var(--info); }
+
+    .divider { border-top: 1px solid var(--border); margin: 20px 0; }
+
+    /* Cost display */
+    .cost-line { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: 12px; }
+    .cost-line .label { color: var(--muted-fg); text-transform: none; letter-spacing: 0; margin: 0; font-size: 12px; }
+    .cost-line .value { font-family: 'JetBrains Mono', monospace; color: var(--foreground); }
+    .cost-warning { color: var(--warning); }
+    .cost-over { color: var(--destructive); }
+
+    /* Glossary entity pill */
+    .gloss-entity { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--secondary); border: 1px solid var(--border); border-radius: 6px; font-size: 11.5px; }
+    .gloss-entity.pinned { border-color: var(--primary); background: var(--primary-muted); }
+
+    .key { background: var(--secondary); padding: 2px 6px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+  </style>
+</head>
+<body>
+
+<!-- ==================== Top banner ==================== -->
+<div style="background: var(--card); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; gap: 16px;">
+  <div style="display: flex; align-items: center; gap: 10px;">
+    <div style="width: 28px; height: 28px; background: var(--primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--primary-fg); font-weight: 700;">L</div>
+    <span style="font-weight: 600; font-size: 14px;">LoreWeave — Knowledge Service UI Mockup</span>
+  </div>
+  <span style="color: var(--muted-fg); font-size: 12px;">Design draft · 2026-04-13</span>
+  <div style="flex: 1;"></div>
+  <span style="color: var(--muted-fg); font-size: 11px;">Use sidebar to navigate between screens →</span>
+</div>
+
+<div class="page-shell">
+
+  <!-- ==================== Left sidebar nav ==================== -->
+  <nav class="page-nav">
+    <div style="padding: 0 20px; margin-bottom: 16px; color: var(--muted-fg); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500;">Memory UI</div>
+    <div class="nav-item active" data-target="projects">📁 Projects tab</div>
+    <div class="nav-item" data-target="build-dialog">✨ Build dialog</div>
+    <div class="nav-item" data-target="jobs">⚙️ Extraction Jobs</div>
+    <div class="nav-item" data-target="global">👤 Global bio (L0)</div>
+    <div class="nav-item" data-target="entities">🗂️ Entities</div>
+    <div class="nav-item" data-target="timeline">📅 Timeline</div>
+    <div class="nav-item" data-target="raw">📜 Raw drawers</div>
+
+    <div style="padding: 20px 20px 8px; color: var(--muted-fg); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500;">Chat integration</div>
+    <div class="nav-item" data-target="chat-header">🧠 Header popover</div>
+    <div class="nav-item" data-target="memory-block">📋 Memory block (XML)</div>
+
+    <div style="padding: 20px 20px 8px; color: var(--muted-fg); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500;">Other</div>
+    <div class="nav-item" data-target="privacy">🔒 Privacy page</div>
+    <div class="nav-item" data-target="mobile">📱 Mobile view</div>
+    <div class="nav-item" data-target="legend">ℹ️ State legend</div>
+  </nav>
+
+  <main class="page-main">
+
+    <!-- ==================== Projects tab ==================== -->
+    <section class="demo-section active" id="projects">
+      <h2>Memory — Projects</h2>
+      <p class="subtitle">Power-user browser for all your projects. Each project shows its current memory state with concrete actions.</p>
+
+      <div class="tabs">
+        <div class="tab active">Projects <span class="tab-count">4</span></div>
+        <div class="tab">Extraction Jobs <span class="tab-count">1</span></div>
+        <div class="tab">Global</div>
+        <div class="tab">Entities</div>
+        <div class="tab">Timeline</div>
+        <div class="tab">Raw</div>
+      </div>
+
+      <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+        <button class="btn btn-primary">＋ New project</button>
+        <button class="btn btn-secondary">🔍 Search projects</button>
+        <div style="flex: 1;"></div>
+        <select class="select" style="width: auto;">
+          <option>All types</option><option>Book</option><option>Translation</option><option>Code</option><option>General</option>
+        </select>
+      </div>
+
+      <!-- State card 1: Disabled (default) -->
+      <div class="card card-hover" style="margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 14px;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+              <h3 style="margin: 0; font-size: 15px;">Winds of the Eastern Sea</h3>
+              <span class="badge badge-disabled">📖 Static memory</span>
+              <span style="font-size: 11px; color: var(--muted-fg);">book</span>
+            </div>
+            <div style="color: var(--muted-fg); font-size: 12px;">45 chapters · linked to book_id fantasy-eastern-sea</div>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn btn-ghost btn-sm">✏️ Edit</button>
+            <button class="btn btn-ghost btn-sm">⋯</button>
+          </div>
+        </div>
+
+        <div style="color: var(--muted-fg); font-size: 12px; margin-bottom: 14px; line-height: 1.6;">
+          <strong style="color: var(--foreground);">Currently active context:</strong> user bio, project instructions,
+          glossary (1,650 entities, top 20 matched per query), last 50 messages.
+          <span style="color: var(--accent);">Cost: $0.00/month</span>
+        </div>
+
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <button class="btn btn-primary" onclick="showModal('build-modal')">✨ Build knowledge graph →</button>
+          <span style="color: var(--muted-fg); font-size: 11px;">Preview: 45 chapters + 423 pending chat turns · est. $3–8</span>
+        </div>
+      </div>
+
+      <!-- State card 2: Building -->
+      <div class="card card-hover" style="margin-bottom: 16px; border-color: var(--info);">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 14px;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+              <h3 style="margin: 0; font-size: 15px;">The Silk Road Chronicles</h3>
+              <span class="badge badge-building">⚙️ Building graph...</span>
+              <span style="font-size: 11px; color: var(--muted-fg);">book · 230 chapters</span>
+            </div>
+            <div style="color: var(--muted-fg); font-size: 12px;">Started 8m 23s ago · Model: claude-haiku-4.5 + bge-m3</div>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn btn-ghost btn-sm">⏸ Pause</button>
+            <button class="btn btn-ghost btn-sm" style="color: var(--destructive);">✕ Cancel</button>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-size: 11px;">
+            <span style="color: var(--muted-fg);">Glossary</span>
+            <span class="font-mono" style="color: var(--success);">1650/1650 ✓</span>
+          </div>
+          <div class="progress"><div class="progress-fill success" style="width: 100%;"></div></div>
+        </div>
+        <div style="margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-size: 11px;">
+            <span style="color: var(--muted-fg);">Chapters</span>
+            <span class="font-mono" style="color: var(--foreground);">14/230 (6%)</span>
+          </div>
+          <div class="progress"><div class="progress-fill" style="width: 6%;"></div></div>
+        </div>
+        <div style="margin-bottom: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-size: 11px;">
+            <span style="color: var(--muted-fg);">Chat turns</span>
+            <span class="font-mono" style="color: var(--muted-fg);">0/423</span>
+          </div>
+          <div class="progress"><div class="progress-fill" style="width: 0%;"></div></div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--background); border-radius: 8px; font-size: 12px;">
+          <div>
+            <div class="dot dot-green" style="margin-right: 6px;"></div>
+            Currently extracting entities from chapter 14
+          </div>
+          <div class="font-mono">$1.12 / $10.00 spent</div>
+        </div>
+      </div>
+
+      <!-- State card 3: Complete (ready) -->
+      <div class="card card-hover" style="margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 14px;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+              <h3 style="margin: 0; font-size: 15px;">Short Stories Collection</h3>
+              <span class="badge badge-full">🧠 Full memory</span>
+              <span style="font-size: 11px; color: var(--muted-fg);">book · 34 chapters</span>
+            </div>
+            <div style="color: var(--muted-fg); font-size: 12px;">Ready · last extracted 3 hours ago</div>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn btn-ghost btn-sm">✏️ Edit</button>
+            <button class="btn btn-ghost btn-sm">⋯</button>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px;">
+          <div style="background: var(--background); padding: 10px 12px; border-radius: 8px;">
+            <div style="color: var(--muted-fg); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Entities</div>
+            <div style="font-size: 18px; font-weight: 600;" class="font-mono">127</div>
+          </div>
+          <div style="background: var(--background); padding: 10px 12px; border-radius: 8px;">
+            <div style="color: var(--muted-fg); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Relations</div>
+            <div style="font-size: 18px; font-weight: 600;" class="font-mono">438</div>
+          </div>
+          <div style="background: var(--background); padding: 10px 12px; border-radius: 8px;">
+            <div style="color: var(--muted-fg); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Events</div>
+            <div style="font-size: 18px; font-weight: 600;" class="font-mono">89</div>
+          </div>
+          <div style="background: var(--background); padding: 10px 12px; border-radius: 8px;">
+            <div style="color: var(--muted-fg); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Facts</div>
+            <div style="font-size: 18px; font-weight: 600;" class="font-mono">1,203</div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+          <button class="btn btn-secondary btn-sm">+ Extract new chapters</button>
+          <button class="btn btn-secondary btn-sm">Re-extract range...</button>
+          <button class="btn btn-ghost btn-sm">Change model...</button>
+          <div style="flex: 1;"></div>
+          <span style="color: var(--muted-fg); font-size: 11px;">Total spent: <span class="font-mono" style="color: var(--foreground);">$37.20</span></span>
+        </div>
+      </div>
+
+      <!-- State card 4: Paused (budget) -->
+      <div class="card card-hover" style="margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 14px;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+              <h3 style="margin: 0; font-size: 15px;">Translation: Vietnamese → English</h3>
+              <span class="badge badge-paused">⏸ Budget reached</span>
+              <span style="font-size: 11px; color: var(--muted-fg);">translation</span>
+            </div>
+            <div style="color: var(--muted-fg); font-size: 12px;">Paused at $10.00 cap · 67/200 items processed</div>
+          </div>
+        </div>
+        <div style="color: var(--warning); font-size: 12px; background: var(--warning-muted); padding: 10px 12px; border-radius: 8px; margin-bottom: 14px;">
+          ⚠️ Job auto-paused because it reached the maximum spending cap ($10.00).
+          Raise the cap to continue, or cancel to keep the partial graph.
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button class="btn btn-primary btn-sm">Raise cap and resume</button>
+          <button class="btn btn-secondary btn-sm">Cancel (keep partial graph)</button>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <p class="subtitle" style="font-size: 11px; margin: 0;">States shown: disabled, building, complete, paused. Other states (stale, failed, model-change-pending, deleting, cancelling) rendered by the same component with different content.</p>
+    </section>
+
+    <!-- ==================== Build dialog (modal example) ==================== -->
+    <section class="demo-section" id="build-dialog">
+      <h2>Build Knowledge Graph — Dialog</h2>
+      <p class="subtitle">User sees cost estimate before spending any AI credits. Explicit confirmation required.</p>
+
+      <div style="background: var(--background); border: 1px dashed var(--border); padding: 40px; border-radius: 12px; display: flex; justify-content: center;">
+        <div class="modal" style="max-width: 520px;">
+          <div style="padding: 20px 24px; border-bottom: 1px solid var(--border);">
+            <h3 style="margin: 0; font-size: 16px;">Build Knowledge Graph</h3>
+            <div style="color: var(--muted-fg); font-size: 12px; margin-top: 4px;">
+              for "Winds of the Eastern Sea"
+            </div>
+          </div>
+
+          <div style="padding: 24px;">
+            <div style="margin-bottom: 18px;">
+              <p class="label">Scope</p>
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                <label style="display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer;">
+                  <input type="checkbox" checked> Chapters (45 in this book)
+                </label>
+                <label style="display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer;">
+                  <input type="checkbox" checked> Past chat turns (423 pending in queue)
+                </label>
+                <label style="display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer;">
+                  <input type="checkbox" checked> Glossary entities (1,650)
+                </label>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 18px;">
+              <p class="label">Embedding model</p>
+              <select class="select">
+                <option>bge-m3 (free, self-hosted, multilingual) — recommended</option>
+                <option>text-embedding-3-small (OpenAI, BYOK)</option>
+                <option>text-embedding-3-large (OpenAI, BYOK, premium)</option>
+                <option>voyage-3 (Voyage AI, BYOK)</option>
+                <option>embed-english-v3 (Cohere, BYOK)</option>
+              </select>
+            </div>
+
+            <div style="margin-bottom: 18px;">
+              <p class="label">LLM for extraction (your BYOK model)</p>
+              <select class="select">
+                <option>claude-haiku-4.5 (recommended — fast, cheap, accurate)</option>
+                <option>claude-sonnet-4.6</option>
+                <option>gpt-4o-mini</option>
+                <option>gpt-4o</option>
+                <option>local ollama (llama-3-70b) — $0</option>
+              </select>
+            </div>
+
+            <div style="margin-bottom: 18px;">
+              <p class="label">Maximum spending for this job</p>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" class="input" value="$10.00" style="max-width: 120px;">
+                <span style="color: var(--muted-fg); font-size: 11px;">job will auto-pause when reached</span>
+              </div>
+            </div>
+
+            <div style="background: var(--background); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 18px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: 12px; font-weight: 500;">Cost estimate</span>
+                <span style="font-size: 11px; color: var(--muted-fg);">based on item count × model pricing</span>
+              </div>
+              <div class="cost-line"><span class="label">Chapters extraction</span><span class="value">$2.60 – $4.80</span></div>
+              <div class="cost-line"><span class="label">Chat turn processing</span><span class="value">$0.80 – $1.40</span></div>
+              <div class="cost-line"><span class="label">Glossary sync</span><span class="value">$0.15 – $0.25</span></div>
+              <div class="cost-line"><span class="label">Embeddings (bge-m3)</span><span class="value" style="color: var(--success);">$0.00</span></div>
+              <div class="divider" style="margin: 10px 0;"></div>
+              <div class="cost-line" style="font-size: 13px;">
+                <span class="label" style="color: var(--foreground); font-weight: 500;">Estimated total</span>
+                <span class="value" style="font-size: 14px; font-weight: 600;">$3.55 – $6.45</span>
+              </div>
+              <div class="cost-line" style="margin-top: 4px;">
+                <span class="label">Monthly budget remaining</span>
+                <span class="value" style="color: var(--success);">$47.80 of $50.00</span>
+              </div>
+              <div class="cost-line">
+                <span class="label">Estimated duration</span>
+                <span class="value">~45 minutes</span>
+              </div>
+            </div>
+
+            <div style="color: var(--warning); background: var(--warning-muted); padding: 10px 12px; border-radius: 8px; font-size: 11.5px; line-height: 1.5;">
+              ⚠️ Extraction uses your own BYOK API credits. You can pause or cancel anytime.
+              Partial extraction is preserved on cancel.
+            </div>
+          </div>
+
+          <div style="padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px;">
+            <button class="btn btn-ghost">Cancel</button>
+            <button class="btn btn-primary">Build Knowledge Graph →</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== Extraction Jobs ==================== -->
+    <section class="demo-section" id="jobs">
+      <h2>Memory — Extraction Jobs</h2>
+      <p class="subtitle">All extraction work across all projects. Real-time progress, cost tracking, and history.</p>
+
+      <div class="tabs">
+        <div class="tab">Projects <span class="tab-count">4</span></div>
+        <div class="tab active">Extraction Jobs <span class="tab-count">12</span></div>
+        <div class="tab">Global</div>
+        <div class="tab">Entities</div>
+        <div class="tab">Timeline</div>
+        <div class="tab">Raw</div>
+      </div>
+
+      <!-- Running jobs -->
+      <h3>● Running <span style="color: var(--muted-fg); font-weight: 400; font-size: 13px;">(1)</span></h3>
+      <div class="card" style="margin-bottom: 20px; border-color: var(--info);">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+          <div>
+            <div style="font-weight: 500;">The Silk Road Chronicles — Full extraction</div>
+            <div style="color: var(--muted-fg); font-size: 11px; margin-top: 2px;" class="font-mono">job-01JH4K2Z... · started 8m 23s ago</div>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn btn-ghost btn-sm">⏸ Pause</button>
+            <button class="btn btn-ghost btn-sm" style="color: var(--destructive);">✕ Cancel</button>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 16px; font-size: 12px; color: var(--muted-fg);">
+          <div>
+            <div class="progress" style="margin-bottom: 4px;"><div class="progress-fill" style="width: 6%;"></div></div>
+            <span class="font-mono" style="color: var(--foreground);">14 / 2118 items</span>
+          </div>
+          <div>Spent: <span class="font-mono" style="color: var(--foreground);">$1.12</span> / $10.00</div>
+          <div>Elapsed: <span class="font-mono" style="color: var(--foreground);">8:23</span></div>
+          <div>ETA: <span class="font-mono" style="color: var(--foreground);">~37 min</span></div>
+        </div>
+      </div>
+
+      <!-- Paused -->
+      <h3>⏸ Paused <span style="color: var(--muted-fg); font-weight: 400; font-size: 13px;">(1)</span></h3>
+      <div class="card" style="margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between;">
+          <div>
+            <div style="font-weight: 500;">Translation: Vietnamese → English — Full extraction</div>
+            <div style="color: var(--warning); font-size: 11.5px; margin-top: 2px;">⚠️ Paused: budget cap reached ($10.00)</div>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn btn-primary btn-sm">Raise cap + resume</button>
+            <button class="btn btn-ghost btn-sm">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Complete -->
+      <h3>✓ Complete <span style="color: var(--muted-fg); font-weight: 400; font-size: 13px;">(9)</span></h3>
+
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
+        <div class="card card-hover" style="padding: 14px 18px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span class="dot dot-green"></span>
+              <span>Short Stories Collection — Full extraction</span>
+            </div>
+            <div style="display: flex; gap: 16px; color: var(--muted-fg); font-size: 11.5px;">
+              <span>234 items</span>
+              <span class="font-mono">$1.42</span>
+              <span>1 week ago</span>
+            </div>
+          </div>
+        </div>
+        <div class="card card-hover" style="padding: 14px 18px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span class="dot dot-green"></span>
+              <span>Winds of the Eastern Sea — Glossary sync</span>
+            </div>
+            <div style="display: flex; gap: 16px; color: var(--muted-fg); font-size: 11.5px;">
+              <span>1,650 entities</span>
+              <span class="font-mono">$0.18</span>
+              <span>1 week ago</span>
+            </div>
+          </div>
+        </div>
+        <div class="card card-hover" style="padding: 14px 18px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--muted-fg);">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span class="dot dot-green"></span>
+              <span>Winds of the Eastern Sea — Append (chapters 44-45)</span>
+            </div>
+            <div style="display: flex; gap: 16px; font-size: 11.5px;">
+              <span>2 chapters</span>
+              <span class="font-mono">$0.09</span>
+              <span>2 days ago</span>
+            </div>
+          </div>
+        </div>
+        <div style="color: var(--muted-fg); font-size: 11px; text-align: center; padding: 6px;">
+          · · · 6 more completed jobs · · ·
+        </div>
+      </div>
+
+      <!-- Cost widget -->
+      <h3>💰 Total AI spending</h3>
+      <div class="card">
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;">
+          <div>
+            <div class="label">This month</div>
+            <div style="font-size: 22px; font-weight: 600;" class="font-mono">$2.87</div>
+            <div class="progress" style="margin-top: 6px;"><div class="progress-fill success" style="width: 5.7%;"></div></div>
+            <div style="font-size: 10px; color: var(--muted-fg); margin-top: 4px;">5.7% of $50 monthly budget</div>
+          </div>
+          <div>
+            <div class="label">All time</div>
+            <div style="font-size: 22px; font-weight: 600;" class="font-mono">$42.74</div>
+            <div style="font-size: 10px; color: var(--muted-fg); margin-top: 6px;">since 2026-03-15</div>
+          </div>
+          <div>
+            <div class="label">Monthly budget</div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="text" class="input" value="$50.00" style="max-width: 110px;">
+              <button class="btn btn-secondary btn-sm">Save</button>
+            </div>
+            <div style="font-size: 10px; color: var(--muted-fg); margin-top: 6px;">Warning at 80% · Hard block at 100%</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== Global bio (L0) ==================== -->
+    <section class="demo-section" id="global">
+      <h2>Memory — Global Identity (L0)</h2>
+      <p class="subtitle">Plain-text user bio loaded into every chat turn regardless of project. No embeddings, no AI cost.</p>
+
+      <div class="tabs">
+        <div class="tab">Projects</div>
+        <div class="tab">Extraction Jobs</div>
+        <div class="tab active">Global</div>
+        <div class="tab">Entities</div>
+        <div class="tab">Timeline</div>
+        <div class="tab">Raw</div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+        <div>
+          <h3>Your bio</h3>
+          <p style="color: var(--muted-fg); font-size: 12px; margin: 0 0 12px;">
+            This text is injected into the system prompt of every chat as <code class="key">&lt;user&gt;</code>.
+            Keep it short (~100 words or less).
+          </p>
+          <textarea class="textarea" style="min-height: 140px;">Vietnamese novelist. Writes fantasy and sci-fi. Prefers formal prose style. Working on "The Three Kingdoms" series. Timezone UTC+7. Has deep knowledge of Chinese mythology and loves weaving historical references into fiction.</textarea>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+            <span style="color: var(--muted-fg); font-size: 11px;" class="font-mono">47 tokens (~188 chars) · v12 · updated 3 days ago</span>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-secondary btn-sm">Regenerate with AI</button>
+              <button class="btn btn-primary btn-sm">Save</button>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <h3>Version history</h3>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div class="card" style="padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
+              <div>
+                <span style="color: var(--success);">● Current</span> · v12
+                <span style="color: var(--muted-fg);"> — 3 days ago · manual edit</span>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn btn-ghost btn-sm">View</button>
+              </div>
+            </div>
+            <div class="card" style="padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
+              <div>v11 <span style="color: var(--muted-fg);">— 12 days ago · AI regenerated</span></div>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn btn-ghost btn-sm">View</button>
+                <button class="btn btn-ghost btn-sm">Rollback</button>
+              </div>
+            </div>
+            <div class="card" style="padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
+              <div>v10 <span style="color: var(--muted-fg);">— 2 weeks ago · AI regenerated</span></div>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn btn-ghost btn-sm">View</button>
+                <button class="btn btn-ghost btn-sm">Rollback</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h3>Preferences extracted</h3>
+          <p style="color: var(--muted-fg); font-size: 12px; margin: 0 0 12px;">
+            Detected from your writing. Edit or remove if inaccurate.
+          </p>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div class="card" style="padding: 10px 14px; font-size: 12px;">
+              <div style="color: var(--foreground);">Formal prose style</div>
+              <div style="color: var(--muted-fg); font-size: 10px; margin-top: 2px;">42 chat turns · 18 chapters</div>
+            </div>
+            <div class="card" style="padding: 10px 14px; font-size: 12px;">
+              <div style="color: var(--foreground);">Third-person limited POV</div>
+              <div style="color: var(--muted-fg); font-size: 10px; margin-top: 2px;">31 chapters</div>
+            </div>
+            <div class="card" style="padding: 10px 14px; font-size: 12px;">
+              <div style="color: var(--foreground);">Avoids modern idioms</div>
+              <div style="color: var(--muted-fg); font-size: 10px; margin-top: 2px;">24 chat turns</div>
+            </div>
+            <div class="card" style="padding: 10px 14px; font-size: 12px;">
+              <div style="color: var(--foreground);">Likes historical references</div>
+              <div style="color: var(--muted-fg); font-size: 10px; margin-top: 2px;">15 chapters</div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <h3>Privacy</h3>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <button class="btn btn-secondary" style="width: 100%; justify-content: center;">📥 Export my data</button>
+            <button class="btn btn-danger" style="width: 100%; justify-content: center;">🗑 Delete all memory</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== Entities ==================== -->
+    <section class="demo-section" id="entities">
+      <h2>Memory — Entities</h2>
+      <p class="subtitle">Every character, place, concept the AI has extracted. Click any row for full detail with provenance.</p>
+
+      <div class="tabs">
+        <div class="tab">Projects</div>
+        <div class="tab">Extraction Jobs</div>
+        <div class="tab">Global</div>
+        <div class="tab active">Entities</div>
+        <div class="tab">Timeline</div>
+        <div class="tab">Raw</div>
+      </div>
+
+      <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+        <input type="text" class="input" placeholder="🔍 Search entities by name or alias..." style="flex: 1;">
+        <select class="select" style="width: auto;">
+          <option>All projects</option>
+          <option>Winds of the Eastern Sea</option>
+          <option>Short Stories</option>
+        </select>
+        <select class="select" style="width: auto;">
+          <option>All kinds</option>
+          <option>Character</option>
+          <option>Location</option>
+          <option>Item</option>
+          <option>Concept</option>
+          <option>Faction</option>
+        </select>
+      </div>
+
+      <div class="card" style="padding: 0; overflow: hidden;">
+        <div class="entity-row header">
+          <div>Name</div>
+          <div>Kind</div>
+          <div>Project</div>
+          <div>Mentions</div>
+          <div>Confidence</div>
+          <div>Last seen</div>
+        </div>
+        <div class="entity-row" onclick="showSlideOver('entity-detail')">
+          <div style="font-weight: 500;">⭐ Kai <span style="color: var(--muted-fg); font-weight: 400; font-size: 11px;">(Master Kai, kai)</span></div>
+          <div><span class="badge badge-full" style="font-size: 10px;">character</span></div>
+          <div style="color: var(--muted-fg);">Winds of the Eastern Sea</div>
+          <div class="font-mono">1,247</div>
+          <div><span class="dot dot-green"></span> <span class="font-mono" style="font-size: 11px;">0.98</span></div>
+          <div style="color: var(--muted-fg); font-size: 11px;">ch.45</div>
+        </div>
+        <div class="entity-row">
+          <div>Master Lin</div>
+          <div><span class="badge badge-full" style="font-size: 10px;">character</span></div>
+          <div style="color: var(--muted-fg);">Winds of the Eastern Sea</div>
+          <div class="font-mono">384</div>
+          <div><span class="dot dot-green"></span> <span class="font-mono" style="font-size: 11px;">0.96</span></div>
+          <div style="color: var(--muted-fg); font-size: 11px;">ch.12</div>
+        </div>
+        <div class="entity-row">
+          <div>Empress Yun</div>
+          <div><span class="badge badge-full" style="font-size: 10px;">character</span></div>
+          <div style="color: var(--muted-fg);">Winds of the Eastern Sea</div>
+          <div class="font-mono">156</div>
+          <div><span class="dot dot-green"></span> <span class="font-mono" style="font-size: 11px;">0.92</span></div>
+          <div style="color: var(--muted-fg); font-size: 11px;">ch.43</div>
+        </div>
+        <div class="entity-row">
+          <div>Water Kingdom <span style="color: var(--muted-fg); font-weight: 400; font-size: 11px;">(the Water, Northern Kingdom)</span></div>
+          <div><span class="badge badge-static" style="font-size: 10px;">location</span></div>
+          <div style="color: var(--muted-fg);">Winds of the Eastern Sea</div>
+          <div class="font-mono">423</div>
+          <div><span class="dot dot-green"></span> <span class="font-mono" style="font-size: 11px;">0.95</span></div>
+          <div style="color: var(--muted-fg); font-size: 11px;">ch.44</div>
+        </div>
+        <div class="entity-row">
+          <div>Hailong City</div>
+          <div><span class="badge badge-static" style="font-size: 10px;">location</span></div>
+          <div style="color: var(--muted-fg);">Winds of the Eastern Sea</div>
+          <div class="font-mono">89</div>
+          <div><span class="dot dot-yellow"></span> <span class="font-mono" style="font-size: 11px;">0.84</span></div>
+          <div style="color: var(--muted-fg); font-size: 11px;">ch.38</div>
+        </div>
+        <div class="entity-row">
+          <div>The Sixth Element prophecy</div>
+          <div><span class="badge badge-building" style="font-size: 10px;">concept</span></div>
+          <div style="color: var(--muted-fg);">Winds of the Eastern Sea</div>
+          <div class="font-mono">34</div>
+          <div><span class="dot dot-yellow"></span> <span class="font-mono" style="font-size: 11px;">0.78</span></div>
+          <div style="color: var(--muted-fg); font-size: 11px;">ch.37</div>
+        </div>
+        <div class="entity-row">
+          <div>Jade amulet</div>
+          <div><span class="badge badge-paused" style="font-size: 10px;">item</span></div>
+          <div style="color: var(--muted-fg);">Winds of the Eastern Sea</div>
+          <div class="font-mono">17</div>
+          <div><span class="dot dot-yellow"></span> <span class="font-mono" style="font-size: 11px;">0.71</span></div>
+          <div style="color: var(--muted-fg); font-size: 11px;">ch.12</div>
+        </div>
+        <div class="entity-row">
+          <div>Twilight Guild</div>
+          <div><span class="badge badge-failed" style="font-size: 10px;">faction</span></div>
+          <div style="color: var(--muted-fg);">Winds of the Eastern Sea</div>
+          <div class="font-mono">22</div>
+          <div><span class="dot dot-red"></span> <span class="font-mono" style="font-size: 11px;">0.62</span></div>
+          <div style="color: var(--muted-fg); font-size: 11px;">ch.31</div>
+        </div>
+      </div>
+
+      <div style="text-align: center; padding: 12px; color: var(--muted-fg); font-size: 11px;">
+        Showing 8 of 127 entities · <button class="btn btn-ghost btn-sm" style="display: inline;">Load more ↓</button>
+      </div>
+    </section>
+
+    <!-- ==================== Timeline ==================== -->
+    <section class="demo-section" id="timeline">
+      <h2>Memory — Timeline</h2>
+      <p class="subtitle">Temporal view of plot events with filters. Query the knowledge graph chronologically or by narrative order.</p>
+
+      <div class="tabs">
+        <div class="tab">Projects</div>
+        <div class="tab">Extraction Jobs</div>
+        <div class="tab">Global</div>
+        <div class="tab">Entities</div>
+        <div class="tab active">Timeline</div>
+        <div class="tab">Raw</div>
+      </div>
+
+      <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+        <select class="select" style="width: auto;">
+          <option>Winds of the Eastern Sea</option>
+        </select>
+        <select class="select" style="width: auto;">
+          <option>All entities</option>
+          <option>Kai</option>
+          <option>Master Lin</option>
+          <option>Empress Yun</option>
+        </select>
+        <input type="text" class="input" placeholder="From chapter..." style="width: 140px;">
+        <input type="text" class="input" placeholder="To chapter..." style="width: 140px;">
+        <div style="flex: 1;"></div>
+        <button class="btn btn-secondary">Sort: Narrative order ↓</button>
+      </div>
+
+      <div class="card">
+        <div class="timeline">
+          <div class="timeline-item major">
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+              <div style="flex: 1;">
+                <div style="font-size: 11px; color: var(--muted-fg);" class="font-mono">ch.1 · narrative_order 1</div>
+                <div style="margin: 4px 0;">Kai first manifested fire elemental powers</div>
+                <div style="font-size: 11px; color: var(--muted-fg);">Entities: <span style="color: var(--accent);">Kai</span></div>
+              </div>
+              <span class="badge badge-full" style="font-size: 10px;">major</span>
+            </div>
+          </div>
+          <div class="timeline-item major">
+            <div>
+              <div style="font-size: 11px; color: var(--muted-fg);" class="font-mono">ch.3 · narrative_order 2</div>
+              <div style="margin: 4px 0;">Master Lin accepted Kai as his disciple</div>
+              <div style="font-size: 11px; color: var(--muted-fg);">Entities: <span style="color: var(--accent);">Kai</span>, <span style="color: var(--accent);">Master Lin</span></div>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div>
+              <div style="font-size: 11px; color: var(--muted-fg);" class="font-mono">ch.8 · narrative_order 3</div>
+              <div style="margin: 4px 0;">Kai discovered he could control flame with his emotions</div>
+            </div>
+          </div>
+          <div class="timeline-item major">
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+              <div style="flex: 1;">
+                <div style="font-size: 11px; color: var(--muted-fg);" class="font-mono">ch.12 · narrative_order 4</div>
+                <div style="margin: 4px 0;">Master Lin died protecting Kai from the Twilight Guild</div>
+                <div style="font-size: 11px; color: var(--muted-fg);">Entities: <span style="color: var(--accent);">Master Lin</span>, <span style="color: var(--accent);">Twilight Guild</span>, <span style="color: var(--accent);">Kai</span></div>
+              </div>
+              <span class="badge badge-failed" style="font-size: 10px;">pivotal</span>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div>
+              <div style="font-size: 11px; color: var(--muted-fg);" class="font-mono">ch.35 · narrative_order 5</div>
+              <div style="margin: 4px 0;">Kai killed Commander Zhao (Water Kingdom unaware)</div>
+              <div style="font-size: 11px; color: var(--muted-fg);">Entities: <span style="color: var(--accent);">Kai</span>, Commander Zhao, <span style="color: var(--accent);">Water Kingdom</span></div>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div>
+              <div style="font-size: 11px; color: var(--muted-fg);" class="font-mono">ch.37 · narrative_order 6</div>
+              <div style="margin: 4px 0;">Kai learned Lin was secretly loyal to the Sixth Element order</div>
+            </div>
+          </div>
+          <div class="timeline-item major">
+            <div>
+              <div style="font-size: 11px; color: var(--muted-fg);" class="font-mono">ch.38 · narrative_order 7 · <strong style="color: var(--primary);">current arc</strong></div>
+              <div style="margin: 4px 0;">Kai began infiltrating Water Kingdom under a merchant apprentice cover</div>
+              <div style="font-size: 11px; color: var(--muted-fg);">Entities: <span style="color: var(--accent);">Kai</span>, <span style="color: var(--accent);">Water Kingdom</span>, <span style="color: var(--accent);">Empress Yun</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== Raw drawers ==================== -->
+    <section class="demo-section" id="raw">
+      <h2>Memory — Raw Drawers</h2>
+      <p class="subtitle">Verbatim text chunks stored as memory drawers. Semantic search via vector embeddings.</p>
+
+      <div class="tabs">
+        <div class="tab">Projects</div>
+        <div class="tab">Extraction Jobs</div>
+        <div class="tab">Global</div>
+        <div class="tab">Entities</div>
+        <div class="tab">Timeline</div>
+        <div class="tab active">Raw</div>
+      </div>
+
+      <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+        <input type="text" class="input" placeholder="🔍 Semantic search: 'jade amulet history'..." style="flex: 1;" value="jade amulet history">
+        <select class="select" style="width: auto;">
+          <option>All sources</option>
+          <option>Chapter content</option>
+          <option>Chat turns</option>
+          <option>Glossary entries</option>
+          <option>User-curated</option>
+        </select>
+        <button class="btn btn-primary">Search</button>
+      </div>
+
+      <p class="label">Found 12 drawers matching "jade amulet history" (0.91 top similarity)</p>
+
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+            <div style="font-size: 11px; color: var(--muted-fg);">
+              <span style="color: var(--accent);">📖 Chapter content</span> · Winds of the Eastern Sea, ch.12
+            </div>
+            <span class="font-mono" style="font-size: 11px; color: var(--success);">0.91</span>
+          </div>
+          <p style="margin: 0; font-size: 13px; line-height: 1.6; color: var(--foreground);">
+            "The jade amulet was ancient, carved with runes that predated the Sixth Element itself. Master Lin had kept it locked away, never speaking of its origin, yet Kai had sensed its presence long before he had seen it..."
+          </p>
+          <div style="display: flex; gap: 12px; margin-top: 10px; font-size: 11px; color: var(--muted-fg);">
+            <span>38 tokens</span>
+            <span>Filed 3 weeks ago</span>
+            <button class="btn btn-ghost btn-sm" style="padding: 2px 8px;">View full</button>
+            <button class="btn btn-ghost btn-sm" style="padding: 2px 8px; color: var(--destructive);">Delete</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+            <div style="font-size: 11px; color: var(--muted-fg);">
+              <span style="color: var(--thinking);">💬 Chat turn</span> · 2026-04-08
+            </div>
+            <span class="font-mono" style="font-size: 11px; color: var(--success);">0.85</span>
+          </div>
+          <p style="margin: 0; font-size: 13px; line-height: 1.6; color: var(--foreground);">
+            <span style="color: var(--muted-fg);">You:</span> Kai held the amulet up to the light...<br>
+            <span style="color: var(--muted-fg);">AI:</span> The runes seemed to resonate when exposed to flame, as though responding to Kai's elemental nature.
+          </p>
+        </div>
+
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+            <div style="font-size: 11px; color: var(--muted-fg);">
+              <span style="color: var(--primary);">📚 Glossary entry</span> · jade amulet
+            </div>
+            <span class="font-mono" style="font-size: 11px; color: var(--success);">1.00</span>
+          </div>
+          <p style="margin: 0; font-size: 13px; line-height: 1.6; color: var(--foreground);">
+            Ancient artifact. Activates in response to elemental energy. Linked to the Sixth Element prophecy (hypothesized). Kai possesses it as of ch.12.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== Chat header popover ==================== -->
+    <section class="demo-section" id="chat-header">
+      <h2>Chat Integration — Memory Indicator</h2>
+      <p class="subtitle">Subtle indicator in chat header shows active memory mode with plain-language explanation.</p>
+
+      <h3>🧠 Header indicator (3 states)</h3>
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <div>
+          <div class="label">No project attached · Mode 1</div>
+          <div style="background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 13px;">← Back</span>
+            <span style="font-size: 13px; flex: 1;">Chat session · New conversation</span>
+            <div style="display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 6px; background: var(--muted); color: var(--muted-fg); font-size: 11.5px;">
+              📖 No memory ▾
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="label">Static mode · Mode 2</div>
+          <div style="background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 13px;">← Back</span>
+            <span style="font-size: 13px; flex: 1;">"Chapter 12 Rewrite" · Winds of the Eastern Sea</span>
+            <div style="display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 6px; background: var(--warning-muted); color: var(--warning); font-size: 11.5px;">
+              📖 Static memory ▾
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="label">Full mode · Mode 3 (extraction enabled)</div>
+          <div style="background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 13px;">← Back</span>
+            <span style="font-size: 13px; flex: 1;">"Scene planning" · The Silk Road Chronicles</span>
+            <div style="display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 6px; background: var(--success-muted); color: var(--success); font-size: 11.5px;">
+              📖 Full memory ▾
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h3>ℹ️ Clicked popover — Static mode example</h3>
+      <div style="background: var(--background); padding: 30px 20px; border-radius: 12px; display: flex; justify-content: center; position: relative;">
+        <div style="position: relative;">
+          <div style="background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; display: inline-flex; align-items: center; gap: 6px;">
+            <span style="color: var(--warning); font-size: 12px;">📖 Static memory ▾</span>
+          </div>
+          <div class="popover" style="top: 40px; left: 0; position: absolute;">
+            <div style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Winds of the Eastern Sea</div>
+            <div style="color: var(--warning); font-size: 12px; margin-bottom: 10px;">Memory mode: Static</div>
+            <p style="color: var(--muted-fg); font-size: 11.5px; line-height: 1.55; margin: 0 0 12px;">
+              The AI knows your bio, project instructions, and the most relevant glossary entries. It does NOT have a knowledge graph yet, so it won't remember specific plot events across chats.
+            </p>
+            <div class="label">Context right now:</div>
+            <ul style="margin: 0 0 12px; padding-left: 16px; color: var(--muted-fg); font-size: 11.5px; line-height: 1.7;">
+              <li>Your bio (L0)</li>
+              <li>Project instructions + style examples</li>
+              <li>18 glossary entities matched</li>
+              <li>Last 50 messages</li>
+            </ul>
+            <div class="divider" style="margin: 10px 0;"></div>
+            <div style="font-size: 11.5px; color: var(--foreground); margin-bottom: 8px;">Want richer memory?</div>
+            <button class="btn btn-primary btn-sm" style="width: 100%; justify-content: center;">✨ Build knowledge graph →</button>
+            <div style="font-size: 10px; color: var(--muted-fg); margin-top: 6px; text-align: center;">Est. cost: $3–8</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== Memory block XML preview ==================== -->
+    <section class="demo-section" id="memory-block">
+      <h2>Memory Block — Injected into LLM prompt</h2>
+      <p class="subtitle">The actual XML structure that gets prepended to the system prompt before the LLM sees the user message.</p>
+
+      <h3>Mode 2 (Static) example</h3>
+      <div class="xml-preview"><span class="tag">&lt;memory</span> <span class="attr">mode</span>=<span class="str">"static"</span><span class="tag">&gt;</span>
+  <span class="tag">&lt;user&gt;</span>
+    Vietnamese novelist. Writes fantasy and sci-fi. Prefers formal prose.
+    Working on "The Three Kingdoms" series.
+  <span class="tag">&lt;/user&gt;</span>
+
+  <span class="tag">&lt;project</span> <span class="attr">type</span>=<span class="str">"book"</span> <span class="attr">name</span>=<span class="str">"Winds of the Eastern Sea"</span><span class="tag">&gt;</span>
+    <span class="tag">&lt;description&gt;</span>
+      Fantasy novel, 45 chapters. Protagonist Kai (17, fire elemental)
+      trained by Master Lin (deceased ch.12). Current arc: Water Kingdom.
+    <span class="tag">&lt;/description&gt;</span>
+    <span class="tag">&lt;instructions&gt;</span>Formal prose. Third-person limited POV.<span class="tag">&lt;/instructions&gt;</span>
+    <span class="tag">&lt;style_examples&gt;</span>
+      <span class="tag">&lt;example&gt;</span>The wind carried the scent of pine and distant fires, and Kai knew the hunt had begun.<span class="tag">&lt;/example&gt;</span>
+    <span class="tag">&lt;/style_examples&gt;</span>
+  <span class="tag">&lt;/project&gt;</span>
+
+  <span class="tag">&lt;glossary</span> <span class="attr">count</span>=<span class="str">"18"</span> <span class="attr">total_in_book</span>=<span class="str">"1650"</span> <span class="attr">selection</span>=<span class="str">"fts_match"</span><span class="tag">&gt;</span>
+    <span class="tag">&lt;entity</span> <span class="attr">name</span>=<span class="str">"Kai"</span> <span class="attr">kind</span>=<span class="str">"character"</span> <span class="attr">pinned</span>=<span class="str">"true"</span><span class="tag">&gt;</span>
+      17-year-old fire elemental. Protagonist. Trained by Master Lin.
+    <span class="tag">&lt;/entity&gt;</span>
+    <span class="tag">&lt;entity</span> <span class="attr">name</span>=<span class="str">"Water Kingdom"</span> <span class="attr">kind</span>=<span class="str">"location"</span><span class="tag">&gt;</span>
+      Northern kingdom. Ruled by Empress Yun. Capital: Hailong City.
+    <span class="tag">&lt;/entity&gt;</span>
+    <span class="comment">&lt;!-- ... 16 more selected entities --&gt;</span>
+  <span class="tag">&lt;/glossary&gt;</span>
+
+  <span class="tag">&lt;instructions&gt;</span>
+    Use the glossary for character and location facts. For anything not in
+    the glossary, ask the user rather than inventing. Knowledge graph
+    extraction is disabled for this project.
+  <span class="tag">&lt;/instructions&gt;</span>
+<span class="tag">&lt;/memory&gt;</span>
+
+<span class="comment">&lt;!-- Then: session system prompt, recent messages (last 50) --&gt;</span></div>
+
+      <h3>Mode 3 (Full extraction) example — adds facts, events, L3 passages</h3>
+      <div class="xml-preview"><span class="tag">&lt;memory</span> <span class="attr">mode</span>=<span class="str">"full"</span><span class="tag">&gt;</span>
+  <span class="comment">&lt;!-- L0 + L1 + glossary (reduced) same as Mode 2 --&gt;</span>
+
+  <span class="tag">&lt;facts&gt;</span>
+    <span class="tag">&lt;current&gt;</span>
+      <span class="tag">&lt;fact</span> <span class="attr">source</span>=<span class="str">"ch.38"</span><span class="tag">&gt;</span>Kai is infiltrating Water Kingdom<span class="tag">&lt;/fact&gt;</span>
+      <span class="tag">&lt;fact</span> <span class="attr">source</span>=<span class="str">"ch.38"</span><span class="tag">&gt;</span>Kai's cover: merchant's apprentice<span class="tag">&lt;/fact&gt;</span>
+    <span class="tag">&lt;/current&gt;</span>
+    <span class="tag">&lt;recent&gt;</span>
+      <span class="tag">&lt;fact</span> <span class="attr">source</span>=<span class="str">"ch.35"</span><span class="tag">&gt;</span>Kai killed Commander Zhao<span class="tag">&lt;/fact&gt;</span>
+      <span class="tag">&lt;fact</span> <span class="attr">source</span>=<span class="str">"ch.37"</span><span class="tag">&gt;</span>Kai learned Lin was loyal to the Sixth Element order<span class="tag">&lt;/fact&gt;</span>
+    <span class="tag">&lt;/recent&gt;</span>
+    <span class="tag">&lt;background&gt;</span>
+      <span class="tag">&lt;fact</span> <span class="attr">source</span>=<span class="str">"ch.12"</span><span class="tag">&gt;</span>Master Lin died<span class="tag">&lt;/fact&gt;</span>
+    <span class="tag">&lt;/background&gt;</span>
+    <span class="tag">&lt;negative&gt;</span>
+      <span class="tag">&lt;fact</span> <span class="attr">source</span>=<span class="str">"ch.35"</span><span class="tag">&gt;</span>Water Kingdom does NOT know Kai killed Zhao<span class="tag">&lt;/fact&gt;</span>
+    <span class="tag">&lt;/negative&gt;</span>
+  <span class="tag">&lt;/facts&gt;</span>
+
+  <span class="tag">&lt;related_passages&gt;</span>
+    <span class="tag">&lt;passage</span> <span class="attr">source</span>=<span class="str">"ch.12"</span> <span class="attr">type</span>=<span class="str">"chapter_content"</span> <span class="attr">relevance</span>=<span class="str">"0.91"</span><span class="tag">&gt;</span>
+      Master Lin had kept the jade amulet locked away, never speaking of its origin...
+    <span class="tag">&lt;/passage&gt;</span>
+  <span class="tag">&lt;/related_passages&gt;</span>
+
+  <span class="tag">&lt;no_memory_for&gt;</span>Sixth Element prophecy text<span class="tag">&lt;/no_memory_for&gt;</span>
+
+  <span class="tag">&lt;instructions&gt;</span>
+    Before answering, silently note which facts are relevant. Characters can
+    only know what their POV has witnessed — check &amp;lt;negative&amp;gt; before revealing.
+    If a topic appears in &amp;lt;no_memory_for&amp;gt;, ask the user instead of inventing.
+  <span class="tag">&lt;/instructions&gt;</span>
+<span class="tag">&lt;/memory&gt;</span></div>
+    </section>
+
+    <!-- ==================== Privacy page ==================== -->
+    <section class="demo-section" id="privacy">
+      <h2>Privacy — "Trust Me" Edition</h2>
+      <p class="subtitle">Honest about what this project is (a hobby) and what it isn't (an audited platform).</p>
+
+      <div class="card" style="max-width: 720px; padding: 28px;">
+        <h3 style="margin-top: 0;">🔒 The Commitment</h3>
+        <p style="font-size: 14px; line-height: 1.7; color: var(--foreground); margin-bottom: 24px;">
+          LoreWeave is a personal hobby project, not an audited platform. Your content
+          stays on the server you or your host controls. We don't train AI models on
+          your writing — we can't afford the infrastructure to train models even if
+          we wanted to. LLM extraction uses your own BYOK API keys, so AI providers
+          see your content under your own account and billing, not ours. You can
+          export or delete your data any time.
+          <strong>No SLA, no support contracts, no enterprise compliance. Use at your own risk.</strong>
+        </p>
+
+        <h3>📊 What Actually Happens to Your Content</h3>
+        <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
+          <div style="background: var(--background); padding: 12px 14px; border-radius: 8px; border-left: 3px solid var(--accent);">
+            <div style="font-weight: 500; font-size: 13px; margin-bottom: 4px;">1. Raw content (chapters, chat, glossary)</div>
+            <div style="color: var(--muted-fg); font-size: 12px; line-height: 1.6;">
+              Stored in Postgres on the server you run. Encrypted at rest if you configure disk encryption. Never copied anywhere except your backups. Never sent to any AI provider except via your own BYOK API key.
+            </div>
+          </div>
+          <div style="background: var(--background); padding: 12px 14px; border-radius: 8px; border-left: 3px solid var(--accent);">
+            <div style="font-weight: 500; font-size: 13px; margin-bottom: 4px;">2. Knowledge graph (Track 2, if enabled)</div>
+            <div style="color: var(--muted-fg); font-size: 12px; line-height: 1.6;">
+              Stored in Neo4j on the server you run. Derived from your raw content via LLM extraction. Extraction calls go to your chosen BYOK provider under your account.
+            </div>
+          </div>
+          <div style="background: var(--background); padding: 12px 14px; border-radius: 8px; border-left: 3px solid var(--accent);">
+            <div style="font-weight: 500; font-size: 13px; margin-bottom: 4px;">3. Embeddings</div>
+            <div style="color: var(--muted-fg); font-size: 12px; line-height: 1.6;">
+              Default: bge-m3 runs locally on your server (fully offline). Your content becomes vectors stored in Neo4j. No external provider involved for the default embedding model.
+            </div>
+          </div>
+        </div>
+
+        <h3>✅ Your Rights</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 24px;">
+          <button class="btn btn-secondary" style="justify-content: center;">📥 Export my data</button>
+          <button class="btn btn-secondary" style="justify-content: center;">🔍 View what AI knows</button>
+          <button class="btn btn-secondary" style="justify-content: center;">✏️ Edit my memory</button>
+          <button class="btn btn-danger" style="justify-content: center;">🗑 Delete everything</button>
+        </div>
+
+        <h3>❌ What We Don't Do</h3>
+        <ul style="color: var(--muted-fg); font-size: 12px; line-height: 1.8;">
+          <li>No SOC 2 audit — we can't afford $15-50k for annual audits</li>
+          <li>No HIPAA BAA — we cannot be your Business Associate</li>
+          <li>No GDPR DPA — no legal entity to sign one</li>
+          <li>No 24/7 incident response — it's a hobby</li>
+          <li>No uptime guarantee — the server runs when it runs</li>
+        </ul>
+
+        <h3>✅ What We Do Instead</h3>
+        <ul style="color: var(--foreground); font-size: 12px; line-height: 1.8;">
+          <li><strong>Open source</strong> — read the code, verify the implementation</li>
+          <li><strong>Self-hostable</strong> — run on your own hardware for maximum control</li>
+          <li><strong>BYOK-first</strong> — you own the relationship with AI providers</li>
+          <li><strong>Local-first defaults</strong> — bge-m3 runs locally, no cloud unless you opt in</li>
+          <li><strong>Honest docs</strong> — this page, not a marketing PDF</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ==================== Mobile view ==================== -->
+    <section class="demo-section" id="mobile">
+      <h2>Mobile Memory UI</h2>
+      <p class="subtitle">Simplified for phones. Core actions only — toggle, view projects, trigger builds. Deep inspection on desktop.</p>
+
+      <div style="display: flex; gap: 32px; align-items: flex-start;">
+        <!-- Phone 1: Projects -->
+        <div>
+          <div class="label" style="text-align: center;">Projects tab</div>
+          <div class="phone-frame">
+            <div style="padding: 32px 16px 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <span style="font-weight: 600;">Memory</span>
+                <span style="font-size: 11px; color: var(--muted-fg);">Projects · Jobs · Global</span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div class="card" style="padding: 14px;">
+                  <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                    <div style="font-weight: 500; font-size: 13px;">Winds of the Eastern Sea</div>
+                    <span class="badge badge-disabled" style="font-size: 10px;">Static</span>
+                  </div>
+                  <div style="color: var(--muted-fg); font-size: 11px; margin-bottom: 10px;">book · 45 chapters</div>
+                  <button class="btn btn-primary btn-sm" style="width: 100%; justify-content: center;">✨ Build</button>
+                </div>
+                <div class="card" style="padding: 14px;">
+                  <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                    <div style="font-weight: 500; font-size: 13px;">The Silk Road</div>
+                    <span class="badge badge-building" style="font-size: 10px;">Building</span>
+                  </div>
+                  <div style="color: var(--muted-fg); font-size: 11px; margin-bottom: 6px;">14/230 · $1.12</div>
+                  <div class="progress"><div class="progress-fill" style="width: 6%;"></div></div>
+                </div>
+                <div class="card" style="padding: 14px;">
+                  <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                    <div style="font-weight: 500; font-size: 13px;">Short Stories</div>
+                    <span class="badge badge-full" style="font-size: 10px;">Ready</span>
+                  </div>
+                  <div style="color: var(--muted-fg); font-size: 11px;">127 entities · 1,203 facts</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Phone 2: Chat with indicator -->
+        <div>
+          <div class="label" style="text-align: center;">Chat with memory</div>
+          <div class="phone-frame">
+            <div style="padding: 32px 12px 16px;">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border);">
+                <span style="font-size: 14px;">←</span>
+                <span style="font-size: 12px; flex: 1; font-weight: 500;">Chapter 12 Rewrite</span>
+                <div style="padding: 3px 8px; border-radius: 6px; background: var(--warning-muted); color: var(--warning); font-size: 10px;">📖 Static</div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 10px; padding-bottom: 60px;">
+                <div style="background: var(--secondary); border-radius: 10px 10px 3px 10px; padding: 10px 12px; font-size: 12px; margin-left: 40px;">
+                  Let's rewrite chapter 12 with more tension.
+                </div>
+                <div style="background: var(--card); border: 1px solid var(--border); border-radius: 10px 10px 10px 3px; padding: 10px 12px; font-size: 12px; margin-right: 40px;">
+                  I remember Master Lin dies in ch.12. Should we emphasize Kai's shock, or focus on the Twilight Guild confrontation?
+                </div>
+                <div style="background: var(--secondary); border-radius: 10px 10px 3px 10px; padding: 10px 12px; font-size: 12px; margin-left: 40px;">
+                  Emphasize the shock. Keep the guild brief.
+                </div>
+              </div>
+              <div style="position: absolute; bottom: 16px; left: 12px; right: 12px; background: var(--input); border: 1px solid var(--border); border-radius: 20px; padding: 8px 16px; display: flex; align-items: center; gap: 8px;">
+                <span style="color: var(--muted-fg); font-size: 12px; flex: 1;">Type a message...</span>
+                <span>▶</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== State legend ==================== -->
+    <section class="demo-section" id="legend">
+      <h2>Memory State Legend</h2>
+      <p class="subtitle">All 13 project memory states from the state machine (KSA §8.4). Each triggers a different card layout.</p>
+
+      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+        <div class="card"><span class="badge badge-disabled">📖 Static memory</span><div style="font-size: 12px; color: var(--muted-fg); margin-top: 8px;"><strong>disabled</strong> — default for new projects. Glossary fallback active. Zero AI cost.</div></div>
+        <div class="card"><span class="badge badge-building">⚙️ Checking cost...</span><div style="font-size: 12px; color: var(--muted-fg); margin-top: 8px;"><strong>estimating</strong> — awaiting cost estimate from backend.</div></div>
+        <div class="card"><span class="badge badge-building">💡 Ready to build</span><div style="font-size: 12px; color: var(--muted-fg); margin-top: 8px;"><strong>ready_to_build</strong> — cost shown, awaiting user confirm.</div></div>
+        <div class="card"><span class="badge badge-building">⚙️ Building...</span><div style="font-size: 12px; color: var(--muted-fg); margin-top: 8px;"><strong>building_running</strong> — extraction actively running.</div></div>
+        <div class="card"><span class="badge badge-paused">⏸ Paused (user)</span><div style="font-size: 12px; color: var(--muted-fg); margin-top: 8px;"><strong>building_paused_user</strong> — user hit pause.</div></div>
+        <div class="card"><span class="badge badge-paused">💰 Budget reached</span><div style="font-size: 12px; color: var(--muted-fg); margin-top: 8px;"><strong>building_paused_budget</strong> — auto-paused at spend cap.</div></div>
+        <div class="card"><span class="badge badge-failed">⚠️ Paused (error)</span><div style="font-size: 12px; color: var(--muted-fg); margin-top: 8px;"><strong>building_paused_error</strong> — retryable error, user can resume.</div></div>
+        <div class="card"><span class="badge badge-full">🧠 Full memory</span><div style="font-size: 12px; color: var(--muted-fg); margin-top: 8px;"><strong>complete</strong> — full knowledge graph ready.</div></div>
+        <div class="card"><span class="badge badge-stale">🆕 Updates pending</span><div style="font-size: 12px; color: var(--muted-fg); margin-top: 8px;"><strong>stale</strong> — new chapters since last extraction.</div></div>
+        <div class="card"><span class="badge badge-failed">✗ Failed</span><div style="font-size: 12px; color: var(--muted-fg); margin-top: 8px;"><strong>failed</strong> — unrecoverable error, needs user action.</div></div>
+        <div class="card"><span class="badge badge-paused">⚠️ Model change</span><div style="font-size: 12px; color: var(--muted-fg); margin-top: 8px;"><strong>model_change_pending</strong> — user picked new model, needs rebuild.</div></div>
+        <div class="card"><span class="badge badge-building">⚙️ Cancelling...</span><div style="font-size: 12px; color: var(--muted-fg); margin-top: 8px;"><strong>cancelling</strong> — backend cleaning up.</div></div>
+        <div class="card"><span class="badge badge-failed">🗑 Deleting graph...</span><div style="font-size: 12px; color: var(--muted-fg); margin-top: 8px;"><strong>deleting</strong> — removing Neo4j data (raw content preserved).</div></div>
+      </div>
+
+      <div class="divider"></div>
+      <h3>Color semantics</h3>
+      <div style="display: flex; gap: 20px; font-size: 12px; color: var(--muted-fg);">
+        <div><span class="dot dot-gray"></span> Gray — inactive / disabled</div>
+        <div><span class="dot dot-yellow"></span> Yellow — caution / paused / static</div>
+        <div><span class="dot dot-blue"></span> Blue — in progress / building</div>
+        <div><span class="dot dot-green"></span> Green — ready / active / complete</div>
+        <div><span class="dot dot-red"></span> Red — error / failed / destructive</div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ==================== Modals ==================== -->
+<div class="modal-bg" id="build-modal">
+  <div class="modal" style="max-width: 520px;">
+    <div style="padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+      <h3 style="margin: 0;">Build Knowledge Graph</h3>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('build-modal')">✕</button>
+    </div>
+    <div style="padding: 24px; color: var(--muted-fg);">
+      See the "Build dialog" page in the sidebar for the full mockup.
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Slide-overs ==================== -->
+<div class="slide-over-bg" id="entity-detail-bg" onclick="closeSlideOver('entity-detail')"></div>
+<div class="slide-over" id="entity-detail">
+  <div style="padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+    <div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <h3 style="margin: 0; font-size: 16px;">⭐ Kai</h3>
+        <span class="badge badge-full" style="font-size: 10px;">character</span>
+      </div>
+      <div style="color: var(--muted-fg); font-size: 11px; margin-top: 2px;">Winds of the Eastern Sea · pinned</div>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="closeSlideOver('entity-detail')">✕</button>
+  </div>
+
+  <div style="padding: 20px 24px;">
+    <div style="margin-bottom: 20px;">
+      <div class="label">Aliases</div>
+      <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+        <span class="gloss-entity">Kai</span>
+        <span class="gloss-entity">Master Kai</span>
+        <span class="gloss-entity">kai</span>
+        <span class="gloss-entity" style="background: transparent; border-style: dashed;">+ add alias</span>
+      </div>
+    </div>
+
+    <div style="margin-bottom: 20px;">
+      <div class="label">Description</div>
+      <p style="font-size: 12.5px; color: var(--foreground); line-height: 1.6; margin: 0;">
+        17-year-old fire elemental. Protagonist. Trained by Master Lin. Currently infiltrating the Water Kingdom under the cover identity of a merchant apprentice. Unaware that Lin was secretly loyal to the Sixth Element order.
+      </p>
+    </div>
+
+    <div style="margin-bottom: 20px;">
+      <div class="label">Known facts (32)</div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div style="font-size: 12px; padding: 8px 10px; background: var(--background); border-radius: 6px;">
+          <span class="font-mono" style="color: var(--accent); font-size: 10px;">ch.1</span> Fire elemental <span class="font-mono" style="color: var(--success); font-size: 10px;">0.98</span>
+        </div>
+        <div style="font-size: 12px; padding: 8px 10px; background: var(--background); border-radius: 6px;">
+          <span class="font-mono" style="color: var(--accent); font-size: 10px;">ch.3</span> Disciple of Master Lin <span class="font-mono" style="color: var(--success); font-size: 10px;">0.96</span>
+        </div>
+        <div style="font-size: 12px; padding: 8px 10px; background: var(--background); border-radius: 6px;">
+          <span class="font-mono" style="color: var(--accent); font-size: 10px;">ch.35</span> Killed Commander Zhao <span class="font-mono" style="color: var(--success); font-size: 10px;">0.94</span>
+        </div>
+        <div style="font-size: 12px; padding: 8px 10px; background: var(--background); border-radius: 6px;">
+          <span class="font-mono" style="color: var(--accent); font-size: 10px;">ch.38</span> Infiltrating Water Kingdom <span class="font-mono" style="color: var(--success); font-size: 10px;">0.97</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="margin-top: 4px;">Show all 32 facts →</button>
+      </div>
+    </div>
+
+    <div style="margin-bottom: 20px;">
+      <div class="label">Relations</div>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
+        <div style="padding: 8px 10px; background: var(--background); border-radius: 6px;">
+          Kai → <span style="color: var(--muted-fg);">disciple_of</span> → <span style="color: var(--primary);">Master Lin</span>
+        </div>
+        <div style="padding: 8px 10px; background: var(--background); border-radius: 6px;">
+          Kai → <span style="color: var(--muted-fg);">killed</span> → Commander Zhao
+        </div>
+        <div style="padding: 8px 10px; background: var(--background); border-radius: 6px;">
+          Kai → <span style="color: var(--muted-fg);">infiltrating</span> → <span style="color: var(--primary);">Water Kingdom</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-bottom: 20px;">
+      <div class="label">Provenance (sources)</div>
+      <div style="color: var(--muted-fg); font-size: 12px;">
+        Extracted from 18 chapters + 47 chat turns + 1 glossary entry
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <button class="btn btn-secondary" style="justify-content: center;">✏️ Edit entity</button>
+      <button class="btn btn-secondary" style="justify-content: center;">🔀 Merge with another entity</button>
+      <button class="btn btn-ghost" style="justify-content: center;">📌 Unpin</button>
+      <button class="btn btn-danger" style="justify-content: center;">🗑 Delete (cascade)</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Tab navigation
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const target = item.dataset.target;
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      item.classList.add('active');
+      document.querySelectorAll('.demo-section').forEach(s => s.classList.remove('active'));
+      document.getElementById(target).classList.add('active');
+      document.querySelector('.page-main').scrollTo(0, 0);
+    });
+  });
+
+  function showModal(id) {
+    document.getElementById(id).classList.add('open');
+  }
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+  }
+  function showSlideOver(id) {
+    document.getElementById(id + '-bg').classList.add('open');
+    document.getElementById(id).classList.add('open');
+  }
+  function closeSlideOver(id) {
+    document.getElementById(id + '-bg').classList.remove('open');
+    document.getElementById(id).classList.remove('open');
+  }
+</script>
+
+</body>
+</html>
