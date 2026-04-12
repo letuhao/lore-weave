@@ -49,7 +49,7 @@ export function ChatWindow({
   // Voice mode
   // #15: depend on chat.send directly (stable ref) not the chat object
   const voiceChat = useVoiceChat(session.session_id, chat.refresh);
-  const autoTTS = useAutoTTS(chat.messages, chat.isStreaming, voiceChat.state !== 'inactive');
+  const autoTTS = useAutoTTS(chat.messages, chat.isStreaming, voiceChat.isActive);
 
   // Deactivate voice mode on session change
   useEffect(() => {
@@ -90,9 +90,9 @@ export function ChatWindow({
         onRename={onRename}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenSidebar={onOpenSidebar}
-        isVoiceModeActive={voiceChat.state !== 'inactive'}
+        isVoiceModeActive={voiceChat.isActive}
         onToggleVoiceMode={() => {
-          if (voiceChat.state !== 'inactive') voiceChat.deactivate();
+          if (voiceChat.isActive) voiceChat.deactivate();
           else voiceChat.activate();
         }}
         onOpenVoiceSettings={() => setVoiceSettingsOpen(true)}
@@ -120,7 +120,7 @@ export function ChatWindow({
         onStop={chat.stop}
         isStreaming={chat.isStreaming}
         disabled={isArchived}
-        voiceModeActive={voiceChat.state !== 'inactive'}
+        voiceModeActive={voiceChat.isActive}
         ttsPlaying={autoTTS.isPlaying}
         onStopTTS={autoTTS.stop}
         supportsThinking={true}
@@ -145,7 +145,7 @@ export function ChatWindow({
         />
       )}
 
-      {voiceChat.state !== 'inactive' && (
+      {voiceChat.isActive && (
         <VoiceChatOverlay
           state={voiceChat.state}
           sttText={voiceChat.sttText}

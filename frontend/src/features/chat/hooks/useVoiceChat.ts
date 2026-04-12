@@ -31,6 +31,9 @@ function phaseToState(phase: import('@/lib/VoicePipelineState').PipelinePhase): 
 }
 
 export interface VoiceChatResult {
+  /** Whether voice mode is enabled (overlay visible). Only changes on user action. */
+  isActive: boolean;
+  /** Current pipeline phase for UI rendering */
   state: VoiceChatState;
   sttText: string;
   aiText: string;
@@ -52,6 +55,7 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
   const [aiText, setAiText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [showConsent, setShowConsent] = useState(false);
+  const [isActive, setIsActive] = useState(false);  // Voice mode ON/OFF — only user controls this
   const [pipelineSnapshot, setPipelineSnapshot] = useState<PipelineSnapshot | null>(null);
   const pipelineRef = useRef(new VoicePipelineState());
 
@@ -78,6 +82,7 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
   const doActivate = useCallback(async () => {
     if (!sessionId || !accessToken || activeRef.current) return;
     activeRef.current = true;
+    setIsActive(true);
     pipelineRef.current.transition('activating');
 
     // Create AudioContext in user gesture (iOS Safari requirement — CRA-14)
@@ -254,6 +259,7 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
 
   const deactivate = useCallback(() => {
     activeRef.current = false;
+    setIsActive(false);
     pipelineRef.current.forceIdle();
     clientRef.current?.abort();
     vadRef.current?.deactivate();
@@ -282,7 +288,7 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
     }
   }, []);
 
-  return { state, sttText, aiText, error, showConsent, pipelineSnapshot, activate, acceptConsent, dismissConsent, deactivate, cancel };
+  return { isActive, state, sttText, aiText, error, showConsent, pipelineSnapshot, activate, acceptConsent, dismissConsent, deactivate, cancel };
 }
 
 /** Convert Float32Array (16kHz mono) to WAV blob. */
