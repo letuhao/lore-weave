@@ -21,6 +21,7 @@ import asyncpg
 import httpx
 
 from app.client.billing_client import BillingClient
+from app.client.provider_client import get_provider_client
 from app.config import settings
 from app.models import ProviderCredentials
 from app.services.sentence_buffer import SentenceBuffer
@@ -112,6 +113,7 @@ async def _generate_tts_chunks(
     tts_model_source: str,
     tts_model_ref: str,
     tts_voice: str,
+    tts_model_name: str,
     sentence_index: int,
 ) -> AsyncGenerator[tuple[dict, bytes], None]:
     """Call TTS via provider-registry internal proxy, yield (sse_event, raw_bytes) per chunk."""
@@ -128,7 +130,7 @@ async def _generate_tts_chunks(
             "POST",
             proxy_url,
             params=params,
-            json={"input": text, "voice": tts_voice, "response_format": "mp3"},
+            json={"model": tts_model_name, "input": text, "voice": tts_voice, "response_format": "mp3"},
             headers={
                 "X-Internal-Token": settings.internal_service_token,
                 "Content-Type": "application/json",
@@ -217,11 +219,27 @@ async def voice_stream_response(
     tts_model_ref = voice_config.get("tts_model_ref", "")
     tts_voice = voice_config.get("tts_voice", "af_heart")
 
+    # Resolve STT/TTS provider credentials to get actual model names
+    provider = get_provider_client()
+    stt_model_name = "whisper-1"
+    tts_model_name = "tts-1"
+    try:
+        stt_creds = await provider.resolve(stt_model_source, stt_model_ref, user_id)
+        stt_model_name = stt_creds.provider_model_name
+    except Exception:
+        logger.warning("Could not resolve STT model name, using fallback")
+    if tts_model_ref:
+        try:
+            tts_creds = await provider.resolve(tts_model_source, tts_model_ref, user_id)
+            tts_model_name = tts_creds.provider_model_name
+        except Exception:
+            logger.warning("Could not resolve TTS model name, using fallback")
+
     # ── Step 1: STT ──────────────────────────────────────────────────
     try:
         transcript, stt_ms = await _transcribe_audio(
             audio_bytes, audio_content_type, user_id,
-            stt_model_source, stt_model_ref,
+            stt_model_source, stt_model_ref, stt_model_name,
         )
     except Exception:
         logger.exception("STT failed for session %s", session_id)
@@ -348,7 +366,7 @@ async def voice_stream_response(
                     audio_chunks: list[bytes] = []
                     try:
                         async for event, raw in _generate_tts_chunks(
-                            speakable, user_id, tts_model_source, tts_model_ref, tts_voice, sentence_index,
+                            speakable, user_id, tts_model_source, tts_model_ref, tts_voice, tts_model_name, sentence_index,
                         ):
                             yield _sse("audio-chunk", event)
                             if raw:
@@ -374,7 +392,7 @@ async def voice_stream_response(
                 audio_chunks = []
                 try:
                     async for event, raw in _generate_tts_chunks(
-                        speakable, user_id, tts_model_source, tts_model_ref, tts_voice, sentence_index,
+                        speakable, user_id, tts_model_source, tts_model_ref, tts_voice, tts_model_name, sentence_index,
                     ):
                         yield _sse("audio-chunk", event)
                         if raw:
