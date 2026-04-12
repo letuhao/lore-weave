@@ -8,8 +8,10 @@ import { useEffect, useCallback } from 'react';
 import { X, Mic, Loader2, Send } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { WaveformVisualizer } from './WaveformVisualizer';
+import { PipelineIndicator } from './PipelineIndicator';
 import { cn } from '@/lib/utils';
 import type { VoiceChatState } from '../hooks/useVoiceChat';
+import type { PipelineSnapshot } from '@/lib/VoicePipelineState';
 
 interface VoiceChatOverlayProps {
   state: VoiceChatState;
@@ -18,6 +20,7 @@ interface VoiceChatOverlayProps {
   error: string | null;
   onExit: () => void;
   onCancel: () => void;
+  pipelineSnapshot?: PipelineSnapshot | null;
 }
 
 const STATE_CONFIG: Record<VoiceChatState, { icon: typeof Mic; label: string; color: string }> = {
@@ -35,6 +38,7 @@ export function VoiceChatOverlay({
   error,
   onExit,
   onCancel,
+  pipelineSnapshot,
 }: VoiceChatOverlayProps) {
   const { t } = useTranslation('voice');
   const config = STATE_CONFIG[state] || STATE_CONFIG.inactive;
@@ -167,6 +171,11 @@ export function VoiceChatOverlay({
             {t('voice.exitVoiceMode', 'Exit Voice Mode')}
           </button>
         </div>
+
+        {/* Pipeline state indicator (debug) */}
+        {pipelineSnapshot && (
+          <PipelineIndicator snapshot={pipelineSnapshot} />
+        )}
 
         {/* Keyboard hints (desktop only) */}
         <p className="hidden text-[10px] text-white/20 md:block">

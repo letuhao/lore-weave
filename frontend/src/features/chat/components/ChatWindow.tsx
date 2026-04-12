@@ -153,6 +153,7 @@ export function ChatWindow({
           error={voiceChat.error}
           onExit={voiceChat.deactivate}
           onCancel={voiceChat.cancel}
+          pipelineSnapshot={voiceChat.pipelineSnapshot}
         />
       )}
 

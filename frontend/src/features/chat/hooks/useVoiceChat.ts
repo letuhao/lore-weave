@@ -5,11 +5,12 @@
  *
  * Design ref: VOICE_PIPELINE_V2.md §6.4
  */
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/auth';
 import { VoiceClient, type VoiceConfig, type AudioChunkEvent } from '@/lib/VoiceClient';
 import { VadController } from '@/lib/VadController';
 import { TTSPlaybackQueue } from '@/lib/TTSPlaybackQueue';
+import { VoicePipelineState, type PipelineSnapshot } from '@/lib/VoicePipelineState';
 import { loadVoicePrefs, type VoicePrefs } from '../voicePrefs';
 import { syncPrefsToServer } from '@/lib/syncPrefs';
 
@@ -21,6 +22,7 @@ export interface VoiceChatResult {
   aiText: string;
   error: string | null;
   showConsent: boolean;
+  pipelineSnapshot: PipelineSnapshot | null;
   activate: () => Promise<void>;
   acceptConsent: () => void;
   dismissConsent: () => void;
@@ -37,6 +39,13 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
   const [aiText, setAiText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [showConsent, setShowConsent] = useState(false);
+  const [pipelineSnapshot, setPipelineSnapshot] = useState<PipelineSnapshot | null>(null);
+  const pipelineRef = useRef(new VoicePipelineState());
+
+  // Subscribe to pipeline state changes
+  useEffect(() => {
+    return pipelineRef.current.subscribe(setPipelineSnapshot);
+  }, []);
 
   const vadRef = useRef<VadController | null>(null);
   const playbackRef = useRef<TTSPlaybackQueue | null>(null);
@@ -53,6 +62,7 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
   const doActivate = useCallback(async () => {
     if (!sessionId || !accessToken || activeRef.current) return;
     activeRef.current = true;
+    pipelineRef.current.transition('activating');
 
     // Create AudioContext in user gesture (iOS Safari requirement — CRA-14)
     const ctx = new AudioContext({ sampleRate: 24000 });
@@ -66,6 +76,7 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
         // Audio done — NOW safe to refresh messages and resume VAD
         onTurnCompleteRef.current?.();
         if (activeRef.current) {
+          pipelineRef.current.transition('listening');
           setState('listening');
           vadRef.current?.resume();
         }
@@ -100,6 +111,7 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
 
     await vad.activate();
     vad.resume();
+    pipelineRef.current.transition('listening');
     setState('listening');
     setSttText('');
     setAiText('');
@@ -130,6 +142,7 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
   const handleSpeechEnd = useCallback(async (audio: Float32Array) => {
     const sid = sessionIdRef.current;
     if (!clientRef.current || !sid) return;
+    pipelineRef.current.transition('sending');
     setState('sending');
 
     // Convert Float32Array to WAV blob
@@ -162,15 +175,20 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
 
     await clientRef.current.sendVoiceMessage(sid, blob, voiceConfig, {
       onTranscript: (text) => {
+        pipelineRef.current.transition('transcribing');
+        pipelineRef.current.setSttText(text);
+        pipelineRef.current.transition('thinking');
         setSttText(text);
         setState('receiving');
-        consecutiveFailsRef.current = 0; // Reset on successful transcript
+        consecutiveFailsRef.current = 0;
       },
       onTextDelta: (delta) => {
+        pipelineRef.current.appendAiText(delta);
         setAiText((prev) => prev + delta);
       },
       onAudioChunk: (event: AudioChunkEvent) => {
         if (event.data) {
+          pipelineRef.current.transition('speaking'); // First chunk → speaking
           // Decode base64 to binary, accumulate per sentence
           const binary = Uint8Array.from(atob(event.data), (c) => c.charCodeAt(0));
           const key = event.sentenceIndex;
@@ -223,6 +241,7 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
 
   const deactivate = useCallback(() => {
     activeRef.current = false;
+    pipelineRef.current.forceIdle();
     clientRef.current?.abort();
     vadRef.current?.deactivate();
     vadRef.current = null;
@@ -250,7 +269,7 @@ export function useVoiceChat(sessionId: string | null, onTurnComplete?: () => vo
     }
   }, []);
 
-  return { state, sttText, aiText, error, showConsent, activate, acceptConsent, dismissConsent, deactivate, cancel };
+  return { state, sttText, aiText, error, showConsent, pipelineSnapshot, activate, acceptConsent, dismissConsent, deactivate, cancel };
 }
 
 /** Convert Float32Array (16kHz mono) to WAV blob. */
