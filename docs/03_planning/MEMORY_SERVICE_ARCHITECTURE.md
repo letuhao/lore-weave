@@ -2,8 +2,55 @@
 
 > **Status:** Design draft — for discussion
 > **Date:** 2026-04-12 (session 34)
-> **Inspired by:** MemPalace 3.1.0 (palace hierarchy, verbatim storage, temporal KG, L0-L3 stack)
 > **Adapted for:** LoreWeave multi-user cloud (Postgres + pgvector, no SQLite/ChromaDB)
+
+---
+
+## Acknowledgments & Inspiration
+
+This architecture draws significant inspiration from several open-source projects and
+industry research. We believe in giving proper credit to the work that influenced our design.
+
+### MemPalace
+
+**Project:** [MemPalace](https://github.com/MemPalace/mempalace) by the MemPalace team
+**License:** MIT
+**Version studied:** 3.1.0 (April 2026)
+
+MemPalace is an open-source, local-first AI memory system that achieved 96.6% on the
+LongMemEval benchmark. Several core concepts in this architecture are directly inspired
+by MemPalace's design:
+
+| Concept borrowed | MemPalace origin | Our adaptation |
+|---|---|---|
+| Palace hierarchy (wings/rooms/halls) | Hierarchical memory organization | Mapped to book/chapter/fact-type |
+| Verbatim storage over summarization | Raw drawers in ChromaDB | Raw drawers in Postgres + pgvector |
+| L0-L3 lazy-loaded memory stack | 4-layer token-budgeted retrieval | Same concept, Postgres-backed |
+| Pattern-based extraction (no LLM) | `general_extractor.py` regex patterns | Ported pattern lists for decisions/preferences/milestones |
+| Two-pass entity detection | `entity_detector.py` candidate → scoring | Same approach for character/place extraction |
+| Temporal knowledge graph | SQLite triples with valid_from/valid_to | Postgres triples with same temporal model |
+| Exchange-pair chunking | `convo_miner.py` Q+A units | Same chunking strategy for chat mining |
+
+We chose to **reimplement from scratch** rather than fork because:
+- MemPalace is built on SQLite + ChromaDB (local, single-user)
+- LoreWeave requires Postgres + pgvector (cloud, multi-user)
+- Only ~18% of MemPalace code is portable; the rest is storage-layer specific
+- Multi-tenant `user_id` scoping touches every query and table
+
+We deeply respect the MemPalace team's work and encourage anyone interested in
+local-first AI memory to check out their project.
+
+### Other influences
+
+- **Mem0** ([mem0.ai](https://github.com/mem0ai/mem0)) — memory scoping model (user/session/agent),
+  conflict resolution strategy, graph memory concept. Mem0's research paper
+  ([arXiv:2504.19413](https://arxiv.org/abs/2504.19413)) informed our extraction pipeline design.
+- **Claude's 3-layer memory** (Anthropic) — the distinction between persistent instructions
+  vs persistent memory, and project-scoped isolation.
+- **ChatGPT Memory** (OpenAI) — the concept of an editable memory dashboard where users
+  can view, edit, and delete what the AI remembers.
+- **OpenAI Agents SDK** — session-based memory with trimming, distillation, and consolidation
+  patterns for short-term → long-term memory promotion.
 
 ---
 
