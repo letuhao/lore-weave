@@ -29,6 +29,8 @@ export function useChatMessages(sessionId: string | null) {
   const thinkingStartRef = useRef<number>(0);
   /** Settable callback for per-token deltas (used by voice mode pipeline) */
   const onStreamDeltaRef = useRef<OnStreamDelta | null>(null);
+  /** Settable callback for when streaming ends (success or abort — not error) */
+  const onStreamEndRef = useRef<(() => void) | null>(null);
 
   // ── Fetch messages on session change ──────────────────────────────────────────
 
@@ -195,6 +197,7 @@ export function useChatMessages(sessionId: string | null) {
           created_at: new Date().toISOString(),
         };
         setMessages((prev) => [...prev, assistantMessage]);
+        onStreamEndRef.current?.();
 
         return accumulatedContent;
       } catch (err) {
@@ -204,12 +207,14 @@ export function useChatMessages(sessionId: string | null) {
           setStreamPhase('idle');
           // Refetch to pick up any partially persisted messages from backend
           void fetchMessages();
+          onStreamEndRef.current?.();
           return accumulatedContent;
         }
         setStreamStatus('error');
         setStreamPhase('idle');
         // Refetch on error too — backend may have persisted partial data
         void fetchMessages();
+        onStreamEndRef.current?.();
         throw err;
       } finally {
         stopThinkingTimer();
@@ -293,6 +298,12 @@ export function useChatMessages(sessionId: string | null) {
     abortRef.current?.abort();
   }, []);
 
+  /** Refresh messages for a specific branch */
+  const refreshBranch = useCallback(
+    (branchId: number) => fetchMessages(branchId),
+    [fetchMessages],
+  );
+
   return {
     messages,
     isLoading,
@@ -307,8 +318,10 @@ export function useChatMessages(sessionId: string | null) {
     regenerate,
     stop,
     refresh: fetchMessages,
-    refreshBranch: (branchId: number) => fetchMessages(branchId),
+    refreshBranch,
     /** Set a callback to receive per-token deltas during streaming */
     onStreamDeltaRef,
+    /** Set a callback for when streaming ends (success or abort) */
+    onStreamEndRef,
   };
 }

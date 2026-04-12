@@ -1,10 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { chatApi } from '../api';
-import type { ChatSession } from '../types';
-import type { useChatMessages } from '../hooks/useChatMessages';
-import type { ContextItem } from '../context/types';
+import { useChatSession } from '../providers';
+import { useChatStream } from '../providers';
 import { ChatHeader } from './ChatHeader';
 import { ChatInputBar } from './ChatInputBar';
 import { MessageList } from './MessageList';
@@ -13,52 +12,84 @@ import { VoiceChatOverlay } from './VoiceChatOverlay';
 import { VoiceSettingsPanel } from './VoiceSettingsPanel';
 import { useVoiceChat } from '../hooks/useVoiceChat';
 import { useAutoTTS } from '../hooks/useAutoTTS';
+import { usePanelState } from '../hooks/usePanelState';
+import { loadVoicePrefs, saveVoicePrefs } from '../voicePrefs';
 
-interface ChatWindowProps {
-  session: ChatSession;
-  chat: ReturnType<typeof useChatMessages>;
-  modelNameMap?: Map<string, string>;
-  onRename?: () => void;
-  onSessionUpdate?: (updated: ChatSession) => void;
-  contextItems: ContextItem[];
-  onAttachContext: (item: ContextItem) => void;
-  onDetachContext: (id: string) => void;
-  onClearContext: () => void;
-  onSendWithContext: (content: string, thinking?: boolean) => void;
-  onOpenSidebar?: () => void;
+interface ChatViewProps {
+  className?: string;
 }
 
-export function ChatWindow({
-  session,
-  chat,
-  modelNameMap,
-  onRename,
-  onSessionUpdate,
-  contextItems,
-  onAttachContext,
-  onDetachContext,
-  onClearContext,
-  onSendWithContext,
-  onOpenSidebar,
-}: ChatWindowProps) {
+export function ChatView({ className }: ChatViewProps) {
   const { accessToken } = useAuth();
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false);
-  const isArchived = session.status === 'archived';
+  const {
+    activeSession,
+    modelNameMap,
+    promptRename,
+    updateActiveSession,
+    contextItems,
+    attachContext,
+    detachContext,
+    clearContext,
+    resolveAndSend,
+    setMobileSidebarOpen,
+  } = useChatSession();
+  const chat = useChatStream();
 
-  // Voice mode
-  // #15: depend on chat.send directly (stable ref) not the chat object
-  const voiceChat = useVoiceChat(session.session_id, chat.refresh);
-  const autoTTS = useAutoTTS(chat.messages, chat.isStreaming, voiceChat.isActive);
+  const { settingsOpen, setSettingsOpen, voiceSettingsOpen, setVoiceSettingsOpen } = usePanelState();
+  const isArchived = activeSession?.status === 'archived';
+
+  // Voice Assist mode — user toggle (persisted in prefs)
+  const [voiceAssistOn, setVoiceAssistOn] = useState(() => loadVoicePrefs().voiceAssistEnabled);
+
+  const toggleVoiceAssist = useCallback(() => {
+    const prefs = loadVoicePrefs();
+    // First-time: if enabling but no TTS model configured, open settings instead
+    if (!prefs.voiceAssistEnabled && !prefs.ttsModelRef) {
+      setVoiceSettingsOpen(true);
+      toast.info('Configure a TTS model to enable Voice Assist');
+      return;
+    }
+    const next = !prefs.voiceAssistEnabled;
+    saveVoicePrefs({ ...prefs, voiceAssistEnabled: next }, accessToken);
+    setVoiceAssistOn(next);
+  }, [accessToken, setVoiceSettingsOpen]);
+
+  // Sync state when Voice Settings panel closes (user may have configured TTS model)
+  useEffect(() => {
+    if (!voiceSettingsOpen) {
+      setVoiceAssistOn(loadVoicePrefs().voiceAssistEnabled);
+    }
+  }, [voiceSettingsOpen]);
+
+  // Voice mode (full overlay)
+  const voiceChat = useVoiceChat(activeSession?.session_id ?? null, chat.refresh);
+  // Auto-TTS: fires when voice assist is ON (and voice mode overlay is not active)
+  const autoTTS = useAutoTTS(chat.messages, chat.isStreaming, voiceChat.isActive, voiceAssistOn);
 
   // Deactivate voice mode on session change
   useEffect(() => {
     voiceChat.deactivate();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- only on session change
-  }, [session.session_id]);
+  }, [activeSession?.session_id]);
+
+  // Loading state — shown inside ChatView, not by unmounting it
+  if (!activeSession) {
+    return <div className={className} />;
+  }
+
+  if (chat.isLoading && chat.messages.length === 0) {
+    return (
+      <div className={`flex flex-1 flex-col items-center justify-center ${className ?? ''}`}>
+        <div className="space-y-3 text-center">
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-accent" />
+          <p className="text-xs text-muted-foreground">Loading messages...</p>
+        </div>
+      </div>
+    );
+  }
 
   function handleSend(content: string, thinking?: boolean) {
-    onSendWithContext(content, thinking);
+    resolveAndSend(content, chat.send, thinking);
   }
 
   function handleEdit(content: string, sequenceNum: number) {
@@ -76,20 +107,20 @@ export function ChatWindow({
   function handleDeleteMessage(messageId: string) {
     if (!accessToken) return;
     if (!confirm('Delete this message? This cannot be undone.')) return;
-    chatApi.deleteMessage(accessToken, session.session_id, messageId)
+    chatApi.deleteMessage(accessToken, activeSession!.session_id, messageId)
       .then(() => { chat.refresh(); })
       .catch((err) => { toast.error(`Delete failed: ${(err as Error).message}`); });
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className={`flex h-full flex-col overflow-hidden ${className ?? ''}`}>
       <ChatHeader
-        session={session}
+        session={activeSession}
         modelNameMap={modelNameMap}
         messageCount={chat.messages.length}
-        onRename={onRename}
+        onRename={promptRename}
         onOpenSettings={() => setSettingsOpen(true)}
-        onOpenSidebar={onOpenSidebar}
+        onOpenSidebar={() => setMobileSidebarOpen(true)}
         isVoiceModeActive={voiceChat.isActive}
         onToggleVoiceMode={() => {
           if (voiceChat.isActive) voiceChat.deactivate();
@@ -109,7 +140,7 @@ export function ChatWindow({
         onRegenerateMessage={!isArchived ? handleRegenerate : undefined}
         onDeleteMessage={!isArchived ? handleDeleteMessage : undefined}
         disabled={isArchived || chat.isStreaming}
-        sessionId={session.session_id}
+        sessionId={activeSession.session_id}
         onSwitchBranch={(branchId) => {
           chat.refreshBranch(branchId);
         }}
@@ -119,28 +150,30 @@ export function ChatWindow({
         onSend={handleSend}
         onStop={chat.stop}
         isStreaming={chat.isStreaming}
-        disabled={isArchived}
+        disabled={!!isArchived}
         voiceModeActive={voiceChat.isActive}
+        voiceAssistOn={voiceAssistOn}
+        onToggleVoiceAssist={toggleVoiceAssist}
         ttsPlaying={autoTTS.isPlaying}
         onStopTTS={autoTTS.stop}
         supportsThinking={true}
-        thinkingDefault={session.generation_params?.thinking ?? false}
+        thinkingDefault={activeSession.generation_params?.thinking ?? false}
         onThinkingModeChange={(thinking) => {
           if (!accessToken) return;
-          chatApi.patchSession(accessToken, session.session_id, { generation_params: { thinking } })
-            .then((updated) => onSessionUpdate?.(updated))
+          chatApi.patchSession(accessToken, activeSession.session_id, { generation_params: { thinking } })
+            .then((updated) => updateActiveSession(updated))
             .catch(() => {});
         }}
         contextItems={contextItems}
-        onAttachContext={onAttachContext}
-        onDetachContext={onDetachContext}
-        onClearContext={onClearContext}
+        onAttachContext={attachContext}
+        onDetachContext={detachContext}
+        onClearContext={clearContext}
       />
 
       {settingsOpen && (
         <SessionSettingsPanel
-          session={session}
-          onSessionUpdate={(updated) => onSessionUpdate?.(updated)}
+          session={activeSession}
+          onSessionUpdate={updateActiveSession}
           onClose={() => setSettingsOpen(false)}
         />
       )}
@@ -157,7 +190,6 @@ export function ChatWindow({
         />
       )}
 
-      {/* Voice consent dialog — shown on first activation */}
       {voiceChat.showConsent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="mx-4 max-w-sm rounded-lg border border-border bg-card p-6 shadow-xl">

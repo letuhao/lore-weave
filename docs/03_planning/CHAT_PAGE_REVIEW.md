@@ -98,84 +98,149 @@ All six bugs stem from state being split across too many places with no single s
 
 ---
 
-## 3. Recommended Refactoring
+## 3. Revised Architecture Plan (session 34)
 
-### 3.1 Never conditionally unmount stateful components
+### Design Principle: Impose MVC on React
+
+React merges logic and view in one file. We impose separation ourselves:
+
+```
+hooks/          ← "controllers" — own logic + state
+  useSessionManager.ts    (session CRUD, URL sync, navigation)
+  useChatMessages.ts      (already exists — message streaming)
+  useContextAttachment.ts (attach/detach/clear/resolve)
+  useKeyboardShortcuts.ts (Ctrl+N, Escape)
+
+context/        ← "services" — shared state across components
+  ChatSessionContext.tsx   (stable: session, models, session CRUD)
+  ChatStreamContext.tsx    (volatile: messages, streaming state)
+
+components/     ← "views" — render only, no business logic
+  ChatPage.tsx            (layout shell — <50 lines)
+  ChatView.tsx            (message list + input + voice — never unmounts)
+  ChatHeader.tsx          (reads from context)
+  MessageList.tsx         (reads from context)
+  ChatInputBar.tsx        (reads from context)
+  VoiceChatOverlay.tsx    (inside ChatView — voice IS chat)
+```
+
+Components receive data from context, call handlers, render. No useEffect for data
+fetching inside view components. No API calls inline.
+
+### 3.1 ChatSessionContext + ChatStreamContext (P1)
+
+Split into two contexts to avoid unnecessary re-renders during streaming:
+
+**ChatSessionContext (stable — changes on session switch):**
+- `activeSession`, `setActiveSession`
+- `modelNameMap`
+- Session CRUD handlers (create, rename, archive, delete, togglePin)
+- Context attachment state + handlers
+- `refreshSessions()`
+
+**ChatStreamContext (volatile — changes every SSE chunk):**
+- `chat` (the `useChatMessages` return value: messages, streamingText, isStreaming, send, stop, etc.)
 
 ```tsx
-// WRONG
-{condition ? <ComponentA /> : <ComponentB />}
-
-// RIGHT — both always mounted, visibility controlled by CSS
-<div className={condition ? '' : 'hidden'}><ComponentA /></div>
-<div className={condition ? 'hidden' : ''}><ComponentB /></div>
-```
-
-Or use a stable key:
-```tsx
-<ChatWindow key={session.session_id} />  // Only remounts on session change, not loading
-```
-
-### 3.2 Split ChatPage into focused components
-
-```
-ChatPage (layout only — sidebar + content area)
-├── SessionSidebar (owns session list)
-├── ChatView (owns message display + input — never unmounts)
-│   ├── ChatHeader
-│   ├── MessageList
-│   ├── ChatInputBar
-│   └── Panels (settings, voice settings)
-├── VoiceMode (owns all voice state — independent from chat view)
-│   ├── VoicePipelineState (class — source of truth)
-│   ├── VoiceChatOverlay
-│   └── PipelineIndicator
-└── NewChatDialog
-```
-
-Key change: **VoiceMode is a sibling of ChatView, not a child.** It doesn't unmount when chat refreshes.
-
-### 3.3 Replace useEffect chains with explicit event flow
-
-```
-Current: useEffect watches state changes → triggers side effects → more state changes
-
-Better: explicit event dispatch
-  voiceTurnComplete → dispatch('VOICE_TURN_COMPLETE')
-    → chatMessages.refresh() (handler, not effect)
-    → sessionList.refresh() (handler, not effect)
-  
-  No cascading re-renders — each handler runs independently.
-```
-
-### 3.4 Context provider for shared state
-
-Instead of prop-drilling 11 props through ChatWindow:
-
-```tsx
-<ChatSessionProvider session={activeSession} chat={chat} modelNameMap={modelNameMap}>
-  <ChatHeader />      {/* reads from context */}
-  <MessageList />     {/* reads from context */}
-  <ChatInputBar />    {/* reads from context */}
+// ChatPage.tsx — layout shell only
+<ChatSessionProvider>
+  <ChatStreamProvider>
+    <div className="flex h-full">
+      <SessionSidebar />
+      <ChatView />      {/* always mounted */}
+    </div>
+    <NewChatDialog />
+  </ChatStreamProvider>
 </ChatSessionProvider>
 ```
 
-This eliminates the prop-drilling middleman pattern.
+Children call `useChatSession()` for stable data, `useChatStream()` for volatile data.
+ChatHeader only needs session → doesn't re-render on every streamed token.
+
+### 3.2 Never unmount ChatView (P2)
+
+Voice mode is NOT a separate feature — it's an alternative input method for the same
+chat conversation. It shares the session, sends messages to the same stream, triggers
+the same `chat.refresh()`. Making it a sibling was **wrong**.
+
+**Correct structure:**
+```
+ChatView (always mounted when session exists — hidden via CSS otherwise)
+├── ChatHeader (text + voice toggle)
+├── MessageList
+├── ChatInputBar (text input)
+├── VoiceChatOverlay (voice input — same conversation)
+├── VoiceConsentDialog
+└── Panels (settings, voice settings)
+```
+
+**Fix:** Don't ternary-render ChatView. Render it always, show loading/empty states
+with CSS `hidden` or internal branching within the component.
+
+```tsx
+// BEFORE — unmounts ChatView
+{activeSession && loading ? <Spinner /> : activeSession ? <ChatView /> : <EmptyState />}
+
+// AFTER — ChatView always mounted
+<EmptyState className={activeSession ? 'hidden' : ''} />
+<ChatView className={!activeSession ? 'hidden' : ''} />
+{/* Loading state handled INSIDE ChatView */}
+```
+
+### 3.3 Split ChatPage + extract hooks (P3)
+
+Extract ChatPage's 12 concerns into focused hooks:
+
+| Hook | Extracted from | Concern |
+|------|---------------|---------|
+| `useSessionManager` | ChatPage lines 23-58, 186-237 | Session CRUD, URL routing, navigation |
+| `useContextAttachment` | ChatPage lines 88-148 | Context items, resolve + build context block |
+| `useKeyboardShortcuts` | ChatPage lines 152-166 | Ctrl+N, Escape |
+| `useModelNames` | ChatPage lines 61-73 | Model UUID → display name resolution |
+
+ChatPage becomes a ~40-line layout shell that composes providers and renders sidebar + chat view.
+
+### 3.4 Replace useEffect chains with explicit handlers (P4)
+
+```
+Current (effects):
+  voiceTurnComplete → chat.refresh() → isLoading → re-render
+                    → messages change → re-render → autoTTS
+                    → isStreaming change → re-render → refreshSessions via useEffect
+
+Better (explicit handlers):
+  voiceTurnComplete:
+    handler1: chat.refresh()
+    handler2: refreshSessions()    ← called directly, not via effect
+
+  streamingEnd:
+    handler1: refreshSessions()    ← called from useChatMessages callback, not effect
+```
+
+Replace `useEffect(() => { if (prev && !current) ... }, [current])` pattern with
+explicit `onStreamingEnd` / `onTurnComplete` callbacks passed into hooks.
 
 ---
 
-## 4. Priority
+## 4. Revised Priority + Execution Order
 
-| Priority | Change | Risk | Effort |
-|----------|--------|------|--------|
-| **P0** | Stop unmounting ChatWindow on refresh | Low | Small — done |
-| **P1** | Move VoiceMode to sibling of ChatView | Medium | Medium |
-| **P2** | ChatSessionContext provider | Low | Medium |
-| **P3** | Replace useEffect chains with events | Medium | Large |
-| **P4** | Split ChatPage into focused components | Medium | Large |
+| Step | Priority | Change | Risk | Effort |
+|------|----------|--------|------|--------|
+| done | **P0** | Stop unmounting ChatWindow on refresh | Low | Small — **done** |
+| 1 | **P1** | ChatSessionContext + ChatStreamContext | Low | Medium |
+| 2 | **P2** | Never unmount ChatView (CSS show/hide) | Low | Small |
+| 3 | **P3** | Extract hooks + split ChatPage into shell | Medium | Medium |
+| 4 | **P4** | Replace useEffect chains with callbacks | Medium | Large |
 
-P0 is already fixed. P1-P4 are future refactoring tasks — each reduces the chance of state-related bugs.
+**Why this order:**
+- P1 first: context providers are the foundation — enables everything else
+- P2 second: trivial once context exists (no more prop drilling to worry about)
+- P3 third: extract hooks makes ChatPage a clean shell
+- P4 last: hardest, least urgent — P0 fix already prevents the worst bugs
+
+**Dropped:** Original P1 "Move VoiceMode to sibling of ChatView" — wrong design.
+Voice mode is part of chat, not independent. It stays inside ChatView.
 
 ---
 
-*Created: 2026-04-12 — LoreWeave session 33*
+*Created: 2026-04-12 (session 33) — Revised: 2026-04-12 (session 34)*

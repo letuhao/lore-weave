@@ -18,6 +18,7 @@ export function useAutoTTS(
   messages: ChatMessage[],
   isStreaming: boolean,
   voiceModeActive: boolean = false,
+  voiceAssistEnabled: boolean = false,
 ): AutoTTSControls {
   const { accessToken } = useAuth();
   const queueRef = useRef<TTSPlaybackQueue | null>(null);
@@ -47,6 +48,8 @@ export function useAutoTTS(
     if (isStreaming) return;
     // Voice mode handles its own TTS — don't double-play
     if (voiceModeActive) return;
+    // Only fire when Voice Assist is explicitly enabled by user
+    if (!voiceAssistEnabled) return;
     // Skip if no new messages beyond initial load
     if (initialCountRef.current !== null && msgCount <= initialCountRef.current) return;
 
@@ -130,7 +133,7 @@ export function useAutoTTS(
     };
 
     void playTTS();
-  }, [msgCount, isStreaming, voiceModeActive, accessToken]);
+  }, [msgCount, isStreaming, voiceModeActive, voiceAssistEnabled, accessToken]);
 
   useEffect(() => {
     return () => {

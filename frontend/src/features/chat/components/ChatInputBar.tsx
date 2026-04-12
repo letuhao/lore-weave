@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { ArrowUp, Brain, Square, Zap, Mic, MicOff, Loader2 } from 'lucide-react';
+import { ArrowUp, Brain, Square, Zap, Mic, MicOff, Loader2, Volume2, VolumeX } from 'lucide-react';
 import { useSpeechRecognition, SPEECH_RECOGNITION_SUPPORTED } from '@/hooks/useSpeechRecognition';
 import { MEDIA_RECORDER_SUPPORTED } from '@/hooks/useBackendSTT';
 import { useAuth } from '@/auth';
@@ -28,6 +28,9 @@ interface ChatInputBarProps {
   onClearContext: () => void;
   /** When true, disable push-to-talk mic (voice mode owns STT) */
   voiceModeActive?: boolean;
+  /** Voice Assist mode ON — mic highlighted, auto-TTS active */
+  voiceAssistOn?: boolean;
+  onToggleVoiceAssist?: () => void;
   /** Auto-TTS is playing — show stop button */
   ttsPlaying?: boolean;
   onStopTTS?: () => void;
@@ -47,6 +50,8 @@ export function ChatInputBar({
   onDetachContext,
   onClearContext,
   voiceModeActive,
+  voiceAssistOn,
+  onToggleVoiceAssist,
   ttsPlaying,
   onStopTTS,
 }: ChatInputBarProps) {
@@ -275,32 +280,57 @@ export function ChatInputBar({
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" /></svg>
               </button>
-              {/* Push-to-talk mic button — 4 states (hidden when voice mode owns STT) */}
+              {/* Voice Assist toggle + Push-to-talk mic (hidden when voice mode overlay owns STT) */}
               {(SPEECH_RECOGNITION_SUPPORTED || MEDIA_RECORDER_SUPPORTED) && !voiceModeActive && (
-                <button
-                  type="button"
-                  onClick={toggleMic}
-                  disabled={micState === 'transcribing'}
-                  className={`rounded-md p-1.5 transition-colors ${
-                    micState === 'recording'
-                      ? 'bg-red-500/10 text-red-500 animate-pulse'
-                      : micState === 'transcribing'
-                        ? 'text-amber-400'
-                        : micState === 'error'
-                          ? 'text-red-500'
+                <div className="flex items-center gap-0.5">
+                  {/* Voice Assist ON/OFF toggle */}
+                  {onToggleVoiceAssist && (
+                    <button
+                      type="button"
+                      onClick={onToggleVoiceAssist}
+                      className={`rounded-md px-2 py-1 text-[10px] font-medium transition-colors ${
+                        voiceAssistOn
+                          ? 'bg-primary/15 text-primary'
                           : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-                  }`}
-                  title={
-                    micState === 'recording' ? 'Stop recording' :
-                    micState === 'transcribing' ? 'Transcribing...' :
-                    micState === 'error' ? 'Microphone error' : 'Voice input'
-                  }
-                  aria-label={micState === 'recording' ? 'Stop recording' : 'Voice input'}
-                >
-                  {micState === 'recording' ? <MicOff className="h-4 w-4" /> :
-                   micState === 'transcribing' ? <Loader2 className="h-4 w-4 animate-spin" /> :
-                   <Mic className="h-4 w-4" />}
-                </button>
+                      }`}
+                      title={voiceAssistOn ? 'Voice Assist ON — AI responses will be spoken' : 'Enable Voice Assist — speak to type, hear AI responses'}
+                      aria-label="Toggle Voice Assist"
+                      aria-pressed={!!voiceAssistOn}
+                    >
+                      {voiceAssistOn
+                        ? <><Volume2 className="mr-1 inline h-3 w-3" />Assist</>
+                        : <><VolumeX className="mr-1 inline h-3 w-3" />Assist</>}
+                    </button>
+                  )}
+                  {/* Push-to-talk mic button */}
+                  <button
+                    type="button"
+                    onClick={toggleMic}
+                    disabled={micState === 'transcribing'}
+                    className={`rounded-md p-1.5 transition-colors ${
+                      micState === 'recording'
+                        ? 'bg-red-500/10 text-red-500 animate-pulse'
+                        : micState === 'transcribing'
+                          ? 'text-amber-400'
+                          : micState === 'error'
+                            ? 'text-red-500'
+                            : voiceAssistOn
+                              ? 'bg-primary/10 text-primary hover:bg-primary/20'
+                              : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                    }`}
+                    title={
+                      micState === 'recording' ? 'Stop recording' :
+                      micState === 'transcribing' ? 'Transcribing...' :
+                      micState === 'error' ? 'Microphone error' :
+                      voiceAssistOn ? 'Speak (Voice Assist)' : 'Voice input'
+                    }
+                    aria-label={micState === 'recording' ? 'Stop recording' : 'Voice input'}
+                  >
+                    {micState === 'recording' ? <MicOff className="h-4 w-4" /> :
+                     micState === 'transcribing' ? <Loader2 className="h-4 w-4 animate-spin" /> :
+                     <Mic className="h-4 w-4" />}
+                  </button>
+                </div>
               )}
               {/* Stop TTS button (Voice Assist auto-TTS) */}
               {ttsPlaying && onStopTTS && (

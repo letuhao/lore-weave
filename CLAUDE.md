@@ -43,6 +43,29 @@ Data: Postgres (per-service DBs), Redis Streams (jobs), MinIO (objects).
 - **No hardcoded secrets** — all secrets via env vars, services fail to start if missing
 - **No hardcoded model names** — model names resolved from provider-registry (user's registered config)
 
+### Frontend Architecture Rules (React MVC)
+
+React merges logic and view — we impose MVC separation ourselves:
+
+**File structure per feature:**
+```
+features/<name>/
+  hooks/        ← "controllers" — own logic + state, no JSX
+  context/      ← "services" — shared state across components
+  components/   ← "views" — render only, receive data from context/props
+  api.ts        ← API layer
+  types.ts      ← TypeScript types
+```
+
+**Rules:**
+- **Separation of concerns** — components render, hooks own logic, context shares state. No API calls or business logic inside components.
+- **Never conditionally unmount stateful components** — use CSS `hidden` or internal branching. Ternary rendering (`{cond ? <A/> : <B/>}`) destroys hook state, AudioContext, WebSocket connections, etc.
+- **No useEffect for event handling** — useEffect is for synchronization (subscriptions, timers), NOT for reacting to user actions or state changes. Use explicit callback handlers instead. The pattern `useEffect(() => { if (prev && !current) doSomething() }, [current])` is always wrong — call `doSomething()` directly where the state change originates.
+- **Split context by update frequency** — separate stable context (session, config — changes rarely) from volatile context (streaming text — changes every frame). Putting both in one context forces all consumers to re-render on every SSE chunk.
+- **No prop-drilling middlemen** — if a component exists only to pass props through to children, replace it with context or flatten the tree.
+- **Hooks must be self-contained** — a custom hook should own its state, effects, and cleanup. It should not require the parent component to manage its lifecycle via useEffect.
+- **Max ~100 lines per component, ~200 per hook** — if larger, split. A component with 12+ concerns is a code smell.
+
 ### Data Persistence Rules
 - **Server is the source of truth** — all user data in Postgres, all files in S3/MinIO
 - **No localStorage for user data** — localStorage is ONLY a fast cache for preferences that are also synced to server via `/v1/me/preferences`
