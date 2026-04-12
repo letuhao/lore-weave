@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -8,7 +10,33 @@ from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool, get_pool
 from app.routers import messages, outputs, sessions, voice
-from app.storage.minio_client import ensure_bucket
+from app.storage.minio_client import delete_object, ensure_bucket
+
+logger = logging.getLogger(__name__)
+
+_CLEANUP_INTERVAL = 4 * 3600  # 4 hours
+_AUDIO_TTL = "48 hours"
+
+
+async def _audio_cleanup_loop():
+    """Periodically delete expired voice audio segments (48h TTL)."""
+    from app.db.pool import get_pool
+    while True:
+        await asyncio.sleep(_CLEANUP_INTERVAL)
+        try:
+            pool = get_pool()
+            rows = await pool.fetch(
+                f"DELETE FROM message_audio_segments WHERE created_at < now() - interval '{_AUDIO_TTL}' RETURNING object_key",
+            )
+            for r in rows:
+                try:
+                    await delete_object(r["object_key"])
+                except Exception:
+                    pass  # S3 lifecycle is safety net
+            if rows:
+                logger.info("audio cleanup: deleted %d expired segments", len(rows))
+        except Exception:
+            logger.warning("audio cleanup failed", exc_info=True)
 
 
 @asynccontextmanager
@@ -19,7 +47,10 @@ async def lifespan(app: FastAPI):
         await ensure_bucket()
     except Exception:
         pass  # MinIO may not be running in dev; don't block startup
+    # Start background cleanup task
+    cleanup_task = asyncio.create_task(_audio_cleanup_loop())
     yield
+    cleanup_task.cancel()
     await close_pool()
 
 
