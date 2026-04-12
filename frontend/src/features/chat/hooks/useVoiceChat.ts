@@ -46,6 +46,7 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
   const consecutiveFailsRef = useRef(0);
+  const sentenceChunksRef = useRef<Map<number, string[]>>(new Map());
 
   const doActivate = useCallback(async () => {
     if (!sessionId || !accessToken || activeRef.current) return;
@@ -167,10 +168,19 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
       },
       onAudioChunk: (event: AudioChunkEvent) => {
         if (event.data) {
-          playbackRef.current?.enqueueBase64(event.data);
+          // Accumulate chunks per sentence — don't decode partial MP3 fragments
+          const key = event.sentenceIndex;
+          if (!sentenceChunksRef.current.has(key)) sentenceChunksRef.current.set(key, []);
+          sentenceChunksRef.current.get(key)!.push(event.data);
         }
         if (event.final) {
-          // Sentence complete — playback queue will call onAllPlayed when done
+          // Sentence complete — combine all chunks into one MP3, decode + play
+          const chunks = sentenceChunksRef.current.get(event.sentenceIndex);
+          sentenceChunksRef.current.delete(event.sentenceIndex);
+          if (chunks && chunks.length > 0) {
+            const combined = chunks.join('');
+            playbackRef.current?.enqueueBase64(combined);
+          }
         }
       },
       onFinish: () => {
@@ -216,6 +226,7 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
     setAiText('');
     setError(null);
     setShowConsent(false);
+    sentenceChunksRef.current.clear();
   }, []);
 
   const cancel = useCallback(() => {
