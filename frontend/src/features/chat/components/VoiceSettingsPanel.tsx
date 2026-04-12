@@ -51,6 +51,9 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
   const [voicesLoading, setVoicesLoading] = useState(false);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [previewPlaying, setPreviewPlaying] = useState<string | null>(null);
+  const [recommendation, setRecommendation] = useState<{
+    silenceFrames: number; minDurationMs: number; misfireRate: number; totalTurns: number;
+  } | null>(null);
 
   // Load browser voices
   useEffect(() => {
@@ -71,6 +74,27 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
       })
       .catch(() => { setSttModels([]); setTtsModels([]); });
   }, [accessToken]);
+
+  // Fetch voice analytics recommendation
+  useEffect(() => {
+    if (!accessToken || !open) return;
+    const apiBase = import.meta.env.VITE_API_BASE || '';
+    fetch(`${apiBase}/v1/chat/voice/recommended-settings`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data && data.totalTurns >= 10) {
+          setRecommendation({
+            silenceFrames: data.recommendedSilenceFrames,
+            minDurationMs: data.recommendedMinDurationMs,
+            misfireRate: data.misfireRate,
+            totalTurns: data.totalTurns,
+          });
+        }
+      })
+      .catch(() => {});
+  }, [accessToken, open]);
 
   // Fetch provider voices when TTS model is selected
   useEffect(() => {
@@ -373,6 +397,30 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
         {/* Advanced VAD Settings */}
         <div className="border-t pt-3 mt-2">
           <p className="text-[11px] font-medium mb-2">{t('voice.vadSettings', 'Voice Detection (Advanced)')}</p>
+
+          {/* Analytics recommendation */}
+          {recommendation && recommendation.silenceFrames !== prefs.vadSilenceFrames && (
+            <div className="mb-3 rounded-md border border-accent/30 bg-accent/5 px-3 py-2">
+              <p className="text-[10px] text-accent font-medium">
+                Recommended for you
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Based on {recommendation.totalTurns} voice turns
+                ({Math.round(recommendation.misfireRate * 100)}% misfire rate),
+                we suggest adjusting your settings.
+              </p>
+              <button
+                onClick={() => {
+                  update('vadSilenceFrames', recommendation.silenceFrames);
+                  update('minSpeechDurationMs', recommendation.minDurationMs);
+                  setRecommendation(null);
+                }}
+                className="mt-1.5 rounded border border-accent/50 px-2.5 py-1 text-[10px] font-medium text-accent hover:bg-accent/10 transition-colors"
+              >
+                Apply recommended settings
+              </button>
+            </div>
+          )}
 
           {/* Presets */}
           <div className="flex gap-1.5 mb-3">
