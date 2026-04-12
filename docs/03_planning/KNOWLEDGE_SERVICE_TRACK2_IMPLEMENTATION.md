@@ -437,29 +437,57 @@ do it as part of K11.
 ```
 
 ```
-[ ] K11.5 Repository: entities (Neo4j)
+[ ] K11.5 Repository: entities (Neo4j) — with two-layer anchoring
     Files:
       - services/knowledge-service/app/db/neo4j_repos/entities.py (NEW)
     Description:
-      CRUD + query functions over :Entity nodes:
-        - merge_entity(canonical_id, user_id, project_id, display_name, kind, ...)
+      CRUD + query functions over :Entity nodes, with glossary anchoring support
+      per KSA §3.4.E / §3.4.F:
+        - merge_entity(canonical_id, user_id, project_id, display_name, kind,
+                       glossary_entity_id=None, anchor_score=None, ...)
           using deterministic canonical_id from §5.0
+        - upsert_glossary_anchor(canonical_id, user_id, project_id, glossary_entity_id,
+                                  name, kind, aliases) — sets anchor_score=1.0
+          (used by Pass 0 anchor pre-loader, see K13.0)
+        - link_to_glossary(entity_id, glossary_entity_id) — promotes discovered → canonical,
+          anchor_score → 1.0 (called on glossary.entity_created event for KS proposal approval)
+        - unlink_from_glossary(entity_id) — clears glossary_entity_id only; does NOT archive
+          (called when user manually unlinks)
+        - archive_entity(entity_id, reason) — sets archived_at=now(),
+          anchor_score=0, clears glossary_entity_id (called on glossary.entity_deleted)
+        - restore_entity(entity_id) — clears archived_at, re-computes anchor_score
+        - recompute_anchor_score(project_id) — for discovered entities:
+          anchor_score = mention_count / max(mention_count) for that project
         - get_entity(canonical_id, user_id)
-        - find_entities_by_name(user_id, project_id, name_or_alias)
-        - find_entities_by_vector(user_id, project_id, embedding, dim, limit)
-        - delete_entities_with_zero_evidence(user_id, project_id) — uses cached evidence_count
+        - find_entities_by_name(user_id, project_id, name_or_alias, include_archived=False)
+        - find_entities_by_vector(user_id, project_id, embedding, dim, limit, include_archived=False)
+          MUST include WHERE archived_at IS NULL by default
+        - find_gap_candidates(user_id, project_id, min_mentions=50)
+          → returns discovered entities with no glossary link (for Gap Report UI)
+        - delete_entities_with_zero_evidence(user_id, project_id)
     Acceptance criteria:
       - merge_entity is idempotent (re-running creates no duplicates)
-      - Name lookup uses composite index
+      - upsert_glossary_anchor is idempotent and sets anchor_score=1.0
+      - archive_entity preserves all EVIDENCED_BY edges and relationships (no cascade delete)
+      - find_entities_by_vector WHERE clause excludes archived_at IS NOT NULL by default
+      - Vector query ranks by (similarity * anchor_score) for two-layer retrieval
+      - Name lookup uses composite index on (user_id, project_id, name)
       - Vector query uses dimension-routed index
       - Cleanup query uses evidence_count index (not full scan)
     Test:
       - Integration: insert 10k entities, measure query latency
+      - Integration: archive an anchored entity, verify hidden from vector search
+         but still traversable via direct id lookup
+      - Integration: anchor score computation matches (mention_count / max) formula
+      - Integration: (similarity × anchor_score) ranking puts canonical entries
+         above discovered ones when semantic scores are close
     Dependencies: K11.3, K11.4
     Est: L
     Notes:
       **Use parameterized Cypher throughout.** No f-strings. Reviewers will
       reject. Reference: 101 §3.6 Cypher injection rule.
+      Research basis: GraphRAG seed-graph (arXiv:2404.16130),
+      HippoRAG anchor nodes (arXiv:2405.14831).
 ```
 
 ```
@@ -546,6 +574,140 @@ do it as part of K11.
     Est: S
 ```
 
+```
+[ ] K11.10 Glossary service client (HTTP + event subscriber)
+    Files:
+      - services/knowledge-service/app/clients/glossary_client.py (NEW)
+      - services/knowledge-service/app/events/glossary_subscriber.py (NEW)
+    Description:
+      Per KSA §6.0, knowledge-service talks to glossary-service across two channels:
+      
+      HTTP client (outbound proposals):
+        - list_entities(book_id, status="active") → used by anchor pre-loader K13.0
+        - propose_entities(book_id, job_id, candidates, merge_strategy, status="draft")
+          POST /internal/books/{book_id}/extract-entities
+        - propose_wiki_stub(book_id, entity_id, topic, content_md, author_type="ai")
+          POST /v1/glossary/books/{book_id}/wiki/generate
+        All calls use X-Internal-Token auth, exponential backoff on 5xx,
+        queue in extraction_pending on prolonged outage (do NOT block extraction job).
+      
+      Event subscriber (inbound authoritative updates):
+        - glossary.entity_created → handle_glossary_entity_created
+            IF matching KS entity by canonicalized name:
+              call entities_repo.link_to_glossary(ks_id, glossary_id)
+            ELSE create new canonical :Entity node
+        - glossary.entity_updated → handle_glossary_entity_updated
+            Refresh name/kind/aliases/short_description on linked :Entity,
+            re-embed if name or description changed
+        - glossary.entity_deleted → handle_glossary_entity_deleted
+            Call entities_repo.archive_entity(ks_id, reason="glossary_deleted")
+            Preserves graph edges, sets archived_at, clears glossary_entity_id
+        - glossary.wiki_published → (optional, Track 3) re-index wiki content
+      
+      Idempotency:
+        - Every handler keys on event_id in processed_events table
+        - Out-of-order events: use event timestamp, skip if older than last watermark
+        - On KS startup: reconcile via GET /internal/books/{book_id}/entities?updated_since=<watermark>
+    Acceptance criteria:
+      - Client retries 5xx up to 3 times with exponential backoff
+      - Network failures queue proposal in extraction_pending, extraction job continues
+      - Redelivered event is no-op (processed_events guard)
+      - glossary.entity_deleted handler soft-archives, does NOT cascade-delete
+      - Missed events are caught by startup reconciler
+    Test:
+      - Integration: shut down glossary-service, run extraction job,
+         verify proposals queue and job completes successfully
+      - Integration: delete a glossary entry, verify linked KS entity is archived
+         but its relationships and timeline events remain intact
+      - Integration: re-create the deleted glossary entry, verify KS entity
+         can be manually restored (restore_entity RPC)
+      - Integration: redeliver same glossary.entity_updated event,
+         verify single effective update
+    Dependencies: K11.5, K11.8
+    Est: L
+    Notes:
+      Contract documented in KSA §6.0 (Cross-Service Sync Contract).
+      This task REPLACES any earlier draft that had KS owning its own
+      candidates/wiki storage — the two-layer anchor pattern uses
+      glossary-service as authored SSOT.
+```
+
+```
+[ ] K13.0 Pass 0: glossary anchor pre-loader
+    Files:
+      - services/knowledge-service/app/extraction/anchor_loader.py (NEW)
+      - services/knowledge-service/app/extraction/pipeline.py (modified)
+    Description:
+      Before any extraction job runs, Pass 0 loads existing glossary entries
+      for the target book and installs them as canonical :Entity nodes in Neo4j.
+      These anchor nodes bias the entity resolver (§5.0) toward linking extracted
+      surface forms to known canonical entries instead of minting new nodes.
+      
+      Flow:
+        1. Job starts → pipeline.pre_run(job)
+        2. anchor_loader.load_glossary_anchors(book_id, project_id)
+           a. glossary_client.list_entities(book_id, status="active")
+           b. For each entry: entities_repo.upsert_glossary_anchor(
+                canonical_id=canonicalize(entry.name), ...,
+                glossary_entity_id=entry.id, anchor_score=1.0)
+           c. Build in-memory Anchor[] index (name, aliases, id) for resolver
+        3. Resolver receives anchors[] and uses them as high-prior cluster targets
+        4. On match: new EVIDENCED_BY edge → existing anchor (no new node)
+        5. On no-match: mint new :Entity with anchor_score = computed from mentions
+      
+      Idempotency: MERGE-based upsert, re-running creates zero new nodes.
+    Acceptance criteria:
+      - Anchor load is idempotent (re-running produces no new nodes)
+      - Anchors are loaded BEFORE Pass 1/Pass 2 extractors start
+      - Job metrics report "anchors_loaded", "candidates_matched_to_anchor",
+        "new_entities_created" — matched-to-anchor should dominate on
+        books with mature glossary
+      - Smoke test on LOTR-style corpus: duplicate entity creation rate
+        drops ≥20% vs. unanchored baseline (GraphRAG reports ~34%)
+    Test:
+      - Unit: canonicalize() matches glossary entry aliases correctly
+      - Integration: run extraction with pre-populated glossary,
+         verify fuzzy surface forms resolve to existing canonical IDs
+      - Integration: run same extraction twice, verify zero new :Entity nodes
+         created on second run
+      - Integration: compare entity counts for (anchored run) vs (no-anchor run)
+         on a fixture with known character aliases — assert ≥20% reduction
+    Dependencies: K11.5, K11.10
+    Est: M
+    Notes:
+      Research basis: arXiv:2404.16130 (GraphRAG),
+      arXiv:2405.14831 (HippoRAG), qdrant.tech Lettria case study.
+      See KSA §3.4.E for rationale and §6.0.3 for full algorithm.
+```
+
+```
+[ ] K13.1 Anchor score compute + nightly refresh
+    Files:
+      - services/knowledge-service/app/jobs/compute_anchor_score.py (NEW)
+    Description:
+      Nightly job that recomputes anchor_score for discovered (non-canonical)
+      entities in each project:
+        anchor_score = mention_count / max(mention_count for project)
+      Canonical entities (glossary_entity_id IS NOT NULL) keep anchor_score = 1.0.
+      Archived entities keep anchor_score = 0.0.
+      
+      Why: as new chapters are extracted, mention counts shift; the relative
+      importance of discovered entities changes. Refresh keeps RAG ranking
+      accurate without recomputing on every query.
+    Acceptance criteria:
+      - Canonical entities always have anchor_score = 1.0 after run
+      - Discovered entities have anchor_score in [0, 1], matching formula
+      - Archived entities have anchor_score = 0.0
+      - Runs in <30s for 10k entity project
+    Test:
+      - Integration: inject known mention counts, run job, verify normalized scores
+    Dependencies: K11.5
+    Est: S
+    Notes:
+      Could be refactored to incremental update if 10k scale becomes slow.
+      For now, full recompute is simpler and fast enough.
+```
+
 ### Gate 7 — Neo4j Schema Functional
 
 - [ ] Neo4j running and accessible from knowledge-service
@@ -555,6 +717,9 @@ do it as part of K11.
 - [ ] evidence_count stays in sync through 1000 entity create/delete cycles
 - [ ] Cross-user: User A writes entity, User B can't read it (verified)
 - [ ] 2-hop traversal <200ms with 10k entity fixture
+- [ ] **Glossary anchor pre-loading**: extraction run with populated glossary reduces new entity creation ≥20% vs. no-anchor baseline (K13.0 smoke test)
+- [ ] **Glossary event handlers**: entity_created / _updated / _deleted correctly link / refresh / archive KS entities (K11.10 integration tests)
+- [ ] **Archived entities excluded from RAG**: vector search with `include_archived=False` returns zero archived nodes
 
 ---
 

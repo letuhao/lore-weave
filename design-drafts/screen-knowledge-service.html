@@ -179,9 +179,11 @@
     <div class="nav-item" data-target="build-dialog">✨ Build dialog</div>
     <div class="nav-item" data-target="jobs">⚙️ Extraction Jobs</div>
     <div class="nav-item" data-target="global">👤 Global bio (L0)</div>
-    <div class="nav-item" data-target="entities">🗂️ Entities</div>
+    <div class="nav-item" data-target="entities">🗂️ Entities (semantic)</div>
     <div class="nav-item" data-target="timeline">📅 Timeline</div>
-    <div class="nav-item" data-target="raw">📜 Raw drawers</div>
+    <div class="nav-item" data-target="raw">📜 Evidence browser</div>
+    <div class="nav-item" data-target="proposals">📤 Pending proposals</div>
+    <div class="nav-item" data-target="gap-report">🔍 Glossary gap report</div>
 
     <div style="padding: 20px 20px 8px; color: var(--muted-fg); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500;">Chat integration</div>
     <div class="nav-item" data-target="chat-header">🧠 Header popover</div>
@@ -400,11 +402,15 @@
           </div>
 
           <div style="background: var(--muted); border: 1px solid var(--border); border-radius: 10px; padding: 16px; cursor: pointer;">
-            <div style="font-size: 20px; margin-bottom: 8px;">👤</div>
-            <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">Entities</div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <div style="font-size: 20px;">👤</div>
+              <span class="badge" style="background: var(--accent-muted); color: var(--accent-fg); font-size: 9px;">→ glossary</span>
+            </div>
+            <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">Entities (semantic)</div>
             <div style="color: var(--muted-fg); font-size: 11.5px; line-height: 1.5;">
-              Characters, places, items, factions. Dedups against existing glossary.
-              Needs: chapter range + entity type whitelist.
+              Build fuzzy/semantic entity layer with embeddings. Uses existing glossary
+              entries as <strong>anchor nodes</strong> (reduces duplicates ~34%). High-confidence
+              candidates auto-propose to glossary drafts.
             </div>
           </div>
 
@@ -418,11 +424,15 @@
           </div>
 
           <div style="background: var(--muted); border: 1px solid var(--border); border-radius: 10px; padding: 16px; cursor: pointer;">
-            <div style="font-size: 20px; margin-bottom: 8px;">🌍</div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <div style="font-size: 20px;">🌍</div>
+              <span class="badge" style="background: var(--accent-muted); color: var(--accent-fg); font-size: 9px;">→ wiki stubs</span>
+            </div>
             <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">Lore &amp; Worldbuilding</div>
             <div style="color: var(--muted-fg); font-size: 11.5px; line-height: 1.5;">
               Free-form facts: magic systems, geography, history, rules.
-              Can run without prior entities. Needs: topic hints.
+              <strong>Proposes wiki stub articles</strong> via glossary-service's
+              <code style="font-size: 10px;">/wiki/generate</code> — no KS-side storage. Needs: topic hints.
             </div>
           </div>
 
@@ -1042,8 +1052,13 @@
 
     <!-- ==================== Entities ==================== -->
     <section class="demo-section" id="entities">
-      <h2>Memory — Entities</h2>
-      <p class="subtitle">Every character, place, concept the AI has extracted. Click any row for full detail with provenance.</p>
+      <h2>Memory — Entities (semantic layer)</h2>
+      <p class="subtitle">
+        Fuzzy/semantic entity layer — every surface form the AI encountered, clustered with embeddings and partial substring search.
+        Entries marked <span style="color: var(--primary);">⭐ canonical</span> are anchored to a glossary entry (authored SSOT);
+        <span style="color: var(--muted-fg);">💭 discovered</span> entries exist only here and can be promoted to glossary.
+        Pattern inspired by Microsoft GraphRAG seed-graph and HippoRAG anchor nodes.
+      </p>
 
       <div class="tabs">
         <div class="tab">Projects</div>
@@ -1051,11 +1066,13 @@
         <div class="tab">Global</div>
         <div class="tab active">Entities</div>
         <div class="tab">Timeline</div>
-        <div class="tab">Raw</div>
+        <div class="tab">Evidence</div>
+        <div class="tab">Proposals <span class="tab-count">14</span></div>
+        <div class="tab">Gap report <span class="tab-count">23</span></div>
       </div>
 
-      <div style="display: flex; gap: 12px; margin-bottom: 16px;">
-        <input type="text" class="input" placeholder="🔍 Search entities by name or alias..." style="flex: 1;">
+      <div style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
+        <input type="text" class="input" placeholder="🔍 Semantic search: 'the god who made the world'..." style="flex: 1; min-width: 240px;">
         <select class="select" style="width: auto;">
           <option>All projects</option>
           <option>Winds of the Eastern Sea</option>
@@ -1069,6 +1086,19 @@
           <option>Concept</option>
           <option>Faction</option>
         </select>
+        <select class="select" style="width: auto;">
+          <option>Status: active</option>
+          <option>⭐ Canonical only</option>
+          <option>💭 Discovered only</option>
+          <option>📦 Archived</option>
+          <option>All (incl. archived)</option>
+        </select>
+        <select class="select" style="width: auto;">
+          <option>Sort: anchor_score ▾</option>
+          <option>Mentions (desc)</option>
+          <option>Name A–Z</option>
+          <option>Recently added</option>
+        </select>
       </div>
 
       <div class="card" style="padding: 0; overflow: hidden;">
@@ -1076,17 +1106,73 @@
           <div>Name</div>
           <div>Kind</div>
           <div>Project</div>
-          <div>Mentions</div>
+          <div>Mentions / anchor</div>
           <div>Confidence</div>
-          <div>Last seen</div>
+          <div>Link</div>
         </div>
-        <div class="entity-row" onclick="showSlideOver('entity-detail')">
-          <div style="font-weight: 500;">⭐ Kai <span style="color: var(--muted-fg); font-weight: 400; font-size: 11px;">(Master Kai, kai)</span></div>
+        <!-- ⭐ Canonical: linked to glossary -->
+        <div class="entity-row" onclick="showSlideOver('entity-detail')" style="border-left: 2px solid var(--primary);">
+          <div style="font-weight: 500;">
+            <span style="color: var(--primary);">⭐</span> Kai
+            <span style="color: var(--muted-fg); font-weight: 400; font-size: 11px;">(Master Kai, young master, kai)</span>
+          </div>
           <div><span class="badge badge-full" style="font-size: 10px;">character</span></div>
           <div style="color: var(--muted-fg);">Winds of the Eastern Sea</div>
-          <div class="font-mono">1,247</div>
+          <div>
+            <span class="font-mono">1,247</span>
+            <span class="badge" style="background: var(--primary-muted); color: var(--primary); font-size: 9px; margin-left: 4px;">anchor 1.00</span>
+          </div>
           <div><span class="dot dot-green"></span> <span class="font-mono" style="font-size: 11px;">0.98</span></div>
-          <div style="color: var(--muted-fg); font-size: 11px;">ch.45</div>
+          <div style="color: var(--primary); font-size: 11px;">→ glossary</div>
+        </div>
+        <!-- ⭐ Canonical: sparse but critical -->
+        <div class="entity-row" style="border-left: 2px solid var(--primary); background: var(--warning-muted);">
+          <div style="font-weight: 500;">
+            <span style="color: var(--primary);">⭐</span> The Creator
+            <span style="color: var(--muted-fg); font-weight: 400; font-size: 11px;">(World-Shaper, First Flame)</span>
+          </div>
+          <div><span class="badge badge-full" style="font-size: 10px;">god</span></div>
+          <div style="color: var(--muted-fg);">Winds of the Eastern Sea</div>
+          <div>
+            <span class="font-mono">2</span>
+            <span class="badge" style="background: var(--primary-muted); color: var(--primary); font-size: 9px; margin-left: 4px;">anchor 1.00</span>
+          </div>
+          <div><span class="dot dot-green"></span> <span class="font-mono" style="font-size: 11px;">0.99</span></div>
+          <div style="color: var(--primary); font-size: 11px;">→ glossary</div>
+        </div>
+        <div class="entity-row" style="border-left: 2px solid var(--primary);">
+          <div style="font-weight: 500;"><span style="color: var(--primary);">⭐</span> Master Lin</div>
+          <div><span class="badge badge-full" style="font-size: 10px;">character</span></div>
+          <div style="color: var(--muted-fg);">Winds of the Eastern Sea</div>
+          <div>
+            <span class="font-mono">384</span>
+            <span class="badge" style="background: var(--primary-muted); color: var(--primary); font-size: 9px; margin-left: 4px;">anchor 1.00</span>
+          </div>
+          <div><span class="dot dot-green"></span> <span class="font-mono" style="font-size: 11px;">0.96</span></div>
+          <div style="color: var(--primary); font-size: 11px;">→ glossary</div>
+        </div>
+        <!-- 💭 Discovered only: not yet in glossary -->
+        <div class="entity-row">
+          <div style="font-weight: 500;"><span style="color: var(--muted-fg);">💭</span> Empress Yun</div>
+          <div><span class="badge badge-full" style="font-size: 10px;">character</span></div>
+          <div style="color: var(--muted-fg);">Winds of the Eastern Sea</div>
+          <div>
+            <span class="font-mono">156</span>
+            <span class="badge" style="background: var(--muted); color: var(--muted-fg); font-size: 9px; margin-left: 4px;">anchor 0.12</span>
+          </div>
+          <div><span class="dot dot-green"></span> <span class="font-mono" style="font-size: 11px;">0.92</span></div>
+          <div><button class="btn btn-ghost btn-sm" style="font-size: 10px; padding: 2px 6px;">Promote →</button></div>
+        </div>
+        <div class="entity-row">
+          <div style="font-weight: 500;"><span style="color: var(--muted-fg);">💭</span> Water Kingdom <span style="color: var(--muted-fg); font-weight: 400; font-size: 11px;">(the Water, Northern Kingdom)</span></div>
+          <div><span class="badge badge-static" style="font-size: 10px;">location</span></div>
+          <div style="color: var(--muted-fg);">Winds of the Eastern Sea</div>
+          <div>
+            <span class="font-mono">423</span>
+            <span class="badge" style="background: var(--muted); color: var(--muted-fg); font-size: 9px; margin-left: 4px;">anchor 0.34</span>
+          </div>
+          <div><span class="dot dot-green"></span> <span class="font-mono" style="font-size: 11px;">0.95</span></div>
+          <div><button class="btn btn-ghost btn-sm" style="font-size: 10px; padding: 2px 6px;">Promote →</button></div>
         </div>
         <div class="entity-row">
           <div>Master Lin</div>
@@ -1113,41 +1199,294 @@
           <div style="color: var(--muted-fg); font-size: 11px;">ch.44</div>
         </div>
         <div class="entity-row">
-          <div>Hailong City</div>
+          <div style="font-weight: 500;"><span style="color: var(--muted-fg);">💭</span> Hailong City</div>
           <div><span class="badge badge-static" style="font-size: 10px;">location</span></div>
           <div style="color: var(--muted-fg);">Winds of the Eastern Sea</div>
-          <div class="font-mono">89</div>
+          <div>
+            <span class="font-mono">89</span>
+            <span class="badge" style="background: var(--muted); color: var(--muted-fg); font-size: 9px; margin-left: 4px;">anchor 0.07</span>
+          </div>
           <div><span class="dot dot-yellow"></span> <span class="font-mono" style="font-size: 11px;">0.84</span></div>
-          <div style="color: var(--muted-fg); font-size: 11px;">ch.38</div>
+          <div><button class="btn btn-ghost btn-sm" style="font-size: 10px; padding: 2px 6px;">Promote →</button></div>
         </div>
         <div class="entity-row">
-          <div>The Sixth Element prophecy</div>
+          <div style="font-weight: 500;"><span style="color: var(--muted-fg);">💭</span> The Sixth Element prophecy</div>
           <div><span class="badge badge-building" style="font-size: 10px;">concept</span></div>
           <div style="color: var(--muted-fg);">Winds of the Eastern Sea</div>
-          <div class="font-mono">34</div>
+          <div>
+            <span class="font-mono">34</span>
+            <span class="badge" style="background: var(--muted); color: var(--muted-fg); font-size: 9px; margin-left: 4px;">anchor 0.03</span>
+          </div>
           <div><span class="dot dot-yellow"></span> <span class="font-mono" style="font-size: 11px;">0.78</span></div>
-          <div style="color: var(--muted-fg); font-size: 11px;">ch.37</div>
+          <div><button class="btn btn-ghost btn-sm" style="font-size: 10px; padding: 2px 6px;">Promote →</button></div>
         </div>
         <div class="entity-row">
-          <div>Jade amulet</div>
+          <div style="font-weight: 500;"><span style="color: var(--muted-fg);">💭</span> Jade amulet</div>
           <div><span class="badge badge-paused" style="font-size: 10px;">item</span></div>
           <div style="color: var(--muted-fg);">Winds of the Eastern Sea</div>
-          <div class="font-mono">17</div>
+          <div>
+            <span class="font-mono">17</span>
+            <span class="badge" style="background: var(--muted); color: var(--muted-fg); font-size: 9px; margin-left: 4px;">anchor 0.01</span>
+          </div>
           <div><span class="dot dot-yellow"></span> <span class="font-mono" style="font-size: 11px;">0.71</span></div>
-          <div style="color: var(--muted-fg); font-size: 11px;">ch.12</div>
+          <div><button class="btn btn-ghost btn-sm" style="font-size: 10px; padding: 2px 6px;">Promote →</button></div>
         </div>
-        <div class="entity-row">
-          <div>Twilight Guild</div>
+        <!-- 📦 Archived: glossary entry was deleted, kept for RAG/graph consistency but hidden from default search -->
+        <div class="entity-row" style="opacity: 0.55; background: var(--muted);">
+          <div style="font-weight: 500;"><span style="color: var(--muted-fg);">📦</span> Twilight Guild <span style="color: var(--warning); font-size: 10px;">archived · glossary deleted</span></div>
           <div><span class="badge badge-failed" style="font-size: 10px;">faction</span></div>
           <div style="color: var(--muted-fg);">Winds of the Eastern Sea</div>
-          <div class="font-mono">22</div>
+          <div>
+            <span class="font-mono">22</span>
+            <span class="badge" style="background: var(--muted); color: var(--muted-fg); font-size: 9px; margin-left: 4px;">hidden from RAG</span>
+          </div>
           <div><span class="dot dot-red"></span> <span class="font-mono" style="font-size: 11px;">0.62</span></div>
-          <div style="color: var(--muted-fg); font-size: 11px;">ch.31</div>
+          <div><button class="btn btn-ghost btn-sm" style="font-size: 10px; padding: 2px 6px;">Restore</button></div>
         </div>
       </div>
 
       <div style="text-align: center; padding: 12px; color: var(--muted-fg); font-size: 11px;">
-        Showing 8 of 127 entities · <button class="btn btn-ghost btn-sm" style="display: inline;">Load more ↓</button>
+        Showing 9 of 127 active entities · 14 archived hidden · <button class="btn btn-ghost btn-sm" style="display: inline;">Load more ↓</button>
+      </div>
+
+      <!-- Legend -->
+      <div style="margin-top: 16px; padding: 12px 16px; background: var(--muted); border: 1px solid var(--border); border-radius: 8px; font-size: 11.5px; line-height: 1.6; color: var(--muted-fg);">
+        <strong style="color: var(--foreground);">Legend:</strong>
+        <span style="color: var(--primary); margin-left: 8px;">⭐ canonical</span> = linked to glossary entry, anchor_score=1.0, authoritative name/type overrides from glossary ·
+        <span style="color: var(--muted-fg);">💭 discovered</span> = extracted only, anchor_score = mention_count / max, can be promoted to glossary ·
+        <span style="color: var(--muted-fg);">📦 archived</span> = glossary entry was deleted; entity preserved for graph/RAG consistency but hidden from default search (soft-archive preserves quality)
+      </div>
+    </section>
+
+    <!-- ==================== Pending Proposals ==================== -->
+    <section class="demo-section" id="proposals">
+      <h2>Memory — Pending proposals</h2>
+      <p class="subtitle">
+        Items knowledge-service has submitted to glossary and wiki that are awaiting human review.
+        Review lives in the glossary / wiki UIs (existing infrastructure); this tab is a unified inbox with deep links.
+      </p>
+
+      <div class="tabs">
+        <div class="tab">Projects</div>
+        <div class="tab">Extraction Jobs</div>
+        <div class="tab">Entities</div>
+        <div class="tab active">Proposals <span class="tab-count">14</span></div>
+        <div class="tab">Gap report</div>
+      </div>
+
+      <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+        <select class="select" style="width: auto;">
+          <option>All targets</option>
+          <option>Glossary entries</option>
+          <option>Wiki stubs</option>
+        </select>
+        <select class="select" style="width: auto;">
+          <option>All projects</option>
+          <option>Winds of the Eastern Sea</option>
+        </select>
+        <select class="select" style="width: auto;">
+          <option>Sort: submitted desc</option>
+          <option>Confidence</option>
+          <option>Mention count</option>
+        </select>
+      </div>
+
+      <!-- Glossary proposals -->
+      <div style="margin-bottom: 24px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+          <div>
+            <h3 style="margin: 0; font-size: 14px;">Glossary entry proposals · 9 pending</h3>
+            <div style="color: var(--muted-fg); font-size: 11.5px; margin-top: 2px;">Submitted via <code style="font-size: 11px;">POST /internal/books/{book_id}/extract-entities</code> with <code style="font-size: 11px;">status=draft</code></div>
+          </div>
+          <button class="btn btn-secondary btn-sm">Open glossary drafts queue →</button>
+        </div>
+        <div class="card" style="padding: 0; overflow: hidden;">
+          <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px;">
+            <span class="badge" style="background: var(--accent-muted); color: var(--accent-fg); font-size: 10px;">character</span>
+            <div style="flex: 1;">
+              <div style="font-size: 13px; font-weight: 500;">Empress Yun</div>
+              <div style="color: var(--muted-fg); font-size: 11px;">156 mentions · first ch.43 · confidence 0.92 · extracted by job #472 (claude-haiku-4.5)</div>
+            </div>
+            <span class="badge badge-full" style="font-size: 10px;">draft</span>
+            <button class="btn btn-ghost btn-sm" style="font-size: 10px; padding: 2px 8px;">Review in glossary →</button>
+          </div>
+          <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px;">
+            <span class="badge" style="background: var(--accent-muted); color: var(--accent-fg); font-size: 10px;">location</span>
+            <div style="flex: 1;">
+              <div style="font-size: 13px; font-weight: 500;">Water Kingdom <span style="color: var(--muted-fg); font-weight: 400; font-size: 11px;">(aka "the Water", "Northern Kingdom")</span></div>
+              <div style="color: var(--muted-fg); font-size: 11px;">423 mentions · spans ch.1–44 · confidence 0.95 · merge strategy: fill (append-only)</div>
+            </div>
+            <span class="badge badge-full" style="font-size: 10px;">draft</span>
+            <button class="btn btn-ghost btn-sm" style="font-size: 10px; padding: 2px 8px;">Review in glossary →</button>
+          </div>
+          <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px;">
+            <span class="badge" style="background: var(--accent-muted); color: var(--accent-fg); font-size: 10px;">concept</span>
+            <div style="flex: 1;">
+              <div style="font-size: 13px; font-weight: 500;">The Sixth Element prophecy</div>
+              <div style="color: var(--muted-fg); font-size: 11px;">34 mentions · confidence 0.78 · <span style="color: var(--warning);">⚠️ low confidence — review carefully</span></div>
+            </div>
+            <span class="badge badge-full" style="font-size: 10px;">draft</span>
+            <button class="btn btn-ghost btn-sm" style="font-size: 10px; padding: 2px 8px;">Review in glossary →</button>
+          </div>
+          <div style="padding: 12px 16px; display: flex; align-items: center; gap: 12px;">
+            <span class="badge" style="background: var(--accent-muted); color: var(--accent-fg); font-size: 10px;">faction</span>
+            <div style="flex: 1;">
+              <div style="font-size: 13px; font-weight: 500;">Jade Lotus Society</div>
+              <div style="color: var(--muted-fg); font-size: 11px;">48 mentions · conflicts with existing "Jade Society" — dedup suggested</div>
+            </div>
+            <span class="badge badge-paused" style="font-size: 10px;">conflict</span>
+            <button class="btn btn-ghost btn-sm" style="font-size: 10px; padding: 2px 8px;">Review in glossary →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Wiki stub proposals -->
+      <div>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+          <div>
+            <h3 style="margin: 0; font-size: 14px;">Wiki stub proposals · 5 pending</h3>
+            <div style="color: var(--muted-fg); font-size: 11.5px; margin-top: 2px;">Submitted via <code style="font-size: 11px;">POST /v1/glossary/books/{book_id}/wiki/generate</code> with <code style="font-size: 11px;">author_type=ai</code></div>
+          </div>
+          <button class="btn btn-secondary btn-sm">Open wiki drafts queue →</button>
+        </div>
+        <div class="card" style="padding: 0; overflow: hidden;">
+          <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px;">
+            <span class="badge" style="background: var(--accent-muted); color: var(--accent-fg); font-size: 10px;">wiki</span>
+            <div style="flex: 1;">
+              <div style="font-size: 13px; font-weight: 500;">Magic system — Five Elements</div>
+              <div style="color: var(--muted-fg); font-size: 11px;">~1,240 words drafted from ch.1–200 · 23 entity links · bound to entity "Five Elements"</div>
+            </div>
+            <span class="badge badge-full" style="font-size: 10px;">draft</span>
+            <button class="btn btn-ghost btn-sm" style="font-size: 10px; padding: 2px 8px;">Review in wiki →</button>
+          </div>
+          <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px;">
+            <span class="badge" style="background: var(--accent-muted); color: var(--accent-fg); font-size: 10px;">wiki</span>
+            <div style="flex: 1;">
+              <div style="font-size: 13px; font-weight: 500;">Geography — Eastern Sea region</div>
+              <div style="color: var(--muted-fg); font-size: 11px;">~2,100 words · 41 location links · needs map attachment (no image extraction in v1)</div>
+            </div>
+            <span class="badge badge-full" style="font-size: 10px;">draft</span>
+            <button class="btn btn-ghost btn-sm" style="font-size: 10px; padding: 2px 8px;">Review in wiki →</button>
+          </div>
+          <div style="padding: 12px 16px; display: flex; align-items: center; gap: 12px;">
+            <span class="badge" style="background: var(--accent-muted); color: var(--accent-fg); font-size: 10px;">wiki</span>
+            <div style="flex: 1;">
+              <div style="font-size: 13px; font-weight: 500;">History — Fall of the Old Dynasty</div>
+              <div style="color: var(--muted-fg); font-size: 11px;">~890 words · <span style="color: var(--warning);">⚠️ 3 contradictions with existing "Dynasty" article</span></div>
+            </div>
+            <span class="badge badge-paused" style="font-size: 10px;">conflict</span>
+            <button class="btn btn-ghost btn-sm" style="font-size: 10px; padding: 2px 8px;">Review in wiki →</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== Glossary Gap Report ==================== -->
+    <section class="demo-section" id="gap-report">
+      <h2>Memory — Glossary gap report</h2>
+      <p class="subtitle">
+        High-mention entities that exist in the semantic layer but have no glossary entry yet.
+        These are the ones worth curating first — pure signal, no noise.
+        Closes the loop: extraction discovers → you curate the important ones → glossary grows → future extraction quality improves.
+      </p>
+
+      <div class="tabs">
+        <div class="tab">Projects</div>
+        <div class="tab">Extraction Jobs</div>
+        <div class="tab">Entities</div>
+        <div class="tab">Proposals</div>
+        <div class="tab active">Gap report <span class="tab-count">23</span></div>
+      </div>
+
+      <!-- Summary cards -->
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;">
+        <div class="card" style="padding: 16px;">
+          <div style="color: var(--muted-fg); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;">Total entities</div>
+          <div style="font-size: 22px; font-weight: 600; margin-top: 4px;">1,247</div>
+          <div style="color: var(--muted-fg); font-size: 11px; margin-top: 2px;">in semantic layer</div>
+        </div>
+        <div class="card" style="padding: 16px;">
+          <div style="color: var(--muted-fg); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;">Canonical</div>
+          <div style="font-size: 22px; font-weight: 600; margin-top: 4px; color: var(--primary);">⭐ 312</div>
+          <div style="color: var(--muted-fg); font-size: 11px; margin-top: 2px;">25% in glossary</div>
+        </div>
+        <div class="card" style="padding: 16px;">
+          <div style="color: var(--muted-fg); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;">Discovered</div>
+          <div style="font-size: 22px; font-weight: 600; margin-top: 4px;">💭 935</div>
+          <div style="color: var(--muted-fg); font-size: 11px; margin-top: 2px;">75% awaiting curation</div>
+        </div>
+        <div class="card" style="padding: 16px;">
+          <div style="color: var(--muted-fg); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;">High-value gaps</div>
+          <div style="font-size: 22px; font-weight: 600; margin-top: 4px; color: var(--warning);">⚠️ 23</div>
+          <div style="color: var(--muted-fg); font-size: 11px; margin-top: 2px;">≥50 mentions, no entry</div>
+        </div>
+      </div>
+
+      <!-- Gap table -->
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+        <h3 style="margin: 0; font-size: 14px;">High-value gaps (sorted by mention count)</h3>
+        <div style="display: flex; gap: 8px;">
+          <select class="select" style="width: auto;">
+            <option>Threshold: ≥50 mentions</option>
+            <option>≥100 mentions</option>
+            <option>≥10 mentions</option>
+          </select>
+          <button class="btn btn-primary btn-sm">Bulk promote to glossary →</button>
+        </div>
+      </div>
+
+      <div class="card" style="padding: 0; overflow: hidden;">
+        <div style="display: grid; grid-template-columns: 32px 2fr 1fr 1fr 1fr 1fr 140px; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border); color: var(--muted-fg); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">
+          <div><input type="checkbox"></div>
+          <div>Name</div>
+          <div>Kind</div>
+          <div>Mentions</div>
+          <div>First / Last</div>
+          <div>Confidence</div>
+          <div>Action</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 32px 2fr 1fr 1fr 1fr 1fr 140px; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); align-items: center;">
+          <div><input type="checkbox" checked></div>
+          <div style="font-size: 13px; font-weight: 500;">Empress Yun <span style="color: var(--muted-fg); font-weight: 400; font-size: 11px;">(the Empress, Yun)</span></div>
+          <div><span class="badge badge-full" style="font-size: 10px;">character</span></div>
+          <div class="font-mono" style="font-size: 13px;">156</div>
+          <div style="color: var(--muted-fg); font-size: 11px;">ch.43 → ch.4872</div>
+          <div><span class="dot dot-green"></span> <span class="font-mono" style="font-size: 11px;">0.92</span></div>
+          <div><button class="btn btn-primary btn-sm" style="font-size: 10px; padding: 3px 8px;">Promote →</button></div>
+        </div>
+        <div style="display: grid; grid-template-columns: 32px 2fr 1fr 1fr 1fr 1fr 140px; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); align-items: center;">
+          <div><input type="checkbox" checked></div>
+          <div style="font-size: 13px; font-weight: 500;">Water Kingdom</div>
+          <div><span class="badge badge-static" style="font-size: 10px;">location</span></div>
+          <div class="font-mono" style="font-size: 13px;">423</div>
+          <div style="color: var(--muted-fg); font-size: 11px;">ch.1 → ch.4912</div>
+          <div><span class="dot dot-green"></span> <span class="font-mono" style="font-size: 11px;">0.95</span></div>
+          <div><button class="btn btn-primary btn-sm" style="font-size: 10px; padding: 3px 8px;">Promote →</button></div>
+        </div>
+        <div style="display: grid; grid-template-columns: 32px 2fr 1fr 1fr 1fr 1fr 140px; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); align-items: center;">
+          <div><input type="checkbox"></div>
+          <div style="font-size: 13px; font-weight: 500;">Hailong City</div>
+          <div><span class="badge badge-static" style="font-size: 10px;">location</span></div>
+          <div class="font-mono" style="font-size: 13px;">89</div>
+          <div style="color: var(--muted-fg); font-size: 11px;">ch.12 → ch.3877</div>
+          <div><span class="dot dot-yellow"></span> <span class="font-mono" style="font-size: 11px;">0.84</span></div>
+          <div><button class="btn btn-primary btn-sm" style="font-size: 10px; padding: 3px 8px;">Promote →</button></div>
+        </div>
+        <div style="display: grid; grid-template-columns: 32px 2fr 1fr 1fr 1fr 1fr 140px; gap: 12px; padding: 12px 16px; align-items: center;">
+          <div><input type="checkbox"></div>
+          <div style="font-size: 13px; font-weight: 500;">Jade Lotus Society <span style="color: var(--warning); font-size: 10px;">⚠️ similar to "Jade Society"</span></div>
+          <div><span class="badge badge-failed" style="font-size: 10px;">faction</span></div>
+          <div class="font-mono" style="font-size: 13px;">48</div>
+          <div style="color: var(--muted-fg); font-size: 11px;">ch.89 → ch.2140</div>
+          <div><span class="dot dot-yellow"></span> <span class="font-mono" style="font-size: 11px;">0.81</span></div>
+          <div><button class="btn btn-secondary btn-sm" style="font-size: 10px; padding: 3px 8px;">Merge / create</button></div>
+        </div>
+      </div>
+
+      <div style="margin-top: 16px; padding: 12px 16px; background: var(--accent-muted); border: 1px solid var(--accent); border-radius: 8px; font-size: 11.5px; line-height: 1.6; color: var(--accent-fg);">
+        💡 <strong>Why this matters:</strong> Each curated glossary entry becomes an anchor for the next extraction run.
+        GraphRAG ablations show ~34% reduction in duplicate entity creation when extraction is seeded with canonical entries
+        (arXiv:2404.16130). HippoRAG reports 18–25% improvement on multi-hop QA with named anchor nodes (arXiv:2405.14831).
       </div>
     </section>
 

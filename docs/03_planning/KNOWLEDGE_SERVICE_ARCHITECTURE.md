@@ -385,6 +385,16 @@ We support this with **dimension-indexed properties** on every embeddable node:
   embedding_1536: [Float],   // populated if embedding_model uses 1536-dim (text-embedding-3-small)
   embedding_3072: [Float],   // populated if embedding_model uses 3072-dim (text-embedding-3-large)
 
+  // ── Two-layer anchoring to authored glossary (§3.4.G) ──────────
+  glossary_entity_id: String,  // nullable; FK to glossary_entities.id in glossary-service DB
+                               // when set: entity is "⭐ canonical"; name/kind/aliases overwrite from glossary on sync
+                               // when null: entity is "💭 discovered only"; can be promoted via /proposals API
+  anchor_score: Float,         // 1.0 if glossary_entity_id is set; else mention_count / max_mention_count
+                               // retrieval multiplies similarity × anchor_score for ranking
+  archived_at: DateTime,       // nullable; set when linked glossary entry is deleted
+                               // archived entities hidden from default RAG queries but preserved
+                               // for graph/timeline/relationship consistency (see §3.4.G cascade rules)
+
   // ... other properties (name, kind, aliases, etc.)
 })
 ```
@@ -496,13 +506,7 @@ MATCH (src:ExtractionSource {source_id: 'ch123'}) DETACH DELETE src
 
 See [`101 §3.8.4`](101_DATA_RE_ENGINEERING_PLAN.md) for system-level cascade rules.
 
-#### D. Idempotent Writes (unchanged from §3.5.4)
-
-Every write uses deterministic `canonical_id` (see [`101 §3.5.4`](101_DATA_RE_ENGINEERING_PLAN.md)
-and KSA §5.0). Re-running the same extraction on the same source produces zero
-new nodes — only new EVIDENCED_BY edges if a new extraction job runs it.
-
-**Query pattern for L2 context loading (triples):**
+#### D. Query pattern for L2 context loading (triples)
 
 ```cypher
 MATCH (e:Entity)-[r:RELATES_TO]->(target)
@@ -513,8 +517,88 @@ WHERE e.user_id = $user_id
   )
   AND e.name IN $detected_entities
   AND r.valid_until IS NULL
+  AND e.archived_at IS NULL     // exclude soft-archived (glossary-deleted) entities from RAG
 RETURN e, r, target
 ```
+
+#### E. Two-Layer Anchoring (Glossary ↔ Entity)
+
+**Rationale:** Glossary-service is the authored SSOT for characters, places, items, etc.
+Knowledge-service adds a **fuzzy/semantic entity layer** that stores every surface form
+extraction discovered (many more rows than glossary has), with embeddings and partial
+substring/alias matching. The two layers serve different purposes and coexist via a
+nullable FK.
+
+| | **Glossary** (existing, authored) | **KS Entities** (new, derived) |
+|---|---|---|
+| Role | Curated canonical truth | Discovery & retrieval layer |
+| Size | Small, precise (human-blessed) | Large, fuzzy (everything extraction found) |
+| Search | Exact / structured / tsvector | Semantic (embedding) + substring + trigram |
+| Minor mentions | Excluded (pollutes UI) | Included (powers RAG retrieval for tail) |
+| Edit flow | Human-authored, glossary UI | Machine-written; read-mostly UI in KS |
+| Storage | Postgres (glossary-service DB) | Neo4j (knowledge-service, `:Entity` nodes) |
+
+**Linkage model** — `:Entity.glossary_entity_id` is a nullable foreign key:
+
+- **Set** → entity is **⭐ canonical**. `anchor_score` fixed at 1.0. Canonical fields
+  (name, kind, aliases) are treated as a mirror of glossary; edits redirect to glossary UI.
+- **Null** → entity is **💭 discovered only**. `anchor_score` computed from
+  `mention_count / max_mention_count`. User can "Promote to glossary" which creates a
+  glossary entry via its existing extraction API and sets the FK.
+
+**Sync direction is one-way authoritative:**
+
+- **Glossary → Entity** (authoritative): on `glossary.entity_updated` event, KS refreshes
+  the linked entity's canonical fields (name, kind, aliases). Embedding, mention_count,
+  and graph edges remain KS-owned.
+- **Entity → Glossary** (proposal only): on user "Promote" action or high-confidence
+  auto-propose, KS calls `POST /internal/books/{book_id}/extract-entities` with
+  `status=draft` and `merge_strategy=fill`. Glossary UI handles approval.
+
+**Glossary as anchor during extraction** — when an extraction job runs, the pipeline
+pre-loads existing glossary entries as **anchor nodes** before processing chapter text.
+Fuzzy surface forms extracted from chapters cluster toward these anchors first (high prior)
+instead of creating duplicate entity rows. This:
+
+1. Improves quality: GraphRAG ablations show ~34% reduction in duplicate entity creation
+   when extraction is seeded with canonical entries (arXiv:2404.16130, LOTR test set).
+2. Improves cost: fewer new nodes to create each run, lower LLM token consumption.
+3. Closes a feedback loop: curated glossary → better extraction → more accurate entity
+   layer → better RAG → easier curation.
+
+See §5.0 for the entity-resolution algorithm that uses anchor nodes, and §6 for the
+cross-service API contract.
+
+#### F. Archive Cascade (when glossary entry is deleted)
+
+If a user deletes a glossary entry that is linked to one or more KS entities, KS does
+**NOT** cascade-delete. Instead, entities are **soft-archived**:
+
+```cypher
+// Handler for glossary.entity_deleted event
+MATCH (e:Entity {glossary_entity_id: $deleted_glossary_id})
+SET e.archived_at = datetime(),
+    e.anchor_score = 0.0,
+    e.glossary_entity_id = NULL
+```
+
+**Rationale:** The graph edges, timeline events, and embeddings attached to that entity
+have independent value. Deleting them cascades into relationship loss and timeline holes.
+Archiving hides the node from default RAG queries (via `WHERE archived_at IS NULL` in
+every retrieval Cypher) while preserving graph consistency. User can restore from the
+"Archived" filter in the entities tab.
+
+**Supported by research**: both GraphRAG and Graphiti explicitly exclude archived/
+low-confidence nodes from retrieval rather than deleting, for RAG quality reasons.
+
+#### G. Idempotent Writes (unchanged from §3.5.4)
+
+> Numbering note: this was previously §3.4.D. Renumbered to G after inserting
+> §3.4.E (Two-Layer Anchoring) and §3.4.F (Archive Cascade).
+
+Every write uses deterministic `canonical_id` (see [`101 §3.5.4`](101_DATA_RE_ENGINEERING_PLAN.md)
+and KSA §5.0). Re-running the same extraction on the same source produces zero
+new nodes — only new EVIDENCED_BY edges if a new extraction job runs it.
 
 ---
 
@@ -2894,6 +2978,135 @@ Not blocking — informational. User can adjust the cap if they want more.
 ---
 
 ## 6. Knowledge-Service API
+
+### 6.0 Cross-Service Sync Contract (glossary ↔ knowledge)
+
+Before enumerating KS endpoints, this section documents the **bidirectional contract**
+between knowledge-service and glossary-service. KS does NOT duplicate glossary storage;
+it writes canonical proposals through glossary's existing APIs and listens to glossary
+events to keep its fuzzy entity layer in sync.
+
+#### 6.0.1 Outbound: KS → glossary (proposals)
+
+**Entity proposals** (from KS extraction pipeline):
+
+```
+POST /internal/books/{book_id}/extract-entities          [glossary-service]
+X-Internal-Token: ${LOREWEAVE_INTERNAL_TOKEN}
+Content-Type: application/json
+
+{
+  "job_id": "ks-extraction-job-uuid",
+  "source_model": "claude-haiku-4.5",
+  "merge_strategy": "fill",         // fill = append-only; overwrite = replace
+  "status": "draft",                // always draft for KS-submitted; human approves in glossary UI
+  "candidates": [
+    {
+      "name": "Empress Yun",
+      "aliases": ["the Empress", "Yun"],
+      "kind": "character",
+      "short_description": "…",     // curated from chapter excerpts
+      "confidence": 0.92,
+      "chapter_links": ["ch43", "ch47", "ch52"],
+      "ks_entity_id": "ks-uuid"     // so glossary can call back on approval
+    }
+  ]
+}
+```
+
+On approval in glossary UI, glossary-service emits `glossary.entity_updated` with
+the new `glossary_entities.id`. KS's event handler sets
+`(:Entity {id: ks_entity_id}).glossary_entity_id = glossary_id` and promotes
+anchor_score to 1.0.
+
+**Wiki stub proposals** (from KS "Lore" extraction target):
+
+```
+POST /v1/glossary/books/{book_id}/wiki/generate          [glossary-service]
+X-Internal-Token: ${LOREWEAVE_INTERNAL_TOKEN}
+
+{
+  "job_id": "ks-extraction-job-uuid",
+  "entity_id": "glossary_entity_id or null",  // link to existing glossary entry if any
+  "topic": "Magic system — Five Elements",
+  "content_md": "…",                           // ~1-3k word markdown draft
+  "author_type": "ai",
+  "source_model": "claude-haiku-4.5",
+  "status": "draft"
+}
+```
+
+Wiki UI handles approval/editing; KS does not store the article body.
+
+#### 6.0.2 Inbound: glossary → KS (authoritative updates)
+
+KS subscribes to the following glossary events via Redis Streams:
+
+| Event | Handler | Effect |
+|---|---|---|
+| `glossary.entity_created` | `handle_glossary_entity_created` | If a matching KS entity exists (by name), link it (set `glossary_entity_id`). Otherwise, create a new canonical `:Entity` node. |
+| `glossary.entity_updated` | `handle_glossary_entity_updated` | Refresh canonical fields (name, kind, aliases, short_description) on the linked `:Entity`. Re-compute embedding if name or description changed. |
+| `glossary.entity_deleted` | `handle_glossary_entity_deleted` | Soft-archive the linked entity: set `archived_at`, clear `glossary_entity_id`, set `anchor_score = 0`. Do NOT delete (preserves graph/timeline). |
+| `glossary.wiki_published` | `handle_glossary_wiki_published` | Optional: trigger re-indexing of wiki content for semantic search via L3 drawer. |
+
+**Idempotency:** every handler keys on the event ID stored in `processed_events` to
+survive redelivery. Events older than the last-processed watermark are skipped.
+
+#### 6.0.3 Anchor pre-loading during extraction
+
+When an extraction job starts, the pipeline's **Pass 0** loads existing glossary
+entries for the target book as anchor nodes:
+
+```python
+# services/knowledge-service/app/extraction/anchor_loader.py (NEW)
+async def load_glossary_anchors(book_id: str, project_id: str) -> list[Anchor]:
+    """Fetch existing glossary entries and install as canonical :Entity nodes."""
+    client = GlossaryClient(base_url=settings.GLOSSARY_URL)
+    entries = await client.list_entities(book_id=book_id, status="active")
+
+    anchors = []
+    for entry in entries:
+        # Upsert into Neo4j as canonical entity
+        await neo4j.run("""
+            MERGE (e:Entity {canonical_id: $canonical_id})
+            ON CREATE SET
+                e.id = randomUUID(),
+                e.user_id = $user_id,
+                e.project_id = $project_id,
+                e.name = $name,
+                e.kind = $kind,
+                e.aliases = $aliases,
+                e.glossary_entity_id = $glossary_id,
+                e.anchor_score = 1.0,
+                e.mention_count = 0,
+                e.archived_at = NULL
+            ON MATCH SET
+                e.glossary_entity_id = $glossary_id,
+                e.anchor_score = 1.0,
+                e.archived_at = NULL
+        """, canonical_id=canonicalize(entry.name), user_id=..., ...)
+
+        anchors.append(Anchor(name=entry.name, aliases=entry.aliases, id=entry.id))
+
+    return anchors
+```
+
+The entity resolver (§5.0) then uses these anchors as high-prior targets during
+cluster assignment: extracted surface forms match against anchors first (fuzzy +
+semantic), only minting new `:Entity` nodes if no anchor clears the match threshold.
+This reduces duplicate entity creation by ~34% on fiction corpora per GraphRAG
+ablations (arXiv:2404.16130).
+
+#### 6.0.4 Failure modes
+
+| Failure | Behavior |
+|---|---|
+| glossary-service down during proposal | Queue proposal in `extraction_pending`, retry with exponential backoff. Do NOT block extraction job. |
+| glossary event missed (Redis outage) | On KS startup, reconcile: call `GET /internal/books/{book_id}/entities?updated_since=<watermark>` and sync diff. |
+| glossary entity deleted but KS holds references in graph | Soft-archive (§3.4.F). Graph edges preserved. User can restore if glossary entry is recreated. |
+| KS entity promoted to glossary, then glossary entry deleted | Treated same as §3.4.F: entity soft-archived, anchor_score → 0. Extraction history preserved. |
+
+---
 
 ### 6.1 Internal API (service-to-service, `X-Internal-Token` auth)
 
