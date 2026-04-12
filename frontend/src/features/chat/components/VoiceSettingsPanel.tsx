@@ -187,7 +187,11 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
             ) : (
               <select
                 value={prefs.sttModelRef}
-                onChange={(e) => update('sttModelRef', e.target.value)}
+                onChange={(e) => {
+                  update('sttModelRef', e.target.value);
+                  const model = sttModels.find((m) => m.user_model_id === e.target.value);
+                  update('sttModelName', model?.provider_model_name ?? '');
+                }}
                 className="h-8 w-full rounded-md border bg-background px-2 text-xs focus:border-ring focus:outline-none"
               >
                 <option value="">{t('voice.selectModel', 'Select model...')}</option>
@@ -268,7 +272,11 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
             ) : (
               <select
                 value={prefs.ttsModelRef}
-                onChange={(e) => update('ttsModelRef', e.target.value)}
+                onChange={(e) => {
+                  update('ttsModelRef', e.target.value);
+                  const model = ttsModels.find((m) => m.user_model_id === e.target.value);
+                  update('ttsModelName', model?.provider_model_name ?? '');
+                }}
                 className="h-8 w-full rounded-md border bg-background px-2 text-xs focus:border-ring focus:outline-none"
               >
                 <option value="">{t('voice.selectModel', 'Select model...')}</option>

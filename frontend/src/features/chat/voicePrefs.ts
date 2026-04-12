@@ -10,6 +10,7 @@ export interface VoicePrefs {
   // Speech Recognition
   sttSource: STTSource;
   sttModelRef: string;       // user_model_id when sttSource='ai_model'
+  sttModelName: string;      // provider_model_name (sent as 'model' field to STT API)
   speechLang: string;
   silenceThresholdMs: number;
   autoSendOnSilence: boolean;
@@ -18,6 +19,7 @@ export interface VoicePrefs {
   // Text-to-Speech
   ttsSource: TTSSource;
   ttsModelRef: string;       // user_model_id when ttsSource='ai_model'
+  ttsModelName: string;      // provider_model_name (sent as 'model' field to TTS API)
   ttsVoiceURI: string;       // browser voice URI (when ttsSource='browser')
   ttsVoiceId: string;        // provider voice ID (when ttsSource='ai_model', e.g. 'af_heart')
   ttsSpeed: number;
@@ -42,6 +44,7 @@ export interface VoicePrefs {
 export const DEFAULT_VOICE_PREFS: VoicePrefs = {
   sttSource: 'browser',
   sttModelRef: '',
+  sttModelName: '',
   speechLang: 'en-US',
   silenceThresholdMs: 1500,
   autoSendOnSilence: true,
@@ -49,6 +52,7 @@ export const DEFAULT_VOICE_PREFS: VoicePrefs = {
 
   ttsSource: 'browser',
   ttsModelRef: '',
+  ttsModelName: '',
   ttsVoiceURI: '',
   ttsVoiceId: '',
   ttsSpeed: 1,

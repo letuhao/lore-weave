@@ -46,6 +46,7 @@ export function float32ToWavBlob(samples: Float32Array, sampleRate: number): Blo
 export async function transcribeAudio(
   audioBlob: Blob,
   sttModelRef: string,
+  sttModelName: string,
   accessToken: string,
   signal?: AbortSignal,
 ): Promise<string> {
@@ -56,6 +57,8 @@ export async function transcribeAudio(
   });
   const formData = new FormData();
   formData.append('file', audioBlob, 'audio.wav');
+  // OpenAI-compatible STT APIs require a 'model' field in multipart form
+  formData.append('model', sttModelName || 'whisper-1');
 
   const resp = await fetch(
     `${apiBase}/v1/model-registry/proxy/v1/audio/transcriptions?${params}`,

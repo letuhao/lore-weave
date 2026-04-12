@@ -63,7 +63,7 @@ export function useVoiceAssistMic(
           const abort = new AbortController();
           abortRef.current = abort;
 
-          const text = await transcribeAudio(blob, prefs.sttModelRef, accessToken, abort.signal);
+          const text = await transcribeAudio(blob, prefs.sttModelRef, prefs.sttModelName, accessToken, abort.signal);
           if (text) {
             onTranscript(text);
           }
