@@ -937,6 +937,14 @@ CREATE CONSTRAINT book_id_unique    FOR (b:Book)    REQUIRE b.id IS UNIQUE;
   user_id: String
 })
 
+// Entity now carries a cached evidence_count for fast cleanup queries
+(:Entity {
+  ...,
+  evidence_count: Integer        // maintained by write path, used by cleanup
+})
+(:Event { ..., evidence_count: Integer })
+(:Fact  { ..., evidence_count: Integer })
+
 (:Entity)-[:EVIDENCED_BY {
   extracted_at: DateTime,
   extraction_model: String,      // which LLM produced this extraction
@@ -953,7 +961,60 @@ CREATE INDEX extraction_source_by_source_id
     FOR (s:ExtractionSource) ON (s.source_type, s.source_id);
 CREATE INDEX extraction_source_project
     FOR (s:ExtractionSource) ON (s.project_id, s.source_type);
+
+// Cached evidence_count makes cleanup queries O(1) instead of edge-count scans
+CREATE INDEX entity_zero_evidence FOR (e:Entity) ON (e.evidence_count);
+CREATE INDEX event_zero_evidence  FOR (e:Event)  ON (e.evidence_count);
+CREATE INDEX fact_zero_evidence   FOR (f:Fact)   ON (f.evidence_count);
 ```
+
+**Cached evidence_count maintenance (MANDATORY write pattern):**
+
+Every EVIDENCED_BY edge create/delete must atomically update the parent
+node's `evidence_count`. Without this cache, partial-operation cleanup
+queries become full edge-count scans — unusable at 5000-chapter scale.
+
+```cypher
+// On CREATE of EVIDENCED_BY edge (wrapped in same transaction as MERGE)
+MERGE (e:Entity {id: $canonical_id})
+  ON CREATE SET e.evidence_count = 0, e.name = $name, ...
+MERGE (src:ExtractionSource {id: $source_id})
+MERGE (e)-[r:EVIDENCED_BY]->(src)
+  ON CREATE SET r.extracted_at = datetime(),
+                e.evidence_count = e.evidence_count + 1
+// If the edge already existed (idempotent re-run), evidence_count is NOT incremented
+```
+
+```cypher
+// On DELETE of EVIDENCED_BY edge
+MATCH (e:Entity)-[r:EVIDENCED_BY]->(src:ExtractionSource {id: $source_id})
+WITH e, r
+SET e.evidence_count = e.evidence_count - 1
+DELETE r
+```
+
+```cypher
+// Cleanup query using cached count — O(log n) with index
+MATCH (e:Entity)
+WHERE e.project_id = $project_id AND e.evidence_count <= 0
+DETACH DELETE e
+```
+
+**Consistency check:** A weekly reconcile job verifies cached counts match
+actual edge counts and fixes drift:
+
+```cypher
+MATCH (n)
+WHERE (n:Entity OR n:Event OR n:Fact) AND n.user_id = $user_id
+OPTIONAL MATCH (n)-[r:EVIDENCED_BY]->()
+WITH n, count(r) AS actual_count
+WHERE n.evidence_count <> actual_count
+SET n.evidence_count = actual_count
+RETURN count(*) AS fixed
+```
+
+Run daily during low traffic. Should normally fix zero nodes; a non-zero
+result indicates a bug in the write path that missed an increment/decrement.
 
 **Query pattern rule:** Every Cypher query that touches `:Entity`, `:Event`, or
 user data MUST include `user_id` as the first filter predicate. Reviewers must
@@ -966,6 +1027,62 @@ MATCH (e:Entity) WHERE e.user_id = $user_id AND e.name = $name RETURN e
 -- BAD (full scan across all users)
 MATCH (e:Entity {name: $name}) RETURN e
 ```
+
+**Cypher injection rule (MANDATORY — security-critical):**
+
+Every Cypher query MUST use parameterized form. Never interpolate user content
+(or any LLM output) into query strings via f-strings or concatenation. Cypher
+supports named parameters via `$name` — use them exclusively.
+
+```python
+# GOOD — parameterized, safe against injection
+await neo4j.run(
+    "MATCH (e:Entity) WHERE e.user_id = $user_id AND e.name = $name RETURN e",
+    user_id=user_id,
+    name=entity_name,  # safe even if entity_name contains '}), DETACH DELETE n, ('
+)
+
+# BAD — string interpolation, injectable
+await neo4j.run(
+    f"MATCH (e:Entity {{name: '{entity_name}'}}) RETURN e"  # NEVER
+)
+
+# ALSO BAD — string concatenation
+await neo4j.run(
+    "MATCH (e:Entity {name: '" + entity_name + "'}) RETURN e"  # NEVER
+)
+```
+
+**CI lint rule:** Any Cypher query assembled via f-string, `.format()`, or
+string concatenation is a blocking lint error. Add to pre-commit hooks and
+CI pipelines:
+
+```python
+# scripts/lint-cypher.py — simple AST walk
+import ast
+
+class CypherInjectionChecker(ast.NodeVisitor):
+    def visit_Call(self, node):
+        # Flag neo4j.run(f"...") and neo4j.run("..." + var)
+        if (isinstance(node.func, ast.Attribute)
+                and node.func.attr in ("run", "execute_read", "execute_write")):
+            for arg in node.args:
+                if isinstance(arg, ast.JoinedStr):  # f-string
+                    raise LintError(f"Cypher f-string at line {node.lineno}")
+                if (isinstance(arg, ast.BinOp)
+                        and isinstance(arg.op, ast.Add)):
+                    raise LintError(f"Cypher concatenation at line {node.lineno}")
+        self.generic_visit(node)
+```
+
+Why this matters: user content (character names, dialogue, glossary
+descriptions) flows through extraction into Neo4j writes. A user who writes
+`Kai"}) DETACH DELETE n //` as a character name could corrupt Neo4j if queries
+use string interpolation. Parameterized queries make this impossible.
+
+**Same rule for SQL:** Postgres queries via asyncpg also MUST use `$1, $2, ...`
+parameters. Enforced by `asyncpg`'s API design (it rejects Python string formatting
+for query parameters — you have to go out of your way to be unsafe).
 
 ### 3.7 Example: Hybrid Graph + Vector Query (Neo4j v2026.01)
 
@@ -1168,14 +1285,14 @@ MATCH (src:ExtractionSource {source_id: 'ch123', project_id: $project_id})
       <-[e:EVIDENCED_BY]-(n)
 DELETE e
 
-// Step 2: Delete entities with zero remaining evidence
+// Step 2: Delete entities with zero remaining evidence (uses cached count — fast)
 MATCH (n:Entity)
-WHERE n.project_id = $project_id AND NOT (n)-[:EVIDENCED_BY]->()
+WHERE n.project_id = $project_id AND n.evidence_count <= 0
 DETACH DELETE n
 
-// Same for Events and Facts
-MATCH (e:Event) WHERE e.user_id = $user_id AND NOT (e)-[:EVIDENCED_BY]->() DETACH DELETE e
-MATCH (f:Fact)  WHERE f.user_id = $user_id AND NOT (f)-[:EVIDENCED_BY]->() DETACH DELETE f
+// Same for Events and Facts — cached count enables index scan
+MATCH (e:Event) WHERE e.user_id = $user_id AND e.evidence_count <= 0 DETACH DELETE e
+MATCH (f:Fact)  WHERE f.user_id = $user_id AND f.evidence_count <= 0 DETACH DELETE f
 
 // Step 3: Remove the ExtractionSource itself
 MATCH (src:ExtractionSource {source_id: 'ch123', project_id: $project_id}) DETACH DELETE src
@@ -1198,12 +1315,16 @@ MERGE (src:ExtractionSource {id: $source_uuid})
 
 // For each entity extracted from ch.46
 MERGE (e:Entity {id: $canonical_id})
-  ON CREATE SET e.name = $display_name, e.project_id = $project_id, ...
+  ON CREATE SET e.name = $display_name,
+                e.project_id = $project_id,
+                e.evidence_count = 0,
+                ...
 MERGE (e)-[r:EVIDENCED_BY]->(src)
   ON CREATE SET r.extracted_at = datetime(),
                 r.extraction_model = $model,
                 r.confidence = $confidence,
-                r.job_id = $job_id
+                r.job_id = $job_id,
+                e.evidence_count = e.evidence_count + 1  // atomic with edge create
 ```
 
 #### Why This Works Safely
