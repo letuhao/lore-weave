@@ -69,6 +69,12 @@ func (s *Server) Router() http.Handler {
 		r.Get("/overview", s.statsOverview)
 	})
 
+	// Internal API for cross-service queries
+	r.Route("/internal", func(r chi.Router) {
+		r.Use(s.internalAuth)
+		r.Get("/voice-stats/{user_id}", s.voiceStats)
+	})
+
 	return r
 }
 
@@ -596,4 +602,58 @@ func bookOrderCol(period, sortBy string) string {
 	default:
 		return "total_views"
 	}
+}
+
+// ── Internal auth middleware ────────────────────────────────────────────────
+
+func (s *Server) internalAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := r.Header.Get("X-Internal-Token")
+		if token == "" || token != s.cfg.InternalServiceToken {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "invalid internal token"})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// ── Voice stats ────────────────────────────────────────────────────────────
+
+func (s *Server) voiceStats(w http.ResponseWriter, r *http.Request) {
+	userIDStr := chi.URLParam(r, "user_id")
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid user_id"})
+		return
+	}
+
+	var stats struct {
+		TotalTurns              int     `json:"total_turns"`
+		SuccessfulTurns         int     `json:"successful_turns"`
+		FailedTurns             int     `json:"failed_turns"`
+		AvgSTTDurationMs        int     `json:"avg_stt_duration_ms"`
+		AvgSpeechDurationMs     int     `json:"avg_speech_duration_ms"`
+		AvgLLMFirstTokenMs      int     `json:"avg_llm_first_token_ms"`
+		MisfireRate             float64 `json:"misfire_rate"`
+		RecommendedSilenceFrames int    `json:"recommended_silence_frames"`
+		RecommendedMinDurationMs int    `json:"recommended_min_duration_ms"`
+	}
+
+	err = s.pool.QueryRow(r.Context(), `
+		SELECT total_turns, successful_turns, failed_turns,
+			avg_stt_duration_ms, avg_speech_duration_ms, avg_llm_first_token_ms,
+			misfire_rate, recommended_silence_frames, recommended_min_duration_ms
+		FROM voice_user_stats WHERE user_id = $1
+	`, userID).Scan(
+		&stats.TotalTurns, &stats.SuccessfulTurns, &stats.FailedTurns,
+		&stats.AvgSTTDurationMs, &stats.AvgSpeechDurationMs, &stats.AvgLLMFirstTokenMs,
+		&stats.MisfireRate, &stats.RecommendedSilenceFrames, &stats.RecommendedMinDurationMs,
+	)
+	if err != nil {
+		// No stats yet — return defaults
+		stats.RecommendedSilenceFrames = 8
+		stats.RecommendedMinDurationMs = 500
+	}
+
+	writeJSON(w, http.StatusOK, stats)
 }
