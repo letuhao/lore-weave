@@ -174,17 +174,14 @@ export function MessageBubble({
               <span className="inline-flex items-center gap-0.5 text-primary/60">
                 <Mic className="h-2.5 w-2.5" />
                 voice
-                {contentParts.stt_ms != null && (
-                  <span className="text-muted-foreground/40">{contentParts.stt_ms}ms</span>
-                )}
               </span>
             )}
             {!isUser && contentParts?.voice_tts_sentences != null && contentParts.voice_tts_sentences > 0 && (
               <span className={cn(
                 'inline-block h-1.5 w-1.5 rounded-full',
-                (contentParts.response_time_ms ?? 0) < 2000 ? 'bg-emerald-400' :
-                (contentParts.response_time_ms ?? 0) < 5000 ? 'bg-amber-400' : 'bg-red-400',
-              )} title={`${contentParts.response_time_ms ?? '?'}ms`} />
+                (contentParts.time_to_first_token_ms ?? 0) < 2000 ? 'bg-emerald-400' :
+                (contentParts.time_to_first_token_ms ?? 0) < 5000 ? 'bg-amber-400' : 'bg-red-400',
+              )} title={`TTFT: ${contentParts.time_to_first_token_ms ?? '?'}ms`} />
             )}
             {new Date(message.created_at).toLocaleTimeString()}
           </p>

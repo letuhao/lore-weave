@@ -89,6 +89,7 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
     setSttText('');
     setAiText('');
     setError(null);
+    consecutiveFailsRef.current = 0;
   }, [sessionId, accessToken]);
 
   const handleSpeechEnd = useCallback(async (audio: Float32Array) => {
