@@ -29,6 +29,11 @@ export interface VoicePrefs {
   // Advanced VAD settings
   minSpeechDurationMs: number;  // Discard audio shorter than this (noise filter)
   vadSilenceFrames: number;     // Silero VAD redemptionFrames (frames × ~96ms = silence before speech-end)
+
+  // Voice Assist mode
+  voiceAssistEnabled: boolean;  // Always-on VAD mic in input bar (dictation mode)
+  voiceAssistAppend: boolean;   // true = append to textarea, false = replace
+  voiceAssistAutoTTS: boolean;  // Auto-play TTS on new AI responses
 }
 
 export const DEFAULT_VOICE_PREFS: VoicePrefs = {
@@ -50,6 +55,10 @@ export const DEFAULT_VOICE_PREFS: VoicePrefs = {
 
   minSpeechDurationMs: 500,  // 500ms default — discard very short audio
   vadSilenceFrames: 8,       // ~768ms silence before speech-end (Silero default)
+
+  voiceAssistEnabled: false,
+  voiceAssistAppend: true,   // Append by default (safer — doesn't discard existing text)
+  voiceAssistAutoTTS: true,
 };
 
 export function loadVoicePrefs(): VoicePrefs {

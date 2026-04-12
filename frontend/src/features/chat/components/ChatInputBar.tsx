@@ -1,7 +1,9 @@
-import { useState, useCallback } from 'react';
-import { ArrowUp, Brain, Square, Zap, Mic, MicOff } from 'lucide-react';
+import { useState, useCallback, useRef } from 'react';
+import { ArrowUp, Brain, Square, Zap, Mic, MicOff, Loader2 } from 'lucide-react';
 import { useSpeechRecognition, SPEECH_RECOGNITION_SUPPORTED } from '@/hooks/useSpeechRecognition';
 import { MEDIA_RECORDER_SUPPORTED } from '@/hooks/useBackendSTT';
+import { useAuth } from '@/auth';
+import { loadVoicePrefs } from '../voicePrefs';
 import TextareaAutosize from 'react-textarea-autosize';
 import { ContextBar } from '../context/ContextBar';
 import type { ContextItem } from '../context/types';
@@ -51,26 +53,78 @@ export function ChatInputBar({
   const [attachPickerOpen, setAttachPickerOpen] = useState(false);
 
   // Push-to-talk mic — inserts transcript into textarea (does NOT auto-send)
-  const [micActive, setMicActive] = useState(false);
+  // Supports both browser Web Speech API and backend STT via provider-registry
+  const { accessToken } = useAuth();
+  const [micState, setMicState] = useState<'idle' | 'recording' | 'transcribing' | 'error'>('idle');
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const stt = useSpeechRecognition({
     continuous: false,
     interimResults: true,
     onFinalTranscript: useCallback((text: string) => {
       setValue((prev) => (prev ? prev + ' ' + text : text));
-      setMicActive(false);
+      setMicState('idle');
     }, []),
   });
 
-  const toggleMic = useCallback(() => {
-    if (micActive) {
+  const toggleMic = useCallback(async () => {
+    if (micState === 'recording' || micState === 'transcribing') {
+      // Stop
       stt.stop();
-      setMicActive(false);
-    } else {
+      mediaRecorderRef.current?.stop();
+      setMicState('idle');
+      return;
+    }
+
+    const prefs = loadVoicePrefs();
+    if (prefs.sttSource === 'ai_model' && prefs.sttModelRef && MEDIA_RECORDER_SUPPORTED) {
+      // Backend STT via provider-registry proxy
+      setMicState('recording');
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        mediaRecorderRef.current = recorder;
+        const chunks: Blob[] = [];
+        recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+        recorder.onstop = async () => {
+          stream.getTracks().forEach((t) => t.stop());
+          if (chunks.length === 0) { setMicState('idle'); return; }
+          setMicState('transcribing');
+          try {
+            const blob = new Blob(chunks, { type: 'audio/webm' });
+            const apiBase = import.meta.env.VITE_API_BASE || '';
+            const params = new URLSearchParams({
+              model_source: 'user_model',
+              model_ref: prefs.sttModelRef,
+            });
+            const formData = new FormData();
+            formData.append('file', blob, 'audio.webm');
+            formData.append('model', 'whisper-1');
+            const resp = await fetch(
+              `${apiBase}/v1/model-registry/proxy/v1/audio/transcriptions?${params}`,
+              { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, body: formData },
+            );
+            if (resp.ok) {
+              const result = await resp.json();
+              const text = result.text || '';
+              if (text.trim()) setValue((prev) => (prev ? prev + ' ' + text : text));
+            }
+          } catch { /* silent */ }
+          setMicState('idle');
+        };
+        recorder.start();
+        // Auto-stop after 30s
+        setTimeout(() => { if (recorder.state === 'recording') recorder.stop(); }, 30000);
+      } catch {
+        setMicState('error');
+        setTimeout(() => setMicState('idle'), 2000);
+      }
+    } else if (SPEECH_RECOGNITION_SUPPORTED) {
+      // Browser Web Speech API
       stt.resetTranscript();
       stt.start();
-      setMicActive(true);
+      setMicState('recording');
     }
-  }, [micActive, stt]);
+  }, [micState, stt, accessToken]);
 
   function handleTemplateSelect(template: PromptTemplate) {
     setValue(template.prompt);
@@ -189,21 +243,31 @@ export function ChatInputBar({
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" /></svg>
               </button>
-              {/* Push-to-talk mic button (hidden when voice mode owns STT) */}
+              {/* Push-to-talk mic button — 4 states (hidden when voice mode owns STT) */}
               {(SPEECH_RECOGNITION_SUPPORTED || MEDIA_RECORDER_SUPPORTED) && !voiceModeActive && (
                 <button
                   type="button"
                   onClick={toggleMic}
+                  disabled={micState === 'transcribing'}
                   className={`rounded-md p-1.5 transition-colors ${
-                    micActive
+                    micState === 'recording'
                       ? 'bg-red-500/10 text-red-500 animate-pulse'
-                      : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                      : micState === 'transcribing'
+                        ? 'text-amber-400'
+                        : micState === 'error'
+                          ? 'text-red-500'
+                          : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
                   }`}
-                  title={micActive ? 'Stop recording' : 'Voice input'}
-                  aria-label={micActive ? 'Stop recording' : 'Voice input'}
-                  aria-pressed={micActive}
+                  title={
+                    micState === 'recording' ? 'Stop recording' :
+                    micState === 'transcribing' ? 'Transcribing...' :
+                    micState === 'error' ? 'Microphone error' : 'Voice input'
+                  }
+                  aria-label={micState === 'recording' ? 'Stop recording' : 'Voice input'}
                 >
-                  {micActive ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                  {micState === 'recording' ? <MicOff className="h-4 w-4" /> :
+                   micState === 'transcribing' ? <Loader2 className="h-4 w-4 animate-spin" /> :
+                   <Mic className="h-4 w-4" />}
                 </button>
               )}
               {/* Think/Fast toggle */}
