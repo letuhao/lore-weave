@@ -107,6 +107,49 @@ class TestSendVoiceMessage:
         assert "unsupported content type" in resp.json()["detail"]
 
     @pytest.mark.asyncio
+    async def test_audio_segments_returns_empty(self, client, mock_pool):
+        """No segments returns empty list."""
+        mock_pool.fetchval.side_effect = [True, True]  # session exists, message exists
+        mock_pool.fetch.return_value = []
+
+        resp = await client.get(
+            f"/v1/chat/sessions/{TEST_SESSION_ID}/messages/{TEST_SESSION_ID}/audio-segments",
+        )
+        assert resp.status_code == 200
+        assert resp.json()["segments"] == []
+
+    @pytest.mark.asyncio
+    async def test_audio_segments_not_found(self, client, mock_pool):
+        """Session not found returns 404."""
+        mock_pool.fetchval.return_value = None
+
+        resp = await client.get(
+            f"/v1/chat/sessions/{TEST_SESSION_ID}/messages/{TEST_SESSION_ID}/audio-segments",
+        )
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_cleanup_returns_counts(self, client, mock_pool):
+        """Cleanup endpoint returns deletion counts."""
+        mock_pool.fetch.return_value = []
+
+        resp = await client.post("/v1/chat/voice/cleanup")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["deletedSegments"] == 0
+        assert data["deletedObjects"] == 0
+
+    @pytest.mark.asyncio
+    async def test_gdpr_delete_returns_counts(self, client, mock_pool):
+        """GDPR erasure returns deletion counts."""
+        mock_pool.fetch.return_value = []
+
+        resp = await client.delete("/v1/chat/voice/data")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["deletedSegments"] == 0
+
+    @pytest.mark.asyncio
     async def test_oversized_audio_returns_413(self, client, mock_pool):
         mock_pool.fetchrow.return_value = make_session_record()
 

@@ -37,6 +37,7 @@ app.include_router(sessions.router)
 app.include_router(messages.router)
 app.include_router(outputs.router)
 app.include_router(voice.router)
+app.include_router(voice.voice_mgmt_router)
 
 
 @app.get("/health", response_class=PlainTextResponse)
