@@ -211,7 +211,7 @@ async def voice_stream_response(
     Yields AI SDK data stream protocol SSE lines, extended with voice events.
     """
     normalizer = TextNormalizer()
-    sentence_buffer = SentenceBuffer(clause_mode=True)
+    sentence_buffer = SentenceBuffer(clause_mode=False)  # Full sentences for natural TTS prosody
 
     stt_model_source = voice_config.get("stt_model_source", "user_model")
     stt_model_ref = voice_config.get("stt_model_ref", "")
