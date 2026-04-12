@@ -350,7 +350,8 @@ async def voice_stream_response(
     ttft: float | None = None
     sentence_index = 0
     skipped_count = 0
-    tts_tasks: list[asyncio.Task] = []
+    # Collect audio segments during streaming — upload AFTER assistant message is saved (FK requirement)
+    pending_segments: list[tuple[int, str, bytes]] = []  # (index, text, audio_data)
 
     try:
         if use_openai_sdk:
@@ -397,13 +398,9 @@ async def voice_stream_response(
                     except Exception:
                         logger.warning("TTS failed for sentence %d", sentence_index, exc_info=True)
 
-                    # Upload audio to S3 in background
+                    # Collect audio for upload after message is saved (FK constraint)
                     if audio_chunks:
-                        audio_data = b"".join(audio_chunks)
-                        task = asyncio.create_task(
-                            _upload_audio_segment(pool, session_id, msg_id, user_id, sentence_index, speakable, audio_data)
-                        )
-                        tts_tasks.append(task)
+                        pending_segments.append((sentence_index, speakable, b"".join(audio_chunks)))
 
                     sentence_index += 1
 
@@ -424,11 +421,7 @@ async def voice_stream_response(
                     logger.warning("TTS failed for final sentence %d", sentence_index, exc_info=True)
 
                 if audio_chunks:
-                    audio_data = b"".join(audio_chunks)
-                    task = asyncio.create_task(
-                        _upload_audio_segment(pool, session_id, msg_id, user_id, sentence_index, speakable, audio_data)
-                    )
-                    tts_tasks.append(task)
+                    pending_segments.append((sentence_index, speakable, b"".join(audio_chunks)))
                 sentence_index += 1
             else:
                 skipped_count += 1
@@ -463,9 +456,15 @@ async def voice_stream_response(
                 session_id,
             )
 
-        # Wait for S3 uploads to finish
-        if tts_tasks:
-            await asyncio.gather(*tts_tasks, return_exceptions=True)
+        # Upload audio segments AFTER message is saved (FK: message_audio_segments → chat_messages)
+        if pending_segments:
+            upload_tasks = [
+                asyncio.create_task(
+                    _upload_audio_segment(pool, session_id, msg_id, user_id, idx, text, data)
+                )
+                for idx, text, data in pending_segments
+            ]
+            await asyncio.gather(*upload_tasks, return_exceptions=True)
 
         # Voice data event
         yield _sse("voice-data", {"messageId": msg_id, "segmentCount": sentence_index})
