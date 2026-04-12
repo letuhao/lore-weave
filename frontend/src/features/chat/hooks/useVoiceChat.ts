@@ -46,7 +46,7 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
   const consecutiveFailsRef = useRef(0);
-  const sentenceChunksRef = useRef<Map<number, string[]>>(new Map());
+  const sentenceChunksRef = useRef<Map<number, Uint8Array[]>>(new Map());
 
   const doActivate = useCallback(async () => {
     if (!sessionId || !accessToken || activeRef.current) return;
@@ -168,18 +168,25 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
       },
       onAudioChunk: (event: AudioChunkEvent) => {
         if (event.data) {
-          // Accumulate chunks per sentence — don't decode partial MP3 fragments
+          // Decode base64 to binary, accumulate per sentence
+          const binary = Uint8Array.from(atob(event.data), (c) => c.charCodeAt(0));
           const key = event.sentenceIndex;
           if (!sentenceChunksRef.current.has(key)) sentenceChunksRef.current.set(key, []);
-          sentenceChunksRef.current.get(key)!.push(event.data);
+          sentenceChunksRef.current.get(key)!.push(binary);
         }
         if (event.final) {
-          // Sentence complete — combine all chunks into one MP3, decode + play
+          // Sentence complete — combine all binary chunks, decode as one complete MP3
           const chunks = sentenceChunksRef.current.get(event.sentenceIndex);
           sentenceChunksRef.current.delete(event.sentenceIndex);
           if (chunks && chunks.length > 0) {
-            const combined = chunks.join('');
-            playbackRef.current?.enqueueBase64(combined);
+            const totalLen = chunks.reduce((sum, c) => sum + c.length, 0);
+            const combined = new Uint8Array(totalLen);
+            let offset = 0;
+            for (const chunk of chunks) {
+              combined.set(chunk, offset);
+              offset += chunk.length;
+            }
+            playbackRef.current?.enqueue(combined.buffer);
           }
         }
       },

@@ -363,6 +363,7 @@ services:
       MINIO_SECRET_KEY: loreweave_dev_minio_secret
       MINIO_BUCKET: lw-chat
       MINIO_USE_SSL: "false"
+      MINIO_EXTERNAL_URL: http://localhost:9123
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       REDIS_URL: redis://redis:6379
     depends_on:

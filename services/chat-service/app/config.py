@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     minio_secret_key: str
     minio_bucket: str = "lw-chat"
     minio_use_ssl: bool = False
+    minio_external_url: str = ""  # Browser-accessible MinIO URL for presigned URLs
     internal_service_token: str
     statistics_service_internal_url: str = "http://statistics-service:8089"
     redis_url: str = "redis://redis:6379"

@@ -25,6 +25,23 @@ def _s3_client():
     )
 
 
+@lru_cache(maxsize=1)
+def _presign_client():
+    """S3 client for generating browser-accessible presigned URLs.
+    Uses MINIO_EXTERNAL_URL (e.g. http://localhost:9123) instead of internal endpoint."""
+    external = settings.minio_external_url
+    if not external:
+        return _s3_client()  # Fallback to internal if not configured
+    return boto3.client(
+        "s3",
+        endpoint_url=external,
+        aws_access_key_id=settings.minio_access_key,
+        aws_secret_access_key=settings.minio_secret_key,
+        config=BotoConfig(signature_version="s3v4"),
+        region_name="us-east-1",
+    )
+
+
 async def ensure_bucket() -> None:
     """Create the output bucket if it doesn't exist (idempotent)."""
     client = _s3_client()
@@ -65,8 +82,8 @@ async def upload_file(
 
 
 async def generate_presigned_url(key: str, expiry: int = _PRESIGN_EXPIRY) -> str:
-    """Generate a presigned download URL for an object."""
-    client = _s3_client()
+    """Generate a presigned download URL for an object (browser-accessible)."""
+    client = _presign_client()
     loop = asyncio.get_running_loop()
     url = await loop.run_in_executor(
         None,
