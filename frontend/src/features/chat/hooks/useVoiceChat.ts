@@ -98,11 +98,20 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
     // Convert Float32Array to WAV blob
     const blob = float32ToWavBlob(audio, 16000);
     const prefs = loadVoicePrefs();
+
+    // V2 pipeline requires STT model configured
+    if (!prefs.sttModelRef) {
+      setError('STT model not configured. Open Voice Settings and select a Speech-to-Text model.');
+      setState('listening');
+      vadRef.current?.resume();
+      return;
+    }
+
     const voiceConfig: VoiceConfig = {
-      stt_model_source: prefs.sttSource === 'ai_model' ? 'user_model' : undefined,
-      stt_model_ref: prefs.sttSource === 'ai_model' ? prefs.sttModelRef : undefined,
-      tts_model_source: prefs.ttsSource === 'ai_model' ? 'user_model' : undefined,
-      tts_model_ref: prefs.ttsSource === 'ai_model' ? prefs.ttsModelRef : undefined,
+      stt_model_source: 'user_model',
+      stt_model_ref: prefs.sttModelRef,
+      tts_model_source: prefs.ttsModelRef ? 'user_model' : undefined,
+      tts_model_ref: prefs.ttsModelRef || undefined,
       tts_voice: prefs.ttsVoiceId || 'af_heart',
     };
 
