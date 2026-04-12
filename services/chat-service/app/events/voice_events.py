@@ -56,7 +56,7 @@ async def emit_voice_turn(
         await r.xadd(_STREAM_KEY, {
             "event_type": "voice.turn",
             "payload": json.dumps(payload),
-        })
+        }, maxlen=10000)  # Cap stream at 10K entries
     except Exception:
         logger.warning("Failed to emit voice.turn event", exc_info=True)
         # Non-blocking — analytics failure should not break voice pipeline

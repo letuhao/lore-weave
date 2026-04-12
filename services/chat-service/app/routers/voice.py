@@ -5,6 +5,7 @@ import json
 from uuid import UUID
 
 import asyncpg
+import httpx
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
@@ -143,7 +144,6 @@ async def get_recommended_voice_settings(
     user_id: str = Depends(get_current_user),
 ) -> dict:
     """Get recommended VAD settings based on user's voice analytics history."""
-    import httpx
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             resp = await client.get(

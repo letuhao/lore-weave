@@ -783,6 +783,8 @@ func (c *Consumer) handleVoiceTurn(ctx context.Context, payloadStr string) {
 		return
 	}
 
+	sessionID, _ := uuid.Parse(p.SessionID)
+
 	// Insert raw event
 	_, err = c.Pool.Exec(ctx, `
 		INSERT INTO voice_turn_events
@@ -790,7 +792,7 @@ func (c *Consumer) handleVoiceTurn(ctx context.Context, payloadStr string) {
 		   audio_size_kb, llm_first_token_ms, tts_sentence_count, tts_skipped_count,
 		   threshold_silence_frames, threshold_min_duration_ms)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-		userID, p.SessionID, p.STTSuccess, p.STTDurationMs, p.SpeechDurationMs,
+		userID, sessionID, p.STTSuccess, p.STTDurationMs, p.SpeechDurationMs,
 		p.AudioSizeKB, p.LLMFirstTokenMs, p.TTSSentenceCount, p.TTSSkippedCount,
 		p.ThresholdSilenceFrames, p.ThresholdMinDurationMs,
 	)
@@ -799,8 +801,13 @@ func (c *Consumer) handleVoiceTurn(ctx context.Context, payloadStr string) {
 		return
 	}
 
-	// Update aggregated user stats
-	c.recalcVoiceUserStats(ctx, userID)
+	// Recalculate user stats every 5 turns (debounce)
+	var turnCount int
+	_ = c.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM voice_turn_events WHERE user_id = $1`, userID).Scan(&turnCount)
+	if turnCount%5 == 0 || !p.STTSuccess {
+		// Recalc on every 5th turn, or immediately on failure (for fast adaptation)
+		c.recalcVoiceUserStats(ctx, userID)
+	}
 }
 
 func (c *Consumer) recalcVoiceUserStats(ctx context.Context, userID uuid.UUID) {

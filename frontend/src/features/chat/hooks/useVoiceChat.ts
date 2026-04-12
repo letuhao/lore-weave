@@ -66,28 +66,12 @@ export function useVoiceChat(sessionId: string | null): VoiceChatResult {
     const apiBase = import.meta.env.VITE_API_BASE || '';
     clientRef.current = new VoiceClient(apiBase, accessToken);
 
-    // Fetch recommended settings from analytics (non-blocking)
+    // Use user's configured settings (presets or manual sliders)
     const prefs = loadVoicePrefs();
-    let silenceFrames = prefs.vadSilenceFrames;
-    let minSpeechMs = prefs.minSpeechDurationMs;
-    try {
-      const apiBase = import.meta.env.VITE_API_BASE || '';
-      const recResp = await fetch(`${apiBase}/v1/chat/voice/recommended-settings`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (recResp.ok) {
-        const rec = await recResp.json();
-        // Only apply server recommendation if user hasn't manually customized
-        if (rec.totalTurns >= 10 && prefs.vadSilenceFrames === 8 && prefs.minSpeechDurationMs === 500) {
-          silenceFrames = rec.recommendedSilenceFrames;
-          minSpeechMs = rec.recommendedMinDurationMs;
-        }
-      }
-    } catch { /* non-blocking */ }
 
     const vad = new VadController({
-      silenceFrames,
-      minSpeechDurationMs: minSpeechMs,
+      silenceFrames: prefs.vadSilenceFrames,
+      minSpeechDurationMs: prefs.minSpeechDurationMs,
       onSpeechEnd: (audio) => {
         if (!activeRef.current) return;
         vad.pause();
