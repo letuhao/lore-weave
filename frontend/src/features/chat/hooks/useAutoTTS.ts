@@ -99,6 +99,7 @@ export function useAutoTTS(
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
+              model: prefs.ttsModelName || 'tts-1',
               input: text.slice(0, 4096),
               voice: prefs.ttsVoiceId || 'af_heart',
               response_format: 'mp3',
