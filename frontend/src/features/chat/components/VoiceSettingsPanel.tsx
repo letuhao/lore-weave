@@ -431,6 +431,36 @@ export function VoiceSettingsPanel({ open, onClose }: VoiceSettingsPanelProps) {
           </div>
         </div>
 
+        {/* ── Voice Assist Section ── */}
+        <div className="border-t pt-3 mt-2">
+          <p className="text-[11px] font-medium mb-2">{t('voice.voiceAssist', 'Voice Assist')}</p>
+          <ToggleRow
+            label={t('voice.autoTTS', 'Auto-play AI responses as speech')}
+            checked={prefs.voiceAssistAutoTTS}
+            onChange={(v) => update('voiceAssistAutoTTS', v)}
+          />
+          <ToggleRow
+            label={t('voice.appendMode', 'Append dictation to existing text')}
+            checked={prefs.voiceAssistAppend}
+            onChange={(v) => update('voiceAssistAppend', v)}
+          />
+        </div>
+
+        {/* ── Debug Section ── */}
+        <div className="border-t pt-3 mt-2">
+          <ToggleRow
+            label={t('voice.showMetrics', 'Show STT/TTS timing on messages')}
+            checked={prefs.showVoiceMetrics}
+            onChange={(v) => update('showVoiceMetrics', v)}
+          />
+        </div>
+
+        {/* ── Audio Retention Info ── */}
+        <p className="text-[9px] text-muted-foreground/50 mt-2">
+          Voice audio is stored for {48} hours for replay, then automatically deleted.
+          You can delete all voice data from Settings.
+        </p>
+
         {/* Reset */}
         <button
           onClick={() => {

@@ -3,6 +3,7 @@ import { BookOpen, FileText, Mic } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ChatMessage, ChatOutput } from '../types';
 import { extractCodeBlocks } from '../utils/extractCodeBlocks';
+import { loadVoicePrefs } from '../voicePrefs';
 import { hasContext, extractUserMessage, extractContextLabels } from '../context/types';
 import { AssistantMessage } from './AssistantMessage';
 import { BranchNavigator } from './BranchNavigator';
@@ -177,11 +178,23 @@ export function MessageBubble({
               </span>
             )}
             {!isUser && contentParts?.voice_tts_sentences != null && contentParts.voice_tts_sentences > 0 && (
-              <span className={cn(
-                'inline-block h-1.5 w-1.5 rounded-full',
-                (contentParts.time_to_first_token_ms ?? 0) < 2000 ? 'bg-emerald-400' :
-                (contentParts.time_to_first_token_ms ?? 0) < 5000 ? 'bg-amber-400' : 'bg-red-400',
-              )} title={`TTFT: ${contentParts.time_to_first_token_ms ?? '?'}ms`} />
+              <>
+                <span className={cn(
+                  'inline-block h-1.5 w-1.5 rounded-full',
+                  (contentParts.time_to_first_token_ms ?? 0) < 2000 ? 'bg-emerald-400' :
+                  (contentParts.time_to_first_token_ms ?? 0) < 5000 ? 'bg-amber-400' : 'bg-red-400',
+                )} title={`TTFT: ${contentParts.time_to_first_token_ms ?? '?'}ms`} />
+                {loadVoicePrefs().showVoiceMetrics && (
+                  <span className="text-muted-foreground/40">
+                    TTFT {contentParts.time_to_first_token_ms ?? '?'}ms
+                    · {contentParts.response_time_ms ?? '?'}ms total
+                    · {contentParts.voice_tts_sentences} sentences
+                  </span>
+                )}
+              </>
+            )}
+            {isUser && contentParts?.input_method === 'voice' && loadVoicePrefs().showVoiceMetrics && contentParts.stt_ms != null && (
+              <span className="text-muted-foreground/40">STT {contentParts.stt_ms}ms</span>
             )}
             {new Date(message.created_at).toLocaleTimeString()}
           </p>
