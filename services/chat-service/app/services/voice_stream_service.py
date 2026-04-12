@@ -78,6 +78,7 @@ async def _transcribe_audio(
     user_id: str,
     stt_model_source: str,
     stt_model_ref: str,
+    stt_model_name: str = "whisper-1",
 ) -> tuple[str, int]:
     """Call STT via provider-registry internal proxy. Returns (transcript, duration_ms)."""
     ext = 'webm' if 'webm' in content_type else 'wav' if 'wav' in content_type else 'ogg'
@@ -95,6 +96,7 @@ async def _transcribe_audio(
             proxy_url,
             params=params,
             files={"file": (f"audio.{ext}", audio_bytes, content_type)},
+            data={"model": stt_model_name},
             headers={"X-Internal-Token": settings.internal_service_token},
         )
         resp.raise_for_status()
