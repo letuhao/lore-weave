@@ -7,12 +7,12 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-13 (session 36 — Knowledge Service K0 through K4 COMPLETE, all reviews + all defers cleared)
-- Updated By: Assistant (5 of 9 Track 1 phases done — K0 scaffold + K1 schema/repos + K2 glossary cache/pin/FTS + K3 shortdesc + K4 context builder Mode 1+2 + entity extractor + dedup, every phase reviewed and review fixes shipped, K4 all 9 deferrals cleared)
-- Active Branch: `main`
-- HEAD: `171574b` — K4 deferred fixes (I6-I9) + CLAUDE.md no-defer-drift policy
-- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V6.md` — full context for next agent
-- **Session 36 commit count:** 20 commits (knowledge-service + glossary-service + CLAUDE.md)
+- Last Updated: 2026-04-14 (session 37 — Knowledge Service K5 + K6 + K7a + K7b COMPLETE, all reviews + fixes shipped)
+- Updated By: Assistant (7 of 9 Track 1 phases done + K7 partially — K5 chat-service integration, K6 degradation (timeouts/cache/circuit breaker/metrics), K7.1 JWT middleware, K7.2 public Projects CRUD API. Every phase review-passed, every review-fix landed in the same session. Three deferrals cleared during K7b: D-K1-01 / D-K1-02 / D-K1-03.)
+- Active Branch: `main` (+10 ahead of origin)
+- HEAD: `4fbda14` — K7b-I1..I7 review fixes (delete cascade order, archive RETURNING, cursor UnicodeError, CheckViolation test)
+- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V7.md` — full context for next agent
+- **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
 ---
 
@@ -26,12 +26,9 @@
 
 | ID | Origin | Description | Target phase |
 |---|---|---|---|
-| D-K1-01 | K1 | `knowledge_summaries.content` size cap (~50KB) | K7 API layer |
-| D-K1-02 | K1 | `knowledge_projects.instructions` max length | K7 API layer |
-| D-K1-03 | K1 | `ProjectsRepo.list()` pagination | K7 public API |
-| D-K2a-01 | K2a | Glossary summary DB CHECK `content <> ''` | K7 |
-| D-K2a-02 | K2a | Glossary summary size cap | K7 |
-| D-K5-01 | K5 | End-to-end `X-Trace-Id` propagation across chat → knowledge → glossary internal calls + trace_id in 500 response bodies (supersedes D-K4a-02) | K7 |
+| D-K2a-01 | K2a | Glossary summary DB CHECK `content <> ''` (glossary-service side, different schema) | Standalone glossary-service pass |
+| D-K2a-02 | K2a | Glossary summary size cap (glossary-service side) | Standalone glossary-service pass |
+| D-K5-01 | K5 | End-to-end `X-Trace-Id` propagation across chat → knowledge → glossary internal calls + trace_id in 500 response bodies (supersedes D-K4a-02) | K7e |
 
 ### Track 2 planning (document only, no Track 1 action)
 
@@ -74,7 +71,12 @@
 | K5-I7 | K5 review | Test patch style (brittle to import refactor) — fixed via `httpx.MockTransport` constructor injection (zero `@patch` decorators in `test_knowledge_client.py` now) |
 | K5-I9 | K5 review | Mis-flagged. KnowledgeClient is per-worker by design and works correctly with multi-worker uvicorn (httpx.AsyncClient is constructed after fork inside the lifespan). Removed from review notes. |
 | K6-I1..I4 | K6 review | All 4 review items fixed in the same commit as K6 BUILD plus follow-up: I1 unused `attempt` loop var → `_`; I2 added TTL-expiration test (tiny-TTL `cachetools.TTLCache` monkeypatched into the cache module); I3 `context_build_duration_seconds` histogram now labels error paths as `"not_found"` / `"not_implemented"` / `"error"` instead of lumping all under `"error"`; I4 conftest autouse fixture resets the `circuit_open` gauge between tests so a breaker-tripping test doesn't leak state into the next test's metric assertions. |
-| D-K5-01 | K5 | Re-targeted K6 → K7 — the trace_id work spans middleware in 3 services (chat/knowledge/glossary) and naturally belongs with K7's public API + JWT middleware phase. Not drift: K6 was the graceful-degradation phase, not the observability phase. |
+| D-K5-01 | K5 | Re-targeted K6 → K7e — the trace_id work spans middleware in 3 services (chat/knowledge/glossary) and naturally belongs with K7's public API + JWT middleware phase. Not drift: K6 was the graceful-degradation phase, not the observability phase. |
+| K7a-I1..I3 | K7a review | Empty-bearer regression test, `alg=none` + HS512 whitelist regression tests, sub-claim guard clause re-ordered for readability. Commit `b4b70de`. |
+| **D-K1-01** | **K1** | **Cleared in K7b (commit `575cc36`). `SummaryContent` Annotated str (max_length=50000) in `app/db/models.py` + matching `knowledge_summaries_content_len` CHECK constraint in `app/db/migrate.py`. Pydantic guards public API, DB CHECK is defense-in-depth.** |
+| **D-K1-02** | **K1** | **Cleared in K7b (commit `575cc36`). `ProjectInstructions` Annotated str (max_length=20000) + `ProjectDescription` (max_length=2000) in models, matching idempotent `knowledge_projects_instructions_len` and `knowledge_projects_description_len` CHECK constraints in migrate.py. PATCH route maps `asyncpg.CheckViolationError` → 422.** |
+| **D-K1-03** | **K1** | **Cleared in K7b (commit `575cc36`). `ProjectsRepo.list()` now takes `cursor_created_at` + `cursor_project_id` with `(created_at DESC, project_id DESC)` tiebreak ordering; `GET /v1/knowledge/projects` returns `ProjectListResponse { items, next_cursor }` with base64url-encoded opaque cursor. limit is 1..100 (default 50). Cursor encoding is base64url to survive URL-encoding of `+00:00` in ISO timestamps.** |
+| K7b-I1..I7 | K7b review | Commit `4fbda14`. I1 (HIGH): `ProjectsRepo.delete()` cascade order reversed — project DELETE runs first inside the transaction and rolls back the summaries cascade on 0 rows, so cross-user / nonexistent deletes never run the summary path. I2 (MEDIUM): `archive()` returns `Project | None` via `UPDATE … RETURNING`, eliminating the follow-up SELECT and its tiny race window. I3 (HIGH): `_decode_cursor` catches `UnicodeError` (parent class) — non-ASCII cursor like `?cursor=café` now returns 400 instead of leaking a 500 + traceback. I4 (MEDIUM): new test exercises the `CheckViolationError → 422` mapping via an injected exploding repo. I5..I7 cosmetic (archive docstring, hoist `cache` import, drop dead `AttributeError` catch). Also swapped `HTTP_422_UNPROCESSABLE_ENTITY` (deprecated in FastAPI 0.120) for `HTTP_422_UNPROCESSABLE_CONTENT`. |
 
 ---
 
@@ -104,9 +106,90 @@
 
 **Voice Pipeline V2: COMPLETE + DEBUGGED + REFACTORED.** All 48 tasks + 5 analytics tasks. V1 code cleaned up (1576 lines deleted). Pipeline state machine added. **Chat page re-architected** (session 34): MVC separation, ChatSessionContext + ChatStreamContext split by update frequency, ChatView replaces ChatWindow (never unmounts), useVoiceAssistMic unified with VadController + backend STT. Voice Assist button now wired end-to-end with backend STT + backend TTS (audio stored in S3 for replay).
 
-**Knowledge Service: K0 + K1 + K2 + K3 + K4 ALL COMPLETE.** (Session 36 — 5 of 9 Track 1 phases done, every phase reviewed and review-fixed, all K4 deferrals cleared)
+**Knowledge Service: K0 + K1 + K2 + K3 + K4 + K5 + K6 + K7a + K7b COMPLETE.** (Sessions 36–37 — 7 of 9 Track 1 phases done + K7 started: K0 scaffold, K1 schema/repos, K2 glossary cache/FTS, K3 shortdesc, K4 context builder Mode 1+2, K5 chat-service integration, K6 degradation, K7.1 JWT middleware, K7.2 public Projects CRUD. Every phase review-passed.) Remaining for Track 1: **K7c (summaries endpoints), K7d (user data export/delete), K7e (gateway routes + trace_id propagation)**. Then Gate 4 end-to-end verification, then K8 frontend.
 
-> Below is one growing section per phase, newest first. Each phase is followed by its review and any deferred-fix commits. Tests at end of session: **131/131 passing** (knowledge-service); glossary-service tests also passing after K2/K3 changes.
+> Below is one growing section per phase, newest first. Each phase is followed by its review and any deferred-fix commits. Tests at end of session 37:
+> - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
+> - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
+> - **glossary-service: all green** (untouched this session)
+
+### K7b — Public Projects CRUD API ✅ (session 37)
+
+**Two commits (`575cc36` BUILD + `4fbda14` review fixes).** First real user-facing surface of knowledge-service under `/v1/knowledge/projects`.
+
+- **Router:** new `app/routers/public/projects.py` mounted in `main.py`. Six endpoints: `GET` (paginated list), `POST` (create), `GET/{id}`, `PATCH/{id}`, `POST/{id}/archive`, `DELETE/{id}`. Router-level `dependencies=[Depends(get_current_user)]` ensures 401 before any route logic runs, and every route also takes `user_id: UUID = Depends(get_current_user)` so the id is in scope for the repo call (FastAPI dedupes the dep within a request). **Cross-user access → 404** per KSA §6.4 — never leak existence of other users' rows.
+- **Pagination (D-K1-03 cleared):** `ProjectsRepo.list()` now takes keyword args `cursor_created_at` + `cursor_project_id`, orders by `(created_at DESC, project_id DESC)` for a deterministic tiebreak, and fetches `limit + 1` rows so the router can detect `has_more` without a second COUNT. Cursor format is **base64url(`<iso8601>|<uuid>`)** — the base64url wrapping is not decoration, it's required: the `+` in `+00:00` and the `|` separator both collide with URL parsing without it (caught during BUILD when the first round-trip test failed). `limit` is 1..100 (default 50) enforced both at the Query parameter and defensively in the repo.
+- **Length caps (D-K1-01, D-K1-02 cleared):** new Annotated str types in `app/db/models.py`: `ProjectDescription` (max 2000), `ProjectInstructions` (max 20000), `SummaryContent` (max 50000). Three new idempotent DO-blocks in `app/db/migrate.py` install matching CHECK constraints (`knowledge_projects_instructions_len`, `knowledge_projects_description_len`, `knowledge_summaries_content_len`) so the DB enforces the same limits as Pydantic. `patch_project` catches `asyncpg.CheckViolationError` and maps to 422 so DB-level rejects surface as validation errors not 500s.
+- **Cascade delete:** `knowledge_summaries` has no FK to `knowledge_projects` (scope_id is nullable and shared across multiple scope types), so `ProjectsRepo.delete()` cascades manually inside a single transaction. K7b-I1 fix (review): the project DELETE now runs FIRST with an early-return + rollback on rowcount=0, so a cross-user or nonexistent delete never runs the summaries cascade. After commit, invalidates the L1 cache key (same-process only; cross-process invalidation is D-T2-04 Track 2).
+- **K7b review fixes (7 issues):** Commit `4fbda14`.
+  - **K7b-I1 (HIGH)** — reversed cascade order in `delete()`; added regression test `test_delete_cross_user_does_not_touch_summaries`.
+  - **K7b-I2 (MEDIUM)** — `archive()` now returns `Project | None` via `UPDATE … RETURNING`, eliminating the follow-up SELECT + its race window.
+  - **K7b-I3 (HIGH)** — `_decode_cursor` catches `UnicodeError` parent class; non-ASCII cursor now returns 400 not 500. Regression test `test_list_non_ascii_cursor_returns_400`.
+  - **K7b-I4 (MEDIUM)** — new `test_patch_db_check_violation_maps_to_422` injects an exploding `FakeProjectsRepo` that raises `asyncpg.CheckViolationError` so the defense-in-depth 422 mapping is actually covered.
+  - **K7b-I5 (LOW)** — `archive_project` docstring no longer says "idempotent-ish" (it's not idempotent — second call returns 404).
+  - **K7b-I6 (LOW)** — hoisted `from app.context import cache` to module level in projects repo.
+  - **K7b-I7 (LOW)** — dropped dead `AttributeError` catch from `_decode_cursor`.
+  - Also swapped `HTTP_422_UNPROCESSABLE_ENTITY` → `HTTP_422_UNPROCESSABLE_CONTENT` (deprecated in FastAPI 0.120+).
+
+**Tests after K7b (knowledge-service):** **164/164 green** — 27 new tests in `test_public_projects.py` using a `FakeProjectsRepo` + `dependency_overrides` on `get_projects_repo` / `get_current_user`. Covers list (empty, isolation, archived filter, pagination round-trip across 3 pages, invalid cursor, non-ASCII cursor, limit validation), create (happy + 4 validation modes), get (own/cross-user/nonexistent), patch (partial, cross-user, oversize, CheckViolation→422), archive (flips bit, already-archived → 404, cross-user → 404), delete (own/cross-user preserves other row/cross-user does not touch summaries/nonexistent), and the router-level missing-JWT 401.
+
+---
+
+### K7a — JWT Middleware for Public API ✅ (session 37)
+
+**Two commits (`7e594f8` BUILD + `b4b70de` review fixes).** Foundation for all K7 public endpoints.
+
+- **`app/middleware/jwt_auth.py`** — `get_current_user` FastAPI dependency parses `Authorization: Bearer <token>` with HS256 + `settings.jwt_secret` (same key as auth-service and chat-service), decodes, extracts the `sub` claim, and returns it as a `UUID`. Uses `HTTPBearer(auto_error=False)` so we own the 401 path uniformly (FastAPI's default auto-raise returns 403 for missing creds, inconsistent with the other failure modes). All failure modes return 401 with `WWW-Authenticate: Bearer` per RFC 6750.
+- **Security invariants:** `user_id` is ONLY sourced from the JWT sub claim — never from query string or body. Every future /v1/knowledge/* endpoint takes `user_id: UUID = Depends(get_current_user)`. One test (`test_user_id_in_body_is_ignored`) directly proves that an attacker-supplied body field is ignored when the dep is in scope.
+- **Failure modes covered (14 tests):** missing header, malformed header, expired token, wrong signature, missing sub, empty sub, non-string sub, non-UUID sub, empty bearer token, `alg=none` forgery attack (whitelist regression guard), HS512 with correct secret (whitelist regression guard), happy path with exp, happy path without exp, body-override ignored.
+- **K7a review fixes (3 issues):** Commit `b4b70de`.
+  - **K7a-I1 (MEDIUM)** — added `test_empty_bearer_token_returns_401` for `Authorization: Bearer ` (no token after the space).
+  - **K7a-I2 (MEDIUM)** — added `test_alg_none_token_rejected` and `test_wrong_algorithm_token_rejected`. These are the load-bearing regression guards for the `algorithms=["HS256"]` whitelist — if a future refactor weakens that list the tests fail loudly. Highest-impact security test in the JWT surface.
+  - **K7a-I3 (LOW)** — sub-claim guard re-ordered from `if not sub or not isinstance(sub, str)` to `if not isinstance(sub, str) or not sub` — type check first, then truthiness. Reads more clearly for non-string sub values.
+
+---
+
+### K6 — Graceful Degradation (Timeouts + Cache + Circuit Breaker + Metrics) ✅ (session 37)
+
+**Two commits (`ce56986` BUILD + `94793e6` review fixes).** Makes knowledge-service robust under dependency failure and fast for hot reads. All 5 tasks (K6.1–K6.5) landed.
+
+- **K6.1 Per-layer timeouts** — `app/context/modes/no_project.py` and `static.py` wrap each selector call (`load_global_summary`, `load_project_summary`, `select_glossary_for_context`) in `asyncio.wait_for` with env-tunable budgets (`context_l0_timeout_s=0.1`, `context_l1_timeout_s=0.1`, `context_glossary_timeout_s=0.2`, total ceiling 400ms). On timeout the layer is skipped and the build continues — partial context is preferable to a failed turn. `knowledge_layer_timeout_total{layer}` counter tracks how often each budget is exceeded.
+- **K6.2 TTL cache** — new `app/context/cache.py` with `cachetools.TTLCache(ttl=60, maxsize=10_000)` instances for L0 and L1. Keyed by `user_id` (L0) and `(user_id, project_id)` (L1). Negative caching via a `MISSING` sentinel so users without a bio / without a project summary don't re-query Postgres every turn. Selectors (`load_global_summary`, `load_project_summary`) check cache first, fall through to repo on miss, `put` the result. Hit/miss metrics via `knowledge_cache_hit_total` / `knowledge_cache_miss_total`.
+- **K6.3 Invalidation on writes** — `SummariesRepo.upsert/delete` call a new `_invalidate_cache()` helper after the DB write succeeds, routing by `scope_type` to `cache.invalidate_l0()` or `cache.invalidate_l1()`. Same-process only; cross-process invalidation is Track 2 (D-T2-04).
+- **K6.4 Circuit breaker** — hand-rolled ~40-line state machine in `GlossaryClient` (no `purgatory` dep). Three states encoded in `(_cb_fail_count, _cb_opened_at)`: closed / open (cooldown elapsing) / half-open (cooldown elapsed, probe allowed). Opens after 3 consecutive failures, 60s cooldown, one probe allowed through on expiry. Success closes; failure re-opens with a fresh clock. **4xx / decode / shape errors do NOT trip the breaker** — only true upstream failures (timeouts, transport errors, 5xx end-to-end). `knowledge_circuit_open{service}` gauge exposes state.
+- **K6.5 /metrics endpoint** — new `app/metrics.py` holds a module-level `CollectorRegistry` (not the default REGISTRY, so we only export LoreWeave metrics, not process/GC noise) and all counters/gauges/histograms. New `app/routers/metrics.py` mounted in `main.py` exposes `GET /metrics` in Prometheus format. `context_build_duration_seconds{mode}` histogram observed in the context router with a `finally` clause so error paths are also timed (labels distinguish successful modes from `not_found` / `not_implemented` / `error`).
+- **K6 review fixes (4 issues):** Commit `94793e6`.
+  - **K6-I1 (LOW)** — unused `attempt` loop variable in glossary_client retry → `_`.
+  - **K6-I2 (HIGH)** — new TTL-expiration tests for both L0 and L1 caches using monkey-patched tiny-TTL (50ms) `TTLCache`. Guards the core eviction invariant.
+  - **K6-I3 (MEDIUM)** — `context_build_duration_seconds` now distinguishes `not_found` / `not_implemented` / `error` labels. Dashboards can separate "user sent a stale project_id" (routine 404) from "knowledge-service crashed" (alert-worthy 500).
+  - **K6-I4 (LOW)** — conftest autouse fixture resets the `circuit_open` gauge between tests.
+- **Deps added:** `cachetools>=5.3`, `prometheus-client>=0.20`.
+- **New defers filed:** D-T2-04 (cross-process cache invalidation via Redis pub/sub), D-T2-05 (breaker half-open "one probe" race — currently all concurrent calls race through when cooldown elapses). Both correctly target Track 2 since they need cross-call coordination.
+- **Re-targeted defer:** D-K5-01 (trace_id propagation) moved K6 → K7e because trace_id spans middleware in 3 services and naturally belongs with K7's public-API + JWT middleware work. Not drift: K6 was the degradation phase, not the observability phase.
+
+**Tests after K6 (knowledge-service):** 123/123 green — 41 new unit tests (`test_context_cache.py`, `test_context_timeouts.py`, `test_circuit_breaker.py`, `test_metrics_endpoint.py`) covering cache get/put/invalidate, negative caching, TTL expiration, layer timeouts per layer, breaker open/half-open/re-open transitions, 4xx not tripping the breaker, /metrics scrape format + counter observation.
+
+---
+
+### K5 — Chat-Service Knowledge Integration ✅ (session 37)
+
+**Three commits (`348f49c` BUILD + `417ae97` review fixes + `f6afb27` K5-I7 MockTransport fix).** chat-service now calls knowledge-service before every LLM turn to inject a memory block into the system prompt, with graceful degradation when knowledge-service is unavailable.
+
+- **New `app/client/knowledge_client.py`** — long-lived `httpx.AsyncClient` wrapper around `POST /internal/context/build`. **Graceful-degradation contract**: every failure path (timeout, transport error, 5xx, 4xx, decode, unexpected shape) returns a `"degraded"` `KnowledgeContext` with empty context and `recent_message_count=50`. Never raises. Chat keeps working when knowledge-service is down. Pattern mirrors `GlossaryClient` and `BillingClient`. Module-level singleton lifecycle (`init_knowledge_client` / `close_knowledge_client` / `get_knowledge_client`) managed via FastAPI lifespan.
+- **`stream_service.py` + `voice_stream_service.py`** — both call `knowledge_client.build_context()` before opening the LLM stream, use the returned `recent_message_count` for history limit, and compose the system prompt as `memory_block + "\n\n" + session_system_prompt` (K5-I3 review fix: strips each part before join to avoid triple newlines). Use `session_row.get("project_id")` for dict-mock test compatibility (K5-I5 fix, revisited in K5-I5 dead-code removal).
+- **`app/routers/sessions.py` (K5.5)** — `CreateSessionRequest`, `PatchSessionRequest`, `ChatSession` models get `project_id: UUID | None`. PATCH uses 3-state semantics (omit/set/explicit-null-clear) via `body.model_fields_set`, routed through a dynamic SQL boolean rather than COALESCE which can't distinguish "unset" from "clear".
+- **`infra/docker-compose.yml`** — chat-service gains `KNOWLEDGE_SERVICE_URL`, `KNOWLEDGE_CLIENT_TIMEOUT_S=0.5`, `KNOWLEDGE_CLIENT_RETRIES=1` env vars. Deliberately **no** `depends_on knowledge-service` (graceful degradation — chat must start and serve requests even if knowledge-service is down).
+- **K5 review fixes (5 must-fix + 2 follow-up):** Commit `417ae97`.
+  - K5-I1/I2: empty-string `project_id`/`session_id` omitted from body (not sent as empty strings that would 422 via UUID validation); `message` truncated to `MESSAGE_MAX_CHARS=4000` at the client boundary to avoid pointless 422→degraded cycles on paste-heavy turns.
+  - K5-I3: strip each part before `"\n\n".join()` in system prompt composition.
+  - K5-I4: single warning per failed call (not per retry attempt) — eliminates log spam during outages.
+  - K5-I5: remove dead guard clause in the PATCH session route + use `.get()` for asyncpg.Record compatibility with test dict mocks.
+- **K5-I7 (MockTransport refactor, commit `f6afb27`):** tests previously used `@patch` decorators to monkey-patch `httpx.AsyncClient`, which would silently break if `knowledge_client.py` ever switched from `import httpx` to `from httpx import AsyncClient`. Rewrote `test_knowledge_client.py` to inject a `transport` kwarg at construction time using `httpx.MockTransport(handler)`. Zero `@patch` decorators in the file now — refactor-proof. 19/19 K5 client tests pass.
+- **K5-I9** — mis-flagged, removed from deferred list. `KnowledgeClient` is per-worker by design and works correctly with multi-worker uvicorn (httpx.AsyncClient is constructed after fork inside the lifespan).
+
+**Tests after K5 (chat-service):** **156/156 green**. Full chaos test verified: knowledge-service stopped mid-flight, chat-service kept streaming responses (degraded mode); knowledge-service restarted, chat-service resumed using memory on the next turn.
+
+---
 
 ### K4 — Context Builder (Mode 1 + Mode 2) ✅
 
