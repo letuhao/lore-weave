@@ -9,9 +9,13 @@ interface AttrCardProps {
   isRequired: boolean;
   modified: boolean;
   children: ReactNode;
+  /** Whether this attribute has any translations (shows indicator dot) */
+  hasTranslations?: boolean;
+  /** Rendered below the main field when a translation language is selected */
+  translationSlot?: ReactNode;
 }
 
-export function AttrCard({ name, code, fieldType, isSystem, isRequired, modified, children }: AttrCardProps) {
+export function AttrCard({ name, code, fieldType, isSystem, isRequired, modified, children, hasTranslations, translationSlot }: AttrCardProps) {
   return (
     <div className={cn(
       'rounded-lg border bg-card overflow-hidden transition-colors hover:border-[hsl(var(--border-hover,25_6%_24%))]',
@@ -27,12 +31,14 @@ export function AttrCard({ name, code, fieldType, isSystem, isRequired, modified
           )}
           {isRequired && <span className="text-[10px] font-medium text-destructive">*required</span>}
           {modified && <span className="rounded bg-warning/8 px-1.5 py-0.5 text-[9px] text-warning">modified</span>}
+          {hasTranslations && <span className="h-1.5 w-1.5 rounded-full bg-blue-400" title="Has translations" />}
         </div>
         <span className="font-mono text-[9px] text-muted-foreground">{code} · {fieldType}</span>
       </div>
       <div className="px-3.5 py-2.5">
         {children}
       </div>
+      {translationSlot}
     </div>
   );
 }

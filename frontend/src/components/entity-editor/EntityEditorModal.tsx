@@ -1,11 +1,12 @@
-import { useEffect, useState, useCallback, type ReactNode } from 'react';
+import { useEffect, useState, useMemo, useCallback, type ReactNode } from 'react';
 import { X, Save, Loader2, Link2, Languages, FileText, Tag, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
-import { type GlossaryEntity, type AttributeValue } from '@/features/glossary/types';
+import { type GlossaryEntity, type AttributeValue, type Translation } from '@/features/glossary/types';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { AttrCard } from './AttrCard';
+import { AttrTranslationRow } from './AttrTranslationRow';
 import { getCardComponent, SHORT_TYPES } from './cardRegistry';
 import { EvidenceTab } from './EvidenceTab';
 
@@ -30,6 +31,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
   const [saving, setSaving] = useState(false);
   const [pendingChanges, setPendingChanges] = useState<Map<string, string>>(new Map());
   const [activeTab, setActiveTab] = useState<EditorTab>(initialTab);
+  const [translationLang, setTranslationLang] = useState('');
 
   const load = useCallback(async () => {
     if (!accessToken) return;
@@ -126,6 +128,48 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
     .sort((a, b) => a.attribute_def.sort_order - b.attribute_def.sort_order);
   const sysAttrs = sortedAttrs.filter((a) => a.attribute_def.is_system);
   const usrAttrs = sortedAttrs.filter((a) => !a.attribute_def.is_system);
+
+  // Collect unique languages: book's original language + all existing translation languages
+  // Stable key: serialize translation language codes to avoid recalc on unrelated entity changes
+  const translationLangKey = entity.attribute_values
+    .flatMap((av) => av.translations.map((t) => t.language_code))
+    .sort().join(',');
+  const availableLanguages = useMemo(() => {
+    const langs = new Set<string>();
+    if (bookOriginalLanguage) langs.add(bookOriginalLanguage);
+    for (const code of translationLangKey.split(',')) {
+      if (code) langs.add(code);
+    }
+    return Array.from(langs).sort();
+  }, [translationLangKey, bookOriginalLanguage]);
+
+  // Update entity state when a translation is created/updated/deleted
+  const handleTranslationChanged = useCallback((attrValueId: string, updated: Translation | null, oldTranslationId?: string) => {
+    setEntity((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        translation_count: prev.translation_count + (updated && !oldTranslationId ? 1 : !updated && oldTranslationId ? -1 : 0),
+        attribute_values: prev.attribute_values.map((av) => {
+          if (av.attr_value_id !== attrValueId) return av;
+          let translations: Translation[];
+          if (updated) {
+            const idx = av.translations.findIndex((t) => t.translation_id === updated.translation_id);
+            if (idx >= 0) {
+              translations = [...av.translations];
+              translations[idx] = updated;
+            } else {
+              translations = [...av.translations, updated];
+            }
+          } else {
+            translations = av.translations.filter((t) => t.translation_id !== oldTranslationId);
+          }
+          return { ...av, translations };
+        }),
+      };
+    });
+    onSaved();
+  }, [onSaved]);
 
   return (
     <>
@@ -226,6 +270,55 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                 </span>
               )}
             </button>
+            {/* Language selector — only visible on attributes tab */}
+            {activeTab === 'attributes' && (
+              <>
+                <span className="flex-1" />
+                <div className="flex items-center gap-1.5">
+                  <Languages className="h-3 w-3 text-muted-foreground" />
+                  <select
+                    value={translationLang}
+                    onChange={(e) => setTranslationLang(e.target.value)}
+                    className={`rounded border bg-background px-2 py-1 text-[10px] font-medium focus:outline-none transition-colors ${
+                      translationLang && translationLang !== '__new' ? 'border-blue-500/40 text-blue-400' : 'text-muted-foreground'
+                    }`}
+                    aria-label="Translation language"
+                  >
+                    <option value="">No translation</option>
+                    {availableLanguages.map((lang) => (
+                      <option key={lang} value={lang}>{lang.toUpperCase()}</option>
+                    ))}
+                    <option value="__new">+ Add language...</option>
+                  </select>
+                  {translationLang === '__new' && (
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder="e.g. en"
+                      maxLength={5}
+                      pattern="[a-zA-Z]{2,3}(-[a-zA-Z]{2,4})?"
+                      className="w-16 rounded border border-blue-500/40 bg-background px-2 py-1 text-[10px] focus:outline-none"
+                      onBlur={(e) => {
+                        const v = e.target.value.trim().toLowerCase();
+                        if (v && /^[a-z]{2,3}(-[a-z]{2,4})?$/.test(v)) {
+                          setTranslationLang(v);
+                        } else {
+                          if (v) toast.error('Invalid language code (e.g. en, zh, zh-tw)');
+                          setTranslationLang('');
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          (e.target as HTMLInputElement).blur();
+                        } else if (e.key === 'Escape') {
+                          setTranslationLang('');
+                        }
+                      }}
+                    />
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           {/* ── Body (scrollable) ── */}
@@ -236,7 +329,11 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                 {sysAttrs.length > 0 && (
                   <>
                     <SectionLabel color="info">System Attributes</SectionLabel>
-                    <AttrGrid attrs={sysAttrs} getValue={getValue} onChange={handleChange} pendingChanges={pendingChanges} />
+                    <AttrGrid
+                      attrs={sysAttrs} getValue={getValue} onChange={handleChange}
+                      pendingChanges={pendingChanges} translationLang={translationLang}
+                      bookId={bookId} entityId={entityId} onTranslationChanged={handleTranslationChanged}
+                    />
                   </>
                 )}
 
@@ -244,7 +341,11 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                 {usrAttrs.length > 0 && (
                   <>
                     <SectionLabel color="primary">User Attributes</SectionLabel>
-                    <AttrGrid attrs={usrAttrs} getValue={getValue} onChange={handleChange} pendingChanges={pendingChanges} />
+                    <AttrGrid
+                      attrs={usrAttrs} getValue={getValue} onChange={handleChange}
+                      pendingChanges={pendingChanges} translationLang={translationLang}
+                      bookId={bookId} entityId={entityId} onTranslationChanged={handleTranslationChanged}
+                    />
                   </>
                 )}
 
@@ -313,11 +414,15 @@ function SectionLabel({ color, children }: { color: 'info' | 'primary'; children
   );
 }
 
-function AttrGrid({ attrs, getValue, onChange, pendingChanges }: {
+function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, bookId, entityId, onTranslationChanged }: {
   attrs: AttributeValue[];
   getValue: (attr: AttributeValue) => string;
   onChange: (id: string, value: string) => void;
   pendingChanges: Map<string, string>;
+  translationLang: string;
+  bookId: string;
+  entityId: string;
+  onTranslationChanged: (attrValueId: string, updated: Translation | null, oldTranslationId?: string) => void;
 }) {
   const rendered: ReactNode[] = [];
   let shortBuffer: ReactNode[] = [];
@@ -338,6 +443,28 @@ function AttrGrid({ attrs, getValue, onChange, pendingChanges }: {
     const CardComponent = getCardComponent(def.field_type);
     const isShort = SHORT_TYPES.has(def.field_type);
     const modified = pendingChanges.has(attr.attr_value_id);
+    const hasTranslations = attr.translations.length > 0;
+
+    // Find existing translation for selected language
+    const activeLang = translationLang && translationLang !== '__new' ? translationLang : '';
+    const existingTranslation = activeLang
+      ? attr.translations.find((t) => t.language_code === activeLang)
+      : undefined;
+
+    const translationSlot = activeLang ? (
+      <AttrTranslationRow
+        key={`${attr.attr_value_id}-${activeLang}`}
+        bookId={bookId}
+        entityId={entityId}
+        attrValueId={attr.attr_value_id}
+        language={activeLang}
+        translation={existingTranslation}
+        translationHint={def.translation_hint}
+        onChanged={(updated) => {
+          onTranslationChanged(attr.attr_value_id, updated, existingTranslation?.translation_id);
+        }}
+      />
+    ) : undefined;
 
     const card = (
       <AttrCard
@@ -348,6 +475,8 @@ function AttrGrid({ attrs, getValue, onChange, pendingChanges }: {
         isSystem={def.is_system}
         isRequired={def.is_required}
         modified={modified}
+        hasTranslations={hasTranslations}
+        translationSlot={translationSlot}
       >
         <CardComponent
           value={getValue(attr)}
@@ -357,7 +486,9 @@ function AttrGrid({ attrs, getValue, onChange, pendingChanges }: {
       </AttrCard>
     );
 
-    if (isShort) {
+    // When translation is active, cards with translation slots go full-width;
+    // short fields without a translation slot can still pair in 2-col.
+    if (isShort && !translationSlot) {
       shortBuffer.push(card);
     } else {
       flushShort();

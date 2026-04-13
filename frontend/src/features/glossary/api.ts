@@ -11,6 +11,8 @@ import type {
   CreateEvidencePayload,
   PatchEvidencePayload,
   Evidence,
+  Translation,
+  Confidence,
 } from './types';
 
 const BASE = '/v1/glossary';
@@ -191,6 +193,48 @@ export const glossaryApi = {
       method: 'DELETE',
       token,
     });
+  },
+
+  // ── Attribute Translations ────────────────────────────────────────────────
+
+  createTranslation(
+    bookId: string,
+    entityId: string,
+    attrValueId: string,
+    payload: { language_code: string; value: string; confidence?: Confidence; translator?: string },
+    token: string,
+  ): Promise<Translation> {
+    return apiJson<Translation>(
+      `${BASE}/books/${bookId}/entities/${entityId}/attributes/${attrValueId}/translations`,
+      { method: 'POST', body: JSON.stringify(payload), token },
+    );
+  },
+
+  patchTranslation(
+    bookId: string,
+    entityId: string,
+    attrValueId: string,
+    translationId: string,
+    changes: { value?: string; confidence?: Confidence; translator?: string | null },
+    token: string,
+  ): Promise<Translation> {
+    return apiJson<Translation>(
+      `${BASE}/books/${bookId}/entities/${entityId}/attributes/${attrValueId}/translations/${translationId}`,
+      { method: 'PATCH', body: JSON.stringify(changes), token },
+    );
+  },
+
+  deleteTranslation(
+    bookId: string,
+    entityId: string,
+    attrValueId: string,
+    translationId: string,
+    token: string,
+  ): Promise<void> {
+    return apiJson<void>(
+      `${BASE}/books/${bookId}/entities/${entityId}/attributes/${attrValueId}/translations/${translationId}`,
+      { method: 'DELETE', token },
+    );
   },
 
   // ── Evidence (entity-level list + per-attribute CRUD) ────────────────────
