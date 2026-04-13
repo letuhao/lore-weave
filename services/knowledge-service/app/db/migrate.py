@@ -68,6 +68,47 @@ CREATE TABLE IF NOT EXISTS knowledge_summaries (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_summaries_unique
   ON knowledge_summaries(user_id, scope_type, scope_id) NULLS NOT DISTINCT;
+
+-- ═══════════════════════════════════════════════════════════════
+-- K7 (D-K1-01 / D-K1-02): defensive length caps.
+-- Postgres has no IF NOT EXISTS for CHECK constraints, so we wrap
+-- each ADD in a DO block keyed on pg_constraint lookup. Idempotent.
+-- ═══════════════════════════════════════════════════════════════
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'knowledge_projects_instructions_len'
+  ) THEN
+    ALTER TABLE knowledge_projects
+      ADD CONSTRAINT knowledge_projects_instructions_len
+      CHECK (length(instructions) <= 20000);
+  END IF;
+END$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'knowledge_projects_description_len'
+  ) THEN
+    ALTER TABLE knowledge_projects
+      ADD CONSTRAINT knowledge_projects_description_len
+      CHECK (length(description) <= 2000);
+  END IF;
+END$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'knowledge_summaries_content_len'
+  ) THEN
+    ALTER TABLE knowledge_summaries
+      ADD CONSTRAINT knowledge_summaries_content_len
+      CHECK (length(content) <= 50000);
+  END IF;
+END$$;
 """
 
 

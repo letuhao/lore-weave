@@ -11,6 +11,7 @@ from app.db.pool import close_pools, create_pools, get_knowledge_pool
 from app.logging_config import setup_logging
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import context, health, metrics, ping
+from app.routers.public import projects as public_projects
 
 logger = logging.getLogger(__name__)
 
@@ -48,3 +49,4 @@ app.include_router(ping.public_router)
 app.include_router(ping.internal_router)
 app.include_router(context.router)
 app.include_router(metrics.router)
+app.include_router(public_projects.router)

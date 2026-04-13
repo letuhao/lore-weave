@@ -15,6 +15,12 @@ ProjectName = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
 ]
 
+# K7 (D-K1-01/02 cleanup): length caps mirrored in Pydantic for early
+# 422s and in the DB CHECK constraints (migrate.py) for defense-in-depth.
+ProjectDescription = Annotated[str, StringConstraints(max_length=2000)]
+ProjectInstructions = Annotated[str, StringConstraints(max_length=20000)]
+SummaryContent = Annotated[str, StringConstraints(max_length=50000)]
+
 
 class Project(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -40,10 +46,10 @@ class Project(BaseModel):
 
 class ProjectCreate(BaseModel):
     name: ProjectName
-    description: str = ""
+    description: ProjectDescription = ""
     project_type: ProjectType
     book_id: UUID | None = None
-    instructions: str = ""
+    instructions: ProjectInstructions = ""
 
 
 class ProjectUpdate(BaseModel):
@@ -57,8 +63,8 @@ class ProjectUpdate(BaseModel):
     """
 
     name: ProjectName | None = None
-    description: str | None = None
-    instructions: str | None = None
+    description: ProjectDescription | None = None
+    instructions: ProjectInstructions | None = None
     book_id: UUID | None = None
 
 

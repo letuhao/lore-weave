@@ -6,6 +6,7 @@ query that does not. There is no bypass for admin flows in Track 1.
 """
 
 import json
+from datetime import datetime
 from uuid import UUID
 
 import asyncpg
@@ -74,27 +75,54 @@ class ProjectsRepo:
         return _row_to_project(row)
 
     async def list(
-        self, user_id: UUID, include_archived: bool = False
+        self,
+        user_id: UUID,
+        *,
+        include_archived: bool = False,
+        limit: int = 50,
+        cursor_created_at: datetime | None = None,
+        cursor_project_id: UUID | None = None,
     ) -> list[Project]:
-        # Two static queries rather than a dynamic boolean — lets the
-        # planner use the partial index idx_knowledge_projects_user
-        # (WHERE NOT is_archived) on the common non-archived path.
-        if include_archived:
-            query = f"""
-            SELECT {_SELECT_COLS}
-            FROM knowledge_projects
-            WHERE user_id = $1
-            ORDER BY created_at DESC
-            """
-        else:
-            query = f"""
-            SELECT {_SELECT_COLS}
-            FROM knowledge_projects
-            WHERE user_id = $1 AND NOT is_archived
-            ORDER BY created_at DESC
-            """
+        """K7.2 (D-K1-03 cleanup): cursor-paginated listing.
+
+        Order: created_at DESC, project_id DESC. The pair acts as a
+        stable sort key — created_at alone is not unique under
+        millisecond-precision Postgres clocks. Cursor is "skip rows
+        ordered AT-OR-AFTER (cursor_created_at, cursor_project_id)".
+        Both cursor params must be supplied together; passing only
+        one is treated as no cursor (the router enforces both-or-none
+        before calling).
+
+        We fetch `limit + 1` rows so the router can detect "more
+        pages exist" without a second COUNT query.
+        """
+        # Cap the requested limit defensively — router enforces the
+        # public ceiling but the repo defends in depth.
+        capped = max(1, min(limit, 100))
+        fetch_limit = capped + 1
+
+        # Build query in two static halves so the planner can pick
+        # idx_knowledge_projects_user (partial WHERE NOT is_archived)
+        # on the common path.
+        archived_pred = "" if include_archived else " AND NOT is_archived"
+        params: list[object] = [user_id]
+        cursor_pred = ""
+        if cursor_created_at is not None and cursor_project_id is not None:
+            params.extend([cursor_created_at, cursor_project_id])
+            cursor_pred = (
+                " AND (created_at, project_id) < ($2, $3)"
+            )
+        params.append(fetch_limit)
+
+        query = f"""
+        SELECT {_SELECT_COLS}
+        FROM knowledge_projects
+        WHERE user_id = $1{archived_pred}{cursor_pred}
+        ORDER BY created_at DESC, project_id DESC
+        LIMIT ${len(params)}
+        """
         async with self._pool.acquire() as conn:
-            rows = await conn.fetch(query, user_id)
+            rows = await conn.fetch(query, *params)
         return [_row_to_project(r) for r in rows]
 
     async def get(self, user_id: UUID, project_id: UUID) -> Project | None:
@@ -170,10 +198,34 @@ class ProjectsRepo:
         return _rows_changed(status) >= 1
 
     async def delete(self, user_id: UUID, project_id: UUID) -> bool:
-        query = """
-        DELETE FROM knowledge_projects
-        WHERE user_id = $1 AND project_id = $2
+        """Delete a project and cascade its project-scoped summaries.
+
+        knowledge_summaries has no FK to knowledge_projects (scope_id is
+        nullable and shared across multiple scope types) so the cascade
+        runs in code inside a single transaction. We invalidate the L1
+        cache after a successful commit; same-process only — cross-
+        process invalidation is Track 2 (D-T2-04).
         """
         async with self._pool.acquire() as conn:
-            status = await conn.execute(query, user_id, project_id)
-        return _rows_changed(status) >= 1
+            async with conn.transaction():
+                await conn.execute(
+                    """
+                    DELETE FROM knowledge_summaries
+                    WHERE user_id = $1
+                      AND scope_type = 'project'
+                      AND scope_id = $2
+                    """,
+                    user_id, project_id,
+                )
+                status = await conn.execute(
+                    """
+                    DELETE FROM knowledge_projects
+                    WHERE user_id = $1 AND project_id = $2
+                    """,
+                    user_id, project_id,
+                )
+        deleted = _rows_changed(status) >= 1
+        if deleted:
+            from app.context import cache
+            cache.invalidate_l1(user_id, project_id)
+        return deleted
