@@ -107,6 +107,18 @@ CREATE TABLE IF NOT EXISTS message_audio_segments (
 CREATE INDEX IF NOT EXISTS idx_mas_message ON message_audio_segments(message_id);
 CREATE INDEX IF NOT EXISTS idx_mas_user ON message_audio_segments(user_id);
 CREATE INDEX IF NOT EXISTS idx_mas_cleanup ON message_audio_segments(created_at);
+
+-- Knowledge Service K1: project link on chat_sessions
+-- No FK (knowledge_projects lives in loreweave_knowledge, different DB).
+-- Validated in application code when a session is assigned to a project.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='project_id') THEN
+    ALTER TABLE chat_sessions ADD COLUMN project_id UUID;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_project
+  ON chat_sessions(project_id) WHERE project_id IS NOT NULL;
 """
 
 

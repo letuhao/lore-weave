@@ -5,7 +5,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.db.pool import close_pools, create_pools
+from app.db.migrate import run_migrations
+from app.db.pool import close_pools, create_pools, get_knowledge_pool
 from app.logging_config import setup_logging
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import health, ping
@@ -18,6 +19,7 @@ async def lifespan(app: FastAPI):
     setup_logging(settings.log_level)
     # Fail-fast: if either pool cannot be created, raise and stop startup.
     await create_pools(settings.knowledge_db_url, settings.glossary_db_url)
+    await run_migrations(get_knowledge_pool())
     logger.info("knowledge-service started on port %d", settings.port)
     try:
         yield

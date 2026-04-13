@@ -418,7 +418,7 @@ layer for reads/writes.
 ### Tasks
 
 ```
-[ ] K1.1 Pick migration tool
+[x] K1.1 Pick migration tool
     Files:
       - services/knowledge-service/pyproject.toml (UPDATE — add yoyo-migrations or alembic)
     Description:
@@ -437,7 +437,7 @@ layer for reads/writes.
 ```
 
 ```
-[ ] K1.2 Migration 001: knowledge_projects table
+[x] K1.2 Migration 001: knowledge_projects table
     Files:
       - services/knowledge-service/migrations/20260413_001_projects.sql (NEW)
     Description:
@@ -458,7 +458,7 @@ layer for reads/writes.
 ```
 
 ```
-[ ] K1.3 Migration 002: knowledge_summaries table
+[x] K1.3 Migration 002: knowledge_summaries table
     Files:
       - services/knowledge-service/migrations/20260413_002_summaries.sql (NEW)
     Description:
@@ -476,7 +476,7 @@ layer for reads/writes.
 ```
 
 ```
-[ ] K1.4 Migration in chat-service: add chat_sessions.project_id
+[x] K1.4 Migration in chat-service: add chat_sessions.project_id
     Files:
       - services/chat-service/app/migrations/NNN_session_project_id.py (NEW)
     Description:
@@ -501,7 +501,7 @@ layer for reads/writes.
 ```
 
 ```
-[ ] K1.5 Repository layer: projects
+[x] K1.5 Repository layer: projects
     Files:
       - services/knowledge-service/app/db/repositories/__init__.py (NEW)
       - services/knowledge-service/app/db/repositories/projects.py (NEW)
@@ -529,7 +529,7 @@ layer for reads/writes.
 ```
 
 ```
-[ ] K1.6 Repository layer: summaries
+[x] K1.6 Repository layer: summaries
     Files:
       - services/knowledge-service/app/db/repositories/summaries.py (NEW)
     Description:

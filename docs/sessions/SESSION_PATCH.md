@@ -7,8 +7,8 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-13 (session 36 — Knowledge Service K0 scaffold)
-- Updated By: Assistant (knowledge-service K0: scaffold + Gate 1 smoke pass)
+- Last Updated: 2026-04-13 (session 36 — Knowledge Service K0 + K1)
+- Updated By: Assistant (knowledge-service K0 scaffold + K1 schema/repos, Gate 1 + Gate 2 passed)
 - Active Branch: `main`
 - HEAD: `fa36e99` (pending new commit for K0)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V6.md` — full context for next agent
@@ -38,6 +38,18 @@
 **Glossary Extraction Pipeline: FULLY COMPLETE (BE + FE + TESTED).** 13 BE tasks + 7 FE tasks + 49 integration test assertions + browser smoke test. Tested with real Qwen 3.5 9B model via LM Studio. 90 entities extracted from 5 chapters.
 
 **Voice Pipeline V2: COMPLETE + DEBUGGED + REFACTORED.** All 48 tasks + 5 analytics tasks. V1 code cleaned up (1576 lines deleted). Pipeline state machine added. **Chat page re-architected** (session 34): MVC separation, ChatSessionContext + ChatStreamContext split by update frequency, ChatView replaces ChatWindow (never unmounts), useVoiceAssistMic unified with VadController + backend STT. Voice Assist button now wired end-to-end with backend STT + backend TTS (audio stored in S3 for replay).
+
+**Knowledge Service: K0 + K1 COMPLETE (Gate 1 + Gate 2 passed).** (Session 36)
+- **K1 — Postgres schema + repositories (Gate 2 passed).** Tables `knowledge_projects` + `knowledge_summaries` created via `app/db/migrate.py` (inline DDL string + `run_migrations(pool)`, same house style as chat-service). Cross-DB FKs intentionally dropped — `user_id` and `book_id` are bare UUIDs, validated in app. Both tables include all extraction fields (default-off) from KSA §3.3 even though Track 1 doesn't use them. `knowledge_summaries` unique constraint uses Postgres 15+ `NULLS NOT DISTINCT` so `(user, 'global', NULL)` duplicates conflict.
+- **Repositories:** `ProjectsRepo` (create/list/get/update/archive/delete) + `SummariesRepo` (get/upsert/delete), all parameterized ($1, $2), every query filters by `user_id = $1`. `update()` uses Pydantic `ProjectUpdate.model_dump(exclude_unset=True)` with a `_UPDATABLE_COLUMNS` allowlist as defense-in-depth. `archive()` returns True only if the bit flipped. Rowcount parsing via `_rows_changed()` instead of fragile `endswith(" 1")`.
+- **Summaries upsert** uses `ON CONFLICT (user_id, scope_type, scope_id) DO UPDATE` with `version = knowledge_summaries.version + 1`. Token count heuristic `len // 4` (English-biased; Track 3 will use tiktoken).
+- **chat-service change:** `chat_sessions.project_id UUID` column + `idx_chat_sessions_project` partial index added idempotently to chat-service's DDL in `app/db/migrate.py`. No FK (cross-DB). No chat-service API change in K1 — wired in K7.
+- **Migrations run on lifespan startup** from knowledge-service's `main.py` via `run_migrations(get_knowledge_pool())`, after pools are created. Idempotent — verified by container restart.
+- **Tests:** 16 new integration tests in `tests/integration/db/` (own subdir with local `conftest.py` so DB-autouse truncation doesn't cascade into the auth test). Covers: schema shape, idempotency, CHECK constraint rejection, partial index existence, NULLS NOT DISTINCT collision, projects CRUD, archive semantics, summaries upsert (version bump), null scope_id handling, and **cross-user isolation for both projects and summaries** — user B cannot get/list/update/archive/delete user A's rows. Pool fixture is function-scoped to avoid pytest-asyncio loop-scope conflicts. **26/26 pass total** (10 K0 unit/auth + 16 K1 DB).
+- **Gate 2:** fresh `loreweave_knowledge` has both tables after container startup; restart is a no-op; CHECK constraints reject invalid `project_type`/`extraction_status`; unique index collides on repeat `(user, 'global', NULL)`; cross-user isolation verified via repo tests; chat-service container still healthy after its DDL change; `\d chat_sessions` shows `project_id` column + partial index.
+- **K1 review fixes (3 issues):** J1 explicit `_UPDATABLE_COLUMNS` allowlist for dynamic SET (defense-in-depth over implicit Pydantic coupling); J2 `_rows_changed()` helper replaces fragile `status.endswith(" 1")`; J3 `archive()` docstring clarifies "returns True only if this call flipped the bit".
+- **Deferred:** `extraction_pending` / `extraction_jobs` tables → K10 (Track 2); public CRUD API → K7; frontend UI → K8; repo-layer logging → K7.
+- **Next:** K2 — glossary-service schema additions (`short_description`, `is_pinned_for_context`, `search_vector` tsvector + GIN index) in the glossary-service Go codebase.
 
 **Knowledge Service: K0 SCAFFOLD COMPLETE (Gate 1 passed).** (Session 36)
 - New service `services/knowledge-service/` (Python 3.12 / FastAPI, pip + requirements.txt to match chat-service style).
@@ -72,7 +84,7 @@
 - **Review:** 8 issues found and fixed (4 high, 4 medium). Commit: `fa36e99`.
 - **API methods added:** `glossaryApi.createTranslation()`, `patchTranslation()`, `deleteTranslation()`.
 
-**Next priority:** K0 done (this session). Continue Knowledge Service Track 1 at **K1** — Postgres schema + repository layer. Read `docs/03_planning/KNOWLEDGE_SERVICE_TRACK1_IMPLEMENTATION.md` §5.
+**Next priority:** K0 + K1 done (this session). Continue Knowledge Service Track 1 at **K2** — glossary-service schema additions. Read `docs/03_planning/KNOWLEDGE_SERVICE_TRACK1_IMPLEMENTATION.md` §6.
 
 Phases completed:
 - **A: Core Pipeline (11)** — TextNormalizer, SentenceBuffer, voice_stream_response, POST /voice-message, VoiceClient, VadController, useVoiceChat, VoiceChatOverlay
