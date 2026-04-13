@@ -723,6 +723,10 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 	// string both clear the field so the response shape stays consistent.
 	// Length cap is measured in runes (characters), not bytes, so CJK
 	// content gets the same 500-character budget as Latin.
+	//
+	// User writes to short_description also flip short_description_auto
+	// to false so the backfill/auto-regen hooks never overwrite a user
+	// choice (K3.3a sticky-override rule).
 	if raw, ok := in["short_description"]; ok {
 		var sdPtr *string
 		if string(raw) != "null" {
@@ -744,6 +748,10 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 		}
 		setClauses = append(setClauses, fmt.Sprintf("short_description = $%d", argN))
 		args = append(args, sdPtr)
+		argN++
+		// Mark as user-authored so backfill / auto-regen never overwrite.
+		setClauses = append(setClauses, fmt.Sprintf("short_description_auto = $%d", argN))
+		args = append(args, false)
 		argN++
 	}
 

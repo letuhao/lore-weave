@@ -849,6 +849,120 @@ func UpKnowledgeMemory(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
+// ── K3: short_description_auto flag ────────────────────────────────────────
+//
+// Adds a boolean tracking whether the current short_description was
+// produced by the auto-generator (TRUE, default) or set explicitly by a
+// user via PATCH (FALSE). The patchEntity handler flips this to FALSE
+// on explicit user writes; the patchAttributeValue handler regenerates
+// short_description only when this flag is TRUE.
+//
+// Ideally this would have shipped with K2a, but K2a was already merged
+// when the K3 plan formalised the auto vs manual distinction, so it
+// ships as a separate step.
+
+const shortDescAutoSQL = `
+ALTER TABLE glossary_entities
+  ADD COLUMN IF NOT EXISTS short_description_auto BOOLEAN NOT NULL DEFAULT true;
+`
+
+// UpShortDescAuto adds the short_description_auto flag column. Idempotent.
+func UpShortDescAuto(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, shortDescAutoSQL); err != nil {
+		return fmt.Errorf("migrate short-desc-auto: %w", err)
+	}
+	return nil
+}
+
+// BackfillShortDescription iterates entities with NULL short_description,
+// fetches each one's description attribute value + kind name, runs the
+// pure shortdesc generator, and writes the result back. Honours the
+// auto flag: rows where short_description_auto = false are skipped
+// (user has explicitly set or cleared the field).
+//
+// CAS-style: the UPDATE includes `WHERE short_description IS NULL` so
+// concurrent writes from a user PATCH during backfill don't get
+// clobbered.
+//
+// Idempotent: once all live entities have a short_description, this
+// is a no-op.
+//
+// Intended to run in a background goroutine after the service starts
+// listening so health checks don't block on a large catalogue.
+func BackfillShortDescription(
+	ctx context.Context, pool *pgxpool.Pool,
+	generate func(name, description, kindName string) string,
+) (processed int, err error) {
+	const batchSize = 100
+	for {
+		rows, qerr := pool.Query(ctx, `
+			SELECT e.entity_id,
+			       COALESCE(e.cached_name, '') AS name,
+			       COALESCE((
+			         SELECT av.original_value
+			         FROM entity_attribute_values av
+			         JOIN attribute_definitions ad ON ad.attr_def_id = av.attr_def_id
+			         WHERE av.entity_id = e.entity_id AND ad.code = 'description'
+			         LIMIT 1
+			       ), '') AS description,
+			       ek.name AS kind_name
+			FROM glossary_entities e
+			JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+			WHERE e.short_description IS NULL
+			  AND e.short_description_auto = true
+			  AND e.deleted_at IS NULL
+			ORDER BY e.created_at
+			LIMIT $1`, batchSize)
+		if qerr != nil {
+			return processed, fmt.Errorf("backfill-shortdesc list: %w", qerr)
+		}
+
+		type task struct {
+			ID       string
+			Name     string
+			Desc     string
+			KindName string
+		}
+		var batch []task
+		for rows.Next() {
+			var t task
+			if err := rows.Scan(&t.ID, &t.Name, &t.Desc, &t.KindName); err != nil {
+				rows.Close()
+				return processed, fmt.Errorf("backfill-shortdesc scan: %w", err)
+			}
+			batch = append(batch, t)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return processed, err
+		}
+		if len(batch) == 0 {
+			return processed, nil
+		}
+
+		for _, t := range batch {
+			sd := generate(t.Name, t.Desc, t.KindName)
+			if sd == "" {
+				continue
+			}
+			// CAS: only overwrite if still NULL and still auto.
+			tag, uerr := pool.Exec(ctx, `
+				UPDATE glossary_entities
+				SET short_description = $1
+				WHERE entity_id = $2
+				  AND short_description IS NULL
+				  AND short_description_auto = true`,
+				sd, t.ID)
+			if uerr != nil {
+				return processed, fmt.Errorf("backfill-shortdesc update %s: %w", t.ID, uerr)
+			}
+			if tag.RowsAffected() == 1 {
+				processed++
+			}
+		}
+	}
+}
+
 // BackfillKnowledgeMemory populates cached_name / cached_aliases for any
 // entity where they are NULL/empty by calling recalculate_entity_snapshot.
 // Idempotent: once an entity has a cached_name, subsequent runs are no-ops.

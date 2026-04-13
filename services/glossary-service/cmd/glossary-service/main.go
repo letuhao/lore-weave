@@ -14,6 +14,7 @@ import (
 	"github.com/loreweave/glossary-service/internal/api"
 	"github.com/loreweave/glossary-service/internal/config"
 	"github.com/loreweave/glossary-service/internal/migrate"
+	"github.com/loreweave/glossary-service/internal/shortdesc"
 )
 
 func main() {
@@ -98,6 +99,30 @@ func main() {
 		slog.Error("backfill knowledge-memory", "error", err)
 		os.Exit(1)
 	}
+	if err := migrate.UpShortDescAuto(ctx, pool); err != nil {
+		slog.Error("migrate short-desc-auto", "error", err)
+		os.Exit(1)
+	}
+
+	// Run the short-description backfill in a background goroutine so
+	// the HTTP listener + healthcheck come up immediately. For a fresh
+	// DB this completes in milliseconds; for a catalogue with many
+	// thousands of entities it may take longer and we don't want to
+	// block startup.
+	go func() {
+		bctx := context.Background()
+		n, err := migrate.BackfillShortDescription(bctx, pool,
+			func(name, description, kindName string) string {
+				return shortdesc.Generate(name, description, kindName, shortdesc.DefaultMaxChars)
+			})
+		if err != nil {
+			slog.Error("backfill short-description", "error", err, "processed", n)
+			return
+		}
+		if n > 0 {
+			slog.Info("backfill short-description complete", "processed", n)
+		}
+	}()
 
 	srv := api.NewServer(pool, cfg)
 	httpSrv := &http.Server{

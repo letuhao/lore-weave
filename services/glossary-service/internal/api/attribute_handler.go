@@ -11,6 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/loreweave/glossary-service/internal/shortdesc"
 )
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -160,7 +162,65 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "query failed")
 		return
 	}
+
+	// K3.3b auto-regen: when the description attribute is the one being
+	// patched AND the entity's short_description is still auto-generated
+	// (not user-overridden), rebuild short_description from the new text.
+	// Failures are logged but don't fail the PATCH — regeneration is
+	// best-effort.
+	if av.AttributeDef.Code == "description" {
+		_ = s.regenerateAutoShortDescription(ctx, entityID)
+	}
+
 	writeJSON(w, http.StatusOK, av)
+}
+
+// regenerateAutoShortDescription recomputes short_description from the
+// current name/description/kind and writes it back — but only if the
+// entity's short_description_auto flag is still true. Used by the
+// patchAttributeValue hook so editing a description keeps the auto
+// summary in sync.
+func (s *Server) regenerateAutoShortDescription(ctx context.Context, entityID uuid.UUID) error {
+	var (
+		name     string
+		desc     string
+		kindName string
+		auto     bool
+	)
+	err := s.pool.QueryRow(ctx, `
+		SELECT
+		  COALESCE(e.cached_name, ''),
+		  COALESCE((
+		    SELECT av.original_value
+		    FROM entity_attribute_values av
+		    JOIN attribute_definitions ad ON ad.attr_def_id = av.attr_def_id
+		    WHERE av.entity_id = e.entity_id AND ad.code = 'description'
+		    LIMIT 1
+		  ), ''),
+		  ek.name,
+		  e.short_description_auto
+		FROM glossary_entities e
+		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
+		WHERE e.entity_id = $1`, entityID,
+	).Scan(&name, &desc, &kindName, &auto)
+	if err != nil {
+		return err
+	}
+	if !auto {
+		return nil
+	}
+	sd := shortdesc.Generate(name, desc, kindName, shortdesc.DefaultMaxChars)
+	if sd == "" {
+		return nil
+	}
+	// Guard with short_description_auto so a race with a user PATCH can't
+	// clobber a just-set manual value.
+	_, err = s.pool.Exec(ctx, `
+		UPDATE glossary_entities
+		SET short_description = $1
+		WHERE entity_id = $2 AND short_description_auto = true`,
+		sd, entityID)
+	return err
 }
 
 // ── POST /v1/glossary/books/{book_id}/entities/{entity_id}/attributes/{attr_value_id}/translations
