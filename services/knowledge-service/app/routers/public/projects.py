@@ -68,6 +68,12 @@ def _encode_cursor(created_at: datetime, project_id: UUID) -> str:
 def _decode_cursor(cursor: str) -> tuple[datetime, UUID]:
     """Parse a cursor string. Raises HTTPException(400) on malformed
     input — clients must round-trip the server-issued value verbatim.
+
+    Catches the UnicodeError parent so BOTH encode-side (non-ASCII
+    input → `.encode('ascii')` fails) and decode-side (`urlsafe_b64decode`
+    yielding non-ASCII bytes) errors land on the same 400 path.
+    Previously only UnicodeDecodeError was caught, so a cursor like
+    `?cursor=café` produced a 500 with a traceback.
     """
     try:
         # Re-pad to a multiple of 4 for urlsafe_b64decode.
@@ -75,7 +81,7 @@ def _decode_cursor(cursor: str) -> tuple[datetime, UUID]:
         raw = base64.urlsafe_b64decode(padded.encode("ascii")).decode("ascii")
         ts_str, uid_str = raw.split(_CURSOR_SEP, 1)
         return datetime.fromisoformat(ts_str), UUID(uid_str)
-    except (ValueError, AttributeError, UnicodeDecodeError):
+    except (ValueError, UnicodeError):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="invalid cursor",
@@ -163,7 +169,7 @@ async def patch_project(
         # already gates the public surface, but defense-in-depth means
         # we surface the DB error as a 422 not a 500.
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"value out of bounds: {exc.constraint_name}",
         )
     if updated is None:
@@ -180,20 +186,19 @@ async def archive_project(
     user_id: UUID = Depends(get_current_user),
     repo: ProjectsRepo = Depends(get_projects_repo),
 ) -> Project:
-    """Idempotent-ish: returns 404 if the project does not exist OR
-    is already archived. Doc requirement: archive is one-shot, not
-    a toggle. To unarchive, the user has to PATCH `is_archived` —
-    which Track 1 doesn't expose; that's K8 frontend territory.
+    """One-shot archive. Returns 404 if the project does not exist,
+    is cross-user, OR is already archived — three cases collapsed
+    into a single response so the endpoint is not an oracle for
+    project existence.
+
+    Not idempotent: a second call returns 404. Unarchive is K8
+    frontend territory (direct PATCH is_archived) and isn't exposed
+    by Track 1.
     """
-    flipped = await repo.archive(user_id, project_id)
-    if not flipped:
+    archived = await repo.archive(user_id, project_id)
+    if archived is None:
         raise _not_found()
-    project = await repo.get(user_id, project_id)
-    if project is None:
-        # Vanishingly unlikely race: archived between the UPDATE and
-        # the SELECT. Treat as not-found.
-        raise _not_found()
-    return project
+    return archived
 
 
 @router.delete(

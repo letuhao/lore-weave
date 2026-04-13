@@ -11,6 +11,7 @@ from uuid import UUID
 
 import asyncpg
 
+from app.context import cache
 from app.db.models import Project, ProjectCreate, ProjectUpdate
 
 _SELECT_COLS = """
@@ -183,31 +184,62 @@ class ProjectsRepo:
             row = await conn.fetchrow(query, *params)
         return _row_to_project(row) if row else None
 
-    async def archive(self, user_id: UUID, project_id: UUID) -> bool:
-        """Archive a project. Returns True only if this call flipped the
-        is_archived bit — calling archive() on an already-archived or
-        non-existent project returns False.
+    async def archive(
+        self, user_id: UUID, project_id: UUID
+    ) -> Project | None:
+        """Archive a project and return the updated row.
+
+        K7b-I2 fix: returns the row via UPDATE … RETURNING so the
+        router doesn't have to issue a second SELECT. Also closes a
+        tiny race window where a concurrent DELETE could 404 the
+        follow-up get() between the UPDATE and the SELECT.
+
+        Returns None if the project does not exist, belongs to another
+        user, or was already archived — the caller treats these
+        uniformly as 404 (don't leak which one it was).
         """
-        query = """
+        query = f"""
         UPDATE knowledge_projects
         SET is_archived = true, updated_at = now()
         WHERE user_id = $1 AND project_id = $2 AND NOT is_archived
+        RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as conn:
-            status = await conn.execute(query, user_id, project_id)
-        return _rows_changed(status) >= 1
+            row = await conn.fetchrow(query, user_id, project_id)
+        return _row_to_project(row) if row else None
 
     async def delete(self, user_id: UUID, project_id: UUID) -> bool:
         """Delete a project and cascade its project-scoped summaries.
 
         knowledge_summaries has no FK to knowledge_projects (scope_id is
         nullable and shared across multiple scope types) so the cascade
-        runs in code inside a single transaction. We invalidate the L1
-        cache after a successful commit; same-process only — cross-
-        process invalidation is Track 2 (D-T2-04).
+        runs in code inside a single transaction.
+
+        K7b-I1 fix: we DELETE the project row FIRST and short-circuit on
+        rowcount=0. This guarantees that a cross-user or nonexistent
+        delete never runs the summary cascade — previously we deleted
+        summaries before verifying ownership, which was wasted work in
+        the happy path and a logic smell in edge cases. The project-
+        first order is also safe: both DELETEs live in the same
+        transaction, so an early return rolls back atomically.
+
+        After a successful commit we invalidate the L1 cache for the
+        project. Same-process only — cross-process invalidation is
+        Track 2 (D-T2-04).
         """
         async with self._pool.acquire() as conn:
             async with conn.transaction():
+                status = await conn.execute(
+                    """
+                    DELETE FROM knowledge_projects
+                    WHERE user_id = $1 AND project_id = $2
+                    """,
+                    user_id, project_id,
+                )
+                if _rows_changed(status) < 1:
+                    # Project didn't exist or wasn't ours — abort the
+                    # transaction so we don't touch summaries either.
+                    return False
                 await conn.execute(
                     """
                     DELETE FROM knowledge_summaries
@@ -217,15 +249,5 @@ class ProjectsRepo:
                     """,
                     user_id, project_id,
                 )
-                status = await conn.execute(
-                    """
-                    DELETE FROM knowledge_projects
-                    WHERE user_id = $1 AND project_id = $2
-                    """,
-                    user_id, project_id,
-                )
-        deleted = _rows_changed(status) >= 1
-        if deleted:
-            from app.context import cache
-            cache.invalidate_l1(user_id, project_id)
-        return deleted
+        cache.invalidate_l1(user_id, project_id)
+        return True

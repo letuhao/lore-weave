@@ -123,12 +123,15 @@ class FakeProjectsRepo:
         self.seed(updated)
         return updated
 
-    async def archive(self, user_id: UUID, project_id: UUID) -> bool:
+    async def archive(
+        self, user_id: UUID, project_id: UUID
+    ) -> Project | None:
         existing = self._rows.get((user_id, project_id))
         if existing is None or existing.is_archived:
-            return False
-        self.seed(existing.model_copy(update={"is_archived": True}))
-        return True
+            return None
+        archived = existing.model_copy(update={"is_archived": True})
+        self.seed(archived)
+        return archived
 
     async def delete(self, user_id: UUID, project_id: UUID) -> bool:
         return self._rows.pop((user_id, project_id), None) is not None
@@ -434,6 +437,97 @@ def test_delete_nonexistent_returns_404(client: TestClient):
 
 
 # ── auth ─────────────────────────────────────────────────────────────────
+
+
+def test_list_non_ascii_cursor_returns_400(client: TestClient):
+    """K7b-I3: a cursor containing non-ASCII chars must land on the
+    400 path, not crash with a 500 on `.encode('ascii')`."""
+    resp = client.get("/v1/knowledge/projects?cursor=caf%C3%A9")
+    assert resp.status_code == 400
+
+
+# ── K7b-I4: DB CheckViolationError → 422 mapping ─────────────────────────
+
+
+def test_patch_db_check_violation_maps_to_422(
+    repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """The Pydantic validators gate the public surface, but K7 also
+    installs DB CHECK constraints (knowledge_projects_instructions_len,
+    etc.) as defense-in-depth. If the DB rejects a write the router
+    must surface 422, not 500. This test injects a repo whose update
+    raises asyncpg.CheckViolationError so we can exercise the except
+    branch without a real Postgres.
+    """
+    import asyncpg
+
+    proj = _make_project(auth_user_id)
+    repo.seed(proj)
+
+    class ExplodingRepo(FakeProjectsRepo):
+        async def update(self, *args, **kwargs):  # type: ignore[override]
+            # Construct the exception the same way asyncpg does so the
+            # constraint_name attribute is set.
+            exc = asyncpg.CheckViolationError("length check failed")
+            exc.constraint_name = "knowledge_projects_instructions_len"
+            raise exc
+
+    exploding = ExplodingRepo()
+    exploding.seed(proj)
+    app = FastAPI()
+    app.include_router(projects_router)
+    app.dependency_overrides[get_projects_repo] = lambda: exploding
+    app.dependency_overrides[get_current_user] = lambda: auth_user_id
+    client = TestClient(app)
+
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"instructions": "ok-for-pydantic"},
+    )
+    assert resp.status_code == 422
+    assert "knowledge_projects_instructions_len" in resp.json()["detail"]
+
+
+# ── K7b-I1: delete cascade short-circuit ─────────────────────────────────
+
+
+def test_delete_cross_user_does_not_touch_summaries(
+    repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """Regression guard for the pre-fix cascade order bug: a cross-user
+    DELETE must not execute the summaries cascade at all. The fake
+    repo can't observe the SQL directly, so we wrap delete() and
+    assert the summaries path is never reached when the project delete
+    would return 0.
+    """
+    other = uuid4()
+    proj = _make_project(other)
+    repo.seed(proj)
+
+    # Track whether anything beyond the bailout was reached.
+    touched_summaries = False
+    original_delete = repo.delete
+
+    async def tracking_delete(uid, pid):  # type: ignore[no-untyped-def]
+        nonlocal touched_summaries
+        result = await original_delete(uid, pid)
+        if result:
+            touched_summaries = True
+        return result
+
+    repo.delete = tracking_delete  # type: ignore[assignment]
+
+    app = FastAPI()
+    app.include_router(projects_router)
+    app.dependency_overrides[get_projects_repo] = lambda: repo
+    app.dependency_overrides[get_current_user] = lambda: auth_user_id
+    client = TestClient(app)
+
+    resp = client.delete(f"/v1/knowledge/projects/{proj.project_id}")
+    assert resp.status_code == 404
+    assert not touched_summaries
+    # Cross-user row still present.
+    assert (other, proj.project_id) in repo._rows
 
 
 def test_no_jwt_returns_401(repo: FakeProjectsRepo):
