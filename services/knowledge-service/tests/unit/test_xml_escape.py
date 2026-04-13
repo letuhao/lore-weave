@@ -83,6 +83,40 @@ def test_escape_is_idempotent_for_safe_text():
     assert sanitize_for_xml(safe) == safe
 
 
+def test_lone_high_surrogate_stripped():
+    # K4a-I1: a lone high surrogate (e.g. from surrogateescape-decoded
+    # bytes or malformed clipboard paste) is forbidden in XML content.
+    got = sanitize_for_xml("before\ud800after")
+    assert got == "beforeafter"
+
+
+def test_lone_low_surrogate_stripped():
+    got = sanitize_for_xml("before\udc00after")
+    assert got == "beforeafter"
+
+
+def test_surrogate_range_stripped():
+    # Any codepoint in U+D800..U+DFFF must be removed.
+    for cp in (0xD800, 0xD900, 0xDFFF):
+        assert sanitize_for_xml(chr(cp)) == ""
+
+
+def test_unicode_noncharacters_stripped():
+    # K4a-I2: U+FFFE and U+FFFF are Unicode noncharacters forbidden in
+    # XML content.
+    assert sanitize_for_xml("a\ufffeb\uffffc") == "abc"
+
+
+def test_surrogate_result_parses_as_xml():
+    # Regression for the core motivation of K4a-I1: downstream
+    # xml.etree.ElementTree must be able to parse whatever we emit.
+    import xml.etree.ElementTree as ET
+
+    wrapped = f"<root>{sanitize_for_xml('bad\ud800data')}</root>"
+    root = ET.fromstring(wrapped)
+    assert root.text == "baddata"
+
+
 def test_xml_escape_alias_matches_sanitize():
     samples = ["", "plain", "<tag>", "&", "CJK 李雲", None]
     for s in samples:

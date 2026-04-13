@@ -5,30 +5,24 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
+from app.config import settings
 from app.db.repositories.summaries import SummariesRepo
 from app.routers import context as context_router
+from app.routers.context import get_summaries_repo
 
 
 @pytest.fixture
 def app_with_pool(pool, monkeypatch):
     """Mount the context router on a fresh FastAPI app for this test.
 
-    The router reads the pool via app.db.pool.get_knowledge_pool(),
-    which we monkey-patch to return the test pool. No lifespan wiring
-    needed.
+    Uses FastAPI dependency_overrides to substitute a real SummariesRepo
+    bound to the test pool, instead of monkey-patching the module-level
+    `_knowledge_pool` global (K4a-I4 fix).
     """
-    from app.config import settings
-    from app.db import pool as pool_module
-    from app.routers import context as ctx_mod
-
-    monkeypatch.setattr(pool_module, "_knowledge_pool", pool)
-    monkeypatch.setattr(pool_module, "_glossary_pool", pool)
     monkeypatch.setattr(settings, "internal_service_token", "ctx_test_token")
-    # Patch the function the router imports by name
-    monkeypatch.setattr(ctx_mod, "get_knowledge_pool", lambda: pool)
-
     app = FastAPI()
     app.include_router(context_router.router)
+    app.dependency_overrides[get_summaries_repo] = lambda: SummariesRepo(pool)
     return app
 
 
@@ -62,6 +56,30 @@ async def test_malformed_request_returns_422(app_with_pool: FastAPI):
 
 
 @pytest.mark.asyncio
+async def test_empty_body_returns_422(app_with_pool: FastAPI):
+    # K4a-I16: empty POST body — Pydantic rejects missing user_id.
+    async with AsyncClient(transport=ASGITransport(app=app_with_pool), base_url="http://test") as c:
+        r = await c.post(
+            "/internal/context/build",
+            json={},
+            headers={"X-Internal-Token": "ctx_test_token"},
+        )
+        assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_message_too_long_returns_422(app_with_pool: FastAPI):
+    # K4a-I6: message field capped at 4000 runes.
+    async with AsyncClient(transport=ASGITransport(app=app_with_pool), base_url="http://test") as c:
+        r = await c.post(
+            "/internal/context/build",
+            json={"user_id": str(uuid4()), "message": "x" * 4001},
+            headers={"X-Internal-Token": "ctx_test_token"},
+        )
+        assert r.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_mode1_without_summary(app_with_pool: FastAPI):
     user_id = uuid4()
     async with AsyncClient(transport=ASGITransport(app=app_with_pool), base_url="http://test") as c:
@@ -80,7 +98,10 @@ async def test_mode1_without_summary(app_with_pool: FastAPI):
     assert root.tag == "memory"
     assert root.attrib == {"mode": "no_project"}
     assert root.find("user") is None
-    assert root.find("instructions") is not None
+    instr = root.find("instructions")
+    assert instr is not None
+    # K4a-I3: when there is no <user> the instruction must NOT say "above".
+    assert "above" not in (instr.text or "").lower()
 
 
 @pytest.mark.asyncio
@@ -100,6 +121,10 @@ async def test_mode1_with_summary(pool, app_with_pool: FastAPI):
     user = root.find("user")
     assert user is not None
     assert "Ming-dynasty" in (user.text or "")
+    # K4a-I3: the with-bio instructions mention <user> explicitly.
+    instr = root.find("instructions")
+    assert instr is not None
+    assert "user" in (instr.text or "").lower()
 
 
 @pytest.mark.asyncio
@@ -111,7 +136,10 @@ async def test_mode2_returns_501(app_with_pool: FastAPI):
             headers={"X-Internal-Token": "ctx_test_token"},
         )
     assert r.status_code == 501
-    assert "K4b" in r.text or "Mode 2" in r.text
+    # K4a-I8: parse JSON envelope instead of substring-matching raw text.
+    body = r.json()
+    assert "detail" in body
+    assert "Mode 2" in body["detail"] or "K4b" in body["detail"]
 
 
 @pytest.mark.asyncio

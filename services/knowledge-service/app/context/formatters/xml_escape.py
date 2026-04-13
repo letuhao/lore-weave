@@ -24,11 +24,23 @@ import re
 
 __all__ = ["sanitize_for_xml", "xml_escape"]
 
-# Control chars to strip. XML 1.0 forbids U+0000..U+001F except \t, \n, \r.
-# U+007F (DEL) and U+0080..U+009F (C1 controls) are technically valid in
-# XML 1.0 content but weird to see in user text — strip them too.
-_CONTROL_CHARS = re.compile(
-    r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]"
+# Characters forbidden or discouraged inside XML element content:
+#   * U+0000..U+001F except \t, \n, \r     — C0 controls (XML 1.0 illegal)
+#   * U+007F..U+009F                        — DEL + C1 controls (valid but ugly)
+#   * U+D800..U+DFFF                        — lone surrogates (XML illegal)
+#   * U+FFFE, U+FFFF                        — Unicode noncharacters (XML illegal)
+#
+# Python strings can legally contain surrogates (from decoding bytes with
+# surrogateescape, or from malformed clipboard paste), so we have to strip
+# them here or downstream xml.etree.ElementTree will raise
+# `ValueError: All strings must be XML compatible`.
+_FORBIDDEN_CHARS = re.compile(
+    "["
+    "\x00-\x08\x0b\x0c\x0e-\x1f"
+    "\x7f-\x9f"
+    "\ud800-\udfff"
+    "\ufffe\uffff"
+    "]"
 )
 
 
@@ -42,9 +54,9 @@ def sanitize_for_xml(text: str | None) -> str:
         return ""
     if not isinstance(text, str):
         text = str(text)
-    # 1. Strip forbidden control characters FIRST so their escaped form
-    #    doesn't survive as `&#x01;` in the output.
-    cleaned = _CONTROL_CHARS.sub("", text)
+    # 1. Strip all forbidden characters FIRST so their escaped form
+    #    doesn't survive as `&#x01;` or similar in the output.
+    cleaned = _FORBIDDEN_CHARS.sub("", text)
     # 2. html.escape handles < > & " ' (with quote=True). Because every
     #    `>` becomes `&gt;`, a literal `]]>` sequence cannot appear in
     #    the output — no separate CDATA-defang step needed.

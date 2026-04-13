@@ -22,10 +22,17 @@ __all__ = ["BuiltContext", "build_no_project_mode"]
 
 _RECENT_MESSAGE_COUNT = 50
 
-_INSTRUCTIONS = (
+# Two instruction variants — the with-bio text references "above" which
+# is only accurate when a <user> element was actually emitted.
+_INSTRUCTIONS_WITH_BIO = (
     "When the user references their identity or goals, use the information "
-    "above. This session is not attached to any project, so no project "
-    "memory or glossary is available."
+    "in the <user> element above. This session is not attached to any "
+    "project, so no project memory or glossary is available."
+)
+
+_INSTRUCTIONS_NO_BIO = (
+    "This session is not attached to any project, so no project memory or "
+    "glossary is available. The user has not provided any global bio."
 )
 
 
@@ -47,10 +54,12 @@ async def build_no_project_mode(
     XML and chat-service can inject it unchanged.
     """
     summary = await load_global_summary(repo, user_id)
+    has_bio = summary is not None and summary.content.strip() != ""
     lines = ['<memory mode="no_project">']
-    if summary is not None and summary.content.strip():
+    if has_bio:
         lines.append(f"  <user>{sanitize_for_xml(summary.content)}</user>")
-    lines.append(f"  <instructions>{sanitize_for_xml(_INSTRUCTIONS)}</instructions>")
+    instructions = _INSTRUCTIONS_WITH_BIO if has_bio else _INSTRUCTIONS_NO_BIO
+    lines.append(f"  <instructions>{sanitize_for_xml(instructions)}</instructions>")
     lines.append("</memory>")
     context = "\n".join(lines)
     return BuiltContext(
