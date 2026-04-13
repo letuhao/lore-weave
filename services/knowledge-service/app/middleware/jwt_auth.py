@@ -63,7 +63,9 @@ def get_current_user(
         raise _unauthorized("invalid token")
 
     sub = data.get("sub")
-    if not sub or not isinstance(sub, str):
+    if not isinstance(sub, str) or not sub:
+        # Type check first, then truthiness — keeps the condition
+        # easy to read for non-string `sub` values (int, bool, None).
         raise _unauthorized("missing sub claim")
 
     try:

@@ -143,6 +143,53 @@ def test_non_string_sub_claim_returns_401():
     assert resp.status_code == 401
 
 
+def test_empty_bearer_token_returns_401():
+    """K7a-I1: `Authorization: Bearer ` with no token after the space.
+
+    HTTPBearer parses this as credentials="" and we forward the empty
+    string to jwt.decode, which raises InvalidTokenError. Easy probe
+    for an attacker; assert we reject it cleanly.
+    """
+    client = TestClient(_make_app())
+    resp = client.get("/whoami", headers={"Authorization": "Bearer "})
+    assert resp.status_code == 401
+
+
+def test_alg_none_token_rejected():
+    """K7a-I2: regression guard for the classic `alg=none` JWT attack.
+
+    A token signed with the `none` algorithm must never be accepted —
+    it would let any client forge any user_id. PyJWT enforces this via
+    the `algorithms=["HS256"]` whitelist passed to jwt.decode. If a
+    future refactor weakens that whitelist, this test fails loudly.
+    """
+    uid = uuid4()
+    # PyJWT requires key=None when alg='none'.
+    forged = jwt.encode({"sub": str(uid)}, key=None, algorithm="none")
+
+    client = TestClient(_make_app())
+    resp = client.get("/whoami", headers={"Authorization": f"Bearer {forged}"})
+
+    assert resp.status_code == 401
+
+
+def test_wrong_algorithm_token_rejected():
+    """K7a-I2: a token signed with HS512 (or any non-HS256 alg) must be
+    rejected even if signed with the correct secret. The whitelist
+    pins the algorithm so an attacker can't trick us into validating
+    with a weaker primitive.
+    """
+    uid = uuid4()
+    forged = jwt.encode(
+        {"sub": str(uid)}, settings.jwt_secret, algorithm="HS512"
+    )
+
+    client = TestClient(_make_app())
+    resp = client.get("/whoami", headers={"Authorization": f"Bearer {forged}"})
+
+    assert resp.status_code == 401
+
+
 # ── security invariant: user_id is NOT read from body ─────────────────────
 
 
