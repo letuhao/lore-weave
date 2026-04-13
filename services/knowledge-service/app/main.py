@@ -9,7 +9,7 @@ from app.db.migrate import run_migrations
 from app.db.pool import close_pools, create_pools, get_knowledge_pool
 from app.logging_config import setup_logging
 from app.middleware.trace_id import TraceIdMiddleware
-from app.routers import health, ping
+from app.routers import context, health, ping
 
 logger = logging.getLogger(__name__)
 
@@ -42,3 +42,4 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(ping.public_router)
 app.include_router(ping.internal_router)
+app.include_router(context.router)
