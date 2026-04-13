@@ -1,9 +1,9 @@
-# Session Handoff — Session 34 (Final)
+# Session Handoff — Session 34+35
 
 > **Purpose:** Give the next agent complete context to continue.
-> **Date:** 2026-04-13 (session 34)
-> **Last commit:** `0f1fcc3` — knowledge-service two-layer glossary anchoring pattern
-> **Total commits this session:** 22
+> **Date:** 2026-04-13 (sessions 34-35)
+> **Last commit:** `fa36e99` — inline attribute translation editor with review fixes
+> **Total commits:** 22 (session 34) + 3 (session 35) = 25
 > **Previous handoff:** SESSION_HANDOFF_V5.md (session 33 — Voice Pipeline V2 complete)
 
 ---
@@ -122,6 +122,47 @@ Two follow-up tasks created:
 - **G-EV-1** (glossary FE, ~2-3 days): build evidence browser modal — filter by type/chapter/language, sort by created_at/chapter, pagination. FE-only task, API already returns everything needed.
 - **KS-EV-1**: extended K11.10 in Track 2 to include `create_evidence(...)` method and acceptance criteria. Dependency added: K11.10 depends on G-EV-1 so reviewers can see KS-created quotes.
 
+### Part E — G-EV-1: Glossary Evidence Browser (session 35)
+
+Full-stack implementation of evidence browser tab in the entity editor:
+
+**Backend** (`services/glossary-service/internal/api/evidence_handler.go`):
+- New `GET /entities/{entity_id}/evidences` endpoint with server-side pagination, filters (evidence_type, attr_value_id, chapter_id), sort (created_at, chapter_index, block_or_line, attribute_name), language fallback via LEFT JOIN on `evidence_translations`
+- `chapter_index` column added to evidences table via migration
+- `createEvidence` accepts `chapter_index`, `updateEvidence` supports patching evidence_type/chapter_id/title/index
+- Filter options (`available_attributes`, `available_chapters`, `available_languages`) only queried on first page (offset=0)
+- Available attributes query returns ALL entity attrs (not just those with existing evidences — critical fix)
+
+**Frontend** (split into focused modules per CLAUDE.md guidelines):
+- `useEvidenceList.ts` — hook (~160 lines): all state, filters, CRUD, pagination
+- `EvidenceFilterBar.tsx` — filter chips, dropdowns, sort (~100 lines)
+- `EvidenceCreateForm.tsx` — create form with attribute/type pickers (~90 lines)
+- `EvidenceCard.tsx` — read/edit card per evidence (~100 lines)
+- `EvidenceTab.tsx` — slim orchestrator with ConfirmDialog (~130 lines)
+- `EntityEditorModal.tsx` — tab system (Attributes / Evidences), footer hidden on evidences tab, evidence count updated locally
+
+**Tests:** `infra/test-evidence-browser.sh` — 30+ assertions covering CRUD, filters, sort, pagination, language fallback, validation.
+
+**Review:** 11 issues found and fixed: available_attributes only showing attrs with evidences (critical), browser confirm() → ConfirmDialog, shared saving state split, double-fetch eliminated, footer hidden on wrong tab, full entity reload → local count update, 546-line component split into 4 modules, hardcoded languages → dynamic, redundant type badge, filter queries on every page, correlated subqueries → LEFT JOIN.
+
+Commits: `3b06f7e` (implementation), `67cf138` (11 review fixes).
+
+### Part F — Inline Attribute Translation Editor (session 35)
+
+The entity editor had no UI for viewing or editing attribute translations despite full backend CRUD support. Added inline translation editing:
+
+**No backend changes needed** — `POST/PATCH/DELETE .../translations` endpoints already existed.
+
+**Frontend:**
+- `AttrTranslationRow.tsx` (NEW, ~165 lines) — per-attribute inline translation editor: auto-detects create vs update, confidence selector (draft/verified/machine) with colored styles, ConfirmDialog for delete, save/discard/delete buttons appear contextually
+- `AttrCard.tsx` — added `translationSlot` and `hasTranslations` props; blue dot indicator for attributes with translations
+- `EntityEditorModal.tsx` — language selector in tab bar (right-aligned, only visible on attributes tab), "Add language..." option with BCP-47 validation, `bookOriginalLanguage` included in dropdown, cards go full-width only when they have a translation slot (short fields without one stay 2-col), stable useMemo dependency for available languages
+- `glossary/api.ts` — added `createTranslation()`, `patchTranslation()`, `deleteTranslation()` methods
+
+**Review:** 8 issues found and fixed: redundant confidence badge removed, new language BCP-47 validation, language selector hidden on evidences tab, ConfirmDialog for delete, bookOriginalLanguage in dropdown, narrowed useMemo dependency, smarter grid layout, per-attribute translation indicator dot.
+
+Commit: `fa36e99`.
+
 ---
 
 ## 2. Known Issues / Open Items
@@ -140,30 +181,11 @@ Two follow-up tasks created:
 
 ## 3. What to Do Next Session
 
-### Priority 1 — G-EV-1: Glossary FE evidence browser (pre-requisite for KS)
+### Priority 1 — Begin Knowledge Service implementation (Track 1 K0)
 
-**Why first:** Knowledge-service task K11.10 (Track 2) now has a dependency on G-EV-1 because KS-EV-1 will create evidence rows automatically — those rows must be visible in the glossary UI for reviewers to actually use them during draft approval. Building KS first would create data that has no UI.
+**G-EV-1 and translation editor are COMPLETE.** All glossary editor prerequisites for the knowledge service are shipped.
 
-**Scope (FE-only, no backend changes needed):**
-1. Find where the current evidence count is displayed in `frontend/src/features/glossary/` and locate the entity detail component
-2. Build an evidence browser modal or side panel that iterates the already-nested `attribute_values[].evidences[]` array from the entity detail API response
-3. Render cards per evidence: `chapter_title`, `block_or_line`, `evidence_type` badge, `original_text` (expandable), `translations[]` with confidence badges, `created_at`
-4. Add filters: `evidence_type` (quote/summary/reference), `chapter_title` (dropdown from unique values), `original_language`
-5. Add sort: `created_at`, `chapter_title`, `block_or_line`
-6. Add client-side pagination (evidence arrays typically <100 per attr — fallback to server-side only if any exceeds 500)
-7. Wire the "X evidence" count chip in the entity editor to open the browser
-8. Smoke test with real data using the test account
-
-**Files to expect:**
-- `frontend/src/features/glossary/components/EvidenceBrowser.tsx` (NEW)
-- `frontend/src/features/glossary/components/EntityEditor.tsx` (MODIFIED — wire the chip)
-- Possibly `frontend/src/features/glossary/hooks/useEvidenceFilter.ts` (NEW — filter/sort logic if complex)
-
-**Estimate:** 2-3 days following the 9-phase task workflow.
-
-### Priority 2 — Begin Knowledge Service implementation (Track 1 K0)
-
-After G-EV-1 ships, start Track 1 from the beginning. Track 1 (K0-K9) builds "Static Memory" — plain-text L0 + L1 bios, no extraction, no Neo4j, zero AI cost. This gets the service scaffolding in place without any of the extraction complexity.
+Start Track 1 from the beginning. Track 1 (K0-K9) builds "Static Memory" — plain-text L0 + L1 bios, no extraction, no Neo4j, zero AI cost. This gets the service scaffolding in place without any of the extraction complexity.
 
 Read in order:
 1. `docs/03_planning/KNOWLEDGE_SERVICE_ARCHITECTURE.md` §1-4 (problem, scope, schemas, memory stack)
@@ -172,7 +194,7 @@ Read in order:
 
 Track 1 completion gives you: `knowledge-service` Python/FastAPI scaffolding, Postgres migrations for `knowledge_projects` / `knowledge_summaries` / `extraction_pending` / `extraction_jobs`, `/internal/context/build` endpoint returning L0+L1 plain text, chat-service integration via `useKnowledgeContext`. No AI cost, no Neo4j, no embedding model — that's Track 2.
 
-### Priority 3 — Then Track 2 K10 onward
+### Priority 2 — Then Track 2 K10 onward
 
 Only after Track 1 works end-to-end. Track 2 requires D2/D3 from the data re-engineering plan (Neo4j setup + event pipeline). Check `docs/03_planning/101_DATA_RE_ENGINEERING_PLAN.md` for prerequisites before starting K10.
 
@@ -201,6 +223,22 @@ Only after Track 1 works end-to-end. Track 2 requires D2/D3 from the data re-eng
 - `docs/03_planning/KNOWLEDGE_SERVICE_TRACK2_IMPLEMENTATION.md` — 2380+ lines (NEW, extended with anchor pattern + K11.10 + K13.0/K13.1)
 - `docs/03_planning/KNOWLEDGE_SERVICE_TRACK3_IMPLEMENTATION.md` — 1968 lines (NEW)
 - `design-drafts/screen-knowledge-service.html` — 1767+ lines (NEW)
+
+### Backend (glossary-service, session 35)
+- `services/glossary-service/internal/api/evidence_handler.go` — NEW list endpoint + patched create/update for chapter_index
+- `services/glossary-service/internal/migrate/migrate.go` — `chapter_index` column migration
+
+### Frontend (glossary editor, session 35)
+- `components/entity-editor/EvidenceTab.tsx` — rewritten as slim orchestrator (~130 lines)
+- `components/entity-editor/useEvidenceList.ts` — NEW hook for evidence state/CRUD
+- `components/entity-editor/EvidenceFilterBar.tsx` — NEW filter/sort bar
+- `components/entity-editor/EvidenceCreateForm.tsx` — NEW create form
+- `components/entity-editor/EvidenceCard.tsx` — NEW read/edit card
+- `components/entity-editor/AttrTranslationRow.tsx` — NEW inline translation editor
+- `components/entity-editor/AttrCard.tsx` — added translationSlot + hasTranslations indicator
+- `components/entity-editor/EntityEditorModal.tsx` — tab system, language selector, translation wiring
+- `features/glossary/api.ts` — translation CRUD methods + evidence list methods
+- `features/glossary/types.ts` — EvidenceList*, available_languages types
 
 ### Project-level
 - `CLAUDE.md` — Frontend Architecture Rules section added; knowledge-service row annotated with two-layer pattern; note that wiki lives inside glossary-service
@@ -253,4 +291,4 @@ name:     Claude Test
 
 ---
 
-*Session 34: 22 commits. Chat page MVC refactor + knowledge service design end-to-end (architecture + 3 Track plans + UI mockup + two-layer anchoring pattern validated by research). Implementation starts next session with G-EV-1, then Track 1 K0.*
+*Sessions 34-35: 25 commits. Chat page MVC refactor + knowledge service design end-to-end (architecture + 3 Track plans + UI mockup + two-layer anchoring pattern validated by research). Session 35: G-EV-1 evidence browser (full-stack + 11 review fixes) + inline attribute translation editor (+ 8 review fixes). Next session starts Track 1 K0.*

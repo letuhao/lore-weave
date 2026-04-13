@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-13 (session 35 — G-EV-1 glossary evidence browser)
-- Updated By: Assistant (G-EV-1: evidence browser full-stack implementation)
+- Last Updated: 2026-04-13 (session 35 — G-EV-1 + translation editor + review fixes)
+- Updated By: Assistant (G-EV-1 evidence browser + inline translation editor)
 - Active Branch: `main`
-- HEAD: pending commit (G-EV-1)
+- HEAD: `fa36e99` — inline attribute translation editor with review fixes
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V6.md` — full context for next agent
 
 ---
@@ -47,10 +47,17 @@
 - **Wiki is inside glossary-service**, not a separate service (`wiki_articles`, `wiki_revisions`, `wiki_suggestions` tables). KS proposes stubs via existing `/wiki/generate` endpoint — no duplicate storage.
 - **Evidence storage**: existing `glossary.evidences` table already stores rich per-attribute provenance (chapter_id, block_or_line, evidence_type, original_text, translations, confidence). API returns nested array. **G-EV-1 COMPLETE** — evidence browser tab in entity editor with server-side pagination, filters, sort, language fallback, full CRUD.
 
-**G-EV-1: Glossary Evidence Browser — COMPLETE (session 35)**
-- **BE:** `chapter_index` column on evidences, `GET /entities/{id}/evidences` (pagination, filters, sort, language fallback), `createEvidence` accepts `chapter_index`, `updateEvidence` supports evidence_type/chapter_id/title/index patching
-- **FE:** Tab system in EntityEditorModal (Attributes / Evidences), EvidenceTab with filter chips (type/attribute/chapter), language selector, sort, pagination, inline edit + create + delete, evidence count badge switches tab
+**G-EV-1: Glossary Evidence Browser — COMPLETE + REVIEWED (session 35)**
+- **BE:** `chapter_index` column on evidences, `GET /entities/{id}/evidences` (pagination, filters, sort, language fallback via LEFT JOIN, dynamic `available_languages`), `createEvidence` accepts `chapter_index`, `updateEvidence` supports evidence_type/chapter_id/title/index patching. Filter options only queried on first page (offset=0). Available attributes query returns ALL entity attrs (not just those with existing evidences).
+- **FE:** Tab system in EntityEditorModal (Attributes / Evidences), EvidenceTab split into 4 focused modules (useEvidenceList hook, EvidenceFilterBar, EvidenceCreateForm, EvidenceCard — all under ~200 lines). ConfirmDialog for delete, separate edit/create saving state, no double-fetch on filter change, footer hidden on evidences tab, evidence count updated locally.
 - **Tests:** `infra/test-evidence-browser.sh` — 30+ assertions (CRUD, filters, sort, pagination, language fallback, validation)
+- **Review:** 11 issues found and fixed (1 critical, 6 high, 4 medium). Commits: `3b06f7e` (impl), `67cf138` (review fixes).
+
+**Inline Attribute Translation Editor — COMPLETE + REVIEWED (session 35)**
+- **No backend changes** — CRUD endpoints already existed (`POST/PATCH/DELETE .../translations`), frontend API layer was missing.
+- **FE:** Language selector in entity editor tab bar (right side), AttrTranslationRow component renders inline below each attribute card when a language is selected. Per-attribute save (create/update/delete). Confidence selector (draft/verified/machine). Blue dot indicator on attributes that have translations. BCP-47 validation for new language codes. `bookOriginalLanguage` included in dropdown.
+- **Review:** 8 issues found and fixed (4 high, 4 medium). Commit: `fa36e99`.
+- **API methods added:** `glossaryApi.createTranslation()`, `patchTranslation()`, `deleteTranslation()`.
 
 **Next priority:** Start Knowledge Service Track 1 K0. Read `docs/03_planning/KNOWLEDGE_SERVICE_TRACK1_IMPLEMENTATION.md` in order.
 
