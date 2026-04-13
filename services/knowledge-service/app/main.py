@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.clients.glossary_client import close_glossary_client, init_glossary_client
 from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pools, create_pools, get_knowledge_pool
@@ -20,10 +21,13 @@ async def lifespan(app: FastAPI):
     # Fail-fast: if either pool cannot be created, raise and stop startup.
     await create_pools(settings.knowledge_db_url, settings.glossary_db_url)
     await run_migrations(get_knowledge_pool())
+    # Long-lived httpx client for glossary-service calls (K4b).
+    init_glossary_client()
     logger.info("knowledge-service started on port %d", settings.port)
     try:
         yield
     finally:
+        await close_glossary_client()
         await close_pools()
         logger.info("knowledge-service stopped")
 

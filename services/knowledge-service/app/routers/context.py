@@ -5,13 +5,13 @@ require_internal_token dependency gates access. Trusts the caller's
 user_id and project_id (chat-service validates JWT + project ownership
 before issuing this call).
 
-The endpoint is deliberately thin: request validation → repo dependency
-injection → builder dispatch → response marshalling. All the heavy
-lifting is in app.context.*.
+The endpoint is deliberately thin: request validation → repo + client
+dependency injection → builder dispatch → response marshalling. All
+the heavy lifting is in app.context.*.
 
-Repositories are supplied via FastAPI `Depends(...)` so tests can
-override them with `app.dependency_overrides[get_summaries_repo]`
-instead of monkey-patching module globals.
+Dependencies are supplied via FastAPI Depends so tests can override
+them with `app.dependency_overrides[...]` instead of monkey-patching
+module globals.
 """
 
 import logging
@@ -20,8 +20,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.context.builder import build_context
+from app.clients.glossary_client import GlossaryClient
+from app.clients.glossary_client import get_glossary_client as _get_glossary_client_singleton
+from app.context.builder import ProjectNotFound, build_context
 from app.db.pool import get_knowledge_pool
+from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.summaries import SummariesRepo
 from app.middleware.internal_auth import require_internal_token
 
@@ -38,12 +41,15 @@ router = APIRouter(
 
 
 async def get_summaries_repo() -> SummariesRepo:
-    """FastAPI dependency returning a SummariesRepo bound to the live pool.
-
-    Tests substitute this via `app.dependency_overrides[get_summaries_repo]`
-    without touching the module-level `_knowledge_pool` global.
-    """
     return SummariesRepo(get_knowledge_pool())
+
+
+async def get_projects_repo() -> ProjectsRepo:
+    return ProjectsRepo(get_knowledge_pool())
+
+
+async def get_glossary_client() -> GlossaryClient:
+    return _get_glossary_client_singleton()
 
 
 # ── request / response models ──────────────────────────────────────────────
@@ -53,9 +59,9 @@ class ContextBuildRequest(BaseModel):
     user_id: UUID
     session_id: UUID | None = None
     project_id: UUID | None = None
-    # User's current message — unused in Mode 1, consumed by Mode 2+ for
-    # glossary FTS. 4k char cap fits legitimate chat turns without giving
-    # callers a silent DoS knob.
+    # User's current message — used as the glossary FTS query in Mode 2.
+    # 4k char cap fits legitimate chat turns without giving callers a
+    # silent DoS knob.
     message: str = Field(default="", max_length=4000)
 
 
@@ -74,13 +80,27 @@ class ContextBuildResponse(BaseModel):
 @router.post("/build", response_model=ContextBuildResponse)
 async def build(
     req: ContextBuildRequest,
-    repo: SummariesRepo = Depends(get_summaries_repo),
+    summaries_repo: SummariesRepo = Depends(get_summaries_repo),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    glossary_client: GlossaryClient = Depends(get_glossary_client),
 ) -> ContextBuildResponse:
     try:
-        built = await build_context(repo, req.user_id, req.project_id)
+        built = await build_context(
+            summaries_repo,
+            projects_repo,
+            glossary_client,
+            user_id=req.user_id,
+            project_id=req.project_id,
+            message=req.message,
+        )
+    except ProjectNotFound:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="project not found",
+        )
     except NotImplementedError as exc:
-        # K4a only implements Mode 1. Mode 2 lands in K4b; until then
-        # chat-service gets a clear 501 and falls back to plain replay.
+        # Mode 3 (full extraction) is Track 2 scope. chat-service gets
+        # a clear 501 and falls back to plain replay.
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail=str(exc),

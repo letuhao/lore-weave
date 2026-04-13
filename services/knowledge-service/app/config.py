@@ -13,5 +13,10 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     port: int = 8092
 
+    # K4b — glossary-service HTTP client for Mode 2 fallback selector.
+    glossary_service_url: str = "http://glossary-service:8088"
+    glossary_client_timeout_s: float = 0.5
+    glossary_client_retries: int = 1
+
 
 settings = Settings()
