@@ -7,11 +7,12 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-13 (session 36 — Knowledge Service K0 through K4b)
-- Updated By: Assistant (K0 scaffold + K1 schema/repos + K2a/b glossary cache/pin/FTS + K3 shortdesc + K4 context builder Mode 1+2)
+- Last Updated: 2026-04-13 (session 36 — Knowledge Service K0 through K4 COMPLETE, all reviews + all defers cleared)
+- Updated By: Assistant (5 of 9 Track 1 phases done — K0 scaffold + K1 schema/repos + K2 glossary cache/pin/FTS + K3 shortdesc + K4 context builder Mode 1+2 + entity extractor + dedup, every phase reviewed and review fixes shipped, K4 all 9 deferrals cleared)
 - Active Branch: `main`
-- HEAD: `f89cde5` — K4b context builder Mode 2 + glossary client
+- HEAD: `171574b` — K4 deferred fixes (I6-I9) + CLAUDE.md no-defer-drift policy
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V6.md` — full context for next agent
+- **Session 36 commit count:** 20 commits (knowledge-service + glossary-service + CLAUDE.md)
 
 ---
 
@@ -60,6 +61,15 @@
 |---|---|---|
 | (K4.3) | K4b | Implemented in K4c — was mis-classified as defer; actually a Mode 2 FTS quality bug |
 | (K4.12) | K4b | Implemented in K4c — no-deadline policy: if we can do it now, we do it |
+| K4-I1 | K4 review | Init-glossary-client double-init guard (idempotent return) — commit `6ac161b` |
+| K4-I2 | K4 review | Per-candidate K2b limit divides max_entities across calls + cushion — commit `6ac161b` |
+| K4-I3 | K4 review | Shared `app/context/formatters/stopwords.py` — both stopword sets centralised — commit `6ac161b` |
+| K4-I4 | K4 review | Glossary client logs ONE consolidated warning per failed call instead of per-attempt — commit `6ac161b` |
+| K4-I5 | K4 review | Removed dead `self._token` field on `GlossaryClient` — commit `6ac161b` |
+| K4-I6 | K4 review | `extract_candidates` now distinguishes article stopphrases — pushes both `"The Wanderer"` AND `"Wanderer"` — commit `171574b` |
+| K4-I7 | K4 review | `dedup.min_overlap` plumbed through `settings.dedup_min_overlap` — commit `171574b` |
+| K4-I8 | K4 review | `gc` pytest fixture replaces manual `aclose()` in glossary client tests — commit `171574b` |
+| K4-I9 | K4 review | `AsyncMock(spec=GlossaryClient)` / `AsyncMock(spec=SummariesRepo)` catch signature drift — commit `171574b` |
 
 ---
 
@@ -88,6 +98,94 @@
 **Glossary Extraction Pipeline: FULLY COMPLETE (BE + FE + TESTED).** 13 BE tasks + 7 FE tasks + 49 integration test assertions + browser smoke test. Tested with real Qwen 3.5 9B model via LM Studio. 90 entities extracted from 5 chapters.
 
 **Voice Pipeline V2: COMPLETE + DEBUGGED + REFACTORED.** All 48 tasks + 5 analytics tasks. V1 code cleaned up (1576 lines deleted). Pipeline state machine added. **Chat page re-architected** (session 34): MVC separation, ChatSessionContext + ChatStreamContext split by update frequency, ChatView replaces ChatWindow (never unmounts), useVoiceAssistMic unified with VadController + backend STT. Voice Assist button now wired end-to-end with backend STT + backend TTS (audio stored in S3 for replay).
+
+**Knowledge Service: K0 + K1 + K2 + K3 + K4 ALL COMPLETE.** (Session 36 — 5 of 9 Track 1 phases done, every phase reviewed and review-fixed, all K4 deferrals cleared)
+
+> Below is one growing section per phase, newest first. Each phase is followed by its review and any deferred-fix commits. Tests at end of session: **131/131 passing** (knowledge-service); glossary-service tests also passing after K2/K3 changes.
+
+### K4 — Context Builder (Mode 1 + Mode 2) ✅
+
+**Five commits across three sub-phases (a/b/c) + two review-fix commits.** Knowledge-service now exposes `POST /internal/context/build` that chat-service will call (in K5) before every LLM turn to inject a memory block into the system prompt.
+
+- **K4a (commits `21e0a16`, `00994c3`):** foundations + Mode 1 (no project)
+  - K4.1 `app/context/formatters/xml_escape.py` — `sanitize_for_xml()` strips C0/C1 controls, lone surrogates (U+D800..U+DFFF), Unicode noncharacters (U+FFFE/U+FFFF), then HTML-entity-escapes. Mandatory helper for any memory-block construction.
+  - K4.2 `app/context/formatters/token_counter.py` — `len/4` heuristic (Track 2 will swap for tiktoken — `D-T2-01`).
+  - K4.5 `app/context/selectors/summaries.py` — `load_global_summary` thin wrapper on `SummariesRepo`.
+  - K4.7 `app/context/modes/no_project.py` — Mode 1 builder. XML: `<memory mode="no_project">` with optional `<user>` and required `<instructions>`. Two instruction variants — with-bio references "the `<user>` element above"; no-bio says "user has not provided any global bio" (review fix K4a-I3 caught the misleading "above" text).
+  - K4.10 `app/context/builder.py` — `build_context()` dispatcher (K4a only handled Mode 1; K4b extended for Mode 2).
+  - K4.11 `app/routers/context.py` — `POST /internal/context/build`. FastAPI dependency injection (`get_summaries_repo`, K4a-I4) replaced K4a's first-pass module-global monkey-patching. `ContextBuildResponse.model_validate(built, from_attributes=True)` (K4a-I5) eliminates manual field-copy from dataclass.
+  - **K4a review fixes (8 issues):** I1 strip surrogates, I2 strip Unicode noncharacters (regression test pipes through `xml.etree.ElementTree`), I3 instruction text branches on L0 presence, I4 FastAPI DI replaces `_knowledge_pool` monkey-patch, I5 `model_validate(from_attributes=True)`, I6 `message` max_length 10000 → 4000, I7 surrogate test cases, I8 Mode 2 test parses JSON envelope.
+
+- **K4b (commit `f89cde5`):** Mode 2 (static, project linked, extraction off)
+  - K4b.0 — `glossary_service_url`, `glossary_client_timeout_s`, `glossary_client_retries` in `Settings`. `respx>=0.22` added to `requirements-test.txt` for HTTP mocking.
+  - K4.4 `app/clients/glossary_client.py` — long-lived `httpx.AsyncClient` wrapper around K2b's `POST /internal/books/{id}/select-for-context`. Lifespan-managed via `init_glossary_client()` / `close_glossary_client()` in `app/main.py`. **Graceful degradation contract**: every failure path (timeout, transport error, 5xx, 4xx, decode error, unexpected shape, row validation) returns `[]` and never raises — chat keeps working when glossary-service is unavailable. `GlossaryEntityForContext` Pydantic model mirrors K2b's Go response with `extra="ignore"` for forward compat.
+  - K4.6 `app/context/selectors/projects.py` — `load_project` and `load_project_summary` thin wrappers on existing repos.
+  - K4.8 `app/context/selectors/glossary.py` — `select_glossary_for_context` orchestrator. Handles `book_id IS NULL` → `[]`, glossary-down → `[]`, empty result → `[]`.
+  - K4.9 `app/context/modes/static.py` — Mode 2 builder. XML structure: `<memory mode="static">` with optional `<user>` (L0), required `<project name="...">` containing optional `<instructions>` and optional `<summary>` (L1), optional `<glossary>` containing one `<entity kind="" tier="" score="">` per row, and required mode-level `<instructions>`. All content XML-escaped via `sanitize_for_xml()`.
+  - K4.10 dispatcher extension — fetches project, raises `ProjectNotFound` (→ 404) if missing/cross-user, raises `NotImplementedError` (→ 501) if `extraction_enabled=true`. New `ProjectNotFound` domain exception in `app/context/builder.py`.
+  - K4.11 router updates — added `get_projects_repo` and `get_glossary_client` FastAPI deps, threaded `message` through, mapped `ProjectNotFound` → 404.
+
+- **K4c (commit `6059d45`):** entity candidate extractor + cross-layer L1/glossary dedup. **K4.3 was originally classified as a defer but turned out to be a Mode 2 quality bug.**
+  - **K4.3 — `extract_candidates(message)` in `selectors/glossary.py`.** The original K4b sent the raw user message to K2b as the FTS query. K2b uses `plainto_tsquery('simple', query)` which **AND-combines every token**. For "tell me about Alice", the query becomes `tell & me & about & alice` — fails because the entity vector for Alice contains only `alice`, missing `tell`/`me`/`about`. So natural-language queries hit the recent-fallback path in K2b, not the exact tier. K4.3 fixes this by extracting proper-noun candidates and issuing one parallel K2b call per candidate. Three regex passes: (1) double/single-quoted strings (trusted, no stripping), (2) English capitalized phrases 1-3 words (with leading verb-stopphrase strip and last-token push for "Master Lin" → also "Lin"), (3) CJK runs of 2+ chars secondarily split on common particles (的, 是, 了, ...). Articles ("the", "a", "an") get special handling — push BOTH "The Wanderer" AND "Wanderer" so K2b can match either (K4-I6 review fix). Verb-led phrases like "Is Mary-Anne" still get the leading "Is" stripped because verbs are never names.
+  - **K4.12 — `app/context/formatters/dedup.py` `filter_entities_not_in_summary()`.** Drops glossary entries whose ≥4-char keyword overlap with the L1 summary crosses `min_overlap=2` distinct tokens (default tunable via `settings.dedup_min_overlap`, K4-I7 review fix). Pinned entities never dropped. Conservative — better to leave a redundant entry than wrongly drop one. CJK 2+ char runs counted alongside Latin tokens.
+  - Wired into `static.py` after the glossary call, before XML emission.
+  - **SESSION_PATCH "Deferred Items" tracking section added** (this section!) so future deferrals don't drift out of mind. CLAUDE.md updated with the "No Deadline · No Defer Drift" policy in commit `171574b`.
+
+- **K4 review fixes (commits `6ac161b`, `171574b`):** 9 issues found across K4 (a+b+c) — all fixed.
+  - K4-I1: `init_glossary_client()` idempotent guard against connection-pool leak on double-init
+  - K4-I2: per-candidate K2b limit divides `max_entities` across parallel calls (`per_call = max(5, max // N + 2)`) — was over-fetching by ~5×
+  - K4-I3: shared `app/context/formatters/stopwords.py` (`STOPPHRASES_LOWER`, `KEYWORD_STOPWORDS_LOWER`, `CJK_PARTICLES`, `ARTICLE_STOPPHRASES`) replaces two drifting copies
+  - K4-I4: glossary client logs ONE warning per failed call (not per retry attempt) — eliminates outage log spam
+  - K4-I5: dead `self._token` field removed
+  - K4-I6: article-prefixed names preserved in candidate extraction
+  - K4-I7: `dedup.min_overlap` plumbed through `settings.dedup_min_overlap`
+  - K4-I8: `gc` pytest fixture for glossary client teardown — no manual `aclose()` leakage on test failure
+  - K4-I9: `AsyncMock(spec=GlossaryClient)` / `AsyncMock(spec=SummariesRepo)` catches signature drift
+
+**Tests after K4 (knowledge-service):** **131/131 green** — 76 unit + 55 integration. New tests since K3: 27 xml_escape (incl. surrogate regression), 8 token_counter, 5 no_project_mode, 8 glossary_client (incl. init-idempotent + log-once regressions), 7 static_mode, 17 candidate_extraction, 11 dedup, 5 glossary_selector_budget, 9 context_build endpoint integration.
+
+**Runtime smoke verified end-to-end through docker:** K4a Mode 1 (with/without L0, XML escape, 501 on Mode 2), K4b Mode 2 (with real glossary-service call, ProjectNotFound → 404, extraction_enabled → 501, project without book → no glossary), K4c (un-pinned Alice retrieved via exact tier proving K4.3 fixed the FTS bug, CJK 李雲 retrieved end-to-end, L1 summary mentioning Alice → glossary entry dropped via K4.12 dedup, token count 163 → 144 even though L1 was added).
+
+---
+
+### K3 — Short Description Auto-Generator ✅
+
+**Two commits (`2a7a76d`, `ecf9b6d`).** Glossary-service-side feature in Go.
+
+- **K3.0 — `short_description_auto BOOLEAN NOT NULL DEFAULT true`** column added to `glossary_entities` via new `UpShortDescAuto` migration step. Should have shipped with K2a but K2a was already merged.
+- **K3.1 — `internal/shortdesc/generator.go`.** Pure Go function `Generate(name, description, kindName, maxChars)`. CJK-safe (rune-counting, not byte-counting). Three-rule strategy: empty description → fallback `"{kindName}: {name}"` (with explicit 4-way switch handling all permutations of empty name/kind, K3-I6 fix), first-sentence ≤ maxChars → return first sentence (terminators: `.!?。！？`), otherwise truncate at last word boundary + `…` (one-rune ellipsis). 19 unit tests cover ASCII, CJK, hyphenated, mixed, length invariants.
+- **K3.2 — `migrate.BackfillShortDescription`.** Iterates entities with NULL `short_description` AND `auto=true`, joins EAV directly for `name` (K3-I2 fix — don't rely on `cached_name` which may be NULL for untriggered rows), runs the generator, writes back via CAS-guarded UPDATE. **Cursor-based pagination on `entity_id > $cursor`** (K3-I1 fix) so the loop always makes forward progress even if a row's UPDATE returns 0 affected — eliminates a latent infinite-loop path. Honours `ctx.Err()` between batches AND between per-row UPDATEs (K3-I4 fix). Run in a background goroutine from `cmd/glossary-service/main.go` after the HTTP listener comes up, with parent ctx wired from `signal.NotifyContext`.
+- **K3.3a — `patchEntity` flips `short_description_auto = false`** when the user supplies `short_description` directly. Sticky override.
+- **K3.3b — `patchAttributeValue` regen hook.** When the patched attribute's `code = 'description'` AND the entity's `short_description_auto = true`, calls `regenerateAutoShortDescription(ctx, entityID)` which fetches name/desc/kind from EAV, runs the generator, and writes back guarded by `WHERE short_description_auto = true` (race protection). Errors are now logged via `slog.Warn` with entity_id (K3-I3 fix).
+- **K3 review fixes (6 issues):** K3-I1 cursor-based backfill (latent infinite-loop fix with regression test using a pathological `func() string { return "" }` generator that must terminate within 3s), K3-I2 backfill SELECT joins EAV for name, K3-I3 regen error logged, K3-I4 ctx threaded into goroutine, K3-I6 generator fallback switch fixes "character:" trailing-colon bug, K3-I7 dead whitespace-walk loop in `firstSentence` removed.
+
+**Tests after K3 (glossary-service):** 19 generator unit tests + 6 K3 integration tests (schema column, backfill populates Latin/CJK/empty-desc/auto-false-skip, backfill idempotent, cursor forward-progress, auto-regen on description update, sticky override). All pass.
+
+**Runtime smoke verified:** seeded 3 entities (Latin + CJK + long-no-terminator), restarted glossary-service, logs showed `"backfill short-description complete processed=3"`, DB query confirmed all populated correctly. Then full HTTP round-trip with claude-test account: PATCH description → auto-regen → "A brilliant scholar.", user PATCH `short_description="USER-WRITTEN OVERRIDE"` → `auto=false`, PATCH description AGAIN → user value preserved (sticky override).
+
+---
+
+### K2 — Glossary Schema Additions ✅
+
+**Four commits (`0122206`, `7405869`, `dd3d293`, `ccca20b`).** Glossary-service-side, split into K2a (schema + cache + pin endpoints) and K2b (internal FTS tiered selector + auth middleware).
+
+- **K2b — `POST /internal/books/{book_id}/select-for-context`** (commit `dd3d293`, review fixes `ccca20b`). Tiered glossary selector used by knowledge-service's L2 fallback (KSA §4.2.5). Sequential tiers with running dedupe + budget gate:
+  - Tier 0 `pinned` — `is_pinned_for_context = true`, cap 10
+  - Tier 1 `exact` — `lower(cached_name) = lower(query)` OR query in `cached_aliases` (case-insensitive)
+  - Tier 2 `fts` — `search_vector @@ plainto_tsquery('simple', query)` ordered by `ts_rank` (only runs when query non-empty)
+  - Tier 3 `recent` — `ORDER BY updated_at DESC` fallback. **Only runs when (a) no query was given OR (b) query produced zero results** (K2b-I1 review fix — was originally pulling random recent entries even for satisfied queries, polluting the LLM context).
+  - All tiers filter by `book_id + deleted_at IS NULL + NOT ANY(exclude_ids)`. `exclude_ids` accumulates across tiers via a deterministic parallel `excludedList` slice (K2b-I3 review fix — was originally rebuilt from a Go map per tier with non-deterministic order).
+  - `dedupeCushion = 5` added to per-tier LIMIT to absorb dedupe overlap (K2b-I4 review fix).
+  - **`requireInternalToken` middleware was already present** in glossary-service from earlier work — K2.5 was effectively already done.
+  - **Bonus bug caught by tests during refactor:** `append([]uuid.UUID(nil), excluded...)` for an empty exclude list returned `nil`, which pgx serialised as SQL `NULL`, and `NOT (entity_id = ANY(NULL::uuid[]))` evaluates to NULL for every row → filters ALL rows. Fixed with explicit `make([]uuid.UUID, 0, ...)`.
+
+- **K2a — Schema additions for L2 fallback** (commit `0122206`, review fixes `7405869`). Already documented in detail below — see "K0 + K1 + K2a COMPLETE" section.
+
+**Tests after K2 (glossary-service):** 11 K2a integration tests + 15 K2b integration tests (including 3 added on K2b review for tier-priority, recent-skipped-when-matched, recent-fallback-when-zero-hits). All pass.
+
+**Runtime smoke verified for K2b:** 50-entity seed with mixed pinned + un-pinned + CJK + Latin + dragon-shared-FTS-tokens. ~50ms p50 latency through HTTP for the tiered selector. Zero duplicates under aggressive tier overlap. Real `ts_rank` floats (0.0608) for FTS hits while pinned stays 1.0.
+
+---
 
 **Knowledge Service: K0 + K1 + K2a COMPLETE (Gates 1/2/3 passed).** (Session 36)
 - **K2a — Glossary schema additions for L2 fallback (Gate 3 passed).** New columns on `glossary_entities` in `loreweave_glossary`: `short_description TEXT`, `is_pinned_for_context BOOLEAN NOT NULL DEFAULT false`, `cached_name TEXT`, `cached_aliases TEXT[] NOT NULL DEFAULT '{}'`, `search_vector tsvector` (plain column, not GENERATED). GIN index `idx_ge_search_vector` on search_vector; partial index `idx_ge_pinned_book` on `(book_id) WHERE is_pinned_for_context AND deleted_at IS NULL`.
@@ -150,7 +248,9 @@
 - **Review:** 8 issues found and fixed (4 high, 4 medium). Commit: `fa36e99`.
 - **API methods added:** `glossaryApi.createTranslation()`, `patchTranslation()`, `deleteTranslation()`.
 
-**Next priority:** K0 + K1 + K2a done (this session). Continue at **K2b** — internal FTS tiered selector endpoint (`POST /internal/glossary/select-for-context`) + internal-auth middleware for `/internal/*` routes in glossary-service. Read `docs/03_planning/KNOWLEDGE_SERVICE_TRACK1_IMPLEMENTATION.md` §6 K2.4/K2.5.
+**Next priority:** K0 + K1 + K2 + K3 + K4 ALL done (5 of 9 Track 1 phases). Continue at **K5** — chat-service integration. chat-service calls `POST /internal/context/build` before every LLM turn and injects the returned memory block into the system prompt, with graceful degradation if knowledge-service is unavailable. Naturally clears two more deferrals from the tracking list: `D-K4a-01` (RECENT_MESSAGE_COUNT config — chat-service owns the replay budget) and `D-K4a-02` (500 response correlation id — chat-service becomes the first real caller). Read `docs/03_planning/KNOWLEDGE_SERVICE_TRACK1_IMPLEMENTATION.md` §9 (K5.1 through K5.x).
+
+Before starting K5, the agent must read the **Deferred Items** section above. Any row whose `Target phase` is `K5` is a must-do for K5.
 
 Phases completed:
 - **A: Core Pipeline (11)** — TextNormalizer, SentenceBuffer, voice_stream_response, POST /voice-message, VoiceClient, VadController, useVoiceChat, VoiceChatOverlay
