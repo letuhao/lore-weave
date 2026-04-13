@@ -25,13 +25,14 @@ async function bootstrap() {
   const videoGenUrl = requireEnv('VIDEO_GEN_SERVICE_URL');
   const statisticsUrl = requireEnv('STATISTICS_SERVICE_URL');
   const notificationUrl = requireEnv('NOTIFICATION_SERVICE_URL');
-  configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl, glossaryUrl, chatUrl, videoGenUrl, statisticsUrl, notificationUrl });
+  const knowledgeUrl = requireEnv('KNOWLEDGE_SERVICE_URL');
+  configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl, glossaryUrl, chatUrl, videoGenUrl, statisticsUrl, notificationUrl, knowledgeUrl });
 
   app.enableShutdownHooks();
   const port = parseInt(process.env.PORT || '3000', 10);
   await app.listen(port);
   console.log(
-    `api-gateway-bff listening on :${port} auth=${authUrl} books=${bookUrl} sharing=${sharingUrl} catalog=${catalogUrl} provider_registry=${providerRegistryUrl} usage_billing=${usageBillingUrl} translation=${translationUrl} glossary=${glossaryUrl} chat=${chatUrl}`,
+    `api-gateway-bff listening on :${port} auth=${authUrl} books=${bookUrl} sharing=${sharingUrl} catalog=${catalogUrl} provider_registry=${providerRegistryUrl} usage_billing=${usageBillingUrl} translation=${translationUrl} glossary=${glossaryUrl} chat=${chatUrl} knowledge=${knowledgeUrl}`,
   );
 }
 bootstrap();

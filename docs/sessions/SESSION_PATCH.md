@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-13 (session 35 — G-EV-1 + translation editor + review fixes)
-- Updated By: Assistant (G-EV-1 evidence browser + inline translation editor)
+- Last Updated: 2026-04-13 (session 36 — Knowledge Service K0 scaffold)
+- Updated By: Assistant (knowledge-service K0: scaffold + Gate 1 smoke pass)
 - Active Branch: `main`
-- HEAD: `fa36e99` — inline attribute translation editor with review fixes
+- HEAD: `fa36e99` (pending new commit for K0)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V6.md` — full context for next agent
 
 ---
@@ -39,7 +39,20 @@
 
 **Voice Pipeline V2: COMPLETE + DEBUGGED + REFACTORED.** All 48 tasks + 5 analytics tasks. V1 code cleaned up (1576 lines deleted). Pipeline state machine added. **Chat page re-architected** (session 34): MVC separation, ChatSessionContext + ChatStreamContext split by update frequency, ChatView replaces ChatWindow (never unmounts), useVoiceAssistMic unified with VadController + backend STT. Voice Assist button now wired end-to-end with backend STT + backend TTS (audio stored in S3 for replay).
 
-**Knowledge Service: DESIGN COMPLETE — implementation not started.** (Session 34)
+**Knowledge Service: K0 SCAFFOLD COMPLETE (Gate 1 passed).** (Session 36)
+- New service `services/knowledge-service/` (Python 3.12 / FastAPI, pip + requirements.txt to match chat-service style).
+- Internal port **8092**, external **8216**, gateway route `/v1/knowledge/*`.
+- Files: `app/config.py` (Pydantic BaseSettings, fail-fast on missing `KNOWLEDGE_DB_URL` / `GLOSSARY_DB_URL` / `INTERNAL_SERVICE_TOKEN` / `JWT_SECRET`), `app/logging_config.py` (JSON logging via `python-json-logger`, `contextvars` trace_id, `RedactFilter` stripping `sk-*` and `Bearer *`), `app/db/pool.py` (two asyncpg pools: knowledge_pool RW + glossary_pool RO for FTS), `app/middleware/internal_auth.py` (`secrets.compare_digest` on `X-Internal-Token`), `app/middleware/trace_id.py` (Starlette middleware echoing `X-Trace-Id`), `app/routers/health.py` (GET /health pings both pools, 503 on failure), `app/routers/ping.py` (temporary K0-only `/v1/knowledge/ping` + `/internal/ping` — delete in K7), `Dockerfile` (python:3.12-slim mirrored from chat-service), `main.py` (lifespan creates/closes pools, sets up logging).
+- `infra/docker-compose.yml`: new `knowledge-service` service with healthcheck + json-file logging + depends_on postgres/redis/glossary-service; `api-gateway-bff` gets `KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092` and new depends_on.
+- `infra/db-ensure.sh`: appends `loreweave_knowledge` to auto-create list.
+- `services/api-gateway-bff/src/main.ts` + `gateway-setup.ts`: new `knowledgeUrl` env, `knowledgeProxy`, path-filter dispatch for `/v1/knowledge`. TS typecheck clean. `/internal/*` NOT exposed through gateway.
+- **Tests:** `tests/conftest.py` (env preload), `tests/unit/test_config.py` (3 tests — subprocess isolation for missing/present env + defaults sanity), `tests/unit/test_logging.py` (4 tests — redact filter, context filter, trace_id uniqueness), `tests/integration/test_internal_auth.py` (3 tests — 401 missing/wrong, 200 correct, using `monkeypatch.setattr` on live settings singleton). **10/10 pass, test order independent.**
+- **Review fixes (9 issues):** I1 Dockerfile non-root `app` user (uid 100); I2 test isolation via subprocess-per-test_config + conftest env preload + monkeypatch-on-singleton (previous suite passed only by Python import-caching accident); I3 pool.py cleans up knowledge_pool if glossary_pool creation raises; I4 health.py narrows `except` to `(asyncpg.PostgresError, asyncio.TimeoutError, OSError, RuntimeError)`; I5 uvicorn loggers (`uvicorn`, `uvicorn.error`, `uvicorn.access`) now capture the JSON formatter — entire stdout is JSON incl. access logs; I6 `TraceIdMiddleware` rewritten as pure ASGI middleware (no `BaseHTTPMiddleware`) — trace_id contextvar lives for full task lifetime and shows up in uvicorn access logs; I7 removed vestigial `env_file=".env"`; I8 health.py logs `str(exc)` so `RedactFilter` can scrub DSN leaks; I9 `setup_logging` moved into `lifespan` startup. `X-Trace-Id` inbound header propagates end-to-end and round-trips in response header.
+- **Gate 1 smoke (end-to-end, docker compose up):** container healthy in ~9s, `/health` 200 with both dbs ok, `/internal/ping` 401 on wrong token + 200 on `dev_internal_token`, `/v1/knowledge/ping` 200 direct AND through gateway :3123, JSON log lines with `trace_id` field visible, `loreweave_knowledge` DB auto-created by db-ensure on startup.
+- **Deferred from Track1 doc (intentionally):** redis dep (K10), purgatory circuit breaker (K6), migrations tooling (K1.1). No schemas, no business logic — pure plumbing.
+- **Next:** K1 — pick yoyo-migrations, write `migrations/001_projects.sql` + `002_summaries.sql`, add repository layer.
+
+**Knowledge Service: DESIGN COMPLETE.** (Session 34)
 - Architecture doc: `docs/03_planning/KNOWLEDGE_SERVICE_ARCHITECTURE.md` (~5500 lines). 5 review rounds (data eng, context eng, solution architect, 6-perspective, research validation).
 - Three PM-grade implementation plans: `KNOWLEDGE_SERVICE_TRACK1_IMPLEMENTATION.md` (K0-K9, 64 tasks), `TRACK2` (K10-K18, 81+ tasks), `TRACK3` (K19-K22, 69 tasks). Total ~215 tasks across 22 gates.
 - UI mockup: `design-drafts/screen-knowledge-service.html` (1767 lines, 14 sections, 3-step build wizard with glossary picker + pending proposals + gap report).
@@ -59,7 +72,7 @@
 - **Review:** 8 issues found and fixed (4 high, 4 medium). Commit: `fa36e99`.
 - **API methods added:** `glossaryApi.createTranslation()`, `patchTranslation()`, `deleteTranslation()`.
 
-**Next priority:** Start Knowledge Service Track 1 K0. Read `docs/03_planning/KNOWLEDGE_SERVICE_TRACK1_IMPLEMENTATION.md` in order.
+**Next priority:** K0 done (this session). Continue Knowledge Service Track 1 at **K1** — Postgres schema + repository layer. Read `docs/03_planning/KNOWLEDGE_SERVICE_TRACK1_IMPLEMENTATION.md` §5.
 
 Phases completed:
 - **A: Core Pipeline (11)** — TextNormalizer, SentenceBuffer, voice_stream_response, POST /voice-message, VoiceClient, VadController, useVoiceChat, VoiceChatOverlay

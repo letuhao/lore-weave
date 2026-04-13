@@ -191,7 +191,7 @@ internal requests, logs structured JSON, and connects to its Postgres database.
 ### Tasks
 
 ```
-[ ] K0.1 Create service directory structure
+[x] K0.1 Create service directory structure
     Files:
       - services/knowledge-service/ (NEW)
       - services/knowledge-service/app/ (NEW)
@@ -219,7 +219,7 @@ internal requests, logs structured JSON, and connects to its Postgres database.
 ```
 
 ```
-[ ] K0.2 Dockerfile
+[x] K0.2 Dockerfile
     Files:
       - services/knowledge-service/Dockerfile (NEW)
     Description:
@@ -238,7 +238,7 @@ internal requests, logs structured JSON, and connects to its Postgres database.
 ```
 
 ```
-[ ] K0.3 Config loader
+[x] K0.3 Config loader
     Files:
       - services/knowledge-service/app/config.py
     Description:
@@ -261,7 +261,7 @@ internal requests, logs structured JSON, and connects to its Postgres database.
 ```
 
 ```
-[ ] K0.4 Logging setup with JSON + trace_id + secret redaction
+[x] K0.4 Logging setup with JSON + trace_id + secret redaction
     Files:
       - services/knowledge-service/app/logging_config.py (NEW)
     Description:
@@ -282,7 +282,7 @@ internal requests, logs structured JSON, and connects to its Postgres database.
 ```
 
 ```
-[ ] K0.5 Database connection pools (asyncpg)
+[x] K0.5 Database connection pools (asyncpg)
     Files:
       - services/knowledge-service/app/db/__init__.py (NEW)
       - services/knowledge-service/app/db/postgres.py (NEW)
@@ -305,7 +305,7 @@ internal requests, logs structured JSON, and connects to its Postgres database.
 ```
 
 ```
-[ ] K0.6 Internal auth middleware
+[x] K0.6 Internal auth middleware
     Files:
       - services/knowledge-service/app/api/middleware/internal_auth.py (NEW)
       - services/knowledge-service/app/api/middleware/__init__.py (NEW)
@@ -327,7 +327,7 @@ internal requests, logs structured JSON, and connects to its Postgres database.
 ```
 
 ```
-[ ] K0.7 /health endpoint
+[x] K0.7 /health endpoint
     Files:
       - services/knowledge-service/app/api/health.py (NEW)
       - services/knowledge-service/app/main.py (UPDATE — mount router)
@@ -347,7 +347,7 @@ internal requests, logs structured JSON, and connects to its Postgres database.
 ```
 
 ```
-[ ] K0.8 Wire into docker-compose.yml
+[x] K0.8 Wire into docker-compose.yml
     Files:
       - infra/docker-compose.yml (MODIFY)
       - infra/db-ensure.sh (MODIFY — add loreweave_knowledge DB)
@@ -374,7 +374,7 @@ internal requests, logs structured JSON, and connects to its Postgres database.
 ```
 
 ```
-[ ] K0.9 Proxy route in api-gateway-bff
+[x] K0.9 Proxy route in api-gateway-bff
     Files:
       - services/api-gateway-bff/src/gateway-setup.ts (MODIFY)
     Description:

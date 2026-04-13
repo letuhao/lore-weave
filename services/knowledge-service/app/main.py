@@ -1,0 +1,42 @@
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.config import settings
+from app.db.pool import close_pools, create_pools
+from app.logging_config import setup_logging
+from app.middleware.trace_id import TraceIdMiddleware
+from app.routers import health, ping
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    setup_logging(settings.log_level)
+    # Fail-fast: if either pool cannot be created, raise and stop startup.
+    await create_pools(settings.knowledge_db_url, settings.glossary_db_url)
+    logger.info("knowledge-service started on port %d", settings.port)
+    try:
+        yield
+    finally:
+        await close_pools()
+        logger.info("knowledge-service stopped")
+
+
+app = FastAPI(title="knowledge-service", lifespan=lifespan)
+
+app.add_middleware(TraceIdMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(health.router)
+app.include_router(ping.public_router)
+app.include_router(ping.internal_router)
