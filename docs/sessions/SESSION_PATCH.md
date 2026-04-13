@@ -29,10 +29,9 @@
 | D-K1-01 | K1 | `knowledge_summaries.content` size cap (~50KB) | K7 API layer |
 | D-K1-02 | K1 | `knowledge_projects.instructions` max length | K7 API layer |
 | D-K1-03 | K1 | `ProjectsRepo.list()` pagination | K7 public API |
-| D-K2a-01 | K2a | Glossary summary DB CHECK `content <> ''` | K5 or K7 |
-| D-K2a-02 | K2a | Glossary summary size cap | K5 or K7 |
-| D-K4a-01 | K4a | `RECENT_MESSAGE_COUNT=50` hardcoded — move to config | K5 (chat-service owns the replay budget) |
-| D-K4a-02 | K4a | 500 response body lacks `trace_id` correlation id | K5 (when chat-service becomes a real caller) |
+| D-K2a-01 | K2a | Glossary summary DB CHECK `content <> ''` | K7 |
+| D-K2a-02 | K2a | Glossary summary size cap | K7 |
+| D-K5-01 | K5 | End-to-end `X-Trace-Id` propagation across chat → knowledge → glossary internal calls + trace_id in 500 response bodies (supersedes D-K4a-02) | K6 |
 
 ### Track 2 planning (document only, no Track 1 action)
 
@@ -40,6 +39,7 @@
 |---|---|---|
 | D-T2-01 | K2b, K4a | CJK token estimate undercounts by ~3× — swap `len/4` heuristic for tiktoken |
 | D-T2-02 | K4b | `ts_rank` non-normalized — switch to `ts_rank_cd` with normalization flag |
+| D-T2-03 | K5 | Unify `DEGRADED_RECENT_MESSAGE_COUNT` (chat-service) and the Mode-1/Mode-2 builder constants (knowledge-service) behind a single config knob — currently both default to 50 in two unrelated files |
 
 ### Perf items (fix when profiling shows pain)
 
@@ -54,6 +54,9 @@
 
 - **Hard-coded English Mode-1/Mode-2 instructions.** chat-service has no i18n either — revisit when the whole product ships i18n.
 - **`loreweave_knowledge` backup script.** No backup infra for any service in Track 1 — cross-cutting concern owned by infra, not knowledge-service.
+- **K5 retry backoff between attempts.** 500ms × 2 = 1000ms total budget leaves no room for backoff. If we ever raise the timeout, revisit. Conscious decision.
+- **K5 `KnowledgeClient` is a per-worker singleton.** With multi-worker uvicorn each worker has its own client + its own pool, which is correct (httpx.AsyncClient must be constructed after fork). The "singleton" is per-process, not per-cluster, by design. Not debt — the right shape.
+- **`close_knowledge_client` not guarded against concurrent calls.** Lifespan shutdown is single-threaded; not a real risk.
 
 ### Recently cleared
 
@@ -61,15 +64,12 @@
 |---|---|---|
 | (K4.3) | K4b | Implemented in K4c — was mis-classified as defer; actually a Mode 2 FTS quality bug |
 | (K4.12) | K4b | Implemented in K4c — no-deadline policy: if we can do it now, we do it |
-| K4-I1 | K4 review | Init-glossary-client double-init guard (idempotent return) — commit `6ac161b` |
-| K4-I2 | K4 review | Per-candidate K2b limit divides max_entities across calls + cushion — commit `6ac161b` |
-| K4-I3 | K4 review | Shared `app/context/formatters/stopwords.py` — both stopword sets centralised — commit `6ac161b` |
-| K4-I4 | K4 review | Glossary client logs ONE consolidated warning per failed call instead of per-attempt — commit `6ac161b` |
-| K4-I5 | K4 review | Removed dead `self._token` field on `GlossaryClient` — commit `6ac161b` |
-| K4-I6 | K4 review | `extract_candidates` now distinguishes article stopphrases — pushes both `"The Wanderer"` AND `"Wanderer"` — commit `171574b` |
-| K4-I7 | K4 review | `dedup.min_overlap` plumbed through `settings.dedup_min_overlap` — commit `171574b` |
-| K4-I8 | K4 review | `gc` pytest fixture replaces manual `aclose()` in glossary client tests — commit `171574b` |
-| K4-I9 | K4 review | `AsyncMock(spec=GlossaryClient)` / `AsyncMock(spec=SummariesRepo)` catch signature drift — commit `171574b` |
+| K4-I1..I9 | K4 review | All 9 K4 review issues resolved — commits `6ac161b`, `171574b` |
+| **D-K4a-01** | **K4a** | **`RECENT_MESSAGE_COUNT=50` hardcoded → naturally cleared by K5: chat-service now uses `kctx.recent_message_count` from the response. Plumbing done.** |
+| D-K4a-02 | K4a | Subsumed by `D-K5-01` — trace_id propagation is now tracked as a coordinated K6 task spanning all internal HTTP calls |
+| K5-I1..I5 | K5 review | All 5 K5 must-fix items resolved — commit `417ae97` |
+| K5-I7 | K5 review | Test patch style (brittle to import refactor) — fixed via `httpx.MockTransport` constructor injection (zero `@patch` decorators in `test_knowledge_client.py` now) |
+| K5-I9 | K5 review | Mis-flagged. KnowledgeClient is per-worker by design and works correctly with multi-worker uvicorn (httpx.AsyncClient is constructed after fork inside the lifespan). Removed from review notes. |
 
 ---
 

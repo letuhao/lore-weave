@@ -1,14 +1,20 @@
 """Unit tests for the knowledge-service HTTP client.
 
-Uses unittest.mock to stay consistent with test_clients.py — chat-service
-doesn't have respx in its requirements. Every failure path must return
-a degraded KnowledgeContext (mode='degraded'), never raise — chat must
-keep working when knowledge-service is unavailable.
+K5-I7 fix: tests inject an `httpx.MockTransport` into the client via the
+new constructor `transport=` kwarg instead of monkey-patching
+`httpx.AsyncClient`. This decouples tests from the module's import style
+— a refactor from `import httpx` to `from httpx import AsyncClient`
+would have silently broken every `@patch(...)` target before. Now the
+tests don't reference any internal import path at all.
+
+Every failure path must return a degraded KnowledgeContext
+(mode='degraded'), never raise — chat must keep working when
+knowledge-service is unavailable.
 """
 from __future__ import annotations
 
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import Callable
 
 import httpx
 import pytest
@@ -20,42 +26,78 @@ os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test-internal-token")
 
 from app.client.knowledge_client import (  # noqa: E402
     DEGRADED_RECENT_MESSAGE_COUNT,
+    MESSAGE_MAX_CHARS,
     KnowledgeClient,
-    KnowledgeContext,
     close_knowledge_client,
     get_knowledge_client,
     init_knowledge_client,
 )
 
 
-def _client() -> KnowledgeClient:
+# ── helpers ────────────────────────────────────────────────────────────────
+
+
+def _make_client(
+    handler: Callable[[httpx.Request], httpx.Response] | None = None,
+) -> KnowledgeClient:
+    """Build a KnowledgeClient with a MockTransport so tests don't touch
+    the network. Pass `handler=None` for the rare test that just wants
+    to inspect constructor kwargs without making a request."""
+    transport = httpx.MockTransport(handler) if handler is not None else None
     return KnowledgeClient(
         base_url="http://knowledge-service:8092",
         internal_token="unit-test-token",
         timeout_s=0.5,
         retries=1,
+        transport=transport,
     )
+
+
+def _ok_response(payload: dict) -> Callable[[httpx.Request], httpx.Response]:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    return handler
+
+
+def _status_response(status: int, body: str = "") -> Callable[[httpx.Request], httpx.Response]:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, text=body)
+
+    return handler
+
+
+def _raise(exc: Exception) -> Callable[[httpx.Request], httpx.Response]:
+    def handler(_: httpx.Request) -> httpx.Response:
+        raise exc
+
+    return handler
+
+
+def _capture(captured: list, status: int = 200, body: dict | None = None) -> Callable[[httpx.Request], httpx.Response]:
+    body_obj = body or {"mode": "no_project", "context": "", "recent_message_count": 50, "token_count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(status, json=body_obj)
+
+    return handler
+
+
+# ── happy path ─────────────────────────────────────────────────────────────
 
 
 class TestKnowledgeClientHappyPath:
     @pytest.mark.asyncio
-    @patch("app.client.knowledge_client.httpx.AsyncClient")
-    async def test_no_project_mode_response_parses(self, mock_client_cls):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
+    async def test_no_project_mode_response_parses(self):
+        payload = {
             "mode": "no_project",
             "context": '<memory mode="no_project"><instructions>x</instructions></memory>',
             "recent_message_count": 50,
             "token_count": 12,
         }
-        mock_http = AsyncMock()
-        mock_http.post = AsyncMock(return_value=mock_resp)
-        mock_client_cls.return_value = mock_http
-
-        client = _client()
+        client = _make_client(_ok_response(payload))
         result = await client.build_context(user_id="u", message="hello")
-
         assert result.mode == "no_project"
         assert result.recent_message_count == 50
         assert result.token_count == 12
@@ -63,46 +105,35 @@ class TestKnowledgeClientHappyPath:
         await client.aclose()
 
     @pytest.mark.asyncio
-    @patch("app.client.knowledge_client.httpx.AsyncClient")
-    async def test_static_mode_with_project(self, mock_client_cls):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "mode": "static",
-            "context": '<memory mode="static">...</memory>',
-            "recent_message_count": 50,
-            "token_count": 200,
-        }
-        mock_http = AsyncMock()
-        mock_http.post = AsyncMock(return_value=mock_resp)
-        mock_client_cls.return_value = mock_http
-
-        client = _client()
+    async def test_static_mode_with_project(self):
+        captured: list = []
+        client = _make_client(_capture(
+            captured,
+            body={"mode": "static", "context": "<memory mode=\"static\">...</memory>", "recent_message_count": 50, "token_count": 200},
+        ))
         result = await client.build_context(
             user_id="u",
             project_id="00000000-0000-0000-0000-000000000001",
             message="who is Alice?",
         )
         assert result.mode == "static"
-        # Verify project_id was sent in the body
-        call_args = mock_http.post.call_args
-        body = call_args.kwargs["json"]
+
+        # Inspect the captured request body via the MockTransport
+        assert len(captured) == 1
+        import json as _json
+        body = _json.loads(captured[0].content.decode())
         assert body["project_id"] == "00000000-0000-0000-0000-000000000001"
         assert body["message"] == "who is Alice?"
         await client.aclose()
 
 
+# ── graceful degradation ───────────────────────────────────────────────────
+
+
 class TestKnowledgeClientGracefulDegradation:
-    """Every failure path must return a degraded context, never raise."""
-
     @pytest.mark.asyncio
-    @patch("app.client.knowledge_client.httpx.AsyncClient")
-    async def test_timeout_returns_degraded(self, mock_client_cls):
-        mock_http = AsyncMock()
-        mock_http.post = AsyncMock(side_effect=httpx.TimeoutException("boom"))
-        mock_client_cls.return_value = mock_http
-
-        client = _client()
+    async def test_timeout_returns_degraded(self):
+        client = _make_client(_raise(httpx.TimeoutException("boom")))
         result = await client.build_context(user_id="u")
         assert result.mode == "degraded"
         assert result.context == ""
@@ -110,241 +141,170 @@ class TestKnowledgeClientGracefulDegradation:
         await client.aclose()
 
     @pytest.mark.asyncio
-    @patch("app.client.knowledge_client.httpx.AsyncClient")
-    async def test_connection_error_returns_degraded(self, mock_client_cls):
-        mock_http = AsyncMock()
-        mock_http.post = AsyncMock(side_effect=httpx.ConnectError("refused"))
-        mock_client_cls.return_value = mock_http
-
-        client = _client()
+    async def test_connection_error_returns_degraded(self):
+        client = _make_client(_raise(httpx.ConnectError("refused")))
         result = await client.build_context(user_id="u")
         assert result.mode == "degraded"
         await client.aclose()
 
     @pytest.mark.asyncio
-    @patch("app.client.knowledge_client.httpx.AsyncClient")
-    async def test_5xx_retries_then_returns_degraded(self, mock_client_cls):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 503
-        mock_resp.text = "down"
-        mock_http = AsyncMock()
-        mock_http.post = AsyncMock(return_value=mock_resp)
-        mock_client_cls.return_value = mock_http
+    async def test_5xx_retries_then_returns_degraded(self):
+        call_count = 0
 
-        client = _client()
+        def handler(_: httpx.Request) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            return httpx.Response(503, text="down")
+
+        client = _make_client(handler)
         result = await client.build_context(user_id="u")
         assert result.mode == "degraded"
         # retries=1 → 2 total attempts
-        assert mock_http.post.call_count == 2
+        assert call_count == 2
         await client.aclose()
 
     @pytest.mark.asyncio
-    @patch("app.client.knowledge_client.httpx.AsyncClient")
-    async def test_404_no_retry_returns_degraded(self, mock_client_cls):
+    async def test_404_no_retry_returns_degraded(self):
         """404 = project not found. Stable problem, don't retry."""
-        mock_resp = MagicMock()
-        mock_resp.status_code = 404
-        mock_resp.text = '{"detail":"project not found"}'
-        mock_http = AsyncMock()
-        mock_http.post = AsyncMock(return_value=mock_resp)
-        mock_client_cls.return_value = mock_http
+        call_count = 0
 
-        client = _client()
+        def handler(_: httpx.Request) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            return httpx.Response(404, text='{"detail":"project not found"}')
+
+        client = _make_client(handler)
         result = await client.build_context(
             user_id="u", project_id="00000000-0000-0000-0000-000000000001"
         )
         assert result.mode == "degraded"
-        assert mock_http.post.call_count == 1  # no retry on 4xx
+        assert call_count == 1
         await client.aclose()
 
     @pytest.mark.asyncio
-    @patch("app.client.knowledge_client.httpx.AsyncClient")
-    async def test_501_mode3_returns_degraded_at_debug(self, mock_client_cls):
+    async def test_501_mode3_returns_degraded_at_debug(self):
         """501 = Mode 3 not implemented (Track 2). Expected, log at debug."""
-        mock_resp = MagicMock()
-        mock_resp.status_code = 501
-        mock_resp.text = '{"detail":"Mode 3 not implemented"}'
-        mock_http = AsyncMock()
-        mock_http.post = AsyncMock(return_value=mock_resp)
-        mock_client_cls.return_value = mock_http
+        call_count = 0
 
-        client = _client()
+        def handler(_: httpx.Request) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            return httpx.Response(501, text='{"detail":"Mode 3 not implemented"}')
+
+        client = _make_client(handler)
         result = await client.build_context(
             user_id="u", project_id="00000000-0000-0000-0000-000000000001"
         )
         assert result.mode == "degraded"
-        assert mock_http.post.call_count == 1
+        assert call_count == 1
         await client.aclose()
 
     @pytest.mark.asyncio
-    @patch("app.client.knowledge_client.httpx.AsyncClient")
-    async def test_malformed_json_returns_degraded(self, mock_client_cls):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.side_effect = ValueError("not json")
-        mock_http = AsyncMock()
-        mock_http.post = AsyncMock(return_value=mock_resp)
-        mock_client_cls.return_value = mock_http
+    async def test_malformed_json_returns_degraded(self):
+        def handler(_: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=b"not json", headers={"content-type": "application/json"})
 
-        client = _client()
+        client = _make_client(handler)
         result = await client.build_context(user_id="u")
         assert result.mode == "degraded"
         await client.aclose()
 
     @pytest.mark.asyncio
-    @patch("app.client.knowledge_client.httpx.AsyncClient")
-    async def test_unexpected_shape_returns_degraded(self, mock_client_cls):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"not_what_we_expected": True}
-        mock_http = AsyncMock()
-        mock_http.post = AsyncMock(return_value=mock_resp)
-        mock_client_cls.return_value = mock_http
-
-        client = _client()
-        # Pydantic is lenient — extra="ignore" + all required fields have
-        # defaults except `mode`. Missing `mode` → ValidationError → degraded.
+    async def test_unexpected_shape_returns_degraded(self):
+        client = _make_client(_ok_response({"not_what_we_expected": True}))
+        # Pydantic model_validate fails on missing 'mode' field → degraded
         result = await client.build_context(user_id="u")
         assert result.mode == "degraded"
         await client.aclose()
+
+
+# ── body normalisation (K5-I1 / K5-I2 regression coverage) ─────────────────
 
 
 class TestKnowledgeClientBodyNormalisation:
-    """K5-I1 / K5-I2 regression: verify the client normalises its body
-    before sending so bad caller input doesn't bounce off knowledge-
-    service's validator and silently degrade every turn."""
-
     @pytest.mark.asyncio
-    @patch("app.client.knowledge_client.httpx.AsyncClient")
-    async def test_empty_project_id_omitted_from_body(self, mock_client_cls):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"mode": "no_project", "context": "", "recent_message_count": 50, "token_count": 0}
-        mock_http = AsyncMock()
-        mock_http.post = AsyncMock(return_value=mock_resp)
-        mock_client_cls.return_value = mock_http
-
-        client = _client()
+    async def test_empty_project_id_omitted_from_body(self):
+        captured: list = []
+        client = _make_client(_capture(captured))
         await client.build_context(user_id="u", project_id="", message="hi")
-
-        body = mock_http.post.call_args.kwargs["json"]
-        # Empty string must NOT be sent — knowledge-service would 422 on
-        # the UUID validator otherwise.
+        body = self._json_body(captured[0])
         assert "project_id" not in body
         await client.aclose()
 
     @pytest.mark.asyncio
-    @patch("app.client.knowledge_client.httpx.AsyncClient")
-    async def test_empty_session_id_omitted_from_body(self, mock_client_cls):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"mode": "no_project", "context": "", "recent_message_count": 50, "token_count": 0}
-        mock_http = AsyncMock()
-        mock_http.post = AsyncMock(return_value=mock_resp)
-        mock_client_cls.return_value = mock_http
-
-        client = _client()
+    async def test_empty_session_id_omitted_from_body(self):
+        captured: list = []
+        client = _make_client(_capture(captured))
         await client.build_context(user_id="u", session_id="", message="hi")
-
-        body = mock_http.post.call_args.kwargs["json"]
+        body = self._json_body(captured[0])
         assert "session_id" not in body
         await client.aclose()
 
     @pytest.mark.asyncio
-    @patch("app.client.knowledge_client.httpx.AsyncClient")
-    async def test_none_project_id_omitted_from_body(self, mock_client_cls):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"mode": "no_project", "context": "", "recent_message_count": 50, "token_count": 0}
-        mock_http = AsyncMock()
-        mock_http.post = AsyncMock(return_value=mock_resp)
-        mock_client_cls.return_value = mock_http
-
-        client = _client()
+    async def test_none_project_id_omitted_from_body(self):
+        captured: list = []
+        client = _make_client(_capture(captured))
         await client.build_context(user_id="u", project_id=None, message="hi")
-
-        body = mock_http.post.call_args.kwargs["json"]
+        body = self._json_body(captured[0])
         assert "project_id" not in body
         assert body["user_id"] == "u"
         assert body["message"] == "hi"
         await client.aclose()
 
     @pytest.mark.asyncio
-    @patch("app.client.knowledge_client.httpx.AsyncClient")
-    async def test_long_message_truncated_to_4000_chars(self, mock_client_cls):
-        from app.client.knowledge_client import MESSAGE_MAX_CHARS
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"mode": "no_project", "context": "", "recent_message_count": 50, "token_count": 0}
-        mock_http = AsyncMock()
-        mock_http.post = AsyncMock(return_value=mock_resp)
-        mock_client_cls.return_value = mock_http
-
-        client = _client()
+    async def test_long_message_truncated_to_max(self):
+        captured: list = []
+        client = _make_client(_capture(captured))
         long_message = "x" * (MESSAGE_MAX_CHARS + 500)
         await client.build_context(user_id="u", message=long_message)
-
-        body = mock_http.post.call_args.kwargs["json"]
+        body = self._json_body(captured[0])
         assert len(body["message"]) == MESSAGE_MAX_CHARS
         await client.aclose()
 
     @pytest.mark.asyncio
-    @patch("app.client.knowledge_client.httpx.AsyncClient")
-    async def test_short_message_not_truncated(self, mock_client_cls):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"mode": "no_project", "context": "", "recent_message_count": 50, "token_count": 0}
-        mock_http = AsyncMock()
-        mock_http.post = AsyncMock(return_value=mock_resp)
-        mock_client_cls.return_value = mock_http
-
-        client = _client()
+    async def test_short_message_not_truncated(self):
+        captured: list = []
+        client = _make_client(_capture(captured))
         short = "tell me about Alice"
         await client.build_context(user_id="u", message=short)
-
-        body = mock_http.post.call_args.kwargs["json"]
+        body = self._json_body(captured[0])
         assert body["message"] == short
         await client.aclose()
 
     @pytest.mark.asyncio
-    @patch("app.client.knowledge_client.httpx.AsyncClient")
-    async def test_empty_message_stays_empty(self, mock_client_cls):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"mode": "no_project", "context": "", "recent_message_count": 50, "token_count": 0}
-        mock_http = AsyncMock()
-        mock_http.post = AsyncMock(return_value=mock_resp)
-        mock_client_cls.return_value = mock_http
-
-        client = _client()
+    async def test_empty_message_stays_empty(self):
+        captured: list = []
+        client = _make_client(_capture(captured))
         await client.build_context(user_id="u")
-
-        body = mock_http.post.call_args.kwargs["json"]
+        body = self._json_body(captured[0])
         assert body["message"] == ""
         await client.aclose()
+
+    @staticmethod
+    def _json_body(request: httpx.Request) -> dict:
+        import json as _json
+        return _json.loads(request.content.decode())
+
+
+# ── headers ────────────────────────────────────────────────────────────────
 
 
 class TestKnowledgeClientHeaders:
     @pytest.mark.asyncio
-    @patch("app.client.knowledge_client.httpx.AsyncClient")
-    async def test_internal_token_baked_into_headers(self, mock_client_cls):
-        # Make the mocked client awaitable for aclose()
-        mock_client_cls.return_value = AsyncMock()
-        client = _client()
-        # Verify httpx.AsyncClient was constructed with the X-Internal-Token header
-        mock_client_cls.assert_called_once()
-        kwargs = mock_client_cls.call_args.kwargs
-        assert kwargs["headers"]["X-Internal-Token"] == "unit-test-token"
+    async def test_internal_token_baked_into_request(self):
+        captured: list = []
+        client = _make_client(_capture(captured))
+        await client.build_context(user_id="u")
+        assert captured[0].headers.get("X-Internal-Token") == "unit-test-token"
         await client.aclose()
 
 
-class TestSingletonLifecycle:
-    """K4-I1 lesson learned — init must be idempotent."""
+# ── singleton lifecycle (K4-I1 lesson) ─────────────────────────────────────
 
+
+class TestSingletonLifecycle:
     @pytest.mark.asyncio
     async def test_init_is_idempotent(self):
-        # Reset state in case other tests left a client around
         await close_knowledge_client()
         first = init_knowledge_client()
         second = init_knowledge_client()
@@ -356,34 +316,23 @@ class TestSingletonLifecycle:
         await close_knowledge_client()
         client = get_knowledge_client()
         assert client is not None
-        # Second call returns the same instance
         client2 = get_knowledge_client()
         assert client is client2
         await close_knowledge_client()
 
 
-class TestSingleLogPerFailure:
-    """K4-I4 lesson learned — log AT MOST one warning per failed call,
-    not one per retry attempt."""
+# ── log-once-per-failure (K4-I4 lesson) ────────────────────────────────────
 
+
+class TestSingleLogPerFailure:
     @pytest.mark.asyncio
-    @patch("app.client.knowledge_client.httpx.AsyncClient")
-    async def test_5xx_logs_only_once(self, mock_client_cls, caplog):
+    async def test_5xx_logs_only_once(self, caplog):
         import logging
 
-        mock_resp = MagicMock()
-        mock_resp.status_code = 503
-        mock_resp.text = "down"
-        mock_http = AsyncMock()
-        mock_http.post = AsyncMock(return_value=mock_resp)
-        mock_client_cls.return_value = mock_http
-
-        client = _client()
+        client = _make_client(_status_response(503, "down"))
         with caplog.at_level(logging.WARNING, logger="app.client.knowledge_client"):
             await client.build_context(user_id="u")
 
-        unavailable = [
-            r for r in caplog.records if "unavailable" in r.getMessage()
-        ]
+        unavailable = [r for r in caplog.records if "unavailable" in r.getMessage()]
         assert len(unavailable) == 1
         await client.aclose()

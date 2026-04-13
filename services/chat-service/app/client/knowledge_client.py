@@ -78,13 +78,33 @@ class KnowledgeClient:
     Close via `await client.aclose()` on shutdown.
     """
 
-    def __init__(self, base_url: str, internal_token: str, timeout_s: float, retries: int) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        internal_token: str,
+        timeout_s: float,
+        retries: int,
+        *,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        """Construct the client.
+
+        `transport` is an optional httpx transport to inject at test time
+        (K5-I7 fix). Tests use `httpx.MockTransport(handler)` so they
+        don't have to monkey-patch `httpx.AsyncClient`, which would
+        couple them to the import style used in this module — a refactor
+        from `import httpx` to `from httpx import AsyncClient` would
+        silently break a `@patch("...httpx.AsyncClient")`.
+        """
         self._base_url = base_url.rstrip("/")
         self._retries = max(0, retries)
-        self._http = httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout_s),
-            headers={"X-Internal-Token": internal_token},
-        )
+        client_kwargs: dict = {
+            "timeout": httpx.Timeout(timeout_s),
+            "headers": {"X-Internal-Token": internal_token},
+        }
+        if transport is not None:
+            client_kwargs["transport"] = transport
+        self._http = httpx.AsyncClient(**client_kwargs)
 
     async def aclose(self) -> None:
         await self._http.aclose()
