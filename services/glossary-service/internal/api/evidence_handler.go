@@ -51,6 +51,7 @@ type evidenceListResp struct {
 	Offset              int                     `json:"offset"`
 	AvailableAttributes []evidenceFilterOption   `json:"available_attributes"`
 	AvailableChapters   []evidenceChapterOption  `json:"available_chapters"`
+	AvailableLanguages  []string                `json:"available_languages"`
 }
 
 // GET /v1/glossary/books/{book_id}/entities/{entity_id}/evidences
@@ -170,25 +171,18 @@ func (s *Server) listEntityEvidences(w http.ResponseWriter, r *http.Request) {
 	offsetArg := n
 	args = append(args, limit, offset)
 
-	// If language is provided, try to find evidence_translation for that language.
-	// Fallback to original_text if no translation exists.
-	var displayTextExpr, displayLangExpr string
+	// Language fallback: LEFT JOIN evidence_translations for requested language,
+	// fall back to original_text if no translation exists.
+	var langJoinSQL, displayTextExpr, displayLangExpr string
 	if language != "" {
 		n++
 		langArg := n
 		args = append(args, language)
-		displayTextExpr = fmt.Sprintf(`COALESCE(
-			(SELECT et.value FROM evidence_translations et
-			 WHERE et.evidence_id = ev.evidence_id AND et.language_code = $%d AND et.value != ''),
-			ev.original_text
-		)`, langArg)
-		displayLangExpr = fmt.Sprintf(`CASE
-			WHEN EXISTS(SELECT 1 FROM evidence_translations et
-			            WHERE et.evidence_id = ev.evidence_id AND et.language_code = $%d AND et.value != '')
-			THEN $%d::text
-			ELSE ev.original_language
-		END`, langArg, langArg)
+		langJoinSQL = fmt.Sprintf(`LEFT JOIN evidence_translations et ON et.evidence_id = ev.evidence_id AND et.language_code = $%d AND et.value != ''`, langArg)
+		displayTextExpr = "COALESCE(et.value, ev.original_text)"
+		displayLangExpr = fmt.Sprintf(`CASE WHEN et.value IS NOT NULL THEN $%d::text ELSE ev.original_language END`, langArg)
 	} else {
+		langJoinSQL = ""
 		displayTextExpr = "ev.original_text"
 		displayLangExpr = "ev.original_language"
 	}
@@ -210,9 +204,10 @@ func (s *Server) listEntityEvidences(w http.ResponseWriter, r *http.Request) {
 		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
 		%s
 		%s
+		%s
 		LIMIT $%d OFFSET $%d`,
 		displayTextExpr, displayLangExpr,
-		whereSQL, orderSQL, limitArg, offsetArg)
+		langJoinSQL, whereSQL, orderSQL, limitArg, offsetArg)
 
 	rows, err := s.pool.Query(ctx, mainSQL, args...)
 	if err != nil {
@@ -243,59 +238,97 @@ func (s *Server) listEntityEvidences(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Available attributes (for filter dropdown)
-	attrRows, err := s.pool.Query(ctx, `
-		SELECT DISTINCT eav.attr_value_id, ad.name
-		FROM evidences ev
-		JOIN entity_attribute_values eav ON eav.attr_value_id = ev.attr_value_id
-		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
-		WHERE eav.entity_id = $1
-		ORDER BY ad.name`, entityID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "attrs query failed")
-		return
-	}
-	defer attrRows.Close()
-
+	// Only fetch filter options on first page to avoid redundant queries
 	availAttrs := []evidenceFilterOption{}
-	for attrRows.Next() {
-		var opt evidenceFilterOption
-		if err := attrRows.Scan(&opt.AttrValueID, &opt.Name); err != nil {
-			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan failed")
-			return
-		}
-		availAttrs = append(availAttrs, opt)
-	}
-	if err := attrRows.Err(); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "rows error")
-		return
-	}
-
-	// Available chapters (for filter dropdown)
-	chRows, err := s.pool.Query(ctx, `
-		SELECT DISTINCT ev.chapter_id, ev.chapter_title, ev.chapter_index
-		FROM evidences ev
-		JOIN entity_attribute_values eav ON eav.attr_value_id = ev.attr_value_id
-		WHERE eav.entity_id = $1 AND ev.chapter_id IS NOT NULL
-		ORDER BY ev.chapter_index NULLS LAST, ev.chapter_title`, entityID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "chapters query failed")
-		return
-	}
-	defer chRows.Close()
-
 	availChapters := []evidenceChapterOption{}
-	for chRows.Next() {
-		var opt evidenceChapterOption
-		if err := chRows.Scan(&opt.ChapterID, &opt.ChapterTitle, &opt.ChapterIndex); err != nil {
-			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan failed")
+	availLangs := []string{}
+
+	if offset == 0 {
+		// Available attributes (for filter/create dropdown — ALL entity attrs, not just those with evidences)
+		attrRows, err := s.pool.Query(ctx, `
+			SELECT eav.attr_value_id, ad.name
+			FROM entity_attribute_values eav
+			JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+			WHERE eav.entity_id = $1
+			ORDER BY ad.sort_order, ad.name`, entityID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "attrs query failed")
 			return
 		}
-		availChapters = append(availChapters, opt)
-	}
-	if err := chRows.Err(); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "rows error")
-		return
+		defer attrRows.Close()
+
+		for attrRows.Next() {
+			var opt evidenceFilterOption
+			if err := attrRows.Scan(&opt.AttrValueID, &opt.Name); err != nil {
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan failed")
+				return
+			}
+			availAttrs = append(availAttrs, opt)
+		}
+		if err := attrRows.Err(); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "rows error")
+			return
+		}
+
+		// Available chapters (for filter dropdown)
+		chRows, err := s.pool.Query(ctx, `
+			SELECT DISTINCT ev.chapter_id, ev.chapter_title, ev.chapter_index
+			FROM evidences ev
+			JOIN entity_attribute_values eav ON eav.attr_value_id = ev.attr_value_id
+			WHERE eav.entity_id = $1 AND ev.chapter_id IS NOT NULL
+			ORDER BY ev.chapter_index NULLS LAST, ev.chapter_title`, entityID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "chapters query failed")
+			return
+		}
+		defer chRows.Close()
+
+		for chRows.Next() {
+			var opt evidenceChapterOption
+			if err := chRows.Scan(&opt.ChapterID, &opt.ChapterTitle, &opt.ChapterIndex); err != nil {
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan failed")
+				return
+			}
+			availChapters = append(availChapters, opt)
+		}
+		if err := chRows.Err(); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "rows error")
+			return
+		}
+
+		// Available languages (original + translation languages for this entity's evidences)
+		langRows, err := s.pool.Query(ctx, `
+			SELECT DISTINCT lang FROM (
+				SELECT ev.original_language AS lang
+				FROM evidences ev
+				JOIN entity_attribute_values eav ON eav.attr_value_id = ev.attr_value_id
+				WHERE eav.entity_id = $1
+				UNION
+				SELECT et.language_code AS lang
+				FROM evidence_translations et
+				JOIN evidences ev ON ev.evidence_id = et.evidence_id
+				JOIN entity_attribute_values eav ON eav.attr_value_id = ev.attr_value_id
+				WHERE eav.entity_id = $1 AND et.value != ''
+			) sub
+			ORDER BY lang`, entityID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "langs query failed")
+			return
+		}
+		defer langRows.Close()
+
+		for langRows.Next() {
+			var lang string
+			if err := langRows.Scan(&lang); err != nil {
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan failed")
+				return
+			}
+			availLangs = append(availLangs, lang)
+		}
+		if err := langRows.Err(); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "rows error")
+			return
+		}
 	}
 
 	writeJSON(w, http.StatusOK, evidenceListResp{
@@ -305,6 +338,7 @@ func (s *Server) listEntityEvidences(w http.ResponseWriter, r *http.Request) {
 		Offset:              offset,
 		AvailableAttributes: availAttrs,
 		AvailableChapters:   availChapters,
+		AvailableLanguages:  availLangs,
 	})
 }
 

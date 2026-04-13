@@ -181,6 +181,7 @@ export type EvidenceListResponse = {
   offset: number;
   available_attributes: EvidenceFilterOption[];
   available_chapters: EvidenceChapterOption[];
+  available_languages: string[];
 };
 
 export type EvidenceListParams = {

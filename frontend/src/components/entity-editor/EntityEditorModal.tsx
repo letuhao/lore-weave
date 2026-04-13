@@ -259,34 +259,40 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                 bookId={bookId}
                 entityId={entityId}
                 bookOriginalLanguage={bookOriginalLanguage}
-                onCountChange={load}
+                onCountChange={(delta) => {
+                  if (!entity) return;
+                  setEntity({ ...entity, evidence_count: entity.evidence_count + delta });
+                  onSaved();
+                }}
               />
             )}
           </div>
 
-          {/* ── Footer ── */}
-          <div className="flex items-center justify-between border-t bg-card px-6 py-3.5 flex-shrink-0">
-            <button
-              onClick={onDelete}
-              className="inline-flex items-center gap-1.5 text-xs text-destructive hover:bg-destructive/8 rounded-md px-3 py-1.5 transition-colors"
-            >
-              <Trash2 className="h-3 w-3" />
-              Move to Trash
-            </button>
-            <div className="flex items-center gap-2">
-              <button onClick={onClose} className="rounded-md border px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
-                Cancel
-              </button>
+          {/* ── Footer (only for attributes tab) ── */}
+          {activeTab === 'attributes' && (
+            <div className="flex items-center justify-between border-t bg-card px-6 py-3.5 flex-shrink-0">
               <button
-                onClick={() => void handleSave()}
-                disabled={saving || !isDirty}
-                className="btn-glow inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
+                onClick={onDelete}
+                className="inline-flex items-center gap-1.5 text-xs text-destructive hover:bg-destructive/8 rounded-md px-3 py-1.5 transition-colors"
               >
-                {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                Save Entity
+                <Trash2 className="h-3 w-3" />
+                Move to Trash
               </button>
+              <div className="flex items-center gap-2">
+                <button onClick={onClose} className="rounded-md border px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
+                  Cancel
+                </button>
+                <button
+                  onClick={() => void handleSave()}
+                  disabled={saving || !isDirty}
+                  className="btn-glow inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
+                >
+                  {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                  Save Entity
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </>
