@@ -7,11 +7,61 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-13 (session 36 — Knowledge Service K0 + K1 + K2a)
-- Updated By: Assistant (K0 scaffold + K1 schema/repos + K2a glossary cache/pin, Gates 1/2/3 passed)
+- Last Updated: 2026-04-13 (session 36 — Knowledge Service K0 through K4b)
+- Updated By: Assistant (K0 scaffold + K1 schema/repos + K2a/b glossary cache/pin/FTS + K3 shortdesc + K4 context builder Mode 1+2)
 - Active Branch: `main`
-- HEAD: `fa36e99` (pending new commit for K0)
+- HEAD: `f89cde5` — K4b context builder Mode 2 + glossary client
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V6.md` — full context for next agent
+
+---
+
+## Deferred Items (cross-session tracking)
+
+> **Why this section exists:** during multi-phase builds deferred items tend to drift out of mind. Every item below is something a review found and deliberately postponed rather than ignored. Check this list at the start of every phase — any row whose "Target phase" equals the current phase is a must-do.
+>
+> ID scheme: `D-K*-NN` = normal deferral from phase K*; `D-T2-NN` = deferred to Track 2 planning; `P-K*-NN` = perf-only, fix when profiling shows pain.
+
+### Naturally-next-phase (actionable later)
+
+| ID | Origin | Description | Target phase |
+|---|---|---|---|
+| D-K1-01 | K1 | `knowledge_summaries.content` size cap (~50KB) | K7 API layer |
+| D-K1-02 | K1 | `knowledge_projects.instructions` max length | K7 API layer |
+| D-K1-03 | K1 | `ProjectsRepo.list()` pagination | K7 public API |
+| D-K2a-01 | K2a | Glossary summary DB CHECK `content <> ''` | K5 or K7 |
+| D-K2a-02 | K2a | Glossary summary size cap | K5 or K7 |
+| D-K4a-01 | K4a | `RECENT_MESSAGE_COUNT=50` hardcoded — move to config | K5 (chat-service owns the replay budget) |
+| D-K4a-02 | K4a | 500 response body lacks `trace_id` correlation id | K5 (when chat-service becomes a real caller) |
+
+### Track 2 planning (document only, no Track 1 action)
+
+| ID | Origin | Description |
+|---|---|---|
+| D-T2-01 | K2b, K4a | CJK token estimate undercounts by ~3× — swap `len/4` heuristic for tiktoken |
+| D-T2-02 | K4b | `ts_rank` non-normalized — switch to `ts_rank_cd` with normalization flag |
+
+### Perf items (fix when profiling shows pain)
+
+| ID | Origin | Description |
+|---|---|---|
+| P-K2a-01 | K2a | Sequential backfill loop — one row at a time, will matter at 10k+ entities |
+| P-K2a-02 | K2a | Pin toggle bumps `updated_at` → fires full `recalculate_entity_snapshot` for a bit flip |
+| P-K3-01 | K3 | Backfill UPDATE on `short_description` also fires snapshot trigger per row |
+| P-K3-02 | K3 | Description PATCH triggers 4 UPDATEs for 1 logical operation (CTE + trigger + regen + trigger-again) |
+
+### Won't-fix (conscious decisions, not debt)
+
+- **Hard-coded English Mode-1/Mode-2 instructions.** chat-service has no i18n either — revisit when the whole product ships i18n.
+- **`loreweave_knowledge` backup script.** No backup infra for any service in Track 1 — cross-cutting concern owned by infra, not knowledge-service.
+
+### Recently cleared
+
+| ID | Origin | How it was resolved |
+|---|---|---|
+| (K4.3) | K4b | Implemented in K4c — was mis-classified as defer; actually a Mode 2 FTS quality bug |
+| (K4.12) | K4b | Implemented in K4c — no-deadline policy: if we can do it now, we do it |
+
+---
 
 ---
 

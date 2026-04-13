@@ -24,6 +24,7 @@ produce a context block.
 from uuid import UUID
 
 from app.clients.glossary_client import GlossaryClient, GlossaryEntityForContext
+from app.context.formatters.dedup import filter_entities_not_in_summary
 from app.context.formatters.token_counter import estimate_tokens
 from app.context.formatters.xml_escape import sanitize_for_xml
 from app.context.modes.no_project import BuiltContext
@@ -100,6 +101,11 @@ async def build_static_mode(
         project=project,
         message=message,
     )
+    # K4.12: drop glossary rows whose keywords already overlap the L1
+    # summary — the summary is authored prose and richer, the glossary
+    # row would be redundant. Pinned entities are never dropped.
+    if l1_summary is not None and entities:
+        entities = filter_entities_not_in_summary(entities, l1_summary.content)
 
     lines: list[str] = ['<memory mode="static">']
 

@@ -249,12 +249,16 @@ async def test_mode2_happy_path(pool, app_with_pool: FastAPI, fake_glossary_clie
     assert alice.attrib["kind"] == "character"
     assert alice.attrib["tier"] == "pinned"
 
-    # verify client was called with the right args
-    fake_glossary_client.select_for_context.assert_called_once()
-    call_kwargs = fake_glossary_client.select_for_context.call_args.kwargs
-    assert call_kwargs["user_id"] == user_id
-    assert call_kwargs["book_id"] == p.book_id
-    assert call_kwargs["query"] == "who is Alice?"
+    # verify client was called with the right args. K4.3 extracts
+    # "Alice" from "who is Alice?" and issues one call per candidate,
+    # so we expect the query to be "Alice" (not the raw message).
+    assert fake_glossary_client.select_for_context.called
+    all_calls = fake_glossary_client.select_for_context.call_args_list
+    queries = {c.kwargs["query"] for c in all_calls}
+    assert "Alice" in queries
+    for call in all_calls:
+        assert call.kwargs["user_id"] == user_id
+        assert call.kwargs["book_id"] == p.book_id
 
 
 @pytest.mark.asyncio

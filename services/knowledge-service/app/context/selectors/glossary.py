@@ -2,21 +2,175 @@
 
 Given a project and a user message, returns the ranked list of
 glossary entities that should be injected into the memory block.
-Handles three edge cases without the caller having to care:
 
-  1. Project has no book_id         → empty list
-  2. glossary-service is down       → empty list (client already logs)
-  3. Empty query / empty result     → empty list
+## Why extract candidates client-side
+
+K2b's `select-for-context` endpoint runs four tiers: pinned, exact,
+fts, recent. The FTS tier uses Postgres's `plainto_tsquery('simple',
+query)` which AND-combines every token in the query:
+
+    "Tell me about Kai"  →  tell & me & about & kai
+
+For an entity whose search_vector contains only `kai` (because that's
+its cached_name), this query fails: not all four tokens appear. The
+user asking a natural-language question gets zero FTS hits and falls
+through to the recent-edited tier — a clear quality loss, masked only
+by pinned entities.
+
+The fix is to extract proper-noun candidates from the message
+client-side (K4.3) and issue one K2b call per candidate. K2b's exact
+tier then reliably hits because each query IS a name. Results are
+deduped by entity_id and merged in first-occurrence order so earlier
+candidates' tier-0/tier-1 hits take priority.
+
+Calls run in parallel via asyncio.gather — N candidates × 50ms each
+stays within our 300ms Gate-3 latency budget.
+
+## Edge cases handled
+
+  - project.book_id is None         → empty list
+  - glossary-service is down         → empty list (client degraded)
+  - no proper nouns in message       → one K2b call with empty query
+                                        (tier-0 pinned + tier-3 recent)
+  - candidate count > MAX_CANDIDATES → first MAX_CANDIDATES used
+  - duplicate candidates             → case-insensitive dedupe
 
 The Mode builder just iterates whatever we return.
 """
 
+import asyncio
+import re
 from uuid import UUID
 
 from app.clients.glossary_client import GlossaryClient, GlossaryEntityForContext
 from app.db.models import Project
 
-__all__ = ["select_glossary_for_context"]
+__all__ = ["extract_candidates", "select_glossary_for_context"]
+
+
+# ── candidate extraction ───────────────────────────────────────────────────
+
+# Matches English capitalized phrases: `Kai`, `Master Lin`, `The Dragon Lord`.
+# Limited to 1-3 word sequences to avoid false-positive sentence starts.
+_ENGLISH_CAPITALIZED = re.compile(
+    r"\b[A-Z][a-z]+(?:[\s\-][A-Z][a-z]+){0,2}\b"
+)
+
+# Common CJK particles / stopwords used as run separators. This is a
+# best-effort heuristic — a proper solution needs jieba or similar, which
+# is too heavy for Track 1. The tradeoff: we split aggressively on
+# function words to surface candidate names, accepting that we will
+# sometimes over-split a compound name.
+_CJK_STOPWORDS = "的是了在和与及或把被这那就也都还很"
+
+# Matches runs of 2+ CJK characters. The run is then re-split inside
+# _push_cjk on the CJK_STOPWORDS set. Python's `re` doesn't support
+# character-class intersection, which is why we split in two passes.
+_CJK_RUN = re.compile(r"[\u4e00-\u9fff]{2,}")
+
+# Secondary splitter used inside _push to break long CJK runs at stopwords.
+_CJK_SPLIT = re.compile(f"[{_CJK_STOPWORDS}]+")
+
+# Matches double-quoted and single-quoted strings.
+_QUOTED = re.compile(r"\"([^\"]+)\"|'([^']+)'")
+
+# Common English capitalized-but-not-names we want to filter.
+_STOPPHRASES_LOWER = frozenset(
+    {
+        "i", "the", "a", "an", "tell", "me", "about", "what", "who",
+        "where", "when", "why", "how", "is", "are", "was", "were",
+        "do", "does", "did", "can", "could", "should", "would",
+        "this", "that", "these", "those", "my", "your", "his", "her",
+        "their", "our", "they", "them", "mr", "mrs", "ms",
+    }
+)
+
+MAX_CANDIDATES = 5
+
+
+def extract_candidates(message: str, *, max_candidates: int = MAX_CANDIDATES) -> list[str]:
+    """Return a deduped list of proper-noun candidates from `message`.
+
+    The returned list preserves first-occurrence order so the most
+    specific / leftmost mentions take priority. Case-insensitive
+    dedupe. Each candidate is trimmed of surrounding whitespace.
+    """
+    if not message:
+        return []
+
+    out: list[str] = []
+    seen_lower: set[str] = set()
+
+    def _push(raw: str, *, trusted: bool = False) -> None:
+        """Push a candidate. If `trusted=True`, skip the stopphrase-
+        stripping heuristic — used for quoted strings where the user
+        explicitly wrapped the phrase so "The Wanderer" should stay
+        intact. The regex path passes trusted=False so sentence-initial
+        verbs like "Is Mary-Anne" get their leading "Is" stripped.
+        """
+        s = raw.strip()
+        if not s:
+            return
+        if not trusted:
+            tokens = s.split()
+            while tokens and tokens[0].lower() in _STOPPHRASES_LOWER:
+                tokens = tokens[1:]
+            if not tokens:
+                return
+            s = " ".join(tokens)
+        key = s.lower()
+        if key in _STOPPHRASES_LOWER:
+            return
+        if key in seen_lower:
+            return
+        seen_lower.add(key)
+        out.append(s)
+
+    def _push_cjk(raw: str) -> None:
+        """Push a CJK run, splitting on common stopword particles first.
+
+        `告诉我关于李雲的故事` → split on `的` → `告诉我关于李雲`, `故事`.
+        Still imperfect without a segmenter, but better than pushing the
+        whole sentence as one candidate.
+        """
+        for segment in _CJK_SPLIT.split(raw):
+            segment = segment.strip()
+            if len(segment) >= 2:
+                _push(segment)
+                if len(out) >= max_candidates:
+                    return
+
+    # 1) Quoted strings first — strongest signal of a name. Trusted
+    #    (no stopphrase stripping) because the user explicitly wrapped
+    #    the phrase: "The Wanderer" stays intact.
+    for match in _QUOTED.finditer(message):
+        _push(match.group(1) or match.group(2) or "", trusted=True)
+        if len(out) >= max_candidates:
+            return out
+
+    # 2) English capitalized phrases. For `Master Lin` we also push `Lin`
+    #    (the last token) so a brute exact-match on the bare name wins.
+    for match in _ENGLISH_CAPITALIZED.finditer(message):
+        phrase = match.group(0)
+        _push(phrase)
+        if len(out) >= max_candidates:
+            return out
+        if " " in phrase or "-" in phrase:
+            tail = re.split(r"[\s\-]+", phrase)[-1]
+            _push(tail)
+            if len(out) >= max_candidates:
+                return out
+
+    # 3) CJK character runs (2+ chars), split on particles.
+    for match in _CJK_RUN.finditer(message):
+        _push_cjk(match.group(0))
+        if len(out) >= max_candidates:
+            return out
+
+    return out
+
+
+# ── selector ───────────────────────────────────────────────────────────────
 
 
 async def select_glossary_for_context(
@@ -30,10 +184,45 @@ async def select_glossary_for_context(
 ) -> list[GlossaryEntityForContext]:
     if project.book_id is None:
         return []
-    return await client.select_for_context(
-        user_id=user_id,
-        book_id=project.book_id,
-        query=message,
-        max_entities=max_entities,
-        max_tokens=max_tokens,
-    )
+
+    candidates = extract_candidates(message)
+
+    if not candidates:
+        # No proper nouns → single call with empty query. K2b's tier 0
+        # still returns pinned entities and tier 3 fills in recents when
+        # nothing else matched. Single round trip, no parallelism.
+        return await client.select_for_context(
+            user_id=user_id,
+            book_id=project.book_id,
+            query="",
+            max_entities=max_entities,
+            max_tokens=max_tokens,
+        )
+
+    # Per-candidate K2b calls run in parallel. We cap each call's budget
+    # at the total so any one candidate can fill the context, then dedupe
+    # and truncate after merging.
+    tasks = [
+        client.select_for_context(
+            user_id=user_id,
+            book_id=project.book_id,
+            query=candidate,
+            max_entities=max_entities,
+            max_tokens=max_tokens,
+        )
+        for candidate in candidates
+    ]
+    results = await asyncio.gather(*tasks)
+
+    # Merge preserving first-occurrence order across candidates.
+    seen: set[str] = set()
+    merged: list[GlossaryEntityForContext] = []
+    for result_list in results:
+        for entity in result_list:
+            if entity.entity_id in seen:
+                continue
+            seen.add(entity.entity_id)
+            merged.append(entity)
+            if len(merged) >= max_entities:
+                return merged
+    return merged
