@@ -4,6 +4,9 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock
+
+from app.clients.glossary_client import GlossaryClient
+from app.db.repositories.summaries import SummariesRepo
 from uuid import uuid4
 
 import pytest
@@ -70,12 +73,12 @@ def _entity(**overrides) -> GlossaryEntityForContext:
 
 @pytest.mark.asyncio
 async def test_full_block_with_l0_l1_and_glossary():
-    summaries = AsyncMock()
+    summaries = AsyncMock(spec=SummariesRepo)
     summaries.get = AsyncMock(side_effect=[
         _summary("I am a fantasy novelist."),          # L0
         _summary("Book 1 of 5.", "project", uuid4()),   # L1
     ])
-    glossary_client = AsyncMock()
+    glossary_client = AsyncMock(spec=GlossaryClient)
     glossary_client.select_for_context = AsyncMock(return_value=[
         _entity(),
         _entity(cached_name="李雲", cached_aliases=["小李"], tier="exact", rank_score=0.9),
@@ -130,9 +133,9 @@ async def test_full_block_with_l0_l1_and_glossary():
 
 @pytest.mark.asyncio
 async def test_no_l0_omits_user_element():
-    summaries = AsyncMock()
+    summaries = AsyncMock(spec=SummariesRepo)
     summaries.get = AsyncMock(side_effect=[None, None])  # no L0, no L1
-    glossary = AsyncMock()
+    glossary = AsyncMock(spec=GlossaryClient)
     glossary.select_for_context = AsyncMock(return_value=[])
 
     built = await build_static_mode(
@@ -147,9 +150,9 @@ async def test_no_l0_omits_user_element():
 
 @pytest.mark.asyncio
 async def test_no_l1_summary_project_still_renders():
-    summaries = AsyncMock()
+    summaries = AsyncMock(spec=SummariesRepo)
     summaries.get = AsyncMock(side_effect=[None, None])
-    glossary = AsyncMock()
+    glossary = AsyncMock(spec=GlossaryClient)
     glossary.select_for_context = AsyncMock(return_value=[])
 
     built = await build_static_mode(
@@ -166,9 +169,9 @@ async def test_no_l1_summary_project_still_renders():
 
 @pytest.mark.asyncio
 async def test_project_without_book_omits_glossary():
-    summaries = AsyncMock()
+    summaries = AsyncMock(spec=SummariesRepo)
     summaries.get = AsyncMock(side_effect=[None, None])
-    glossary = AsyncMock()
+    glossary = AsyncMock(spec=GlossaryClient)
     glossary.select_for_context = AsyncMock(return_value=[])
 
     built = await build_static_mode(
@@ -184,9 +187,9 @@ async def test_project_without_book_omits_glossary():
 
 @pytest.mark.asyncio
 async def test_glossary_down_returns_no_glossary_element():
-    summaries = AsyncMock()
+    summaries = AsyncMock(spec=SummariesRepo)
     summaries.get = AsyncMock(side_effect=[None, None])
-    glossary = AsyncMock()
+    glossary = AsyncMock(spec=GlossaryClient)
     glossary.select_for_context = AsyncMock(return_value=[])  # simulate down
 
     built = await build_static_mode(
@@ -199,9 +202,9 @@ async def test_glossary_down_returns_no_glossary_element():
 
 @pytest.mark.asyncio
 async def test_project_name_with_xml_chars_escaped():
-    summaries = AsyncMock()
+    summaries = AsyncMock(spec=SummariesRepo)
     summaries.get = AsyncMock(side_effect=[None, None])
-    glossary = AsyncMock()
+    glossary = AsyncMock(spec=GlossaryClient)
     glossary.select_for_context = AsyncMock(return_value=[])
 
     built = await build_static_mode(
@@ -220,9 +223,9 @@ async def test_project_name_with_xml_chars_escaped():
 
 @pytest.mark.asyncio
 async def test_whitespace_only_l1_summary_treated_as_missing():
-    summaries = AsyncMock()
+    summaries = AsyncMock(spec=SummariesRepo)
     summaries.get = AsyncMock(side_effect=[None, _summary("   \t\n   ", "project", uuid4())])
-    glossary = AsyncMock()
+    glossary = AsyncMock(spec=GlossaryClient)
     glossary.select_for_context = AsyncMock(return_value=[])
 
     built = await build_static_mode(

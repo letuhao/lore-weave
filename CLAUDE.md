@@ -135,8 +135,25 @@ Update `docs/sessions/SESSION_PATCH.md` at meaningful phase boundaries:
 | A new blocker is discovered | Add to Open Blockers |
 | A blocker is resolved | Remove from Open Blockers |
 | A commit batch closes a work item | Update Session History + Current Active Work |
+| A code review intentionally postpones a fix | Add to **Deferred Items** in SESSION_PATCH |
 
 **Rule:** if you complete more than one commit's worth of work, update SESSION_PATCH before moving to the next phase.
+
+---
+
+## No Deadline · No Defer Drift
+
+LoreWeave is a hobby project with **no fixed deadline**. This shapes how reviews and planning work:
+
+- **Don't rush past quality issues.** A second-pass code review after every BUILD is mandatory, not optional. If you find a bug or smell, fix it now unless it genuinely belongs in a later phase.
+- **"Defer" must mean "tracked", not "forgotten".** Every intentional postponement gets a row in the **Deferred Items** section of `docs/sessions/SESSION_PATCH.md` with: ID, origin phase, description, target phase. Categories:
+  - **Naturally-next-phase** — implement when its target phase begins
+  - **Track 2 planning** — document only, no Track 1 action
+  - **Perf items** — fix when profiling shows pain
+  - **Won't-fix** — conscious decision, removed from mental backlog
+- **At every PLAN phase, read the Deferred Items section.** Any row whose Target phase equals the current phase is a must-do for that phase.
+- **Whenever a deferral is cleared, move it to "Recently cleared"** (or delete after a few sessions). The list should shrink as often as it grows.
+- **Avoid the "we'll come back to it" trap.** If you find yourself saying "skip if time is tight", that's a yellow flag — there is no time pressure here. Either it's genuinely Track 2, or it's a real bug to fix now.
 
 ---
 

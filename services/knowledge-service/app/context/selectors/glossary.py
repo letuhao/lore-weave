@@ -43,7 +43,11 @@ import re
 from uuid import UUID
 
 from app.clients.glossary_client import GlossaryClient, GlossaryEntityForContext
-from app.context.formatters.stopwords import CJK_PARTICLES, STOPPHRASES_LOWER
+from app.context.formatters.stopwords import (
+    ARTICLE_STOPPHRASES,
+    CJK_PARTICLES,
+    STOPPHRASES_LOWER,
+)
 from app.db.models import Project
 
 __all__ = ["extract_candidates", "select_glossary_for_context"]
@@ -85,23 +89,12 @@ def extract_candidates(message: str, *, max_candidates: int = MAX_CANDIDATES) ->
     out: list[str] = []
     seen_lower: set[str] = set()
 
-    def _push(raw: str, *, trusted: bool = False) -> None:
-        """Push a candidate. If `trusted=True`, skip the stopphrase-
-        stripping heuristic — used for quoted strings where the user
-        explicitly wrapped the phrase so "The Wanderer" should stay
-        intact. The regex path passes trusted=False so sentence-initial
-        verbs like "Is Mary-Anne" get their leading "Is" stripped.
+    def _push_one(s: str) -> None:
+        """Append `s` to the candidate list if it isn't a duplicate or
+        a bare stopphrase. Common dedup tail used by both _push paths.
         """
-        s = raw.strip()
         if not s:
             return
-        if not trusted:
-            tokens = s.split()
-            while tokens and tokens[0].lower() in STOPPHRASES_LOWER:
-                tokens = tokens[1:]
-            if not tokens:
-                return
-            s = " ".join(tokens)
         key = s.lower()
         if key in STOPPHRASES_LOWER:
             return
@@ -109,6 +102,44 @@ def extract_candidates(message: str, *, max_candidates: int = MAX_CANDIDATES) ->
             return
         seen_lower.add(key)
         out.append(s)
+
+    def _push(raw: str, *, trusted: bool = False) -> None:
+        """Push a candidate.
+
+        - `trusted=True` (quoted strings): no stripping at all. The user
+          explicitly wrapped the phrase, "The Wanderer" stays intact.
+        - `trusted=False` (regex matches): handles three cases:
+            1. Leading word is a verb/pronoun stopphrase ("Is Mary-Anne")
+               → strip aggressively, push only the stripped form.
+            2. Leading word is an article ("The Wanderer")
+               → push BOTH "The Wanderer" AND "Wanderer". Articles can
+               legitimately prefix titles (K4-I6); we let K2b decide.
+            3. No leading stopphrase → push as-is.
+        """
+        s = raw.strip()
+        if not s:
+            return
+        if trusted:
+            _push_one(s)
+            return
+
+        tokens = s.split()
+        if not tokens:
+            return
+
+        first_lower = tokens[0].lower()
+        if first_lower in ARTICLE_STOPPHRASES and len(tokens) >= 2:
+            # Multi-token phrase starting with article — keep both forms.
+            _push_one(s)
+            _push_one(" ".join(tokens[1:]))
+            return
+
+        # Default: strip leading verb/pronoun stopphrases.
+        while tokens and tokens[0].lower() in STOPPHRASES_LOWER:
+            tokens = tokens[1:]
+        if not tokens:
+            return
+        _push_one(" ".join(tokens))
 
     def _push_cjk(raw: str) -> None:
         """Push a CJK run, splitting on common stopword particles first.

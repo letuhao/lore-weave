@@ -35,14 +35,24 @@ __all__ = [
 
 
 # ── Used by candidate extraction (proper-noun heuristic) ──────────────────
+#
+# ARTICLE_STOPPHRASES is the subset of stopphrases that may legitimately
+# prefix a name as part of a title — "The Wanderer", "A Knight". When
+# the candidate extractor sees one of these as the leading word in a
+# multi-token capitalized phrase, it pushes BOTH forms (full + stripped)
+# rather than always stripping. Verbs / pronouns / interrogatives keep
+# the strip-only behaviour because they're never part of names.
+ARTICLE_STOPPHRASES: frozenset[str] = frozenset({"the", "a", "an"})
+
 STOPPHRASES_LOWER: frozenset[str] = frozenset(
     {
-        "i", "the", "a", "an", "tell", "me", "about", "what", "who",
+        "i", "tell", "me", "about", "what", "who",
         "where", "when", "why", "how", "is", "are", "was", "were",
         "do", "does", "did", "can", "could", "should", "would",
         "this", "that", "these", "those", "my", "your", "his", "her",
         "their", "our", "they", "them", "mr", "mrs", "ms",
     }
+    | ARTICLE_STOPPHRASES
 )
 
 

@@ -24,6 +24,7 @@ produce a context block.
 from uuid import UUID
 
 from app.clients.glossary_client import GlossaryClient, GlossaryEntityForContext
+from app.config import settings
 from app.context.formatters.dedup import filter_entities_not_in_summary
 from app.context.formatters.token_counter import estimate_tokens
 from app.context.formatters.xml_escape import sanitize_for_xml
@@ -103,9 +104,14 @@ async def build_static_mode(
     )
     # K4.12: drop glossary rows whose keywords already overlap the L1
     # summary — the summary is authored prose and richer, the glossary
-    # row would be redundant. Pinned entities are never dropped.
+    # row would be redundant. Pinned entities are never dropped. The
+    # min_overlap threshold is tunable via settings (K4-I7).
     if l1_summary is not None and entities:
-        entities = filter_entities_not_in_summary(entities, l1_summary.content)
+        entities = filter_entities_not_in_summary(
+            entities,
+            l1_summary.content,
+            min_overlap=settings.dedup_min_overlap,
+        )
 
     lines: list[str] = ['<memory mode="static">']
 

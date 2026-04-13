@@ -3,24 +3,37 @@
 Use respx to mock glossary-service responses. Every failure path must
 return an empty list — never raise — because chat should keep working
 when glossary-service is unavailable.
+
+K4-I8: the `gc` fixture (glossary client) handles teardown so the
+underlying httpx.AsyncClient gets aclose'd even if a test fails. Tests
+no longer need to call `await client.aclose()` manually.
 """
 
 from uuid import uuid4
 
 import httpx
 import pytest
+import pytest_asyncio
 import respx
 
 from app.clients.glossary_client import GlossaryClient
 
 
-def _make_client() -> GlossaryClient:
-    return GlossaryClient(
+@pytest_asyncio.fixture
+async def gc():
+    """Yield a GlossaryClient and aclose it after the test, even on
+    failure. Replaces the manual `await client.aclose()` pattern that
+    leaked the connection pool whenever a test assertion blew up."""
+    client = GlossaryClient(
         base_url="http://glossary-service:8088",
         internal_token="unit-test-token",
         timeout_s=0.5,
         retries=1,
     )
+    try:
+        yield client
+    finally:
+        await client.aclose()
 
 
 def _url_for(book_id: str) -> str:
@@ -28,10 +41,9 @@ def _url_for(book_id: str) -> str:
 
 
 @pytest.mark.asyncio
-async def test_success_returns_parsed_entities():
+async def test_success_returns_parsed_entities(gc: GlossaryClient):
     book_id = uuid4()
     user_id = uuid4()
-    client = _make_client()
 
     payload = {
         "entities": [
@@ -61,7 +73,7 @@ async def test_success_returns_parsed_entities():
 
     with respx.mock(assert_all_called=True) as mock:
         mock.post(_url_for(str(book_id))).respond(200, json=payload)
-        entities = await client.select_for_context(
+        entities = await gc.select_for_context(
             user_id=user_id, book_id=book_id, query="Alice"
         )
 
@@ -73,104 +85,90 @@ async def test_success_returns_parsed_entities():
     assert entities[1].cached_name == "李雲"
     assert entities[1].short_description is None
 
-    await client.aclose()
-
 
 @pytest.mark.asyncio
-async def test_timeout_returns_empty_list():
+async def test_timeout_returns_empty_list(gc: GlossaryClient):
     book_id = uuid4()
-    client = _make_client()
 
     with respx.mock() as mock:
         mock.post(_url_for(str(book_id))).mock(side_effect=httpx.TimeoutException("boom"))
-        entities = await client.select_for_context(
+        entities = await gc.select_for_context(
             user_id=uuid4(), book_id=book_id, query="q"
         )
 
     assert entities == []
-    await client.aclose()
 
 
 @pytest.mark.asyncio
-async def test_5xx_retries_then_returns_empty():
+async def test_5xx_retries_then_returns_empty(gc: GlossaryClient):
     book_id = uuid4()
-    client = _make_client()
 
     with respx.mock() as mock:
         route = mock.post(_url_for(str(book_id))).respond(503, text="down")
-        entities = await client.select_for_context(
+        entities = await gc.select_for_context(
             user_id=uuid4(), book_id=book_id, query="q"
         )
         # retries=1 → one retry → 2 total calls
         assert route.call_count == 2
 
     assert entities == []
-    await client.aclose()
 
 
 @pytest.mark.asyncio
-async def test_4xx_returns_empty_without_retry():
+async def test_4xx_returns_empty_without_retry(gc: GlossaryClient):
     book_id = uuid4()
-    client = _make_client()
 
     with respx.mock() as mock:
         route = mock.post(_url_for(str(book_id))).respond(401, text="bad token")
-        entities = await client.select_for_context(
+        entities = await gc.select_for_context(
             user_id=uuid4(), book_id=book_id, query="q"
         )
         assert route.call_count == 1
 
     assert entities == []
-    await client.aclose()
 
 
 @pytest.mark.asyncio
-async def test_connection_error_returns_empty():
+async def test_connection_error_returns_empty(gc: GlossaryClient):
     book_id = uuid4()
-    client = _make_client()
 
     with respx.mock() as mock:
         mock.post(_url_for(str(book_id))).mock(
             side_effect=httpx.ConnectError("refused")
         )
-        entities = await client.select_for_context(
+        entities = await gc.select_for_context(
             user_id=uuid4(), book_id=book_id, query="q"
         )
 
     assert entities == []
-    await client.aclose()
 
 
 @pytest.mark.asyncio
-async def test_malformed_json_returns_empty():
+async def test_malformed_json_returns_empty(gc: GlossaryClient):
     book_id = uuid4()
-    client = _make_client()
 
     with respx.mock() as mock:
         mock.post(_url_for(str(book_id))).respond(
             200, content=b"not json", headers={"content-type": "application/json"}
         )
-        entities = await client.select_for_context(
+        entities = await gc.select_for_context(
             user_id=uuid4(), book_id=book_id, query="q"
         )
 
     assert entities == []
-    await client.aclose()
 
 
 @pytest.mark.asyncio
-async def test_unexpected_shape_returns_empty():
+async def test_unexpected_shape_returns_empty(gc: GlossaryClient):
     book_id = uuid4()
-    client = _make_client()
 
     with respx.mock() as mock:
         mock.post(_url_for(str(book_id))).respond(200, json={"not_entities": []})
-        entities = await client.select_for_context(
+        entities = await gc.select_for_context(
             user_id=uuid4(), book_id=book_id, query="q"
         )
 
     assert entities == []
-    await client.aclose()
 
 
 @pytest.mark.asyncio
@@ -197,24 +195,21 @@ async def test_init_glossary_client_idempotent(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_5xx_failure_logs_only_once_per_call(caplog):
+async def test_5xx_failure_logs_only_once_per_call(gc: GlossaryClient, caplog):
     """K4-I4: a failed call (5xx + retries exhausted) must produce
     exactly ONE warning log line, not one per attempt."""
     import logging
 
     book_id = uuid4()
-    client = _make_client()
 
     with respx.mock() as mock:
         mock.post(_url_for(str(book_id))).respond(503, text="down")
         with caplog.at_level(logging.WARNING, logger="app.clients.glossary_client"):
-            entities = await client.select_for_context(
+            entities = await gc.select_for_context(
                 user_id=uuid4(), book_id=book_id, query="q"
             )
 
     assert entities == []
-    # Filter to the unavailable warning. Other warnings (decode etc.)
-    # shouldn't fire on this path.
     unavailable_logs = [
         r for r in caplog.records
         if "unavailable" in r.getMessage()
@@ -223,14 +218,11 @@ async def test_5xx_failure_logs_only_once_per_call(caplog):
         f"expected 1 'unavailable' log, got {len(unavailable_logs)}: "
         f"{[r.getMessage() for r in caplog.records]}"
     )
-    await client.aclose()
 
 
 @pytest.mark.asyncio
-async def test_internal_token_header_sent():
+async def test_internal_token_header_sent(gc: GlossaryClient):
     book_id = uuid4()
-    client = _make_client()
-
     captured_token: list[str] = []
 
     def capture(request: httpx.Request) -> httpx.Response:
@@ -239,9 +231,8 @@ async def test_internal_token_header_sent():
 
     with respx.mock() as mock:
         mock.post(_url_for(str(book_id))).mock(side_effect=capture)
-        await client.select_for_context(
+        await gc.select_for_context(
             user_id=uuid4(), book_id=book_id, query="q"
         )
 
     assert captured_token == ["unit-test-token"]
-    await client.aclose()
