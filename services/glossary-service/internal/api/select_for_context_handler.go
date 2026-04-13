@@ -51,15 +51,21 @@ type selectForContextResponse struct {
 }
 
 const (
-	pinnedCap                = 10
-	defaultMaxEntities       = 20
-	hardMaxEntities          = 200
-	defaultMaxTokens         = 1000
-	hardMaxTokens            = 10000
-	tierPinned               = "pinned"
-	tierExact                = "exact"
-	tierFTS                  = "fts"
-	tierRecent               = "recent"
+	pinnedCap          = 10
+	defaultMaxEntities = 20
+	hardMaxEntities    = 200
+	defaultMaxTokens   = 1000
+	hardMaxTokens      = 10000
+	// dedupeCushion: each tier's SQL LIMIT is bumped by this amount so
+	// that rows already selected by earlier tiers (and therefore skipped
+	// by the dedupe check in `add`) don't starve the remaining slot
+	// count. Without the cushion, heavy tier overlap can cause the
+	// selector to under-fill.
+	dedupeCushion = 5
+	tierPinned    = "pinned"
+	tierExact     = "exact"
+	tierFTS       = "fts"
+	tierRecent    = "recent"
 )
 
 // ── token estimation ────────────────────────────────────────────────────────
@@ -129,6 +135,14 @@ func (s *Server) internalSelectForContext(w http.ResponseWriter, r *http.Request
 
 	selected := make([]glossaryEntityForContext, 0, req.MaxEntities)
 	seen := make(map[string]struct{}, req.MaxEntities)
+	// `excludedList` mirrors `seen` as a deterministic []uuid.UUID slice
+	// so each tier's NOT-ANY filter sees a stable value (map iteration
+	// order is randomized, which would otherwise churn Postgres's plan
+	// cache). MUST be non-nil — pgx serializes a nil []uuid.UUID as SQL
+	// NULL, and `NOT (entity_id = ANY(NULL))` evaluates to NULL for
+	// every row, filtering out all matches.
+	excludedList := make([]uuid.UUID, 0, len(excluded)+req.MaxEntities)
+	excludedList = append(excludedList, excluded...)
 	for _, u := range excluded {
 		seen[u.String()] = struct{}{}
 	}
@@ -145,46 +159,70 @@ func (s *Server) internalSelectForContext(w http.ResponseWriter, r *http.Request
 			return false // budget exhausted; stop accumulating
 		}
 		seen[row.EntityID] = struct{}{}
+		if u, err := uuid.Parse(row.EntityID); err == nil {
+			excludedList = append(excludedList, u)
+		}
 		selected = append(selected, row)
 		tokensUsed += tokens
 		return len(selected) < req.MaxEntities
 	}
 
+	remaining := func() int {
+		r := req.MaxEntities - len(selected)
+		if r <= 0 {
+			return 0
+		}
+		return r + dedupeCushion
+	}
+
+	budgetExhausted := func() bool {
+		return len(selected) >= req.MaxEntities || tokensUsed >= req.MaxTokens
+	}
+
 	// ── Tier 0: pinned ─────────────────────────────────────────────────────
-	if err := s.queryPinnedTier(ctx, bookID, seenSlice(seen), pinnedCap, add); err != nil {
+	if err := s.queryPinnedTier(ctx, bookID, excludedList, pinnedCap, add); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "pinned query failed")
 		return
 	}
-	if len(selected) >= req.MaxEntities || tokensUsed >= req.MaxTokens {
+	if budgetExhausted() {
 		s.writeContextResponse(w, selected, tokensUsed)
 		return
 	}
 
 	// ── Tier 1 + Tier 2 only run when there is a query ────────────────────
-	if req.Query != "" {
-		if err := s.queryExactTier(ctx, bookID, seenSlice(seen), req.Query, req.MaxEntities-len(selected), add); err != nil {
+	hadQuery := req.Query != ""
+	if hadQuery {
+		if err := s.queryExactTier(ctx, bookID, excludedList, req.Query, remaining(), add); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "exact query failed")
 			return
 		}
-		if len(selected) >= req.MaxEntities || tokensUsed >= req.MaxTokens {
+		if budgetExhausted() {
 			s.writeContextResponse(w, selected, tokensUsed)
 			return
 		}
 
-		if err := s.queryFTSTier(ctx, bookID, seenSlice(seen), req.Query, req.MaxEntities-len(selected), add); err != nil {
+		if err := s.queryFTSTier(ctx, bookID, excludedList, req.Query, remaining(), add); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "fts query failed")
 			return
 		}
-		if len(selected) >= req.MaxEntities || tokensUsed >= req.MaxTokens {
+		if budgetExhausted() {
 			s.writeContextResponse(w, selected, tokensUsed)
 			return
 		}
 	}
 
-	// ── Tier 3: recent fallback (always runs if budget remains) ────────────
-	if err := s.queryRecentTier(ctx, bookID, seenSlice(seen), req.MaxEntities-len(selected), add); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "recent query failed")
-		return
+	// ── Tier 3: recent fallback. Only runs when:
+	//    (a) no query was given — caller wants a general "what's in this
+	//        book" snapshot (chat with no user turn yet), or
+	//    (b) a query was given but produced zero results — last-resort
+	//        filler to avoid returning an empty context.
+	// Running it unconditionally (earlier behaviour) polluted relevant
+	// query results with random recently-edited entities.
+	if !hadQuery || len(selected) == 0 {
+		if err := s.queryRecentTier(ctx, bookID, excludedList, remaining(), add); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "recent query failed")
+			return
+		}
 	}
 
 	s.writeContextResponse(w, selected, tokensUsed)
@@ -195,18 +233,6 @@ func (s *Server) writeContextResponse(w http.ResponseWriter, selected []glossary
 		Entities:            selected,
 		TotalTokensEstimate: tokens,
 	})
-}
-
-// seenSlice extracts the accumulated "already selected or excluded" ids
-// into a []uuid.UUID to pass to the next tier's NOT-ANY($?) filter.
-func seenSlice(seen map[string]struct{}) []uuid.UUID {
-	out := make([]uuid.UUID, 0, len(seen))
-	for s := range seen {
-		if u, err := uuid.Parse(s); err == nil {
-			out = append(out, u)
-		}
-	}
-	return out
 }
 
 // ── tier queries ────────────────────────────────────────────────────────────

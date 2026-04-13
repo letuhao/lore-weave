@@ -385,6 +385,110 @@ func TestSelectForContext_MaxTokensBudget(t *testing.T) {
 	}
 }
 
+// TestSelectForContext_PinnedOverlapsExact_AppearsOnceAsPinned is a
+// regression for the dedupe path. An entity that is both pinned AND an
+// exact match for the query must appear exactly once in the output and
+// be labeled tier=pinned (earliest tier wins).
+func TestSelectForContext_PinnedOverlapsExact_AppearsOnceAsPinned(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	srv, token := newContextTestServer(t, pool)
+
+	bookID := "00000000-0000-0000-0000-0000000c400a"
+	ids := seedContextBook(t, pool, bookID, []seedEntity{
+		{Name: "李雲", Pinned: true},
+		{Name: "Other"},
+	})
+
+	_, resp := callSelectForContext(t, srv, bookID, map[string]interface{}{
+		"query":        "李雲",
+		"max_entities": 10,
+	}, token)
+	if resp == nil {
+		t.Fatal("nil response")
+	}
+	// Count how many times the pinned+exact entity appears.
+	var occurrences int
+	var tier string
+	for _, e := range resp.Entities {
+		if e.EntityID == ids[0] {
+			occurrences++
+			tier = e.Tier
+		}
+	}
+	if occurrences != 1 {
+		t.Errorf("pinned+exact entity appeared %d times, want 1", occurrences)
+	}
+	if tier != tierPinned {
+		t.Errorf("pinned+exact entity tier: want pinned, got %s", tier)
+	}
+}
+
+// TestSelectForContext_RecentSkippedWhenQueryMatched verifies that a
+// query with matching exact/FTS results does NOT pull in random recent
+// entities. This is the K2b-I1 fix regression.
+func TestSelectForContext_RecentSkippedWhenQueryMatched(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	srv, token := newContextTestServer(t, pool)
+
+	bookID := "00000000-0000-0000-0000-0000000c400b"
+	seedContextBook(t, pool, bookID, []seedEntity{
+		{Name: "MatchingHero"},
+		{Name: "Unrelated1"},
+		{Name: "Unrelated2"},
+		{Name: "Unrelated3"},
+	})
+
+	_, resp := callSelectForContext(t, srv, bookID, map[string]interface{}{
+		"query":        "MatchingHero",
+		"max_entities": 10,
+	}, token)
+	if resp == nil {
+		t.Fatal("nil response")
+	}
+	// Should only contain the exact match — no recent-tier pollution.
+	for _, e := range resp.Entities {
+		if e.Tier == tierRecent {
+			t.Errorf("recent-tier entity %s leaked into a query that matched", e.EntityID)
+		}
+	}
+	if len(resp.Entities) == 0 {
+		t.Fatal("expected at least the exact match")
+	}
+}
+
+// TestSelectForContext_RecentFallbackWhenQueryMatchesNothing verifies
+// the recent fallback STILL runs when a query was given but produced
+// zero hits — otherwise callers would get an empty context.
+func TestSelectForContext_RecentFallbackWhenQueryMatchesNothing(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	srv, token := newContextTestServer(t, pool)
+
+	bookID := "00000000-0000-0000-0000-0000000c400c"
+	seedContextBook(t, pool, bookID, []seedEntity{
+		{Name: "Alpha"},
+		{Name: "Beta"},
+	})
+
+	_, resp := callSelectForContext(t, srv, bookID, map[string]interface{}{
+		"query":        "xxnotinanynamexx",
+		"max_entities": 10,
+	}, token)
+	if resp == nil {
+		t.Fatal("nil response")
+	}
+	if len(resp.Entities) != 2 {
+		t.Errorf("expected 2 recent-fallback entities, got %d", len(resp.Entities))
+	}
+	for _, e := range resp.Entities {
+		if e.Tier != tierRecent {
+			t.Errorf("fallback tier: want recent, got %s", e.Tier)
+		}
+	}
+}
+
 func TestSelectForContext_DeletedEntitiesExcluded(t *testing.T) {
 	pool := openTestDB(t)
 	runK2aMigrations(t, pool)
