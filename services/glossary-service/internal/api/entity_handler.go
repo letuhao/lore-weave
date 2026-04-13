@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -718,13 +719,13 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 		argN++
 	}
 
-	// short_description is nullable — explicit null clears the field.
+	// short_description is nullable. An explicit null OR a trimmed-empty
+	// string both clear the field so the response shape stays consistent.
+	// Length cap is measured in runes (characters), not bytes, so CJK
+	// content gets the same 500-character budget as Latin.
 	if raw, ok := in["short_description"]; ok {
-		if string(raw) == "null" {
-			setClauses = append(setClauses, fmt.Sprintf("short_description = $%d", argN))
-			args = append(args, nil)
-			argN++
-		} else {
+		var sdPtr *string
+		if string(raw) != "null" {
 			var sd string
 			if err := json.Unmarshal(raw, &sd); err != nil {
 				writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY",
@@ -732,15 +733,18 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			sd = strings.TrimSpace(sd)
-			if len(sd) > 500 {
+			if utf8.RuneCountInString(sd) > 500 {
 				writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_SHORT_DESCRIPTION",
 					"short_description must be at most 500 characters")
 				return
 			}
-			setClauses = append(setClauses, fmt.Sprintf("short_description = $%d", argN))
-			args = append(args, sd)
-			argN++
+			if sd != "" {
+				sdPtr = &sd
+			}
 		}
+		setClauses = append(setClauses, fmt.Sprintf("short_description = $%d", argN))
+		args = append(args, sdPtr)
+		argN++
 	}
 
 	if raw, ok := in["is_pinned_for_context"]; ok {

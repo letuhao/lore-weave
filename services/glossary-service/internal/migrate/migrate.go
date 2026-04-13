@@ -800,6 +800,8 @@ BEGIN
 
   -- aliases are stored as a JSON array string in original_value, e.g.
   -- '["alias1","alias2"]'. Parse defensively: empty / non-JSON → '{}'.
+  -- Narrowed exception list — we only want to swallow actual JSON-shape
+  -- errors; unexpected failures should still propagate.
   BEGIN
     IF v_aliases_raw IS NULL OR v_aliases_raw = '' THEN
       v_cached_aliases := ARRAY[]::TEXT[];
@@ -808,8 +810,12 @@ BEGIN
         SELECT jsonb_array_elements_text(v_aliases_raw::jsonb)
       );
     END IF;
-  EXCEPTION WHEN OTHERS THEN
-    v_cached_aliases := ARRAY[]::TEXT[];
+  EXCEPTION
+    WHEN invalid_text_representation
+      OR invalid_parameter_value
+      OR datatype_mismatch
+      OR data_exception THEN
+      v_cached_aliases := ARRAY[]::TEXT[];
   END;
 
   -- ── Single write: snapshot + cache columns + search_vector ──────────────
