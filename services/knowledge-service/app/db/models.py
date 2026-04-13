@@ -1,13 +1,19 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, StringConstraints
 
 ProjectType = Literal["book", "translation", "code", "general"]
 ExtractionStatus = Literal["disabled", "building", "paused", "ready", "failed"]
 ScopeType = Literal["global", "project", "session", "entity"]
+
+# Names are stripped of surrounding whitespace and must contain at least
+# one non-whitespace character. Max 200 chars, chat-service convention.
+ProjectName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
+]
 
 
 class Project(BaseModel):
@@ -33,7 +39,7 @@ class Project(BaseModel):
 
 
 class ProjectCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=200)
+    name: ProjectName
     description: str = ""
     project_type: ProjectType
     book_id: UUID | None = None
@@ -41,7 +47,16 @@ class ProjectCreate(BaseModel):
 
 
 class ProjectUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=200)
+    """Partial update. Field semantics:
+
+    - `name`, `description`, `instructions`: omit to leave unchanged. Setting
+      explicitly to None is rejected (these columns are NOT NULL). Passing
+      a value replaces the current value.
+    - `book_id`: omit to leave unchanged. Setting to None explicitly CLEARS
+      the book link. Setting to a UUID sets a new link.
+    """
+
+    name: ProjectName | None = None
     description: str | None = None
     instructions: str | None = None
     book_id: UUID | None = None

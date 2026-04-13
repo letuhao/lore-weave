@@ -26,6 +26,12 @@ _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
     {"name", "description", "instructions", "book_id"}
 )
 
+# Columns that accept NULL. For everything else, a None value on an
+# explicitly-set field is treated as "skip" (not "set to NULL") so we
+# don't violate NOT NULL constraints. book_id is the only nullable
+# updatable column — setting it to None explicitly clears the link.
+_NULLABLE_UPDATE_COLUMNS: frozenset[str] = frozenset({"book_id"})
+
 
 def _rows_changed(status: str) -> int:
     """Parse asyncpg command tag like 'UPDATE 1' / 'DELETE 0' safely."""
@@ -70,15 +76,25 @@ class ProjectsRepo:
     async def list(
         self, user_id: UUID, include_archived: bool = False
     ) -> list[Project]:
-        query = f"""
-        SELECT {_SELECT_COLS}
-        FROM knowledge_projects
-        WHERE user_id = $1
-          AND ($2 OR NOT is_archived)
-        ORDER BY created_at DESC
-        """
+        # Two static queries rather than a dynamic boolean — lets the
+        # planner use the partial index idx_knowledge_projects_user
+        # (WHERE NOT is_archived) on the common non-archived path.
+        if include_archived:
+            query = f"""
+            SELECT {_SELECT_COLS}
+            FROM knowledge_projects
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            """
+        else:
+            query = f"""
+            SELECT {_SELECT_COLS}
+            FROM knowledge_projects
+            WHERE user_id = $1 AND NOT is_archived
+            ORDER BY created_at DESC
+            """
         async with self._pool.acquire() as conn:
-            rows = await conn.fetch(query, user_id, include_archived)
+            rows = await conn.fetch(query, user_id)
         return [_row_to_project(r) for r in rows]
 
     async def get(self, user_id: UUID, project_id: UUID) -> Project | None:
@@ -94,20 +110,37 @@ class ProjectsRepo:
     async def update(
         self, user_id: UUID, project_id: UUID, patch: ProjectUpdate
     ) -> Project | None:
-        """Apply a partial update. Empty patch returns the current row
-        unchanged (does NOT touch updated_at). Returns None if the project
-        does not exist or belongs to a different user.
+        """Apply a partial update.
+
+        - Fields the caller didn't set are omitted (Pydantic exclude_unset).
+        - Fields explicitly set to a value replace the current value.
+        - Fields explicitly set to None on a NOT-NULL column (name /
+          description / instructions) are silently SKIPPED — use a string
+          like "" to clear them.
+        - Fields explicitly set to None on a nullable column (book_id)
+          CLEAR the column.
+        - Empty patch (or a patch whose only fields were skipped) returns
+          the current row unchanged — does NOT touch updated_at.
+        - Returns None if the project does not exist or belongs to a
+          different user.
         """
-        updates = patch.model_dump(exclude_unset=True)
+        raw = patch.model_dump(exclude_unset=True)
+        updates: dict[str, object] = {}
+        for field, value in raw.items():
+            if field not in _UPDATABLE_COLUMNS:
+                # Defense-in-depth; Pydantic should already prevent this.
+                raise ValueError(f"field not updatable: {field}")
+            if value is None and field not in _NULLABLE_UPDATE_COLUMNS:
+                # Skip None on NOT-NULL columns; treat as no-op for that field.
+                continue
+            updates[field] = value
+
         if not updates:
             return await self.get(user_id, project_id)
 
         set_clauses: list[str] = []
         params: list[object] = [user_id, project_id]
         for field, value in updates.items():
-            if field not in _UPDATABLE_COLUMNS:
-                # Defense-in-depth; Pydantic should already prevent this.
-                raise ValueError(f"field not updatable: {field}")
             params.append(value)
             set_clauses.append(f"{field} = ${len(params)}")
         set_clauses.append("updated_at = now()")
