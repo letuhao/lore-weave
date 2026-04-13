@@ -174,6 +174,59 @@ async def test_unexpected_shape_returns_empty():
 
 
 @pytest.mark.asyncio
+async def test_init_glossary_client_idempotent(monkeypatch):
+    """K4-I1: calling init_glossary_client twice must NOT leak the
+    previous client's connection pool. The function returns the
+    existing instance on the second call."""
+    from app.clients import glossary_client as mod
+    from app.config import settings
+
+    # Save state so we don't pollute other tests.
+    original = mod._client
+    try:
+        mod._client = None
+        monkeypatch.setattr(settings, "internal_service_token", "test")
+        monkeypatch.setattr(settings, "glossary_service_url", "http://x:1")
+        first = mod.init_glossary_client()
+        second = mod.init_glossary_client()
+        assert first is second, "double-init must return the same instance"
+    finally:
+        if mod._client is not None and mod._client is not original:
+            await mod._client.aclose()
+        mod._client = original
+
+
+@pytest.mark.asyncio
+async def test_5xx_failure_logs_only_once_per_call(caplog):
+    """K4-I4: a failed call (5xx + retries exhausted) must produce
+    exactly ONE warning log line, not one per attempt."""
+    import logging
+
+    book_id = uuid4()
+    client = _make_client()
+
+    with respx.mock() as mock:
+        mock.post(_url_for(str(book_id))).respond(503, text="down")
+        with caplog.at_level(logging.WARNING, logger="app.clients.glossary_client"):
+            entities = await client.select_for_context(
+                user_id=uuid4(), book_id=book_id, query="q"
+            )
+
+    assert entities == []
+    # Filter to the unavailable warning. Other warnings (decode etc.)
+    # shouldn't fire on this path.
+    unavailable_logs = [
+        r for r in caplog.records
+        if "unavailable" in r.getMessage()
+    ]
+    assert len(unavailable_logs) == 1, (
+        f"expected 1 'unavailable' log, got {len(unavailable_logs)}: "
+        f"{[r.getMessage() for r in caplog.records]}"
+    )
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_internal_token_header_sent():
     book_id = uuid4()
     client = _make_client()

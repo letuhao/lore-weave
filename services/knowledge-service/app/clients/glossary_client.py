@@ -47,8 +47,9 @@ class GlossaryClient:
 
     def __init__(self, base_url: str, internal_token: str, timeout_s: float, retries: int) -> None:
         self._base_url = base_url.rstrip("/")
-        self._token = internal_token
         self._retries = max(0, retries)
+        # K4-I5: token is baked into the client headers — no need for
+        # a separate field.
         self._http = httpx.AsyncClient(
             timeout=httpx.Timeout(timeout_s),
             headers={"X-Internal-Token": internal_token},
@@ -81,36 +82,28 @@ class GlossaryClient:
             "exclude_ids": exclude_ids or [],
         }
 
+        # K4-I4: log AT MOST one warning per call. Per-attempt logging
+        # used to spam logs during outages (N candidates × M retries ×
+        # every chat turn). Now: silent on individual retries, one
+        # consolidated warning at the end if we couldn't get a result.
         attempts = self._retries + 1
-        last_err: Exception | None = None
+        last_err_summary: str | None = None
         for attempt in range(attempts):
             try:
                 resp = await self._http.post(url, json=body)
-            except httpx.TimeoutException as exc:
-                last_err = exc
-                logger.warning(
-                    "glossary client timeout (attempt %d/%d) url=%s",
-                    attempt + 1, attempts, url,
-                )
+            except httpx.TimeoutException:
+                last_err_summary = "timeout"
                 continue
             except httpx.HTTPError as exc:
-                last_err = exc
-                logger.warning(
-                    "glossary client transport error (attempt %d/%d): %s",
-                    attempt + 1, attempts, exc,
-                )
+                last_err_summary = f"transport: {type(exc).__name__}"
                 continue
 
             if resp.status_code >= 500:
-                last_err = RuntimeError(f"glossary 5xx: {resp.status_code}")
-                logger.warning(
-                    "glossary client %d (attempt %d/%d)",
-                    resp.status_code, attempt + 1, attempts,
-                )
+                last_err_summary = f"{resp.status_code}"
                 continue
 
             if resp.status_code >= 400:
-                # 4xx is not retried — it's a stable request problem.
+                # 4xx is not retried — stable request problem. One log line.
                 logger.warning(
                     "glossary client %d (no retry) body=%s",
                     resp.status_code, resp.text[:200],
@@ -136,10 +129,10 @@ class GlossaryClient:
                     logger.warning("glossary client row validate skip: %s", exc)
             return parsed
 
-        # All attempts exhausted.
+        # All attempts exhausted — single warning summarising the failure.
         logger.warning(
-            "glossary client exhausted retries: %s",
-            last_err if last_err else "unknown",
+            "glossary client unavailable after %d attempts: %s",
+            attempts, last_err_summary or "unknown",
         )
         return []
 
@@ -150,8 +143,15 @@ _client: GlossaryClient | None = None
 
 
 def init_glossary_client() -> GlossaryClient:
-    """Instantiate the shared client from settings. Called from lifespan."""
+    """Instantiate the shared client from settings. Called from lifespan.
+
+    Idempotent: a second call without a prior close_glossary_client()
+    returns the existing instance instead of leaking the previous
+    httpx.AsyncClient's connection pool (K4-I1).
+    """
     global _client
+    if _client is not None:
+        return _client
     _client = GlossaryClient(
         base_url=settings.glossary_service_url,
         internal_token=settings.internal_service_token,

@@ -43,6 +43,7 @@ import re
 from uuid import UUID
 
 from app.clients.glossary_client import GlossaryClient, GlossaryEntityForContext
+from app.context.formatters.stopwords import CJK_PARTICLES, STOPPHRASES_LOWER
 from app.db.models import Project
 
 __all__ = ["extract_candidates", "select_glossary_for_context"]
@@ -56,34 +57,17 @@ _ENGLISH_CAPITALIZED = re.compile(
     r"\b[A-Z][a-z]+(?:[\s\-][A-Z][a-z]+){0,2}\b"
 )
 
-# Common CJK particles / stopwords used as run separators. This is a
-# best-effort heuristic — a proper solution needs jieba or similar, which
-# is too heavy for Track 1. The tradeoff: we split aggressively on
-# function words to surface candidate names, accepting that we will
-# sometimes over-split a compound name.
-_CJK_STOPWORDS = "的是了在和与及或把被这那就也都还很"
-
 # Matches runs of 2+ CJK characters. The run is then re-split inside
-# _push_cjk on the CJK_STOPWORDS set. Python's `re` doesn't support
-# character-class intersection, which is why we split in two passes.
+# _push_cjk on CJK_PARTICLES (shared in app.context.formatters.stopwords).
+# Python's `re` doesn't support character-class intersection, which is
+# why we split in two passes.
 _CJK_RUN = re.compile(r"[\u4e00-\u9fff]{2,}")
 
-# Secondary splitter used inside _push to break long CJK runs at stopwords.
-_CJK_SPLIT = re.compile(f"[{_CJK_STOPWORDS}]+")
+# Secondary splitter used inside _push_cjk to break long CJK runs at particles.
+_CJK_SPLIT = re.compile(f"[{CJK_PARTICLES}]+")
 
 # Matches double-quoted and single-quoted strings.
 _QUOTED = re.compile(r"\"([^\"]+)\"|'([^']+)'")
-
-# Common English capitalized-but-not-names we want to filter.
-_STOPPHRASES_LOWER = frozenset(
-    {
-        "i", "the", "a", "an", "tell", "me", "about", "what", "who",
-        "where", "when", "why", "how", "is", "are", "was", "were",
-        "do", "does", "did", "can", "could", "should", "would",
-        "this", "that", "these", "those", "my", "your", "his", "her",
-        "their", "our", "they", "them", "mr", "mrs", "ms",
-    }
-)
 
 MAX_CANDIDATES = 5
 
@@ -113,13 +97,13 @@ def extract_candidates(message: str, *, max_candidates: int = MAX_CANDIDATES) ->
             return
         if not trusted:
             tokens = s.split()
-            while tokens and tokens[0].lower() in _STOPPHRASES_LOWER:
+            while tokens and tokens[0].lower() in STOPPHRASES_LOWER:
                 tokens = tokens[1:]
             if not tokens:
                 return
             s = " ".join(tokens)
         key = s.lower()
-        if key in _STOPPHRASES_LOWER:
+        if key in STOPPHRASES_LOWER:
             return
         if key in seen_lower:
             return
@@ -199,15 +183,19 @@ async def select_glossary_for_context(
             max_tokens=max_tokens,
         )
 
-    # Per-candidate K2b calls run in parallel. We cap each call's budget
-    # at the total so any one candidate can fill the context, then dedupe
-    # and truncate after merging.
+    # K4-I2: divide the entity budget across candidates with a small
+    # safety cushion. Without this, every parallel K2b call asked for
+    # the FULL max_entities, fetching up to N×max_entities rows that
+    # we'd then dedupe and truncate to max_entities — wasted bandwidth
+    # and wasted Postgres work. The +2 cushion absorbs duplicates from
+    # K2b's pinned tier (which runs unconditionally on every query).
+    per_call_limit = max(5, (max_entities // len(candidates)) + 2)
     tasks = [
         client.select_for_context(
             user_id=user_id,
             book_id=project.book_id,
             query=candidate,
-            max_entities=max_entities,
+            max_entities=per_call_limit,
             max_tokens=max_tokens,
         )
         for candidate in candidates

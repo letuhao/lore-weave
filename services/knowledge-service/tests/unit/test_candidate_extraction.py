@@ -1,6 +1,14 @@
 """Unit tests for K4.3 entity candidate extraction."""
 
+from app.context.formatters.stopwords import STOPPHRASES_LOWER
 from app.context.selectors.glossary import extract_candidates
+
+
+def test_stopphrases_imported_from_shared_module():
+    """K4-I3 regression: extract_candidates must use the shared
+    STOPPHRASES_LOWER set, not a private duplicate."""
+    assert "tell" in STOPPHRASES_LOWER
+    assert "is" in STOPPHRASES_LOWER
 
 
 def test_empty_message():

@@ -26,6 +26,7 @@ import re
 from typing import Iterable
 
 from app.clients.glossary_client import GlossaryEntityForContext
+from app.context.formatters.stopwords import KEYWORD_STOPWORDS_LOWER
 
 __all__ = ["filter_entities_not_in_summary"]
 
@@ -36,18 +37,9 @@ __all__ = ["filter_entities_not_in_summary"]
 _TOKEN_RE = re.compile(r"[\w]{4,}", re.UNICODE)
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]{2,}")
 
-# Stopwords to exclude from the summary's keyword set. Small list —
-# conservative is better than aggressive here.
-_STOPWORDS_LOWER = frozenset(
-    {
-        "this", "that", "these", "those", "with", "from", "into",
-        "have", "having", "been", "being", "their", "them", "they",
-        "would", "could", "should", "will", "were", "where", "what",
-        "when", "about", "also", "just", "only", "some", "such",
-        "then", "than", "much", "very", "even", "most", "more", "less",
-        "they", "which",
-    }
-)
+# Stopwords come from the shared module so dedup and candidate
+# extraction can't drift independently.
+_STOPWORDS_LOWER = KEYWORD_STOPWORDS_LOWER
 
 
 def _tokenize(text: str) -> set[str]:
