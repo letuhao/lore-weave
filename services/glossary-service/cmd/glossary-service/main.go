@@ -90,6 +90,14 @@ func main() {
 		slog.Error("migrate evidence-chapter-index", "error", err)
 		os.Exit(1)
 	}
+	if err := migrate.UpKnowledgeMemory(ctx, pool); err != nil {
+		slog.Error("migrate knowledge-memory", "error", err)
+		os.Exit(1)
+	}
+	if err := migrate.BackfillKnowledgeMemory(ctx, pool); err != nil {
+		slog.Error("backfill knowledge-memory", "error", err)
+		os.Exit(1)
+	}
 
 	srv := api.NewServer(pool, cfg)
 	httpSrv := &http.Server{

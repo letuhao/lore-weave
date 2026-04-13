@@ -600,3 +600,277 @@ func UpEvidenceChapterIndex(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	return nil
 }
+
+// ── knowledge-service memory support (Track 1 K2a) ─────────────────────────
+//
+// Adds columns that the knowledge-service L2 glossary-fallback depends on:
+//
+//   - short_description TEXT           — user-editable ~150-char summary for
+//                                        compact chat context injection.
+//   - is_pinned_for_context BOOLEAN    — user-marked "always include" flag.
+//   - cached_name TEXT                 — denormalised copy of the entity's
+//                                        'name'/'term' attribute, maintained
+//                                        by the existing snapshot trigger.
+//   - cached_aliases TEXT[]            — denormalised copy of the entity's
+//                                        'aliases' attribute (JSON array in
+//                                        EAV) as a native Postgres text[].
+//   - search_vector tsvector GENERATED — STORED tsvector built from
+//                                        cached_name + cached_aliases +
+//                                        short_description. Used by the
+//                                        /internal/glossary/select-for-context
+//                                        tiered selector in K2b.
+//
+// Source of truth for names/aliases remains entity_attribute_values (EAV);
+// cached_name / cached_aliases are a read-optimisation populated whenever
+// recalculate_entity_snapshot() runs. The existing triggers on EAV changes
+// (trig_eav_snapshot, etc.) pick up the new behaviour for free because the
+// recalculation function itself is updated in place via CREATE OR REPLACE.
+//
+// Uses 'simple' text search config for maximum language coverage (CJK works
+// via per-codepoint tokenisation).
+
+const knowledgeMemorySQL = `
+-- 1. New columns on glossary_entities
+ALTER TABLE glossary_entities
+  ADD COLUMN IF NOT EXISTS short_description       TEXT,
+  ADD COLUMN IF NOT EXISTS is_pinned_for_context   BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS cached_name             TEXT,
+  ADD COLUMN IF NOT EXISTS cached_aliases          TEXT[] NOT NULL DEFAULT '{}';
+
+-- 2. search_vector is a plain tsvector column (not GENERATED) because
+--    Postgres 18 considers the expression
+--      to_tsvector('simple', coalesce(cached_name,'') || ...
+--                                            array_to_string(cached_aliases,' ')...)
+--    non-immutable (array_to_string over a nullable text[] trips the check).
+--    It is maintained alongside cached_name / cached_aliases in the
+--    recalculate_entity_snapshot() function below — single write path, no
+--    additional triggers needed.
+ALTER TABLE glossary_entities
+  ADD COLUMN IF NOT EXISTS search_vector tsvector;
+
+CREATE INDEX IF NOT EXISTS idx_ge_search_vector
+  ON glossary_entities USING gin(search_vector);
+
+CREATE INDEX IF NOT EXISTS idx_ge_pinned_book
+  ON glossary_entities(book_id)
+  WHERE is_pinned_for_context AND deleted_at IS NULL;
+
+-- 3. Replace trig_fn_entity_self_snapshot so it ALSO fires when
+--    short_description changes. Without this, direct SQL updates to
+--    short_description (migrations, backfills, tests) would leave
+--    search_vector stale. The normal API PATCH path always bumps
+--    updated_at so the existing watch list already covered it, but we
+--    defend against non-API writes too.
+CREATE OR REPLACE FUNCTION trig_fn_entity_self_snapshot()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.status            IS DISTINCT FROM OLD.status
+  OR NEW.alive             IS DISTINCT FROM OLD.alive
+  OR NEW.tags              IS DISTINCT FROM OLD.tags
+  OR NEW.kind_id           IS DISTINCT FROM OLD.kind_id
+  OR NEW.updated_at        IS DISTINCT FROM OLD.updated_at
+  OR NEW.short_description IS DISTINCT FROM OLD.short_description
+  THEN
+    PERFORM recalculate_entity_snapshot(NEW.entity_id);
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+-- 4. Extend recalculate_entity_snapshot to ALSO refresh cached_name +
+--    cached_aliases + search_vector. We keep the existing snapshot-building
+--    logic but add the cache writes at the end in the same function body.
+--    CREATE OR REPLACE preserves the trigger bindings.
+CREATE OR REPLACE FUNCTION recalculate_entity_snapshot(p_entity_id UUID)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_snapshot       JSONB;
+  v_cached_name    TEXT;
+  v_aliases_raw    TEXT;
+  v_cached_aliases TEXT[];
+BEGIN
+  -- ── Original snapshot build (unchanged) ──────────────────────────────────
+  SELECT jsonb_build_object(
+    'schema_version', '1.0',
+    'entity_id',      e.entity_id::text,
+    'book_id',        e.book_id::text,
+    'kind', jsonb_build_object(
+      'source', 'system',
+      'ref_id', k.kind_id::text,
+      'code',   k.code,
+      'name',   k.name,
+      'icon',   k.icon,
+      'color',  k.color
+    ),
+    'status', e.status,
+    'alive',  e.alive,
+    'tags',   to_jsonb(e.tags),
+    'attributes', COALESCE((
+      SELECT jsonb_agg(
+        jsonb_build_object(
+          'attr_def_source',   'system',
+          'attr_def_ref_id',   ad.attr_def_id::text,
+          'attr_value_id',     av.attr_value_id::text,
+          'code',              ad.code,
+          'name',              ad.name,
+          'field_type',        ad.field_type,
+          'is_required',       ad.is_required,
+          'is_system',         ad.is_system,
+          'sort_order',        ad.sort_order,
+          'original_language', av.original_language,
+          'original_value',    COALESCE(av.original_value, ''),
+          'translations', COALESCE((
+            SELECT jsonb_agg(
+              jsonb_build_object(
+                'translation_id', t.translation_id::text,
+                'language_code',  t.language_code,
+                'value',          t.value,
+                'confidence',     t.confidence
+              ) ORDER BY t.language_code
+            )
+            FROM attribute_translations t
+            WHERE t.attr_value_id = av.attr_value_id
+          ), '[]'::jsonb),
+          'evidences', COALESCE((
+            SELECT jsonb_agg(
+              jsonb_build_object(
+                'evidence_id',       ev.evidence_id::text,
+                'evidence_type',     ev.evidence_type,
+                'original_language', ev.original_language,
+                'original_text',     ev.original_text,
+                'chapter_id',        ev.chapter_id::text,
+                'chapter_title',     ev.chapter_title,
+                'block_or_line',     ev.block_or_line,
+                'note',              ev.note
+              ) ORDER BY ev.created_at
+            )
+            FROM evidences ev
+            WHERE ev.attr_value_id = av.attr_value_id
+          ), '[]'::jsonb)
+        ) ORDER BY ad.sort_order
+      )
+      FROM entity_attribute_values av
+      JOIN attribute_definitions ad ON ad.attr_def_id = av.attr_def_id
+      WHERE av.entity_id = p_entity_id
+    ), '[]'::jsonb),
+    'chapter_links', COALESCE((
+      SELECT jsonb_agg(
+        jsonb_build_object(
+          'link_id',       cl.link_id::text,
+          'chapter_id',    cl.chapter_id::text,
+          'chapter_title', cl.chapter_title,
+          'chapter_index', cl.chapter_index,
+          'relevance',     cl.relevance,
+          'note',          cl.note
+        ) ORDER BY cl.chapter_index NULLS LAST, cl.added_at
+      )
+      FROM chapter_entity_links cl
+      WHERE cl.entity_id = p_entity_id
+    ), '[]'::jsonb),
+    'updated_at',  e.updated_at,
+    'snapshot_at', now()
+  )
+  INTO v_snapshot
+  FROM glossary_entities e
+  JOIN entity_kinds k ON k.kind_id = e.kind_id
+  WHERE e.entity_id = p_entity_id;
+
+  IF v_snapshot IS NULL THEN
+    RETURN;
+  END IF;
+
+  -- ── NEW: read name + aliases from EAV for the read-cache ────────────────
+  SELECT av.original_value INTO v_cached_name
+  FROM entity_attribute_values av
+  JOIN attribute_definitions ad ON ad.attr_def_id = av.attr_def_id
+  WHERE av.entity_id = p_entity_id
+    AND ad.code IN ('name','term')
+  ORDER BY
+    CASE ad.code WHEN 'name' THEN 0 WHEN 'term' THEN 1 ELSE 2 END,
+    ad.sort_order
+  LIMIT 1;
+
+  SELECT av.original_value INTO v_aliases_raw
+  FROM entity_attribute_values av
+  JOIN attribute_definitions ad ON ad.attr_def_id = av.attr_def_id
+  WHERE av.entity_id = p_entity_id AND ad.code = 'aliases'
+  LIMIT 1;
+
+  -- aliases are stored as a JSON array string in original_value, e.g.
+  -- '["alias1","alias2"]'. Parse defensively: empty / non-JSON → '{}'.
+  BEGIN
+    IF v_aliases_raw IS NULL OR v_aliases_raw = '' THEN
+      v_cached_aliases := ARRAY[]::TEXT[];
+    ELSE
+      v_cached_aliases := ARRAY(
+        SELECT jsonb_array_elements_text(v_aliases_raw::jsonb)
+      );
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    v_cached_aliases := ARRAY[]::TEXT[];
+  END;
+
+  -- ── Single write: snapshot + cache columns + search_vector ──────────────
+  -- No WHERE distinctness guard: a short_description change on its own
+  -- leaves cache columns identical, so a guarded write would skip the
+  -- row and leave search_vector stale. Recursion via the self-trigger
+  -- is prevented because the watched fields (status / alive / tags /
+  -- kind_id / updated_at / short_description) are not touched here.
+  UPDATE glossary_entities
+  SET entity_snapshot = v_snapshot,
+      cached_name     = v_cached_name,
+      cached_aliases  = COALESCE(v_cached_aliases, ARRAY[]::TEXT[]),
+      search_vector   = to_tsvector('simple',
+        coalesce(v_cached_name, '') || ' ' ||
+        coalesce(array_to_string(v_cached_aliases, ' '), '') || ' ' ||
+        coalesce(short_description, ''))
+  WHERE entity_id = p_entity_id;
+END;
+$$;
+`
+
+// UpKnowledgeMemory applies the K2a (knowledge-service glossary fallback)
+// schema additions: short_description, is_pinned_for_context, cached_name,
+// cached_aliases, search_vector (generated tsvector). Also replaces
+// recalculate_entity_snapshot() so the existing snapshot triggers also
+// maintain the cache columns. Idempotent.
+func UpKnowledgeMemory(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, knowledgeMemorySQL); err != nil {
+		return fmt.Errorf("migrate knowledge-memory: %w", err)
+	}
+	return nil
+}
+
+// BackfillKnowledgeMemory populates cached_name / cached_aliases for any
+// entity where they are NULL/empty by calling recalculate_entity_snapshot.
+// Idempotent: once an entity has a cached_name, subsequent runs are no-ops.
+func BackfillKnowledgeMemory(ctx context.Context, pool *pgxpool.Pool) error {
+	rows, err := pool.Query(ctx,
+		`SELECT entity_id FROM glossary_entities WHERE cached_name IS NULL`)
+	if err != nil {
+		return fmt.Errorf("backfill-km list: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return fmt.Errorf("backfill-km scan: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, id := range ids {
+		if _, err := pool.Exec(ctx,
+			`SELECT recalculate_entity_snapshot($1)`, id); err != nil {
+			return fmt.Errorf("backfill-km entity %s: %w", id, err)
+		}
+	}
+	return nil
+}

@@ -128,6 +128,8 @@ func (s *Server) Router() http.Handler {
 					r.Get("/", s.getEntityDetail)
 					r.Patch("/", s.patchEntity)
 					r.Delete("/", s.deleteEntity)
+					r.Post("/pin", s.pinEntity)
+					r.Delete("/pin", s.unpinEntity)
 					r.Route("/chapter-links", func(r chi.Router) {
 						r.Get("/", s.listChapterLinks)
 						r.Post("/", s.createChapterLink)

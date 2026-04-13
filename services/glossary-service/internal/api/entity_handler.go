@@ -98,6 +98,8 @@ type entityListItem struct {
 	DisplayNameTranslation *string     `json:"display_name_translation"`
 	Status                 string      `json:"status"`
 	Tags                   []string    `json:"tags"`
+	ShortDescription       *string     `json:"short_description"`
+	IsPinnedForContext     bool        `json:"is_pinned_for_context"`
 	ChapterLinkCount       int         `json:"chapter_link_count"`
 	TranslationCount       int         `json:"translation_count"`
 	EvidenceCount          int         `json:"evidence_count"`
@@ -164,6 +166,7 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
 				ORDER BY ad.sort_order LIMIT 1
 			), '') AS display_name,
+			e.short_description, e.is_pinned_for_context,
 			(SELECT COUNT(*) FROM chapter_entity_links WHERE entity_id = e.entity_id) AS chapter_link_count,
 			(SELECT COUNT(*) FROM attribute_translations tr
 				JOIN entity_attribute_values eav2 ON eav2.attr_value_id = tr.attr_value_id
@@ -179,6 +182,7 @@ func (s *Server) loadEntityDetail(ctx context.Context, bookID, entityID uuid.UUI
 		&d.EntityID, &d.BookID, &d.KindID, &d.Status, &d.Tags, &d.CreatedAt, &d.UpdatedAt,
 		&d.Kind.KindID, &d.Kind.Code, &d.Kind.Name, &d.Kind.Icon, &d.Kind.Color,
 		&d.DisplayName,
+		&d.ShortDescription, &d.IsPinnedForContext,
 		&d.ChapterLinkCount, &d.TranslationCount, &d.EvidenceCount,
 	)
 	if err == pgx.ErrNoRows {
@@ -554,6 +558,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
 				ORDER BY ad.sort_order LIMIT 1
 			), '') AS display_name,
+			e.short_description, e.is_pinned_for_context,
 			(SELECT COUNT(*) FROM chapter_entity_links WHERE entity_id = e.entity_id) AS chapter_link_count,
 			(SELECT COUNT(*) FROM attribute_translations tr
 				JOIN entity_attribute_values eav2 ON eav2.attr_value_id = tr.attr_value_id
@@ -583,6 +588,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 			&item.CreatedAt, &item.UpdatedAt,
 			&item.Kind.KindID, &item.Kind.Code, &item.Kind.Name, &item.Kind.Icon, &item.Kind.Color,
 			&item.DisplayName,
+			&item.ShortDescription, &item.IsPinnedForContext,
 			&item.ChapterLinkCount, &item.TranslationCount, &item.EvidenceCount,
 		); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan failed")
@@ -712,6 +718,43 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 		argN++
 	}
 
+	// short_description is nullable — explicit null clears the field.
+	if raw, ok := in["short_description"]; ok {
+		if string(raw) == "null" {
+			setClauses = append(setClauses, fmt.Sprintf("short_description = $%d", argN))
+			args = append(args, nil)
+			argN++
+		} else {
+			var sd string
+			if err := json.Unmarshal(raw, &sd); err != nil {
+				writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY",
+					"short_description must be string or null")
+				return
+			}
+			sd = strings.TrimSpace(sd)
+			if len(sd) > 500 {
+				writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_SHORT_DESCRIPTION",
+					"short_description must be at most 500 characters")
+				return
+			}
+			setClauses = append(setClauses, fmt.Sprintf("short_description = $%d", argN))
+			args = append(args, sd)
+			argN++
+		}
+	}
+
+	if raw, ok := in["is_pinned_for_context"]; ok {
+		var pinned bool
+		if err := json.Unmarshal(raw, &pinned); err != nil {
+			writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY",
+				"is_pinned_for_context must be boolean")
+			return
+		}
+		setClauses = append(setClauses, fmt.Sprintf("is_pinned_for_context = $%d", argN))
+		args = append(args, pinned)
+		argN++
+	}
+
 	ctx := r.Context()
 
 	if len(setClauses) > 0 {
@@ -741,6 +784,55 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, detail)
+}
+
+// ── POST/DELETE /v1/glossary/books/{book_id}/entities/{entity_id}/pin ────────
+//
+// Idempotent toggle of the is_pinned_for_context flag used by the
+// knowledge-service glossary-fallback selector. POST sets to true,
+// DELETE sets to false. Returns 204 on success. Book ownership is
+// verified the same way as patchEntity.
+
+func (s *Server) setEntityPinned(w http.ResponseWriter, r *http.Request, pinned bool) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
+		return
+	}
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	entityID, ok := parsePathUUID(w, r, "entity_id")
+	if !ok {
+		return
+	}
+	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+		return
+	}
+
+	tag, err := s.pool.Exec(r.Context(),
+		`UPDATE glossary_entities
+		 SET is_pinned_for_context = $1, updated_at = now()
+		 WHERE entity_id = $2 AND book_id = $3 AND deleted_at IS NULL`,
+		pinned, entityID, bookID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "pin update failed")
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "entity not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) pinEntity(w http.ResponseWriter, r *http.Request) {
+	s.setEntityPinned(w, r, true)
+}
+
+func (s *Server) unpinEntity(w http.ResponseWriter, r *http.Request) {
+	s.setEntityPinned(w, r, false)
 }
 
 // ── DELETE /v1/glossary/books/{book_id}/entities/{entity_id} ─────────────────

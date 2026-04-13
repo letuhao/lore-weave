@@ -7,8 +7,8 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-13 (session 36 — Knowledge Service K0 + K1)
-- Updated By: Assistant (knowledge-service K0 scaffold + K1 schema/repos, Gate 1 + Gate 2 passed)
+- Last Updated: 2026-04-13 (session 36 — Knowledge Service K0 + K1 + K2a)
+- Updated By: Assistant (K0 scaffold + K1 schema/repos + K2a glossary cache/pin, Gates 1/2/3 passed)
 - Active Branch: `main`
 - HEAD: `fa36e99` (pending new commit for K0)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V6.md` — full context for next agent
@@ -38,6 +38,22 @@
 **Glossary Extraction Pipeline: FULLY COMPLETE (BE + FE + TESTED).** 13 BE tasks + 7 FE tasks + 49 integration test assertions + browser smoke test. Tested with real Qwen 3.5 9B model via LM Studio. 90 entities extracted from 5 chapters.
 
 **Voice Pipeline V2: COMPLETE + DEBUGGED + REFACTORED.** All 48 tasks + 5 analytics tasks. V1 code cleaned up (1576 lines deleted). Pipeline state machine added. **Chat page re-architected** (session 34): MVC separation, ChatSessionContext + ChatStreamContext split by update frequency, ChatView replaces ChatWindow (never unmounts), useVoiceAssistMic unified with VadController + backend STT. Voice Assist button now wired end-to-end with backend STT + backend TTS (audio stored in S3 for replay).
+
+**Knowledge Service: K0 + K1 + K2a COMPLETE (Gates 1/2/3 passed).** (Session 36)
+- **K2a — Glossary schema additions for L2 fallback (Gate 3 passed).** New columns on `glossary_entities` in `loreweave_glossary`: `short_description TEXT`, `is_pinned_for_context BOOLEAN NOT NULL DEFAULT false`, `cached_name TEXT`, `cached_aliases TEXT[] NOT NULL DEFAULT '{}'`, `search_vector tsvector` (plain column, not GENERATED). GIN index `idx_ge_search_vector` on search_vector; partial index `idx_ge_pinned_book` on `(book_id) WHERE is_pinned_for_context AND deleted_at IS NULL`.
+- **Architectural decision documented**: `glossary_entities` uses EAV — `name`/`aliases` live in `entity_attribute_values`, not as first-class columns. Promoting them would break translations (`attribute_translations.attr_value_id` FK), evidence linkage, and the GEP extraction pipeline. Chose the **cache** path: `cached_name` + `cached_aliases` are trigger-maintained denormalizations; EAV stays source of truth. Reversible and touches no downstream code.
+- **Trigger strategy**: extended the existing `recalculate_entity_snapshot(p_entity_id)` PL/pgSQL function (CREATE OR REPLACE preserves all trigger bindings) to ALSO write `cached_name`, `cached_aliases`, and `search_vector` in a single UPDATE. `cached_name` reads from EAV where `ad.code IN ('name','term')` ordered by priority. `cached_aliases` parses the JSON-array string stored in the `aliases` attribute's `original_value` via `jsonb_array_elements_text` inside a BEGIN/EXCEPTION block (defensive on malformed JSON → empty array). `search_vector` uses `to_tsvector('simple', cached_name || ' ' || array_to_string(cached_aliases,' ') || ' ' || short_description)`.
+- **Why `search_vector` is NOT a `GENERATED ALWAYS AS ... STORED` column**: Postgres 18 rejects the expression as "not immutable" — `array_to_string` over a nullable text[] combined with multi-coalesce trips the planner check even with `'simple'::regconfig` cast. Falling back to a plain column maintained by the same single trigger path is simpler and has zero write amplification vs a generated column.
+- **Self-trigger extended**: `trig_fn_entity_self_snapshot` now also watches `short_description` changes (in addition to `status`/`alive`/`tags`/`kind_id`/`updated_at`), so direct SQL updates to `short_description` refresh `search_vector` even when `updated_at` isn't bumped. The API PATCH path already bumped `updated_at`; this is defensive for migrations and backfills.
+- **Recursion safety**: the UPDATE inside `recalculate_entity_snapshot` only touches `entity_snapshot`, `cached_*`, `search_vector` — none of which are watched by the self-trigger — so no recursive trigger cascade. WHERE-clause distinctness guard REMOVED (it would have suppressed writes when only `short_description` changed, leaving `search_vector` stale).
+- **Go API changes** (`entity_handler.go`, `server.go`):
+  - `entityListItem` gains `short_description *string` + `is_pinned_for_context bool` (JSON keys `short_description`, `is_pinned_for_context`).
+  - `loadEntityDetail` + `listEntities` SELECTs updated to return the new fields.
+  - `patchEntity` accepts `short_description` (string/null, 500-char trimmed max) and `is_pinned_for_context` (bool).
+  - New `POST/DELETE /v1/glossary/books/{book_id}/entities/{entity_id}/pin` endpoints (idempotent, 204 on success, 403 on cross-user, 404 on missing/soft-deleted).
+- **Backfill**: new `BackfillKnowledgeMemory` migrate step iterates entities where `cached_name IS NULL` and calls `recalculate_entity_snapshot` per row. Idempotent (once cached, future runs skip). Verified: 190/191 live entities got `cached_name`, 191/191 got `search_vector` (the one without cached_name is an entity with no name/term attribute value in EAV).
+- **Gate 3 verified end-to-end**: rebuilt glossary-service, all 5 columns + 2 indexes present, CJK `cached_name` + `cached_aliases` populated on real entities, `search_vector @@ plainto_tsquery('simple', 'direct')` finds entity right after direct `short_description` UPDATE (proving trigger fires), `is_pinned_for_context` toggle + partial-index roundtrip works, `go build ./...` + `go vet ./...` + existing `go test ./...` all clean (no regression).
+- **Deferred to K2b**: `POST /internal/glossary/select-for-context` tiered FTS endpoint, internal-auth middleware for `/internal/*` routes, dedicated Go integration tests. Frontend pin UI and `short_description` editor are K8/K3.
 
 **Knowledge Service: K0 + K1 COMPLETE (Gate 1 + Gate 2 passed).** (Session 36)
 - **K1 — Postgres schema + repositories (Gate 2 passed).** Tables `knowledge_projects` + `knowledge_summaries` created via `app/db/migrate.py` (inline DDL string + `run_migrations(pool)`, same house style as chat-service). Cross-DB FKs intentionally dropped — `user_id` and `book_id` are bare UUIDs, validated in app. Both tables include all extraction fields (default-off) from KSA §3.3 even though Track 1 doesn't use them. `knowledge_summaries` unique constraint uses Postgres 15+ `NULLS NOT DISTINCT` so `(user, 'global', NULL)` duplicates conflict.
@@ -84,7 +100,7 @@
 - **Review:** 8 issues found and fixed (4 high, 4 medium). Commit: `fa36e99`.
 - **API methods added:** `glossaryApi.createTranslation()`, `patchTranslation()`, `deleteTranslation()`.
 
-**Next priority:** K0 + K1 done (this session). Continue Knowledge Service Track 1 at **K2** — glossary-service schema additions. Read `docs/03_planning/KNOWLEDGE_SERVICE_TRACK1_IMPLEMENTATION.md` §6.
+**Next priority:** K0 + K1 + K2a done (this session). Continue at **K2b** — internal FTS tiered selector endpoint (`POST /internal/glossary/select-for-context`) + internal-auth middleware for `/internal/*` routes in glossary-service. Read `docs/03_planning/KNOWLEDGE_SERVICE_TRACK1_IMPLEMENTATION.md` §6 K2.4/K2.5.
 
 Phases completed:
 - **A: Core Pipeline (11)** — TextNormalizer, SentenceBuffer, voice_stream_response, POST /voice-message, VoiceClient, VadController, useVoiceChat, VoiceChatOverlay
