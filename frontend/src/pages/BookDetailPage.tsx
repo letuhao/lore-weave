@@ -180,7 +180,7 @@ function BookTabContent({ bookId, book, activeTab, onReload }: {
       )}
       {visited.has('/glossary') && (
         <div style={{ display: activeTab === '/glossary' ? undefined : 'none' }}>
-          <GlossaryTab bookId={bookId} bookGenreTags={book.genre_tags ?? []} />
+          <GlossaryTab bookId={bookId} bookGenreTags={book.genre_tags ?? []} bookOriginalLanguage={book.original_language ?? undefined} />
         </div>
       )}
       {visited.has('/wiki') && (

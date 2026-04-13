@@ -33,7 +33,7 @@ function KindBadge({ kind }: { kind: GlossaryEntitySummary['kind'] }) {
   );
 }
 
-export function GlossaryTab({ bookId, bookGenreTags = [] }: { bookId: string; bookGenreTags?: string[] }) {
+export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }: { bookId: string; bookGenreTags?: string[]; bookOriginalLanguage?: string }) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
@@ -360,6 +360,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [] }: { bookId: string; bo
             entityId={selectedEntityId}
             bookGenreTags={bookGenreTags}
             kindGenreTags={kindTags}
+            bookOriginalLanguage={bookOriginalLanguage}
             onClose={() => setSelectedEntityId(null)}
             onSaved={() => invalidate()}
             onDelete={() => {

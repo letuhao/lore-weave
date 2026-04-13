@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-13 (session 34 end — chat refactor + knowledge-service design complete)
-- Updated By: Assistant (22 commits: chat MVC refactor, voice assist fixes, Knowledge Service Architecture, 3 Track plans, UI mockup, two-layer anchoring pattern)
+- Last Updated: 2026-04-13 (session 35 — G-EV-1 glossary evidence browser)
+- Updated By: Assistant (G-EV-1: evidence browser full-stack implementation)
 - Active Branch: `main`
-- HEAD: `0f1fcc3` (knowledge-service two-layer glossary anchoring)
+- HEAD: pending commit (G-EV-1)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V6.md` — full context for next agent
 
 ---
@@ -45,9 +45,14 @@
 - UI mockup: `design-drafts/screen-knowledge-service.html` (1767 lines, 14 sections, 3-step build wizard with glossary picker + pending proposals + gap report).
 - **Two-layer anchoring pattern** adopted and documented: glossary-service remains authored SSOT; KS adds fuzzy/semantic entity layer with `glossary_entity_id` FK. Validated by GraphRAG seed-graph (arXiv:2404.16130, ~34% duplicate reduction), HippoRAG (arXiv:2405.14831, 18-25% multi-hop QA gain), Lettria Qdrant case study (20% KG-QA improvement).
 - **Wiki is inside glossary-service**, not a separate service (`wiki_articles`, `wiki_revisions`, `wiki_suggestions` tables). KS proposes stubs via existing `/wiki/generate` endpoint — no duplicate storage.
-- **Evidence storage**: existing `glossary.evidences` table already stores rich per-attribute provenance (chapter_id, block_or_line, evidence_type, original_text, translations, confidence). API returns nested array. FE currently only renders the count.
+- **Evidence storage**: existing `glossary.evidences` table already stores rich per-attribute provenance (chapter_id, block_or_line, evidence_type, original_text, translations, confidence). API returns nested array. **G-EV-1 COMPLETE** — evidence browser tab in entity editor with server-side pagination, filters, sort, language fallback, full CRUD.
 
-**Next priority:** G-EV-1 (glossary FE evidence browser) BEFORE knowledge-service implementation — unblocks KS-EV-1 (automatic quote capture on extraction proposals). Then start Track 1 K0.
+**G-EV-1: Glossary Evidence Browser — COMPLETE (session 35)**
+- **BE:** `chapter_index` column on evidences, `GET /entities/{id}/evidences` (pagination, filters, sort, language fallback), `createEvidence` accepts `chapter_index`, `updateEvidence` supports evidence_type/chapter_id/title/index patching
+- **FE:** Tab system in EntityEditorModal (Attributes / Evidences), EvidenceTab with filter chips (type/attribute/chapter), language selector, sort, pagination, inline edit + create + delete, evidence count badge switches tab
+- **Tests:** `infra/test-evidence-browser.sh` — 30+ assertions (CRUD, filters, sort, pagination, language fallback, validation)
+
+**Next priority:** Start Knowledge Service Track 1 K0. Read `docs/03_planning/KNOWLEDGE_SERVICE_TRACK1_IMPLEMENTATION.md` in order.
 
 Phases completed:
 - **A: Core Pipeline (11)** — TextNormalizer, SentenceBuffer, voice_stream_response, POST /voice-message, VoiceClient, VadController, useVoiceChat, VoiceChatOverlay

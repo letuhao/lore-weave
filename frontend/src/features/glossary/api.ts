@@ -6,6 +6,11 @@ import type {
   GlossaryEntity,
   GlossaryEntityListResponse,
   FilterState,
+  EvidenceListResponse,
+  EvidenceListParams,
+  CreateEvidencePayload,
+  PatchEvidencePayload,
+  Evidence,
 } from './types';
 
 const BASE = '/v1/glossary';
@@ -186,5 +191,69 @@ export const glossaryApi = {
       method: 'DELETE',
       token,
     });
+  },
+
+  // ── Evidence (entity-level list + per-attribute CRUD) ────────────────────
+
+  listEntityEvidences(
+    bookId: string,
+    entityId: string,
+    params: EvidenceListParams,
+    token: string,
+  ): Promise<EvidenceListResponse> {
+    const qs = new URLSearchParams();
+    if (params.limit) qs.set('limit', String(params.limit));
+    if (params.offset) qs.set('offset', String(params.offset));
+    if (params.evidence_type) qs.set('evidence_type', params.evidence_type);
+    if (params.attr_value_id) qs.set('attr_value_id', params.attr_value_id);
+    if (params.chapter_id) qs.set('chapter_id', params.chapter_id);
+    if (params.language) qs.set('language', params.language);
+    if (params.sort_by) qs.set('sort_by', params.sort_by);
+    if (params.sort_dir) qs.set('sort_dir', params.sort_dir);
+    const q = qs.toString();
+    return apiJson<EvidenceListResponse>(
+      `${BASE}/books/${bookId}/entities/${entityId}/evidences${q ? '?' + q : ''}`,
+      { token },
+    );
+  },
+
+  createEvidence(
+    bookId: string,
+    entityId: string,
+    attrValueId: string,
+    payload: CreateEvidencePayload,
+    token: string,
+  ): Promise<Evidence> {
+    return apiJson<Evidence>(
+      `${BASE}/books/${bookId}/entities/${entityId}/attributes/${attrValueId}/evidences`,
+      { method: 'POST', body: JSON.stringify(payload), token },
+    );
+  },
+
+  patchEvidence(
+    bookId: string,
+    entityId: string,
+    attrValueId: string,
+    evidenceId: string,
+    changes: PatchEvidencePayload,
+    token: string,
+  ): Promise<Evidence> {
+    return apiJson<Evidence>(
+      `${BASE}/books/${bookId}/entities/${entityId}/attributes/${attrValueId}/evidences/${evidenceId}`,
+      { method: 'PATCH', body: JSON.stringify(changes), token },
+    );
+  },
+
+  deleteEvidence(
+    bookId: string,
+    entityId: string,
+    attrValueId: string,
+    evidenceId: string,
+    token: string,
+  ): Promise<void> {
+    return apiJson<void>(
+      `${BASE}/books/${bookId}/entities/${entityId}/attributes/${attrValueId}/evidences/${evidenceId}`,
+      { method: 'DELETE', token },
+    );
   },
 };

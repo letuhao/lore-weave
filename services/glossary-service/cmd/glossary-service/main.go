@@ -86,6 +86,10 @@ func main() {
 		slog.Error("migrate extraction", "error", err)
 		os.Exit(1)
 	}
+	if err := migrate.UpEvidenceChapterIndex(ctx, pool); err != nil {
+		slog.Error("migrate evidence-chapter-index", "error", err)
+		os.Exit(1)
+	}
 
 	srv := api.NewServer(pool, cfg)
 	httpSrv := &http.Server{

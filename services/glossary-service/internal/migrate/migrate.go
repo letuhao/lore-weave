@@ -584,3 +584,19 @@ func UpExtraction(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	return nil
 }
+
+// ── evidence chapter_index ──────────────────────────────────────────────────
+
+const evidenceChapterIndexSQL = `
+ALTER TABLE evidences ADD COLUMN IF NOT EXISTS chapter_index INT;
+CREATE INDEX IF NOT EXISTS idx_ev_chapter_index ON evidences(chapter_index);
+`
+
+// UpEvidenceChapterIndex adds the chapter_index column to evidences.
+// Safe to call on every startup (idempotent).
+func UpEvidenceChapterIndex(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, evidenceChapterIndexSQL); err != nil {
+		return fmt.Errorf("migrate evidence_chapter_index: %w", err)
+	}
+	return nil
+}

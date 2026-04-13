@@ -7,23 +7,29 @@ import { type GlossaryEntity, type AttributeValue } from '@/features/glossary/ty
 import { Skeleton } from '@/components/shared/Skeleton';
 import { AttrCard } from './AttrCard';
 import { getCardComponent, SHORT_TYPES } from './cardRegistry';
+import { EvidenceTab } from './EvidenceTab';
+
+type EditorTab = 'attributes' | 'evidences';
 
 interface EntityEditorModalProps {
   bookId: string;
   entityId: string;
   bookGenreTags?: string[];
   kindGenreTags?: string[];
+  bookOriginalLanguage?: string;
   onClose: () => void;
   onSaved: () => void;
   onDelete: () => void;
+  initialTab?: EditorTab;
 }
 
-export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGenreTags = [], onClose, onSaved, onDelete }: EntityEditorModalProps) {
+export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGenreTags = [], bookOriginalLanguage, onClose, onSaved, onDelete, initialTab = 'attributes' }: EntityEditorModalProps) {
   const { accessToken } = useAuth();
   const [entity, setEntity] = useState<GlossaryEntity | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [pendingChanges, setPendingChanges] = useState<Map<string, string>>(new Map());
+  const [activeTab, setActiveTab] = useState<EditorTab>(initialTab);
 
   const load = useCallback(async () => {
     if (!accessToken) return;
@@ -182,7 +188,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
           <div className="flex items-center gap-4 border-b px-6 py-2.5 text-[11px] text-muted-foreground flex-shrink-0" style={{ background: 'rgba(24,20,18,0.4)' }}>
             <span className="inline-flex items-center gap-1"><Link2 className="h-3 w-3" />{entity.chapter_link_count} chapters</span>
             <span className="inline-flex items-center gap-1"><Languages className="h-3 w-3" />{entity.translation_count} translations</span>
-            <span className="inline-flex items-center gap-1"><FileText className="h-3 w-3" />{entity.evidence_count} evidences</span>
+            <button type="button" onClick={() => setActiveTab('evidences')} className="inline-flex items-center gap-1 hover:text-primary transition-colors"><FileText className="h-3 w-3" />{entity.evidence_count} evidences</button>
             {entity.tags.length > 0 && (
               <>
                 <span className="flex-1" />
@@ -191,26 +197,70 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
             )}
           </div>
 
+          {/* ── Tab bar ── */}
+          <div className="flex items-center gap-1 border-b px-6 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setActiveTab('attributes')}
+              className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+                activeTab === 'attributes'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Attributes
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('evidences')}
+              className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+                activeTab === 'evidences'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Evidences
+              {entity.evidence_count > 0 && (
+                <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium">
+                  {entity.evidence_count}
+                </span>
+              )}
+            </button>
+          </div>
+
           {/* ── Body (scrollable) ── */}
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-            {/* System attributes */}
-            {sysAttrs.length > 0 && (
+            {activeTab === 'attributes' && (
               <>
-                <SectionLabel color="info">System Attributes</SectionLabel>
-                <AttrGrid attrs={sysAttrs} getValue={getValue} onChange={handleChange} pendingChanges={pendingChanges} />
+                {/* System attributes */}
+                {sysAttrs.length > 0 && (
+                  <>
+                    <SectionLabel color="info">System Attributes</SectionLabel>
+                    <AttrGrid attrs={sysAttrs} getValue={getValue} onChange={handleChange} pendingChanges={pendingChanges} />
+                  </>
+                )}
+
+                {/* User attributes */}
+                {usrAttrs.length > 0 && (
+                  <>
+                    <SectionLabel color="primary">User Attributes</SectionLabel>
+                    <AttrGrid attrs={usrAttrs} getValue={getValue} onChange={handleChange} pendingChanges={pendingChanges} />
+                  </>
+                )}
+
+                {sortedAttrs.length === 0 && (
+                  <p className="py-8 text-center text-xs italic text-muted-foreground">No attributes defined for this entity kind.</p>
+                )}
               </>
             )}
 
-            {/* User attributes */}
-            {usrAttrs.length > 0 && (
-              <>
-                <SectionLabel color="primary">User Attributes</SectionLabel>
-                <AttrGrid attrs={usrAttrs} getValue={getValue} onChange={handleChange} pendingChanges={pendingChanges} />
-              </>
-            )}
-
-            {sortedAttrs.length === 0 && (
-              <p className="py-8 text-center text-xs italic text-muted-foreground">No attributes defined for this entity kind.</p>
+            {activeTab === 'evidences' && (
+              <EvidenceTab
+                bookId={bookId}
+                entityId={entityId}
+                bookOriginalLanguage={bookOriginalLanguage}
+                onCountChange={load}
+              />
             )}
           </div>
 

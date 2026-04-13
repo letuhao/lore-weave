@@ -142,3 +142,76 @@ export const defaultFilters: FilterState = {
   status: 'all',
   searchQuery: '',
 };
+
+// ── Evidence list types ──────────────────────────────────────────────────────
+
+export type EvidenceListItem = {
+  evidence_id: string;
+  attr_value_id: string;
+  attribute_name: string;
+  attribute_code: string;
+  chapter_id: string | null;
+  chapter_title: string | null;
+  chapter_index: number | null;
+  block_or_line: string;
+  evidence_type: EvidenceType;
+  original_language: string;
+  original_text: string;
+  display_text: string;
+  display_language: string;
+  note: string | null;
+  created_at: string;
+};
+
+export type EvidenceFilterOption = {
+  attr_value_id: string;
+  name: string;
+};
+
+export type EvidenceChapterOption = {
+  chapter_id: string;
+  chapter_title: string | null;
+  chapter_index: number | null;
+};
+
+export type EvidenceListResponse = {
+  items: EvidenceListItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  available_attributes: EvidenceFilterOption[];
+  available_chapters: EvidenceChapterOption[];
+};
+
+export type EvidenceListParams = {
+  limit?: number;
+  offset?: number;
+  evidence_type?: EvidenceType;
+  attr_value_id?: string;
+  chapter_id?: string;
+  language?: string;
+  sort_by?: 'created_at' | 'chapter_index' | 'block_or_line' | 'attribute_name';
+  sort_dir?: 'asc' | 'desc';
+};
+
+export type CreateEvidencePayload = {
+  evidence_type: EvidenceType;
+  original_text: string;
+  original_language?: string;
+  chapter_id?: string;
+  chapter_title?: string;
+  chapter_index?: number;
+  block_or_line?: string;
+  note?: string;
+};
+
+export type PatchEvidencePayload = {
+  original_text?: string;
+  original_language?: string;
+  evidence_type?: EvidenceType;
+  chapter_id?: string | null;
+  chapter_title?: string | null;
+  chapter_index?: number | null;
+  block_or_line?: string;
+  note?: string | null;
+};
