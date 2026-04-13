@@ -35,6 +35,7 @@ def _row_to_session(r: asyncpg.Record) -> ChatSession:
         last_message_at=r["last_message_at"],
         created_at=r["created_at"],
         updated_at=r["updated_at"],
+        project_id=r["project_id"] if "project_id" in r.keys() else None,
     )
 
 
@@ -47,11 +48,12 @@ async def create_session(
     gp = json.dumps(body.generation_params.model_dump(exclude_unset=True)) if body.generation_params else "{}"
     row = await pool.fetchrow(
         """
-        INSERT INTO chat_sessions (owner_user_id, title, model_source, model_ref, system_prompt, generation_params)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+        INSERT INTO chat_sessions (owner_user_id, title, model_source, model_ref, system_prompt, generation_params, project_id)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
         RETURNING *
         """,
         user_id, body.title, body.model_source, str(body.model_ref), body.system_prompt, gp,
+        str(body.project_id) if body.project_id else None,
     )
     return _row_to_session(row)
 
@@ -160,6 +162,15 @@ async def patch_session(
     gp_patch = None
     if body.generation_params is not None:
         gp_patch = json.dumps(body.generation_params.model_dump(exclude_unset=True))
+
+    # K5: project_id has 3-state semantics — explicit None to clear,
+    # explicit UUID to set, omitted to leave alone. We can't use
+    # COALESCE because COALESCE($X, project_id) treats NULL as "unset"
+    # rather than "clear". Detect "field present in body" via Pydantic's
+    # model_fields_set.
+    set_project = "project_id" in body.model_fields_set
+    project_id_value = str(body.project_id) if body.project_id else None
+
     row = await pool.fetchrow(
         """
         UPDATE chat_sessions SET
@@ -170,6 +181,7 @@ async def patch_session(
           status            = COALESCE($7, status),
           generation_params = CASE WHEN $8::jsonb IS NOT NULL THEN generation_params || $8::jsonb ELSE generation_params END,
           is_pinned         = COALESCE($9, is_pinned),
+          project_id        = CASE WHEN $10::boolean THEN $11::uuid ELSE project_id END,
           updated_at        = now()
         WHERE session_id=$1 AND owner_user_id=$2
         RETURNING *
@@ -178,6 +190,7 @@ async def patch_session(
         body.title, body.system_prompt,
         body.model_source, str(body.model_ref) if body.model_ref else None,
         body.status, gp_patch, body.is_pinned,
+        set_project, project_id_value,
     )
     return _row_to_session(row)
 

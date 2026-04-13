@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379"
     port: int = 8090
 
+    # K5 — knowledge-service integration. Optional/tunable via env so we can
+    # raise the timeout if knowledge-service ever becomes a real bottleneck.
+    knowledge_service_url: str = "http://knowledge-service:8092"
+    knowledge_client_timeout_s: float = 0.5      # 500ms total per Track1 doc
+    knowledge_client_retries: int = 1            # one retry on 5xx/transport
+
     class Config:
         env_file = ".env"
 

@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
+from app.client.knowledge_client import close_knowledge_client, init_knowledge_client
 from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool, get_pool
@@ -46,10 +47,13 @@ async def lifespan(app: FastAPI):
         await ensure_bucket()
     except Exception:
         pass  # MinIO may not be running in dev; don't block startup
+    # K5: initialise the long-lived knowledge-service HTTP client.
+    init_knowledge_client()
     # Start background cleanup task
     cleanup_task = asyncio.create_task(_audio_cleanup_loop())
     yield
     cleanup_task.cancel()
+    await close_knowledge_client()
     await close_pool()
 
 

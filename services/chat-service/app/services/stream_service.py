@@ -17,6 +17,7 @@ from openai import AsyncOpenAI
 from litellm import acompletion
 
 from app.client.billing_client import BillingClient
+from app.client.knowledge_client import get_knowledge_client
 from app.models import ProviderCredentials
 from app.services.output_extractor import extract_outputs
 
@@ -130,7 +131,7 @@ async def stream_response(
 
     # ── Load session settings ───────────────────────────────────────────────
     session_row = await pool.fetchrow(
-        "SELECT system_prompt, generation_params FROM chat_sessions WHERE session_id = $1",
+        "SELECT system_prompt, generation_params, project_id FROM chat_sessions WHERE session_id = $1",
         session_id,
     )
     system_prompt = session_row["system_prompt"] if session_row else None
@@ -138,22 +139,49 @@ async def stream_response(
     if isinstance(gp_raw, str):
         gp_raw = json.loads(gp_raw)
     gen_params: dict = gp_raw if gp_raw else {}
+    # asyncpg.Record supports .get() since 0.27; using it lets test mocks
+    # that pass a plain dict without project_id continue to work.
+    project_id = session_row.get("project_id") if session_row else None
 
-    # ── Build message history (last 50 to avoid context overflow) ───────────
+    # ── K5: build memory block via knowledge-service ────────────────────────
+    # Always called — Mode 1 (no project) returns just the user's global
+    # bio + a short instruction; Mode 2 (project linked) returns the
+    # full L0/L1/glossary block. Failures degrade silently inside the
+    # client and return KnowledgeContext(mode="degraded", context="",
+    # recent_message_count=50).
+    knowledge_client = get_knowledge_client()
+    kctx = await knowledge_client.build_context(
+        user_id=user_id,
+        session_id=session_id,
+        project_id=str(project_id) if project_id else None,
+        message=user_message_content,
+    )
+
+    # ── Build message history (size from knowledge_service) ─────────────────
+    history_limit = max(1, kctx.recent_message_count)
     rows = await pool.fetch(
         """
         SELECT role, content FROM chat_messages
         WHERE session_id = $1 AND is_error = false AND branch_id = 0
         ORDER BY sequence_num DESC
-        LIMIT 50
+        LIMIT $2
         """,
-        session_id,
+        session_id, history_limit,
     )
     messages: list[dict] = [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
 
-    # Inject session-level system prompt at the beginning
+    # ── Compose the system message ──────────────────────────────────────────
+    # Order: memory block → session-level system prompt → user's per-message
+    # attached context. Memory comes FIRST because it sets durable identity
+    # and project state; the session prompt is per-conversation persona on
+    # top; per-message context is the most ephemeral.
+    system_parts: list[str] = []
+    if kctx.context:
+        system_parts.append(kctx.context)
     if system_prompt:
-        messages.insert(0, {"role": "system", "content": system_prompt})
+        system_parts.append(system_prompt)
+    if system_parts:
+        messages.insert(0, {"role": "system", "content": "\n\n".join(system_parts)})
 
     # Inject per-message context as a system message right before the last user message
     if context:

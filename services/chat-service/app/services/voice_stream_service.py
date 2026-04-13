@@ -21,6 +21,7 @@ import asyncpg
 import httpx
 
 from app.client.billing_client import BillingClient
+from app.client.knowledge_client import get_knowledge_client
 from app.client.provider_client import get_provider_client
 from app.config import settings
 from app.events.voice_events import emit_voice_turn
@@ -312,7 +313,7 @@ async def voice_stream_response(
     # ── Step 3: LLM stream + TTS pipeline ────────────────────────────
     # Load session settings (same as stream_response)
     session_row = await pool.fetchrow(
-        "SELECT system_prompt, generation_params FROM chat_sessions WHERE session_id = $1",
+        "SELECT system_prompt, generation_params, project_id FROM chat_sessions WHERE session_id = $1",
         session_id,
     )
     system_prompt = session_row["system_prompt"] if session_row else None
@@ -320,21 +321,40 @@ async def voice_stream_response(
     if isinstance(gp_raw, str):
         gp_raw = json.loads(gp_raw)
     gen_params: dict = gp_raw if gp_raw else {}
+    project_id = session_row.get("project_id") if session_row else None
 
-    # Build message history
+    # ── K5: build memory block via knowledge-service ────────────────────────
+    # Voice mode benefits from memory just like text mode. Failures
+    # degrade silently inside the client.
+    knowledge_client = get_knowledge_client()
+    kctx = await knowledge_client.build_context(
+        user_id=user_id,
+        session_id=session_id,
+        project_id=str(project_id) if project_id else None,
+        message=transcript,
+    )
+
+    # Build message history sized by knowledge_service
+    history_limit = max(1, kctx.recent_message_count)
     rows = await pool.fetch(
         """
         SELECT role, content FROM chat_messages
         WHERE session_id=$1 AND is_error=false AND branch_id=0
-        ORDER BY sequence_num DESC LIMIT 50
+        ORDER BY sequence_num DESC LIMIT $2
         """,
-        session_id,
+        session_id, history_limit,
     )
     messages: list[dict] = [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
 
-    # Inject system prompts
+    # Compose the system prompt: memory → session prompt
+    system_parts: list[str] = []
+    if kctx.context:
+        system_parts.append(kctx.context)
     if system_prompt:
-        messages.insert(0, {"role": "system", "content": system_prompt})
+        system_parts.append(system_prompt)
+    if system_parts:
+        messages.insert(0, {"role": "system", "content": "\n\n".join(system_parts)})
+
     # Voice system prompt (Layer 0) — always for voice
     messages.insert(
         max(len(messages) - 1, 0),

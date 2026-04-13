@@ -1,0 +1,207 @@
+"""HTTP client for knowledge-service's /internal/context/build endpoint.
+
+Graceful degradation is the contract: every failure path (timeout,
+transport error, 5xx, 4xx, decode error, unexpected shape) returns a
+"degraded" KnowledgeContext with no memory and the default 50-message
+replay budget. The caller never sees an exception — chat must keep
+working when knowledge-service is unavailable.
+
+Pattern follows app/clients/billing_client.py (long-lived module-level
+singleton via get_knowledge_client()) and is structurally identical to
+the GlossaryClient in knowledge-service so future maintainers see the
+same shape on both sides of the wire.
+
+Lessons baked in from K4 reviews:
+  - K4-I1: idempotent init guard (don't leak the connection pool on
+    double-init from test setup or hot reload)
+  - K4-I4: log AT MOST one warning per failed call (no per-attempt
+    spam during outages)
+  - K4-I5: no dead `self._token` field; token lives in the headers
+"""
+
+import logging
+from typing import Literal
+
+import httpx
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+__all__ = [
+    "KnowledgeContext",
+    "KnowledgeClient",
+    "init_knowledge_client",
+    "close_knowledge_client",
+    "get_knowledge_client",
+    "DEGRADED_RECENT_MESSAGE_COUNT",
+]
+
+DEGRADED_RECENT_MESSAGE_COUNT = 50
+
+
+class KnowledgeContext(BaseModel):
+    """Mirror of knowledge-service's ContextBuildResponse.
+
+    `mode` may be one of:
+      no_project / static / full   — successful build from knowledge-service
+      degraded                      — synthesised on client-side failure
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    mode: str
+    context: str = ""
+    recent_message_count: int = DEGRADED_RECENT_MESSAGE_COUNT
+    token_count: int = 0
+
+
+def _degraded() -> KnowledgeContext:
+    return KnowledgeContext(
+        mode="degraded",
+        context="",
+        recent_message_count=DEGRADED_RECENT_MESSAGE_COUNT,
+        token_count=0,
+    )
+
+
+class KnowledgeClient:
+    """Thin async wrapper around httpx.AsyncClient.
+
+    One instance per chat-service process, shared across requests.
+    Close via `await client.aclose()` on shutdown.
+    """
+
+    def __init__(self, base_url: str, internal_token: str, timeout_s: float, retries: int) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._retries = max(0, retries)
+        self._http = httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout_s),
+            headers={"X-Internal-Token": internal_token},
+        )
+
+    async def aclose(self) -> None:
+        await self._http.aclose()
+
+    async def build_context(
+        self,
+        *,
+        user_id: str,
+        session_id: str | None = None,
+        project_id: str | None = None,
+        message: str = "",
+    ) -> KnowledgeContext:
+        """POST /internal/context/build.
+
+        Returns a degraded KnowledgeContext on any failure — never raises.
+        Chat-service treats `mode == "degraded"` as "no memory, fall back
+        to plain history replay".
+        """
+        url = f"{self._base_url}/internal/context/build"
+        body: dict = {
+            "user_id": user_id,
+            "message": message or "",
+        }
+        if session_id is not None:
+            body["session_id"] = session_id
+        if project_id is not None:
+            body["project_id"] = project_id
+
+        attempts = self._retries + 1
+        last_err_summary: str | None = None
+        for _ in range(attempts):
+            try:
+                resp = await self._http.post(url, json=body)
+            except httpx.TimeoutException:
+                last_err_summary = "timeout"
+                continue
+            except httpx.HTTPError as exc:
+                last_err_summary = f"transport: {type(exc).__name__}"
+                continue
+
+            # 501 is technically a 5xx but it's the stable "Mode 3 not
+            # implemented yet" signal from K4b/K4c — don't retry.
+            if resp.status_code == 501:
+                logger.debug("knowledge build_context 501 (Mode 3 not implemented)")
+                return _degraded()
+
+            if resp.status_code >= 500:
+                last_err_summary = f"{resp.status_code}"
+                continue
+
+            if resp.status_code == 404:
+                # 404 = project not found (per K4b ProjectNotFound mapping).
+                # Stable request problem — don't retry.
+                logger.warning(
+                    "knowledge build_context 404 (project not found) project_id=%s",
+                    project_id,
+                )
+                return _degraded()
+
+            if resp.status_code >= 400:
+                logger.warning(
+                    "knowledge build_context %d (no retry) body=%s",
+                    resp.status_code, resp.text[:200],
+                )
+                return _degraded()
+
+            try:
+                data = resp.json()
+            except Exception as exc:
+                logger.warning("knowledge build_context decode failure: %s", exc)
+                return _degraded()
+
+            try:
+                return KnowledgeContext.model_validate(data)
+            except Exception as exc:
+                logger.warning("knowledge build_context validate failure: %s", exc)
+                return _degraded()
+
+        # All attempts exhausted — single warning summarising the failure.
+        logger.warning(
+            "knowledge build_context unavailable after %d attempts: %s",
+            attempts, last_err_summary or "unknown",
+        )
+        return _degraded()
+
+
+# ── module-level singleton managed by lifespan ─────────────────────────────
+
+_client: KnowledgeClient | None = None
+
+
+def init_knowledge_client() -> KnowledgeClient:
+    """Instantiate the shared client from settings. Idempotent — a second
+    call without a prior close_knowledge_client() returns the existing
+    instance instead of leaking the previous httpx.AsyncClient pool.
+    """
+    global _client
+    if _client is not None:
+        return _client
+    _client = KnowledgeClient(
+        base_url=settings.knowledge_service_url,
+        internal_token=settings.internal_service_token,
+        timeout_s=settings.knowledge_client_timeout_s,
+        retries=settings.knowledge_client_retries,
+    )
+    return _client
+
+
+async def close_knowledge_client() -> None:
+    global _client
+    if _client is not None:
+        await _client.aclose()
+        _client = None
+
+
+def get_knowledge_client() -> KnowledgeClient:
+    """Lazy accessor — initialises on first use if lifespan didn't.
+
+    Allows graceful operation in test contexts where lifespan startup
+    hasn't run.
+    """
+    global _client
+    if _client is None:
+        return init_knowledge_client()
+    return _client

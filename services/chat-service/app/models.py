@@ -30,6 +30,11 @@ class CreateSessionRequest(BaseModel):
     title: str = "New Chat"
     system_prompt: str | None = None
     generation_params: GenerationParams | None = None
+    # K5: optional knowledge-service project link. chat-service stores
+    # the UUID without validating its existence — knowledge-service is
+    # the source of truth and rejects unknown project_ids on context
+    # build (returns 404 → graceful degrade to no memory).
+    project_id: UUID | None = None
 
 
 class PatchSessionRequest(BaseModel):
@@ -40,6 +45,9 @@ class PatchSessionRequest(BaseModel):
     status: str | None = None
     generation_params: GenerationParams | None = None
     is_pinned: bool | None = None
+    # K5: PATCH can set or clear project_id. Use Pydantic's model_dump
+    # exclude_unset semantics — explicit `null` clears, omitted leaves alone.
+    project_id: UUID | None = None
 
 
 class ChatSession(BaseModel):
@@ -56,6 +64,7 @@ class ChatSession(BaseModel):
     last_message_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    project_id: UUID | None = None  # K5
 
 
 class SessionListResponse(BaseModel):
