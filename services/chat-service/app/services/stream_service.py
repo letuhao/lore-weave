@@ -175,11 +175,19 @@ async def stream_response(
     # attached context. Memory comes FIRST because it sets durable identity
     # and project state; the session prompt is per-conversation persona on
     # top; per-message context is the most ephemeral.
+    #
+    # Each part is stripped so a trailing newline in (e.g.) the XML memory
+    # block doesn't stack with the "\n\n" separator to produce triple
+    # newlines in the final prompt (K5-I3).
     system_parts: list[str] = []
     if kctx.context:
-        system_parts.append(kctx.context)
+        stripped = kctx.context.strip()
+        if stripped:
+            system_parts.append(stripped)
     if system_prompt:
-        system_parts.append(system_prompt)
+        stripped = system_prompt.strip()
+        if stripped:
+            system_parts.append(stripped)
     if system_parts:
         messages.insert(0, {"role": "system", "content": "\n\n".join(system_parts)})
 

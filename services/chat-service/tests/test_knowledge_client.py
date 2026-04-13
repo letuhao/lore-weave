@@ -209,6 +209,122 @@ class TestKnowledgeClientGracefulDegradation:
         await client.aclose()
 
 
+class TestKnowledgeClientBodyNormalisation:
+    """K5-I1 / K5-I2 regression: verify the client normalises its body
+    before sending so bad caller input doesn't bounce off knowledge-
+    service's validator and silently degrade every turn."""
+
+    @pytest.mark.asyncio
+    @patch("app.client.knowledge_client.httpx.AsyncClient")
+    async def test_empty_project_id_omitted_from_body(self, mock_client_cls):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"mode": "no_project", "context": "", "recent_message_count": 50, "token_count": 0}
+        mock_http = AsyncMock()
+        mock_http.post = AsyncMock(return_value=mock_resp)
+        mock_client_cls.return_value = mock_http
+
+        client = _client()
+        await client.build_context(user_id="u", project_id="", message="hi")
+
+        body = mock_http.post.call_args.kwargs["json"]
+        # Empty string must NOT be sent — knowledge-service would 422 on
+        # the UUID validator otherwise.
+        assert "project_id" not in body
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    @patch("app.client.knowledge_client.httpx.AsyncClient")
+    async def test_empty_session_id_omitted_from_body(self, mock_client_cls):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"mode": "no_project", "context": "", "recent_message_count": 50, "token_count": 0}
+        mock_http = AsyncMock()
+        mock_http.post = AsyncMock(return_value=mock_resp)
+        mock_client_cls.return_value = mock_http
+
+        client = _client()
+        await client.build_context(user_id="u", session_id="", message="hi")
+
+        body = mock_http.post.call_args.kwargs["json"]
+        assert "session_id" not in body
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    @patch("app.client.knowledge_client.httpx.AsyncClient")
+    async def test_none_project_id_omitted_from_body(self, mock_client_cls):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"mode": "no_project", "context": "", "recent_message_count": 50, "token_count": 0}
+        mock_http = AsyncMock()
+        mock_http.post = AsyncMock(return_value=mock_resp)
+        mock_client_cls.return_value = mock_http
+
+        client = _client()
+        await client.build_context(user_id="u", project_id=None, message="hi")
+
+        body = mock_http.post.call_args.kwargs["json"]
+        assert "project_id" not in body
+        assert body["user_id"] == "u"
+        assert body["message"] == "hi"
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    @patch("app.client.knowledge_client.httpx.AsyncClient")
+    async def test_long_message_truncated_to_4000_chars(self, mock_client_cls):
+        from app.client.knowledge_client import MESSAGE_MAX_CHARS
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"mode": "no_project", "context": "", "recent_message_count": 50, "token_count": 0}
+        mock_http = AsyncMock()
+        mock_http.post = AsyncMock(return_value=mock_resp)
+        mock_client_cls.return_value = mock_http
+
+        client = _client()
+        long_message = "x" * (MESSAGE_MAX_CHARS + 500)
+        await client.build_context(user_id="u", message=long_message)
+
+        body = mock_http.post.call_args.kwargs["json"]
+        assert len(body["message"]) == MESSAGE_MAX_CHARS
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    @patch("app.client.knowledge_client.httpx.AsyncClient")
+    async def test_short_message_not_truncated(self, mock_client_cls):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"mode": "no_project", "context": "", "recent_message_count": 50, "token_count": 0}
+        mock_http = AsyncMock()
+        mock_http.post = AsyncMock(return_value=mock_resp)
+        mock_client_cls.return_value = mock_http
+
+        client = _client()
+        short = "tell me about Alice"
+        await client.build_context(user_id="u", message=short)
+
+        body = mock_http.post.call_args.kwargs["json"]
+        assert body["message"] == short
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    @patch("app.client.knowledge_client.httpx.AsyncClient")
+    async def test_empty_message_stays_empty(self, mock_client_cls):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"mode": "no_project", "context": "", "recent_message_count": 50, "token_count": 0}
+        mock_http = AsyncMock()
+        mock_http.post = AsyncMock(return_value=mock_resp)
+        mock_client_cls.return_value = mock_http
+
+        client = _client()
+        await client.build_context(user_id="u")
+
+        body = mock_http.post.call_args.kwargs["json"]
+        assert body["message"] == ""
+        await client.aclose()
+
+
 class TestKnowledgeClientHeaders:
     @pytest.mark.asyncio
     @patch("app.client.knowledge_client.httpx.AsyncClient")

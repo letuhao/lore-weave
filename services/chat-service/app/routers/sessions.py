@@ -35,7 +35,9 @@ def _row_to_session(r: asyncpg.Record) -> ChatSession:
         last_message_at=r["last_message_at"],
         created_at=r["created_at"],
         updated_at=r["updated_at"],
-        project_id=r["project_id"] if "project_id" in r.keys() else None,
+        # asyncpg.Record supports .get() (0.27+); matches the pattern used
+        # by stream_service.py for test dict-mock compatibility.
+        project_id=r.get("project_id"),
     )
 
 

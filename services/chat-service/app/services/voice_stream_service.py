@@ -346,12 +346,18 @@ async def voice_stream_response(
     )
     messages: list[dict] = [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
 
-    # Compose the system prompt: memory → session prompt
+    # Compose the system prompt: memory → session prompt. Strip each part
+    # so trailing newlines don't stack with "\n\n" into triple-newline
+    # runs (K5-I3).
     system_parts: list[str] = []
     if kctx.context:
-        system_parts.append(kctx.context)
+        stripped = kctx.context.strip()
+        if stripped:
+            system_parts.append(stripped)
     if system_prompt:
-        system_parts.append(system_prompt)
+        stripped = system_prompt.strip()
+        if stripped:
+            system_parts.append(stripped)
     if system_parts:
         messages.insert(0, {"role": "system", "content": "\n\n".join(system_parts)})
 

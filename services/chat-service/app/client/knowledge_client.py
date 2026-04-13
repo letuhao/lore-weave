@@ -40,6 +40,11 @@ __all__ = [
 
 DEGRADED_RECENT_MESSAGE_COUNT = 50
 
+# Knowledge-service enforces max_length=4000 on its ContextBuildRequest.message
+# field (K4a-I6). Long user messages get truncated here so we don't eat a
+# pointless 422 → degraded cycle on every paste-heavy turn (K5-I2).
+MESSAGE_MAX_CHARS = 4000
+
 
 class KnowledgeContext(BaseModel):
     """Mirror of knowledge-service's ContextBuildResponse.
@@ -97,15 +102,31 @@ class KnowledgeClient:
         Returns a degraded KnowledgeContext on any failure — never raises.
         Chat-service treats `mode == "degraded"` as "no memory, fall back
         to plain history replay".
+
+        Safety normalisations applied before sending:
+          * message is truncated to MESSAGE_MAX_CHARS runes so an
+            accidental paste doesn't 422 the request (K5-I2).
+          * session_id / project_id are omitted when empty/None rather
+            than sent as empty strings (which would 422 via UUID
+            validation — K5-I1).
         """
         url = f"{self._base_url}/internal/context/build"
+
+        # Truncate long messages at the client boundary.
+        safe_message = message or ""
+        if len(safe_message) > MESSAGE_MAX_CHARS:
+            safe_message = safe_message[:MESSAGE_MAX_CHARS]
+
         body: dict = {
             "user_id": user_id,
-            "message": message or "",
+            "message": safe_message,
         }
-        if session_id is not None:
+        # Truthy checks (not `is not None`) so empty strings are omitted,
+        # which prevents knowledge-service's UUID validator from 422-ing
+        # the call.
+        if session_id:
             body["session_id"] = session_id
-        if project_id is not None:
+        if project_id:
             body["project_id"] = project_id
 
         attempts = self._retries + 1
