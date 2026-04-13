@@ -61,6 +61,7 @@ func (s *Server) Router() http.Handler {
 		r.Use(s.requireInternalToken)
 		r.Get("/books/{book_id}/translation-glossary", s.internalTranslationGlossary)
 		r.Get("/books/{book_id}/extraction-profile", s.internalExtractionProfile)
+		r.Post("/books/{book_id}/select-for-context", s.internalSelectForContext)
 		r.Get("/books/{book_id}/known-entities", s.getKnownEntities)
 		r.Post("/books/{book_id}/extract-entities", s.bulkExtractEntities)
 	})
