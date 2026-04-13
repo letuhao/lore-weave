@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -107,6 +108,53 @@ func TestK3_BackfillPopulatesShortDescription(t *testing.T) {
 	}
 	if sdD != nil {
 		t.Errorf("D (auto=false): must NOT be backfilled, got %q", *sdD)
+	}
+}
+
+// TestK3_BackfillCursorForwardProgress is the regression for K3-I1.
+// A generator that returns "" for every row would previously loop
+// forever because the defensive skip branch never advanced the SELECT
+// past the unwritable row. With the entity_id cursor the backfill
+// completes after one pass regardless of what the UPDATEs do.
+func TestK3_BackfillCursorForwardProgress(t *testing.T) {
+	pool := openTestDB(t)
+	runK3Migrations(t, pool)
+	ctx := context.Background()
+
+	bookID := "00000000-0000-0000-0000-000000033099"
+	var kindID string
+	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	var nameAttr string
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttr)
+	t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID) })
+
+	for i := 0; i < 5; i++ {
+		var id string
+		pool.QueryRow(ctx, `INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`, bookID, kindID).Scan(&id)
+		pool.Exec(ctx, `INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value) VALUES($1,$2,'zh','CursorTest')`, id, nameAttr)
+	}
+
+	// Pathological generator: always returns "" so no row ever gets
+	// written. Without a cursor the loop would run forever; with the
+	// cursor it terminates cleanly after one pass.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		migrate.BackfillShortDescription(ctx, pool, func(name, description, kindName string) string {
+			return ""
+		})
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("backfill did not terminate within 3s — cursor not advancing")
+	}
+
+	// No row should have been written because the generator returned "".
+	var remaining int
+	pool.QueryRow(ctx, `SELECT count(*) FROM glossary_entities WHERE book_id=$1 AND short_description IS NULL`, bookID).Scan(&remaining)
+	if remaining != 5 {
+		t.Errorf("expected 5 rows still NULL, got %d", remaining)
 	}
 }
 

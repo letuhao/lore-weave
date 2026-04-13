@@ -108,9 +108,9 @@ func main() {
 	// the HTTP listener + healthcheck come up immediately. For a fresh
 	// DB this completes in milliseconds; for a catalogue with many
 	// thousands of entities it may take longer and we don't want to
-	// block startup.
-	go func() {
-		bctx := context.Background()
+	// block startup. The goroutine honours `ctx` so a shutdown signal
+	// cancels the work mid-batch.
+	go func(bctx context.Context) {
 		n, err := migrate.BackfillShortDescription(bctx, pool,
 			func(name, description, kindName string) string {
 				return shortdesc.Generate(name, description, kindName, shortdesc.DefaultMaxChars)
@@ -122,7 +122,7 @@ func main() {
 		if n > 0 {
 			slog.Info("backfill short-description complete", "processed", n)
 		}
-	}()
+	}(ctx)
 
 	srv := api.NewServer(pool, cfg)
 	httpSrv := &http.Server{

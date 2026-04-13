@@ -21,10 +21,18 @@ func TestGenerate_EmptyKind(t *testing.T) {
 	}
 }
 
-func TestGenerate_EmptyNameAndDescription(t *testing.T) {
+func TestGenerate_EmptyNameOnly_UsesKindOnly(t *testing.T) {
+	// K3-I6: previously returned "character:" with a dangling colon.
 	got := Generate("", "", "character", 150)
-	if got != "character:" && got != "(unnamed)" && got != "character" {
-		t.Errorf("unexpected: %q", got)
+	if got != "character" {
+		t.Errorf("want %q, got %q", "character", got)
+	}
+}
+
+func TestGenerate_EmptyAll_ReturnsUnnamed(t *testing.T) {
+	got := Generate("", "", "", 150)
+	if got != "(unnamed)" {
+		t.Errorf("want %q, got %q", "(unnamed)", got)
 	}
 }
 

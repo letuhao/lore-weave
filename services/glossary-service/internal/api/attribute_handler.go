@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -169,7 +170,10 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 	// Failures are logged but don't fail the PATCH — regeneration is
 	// best-effort.
 	if av.AttributeDef.Code == "description" {
-		_ = s.regenerateAutoShortDescription(ctx, entityID)
+		if err := s.regenerateAutoShortDescription(ctx, entityID); err != nil {
+			slog.Warn("regenerate short_description failed",
+				"entity_id", entityID.String(), "error", err.Error())
+		}
 	}
 
 	writeJSON(w, http.StatusOK, av)

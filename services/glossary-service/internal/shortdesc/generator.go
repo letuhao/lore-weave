@@ -46,10 +46,17 @@ func Generate(name, description, kindName string, maxChars int) string {
 
 	desc := strings.TrimSpace(description)
 	if desc == "" {
-		fallback := strings.TrimSpace(kindName) + ": " + strings.TrimSpace(name)
-		fallback = strings.TrimSpace(fallback)
-		fallback = strings.TrimPrefix(fallback, ": ")
-		if fallback == "" {
+		n := strings.TrimSpace(name)
+		k := strings.TrimSpace(kindName)
+		var fallback string
+		switch {
+		case k != "" && n != "":
+			fallback = k + ": " + n
+		case n != "":
+			fallback = n
+		case k != "":
+			fallback = k
+		default:
 			return "(unnamed)"
 		}
 		return truncateRunes(fallback, maxChars)
@@ -69,20 +76,9 @@ func Generate(name, description, kindName string, maxChars int) string {
 // sentence-terminator rune. Returns "" if no terminator is found.
 func firstSentence(s string) string {
 	var b strings.Builder
-	for i, r := range s {
+	for _, r := range s {
 		b.WriteRune(r)
 		if isTerminator(r) {
-			// Include any whitespace immediately after — helps readability
-			// but stops at the next non-whitespace rune.
-			j := i + utf8.RuneLen(r)
-			for j < len(s) {
-				r2, sz := utf8.DecodeRuneInString(s[j:])
-				if r2 == ' ' || r2 == '\t' {
-					j += sz
-					continue
-				}
-				break
-			}
 			return strings.TrimSpace(b.String())
 		}
 	}

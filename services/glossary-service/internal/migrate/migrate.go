@@ -875,29 +875,54 @@ func UpShortDescAuto(ctx context.Context, pool *pgxpool.Pool) error {
 }
 
 // BackfillShortDescription iterates entities with NULL short_description,
-// fetches each one's description attribute value + kind name, runs the
-// pure shortdesc generator, and writes the result back. Honours the
-// auto flag: rows where short_description_auto = false are skipped
-// (user has explicitly set or cleared the field).
+// fetches each one's name + description attribute values + kind name,
+// runs the pure shortdesc generator, and writes the result back.
+// Honours the auto flag: rows where short_description_auto = false are
+// skipped (user has explicitly set or cleared the field).
 //
-// CAS-style: the UPDATE includes `WHERE short_description IS NULL` so
-// concurrent writes from a user PATCH during backfill don't get
-// clobbered.
+// Uses a keyset cursor on entity_id (`entity_id > $cursor ORDER BY
+// entity_id`) so the loop always makes forward progress even if a row's
+// UPDATE returns 0 affected (concurrent user write, generator returns
+// empty, or any other edge case) — K3-I1 fix. Without the cursor a
+// defensive skip on the write path would create a latent infinite loop.
 //
-// Idempotent: once all live entities have a short_description, this
-// is a no-op.
+// CAS-style: the UPDATE includes `WHERE short_description IS NULL AND
+// short_description_auto = true` so concurrent writes from a user PATCH
+// during backfill don't get clobbered.
 //
-// Intended to run in a background goroutine after the service starts
-// listening so health checks don't block on a large catalogue.
+// Reads name + description straight from EAV rather than relying on
+// cached_name (K3-I2 fix): new entities whose snapshot trigger has not
+// yet fired still get a correct name in their fallback.
+//
+// Honours ctx cancellation between batches so a shutdown signal during
+// backfill on a large catalogue doesn't hold connections indefinitely
+// (K3-I4 fix).
+//
+// Idempotent: once all live entities have a short_description, this is
+// a no-op. Intended to run in a background goroutine after the service
+// starts listening so health checks don't block on a large catalogue.
 func BackfillShortDescription(
 	ctx context.Context, pool *pgxpool.Pool,
 	generate func(name, description, kindName string) string,
 ) (processed int, err error) {
 	const batchSize = 100
+	var cursor string // empty string sorts before any valid uuid
 	for {
+		if err := ctx.Err(); err != nil {
+			return processed, err
+		}
+
 		rows, qerr := pool.Query(ctx, `
-			SELECT e.entity_id,
-			       COALESCE(e.cached_name, '') AS name,
+			SELECT e.entity_id::text,
+			       COALESCE((
+			         SELECT av.original_value
+			         FROM entity_attribute_values av
+			         JOIN attribute_definitions ad ON ad.attr_def_id = av.attr_def_id
+			         WHERE av.entity_id = e.entity_id
+			           AND ad.code IN ('name','term')
+			         ORDER BY CASE ad.code WHEN 'name' THEN 0 WHEN 'term' THEN 1 ELSE 2 END
+			         LIMIT 1
+			       ), '') AS name,
 			       COALESCE((
 			         SELECT av.original_value
 			         FROM entity_attribute_values av
@@ -911,8 +936,9 @@ func BackfillShortDescription(
 			WHERE e.short_description IS NULL
 			  AND e.short_description_auto = true
 			  AND e.deleted_at IS NULL
-			ORDER BY e.created_at
-			LIMIT $1`, batchSize)
+			  AND ($1 = '' OR e.entity_id::text > $1)
+			ORDER BY e.entity_id
+			LIMIT $2`, cursor, batchSize)
 		if qerr != nil {
 			return processed, fmt.Errorf("backfill-shortdesc list: %w", qerr)
 		}
@@ -940,9 +966,19 @@ func BackfillShortDescription(
 			return processed, nil
 		}
 
+		// Advance cursor to the last entity we saw in this batch so the
+		// next SELECT starts past it regardless of what the UPDATEs did.
+		cursor = batch[len(batch)-1].ID
+
 		for _, t := range batch {
+			if err := ctx.Err(); err != nil {
+				return processed, err
+			}
 			sd := generate(t.Name, t.Desc, t.KindName)
 			if sd == "" {
+				// Defensive: should not happen given the generator
+				// contract, but the cursor has already advanced so we
+				// won't revisit this row.
 				continue
 			}
 			// CAS: only overwrite if still NULL and still auto.
