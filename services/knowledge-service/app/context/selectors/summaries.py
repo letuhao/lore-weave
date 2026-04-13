@@ -1,12 +1,14 @@
 """Selectors for reading memory summaries from Postgres.
 
-K4a (Mode 1) only needs the global (L0) loader — project (L1) comes in
-K4b. This module owns the query shape so the Mode builders never touch
-the repository directly.
+K6.2: reads go through the per-process TTL cache in app.context.cache
+before falling through to SummariesRepo. Cache is write-through via
+K6.3 — SummariesRepo.upsert/delete invalidate the matching key after
+the DB write succeeds.
 """
 
 from uuid import UUID
 
+from app.context import cache
 from app.db.models import Summary
 from app.db.repositories.summaries import SummariesRepo
 
@@ -18,8 +20,17 @@ async def load_global_summary(
 ) -> Summary | None:
     """Return the user's global (L0) summary, or None if unset.
 
-    Thin wrapper over SummariesRepo.get(user_id, 'global', None). Lives
-    in the selectors layer so the Mode builders never import the
-    repository directly — makes future Track-2 caching trivial.
+    Cache-first: hits the TTL cache before touching Postgres. The
+    cache stores both positive hits and a MISSING sentinel for known
+    absent rows, so repeated turns from a user without a bio don't
+    re-query the DB.
     """
-    return await repo.get(user_id, "global", None)
+    cached = cache.get_l0(user_id)
+    if cached is cache.MISSING:
+        return None
+    if cached is not None:
+        return cached  # type: ignore[return-value]
+
+    summary = await repo.get(user_id, "global", None)
+    cache.put_l0(user_id, summary)
+    return summary

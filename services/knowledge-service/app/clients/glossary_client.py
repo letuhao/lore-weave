@@ -11,12 +11,14 @@ FastAPI dependency_overrides rather than hitting the real URL.
 """
 
 import logging
+import time
 from uuid import UUID
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import settings
+from app.metrics import circuit_open as circuit_open_gauge
 
 __all__ = ["GlossaryClient", "GlossaryEntityForContext"]
 
@@ -45,6 +47,20 @@ class GlossaryClient:
     Close via `await client.aclose()` on shutdown.
     """
 
+    # K6.4 — hand-rolled circuit breaker. Matches the tone of the K5
+    # retry loop: ~40 lines of state machine rather than pulling in
+    # `purgatory`. Three states, all encoded in two fields:
+    #
+    #   _cb_opened_at is None        → closed (normal operation)
+    #   _cb_opened_at is set, cooldown elapsing → open (fast-fail)
+    #   _cb_opened_at is set, cooldown elapsed  → half-open (probe)
+    #
+    # Thread-safety: asyncio is single-threaded within a worker, so
+    # no lock is needed. Multi-worker deployments each own their own
+    # breaker state (K4-I1 / K5-I9 pattern).
+    _CB_THRESHOLD = 3
+    _CB_COOLDOWN_S = 60.0
+
     def __init__(self, base_url: str, internal_token: str, timeout_s: float, retries: int) -> None:
         self._base_url = base_url.rstrip("/")
         self._retries = max(0, retries)
@@ -54,9 +70,45 @@ class GlossaryClient:
             timeout=httpx.Timeout(timeout_s),
             headers={"X-Internal-Token": internal_token},
         )
+        self._cb_fail_count = 0
+        self._cb_opened_at: float | None = None
 
     async def aclose(self) -> None:
         await self._http.aclose()
+
+    def _cb_is_open(self) -> bool:
+        """Return True if the breaker is currently fast-failing.
+
+        Returns False when the breaker is closed OR when the cooldown
+        has elapsed (half-open probe is allowed through). The caller
+        decides what to do with that probe based on its outcome.
+        """
+        if self._cb_opened_at is None:
+            return False
+        if time.monotonic() - self._cb_opened_at >= self._CB_COOLDOWN_S:
+            # Cooldown elapsed — let one probe through.
+            return False
+        return True
+
+    def _cb_record_success(self) -> None:
+        if self._cb_opened_at is not None:
+            logger.info("glossary circuit breaker closed (probe succeeded)")
+        self._cb_fail_count = 0
+        self._cb_opened_at = None
+        circuit_open_gauge.labels(service="glossary").set(0)
+
+    def _cb_record_failure(self) -> None:
+        self._cb_fail_count += 1
+        if self._cb_fail_count >= self._CB_THRESHOLD:
+            if self._cb_opened_at is None:
+                logger.warning(
+                    "glossary circuit breaker opened after %d consecutive failures",
+                    self._cb_fail_count,
+                )
+            # Reset the clock on every failure so a half-open probe
+            # that fails extends the cooldown by another full window.
+            self._cb_opened_at = time.monotonic()
+            circuit_open_gauge.labels(service="glossary").set(1)
 
     async def select_for_context(
         self,
@@ -81,6 +133,13 @@ class GlossaryClient:
             "max_tokens": int(max_tokens),
             "exclude_ids": exclude_ids or [],
         }
+
+        # K6.4 — circuit breaker short-circuit. If the breaker is open
+        # (and still within cooldown), return [] immediately without
+        # touching the HTTP client. The gauge is already set; no new
+        # log line per call to avoid log spam during outages.
+        if self._cb_is_open():
+            return []
 
         # K4-I4: log AT MOST one warning per call. Per-attempt logging
         # used to spam logs during outages (N candidates × M retries ×
@@ -127,9 +186,18 @@ class GlossaryClient:
                     parsed.append(GlossaryEntityForContext.model_validate(row))
                 except Exception as exc:
                     logger.warning("glossary client row validate skip: %s", exc)
+            # Success path — this is the only place the breaker closes.
+            # 4xx / decode / shape failures return [] above but do NOT
+            # record success, because the upstream service IS
+            # responsive — they just indicate a bad request, which
+            # shouldn't hold the breaker open either way.
+            self._cb_record_success()
             return parsed
 
         # All attempts exhausted — single warning summarising the failure.
+        # This IS a breaker-worthy failure (service is unreachable or
+        # consistently 5xx).
+        self._cb_record_failure()
         logger.warning(
             "glossary client unavailable after %d attempts: %s",
             attempts, last_err_summary or "unknown",

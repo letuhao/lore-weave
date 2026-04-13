@@ -6,3 +6,5 @@ pydantic-settings>=2.2
 python-json-logger>=2.0
 httpx>=0.27
 PyJWT>=2.8
+cachetools>=5.3
+prometheus-client>=0.20

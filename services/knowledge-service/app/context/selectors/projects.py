@@ -8,6 +8,7 @@ re-assert the pattern in their signatures).
 
 from uuid import UUID
 
+from app.context import cache
 from app.db.models import Project, Summary
 from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.summaries import SummariesRepo
@@ -30,5 +31,18 @@ async def load_project(
 async def load_project_summary(
     repo: SummariesRepo, user_id: UUID, project_id: UUID
 ) -> Summary | None:
-    """Return the project-level L1 summary, or None if not set."""
-    return await repo.get(user_id, "project", project_id)
+    """Return the project-level L1 summary, or None if not set.
+
+    Cache-first via app.context.cache (K6.2). K6.3 invalidates on
+    write from SummariesRepo.upsert/delete so same-process updates
+    are immediately visible.
+    """
+    cached = cache.get_l1(user_id, project_id)
+    if cached is cache.MISSING:
+        return None
+    if cached is not None:
+        return cached  # type: ignore[return-value]
+
+    summary = await repo.get(user_id, "project", project_id)
+    cache.put_l1(user_id, project_id, summary)
+    return summary

@@ -2,12 +2,18 @@
 
 SECURITY RULE: every method takes `user_id` as the first argument and
 every SQL statement filters by `user_id = $1`.
+
+K6.3: after every successful write (upsert / delete), we invalidate
+the matching key in the per-process TTL cache so the next read in
+the same process sees the fresh value. Cross-process invalidation
+is Track 2.
 """
 
 from uuid import UUID
 
 import asyncpg
 
+from app.context import cache
 from app.db.models import ScopeType, Summary
 
 _SELECT_COLS = """
@@ -27,6 +33,23 @@ def _rows_changed(status: str) -> int:
         return int(status.rsplit(" ", 1)[-1])
     except ValueError:
         return 0
+
+
+def _invalidate_cache(
+    user_id: UUID, scope_type: ScopeType, scope_id: UUID | None
+) -> None:
+    """Drop the matching cache key after a write.
+
+    Keeps the invalidation switch in one place so both upsert and
+    delete stay in sync with app.context.cache's keying scheme. An
+    unknown scope_type is a no-op — we'd rather silently skip an
+    unexpected scope than leak cache state, and the surrounding code
+    already validates scope_type at the repo boundary.
+    """
+    if scope_type == "global":
+        cache.invalidate_l0(user_id)
+    elif scope_type == "project" and scope_id is not None:
+        cache.invalidate_l1(user_id, scope_id)
 
 
 class SummariesRepo:
@@ -70,7 +93,9 @@ class SummariesRepo:
             row = await conn.fetchrow(
                 query, user_id, scope_type, scope_id, content, token_count
             )
-        return Summary.model_validate(dict(row))
+        result = Summary.model_validate(dict(row))
+        _invalidate_cache(user_id, scope_type, scope_id)
+        return result
 
     async def delete(
         self, user_id: UUID, scope_type: ScopeType, scope_id: UUID | None
@@ -83,4 +108,7 @@ class SummariesRepo:
         """
         async with self._pool.acquire() as conn:
             status = await conn.execute(query, user_id, scope_type, scope_id)
-        return _rows_changed(status) >= 1
+        changed = _rows_changed(status) >= 1
+        if changed:
+            _invalidate_cache(user_id, scope_type, scope_id)
+        return changed

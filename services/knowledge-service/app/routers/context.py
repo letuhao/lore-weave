@@ -15,6 +15,7 @@ module globals.
 """
 
 import logging
+import time
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -26,6 +27,7 @@ from app.context.builder import ProjectNotFound, build_context
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.summaries import SummariesRepo
+from app.metrics import context_build_duration_seconds
 from app.middleware.internal_auth import require_internal_token
 
 logger = logging.getLogger(__name__)
@@ -84,6 +86,12 @@ async def build(
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     glossary_client: GlossaryClient = Depends(get_glossary_client),
 ) -> ContextBuildResponse:
+    # K6.5: observe end-to-end build duration. Labelled by the
+    # resolved mode so the histogram separates Mode 1 / Mode 2 /
+    # degraded-error paths. On exceptions, fall back to a synthetic
+    # "error" label so we still see failure latency.
+    _t0 = time.monotonic()
+    _mode_label = "error"
     try:
         built = await build_context(
             summaries_repo,
@@ -93,6 +101,7 @@ async def build(
             project_id=req.project_id,
             message=req.message,
         )
+        _mode_label = built.mode
     except ProjectNotFound:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -110,5 +119,9 @@ async def build(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="context build failed",
+        )
+    finally:
+        context_build_duration_seconds.labels(mode=_mode_label).observe(
+            time.monotonic() - _t0
         )
     return ContextBuildResponse.model_validate(built)

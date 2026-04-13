@@ -25,5 +25,13 @@ class Settings(BaseSettings):
     # dedup is dropping entries it shouldn't.
     dedup_min_overlap: int = 2
 
+    # K6.1 — per-layer timeouts inside the context builder. If any
+    # layer exceeds its budget the builder skips that layer and
+    # continues with the remaining pieces. Total ceiling defaults to
+    # L0 + L1 + glossary = 400ms because layers run sequentially.
+    context_l0_timeout_s: float = 0.1
+    context_l1_timeout_s: float = 0.1
+    context_glossary_timeout_s: float = 0.2
+
 
 settings = Settings()

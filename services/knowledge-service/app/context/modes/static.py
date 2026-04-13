@@ -21,6 +21,8 @@ double-fetch and keeps Mode 2's responsibility tight: take a project,
 produce a context block.
 """
 
+import asyncio
+import logging
 from uuid import UUID
 
 from app.clients.glossary_client import GlossaryClient, GlossaryEntityForContext
@@ -34,6 +36,9 @@ from app.context.selectors.summaries import load_global_summary
 from app.context.selectors.projects import load_project_summary
 from app.db.models import Project
 from app.db.repositories.summaries import SummariesRepo
+from app.metrics import layer_timeout_total
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["build_static_mode"]
 
@@ -90,18 +95,54 @@ async def build_static_mode(
     handles cross-user and extraction-enabled checks). `message` is
     the user's current turn, used as the glossary FTS query.
     """
-    # Fetch all the pieces in parallel-friendly order. We don't actually
-    # parallelise with asyncio.gather because the Postgres pool and
-    # HTTP client have separate connection pools — sequential is fine
-    # and simpler. Track 2 can revisit if latency matters.
-    l0 = await load_global_summary(summaries_repo, user_id)
-    l1_summary = await load_project_summary(summaries_repo, user_id, project.project_id)
-    entities = await select_glossary_for_context(
-        glossary_client,
-        user_id=user_id,
-        project=project,
-        message=message,
-    )
+    # Fetch all the pieces in sequence — each wrapped in its own
+    # asyncio.wait_for so a slow layer degrades gracefully instead
+    # of blocking the whole build (K6.1). Layers run sequentially
+    # because the Postgres pool and HTTP client have separate
+    # connection budgets; Track 2 can parallelise with gather().
+    try:
+        l0 = await asyncio.wait_for(
+            load_global_summary(summaries_repo, user_id),
+            timeout=settings.context_l0_timeout_s,
+        )
+    except asyncio.TimeoutError:
+        layer_timeout_total.labels(layer="l0").inc()
+        logger.warning(
+            "context builder L0 timeout user_id=%s budget=%.3fs",
+            user_id, settings.context_l0_timeout_s,
+        )
+        l0 = None
+
+    try:
+        l1_summary = await asyncio.wait_for(
+            load_project_summary(summaries_repo, user_id, project.project_id),
+            timeout=settings.context_l1_timeout_s,
+        )
+    except asyncio.TimeoutError:
+        layer_timeout_total.labels(layer="l1").inc()
+        logger.warning(
+            "context builder L1 timeout user_id=%s project_id=%s budget=%.3fs",
+            user_id, project.project_id, settings.context_l1_timeout_s,
+        )
+        l1_summary = None
+
+    try:
+        entities = await asyncio.wait_for(
+            select_glossary_for_context(
+                glossary_client,
+                user_id=user_id,
+                project=project,
+                message=message,
+            ),
+            timeout=settings.context_glossary_timeout_s,
+        )
+    except asyncio.TimeoutError:
+        layer_timeout_total.labels(layer="glossary").inc()
+        logger.warning(
+            "context builder glossary timeout user_id=%s project_id=%s budget=%.3fs",
+            user_id, project.project_id, settings.context_glossary_timeout_s,
+        )
+        entities = []
     # K4.12: drop glossary rows whose keywords already overlap the L1
     # summary — the summary is authored prose and richer, the glossary
     # row would be redundant. Pinned entities are never dropped. The

@@ -10,13 +10,19 @@ recent_message_count is 50 — chat-service replays the last 50 messages
 as usual.
 """
 
+import asyncio
+import logging
 from dataclasses import dataclass
 from uuid import UUID
 
+from app.config import settings
 from app.context.formatters.token_counter import estimate_tokens
 from app.context.formatters.xml_escape import sanitize_for_xml
 from app.context.selectors.summaries import load_global_summary
 from app.db.repositories.summaries import SummariesRepo
+from app.metrics import layer_timeout_total
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["BuiltContext", "build_no_project_mode"]
 
@@ -52,8 +58,23 @@ async def build_no_project_mode(
     If the user has no global summary, the `<user>` element is omitted
     and only `<instructions>` is returned — the block is still valid
     XML and chat-service can inject it unchanged.
+
+    K6.1: L0 load is wrapped in asyncio.wait_for(context_l0_timeout_s).
+    On timeout we skip the bio and keep building — the no-bio path
+    is already supported and produces a valid block.
     """
-    summary = await load_global_summary(repo, user_id)
+    try:
+        summary = await asyncio.wait_for(
+            load_global_summary(repo, user_id),
+            timeout=settings.context_l0_timeout_s,
+        )
+    except asyncio.TimeoutError:
+        layer_timeout_total.labels(layer="l0").inc()
+        logger.warning(
+            "context builder L0 timeout user_id=%s budget=%.3fs",
+            user_id, settings.context_l0_timeout_s,
+        )
+        summary = None
     has_bio = summary is not None and summary.content.strip() != ""
     lines = ['<memory mode="no_project">']
     if has_bio:
