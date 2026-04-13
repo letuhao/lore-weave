@@ -147,7 +147,7 @@ class GlossaryClient:
         # consolidated warning at the end if we couldn't get a result.
         attempts = self._retries + 1
         last_err_summary: str | None = None
-        for attempt in range(attempts):
+        for _ in range(attempts):
             try:
                 resp = await self._http.post(url, json=body)
             except httpx.TimeoutException:

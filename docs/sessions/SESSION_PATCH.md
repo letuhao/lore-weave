@@ -31,7 +31,7 @@
 | D-K1-03 | K1 | `ProjectsRepo.list()` pagination | K7 public API |
 | D-K2a-01 | K2a | Glossary summary DB CHECK `content <> ''` | K7 |
 | D-K2a-02 | K2a | Glossary summary size cap | K7 |
-| D-K5-01 | K5 | End-to-end `X-Trace-Id` propagation across chat → knowledge → glossary internal calls + trace_id in 500 response bodies (supersedes D-K4a-02) | K6 |
+| D-K5-01 | K5 | End-to-end `X-Trace-Id` propagation across chat → knowledge → glossary internal calls + trace_id in 500 response bodies (supersedes D-K4a-02) | K7 |
 
 ### Track 2 planning (document only, no Track 1 action)
 
@@ -40,6 +40,8 @@
 | D-T2-01 | K2b, K4a | CJK token estimate undercounts by ~3× — swap `len/4` heuristic for tiktoken |
 | D-T2-02 | K4b | `ts_rank` non-normalized — switch to `ts_rank_cd` with normalization flag |
 | D-T2-03 | K5 | Unify `DEGRADED_RECENT_MESSAGE_COUNT` (chat-service) and the Mode-1/Mode-2 builder constants (knowledge-service) behind a single config knob — currently both default to 50 in two unrelated files |
+| D-T2-04 | K6 | Cross-process cache invalidation for L0/L1 (Redis pub/sub or event bus). Track 1 accepts ≤60s staleness per-instance; KSA §7.3 confirms this is Track 2 scope |
+| D-T2-05 | K6 | Glossary circuit-breaker half-open "one probe" guarantee — currently all concurrent calls race through when cooldown elapses. For Track 1 the breaker still re-opens on the first failure so the blast radius is bounded. Proper fix needs an asyncio.Lock or probe-in-flight flag; pair with D-T2-04 cache-invalidation work since both touch cross-call coordination |
 
 ### Perf items (fix when profiling shows pain)
 
@@ -57,6 +59,7 @@
 - **K5 retry backoff between attempts.** 500ms × 2 = 1000ms total budget leaves no room for backoff. If we ever raise the timeout, revisit. Conscious decision.
 - **K5 `KnowledgeClient` is a per-worker singleton.** With multi-worker uvicorn each worker has its own client + its own pool, which is correct (httpx.AsyncClient must be constructed after fork). The "singleton" is per-process, not per-cluster, by design. Not debt — the right shape.
 - **`close_knowledge_client` not guarded against concurrent calls.** Lifespan shutdown is single-threaded; not a real risk.
+- **K6 glossary circuit-breaker `_cb_fail_count` drifts past threshold.** After the breaker opens at count=3, any subsequent failure that reaches `_cb_record_failure` climbs to 4, 5, … Never causes incorrect behavior (count only resets to 0 on success, and the short-circuit prevents new failures from arriving in practice). Cosmetic only — the log message `"opened after %d consecutive failures"` could over-report during a long outage. Not worth the complexity to cap.
 
 ### Recently cleared
 
@@ -70,6 +73,8 @@
 | K5-I1..I5 | K5 review | All 5 K5 must-fix items resolved — commit `417ae97` |
 | K5-I7 | K5 review | Test patch style (brittle to import refactor) — fixed via `httpx.MockTransport` constructor injection (zero `@patch` decorators in `test_knowledge_client.py` now) |
 | K5-I9 | K5 review | Mis-flagged. KnowledgeClient is per-worker by design and works correctly with multi-worker uvicorn (httpx.AsyncClient is constructed after fork inside the lifespan). Removed from review notes. |
+| K6-I1..I4 | K6 review | All 4 review items fixed in the same commit as K6 BUILD plus follow-up: I1 unused `attempt` loop var → `_`; I2 added TTL-expiration test (tiny-TTL `cachetools.TTLCache` monkeypatched into the cache module); I3 `context_build_duration_seconds` histogram now labels error paths as `"not_found"` / `"not_implemented"` / `"error"` instead of lumping all under `"error"`; I4 conftest autouse fixture resets the `circuit_open` gauge between tests so a breaker-tripping test doesn't leak state into the next test's metric assertions. |
+| D-K5-01 | K5 | Re-targeted K6 → K7 — the trace_id work spans middleware in 3 services (chat/knowledge/glossary) and naturally belongs with K7's public API + JWT middleware phase. Not drift: K6 was the graceful-degradation phase, not the observability phase. |
 
 ---
 

@@ -86,10 +86,10 @@ async def build(
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     glossary_client: GlossaryClient = Depends(get_glossary_client),
 ) -> ContextBuildResponse:
-    # K6.5: observe end-to-end build duration. Labelled by the
-    # resolved mode so the histogram separates Mode 1 / Mode 2 /
-    # degraded-error paths. On exceptions, fall back to a synthetic
-    # "error" label so we still see failure latency.
+    # K6.5: observe end-to-end build duration. Label distinguishes
+    # successful modes (no_project/static/full) from each error path
+    # so dashboards can separate "user sent a stale project_id"
+    # (routine 404) from "builder crashed" (alert-worthy 500).
     _t0 = time.monotonic()
     _mode_label = "error"
     try:
@@ -103,6 +103,7 @@ async def build(
         )
         _mode_label = built.mode
     except ProjectNotFound:
+        _mode_label = "not_found"
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="project not found",
@@ -110,6 +111,7 @@ async def build(
     except NotImplementedError as exc:
         # Mode 3 (full extraction) is Track 2 scope. chat-service gets
         # a clear 501 and falls back to plain replay.
+        _mode_label = "not_implemented"
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail=str(exc),

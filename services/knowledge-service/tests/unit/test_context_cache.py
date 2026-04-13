@@ -182,3 +182,45 @@ def test_invalidate_cache_helper_unknown_scope_is_noop():
 
     # Should not raise, even for scope types we don't cache.
     _invalidate_cache(uuid4(), "session", uuid4())  # type: ignore[arg-type]
+
+
+# ── K6-I2: TTL expiration invariant ───────────────────────────────────────
+
+
+def test_l0_cache_entries_expire_after_ttl(monkeypatch):
+    """Swap in a tiny-TTL cache and verify the sentinel disappears
+    after sleeping past the window. Guards the core cache invariant:
+    a row eventually evicts so stale data doesn't live forever.
+    """
+    import time as _time
+    from cachetools import TTLCache
+
+    # Replace the L0 cache with a 50ms-TTL instance for this test only.
+    tiny = TTLCache(maxsize=10, ttl=0.05)
+    monkeypatch.setattr(cache, "_l0_cache", tiny)
+
+    uid = uuid4()
+    cache.put_l0(uid, _summary("global", content="will-expire"))
+
+    # Immediately visible.
+    assert cache.get_l0(uid) is not None
+
+    # Sleep past the TTL — entry must be evicted on next read.
+    _time.sleep(0.08)
+    assert cache.get_l0(uid) is None
+
+
+def test_l1_cache_entries_expire_after_ttl(monkeypatch):
+    import time as _time
+    from cachetools import TTLCache
+
+    tiny = TTLCache(maxsize=10, ttl=0.05)
+    monkeypatch.setattr(cache, "_l1_cache", tiny)
+
+    uid = uuid4()
+    pid = uuid4()
+    cache.put_l1(uid, pid, _summary("project", pid))
+
+    assert cache.get_l1(uid, pid) is not None
+    _time.sleep(0.08)
+    assert cache.get_l1(uid, pid) is None
