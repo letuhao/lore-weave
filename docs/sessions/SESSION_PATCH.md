@@ -7,11 +7,11 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 39 — Gate 4 knowledge-service backend e2e verification COMPLETE)
-- Updated By: Assistant (session 39 brought the compose stack up against postgres:5555, ran the full knowledge-service integration suite (45/45 after fixing one stale assertion — Gate-4-I1), reran the unit suite (322/322), force-rebuilt the cached `infra-knowledge-service:latest` image which was missing the metrics/projects/summaries/user_data routers, and smoke-tested every public endpoint live with a minted dev JWT: /health, /metrics, projects CRUD + archive + cross-user 401, summaries PATCH + GET, user-data export + delete. Stack: postgres + redis + book-service + glossary-service + knowledge-service. Gate 4 closed.)
+- Last Updated: 2026-04-14 (session 39 — Gate 4 backend e2e + Gate 5 UX browser smoke COMPLETE)
+- Updated By: Assistant (session 39 closed both gates back-to-back: Gate 4 brought the stack up against postgres:5555, ran the integration suite (45/45 after Gate-4-I1 stale-test fix), reran units (322/322), force-rebuilt the cached `infra-knowledge-service:latest` image, and live-smoked all 13 public endpoints. Gate 5 then brought up the full compose stack (postgres + redis + book + glossary + knowledge + provider-registry + usage-billing + auth + chat + gateway + frontend + languagetool), force-rebuilt 4 stale images (auth, chat, gateway, frontend), drove Playwright through the full K8.1..K8.4 + K9.1 round-trip (login already cookie-restored, memory page, create + edit + archive + delete project, global bio PATCH, chat session + project picker + MemoryIndicator update from "Global" → project name), found 4 issues (Gate-5-I1 nginx languagetool upstream, Gate-5-I2 Radix DialogContent a11y warning, Gate-5-I3 GlobalBioTab dirty-flag never clears post-save, Gate-5-I4 gateway 500 when knowledge-service down), confirmed D-K8-04 degraded-badge gap by stopping knowledge-service mid-test, fixed Gate-5-I3 in same session and re-verified live.)
 - Active Branch: `main` (ahead of origin by session-38 + session-39 commits — user pushes manually)
-- HEAD: `55aba32` — K17.9-R1..R3 review fixes (pre Gate 4 commit)
-- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V8.md` — full context from session 38 still authoritative for Track 2 state; session 39 adds Gate 4 result on top
+- HEAD: `16fd837` — Gate 4 commit (session 39 first half); Gate 5 commit pending
+- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V9.md` (Gate 4) — Gate 5 handoff in `SESSION_HANDOFF_V10.md` (this session)
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
 ---
@@ -116,6 +116,66 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### Gate 5 — UX browser smoke (K8.1..K8.4 + K9.1) ✅ (session 39)
+
+**Goal:** drive the K8/K9 frontend round-trip through Playwright against a real full stack — the first time the K8.1..K8.4 + K9.1 surface has been exercised end-to-end in a browser since landing in session 38. Validates the K9.1 picker → K8.4 indicator round-trip in particular.
+
+**Stack brought up:** postgres + redis + minio + rabbitmq + mailhog + book-service + glossary-service + knowledge-service + provider-registry-service + usage-billing-service + statistics-service + sharing-service + catalog-service + notification-service + translation-service + chat-service + auth-service + api-gateway-bff + frontend + languagetool. Total ~20 containers.
+
+**Pre-flight (Gate-4-I2 lesson applied):** rebuilt `auth-service`, `chat-service`, `api-gateway-bff`, `frontend` images before `up -d --force-recreate` — all four were stale relative to session 38 source. `knowledge-service` was already fresh from Gate 4.
+
+**Smoke coverage (all driven via Playwright MCP, dev-tested account `claude-test@loreweave.dev`):**
+
+| Step | Result |
+|---|---|
+| Navigate to `/` → auto-redirect to `/login` → cookie-restored session lands on `/books` workspace | ✅ |
+| Click sidebar Memory link → `/memory/projects` (K8.1 nav) | ✅ |
+| Empty state visible: "No projects yet" + "Create your first project" CTA | ✅ |
+| Click "New project" → Radix dialog opens with Name/Type/Book ID/Description/Instructions fields and char counters (2k / 20k caps matching K7b backend Annotated str caps) | ✅ |
+| Fill "Gate 5 smoke project" → Create button enables → Click Create → Card renders with "Static memory" mode badge + "general" type | ✅ |
+| Click Edit → dialog re-opens with Type combobox **disabled** (immutable after creation, correct UX) → rename → Save → card label updates without reload (PATCH worked) | ✅ |
+| Tab to Global bio → 50,000-char counter (matches K1 Annotated str cap, K7b backend) → fill → Save → PATCH `/v1/knowledge/summaries/global` returns 200 | ⚠️ Gate-5-I3 |
+| Reload `/memory/global` → server has the bio (PATCH persisted), no Unsaved badge → confirms I3 is purely cosmetic | ✅ |
+| Navigate to `/chat` → list of prior conversations + "No chat selected" empty state | ✅ |
+| Click "New" → model picker dialog → Start Chat → new session created at `/chat/019d8c07-...` | ✅ |
+| Chat header shows K8.4 MemoryIndicator with text "Global" (no project assigned, only global bio active — correct mode) | ✅ |
+| Open Session Settings panel → K9.1 "Project memory" combobox lists `[No project, Gate 5 smoke project (renamed)]` | ✅ |
+| Select project via combobox → debounced PATCH `/v1/chat/sessions/{id}` `{"project_id":"019d8c04-..."}` → 200 | ✅ |
+| MemoryIndicator updates from "Global" → "Gate 5 smoke project (renamed)" — **K9.1 → K8.4 round-trip confirmed end-to-end** | ✅ |
+| Stop knowledge-service mid-session via `docker compose stop knowledge-service` → reload chat page | (D-K8-04 test) |
+| Indicator silently degrades from project name → generic "Project" label. Console shows two 500s on `GET /v1/knowledge/projects/{id}`. **No "degraded" badge.** Confirms D-K8-04 is real and the deferral is still load-bearing. | ⚠️ D-K8-04 + Gate-5-I4 |
+| Restart knowledge-service → archive flow: Archive button → confirm dialog → row removed from default list → empty state | ✅ |
+| Toggle "Show archived" checkbox → archived row reappears (no archived badge or restore button — Track 1 scope per the original D-K8-02 deferral) | ✅ (scope-correct) |
+| Delete button → confirm dialog ("\<name\> and its summary will be permanently deleted") → row removed → empty state restored | ✅ |
+
+**Gate 5 issues found:**
+
+| ID | Severity | What | Where | Status |
+|---|---|---|---|---|
+| **Gate-5-I1** | infra | Frontend nginx hard-references upstream `languagetool` and fails with `host not found in upstream` if the languagetool container isn't running. nginx resolves all upstream hostnames at startup (not lazily on first request) so the entire frontend is unhealthy until languagetool is up. Worked around by `docker compose up -d languagetool` before `up frontend`, but that should be a `depends_on` in compose OR the nginx config should use a variable + resolver to defer resolution. | [frontend nginx.conf:35](frontend/nginx.conf#L35) + [infra/docker-compose.yml:601](infra/docker-compose.yml#L601) | **Workaround applied for the smoke; permanent fix flagged.** |
+| **Gate-5-I2** | a11y warning | Radix `DialogContent` missing `Description`/`aria-describedby`. Fires on every project-modal open (both create and edit). Console-warn only — not a runtime error — but every Radix dialog in the K8 surface needs to either provide a `<DialogDescription>` or pass `aria-describedby={undefined}` explicitly to silence the warning. | ProjectFormModal | **Tracked for Track 1 cleanup commit; not fixed this session.** |
+| **Gate-5-I3** | FE bug (cosmetic) | "Unsaved changes" badge stuck after a successful PATCH on Global bio. PATCH persists correctly (page reload shows the bio with no badge), but the in-component `dirty` flag never clears. Root cause: the K8.3-R4 effect (which protects in-flight typing from background refetches) only resyncs `baseline` from the server when `contentRef.current === baselineRef.current`. After a save, `contentRef.current` already equals the server's new value but is still ≠ `baselineRef.current`, so the effect early-returned and `baseline` was never advanced. | [GlobalBioTab.tsx:36](frontend/src/features/knowledge/components/GlobalBioTab.tsx#L36) | **Fixed in this session + verified live.** Effect now has 3 branches: (a) no unsaved edits → sync both, (b) server caught up to local content (post-save) → advance baseline only, (c) genuine unsaved divergence → keep local edits (D-K8-03 lost-update surface preserved). |
+| **Gate-5-I4** | integration gap | When knowledge-service is down, the gateway returns **500** for `GET /v1/knowledge/projects/{id}` rather than a graceful upstream-down envelope. Two console 500s per chat-page load. The FE handles it by silently degrading the indicator label, which is exactly what triggers D-K8-04. A graceful proxy fallback (return cached project name + degraded flag, or 503 with a structured envelope) would let the FE distinguish "knowledge-service down" from a real 500. | api-gateway-bff knowledge-service proxy | **Track 2 — pair with D-K8-04 cache-invalidation work.** |
+
+**Deferred items confirmed live this session:**
+- **D-K8-04 — Degraded memory-mode badge missing.** Reproduced exactly as the deferral predicted: with knowledge-service down, the FE indicator falls back to a generic "Project" label and there is no degraded-mode signal. Fix needs chat-service to surface `memory_mode` (`no_project` / `static` / `degraded`) in the session/stream response, and the FE to consume it. Pair with D-T2-04 cache-invalidation since both touch the chat ↔ knowledge event plumbing. **Now also linked with Gate-5-I4** — gateway needs a graceful proxy fallback for the project-lookup call.
+- **D-K8-02 — Project card states.** Track 1 only ships "disabled" extraction state. The Gate 5 walkthrough confirms there is no "Restore" action on archived rows, no extraction stat tiles, no building/ready/paused/failed card states. Consistent with the deferral; no new finding.
+
+**Plan deviations / scope-correct things that look like gaps but aren't:**
+- "Show archived" toggle reveals archived projects but does NOT add an "Archived" badge or "Restore" button. This matches the K7c spec ("Unarchive is K8 frontend territory and isn't exposed by Track 1") + D-K8-02. Not a bug.
+- Memory indicator title is `"Memory"` and the visible label is the project name (or "Global" / "Project" fallback). The K8.4 spec called for a richer mode pill ("Project memory" / "Global memory only") — what shipped is more compact. Acceptable; the round-trip works.
+
+**Files touched this session (Gate 5 half):**
+- [frontend/src/features/knowledge/components/GlobalBioTab.tsx](frontend/src/features/knowledge/components/GlobalBioTab.tsx) — Gate-5-I3 fix
+- [docs/sessions/SESSION_PATCH.md](docs/sessions/SESSION_PATCH.md) — this entry
+- [docs/sessions/SESSION_HANDOFF_V10.md](docs/sessions/SESSION_HANDOFF_V10.md) — new handoff
+
+**Test count delta (session 39 Gate 5 half):** No new automated tests (Playwright MCP runs aren't checked in). One frontend bug fixed. The walkthrough itself is captured in this entry as the Gate 5 record.
+
+**Gate 5 status:** ✅ **PASS with 4 findings.** K8.1..K8.4 + K9.1 round-trip works end-to-end in a real browser against a real stack. The one real frontend bug (I3) was found AND fixed AND re-verified live in the same session. The other three findings are tracked: I1 is infra hygiene, I2 is an a11y cleanup, I4 + D-K8-04 are the same Track 2 follow-up.
+
+---
 
 ### Gate 4 — knowledge-service backend e2e verification ✅ (session 39)
 

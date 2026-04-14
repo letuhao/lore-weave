@@ -28,14 +28,23 @@ export function GlobalBioTab() {
 
   useEffect(() => {
     const next = global?.content ?? '';
-    // If the user has unsaved edits (content diverges from the
-    // baseline we last synced), keep them. A background refetch
-    // must not clobber in-flight typing. The trade-off: if another
-    // device also edited concurrently, we prefer the local edits —
-    // same lost-update surface tracked as D-K8-03.
-    if (contentRef.current !== baselineRef.current) return;
-    setContent(next);
-    setBaseline(next);
+    if (contentRef.current === baselineRef.current) {
+      // No unsaved edits — sync both from the server.
+      setContent(next);
+      setBaseline(next);
+      return;
+    }
+    // Gate-5-I3: when the server has caught up to our local
+    // content, our save just landed. Advance the baseline so the
+    // dirty flag clears and the "Unsaved changes" badge goes
+    // away. Don't touch `content` (already equals next).
+    if (contentRef.current === next) {
+      setBaseline(next);
+      return;
+    }
+    // Otherwise the user has unsaved edits AND the server differs
+    // — keep local edits, same lost-update surface tracked as
+    // D-K8-03. K8.3-R4 protects in-flight typing.
   }, [global?.content, global?.version]);
 
   const trimmed = content.trim();
