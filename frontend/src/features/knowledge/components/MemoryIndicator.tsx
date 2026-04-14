@@ -26,14 +26,16 @@ export function MemoryIndicator({ projectId }: Props) {
   const [open, setOpen] = useState(false);
   const { accessToken } = useAuth();
 
-  // Fetch the project name only when one is actually linked AND the
-  // popover is being opened — avoids a request on every chat-view
-  // mount for sessions without memory. Cached by project_id so
-  // subsequent opens are instant.
+  // Fetch the project name whenever one is linked. The button label
+  // is the whole point of the indicator — gating this on `open` would
+  // mean every session with memory shows the literal "Project"
+  // fallback until the user clicks. Sessions without memory skip the
+  // request entirely via the `!!projectId` guard, so this only costs
+  // one cached GET per project (60s staleTime) on chat mount.
   const projectQuery = useQuery({
     queryKey: ['knowledge-project', projectId] as const,
     queryFn: () => knowledgeApi.getProject(projectId!, accessToken!),
-    enabled: !!projectId && !!accessToken && open,
+    enabled: !!projectId && !!accessToken,
     staleTime: 60_000,
   });
 
@@ -49,7 +51,7 @@ export function MemoryIndicator({ projectId }: Props) {
         onClick={() => setOpen((v) => !v)}
         title="Memory"
         aria-label="Memory indicator"
-        aria-expanded={open}
+        aria-expanded={open ? 'true' : 'false'}
         className={cn(
           'flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors',
           isProject
