@@ -10,7 +10,7 @@
 - Last Updated: 2026-04-14 (session 39 continuation — **K11.3 Cypher schema runner landed**, K11.1+K11.2+K11.3 = Neo4j wired end-to-end against live 2026.03)
 - Updated By: Assistant (K11.3 caps the Neo4j-infra slice. Schema file ships 6 unique constraints + 13 composite/single indexes + 5 vector indexes per KSA §3.4. K11.3-I1: existence constraints removed — Enterprise-only on community edition; user_id NOT NULL stays enforced by K11.4's `assert_user_id_param`. Neo4j image bumped 2025.10 → 2026.03 community after user pushback. 369/369 knowledge-service tests pass against live Neo4j; 12 new K11.3 tests (8 parser unit + 4 integration). Repo code must keep going through K11.4 — schema runner is the one documented exception.)
 - Active Branch: `main` (ahead of origin by session-38 + session-39 commits — user pushes manually)
-- HEAD: K11.5b-R1 review-fix commit (this session, on top of K11.5b)
+- HEAD: K11.6 relations-repo commit (this session, on top of K11.5b-R1)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -117,6 +117,33 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K11.6 — Relations repository (`:RELATES_TO` edges) ✅ (session 39 continuation, Track 2)
+
+**Goal:** Cypher repo for `(:Entity)-[:RELATES_TO]->(:Entity)` edges with idempotent SVO upsert, 1-hop and 2-hop traversal helpers, and the temporal `invalidate_relation` path. Consumer surface for K17 (LLM extractor writes relations) and the L2 RAG context loader.
+
+**Files:**
+- [services/knowledge-service/app/db/neo4j_repos/relations.py](services/knowledge-service/app/db/neo4j_repos/relations.py) — NEW: `relation_id()` deterministic hash helper, `Relation` + `RelationHop` Pydantic models, 6 repo functions (`create_relation`, `get_relation`, `find_relations_for_entity` 1-hop, `find_relations_2hop`, `invalidate_relation`).
+- [services/knowledge-service/tests/integration/db/test_relations_repo.py](services/knowledge-service/tests/integration/db/test_relations_repo.py) — NEW: 26 integration tests against live Neo4j 2026.03.1 (4 unit-style for `relation_id` + 22 against the live driver).
+
+**Acceptance criteria (from K11.6 plan):**
+- ✅ `create_relation` is idempotent on `source_event_id` — re-running with the same event id is a no-op (the existing list already contains it). Verified by a test that calls create twice with the same event and asserts `source_event_ids == ["evt-x"]`.
+- ✅ Distinct events accumulate — three creates with three different `source_event_id`s yield a list of three.
+- ✅ Multi-source confidence: higher confidence wins AND adopts the new `pending_validation` flag. A subsequent lower-confidence pattern hit does NOT downgrade. This is the K17 Pass 2 promotion path.
+- ✅ 2-hop traversal works on KSA L2 fixture data: Kai→ally→Phoenix→loyal_to→Crown plus Kai→ally→Drake→enemy_of→Wraith returns both paths via `find_relations_2hop(hop1_types=['ally_of'], hop2_types=['loyal_to', 'enemy_of'])`.
+- ✅ Temporal filter (`valid_until IS NULL`) applied by default in both 1-hop and 2-hop helpers; verified by a test that creates a relation, asserts it's visible, then invalidates and asserts it's hidden.
+- ✅ `find_relations_2hop` requires non-empty `hop1_types` — without a first-hop predicate filter, hub entities would explode the query budget. Hard `ValueError` at call time.
+- ✅ Self-loop guard: 2-hop `target.id <> anchor.id` so `Kai→ally→Phoenix→ally→Kai` doesn't appear as a "Kai-related" target.
+
+**Cross-user safety:**
+- ✅ `create_relation` returns `None` when subject and object belong to different users — both endpoint MATCHes carry `WHERE x.user_id = $user_id`.
+- ✅ `get_relation` and `invalidate_relation` filter on the relation's own stored `user_id` AND both endpoint user_ids.
+
+**K11.6-I1: `IS NOT TRUE` is not valid Neo4j 5+ syntax.** First test run failed with `CypherSyntaxError: Invalid input 'TRUE': expected '::', 'NFC', ...`. The KSA L2 loader Cypher example (lines 2125-2126) used `pending_validation IS NOT TRUE` but Neo4j 5+ rejects it. Replaced with `coalesce(r.pending_validation, false) = false` which is equivalent and parses cleanly. Affects every find query that excludes Pass 1 quarantined edges.
+
+**Test results:** 26/26 K11.6 tests green. Full knowledge-service suite: **477 passed, 93 skipped** against live Neo4j 2026.03.1 (was 451; +26 K11.6). Zero regressions.
+
+**What K11.6 unblocks:** K17 (LLM extractor) — can now write SVO triples through `create_relation` with full Pass 1/Pass 2 confidence promotion semantics. K11.8 (provenance) — depends on relations existing so EVIDENCED_BY edges can attach. The L2 RAG context loader — the 1-hop and 2-hop helpers are exactly the Cypher shapes documented in KSA §4.2.
 
 ### K11.5b — Entities repository (Neo4j) — vector + linking slice ✅ (session 39 continuation, Track 2)
 
