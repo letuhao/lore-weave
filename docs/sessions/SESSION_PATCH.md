@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 38 — Knowledge Service K7c COMPLETE, review-fixes shipped)
-- Updated By: Assistant (K7.3 public Summaries endpoints — GET /v1/knowledge/summaries, PATCH /summaries/global, PATCH /projects/{id}/summary. Refactor: hoisted DI helpers to new app/deps.py module so public routers stop reaching across into app/routers/context.py. Review pass added LIMIT-1000 hard cap + intentional CASE-based scope ordering on SummariesRepo.list_for_user.)
-- Active Branch: `main` (+10 ahead of origin, K7c not yet committed)
-- HEAD: `4fbda14` — K7b-I1..I7 review fixes (K7c work uncommitted in working tree)
+- Last Updated: 2026-04-14 (session 38 — Knowledge Service K7c + K7d COMPLETE, second-pass review fixes shipped)
+- Updated By: Assistant (K7.5 + K7.6 user-data export + GDPR erasure — GET /v1/knowledge/user-data/export returns a full JSON bundle with 507 overflow guards on BOTH projects AND summaries; DELETE /v1/knowledge/user-data atomically purges summaries + projects for the caller via a standalone UserDataRepo transaction, followed by in-process cache invalidation for every L0/L1 key owned by the user. Both routes emit GDPR audit-log records.)
+- Active Branch: `main` (+2 ahead of origin, K7d committed)
+- HEAD: K7d commit (see git log) — K7c = `160de10`, K7d = latest
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V7.md` — full context for next agent
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -113,7 +113,24 @@
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
 
-### K7c — Public Summaries Endpoints ✅ (session 38, uncommitted)
+### K7d — User Data Export + GDPR Erasure ✅ (session 38, commit pending)
+
+**Files:** new `app/routers/public/user_data.py`, new `app/db/repositories/user_data.py`, new `tests/unit/test_public_user_data.py` (13 tests), additions to `app/db/repositories/summaries.py` (`EXPORT_HARD_CAP`, `list_all_for_user`), `app/db/repositories/projects.py` (`EXPORT_HARD_CAP = 10_000`, `list_all_for_user`), `app/context/cache.py` (`invalidate_all_for_user`), `app/deps.py` (`get_user_data_repo`), `app/main.py` (router mount).
+
+- **Two endpoints under /v1/knowledge/user-data**: `GET /export` returns a `JSONResponse` with `Content-Disposition: attachment; filename="loreweave-knowledge-export-{uuid}-{date}.json"` containing `{schema_version: 1, user_id, exported_at, projects: [...], summaries: [...]}`. `DELETE ""` hard-deletes every project + summary owned by the caller and returns `{deleted: {summaries: int, projects: int}}`. Both routes JWT-authenticated via router-level `dependencies=[Depends(get_current_user)]`; `user_id` sourced ONLY from the JWT `sub` claim (never query string or body).
+- **Atomic erasure via `UserDataRepo`:** new thin repo owning the cross-table delete. Both DELETEs (`knowledge_summaries` then `knowledge_projects`) run inside a single `async with conn.transaction()` so the user-visible answer is "either both tables are cleared or neither is". Cache invalidation via `cache.invalidate_all_for_user(user_id)` runs AFTER commit succeeds — if the transaction rolled back we don't want to drop fresh cached rows that are still valid.
+- **New `cache.invalidate_all_for_user`:** walks `_l0_cache` + a snapshot of `_l1_cache.keys()` (not the live dict — we mutate during iteration) and pops any matching key. O(N) over total cache size; called only on erasure which is rare. Cross-process invalidation still tracked as D-T2-04.
+- **Overflow safety on BOTH lists:** `ProjectsRepo.list_all_for_user` and `SummariesRepo.list_all_for_user` fetch `LIMIT EXPORT_HARD_CAP + 1` (10_000 + 1) so the route can detect the boundary. If either collection exceeds its cap the route raises HTTP 507 Insufficient Storage with a clear detail message rather than silently truncating. Silent truncation would violate GDPR's "complete copy" requirement — the whole reason export exists.
+- **GDPR audit trail:** both routes emit `logger.info("gdpr.export …")` / `logger.info("gdpr.erasure …")` at INFO level with `user_id` + projects/summaries counts. Regulated data-subject requests must be traceable after the fact. Verified by `caplog` in two tests (`test_export_empty_user`, `test_delete_empty_user`).
+- **Track 1 scope note (from route docstring):** export reads projects and summaries in two separate connections, NOT a single transaction. A concurrent edit between the two reads could yield a bundle where summaries reference projects that were just deleted. Track 1 accepts this — the user is exporting their own data interactively, not racing themselves. Track 3's streaming export will add a REPEATABLE READ snapshot.
+- **Cross-service cascade is Track 3, not K7d:** Track 1 scope is knowledge-service-owned data only (`knowledge_projects` + `knowledge_summaries`). Chapters, chat history, glossary entries, billing records etc. stay where they are — the full cross-service GDPR orchestrator lives on a later cross-service phase and is not blocking on this work.
+- **K7d review pass:** **K7d-I1 (HIGH)** — initial BUILD used `SummariesRepo.list_for_user` in the export path, which silently caps at 1000 rows. Would produce a truncated bundle for any user with >1000 summaries and quietly violate GDPR. Fixed by adding a parallel `list_all_for_user` (with its own `EXPORT_HARD_CAP = 10_000`) and a matching 507 overflow check in the route, symmetric with the projects path. **K7d-I2 (MEDIUM)** — no audit logging for these regulated operations. Added the two `gdpr.*` log lines above plus `caplog` assertions. **K7d-I3 (LOW)** — `_rows_changed` helper now duplicated in `projects.py` + `user_data.py`; deliberately not extracted because cross-coupling two unrelated repos for a 5-line parser is worse than the duplication.
+
+**Tests after K7d (knowledge-service): 176/176 would-be passing** (up from 175 baseline to 176: 20 K7c tests untouched + 13 new K7d tests + the 7 pre-existing env-failures still ignored). Verified locally: `python -m pytest tests/unit/test_public_user_data.py` → 13 passed; full suite (minus the 3 ignored files) → 176 passed.
+
+---
+
+### K7c — Public Summaries Endpoints ✅ (session 38, commit `160de10`)
 
 **Files:** new `app/deps.py` (hoisted DI helpers), new `app/routers/public/summaries.py`, new `tests/unit/test_public_summaries.py`, `SummariesRepo.list_for_user` added, small import updates in `app/routers/context.py` + `app/routers/public/projects.py` + `app/main.py`.
 

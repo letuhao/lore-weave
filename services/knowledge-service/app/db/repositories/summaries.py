@@ -63,6 +63,14 @@ class SummariesRepo:
     # /v1/knowledge/summaries endpoint.
     _LIST_FOR_USER_HARD_CAP = 1000
 
+    # K7d export safety belt. Mirrors ProjectsRepo.EXPORT_HARD_CAP:
+    # the export route refuses with 507 rather than silently truncating,
+    # which would produce an incomplete GDPR bundle and quietly violate
+    # the regulation. Sized an order of magnitude above the Memory-page
+    # cap because one user can legitimately accumulate project + session
+    # summaries across many scopes over time.
+    EXPORT_HARD_CAP = 10_000
+
     async def list_for_user(self, user_id: UUID) -> list[Summary]:
         """Return every summary row owned by `user_id`, all scopes.
 
@@ -87,6 +95,27 @@ class SummariesRepo:
           END,
           updated_at DESC
         LIMIT {self._LIST_FOR_USER_HARD_CAP}
+        """
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(query, user_id)
+        return [Summary.model_validate(dict(r)) for r in rows]
+
+    async def list_all_for_user(self, user_id: UUID) -> list[Summary]:
+        """Return every summary row owned by `user_id` for K7d export.
+
+        Capped at `EXPORT_HARD_CAP + 1` so the export route can detect
+        overflow and fail noisily with 507 instead of producing a
+        truncated GDPR bundle. Ordering is not meaningful for export —
+        we sort by (scope_type, scope_id, updated_at) only so the JSON
+        output is deterministic across identical exports, which makes
+        import / merge / diff tools easier to write.
+        """
+        query = f"""
+        SELECT {_SELECT_COLS}
+        FROM knowledge_summaries
+        WHERE user_id = $1
+        ORDER BY scope_type, scope_id, updated_at
+        LIMIT {self.EXPORT_HARD_CAP + 1}
         """
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(query, user_id)

@@ -13,6 +13,7 @@ from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import context, health, metrics, ping
 from app.routers.public import projects as public_projects
 from app.routers.public import summaries as public_summaries
+from app.routers.public import user_data as public_user_data
 
 logger = logging.getLogger(__name__)
 
@@ -52,3 +53,4 @@ app.include_router(context.router)
 app.include_router(metrics.router)
 app.include_router(public_projects.router)
 app.include_router(public_summaries.router)
+app.include_router(public_user_data.router)

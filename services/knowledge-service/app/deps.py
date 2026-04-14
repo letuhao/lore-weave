@@ -18,6 +18,7 @@ from app.clients.glossary_client import get_glossary_client as _get_glossary_cli
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.summaries import SummariesRepo
+from app.db.repositories.user_data import UserDataRepo
 
 
 async def get_summaries_repo() -> SummariesRepo:
@@ -26,6 +27,10 @@ async def get_summaries_repo() -> SummariesRepo:
 
 async def get_projects_repo() -> ProjectsRepo:
     return ProjectsRepo(get_knowledge_pool())
+
+
+async def get_user_data_repo() -> UserDataRepo:
+    return UserDataRepo(get_knowledge_pool())
 
 
 async def get_glossary_client() -> GlossaryClient:

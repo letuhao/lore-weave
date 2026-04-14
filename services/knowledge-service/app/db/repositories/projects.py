@@ -126,6 +126,29 @@ class ProjectsRepo:
             rows = await conn.fetch(query, *params)
         return [_row_to_project(r) for r in rows]
 
+    # K7d export safety belt: if a user somehow has more than this
+    # many projects, the export endpoint refuses with 507 rather than
+    # silently truncating. Track 1 expects << 100 per user; if anyone
+    # legitimately hits this we'll switch the export to a streaming
+    # NDJSON response (Track 3 scope per K7.5 spec notes).
+    EXPORT_HARD_CAP = 10_000
+
+    async def list_all_for_user(self, user_id: UUID) -> "list[Project]":
+        """Return every project owned by `user_id` (incl. archived) for
+        K7d export. Capped at `EXPORT_HARD_CAP + 1` so the route can
+        detect overflow and fail noisily.
+        """
+        query = f"""
+        SELECT {_SELECT_COLS}
+        FROM knowledge_projects
+        WHERE user_id = $1
+        ORDER BY created_at, project_id
+        LIMIT {self.EXPORT_HARD_CAP + 1}
+        """
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(query, user_id)
+        return [_row_to_project(r) for r in rows]
+
     async def get(self, user_id: UUID, project_id: UUID) -> Project | None:
         query = f"""
         SELECT {_SELECT_COLS}

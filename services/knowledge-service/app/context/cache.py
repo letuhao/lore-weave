@@ -42,6 +42,7 @@ __all__ = [
     "get_l1",
     "put_l1",
     "invalidate_l1",
+    "invalidate_all_for_user",
     "clear_all",
     "L0_LAYER",
     "L1_LAYER",
@@ -102,6 +103,22 @@ def put_l1(user_id: UUID, project_id: UUID, summary: Summary | None) -> None:
 
 def invalidate_l1(user_id: UUID, project_id: UUID) -> None:
     _l1_cache.pop((user_id, project_id), None)
+
+
+def invalidate_all_for_user(user_id: UUID) -> None:
+    """Drop every cache entry for `user_id` across both layers.
+
+    Used by K7d's user-data delete to guarantee a freshly-deleted
+    user's stale rows can't surface from a per-process cache for the
+    next 60 seconds. Walks the cache snapshots (NOT the live dicts —
+    we mutate during iteration) and pops any matching key.
+
+    O(N) over total cache size; called only on user erasure which is
+    rare. Cross-process invalidation is still Track 2 (D-T2-04).
+    """
+    _l0_cache.pop(user_id, None)
+    for key in [k for k in list(_l1_cache.keys()) if k[0] == user_id]:
+        _l1_cache.pop(key, None)
 
 
 def clear_all() -> None:
