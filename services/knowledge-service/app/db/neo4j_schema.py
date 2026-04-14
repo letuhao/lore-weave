@@ -70,7 +70,10 @@ def load_schema_statements(path: Path | None = None) -> list[str]:
     where naive splitting would break.
     """
     src_path = path or _SCHEMA_PATH
-    raw = src_path.read_text(encoding="utf-8")
+    # utf-8-sig: tolerate a BOM if a Windows editor saved one in.
+    # The first statement would otherwise carry a leading \ufeff
+    # and Neo4j would reject it as a syntax error.
+    raw = src_path.read_text(encoding="utf-8-sig")
     no_comments = _LINE_COMMENT_RE.sub("", raw)
     fragments = (s.strip() for s in no_comments.split(";"))
     return [s for s in fragments if s]

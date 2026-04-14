@@ -10,7 +10,7 @@
 - Last Updated: 2026-04-14 (session 39 continuation — **K11.3 Cypher schema runner landed**, K11.1+K11.2+K11.3 = Neo4j wired end-to-end against live 2026.03)
 - Updated By: Assistant (K11.3 caps the Neo4j-infra slice. Schema file ships 6 unique constraints + 13 composite/single indexes + 5 vector indexes per KSA §3.4. K11.3-I1: existence constraints removed — Enterprise-only on community edition; user_id NOT NULL stays enforced by K11.4's `assert_user_id_param`. Neo4j image bumped 2025.10 → 2026.03 community after user pushback. 369/369 knowledge-service tests pass against live Neo4j; 12 new K11.3 tests (8 parser unit + 4 integration). Repo code must keep going through K11.4 — schema runner is the one documented exception.)
 - Active Branch: `main` (ahead of origin by session-38 + session-39 commits — user pushes manually)
-- HEAD: K11.3 commit (this session)
+- HEAD: K11.3-R1 review-fix commit (this session, on top of K11.3)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -27,6 +27,7 @@
 | ID | Origin | Description | Target phase |
 |---|---|---|---|
 | D-K8-02 (partial remaining) | K8 draft review | **Project card building/ready/paused/failed states + extraction stat tiles.** Restore button shipped in K-CLEAN-3 (session 39); the building/ready/paused/failed states + entity/fact/event/glossary stat tiles still need Track 2 K11/K17 to produce the data they would render. | Track 2 (Gate 12) |
+| D-K11.3-01 | K11.3-R1 review | **Lifespan startup leaks resources on partial failure.** If `run_neo4j_schema` (or `run_migrations`, or any pre-`yield` startup step) raises in [services/knowledge-service/app/main.py](services/knowledge-service/app/main.py), `__aenter__` propagates the exception and the post-`yield` cleanup never runs — driver, asyncpg pools, and httpx client all leak. Pre-existing structural issue; K11.3 inherits it but doesn't worsen. Fix: wrap startup in a try/except that closes everything before re-raising, or split lifespan into per-resource async-context-managers and stack them. | Gate 4 hardening pass |
 
 ### Track 2 planning (document only, no Track 1 action)
 
@@ -136,6 +137,17 @@
 **Schema runner is the documented exception to K11.4.** Module docstring spells it out: schema operations are global (no user filter applies), and the assertion wrapper would raise if asked to run them. Schema lives in this one module *only* so the exception surface is small and reviewable. Repo code MUST go through K11.4.
 
 **What K11.3 unblocks:** K11.5 (entity repo with two-layer glossary anchor), K11.6 (relations repo), K11.7 (events + facts repo) — all three can assume the indexes + constraints exist on every startup. No defensive `CREATE INDEX` calls inside repo code.
+
+**K11.3-R1 second-pass review fixes (5 issues):**
+- **R1 (bug)** — Evidence-count indexes were not user_id-prefixed, violating the file's own multi-tenant rule. K11.8's `MATCH (e:Entity {user_id:$u}) WHERE e.evidence_count = 0` would have walked all users. Renamed to `entity_user_evidence` / `event_user_evidence` / `fact_user_evidence`, all `(user_id, evidence_count)` composite.
+- **R2 (bug)** — `entity_project_model` not user_id-prefixed. Renamed to `entity_user_project_model` and added `user_id` as the leading key. project_id selectivity was masking the leak; consistency with the rest of the file matters more.
+- **R3 (doc bug)** — Removed false "partial indexes (Neo4j 5.x feature)" claim; community 5.x doesn't have partial indexes. Comment now accurately describes them as range indexes.
+- **R4 (latent footgun)** — Added two guard unit tests that scan the post-comment-strip schema for `;` or `//` inside string/backtick literals, so a future innocent edit can't silently corrupt a statement. Scans the post-strip source so prose like `` `;` `` inside a `//` comment doesn't false-positive.
+- **R5 (minor)** — `read_text(encoding="utf-8")` → `"utf-8-sig"` so a Windows editor that saves with BOM doesn't smuggle `\ufeff` into the first statement. Added `test_k11_3_load_schema_statements_tolerates_utf8_bom` guard.
+
+R6 (lifespan startup leaks on partial failure) is a pre-existing structural issue not introduced by K11.3 → tracked as **D-K11.3-01** in the deferred-items table.
+
+**Test delta:** +3 unit tests (now 11 K11.3 unit + 4 K11.3 integration = 15 K11.3 tests, all green). Full knowledge-service suite: **372 passed, 93 skipped** against live Neo4j 2026.03.1.
 
 ### K10.4 extraction_jobs repository + atomic try_spend ✅ (session 39, first Track 2 task)
 

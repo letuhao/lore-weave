@@ -80,10 +80,12 @@ FOR (e:Entity) ON (e.user_id, e.project_id);
 
 // "Find all entities in a project that share an embedding model."
 // This is the per-project-embedding-storage filter from KSA §3.4.B
-// — vector_search routes on (project_id, embedding_model) so the
-// composite index is the cheap pre-filter.
-CREATE INDEX entity_project_model IF NOT EXISTS
-FOR (e:Entity) ON (e.project_id, e.embedding_model);
+// — vector_search routes on (user_id, project_id, embedding_model)
+// so the composite index is the cheap pre-filter. user_id is the
+// leading key for the same multi-tenant reason as every other
+// index in this file.
+CREATE INDEX entity_user_project_model IF NOT EXISTS
+FOR (e:Entity) ON (e.user_id, e.project_id, e.embedding_model);
 
 // "List events ordered by chronology for a user." Used by Mode 3
 // L4 timeline retrieval.
@@ -98,20 +100,26 @@ FOR (e:Event) ON (e.user_id, e.chapter_id);
 // ─────────────────────────────────────────────────────────────────
 // EVIDENCE-COUNT INDEXES — partial-extraction cascade cleanup
 //
-// "Find all entities/events/facts whose EVIDENCED_BY count is
-// zero so we can DETACH DELETE them after a partial re-extract."
-// These are partial indexes (Neo4j 5.x feature) on a denormalised
-// `evidence_count` property that K11.8 maintains.
+// "Find all entities/events/facts belonging to a user whose
+// EVIDENCED_BY count is zero so we can DETACH DELETE them after
+// a partial re-extract." K11.8 maintains the denormalised
+// `evidence_count` property.
+//
+// Composite (user_id, evidence_count) so the K11.8 cleanup
+// `MATCH (e:Entity {user_id: $user_id}) WHERE e.evidence_count = 0`
+// is bounded by the calling user's churn, not the global graph.
+// These are full range indexes — Neo4j community 5.x does not
+// support partial indexes (`CREATE INDEX ... WHERE ...`).
 // ─────────────────────────────────────────────────────────────────
 
-CREATE INDEX entity_zero_evidence IF NOT EXISTS
-FOR (e:Entity) ON (e.evidence_count);
+CREATE INDEX entity_user_evidence IF NOT EXISTS
+FOR (e:Entity) ON (e.user_id, e.evidence_count);
 
-CREATE INDEX event_zero_evidence IF NOT EXISTS
-FOR (e:Event) ON (e.evidence_count);
+CREATE INDEX event_user_evidence IF NOT EXISTS
+FOR (e:Event) ON (e.user_id, e.evidence_count);
 
-CREATE INDEX fact_zero_evidence IF NOT EXISTS
-FOR (f:Fact) ON (f.evidence_count);
+CREATE INDEX fact_user_evidence IF NOT EXISTS
+FOR (f:Fact) ON (f.user_id, f.evidence_count);
 
 // ─────────────────────────────────────────────────────────────────
 // EXTRACTION SOURCE INDEXES — provenance lookup

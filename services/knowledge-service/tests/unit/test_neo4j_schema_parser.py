@@ -92,6 +92,79 @@ def test_k11_3_load_schema_statements_includes_unique_constraints():
         )
 
 
+def _schema_source_without_comments() -> str:
+    """Return the schema source with `//` line comments stripped —
+    the same shape `load_schema_statements` works on. The guard
+    tests below scan THIS, not the raw file, because prose
+    examples like `` `;` `` legitimately appear inside comments
+    and would otherwise cause false positives."""
+    import re as _re
+
+    raw = _SCHEMA_PATH.read_text(encoding="utf-8-sig")
+    return _re.sub(r"//[^\n]*", "", raw)
+
+
+def test_k11_3_schema_has_no_string_literal_double_slash():
+    """K11.3-R1/R4 guard. After comment stripping, no remaining
+    Cypher should contain `//` inside a single-quoted, double-
+    quoted, or backtick-quoted literal. If one ever appears, the
+    parser would have already eaten it as a comment by the time
+    the guard runs — but the *post-strip* check still catches the
+    case where a literal contains `//foo` and the regex stripped
+    only `//foo` (leaving an unbalanced quote)."""
+    import re
+
+    src = _schema_source_without_comments()
+    bad_patterns = [
+        r"'[^'\n]*//[^'\n]*'",
+        r'"[^"\n]*//[^"\n]*"',
+        r"`[^`\n]*//[^`\n]*`",
+    ]
+    for pat in bad_patterns:
+        m = re.search(pat, src)
+        assert m is None, (
+            f"schema literal contains `//` which the parser would "
+            f"strip as a comment: {m.group(0)!r}"
+        )
+
+
+def test_k11_3_schema_has_no_semicolon_in_string_literal():
+    """K11.3-R1/R4 guard. The parser splits on `;` globally. A `;`
+    inside a string or backtick literal would be split mid-
+    statement and both halves would be invalid Cypher. Scans the
+    post-comment-strip source so prose like `` `;` `` inside a
+    `//` comment doesn't trigger a false positive."""
+    import re
+
+    src = _schema_source_without_comments()
+    bad_patterns = [
+        r"'[^'\n]*;[^'\n]*'",
+        r'"[^"\n]*;[^"\n]*"',
+        r"`[^`\n]*;[^`\n]*`",
+    ]
+    for pat in bad_patterns:
+        m = re.search(pat, src)
+        assert m is None, (
+            f"schema literal contains `;` which the parser would "
+            f"split mid-statement: {m.group(0)!r}"
+        )
+
+
+def test_k11_3_load_schema_statements_tolerates_utf8_bom(tmp_path: Path):
+    """K11.3-R1/R5 guard. A Windows editor that saves with BOM
+    must not break the runner. Verifies the BOM is silently
+    consumed by `utf-8-sig` decoding."""
+    p = tmp_path / "bom.cypher"
+    p.write_bytes(
+        b"\xef\xbb\xbf"  # UTF-8 BOM
+        b"CREATE INDEX foo IF NOT EXISTS FOR (n:Foo) ON (n.x);\n"
+    )
+    statements = load_schema_statements(p)
+    assert len(statements) == 1
+    # No leading \ufeff smuggled into the first statement.
+    assert statements[0].startswith("CREATE INDEX foo")
+
+
 def test_k11_3_load_schema_statements_alt_path_is_honoured(tmp_path: Path):
     """`load_schema_statements(path=...)` must read from the given
     file rather than the default. Used by tests that want to pass
