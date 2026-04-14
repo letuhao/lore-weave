@@ -28,6 +28,7 @@
 |---|---|---|---|
 | D-K2a-01 | K2a | Glossary summary DB CHECK `content <> ''` (glossary-service side, different schema) | Standalone glossary-service pass |
 | D-K2a-02 | K2a | Glossary summary size cap (glossary-service side) | Standalone glossary-service pass |
+| D-K8-02 | K8 draft review | **Project card building/ready/paused/failed states.** Draft [design-drafts/screen-knowledge-service.html](design-drafts/screen-knowledge-service.html) shows 4 project card states (disabled, building, ready, paused) + extraction stat tiles (entities/relations/events/facts/cost). Track 1 backend only produces `extraction_status='disabled'` — nothing populates the other states or the counters. **K8 Track 1 scope: render the `disabled` state only.** Building/ready/paused/failed cards + stat tiles land alongside the extraction pipeline. | Track 2 (Gate 12) |
 
 ### Track 2 planning (document only, no Track 1 action)
 
@@ -38,6 +39,7 @@
 | D-T2-03 | K5 | Unify `DEGRADED_RECENT_MESSAGE_COUNT` (chat-service) and the Mode-1/Mode-2 builder constants (knowledge-service) behind a single config knob — currently both default to 50 in two unrelated files |
 | D-T2-04 | K6 | Cross-process cache invalidation for L0/L1 (Redis pub/sub or event bus). Track 1 accepts ≤60s staleness per-instance; KSA §7.3 confirms this is Track 2 scope |
 | D-T2-05 | K6 | Glossary circuit-breaker half-open "one probe" guarantee — currently all concurrent calls race through when cooldown elapses. For Track 1 the breaker still re-opens on the first failure so the blast radius is bounded. Proper fix needs an asyncio.Lock or probe-in-flight flag; pair with D-T2-04 cache-invalidation work since both touch cross-call coordination |
+| D-K8-01 | K8 draft review | **Global bio version history + rollback UI.** Draft [design-drafts/screen-knowledge-service.html:988-1015](design-drafts/screen-knowledge-service.html#L988-L1015) shows v12 current + v11/v10 rollback rows. Track 1 schema has `knowledge_summaries.version INT NOT NULL DEFAULT 1` but the column is never incremented and there is no `knowledge_summary_versions` history table. Neither Track 1 nor Track 2 nor Track 3 docs plan this. **Needs**: new `knowledge_summary_versions` table (`summary_id`, `version`, `content`, `created_at`, `created_by`), repo layer bumps `version` + inserts a history row on every update, new `GET /v1/knowledge/summaries/global/versions` and `POST .../versions/{version}/rollback` endpoints, FE version list + "View" / "Rollback" actions. Pair with K20 "Summary regeneration (LLM-based L0/L1 refresh)" ([KNOWLEDGE_SERVICE_TRACK2_IMPLEMENTATION.md:36](docs/03_planning/KNOWLEDGE_SERVICE_TRACK2_IMPLEMENTATION.md#L36)) since both touch the same endpoint surface and UI column. Track 1 K8 frontend renders a plain textarea + Save, no history UI. |
 
 ### Perf items (fix when profiling shows pain)
 
