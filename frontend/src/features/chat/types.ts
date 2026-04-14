@@ -22,6 +22,12 @@ export interface ChatSession {
   last_message_at: string | null;
   created_at: string;
   updated_at: string;
+  // K8.4: set when the session is linked to a knowledge-service
+  // project. Drives the memory-mode indicator in ChatHeader —
+  // null means Mode 1 (global bio only), non-null means Mode 2
+  // (static project memory). Mirrors the backend column added
+  // by chat-service's K5 migration.
+  project_id: string | null;
 }
 
 export interface ChatMessage {

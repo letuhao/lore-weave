@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 38 — K7c–K7e + K8.1 + K8.2 + K8.3 COMPLETE)
-- Updated By: Assistant (K8.3 Global bio + Privacy tabs — useSummaries hook, GlobalBioTab textarea+save, PrivacyTab with export download + type-to-confirm delete-all. R1+R2 review fixes in same commit.)
-- Active Branch: `main` (K8.3 commit pending)
-- HEAD: K8.3 commit (see git log) — K7c = `160de10`, K7d/K7e/K8.2 committed
+- Last Updated: 2026-04-14 (session 38 — K7c–K7e + K8.1 + K8.2 + K8.3 + K8.4 COMPLETE)
+- Updated By: Assistant (K8.4 Chat header MemoryIndicator — derives Mode 1/Mode 2 client-side from `session.project_id`, popover with project name + Manage memory link. Adds `project_id: string | null` to chat ChatSession type.)
+- Active Branch: `main` (K8.4 commit pending)
+- HEAD: K8.4 commit (see git log) — K7c = `160de10`, K7d/K7e/K8.2/K8.3 committed
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V7.md` — full context for next agent
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -39,6 +39,7 @@
 | D-T2-03 | K5 | Unify `DEGRADED_RECENT_MESSAGE_COUNT` (chat-service) and the Mode-1/Mode-2 builder constants (knowledge-service) behind a single config knob — currently both default to 50 in two unrelated files |
 | D-T2-04 | K6 | Cross-process cache invalidation for L0/L1 (Redis pub/sub or event bus). Track 1 accepts ≤60s staleness per-instance; KSA §7.3 confirms this is Track 2 scope |
 | D-T2-05 | K6 | Glossary circuit-breaker half-open "one probe" guarantee — currently all concurrent calls race through when cooldown elapses. For Track 1 the breaker still re-opens on the first failure so the blast radius is bounded. Proper fix needs an asyncio.Lock or probe-in-flight flag; pair with D-T2-04 cache-invalidation work since both touch cross-call coordination |
+| D-K8-04 | K8.4 review | **Degraded memory-mode badge in chat header.** Track 1 `MemoryIndicator` derives mode client-side from `session.project_id` only — when knowledge-service is down, chat-service silently falls back to the degraded path (recent-messages-only) but does not echo `build_context.mode` back to the FE in the session/stream response. Result: indicator still says "Project memory" while the AI actually has none. **Fix needs**: chat-service to surface `memory_mode` (one of `no_project` / `static` / `degraded`) in `GET /v1/chat/sessions/{id}` and stream metadata; FE to consume it and render a "degraded" pill with hover explanation. Pair with D-T2-04 cache-invalidation since both require chat-service ↔ knowledge-service event plumbing. |
 | D-K8-03 | K8.2 review | **Lost-update on concurrent project edit.** [frontend/src/features/knowledge/components/ProjectFormModal.tsx](frontend/src/features/knowledge/components/ProjectFormModal.tsx) opens against an in-memory `editTarget` snapshot. If the react-query list refetches while the dialog is open (window focus, manual invalidation, another tab), the modal still submits the stale snapshot and any concurrent change from another device is silently overwritten. Track 1 backend has no optimistic-concurrency token either — `knowledge_projects` has `version INT DEFAULT 1` but `PATCH /v1/knowledge/projects/{id}` ignores it and the FE does not send `If-Match`. **Fix needs**: BE wiring `If-Match: W/"<version>"` against `knowledge_projects.version`, bumping the column on update, returning 412 on mismatch; FE capturing the version on dialog open and sending it back, handling 412 with a "refresh and try again" toast. Pair with D-K8-01 (summary version history) since both rework the same PATCH surfaces. |
 | D-K8-01 | K8 draft review | **Global bio version history + rollback UI.** Draft [design-drafts/screen-knowledge-service.html:988-1015](design-drafts/screen-knowledge-service.html#L988-L1015) shows v12 current + v11/v10 rollback rows. Track 1 schema has `knowledge_summaries.version INT NOT NULL DEFAULT 1` but the column is never incremented and there is no `knowledge_summary_versions` history table. Neither Track 1 nor Track 2 nor Track 3 docs plan this. **Needs**: new `knowledge_summary_versions` table (`summary_id`, `version`, `content`, `created_at`, `created_by`), repo layer bumps `version` + inserts a history row on every update, new `GET /v1/knowledge/summaries/global/versions` and `POST .../versions/{version}/rollback` endpoints, FE version list + "View" / "Rollback" actions. Pair with K20 "Summary regeneration (LLM-based L0/L1 refresh)" ([KNOWLEDGE_SERVICE_TRACK2_IMPLEMENTATION.md:36](docs/03_planning/KNOWLEDGE_SERVICE_TRACK2_IMPLEMENTATION.md#L36)) since both touch the same endpoint surface and UI column. Track 1 K8 frontend renders a plain textarea + Save, no history UI. |
 
@@ -114,6 +115,35 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K8.4 — Chat header MemoryIndicator ✅ (session 38)
+
+Final K8 frontend slice. Surfaces the active memory mode in the chat header so users can tell at a glance whether the current session has a project linked.
+
+**Files**
+- `frontend/src/features/knowledge/components/MemoryIndicator.tsx` (NEW) — small button (Brain icon + label) + click-to-open popover. Mode derived client-side from the `projectId` prop:
+  - `null` → Mode 1 (no_project) — "Global memory only", muted styling
+  - non-null → Mode 2 (static) — project name as label, primary-tinted styling
+- `frontend/src/features/chat/types.ts` — added `project_id: string | null` to `ChatSession`, mirroring the chat-service K5 migration column. Comment notes it drives the indicator.
+- `frontend/src/features/chat/components/ChatHeader.tsx` — mounted `<MemoryIndicator projectId={session.project_id} />` as the leftmost item in the right-side button group.
+
+**Lazy fetch:** project name is only fetched when the popover is *opened* (`enabled: !!projectId && !!accessToken && open`), keyed by `['knowledge-project', projectId]` with 60s staleTime. No request on chat mount for sessions without memory; subsequent opens are instant.
+
+**Popover pattern:** uses the backdrop-overlay div pattern from `NotificationBell` (no Radix Popover in this repo). z-40 backdrop + z-50 panel, click-outside dismisses. Internal `<Link to="/memory">` deep-links to MemoryPage and closes the popover via onClick.
+
+**Degraded state intentionally NOT surfaced.** chat-service calls knowledge-service server-side via `KnowledgeClient.build_context` and does not propagate the `mode` field back to the FE response, so when knowledge-service is down the indicator still says "Project memory" while the AI actually only sees recent messages. Tracked as **D-K8-04** — chat-service needs to add `memory_mode` to session/stream metadata before the FE can render a "degraded" pill. Pair with D-T2-04.
+
+**Phase 5 TEST:** `npx tsc --noEmit` shows only the pre-existing `@tanstack/react-query` module-resolution noise affecting every K8 file (same as K8.2 / K8.3). No K8.4-originated errors. `react-i18next` errors in VoiceChatOverlay/VoiceSettingsPanel are pre-existing and unrelated. Browser smoke deferred with K8.2/K8.3.
+
+**Phase 6 REVIEW:**
+- **K8.4-R1 (LOW, accepted):** No keyboard-Escape dismissal on the popover. Matches `NotificationBell` (the popover pattern this borrows from), so consistent with the repo. Not blocking.
+- **K8.4-R2 (LOW, accepted):** Project rename in ProjectsTab uses key prefix `['knowledge-projects', ...]` while MemoryIndicator uses `['knowledge-project', projectId]` — a rename will not auto-invalidate the indicator's cached name. 60s staleTime caps the lag. Acceptable for Track 1; an event-bus invalidation would be the proper fix and pairs with D-T2-04.
+- **K8.4-R3 (LOW, accepted):** `accessToken!` non-null assertion is gated by `enabled: !!accessToken`, safe.
+- No must-fix issues; nothing folded into a follow-up.
+
+**Phase 7 QC** — K8.4 acceptance: indicator visible in chat header; Mode 1 / Mode 2 visually distinct; popover explains memory state and links to MemoryPage; project name fetched lazily; archived sessions still show indicator (memory mode is independent of session status). Browser smoke deferred.
+
+---
 
 ### K8.3 — Global bio + Privacy tabs ✅ (session 38)
 
