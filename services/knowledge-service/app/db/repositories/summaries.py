@@ -14,12 +14,19 @@ from uuid import UUID
 import asyncpg
 
 from app.context import cache
-from app.db.models import ScopeType, Summary
+from app.db.models import ScopeType, Summary, SummaryVersion
 from app.db.repositories import VersionMismatchError
 
 _SELECT_COLS = """
   summary_id, user_id, scope_type, scope_id, content, token_count,
   version, created_at, updated_at
+"""
+
+# D-K8-01: columns projected for summary-version responses. Mirrors
+# the SummaryVersion Pydantic model exactly.
+_VERSION_SELECT_COLS = """
+  version_id, summary_id, user_id, version, content, token_count,
+  created_at, edit_source
 """
 
 
@@ -152,16 +159,24 @@ class SummariesRepo:
         save, no prior row) always succeeds regardless — the client
         couldn't have obtained an ETag before the row existed. Raises
         ``VersionMismatchError`` on conflict.
+
+        D-K8-01: every successful UPDATE also captures the PRE-update
+        row (content + version + token_count) into
+        knowledge_summary_versions inside the same transaction so
+        the history table stays consistent with the parent even
+        under concurrency. INSERT path writes no history row — v1
+        is the original, not a "previous" state.
         """
         token_count = _estimate_tokens(content)
-        # Only guard the UPDATE branch. The INSERT branch runs only when
-        # there's no existing row, so there's nothing to race against.
         version_predicate = (
             f" WHERE knowledge_summaries.version = ${6}"
             if expected_version is not None
             else ""
         )
-        query = f"""
+        # The upsert + history insert must be transactional so a
+        # concurrent writer can't sneak in between the history row
+        # and the parent bump.
+        insert_query = f"""
         INSERT INTO knowledge_summaries
           (user_id, scope_type, scope_id, content, token_count)
         VALUES ($1, $2, $3, $4, $5)
@@ -171,29 +186,75 @@ class SummariesRepo:
               version = knowledge_summaries.version + 1,
               updated_at = now()
           {version_predicate}
-        RETURNING {_SELECT_COLS}
+        RETURNING {_SELECT_COLS}, (xmax <> 0) AS was_update
         """
         params: list[object] = [user_id, scope_type, scope_id, content, token_count]
         if expected_version is not None:
             params.append(expected_version)
+
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(query, *params)
+            async with conn.transaction():
+                # Capture pre-update state + lock the row. FOR UPDATE
+                # serialises concurrent upserts so one side sees
+                # pre.version advance and produces a VersionMismatch
+                # cleanly instead of racing.
+                pre = await conn.fetchrow(
+                    """
+                    SELECT summary_id, version, content, token_count
+                    FROM knowledge_summaries
+                    WHERE user_id = $1
+                      AND scope_type = $2
+                      AND scope_id IS NOT DISTINCT FROM $3
+                    FOR UPDATE
+                    """,
+                    user_id, scope_type, scope_id,
+                )
+                row = await conn.fetchrow(insert_query, *params)
+                if pre is not None and row is not None:
+                    # D-K8-01: write the pre-update state as a
+                    # history row. INSERT path (pre is None) skips
+                    # this — there's nothing to archive.
+                    await conn.execute(
+                        """
+                        INSERT INTO knowledge_summary_versions
+                          (summary_id, user_id, version, content, token_count, edit_source)
+                        VALUES ($1, $2, $3, $4, $5, 'manual')
+                        """,
+                        pre["summary_id"],
+                        user_id,
+                        pre["version"],
+                        pre["content"],
+                        pre["token_count"],
+                    )
+                # If row is None while we hold a FOR UPDATE lock on
+                # `pre`, the only cause is a version-predicate miss
+                # on the UPDATE branch (because pre existed, INSERT
+                # would have been blocked by the unique constraint).
+                # Both cases below do NOT bump the version and do
+                # NOT write history.
+
         if row is not None:
             result = Summary.model_validate(dict(row))
             _invalidate_cache(user_id, scope_type, scope_id)
             return result
 
-        # 0 rows with expected_version set ⇒ a row exists but its
-        # version didn't match the predicate. Follow up with a SELECT
-        # to hand the current row back in the 412 body so the client
-        # can refresh its baseline.
-        current = await self.get(user_id, scope_type, scope_id)
-        if current is None:
-            # Shouldn't happen for this code path: if no row existed,
-            # the INSERT branch would have run and produced 1 row.
-            # Defensive — treat as transient and re-raise.
+        # Version mismatch. `pre` holds the state at the moment we
+        # took the lock, which is the truth the caller needs in its
+        # 412 envelope. If pre is also None, something really odd
+        # happened — raise RuntimeError so it doesn't turn into a
+        # silent success path.
+        if pre is None:
             raise RuntimeError(
                 "summaries.upsert returned 0 rows with no prior row",
+            )
+        current = await self.get(user_id, scope_type, scope_id)
+        if current is None:
+            # The row was deleted between our lock release and the
+            # follow-up SELECT. Treat as mismatch with the stale
+            # pre state — the client will refetch and see 404 on
+            # its next read.
+            raise RuntimeError(
+                "summaries.upsert: row disappeared after FOR UPDATE",
             )
         raise VersionMismatchError(current)
 
@@ -210,23 +271,21 @@ class SummariesRepo:
         own `project_id` (cross-user OR nonexistent — the router cannot
         distinguish these per KSA §6.4 anti-leak rules).
 
-        Closes the TOCTOU window between a router-level "does this user
-        own the project?" SELECT and the subsequent upsert: a single CTE
-        guards the INSERT/UPDATE on `EXISTS(SELECT 1 FROM knowledge_projects
-        WHERE user_id=$1 AND project_id=$2)`. If the EXISTS returns false
-        the INSERT inserts zero rows, the ON CONFLICT path doesn't fire,
-        and RETURNING yields nothing — we map empty → None.
+        The ownership check lives in a CTE (`WITH owned AS ...`) so the
+        INSERT is gated on `EXISTS(SELECT 1 FROM owned)`; a non-owner
+        inserts zero rows and the RETURNING yields nothing, which we
+        map to None.
 
-        Also halves connection-pool usage on the hot edit path versus
-        the previous "two repo calls = two pool.acquire() round trips"
-        shape used in the K7c BUILD.
+        D-K8-03: version-gated UPDATE branch; 0-row result
+        disambiguated via a follow-up get() (raises
+        VersionMismatchError on mismatch, returns None on ownership
+        failure).
 
-        D-K8-03: when ``expected_version`` is provided the UPDATE
-        branch gates on ``knowledge_summaries.version = $5``. A 0-row
-        result now has two possible causes — (a) the user doesn't
-        own the project, or (b) the version didn't match — so we
-        follow up with a GET to distinguish and raise
-        ``VersionMismatchError`` only on (b).
+        D-K8-01: every successful update writes a history row into
+        knowledge_summary_versions inside the same transaction. The
+        pre-update fetch doubles as a FOR UPDATE lock so concurrent
+        writers serialise. INSERT path writes no history — v1 is the
+        original, nothing to archive.
         """
         token_count = _estimate_tokens(content)
         version_predicate = (
@@ -234,7 +293,7 @@ class SummariesRepo:
             if expected_version is not None
             else ""
         )
-        query = f"""
+        upsert_query = f"""
         WITH owned AS (
           SELECT 1 FROM knowledge_projects
           WHERE user_id = $1 AND project_id = $2
@@ -257,22 +316,53 @@ class SummariesRepo:
         params: list[object] = [user_id, project_id, content, token_count]
         if expected_version is not None:
             params.append(expected_version)
+
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(query, *params)
+            async with conn.transaction():
+                # Pre-update lock + state capture. Note: if the user
+                # doesn't own the project, this SELECT returns None
+                # whether or not a summary row exists, because the
+                # row-filter on user_id matches the ownership model.
+                # That's safe — the CTE ownership check below is the
+                # real gate.
+                pre = await conn.fetchrow(
+                    """
+                    SELECT summary_id, version, content, token_count
+                    FROM knowledge_summaries
+                    WHERE user_id = $1
+                      AND scope_type = 'project'
+                      AND scope_id = $2
+                    FOR UPDATE
+                    """,
+                    user_id, project_id,
+                )
+                row = await conn.fetchrow(upsert_query, *params)
+                if pre is not None and row is not None:
+                    # D-K8-01: write pre-update state as history.
+                    await conn.execute(
+                        """
+                        INSERT INTO knowledge_summary_versions
+                          (summary_id, user_id, version, content, token_count, edit_source)
+                        VALUES ($1, $2, $3, $4, $5, 'manual')
+                        """,
+                        pre["summary_id"],
+                        user_id,
+                        pre["version"],
+                        pre["content"],
+                        pre["token_count"],
+                    )
+
         if row is not None:
             result = Summary.model_validate(dict(row))
             _invalidate_cache(user_id, "project", project_id)
             return result
 
         if expected_version is None:
-            # Legacy path: 0 rows means "user doesn't own the project"
-            # (or the project doesn't exist at all).
+            # Legacy path: 0 rows means ownership failure.
             return None
 
         # With expected_version set, 0 rows could be either ownership
-        # failure OR version mismatch. Follow-up SELECT disambiguates:
-        # a Summary means version mismatch; None means ownership or
-        # row-gone (mapped to None / 404 by the router).
+        # failure OR version mismatch. Follow-up SELECT disambiguates.
         current = await self.get(user_id, "project", project_id)
         if current is None:
             return None
@@ -293,3 +383,174 @@ class SummariesRepo:
         if changed:
             _invalidate_cache(user_id, scope_type, scope_id)
         return changed
+
+    # ─── D-K8-01: summary version history ───────────────────────────
+
+    # K7d-style safety cap: refuse to return more than this many
+    # history rows from a single list call. The UI pages 50 at a
+    # time in Track 1; the cap is higher so future iterations can
+    # bump limit without touching the repo.
+    VERSIONS_LIST_HARD_CAP = 200
+
+    async def list_versions(
+        self,
+        user_id: UUID,
+        scope_type: ScopeType,
+        scope_id: UUID | None,
+        *,
+        limit: int = 50,
+    ) -> list[SummaryVersion]:
+        """D-K8-01: list history rows newest-first for a given
+        summary scope. Filters by user_id on the denormalised column
+        so cross-user access returns an empty list by construction.
+
+        The summary row itself is NOT included in the response —
+        the current state is served by `get()`. This endpoint only
+        returns ARCHIVED versions (pre-update snapshots).
+        """
+        effective_limit = max(1, min(limit, self.VERSIONS_LIST_HARD_CAP))
+        query = f"""
+        SELECT {_VERSION_SELECT_COLS}
+        FROM knowledge_summary_versions
+        WHERE user_id = $1
+          AND summary_id IN (
+            SELECT summary_id FROM knowledge_summaries
+            WHERE user_id = $1
+              AND scope_type = $2
+              AND scope_id IS NOT DISTINCT FROM $3
+          )
+        ORDER BY version DESC
+        LIMIT {effective_limit}
+        """
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(query, user_id, scope_type, scope_id)
+        return [SummaryVersion.model_validate(dict(r)) for r in rows]
+
+    async def get_version(
+        self,
+        user_id: UUID,
+        scope_type: ScopeType,
+        scope_id: UUID | None,
+        version: int,
+    ) -> SummaryVersion | None:
+        """D-K8-01: fetch a specific history row for preview.
+        Returns None if (a) the version doesn't exist, (b) it
+        belongs to another user (blocked by the user_id filter
+        that joins through knowledge_summaries), or (c) the scope
+        doesn't match the row's parent summary."""
+        query = f"""
+        SELECT {_VERSION_SELECT_COLS}
+        FROM knowledge_summary_versions
+        WHERE user_id = $1
+          AND version = $4
+          AND summary_id IN (
+            SELECT summary_id FROM knowledge_summaries
+            WHERE user_id = $1
+              AND scope_type = $2
+              AND scope_id IS NOT DISTINCT FROM $3
+          )
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(query, user_id, scope_type, scope_id, version)
+        return SummaryVersion.model_validate(dict(row)) if row else None
+
+    async def rollback_to(
+        self,
+        user_id: UUID,
+        scope_type: ScopeType,
+        scope_id: UUID | None,
+        target_version: int,
+        expected_version: int,
+    ) -> Summary:
+        """D-K8-01: create a NEW version whose content is a copy of
+        `target_version`. Never rewinds the version counter — the
+        rollback produces (current_version + 1) with the old
+        content, and the pre-rollback row is itself archived to
+        history with `edit_source='rollback'`.
+
+        Requires ``expected_version`` (strict If-Match semantics) so
+        a stale History panel can't accidentally roll forward over a
+        concurrent edit. Raises ``VersionMismatchError`` on conflict.
+        Raises ``LookupError`` if the target version doesn't exist
+        (router maps to 404).
+        """
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                # 1. Lock the current row and fetch its state.
+                pre = await conn.fetchrow(
+                    """
+                    SELECT summary_id, version, content, token_count
+                    FROM knowledge_summaries
+                    WHERE user_id = $1
+                      AND scope_type = $2
+                      AND scope_id IS NOT DISTINCT FROM $3
+                    FOR UPDATE
+                    """,
+                    user_id, scope_type, scope_id,
+                )
+                if pre is None:
+                    raise LookupError("summary_not_found")
+                if pre["version"] != expected_version:
+                    raise VersionMismatchError(
+                        Summary.model_validate(
+                            dict(
+                                await conn.fetchrow(
+                                    f"SELECT {_SELECT_COLS} FROM knowledge_summaries "
+                                    "WHERE summary_id = $1",
+                                    pre["summary_id"],
+                                )
+                            )
+                        )
+                    )
+
+                # 2. Fetch the target history row.
+                target = await conn.fetchrow(
+                    """
+                    SELECT content, token_count
+                    FROM knowledge_summary_versions
+                    WHERE summary_id = $1
+                      AND user_id = $2
+                      AND version = $3
+                    """,
+                    pre["summary_id"], user_id, target_version,
+                )
+                if target is None:
+                    raise LookupError("target_version_not_found")
+
+                # 3. Archive the pre-rollback row as history with
+                #    edit_source='rollback'. The AUDIT TRAIL records
+                #    *which* row was displaced by the rollback.
+                await conn.execute(
+                    """
+                    INSERT INTO knowledge_summary_versions
+                      (summary_id, user_id, version, content, token_count, edit_source)
+                    VALUES ($1, $2, $3, $4, $5, 'rollback')
+                    """,
+                    pre["summary_id"],
+                    user_id,
+                    pre["version"],
+                    pre["content"],
+                    pre["token_count"],
+                )
+
+                # 4. Overwrite the live row with the target content,
+                #    bumping version.
+                updated = await conn.fetchrow(
+                    f"""
+                    UPDATE knowledge_summaries
+                    SET content = $2,
+                        token_count = $3,
+                        version = version + 1,
+                        updated_at = now()
+                    WHERE summary_id = $1
+                    RETURNING {_SELECT_COLS}
+                    """,
+                    pre["summary_id"],
+                    target["content"],
+                    target["token_count"],
+                )
+
+        assert updated is not None
+        result = Summary.model_validate(dict(updated))
+        _invalidate_cache(user_id, scope_type, scope_id)
+        return result

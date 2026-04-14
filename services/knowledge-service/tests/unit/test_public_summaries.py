@@ -51,11 +51,20 @@ class FakeSummariesRepo:
     real CTE's ownership check without needing a real Postgres.
     """
 
+    # Mirror the real repo's public constant so the router can read
+    # it without the fake overriding it to something unexpected.
+    VERSIONS_LIST_HARD_CAP = 200
+
     def __init__(self) -> None:
         # Key: (user_id, scope_type, scope_id) — mirrors the unique index.
         self._rows: dict[tuple[UUID, ScopeType, UUID | None], Summary] = {}
         self._owned_projects: set[tuple[UUID, UUID]] = set()
         self.invalidations: list[tuple[UUID, ScopeType, UUID | None]] = []
+        # D-K8-01: history rows keyed by (user_id, scope_type, scope_id)
+        # and sorted newest-first.
+        self._history: dict[
+            tuple[UUID, ScopeType, UUID | None], list
+        ] = {}
 
     def seed(self, s: Summary) -> None:
         self._rows[(s.user_id, s.scope_type, s.scope_id)] = s
@@ -95,6 +104,10 @@ class FakeSummariesRepo:
             if expected_version is not None and existing.version != expected_version:
                 from app.db.repositories import VersionMismatchError
                 raise VersionMismatchError(existing)
+            # D-K8-01: capture the pre-update state to history.
+            self._push_history(
+                user_id, scope_type, scope_id, existing, edit_source="manual"
+            )
             row = existing.model_copy(update={
                 "content": content,
                 "token_count": max(1, len(content) // 4),
@@ -104,6 +117,30 @@ class FakeSummariesRepo:
         self._rows[(user_id, scope_type, scope_id)] = row
         self.invalidations.append((user_id, scope_type, scope_id))
         return row
+
+    def _push_history(
+        self,
+        user_id: UUID,
+        scope_type: ScopeType,
+        scope_id: UUID | None,
+        pre: Summary,
+        *,
+        edit_source: str,
+    ) -> None:
+        from app.db.models import SummaryVersion
+        from uuid import uuid4
+        row = SummaryVersion(
+            version_id=uuid4(),
+            summary_id=pre.summary_id,
+            user_id=user_id,
+            version=pre.version,
+            content=pre.content,
+            token_count=pre.token_count,
+            created_at=datetime.now(timezone.utc),
+            edit_source=edit_source,
+        )
+        key = (user_id, scope_type, scope_id)
+        self._history.setdefault(key, []).append(row)
 
     async def upsert_project_scoped(
         self,
@@ -118,6 +155,65 @@ class FakeSummariesRepo:
         return await self.upsert(
             user_id, "project", project_id, content, expected_version=expected_version
         )
+
+    # ── D-K8-01: version history ──────────────────────────────────────
+
+    async def list_versions(
+        self,
+        user_id: UUID,
+        scope_type: ScopeType,
+        scope_id: UUID | None,
+        *,
+        limit: int = 50,
+    ) -> list:
+        rows = list(self._history.get((user_id, scope_type, scope_id), []))
+        # Newest first.
+        rows.sort(key=lambda r: r.version, reverse=True)
+        effective = max(1, min(limit, self.VERSIONS_LIST_HARD_CAP))
+        return rows[:effective]
+
+    async def get_version(
+        self,
+        user_id: UUID,
+        scope_type: ScopeType,
+        scope_id: UUID | None,
+        version: int,
+    ):
+        for r in self._history.get((user_id, scope_type, scope_id), []):
+            if r.version == version:
+                return r
+        return None
+
+    async def rollback_to(
+        self,
+        user_id: UUID,
+        scope_type: ScopeType,
+        scope_id: UUID | None,
+        target_version: int,
+        expected_version: int,
+    ) -> Summary:
+        current = self._rows.get((user_id, scope_type, scope_id))
+        if current is None:
+            raise LookupError("summary_not_found")
+        if current.version != expected_version:
+            from app.db.repositories import VersionMismatchError
+            raise VersionMismatchError(current)
+        target = await self.get_version(user_id, scope_type, scope_id, target_version)
+        if target is None:
+            raise LookupError("target_version_not_found")
+        # Archive current as rollback history.
+        self._push_history(
+            user_id, scope_type, scope_id, current, edit_source="rollback"
+        )
+        rolled = current.model_copy(update={
+            "content": target.content,
+            "token_count": target.token_count,
+            "version": current.version + 1,
+            "updated_at": datetime.now(timezone.utc),
+        })
+        self._rows[(user_id, scope_type, scope_id)] = rolled
+        self.invalidations.append((user_id, scope_type, scope_id))
+        return rolled
 
 
 class _ExplodingSummariesRepo(FakeSummariesRepo):
@@ -380,6 +476,183 @@ def test_patch_global_check_violation_maps_to_422(auth_user_id: UUID):
     resp = c.patch("/v1/knowledge/summaries/global", json={"content": "ok"})
     assert resp.status_code == 422
     assert "knowledge_summaries_content_len" in resp.json()["detail"]
+
+
+# ── D-K8-01: global summary version history ─────────────────────────────
+
+
+def test_list_global_versions_empty(
+    client: TestClient,
+    summaries_repo: FakeSummariesRepo,
+    auth_user_id: UUID,
+):
+    """No prior updates → no history rows."""
+    summaries_repo.seed(_make_summary(auth_user_id, "global", None, "only"))
+    resp = client.get("/v1/knowledge/summaries/global/versions")
+    assert resp.status_code == 200
+    assert resp.json() == {"items": []}
+
+
+def test_list_global_versions_returns_newest_first(
+    client: TestClient,
+    summaries_repo: FakeSummariesRepo,
+    auth_user_id: UUID,
+):
+    """Two updates → two history rows, newest version first."""
+    # Seed v1, update to v2, update to v3. Each update archives the
+    # previous state so history has [v1, v2]; the API returns newest
+    # (v2) first.
+    summaries_repo.seed(_make_summary(auth_user_id, "global", None, "a"))
+    # First update: v1 "a" → v2 "b" (archives "a"@1)
+    client.patch(
+        "/v1/knowledge/summaries/global",
+        json={"content": "b"},
+        headers=_im(1),
+    )
+    # Second update: v2 "b" → v3 "c" (archives "b"@2)
+    client.patch(
+        "/v1/knowledge/summaries/global",
+        json={"content": "c"},
+        headers=_im(2),
+    )
+    resp = client.get("/v1/knowledge/summaries/global/versions")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 2
+    assert items[0]["version"] == 2
+    assert items[0]["content"] == "b"
+    assert items[0]["edit_source"] == "manual"
+    assert items[1]["version"] == 1
+    assert items[1]["content"] == "a"
+
+
+def test_list_global_versions_cross_user_isolation(
+    client: TestClient,
+    summaries_repo: FakeSummariesRepo,
+    auth_user_id: UUID,
+):
+    """User B's history is not visible to user A even though the
+    fake repo is keyed by user_id — defense-in-depth."""
+    other = uuid4()
+    # Give user B a history entry.
+    summaries_repo.seed(_make_summary(other, "global", None, "other-v1"))
+    summaries_repo._push_history(
+        other,
+        "global",
+        None,
+        summaries_repo._rows[(other, "global", None)],
+        edit_source="manual",
+    )
+    resp = client.get("/v1/knowledge/summaries/global/versions")
+    assert resp.status_code == 200
+    assert resp.json()["items"] == []
+
+
+def test_get_global_version_ok(
+    client: TestClient,
+    summaries_repo: FakeSummariesRepo,
+    auth_user_id: UUID,
+):
+    """Fetch a specific archived version."""
+    summaries_repo.seed(_make_summary(auth_user_id, "global", None, "a"))
+    client.patch(
+        "/v1/knowledge/summaries/global",
+        json={"content": "b"},
+        headers=_im(1),
+    )
+    resp = client.get("/v1/knowledge/summaries/global/versions/1")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["version"] == 1
+    assert body["content"] == "a"
+
+
+def test_get_global_version_not_found(
+    client: TestClient,
+    summaries_repo: FakeSummariesRepo,
+    auth_user_id: UUID,
+):
+    summaries_repo.seed(_make_summary(auth_user_id, "global", None, "a"))
+    resp = client.get("/v1/knowledge/summaries/global/versions/99")
+    assert resp.status_code == 404
+
+
+def test_rollback_global_creates_new_version(
+    client: TestClient,
+    summaries_repo: FakeSummariesRepo,
+    auth_user_id: UUID,
+):
+    """Rollback copies the target content to the live row as a NEW
+    version (not a rewind). The pre-rollback row goes to history
+    with edit_source='rollback'."""
+    summaries_repo.seed(_make_summary(auth_user_id, "global", None, "a"))
+    # v1 "a" → v2 "b" → v3 "c"
+    client.patch("/v1/knowledge/summaries/global", json={"content": "b"}, headers=_im(1))
+    client.patch("/v1/knowledge/summaries/global", json={"content": "c"}, headers=_im(2))
+
+    # Roll back to v1 from current v3 — must carry If-Match.
+    resp = client.post(
+        "/v1/knowledge/summaries/global/versions/1/rollback",
+        headers=_im(3),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    # NEW version (3 + 1 = 4), NOT a rewind.
+    assert body["version"] == 4
+    assert body["content"] == "a"
+    assert resp.headers.get("etag") == 'W/"4"'
+
+    # History should now have [v1 manual, v2 manual, v3 rollback].
+    list_resp = client.get("/v1/knowledge/summaries/global/versions")
+    items = list_resp.json()["items"]
+    versions = [(i["version"], i["edit_source"]) for i in items]
+    assert (3, "rollback") in versions
+    assert (2, "manual") in versions
+    assert (1, "manual") in versions
+
+
+def test_rollback_requires_if_match(
+    client: TestClient,
+    summaries_repo: FakeSummariesRepo,
+    auth_user_id: UUID,
+):
+    """Rollback is a mutating operation — honours the same strict
+    If-Match contract as PATCH."""
+    summaries_repo.seed(_make_summary(auth_user_id, "global", None, "a"))
+    client.patch("/v1/knowledge/summaries/global", json={"content": "b"}, headers=_im(1))
+    resp = client.post("/v1/knowledge/summaries/global/versions/1/rollback")
+    assert resp.status_code == 428
+
+
+def test_rollback_stale_if_match_returns_412(
+    client: TestClient,
+    summaries_repo: FakeSummariesRepo,
+    auth_user_id: UUID,
+):
+    """Stale If-Match on rollback returns the current row in the
+    412 body — same contract as PATCH."""
+    summaries_repo.seed(_make_summary(auth_user_id, "global", None, "a"))
+    client.patch("/v1/knowledge/summaries/global", json={"content": "b"}, headers=_im(1))
+    # Current version is 2, send stale version 1.
+    resp = client.post(
+        "/v1/knowledge/summaries/global/versions/1/rollback",
+        headers=_im(1),
+    )
+    assert resp.status_code == 412
+
+
+def test_rollback_target_version_not_found(
+    client: TestClient,
+    summaries_repo: FakeSummariesRepo,
+    auth_user_id: UUID,
+):
+    """Rolling back to a version that was never archived → 404."""
+    summaries_repo.seed(_make_summary(auth_user_id, "global", None, "a"))
+    resp = client.post(
+        "/v1/knowledge/summaries/global/versions/99/rollback",
+        headers=_im(1),
+    )
+    assert resp.status_code == 404
 
 
 # ── PATCH /v1/knowledge/projects/{id}/summary ────────────────────────────

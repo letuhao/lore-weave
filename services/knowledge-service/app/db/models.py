@@ -86,3 +86,23 @@ class Summary(BaseModel):
     version: int
     created_at: datetime
     updated_at: datetime
+
+
+# D-K8-01: append-only history row captured by the repo on every
+# successful summary update. `edit_source` is the rollback audit
+# trail — rollback operations write 'rollback' so the UI can
+# distinguish them from user-typed history entries.
+EditSource = Literal["manual", "rollback"]
+
+
+class SummaryVersion(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    version_id: UUID
+    summary_id: UUID
+    user_id: UUID
+    version: int
+    content: str
+    token_count: int | None = None
+    created_at: datetime
+    edit_source: EditSource

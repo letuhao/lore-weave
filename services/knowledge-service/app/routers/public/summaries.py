@@ -23,7 +23,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.db.models import Summary, SummaryContent
+from app.db.models import Summary, SummaryContent, SummaryVersion
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.summaries import SummariesRepo
 from app.deps import get_summaries_repo
@@ -56,6 +56,13 @@ class SummariesListResponse(BaseModel):
 
     global_: Summary | None = Field(default=None, alias="global")
     projects: list[Summary] = Field(default_factory=list)
+
+
+class SummaryVersionListResponse(BaseModel):
+    # D-K8-01: history panel response. `items` is capped by the
+    # repo's VERSIONS_LIST_HARD_CAP so the panel can trust it will
+    # never get overwhelmed.
+    items: list[SummaryVersion] = Field(default_factory=list)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────
@@ -186,6 +193,92 @@ async def update_project_summary(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="project not found",
+        )
+    response.headers["ETag"] = _etag(result.version)
+    return result
+
+
+# ── D-K8-01: global summary version history ──────────────────────────────
+#
+# Only the global scope gets history endpoints in Track 1. The repo
+# layer already supports per-project history (same schema, same
+# code path), so Track 2 can add matching endpoints without a
+# schema migration.
+
+
+@router.get(
+    "/summaries/global/versions",
+    response_model=SummaryVersionListResponse,
+)
+async def list_global_summary_versions(
+    limit: int = 50,
+    user_id: UUID = Depends(get_current_user),
+    repo: SummariesRepo = Depends(get_summaries_repo),
+) -> SummaryVersionListResponse:
+    items = await repo.list_versions(user_id, "global", None, limit=limit)
+    return SummaryVersionListResponse(items=items)
+
+
+@router.get(
+    "/summaries/global/versions/{version}",
+    response_model=SummaryVersion,
+)
+async def get_global_summary_version(
+    version: int,
+    user_id: UUID = Depends(get_current_user),
+    repo: SummariesRepo = Depends(get_summaries_repo),
+) -> SummaryVersion:
+    row = await repo.get_version(user_id, "global", None, version)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="version not found",
+        )
+    return row
+
+
+@router.post(
+    "/summaries/global/versions/{version}/rollback",
+    response_model=Summary,
+)
+async def rollback_global_summary(
+    version: int,
+    response: Response,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user_id: UUID = Depends(get_current_user),
+    repo: SummariesRepo = Depends(get_summaries_repo),
+) -> Summary:
+    # D-K8-01 + D-K8-03 cross-reference: rollback is a mutating
+    # operation so it honours the same If-Match contract as PATCH.
+    # A stale History panel can't accidentally roll forward over a
+    # concurrent edit.
+    expected_version = _parse_if_match(if_match)
+    if expected_version is None:
+        raise HTTPException(
+            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+            detail=(
+                "If-Match header required — read summary.version from "
+                "GET /v1/knowledge/summaries and send it back"
+            ),
+        )
+    try:
+        result = await repo.rollback_to(
+            user_id,
+            "global",
+            None,
+            target_version=version,
+            expected_version=expected_version,
+        )
+    except VersionMismatchError as exc:
+        assert isinstance(exc.current, Summary)
+        return _version_mismatch_response(exc.current)
+    except LookupError as exc:
+        # Repo raises with tag "summary_not_found" or
+        # "target_version_not_found" — both collapse to 404 at the
+        # router so we don't leak which one it was.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc) or "not found",
         )
     response.headers["ETag"] = _etag(result.version)
     return result

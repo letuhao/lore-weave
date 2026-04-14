@@ -126,6 +126,37 @@ BEGIN
 END$$;
 
 -- ═══════════════════════════════════════════════════════════════
+-- D-K8-01 — summary version history table
+-- Append-only history: every successful summary update inserts a
+-- row with the PRE-update state (content + version + token_count).
+-- Rollback creates a NEW version whose content is a copy of the
+-- target — monotonic, no counter rewinds, full audit trail.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS knowledge_summary_versions (
+  version_id   UUID PRIMARY KEY DEFAULT uuidv7(),
+  summary_id   UUID NOT NULL
+    REFERENCES knowledge_summaries(summary_id) ON DELETE CASCADE,
+  user_id      UUID NOT NULL,              -- denormalised for the row filter
+  version      INT NOT NULL,               -- the version this row captures
+  content      TEXT NOT NULL,
+  token_count  INT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  edit_source  TEXT NOT NULL DEFAULT 'manual'
+    CHECK (edit_source IN ('manual','rollback'))
+    -- 'llm_regen' will be added when K20 (Track 2 summary regen) lands
+);
+
+-- Uniqueness: one row per (summary, version). Prevents accidental
+-- duplicates if a repo bug retries a history insert.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_summary_versions_unique
+  ON knowledge_summary_versions(summary_id, version);
+
+-- List-by-user path: the history panel orders DESC by version.
+-- Partial on user_id first so cross-user access is fast-fail.
+CREATE INDEX IF NOT EXISTS idx_summary_versions_user_list
+  ON knowledge_summary_versions(user_id, summary_id, version DESC);
+
+-- ═══════════════════════════════════════════════════════════════
 -- D-K8-03 — optimistic concurrency column on knowledge_projects
 -- knowledge_summaries has had `version INT NOT NULL DEFAULT 1` since
 -- the initial K1 DDL; knowledge_projects did not. D-K8-03 needs
