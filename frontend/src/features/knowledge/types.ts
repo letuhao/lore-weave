@@ -48,6 +48,12 @@ export interface ProjectUpdatePayload {
   instructions?: string;
   // book_id: omit to leave unchanged; null to clear; UUID to set.
   book_id?: string | null;
+  // K-CLEAN-3 (D-K8-02 partial): the K7c PATCH endpoint accepts
+  // is_archived for the Restore action. Setting to false on an
+  // archived row un-archives it. Track 1 only ships the restore
+  // direction from the FE (set false); archive uses the dedicated
+  // POST /archive endpoint.
+  is_archived?: boolean;
 }
 
 export interface ProjectListResponse {

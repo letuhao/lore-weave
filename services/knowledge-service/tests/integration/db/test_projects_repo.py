@@ -91,6 +91,26 @@ async def test_cross_user_isolation(pool):
 
 
 @pytest.mark.asyncio
+async def test_restore_via_update_is_archived_false(pool):
+    """K-CLEAN-3: PATCH is_archived=false on an archived row restores
+    it. The default list endpoint (excludes archived) starts including
+    it again. This is the only direction the PATCH endpoint allows;
+    setting is_archived=true is rejected at the router."""
+    repo = ProjectsRepo(pool)
+    user = uuid4()
+    p = await repo.create(user, _mk("torestore"))
+    archived = await repo.archive(user, p.project_id)
+    assert archived is not None and archived.is_archived is True
+    restored = await repo.update(
+        user, p.project_id, ProjectUpdate(is_archived=False)
+    )
+    assert restored is not None
+    assert restored.is_archived is False
+    active_names = [r.name for r in await repo.list(user)]
+    assert "torestore" in active_names
+
+
+@pytest.mark.asyncio
 async def test_update_empty_patch_is_noop(pool):
     """Empty patch must return the current row AND not touch updated_at."""
     repo = ProjectsRepo(pool)

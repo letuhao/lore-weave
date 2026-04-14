@@ -1,4 +1,4 @@
-import { Archive, Pencil, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, Pencil, Trash2 } from 'lucide-react';
 import type { Project } from '../types';
 
 // K8 Track 1 renders the `disabled` state only. Other states
@@ -9,6 +9,7 @@ interface Props {
   project: Project;
   onEdit: (project: Project) => void;
   onArchive: (project: Project) => void;
+  onRestore: (project: Project) => void;
   onDelete: (project: Project) => void;
 }
 
@@ -19,7 +20,7 @@ const TYPE_LABEL: Record<Project['project_type'], string> = {
   general: 'general',
 };
 
-export function ProjectCard({ project, onEdit, onArchive, onDelete }: Props) {
+export function ProjectCard({ project, onEdit, onArchive, onRestore, onDelete }: Props) {
   const isArchived = project.is_archived;
 
   return (
@@ -62,13 +63,21 @@ export function ProjectCard({ project, onEdit, onArchive, onDelete }: Props) {
           >
             <Pencil className="h-3.5 w-3.5" />
           </button>
-          {!isArchived && (
+          {!isArchived ? (
             <button
               onClick={() => onArchive(project)}
               title="Archive"
               className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             >
               <Archive className="h-3.5 w-3.5" />
+            </button>
+          ) : (
+            <button
+              onClick={() => onRestore(project)}
+              title="Restore"
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <ArchiveRestore className="h-3.5 w-3.5" />
             </button>
           )}
           <button

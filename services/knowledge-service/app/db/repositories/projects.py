@@ -25,7 +25,7 @@ _SELECT_COLS = """
 # restricts fields, but we defend-in-depth by checking every field name
 # against this set before building SQL.
 _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
-    {"name", "description", "instructions", "book_id"}
+    {"name", "description", "instructions", "book_id", "is_archived"}
 )
 
 # Columns that accept NULL. For everything else, a None value on an

@@ -60,12 +60,17 @@ class ProjectUpdate(BaseModel):
       a value replaces the current value.
     - `book_id`: omit to leave unchanged. Setting to None explicitly CLEARS
       the book link. Setting to a UUID sets a new link.
+    - `is_archived`: restore-only. Set to `false` to un-archive. Setting
+      to `true` is rejected at the router with 422 — archive uses the
+      dedicated `POST /archive` endpoint which has the 404-oracle
+      hardening (does not leak whether a project exists). K-CLEAN-3.
     """
 
     name: ProjectName | None = None
     description: ProjectDescription | None = None
     instructions: ProjectInstructions | None = None
     book_id: UUID | None = None
+    is_archived: bool | None = None
 
 
 class Summary(BaseModel):

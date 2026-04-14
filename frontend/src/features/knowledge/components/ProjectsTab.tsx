@@ -61,6 +61,18 @@ export function ProjectsTab() {
     }
   };
 
+  const handleRestore = async (project: Project) => {
+    try {
+      await updateProject({
+        projectId: project.project_id,
+        payload: { is_archived: false },
+      });
+      toast.success('Project restored');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Restore failed');
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setActionPending(true);
@@ -145,6 +157,7 @@ export function ProjectsTab() {
               project={project}
               onEdit={openEdit}
               onArchive={setArchiveTarget}
+              onRestore={(p) => void handleRestore(p)}
               onDelete={setDeleteTarget}
             />
           ))}

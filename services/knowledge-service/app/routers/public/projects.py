@@ -174,6 +174,18 @@ async def patch_project(
     user_id: UUID = Depends(get_current_user),
     repo: ProjectsRepo = Depends(get_projects_repo),
 ) -> Project:
+    # K-CLEAN-3: PATCH accepts is_archived=false (restore) but
+    # rejects is_archived=true so the dedicated POST /archive
+    # endpoint stays the only archiving path. POST /archive
+    # collapses three failure modes (not found / cross-user /
+    # already archived) into a single 404 so the endpoint is not
+    # an oracle for project existence; allowing PATCH to archive
+    # would create a parallel path that bypasses that hardening.
+    if body.is_archived is True:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="use POST /v1/knowledge/projects/{id}/archive to archive a project",
+        )
     try:
         updated = await repo.update(user_id, project_id, body)
     except asyncpg.CheckViolationError as exc:

@@ -342,6 +342,43 @@ def test_patch_partial_update(
     assert resp.json()["name"] == "new"
 
 
+def test_patch_restore_via_is_archived_false(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """K-CLEAN-3: PATCH is_archived=false on an archived row restores it."""
+    proj = _make_project(auth_user_id, name="r")
+    proj = proj.model_copy(update={"is_archived": True})
+    repo.seed(proj)
+
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"is_archived": False},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["is_archived"] is False
+
+
+def test_patch_archive_via_is_archived_true_rejected(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """K-CLEAN-3: PATCH is_archived=true is rejected with 422 so the
+    dedicated POST /archive endpoint stays the only archiving path
+    (preserves its 404-oracle hardening). The repo MUST NOT be
+    touched on the rejection path."""
+    proj = _make_project(auth_user_id, name="a")
+    repo.seed(proj)
+
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"is_archived": True},
+    )
+    assert resp.status_code == 422
+    assert "POST" in resp.json()["detail"]
+    # Defense-in-depth: row must be unchanged.
+    after = repo._rows.get((auth_user_id, proj.project_id))
+    assert after is not None and after.is_archived is False
+
+
 def test_patch_cross_user_returns_404(
     client: TestClient, repo: FakeProjectsRepo
 ):
