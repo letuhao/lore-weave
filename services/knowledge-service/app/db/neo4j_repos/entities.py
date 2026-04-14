@@ -34,14 +34,29 @@ from app.db.neo4j_repos.canonical import (
 
 __all__ = [
     "Entity",
+    "VectorSearchHit",
+    "SUPPORTED_VECTOR_DIMS",
     "merge_entity",
     "upsert_glossary_anchor",
     "get_entity",
     "find_entities_by_name",
+    "find_entities_by_vector",
+    "link_to_glossary",
+    "get_entity_by_glossary_id",
+    "unlink_from_glossary",
+    "recompute_anchor_score",
+    "find_gap_candidates",
     "archive_entity",
     "restore_entity",
     "delete_entities_with_zero_evidence",
 ]
+
+
+# K11.5b — supported embedding dimensions per KSA §3.4.B.
+# Mirrors the vector indexes created by the K11.3 schema runner.
+# Tuple (not set) for stable iteration; lookup is O(n) on n=4 so
+# no hash overhead matters.
+SUPPORTED_VECTOR_DIMS: tuple[int, ...] = (384, 1024, 1536, 3072)
 
 
 class Entity(BaseModel):
@@ -76,6 +91,11 @@ class Entity(BaseModel):
     # K11.8 maintains this; K11.5a queries against the
     # `entity_user_evidence` composite index.
     evidence_count: int = 0
+    # K11.5b: mention_count is the number of times this entity
+    # was observed during extraction. K11.8 increments it; K11.5b's
+    # recompute_anchor_score divides by max-per-project to derive
+    # anchor_score for discovered (non-anchored) entities.
+    mention_count: int = 0
 
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -124,6 +144,7 @@ ON CREATE SET
   e.anchor_score = 0.0,
   e.archived_at = NULL,
   e.evidence_count = 0,
+  e.mention_count = 0,
   e.created_at = datetime(),
   e.updated_at = datetime()
 ON MATCH SET
@@ -221,6 +242,7 @@ ON CREATE SET
   e.anchor_score = 1.0,
   e.archived_at = NULL,
   e.evidence_count = 0,
+  e.mention_count = 0,
   e.created_at = datetime(),
   e.updated_at = datetime()
 ON MATCH SET
@@ -573,3 +595,430 @@ async def delete_entities_with_zero_evidence(
     if record is None:
         return 0
     return int(record["deleted"])
+
+
+# ── find_entities_by_vector ───────────────────────────────────────────
+
+
+class VectorSearchHit(BaseModel):
+    """One result row from `find_entities_by_vector`.
+
+    `raw_score` is the cosine similarity from the Neo4j vector
+    index; `weighted_score` is `raw_score * anchor_score` and
+    is what callers should sort by for two-layer retrieval.
+    Both are returned so the caller can log diagnostics or
+    apply a different reranking on top.
+    """
+
+    entity: Entity
+    raw_score: float
+    weighted_score: float
+
+
+# Vector queries always go through this template. The index name
+# (`entity_embeddings_<dim>`) is passed as a STRING parameter to
+# `db.index.vector.queryNodes` — it is NOT f-string interpolated
+# into the cypher, satisfying the "no f-strings in cypher" rule.
+#
+# Oversample-and-rerank pattern: the vector index is global (no
+# user_id filter), so we ask for `oversample_limit` candidates
+# (typically `limit * 10`), then post-filter by user_id /
+# project_id / archived_at and re-rank by `score * anchor_score`.
+# The ORDER BY in the outer return is the source of truth — the
+# vector index's own ordering is by raw similarity only.
+_FIND_BY_VECTOR_CYPHER_ALL = """
+CALL db.index.vector.queryNodes($index_name, $oversample_limit, $query_vector)
+YIELD node, score
+WITH node, score
+WHERE node.user_id = $user_id
+  AND ($project_id IS NULL OR node.project_id = $project_id)
+  AND ($embedding_model IS NULL OR node.embedding_model = $embedding_model)
+RETURN node AS e,
+       score AS raw_score,
+       score * coalesce(node.anchor_score, 0.0) AS weighted_score
+ORDER BY weighted_score DESC, raw_score DESC
+LIMIT $limit
+"""
+
+_FIND_BY_VECTOR_CYPHER_ACTIVE = """
+CALL db.index.vector.queryNodes($index_name, $oversample_limit, $query_vector)
+YIELD node, score
+WITH node, score
+WHERE node.user_id = $user_id
+  AND ($project_id IS NULL OR node.project_id = $project_id)
+  AND ($embedding_model IS NULL OR node.embedding_model = $embedding_model)
+  AND node.archived_at IS NULL
+RETURN node AS e,
+       score AS raw_score,
+       score * coalesce(node.anchor_score, 0.0) AS weighted_score
+ORDER BY weighted_score DESC, raw_score DESC
+LIMIT $limit
+"""
+
+
+async def find_entities_by_vector(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    query_vector: list[float],
+    dim: int,
+    embedding_model: str | None = None,
+    limit: int = 10,
+    include_archived: bool = False,
+    oversample_factor: int = 10,
+) -> list[VectorSearchHit]:
+    """Two-layer semantic search over `:Entity` nodes.
+
+    Routes to the dimension-specific vector index per KSA §3.4.B:
+      384  → entity_embeddings_384  (small models, e.g. MiniLM)
+      1024 → entity_embeddings_1024 (bge-m3, voyage-3, cohere)
+      1536 → entity_embeddings_1536 (text-embedding-3-small)
+      3072 → entity_embeddings_3072 (text-embedding-3-large)
+
+    The vector index is global (no user_id filter). To get
+    `limit` results that all belong to the calling user, we ask
+    the index for `limit * oversample_factor` candidates, then
+    post-filter by user_id / project_id / archived_at and re-rank
+    by `score * anchor_score`. Default oversample factor is 10,
+    which is conservative for low-tenant-density dev workloads;
+    K11.5b acceptance criterion + Gate 12 will tune it from
+    real-world tenant density once K17 starts populating data.
+
+    Two-layer ranking: `weighted_score = raw_score * anchor_score`.
+    Anchored entities (`anchor_score=1.0`) keep their full
+    similarity; discovered entities (`anchor_score<1.0`) are
+    proportionally penalized so canonical entries float to the
+    top when raw scores are close. KSA §3.4.E + GraphRAG seed-graph
+    research basis (arXiv:2404.16130).
+
+    `embedding_model=None` matches any model — useful for tests
+    where the project has no canonical embedding model set.
+    Production callers should always pass the project's model so
+    cross-model results are excluded (vector spaces are model-
+    specific; cosine similarity between bge-m3 and openai-3-small
+    is meaningless).
+    """
+    if dim not in SUPPORTED_VECTOR_DIMS:
+        raise ValueError(
+            f"unsupported vector dim {dim}; "
+            f"must be one of {SUPPORTED_VECTOR_DIMS}"
+        )
+    if len(query_vector) != dim:
+        raise ValueError(
+            f"query_vector length {len(query_vector)} does not match dim {dim}"
+        )
+    if limit <= 0:
+        raise ValueError(f"limit must be positive, got {limit}")
+    if oversample_factor < 1:
+        raise ValueError(f"oversample_factor must be >= 1, got {oversample_factor}")
+
+    index_name = f"entity_embeddings_{dim}"
+    cypher = (
+        _FIND_BY_VECTOR_CYPHER_ALL
+        if include_archived
+        else _FIND_BY_VECTOR_CYPHER_ACTIVE
+    )
+    result = await run_read(
+        session,
+        cypher,
+        user_id=user_id,
+        index_name=index_name,
+        oversample_limit=limit * oversample_factor,
+        query_vector=query_vector,
+        project_id=project_id,
+        embedding_model=embedding_model,
+        limit=limit,
+    )
+    hits: list[VectorSearchHit] = []
+    async for record in result:
+        hits.append(
+            VectorSearchHit(
+                entity=_node_to_entity(record["e"]),
+                raw_score=float(record["raw_score"]),
+                weighted_score=float(record["weighted_score"]),
+            )
+        )
+    return hits
+
+
+# ── link_to_glossary / unlink_from_glossary ───────────────────────────
+
+
+# Look up the existing entity by its glossary FK. This is the
+# rename-aware path: the canonical_id is hash-derived from the
+# CURRENT name, so if the name changed in glossary the id won't
+# match anymore — but the glossary_entity_id link still does.
+_FIND_BY_GLOSSARY_ID_CYPHER = """
+MATCH (e:Entity {glossary_entity_id: $glossary_entity_id})
+WHERE e.user_id = $user_id
+RETURN e
+"""
+
+# Promotion path: take a discovered entity (looked up by its
+# current canonical_id) and stamp it with the glossary FK +
+# anchor_score=1.0. Also overwrite name/canonical_name/kind/aliases
+# from glossary because glossary is the SSOT for those fields.
+_PROMOTE_TO_ANCHOR_CYPHER = """
+MATCH (e:Entity {id: $id})
+WHERE e.user_id = $user_id
+SET e.glossary_entity_id = $glossary_entity_id,
+    e.name = $name,
+    e.canonical_name = $canonical_name,
+    e.kind = $kind,
+    e.aliases = $aliases,
+    e.anchor_score = 1.0,
+    e.archived_at = NULL,
+    e.archive_reason = NULL,
+    e.updated_at = datetime()
+RETURN e
+"""
+
+
+async def link_to_glossary(
+    session: CypherSession,
+    *,
+    user_id: str,
+    canonical_id: str,
+    glossary_entity_id: str,
+    name: str,
+    kind: str,
+    aliases: list[str] | None = None,
+) -> Entity | None:
+    """Promote a discovered entity to a glossary anchor.
+
+    Used on the K-G-P-1 promotion path (user clicks "Promote to
+    glossary" in the gap-report UI) and on the
+    `glossary.entity_created` event when a new glossary entry is
+    authored that matches an existing discovered entity.
+
+    Sets `glossary_entity_id`, `anchor_score=1.0`, clears any
+    archived state, and overwrites name/canonical_name/kind/
+    aliases from the glossary payload (glossary is SSOT for those
+    fields).
+
+    **Rename-across-canonical fix (K11.5a docstring limitation).**
+    `upsert_glossary_anchor` cannot rename an existing node when
+    glossary changes the name to a different canonical form,
+    because its MERGE key is `id` which is hash-derived from the
+    name. `link_to_glossary` solves this by looking up the entity
+    by `canonical_id` (caller knows it from the discovered side)
+    and updating in place. The id stays stable post-rename — it
+    no longer matches `entity_canonical_id(new_name, kind)`, but
+    that's fine: future lookups go through glossary_entity_id or
+    by name (which now matches via canonical_name + alias).
+
+    Returns `None` if no entity matches the canonical_id under
+    the calling user (e.g., someone passed a stale id or a
+    cross-tenant id).
+    """
+    canonical_name = canonicalize_entity_name(name)
+    aliases_with_display = list(aliases or [])
+    if name not in aliases_with_display:
+        aliases_with_display.insert(0, name)
+
+    result = await run_write(
+        session,
+        _PROMOTE_TO_ANCHOR_CYPHER,
+        user_id=user_id,
+        id=canonical_id,
+        glossary_entity_id=glossary_entity_id,
+        name=name,
+        canonical_name=canonical_name,
+        kind=kind,
+        aliases=aliases_with_display,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    return _node_to_entity(record["e"])
+
+
+async def get_entity_by_glossary_id(
+    session: CypherSession,
+    *,
+    user_id: str,
+    glossary_entity_id: str,
+) -> Entity | None:
+    """Look up an anchored entity by its glossary FK.
+
+    The rename-aware companion to `get_entity`. After
+    `link_to_glossary` updates an entity's name across canonical
+    boundaries, the caller can find it again via this function
+    even though `entity_canonical_id(new_name, kind)` no longer
+    matches the stored id.
+    """
+    result = await run_read(
+        session,
+        _FIND_BY_GLOSSARY_ID_CYPHER,
+        user_id=user_id,
+        glossary_entity_id=glossary_entity_id,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    return _node_to_entity(record["e"])
+
+
+_UNLINK_GLOSSARY_CYPHER = """
+MATCH (e:Entity {id: $id})
+WHERE e.user_id = $user_id
+SET e.glossary_entity_id = NULL,
+    e.anchor_score = 0.0,
+    e.updated_at = datetime()
+RETURN e
+"""
+
+
+async def unlink_from_glossary(
+    session: CypherSession,
+    *,
+    user_id: str,
+    canonical_id: str,
+) -> Entity | None:
+    """Manual unlink — clear `glossary_entity_id` without archiving.
+
+    Per the K11.5 plan: "called when user manually unlinks". The
+    entity stays visible in RAG queries but loses its anchor
+    boost (`anchor_score → 0.0`). A subsequent
+    `recompute_anchor_score` pass will restore a fractional score
+    based on `mention_count / max_mention_count`.
+
+    Distinct from `archive_entity`: archive hides the entity from
+    RAG entirely; unlink keeps it visible but un-anchored. KSA
+    §3.4.E does not specify the unlink path explicitly — this
+    matches the K11.5 plan acceptance row.
+    """
+    result = await run_write(
+        session,
+        _UNLINK_GLOSSARY_CYPHER,
+        user_id=user_id,
+        id=canonical_id,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    return _node_to_entity(record["e"])
+
+
+# ── recompute_anchor_score ────────────────────────────────────────────
+
+
+# Two-step in one Cypher: compute max(mention_count) for the
+# (user, project) bucket as a WITH binding, then update every
+# discovered entity's anchor_score in proportion.
+#
+# Anchored entities (glossary_entity_id IS NOT NULL) are skipped
+# — their score is fixed at 1.0 by upsert_glossary_anchor and
+# link_to_glossary. The recompute is for discovered entities only.
+#
+# Archived entities (archived_at IS NOT NULL) are also skipped —
+# they are out of the active retrieval set and their anchor_score
+# stays at 0.
+_RECOMPUTE_ANCHOR_SCORE_CYPHER = """
+MATCH (e:Entity)
+WHERE e.user_id = $user_id
+  AND ($project_id IS NULL OR e.project_id = $project_id)
+  AND e.glossary_entity_id IS NULL
+  AND e.archived_at IS NULL
+WITH max(e.mention_count) AS max_mentions, collect(e) AS entities
+UNWIND entities AS e
+WITH e, max_mentions
+SET e.anchor_score = CASE
+  WHEN max_mentions IS NULL OR max_mentions = 0 THEN 0.0
+  ELSE toFloat(e.mention_count) / toFloat(max_mentions)
+END,
+e.updated_at = datetime()
+RETURN count(e) AS updated, max_mentions
+"""
+
+
+async def recompute_anchor_score(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None = None,
+) -> tuple[int, int]:
+    """Recompute `anchor_score` for every discovered entity in the
+    (user_id, project_id) bucket.
+
+    Formula (KSA §3.4.E): `anchor_score = mention_count /
+    max(mention_count)`. The result is a 0..1 score that biases
+    semantic search toward frequently-mentioned entities even
+    when they are not glossary-anchored. Anchored entities are
+    skipped (their score is fixed at 1.0). Archived entities are
+    skipped (their score stays at 0).
+
+    `project_id=None` recomputes across all projects for the
+    user, with `max(mention_count)` taken globally — usually
+    not what you want. Pass `project_id` to scope.
+
+    Returns `(updated_count, max_mentions)`. `max_mentions=0`
+    means there are no discovered entities in the bucket and no
+    rows were updated; the caller can use this to skip a no-op
+    log line.
+    """
+    result = await run_write(
+        session,
+        _RECOMPUTE_ANCHOR_SCORE_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+    )
+    record = await result.single()
+    if record is None:
+        return (0, 0)
+    return (int(record["updated"]), int(record["max_mentions"] or 0))
+
+
+# ── find_gap_candidates ───────────────────────────────────────────────
+
+
+# Discovered entities with no glossary link AND high mention
+# count → these are the "gaps" the user should consider promoting.
+# Sorted by mention_count descending so the most-mentioned gaps
+# float to the top of the gap-report UI.
+_FIND_GAP_CANDIDATES_CYPHER = """
+MATCH (e:Entity)
+WHERE e.user_id = $user_id
+  AND ($project_id IS NULL OR e.project_id = $project_id)
+  AND e.glossary_entity_id IS NULL
+  AND e.archived_at IS NULL
+  AND e.mention_count >= $min_mentions
+RETURN e
+ORDER BY e.mention_count DESC, e.confidence DESC, e.name ASC
+LIMIT $limit
+"""
+
+
+async def find_gap_candidates(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    min_mentions: int = 50,
+    limit: int = 100,
+) -> list[Entity]:
+    """Discovered entities with no glossary link that the user
+    should consider promoting.
+
+    Powers the gap-report UI: "we found these entities in your
+    book(s) but you haven't added them to the glossary yet." The
+    `min_mentions` floor filters out one-off mentions that are
+    almost always extraction noise (typos, fleeting references).
+    KSA §3.4.E recommends 50 as a starting threshold; the gap-
+    report UI may expose this as a user knob.
+    """
+    if min_mentions < 0:
+        raise ValueError(f"min_mentions must be >= 0, got {min_mentions}")
+    if limit <= 0:
+        raise ValueError(f"limit must be positive, got {limit}")
+
+    result = await run_read(
+        session,
+        _FIND_GAP_CANDIDATES_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        min_mentions=min_mentions,
+        limit=limit,
+    )
+    return [_node_to_entity(record["e"]) async for record in result]

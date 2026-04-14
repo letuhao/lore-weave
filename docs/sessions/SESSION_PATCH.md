@@ -10,7 +10,7 @@
 - Last Updated: 2026-04-14 (session 39 continuation — **K11.3 Cypher schema runner landed**, K11.1+K11.2+K11.3 = Neo4j wired end-to-end against live 2026.03)
 - Updated By: Assistant (K11.3 caps the Neo4j-infra slice. Schema file ships 6 unique constraints + 13 composite/single indexes + 5 vector indexes per KSA §3.4. K11.3-I1: existence constraints removed — Enterprise-only on community edition; user_id NOT NULL stays enforced by K11.4's `assert_user_id_param`. Neo4j image bumped 2025.10 → 2026.03 community after user pushback. 369/369 knowledge-service tests pass against live Neo4j; 12 new K11.3 tests (8 parser unit + 4 integration). Repo code must keep going through K11.4 — schema runner is the one documented exception.)
 - Active Branch: `main` (ahead of origin by session-38 + session-39 commits — user pushes manually)
-- HEAD: K11.5a-R1 review-fix commit (this session, on top of K11.5a)
+- HEAD: K11.5b vector-and-linking commit (this session, on top of K11.5a-R1)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -117,6 +117,34 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K11.5b — Entities repository (Neo4j) — vector + linking slice ✅ (session 39 continuation, Track 2)
+
+**Goal:** finish the K11.5 surface by landing the half that K17 (LLM extractor) and the gap-report UI need: dimension-routed vector search with two-layer anchor weighting, glossary linking with rename-across-canonical support, anchor-score recompute, and gap-candidate queries.
+
+**Files:**
+- [services/knowledge-service/app/db/neo4j_repos/entities.py](services/knowledge-service/app/db/neo4j_repos/entities.py) — added `VectorSearchHit`, `SUPPORTED_VECTOR_DIMS`, `find_entities_by_vector`, `link_to_glossary`, `get_entity_by_glossary_id`, `unlink_from_glossary`, `recompute_anchor_score`, `find_gap_candidates`. Also added `mention_count` field to the `Entity` model and `mention_count = 0` to the ON CREATE clauses of `merge_entity` and `upsert_glossary_anchor` (K11.8 will own the actual increment). All new Cypher routes through K11.4's `run_read`/`run_write`.
+- [services/knowledge-service/tests/integration/db/test_entities_repo_k11_5b.py](services/knowledge-service/tests/integration/db/test_entities_repo_k11_5b.py) — NEW: 22 integration tests against live Neo4j 2026.03.1.
+
+**Acceptance criteria (K11.5b half of the K11.5 plan):**
+- ✅ `find_entities_by_vector` routes to the dim-specific vector index per KSA §3.4.B (384/1024/1536/3072) — verified via the `SUPPORTED_VECTOR_DIMS` constant matching the K11.3 schema.
+- ✅ Vector query ranks by `(raw_score × anchor_score)` for two-layer retrieval — verified by an integration test where an anchored entity with a slightly-less-similar vector outranks a discovered entity with a more-similar vector.
+- ✅ Vector query excludes archived entities by default (`include_archived=False`); `True` opts in and the archived entity's `weighted_score` is `0.0` because archive sets `anchor_score=0`.
+- ✅ Vector query does not cross user boundaries even though the underlying vector index is global — the post-filter `WHERE node.user_id = $user_id` is enforced via K11.4.
+- ✅ `link_to_glossary` promotes a discovered entity to anchor (sets `glossary_entity_id`, `anchor_score=1.0`, clears archived state, overwrites name/canonical_name/kind/aliases from glossary).
+- ✅ **Rename-across-canonical fix (K11.5a deferred limitation closed).** `link_to_glossary` looks up by `canonical_id` and updates name in place. Even when `canonicalize_entity_name(new) != canonicalize_entity_name(old)`, the node id stays stable post-rename (no duplicate created). Subsequent lookups go through the new `get_entity_by_glossary_id` companion or by the new name's canonical form.
+- ✅ `unlink_from_glossary` clears the FK + sets `anchor_score=0` WITHOUT archiving — entity stays visible in RAG, just un-anchored.
+- ✅ `recompute_anchor_score` formula `mention_count / max(mention_count)` works for the basic case (10/20/40 → 0.25/0.5/1.0), skips anchored entities, handles the all-zero case (no divide-by-zero).
+- ✅ `find_gap_candidates` filters by `min_mentions` floor, excludes anchored, excludes archived, sorts by mention_count DESC.
+
+**Test results:** 22 new K11.5b integration tests, all green on first run. Full knowledge-service suite: **445 passed, 93 skipped** against live Neo4j 2026.03.1 (was 423; +22 new K11.5b). K11.5a's 19 tests still green after the `mention_count` field addition. Zero regressions.
+
+**What K11.5b unblocks:** K17 (LLM extractor) — can now do candidate dedup via `find_entities_by_vector` before deciding whether to merge or create. The gap-report UI (`D-K8-02 entity stat tile`) — can now call `find_gap_candidates` to populate. The K11.5 plan checkbox can flip `[ ]` → `[✓]` once the second-pass review is done.
+
+**Known follow-ups (deferred):**
+- The vector search uses an oversample factor of 10× by default (asks for `limit * 10` candidates from the global index, then post-filters by user). This is conservative for low-tenant-density dev workloads; Gate 12 will tune it from real-world data once K17 is populating.
+- The `recompute_anchor_score` query uses `collect(e)` which is O(N) memory on the server side. Fine for the K11.5b 10k acceptance test; revisit if a single project ever exceeds ~100k entities.
+- `find_gap_candidates` doesn't dedup against glossary aliases — a discovered entity whose name matches a glossary alias still appears as a gap. K17 alias-aware extraction will reduce this; out of K11.5b scope.
 
 ### K11.5a — Entities repository (Neo4j) — core CRUD slice ✅ (session 39 continuation, Track 2)
 
