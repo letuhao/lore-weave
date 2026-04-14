@@ -874,6 +874,77 @@ func UpShortDescAuto(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
+// ── D-K2a-01 + D-K2a-02: defense-in-depth CHECK constraints ────────────────
+//
+// The PATCH /v1/glossary/.../entities/{id} handler already:
+//   - coerces trimmed-empty string → NULL before write
+//   - rejects values longer than 500 runes with 422
+//
+// These constraints close the gap for writers that bypass the API
+// layer — backfill scripts, admin psql sessions, future repo code
+// that forgets the coercion step. Same defense-in-depth rationale
+// as the `knowledge_summaries_content_len` CHECK on the knowledge-
+// service side (K7b).
+//
+// Both CHECKs live in DO blocks because they cannot be added with
+// ADD CONSTRAINT IF NOT EXISTS until Postgres 18 (which we already
+// run, but the DO pattern is what the rest of this file uses for
+// constraint ops, and it's cheap to keep idempotent by hand).
+//
+// Before adding the non-empty CHECK we backfill any existing
+// empty-string rows to NULL. Postgres rejects an ADD CONSTRAINT
+// against a table with violating rows, so without the backfill a
+// dev env that persisted a `''` through some pre-coercion code
+// path would fail to boot.
+//
+// The 500-rune cap matches the API handler so users never see a
+// 422 from a DB write that wasn't already blocked by the API.
+// `length()` on TEXT in Postgres counts characters, not bytes, so
+// CJK content gets the same budget as Latin.
+
+const shortDescConstraintsSQL = `
+-- Backfill: any empty-string short_description rows become NULL.
+-- Matches the API's "trimmed-empty → NULL" coercion retroactively.
+UPDATE glossary_entities
+  SET short_description = NULL
+  WHERE short_description = '';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'glossary_entities_short_desc_non_empty'
+  ) THEN
+    ALTER TABLE glossary_entities
+      ADD CONSTRAINT glossary_entities_short_desc_non_empty
+      CHECK (short_description IS NULL OR short_description <> '');
+  END IF;
+END$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'glossary_entities_short_desc_len'
+  ) THEN
+    ALTER TABLE glossary_entities
+      ADD CONSTRAINT glossary_entities_short_desc_len
+      CHECK (short_description IS NULL OR length(short_description) <= 500);
+  END IF;
+END$$;
+`
+
+// UpShortDescConstraints adds the defense-in-depth CHECK constraints
+// on glossary_entities.short_description (D-K2a-01 + D-K2a-02).
+// Idempotent: backfills empty-string rows to NULL before adding the
+// non-empty CHECK so existing dev envs migrate cleanly.
+func UpShortDescConstraints(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, shortDescConstraintsSQL); err != nil {
+		return fmt.Errorf("migrate short-desc-constraints: %w", err)
+	}
+	return nil
+}
+
 // BackfillShortDescription iterates entities with NULL short_description,
 // fetches each one's name + description attribute values + kind name,
 // runs the pure shortdesc generator, and writes the result back.

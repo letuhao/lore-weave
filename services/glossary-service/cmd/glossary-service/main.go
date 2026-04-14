@@ -103,6 +103,15 @@ func main() {
 		slog.Error("migrate short-desc-auto", "error", err)
 		os.Exit(1)
 	}
+	// D-K2a-01 + D-K2a-02: defense-in-depth CHECK constraints on
+	// short_description (non-empty + ≤500 runes). Must run AFTER
+	// UpShortDescAuto because the backfill inside this step may
+	// touch columns the prior migration ensures exist, and the
+	// idempotent DO-block pattern is cheap if re-run.
+	if err := migrate.UpShortDescConstraints(ctx, pool); err != nil {
+		slog.Error("migrate short-desc-constraints", "error", err)
+		os.Exit(1)
+	}
 
 	// Run the short-description backfill in a background goroutine so
 	// the HTTP listener + healthcheck come up immediately. For a fresh
