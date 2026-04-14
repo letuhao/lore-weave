@@ -29,6 +29,7 @@ module.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Protocol
 
 __all__ = [
@@ -55,6 +56,22 @@ class CypherSession(Protocol):
     async def run(self, cypher: str, /, **params: Any) -> Any: ...  # pragma: no cover
 
 
+# Match single- or double-quoted Cypher string literals with basic
+# backslash-escape handling. Used to strip literal contents *before*
+# scanning for `$user_id` — otherwise a query like
+# `CREATE (e {note: '$user_id'})` silently passes the safety check
+# while actually binding no parameter (R2).
+_STRING_LITERAL_RE = re.compile(
+    r"""'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*\"""",
+    re.DOTALL,
+)
+
+# Match `$user_id` as a whole parameter token, i.e. not followed by
+# another word character. Prevents `$user_id_extra` / `$user_ids`
+# from satisfying the check when the real `$user_id` is absent (R1).
+_USER_ID_PARAM_RE = re.compile(r"\$user_id(?!\w)")
+
+
 def assert_user_id_param(cypher: str) -> None:
     """Raise `CypherSafetyError` if `cypher` does not reference `$user_id`.
 
@@ -63,20 +80,27 @@ def assert_user_id_param(cypher: str) -> None:
     for eventual execution.
 
     Rules:
-      - `cypher` must contain the literal token `$user_id`. Case-
-        sensitive — Cypher parameter names are case-sensitive.
-      - Leading/trailing whitespace and newlines are ignored by the
-        substring check.
-      - A `$user_id` inside a comment is technically legal here but
-        a developer mistake. We don't parse Cypher to catch it —
-        the integration tests at K11.5 / K11.6 exercise the real
-        query shapes and would fail on a commented-out filter.
+      - `cypher` must contain `$user_id` as a complete parameter
+        token. Case-sensitive — Cypher parameter names are
+        case-sensitive. `$user_id_extra` does NOT satisfy the rule.
+      - String-literal contents are stripped before the scan so a
+        literal like `'$user_id'` inside `CREATE (e {note: '…'})`
+        does not masquerade as a parameter reference.
+      - Leading/trailing whitespace and newlines are ignored.
+      - A `$user_id` inside a `// comment` is technically legal here
+        but a developer mistake. We don't parse Cypher that deeply —
+        integration tests at K11.5/K11.6 exercise real query shapes
+        and would catch a commented-out filter via wrong-row counts.
     """
     if not isinstance(cypher, str):
         raise CypherSafetyError(f"cypher must be str, got {type(cypher).__name__}")
     if not cypher.strip():
         raise CypherSafetyError("cypher is empty")
-    if "$user_id" not in cypher:
+    # Remove string-literal spans so their contents can't satisfy
+    # the parameter check (R2). Then look for `$user_id` as a
+    # whole token, not a prefix (R1).
+    stripped = _STRING_LITERAL_RE.sub("", cypher)
+    if not _USER_ID_PARAM_RE.search(stripped):
         raise CypherSafetyError(
             "cypher must reference $user_id parameter (multi-tenant safety)"
         )

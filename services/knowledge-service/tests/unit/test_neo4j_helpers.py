@@ -80,6 +80,75 @@ def test_case_sensitive_user_id_token():
         assert_user_id_param("MATCH (e {user_id: $User_Id}) RETURN e")
 
 
+# ── R1: word-boundary bypass ──────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "bypass_attempt",
+    [
+        "MATCH (e {foo: $user_id_extra}) RETURN e",
+        "MATCH (e) WHERE e.x = $user_ids RETURN e",
+        "MATCH (e {foo: $user_id2}) RETURN e",
+        "MATCH (e {foo: $user_identity}) RETURN e",
+    ],
+)
+def test_substring_match_does_not_satisfy_check(bypass_attempt):
+    # $user_id_extra / $user_ids / $user_id2 / $user_identity must NOT
+    # satisfy the $user_id rule — substring match would be a silent
+    # bypass where the real parameter is never bound.
+    with pytest.raises(CypherSafetyError, match="multi-tenant"):
+        assert_user_id_param(bypass_attempt)
+
+
+# ── R2: string-literal bypass ─────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "bypass_attempt",
+    [
+        "CREATE (e {note: '$user_id is cool'}) RETURN e",
+        'CREATE (e {note: "$user_id"}) RETURN e',
+        "MATCH (e) WHERE e.name = '$user_id' RETURN e",
+        # Nested quotes with escapes — must still strip the whole span.
+        r"CREATE (e {note: 'escaped \'$user_id\' here'}) RETURN e",
+    ],
+)
+def test_user_id_inside_string_literal_does_not_satisfy_check(bypass_attempt):
+    # A `$user_id` inside a quoted literal is treated as text by
+    # Cypher — it binds no parameter. The assertion must see through
+    # the literal and reject the query.
+    with pytest.raises(CypherSafetyError, match="multi-tenant"):
+        assert_user_id_param(bypass_attempt)
+
+
+def test_real_param_outside_string_literal_still_accepted():
+    # Regression guard: stripping literals must not eat the real
+    # parameter on queries that legitimately carry both.
+    assert_user_id_param(
+        "MATCH (e {user_id: $user_id}) "
+        "WHERE e.note <> 'ignore $user_id in this comment-ish text' "
+        "RETURN e"
+    )
+
+
+# ── R3: $user_id with trailing punctuation ────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "cypher",
+    [
+        "MATCH (e {user_id: $user_id}) RETURN e",     # closing brace
+        "MATCH (e {user_id: $user_id,name:$n}) RETURN e",  # comma
+        "MATCH (e) WHERE e.user_id = $user_id RETURN e",    # space
+        "MATCH (e) WHERE e.user_id=$user_id RETURN e",      # no space
+        "MATCH (e) WHERE e.user_id IN [$user_id] RETURN e", # bracket
+        "MATCH (e {user_id: $user_id}) RETURN e;",          # trailing semicolon
+    ],
+)
+def test_user_id_with_various_trailing_punctuation(cypher):
+    assert_user_id_param(cypher)
+
+
 # ── run_read / run_write ──────────────────────────────────────────────
 
 
