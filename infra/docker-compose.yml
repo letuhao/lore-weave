@@ -401,6 +401,13 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: INFO
+      # K11.1 — Neo4j connection (Track 2). Empty NEO4J_URI means
+      # "skip Neo4j init at startup" — Track 1 dev keeps working.
+      # Set NEO4J_URI=bolt://neo4j:7687 (and bring up the neo4j
+      # service via `--profile neo4j`) to enable Track 2 features.
+      NEO4J_URI: ${NEO4J_URI:-}
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-loreweave_dev_neo4j}
     depends_on:
       postgres:
         condition: service_healthy
@@ -611,9 +618,62 @@ services:
     # profiles:
     #   - v2
 
+  # ── K11.1 — Neo4j for Track 2 extraction graph ────────────────────────
+  # Hidden behind the `neo4j` profile so Track 1 dev doesn't pay the
+  # ~4GB / ~60s startup cost. Bring up explicitly via:
+  #   docker compose --profile neo4j up -d neo4j
+  # Or as part of the full Track 2 stack (once the profile chain is
+  # wired up):
+  #   docker compose --profile extraction up -d
+  #
+  # knowledge-service does NOT depends_on neo4j so a Track 1
+  # `docker compose up knowledge-service` continues to work without
+  # Neo4j running. K11.2 driver init is gated on NEO4J_URI being
+  # set in the env — unset = skip silently, set = fail-fast on
+  # unreachable.
+  neo4j:
+    image: neo4j:2025.10-community
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-loreweave_dev_neo4j}
+      NEO4J_PLUGINS: '["apoc"]'
+      # Memory ceilings — community edition has soft caps but
+      # explicit values keep dev machines stable.
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size: 2G
+      NEO4J_server_memory_pagecache_size: 1G
+    ports:
+      # Host ports offset by +1 so we don't collide with other
+      # Neo4j installations on the dev machine. Containers inside
+      # the compose network still talk to `neo4j:7687` directly,
+      # so K11.2 driver config is unaffected.
+      - "7475:7474"   # HTTP (browser UI), host: http://localhost:7475
+      - "7688:7687"   # Bolt (driver protocol), host: bolt://localhost:7688
+    volumes:
+      - loreweave_neo4j_data:/data
+      - loreweave_neo4j_logs:/logs
+    healthcheck:
+      # Neo4j 2025+ exposes /db/manage/server/version on 7474 once
+      # ready. Wget against it; -q -O- suppresses output, exit
+      # status is what we care about.
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    profiles:
+      - neo4j
+      - extraction
+      - full
+
 volumes:
   loreweave_pg:
   loreweave_redis:
   loreweave_minio:
   loreweave_rabbitmq:
   loreweave_languagetool:
+  loreweave_neo4j_data:
+  loreweave_neo4j_logs:
