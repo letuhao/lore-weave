@@ -7,7 +7,7 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 38 — K7c–K7e + K8.1..K8.4 + K9.1 + Track 2 design update + K18.2a + K18.2a second-pass fixes + K11.Z pure validator COMPLETE; Gate 4 + Gate 5 deferred to next session)
+- Last Updated: 2026-04-14 (session 38 — K7c–K7e + K8.1..K8.4 + K9.1 + Track 2 design update + K18.2a + K18.2a second-pass fixes + K11.Z pure validator + K11.Z second-pass fixes + K10.1/K10.2/K10.3 migrations COMPLETE; Gate 4 + Gate 5 deferred to next session)
 - Updated By: Assistant (Track 2 design reshaped from free-context-hub lessons — added L-CH-01..L-CH-12, 4 new tasks: K11.Z provenance validator, K17.9 + K17.9.1 golden-set harness, K18.2a intent classifier. Then executed K18.2a end-to-end through the 9-phase workflow — first laptop-friendly Track 2 task, zero runtime deps.)
 - Active Branch: `main` (K18.2a commit pending)
 - HEAD: K18.2a commit (see git log) — K7c = `160de10`, K7d/K7e/K8.2/K8.3/K8.4/K9.1/D-CHAT-01 committed
@@ -116,6 +116,41 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K10.1 / K10.2 / K10.3 — Extraction lifecycle tables ✅ (session 38, Track 2 — laptop-friendly)
+
+**Third Track 2 task.** Postgres schema for the extraction pipeline: `extraction_pending` (queue for events that arrived while extraction was disabled), `extraction_jobs` (user-triggered runs with atomic cost tracking), `extraction_errors` (K11.Z dependency — previously a plan gap), and the missing K10.3 ALTER columns on `knowledge_projects` (monthly budget + stat counters).
+
+**Deviation from plan:** the Track 2 doc prescribed separate SQL files (`migrations/20260501_010_extraction_pending.sql`, etc.) under a `migrations/` directory that doesn't exist. Track 1 uses an entirely different pattern: a single `DDL` string in [app/db/migrate.py](services/knowledge-service/app/db/migrate.py) applied on every startup via `run_migrations(pool)`, idempotent via `IF NOT EXISTS` + DO-block constraints. Matching the codebase wins over matching the doc — no reason to invent a second migration system. The plan doc's "Files" entries are now stale and should be read as "extend migrate.py".
+
+**Plan gap closed:** K11.Z was listed as depending on `K10.2 (extraction_errors table)`, but K10.2's task description only covered `extraction_jobs`. `extraction_errors` was referenced three times but never defined. Added to this task as `CREATE TABLE extraction_errors` with `error_type` CHECK constraint (`provenance_validation`/`extractor_crash`/`timeout`/`llm_refusal`/`unknown`), a `value_preview` TEXT column (deliberately named `_preview` so nobody writes a full 10MB blob into it), and cascade FKs to both `extraction_jobs` and `knowledge_projects`.
+
+**Cross-DB FK rule respected:** per [app/db/migrate.py](services/knowledge-service/app/db/migrate.py) module header, `user_id` references live in `loreweave_auth` and have no FK. Same rule applied to `extraction_pending.user_id` and `extraction_jobs.user_id`. In-DB FKs (`project_id → knowledge_projects`, `job_id → extraction_jobs`) are kept and marked `ON DELETE CASCADE` so a project purge takes its queue, jobs, and error log with it.
+
+**Files modified / added:**
+- [app/db/migrate.py](services/knowledge-service/app/db/migrate.py) — appended K10.3 ALTER, K10.1 extraction_pending, K10.2 extraction_jobs, K10.2b extraction_errors (+ partial indexes on all three).
+- [tests/unit/test_migrate_ddl.py](services/knowledge-service/tests/unit/test_migrate_ddl.py) — NEW laptop-friendly DDL smoke test. 13 tests that parse the `DDL` string and assert shape: table presence, CHECK constraints, partial index WHERE clauses, NUMERIC not FLOAT for cost columns, no `REFERENCES users` cross-DB FK regression, `ON DELETE CASCADE` count ≥ 3, and a regex that catches any future `CREATE TABLE` / `CREATE INDEX` missing `IF NOT EXISTS` (idempotency invariant).
+- [tests/integration/db/test_migrations.py](services/knowledge-service/tests/integration/db/test_migrations.py) — appended 8 integration tests for Gate 4 to run against a real Postgres: `extraction_pending` unique constraint, partial index, `extraction_jobs` scope/status CHECK rejection, indexes exist, `knowledge_projects` has the 8 new K10.3 columns, and project-delete cascade wipes queue + jobs.
+
+**Test results:**
+- Unit: 13/13 DDL smoke tests pass in 0.30s.
+- Integration: 8 new tests written for Gate 4, deferred to next session (needs docker-compose).
+- Regression: 250/253 unit tests pass (the 3 failures are the pre-existing `personal_kas.cer` SSL-path environment issue affecting `test_config.py` / `test_glossary_client.py` / `test_circuit_breaker.py` — unchanged from session 37 baseline; not K-series).
+
+**Design decisions:**
+- **ALTER uses `ADD COLUMN IF NOT EXISTS` instead of DO-block wrappers.** Postgres supports this natively for columns and it's idempotent across restarts. DO blocks are only required for CHECK constraint idempotency (Track 1 pattern, still followed for those).
+- **`extraction_errors.value_preview` is a truncated TEXT, not JSONB.** The validator's `value` can be anything (string, int, list, even a dataclass). Coercing to a short `repr()` preview preserves debuggability without committing to a structured column. The full value is gone by the time the row is written — that's intentional: we don't want a bad 10MB extractor payload to become a 10MB DB row.
+- **`error_type` is an explicit CHECK-enum, not a TEXT free-for-all.** Five classes cover every known failure path. If a sixth appears, the migration is a one-line change and a DB error is better than a silent typo in a log.
+
+**Why this was the right third Track 2 task:**
+1. Pure SQL, no provider credentials, no infra beyond Postgres (and the integration tests defer that to Gate 4 anyway).
+2. Unblocks K10.4/K10.5 repositories (next session) and K11.Z's deferred writer-wrap step (all three were gated on this).
+3. Closed a real plan gap (`extraction_errors` was referenced but never defined).
+4. Adds a laptop-friendly unit-level safety net for DDL shape that will survive future refactors without a running DB.
+
+**What K10.1–K10.3 unblocks:** K10.4 (`extraction_jobs` repository — atomic_try_spend is the next high-value task), K10.5 (`extraction_pending` repository), K11.Z writer wrap (now has a real `extraction_errors` row to log to), and Gate 4 (integration-test surface expanded from 5 to 13 tests).
+
+---
 
 ### K11.Z — Provenance write validator (pure function slice) ✅ (session 38, Track 2 — laptop-friendly)
 

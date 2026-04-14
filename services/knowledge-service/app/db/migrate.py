@@ -124,6 +124,123 @@ BEGIN
       CHECK (length(content) <= 50000);
   END IF;
 END$$;
+
+-- ═══════════════════════════════════════════════════════════════
+-- K10.3 — extraction fields on knowledge_projects
+-- K1.2 (Track 1) already created embedding_model / extraction_config
+-- / last_extracted_at / estimated_cost_usd / actual_cost_usd, so K10.3
+-- is a narrower ALTER that only adds the columns the extraction engine
+-- and budget tracker need. ADD COLUMN IF NOT EXISTS keeps the DDL
+-- idempotent without a DO-block wrapper.
+-- ═══════════════════════════════════════════════════════════════
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS monthly_budget_usd     NUMERIC(10,4),
+  ADD COLUMN IF NOT EXISTS current_month_spent_usd NUMERIC(10,4) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS current_month_key      TEXT,
+  ADD COLUMN IF NOT EXISTS stat_entity_count      INT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS stat_fact_count        INT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS stat_event_count       INT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS stat_glossary_count    INT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS stat_updated_at        TIMESTAMPTZ;
+
+-- ═══════════════════════════════════════════════════════════════
+-- K10.1 — extraction_pending
+-- Events that arrived while extraction was disabled for their project.
+-- When the user enables extraction, the backfill job processes these
+-- oldest-first. UNIQUE(project_id, event_id) makes queueing idempotent.
+--
+-- Cross-DB FKs on user_id are intentionally omitted (see module header).
+-- The FK on project_id is in-DB and safe; ON DELETE CASCADE keeps the
+-- queue in sync when a project is purged.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS extraction_pending (
+  pending_id      UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id         UUID NOT NULL,                     -- no FK (cross-DB)
+  project_id      UUID NOT NULL
+    REFERENCES knowledge_projects(project_id) ON DELETE CASCADE,
+  event_id        UUID NOT NULL,                     -- loreweave_events.event_log.id (cross-DB)
+  event_type      TEXT NOT NULL,
+  aggregate_type  TEXT NOT NULL,
+  aggregate_id    UUID NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  processed_at    TIMESTAMPTZ,
+  UNIQUE (project_id, event_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_extraction_pending_unprocessed
+  ON extraction_pending (project_id, created_at)
+  WHERE processed_at IS NULL;
+
+-- ═══════════════════════════════════════════════════════════════
+-- K10.2 — extraction_jobs
+-- User-triggered extraction runs with atomic cost tracking. K10.4's
+-- atomic_try_spend pattern relies on `cost_spent_usd` + `max_spend_usd`
+-- being in a single row. CHECK constraints on status/scope give us a
+-- cheap defense against stringly-typed bugs reaching the DB.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS extraction_jobs (
+  job_id            UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id           UUID NOT NULL,                   -- no FK (cross-DB)
+  project_id        UUID NOT NULL
+    REFERENCES knowledge_projects(project_id) ON DELETE CASCADE,
+  scope             TEXT NOT NULL
+    CHECK (scope IN ('chapters','chat','glossary_sync','all')),
+  scope_range       JSONB,
+  status            TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','running','paused','complete','failed','cancelled')),
+
+  llm_model         TEXT NOT NULL,
+  embedding_model   TEXT NOT NULL,
+  max_spend_usd     NUMERIC(10,4),
+
+  items_total       INT,
+  items_processed   INT NOT NULL DEFAULT 0,
+  current_cursor    JSONB,
+  cost_spent_usd    NUMERIC(10,4) NOT NULL DEFAULT 0,
+
+  started_at        TIMESTAMPTZ,
+  paused_at         TIMESTAMPTZ,
+  completed_at      TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  error_message     TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_extraction_jobs_project
+  ON extraction_jobs (project_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_extraction_jobs_active
+  ON extraction_jobs (status)
+  WHERE status IN ('pending','running','paused');
+
+-- ═══════════════════════════════════════════════════════════════
+-- K10.2b — extraction_errors
+-- Not in the original K10 task list but K11.Z depends on it: when the
+-- provenance validator rejects a write, the extraction job rolls back
+-- the current event and logs a row here with enough context to debug
+-- the offending extractor run without replaying the whole job.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS extraction_errors (
+  error_id        UUID PRIMARY KEY DEFAULT uuidv7(),
+  job_id          UUID
+    REFERENCES extraction_jobs(job_id) ON DELETE CASCADE,
+  project_id      UUID NOT NULL
+    REFERENCES knowledge_projects(project_id) ON DELETE CASCADE,
+  error_type      TEXT NOT NULL
+    CHECK (error_type IN ('provenance_validation','extractor_crash','timeout','llm_refusal','unknown')),
+  field           TEXT,
+  value_preview   TEXT,                              -- truncated repr, never the full blob
+  reason          TEXT NOT NULL,
+  source_ref      TEXT,                              -- chunk_id / chapter_id for replay
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_extraction_errors_job
+  ON extraction_errors (job_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_extraction_errors_project
+  ON extraction_errors (project_id, created_at DESC);
 """
 
 
