@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 38 — K7c + K7d + K7e COMPLETE + knowledge-service source-code review sweep)
-- Updated By: Assistant (K7e post-merge source-code review across knowledge-service repos/routers/middleware/cache/clients. Found + fixed R3 (POST CheckViolation asymmetry) and R4 (name DB CHECK gap).)
-- Active Branch: `main` (K7e commit pending)
-- HEAD: K7e commit (see git log) — K7c = `160de10`, K7d = committed, K7e = this commit
+- Last Updated: 2026-04-14 (session 38 — K7c–K7e + K8.1 + K8.2 COMPLETE)
+- Updated By: Assistant (K8.1 MemoryPage scaffold + K8.2 Projects tab — useProjects hook, ProjectCard, ProjectFormModal, ProjectsTab with create/edit/archive/delete wiring. R1+R2 fixes landed in same commit.)
+- Active Branch: `main` (K8.2 commit pending)
+- HEAD: K8.2 commit (see git log) — K7c = `160de10`, K7d/K7e committed
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V7.md` — full context for next agent
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -113,6 +113,40 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K8.1 + K8.2 — Memory page scaffold + Projects tab ✅ (session 38)
+
+First frontend work for knowledge-service. Replaces the pre-existing placeholder routing so the sidebar "Memory" entry lands on a real 3-tab page (Projects / Global / Privacy) and the Projects tab is fully CRUD-wired against the Track 1 public API shipped in K7b/K7.2.
+
+**K8.1 — scaffold**
+- `frontend/src/features/knowledge/types.ts` (NEW) — TS types mirroring Pydantic models: `Project`, `ProjectCreatePayload`, `ProjectUpdatePayload`, `ProjectListResponse`, `Summary`, `SummariesListResponse`, `UserDataDeleteResponse`, `ExtractionStatus` union.
+- `frontend/src/features/knowledge/api.ts` (NEW) — `knowledgeApi` wrapper using shared `apiJson` for JSON routes + a raw `fetch()` branch for `/user-data/export` (which streams a file attachment and can't go through `apiJson`). Local `apiBase()` helper mirrors `features/books/api.ts` so `VITE_API_BASE` override works for the export path.
+- `frontend/src/pages/MemoryPage.tsx` (NEW) — 3-tab shell with `useParams` routing, `<Navigate to="/memory/projects">` redirect for bare `/memory`, placeholder `ProjectsTab` / `GlobalBioTab` / `PrivacyTab` stubs.
+- `frontend/src/App.tsx` — `/memory` + `/memory/:tab` routes mounted inside `RequireAuth + DashboardLayout`.
+- `frontend/src/components/layout/Sidebar.tsx` — new nav entry (Brain icon) with `to: '/memory'` (NOT `/memory/projects`) so the existing `startsWith(to + '/')` active-state matcher stays green across all sub-tabs.
+- i18n: `"nav.memory"` key added to en / ja / vi / zh-TW common.json.
+
+**K8.1 review (R1+R2 folded into same commit):**
+- **K8.1-R1 (MEDIUM):** Sidebar `to` was initially `/memory/projects`. The `NavLink` active-state check is `currentPath === item.to || currentPath.startsWith(item.to + '/')`, so clicking the Global tab (→ `/memory/global`) deactivated the sidebar entry. Fixed by changing `to` to `/memory` — both `/memory/projects` and `/memory/global` now match `startsWith('/memory/')`. The `/memory` → `/memory/projects` redirect route keeps the click target working. Comment in Sidebar.tsx documents the invariant.
+- **K8.1-R2 (LOW):** `exportUserData` used raw `fetch()` without `VITE_API_BASE`. Added local `apiBase()` helper + prefixed the URL, matching `features/books/api.ts`.
+
+**K8.2 — Projects tab**
+- `frontend/src/features/knowledge/hooks/useProjects.ts` (NEW) — react-query wrapper. `useQuery` for the list (single page, `limit=100`, `include_archived` parameterised), four `useMutation`s (create / update / archive / delete), shared `invalidate` on success that matches the base key `['knowledge-projects']` so both archived/non-archived views refresh. Returns `items`, `hasMore` (from `next_cursor`), loading/error flags, mutation callbacks, aggregate `isMutating`. Track 1 deliberately does not use `useInfiniteQuery` — no existing feature uses it, typical user has <50 projects, and a "showing first 100" hint covers the overflow case.
+- `frontend/src/features/knowledge/components/ProjectFormModal.tsx` (NEW) — shared `FormDialog`-based create/edit modal. Mirrors backend Pydantic caps client-side (`NAME_MAX=200`, `DESCRIPTION_MAX=2000`, `INSTRUCTIONS_MAX=20000`) so users get immediate feedback instead of a 422 round-trip. `useEffect([open, mode, project])` resets form state on open (kept in effect rather than re-keying the dialog so the unmount animation plays cleanly). Project type is disabled in edit mode with an inline "immutable after creation" hint. Book ID field takes an optional UUID with a `/^[0-9a-f-]{36}$/i` check; empty string → `null` on send. Toast feedback via sonner on success/failure.
+- `frontend/src/features/knowledge/components/ProjectCard.tsx` (NEW) — Track 1 renders the `disabled` state only (per D-K8-02). Shows name, "Static memory" badge, archived badge when applicable, type label, description (line-clamp-2), optional book_id (mono font). Action buttons: Edit, Archive (hidden when already archived), Delete (destructive hover). Leading comment explicitly references D-K8-02 so a future reader knows where the other four states are tracked.
+- `frontend/src/features/knowledge/components/ProjectsTab.tsx` (rewritten from K8.1 placeholder) — composes everything: header row with "Show archived" checkbox + Refresh + New project buttons, loading skeletons, error banner, `EmptyState` with CTA when `items.length === 0`, list of `ProjectCard`s wired to modal/confirm state, `hasMore` footer hint, two `ConfirmDialog`s (archive — default variant, delete — destructive variant) with shared `actionPending` flag. `handleArchive` / `handleDelete` clear the target state only on success so a failed mutation keeps the dialog open with the toast error.
+
+**Files touched:** 9 new (2 K8.1 feature files + MemoryPage + 4 K8.2 feature files + types + api) + 3 edited (App.tsx, Sidebar.tsx, 4 i18n json files, ProjectsTab.tsx rewrite) — ~850 LOC added.
+
+**Phase 5 TEST:**
+- `npx tsc --noEmit` — filtered to `features/knowledge` + `pages/Memory` → only pre-existing `@tanstack/react-query` missing-module noise (shared across the whole repo, not K8-introduced).
+- Browser smoke NOT executed this session — no live frontend dev server / Playwright spun up. Flagged for next session to cover: create → edit → archive → unarchive toggle → delete → empty state → error banner (kill backend mid-load) → book_id UUID validation → description/instructions char counters → locale switch smoke across en/ja/vi/zh-TW.
+
+**Phase 6 REVIEW:** second pass found no bugs. Noted intentional style choices: no `type="button"` on plain `<button>` elements (matches the rest of the frontend codebase; ESLint hint only), shared `actionPending` flag across both ConfirmDialogs (only one open at a time), `onOpenChange={(o) => !o && setX(null)}` pattern (X-button dismiss mid-operation is allowed since the confirm button is disabled during pending — matches ConfirmDialog usage elsewhere in the repo).
+
+**Phase 7 QC** — K8.2 acceptance criteria all met: list + archived toggle, create/edit with full client-side validation, archive with confirm, delete with destructive confirm, empty state with CTA, loading skeletons, error banner, pagination-overflow hint. Browser validation deferred to next session's smoke pass.
+
+---
 
 ### K7 post-merge source-code review sweep ✅ (session 38)
 
