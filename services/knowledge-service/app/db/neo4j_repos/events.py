@@ -193,9 +193,24 @@ async def merge_event(
     instead of `apoc.coll.union` so the schema runner has no APOC
     dependency on the merge path. APOC is loaded for vector
     indexes but we keep query code APOC-free.
+
+    K11.7-R1 normalizations:
+      - R1: `participants` is order-preserving deduped in
+        Python before being passed to Cypher. The ON MATCH branch
+        already deduped against the existing list, but ON CREATE
+        stored the raw input — so a sloppy SVO extractor passing
+        `["a", "a", "b"]` would have landed `["a", "a", "b"]` on
+        first write.
+      - R3: `source_type` validated non-empty so trash like `""`
+        can't enter the `source_types` accumulator.
+      - R4: `summary` empty-string normalized to None so the
+        ON MATCH `coalesce($summary, e.summary)` treats it as
+        "no new value" rather than wiping the stored summary.
     """
     if not title:
         raise ValueError("title must be a non-empty string")
+    if not source_type:
+        raise ValueError("source_type must be a non-empty string")
     eid = event_id(
         user_id=user_id,
         project_id=project_id,
@@ -203,6 +218,13 @@ async def merge_event(
         title=title,
     )
     canonical_title = canonicalize_text(title)
+    # R1: order-preserving dedup. dict.fromkeys preserves insert
+    # order in Python 3.7+, which is also Cypher list traversal
+    # order, so the first-spotted entity stays at index 0.
+    deduped_participants = list(dict.fromkeys(participants or []))
+    # R4: empty string → None so coalesce in Cypher treats it as
+    # "no new value", not "deliberate clear".
+    normalized_summary = summary or None
     result = await run_write(
         session,
         _MERGE_EVENT_CYPHER,
@@ -211,11 +233,11 @@ async def merge_event(
         project_id=project_id,
         title=title,
         canonical_title=canonical_title,
-        summary=summary,
+        summary=normalized_summary,
         chapter_id=chapter_id,
         event_order=event_order,
         chronological_order=chronological_order,
-        participants=list(participants or []),
+        participants=deduped_participants,
         source_type=source_type,
         confidence=confidence,
     )
@@ -266,6 +288,7 @@ _LIST_EVENTS_FOR_CHAPTER_CYPHER = """
 MATCH (e:Event)
 WHERE e.user_id = $user_id
   AND e.chapter_id = $chapter_id
+  AND ($project_id IS NULL OR e.project_id = $project_id)
   AND ($include_archived OR e.archived_at IS NULL)
 RETURN e
 ORDER BY coalesce(e.event_order, 2147483647), e.title ASC
@@ -278,11 +301,19 @@ async def list_events_for_chapter(
     *,
     user_id: str,
     chapter_id: str,
+    project_id: str | None = None,
     include_archived: bool = False,
     limit: int = 200,
 ) -> list[Event]:
     """All events for a chapter, ordered by `event_order`
-    (narrative position), nulls last (sentinel = max int32)."""
+    (narrative position), nulls last (sentinel = max int32).
+
+    K11.7-R1/R2: optional `project_id` filter. Chapter ids are
+    usually globally unique, but two projects under the same
+    user can collide via test fixtures or sloppy import paths.
+    Pass `project_id` when the caller knows which project the
+    chapter belongs to; consistent with `list_events_in_order`.
+    """
     if not chapter_id:
         raise ValueError("chapter_id must be a non-empty string")
     if limit <= 0:
@@ -292,6 +323,7 @@ async def list_events_for_chapter(
         _LIST_EVENTS_FOR_CHAPTER_CYPHER,
         user_id=user_id,
         chapter_id=chapter_id,
+        project_id=project_id,
         include_archived=include_archived,
         limit=limit,
     )

@@ -184,6 +184,8 @@ async def merge_fact(
         raise ValueError(f"type must be one of {FACT_TYPES}, got {type!r}")
     if not content:
         raise ValueError("content must be a non-empty string")
+    if not source_type:
+        raise ValueError("source_type must be a non-empty string")
     fid = fact_id(
         user_id=user_id,
         project_id=project_id,
@@ -191,6 +193,8 @@ async def merge_fact(
         content=content,
     )
     canonical_content = canonicalize_text(content)
+    # K11.7-R1/R4: empty string → None for optional text fields.
+    normalized_source_chapter = source_chapter or None
     result = await run_write(
         session,
         _MERGE_FACT_CYPHER,
@@ -204,7 +208,7 @@ async def merge_fact(
         pending_validation=pending_validation,
         valid_from=valid_from,
         source_type=source_type,
-        source_chapter=source_chapter,
+        source_chapter=normalized_source_chapter,
     )
     record = await result.single()
     if record is None:

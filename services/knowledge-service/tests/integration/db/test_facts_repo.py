@@ -355,6 +355,43 @@ async def test_k11_7_invalidate_fact_returns_none_for_missing(
 # ── delete_facts_with_zero_evidence ───────────────────────────────────
 
 
+# ── K11.7-R1 review-fix tests ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_k11_7_r1_merge_fact_rejects_empty_source_type():
+    """K11.7-R1/R3 fix."""
+    with pytest.raises(ValueError, match="source_type"):
+        await merge_fact(
+            session=None,  # type: ignore[arg-type]
+            user_id="u-1",
+            project_id="p-1",
+            type="decision",
+            content="Use fire",
+            source_type="",
+        )
+
+
+@pytest.mark.asyncio
+async def test_k11_7_r1_merge_fact_empty_source_chapter_normalized(
+    neo4j_driver, test_user
+):
+    """K11.7-R1/R4 fix. Empty source_chapter normalizes to None
+    so the stored value is NULL, not "" — keeps downstream
+    chapter-id filters honest."""
+    async with neo4j_driver.session() as session:
+        f = await merge_fact(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            type="decision",
+            content="Use fire",
+            confidence=0.9,
+            source_chapter="",
+        )
+    assert f.source_chapter is None
+
+
 @pytest.mark.asyncio
 async def test_k11_7_delete_facts_zero_evidence(neo4j_driver, test_user):
     async with neo4j_driver.session() as session:

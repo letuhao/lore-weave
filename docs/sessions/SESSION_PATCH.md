@@ -10,7 +10,7 @@
 - Last Updated: 2026-04-14 (session 39 continuation — **K11.3 Cypher schema runner landed**, K11.1+K11.2+K11.3 = Neo4j wired end-to-end against live 2026.03)
 - Updated By: Assistant (K11.3 caps the Neo4j-infra slice. Schema file ships 6 unique constraints + 13 composite/single indexes + 5 vector indexes per KSA §3.4. K11.3-I1: existence constraints removed — Enterprise-only on community edition; user_id NOT NULL stays enforced by K11.4's `assert_user_id_param`. Neo4j image bumped 2025.10 → 2026.03 community after user pushback. 369/369 knowledge-service tests pass against live Neo4j; 12 new K11.3 tests (8 parser unit + 4 integration). Repo code must keep going through K11.4 — schema runner is the one documented exception.)
 - Active Branch: `main` (ahead of origin by session-38 + session-39 commits — user pushes manually)
-- HEAD: K11.7 events+facts commit (this session, on top of K11.6-R1)
+- HEAD: K11.7-R1 review-fix commit (this session, on top of K11.7)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -145,6 +145,16 @@
 **Test results:** 39 new tests, all green on first run (19 events + 20 facts). Full knowledge-service suite: **522 passed, 93 skipped** against live Neo4j 2026.03.1 (was 483; +39 K11.7). Zero regressions.
 
 **What K11.7 unblocks:** K11.8 (provenance) — depends on Event and Fact nodes existing so EVIDENCED_BY edges can attach. K17 (LLM extractor) — can now write events and facts directly through this surface. The L4 timeline retrieval (KSA §4.2) — `list_events_in_order` is exactly the Cypher shape it needs. Memory UI "Quarantine" tab — `list_facts_by_type(exclude_pending=False, min_confidence=0.0)`.
+
+**K11.7-R1 second-pass review fixes (4 issues):**
+- **R1 (BUG)** — `merge_event` ON CREATE stored the raw `participants` list. ON MATCH already deduped against the existing list, but ON CREATE did not — a sloppy SVO extractor passing `["a", "a", "b"]` would have landed `["a", "a", "b"]` on first write. Fixed in Python via `list(dict.fromkeys(participants or []))` (order-preserving dedup, single source of truth, no per-call Cypher gymnastics).
+- **R2 (BUG)** — `list_events_for_chapter` did not accept `project_id`. Two projects under the same user with the same `chapter_id` (rare but possible via test fixtures or sloppy import paths) would mix events. Same class of bug as K11.6-R1/R2 which was just fixed for relations. Added optional `project_id: str | None = None` for consistency with `list_events_in_order`.
+- **R3 (defensive)** — `merge_event` and `merge_fact` accepted empty `source_type`. An empty string would land `[""]` in `source_types`, polluting the accumulator with trash that's hard to filter later. Added `if not source_type: raise ValueError(...)` to both.
+- **R4 (footgun)** — `merge_event` ON MATCH `coalesce($summary, e.summary)` treats empty string as a deliberate clear because Cypher's `coalesce` only short-circuits on NULL, and `""` is non-NULL. A caller passing `summary=""` (perhaps from a stripped-whitespace LLM output) would silently wipe the existing summary. Fixed via Python-side normalization: `summary or None` before passing. Same treatment applied to `merge_fact`'s `source_chapter`.
+
+R5 (`_node_to_*` helper extraction) and R6 (id helper extraction) deferred per the original review recommendation — both cosmetic and consistent with the K11.6-R1 review's R4 deferral.
+
+**Test delta:** +6 new tests (4 events + 2 facts: dedup-on-create, list-for-chapter project_id filter, merge-event empty-source-type rejection, empty-summary-doesn't-overwrite, merge-fact empty-source-type rejection, empty-source-chapter normalized to None). Full knowledge-service suite: **528 passed, 93 skipped** against live Neo4j 2026.03.1 (was 522; +6 R-fix tests). Zero regressions.
 
 ### K11.6 — Relations repository (`:RELATES_TO` edges) ✅ (session 39 continuation, Track 2)
 

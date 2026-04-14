@@ -376,6 +376,112 @@ async def test_k11_7_list_events_in_order_project_id_filter(
 # ── delete_events_with_zero_evidence ──────────────────────────────────
 
 
+# ── K11.7-R1 review-fix tests ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_k11_7_r1_merge_event_dedups_participants_on_create(
+    neo4j_driver, test_user
+):
+    """K11.7-R1/R1 fix. ON CREATE used to store the raw input
+    list, so passing `["a", "a", "b"]` would land
+    `["a", "a", "b"]` on first write. Python-side dedup now
+    normalizes before the merge."""
+    async with neo4j_driver.session() as session:
+        ev = await merge_event(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            title="Battle",
+            chapter_id="ch-1",
+            participants=["entity-a", "entity-a", "entity-b", "entity-a"],
+        )
+    assert ev.participants == ["entity-a", "entity-b"]
+
+
+@pytest.mark.asyncio
+async def test_k11_7_r1_list_events_for_chapter_project_id_filter(
+    neo4j_driver, test_user
+):
+    """K11.7-R1/R2 fix. Two projects under the same user with
+    the same chapter_id must NOT mix events when project_id is
+    set."""
+    async with neo4j_driver.session() as session:
+        await merge_event(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            title="P1Event",
+            chapter_id="ch-shared",
+            event_order=1,
+        )
+        await merge_event(
+            session,
+            user_id=test_user,
+            project_id="p-2",
+            title="P2Event",
+            chapter_id="ch-shared",
+            event_order=1,
+        )
+        scoped = await list_events_for_chapter(
+            session,
+            user_id=test_user,
+            chapter_id="ch-shared",
+            project_id="p-1",
+        )
+        unscoped = await list_events_for_chapter(
+            session,
+            user_id=test_user,
+            chapter_id="ch-shared",
+        )
+    assert [e.title for e in scoped] == ["P1Event"]
+    # Unscoped returns both.
+    assert {e.title for e in unscoped} == {"P1Event", "P2Event"}
+
+
+@pytest.mark.asyncio
+async def test_k11_7_r1_merge_event_rejects_empty_source_type():
+    """K11.7-R1/R3 fix. Empty source_type would land `[""]` in
+    source_types, polluting the accumulator with trash."""
+    with pytest.raises(ValueError, match="source_type"):
+        await merge_event(
+            session=None,  # type: ignore[arg-type]
+            user_id="u-1",
+            project_id="p-1",
+            title="Battle",
+            chapter_id="ch-1",
+            source_type="",
+        )
+
+
+@pytest.mark.asyncio
+async def test_k11_7_r1_merge_event_empty_summary_does_not_overwrite(
+    neo4j_driver, test_user
+):
+    """K11.7-R1/R4 fix. Cypher coalesce treats `""` as non-NULL
+    and returns it, wiping the existing summary. Python-side
+    normalization converts empty string to None before passing,
+    so the existing summary is preserved."""
+    async with neo4j_driver.session() as session:
+        await merge_event(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            title="Battle",
+            chapter_id="ch-1",
+            summary="The original summary",
+        )
+        result = await merge_event(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            title="Battle",
+            chapter_id="ch-1",
+            summary="",  # would have wiped without the fix
+        )
+    assert result.summary == "The original summary"
+
+
 @pytest.mark.asyncio
 async def test_k11_7_delete_events_zero_evidence(neo4j_driver, test_user):
     async with neo4j_driver.session() as session:
