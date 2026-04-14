@@ -83,6 +83,7 @@ class BenchmarkReport:
     avg_score_positive: float
     negative_control_max_score: float
     stddev_recall: float
+    stddev_mrr: float
     runs: int
     thresholds: dict[str, float]
     per_query: tuple[dict[str, Any], ...] = field(default_factory=tuple)
@@ -99,7 +100,10 @@ class BenchmarkReport:
             return False
         if self.negative_control_max_score > t["negative_control_max_score"]:
             return False
-        if self.stddev_recall > t["max_stddev"]:
+        # Gate on the worse of recall/MRR stddev — spec phrasing
+        # "stddev across runs" doesn't name a metric, so we enforce
+        # the stricter interpretation: both must be stable.
+        if max(self.stddev_recall, self.stddev_mrr) > t["max_stddev"]:
             return False
         return True
 
@@ -125,30 +129,40 @@ class BenchmarkRunner:
         for query in self.golden.queries:
             results = list(self.runner.run(query.q))
             ids = [r.entity_id for r in results]
-            r3 = recall_at_k(query.expected, ids, 3)
-            rr = reciprocal_rank(query.expected, ids)
 
             if query.band == "negative":
                 top_score = max((r.score for r in results), default=0.0)
                 negative_scores.append(top_score)
+                # Recall/MRR are undefined for negatives — the metric
+                # is the top score against the negative-control gate.
+                per_query.append(
+                    {
+                        "q": query.q,
+                        "band": query.band,
+                        "recall_at_3": None,
+                        "reciprocal_rank": None,
+                        "top_score": top_score,
+                        "top_ids": ids[:3],
+                    }
+                )
             else:
+                r3 = recall_at_k(query.expected, ids, 3)
+                rr = reciprocal_rank(query.expected, ids)
                 recalls.append(r3)
                 rrs.append(rr)
-                # Positive avg score = mean of the top expected hit's score
                 expected_set = set(query.expected)
                 hit_scores = [r.score for r in results if r.entity_id in expected_set]
                 if hit_scores:
                     positive_scores.append(max(hit_scores))
-
-            per_query.append(
-                {
-                    "q": query.q,
-                    "band": query.band,
-                    "recall_at_3": r3,
-                    "reciprocal_rank": rr,
-                    "top_ids": ids[:3],
-                }
-            )
+                per_query.append(
+                    {
+                        "q": query.q,
+                        "band": query.band,
+                        "recall_at_3": r3,
+                        "reciprocal_rank": rr,
+                        "top_ids": ids[:3],
+                    }
+                )
 
         return (
             mean(recalls),
@@ -181,6 +195,7 @@ class BenchmarkRunner:
             avg_score_positive=mean(pos_samples),
             negative_control_max_score=max(neg_samples),
             stddev_recall=stddev(recall_samples),
+            stddev_mrr=stddev(mrr_samples),
             runs=runs,
             thresholds=dict(self.golden.thresholds),
             per_query=tuple(last_per_query),

@@ -177,7 +177,55 @@ def test_runner_perfect_passes_thresholds():
     assert report.avg_score_positive == pytest.approx(0.9)
     assert report.negative_control_max_score == pytest.approx(0.1)
     assert report.stddev_recall == 0.0
+    assert report.stddev_mrr == 0.0
     assert report.passes_thresholds() is True
+
+
+def test_negative_query_per_row_has_no_recall():
+    golden = _tiny_golden()
+    report = BenchmarkRunner(golden, _PerfectRunner(golden)).run(runs=3)
+    neg = next(row for row in report.per_query if row["band"] == "negative")
+    assert neg["recall_at_3"] is None
+    assert neg["reciprocal_rank"] is None
+    assert neg["top_score"] == pytest.approx(0.1)
+
+
+class _MrrFlakyRunner:
+    """Recall stays perfect, but MRR swings between passes.
+
+    Every pass surfaces the expected hit inside the top-3 (recall@3
+    = 1.0 every pass) but at different ranks on different passes —
+    the kind of flakiness a recall-only stddev gate would miss.
+    Flakiness is pass-level: `_calls_per_pass` tracks when a full
+    pass over the golden set has completed, then the rank flips.
+    """
+
+    def __init__(self, positives_per_pass: int = 2) -> None:
+        self._calls = 0
+        self._positives_per_pass = positives_per_pass
+
+    def run(self, query: str):
+        if query == "q3":  # negative query — doesn't count toward pass tally
+            return [ScoredResult(entity_id="noise", score=0.1)]
+        pass_index = self._calls // self._positives_per_pass
+        self._calls += 1
+        expected = "a" if query == "q1" else "b"
+        if pass_index % 2 == 0:
+            return [ScoredResult(entity_id=expected, score=0.9)]
+        return [
+            ScoredResult(entity_id="x", score=0.85),
+            ScoredResult(entity_id="y", score=0.80),
+            ScoredResult(entity_id=expected, score=0.75),
+        ]
+
+
+def test_stddev_mrr_catches_flakiness_recall_misses():
+    golden = _tiny_golden()
+    report = BenchmarkRunner(golden, _MrrFlakyRunner()).run(runs=3)
+    assert report.recall_at_3 == 1.0
+    assert report.stddev_recall == 0.0  # recall-only gate would pass
+    assert report.stddev_mrr > 0.05      # MRR stddev catches it
+    assert report.passes_thresholds() is False
 
 
 def test_runner_broken_fails_thresholds():
