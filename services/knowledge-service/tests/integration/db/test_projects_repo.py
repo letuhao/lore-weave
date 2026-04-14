@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.db.models import ProjectCreate, ProjectUpdate
+from app.db.repositories import VersionMismatchError
 from app.db.repositories.projects import ProjectsRepo
 
 
@@ -88,6 +89,95 @@ async def test_cross_user_isolation(pool):
     # Delete must not affect it
     assert await repo.delete(user_b, p.project_id) is False
     assert await repo.get(user_a, p.project_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_d_k8_03_update_bumps_version_and_guards_on_expected_version(pool):
+    """D-K8-03: when expected_version is provided, the UPDATE gates on
+    it, bumps the column, and raises VersionMismatchError on conflict.
+    Two-client scenario: A reads v1, B reads v1 and writes v2, A tries
+    to write against v1 and gets VersionMismatchError with the fresh row."""
+    repo = ProjectsRepo(pool)
+    user = uuid4()
+    p = await repo.create(user, _mk("locktest"))
+    assert p.version == 1
+
+    # Client A has v1. Client B writes against v1 and succeeds.
+    updated_b = await repo.update(
+        user,
+        p.project_id,
+        ProjectUpdate(name="by-B"),
+        expected_version=1,
+    )
+    assert updated_b is not None
+    assert updated_b.version == 2
+    assert updated_b.name == "by-B"
+
+    # Client A still thinks the version is 1 — must be rejected.
+    with pytest.raises(VersionMismatchError) as exc_info:
+        await repo.update(
+            user,
+            p.project_id,
+            ProjectUpdate(name="by-A"),
+            expected_version=1,
+        )
+    # The exception carries the CURRENT row so the client can refresh.
+    assert exc_info.value.current.version == 2
+    assert exc_info.value.current.name == "by-B"
+
+    # Defense-in-depth: no overwrite happened.
+    current = await repo.get(user, p.project_id)
+    assert current is not None
+    assert current.name == "by-B"
+    assert current.version == 2
+
+
+@pytest.mark.asyncio
+async def test_d_k8_03_empty_patch_is_noop_does_not_bump_version(pool):
+    """D-K8-03: empty patches still honour the K7b no-op contract —
+    no version bump, no updated_at change. Callers can safely retry
+    empty patches without spuriously incrementing the counter."""
+    repo = ProjectsRepo(pool)
+    user = uuid4()
+    p = await repo.create(user, _mk("noop"))
+    result = await repo.update(
+        user, p.project_id, ProjectUpdate(), expected_version=1
+    )
+    assert result is not None
+    assert result.version == 1  # unchanged
+    assert result.updated_at == p.updated_at  # unchanged
+
+
+@pytest.mark.asyncio
+async def test_d_k8_03_update_without_expected_version_legacy_path(pool):
+    """D-K8-03: when expected_version is None, update() behaves
+    exactly as it did before this change — no version bump, no
+    412. Preserves the legacy caller contract (internal callers
+    that don't need optimistic concurrency)."""
+    repo = ProjectsRepo(pool)
+    user = uuid4()
+    p = await repo.create(user, _mk("legacy"))
+    updated = await repo.update(
+        user, p.project_id, ProjectUpdate(name="new")
+    )
+    assert updated is not None
+    assert updated.name == "new"
+    assert updated.version == 1  # NOT bumped — legacy path
+
+
+@pytest.mark.asyncio
+async def test_d_k8_03_cross_user_with_expected_version_returns_none(pool):
+    """D-K8-03: the 404 (cross-user) case still returns None, not
+    VersionMismatchError. The follow-up SELECT in the repo's zero-row
+    path finds no row for this user_id and bails out cleanly."""
+    repo = ProjectsRepo(pool)
+    user_a = uuid4()
+    user_b = uuid4()
+    p = await repo.create(user_a, _mk("their"))
+    result = await repo.update(
+        user_b, p.project_id, ProjectUpdate(name="hijacked"), expected_version=1
+    )
+    assert result is None
 
 
 @pytest.mark.asyncio

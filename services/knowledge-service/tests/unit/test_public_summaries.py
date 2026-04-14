@@ -82,11 +82,19 @@ class FakeSummariesRepo:
         scope_type: ScopeType,
         scope_id: UUID | None,
         content: str,
+        expected_version: int | None = None,
     ) -> Summary:
         existing = self._rows.get((user_id, scope_type, scope_id))
         if existing is None:
+            # INSERT path — expected_version is ignored; the row didn't
+            # exist so there was nothing for the client to race against.
             row = _make_summary(user_id, scope_type, scope_id, content=content)
         else:
+            # UPDATE path — D-K8-03: if expected_version is set and
+            # doesn't match, raise just like the real repo does.
+            if expected_version is not None and existing.version != expected_version:
+                from app.db.repositories import VersionMismatchError
+                raise VersionMismatchError(existing)
             row = existing.model_copy(update={
                 "content": content,
                 "token_count": max(1, len(content) // 4),
@@ -98,12 +106,18 @@ class FakeSummariesRepo:
         return row
 
     async def upsert_project_scoped(
-        self, user_id: UUID, project_id: UUID, content: str
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        content: str,
+        expected_version: int | None = None,
     ) -> Summary | None:
         # Mirror the CTE: zero rows if the user doesn't own the project.
         if (user_id, project_id) not in self._owned_projects:
             return None
-        return await self.upsert(user_id, "project", project_id, content)
+        return await self.upsert(
+            user_id, "project", project_id, content, expected_version=expected_version
+        )
 
 
 class _ExplodingSummariesRepo(FakeSummariesRepo):
@@ -248,11 +262,19 @@ def test_list_skips_session_and_entity_scopes(
 # ── PATCH /v1/knowledge/summaries/global ─────────────────────────────────
 
 
+# D-K8-03 helper: every subsequent PATCH needs an If-Match header under
+# the new strict contract. First save (no prior row) is the one exception.
+def _im(version: int) -> dict[str, str]:
+    return {"If-Match": f'W/"{version}"'}
+
+
 def test_patch_global_creates(
     client: TestClient,
     summaries_repo: FakeSummariesRepo,
     auth_user_id: UUID,
 ):
+    # D-K8-03: first save is allowed without If-Match because the client
+    # couldn't have obtained an ETag for a row that didn't exist.
     resp = client.patch(
         "/v1/knowledge/summaries/global", json={"content": "hello"}
     )
@@ -260,6 +282,7 @@ def test_patch_global_creates(
     body = resp.json()
     assert body["content"] == "hello"
     assert body["version"] == 1  # K7c-R6: assert clean create version
+    assert resp.headers.get("etag") == 'W/"1"'
     assert (auth_user_id, "global", None) in summaries_repo._rows
     assert summaries_repo.invalidations[-1] == (auth_user_id, "global", None)
 
@@ -271,12 +294,15 @@ def test_patch_global_updates_existing(
 ):
     summaries_repo.seed(_make_summary(auth_user_id, "global", None, "v1"))
     resp = client.patch(
-        "/v1/knowledge/summaries/global", json={"content": "v2"}
+        "/v1/knowledge/summaries/global",
+        json={"content": "v2"},
+        headers=_im(1),
     )
     assert resp.status_code == 200
     body = resp.json()
     assert body["content"] == "v2"
     assert body["version"] == 2
+    assert resp.headers.get("etag") == 'W/"2"'
 
 
 def test_patch_global_empty_content_allowed(
@@ -287,12 +313,51 @@ def test_patch_global_empty_content_allowed(
     """K7.3 spec: empty content keeps the row, does NOT delete."""
     summaries_repo.seed(_make_summary(auth_user_id, "global", None, "old"))
     resp = client.patch(
-        "/v1/knowledge/summaries/global", json={"content": ""}
+        "/v1/knowledge/summaries/global",
+        json={"content": ""},
+        headers=_im(1),
     )
     assert resp.status_code == 200
     assert resp.json()["content"] == ""
     # Row still present.
     assert (auth_user_id, "global", None) in summaries_repo._rows
+
+
+def test_patch_global_update_without_if_match_returns_428(
+    client: TestClient,
+    summaries_repo: FakeSummariesRepo,
+    auth_user_id: UUID,
+):
+    """D-K8-03: update path (row exists) requires If-Match."""
+    summaries_repo.seed(_make_summary(auth_user_id, "global", None, "v1"))
+    resp = client.patch(
+        "/v1/knowledge/summaries/global", json={"content": "v2"}
+    )
+    assert resp.status_code == 428
+    # Row unchanged.
+    assert summaries_repo._rows[(auth_user_id, "global", None)].content == "v1"
+
+
+def test_patch_global_stale_if_match_returns_412(
+    client: TestClient,
+    summaries_repo: FakeSummariesRepo,
+    auth_user_id: UUID,
+):
+    """D-K8-03: stale If-Match returns the current row in the 412 body."""
+    existing = _make_summary(auth_user_id, "global", None, "v3")
+    existing = existing.model_copy(update={"version": 3})
+    summaries_repo.seed(existing)
+    resp = client.patch(
+        "/v1/knowledge/summaries/global",
+        json={"content": "loser"},
+        headers=_im(1),  # stale — real version is 3
+    )
+    assert resp.status_code == 412
+    body = resp.json()
+    assert body["version"] == 3
+    assert body["content"] == "v3"
+    assert resp.headers.get("etag") == 'W/"3"'
+    assert summaries_repo._rows[(auth_user_id, "global", None)].content == "v3"
 
 
 def test_patch_global_oversize_returns_422(client: TestClient):
@@ -327,6 +392,7 @@ def test_patch_project_summary_creates(
 ):
     project_id = uuid4()
     summaries_repo.own_project(auth_user_id, project_id)
+    # First save — no If-Match needed (same as global).
     resp = client.patch(
         f"/v1/knowledge/projects/{project_id}/summary",
         json={"content": "project summary"},
@@ -353,6 +419,7 @@ def test_patch_project_summary_updates(
     resp = client.patch(
         f"/v1/knowledge/projects/{project_id}/summary",
         json={"content": "v2"},
+        headers=_im(1),
     )
     assert resp.status_code == 200
     assert resp.json()["content"] == "v2"
@@ -404,6 +471,24 @@ def test_patch_project_summary_nonexistent_returns_404(
     assert resp.status_code == 404
     assert summaries_repo._rows == {}
     assert summaries_repo.invalidations == []
+
+
+def test_patch_project_summary_update_without_if_match_returns_428(
+    client: TestClient,
+    summaries_repo: FakeSummariesRepo,
+    auth_user_id: UUID,
+):
+    """D-K8-03: project-scoped summary update path requires If-Match."""
+    project_id = uuid4()
+    summaries_repo.own_project(auth_user_id, project_id)
+    summaries_repo.seed(
+        _make_summary(auth_user_id, "project", project_id, "v1")
+    )
+    resp = client.patch(
+        f"/v1/knowledge/projects/{project_id}/summary",
+        json={"content": "v2"},
+    )
+    assert resp.status_code == 428
 
 
 def test_patch_project_summary_oversize_returns_422(

@@ -13,11 +13,12 @@ import asyncpg
 
 from app.context import cache
 from app.db.models import Project, ProjectCreate, ProjectUpdate
+from app.db.repositories import VersionMismatchError
 
 _SELECT_COLS = """
   project_id, user_id, name, description, project_type, book_id, instructions,
   extraction_enabled, extraction_status, embedding_model, extraction_config,
-  last_extracted_at, estimated_cost_usd, actual_cost_usd, is_archived,
+  last_extracted_at, estimated_cost_usd, actual_cost_usd, is_archived, version,
   created_at, updated_at
 """
 
@@ -160,7 +161,11 @@ class ProjectsRepo:
         return _row_to_project(row) if row else None
 
     async def update(
-        self, user_id: UUID, project_id: UUID, patch: ProjectUpdate
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        patch: ProjectUpdate,
+        expected_version: int | None = None,
     ) -> Project | None:
         """Apply a partial update.
 
@@ -172,9 +177,18 @@ class ProjectsRepo:
         - Fields explicitly set to None on a nullable column (book_id)
           CLEAR the column.
         - Empty patch (or a patch whose only fields were skipped) returns
-          the current row unchanged — does NOT touch updated_at.
+          the current row unchanged — does NOT touch updated_at or version.
+          Preserves the K7b no-op contract.
         - Returns None if the project does not exist or belongs to a
           different user.
+
+        D-K8-03: when ``expected_version`` is not None the UPDATE's
+        WHERE clause gates on ``version = $N`` and the SET clause
+        bumps ``version = version + 1``. The 0-row path does a
+        follow-up SELECT so the router can distinguish 404 (row
+        gone) from 412 (row exists with a different version).
+        Raises ``VersionMismatchError`` with the current row on
+        version mismatch.
         """
         raw = patch.model_dump(exclude_unset=True)
         updates: dict[str, object] = {}
@@ -188,6 +202,10 @@ class ProjectsRepo:
             updates[field] = value
 
         if not updates:
+            # No-op: K7b contract preserves updated_at AND version. Even
+            # if the caller passed an expected_version we don't need
+            # to validate it — an empty patch is semantically a no-op
+            # read, and GETs don't require If-Match either.
             return await self.get(user_id, project_id)
 
         set_clauses: list[str] = []
@@ -197,15 +215,36 @@ class ProjectsRepo:
             set_clauses.append(f"{field} = ${len(params)}")
         set_clauses.append("updated_at = now()")
 
+        version_clause = ""
+        if expected_version is not None:
+            params.append(expected_version)
+            version_clause = f" AND version = ${len(params)}"
+            set_clauses.append("version = version + 1")
+
         query = f"""
         UPDATE knowledge_projects
         SET {", ".join(set_clauses)}
-        WHERE user_id = $1 AND project_id = $2
+        WHERE user_id = $1 AND project_id = $2{version_clause}
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(query, *params)
-        return _row_to_project(row) if row else None
+        if row is not None:
+            return _row_to_project(row)
+
+        if expected_version is None:
+            # Legacy path: 0 rows means 404 (not found / cross-user).
+            return None
+
+        # D-K8-03: 0 rows with an expected_version could mean either
+        # 404 or 412. A follow-up GET disambiguates. Race with a
+        # concurrent DELETE would flip 412 → 404 which is acceptable
+        # (the client sees "the row no longer exists" which is the
+        # fresher truth).
+        current = await self.get(user_id, project_id)
+        if current is None:
+            return None
+        raise VersionMismatchError(current)
 
     async def archive(
         self, user_id: UUID, project_id: UUID

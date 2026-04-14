@@ -15,6 +15,7 @@ import asyncpg
 
 from app.context import cache
 from app.db.models import ScopeType, Summary
+from app.db.repositories import VersionMismatchError
 
 _SELECT_COLS = """
   summary_id, user_id, scope_type, scope_id, content, token_count,
@@ -141,8 +142,25 @@ class SummariesRepo:
         scope_type: ScopeType,
         scope_id: UUID | None,
         content: str,
+        expected_version: int | None = None,
     ) -> Summary:
+        """Insert or update a summary.
+
+        D-K8-03: when ``expected_version`` is provided the ON CONFLICT
+        UPDATE branch gates on ``version = $6`` so concurrent writers
+        cannot silently clobber each other. The INSERT branch (first
+        save, no prior row) always succeeds regardless — the client
+        couldn't have obtained an ETag before the row existed. Raises
+        ``VersionMismatchError`` on conflict.
+        """
         token_count = _estimate_tokens(content)
+        # Only guard the UPDATE branch. The INSERT branch runs only when
+        # there's no existing row, so there's nothing to race against.
+        version_predicate = (
+            f" WHERE knowledge_summaries.version = ${6}"
+            if expected_version is not None
+            else ""
+        )
         query = f"""
         INSERT INTO knowledge_summaries
           (user_id, scope_type, scope_id, content, token_count)
@@ -152,21 +170,39 @@ class SummariesRepo:
               token_count = EXCLUDED.token_count,
               version = knowledge_summaries.version + 1,
               updated_at = now()
+          {version_predicate}
         RETURNING {_SELECT_COLS}
         """
+        params: list[object] = [user_id, scope_type, scope_id, content, token_count]
+        if expected_version is not None:
+            params.append(expected_version)
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(
-                query, user_id, scope_type, scope_id, content, token_count
+            row = await conn.fetchrow(query, *params)
+        if row is not None:
+            result = Summary.model_validate(dict(row))
+            _invalidate_cache(user_id, scope_type, scope_id)
+            return result
+
+        # 0 rows with expected_version set ⇒ a row exists but its
+        # version didn't match the predicate. Follow up with a SELECT
+        # to hand the current row back in the 412 body so the client
+        # can refresh its baseline.
+        current = await self.get(user_id, scope_type, scope_id)
+        if current is None:
+            # Shouldn't happen for this code path: if no row existed,
+            # the INSERT branch would have run and produced 1 row.
+            # Defensive — treat as transient and re-raise.
+            raise RuntimeError(
+                "summaries.upsert returned 0 rows with no prior row",
             )
-        result = Summary.model_validate(dict(row))
-        _invalidate_cache(user_id, scope_type, scope_id)
-        return result
+        raise VersionMismatchError(current)
 
     async def upsert_project_scoped(
         self,
         user_id: UUID,
         project_id: UUID,
         content: str,
+        expected_version: int | None = None,
     ) -> Summary | None:
         """Upsert a project-scope summary atomically with an ownership check.
 
@@ -184,8 +220,20 @@ class SummariesRepo:
         Also halves connection-pool usage on the hot edit path versus
         the previous "two repo calls = two pool.acquire() round trips"
         shape used in the K7c BUILD.
+
+        D-K8-03: when ``expected_version`` is provided the UPDATE
+        branch gates on ``knowledge_summaries.version = $5``. A 0-row
+        result now has two possible causes — (a) the user doesn't
+        own the project, or (b) the version didn't match — so we
+        follow up with a GET to distinguish and raise
+        ``VersionMismatchError`` only on (b).
         """
         token_count = _estimate_tokens(content)
+        version_predicate = (
+            f" WHERE knowledge_summaries.version = ${5}"
+            if expected_version is not None
+            else ""
+        )
         query = f"""
         WITH owned AS (
           SELECT 1 FROM knowledge_projects
@@ -201,17 +249,34 @@ class SummariesRepo:
                 token_count = EXCLUDED.token_count,
                 version = knowledge_summaries.version + 1,
                 updated_at = now()
+            {version_predicate}
           RETURNING {_SELECT_COLS}
         )
         SELECT * FROM upserted
         """
+        params: list[object] = [user_id, project_id, content, token_count]
+        if expected_version is not None:
+            params.append(expected_version)
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(query, user_id, project_id, content, token_count)
-        if row is None:
+            row = await conn.fetchrow(query, *params)
+        if row is not None:
+            result = Summary.model_validate(dict(row))
+            _invalidate_cache(user_id, "project", project_id)
+            return result
+
+        if expected_version is None:
+            # Legacy path: 0 rows means "user doesn't own the project"
+            # (or the project doesn't exist at all).
             return None
-        result = Summary.model_validate(dict(row))
-        _invalidate_cache(user_id, "project", project_id)
-        return result
+
+        # With expected_version set, 0 rows could be either ownership
+        # failure OR version mismatch. Follow-up SELECT disambiguates:
+        # a Summary means version mismatch; None means ownership or
+        # row-gone (mapped to None / 404 by the router).
+        current = await self.get(user_id, "project", project_id)
+        if current is None:
+            return None
+        raise VersionMismatchError(current)
 
     async def delete(
         self, user_id: UUID, scope_type: ScopeType, scope_id: UUID | None

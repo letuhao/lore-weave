@@ -126,6 +126,16 @@ BEGIN
 END$$;
 
 -- ═══════════════════════════════════════════════════════════════
+-- D-K8-03 — optimistic concurrency column on knowledge_projects
+-- knowledge_summaries has had `version INT NOT NULL DEFAULT 1` since
+-- the initial K1 DDL; knowledge_projects did not. D-K8-03 needs
+-- version columns on both tables so PATCH endpoints can enforce
+-- If-Match / 412. Existing rows default to version=1 on backfill.
+-- ═══════════════════════════════════════════════════════════════
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1;
+
+-- ═══════════════════════════════════════════════════════════════
 -- K10.3 — extraction fields on knowledge_projects
 -- K1.2 (Track 1) already created embedding_model / extraction_config
 -- / last_extracted_at / estimated_cost_usd / actual_cost_usd, so K10.3

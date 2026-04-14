@@ -16,17 +16,48 @@ returns None which we map to 404.
 """
 
 import base64
+import re
 from datetime import datetime
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.db.models import Project, ProjectCreate, ProjectUpdate
+from app.db.repositories import VersionMismatchError
 from app.db.repositories.projects import ProjectsRepo
 from app.deps import get_projects_repo
 from app.middleware.jwt_auth import get_current_user
+
+# D-K8-03: accept `If-Match: W/"<version>"` or `If-Match: "<version>"`
+# or even the bare integer. Strict about the quoted form but tolerant
+# enough that a curl caller can send plain numbers without surprises.
+_IF_MATCH_PATTERN = re.compile(r'^(?:W/)?"?(\d+)"?$')
+
+
+def _parse_if_match(header_value: str | None) -> int | None:
+    """Return the integer version from an If-Match header, or None
+    if the header is missing. Raises 400 on a malformed header so we
+    don't silently fall through to the strict 428 path."""
+    if header_value is None:
+        return None
+    m = _IF_MATCH_PATTERN.match(header_value.strip())
+    if m is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="If-Match header must be a weak ETag with an integer version",
+        )
+    return int(m.group(1))
+
+
+def _etag(version: int) -> str:
+    """Weak ETag for a versioned row. Weak because the row has more
+    state than just the version (updated_at, denormalized stats, etc.)
+    — two serializations of the same version are *semantically*
+    equal but not necessarily byte-identical."""
+    return f'W/"{version}"'
 
 __all__ = ["router"]
 
@@ -158,12 +189,17 @@ async def create_project(
 @router.get("/{project_id}", response_model=Project)
 async def get_project(
     project_id: UUID,
+    response: Response,
     user_id: UUID = Depends(get_current_user),
     repo: ProjectsRepo = Depends(get_projects_repo),
 ) -> Project:
     project = await repo.get(user_id, project_id)
     if project is None:
         raise _not_found()
+    # D-K8-03: hand the client an ETag so it can send it back on
+    # the next PATCH. Weak form because the row carries more state
+    # than just the version counter (updated_at, stat counters).
+    response.headers["ETag"] = _etag(project.version)
     return project
 
 
@@ -171,6 +207,8 @@ async def get_project(
 async def patch_project(
     project_id: UUID,
     body: ProjectUpdate,
+    response: Response,
+    if_match: str | None = Header(default=None, alias="If-Match"),
     user_id: UUID = Depends(get_current_user),
     repo: ProjectsRepo = Depends(get_projects_repo),
 ) -> Project:
@@ -186,8 +224,33 @@ async def patch_project(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="use POST /v1/knowledge/projects/{id}/archive to archive a project",
         )
+
+    # D-K8-03: strict If-Match — a PATCH that does not name the
+    # version it expects to patch is rejected with 428 Precondition
+    # Required. The FE is expected to have GET'd the row and read
+    # the ETag response header; any PATCH without If-Match is
+    # almost certainly a stale client that hasn't been updated.
+    expected_version = _parse_if_match(if_match)
+    if expected_version is None:
+        raise HTTPException(
+            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+            detail="If-Match header required — GET the row first to obtain an ETag",
+        )
+
     try:
-        updated = await repo.update(user_id, project_id, body)
+        updated = await repo.update(
+            user_id, project_id, body, expected_version=expected_version
+        )
+    except VersionMismatchError as exc:
+        # 412 body is the current row so the FE can refresh its
+        # baseline without a second GET. ETag header also refreshed
+        # so the client can immediately retry with the new value.
+        assert isinstance(exc.current, Project)
+        return JSONResponse(
+            status_code=status.HTTP_412_PRECONDITION_FAILED,
+            content=exc.current.model_dump(mode="json"),
+            headers={"ETag": _etag(exc.current.version)},
+        )
     except asyncpg.CheckViolationError as exc:
         # Length CHECK constraints (K7 D-K1-02 cleanup) — Pydantic
         # already gates the public surface, but defense-in-depth means
@@ -198,6 +261,7 @@ async def patch_project(
         )
     if updated is None:
         raise _not_found()
+    response.headers["ETag"] = _etag(updated.version)
     return updated
 
 

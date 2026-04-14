@@ -70,7 +70,10 @@
       "restored": "已還原專案",
       "restoreFailed": "還原失敗",
       "deleted": "已刪除專案",
-      "deleteFailed": "刪除失敗"
+      "deleteFailed": "刪除失敗",
+      "created": "已建立專案",
+      "updated": "已更新專案",
+      "conflict": "另一個裝置已修改此專案。請先檢視最新內容再儲存。"
     }
   },
   "global": {
@@ -83,7 +86,8 @@
     "save": "儲存",
     "saved": "已儲存全域簡介",
     "saveFailed": "儲存失敗",
-    "version": "v{{version}}"
+    "version": "v{{version}}",
+    "conflict": "另一個裝置已更新此簡介。請先檢視最新內容再儲存。"
   },
   "indicator": {
     "label": "記憶指示器",

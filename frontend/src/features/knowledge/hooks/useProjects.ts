@@ -39,8 +39,21 @@ export function useProjects(includeArchived: boolean) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (args: { projectId: string; payload: ProjectUpdatePayload }) =>
-      knowledgeApi.updateProject(args.projectId, args.payload, accessToken!),
+    // D-K8-03: caller must supply `expectedVersion` captured at open
+    // time. The hook passes it through to the knowledgeApi layer,
+    // which sets If-Match. On 412 the caller catches via
+    // isVersionConflict() and refreshes its baseline.
+    mutationFn: (args: {
+      projectId: string;
+      payload: ProjectUpdatePayload;
+      expectedVersion: number;
+    }) =>
+      knowledgeApi.updateProject(
+        args.projectId,
+        args.payload,
+        accessToken!,
+        args.expectedVersion,
+      ),
     onSuccess: invalidate,
   });
 

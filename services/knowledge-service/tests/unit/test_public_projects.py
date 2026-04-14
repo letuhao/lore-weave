@@ -34,6 +34,7 @@ def _make_project(
     name: str = "Untitled",
     created_at: datetime | None = None,
     is_archived: bool = False,
+    version: int = 1,
 ) -> Project:
     now = created_at or datetime.now(timezone.utc)
     return Project(
@@ -52,6 +53,7 @@ def _make_project(
         estimated_cost_usd=Decimal("0"),
         actual_cost_usd=Decimal("0"),
         is_archived=is_archived,
+        version=version,
         created_at=now,
         updated_at=now,
     )
@@ -108,7 +110,11 @@ class FakeProjectsRepo:
         return proj
 
     async def update(
-        self, user_id: UUID, project_id: UUID, patch: ProjectUpdate
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        patch: ProjectUpdate,
+        expected_version: int | None = None,
     ) -> Project | None:
         existing = self._rows.get((user_id, project_id))
         if existing is None:
@@ -119,6 +125,15 @@ class FakeProjectsRepo:
         for f in ("name", "description", "instructions"):
             if raw.get(f) is None:
                 raw.pop(f, None)
+        # K7b no-op contract: empty patch returns current row without
+        # bumping version or updated_at. Mirror for D-K8-03.
+        if not raw:
+            return existing
+        # D-K8-03: enforce expected_version only on actual updates.
+        if expected_version is not None and existing.version != expected_version:
+            from app.db.repositories import VersionMismatchError
+            raise VersionMismatchError(existing)
+        raw["version"] = existing.version + (1 if expected_version is not None else 0)
         updated = existing.model_copy(update=raw)
         self.seed(updated)
         return updated
@@ -328,6 +343,12 @@ def test_get_nonexistent_returns_404(client: TestClient):
 # ── patch ────────────────────────────────────────────────────────────────
 
 
+# D-K8-03 helper: every PATCH needs an If-Match header under the new
+# strict contract. Centralised so tests read cleanly.
+def _im(version: int) -> dict[str, str]:
+    return {"If-Match": f'W/"{version}"'}
+
+
 def test_patch_partial_update(
     client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
 ):
@@ -337,9 +358,13 @@ def test_patch_partial_update(
     resp = client.patch(
         f"/v1/knowledge/projects/{proj.project_id}",
         json={"name": "new"},
+        headers=_im(proj.version),
     )
     assert resp.status_code == 200
     assert resp.json()["name"] == "new"
+    # D-K8-03: version bumped + ETag header set.
+    assert resp.json()["version"] == proj.version + 1
+    assert resp.headers.get("etag") == f'W/"{proj.version + 1}"'
 
 
 def test_patch_restore_via_is_archived_false(
@@ -353,6 +378,7 @@ def test_patch_restore_via_is_archived_false(
     resp = client.patch(
         f"/v1/knowledge/projects/{proj.project_id}",
         json={"is_archived": False},
+        headers=_im(proj.version),
     )
     assert resp.status_code == 200
     assert resp.json()["is_archived"] is False
@@ -371,6 +397,7 @@ def test_patch_archive_via_is_archived_true_rejected(
     resp = client.patch(
         f"/v1/knowledge/projects/{proj.project_id}",
         json={"is_archived": True},
+        headers=_im(proj.version),
     )
     assert resp.status_code == 422
     assert "POST" in resp.json()["detail"]
@@ -389,6 +416,7 @@ def test_patch_cross_user_returns_404(
     resp = client.patch(
         f"/v1/knowledge/projects/{proj.project_id}",
         json={"name": "hijacked"},
+        headers=_im(proj.version),
     )
     assert resp.status_code == 404
 
@@ -402,8 +430,94 @@ def test_patch_oversize_instructions_rejected(
     resp = client.patch(
         f"/v1/knowledge/projects/{proj.project_id}",
         json={"instructions": "x" * 20001},
+        headers=_im(proj.version),
     )
     assert resp.status_code == 422
+
+
+def test_patch_missing_if_match_returns_428(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """D-K8-03: strict If-Match. PATCH without If-Match → 428."""
+    proj = _make_project(auth_user_id, name="strict")
+    repo.seed(proj)
+
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"name": "loose"},
+    )
+    assert resp.status_code == 428
+    # Row must be unchanged.
+    assert repo._rows[(auth_user_id, proj.project_id)].name == "strict"
+
+
+def test_patch_malformed_if_match_returns_400(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """D-K8-03: malformed If-Match → 400 (not 428 — we want to
+    distinguish "didn't send a header" from "sent garbage")."""
+    proj = _make_project(auth_user_id, name="strict")
+    repo.seed(proj)
+
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"name": "loose"},
+        headers={"If-Match": "not-a-version"},
+    )
+    assert resp.status_code == 400
+
+
+def test_patch_stale_if_match_returns_412_with_current_row(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """D-K8-03: If-Match with a version that doesn't match the row's
+    current version → 412 + current row in body + fresh ETag. Client
+    uses the body to refresh its baseline."""
+    proj = _make_project(auth_user_id, name="a", version=5)
+    repo.seed(proj)
+
+    resp = client.patch(
+        f"/v1/knowledge/projects/{proj.project_id}",
+        json={"name": "b"},
+        headers=_im(3),  # stale: the real version is 5
+    )
+    assert resp.status_code == 412
+    body = resp.json()
+    assert body["version"] == 5  # current row is in the body
+    assert body["name"] == "a"  # and it's unchanged
+    assert resp.headers.get("etag") == 'W/"5"'
+    # Row must be unchanged in the repo.
+    assert repo._rows[(auth_user_id, proj.project_id)].name == "a"
+    assert repo._rows[(auth_user_id, proj.project_id)].version == 5
+
+
+def test_patch_valid_if_match_accepts_various_formats(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """D-K8-03: accept W/"<n>", "<n>", and bare <n> formats."""
+    for header_value in ('W/"1"', '"1"', "1"):
+        proj = _make_project(auth_user_id, name="x", version=1)
+        repo.seed(proj)
+        resp = client.patch(
+            f"/v1/knowledge/projects/{proj.project_id}",
+            json={"name": f"from-{header_value}"},
+            headers={"If-Match": header_value},
+        )
+        assert resp.status_code == 200, f"format {header_value!r} rejected"
+        # Reset for the next iteration so version=1 again.
+        repo._rows.pop((auth_user_id, proj.project_id), None)
+
+
+def test_get_sets_etag_header(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """D-K8-03: GET returns a W/"<version>" ETag so the FE can send
+    it back in the next PATCH."""
+    proj = _make_project(auth_user_id, version=7)
+    repo.seed(proj)
+    resp = client.get(f"/v1/knowledge/projects/{proj.project_id}")
+    assert resp.status_code == 200
+    assert resp.headers.get("etag") == 'W/"7"'
 
 
 # ── archive ──────────────────────────────────────────────────────────────
@@ -520,6 +634,7 @@ def test_patch_db_check_violation_maps_to_422(
     resp = client.patch(
         f"/v1/knowledge/projects/{proj.project_id}",
         json={"instructions": "ok-for-pydantic"},
+        headers=_im(proj.version),
     )
     assert resp.status_code == 422
     assert "knowledge_projects_instructions_len" in resp.json()["detail"]

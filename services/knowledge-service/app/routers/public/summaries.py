@@ -19,13 +19,16 @@ project_id they don't own.
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.models import Summary, SummaryContent
+from app.db.repositories import VersionMismatchError
 from app.db.repositories.summaries import SummariesRepo
 from app.deps import get_summaries_repo
 from app.middleware.jwt_auth import get_current_user
+from app.routers.public.projects import _etag, _parse_if_match
 
 __all__ = ["router"]
 
@@ -91,16 +94,52 @@ async def list_summaries(
     return SummariesListResponse(global_=global_row, projects=projects)
 
 
+def _version_mismatch_response(current: Summary) -> JSONResponse:
+    """412 envelope for a Summary version conflict. Body is the current
+    row so the client can refresh its baseline in one round-trip."""
+    return JSONResponse(
+        status_code=status.HTTP_412_PRECONDITION_FAILED,
+        content=current.model_dump(mode="json", by_alias=True),
+        headers={"ETag": _etag(current.version)},
+    )
+
+
 @router.patch("/summaries/global", response_model=Summary)
 async def update_global_summary(
     body: SummaryUpdate,
+    response: Response,
+    if_match: str | None = Header(default=None, alias="If-Match"),
     user_id: UUID = Depends(get_current_user),
     repo: SummariesRepo = Depends(get_summaries_repo),
 ) -> Summary:
+    # D-K8-03: strict If-Match. The FIRST save (no prior row) is
+    # allowed without a version check — INSERT path always succeeds
+    # and there's nothing to race against. Subsequent saves MUST
+    # send a version. The FE reads summary.version from the GET
+    # /v1/knowledge/summaries list body and derives the ETag.
+    expected_version = _parse_if_match(if_match)
+    if expected_version is None:
+        # Allow only when there's no prior row (first-save case).
+        existing = await repo.get(user_id, "global", None)
+        if existing is not None:
+            raise HTTPException(
+                status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+                detail=(
+                    "If-Match header required — read summary.version from "
+                    "GET /v1/knowledge/summaries and send it back"
+                ),
+            )
     try:
-        return await repo.upsert(user_id, "global", None, body.content)
+        result = await repo.upsert(
+            user_id, "global", None, body.content, expected_version=expected_version
+        )
+    except VersionMismatchError as exc:
+        assert isinstance(exc.current, Summary)
+        return _version_mismatch_response(exc.current)
     except asyncpg.CheckViolationError as exc:
         raise _check_violation(exc)
+    response.headers["ETag"] = _etag(result.version)
+    return result
 
 
 @router.patch(
@@ -110,6 +149,8 @@ async def update_global_summary(
 async def update_project_summary(
     project_id: UUID,
     body: SummaryUpdate,
+    response: Response,
+    if_match: str | None = Header(default=None, alias="If-Match"),
     user_id: UUID = Depends(get_current_user),
     repo: SummariesRepo = Depends(get_summaries_repo),
 ) -> Summary:
@@ -117,8 +158,28 @@ async def update_project_summary(
     # one pool acquisition. Returns None if the user does not own the
     # project (cross-user OR nonexistent), which we collapse to 404
     # per KSA §6.4 don't-leak-existence rule.
+
+    # D-K8-03: same strict-If-Match contract as the global route.
+    # First-save is allowed unconditionally; subsequent saves must
+    # carry a version.
+    expected_version = _parse_if_match(if_match)
+    if expected_version is None:
+        existing = await repo.get(user_id, "project", project_id)
+        if existing is not None:
+            raise HTTPException(
+                status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+                detail=(
+                    "If-Match header required — read summary.version from "
+                    "GET /v1/knowledge/summaries and send it back"
+                ),
+            )
     try:
-        result = await repo.upsert_project_scoped(user_id, project_id, body.content)
+        result = await repo.upsert_project_scoped(
+            user_id, project_id, body.content, expected_version=expected_version
+        )
+    except VersionMismatchError as exc:
+        assert isinstance(exc.current, Summary)
+        return _version_mismatch_response(exc.current)
     except asyncpg.CheckViolationError as exc:
         raise _check_violation(exc)
     if result is None:
@@ -126,4 +187,5 @@ async def update_project_summary(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="project not found",
         )
+    response.headers["ETag"] = _etag(result.version)
     return result

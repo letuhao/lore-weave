@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { Skeleton } from '@/components/shared';
+import { isVersionConflict } from '../api';
 import { useSummaries } from '../hooks/useSummaries';
+import type { Summary } from '../types';
 
 // Mirrors SummaryContent = Annotated[str, StringConstraints(max_length=50000)]
 // in services/knowledge-service/app/db/models.py. Same pattern as
@@ -18,6 +20,12 @@ export function GlobalBioTab() {
   // Track the server-side content we last synced against so we can
   // detect unsaved edits without making setState in the render path.
   const [baseline, setBaseline] = useState('');
+  // D-K8-03: track the version the `baseline` was captured at. null
+  // means we've never seen a prior row (fresh user, no global bio),
+  // which is the one case where PATCH without If-Match is legal.
+  // Bumped on every successful save OR on a 412 (refreshed from the
+  // server's current row).
+  const [baselineVersion, setBaselineVersion] = useState<number | null>(null);
   // K8.3-R4: contentRef + baselineRef let the effect below read the
   // latest values without re-subscribing (would cause an infinite
   // loop). We need them to skip server-sync when the local buffer
@@ -30,10 +38,12 @@ export function GlobalBioTab() {
 
   useEffect(() => {
     const next = global?.content ?? '';
+    const nextVersion = global?.version ?? null;
     if (contentRef.current === baselineRef.current) {
       // No unsaved edits — sync both from the server.
       setContent(next);
       setBaseline(next);
+      setBaselineVersion(nextVersion);
       return;
     }
     // Gate-5-I3: when the server has caught up to our local
@@ -42,11 +52,13 @@ export function GlobalBioTab() {
     // away. Don't touch `content` (already equals next).
     if (contentRef.current === next) {
       setBaseline(next);
+      setBaselineVersion(nextVersion);
       return;
     }
     // Otherwise the user has unsaved edits AND the server differs
-    // — keep local edits, same lost-update surface tracked as
-    // D-K8-03. K8.3-R4 protects in-flight typing.
+    // — keep local edits. handleSave will still send the stale
+    // baselineVersion in If-Match; the backend will reject with
+    // 412 and the handler refreshes from the response body.
   }, [global?.content, global?.version]);
 
   const trimmed = content.trim();
@@ -64,10 +76,30 @@ export function GlobalBioTab() {
       // the whitespace-only case to "" so it acts as a clear, since
       // the backend treats "" as "no global bio set".
       const payload = trimmed === '' ? '' : content;
-      await updateGlobal({ content: payload });
+      await updateGlobal({
+        payload: { content: payload },
+        // D-K8-03: first save (no prior row) sends null; subsequent
+        // saves send the version captured at the last sync.
+        expectedVersion: baselineVersion,
+      });
       toast.success(t('global.saved'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('global.saveFailed'));
+      // D-K8-03: 412 — another device beat us to it. Refresh the
+      // baseline to the server's current row AND keep the user's
+      // unsaved text so they can re-apply on top. The response body
+      // is the fresh Summary.
+      if (isVersionConflict<Summary>(err)) {
+        setBaseline(err.current.content);
+        setBaselineVersion(err.current.version);
+        toast.error(
+          t('global.conflict', {
+            defaultValue:
+              'Another device updated this bio. Review the latest and save again.',
+          }),
+        );
+      } else {
+        toast.error(err instanceof Error ? err.message : t('global.saveFailed'));
+      }
     }
   };
 

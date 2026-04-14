@@ -40,6 +40,7 @@ class Project(BaseModel):
     estimated_cost_usd: Decimal
     actual_cost_usd: Decimal
     is_archived: bool
+    version: int  # D-K8-03: bumped on every non-empty PATCH.
     created_at: datetime
     updated_at: datetime
 

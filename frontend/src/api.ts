@@ -37,9 +37,13 @@ export async function apiJson<T>(
       return undefined as T;
     }
     const err = body as ApiError;
-    throw Object.assign(new Error(err.message || res.statusText), {
+    // D-K8-03: attach the parsed response body to the thrown error
+    // so callers handling 412 Precondition Failed can read the
+    // current row out of it without a second round-trip.
+    throw Object.assign(new Error(err?.message || res.statusText), {
       status: res.status,
-      code: err.code,
+      code: err?.code,
+      body,
     });
   }
   return body as T;

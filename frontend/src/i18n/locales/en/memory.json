@@ -70,7 +70,10 @@
       "restored": "Project restored",
       "restoreFailed": "Restore failed",
       "deleted": "Project deleted",
-      "deleteFailed": "Delete failed"
+      "deleteFailed": "Delete failed",
+      "created": "Project created",
+      "updated": "Project updated",
+      "conflict": "Another device modified this project. Review the latest and save again."
     }
   },
   "global": {
@@ -83,7 +86,8 @@
     "save": "Save",
     "saved": "Global bio saved",
     "saveFailed": "Save failed",
-    "version": "v{{version}}"
+    "version": "v{{version}}",
+    "conflict": "Another device updated this bio. Review the latest and save again."
   },
   "indicator": {
     "label": "Memory indicator",

@@ -22,8 +22,18 @@ export function useSummaries() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: QUERY_KEY });
 
   const updateGlobalMutation = useMutation({
-    mutationFn: (payload: SummaryUpdatePayload) =>
-      knowledgeApi.updateGlobalSummary(payload, accessToken!),
+    // D-K8-03: `expectedVersion` is null on the very first save
+    // (no prior row) and the row's current version on every
+    // subsequent save.
+    mutationFn: (args: {
+      payload: SummaryUpdatePayload;
+      expectedVersion: number | null;
+    }) =>
+      knowledgeApi.updateGlobalSummary(
+        args.payload,
+        accessToken!,
+        args.expectedVersion,
+      ),
     onSuccess: invalidate,
   });
 

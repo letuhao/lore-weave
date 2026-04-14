@@ -70,7 +70,10 @@
       "restored": "Đã khôi phục dự án",
       "restoreFailed": "Khôi phục thất bại",
       "deleted": "Đã xóa dự án",
-      "deleteFailed": "Xóa thất bại"
+      "deleteFailed": "Xóa thất bại",
+      "created": "Đã tạo dự án",
+      "updated": "Đã cập nhật dự án",
+      "conflict": "Một thiết bị khác đã chỉnh sửa dự án này. Hãy xem bản mới nhất và lưu lại."
     }
   },
   "global": {
@@ -83,7 +86,8 @@
     "save": "Lưu",
     "saved": "Đã lưu tiểu sử chung",
     "saveFailed": "Lưu thất bại",
-    "version": "v{{version}}"
+    "version": "v{{version}}",
+    "conflict": "Một thiết bị khác đã cập nhật tiểu sử này. Hãy xem bản mới nhất và lưu lại."
   },
   "indicator": {
     "label": "Chỉ báo bộ nhớ",

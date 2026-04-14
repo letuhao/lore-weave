@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { FormDialog } from '@/components/shared';
+import { isVersionConflict } from '../api';
 import type {
   Project,
   ProjectCreatePayload,
@@ -26,7 +27,12 @@ interface Props {
   mode: Mode;
   project?: Project | null;
   onCreate: (payload: ProjectCreatePayload) => Promise<Project>;
-  onUpdate: (projectId: string, payload: ProjectUpdatePayload) => Promise<Project>;
+  // D-K8-03: update passes the expected version captured at open time.
+  onUpdate: (
+    projectId: string,
+    payload: ProjectUpdatePayload,
+    expectedVersion: number,
+  ) => Promise<Project>;
 }
 
 export function ProjectFormModal({
@@ -44,6 +50,10 @@ export function ProjectFormModal({
   const [instructions, setInstructions] = useState('');
   const [bookId, setBookId] = useState('');
   const [saving, setSaving] = useState(false);
+  // D-K8-03: track the version at dialog open time so we can send it
+  // back in If-Match on save. Updated on 412 so the user can retry
+  // against the fresh row without closing the dialog.
+  const [baselineVersion, setBaselineVersion] = useState<number | null>(null);
   // K8.2-R2: track whether the dialog is still open when an in-flight
   // save resolves. If the user hit Cancel/X mid-save we skip the
   // success toast and the stray setState — the action was effectively
@@ -66,12 +76,14 @@ export function ProjectFormModal({
       setProjectType(project.project_type);
       setInstructions(project.instructions);
       setBookId(project.book_id ?? '');
+      setBaselineVersion(project.version);
     } else {
       setName('');
       setDescription('');
       setProjectType('general');
       setInstructions('');
       setBookId('');
+      setBaselineVersion(null);
     }
   }, [open, mode, project]);
 
@@ -99,21 +111,45 @@ export function ProjectFormModal({
           instructions: trimmedInstructions,
           book_id: bookIdPayload,
         });
-      } else if (project) {
-        await onUpdate(project.project_id, {
-          name: trimmedName,
-          description: trimmedDescription,
-          instructions: trimmedInstructions,
-          book_id: bookIdPayload,
-        });
+      } else if (project && baselineVersion != null) {
+        await onUpdate(
+          project.project_id,
+          {
+            name: trimmedName,
+            description: trimmedDescription,
+            instructions: trimmedInstructions,
+            book_id: bookIdPayload,
+          },
+          baselineVersion,
+        );
       }
       if (openRef.current) {
-        toast.success(mode === 'create' ? 'Project created' : 'Project updated');
+        toast.success(
+          mode === 'create'
+            ? t('projects.toast.created', { defaultValue: 'Project created' })
+            : t('projects.toast.updated', { defaultValue: 'Project updated' }),
+        );
         onOpenChange(false);
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Save failed';
-      toast.error(msg);
+      // D-K8-03: 412 Precondition Failed — another device modified
+      // the project since this dialog opened. Refresh the baseline
+      // to the fresh server state and keep the dialog open so the
+      // user can review the diff and retry. We deliberately do NOT
+      // overwrite the form fields — the user's edits are preserved
+      // so they can re-apply them on top of the fresh row.
+      if (isVersionConflict<Project>(err)) {
+        setBaselineVersion(err.current.version);
+        toast.error(
+          t('projects.toast.conflict', {
+            defaultValue:
+              'Another device modified this project. Review the latest and save again.',
+          }),
+        );
+      } else {
+        const msg = err instanceof Error ? err.message : 'Save failed';
+        toast.error(msg);
+      }
     } finally {
       if (openRef.current) setSaving(false);
     }

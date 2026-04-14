@@ -48,6 +48,7 @@ def _make_project(
         estimated_cost_usd=Decimal("0"),
         actual_cost_usd=Decimal("0"),
         is_archived=is_archived,
+        version=1,
         created_at=now,
         updated_at=now,
     )

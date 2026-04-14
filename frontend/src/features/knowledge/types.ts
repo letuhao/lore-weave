@@ -30,6 +30,9 @@ export interface Project {
   estimated_cost_usd: string;
   actual_cost_usd: string;
   is_archived: boolean;
+  // D-K8-03: bumped on every non-empty PATCH. FE captures it on
+  // dialog open and sends it back in If-Match to detect lost updates.
+  version: number;
   created_at: string;
   updated_at: string;
 }

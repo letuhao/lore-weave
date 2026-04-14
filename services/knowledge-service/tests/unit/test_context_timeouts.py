@@ -54,6 +54,7 @@ def _project(user_id, book_id=None) -> Project:
         estimated_cost_usd=Decimal("0"),
         actual_cost_usd=Decimal("0"),
         is_archived=False,
+        version=1,
         created_at=now,
         updated_at=now,
     )

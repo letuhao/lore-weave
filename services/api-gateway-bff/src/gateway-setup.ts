@@ -28,7 +28,17 @@ export function configureGatewayApp(
   app.enableCors({
     origin: true,
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    // D-K8-03: `If-Match` carries the weak ETag the FE captured on
+    // GET. Without an explicit entry here the CORS preflight
+    // (OPTIONS) rejects any PATCH that includes it, even though
+    // the actual verb would have been allowed.
+    allowedHeaders: ['Content-Type', 'Authorization', 'If-Match'],
+    // ETag is a response header, not a request header. Browsers
+    // expose a small default set (Content-Type, etc.) to JS; any
+    // non-default header must be explicitly exposed. The FE only
+    // needs ETag for round-tripping but exposing it anyway keeps
+    // the API usable from non-LoreWeave frontends.
+    exposedHeaders: ['ETag'],
   });
 
   const authProxy = createProxyMiddleware({

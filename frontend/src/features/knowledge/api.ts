@@ -13,6 +13,37 @@ import type {
 
 const BASE = '/v1/knowledge';
 
+// D-K8-03: weak ETag format used by the knowledge-service routes.
+const ifMatch = (version: number): Record<string, string> => ({
+  'If-Match': `W/"${version}"`,
+});
+
+/**
+ * D-K8-03: type-guarded helper for catching 412 Precondition Failed
+ * errors from PATCH calls. The backend returns the CURRENT row in
+ * the 412 body so callers can refresh their baseline in one
+ * round-trip — no second GET needed.
+ *
+ * Usage:
+ *   try { await knowledgeApi.updateProject(...) }
+ *   catch (err) {
+ *     if (isVersionConflict<Project>(err)) {
+ *       // err.current is the fresh Project — update state and retry.
+ *     }
+ *   }
+ */
+export function isVersionConflict<T>(
+  err: unknown,
+): err is Error & { status: 412; current: T } {
+  if (!(err instanceof Error)) return false;
+  const e = err as Error & { status?: number; body?: unknown };
+  if (e.status !== 412) return false;
+  if (e.body == null || typeof e.body !== 'object') return false;
+  // Attach `current` once for convenience — idempotent.
+  (e as unknown as { current: T }).current = e.body as T;
+  return true;
+}
+
 // Mirrors the helper in src/api.ts — needed for raw `fetch()` calls
 // (the export endpoint streams a file and can't go through apiJson).
 // Keeping this local matches the pattern in src/features/books/api.ts.
@@ -55,11 +86,15 @@ export const knowledgeApi = {
     projectId: string,
     payload: ProjectUpdatePayload,
     token: string,
+    expectedVersion: number,
   ): Promise<Project> {
+    // D-K8-03: If-Match is strictly required for PATCH. The backend
+    // returns 428 if the header is missing, 412 if it's stale.
     return apiJson<Project>(`${BASE}/projects/${projectId}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
       token,
+      headers: ifMatch(expectedVersion),
     });
   },
 
@@ -86,11 +121,16 @@ export const knowledgeApi = {
   updateGlobalSummary(
     payload: SummaryUpdatePayload,
     token: string,
+    expectedVersion: number | null,
   ): Promise<Summary> {
+    // D-K8-03: If-Match is required for update path. null means
+    // "first save" — no prior row, so no version to match. The
+    // backend allows it; subsequent saves must send a version.
     return apiJson<Summary>(`${BASE}/summaries/global`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
       token,
+      headers: expectedVersion != null ? ifMatch(expectedVersion) : undefined,
     });
   },
 
@@ -98,11 +138,13 @@ export const knowledgeApi = {
     projectId: string,
     payload: SummaryUpdatePayload,
     token: string,
+    expectedVersion: number | null,
   ): Promise<Summary> {
     return apiJson<Summary>(`${BASE}/projects/${projectId}/summary`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
       token,
+      headers: expectedVersion != null ? ifMatch(expectedVersion) : undefined,
     });
   },
 

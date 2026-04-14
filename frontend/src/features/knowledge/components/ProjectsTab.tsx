@@ -68,6 +68,10 @@ export function ProjectsTab() {
       await updateProject({
         projectId: project.project_id,
         payload: { is_archived: false },
+        // D-K8-03: pass the captured version so a stale Show-archived
+        // list snapshot can't silently win against an edit from
+        // another device.
+        expectedVersion: project.version,
       });
       toast.success(t('projects.toast.restored'));
     } catch (err) {
@@ -177,7 +181,9 @@ export function ProjectsTab() {
         mode={modalMode ?? 'create'}
         project={editTarget}
         onCreate={createProject}
-        onUpdate={(projectId, payload) => updateProject({ projectId, payload })}
+        onUpdate={(projectId, payload, expectedVersion) =>
+          updateProject({ projectId, payload, expectedVersion })
+        }
       />
 
       <ConfirmDialog
