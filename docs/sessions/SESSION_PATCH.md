@@ -7,11 +7,11 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 39 — Track 1 ✅ **100% CLOSED**. Gate 4 + Gate 5 + K-CLEAN cluster + D-K8 correctness cluster + T01-T19 e2e + D-K2a standalone glossary pass ALL COMPLETE.)
-- Updated By: Assistant (session 39 absolute end: after T01-T19 the user audited the deferred-items table and asked whether Track 1 was actually done. Two items remained — D-K2a-01 and D-K2a-02, glossary-service summary defense-in-depth CHECKs carried since K2a as "standalone glossary-service pass" that was never scheduled. Landed in one focused commit: `shortDescConstraintsSQL` in migrate.go adds two CHECKs (non-empty OR NULL, length ≤ 500 chars) with an idempotent backfill for any pre-existing empty-string rows. Wired into main.go after UpShortDescAuto. Live verified on the compose stack: empty-string and 501-char writes both rejected by the DB, 500-char and NULL writes accepted. T01-T19 still 6/6 green. Track 1 deferred items now contain ZERO Track 1-tagged work — everything remaining is Track 2 (D-K8-02 partial, D-T2-*), fix-on-pain perf (P-K*), or conscious won't-fix. Session 39 commit total: 17.)
+- Last Updated: 2026-04-15 (session 39 extended — Track 1 closed + **K10.4 extraction_jobs repo = first Track 2 task landed**)
+- Updated By: Assistant (after Track 1 closed, proceeded directly into Track 2 with K10.4. Money-critical atomic try_spend repo ships first because K11/K17 depend on its budget-cap contract. Single-statement UPDATE with CASE expression on pre-update `cost_spent_usd` per KSA §5.5. 14 integration tests including two concurrency race harnesses (10 workers × $0.15 vs $1.00, 20 workers × $0.05 vs $0.50). Full knowledge-service suite: 414 passing (was 400). Plan doc K10.4 checkbox flipped. Session 39 commit total: 19.)
 - Active Branch: `main` (ahead of origin by session-38 + session-39 commits — user pushes manually)
-- HEAD: `0b6c29a` — D-K2a-01 + D-K2a-02 short_description defense-in-depth CHECKs
-- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` — Track 1 closing handoff for next agent
+- HEAD: `d02d346` — K10.4 extraction_jobs repository + atomic try_spend
+- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
 ---
@@ -116,6 +116,81 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K10.4 extraction_jobs repository + atomic try_spend ✅ (session 39, first Track 2 task)
+
+**Goal:** unblock K11/K17 extraction pipeline by landing the money-critical atomic cost reservation repo that the extraction worker loop will call on every item. Per KSA §5.5 the atomic pattern is a single-statement UPDATE with CASE expressions on the pre-update row — the naive "SELECT cost then UPDATE" shape has a TOCTOU window that can let two parallel workers both blow past the cap.
+
+**Commit:** `d02d346` — 11 repo methods, 4 Pydantic/dataclass models, 14 integration tests, 792 LOC added. Plan doc K10.4 checkbox flipped `[ ]` → `[✓]`.
+
+**Files:**
+- [services/knowledge-service/app/db/repositories/extraction_jobs.py](services/knowledge-service/app/db/repositories/extraction_jobs.py) — NEW
+- [services/knowledge-service/tests/integration/db/test_extraction_jobs_repo.py](services/knowledge-service/tests/integration/db/test_extraction_jobs_repo.py) — NEW
+
+**Repo surface** (all user_id-scoped per the security rule):
+- `create` / `get` / `list_for_project` / `list_active`
+- `update_status` (also manages `started_at`/`paused_at`/`completed_at` via CASE)
+- `complete` / `cancel` — convenience wrappers
+- `advance_cursor` — worker progress persistence
+- `try_spend` — **atomic cost reservation**, returns `TrySpendResult(outcome=reserved|auto_paused|not_running)`
+
+**Atomic SQL (do NOT refactor to SELECT-then-UPDATE):**
+
+```sql
+UPDATE extraction_jobs
+SET
+  cost_spent_usd = cost_spent_usd + $3,
+  status = CASE
+    WHEN max_spend_usd IS NOT NULL
+         AND cost_spent_usd + $3 >= max_spend_usd
+      THEN 'paused'
+    ELSE status
+  END,
+  paused_at = CASE
+    WHEN max_spend_usd IS NOT NULL
+         AND cost_spent_usd + $3 >= max_spend_usd
+      THEN now()
+    ELSE paused_at
+  END,
+  updated_at = now()
+WHERE user_id = $1 AND job_id = $2 AND status = 'running'
+RETURNING cost_spent_usd, status
+```
+
+**Key behaviours:**
+
+1. **`max_spend_usd IS NULL` = unlimited budget.** The CASE predicate evaluates to NULL (not TRUE), status stays `running`. Verified by `test_k10_4_try_spend_null_budget_is_unlimited` (5 × $100 against null cap, all reserved).
+
+2. **Worst-case one-item overshoot.** The 7th worker in a 10 × $0.15 / $1.00-cap race WINS their reservation even though it trips auto-pause; subsequent workers see `status='paused'` and match 0 rows. Total reserved = 7 × $0.15 = $1.05 ≤ `max + one_item`. Matches KSA §5.5 design.
+
+3. **Status machine is NOT enforced** at the repo layer for `update_status` — the extraction worker is single-purpose and trusted. Only `try_spend` enforces `status='running'` because that's the one where a stale caller's wrong-status write could leak money.
+
+4. **Worker code contract:**
+   - `reserved` → proceed with LLM call
+   - `auto_paused` → proceed with ONE more LLM call (reservation succeeded), then stop polling
+   - `not_running` → abort, **do NOT** make the LLM call
+
+5. **`started_at` is stamped once.** `update_status`'s CASE guards `started_at IS NULL`, so a `running → paused → running` cycle preserves the first-run timestamp. Verified by `test_k10_4_update_status_sets_started_at_once`.
+
+**Tests (14, all green):**
+
+| Category | Tests |
+|---|---|
+| Basic CRUD | create defaults, get cross-user isolation, list_for_project, list_active filters terminal states, update_status stamps started_at once, update_status sets completed_at, update_status records error_message, advance_cursor accumulates items_processed |
+| try_spend pre-conditions | pending job returns not_running, cross-user returns not_running, null budget is unlimited |
+| try_spend auto-pause | two reservations against $0.30 cap → auto_paused boundary + 3rd call not_running |
+| **Concurrency race** | **10 × $0.15 vs $1.00 → 7 succeed + exactly 1 auto_paused** |
+| **Concurrency race 2** | **20 × $0.05 vs $0.50 → 10 succeed (off-by-one sanity check)** |
+
+Full knowledge-service suite: **414 passing** (was 400 + 14 K10.4).
+
+**Unblocks:**
+- K10.5 extraction_pending repository (pair, laptop-friendly)
+- K14 + K15 extraction worker loop (direct dependency on try_spend contract)
+- K16 router endpoints for job create/pause/cancel/status
+- K17/K18 extraction prompts + Mode 3 context builder (indirect; need worker loop first)
+
+---
 
 ### D-K2a standalone glossary-service pass — Track 1 final close-out ✅ (session 39)
 
