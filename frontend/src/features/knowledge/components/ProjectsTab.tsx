@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { FolderOpen, Plus, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { ConfirmDialog, EmptyState, SkeletonCard } from '@/components/shared';
@@ -27,6 +27,15 @@ export function ProjectsTab() {
   const [archiveTarget, setArchiveTarget] = useState<Project | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
   const [actionPending, setActionPending] = useState(false);
+
+  // K8.2-R6: Radix keeps the ConfirmDialog mounted during its ~150ms
+  // exit animation. Reading target?.name during that window flashes
+  // empty quotes in the description, so we remember the last shown
+  // name in a ref and fall back to it while the dialog is closing.
+  const lastArchiveName = useRef('');
+  const lastDeleteName = useRef('');
+  if (archiveTarget) lastArchiveName.current = archiveTarget.name;
+  if (deleteTarget) lastDeleteName.current = deleteTarget.name;
 
   const openCreate = () => {
     setEditTarget(null);
@@ -160,7 +169,7 @@ export function ProjectsTab() {
         open={archiveTarget !== null}
         onOpenChange={(o) => !o && setArchiveTarget(null)}
         title="Archive project?"
-        description={`"${archiveTarget?.name ?? ''}" will be hidden from the active list. You can restore it later.`}
+        description={`"${archiveTarget?.name ?? lastArchiveName.current}" will be hidden from the active list. You can restore it later.`}
         confirmLabel="Archive"
         onConfirm={() => void handleArchive()}
         loading={actionPending}
@@ -170,7 +179,7 @@ export function ProjectsTab() {
         open={deleteTarget !== null}
         onOpenChange={(o) => !o && setDeleteTarget(null)}
         title="Delete project?"
-        description={`"${deleteTarget?.name ?? ''}" and its summary will be permanently deleted. This cannot be undone.`}
+        description={`"${deleteTarget?.name ?? lastDeleteName.current}" and its summary will be permanently deleted. This cannot be undone.`}
         confirmLabel="Delete"
         variant="destructive"
         onConfirm={() => void handleDelete()}

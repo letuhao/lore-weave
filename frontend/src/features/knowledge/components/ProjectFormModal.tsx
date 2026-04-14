@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { FormDialog } from '@/components/shared';
 import type {
@@ -47,6 +47,15 @@ export function ProjectFormModal({
   const [instructions, setInstructions] = useState('');
   const [bookId, setBookId] = useState('');
   const [saving, setSaving] = useState(false);
+  // K8.2-R2: track whether the dialog is still open when an in-flight
+  // save resolves. If the user hit Cancel/X mid-save we skip the
+  // success toast and the stray setState — the action was effectively
+  // abandoned from their POV. Errors still toast so they know a
+  // background save failed.
+  const openRef = useRef(open);
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
 
   // Reset form whenever the dialog opens — either to the project's
   // current values (edit) or to defaults (create). Keeping this in
@@ -70,6 +79,8 @@ export function ProjectFormModal({
   }, [open, mode, project]);
 
   const trimmedName = name.trim();
+  const trimmedDescription = description.trim();
+  const trimmedInstructions = instructions.trim();
   const nameValid = trimmedName.length >= 1 && trimmedName.length <= NAME_MAX;
   const descriptionValid = description.length <= DESCRIPTION_MAX;
   const instructionsValid = instructions.length <= INSTRUCTIONS_MAX;
@@ -79,32 +90,35 @@ export function ProjectFormModal({
   const handleSubmit = async () => {
     if (!canSave) return;
     setSaving(true);
+    // K8.2-R4: unified book_id null handling — empty string ⇒ null,
+    // validated UUID ⇒ verbatim. Same rule in both create and edit.
+    const bookIdPayload = bookId === '' ? null : bookId;
     try {
       if (mode === 'create') {
         await onCreate({
           name: trimmedName,
-          description,
+          description: trimmedDescription,
           project_type: projectType,
-          instructions,
-          book_id: bookId || null,
+          instructions: trimmedInstructions,
+          book_id: bookIdPayload,
         });
-        toast.success('Project created');
       } else if (project) {
         await onUpdate(project.project_id, {
           name: trimmedName,
-          description,
-          instructions,
-          // book_id: null clears the link, empty string stays null.
-          book_id: bookId === '' ? null : bookId,
+          description: trimmedDescription,
+          instructions: trimmedInstructions,
+          book_id: bookIdPayload,
         });
-        toast.success('Project updated');
       }
-      onOpenChange(false);
+      if (openRef.current) {
+        toast.success(mode === 'create' ? 'Project created' : 'Project updated');
+        onOpenChange(false);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Save failed';
       toast.error(msg);
     } finally {
-      setSaving(false);
+      if (openRef.current) setSaving(false);
     }
   };
 
