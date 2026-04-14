@@ -7,7 +7,7 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 38 — K7c–K7e + K8.1..K8.4 + K9.1 + Track 2 design update + K18.2a + K18.2a second-pass fixes + K11.Z pure validator + K11.Z second-pass fixes + K10.1/K10.2/K10.3 migrations COMPLETE; Gate 4 + Gate 5 deferred to next session)
+- Last Updated: 2026-04-14 (session 38 — K7c–K7e + K8.1..K8.4 + K9.1 + Track 2 design update + K18.2a + K18.2a second-pass fixes + K11.Z pure validator + K11.Z second-pass fixes + K10.1/K10.2/K10.3 migrations + K11.4 Cypher helper COMPLETE; Gate 4 + Gate 5 deferred to next session)
 - Updated By: Assistant (Track 2 design reshaped from free-context-hub lessons — added L-CH-01..L-CH-12, 4 new tasks: K11.Z provenance validator, K17.9 + K17.9.1 golden-set harness, K18.2a intent classifier. Then executed K18.2a end-to-end through the 9-phase workflow — first laptop-friendly Track 2 task, zero runtime deps.)
 - Active Branch: `main` (K18.2a commit pending)
 - HEAD: K18.2a commit (see git log) — K7c = `160de10`, K7d/K7e/K8.2/K8.3/K8.4/K9.1/D-CHAT-01 committed
@@ -116,6 +116,33 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K11.4 — Multi-tenant Cypher query helpers ✅ (session 38, Track 2 — laptop-friendly)
+
+**Fourth Track 2 task.** Runtime safety net for the "every Cypher query must filter by `$user_id`" rule from KSA §3.6 / Risk-Table row "Cross-user data leak". Ships the pure assertion + thin async wrappers now; real Neo4j driver wiring stays in K11.2.
+
+**Files (all NEW):**
+- [app/db/neo4j_helpers.py](services/knowledge-service/app/db/neo4j_helpers.py) — `CypherSafetyError`, `CypherSession` Protocol, `assert_user_id_param`, `run_read`, `run_write`.
+- [tests/unit/test_neo4j_helpers.py](services/knowledge-service/tests/unit/test_neo4j_helpers.py) — 14 tests: positive + negative assertion cases (multi-line, WHERE, case-sensitivity, unbound literal), empty / whitespace / non-string rejection, `_FakeSession` fixture proves `user_id` flows as a bound param (not string-interpolated) and that unsafe cypher short-circuits before any driver call.
+
+**Design decisions:**
+- **`CypherSession` is a local Protocol, not `neo4j.AsyncSession`.** The `neo4j` pip package isn't installed yet — K11.2 will add it. Using a structural Protocol means `neo4j_helpers.py` is importable today, unit-testable with a `_FakeSession`, and will accept a real `neo4j.AsyncSession` the moment K11.2 lands (structural typing, no base class).
+- **`run_read` and `run_write` split despite identical bodies.** The split exists so K11.2's driver router can send reads to a read-only routing context and writes to the leader without parsing Cypher. Zero-cost today, cheap infrastructure when it matters.
+- **Assertion text is case-sensitive.** Cypher parameter names are case-sensitive, so `$User_Id` is a different parameter from `$user_id` and must fail the check. Test locks this in.
+- **Don't parse Cypher.** A `$user_id` inside a `// comment` would pass the substring check. Out of scope — parsing Cypher in a pure validator is a rabbit hole. Integration tests at K11.5/K11.6 exercise the real queries and would catch a commented-out filter.
+
+**Self-review caught one bug before first test run:** initial implementation had a `"user_id" in params` guard in `run_read`/`run_write` that was unreachable — Python's kwargs machinery raises `TypeError` for duplicate `user_id` before my check runs. Dead code. Removed it and the bogus test that tried to exercise it. 13→14 tests after the prune (added case-sensitivity test in its place).
+
+**Test results:** 14/14 pass in 0.36s.
+
+**Why this was the right fourth Track 2 task:**
+1. Cross-user data leak is tagged `Low likelihood / Critical impact` in the Risk Table — single highest-severity class in the service. Closing it with a runtime assertion is cheap and the earliest-possible safety net.
+2. Pure-function + Protocol pattern means it's importable and useful today, no driver dependency. Same shipping pattern as K11.Z.
+3. Blocks K11.5 (entities repo), K11.6 (relations repo), K11.7 (events+facts repo) — every downstream Cypher writer will import `run_read`/`run_write`.
+
+**What K11.4 unblocks:** K11.5 / K11.6 / K11.7 repository authors can import `run_read`/`run_write` from day one. When K11.2 wires up the real `neo4j.AsyncSession`, the repos migrate without API churn.
+
+---
 
 ### K10.1 / K10.2 / K10.3 — Extraction lifecycle tables ✅ (session 38, Track 2 — laptop-friendly)
 
