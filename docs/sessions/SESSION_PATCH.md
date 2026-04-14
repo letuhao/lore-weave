@@ -7,11 +7,11 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 39 — Gate 4 + Gate 5 + K-CLEAN cluster + D-K8-03 + D-K8-01 ALL COMPLETE; Track 1 frontend correctness gaps fully closed)
-- Updated By: Assistant (session 39 closed every actionable Track 1 frontend correctness gap in a single sitting. After Gate 4 + Gate 5 + the K-CLEAN cluster, the user invoked the no-defer-drift rule one more time and asked to land D-K8-03 (optimistic concurrency) and D-K8-01 (summary version history + rollback) as Track 1 instead of deferring them. Three more commits: D-K8-03 end-to-end (atomic optimistic-concurrency UPDATE on projects + summaries, 428 + 412 + ETag response path, FE If-Match wiring with conflict toast + baseline refresh, 17 new tests, plus D-K8-03-I1 CORS preflight fix caught live by Playwright); D-K8-01 backend (new knowledge_summary_versions table with transactional history insert on every update, list/get/rollback endpoints, 15 new tests); D-K8-01 frontend (VersionsPanel with list + preview modal + rollback confirm, new useSummaryVersions hook, full i18n across 4 locales). Full knowledge-service suite: 400 tests passing.)
+- Last Updated: 2026-04-14 (session 39 — Gate 4 + Gate 5 + K-CLEAN cluster + D-K8 correctness cluster + T01-T19 e2e cross-service suite ALL COMPLETE; Track 1 fully closed)
+- Updated By: Assistant (session 39 end-state: Track 1 is feature-complete AND end-to-end verified across backend + frontend + cross-service. Final half of the session implemented the Track-1-runnable subset of the T01-T20 cross-service catalogue as a new `tests/e2e/` pytest suite hitting the live compose stack. 6/6 scenarios green (T01 project defaults, T02 Mode 2 context, T03 Mode 1 context, T17 glossary entity in Mode 2, T18 cross-user isolation security, T19 user-data delete cascade). The e2e suite caught **T01-T19-I1**: a real bug in my earlier K-CLEAN-5 code — the chat-service SSE memory_mode mapping checked for "mode_1"/"mode_2" but knowledge-service actually emits "no_project"/"static", so every context build silently reported "static" to the FE including the degraded fallback path. Fixed by forwarding kctx.mode as-is. This is exactly the kind of bug unit tests + introspection miss and e2e tests catch. Session 39 commit total: 15.)
 - Active Branch: `main` (ahead of origin by session-38 + session-39 commits — user pushes manually)
-- HEAD: `52bc30e` — D-K8-01 frontend version history panel
-- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V12.md` — full session 39 context for next agent
+- HEAD: `c8dd43b` — T01-T19 e2e cross-service scenarios + T01-T19-I1 fix
+- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V13.md` — full session 39 context for next agent
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
 ---
@@ -117,6 +117,79 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### T01-T19 cross-service e2e suite — Track 1 subset ✅ (session 39)
+
+**Goal:** implement the Track-1-runnable subset of the T01-T20 cross-service catalogue from [`KNOWLEDGE_SERVICE_ARCHITECTURE.md §9`](docs/03_planning/KNOWLEDGE_SERVICE_ARCHITECTURE.md#L4995). The user's framing: "we need to clear Track 1 before move to Track 2." Cross-service coverage is the last gap.
+
+**Commits (1):**
+
+| ID | Commit | Scope |
+|---|---|---|
+| **T01-T19** | `c8dd43b` | New `tests/e2e/` pytest suite with 6 Track 1 scenarios + the T01-T19-I1 chat-service mode-label fix discovered by the suite. |
+
+**Scenarios covered (6 of 20):**
+
+| T# | Scenario | Assertion |
+|---|---|---|
+| **T01** | Create project → Track 1 defaults | `extraction_enabled=false`, `extraction_status='disabled'`, `version=1`, K1/K10.3 column defaults, cost fields at 0.0000 |
+| **T02** | Mode 2 context build with global bio + project summary | `mode='static'`, `recent_message_count=50`, `<memory mode="static">` envelope, bio text in `<user>`, summary text in `<project>` |
+| **T03** | Mode 1 context build with no project | `mode='no_project'`, no `<project>` or `<glossary>` element, global bio still rendered |
+| **T17** | Glossary entity appears in Mode 2 | Full glossary-service walk: create book → list kinds → create entity → PATCH `original_value` on the `'name'` attr_def → `cached_name` recalc → select-for-context exact-tier match when user message mentions the name |
+| **T18** | **Cross-user isolation (security-critical)** | 5 cross-user vectors from User B against User A's project: list-leak check, GET 404, PATCH 404, POST /archive 404, /internal/context/build 404. Then re-read A's state to confirm no mutation. Plus /summaries leak check. |
+| **T19** | /user-data delete cascade | Seeds 2 projects + global bio with a v1→v2 edit (triggers D-K8-01 history insert), DELETE /user-data, asserts response `{"deleted":{"projects":2,"summaries":1}}`, asserts all list endpoints empty, asserts `summaries/global/versions` empty (D-K8-01 FK CASCADE confirmed end-to-end), asserts individual project GETs now 404. |
+
+**Scenarios deferred (14 of 20):**
+
+| Range | Why |
+|---|---|
+| T04–T16 | Extraction pipeline (Neo4j + K11/K17 prompts) — all Track 2 |
+| T20 | Prompt injection defense — Track 2 |
+
+**New files:**
+
+- [tests/e2e/pytest.ini](tests/e2e/pytest.ini) — `asyncio_mode=auto`, local discovery
+- [tests/e2e/conftest.py](tests/e2e/conftest.py) — shared fixtures: `http` (httpx client base_url=gateway, skip-if-unreachable), `internal_http` (knowledge-service port 8216 with `X-Internal-Token` baked in), `user_a` / `user_b` (register + login against auth-service, fresh throwaway users per test). Uses `E2eUser` dataclass (renamed from `TestUser` to avoid pytest collection conflict).
+- [tests/e2e/test_track1_scenarios.py](tests/e2e/test_track1_scenarios.py) — the 6 test functions + three helpers (`_put_global_bio`, `_put_project_summary`, `_create_project`).
+
+**How to run:**
+```bash
+cd tests/e2e
+python -m pytest -v
+```
+
+Output: `6 passed in 1.41s` against the live compose stack.
+
+**Finding caught live — T01-T19-I1:**
+
+The very first T02 run failed with `assert body["mode"] == "mode_2"` — the real value was `"static"`. Not a test bug: a **real production bug in chat-service's K-CLEAN-5 SSE memory_mode mapping**. The stream_service code checked `kctx.mode == "mode_1"` and fell through to `"static"` for everything else, but knowledge-service actually emits `"no_project"` / `"static"` / `"degraded"` (see [services/knowledge-service/app/context/modes/no_project.py](services/knowledge-service/app/context/modes/no_project.py) and [static.py](services/knowledge-service/app/context/modes/static.py)).
+
+**Consequence:** every context build silently reported `memory_mode="static"` to the FE, **including the degraded fallback path.** The K-CLEAN-5 degraded badge would never actually have fired end-to-end in production even though it "passed" K-CLEAN-5 QC.
+
+The K-CLEAN-5 QC only verified the GET response path (chat-service `_row_to_session` derivation), which doesn't go through stream_service at all. The SSE event path was never actually exercised with a real knowledge-service emit, and I had no way to catch the mismatch via unit tests because chat-service's tests mock out the KnowledgeClient.
+
+**Fix** (same commit `c8dd43b`): `stream_service.py` now forwards `kctx.mode` as-is since the FE memory_mode vocabulary (`"no_project"|"static"|"degraded"`) is already a subset of the backend vocabulary. The conversion branch is deleted. 168/168 chat-service tests still green.
+
+**Lesson reinforced:** unit tests + model-field introspection cannot catch cross-service shape drift. Only end-to-end integration tests that hit the real wire catch these. The T01-T19 suite immediately paid for itself by finding a shipping bug.
+
+**Design decisions:**
+
+1. **e2e tests live at repo root** (`tests/e2e/`), not inside any single service's tests dir. They're cross-service by definition and don't belong to one service's ownership.
+2. **Throwaway users per test** — each test registers a fresh user via `auth-service/register` + `/login`. Alternative was a shared test account; throwaway is cleaner for parallelism and isolation.
+3. **Skip-if-unreachable** — conftest.py pre-flights `GET /health` on both the gateway and knowledge-service internal port, `pytest.skip()` on failure. So `pytest tests/e2e` on a dev machine without the compose stack running fails cleanly (as skipped tests), not with loud errors.
+4. **/internal/context/build hit directly with the dev internal token** — tests could have gone through chat-service's full SSE path but that requires a working LLM provider and adds a lot of flakiness. `/internal/context/build` tests the same state transitions from the knowledge-service perspective, which is where the invariants live.
+5. **T17 uses the exact-match tier** — `cached_name` is populated from the entity's `name` attribute's `original_value`, and the glossary-service select-for-context exact tier does `lower(cached_name) = lower(query)`. Using a distinctive headword like "Aragorn the Bold" and a message "Tell me about Aragorn" is enough to trigger a match. Extension to the FTS semantic tier would require longer descriptions and is not worth the fixture setup cost for Track 1.
+
+**Track 1 is now feature-complete AND end-to-end verified:**
+- Backend: Gate 4 (session 39)
+- Frontend: Gate 5 (session 39)
+- Cleanup cluster: 6× K-CLEAN (session 39)
+- Frontend correctness: D-K8-03 + D-K8-01 (session 39)
+- Cross-service invariants: T01-T19 (session 39)
+
+The only Track-1-tagged work remaining is glossary-service standalone pass items (D-K2a-01/02) and Track 2 planning items (D-T2-*). Everything else is forward motion into Track 2.
+
+---
 
 ### D-K8 correctness cluster — D-K8-03 + D-K8-01 landed as Track 1 ✅ (session 39)
 
