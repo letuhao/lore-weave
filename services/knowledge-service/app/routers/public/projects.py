@@ -140,7 +140,19 @@ async def create_project(
     user_id: UUID = Depends(get_current_user),
     repo: ProjectsRepo = Depends(get_projects_repo),
 ) -> Project:
-    return await repo.create(user_id, body)
+    # K7-review-R3: symmetric with patch_project. Pydantic's
+    # ProjectName / ProjectDescription / ProjectInstructions caps gate
+    # the public surface today, so the DB CHECK constraints can't fire
+    # on this path in practice — but the asymmetry with PATCH was a
+    # code smell, and any future loosening of the Pydantic caps would
+    # crash POST with a 500 instead of a 422.
+    try:
+        return await repo.create(user_id, body)
+    except asyncpg.CheckViolationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"value out of bounds: {exc.constraint_name}",
+        )
 
 
 @router.get("/{project_id}", response_model=Project)

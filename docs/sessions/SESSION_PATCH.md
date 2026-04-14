@@ -7,8 +7,8 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 38 — Knowledge Service K7c + K7d + K7e COMPLETE, D-K5-01 cleared)
-- Updated By: Assistant (K7e end-to-end X-Trace-Id propagation across chat → knowledge → glossary → book, + JSON 500 envelopes carrying trace_id in all three services. Clears D-K5-01.)
+- Last Updated: 2026-04-14 (session 38 — K7c + K7d + K7e COMPLETE + knowledge-service source-code review sweep)
+- Updated By: Assistant (K7e post-merge source-code review across knowledge-service repos/routers/middleware/cache/clients. Found + fixed R3 (POST CheckViolation asymmetry) and R4 (name DB CHECK gap).)
 - Active Branch: `main` (K7e commit pending)
 - HEAD: K7e commit (see git log) — K7c = `160de10`, K7d = committed, K7e = this commit
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V7.md` — full context for next agent
@@ -111,6 +111,19 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K7 post-merge source-code review sweep ✅ (session 38)
+
+Broad read-through of knowledge-service (repos, context builder, cache, public routers, GlossaryClient, migrations, models) to surface latent runtime bugs before K8 — Gate 4 e2e deferred (laptop dev env, no local LLM). Most of the codebase was clean; two real asymmetries found and fixed.
+
+- **K7-review-R3 (LOW-MED):** `POST /v1/knowledge/projects` did not catch `asyncpg.CheckViolationError`, while `PATCH` did. Pydantic gates the public surface today so it can't fire in practice, but any future loosening of `ProjectName` / `ProjectDescription` / `ProjectInstructions` caps would crash POST with a 500 instead of a 422. Wrapped `repo.create(...)` in the same try/except → 422 with `constraint_name` in detail. Added `test_create_db_check_violation_maps_to_422` (ExplodingRepo pattern) to `tests/unit/test_public_projects.py`.
+- **K7-review-R4 (LOW):** `knowledge_projects.name` had a Pydantic `max_length=200` but no DB CHECK constraint, asymmetric with `description` / `instructions` / `content` which all had defense-in-depth CHECKs. Added `knowledge_projects_name_len` (`length(name) BETWEEN 1 AND 200`) via idempotent `DO $$ ... pg_constraint lookup ... END$$` block in `app/db/migrate.py`, matching the Pydantic cap.
+
+**Test results:** `tests/unit/test_public_projects.py` 27 → **28 passing**. Full `tests/unit` knowledge-service run: **185 passed** (14 errors + 3 failures are all pre-existing local `SSL_CERT_FILE` truststore noise in test_config / test_glossary_client / test_circuit_breaker — unrelated to R3/R4).
+
+**Areas reviewed + confirmed clean:** ProjectsRepo (K7b-I1 delete order correct), SummariesRepo (CTE ownership-check on upsert is atomic), UserDataRepo (transaction + post-commit cache invalidation order correct), context cache (TTLCache + MISSING sentinel + snapshot-iter invalidation), static/no_project context builders (per-layer `wait_for` budgets), public/projects cursor encode/decode (catches `UnicodeError` parent), public/summaries global alias handling, JWT middleware (uniform 401 + `WWW-Authenticate`), GlossaryClient circuit breaker, migrate.py CHECK constraints.
+
+---
 
 ### K7e — End-to-End X-Trace-Id Propagation ✅ (session 38, commit pending)
 

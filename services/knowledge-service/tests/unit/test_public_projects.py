@@ -488,6 +488,36 @@ def test_patch_db_check_violation_maps_to_422(
     assert "knowledge_projects_instructions_len" in resp.json()["detail"]
 
 
+def test_create_db_check_violation_maps_to_422(
+    repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """K7-review-R3: POST symmetric with PATCH. If the DB CHECK
+    constraints fire on a create (e.g. a future Pydantic loosen), the
+    router must surface 422, not crash with 500.
+    """
+    import asyncpg
+
+    class ExplodingRepo(FakeProjectsRepo):
+        async def create(self, *args, **kwargs):  # type: ignore[override]
+            exc = asyncpg.CheckViolationError("name length check failed")
+            exc.constraint_name = "knowledge_projects_name_len"
+            raise exc
+
+    exploding = ExplodingRepo()
+    app = FastAPI()
+    app.include_router(projects_router)
+    app.dependency_overrides[get_projects_repo] = lambda: exploding
+    app.dependency_overrides[get_current_user] = lambda: auth_user_id
+    client = TestClient(app)
+
+    resp = client.post(
+        "/v1/knowledge/projects",
+        json={"name": "ok-for-pydantic", "project_type": "general"},
+    )
+    assert resp.status_code == 422
+    assert "knowledge_projects_name_len" in resp.json()["detail"]
+
+
 # ── K7b-I1: delete cascade short-circuit ─────────────────────────────────
 
 

@@ -86,6 +86,21 @@ BEGIN
   END IF;
 END$$;
 
+-- K7-review-R4: name had Pydantic max=200 but no DB CHECK, asymmetric
+-- with the other length-capped columns. Defense-in-depth: cap matches
+-- ProjectName StringConstraints in app/db/models.py.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'knowledge_projects_name_len'
+  ) THEN
+    ALTER TABLE knowledge_projects
+      ADD CONSTRAINT knowledge_projects_name_len
+      CHECK (length(name) BETWEEN 1 AND 200);
+  END IF;
+END$$;
+
 DO $$
 BEGIN
   IF NOT EXISTS (
