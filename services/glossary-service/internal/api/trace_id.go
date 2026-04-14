@@ -5,10 +5,18 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"regexp"
 	"runtime/debug"
 
 	"github.com/google/uuid"
 )
+
+// K7e-R1: even though glossary-service is internal-only, it sits at
+// the end of a chain whose first hop (chat-service) IS public, so any
+// pathological X-Trace-Id reaching us is an attacker-controlled value
+// that already evaded chat-service validation. Re-validate here so
+// glossary-service stays defensive on its own. Invalid → regenerate.
+var traceIDRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
 
 // K7e: end-to-end X-Trace-Id propagation. Glossary-service is the final
 // hop in the chat → knowledge → glossary chain, so this middleware
@@ -78,7 +86,7 @@ func jsonRecovererMiddleware(next http.Handler) http.Handler {
 func traceIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tid := r.Header.Get(traceIDHeader)
-		if tid == "" {
+		if tid == "" || !traceIDRe.MatchString(tid) {
 			tid = newTraceID()
 		}
 		// Set the header on the response BEFORE next.ServeHTTP so it

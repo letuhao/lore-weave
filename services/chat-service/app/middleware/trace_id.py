@@ -23,14 +23,28 @@ can pull the ContextVar without touching this file.
 
 from __future__ import annotations
 
+import re
 import uuid
 from contextvars import ContextVar
 
 trace_id_var: ContextVar[str] = ContextVar("trace_id", default="")
 
+# K7e-R1: chat-service is reachable through the public gateway, so the
+# inbound X-Trace-Id is untrusted input. Cap length and restrict charset
+# so a malicious or buggy client cannot amplify into multi-service log
+# volume by sending a 10KB id, and so the id stays safe to embed in
+# structured logs / filenames / dashboards downstream. Anything that
+# fails the check is replaced by a freshly generated id (we do NOT
+# truncate attacker input — that would still propagate prefix bytes).
+_TRACE_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+
 
 def new_trace_id() -> str:
     return uuid.uuid4().hex
+
+
+def _sanitize(incoming: str) -> str:
+    return incoming if incoming and _TRACE_ID_RE.match(incoming) else new_trace_id()
 
 
 def current_trace_id() -> str:
@@ -60,7 +74,7 @@ class TraceIdMiddleware:
                 except Exception:
                     incoming = ""
                 break
-        trace_id = incoming or new_trace_id()
+        trace_id = _sanitize(incoming)
         trace_id_var.set(trace_id)
 
         async def send_with_header(message):

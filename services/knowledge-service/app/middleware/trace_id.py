@@ -1,4 +1,16 @@
+import re
+
 from app.logging_config import new_trace_id, trace_id_var
+
+# K7e-R1: knowledge-service can be hit through the public gateway too
+# (via /v1/knowledge/*), so the inbound X-Trace-Id is untrusted. Same
+# cap + charset whitelist as chat-service. Invalid → regenerate
+# (we never truncate attacker input).
+_TRACE_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+
+
+def _sanitize(incoming: str) -> str:
+    return incoming if incoming and _TRACE_ID_RE.match(incoming) else new_trace_id()
 
 
 class TraceIdMiddleware:
@@ -27,7 +39,7 @@ class TraceIdMiddleware:
                 except Exception:
                     incoming = ""
                 break
-        trace_id = incoming or new_trace_id()
+        trace_id = _sanitize(incoming)
         trace_id_var.set(trace_id)
 
         async def send_with_header(message):

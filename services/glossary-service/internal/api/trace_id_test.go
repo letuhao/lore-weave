@@ -91,6 +91,73 @@ func TestJSONRecoverer_Returns500WithTraceId(t *testing.T) {
 	}
 }
 
+// K7e-R1: input sanitization
+
+func TestTraceIDMiddleware_RejectsOversizeIncoming(t *testing.T) {
+	var captured string
+	handler := traceIDMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured = TraceIDFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	huge := ""
+	for i := 0; i < 200; i++ {
+		huge += "a"
+	}
+	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
+	req.Header.Set("X-Trace-Id", huge)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if captured == huge {
+		t.Fatal("expected oversize id to be replaced")
+	}
+	if !regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(captured) {
+		t.Fatalf("replacement %q is not 32-char hex", captured)
+	}
+}
+
+func TestTraceIDMiddleware_RejectsInvalidCharset(t *testing.T) {
+	var captured string
+	handler := traceIDMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured = TraceIDFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
+	req.Header.Set("X-Trace-Id", "has spaces!")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if captured == "has spaces!" {
+		t.Fatal("expected invalid-charset id to be replaced")
+	}
+	if !regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(captured) {
+		t.Fatalf("replacement %q is not 32-char hex", captured)
+	}
+}
+
+func TestTraceIDMiddleware_KeepsMaxLengthValid(t *testing.T) {
+	var captured string
+	handler := traceIDMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured = TraceIDFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	ok := ""
+	for i := 0; i < 128; i++ {
+		ok += "a"
+	}
+	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
+	req.Header.Set("X-Trace-Id", ok)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if captured != ok {
+		t.Fatalf("expected exact 128-char id to be kept, got %q", captured)
+	}
+}
+
 func TestNewTraceID_Format(t *testing.T) {
 	tid := newTraceID()
 	if !regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(tid) {

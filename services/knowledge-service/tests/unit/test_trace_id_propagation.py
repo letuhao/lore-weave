@@ -126,3 +126,45 @@ def test_500_handler_does_not_swallow_httpexception():
     assert resp.json() == {"detail": "not found"}
     # Middleware still echoes the trace id for 4xx.
     assert resp.headers["x-trace-id"] == "env-test"
+
+
+# ── K7e-R1: input sanitization ──────────────────────────────────────────
+
+
+def _ping_app() -> FastAPI:
+    app = FastAPI()
+    app.add_middleware(TraceIdMiddleware)
+
+    @app.get("/ping")
+    def ping():
+        return {"trace_id": trace_id_var.get()}
+
+    return app
+
+
+def test_oversize_incoming_id_is_replaced():
+    import re
+
+    c = TestClient(_ping_app())
+    huge = "x" * 200
+    resp = c.get("/ping", headers={"X-Trace-Id": huge})
+    got = resp.json()["trace_id"]
+    assert got != huge
+    assert re.fullmatch(r"[0-9a-f]{32}", got)
+
+
+def test_invalid_charset_incoming_id_is_replaced():
+    import re
+
+    c = TestClient(_ping_app())
+    resp = c.get("/ping", headers={"X-Trace-Id": "has spaces!"})
+    got = resp.json()["trace_id"]
+    assert got != "has spaces!"
+    assert re.fullmatch(r"[0-9a-f]{32}", got)
+
+
+def test_max_length_id_is_kept():
+    c = TestClient(_ping_app())
+    ok = "y" * 128
+    resp = c.get("/ping", headers={"X-Trace-Id": ok})
+    assert resp.json()["trace_id"] == ok

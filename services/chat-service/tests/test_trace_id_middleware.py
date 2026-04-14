@@ -60,3 +60,33 @@ def test_contextvar_isolated_between_requests():
 def test_current_trace_id_outside_request_returns_empty():
     # Fresh contextvar read with no middleware in the stack.
     assert trace_id_var.get() == ""
+
+
+# ── K7e-R1: input sanitization ──────────────────────────────────────────
+
+
+def test_oversize_incoming_id_is_replaced():
+    """A 200-char id exceeds the 128-char cap → middleware regenerates."""
+    c = TestClient(_build_app())
+    huge = "a" * 200
+    resp = c.get("/ping", headers={"X-Trace-Id": huge})
+    got = resp.json()["trace_id"]
+    assert got != huge
+    assert re.fullmatch(r"[0-9a-f]{32}", got)
+
+
+def test_invalid_charset_incoming_id_is_replaced():
+    """Spaces/punctuation outside [A-Za-z0-9._-] → regenerated."""
+    c = TestClient(_build_app())
+    resp = c.get("/ping", headers={"X-Trace-Id": "has spaces!"})
+    got = resp.json()["trace_id"]
+    assert got != "has spaces!"
+    assert re.fullmatch(r"[0-9a-f]{32}", got)
+
+
+def test_max_length_id_is_kept():
+    """Exactly 128 chars of valid charset is kept verbatim."""
+    c = TestClient(_build_app())
+    ok = "a" * 128
+    resp = c.get("/ping", headers={"X-Trace-Id": ok})
+    assert resp.json()["trace_id"] == ok

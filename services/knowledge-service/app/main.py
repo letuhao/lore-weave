@@ -59,10 +59,11 @@ async def _trace_id_500_handler(request: Request, exc: Exception) -> JSONRespons
     keeps its own envelope.
     """
     logger.exception("unhandled exception (500): %s", exc)
+    tid = trace_id_var.get()
     return JSONResponse(
         status_code=500,
-        content={"detail": "internal server error", "trace_id": trace_id_var.get()},
-        headers={"X-Trace-Id": trace_id_var.get() or ""},
+        content={"detail": "internal server error", "trace_id": tid},
+        headers={"X-Trace-Id": tid or ""},
     )
 
 

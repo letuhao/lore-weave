@@ -138,7 +138,15 @@
 - glossary-service: `go test ./...` all green (5 new Go tests).
 - knowledge-service: **180/180 non-env tests passing** (176 baseline + 4 new trace_id tests).
 
-**K7e second-pass review:** one comment in `chat-service/app/main.py` was inaccurate — the original note claimed "TraceIdMiddleware before CORSMiddleware so the header lands on preflights". Starlette stacks middleware such that the last-added is outermost, so CORS actually wraps TraceId and preflight OPTIONS never reach it. **Behaviour is correct** (normal requests still get X-Trace-Id; preflights don't need it), but the comment was wrong. Fixed in this commit. No functional issues found.
+**K7e second-pass review:**
+- **K7e-R0 (cosmetic):** comment in `chat-service/app/main.py` claimed "TraceIdMiddleware before CORSMiddleware so the header lands on preflights". Starlette stacks last-added outermost, so CORS actually wraps TraceId. Behaviour was correct (normal requests still get X-Trace-Id; preflights don't need it), but comment was misleading. Rewritten.
+- **K7e-R1 (HIGH):** inbound `X-Trace-Id` was unbounded in length and unvalidated for charset across all three middlewares. chat-service is reachable through the public gateway, so an attacker-controlled 10KB id would amplify into multi-service log volume and could embed unsafe bytes in structured logs / filenames. Fixed by adding `^[A-Za-z0-9._-]{1,128}$` validation in chat-service `app/middleware/trace_id.py`, knowledge-service `app/middleware/trace_id.py`, and glossary-service `internal/api/trace_id.go` (matching `regexp` in Go). Anything failing the check is **regenerated**, never truncated — truncation would still leak attacker-controlled prefix bytes. UUID hex (32 chars) and any sane format (`req-123`, `2024-01-01-abc`) still pass through verbatim. Three new tests in each service cover oversize / invalid-charset / max-length-valid paths.
+- **K7e-R2 (cosmetic):** knowledge-service `_trace_id_500_handler` read `trace_id_var.get()` twice. Hoisted into a local `tid` for symmetry with chat-service.
+
+After R1+R2 fixes:
+- chat-service: 10 trace_id-related tests (4 middleware → 7, +3 R1 tests; plus 3 KnowledgeClient forwarding tests).
+- glossary-service: 8 Go trace_id tests (5 → 8, +3 R1 tests).
+- knowledge-service: 7 trace_id tests (4 → 7, +3 R1 tests). Full suite **183/183 non-env passing**.
 
 **Why not Redis pub/sub / OpenTelemetry:** Track 1 scope is "can an operator grep one id across three services' logs". Full distributed tracing (spans, parent/child, W3C traceparent) is Track 2 — a `traceparent` header could live alongside `X-Trace-Id` later without breaking the current plumbing.
 
