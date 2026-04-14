@@ -3,6 +3,7 @@ import { Settings, X, Brain, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
+import { useProjects } from '@/features/knowledge/hooks/useProjects';
 import { chatApi } from '../api';
 import type { ChatSession, GenerationParams, PatchSessionPayload } from '../types';
 
@@ -38,6 +39,17 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
   const [userModels, setUserModels] = useState<UserModel[]>([]);
   const [selectedModelRef, setSelectedModelRef] = useState(session.model_ref);
   const [modelsLoading, setModelsLoading] = useState(false);
+
+  // K9.1: project picker — drives knowledge-service memory mode for
+  // this session. Only non-archived projects show in the dropdown so
+  // users can't link a session to something they've shelved.
+  const {
+    items: projects,
+    isLoading: projectsLoading,
+  } = useProjects(false);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
+    session.project_id,
+  );
 
   // Debounce timer
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -147,6 +159,14 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
     patchSession({ model_source: 'user_model', model_ref: modelId });
   }
 
+  function handleProjectChange(value: string) {
+    // Empty string from the "No project" option clears the link.
+    // Send explicit null so chat-service's model_fields_set sees it.
+    const next = value === '' ? null : value;
+    setSelectedProjectId(next);
+    patchSession({ project_id: next });
+  }
+
   // ── Group models by provider ──────────────────────────────────────────────
   const groupedModels = userModels.reduce<Record<string, UserModel[]>>((acc, m) => {
     const key = m.provider_kind;
@@ -200,6 +220,44 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
               ))}
             </select>
           )}
+        </div>
+
+        {/* ── Project (memory link) ──────────────────────────────────── */}
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+            Project memory
+          </label>
+          {projectsLoading ? (
+            <div className="h-9 animate-pulse rounded-md bg-muted" />
+          ) : (
+            <select
+              value={selectedProjectId ?? ''}
+              onChange={(e) => handleProjectChange(e.target.value)}
+              className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-ring focus:shadow-[0_0_0_3px_rgba(212,149,42,0.2)]"
+            >
+              <option value="">No project — global memory only</option>
+              {projects.map((p) => (
+                <option key={p.project_id} value={p.project_id}>
+                  {p.name}
+                </option>
+              ))}
+              {/* K9.1-R5: if the linked project was archived after this
+                  session was created, it won't be in the active list.
+                  Surface it as a disabled placeholder so the <select>
+                  value stays valid and the user can see why their
+                  memory link looks broken. */}
+              {selectedProjectId &&
+                !projects.some((p) => p.project_id === selectedProjectId) && (
+                  <option value={selectedProjectId} disabled>
+                    (archived project — pick another)
+                  </option>
+                )}
+            </select>
+          )}
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            Links this chat to a knowledge-service project so the AI sees its
+            summary and glossary on every turn.
+          </p>
         </div>
 
         {/* ── System Prompt ──────────────────────────────────────────── */}

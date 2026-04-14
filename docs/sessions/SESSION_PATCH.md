@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 38 — K7c–K7e + K8.1 + K8.2 + K8.3 + K8.4 COMPLETE)
-- Updated By: Assistant (K8.4 Chat header MemoryIndicator — derives Mode 1/Mode 2 client-side from `session.project_id`, popover with project name + Manage memory link. Adds `project_id: string | null` to chat ChatSession type.)
-- Active Branch: `main` (K8.4 commit pending)
-- HEAD: K8.4 commit (see git log) — K7c = `160de10`, K7d/K7e/K8.2/K8.3 committed
+- Last Updated: 2026-04-14 (session 38 — K7c–K7e + K8.1..K8.4 + K9.1 COMPLETE; Gate 4 + Gate 5 deferred to next session)
+- Updated By: Assistant (K9.1 session project picker in SessionSettingsPanel — wires PATCH `project_id` tri-state. K9.2 skipped as redundant with inline derivation in MemoryIndicator. K9.3 already shipped as K8.4. K9.4 i18n skipped, consistent with K8 hardcoded-English won't-fix.)
+- Active Branch: `main` (K9.1 commit pending)
+- HEAD: K9.1 commit (see git log) — K7c = `160de10`, K7d/K7e/K8.2/K8.3/K8.4 committed
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V7.md` — full context for next agent
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -115,6 +115,28 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K9.1 — Session project picker ✅ (session 38)
+
+Final K-phase build. Adds the dropdown that *writes* the value the K8.4 MemoryIndicator reads, completing the round-trip for memory linking. K9.2 (state hook) and K9.3 (indicator component) are skipped because the work was already absorbed into K8.4. K9.4 (i18n keys) is also skipped, consistent with the rest of K8 which is hardcoded English under the existing won't-fix on i18n.
+
+**Files**
+- `frontend/src/features/chat/types.ts` — added `project_id?: string | null` to `PatchSessionPayload`. Explicitly nullable (not `string | undefined`) so `JSON.stringify` emits `"project_id": null` for the clear case — chat-service uses `model_fields_set` to distinguish "not provided" from "set to null" ([sessions.py:173](services/chat-service/app/routers/sessions.py#L173)).
+- `frontend/src/features/chat/components/SessionSettingsPanel.tsx` — new "Project memory" section between the Model selector and System Prompt. Native `<select>` matching the existing model selector style. Uses `useProjects(false)` from the knowledge feature (cross-feature import is fine — knowledge is the data owner). On change, the existing debounced `patchSession` helper sends `project_id: next` (string or explicit null).
+
+**Tri-state semantics:** `''` from the "No project" option becomes `null` before sending, so the backend clears the column. Picking a real project sends the UUID string. Omitting the field entirely (the case for every other existing handler) leaves it untouched, which is exactly the intended chat-service behavior.
+
+**Phase 5 TEST:** `npx tsc --noEmit` — only the pre-existing `@tanstack/react-query` module-resolution noise affecting useProjects (same as every K8 file). No K9-originated errors. Browser smoke deferred with the rest of K8.
+
+**Phase 6 REVIEW:**
+- **K9.1-R1..R4 (LOW, accept):** Local state initialized from session prop at mount only (matches every other field in this panel); cross-feature import (correct direction); no archive-status guard on the picker (matches the rest of the panel); empty-projects case still shows the "No project" option only (helper text covers it).
+- **K9.1-R5 (MEDIUM, fixed in same commit):** When the linked project is archived after the session was created, it disappears from `useProjects(false)` so the `<select>` has no matching option. The browser would silently render the first option ("No project") while local state still holds the orphaned ID — the user thinks their link is gone, but the next save would re-confirm null and actually clear it. Fixed by rendering a synthetic disabled option `(archived project — pick another)` whenever `selectedProjectId` is non-null and not in the active list. The disabled flag prevents re-selection but keeps the `<select>` value valid so React's controlled-input contract holds.
+
+**Phase 7 QC** — K9.1 acceptance from [TRACK1_IMPLEMENTATION.md:1661](docs/03_planning/KNOWLEDGE_SERVICE_TRACK1_IMPLEMENTATION.md#L1661): loads user's projects ✓; selecting a project updates the session via debounced PATCH ✓; "No project" sends explicit null and clears the column ✓. Browser smoke deferred — see deferred section.
+
+**Track 1 status after K9.1:** all K-phase code is now landed. Remaining for Track 1 closure: **Gate 4** (knowledge-service end-to-end backend verification) and **Gate 5** (full UX browser smoke), both deferred to next session — current laptop can't run the full docker-compose stack. Plus the **T01–T13 integration test pack** ([TRACK1_IMPLEMENTATION.md:1748](docs/03_planning/KNOWLEDGE_SERVICE_TRACK1_IMPLEMENTATION.md#L1748)).
+
+---
 
 ### K8.4 — Chat header MemoryIndicator ✅ (session 38)
 

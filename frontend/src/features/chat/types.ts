@@ -87,4 +87,10 @@ export interface PatchSessionPayload {
   status?: string;
   generation_params?: GenerationParams;
   is_pinned?: boolean;
+  // K9.1: link the session to a knowledge-service project (or clear
+  // it with explicit null). Backend chat-service uses model_fields_set
+  // to distinguish "not provided" from "set to null", so JSON.stringify
+  // must emit `"project_id": null` for the clear case — keep this
+  // explicitly nullable rather than `string | undefined`.
+  project_id?: string | null;
 }
