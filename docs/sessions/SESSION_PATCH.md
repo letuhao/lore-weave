@@ -10,7 +10,7 @@
 - Last Updated: 2026-04-14 (session 39 continuation — **K11.3 Cypher schema runner landed**, K11.1+K11.2+K11.3 = Neo4j wired end-to-end against live 2026.03)
 - Updated By: Assistant (K11.3 caps the Neo4j-infra slice. Schema file ships 6 unique constraints + 13 composite/single indexes + 5 vector indexes per KSA §3.4. K11.3-I1: existence constraints removed — Enterprise-only on community edition; user_id NOT NULL stays enforced by K11.4's `assert_user_id_param`. Neo4j image bumped 2025.10 → 2026.03 community after user pushback. 369/369 knowledge-service tests pass against live Neo4j; 12 new K11.3 tests (8 parser unit + 4 integration). Repo code must keep going through K11.4 — schema runner is the one documented exception.)
 - Active Branch: `main` (ahead of origin by session-38 + session-39 commits — user pushes manually)
-- HEAD: K11.5a entities-repo commit (this session, on top of K11.3-R1)
+- HEAD: K11.5a-R1 review-fix commit (this session, on top of K11.5a)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -149,6 +149,17 @@
 **Test results:** 51 new tests, all green (32 canonical unit + 19 entities integration). Full knowledge-service suite: **423 passed, 93 skipped** against live Neo4j 2026.03.1 (was 372; +51 new). Zero regressions.
 
 **What K11.5a unblocks:** K11.5b (vector search + anchor recompute + linking), K11.6 (relations repo — needs `merge_entity` to create both endpoints), K11.7 (events + facts repo — needs `merge_entity` for entity references in event participants). K15 (pattern extractor) and K17 (LLM extractor) can also start writing entities directly through this surface.
+
+**K11.5a-R1 second-pass review fixes (6 issues):**
+- **R1 (perf bug)** — `find_entities_by_name` had a single MATCH with `(canonical_name = X OR $name IN aliases)`. Cypher's planner falls back to a label scan when an OR mixes one indexable and one non-indexable predicate, defeating the `entity_user_canonical` composite index. Rewrote as a `CALL { ... UNION ... }` subquery so the canonical arm uses the index and the alias arm scans only when needed. UNION (not UNION ALL) deduplicates rows that match both arms.
+- **R2 + R3 (doc bugs)** — `merge_entity` and `upsert_glossary_anchor` docstrings claimed the trailing `WITH e WHERE e.user_id = $user_id` "defends against the pathological case where two users somehow generate the same canonical_id". It does not — the MERGE has already mutated the node by the time the WHERE filters the return; the WHERE only hides the row from the caller. Fixed both docstrings to be honest: the real defense is canonical_id including user_id in the hash, and the trailing WHERE exists ONLY to satisfy K11.4's `assert_user_id_param`.
+- **R4 (defensive)** — `_node_to_entity` only converted three hardcoded fields (`created_at`/`updated_at`/`archived_at`) from `neo4j.time.DateTime`. K11.5b will add embedding timestamps and K11.8 will add `evidence_extracted_at`; each new temporal field would silently break Pydantic until someone updated the list. Now scans all values and converts anything with `.to_native()` (covers `neo4j.time.{DateTime,Date,Time,Duration}`).
+- **R5 (scope/doc bug)** — `archive_entity` docstring listed three reasons (`'glossary_deleted'`, `'user_archive'`, `'duplicate'`) but the function unconditionally clears `glossary_entity_id`, which is correct only for `'glossary_deleted'` (KSA §3.4.F). Narrowed the docstring to declare K11.5a only models the §3.4.F path; `'duplicate'` and `'user_archive'` paths are K17/K18 scope and will land as separate functions when those surfaces exist.
+- **R6 (race warning)** — `delete_entities_with_zero_evidence` docstring now warns that `merge_entity` creates new nodes with `evidence_count = 0` and that there is a window between merge and the first `EVIDENCED_BY` edge write where a freshly-created entity looks like an orphan. Concurrent cleanup would delete it. K11.8 must orchestrate the cleanup against the extraction-job lifecycle (call only from a paused / completed job state).
+
+R7 (alias arm is unindexed list scan) and R8 (`aliases[0]` is not a stable display-name slot) are deferred to K11.5b — both will be addressed by the K11.5b 10k-entity perf test and the display-name resolution that K17 needs.
+
+**Test results post-fix:** 51/51 K11.5a tests still green (the UNION rewrite is behaviorally equivalent to the OR shape; same test cases pass). Full knowledge-service suite still **423 passed, 93 skipped** against live Neo4j 2026.03.1. Zero regressions.
 
 ### K11.3 — Neo4j Cypher schema runner + Neo4j 2026.03 bump ✅ (session 39 continuation, Track 2)
 

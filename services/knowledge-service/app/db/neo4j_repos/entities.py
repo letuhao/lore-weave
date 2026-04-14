@@ -88,16 +88,18 @@ def _node_to_entity(node: Any) -> Entity:
     `.items()` / dict access) and plain dicts so unit tests can
     feed fake rows through the same converter.
 
-    Also converts `neo4j.time.DateTime` values into stdlib
-    `datetime.datetime` — Pydantic v2 only validates stdlib types
-    and the bolt driver hands back its own datetime class.
+    Also converts every bolt-driver temporal value
+    (`neo4j.time.{DateTime,Date,Time,Duration}`) into its stdlib
+    equivalent via `.to_native()`. K11.5a-R1/R4 fix: scan all
+    values rather than a hardcoded field list, so future fields
+    (K11.5b embeddings, K11.8 evidence_extracted_at, …) work
+    without touching this function.
     """
     if hasattr(node, "items"):
         data = dict(node.items())
     else:
         data = dict(node)
-    for key in ("created_at", "updated_at", "archived_at"):
-        val = data.get(key)
+    for key, val in list(data.items()):
         if val is not None and hasattr(val, "to_native"):
             data[key] = val.to_native()
     return Entity.model_validate(data)
@@ -158,13 +160,15 @@ async def merge_entity(
     """Idempotent upsert. Re-running with the same (user_id, project_id,
     name, kind) tuple returns the same node — no duplicates.
 
-    The `WHERE e.user_id = $user_id` guard at the bottom is the
-    multi-tenant safety net: even though we MERGE on `id` (which
-    already encodes user_id), the explicit WHERE makes
-    `assert_user_id_param` happy AND defends against the
-    pathological case where two users somehow generate the same
-    canonical_id (impossible by construction, but the guard costs
-    nothing).
+    Multi-tenant safety: the canonical_id hash includes user_id,
+    so two users cannot produce the same id without a SHA-256
+    collision (cosmologically improbable). The trailing
+    `WITH e WHERE e.user_id = $user_id` exists ONLY to satisfy
+    K11.4's `assert_user_id_param` — it does NOT actually defend
+    against the impossible-by-construction id collision case,
+    because the MERGE has already mutated the node by the time
+    the WHERE filters the return. K11.5a-R1/R2: docstring fixed
+    to be honest. The real defense is the canonical_id hash.
     """
     canonical_id = entity_canonical_id(
         user_id=user_id,
@@ -335,21 +339,59 @@ async def get_entity(
 # ── find_entities_by_name ─────────────────────────────────────────────
 
 
+# K11.5a-R1/R1 fix: split the canonical-name and alias-membership
+# arms into separate UNION subqueries. The original single-MATCH
+# with `(canonical_name = X OR $name IN aliases)` defeated the
+# `entity_user_canonical` composite index — Cypher's planner
+# falls back to a label scan when an OR mixes one indexable and
+# one non-indexable predicate. The UNION shape lets the first arm
+# use the index and the second arm scan only when needed. UNION
+# (not UNION ALL) deduplicates rows that match both arms.
+#
+# CALL { ... } subquery + WITH passes the parameters through
+# without copying them on every row. The outer ORDER BY ranks
+# the merged result set: anchored above discovered, then by
+# confidence, then alphabetical.
 _FIND_BY_NAME_CYPHER_ALL = """
-MATCH (e:Entity)
-WHERE e.user_id = $user_id
-  AND ($project_id IS NULL OR e.project_id = $project_id)
-  AND (e.canonical_name = $canonical_name OR $name IN e.aliases)
+CALL {
+  WITH $user_id AS user_id, $project_id AS project_id,
+       $canonical_name AS canonical_name
+  MATCH (e:Entity)
+  WHERE e.user_id = user_id
+    AND e.canonical_name = canonical_name
+    AND (project_id IS NULL OR e.project_id = project_id)
+  RETURN e
+  UNION
+  WITH $user_id AS user_id, $project_id AS project_id, $name AS name
+  MATCH (e:Entity)
+  WHERE e.user_id = user_id
+    AND name IN e.aliases
+    AND (project_id IS NULL OR e.project_id = project_id)
+  RETURN e
+}
 RETURN e
 ORDER BY e.anchor_score DESC, e.confidence DESC, e.name ASC
 """
 
 _FIND_BY_NAME_CYPHER_ACTIVE = """
-MATCH (e:Entity)
-WHERE e.user_id = $user_id
-  AND ($project_id IS NULL OR e.project_id = $project_id)
-  AND e.archived_at IS NULL
-  AND (e.canonical_name = $canonical_name OR $name IN e.aliases)
+CALL {
+  WITH $user_id AS user_id, $project_id AS project_id,
+       $canonical_name AS canonical_name
+  MATCH (e:Entity)
+  WHERE e.user_id = user_id
+    AND e.canonical_name = canonical_name
+    AND e.archived_at IS NULL
+    AND (project_id IS NULL OR e.project_id = project_id)
+  RETURN e
+  UNION
+  WITH $user_id AS user_id, $project_id AS project_id, $name AS name
+  MATCH (e:Entity)
+  WHERE e.user_id = user_id
+    AND name IN e.aliases
+    AND e.archived_at IS NULL
+    AND (project_id IS NULL OR e.project_id = project_id)
+  RETURN e
+}
 RETURN e
 ORDER BY e.anchor_score DESC, e.confidence DESC, e.name ASC
 """
@@ -420,17 +462,25 @@ async def archive_entity(
     canonical_id: str,
     reason: str,
 ) -> Entity | None:
-    """Soft-archive an entity. Per KSA §3.4.F, this preserves all
-    EVIDENCED_BY edges, RELATES_TO edges, and timeline events —
-    only the `archived_at`, `anchor_score`, and `glossary_entity_id`
-    properties change. The entity is hidden from default RAG
-    queries via `WHERE e.archived_at IS NULL` filters elsewhere.
+    """Soft-archive an entity (KSA §3.4.F glossary-deletion path).
 
-    `reason` is stored as a free-text property for the audit log:
-    expected values are `'glossary_deleted'`, `'user_archive'`,
-    `'duplicate'`. Not a CHECK-constrained enum because new reasons
-    arrive over time and a typo here is a logging issue, not a
-    correctness one.
+    Preserves all EVIDENCED_BY edges, RELATES_TO edges, and
+    timeline events — only `archived_at`, `anchor_score`, and
+    `glossary_entity_id` change. The entity is hidden from
+    default RAG queries via `WHERE e.archived_at IS NULL` filters
+    elsewhere.
+
+    **Scope: K11.5a only models the §3.4.F glossary-deleted path.**
+    The function clears `glossary_entity_id` unconditionally,
+    which is correct for `reason='glossary_deleted'` but would
+    lose the link on a `'duplicate'` or manual `'user_archive'`
+    archive of an anchored entity. Those non-§3.4.F flows are
+    K17/K18 scope and will land as separate functions
+    (`archive_duplicate`, `user_archive_entity`) when those
+    surfaces exist. K11.5a-R1/R5: docstring narrowed.
+
+    `reason` is stored as a free-text property for the audit log.
+    Expected value at K11.5a is `'glossary_deleted'`.
     """
     result = await run_write(
         session,
@@ -503,6 +553,15 @@ async def delete_entities_with_zero_evidence(
     in one statement — RELATES_TO edges to other entities, plus
     any remaining EVIDENCED_BY shells. Returns the number of nodes
     deleted so the cascade caller can log it.
+
+    **DO NOT run concurrently with extraction.** `merge_entity`
+    creates new nodes with `evidence_count = 0` and there is a
+    window between merge and the first `EVIDENCED_BY` edge write
+    (which K11.8 increments to ≥1) where a freshly-merged entity
+    looks like an orphan. Concurrent cleanup would delete it.
+    K11.5a-R1/R6: K11.8 is responsible for orchestrating the
+    cleanup against the extraction job lifecycle — call this from
+    a paused / completed job state, never mid-run.
     """
     result = await run_write(
         session,
