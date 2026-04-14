@@ -1,0 +1,112 @@
+{
+  "page": {
+    "title": "メモリ",
+    "subtitle": "AI が記憶する内容を制御するプロジェクト、グローバルプロフィール、プライバシー設定。",
+    "tabs": {
+      "label": "メモリタブ",
+      "projects": "プロジェクト",
+      "global": "グローバル",
+      "privacy": "プライバシー"
+    }
+  },
+  "projects": {
+    "showArchived": "アーカイブを表示",
+    "refresh": "更新",
+    "newProject": "新しいプロジェクト",
+    "createFirst": "最初のプロジェクトを作成",
+    "empty": {
+      "title": "プロジェクトはまだありません",
+      "description": "プロジェクトは特定の作品ごとに AI が記憶する範囲を絞り込みます。"
+    },
+    "loadFailed": "プロジェクトの読み込みに失敗しました: {{error}}",
+    "paginationNote": "最初の 100 件を表示 — フルページネーションは Track 2 で対応予定。",
+    "card": {
+      "staticMemory": "静的メモリ",
+      "archivedBadge": "アーカイブ済み",
+      "edit": "編集",
+      "archive": "アーカイブ",
+      "restore": "復元",
+      "delete": "削除",
+      "bookId": "book_id"
+    },
+    "form": {
+      "createTitle": "新しいプロジェクト",
+      "editTitle": "プロジェクトを編集",
+      "createDescription": "プロジェクトは特定の作品について AI が記憶する範囲を絞り込みます。",
+      "name": "名前",
+      "namePlaceholder": "例: 東海の風",
+      "type": "種類",
+      "typeImmutable": "プロジェクトの種類は作成後に変更できません。",
+      "typeOptions": {
+        "book": "書籍",
+        "translation": "翻訳",
+        "code": "コード",
+        "general": "一般"
+      },
+      "bookId": "ブック ID (任意)",
+      "bookIdPlaceholder": "uuid",
+      "description": "説明 (任意)",
+      "instructions": "指示 (任意)",
+      "instructionsPlaceholder": "文体、声、制約などのメモ — このプロジェクトのすべてのチャットに挿入されます。",
+      "nameError": "名前は 1〜{{max}} 文字にしてください。",
+      "bookIdError": "有効な UUID を入力してください。",
+      "cancel": "キャンセル",
+      "create": "作成",
+      "save": "保存"
+    },
+    "archiveDialog": {
+      "title": "プロジェクトをアーカイブしますか？",
+      "description": "「{{name}}」はアクティブリストから非表示になります。後で復元できます。",
+      "confirm": "アーカイブ"
+    },
+    "deleteDialog": {
+      "title": "プロジェクトを削除しますか？",
+      "description": "「{{name}}」とその要約は完全に削除されます。元に戻せません。",
+      "confirm": "削除"
+    },
+    "toast": {
+      "archived": "プロジェクトをアーカイブしました",
+      "archiveFailed": "アーカイブに失敗しました",
+      "restored": "プロジェクトを復元しました",
+      "restoreFailed": "復元に失敗しました",
+      "deleted": "プロジェクトを削除しました",
+      "deleteFailed": "削除に失敗しました"
+    }
+  },
+  "global": {
+    "title": "グローバルプロフィール",
+    "description": "すべてのプロジェクトで AI が参照できるあなたについての短い説明です。文体の好み、仕事の文脈、セッションをまたいで持ち越したい情報を入力してください。最大 {{max}} 文字。",
+    "placeholder": "例: アーバンファンタジーを書いています。名前は日本語の順序を保ってください。簡潔な散文で、過剰な形容詞は避けてください。",
+    "loadFailed": "要約の読み込みに失敗しました: {{error}}",
+    "unsavedChanges": "未保存の変更",
+    "saving": "保存中…",
+    "save": "保存",
+    "saved": "グローバルプロフィールを保存しました",
+    "saveFailed": "保存に失敗しました",
+    "version": "v{{version}}"
+  },
+  "indicator": {
+    "label": "メモリインジケーター",
+    "title": "メモリ",
+    "modes": {
+      "global": "グローバル",
+      "project": "プロジェクト",
+      "degraded": "縮退"
+    },
+    "popover": {
+      "projectHeading": "プロジェクトメモリ",
+      "globalHeading": "グローバルメモリのみ",
+      "loading": "読み込み中…",
+      "fallbackProject": "プロジェクト",
+      "projectBody": "このセッションは <strong>{{name}}</strong> にリンクされています。AI はあなたのグローバルプロフィールに加えて、毎ターン このプロジェクトの要約とグロッサリーを参照します。",
+      "globalBody": "このセッションにはプロジェクトがリンクされていません。AI はあなたのグローバルプロフィールのみを参照します。書籍固有のメモリにアクセスさせるには、セッション設定でプロジェクトをリンクしてください。",
+      "manage": "メモリを管理"
+    }
+  },
+  "picker": {
+    "label": "プロジェクトメモリ",
+    "noProject": "プロジェクトなし — グローバルメモリのみ",
+    "archivedPlaceholder": "(アーカイブ済みプロジェクト — 別を選択)",
+    "hint": "このチャットを knowledge-service プロジェクトにリンクし、AI が毎ターンその要約とグロッサリーを参照できるようにします。"
+  }
+}

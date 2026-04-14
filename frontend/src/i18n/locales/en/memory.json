@@ -1,0 +1,112 @@
+{
+  "page": {
+    "title": "Memory",
+    "subtitle": "Projects, global bio, and privacy controls for what the AI remembers.",
+    "tabs": {
+      "label": "Memory tabs",
+      "projects": "Projects",
+      "global": "Global",
+      "privacy": "Privacy"
+    }
+  },
+  "projects": {
+    "showArchived": "Show archived",
+    "refresh": "Refresh",
+    "newProject": "New project",
+    "createFirst": "Create your first project",
+    "empty": {
+      "title": "No projects yet",
+      "description": "Projects scope what the AI remembers for a specific piece of work."
+    },
+    "loadFailed": "Failed to load projects: {{error}}",
+    "paginationNote": "Showing first 100 projects — full pagination lands with Track 2.",
+    "card": {
+      "staticMemory": "Static memory",
+      "archivedBadge": "archived",
+      "edit": "Edit",
+      "archive": "Archive",
+      "restore": "Restore",
+      "delete": "Delete",
+      "bookId": "book_id"
+    },
+    "form": {
+      "createTitle": "New project",
+      "editTitle": "Edit project",
+      "createDescription": "A project scopes what the AI remembers for a specific piece of work.",
+      "name": "Name",
+      "namePlaceholder": "e.g. Winds of the Eastern Sea",
+      "type": "Type",
+      "typeImmutable": "Project type is immutable after creation.",
+      "typeOptions": {
+        "book": "Book",
+        "translation": "Translation",
+        "code": "Code",
+        "general": "General"
+      },
+      "bookId": "Book ID (optional)",
+      "bookIdPlaceholder": "uuid",
+      "description": "Description (optional)",
+      "instructions": "Instructions (optional)",
+      "instructionsPlaceholder": "Style notes, voice, constraints — injected into every chat for this project.",
+      "nameError": "Name must be 1–{{max}} characters.",
+      "bookIdError": "Must be a valid UUID.",
+      "cancel": "Cancel",
+      "create": "Create",
+      "save": "Save"
+    },
+    "archiveDialog": {
+      "title": "Archive project?",
+      "description": "\"{{name}}\" will be hidden from the active list. You can restore it later.",
+      "confirm": "Archive"
+    },
+    "deleteDialog": {
+      "title": "Delete project?",
+      "description": "\"{{name}}\" and its summary will be permanently deleted. This cannot be undone.",
+      "confirm": "Delete"
+    },
+    "toast": {
+      "archived": "Project archived",
+      "archiveFailed": "Archive failed",
+      "restored": "Project restored",
+      "restoreFailed": "Restore failed",
+      "deleted": "Project deleted",
+      "deleteFailed": "Delete failed"
+    }
+  },
+  "global": {
+    "title": "Global bio",
+    "description": "A short description of you the AI can see in every project. Style preferences, context about your work, anything you want to carry across sessions. Max {{max}} characters.",
+    "placeholder": "e.g. I write urban fantasy. Keep names in Japanese order. Use sparing prose, no purple adjectives.",
+    "loadFailed": "Failed to load summary: {{error}}",
+    "unsavedChanges": "Unsaved changes",
+    "saving": "Saving…",
+    "save": "Save",
+    "saved": "Global bio saved",
+    "saveFailed": "Save failed",
+    "version": "v{{version}}"
+  },
+  "indicator": {
+    "label": "Memory indicator",
+    "title": "Memory",
+    "modes": {
+      "global": "Global",
+      "project": "Project",
+      "degraded": "Degraded"
+    },
+    "popover": {
+      "projectHeading": "Project memory",
+      "globalHeading": "Global memory only",
+      "loading": "loading…",
+      "fallbackProject": "a project",
+      "projectBody": "This session is linked to <strong>{{name}}</strong>. The AI sees your global bio plus the project's summary and glossary entries on every turn.",
+      "globalBody": "This session has no project linked. The AI sees only your global bio. Link a project in session settings to give it access to book-specific memory.",
+      "manage": "Manage memory"
+    }
+  },
+  "picker": {
+    "label": "Project memory",
+    "noProject": "No project — global memory only",
+    "archivedPlaceholder": "(archived project — pick another)",
+    "hint": "Links this chat to a knowledge-service project so the AI sees its summary and glossary on every turn."
+  }
+}

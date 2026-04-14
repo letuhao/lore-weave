@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { FolderOpen, Plus, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { ConfirmDialog, EmptyState, SkeletonCard } from '@/components/shared';
 import { useProjects } from '../hooks/useProjects';
 import type { Project } from '../types';
@@ -8,6 +9,7 @@ import { ProjectCard } from './ProjectCard';
 import { ProjectFormModal } from './ProjectFormModal';
 
 export function ProjectsTab() {
+  const { t } = useTranslation('memory');
   const [includeArchived, setIncludeArchived] = useState(false);
   const {
     items,
@@ -52,10 +54,10 @@ export function ProjectsTab() {
     setActionPending(true);
     try {
       await archiveProject(archiveTarget.project_id);
-      toast.success('Project archived');
+      toast.success(t('projects.toast.archived'));
       setArchiveTarget(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Archive failed');
+      toast.error(err instanceof Error ? err.message : t('projects.toast.archiveFailed'));
     } finally {
       setActionPending(false);
     }
@@ -67,9 +69,9 @@ export function ProjectsTab() {
         projectId: project.project_id,
         payload: { is_archived: false },
       });
-      toast.success('Project restored');
+      toast.success(t('projects.toast.restored'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Restore failed');
+      toast.error(err instanceof Error ? err.message : t('projects.toast.restoreFailed'));
     }
   };
 
@@ -78,10 +80,10 @@ export function ProjectsTab() {
     setActionPending(true);
     try {
       await deleteProject(deleteTarget.project_id);
-      toast.success('Project deleted');
+      toast.success(t('projects.toast.deleted'));
       setDeleteTarget(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Delete failed');
+      toast.error(err instanceof Error ? err.message : t('projects.toast.deleteFailed'));
     } finally {
       setActionPending(false);
     }
@@ -97,23 +99,23 @@ export function ProjectsTab() {
             onChange={(e) => setIncludeArchived(e.target.checked)}
             className="h-3.5 w-3.5 rounded border"
           />
-          Show archived
+          {t('projects.showArchived')}
         </label>
         <div className="flex gap-2">
           <button
             onClick={() => void refetch()}
-            title="Refresh"
+            title={t('projects.refresh')}
             className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground"
           >
             <RefreshCw className="h-3.5 w-3.5" />
-            Refresh
+            {t('projects.refresh')}
           </button>
           <button
             onClick={openCreate}
             className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
           >
             <Plus className="h-3.5 w-3.5" />
-            New project
+            {t('projects.newProject')}
           </button>
         </div>
       </div>
@@ -128,22 +130,22 @@ export function ProjectsTab() {
 
       {isError && !isLoading && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-xs text-destructive">
-          Failed to load projects: {error instanceof Error ? error.message : 'unknown error'}
+          {t('projects.loadFailed', { error: error instanceof Error ? error.message : 'unknown error' })}
         </div>
       )}
 
       {!isLoading && !isError && items.length === 0 && (
         <EmptyState
           icon={FolderOpen}
-          title="No projects yet"
-          description="Projects scope what the AI remembers for a specific piece of work."
+          title={t('projects.empty.title')}
+          description={t('projects.empty.description')}
           action={
             <button
               onClick={openCreate}
               className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
             >
               <Plus className="h-3.5 w-3.5" />
-              Create your first project
+              {t('projects.createFirst')}
             </button>
           }
         />
@@ -163,7 +165,7 @@ export function ProjectsTab() {
           ))}
           {hasMore && (
             <p className="mt-2 text-center text-[11px] text-muted-foreground">
-              Showing first 100 projects — full pagination lands with Track 2.
+              {t('projects.paginationNote')}
             </p>
           )}
         </div>
@@ -181,9 +183,11 @@ export function ProjectsTab() {
       <ConfirmDialog
         open={archiveTarget !== null}
         onOpenChange={(o) => !o && setArchiveTarget(null)}
-        title="Archive project?"
-        description={`"${archiveTarget?.name ?? lastArchiveName.current}" will be hidden from the active list. You can restore it later.`}
-        confirmLabel="Archive"
+        title={t('projects.archiveDialog.title')}
+        description={t('projects.archiveDialog.description', {
+          name: archiveTarget?.name ?? lastArchiveName.current,
+        })}
+        confirmLabel={t('projects.archiveDialog.confirm')}
         onConfirm={() => void handleArchive()}
         loading={actionPending}
       />
@@ -191,9 +195,11 @@ export function ProjectsTab() {
       <ConfirmDialog
         open={deleteTarget !== null}
         onOpenChange={(o) => !o && setDeleteTarget(null)}
-        title="Delete project?"
-        description={`"${deleteTarget?.name ?? lastDeleteName.current}" and its summary will be permanently deleted. This cannot be undone.`}
-        confirmLabel="Delete"
+        title={t('projects.deleteDialog.title')}
+        description={t('projects.deleteDialog.description', {
+          name: deleteTarget?.name ?? lastDeleteName.current,
+        })}
+        confirmLabel={t('projects.deleteDialog.confirm')}
         variant="destructive"
         onConfirm={() => void handleDelete()}
         loading={actionPending}

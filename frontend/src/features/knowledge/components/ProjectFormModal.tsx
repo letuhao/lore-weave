@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { FormDialog } from '@/components/shared';
 import type {
   Project,
@@ -15,12 +16,7 @@ const NAME_MAX = 200;
 const DESCRIPTION_MAX = 2000;
 const INSTRUCTIONS_MAX = 20000;
 
-const PROJECT_TYPES: { value: ProjectType; label: string }[] = [
-  { value: 'book', label: 'Book' },
-  { value: 'translation', label: 'Translation' },
-  { value: 'code', label: 'Code' },
-  { value: 'general', label: 'General' },
-];
+const PROJECT_TYPE_VALUES: ProjectType[] = ['book', 'translation', 'code', 'general'];
 
 type Mode = 'create' | 'edit';
 
@@ -41,6 +37,7 @@ export function ProjectFormModal({
   onCreate,
   onUpdate,
 }: Props) {
+  const { t } = useTranslation('memory');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [projectType, setProjectType] = useState<ProjectType>('general');
@@ -126,11 +123,9 @@ export function ProjectFormModal({
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={mode === 'create' ? 'New project' : 'Edit project'}
+      title={mode === 'create' ? t('projects.form.createTitle') : t('projects.form.editTitle')}
       description={
-        mode === 'create'
-          ? 'A project scopes what the AI remembers for a specific piece of work.'
-          : undefined
+        mode === 'create' ? t('projects.form.createDescription') : undefined
       }
       footer={
         <>
@@ -138,78 +133,82 @@ export function ProjectFormModal({
             onClick={() => onOpenChange(false)}
             className="rounded-md border px-3 py-1.5 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground"
           >
-            Cancel
+            {t('projects.form.cancel')}
           </button>
           <button
             onClick={handleSubmit}
             disabled={!canSave}
             className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            {saving ? 'Saving…' : mode === 'create' ? 'Create' : 'Save'}
+            {saving
+              ? t('global.saving')
+              : mode === 'create'
+                ? t('projects.form.create')
+                : t('projects.form.save')}
           </button>
         </>
       }
     >
       <div className="flex flex-col gap-3">
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted-foreground">Name</span>
+          <span className="text-xs font-medium text-muted-foreground">{t('projects.form.name')}</span>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             maxLength={NAME_MAX}
             className="rounded-md border bg-input px-3 py-2 text-sm outline-none focus:border-ring"
-            placeholder="e.g. Winds of the Eastern Sea"
+            placeholder={t('projects.form.namePlaceholder')}
           />
           {!nameValid && name.length > 0 && (
             <span className="text-[11px] text-destructive">
-              Name must be 1–{NAME_MAX} characters.
+              {t('projects.form.nameError', { max: NAME_MAX, defaultValue: `Name must be 1–${NAME_MAX} characters.` })}
             </span>
           )}
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted-foreground">Type</span>
+          <span className="text-xs font-medium text-muted-foreground">{t('projects.form.type')}</span>
           <select
             value={projectType}
             onChange={(e) => setProjectType(e.target.value as ProjectType)}
             disabled={mode === 'edit'}
             className="rounded-md border bg-input px-3 py-2 text-sm outline-none focus:border-ring disabled:opacity-60"
           >
-            {PROJECT_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
+            {PROJECT_TYPE_VALUES.map((value) => (
+              <option key={value} value={value}>
+                {t(`projects.form.typeOptions.${value}`)}
               </option>
             ))}
           </select>
           {mode === 'edit' && (
             <span className="text-[11px] text-muted-foreground">
-              Project type is immutable after creation.
+              {t('projects.form.typeImmutable')}
             </span>
           )}
         </label>
 
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted-foreground">
-            Book ID <span className="text-muted-foreground/70">(optional)</span>
+            {t('projects.form.bookId')}
           </span>
           <input
             type="text"
             value={bookId}
             onChange={(e) => setBookId(e.target.value)}
             className="rounded-md border bg-input px-3 py-2 font-mono text-xs outline-none focus:border-ring"
-            placeholder="uuid"
+            placeholder={t('projects.form.bookIdPlaceholder')}
           />
           {!bookIdValid && (
             <span className="text-[11px] text-destructive">
-              Must be a valid UUID.
+              {t('projects.form.bookIdError', { defaultValue: 'Must be a valid UUID.' })}
             </span>
           )}
         </label>
 
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted-foreground">
-            Description <span className="text-muted-foreground/70">(optional)</span>
+            {t('projects.form.description')}
           </span>
           <textarea
             value={description}
@@ -225,7 +224,7 @@ export function ProjectFormModal({
 
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted-foreground">
-            Instructions <span className="text-muted-foreground/70">(optional)</span>
+            {t('projects.form.instructions')}
           </span>
           <textarea
             value={instructions}
@@ -233,7 +232,7 @@ export function ProjectFormModal({
             maxLength={INSTRUCTIONS_MAX}
             rows={5}
             className="resize-y rounded-md border bg-input px-3 py-2 text-sm outline-none focus:border-ring"
-            placeholder="Style notes, voice, constraints — injected into every chat for this project."
+            placeholder={t('projects.form.instructionsPlaceholder')}
           />
           <span className="text-right text-[11px] text-muted-foreground">
             {instructions.length} / {INSTRUCTIONS_MAX}

@@ -1,0 +1,112 @@
+{
+  "page": {
+    "title": "Bộ nhớ",
+    "subtitle": "Dự án, tiểu sử chung và quyền riêng tư cho những gì AI ghi nhớ.",
+    "tabs": {
+      "label": "Tab bộ nhớ",
+      "projects": "Dự án",
+      "global": "Chung",
+      "privacy": "Quyền riêng tư"
+    }
+  },
+  "projects": {
+    "showArchived": "Hiện đã lưu trữ",
+    "refresh": "Làm mới",
+    "newProject": "Dự án mới",
+    "createFirst": "Tạo dự án đầu tiên",
+    "empty": {
+      "title": "Chưa có dự án nào",
+      "description": "Dự án giới hạn phạm vi mà AI ghi nhớ cho từng tác phẩm cụ thể."
+    },
+    "loadFailed": "Không tải được dự án: {{error}}",
+    "paginationNote": "Hiển thị 100 dự án đầu tiên — phân trang đầy đủ sẽ có ở Track 2.",
+    "card": {
+      "staticMemory": "Bộ nhớ tĩnh",
+      "archivedBadge": "đã lưu trữ",
+      "edit": "Sửa",
+      "archive": "Lưu trữ",
+      "restore": "Khôi phục",
+      "delete": "Xóa",
+      "bookId": "book_id"
+    },
+    "form": {
+      "createTitle": "Dự án mới",
+      "editTitle": "Sửa dự án",
+      "createDescription": "Một dự án giới hạn phạm vi mà AI ghi nhớ cho một tác phẩm cụ thể.",
+      "name": "Tên",
+      "namePlaceholder": "ví dụ: Gió Biển Đông",
+      "type": "Loại",
+      "typeImmutable": "Loại dự án không thể thay đổi sau khi tạo.",
+      "typeOptions": {
+        "book": "Sách",
+        "translation": "Bản dịch",
+        "code": "Mã nguồn",
+        "general": "Chung"
+      },
+      "bookId": "Mã sách (tùy chọn)",
+      "bookIdPlaceholder": "uuid",
+      "description": "Mô tả (tùy chọn)",
+      "instructions": "Hướng dẫn (tùy chọn)",
+      "instructionsPlaceholder": "Ghi chú phong cách, giọng văn, ràng buộc — sẽ được chèn vào mọi cuộc trò chuyện của dự án này.",
+      "nameError": "Tên phải có 1–{{max}} ký tự.",
+      "bookIdError": "Phải là UUID hợp lệ.",
+      "cancel": "Hủy",
+      "create": "Tạo",
+      "save": "Lưu"
+    },
+    "archiveDialog": {
+      "title": "Lưu trữ dự án?",
+      "description": "\"{{name}}\" sẽ bị ẩn khỏi danh sách hoạt động. Bạn có thể khôi phục sau.",
+      "confirm": "Lưu trữ"
+    },
+    "deleteDialog": {
+      "title": "Xóa dự án?",
+      "description": "\"{{name}}\" và bản tóm tắt của nó sẽ bị xóa vĩnh viễn. Không thể hoàn tác.",
+      "confirm": "Xóa"
+    },
+    "toast": {
+      "archived": "Đã lưu trữ dự án",
+      "archiveFailed": "Lưu trữ thất bại",
+      "restored": "Đã khôi phục dự án",
+      "restoreFailed": "Khôi phục thất bại",
+      "deleted": "Đã xóa dự án",
+      "deleteFailed": "Xóa thất bại"
+    }
+  },
+  "global": {
+    "title": "Tiểu sử chung",
+    "description": "Mô tả ngắn về bạn mà AI có thể thấy trong mọi dự án. Sở thích phong cách, ngữ cảnh công việc, bất cứ điều gì bạn muốn duy trì qua các phiên. Tối đa {{max}} ký tự.",
+    "placeholder": "ví dụ: Tôi viết kỳ ảo đô thị. Giữ tên theo thứ tự Nhật Bản. Văn xuôi tiết chế, không tính từ rườm rà.",
+    "loadFailed": "Không tải được tóm tắt: {{error}}",
+    "unsavedChanges": "Có thay đổi chưa lưu",
+    "saving": "Đang lưu…",
+    "save": "Lưu",
+    "saved": "Đã lưu tiểu sử chung",
+    "saveFailed": "Lưu thất bại",
+    "version": "v{{version}}"
+  },
+  "indicator": {
+    "label": "Chỉ báo bộ nhớ",
+    "title": "Bộ nhớ",
+    "modes": {
+      "global": "Chung",
+      "project": "Dự án",
+      "degraded": "Suy giảm"
+    },
+    "popover": {
+      "projectHeading": "Bộ nhớ dự án",
+      "globalHeading": "Chỉ bộ nhớ chung",
+      "loading": "đang tải…",
+      "fallbackProject": "một dự án",
+      "projectBody": "Phiên này được liên kết với <strong>{{name}}</strong>. AI thấy tiểu sử chung của bạn cộng với bản tóm tắt và glossary của dự án trong mọi lượt.",
+      "globalBody": "Phiên này không liên kết với dự án nào. AI chỉ thấy tiểu sử chung của bạn. Liên kết một dự án trong cài đặt phiên để cho phép AI truy cập bộ nhớ riêng theo sách.",
+      "manage": "Quản lý bộ nhớ"
+    }
+  },
+  "picker": {
+    "label": "Bộ nhớ dự án",
+    "noProject": "Không có dự án — chỉ dùng bộ nhớ chung",
+    "archivedPlaceholder": "(dự án đã lưu trữ — chọn mục khác)",
+    "hint": "Liên kết cuộc trò chuyện này với một dự án knowledge-service để AI thấy bản tóm tắt và glossary của nó trong mọi lượt."
+  }
+}

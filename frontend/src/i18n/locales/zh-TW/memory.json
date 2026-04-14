@@ -1,0 +1,112 @@
+{
+  "page": {
+    "title": "記憶",
+    "subtitle": "用於控制 AI 記住內容的專案、全域簡介與隱私設定。",
+    "tabs": {
+      "label": "記憶分頁",
+      "projects": "專案",
+      "global": "全域",
+      "privacy": "隱私"
+    }
+  },
+  "projects": {
+    "showArchived": "顯示已封存",
+    "refresh": "重新整理",
+    "newProject": "新增專案",
+    "createFirst": "建立第一個專案",
+    "empty": {
+      "title": "尚無專案",
+      "description": "專案會限定 AI 記住的範圍,只記得特定作品相關的內容。"
+    },
+    "loadFailed": "載入專案失敗: {{error}}",
+    "paginationNote": "顯示前 100 個專案 — 完整分頁將於 Track 2 推出。",
+    "card": {
+      "staticMemory": "靜態記憶",
+      "archivedBadge": "已封存",
+      "edit": "編輯",
+      "archive": "封存",
+      "restore": "還原",
+      "delete": "刪除",
+      "bookId": "book_id"
+    },
+    "form": {
+      "createTitle": "新增專案",
+      "editTitle": "編輯專案",
+      "createDescription": "專案會限定 AI 對某一特定作品所記住的範圍。",
+      "name": "名稱",
+      "namePlaceholder": "例如:東海之風",
+      "type": "類型",
+      "typeImmutable": "專案類型在建立後無法變更。",
+      "typeOptions": {
+        "book": "書籍",
+        "translation": "翻譯",
+        "code": "程式碼",
+        "general": "一般"
+      },
+      "bookId": "書籍 ID (選填)",
+      "bookIdPlaceholder": "uuid",
+      "description": "描述 (選填)",
+      "instructions": "指示 (選填)",
+      "instructionsPlaceholder": "風格筆記、語氣、限制條件 — 會插入到此專案的每次對話中。",
+      "nameError": "名稱長度需介於 1–{{max}} 字元之間。",
+      "bookIdError": "必須是有效的 UUID。",
+      "cancel": "取消",
+      "create": "建立",
+      "save": "儲存"
+    },
+    "archiveDialog": {
+      "title": "封存專案?",
+      "description": "「{{name}}」將從活躍清單中隱藏。您可以稍後還原。",
+      "confirm": "封存"
+    },
+    "deleteDialog": {
+      "title": "刪除專案?",
+      "description": "「{{name}}」及其摘要將被永久刪除。此動作無法復原。",
+      "confirm": "刪除"
+    },
+    "toast": {
+      "archived": "已封存專案",
+      "archiveFailed": "封存失敗",
+      "restored": "已還原專案",
+      "restoreFailed": "還原失敗",
+      "deleted": "已刪除專案",
+      "deleteFailed": "刪除失敗"
+    }
+  },
+  "global": {
+    "title": "全域簡介",
+    "description": "AI 在每個專案中都能看到的關於您的簡短描述。文體偏好、工作背景,任何想跨會話保留的內容。最多 {{max}} 字元。",
+    "placeholder": "例如:我寫都市奇幻。人名請保留日文順序。文字簡潔,避免冗贅形容詞。",
+    "loadFailed": "載入摘要失敗: {{error}}",
+    "unsavedChanges": "尚未儲存的變更",
+    "saving": "儲存中…",
+    "save": "儲存",
+    "saved": "已儲存全域簡介",
+    "saveFailed": "儲存失敗",
+    "version": "v{{version}}"
+  },
+  "indicator": {
+    "label": "記憶指示器",
+    "title": "記憶",
+    "modes": {
+      "global": "全域",
+      "project": "專案",
+      "degraded": "降級"
+    },
+    "popover": {
+      "projectHeading": "專案記憶",
+      "globalHeading": "僅全域記憶",
+      "loading": "載入中…",
+      "fallbackProject": "一個專案",
+      "projectBody": "此對話已連結到 <strong>{{name}}</strong>。AI 會看到您的全域簡介,以及該專案的摘要與術語表,在每次對話中都會用到。",
+      "globalBody": "此對話未連結任何專案。AI 只會看到您的全域簡介。請在對話設定中連結專案,讓 AI 能存取書籍專屬的記憶。",
+      "manage": "管理記憶"
+    }
+  },
+  "picker": {
+    "label": "專案記憶",
+    "noProject": "無專案 — 僅使用全域記憶",
+    "archivedPlaceholder": "(已封存專案 — 請另選)",
+    "hint": "將此對話連結到 knowledge-service 專案,讓 AI 在每次對話時都能看到該專案的摘要與術語表。"
+  }
+}

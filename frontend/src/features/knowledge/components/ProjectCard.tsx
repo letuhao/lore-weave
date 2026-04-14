@@ -1,4 +1,5 @@
 import { Archive, ArchiveRestore, Pencil, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { Project } from '../types';
 
 // K8 Track 1 renders the `disabled` state only. Other states
@@ -13,15 +14,10 @@ interface Props {
   onDelete: (project: Project) => void;
 }
 
-const TYPE_LABEL: Record<Project['project_type'], string> = {
-  book: 'book',
-  translation: 'translation',
-  code: 'code',
-  general: 'general',
-};
-
 export function ProjectCard({ project, onEdit, onArchive, onRestore, onDelete }: Props) {
+  const { t } = useTranslation('memory');
   const isArchived = project.is_archived;
+  const typeLabel = t(`projects.form.typeOptions.${project.project_type}`);
 
   return (
     <div className="rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
@@ -32,15 +28,15 @@ export function ProjectCard({ project, onEdit, onArchive, onRestore, onDelete }:
               {project.name}
             </h3>
             <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-              Static memory
+              {t('projects.card.staticMemory')}
             </span>
             {isArchived && (
               <span className="rounded-md bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning">
-                archived
+                {t('projects.card.archivedBadge')}
               </span>
             )}
             <span className="text-[11px] text-muted-foreground">
-              {TYPE_LABEL[project.project_type]}
+              {typeLabel}
             </span>
           </div>
           {project.description && (
@@ -50,7 +46,7 @@ export function ProjectCard({ project, onEdit, onArchive, onRestore, onDelete }:
           )}
           {project.book_id && (
             <p className="mt-1 font-mono text-[10px] text-muted-foreground">
-              book_id: {project.book_id}
+              {t('projects.card.bookId')}: {project.book_id}
             </p>
           )}
         </div>
@@ -58,7 +54,7 @@ export function ProjectCard({ project, onEdit, onArchive, onRestore, onDelete }:
         <div className="flex flex-shrink-0 gap-1">
           <button
             onClick={() => onEdit(project)}
-            title="Edit"
+            title={t('projects.card.edit')}
             className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           >
             <Pencil className="h-3.5 w-3.5" />
@@ -66,7 +62,7 @@ export function ProjectCard({ project, onEdit, onArchive, onRestore, onDelete }:
           {!isArchived ? (
             <button
               onClick={() => onArchive(project)}
-              title="Archive"
+              title={t('projects.card.archive')}
               className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             >
               <Archive className="h-3.5 w-3.5" />
@@ -74,7 +70,7 @@ export function ProjectCard({ project, onEdit, onArchive, onRestore, onDelete }:
           ) : (
             <button
               onClick={() => onRestore(project)}
-              title="Restore"
+              title={t('projects.card.restore')}
               className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             >
               <ArchiveRestore className="h-3.5 w-3.5" />
@@ -82,7 +78,7 @@ export function ProjectCard({ project, onEdit, onArchive, onRestore, onDelete }:
           )}
           <button
             onClick={() => onDelete(project)}
-            title="Delete"
+            title={t('projects.card.delete')}
             className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
           >
             <Trash2 className="h-3.5 w-3.5" />

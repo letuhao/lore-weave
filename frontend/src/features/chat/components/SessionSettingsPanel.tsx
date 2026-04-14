@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Settings, X, Brain, Zap } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
 import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
 import { useProjects } from '@/features/knowledge/hooks/useProjects';
@@ -23,6 +24,7 @@ interface SessionSettingsPanelProps {
 }
 
 export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: SessionSettingsPanelProps) {
+  const { t: tMemory } = useTranslation('memory');
   const { accessToken } = useAuth();
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -267,18 +269,18 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
         {/* ── Project (memory link) ──────────────────────────────────── */}
         <div>
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-            Project memory
+            {tMemory('picker.label')}
           </label>
           {projectsLoading ? (
             <div className="h-9 animate-pulse rounded-md bg-muted" />
           ) : (
             <select
-              aria-label="Project memory"
+              aria-label={tMemory('picker.label')}
               value={selectedProjectId ?? ''}
               onChange={(e) => handleProjectChange(e.target.value)}
               className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-ring focus:shadow-[0_0_0_3px_rgba(212,149,42,0.2)]"
             >
-              <option value="">No project — global memory only</option>
+              <option value="">{tMemory('picker.noProject')}</option>
               {projects.map((p) => (
                 <option key={p.project_id} value={p.project_id}>
                   {p.name}
@@ -292,14 +294,13 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
               {selectedProjectId &&
                 !projects.some((p) => p.project_id === selectedProjectId) && (
                   <option value={selectedProjectId} disabled>
-                    (archived project — pick another)
+                    {tMemory('picker.archivedPlaceholder')}
                   </option>
                 )}
             </select>
           )}
           <p className="mt-1 text-[10px] text-muted-foreground">
-            Links this chat to a knowledge-service project so the AI sees its
-            summary and glossary on every turn.
+            {tMemory('picker.hint')}
           </p>
         </div>
 

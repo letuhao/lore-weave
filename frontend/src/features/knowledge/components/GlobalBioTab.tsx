@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { Skeleton } from '@/components/shared';
 import { useSummaries } from '../hooks/useSummaries';
 
@@ -9,6 +10,7 @@ import { useSummaries } from '../hooks/useSummaries';
 const CONTENT_MAX = 50000;
 
 export function GlobalBioTab() {
+  const { t } = useTranslation('memory');
   const { global, isLoading, isError, error, updateGlobal, isUpdatingGlobal } =
     useSummaries();
 
@@ -63,20 +65,18 @@ export function GlobalBioTab() {
       // the backend treats "" as "no global bio set".
       const payload = trimmed === '' ? '' : content;
       await updateGlobal({ content: payload });
-      toast.success('Global bio saved');
+      toast.success(t('global.saved'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Save failed');
+      toast.error(err instanceof Error ? err.message : t('global.saveFailed'));
     }
   };
 
   return (
     <div>
       <div className="mb-4">
-        <h2 className="mb-1 font-serif text-sm font-semibold">Global bio</h2>
+        <h2 className="mb-1 font-serif text-sm font-semibold">{t('global.title')}</h2>
         <p className="text-[12px] text-muted-foreground">
-          A short description of you the AI can see in every project. Style
-          preferences, context about your work, anything you want to carry
-          across sessions. Max {CONTENT_MAX.toLocaleString()} characters.
+          {t('global.description', { max: CONTENT_MAX.toLocaleString() })}
         </p>
       </div>
 
@@ -84,7 +84,7 @@ export function GlobalBioTab() {
 
       {isError && !isLoading && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-xs text-destructive">
-          Failed to load summary: {error instanceof Error ? error.message : 'unknown error'}
+          {t('global.loadFailed', { error: error instanceof Error ? error.message : 'unknown error' })}
         </div>
       )}
 
@@ -96,26 +96,26 @@ export function GlobalBioTab() {
             maxLength={CONTENT_MAX}
             rows={14}
             className="w-full resize-y rounded-md border bg-input px-3 py-2 font-mono text-xs leading-relaxed outline-none focus:border-ring"
-            placeholder="e.g. I write urban fantasy. Keep names in Japanese order. Use sparing prose, no purple adjectives."
+            placeholder={t('global.placeholder')}
           />
 
           <div className="mt-2 flex items-center justify-between">
             <span className="text-[11px] text-muted-foreground">
               {content.length.toLocaleString()} / {CONTENT_MAX.toLocaleString()}
               {global?.version != null && (
-                <span className="ml-3">v{global.version}</span>
+                <span className="ml-3">{t('global.version', { version: global.version })}</span>
               )}
             </span>
             <div className="flex items-center gap-2">
               {dirty && (
-                <span className="text-[11px] text-warning">Unsaved changes</span>
+                <span className="text-[11px] text-warning">{t('global.unsavedChanges')}</span>
               )}
               <button
                 onClick={() => void handleSave()}
                 disabled={!canSave}
                 className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
-                {isUpdatingGlobal ? 'Saving…' : 'Save'}
+                {isUpdatingGlobal ? t('global.saving') : t('global.save')}
               </button>
             </div>
           </div>
