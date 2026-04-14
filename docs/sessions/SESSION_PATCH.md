@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 38 — K7c–K7e + K8.1 + K8.2 COMPLETE)
-- Updated By: Assistant (K8.1 MemoryPage scaffold + K8.2 Projects tab — useProjects hook, ProjectCard, ProjectFormModal, ProjectsTab with create/edit/archive/delete wiring. R1+R2 fixes landed in same commit.)
-- Active Branch: `main` (K8.2 commit pending)
-- HEAD: K8.2 commit (see git log) — K7c = `160de10`, K7d/K7e committed
+- Last Updated: 2026-04-14 (session 38 — K7c–K7e + K8.1 + K8.2 + K8.3 COMPLETE)
+- Updated By: Assistant (K8.3 Global bio + Privacy tabs — useSummaries hook, GlobalBioTab textarea+save, PrivacyTab with export download + type-to-confirm delete-all. R1+R2 review fixes in same commit.)
+- Active Branch: `main` (K8.3 commit pending)
+- HEAD: K8.3 commit (see git log) — K7c = `160de10`, K7d/K7e/K8.2 committed
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V7.md` — full context for next agent
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -114,6 +114,37 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K8.3 — Global bio + Privacy tabs ✅ (session 38)
+
+Second frontend slice for knowledge-service. Replaces the K8.1 placeholder stubs for the two remaining MemoryPage tabs and wires them against the public summaries + user-data endpoints shipped in K7c/K7d.
+
+**Files — useSummaries hook**
+- `frontend/src/features/knowledge/hooks/useSummaries.ts` (NEW) — single react-query hook wrapping `listSummaries` + `updateGlobalSummary`. Shared query key `['knowledge-summaries']` so future per-project summary editors invalidate against the same fetch. Returns `global`, `projects`, loading/error flags, `updateGlobal` mutation + `isUpdatingGlobal` pending flag.
+
+**Files — GlobalBioTab**
+- `frontend/src/features/knowledge/components/GlobalBioTab.tsx` (rewritten from K8.1 placeholder) — textarea bound to `global.content`, `CONTENT_MAX=50000` mirrors `SummaryContent` Pydantic cap from `services/knowledge-service/app/db/models.py`. `useEffect` syncs server → local state on load / after save. Dirty detection via `baseline` ref + trimmed comparison. Char counter + version indicator + "Unsaved changes" pill. Empty/whitespace-only content is a valid clear signal (backend accepts `""`).
+- Track 1 acceptance: textarea + save only. No version history, no rollback, no LLM regeneration — all tracked as D-K8-01 (Track 2/3).
+
+**Files — PrivacyTab**
+- `frontend/src/features/knowledge/components/PrivacyTab.tsx` (rewritten from K8.1 placeholder) — two GDPR actions against `/v1/knowledge/user-data`.
+- **Export** uses `knowledgeApi.exportUserData` (raw `fetch()` + Blob) and triggers a download via a temporary `<a download>` + object-URL revoke. Filename comes from the backend's `Content-Disposition` header, falling back to `loreweave-knowledge-export.json`.
+- **Delete all** is a destructive action wrapped in a `FormDialog` with a type-to-confirm token (`DELETE_CONFIRM_TOKEN = 'DELETE'`). Delete button stays disabled until the token matches exactly. On success, invalidates all `knowledge-*` react-query keys via predicate matcher so the Projects tab / Global tab snap to empty state immediately.
+
+**MemoryPage.tsx** — no changes; the K8.1 scaffold already wired `<GlobalBioTab />` and `<PrivacyTab />` as tab children.
+
+**Dialog choice note:** the delete-all confirm originally used `ConfirmDialog`, but that component has no `children` slot so the type-to-confirm input wouldn't render. Switched to `FormDialog` mid-build, passing Cancel + Delete buttons through the `footer` prop and the input as children. Matches how other type-to-confirm flows are built elsewhere in the repo (to verify later).
+
+**Phase 5 TEST:** `npx tsc --noEmit` — only the pre-existing `@tanstack/react-query` module-resolution noise shared across the whole repo. No K8.3-originated errors. Fixed one TS7006 along the way by widening the `predicate` callback type for `invalidateQueries` (the inferred `Query` type comes from the missing module, so we take a narrow structural `{ queryKey: readonly unknown[] }` instead). Browser smoke deferred with K8.2's, to be run together in the next session.
+
+**Phase 6 REVIEW:** found 2 small issues, both fixed in the same commit.
+- **K8.3-R1 (LOW):** `global?.version != null && global.version > 0` — default version is 1 for any existing summary, `> 0` is dead code. Removed.
+- **K8.3-R2 (LOW):** `dirty = content !== baseline` treated `"  "` vs `""` as dirty, enabling Save for a no-op request (we always send `content.trim()`). Changed to `trimmed !== baseline.trim()`.
+- Accepted as Track 1 limitations: textarea wiped by background query refetch (same lost-update class as D-K8-03), belt-and-suspenders `!accessToken` checks in PrivacyTab (dead code behind `RequireAuth` but matches repo convention).
+
+**Phase 7 QC** — K8.3 acceptance: Global bio load/edit/save, dirty state, char counter, version indicator; Privacy export download with filename from backend header; Privacy delete guarded by type-to-confirm + full `knowledge-*` cache invalidation. Browser smoke deferred.
+
+---
 
 ### K8.1 + K8.2 — Memory page scaffold + Projects tab ✅ (session 38)
 
