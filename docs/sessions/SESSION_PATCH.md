@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 38 — K7c–K7e + K8.1..K8.4 + K9.1 COMPLETE; Gate 4 + Gate 5 deferred to next session)
-- Updated By: Assistant (K9.1 session project picker in SessionSettingsPanel — wires PATCH `project_id` tri-state. K9.2 skipped as redundant with inline derivation in MemoryIndicator. K9.3 already shipped as K8.4. K9.4 i18n skipped, consistent with K8 hardcoded-English won't-fix.)
-- Active Branch: `main` (K9.1 commit pending)
-- HEAD: K9.1 commit (see git log) — K7c = `160de10`, K7d/K7e/K8.2/K8.3/K8.4 committed
+- Last Updated: 2026-04-14 (session 38 — K7c–K7e + K8.1..K8.4 + K9.1 + Track 2 design update + K18.2a COMPLETE; Gate 4 + Gate 5 deferred to next session)
+- Updated By: Assistant (Track 2 design reshaped from free-context-hub lessons — added L-CH-01..L-CH-12, 4 new tasks: K11.Z provenance validator, K17.9 + K17.9.1 golden-set harness, K18.2a intent classifier. Then executed K18.2a end-to-end through the 9-phase workflow — first laptop-friendly Track 2 task, zero runtime deps.)
+- Active Branch: `main` (K18.2a commit pending)
+- HEAD: K18.2a commit (see git log) — K7c = `160de10`, K7d/K7e/K8.2/K8.3/K8.4/K9.1/D-CHAT-01 committed
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V7.md` — full context for next agent
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -116,6 +116,64 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K18.2a — Query intent classifier ✅ (session 38, Track 2 — laptop-friendly)
+
+**First Track 2 task executed.** Pure-Python query intent classifier that
+routes user messages into one of 5 intent classes *before* the Mode 3
+L2/L3 selectors run. Encodes ContextHub lesson L-CH-07 ("hard query
+clusters cannot be fixed by ranking alone — intent must be routed before
+retrieval"). Zero runtime dependencies: no Neo4j, no docker-compose, no
+provider-registry — classifies in-process with regex + K4.3's existing
+`extract_candidates` proper-noun parser.
+
+**Files (all NEW):**
+- [app/context/intent/__init__.py](services/knowledge-service/app/context/intent/__init__.py) — re-exports `Intent`, `IntentResult`, `classify`.
+- [app/context/intent/classifier.py](services/knowledge-service/app/context/intent/classifier.py) — 5-intent priority cascade: `RELATIONAL` → `HISTORICAL` (strong) → `RECENT_EVENT` → `HISTORICAL` (weak, no entity) → `SPECIFIC_ENTITY` → `GENERAL`. 5 compiled regex constants + 1 false-positive word set. `IntentResult` is a frozen dataclass with `intent`, `entities`, `signals`, `hop_count`, `recency_weight`.
+- [tests/unit/fixtures/intent_queries.yaml](services/knowledge-service/tests/unit/fixtures/intent_queries.yaml) — 50 hand-labeled golden queries (10 per class). Includes deliberate hard cases ("What did Kai do before the battle?" → specific_entity, not historical).
+- [tests/unit/test_intent_classifier.py](services/knowledge-service/tests/unit/test_intent_classifier.py) — 17 tests: edge cases, per-class anchors, golden-set accuracy, per-class floor, p95 latency, long-input guard, signal debuggability.
+
+**Design decisions (all reviewed):**
+- **Priority cascade, not scoring.** ContextHub L-CH-08 warned against ambiguous counters — a cascade makes "why did this query get labeled X" trivially traceable via the `signals` tuple.
+- **Strong vs weak historical anchors.** `"long ago"` / `"back when"` / `"originally"` win even with an entity present. `"before"` / `"earlier in"` only win when no entity anchors the query. This encodes the DESIGN-phase review finding that "What did Kai do before the battle?" is specific-entity, not historical.
+- **Relational needs ≥2 entities (or explicit strong phrasing).** `"What does Kai know?"` stays SPECIFIC_ENTITY — 1 entity + `know` keyword is not enough. `"Who knows Kai?"` is RELATIONAL because `who knows` is a strong phrase with an implied second party.
+- **K4.3 false-positive filter.** `extract_candidates` extracts sentence-start capitalized words like `"Before"`, `"Long"`, `"Originally"` — exactly the words the temporal regexes use. A small frozenset (`_FALSE_POSITIVE_ENTITY_WORDS`) strips them before the priority cascade sees them. Comment explicitly notes this mirrors the regex vocabulary and must be kept in sync; the proper fix (K4.3 handling sentence-initial capitalization) is out of scope for K18.2a.
+
+**Phase 5 TEST numbers:**
+- Golden-set accuracy: **50/50 = 100%** (acceptance bar was 80%)
+- Per-class: 10/10 across all 5 classes (specific_entity / recent_event / historical / relational / general)
+- Latency: p50 = 0.017ms, **p95 = 0.033ms**, p99 = 0.080ms, max = 0.204ms (budget 15ms — 450× headroom)
+- Long-input stress: 18k-char message classifies under budget
+- 17/17 unit tests pass, deterministic on re-run
+
+**Phase 5 iteration:**
+- Initial run: 8/9 tests passing — `test_historical_weak_without_entity_is_historical` failed because K4.3 extracted `"Before"` as an entity, blocking the no-entity historical branch. Fixed by adding `_FALSE_POSITIVE_ENTITY_WORDS` filter.
+- Second run: 49/50 golden queries (98%) — miss was `"Are Kai and Mary-Anne friends?"` because `_RELATIONAL_KEYWORDS` required `friends? with`. Broadened to standalone `friends?` (still requires ≥2 entities). 50/50 after fix.
+
+**Phase 6 REVIEW:**
+- **R1 (MEDIUM, accept):** `_RELATIONAL_STRONG` uses unanchored `.*` which could be overly greedy. Acceptable for single-line user messages, and the greediness is the point (match X/Y in "how does X know Y").
+- **R2 (LOW, accept):** `_FALSE_POSITIVE_ENTITY_WORDS` duplicates temporal regex vocabulary — drift risk if regex changes. Comment warns explicitly; practical risk low.
+- **R3–R5 (LOW):** various fixture edge cases + `who knows` matching "who knows the capital of France" (accepted — pattern-matching's natural cost).
+- **R6 (MEDIUM, verified):** `test_signals_record_all_hits_not_just_winner` confirms `signals` records every pattern hit not just the winner, per L-CH-08.
+- **R7 (NIT):** `_is_false_positive_entity` private helper — deliberate.
+- **R8 (MEDIUM, FIXED):** missing long-input latency guard. Added `test_long_input_still_classifies_under_budget` that runs an 18k-char synthetic message and asserts <15ms + correct classification. Passed.
+
+**Phase 7 QC:** all 14 acceptance criteria from the plan doc met ([K18.2a task spec](docs/03_planning/KNOWLEDGE_SERVICE_TRACK2_IMPLEMENTATION.md)). Accuracy far exceeds the 0.80 bar (100% vs 80%). Latency is 450× under budget. No runtime dependencies blocking Track 1 deferred verification.
+
+**Pre-existing test failures (unchanged by K18.2a):** `test_circuit_breaker.py`, `test_glossary_client.py`, `test_config.py` fail on this laptop due to an SSL cert path environment issue (`personal_kas.cer` path with literal quotes in `REQUESTS_CA_BUNDLE` or similar). Confirmed via `git stash` — identical failures on main without K18.2a changes. Out of scope for this task.
+
+**Test count delta:** knowledge-service unit tests +17 (K18.2a). Previous baseline 164/164 from session 37 → new counted surface 181 with K18.2a unit tests (excluding the pre-existing SSL-cert environment failures which are not K-series).
+
+**Why this was the right first Track 2 task:**
+1. Pure Python, no infra — works on a laptop that can't run docker-compose.
+2. Encodes the single highest-leverage lesson from ContextHub (L-CH-07) which reshapes K18's scope.
+3. Has a measurable acceptance bar that can be verified today without a running knowledge-service.
+4. Produces a reusable test fixture (`intent_queries.yaml`) that downstream K18.3 selector tests can consume.
+5. Zero collision risk with the Track 1 deferred items (Gate 4, Gate 5, T01–T13) — it adds new files in a new package, doesn't touch any existing surface.
+
+**What K18.2a unblocks:** K18.1 (Mode 3 scaffold) and K18.3 (L3 semantic selector) can now both read `IntentResult.hop_count` / `recency_weight` instead of branching on raw regex. K18.3's dynamic pool sizing and hub-file penalty (L-CH-02/03) can use the same intent classes to tune per-query.
+
+---
 
 ### K9.1 — Session project picker ✅ (session 38)
 

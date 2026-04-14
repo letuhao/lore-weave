@@ -1,0 +1,67 @@
+# K18.2a golden queries — 50 hand-labeled examples, 10 per class.
+#
+# Acceptance: classifier must score >= 0.80 overall on this set.
+# Each query represents a realistic novel-reader / author question.
+# Hard cases are intentional — they encode the design trade-offs
+# reviewed in the K18.2a DESIGN phase (e.g. "before the battle"
+# with/without an entity).
+
+specific_entity:
+  - "Tell me about Kai"
+  - "What is Master Lin's backstory?"
+  - "Describe the Dragon Lord"
+  - "Who is Mary-Anne?"
+  - "What does Kai look like?"
+  - "What are Aria's powers?"
+  - "Tell me more about the Emperor"
+  - "What did Kai do before the battle?"
+  - "Where is Master Lin from?"
+  - "What is the Dragon Lord's real name?"
+
+recent_event:
+  - "What is Kai doing right now?"
+  - "What just happened to Aria?"
+  - "What's happening now in the throne room?"
+  - "What is the Emperor doing at the moment?"
+  - "What are they currently planning?"
+  - "What is going on right here?"
+  - "A moment ago, what did Kai say?"
+  - "What happened this chapter?"
+  - "What is Kai doing currently?"
+  - "In the present moment, where is Aria?"
+
+historical:
+  - "What happened back when the Empire fell?"
+  - "Long ago, who ruled the kingdom?"
+  - "Originally, what was the Dragon Lord's role?"
+  - "At first, how did the war begin?"
+  - "Years ago, what did Master Lin do?"
+  - "In the beginning, who were the Elders?"
+  - "What used to be on that throne?"
+  - "Who was once the ruler before the fall?"
+  - "Chapters ago, what did the prophecy say?"
+  - "Previously, what had been foretold?"
+
+relational:
+  - "How does Kai know Master Lin?"
+  - "What is the relationship between Aria and the Emperor?"
+  - "Are Kai and Mary-Anne friends?"
+  - "How are Master Lin and the Dragon Lord related?"
+  - "Who knows Kai well?"
+  - "What is the connection between Aria and Master Lin?"
+  - "When did Kai meet the Dragon Lord?"
+  - "Are the Emperor and the Elders allied?"
+  - "Is Mary-Anne married to Kai?"
+  - "Are Aria and the Dragon Lord enemies with each other?"
+
+general:
+  - "What is love?"
+  - "Summarize the story so far"
+  - "What are the main themes?"
+  - "Explain the magic system"
+  - "What genre is this?"
+  - "How many chapters are there?"
+  - "What is the plot about?"
+  - "Describe the setting"
+  - "What is the tone of the book?"
+  - "How does the story begin?"
