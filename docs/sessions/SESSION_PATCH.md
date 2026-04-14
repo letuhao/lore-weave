@@ -7,11 +7,11 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 38 END — K7c–K7e + K8.1..K8.4 + K9.1 + Track 2 design update + K18.2a + K11.Z + K10.1/K10.2/K10.3 + K11.4 + K17.9 scaffold ALL COMPLETE with second-pass reviews; Gate 4 + Gate 5 deferred to next session)
-- Updated By: Assistant (session 38 shipped 5 laptop-friendly Track 2 tasks end-to-end through the 9-phase workflow: K18.2a intent classifier, K11.Z provenance validator, K10.1/K10.2/K10.3 extraction lifecycle tables, K11.4 multi-tenant Cypher helpers, K17.9 golden-set benchmark scaffold. Every task followed BUILD → second-pass review → fix commit. Real infra-dependent work (Gate 4 e2e, Gate 5 UX smoke, T01-T13 integration pack) deferred to next session.)
-- Active Branch: `main` (ahead of origin by session-38 commits — user pushes manually)
-- HEAD: `55aba32` — K17.9-R1..R3 review fixes
-- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V7.md` — full context for next agent
+- Last Updated: 2026-04-14 (session 39 — Gate 4 knowledge-service backend e2e verification COMPLETE)
+- Updated By: Assistant (session 39 brought the compose stack up against postgres:5555, ran the full knowledge-service integration suite (45/45 after fixing one stale assertion — Gate-4-I1), reran the unit suite (322/322), force-rebuilt the cached `infra-knowledge-service:latest` image which was missing the metrics/projects/summaries/user_data routers, and smoke-tested every public endpoint live with a minted dev JWT: /health, /metrics, projects CRUD + archive + cross-user 401, summaries PATCH + GET, user-data export + delete. Stack: postgres + redis + book-service + glossary-service + knowledge-service. Gate 4 closed.)
+- Active Branch: `main` (ahead of origin by session-38 + session-39 commits — user pushes manually)
+- HEAD: `55aba32` — K17.9-R1..R3 review fixes (pre Gate 4 commit)
+- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V8.md` — full context from session 38 still authoritative for Track 2 state; session 39 adds Gate 4 result on top
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
 ---
@@ -116,6 +116,54 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### Gate 4 — knowledge-service backend e2e verification ✅ (session 39)
+
+**Goal:** validate session 38's Track 2 laptop slices against a real Postgres + a live container, not just the in-memory unit suite. First Gate 4 run since K10/K11.4/K11.Z/K17.9/K18.2a landed.
+
+**What ran:**
+1. `docker compose up -d postgres` — postgres:18-alpine on host port 5555. `db-ensure.sh` healthcheck creates `loreweave_knowledge` (and the other 12 per-service DBs) on first start.
+2. `cd services/knowledge-service && TEST_KNOWLEDGE_DB_URL="postgresql://loreweave:loreweave_dev@localhost:5555/loreweave_knowledge" python -m pytest tests/integration/ -v` — **45 tests, 1 failure on first pass.** Failure was [tests/integration/db/test_projects_repo.py::test_cross_user_isolation](services/knowledge-service/tests/integration/db/test_projects_repo.py) — `archive(user_b, …)` returned `None` but the assertion was `is False`. This is the test being stale, not a security regression: K7b-I2 changed `ProjectsRepo.archive()` from `bool` to `Project | None` so the router could skip a follow-up SELECT, and the cross-user case still returns the falsy "no row affected" sentinel — just `None` now, not `False`. Fixed in the same Gate 4 commit.
+3. Re-run after fix: **45/45 green** in 2.48s.
+4. Unit suite sanity: **322/322 green** in 2.45s. Notable: the 3 SSL-cert env failures listed in `SESSION_HANDOFF_V8.md` (`personal_kas.cer` quoting issue) did NOT fire under the test env this run — possibly because `KNOWLEDGE_DB_URL` is no longer needed unset for those tests, or the env-leak fixture caught up. Out of scope either way; will re-watch next session.
+5. `docker compose up -d redis glossary-service knowledge-service` — full dependency chain came healthy in ~15s. **First container build was stale**: `infra-knowledge-service:latest` shipped only 4 OpenAPI paths (`/health`, `/internal/context/build`, `/internal/ping`, `/v1/knowledge/ping`) — it pre-dated K7.2/K7c/K7d/K7e/K6.5. `docker compose build knowledge-service && docker compose up -d --force-recreate knowledge-service` rebuilt the image; the rebuilt container exposed all 13 paths.
+6. **Live HTTP smoke (host port 8216 → container 8092)** with a minted dev JWT (`HS256`, secret = `loreweave_local_dev_jwt_secret_change_me_32chars`, sub = fresh UUID, exp = +1h):
+   - `GET /health` → `{"status":"ok","db":"ok","glossary_db":"ok"}` ✓
+   - `GET /metrics` → Prometheus exposition with `knowledge_circuit_open{service="glossary"} 0.0` + cache hit/miss counters ✓
+   - `GET /v1/knowledge/projects` (no Authorization header) → `401` ✓
+   - `GET /v1/knowledge/projects` (with bearer) → `{"items":[],"next_cursor":null}` ✓
+   - `POST /v1/knowledge/projects` `{"name":"gate4 smoke","project_type":"general"}` → `200` + full Project envelope (`extraction_status:"disabled"` per K8 Track 1 scope) ✓
+   - `GET /v1/knowledge/projects/{id}` → `200` ✓
+   - `PATCH /v1/knowledge/projects/{id}` `{"name":"gate4 smoke renamed"}` → `200` ✓
+   - `PATCH /v1/knowledge/summaries/global` `{"content":"hello from gate 4"}` → `200` (token_count=4, version=1) ✓
+   - `GET /v1/knowledge/summaries` → returns `{global:{…},projects:[]}` ✓
+   - `GET /v1/knowledge/user-data/export` → schema_version=1 envelope including the renamed project + the global summary ✓
+   - `POST /v1/knowledge/projects/{id}/archive` → `200` ✓
+   - `DELETE /v1/knowledge/user-data` → `200` ✓
+7. K7e trace_id middleware verified live: every uvicorn access log line carried a populated `trace_id` field (different per request), confirming the ASGI middleware is actually wired in the production startup path, not just the unit fixture.
+
+**Gate 4 issues found and fixed in-session:**
+
+| ID | Severity | What | Where | Fix |
+|---|---|---|---|---|
+| **Gate-4-I1** | low (test only) | `test_cross_user_isolation` asserted `archive(user_b,…) is False`, but K7b-I2 changed the contract to `Project | None`. Cross-user behavior is correct (returns `None`), test was stale. | [tests/integration/db/test_projects_repo.py:87](services/knowledge-service/tests/integration/db/test_projects_repo.py#L87) | Asserted `is None` instead, with K7b-I2 callout in the comment. |
+| **Gate-4-I2** | infra hygiene | Cached `infra-knowledge-service:latest` was missing K6.5/K7.2/K7c/K7d/K7e routes. Compose's default `up` reuses an existing image, so simply running `docker compose up -d knowledge-service` after a fresh checkout will run yesterday's binary. | infra/docker-compose.yml | Documented in this Gate 4 entry: **always `docker compose build knowledge-service` before the first Gate 4 of a session.** Not a code change. |
+
+**Why this matters:** Gate 4 confirms that the K7c/K7d/K7e public surface (Track 1 finish line) is wire-correct end-to-end against a real DB and a real container, not just the in-process httpx test client. It also closes the gap session 38 left around K10.1/K10.2/K10.3 — the +8 K10 integration tests now provably run (and pass) against a live Postgres for the first time.
+
+**What Gate 4 did NOT cover (still owed):**
+- **Gate 4-extension: Cross-service** — context build with a real glossary-service round-trip end-to-end (`POST /internal/context/build` against a real project/book/chapter graph). This needs book-service + chat-service + a populated `loreweave_book` DB. Out of scope for the Gate 4 the handoff prescribed; flag for the T01-T13 integration pack.
+- **Gate 5: UX browser smokes** — Playwright walkthrough of K8.1..K8.4 + K9.1. Frontend not started this session.
+- **Gate 6: extraction pipeline** — N/A in Track 1 (extraction_status='disabled' is the only Track 1 state).
+
+**Files touched this session:**
+- [services/knowledge-service/tests/integration/db/test_projects_repo.py](services/knowledge-service/tests/integration/db/test_projects_repo.py) — Gate-4-I1 fix
+- [docs/sessions/SESSION_PATCH.md](docs/sessions/SESSION_PATCH.md) — this entry
+- [docs/sessions/SESSION_HANDOFF_V9.md](docs/sessions/SESSION_HANDOFF_V9.md) — new handoff for next session
+
+**Test count delta (session 39):** integration suite +1 fix (still 45 tests; the failure is now a pass), unit suite unchanged at 322. Net: **0 new tests, 1 stale test repaired, full Gate 4 manual smoke captured in this entry.**
+
+---
 
 ### K17.9 — Golden-set benchmark harness (scaffold) ✅ (session 38, Track 2 — laptop-friendly)
 

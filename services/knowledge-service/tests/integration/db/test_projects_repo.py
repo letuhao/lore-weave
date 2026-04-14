@@ -83,8 +83,8 @@ async def test_cross_user_isolation(pool):
     assert await repo.update(user_b, p.project_id, ProjectUpdate(name="pwned")) is None
     still = await repo.get(user_a, p.project_id)
     assert still is not None and still.name == "secret"
-    # Archive must not affect it
-    assert await repo.archive(user_b, p.project_id) is False
+    # Archive must not affect it (K7b-I2: archive returns Project | None)
+    assert await repo.archive(user_b, p.project_id) is None
     # Delete must not affect it
     assert await repo.delete(user_b, p.project_id) is False
     assert await repo.get(user_a, p.project_id) is not None
