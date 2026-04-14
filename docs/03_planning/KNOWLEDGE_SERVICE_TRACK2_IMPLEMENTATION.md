@@ -430,7 +430,7 @@ Track 2 planning, not the other way around.
 ```
 
 ```
-[ ] K10.5 Repository: extraction_pending
+[✓] K10.5 Repository: extraction_pending
     Files:
       - services/knowledge-service/app/db/repositories/extraction_pending.py (NEW)
     Description:
