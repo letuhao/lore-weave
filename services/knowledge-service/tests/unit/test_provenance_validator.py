@@ -124,6 +124,13 @@ def test_source_refs_indexed_error_location():
     assert ei.value.field == "source_refs[1]"
 
 
+def test_source_refs_none_element_rejected():
+    with pytest.raises(ProvenanceValidationError) as ei:
+        validate_provenance({**GOOD, "source_refs": ["chunk_good", None]})
+    assert ei.value.field == "source_refs[1]"
+    assert "is None" in ei.value.reason
+
+
 # ── confidence rejections ─────────────────────────────────────────────
 
 
@@ -133,9 +140,12 @@ def test_confidence_out_of_range(bad):
         validate_provenance({**GOOD, "confidence": bad})
 
 
-def test_confidence_nan_rejected():
-    with pytest.raises(ProvenanceValidationError, match="NaN"):
-        validate_provenance({**GOOD, "confidence": float("nan")})
+@pytest.mark.parametrize(
+    "bad", [float("nan"), float("inf"), float("-inf")]
+)
+def test_confidence_non_finite_rejected(bad):
+    with pytest.raises(ProvenanceValidationError, match="non-finite"):
+        validate_provenance({**GOOD, "confidence": bad})
 
 
 def test_confidence_non_numeric_rejected():
@@ -155,6 +165,11 @@ def test_confidence_bool_rejected():
 def test_bad_iso_rejected():
     with pytest.raises(ProvenanceValidationError, match="ISO-8601"):
         validate_provenance({**GOOD, "extracted_at": "not a date"})
+
+
+def test_empty_string_timestamp_rejected():
+    with pytest.raises(ProvenanceValidationError, match="ISO-8601"):
+        validate_provenance({**GOOD, "extracted_at": ""})
 
 
 def test_timestamp_non_string_non_datetime_rejected():

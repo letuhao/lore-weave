@@ -22,6 +22,7 @@ Budget: < 0.5ms per edge. Pre-compiled regex + frozenset lookups only.
 
 from __future__ import annotations
 
+import math
 import re
 from datetime import datetime
 
@@ -49,7 +50,6 @@ _PYTHON_REPR_RE = re.compile(r"^<[\w.]+ object at 0x[0-9a-fA-F]+>$")
 # bad content, it almost always means the extractor handed us garbage.
 _STRING_FIELDS = frozenset(
     (
-        "source_ref",
         "chapter_id",
         "chunk_id",
         "book_id",
@@ -97,9 +97,10 @@ def _check_confidence(value: object) -> None:
         raise ProvenanceValidationError("confidence", value, "is None")
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ProvenanceValidationError("confidence", value, "not a number")
-    # NaN guard: NaN != NaN
-    if value != value:
-        raise ProvenanceValidationError("confidence", value, "NaN")
+    if not math.isfinite(value):
+        # Covers NaN, +inf, -inf with a clearer reason than "outside [0,1]"
+        # — reason matters for the extraction_errors row (K10.2).
+        raise ProvenanceValidationError("confidence", value, "non-finite")
     if not (0.0 <= float(value) <= 1.0):
         raise ProvenanceValidationError("confidence", value, "outside [0, 1]")
 
