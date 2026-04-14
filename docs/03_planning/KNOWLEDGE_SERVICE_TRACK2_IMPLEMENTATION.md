@@ -47,7 +47,7 @@ Must be done before starting K10:
 
 - **D2-01** Add Neo4j v2026.01 to docker-compose
 - **D2-03** Neo4j schema init (constraints, vector indexes, composite indexes)
-- **D2-04** Self-hosted embedding model service (bge-m3)
+- **D2-04** Provider-registry embedding capability — extend the existing BYOK adapter layer to invoke embedding endpoints. **No self-hosted embedding service.** Embeddings come from whichever provider the user has registered (LM Studio `/v1/embeddings`, OpenAI `text-embedding-3-*`, Ollama `nomic-embed-text`, etc.) — the same BYOK plumbing that already serves LLM calls. provider-registry already classifies models with capability `"embedding"` ([adapters.go:220](services/provider-registry-service/internal/provider/adapters.go#L220)); D2-04 is the small extension to actually invoke them.
 - **D3-00** Idempotency layer (canonicalization + deterministic IDs + source_event_id)
 
 Plus Track 1 must be complete:
@@ -60,7 +60,7 @@ Plus Track 1 must be complete:
 Ticking all boxes below means Track 2 is complete:
 
 - [ ] Neo4j deployed, accessible from knowledge-service
-- [ ] Self-hosted bge-m3 embedding service runs, serves `/embed` endpoint
+- [ ] knowledge-service can call `provider-registry` to embed text via the user's chosen BYOK embedding provider (LM Studio, OpenAI, Ollama, etc.)
 - [ ] User can enable extraction on a project via API (explicit action)
 - [ ] Cost estimation endpoint works (returns realistic range)
 - [ ] Extraction Job can be started, paused, resumed, cancelled, cancelled mid-run keeps partial graph
@@ -97,7 +97,7 @@ assurance. Be generous with time estimates.
 |---|---|---|
 | K10 Postgres additions | 4–6 hours | Partitioning + cost columns + extraction_jobs |
 | K11 Neo4j schema | 6–10 hours | Dimension indexes + provenance + constraints |
-| K12 Embedding service | 8–12 hours | Containerize bge-m3, API, healthcheck, GPU support |
+| K12 Embedding via provider-registry | 4–6 hours | Extend provider-registry to invoke embedding endpoints + thin client in knowledge-service. **No new service.** |
 | K13 Chat turn event | 2–4 hours | chat-service outbox emit |
 | K14 Event consumer + gating | 8–12 hours | Opt-in gating is subtle; pending queue + backfill |
 | K15 Pattern extractor + quarantine | 15–25 hours | Multilingual, injection defense, two-pass entity detection |
@@ -122,6 +122,135 @@ critical. This staging lets you:
 - Spread the work over weeks/months without blocking users
 - Discover Track 1 issues that change Track 2 design assumptions
 - Give yourself a real milestone moment (Track 1 "done") before the bigger build
+
+---
+
+## 1.6 Lessons Imported from free-context-hub
+
+free-context-hub (`C:/Works/_Researchs/free-context-hub`) is a sibling project
+targeting a different mission — persistent memory for coding agents — but
+it solved enough of the same RAG-quality problems that its post-mortems,
+benchmarks, and session logs are directly applicable. These are the
+load-bearing lessons we designed Track 2 around. Each links to the tasks
+or gates that encode it.
+
+**Best-case patterns we copy:**
+
+- **L-CH-01 — BYOK golden-set benchmark before enabling extraction.**
+  ContextHub's `docs/benchmarks/2026-03-28-embedding-model-benchmark.md`
+  shows an 8-model, 18-query (12 easy + 6 hard + 2 negative) bake-off.
+  Code-embedding models scored *worse* than general text models on natural
+  language. Negative-control queries (should return nothing) caught
+  silent over-retrieval that pass/fail alone missed.
+  → Encoded as **Gate 12** entry and **K17.9** (golden-set eval).
+  → Also encoded as **K12.4** acceptance: FE must warn if the user's
+  chosen BYOK embedding model has never been benchmarked on their data.
+
+- **L-CH-02 — Retrieval pool size > reranker model choice.**
+  ContextHub measured +3% from widening candidates 8→20, larger than the
+  delta between compatible rerankers. Dynamic pool sizing (<20 lessons
+  skip rerank, <200 rerank top 20, <500 rerank top 30) beat static tuning.
+  → Encoded in **K18.3** description: dynamic pool + MMR diversification
+  come before any reranker task.
+
+- **L-CH-03 — Hub-file dominance penalty.**
+  Their biggest recall gain (0.50 → 0.776) came from penalizing
+  "semantically broad hub files" that drowned out specific targets.
+  In our domain, L1 summary and long character bios are the "hub files"
+  — they always embed well and will suffocate specific fact retrieval.
+  → Encoded in **K18.3** as an explicit hub-penalty step before ranking.
+
+- **L-CH-04 — Generative rerankers only (via LM Studio).**
+  Cross-encoder rerankers (bge-reranker, gte-reranker) don't work through
+  LM Studio's embedding API — they output identical scores, no
+  discrimination. Only generative rerankers (qwen3-4b-instruct-ranker)
+  gave real gains (+9% at 180 lessons).
+  → Encoded in **K12.1** acceptance: provider-registry embed path
+  explicitly does *not* advertise cross-encoder rerank capability.
+  When we add reranking, it goes through the chat/completion path, not
+  the embed path.
+
+- **L-CH-05 — Transaction-first upsert for embeddings.**
+  Their M02 bug: file marked indexed *before* embedding call succeeded →
+  failed embeds left "sticky" missing data never retried. Fix: embed
+  first, only mark indexed on success.
+  → Encoded in **K15.8 / K17.5** write-path acceptance: an event is not
+  marked `extraction_processed_at` until both the Neo4j write and the
+  embed call commit.
+
+**Worst-case traps we explicitly guard against:**
+
+- **L-CH-06 — Silent bad data in provenance fields.**
+  ContextHub wrote literal `"[object Object]"` into `source_refs` (a
+  JS-stringification bug) and the data survived in the DB until an eval
+  noticed. Provenance fields are exactly the ones no query filters on,
+  so corruption is invisible.
+  → Encoded in **K11 Gate 7** acceptance: Neo4j edge writes go through a
+  schema validator that rejects non-string / empty / placeholder values
+  at write time. Also a new task row under K11.
+  → Encoded in **K15.8 / K17.5**: reject-and-log on validation failure,
+  never write.
+
+- **L-CH-07 — Intent classification must precede ranking.**
+  ContextHub's hard clusters (`kg`, `git`, `mcp-server`, `workspace`
+  internals) stayed stuck at ~0.67 recall@3 even after every general
+  tuning trick. Their own diagnosis: "adding more facts is not enough
+  now — we need intent-aware routing for difficult verticals before
+  ranking." For LoreWeave this means: a query for a specific minor
+  character will return the book summary unless we route it.
+  → Encoded as new task **K18.2a** (was a bullet inside K18.3) — intent
+  classifier runs *before* the L2/L3 selectors, not as a step inside
+  them.
+
+- **L-CH-08 — Debug counters that lie.**
+  Their guardrails service returned `rules_checked: 0` in the "rules
+  exist but none matched" branch, identical to "no rules at all". Burned
+  debug cycles.
+  → Encoded as a standing rule in **K15 / K16 / K17** acceptance: every
+  counter must distinguish "zero because no candidates" from "zero
+  because all filtered" (separate fields, or explicit nullable).
+
+- **L-CH-09 — Run-to-run variance masks real deltas.**
+  ContextHub saw ±0.05 recall@3 noise during tuning. One-shot
+  measurement chases noise.
+  → Encoded in **K17.9** and **Gate 12**: the golden-set eval runs ≥3
+  times and reports mean + stddev; a change is only "better" if the
+  delta exceeds 2× stddev.
+
+- **L-CH-10 — Polling effect stale closures.**
+  Their ExtractionProgress modal polling fired terminal transitions
+  twice because of a stale closure over state. Same shape as our job
+  status UI.
+  → Encoded in **K16** frontend subtask acceptance: polling hooks use
+  callback refs + a single-fire `fireTerminal` guard. Reference
+  implementation path: free-context-hub `src/…/ExtractionProgress.tsx`
+  (commit `e6c6935`).
+
+- **L-CH-11 — List endpoints returning blobs.**
+  Their `listDocuments` once returned full base64 image content → 120MB
+  per page.
+  → Encoded in the **Track 2 contract-review checklist** (section 15):
+  every list endpoint has an explicit response-size budget in its
+  OpenAPI description and the review must check it.
+
+- **L-CH-12 — Env-var drift between `.env` and running process.**
+  Auth token mismatch between a long-running MCP process and an edited
+  `.env` cost ContextHub hours of smoke-test debugging.
+  → Encoded in **Gate 6 / Gate 9 / Gate 11**: the service must log an
+  effective-config fingerprint (non-secret hash of token + model + DB
+  URL) at startup. Gate steps explicitly say "restart the container,
+  then verify the fingerprint changed" after any env edit.
+
+**Meta-lesson (the one that reshapes the plan):**
+ContextHub's trajectory from 0.50 → 0.776 recall@3 shows that
+**RAG quality is a retrieval-mechanics problem, not a data problem**.
+After more data and better embeddings, they still couldn't move hard
+clusters above ~0.67 without changing how candidates get picked and
+diversified. Our K15–K17 plan assumes "extract enough facts and Mode 3
+will be good" — L-CH-07 says that's necessary but nowhere near
+sufficient. **K18 is not a thin wiring layer; it is where the quality
+battle is fought.** Budget for K18 should be revised upward during
+Track 2 planning, not the other way around.
 
 ---
 
@@ -168,18 +297,19 @@ critical. This staging lets you:
        │                                 │
        │ BYOK API call                   │
        ▼                                 │
-┌──────────────────┐              ┌──────────────────┐
-│ provider-registry│              │ bge-m3 embedding │
-│ (user's LLM)     │              │ service (NEW)    │
-└──────────────────┘              │ self-hosted,     │
-                                  │ local CPU/GPU    │
-                                  └──────────────────┘
+┌──────────────────────────────────────────────────┐
+│ provider-registry                                │
+│ (user's BYOK LLM **and** embedding providers)    │
+│ — routes both chat + embedding calls through     │
+│   the same adapter layer (LM Studio, OpenAI,     │
+│   Ollama, etc.). No new self-hosted service.     │
+└──────────────────────────────────────────────────┘
 ```
 
 **Key Track 2 additions:**
 
 1. **Neo4j** — the knowledge graph store
-2. **bge-m3 embedding service** — self-hosted, free, multilingual
+2. **Embeddings via provider-registry (BYOK)** — no new self-hosted service; user picks an embedding-capable provider (LM Studio, OpenAI, Ollama, …) already registered in provider-registry
 3. **worker-ai** — async task runner for LLM extraction
 4. **Extraction Job engine** — user-triggered, cost-capped, resumable
 5. **Pattern extractor** — pass 1 quarantine layer
@@ -732,6 +862,44 @@ do it as part of K11.
       For now, full recompute is simpler and fast enough.
 ```
 
+```
+[ ] K11.Z Provenance write validator (L-CH-06)
+    Files:
+      - services/knowledge-service/app/neo4j/provenance_validator.py (NEW)
+      - services/knowledge-service/app/neo4j/writer.py (MODIFY — wrap writes)
+    Description:
+      Per lesson L-CH-06 from ContextHub: their git-intelligence wrote
+      literal `"[object Object]"` into source_refs and the data survived
+      in the DB because no query ever filtered on the field. In our
+      domain, provenance edges are exactly that — we store them, we
+      rarely query them, so any corruption is invisible until an eval.
+      Solution: every Neo4j edge / property write with provenance data
+      goes through a validator that rejects:
+        - empty strings / whitespace-only
+        - the literal strings "[object Object]", "undefined", "null",
+          "None", "NaN"
+        - strings that look like Python repr (`<...object at 0x...>`)
+        - chapter_id / chunk_id / book_id values that do not exist in Postgres
+        - confidence scores outside [0, 1]
+        - ISO-8601 timestamps that fail to parse
+      On failure: raise ProvenanceValidationError with the offending
+      field + value, emit a `provenance_validation_failed` metric,
+      do NOT write. The extraction job that triggered the write rolls
+      back the current event and logs a row to `extraction_errors`
+      (K10).
+    Acceptance criteria:
+      - All K15 / K17 Neo4j writes go through the validator (grep check)
+      - Fuzz test: 1000 random bad inputs → 1000 rejections, 0 writes
+      - Known-good inputs pass unchanged
+      - Validator cost < 0.5ms per edge (not a hot-path bottleneck)
+    Test:
+      - Unit: every bad-input class above
+      - Integration: stub extractor that yields bad data, verify
+        nothing reaches Neo4j and extraction_errors has the row
+    Dependencies: K11.1 (Neo4j schema), K10.2 (extraction_errors table)
+    Est: S
+```
+
 ### Gate 7 — Neo4j Schema Functional
 
 - [ ] Neo4j running and accessible from knowledge-service
@@ -741,156 +909,152 @@ do it as part of K11.
 - [ ] evidence_count stays in sync through 1000 entity create/delete cycles
 - [ ] Cross-user: User A writes entity, User B can't read it (verified)
 - [ ] 2-hop traversal <200ms with 10k entity fixture
+- [ ] **Provenance validator (K11.Z) wraps every write path** — grep
+      verifies no direct `session.run(...)` outside the validated writer
+- [ ] **Fuzz pass**: 1000 bad-provenance inputs produce 0 Neo4j rows and
+      1000 `extraction_errors` rows
 - [ ] **Glossary anchor pre-loading**: extraction run with populated glossary reduces new entity creation ≥20% vs. no-anchor baseline (K13.0 smoke test)
 - [ ] **Glossary event handlers**: entity_created / _updated / _deleted correctly link / refresh / archive KS entities (K11.10 integration tests)
 - [ ] **Archived entities excluded from RAG**: vector search with `include_archived=False` returns zero archived nodes
 
 ---
 
-## 5. Phase K12 — Self-Hosted Embedding Service (bge-m3)
+## 5. Phase K12 — Embeddings via provider-registry (BYOK)
 
-**Goal:** A separate container serving embedding requests for bge-m3.
-Zero external calls, multilingual support, free.
+**Goal:** Route embedding calls through the existing provider-registry BYOK
+adapter layer — same path already used for chat. **No new self-hosted
+service.** The user registers an embedding-capable provider (LM Studio,
+OpenAI, Ollama, vLLM, etc.) in provider-registry; knowledge-service calls
+provider-registry to embed text using the project's configured embedding
+model.
+
+**Why this approach:**
+
+- provider-registry already classifies embedding-capable models (see
+  `services/provider-registry-service/internal/provider/adapters.go` — model
+  names containing `embedding` or `ada-002` get capability `"embedding"`).
+  Extending the adapters to actually *invoke* those endpoints is small.
+- Users who already run LM Studio / Ollama locally get "free" self-hosted
+  embeddings without LoreWeave shipping a second Python service + 1 GB model
+  download + GPU/CPU tuning.
+- BYOK keeps the cost model consistent with the rest of the platform — the
+  same credentials, same metering, same provider-gateway invariant.
+- Dimension is **not fixed to 1024** — each provider/model has its own
+  dimension. K11 already plans multi-dimension vector indexes
+  (entity_embeddings_384 / _1024 / _1536 / _3072) to handle this.
 
 ### Tasks
 
 ```
-[ ] K12.1 Embedding service scaffold
+[ ] K12.1 provider-registry: embedding invocation path
     Files:
-      - services/embedding-service/ (NEW)
-      - services/embedding-service/app/main.py (NEW)
-      - services/embedding-service/pyproject.toml (NEW)
-      - services/embedding-service/Dockerfile (NEW)
+      - services/provider-registry-service/internal/provider/adapters.go (MODIFY)
+      - services/provider-registry-service/internal/provider/embed.go (NEW)
+      - services/provider-registry-service/internal/api/embed_handler.go (NEW)
+      - contracts/api/provider-registry.yaml (MODIFY — add POST /internal/providers/{id}/embed)
     Description:
-      FastAPI service exposing POST /embed. Uses sentence-transformers library
-      with bge-m3 model. Model downloaded once on first start, cached in volume.
-      No external dependencies (no OpenAI, no cloud).
+      Today the adapters only *list* embedding-capable models. Add a
+      new internal endpoint:
+        POST /internal/providers/{provider_id}/embed
+        Body: { model: string, texts: [string], normalize?: bool }
+        Returns: { embeddings: [[float]], dimension: int, model: string }
+      Implementation dispatches to provider-specific calls:
+        - OpenAI-compatible (OpenAI, LM Studio, vLLM, Together, etc.):
+          POST {base_url}/v1/embeddings {input, model}
+        - Ollama: POST {base_url}/api/embed {model, input}
+      Validate the requested model is classified as `embedding` capability
+      before calling out. Use existing BYOK credential resolution.
     Acceptance criteria:
-      - Service starts with model loaded in memory
-      - Model download on first start (~1 GB)
-      - Subsequent starts use cached model (fast)
+      - Works against LM Studio local endpoint with an embedding model loaded
+      - Works against OpenAI text-embedding-3-small
+      - Works against Ollama `nomic-embed-text`
+      - Returns correct dimension per model
+      - Rejects non-embedding models with 400
     Test:
-      - Manual: docker compose up, curl /embed with test text
-    Dependencies: K11.1 (docker-compose setup)
+      - Unit: adapter dispatch per provider_type
+      - Integration: mock httpx against each provider shape
+    Dependencies: none (extends existing service)
     Est: M
-    Notes:
-      Use Hugging Face Hub for model hosting. bge-m3 is BAAI/bge-m3.
-      Alternative: intfloat/multilingual-e5-large if bge-m3 doesn't work.
 ```
 
 ```
-[ ] K12.2 POST /embed endpoint
+[ ] K12.2 Embedding client in knowledge-service
     Files:
-      - services/embedding-service/app/api.py (NEW)
+      - services/knowledge-service/app/clients/embedding_client.py (NEW)
     Description:
-      POST /embed body: {texts: [string], normalize: bool = true}
-      Returns: {embeddings: [[float]], dimension: int, model: "bge-m3"}
-      Batch support (up to 32 texts per call).
+      httpx.AsyncClient wrapper that calls provider-registry's
+      /internal/providers/{id}/embed. Reads the project's configured
+      embedding provider_id + model from knowledge_projects
+      (see K12.3 schema addition).
+      Timeout: 30s (first call to a cold LM Studio model can be slow).
+      Retries: 2 with exponential backoff on 5xx / timeouts.
     Acceptance criteria:
-      - Single text embedding works
-      - Batch of 32 texts returns 32 embeddings
-      - Dimensions are 1024 (bge-m3)
-      - Normalized vectors (L2 norm = 1)
+      - Single + batch embedding works end-to-end through provider-registry
+      - Handles provider-registry down → raises EmbeddingServiceUnavailable
+      - Handles provider 4xx (bad model) → raises EmbeddingConfigError
     Test:
-      - Integration: verify dimensions, verify normalization
+      - Integration with stub provider-registry
     Dependencies: K12.1
     Est: S
 ```
 
 ```
-[ ] K12.3 Healthcheck + metrics
+[ ] K12.3 Project embedding config
     Files:
-      - services/embedding-service/app/health.py (NEW)
+      - services/knowledge-service/migrations/20260501_015_project_embedding_config.sql (NEW)
+      - services/knowledge-service/app/models/project.py (MODIFY)
+      - contracts/api/knowledge-service.yaml (MODIFY)
     Description:
-      GET /health returns {status, model_loaded, memory_usage}
-      GET /metrics prometheus format: embedding_requests_total, duration_histogram
+      Add columns to knowledge_projects:
+        - embedding_provider_id UUID NULL  (FK to provider-registry)
+        - embedding_model TEXT NULL
+        - embedding_dimension INT NULL     (cached on first embed)
+      Expose in project PATCH. When user changes embedding_model,
+      mark project for re-embed (K16.10 already plans the rebuild flow).
     Acceptance criteria:
-      - /health returns 200 when ready, 503 during model load
-      - Metrics present
+      - Project can be created without embedding config (extraction stays
+        disabled until set)
+      - PATCH validates the provider_id + model are embedding-capable
+        via provider-registry before saving
+      - Dimension is looked up from provider-registry on first embed and
+        cached
     Test:
-      - Manual + curl
-    Dependencies: K12.2
+      - Integration: create project → PATCH embedding config → verify
+    Dependencies: K12.1
     Est: S
 ```
 
 ```
-[ ] K12.4 Internal auth
+[ ] K12.4 Frontend: project embedding picker
     Files:
-      - services/embedding-service/app/auth.py (NEW)
+      - frontend/src/features/knowledge/components/ProjectEmbeddingPicker.tsx (NEW)
+      - frontend/src/features/knowledge/pages/ProjectDetailPage.tsx (MODIFY)
     Description:
-      X-Internal-Token auth on /embed. Same pattern as knowledge-service K0.6.
+      In project detail / settings, let the user pick an embedding
+      provider + model from their registered providers (filtered to
+      embedding capability via provider-registry's existing model listing).
+      Surface a warning if no embedding-capable provider is registered,
+      linking to /providers.
     Acceptance criteria:
-      - Missing/wrong token → 401
+      - Only embedding-capable models appear
+      - Empty state explains how to register one (LM Studio, OpenAI, Ollama)
+      - Changing the model prompts for re-embed confirmation
     Test:
-      - Integration
-    Dependencies: K12.2
-    Est: S
-```
-
-```
-[ ] K12.5 Docker compose wiring
-    Files:
-      - infra/docker-compose.yml (MODIFY — add embedding-service)
-    Description:
-      - build: services/embedding-service
-      - healthcheck: /health
-      - start_period: 120s (model load is slow)
-      - volumes: ./models:/models (cached model)
-      - profiles: [full, extraction]
-      - deploy.resources.limits.memory: 3G (model + overhead)
-    Acceptance criteria:
-      - Starts with `docker compose --profile extraction up -d`
-      - Healthy after ~90s
-    Test:
-      - Manual
+      - Manual browser smoke
     Dependencies: K12.3
     Est: S
 ```
 
-```
-[ ] K12.6 Embedding client in knowledge-service
-    Files:
-      - services/knowledge-service/app/clients/embedding_client.py (NEW)
-    Description:
-      httpx.AsyncClient wrapper for calling embedding-service /embed.
-      Timeout: 10s (embedding can be slow for long text).
-      Retries: 2 with exponential backoff.
-    Acceptance criteria:
-      - Returns np arrays or lists of floats (decide based on usage)
-      - Handles service down → raises specific exception
-    Test:
-      - Integration with mock embedding-service
-    Dependencies: K12.4
-    Est: S
-```
+### Gate 8 — BYOK Embedding Path Works
 
-```
-[ ] K12.7 GPU support (optional)
-    Files:
-      - services/embedding-service/Dockerfile (MODIFY — add CUDA base)
-      - infra/docker-compose.yml (MODIFY — add GPU runtime)
-    Description:
-      If user has NVIDIA GPU, use CUDA-enabled PyTorch for ~10x speedup.
-      Fall back to CPU if GPU not available.
-    Acceptance criteria:
-      - Detects GPU automatically
-      - Logs which device is used
-      - CPU mode works without GPU
-    Test:
-      - Manual on machine with/without GPU
-    Dependencies: K12.1
-    Est: M
-    Notes:
-      Optional — CPU is fine for hobby scale (minutes-to-hours for a 5000-ch backfill).
-```
-
-### Gate 8 — Embedding Service Works
-
-- [ ] embedding-service starts, loads model, healthy
-- [ ] curl /embed returns 1024-dim normalized vector
-- [ ] knowledge-service can call it via internal client
-- [ ] Batch of 100 texts processed in reasonable time (< 30s on CPU)
-- [ ] Service handles being stopped and restarted (cache persistent)
+- [ ] provider-registry `/internal/providers/{id}/embed` returns a
+      correctly-dimensioned vector for at least OpenAI + LM Studio + Ollama
+- [ ] knowledge-service embedding_client successfully calls
+      provider-registry end-to-end
+- [ ] Project embedding config persists and is validated on PATCH
+- [ ] If no embedding-capable provider is registered, extraction refuses
+      to enable with a clear error (does NOT silently fall back)
+- [ ] Changing the embedding model triggers the K16.10 re-embed flow
 
 ---
 
@@ -1978,15 +2142,91 @@ adds high-confidence facts, and runs via worker-ai with user's BYOK.
     Est: M
 ```
 
+```
+[ ] K17.9 Golden-set benchmark harness (L-CH-01, L-CH-09)
+    Files:
+      - services/knowledge-service/eval/golden_set.yaml (NEW)
+      - services/knowledge-service/eval/run_benchmark.py (NEW)
+      - docs/03_planning/KNOWLEDGE_SERVICE_GOLDEN_SET.md (NEW)
+    Description:
+      Port ContextHub's embedding benchmark methodology
+      (docs/benchmarks/2026-03-28-embedding-model-benchmark.md) to our
+      domain. A golden set of:
+        - 10 seed entities covering the 5 intent classes from K18.2a
+        - 18 queries: 12 easy (exact name hit) + 6 hard (paraphrase /
+          relational / historical) + 2 negative (should return nothing)
+      The harness:
+        1. Loads a test project from fixture data (real-ish novel chunks)
+        2. Runs the user's configured BYOK embedding model end-to-end
+           through the K12.1 provider-registry path
+        3. Executes all 18 queries via the full Mode 3 builder
+        4. Runs **≥3 times** to measure stddev (L-CH-09)
+        5. Reports recall@3, MRR, avg score, stddev, and negative-control
+           pass rate
+      Thresholds for "extraction may be enabled on this project":
+        - recall@3 ≥ 0.75
+        - MRR ≥ 0.65
+        - avg score ≥ 0.60 on positives
+        - ≥1 of 2 negative controls scores < 0.5
+        - stddev across runs < 0.05
+      Harness is invoked automatically when a user first enables
+      extraction on a project (from K12.4 FE picker → BE K17.9 runner).
+      Results stored in `project_embedding_benchmark_runs` table
+      (K17.9.1 migration below).
+    Acceptance criteria:
+      - Harness runs end-to-end in CI against fixture data
+      - Produces deterministic JSON report for regression tracking
+      - Failing thresholds blocks extraction enablement with a clear
+        error and a link to the report
+    Test:
+      - Run against at least 2 embedding models (e.g. OpenAI
+        text-embedding-3-small + LM Studio qwen3-embedding-0.6b)
+      - Verify code-embedding model (e.g. nomic-embed-code) FAILS the
+        threshold (sanity check — ContextHub L-CH-01)
+    Dependencies: K17.2, K18.3
+    Est: M
+    Notes:
+      ContextHub's run showed code models at 0.381 avg score on natural
+      language — we expect similar failure, that's the point of the
+      test. The harness is also the regression suite for any future
+      ranking tweak.
+```
+
+```
+[ ] K17.9.1 Migration: project_embedding_benchmark_runs
+    Files:
+      - services/knowledge-service/migrations/20260520_050_benchmark_runs.sql (NEW)
+    Description:
+      Stores benchmark harness output per project + model pair so the
+      FE can surface the last run date, scores, and pass/fail status.
+      Columns: project_id, embedding_provider_id, embedding_model,
+      run_id, recall_at_3, mrr, avg_score_positive, stddev,
+      negative_control_pass, passed (bool), raw_report JSONB, created_at.
+    Acceptance criteria:
+      - Unique on (project_id, embedding_model, run_id)
+      - Query "latest run for project" is fast
+    Dependencies: K10
+    Est: S
+```
+
 ### Gate 12 — LLM Extraction Pipeline Works
 
 - [ ] Pass 2 runs successfully on a test project
 - [ ] Pass 1 quarantine correctly validated
 - [ ] Metrics show pass1_confirmed/contradicted/ambiguous distribution
+  (counter fields distinguish "zero — no candidates" from "zero — all
+  filtered" per L-CH-08)
 - [ ] Quality eval passes thresholds (P≥0.80, R≥0.70, FP≤0.15)
+- [ ] **K17.9 golden-set benchmark passes** on the CI fixture project
+      across at least 2 embedding models, ≥3 runs each, stddev < 0.05
+- [ ] **Negative-control queries** (should return nothing) actually
+      return nothing — 2/2 pass
 - [ ] Rate limiting prevents 429 storms
 - [ ] Cost tracking matches actual provider billing (spot-check)
 - [ ] Injection defense applies at extraction time
+- [ ] **Effective-config fingerprint** logged at service startup
+      (L-CH-12) — dev can verify env edits took effect without grepping
+      process memory
 
 ---
 
@@ -2045,24 +2285,83 @@ extraction enabled. Completes the user-facing memory experience.
 ```
 
 ```
+[ ] K18.2a Query intent classifier (runs BEFORE L2/L3 selectors)
+    Files:
+      - services/knowledge-service/app/context/intent/classifier.py (NEW)
+    Description:
+      Per lesson L-CH-07 (ContextHub): hard query clusters cannot be
+      fixed by ranking alone — intent must be routed before retrieval.
+      Classify the user message into one of:
+        - specific-entity   (mentions a named character/place/item)
+        - recent-event      (temporal anchor: "just", "earlier", "now")
+        - historical        ("back when", "originally", "at first")
+        - relational        ("how does X know Y", "who did X with")
+        - general           (everything else — default)
+      Implementation: keyword + pattern extractor (K4.3) pass, NO LLM
+      call on the hot path. Emit `<intent>` hint inside the ContextRequest
+      so L2/L3 selectors pick different Cypher templates, different
+      pool sizes, and different recency weights.
+      Output also recorded in the turn log for eval.
+    Acceptance criteria:
+      - specific-entity query routes L2 to 1-hop-only + tight pool
+      - historical query weights recency NEGATIVELY (prefer older)
+      - relational query forces 2-hop + includes edge labels in output
+      - Latency < 15ms p95 (no LLM on hot path)
+      - Unclassified queries fall through to `general` cleanly
+    Test:
+      - Unit: 50 hand-labeled queries per class → classifier accuracy ≥ 0.80
+      - Integration: same query with/without routing, verify selector
+        picks different Cypher
+    Dependencies: K4.3 (Track 1 pattern extractor)
+    Est: M
+    Why this is a separate task, not a step inside K18.3:
+      ContextHub's QC report shows that moving intent-routing inside
+      the ranker never fixed their hard clusters. They explicitly
+      identified "intent-aware routing BEFORE ranking" as the remaining
+      win. Encoding it as its own pipeline stage forces every selector
+      to consult it.
+```
+
+```
 [ ] K18.3 L3 semantic search selector
     Files:
       - services/knowledge-service/app/context/selectors/passages.py (NEW)
     Description:
-      Per KSA §4.3:
-        1. Detect query type (recent/historical/general) — keyword-based
-        2. Embed user message via embedding-service (K12.6)
+      Per KSA §4.3, and tuned per ContextHub lessons L-CH-02/03:
+        1. Read <intent> from K18.2a (do NOT re-classify here)
+        2. Embed user message via embedding_client (K12.2) → provider-registry BYOK
         3. Route to correct dimension index based on project.embedding_model
-        4. Run hybrid scoring (similarity + recency decay)
-        5. Format as <passage> XML with source/type/relevance attributes
+        4. **Dynamic candidate pool sizing** (L-CH-02):
+             <50 passages indexed → pool = all, skip rerank
+             <200 → pool = 40, rerank top 20
+             ≥200 → pool = 60, rerank top 30
+           Pool size is intent-aware: specific-entity tightens pool,
+           general/relational widens it.
+        5. **Hub-file dominance penalty** (L-CH-03):
+             Penalize passages where the source chunk is the project L1
+             summary, long character bio, or chapter-level synopsis.
+             Penalty strength scales with intent: maximum for
+             specific-entity (we want the specific hit, not the summary),
+             minimum for general (summary is fine).
+        6. **MMR diversification** (λ=0.7 default, tunable per-project)
+             to avoid near-duplicate passages from consecutive chunks.
+        7. Hybrid scoring (similarity + recency decay). Recency weight
+           is intent-driven (historical queries get NEGATIVE weight).
+        8. Format as <passage> XML with source/type/relevance attributes.
     Acceptance criteria:
       - Dimension routing correct per embedding_model
-      - Hybrid scoring applied
-      - Recent-type queries weight recency heavily
-      - Parameterized Cypher
+      - Dynamic pool sizing measured and logged per request
+      - Hub penalty demonstrably drops L1 chunks from top-3 on
+        specific-entity queries (integration test with fixture)
+      - MMR drops near-duplicate passages from top-5
+      - Recency weight sign flips for `historical` intent
+      - Parameterized Cypher only
     Test:
-      - Integration with fixture Neo4j data
-    Dependencies: K12.6, K11.5
+      - Integration with fixture Neo4j data, 10-query micro-eval
+        across all 5 intent classes
+      - Regression: same query returns stable top-3 across 3 runs
+        (± 1 position tolerance — ContextHub L-CH-09)
+    Dependencies: K12.2, K11.5, K18.2a
     Est: L
 ```
 
@@ -2285,7 +2584,7 @@ Plus chaos scenarios from KSA §9.10:
 Prerequisites:
   Track 1 complete  ──────────────────────┐
   D2-01 (Neo4j deployed) ─────────────────┤
-  D2-04 (embedding service) ──────────────┤
+  D2-04 (provider-registry embed path) ───┤
   D3-00 (idempotency layer) ──────────────┤
                                           ▼
 
@@ -2293,7 +2592,7 @@ K10 (postgres) ─────────────────────�
                                           │
 K11 (Neo4j schema) ───────────────────────┤
                                           │
-K12 (embedding service) ──────────────────┤
+K12 (BYOK embedding via registry) ────────┤
                                           │
 K13 (chat turn event) ────────────────────┤
                                           │
@@ -2333,7 +2632,7 @@ Before writing any code:
 - [ ] Confirm Track 1 is fully shipped and stable
 - [ ] Re-read KSA §3.4 (Neo4j amendments), §3.8.5 (provenance cascade), §5 (extraction), §7.5 (prompt caching)
 - [ ] Re-read 101 §3.6 (Neo4j schema), §3.5.4 (idempotency), §3.5.5 (consumer catch-up)
-- [ ] Verify D2 prerequisites complete (Neo4j deployed, bge-m3 service available)
+- [ ] Verify D2 prerequisites complete (Neo4j deployed; at least one embedding-capable provider registered in provider-registry — LM Studio, OpenAI, or Ollama)
 - [ ] Create a new branch: `git checkout -b feature/knowledge-service-track2`
 - [ ] Update SESSION_PATCH.md with "Starting Track 2 implementation"
 - [ ] Run Track 1 smoke tests (ensure nothing broken before starting)
@@ -2345,19 +2644,20 @@ Before writing any code:
 
 ```
 K10 Postgres              [ / 5  tasks]  Gate 6:  [ ]
-K11 Neo4j schema          [ / 9  tasks]  Gate 7:  [ ]
-K12 Embedding service     [ / 7  tasks]  Gate 8:  [ ]
+K11 Neo4j schema          [ / 10 tasks]  Gate 7:  [ ]   (+ K11.Z provenance validator, L-CH-06)
+K12 BYOK embedding        [ / 4  tasks]  Gate 8:  [ ]
 K13 Chat turn event       [ / 3  tasks]
 K14 Event consumer        [ / 8  tasks]  Gate 9:  [ ]
 K15 Pattern extractor     [ / 12 tasks]  Gate 10: [ ]
 K16 Job engine            [ / 15 tasks]  Gate 11: [ ]
-K17 LLM extraction        [ / 12 tasks]  Gate 12: [ ]
-K18 Mode 3 builder        [ / 10 tasks]  Gate 13: [ ]
+K17 LLM extraction        [ / 14 tasks]  Gate 12: [ ]   (+ K17.9 golden-set harness + K17.9.1 migration, L-CH-01/09)
+K18 Mode 3 builder        [ / 11 tasks]  Gate 13: [ ]   (+ K18.2a intent classifier, L-CH-07)
 
 Integration tests         [ / 10 tests]  (T11-T20)
 Chaos scenarios           [ / 8  tests]  (C01-C08)
 
-Total Track 2 tasks: 81
+Total Track 2 tasks: 82  (was 78 — +4 from ContextHub lessons:
+                          K11.Z, K17.9, K17.9.1, K18.2a)
 ```
 
 ---
@@ -2424,7 +2724,7 @@ Test re-running the same event produces no new data.
 
 ### 4. Graceful degradation
 Mode 3 cannot crash chat. If Neo4j is down, fall back to Mode 2. If Pass 2
-fails, leave Pass 1 quarantine. If embedding service is slow, timeout and
+fails, leave Pass 1 quarantine. If the BYOK embedding provider is slow or unreachable, timeout and
 skip L3. Users should never see an error from memory — only degraded context.
 
 ### 5. Quality gates
