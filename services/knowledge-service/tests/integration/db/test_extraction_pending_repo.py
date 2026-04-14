@@ -102,6 +102,59 @@ async def test_k10_5_queue_event_is_idempotent(pool):
 
 
 @pytest.mark.asyncio
+async def test_k10_5_queue_event_keeps_first_payload_on_duplicate(pool):
+    """K10.5-I4: when a duplicate (project_id, event_id) call
+    arrives with DIFFERENT event_type / aggregate_type / aggregate_id,
+    the FIRST call's payload wins. event_id is sourced from
+    `loreweave_events.event_log.id` which is supposed to be a
+    globally-unique event identifier — two callers passing the
+    same event_id with different payload data is a CALLER bug,
+    not a queue concern. The repo silently keeps the first; this
+    test documents and locks the behaviour."""
+    repo = ExtractionPendingRepo(pool)
+    user = uuid4()
+    project_id = await _make_project(pool, user)
+
+    event_id = uuid4()
+    first_agg = uuid4()
+    second_agg = uuid4()
+    first = await repo.queue_event(
+        user,
+        ExtractionPendingQueueRequest(
+            project_id=project_id,
+            event_id=event_id,
+            event_type="chapter.saved",
+            aggregate_type="chapter",
+            aggregate_id=first_agg,
+        ),
+    )
+    assert first is not None
+    assert first.event_type == "chapter.saved"
+    assert first.aggregate_id == first_agg
+
+    # Second call with same event_id, completely different payload.
+    second = await repo.queue_event(
+        user,
+        ExtractionPendingQueueRequest(
+            project_id=project_id,
+            event_id=event_id,
+            event_type="chapter.deleted",
+            aggregate_type="paragraph",
+            aggregate_id=second_agg,
+        ),
+    )
+    # Same row returned, FIRST payload preserved.
+    assert second is not None
+    assert second.pending_id == first.pending_id
+    assert second.event_type == "chapter.saved"  # NOT chapter.deleted
+    assert second.aggregate_type == "chapter"  # NOT paragraph
+    assert second.aggregate_id == first_agg  # NOT second_agg
+
+    # Count is still 1.
+    assert await repo.count_pending(user, project_id) == 1
+
+
+@pytest.mark.asyncio
 async def test_k10_5_queue_event_unknown_project_returns_none(pool):
     repo = ExtractionPendingRepo(pool)
     user = uuid4()

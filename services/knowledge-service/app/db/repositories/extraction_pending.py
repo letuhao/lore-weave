@@ -92,6 +92,18 @@ def _row_to_pending(row: asyncpg.Record) -> ExtractionPending:
     return ExtractionPending.model_validate(dict(row))
 
 
+def _rows_changed(status: str) -> int:
+    """Parse an asyncpg command tag like 'UPDATE 1' / 'DELETE 0' /
+    'INSERT 0 5' into the affected-row count, safely. Mirrors the
+    helper of the same name in `projects.py` — kept local to avoid
+    importing private symbols across modules. K10.5-I3.
+    """
+    try:
+        return int(status.rsplit(" ", 1)[-1])
+    except ValueError:
+        return 0
+
+
 class ExtractionPendingRepo:
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
@@ -131,6 +143,18 @@ class ExtractionPendingRepo:
         force RETURNING to fire on the duplicate path. Without
         this, ON CONFLICT DO NOTHING would yield zero rows for
         duplicates and we couldn't return the existing row.
+
+        K10.5-I4 — payload-mismatch behaviour on duplicates:
+        a duplicate (project_id, event_id) call with DIFFERENT
+        event_type / aggregate_type / aggregate_id values still
+        returns the FIRST call's row, not the second's. This is
+        the correct idempotent-queue contract because event_id is
+        sourced from `loreweave_events.event_log.id` which is
+        supposed to uniquely identify an event in the source
+        system — two callers with the same event_id but different
+        payload data is a CALLER bug, not a queue concern. The
+        repo silently keeps the first; the test suite documents
+        this with a dedicated assertion.
         """
         query = f"""
         WITH owned AS (
@@ -181,9 +205,11 @@ class ExtractionPendingRepo:
         WHERE ep.project_id = $2
           AND ep.processed_at IS NULL
         """
+        # COUNT(*) always returns exactly one row (with n=0 if no
+        # matches), so fetchval is sufficient — no need to defend
+        # against None. K10.5-I1 cleanup.
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(query, user_id, project_id)
-        return int(row["n"]) if row else 0
+            return int(await conn.fetchval(query, user_id, project_id))
 
     async def fetch_pending(
         self,
@@ -201,8 +227,11 @@ class ExtractionPendingRepo:
         Capped at `FETCH_HARD_CAP` rows defensively.
         """
         effective_limit = max(1, min(limit, self.FETCH_HARD_CAP))
+        # K10.5-I2: `SELECT ep.*` returns only the extraction_pending
+        # columns even with the JOIN. Cleaner than the prior
+        # split-by-comma f-string projection.
         query = f"""
-        SELECT {", ".join(f"ep.{c.strip()}" for c in _SELECT_COLS.split(","))}
+        SELECT ep.*
         FROM extraction_pending ep
         JOIN knowledge_projects p
           ON p.project_id = ep.project_id
@@ -243,11 +272,8 @@ class ExtractionPendingRepo:
         """
         async with self._pool.acquire() as conn:
             status = await conn.execute(query, user_id, pending_id)
-        # asyncpg returns "UPDATE <n>"; parse the count.
-        try:
-            return int(status.rsplit(" ", 1)[-1]) >= 1
-        except ValueError:
-            return False
+        # K10.5-I3: shared parser instead of inline try/except.
+        return _rows_changed(status) >= 1
 
     async def clear_pending(
         self, user_id: UUID, project_id: UUID
@@ -270,7 +296,5 @@ class ExtractionPendingRepo:
         """
         async with self._pool.acquire() as conn:
             status = await conn.execute(query, user_id, project_id)
-        try:
-            return int(status.rsplit(" ", 1)[-1])
-        except ValueError:
-            return 0
+        # K10.5-I3: shared parser.
+        return _rows_changed(status)
