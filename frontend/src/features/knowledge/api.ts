@@ -8,6 +8,8 @@ import type {
   SummariesListResponse,
   Summary,
   SummaryUpdatePayload,
+  SummaryVersion,
+  SummaryVersionListResponse,
   UserDataDeleteResponse,
 } from './types';
 
@@ -146,6 +148,43 @@ export const knowledgeApi = {
       token,
       headers: expectedVersion != null ? ifMatch(expectedVersion) : undefined,
     });
+  },
+
+  // ── D-K8-01: global summary version history ────────────────────────────
+
+  listGlobalSummaryVersions(
+    token: string,
+    limit = 50,
+  ): Promise<SummaryVersionListResponse> {
+    return apiJson<SummaryVersionListResponse>(
+      `${BASE}/summaries/global/versions?limit=${limit}`,
+      { token },
+    );
+  },
+
+  getGlobalSummaryVersion(
+    version: number,
+    token: string,
+  ): Promise<SummaryVersion> {
+    return apiJson<SummaryVersion>(
+      `${BASE}/summaries/global/versions/${version}`,
+      { token },
+    );
+  },
+
+  rollbackGlobalSummary(
+    version: number,
+    token: string,
+    expectedVersion: number,
+  ): Promise<Summary> {
+    return apiJson<Summary>(
+      `${BASE}/summaries/global/versions/${version}/rollback`,
+      {
+        method: 'POST',
+        token,
+        headers: ifMatch(expectedVersion),
+      },
+    );
   },
 
   // ── user data (GDPR) ───────────────────────────────────────────────────

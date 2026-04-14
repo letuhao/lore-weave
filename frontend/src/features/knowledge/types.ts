@@ -82,6 +82,28 @@ export interface Summary {
   updated_at: string;
 }
 
+// D-K8-01: an archived pre-update snapshot of a summary row.
+// Created automatically by the repo on every successful update
+// and by the rollback endpoint. `edit_source` distinguishes a
+// user-typed update from a rollback operation — the History
+// panel renders them differently.
+export type SummaryEditSource = 'manual' | 'rollback';
+
+export interface SummaryVersion {
+  version_id: string;
+  summary_id: string;
+  user_id: string;
+  version: number;
+  content: string;
+  token_count: number | null;
+  created_at: string;
+  edit_source: SummaryEditSource;
+}
+
+export interface SummaryVersionListResponse {
+  items: SummaryVersion[];
+}
+
 export interface SummariesListResponse {
   // JSON field is "global" (aliased on backend). TS keyword is not a
   // problem as a property name but kept identical to the wire format.

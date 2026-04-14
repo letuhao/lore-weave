@@ -87,7 +87,31 @@
     "saved": "已儲存全域簡介",
     "saveFailed": "儲存失敗",
     "version": "v{{version}}",
-    "conflict": "另一個裝置已更新此簡介。請先檢視最新內容再儲存。"
+    "conflict": "另一個裝置已更新此簡介。請先檢視最新內容再儲存。",
+    "versions": {
+      "toggle": "歷史",
+      "title": "版本歷史",
+      "close": "關閉",
+      "loading": "載入歷史中…",
+      "loadFailed": "載入歷史失敗: {{error}}",
+      "empty": "尚無舊版本 — 歷史會從下次儲存開始累積。",
+      "versionLabel": "v{{version}}",
+      "emptyContent": "(空白)",
+      "view": "檢視",
+      "rollback": "還原",
+      "rollbackFromPreview": "還原到此版本",
+      "rollingBack": "還原中…",
+      "confirmTitle": "還原到此版本?",
+      "confirmBody": "您目前的簡介將被替換為 v{{version}} 的內容。系統會建立新版本,目前的狀態會被存入歷史。",
+      "confirm": "還原",
+      "rollbackSuccess": "已還原到所選版本",
+      "rollbackFailed": "還原失敗",
+      "previewTitle": "版本 {{version}} 預覽",
+      "source": {
+        "manual": "手動",
+        "rollback": "還原"
+      }
+    }
   },
   "indicator": {
     "label": "記憶指示器",

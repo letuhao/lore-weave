@@ -87,7 +87,31 @@
     "saved": "Đã lưu tiểu sử chung",
     "saveFailed": "Lưu thất bại",
     "version": "v{{version}}",
-    "conflict": "Một thiết bị khác đã cập nhật tiểu sử này. Hãy xem bản mới nhất và lưu lại."
+    "conflict": "Một thiết bị khác đã cập nhật tiểu sử này. Hãy xem bản mới nhất và lưu lại.",
+    "versions": {
+      "toggle": "Lịch sử",
+      "title": "Lịch sử phiên bản",
+      "close": "Đóng",
+      "loading": "Đang tải lịch sử…",
+      "loadFailed": "Không tải được lịch sử: {{error}}",
+      "empty": "Chưa có phiên bản trước — lịch sử sẽ bắt đầu từ lần lưu tiếp theo.",
+      "versionLabel": "v{{version}}",
+      "emptyContent": "(trống)",
+      "view": "Xem",
+      "rollback": "Khôi phục",
+      "rollbackFromPreview": "Khôi phục về phiên bản này",
+      "rollingBack": "Đang khôi phục…",
+      "confirmTitle": "Khôi phục về phiên bản này?",
+      "confirmBody": "Tiểu sử hiện tại sẽ được thay thế bằng nội dung của v{{version}}. Một phiên bản mới sẽ được tạo; trạng thái hiện tại sẽ được lưu trong lịch sử.",
+      "confirm": "Khôi phục",
+      "rollbackSuccess": "Đã khôi phục về phiên bản đã chọn",
+      "rollbackFailed": "Khôi phục thất bại",
+      "previewTitle": "Xem trước phiên bản {{version}}",
+      "source": {
+        "manual": "Thủ công",
+        "rollback": "Khôi phục"
+      }
+    }
   },
   "indicator": {
     "label": "Chỉ báo bộ nhớ",

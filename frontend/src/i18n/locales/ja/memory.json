@@ -87,7 +87,31 @@
     "saved": "グローバルプロフィールを保存しました",
     "saveFailed": "保存に失敗しました",
     "version": "v{{version}}",
-    "conflict": "別のデバイスがこのプロフィールを更新しました。最新の内容を確認してから保存し直してください。"
+    "conflict": "別のデバイスがこのプロフィールを更新しました。最新の内容を確認してから保存し直してください。",
+    "versions": {
+      "toggle": "履歴",
+      "title": "バージョン履歴",
+      "close": "閉じる",
+      "loading": "履歴を読み込み中…",
+      "loadFailed": "履歴の読み込みに失敗しました: {{error}}",
+      "empty": "以前のバージョンはまだありません — 次回の保存から履歴が記録されます。",
+      "versionLabel": "v{{version}}",
+      "emptyContent": "(空)",
+      "view": "表示",
+      "rollback": "ロールバック",
+      "rollbackFromPreview": "このバージョンにロールバック",
+      "rollingBack": "ロールバック中…",
+      "confirmTitle": "このバージョンにロールバックしますか？",
+      "confirmBody": "現在のプロフィールは v{{version}} の内容に置き換えられます。新しいバージョンが作成され、現在の状態は履歴に保存されます。",
+      "confirm": "ロールバック",
+      "rollbackSuccess": "選択したバージョンにロールバックしました",
+      "rollbackFailed": "ロールバックに失敗しました",
+      "previewTitle": "バージョン {{version}} のプレビュー",
+      "source": {
+        "manual": "手動",
+        "rollback": "ロールバック"
+      }
+    }
   },
   "indicator": {
     "label": "メモリインジケーター",

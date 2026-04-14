@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
+import { History } from 'lucide-react';
 import { Skeleton } from '@/components/shared';
 import { isVersionConflict } from '../api';
 import { useSummaries } from '../hooks/useSummaries';
 import type { Summary } from '../types';
+import { VersionsPanel } from './VersionsPanel';
 
 // Mirrors SummaryContent = Annotated[str, StringConstraints(max_length=50000)]
 // in services/knowledge-service/app/db/models.py. Same pattern as
@@ -15,6 +17,10 @@ export function GlobalBioTab() {
   const { t } = useTranslation('memory');
   const { global, isLoading, isError, error, updateGlobal, isUpdatingGlobal } =
     useSummaries();
+  // D-K8-01: history panel toggle. Starts collapsed so the initial
+  // Memory page load stays cheap — the versions query only fires
+  // when `showVersions` flips to true.
+  const [showVersions, setShowVersions] = useState(false);
 
   const [content, setContent] = useState('');
   // Track the server-side content we last synced against so we can
@@ -142,6 +148,18 @@ export function GlobalBioTab() {
               {dirty && (
                 <span className="text-[11px] text-warning">{t('global.unsavedChanges')}</span>
               )}
+              {/* D-K8-01: history toggle. Hidden until the summary
+                  row actually exists — before first save there's
+                  nothing to look at. */}
+              {global != null && (
+                <button
+                  onClick={() => setShowVersions((v) => !v)}
+                  className="flex items-center gap-1 rounded-md border px-2 py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                >
+                  <History className="h-3 w-3" />
+                  {t('global.versions.toggle')}
+                </button>
+              )}
               <button
                 onClick={() => void handleSave()}
                 disabled={!canSave}
@@ -151,6 +169,13 @@ export function GlobalBioTab() {
               </button>
             </div>
           </div>
+
+          {showVersions && (
+            <VersionsPanel
+              currentSummary={global}
+              onClose={() => setShowVersions(false)}
+            />
+          )}
         </>
       )}
     </div>

@@ -87,7 +87,31 @@
     "saved": "Global bio saved",
     "saveFailed": "Save failed",
     "version": "v{{version}}",
-    "conflict": "Another device updated this bio. Review the latest and save again."
+    "conflict": "Another device updated this bio. Review the latest and save again.",
+    "versions": {
+      "toggle": "History",
+      "title": "Version history",
+      "close": "Close",
+      "loading": "Loading history…",
+      "loadFailed": "Failed to load history: {{error}}",
+      "empty": "No prior versions — history starts building after your next save.",
+      "versionLabel": "v{{version}}",
+      "emptyContent": "(empty)",
+      "view": "View",
+      "rollback": "Rollback",
+      "rollbackFromPreview": "Rollback to this version",
+      "rollingBack": "Rolling back…",
+      "confirmTitle": "Rollback to this version?",
+      "confirmBody": "Your current bio will be replaced with the content from v{{version}}. A new version will be created; the current state will be archived in history.",
+      "confirm": "Rollback",
+      "rollbackSuccess": "Rolled back to selected version",
+      "rollbackFailed": "Rollback failed",
+      "previewTitle": "Version {{version}} preview",
+      "source": {
+        "manual": "Manual",
+        "rollback": "Rollback"
+      }
+    }
   },
   "indicator": {
     "label": "Memory indicator",
