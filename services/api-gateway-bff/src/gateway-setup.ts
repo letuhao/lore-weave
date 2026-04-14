@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import type { Request, Response, NextFunction } from 'express';
+import type { Socket } from 'net';
 
 /**
  * CORS, /v1 proxy by domain, and GET /health.
@@ -105,6 +106,54 @@ export function configureGatewayApp(
     target: urls.knowledgeUrl,
     changeOrigin: true,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/knowledge'),
+    // K-CLEAN-5 (Gate-5-I4 + D-K8-04): when knowledge-service is
+    // unreachable (container down, DNS, refused) http-proxy-middleware
+    // would otherwise propagate the upstream connection error as a
+    // generic 500 with a stack trace. Convert it to a structured 503
+    // so the FE can distinguish "backend down — show degraded UI"
+    // from "real bug — show error toast." Headers may already be
+    // sent if the error fires mid-stream; guard against double-send.
+    on: {
+      error: (
+        err: NodeJS.ErrnoException,
+        req: Request,
+        res: Response | Socket,
+      ) => {
+        // For WebSocket upgrades the proxy passes the raw Socket
+        // — we don't have an Express Response to render JSON onto,
+        // just close the socket cleanly.
+        if (!('status' in res) || typeof res.status !== 'function') {
+          try {
+            (res as Socket).destroy?.();
+          } catch {
+            // ignore
+          }
+          return;
+        }
+        const httpRes = res as Response;
+        if (httpRes.headersSent) {
+          try {
+            httpRes.end();
+          } catch {
+            // socket likely already destroyed
+          }
+          return;
+        }
+        const traceId =
+          (req.headers['x-trace-id'] as string | undefined) ?? null;
+        httpRes.status(503).set('Content-Type', 'application/json');
+        if (traceId) {
+          httpRes.set('X-Trace-Id', traceId);
+        }
+        httpRes.end(
+          JSON.stringify({
+            detail: 'knowledge_service_unavailable',
+            code: err?.code ?? 'ECONNREFUSED',
+            trace_id: traceId,
+          }),
+        );
+      },
+    },
   });
 
   const httpAdapter = app.getHttpAdapter();

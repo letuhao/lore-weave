@@ -100,6 +100,7 @@
       "fallbackProject": "一個專案",
       "projectBody": "此對話已連結到 <strong>{{name}}</strong>。AI 會看到您的全域簡介,以及該專案的摘要與術語表,在每次對話中都會用到。",
       "globalBody": "此對話未連結任何專案。AI 只會看到您的全域簡介。請在對話設定中連結專案,讓 AI 能存取書籍專屬的記憶。",
+      "degradedBody": "上一輪對話無法連線到 knowledge service。AI 已切換為僅使用最近訊息的降級模式 — 您的專案記憶暫時未進入 prompt。一旦服務恢復,下一輪會自動恢復。",
       "manage": "管理記憶"
     }
   },

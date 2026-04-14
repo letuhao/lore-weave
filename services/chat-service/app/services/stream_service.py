@@ -157,6 +157,26 @@ async def stream_response(
         message=user_message_content,
     )
 
+    # ── K-CLEAN-5 (D-K8-04): emit memory_mode to the FE ─────────────────────
+    # `kctx.mode` is one of mode_1 / mode_2 / mode_3 / degraded. Map the
+    # internal names to the FE-facing surface (no_project / static /
+    # degraded) so the chat header MemoryIndicator can render a degraded
+    # pill when the knowledge call fell back. The event must be emitted
+    # BEFORE the first text-delta so the FE can flip the indicator before
+    # any tokens render — otherwise the user sees a project-name badge
+    # while the AI is actually answering with no project memory.
+    fe_memory_mode: str
+    if kctx.mode == "degraded":
+        fe_memory_mode = "degraded"
+    elif kctx.mode == "mode_1":
+        fe_memory_mode = "no_project"
+    else:
+        # mode_2 (project memory injected) and mode_3 (extraction —
+        # not yet implemented in Track 1) both surface as "static"
+        # for the FE indicator: a project is linked and its memory
+        # made it into the prompt.
+        fe_memory_mode = "static"
+
     # ── Build message history (size from knowledge_service) ─────────────────
     history_limit = max(1, kctx.recent_message_count)
     rows = await pool.fetch(
@@ -222,6 +242,12 @@ async def stream_response(
     import time as _time
     stream_start = _time.monotonic()
     time_to_first_token: float | None = None
+
+    # K-CLEAN-5 (D-K8-04): emit memory_mode as the FIRST SSE event so the
+    # FE can flip the indicator badge before any tokens render. Yielded
+    # outside the try/except below so it lands even if the LLM call
+    # immediately fails downstream.
+    yield f'data: {json.dumps({"type": "memory-mode", "mode": fe_memory_mode})}\n\n'
 
     try:
         if use_openai_sdk:

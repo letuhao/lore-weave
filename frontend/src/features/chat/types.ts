@@ -28,6 +28,16 @@ export interface ChatSession {
   // (static project memory). Mirrors the backend column added
   // by chat-service's K5 migration.
   project_id: string | null;
+  // K-CLEAN-5 (D-K8-04): memory mode for the chat header
+  // MemoryIndicator.
+  //   no_project — no project linked, AI sees only the global bio
+  //   static     — project linked, AI sees its summary + glossary
+  //   degraded   — knowledge-service was unreachable on the last
+  //                turn and chat-service fell back to recent-only
+  // GET responses populate from `project_id` (no_project | static).
+  // The SSE stream emits a `memory-mode` event on every turn so the
+  // FE can flip to `degraded` when the upstream call falls back.
+  memory_mode?: 'no_project' | 'static' | 'degraded';
 }
 
 export interface ChatMessage {

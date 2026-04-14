@@ -7,23 +7,27 @@ import { useAuth } from '@/auth';
 import { cn } from '@/lib/utils';
 import { knowledgeApi } from '../api';
 
-// K8.4: chat header memory-mode indicator + popover.
+// K8.4 + K-CLEAN-5 (D-K8-04): chat header memory-mode indicator + popover.
 //
-// Track 1 derives the mode client-side from `session.project_id`:
-//   null      → Mode 1 (no_project) — global bio only
-//   non-null  → Mode 2 (static)     — project memory injected
+// `memoryMode` comes from chat-service:
+//   - GET /v1/chat/sessions/{id} computes it from project_id alone
+//     (no_project | static)
+//   - The SSE stream emits a `memory-mode` event on every turn so the
+//     FE can flip to `degraded` when the upstream knowledge call
+//     fell back to recent-messages-only.
 //
-// Degraded state (knowledge-service down) isn't surfaced because
-// chat-service calls knowledge server-side and doesn't echo the
-// build_context response back to the frontend. Tracked as
-// D-K8-04 — add `memory_mode` to the chat-service session/stream
-// metadata so the FE can show a "degraded" badge.
+// `projectId` is still needed to fetch the project name for the
+// indicator label. When mode is `degraded` the project name is
+// still shown (the AI just doesn't actually have its memory this
+// turn), but the button gets a warning border + a degraded sub-line
+// in the popover.
 
 interface Props {
   projectId: string | null;
+  memoryMode?: 'no_project' | 'static' | 'degraded';
 }
 
-export function MemoryIndicator({ projectId }: Props) {
+export function MemoryIndicator({ projectId, memoryMode }: Props) {
   const { t } = useTranslation('memory');
   const [open, setOpen] = useState(false);
   const { accessToken } = useAuth();
@@ -42,6 +46,13 @@ export function MemoryIndicator({ projectId }: Props) {
   });
 
   const isProject = projectId !== null;
+  // Effective mode: explicit prop wins; otherwise derive from projectId
+  // (matches the chat-service GET response computation, so SSR/initial
+  // loads agree even before the first SSE event).
+  const effectiveMode: 'no_project' | 'static' | 'degraded' =
+    memoryMode ?? (isProject ? 'static' : 'no_project');
+  const isDegraded = effectiveMode === 'degraded';
+
   const label = isProject
     ? projectQuery.data?.name ?? t('indicator.modes.project')
     : t('indicator.modes.global');
@@ -56,13 +67,20 @@ export function MemoryIndicator({ projectId }: Props) {
         aria-expanded={open ? 'true' : 'false'}
         className={cn(
           'flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors',
-          isProject
-            ? 'border-primary/30 bg-primary/10 text-primary hover:bg-primary/15'
-            : 'border-border bg-secondary/40 text-muted-foreground hover:bg-secondary',
+          isDegraded
+            ? 'border-warning/40 bg-warning/10 text-warning hover:bg-warning/15'
+            : isProject
+              ? 'border-primary/30 bg-primary/10 text-primary hover:bg-primary/15'
+              : 'border-border bg-secondary/40 text-muted-foreground hover:bg-secondary',
         )}
       >
         <Brain className="h-3 w-3" />
         <span className="max-w-[120px] truncate">{label}</span>
+        {isDegraded && (
+          <span className="ml-1 rounded-sm bg-warning/20 px-1 py-0.5 text-[9px] font-semibold uppercase">
+            {t('indicator.modes.degraded')}
+          </span>
+        )}
       </button>
 
       {open && (
@@ -101,6 +119,12 @@ export function MemoryIndicator({ projectId }: Props) {
                 t('indicator.popover.globalBody')
               )}
             </p>
+
+            {isDegraded && (
+              <div className="mb-3 rounded-md border border-warning/30 bg-warning/5 px-2 py-1.5 text-[10px] leading-relaxed text-warning">
+                {t('indicator.popover.degradedBody')}
+              </div>
+            )}
 
             <Link
               to="/memory"

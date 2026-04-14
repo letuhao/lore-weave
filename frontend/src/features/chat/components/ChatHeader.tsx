@@ -53,7 +53,7 @@ export function ChatHeader({ session, modelNameMap, messageCount, onRename, onOp
         </div>
       </div>
       <div className="flex items-center gap-1.5">
-        <MemoryIndicator projectId={session.project_id} />
+        <MemoryIndicator projectId={session.project_id} memoryMode={session.memory_mode} />
         {(SPEECH_RECOGNITION_SUPPORTED || MEDIA_RECORDER_SUPPORTED) && onToggleVoiceMode && session.status !== 'archived' && (
           <button
             type="button"

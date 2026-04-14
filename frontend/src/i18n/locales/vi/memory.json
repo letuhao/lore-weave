@@ -100,6 +100,7 @@
       "fallbackProject": "một dự án",
       "projectBody": "Phiên này được liên kết với <strong>{{name}}</strong>. AI thấy tiểu sử chung của bạn cộng với bản tóm tắt và glossary của dự án trong mọi lượt.",
       "globalBody": "Phiên này không liên kết với dự án nào. AI chỉ thấy tiểu sử chung của bạn. Liên kết một dự án trong cài đặt phiên để cho phép AI truy cập bộ nhớ riêng theo sách.",
+      "degradedBody": "Knowledge service không truy cập được ở lượt vừa rồi. AI đã chuyển sang chỉ dùng các tin nhắn gần đây — bộ nhớ dự án tạm thời không có trong prompt. Sẽ tự khôi phục ở lượt tiếp theo khi dịch vụ hoạt động trở lại.",
       "manage": "Quản lý bộ nhớ"
     }
   },

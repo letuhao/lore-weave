@@ -100,6 +100,7 @@
       "fallbackProject": "a project",
       "projectBody": "This session is linked to <strong>{{name}}</strong>. The AI sees your global bio plus the project's summary and glossary entries on every turn.",
       "globalBody": "This session has no project linked. The AI sees only your global bio. Link a project in session settings to give it access to book-specific memory.",
+      "degradedBody": "Knowledge service was unreachable on the last turn. The AI fell back to recent messages only — your project memory is temporarily not in the prompt. Will recover automatically on the next turn once the service is back.",
       "manage": "Manage memory"
     }
   },

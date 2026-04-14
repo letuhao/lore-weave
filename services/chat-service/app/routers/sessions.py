@@ -21,6 +21,13 @@ def _row_to_session(r: asyncpg.Record) -> ChatSession:
     gp = r["generation_params"]
     if isinstance(gp, str):
         gp = json.loads(gp)
+    project_id = r.get("project_id")
+    # K-CLEAN-5 (D-K8-04): derive initial memory_mode from project_id.
+    # `degraded` is intentionally NOT representable here — it's a
+    # per-turn state that only the SSE stream knows. A fresh GET
+    # always shows the project-derived state until the FE receives a
+    # streaming `memory-mode` event with the actual value.
+    memory_mode = "static" if project_id else "no_project"
     return ChatSession(
         session_id=r["session_id"],
         owner_user_id=r["owner_user_id"],
@@ -37,7 +44,8 @@ def _row_to_session(r: asyncpg.Record) -> ChatSession:
         updated_at=r["updated_at"],
         # asyncpg.Record supports .get() (0.27+); matches the pattern used
         # by stream_service.py for test dict-mock compatibility.
-        project_id=r.get("project_id"),
+        project_id=project_id,
+        memory_mode=memory_mode,
     )
 
 

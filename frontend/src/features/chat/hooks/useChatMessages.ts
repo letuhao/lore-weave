@@ -10,6 +10,11 @@ type StreamPhase = 'idle' | 'thinking' | 'responding';
 export type StreamDeltaType = 'content' | 'reasoning';
 /** Callback for each SSE delta token */
 export type OnStreamDelta = (delta: string, type: StreamDeltaType) => void;
+/** K-CLEAN-5 (D-K8-04): callback fired when the stream's first
+ *  `memory-mode` event arrives. ChatSessionContext registers this so
+ *  the chat header MemoryIndicator can flip to a degraded badge as
+ *  soon as chat-service signals the knowledge call fell back. */
+export type OnMemoryMode = (mode: 'no_project' | 'static' | 'degraded') => void;
 
 /**
  * Unified hook: owns message list + SSE streaming for send/edit/regenerate.
@@ -31,6 +36,9 @@ export function useChatMessages(sessionId: string | null) {
   const onStreamDeltaRef = useRef<OnStreamDelta | null>(null);
   /** Settable callback for when streaming ends (success or abort — not error) */
   const onStreamEndRef = useRef<(() => void) | null>(null);
+  /** K-CLEAN-5 (D-K8-04): settable callback for the per-turn
+   *  memory-mode SSE event from chat-service. */
+  const onMemoryModeRef = useRef<OnMemoryMode | null>(null);
 
   // ── Fetch messages on session change ──────────────────────────────────────────
 
@@ -155,6 +163,12 @@ export function useChatMessages(sessionId: string | null) {
                 accumulatedContent += event.delta;
                 setStreamingText(accumulatedContent);
                 onStreamDeltaRef.current?.(event.delta, 'content');
+              } else if (event.type === 'memory-mode' && event.mode) {
+                // K-CLEAN-5 (D-K8-04): chat-service emits this as the
+                // first SSE event of every turn so the FE can flip the
+                // header indicator before any tokens render. Mode is
+                // one of 'no_project' | 'static' | 'degraded'.
+                onMemoryModeRef.current?.(event.mode);
               } else if (event.type === 'data' && event.data?.[0]) {
                 streamMessageId = event.data[0].message_id || null;
               } else if (event.type === 'finish-message') {
@@ -323,5 +337,8 @@ export function useChatMessages(sessionId: string | null) {
     onStreamDeltaRef,
     /** Set a callback for when streaming ends (success or abort) */
     onStreamEndRef,
+    /** K-CLEAN-5 (D-K8-04): set a callback for the per-turn
+     *  memory-mode SSE event from chat-service. */
+    onMemoryModeRef,
   };
 }

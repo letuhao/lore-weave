@@ -65,6 +65,14 @@ class ChatSession(BaseModel):
     created_at: datetime
     updated_at: datetime
     project_id: UUID | None = None  # K5
+    # K-CLEAN-5 (D-K8-04): client-derived initial memory mode for the
+    # session header indicator. The router computes this from
+    # `project_id` alone (no_project / static) on GET — `degraded` only
+    # ever arrives via the per-turn SSE `memory-mode` event, since it's
+    # an ephemeral state of the last turn's knowledge-service call. The
+    # FE consumes both: the GET response sets the initial badge, the
+    # SSE stream updates it on each turn.
+    memory_mode: str = "no_project"
 
 
 class SessionListResponse(BaseModel):

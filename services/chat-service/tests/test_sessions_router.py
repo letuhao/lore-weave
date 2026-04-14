@@ -87,6 +87,30 @@ class TestGetSession:
         resp = await client.get(f"/v1/chat/sessions/{uuid4()}")
         assert resp.status_code == 404
 
+    @pytest.mark.asyncio
+    async def test_get_session_memory_mode_no_project(self, client, mock_pool):
+        """K-CLEAN-5 (D-K8-04): GET response derives memory_mode from
+        project_id. With no project linked, mode is 'no_project'."""
+        mock_pool.fetchrow.return_value = make_session_record(project_id=None)
+        resp = await client.get(f"/v1/chat/sessions/{TEST_SESSION_ID}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["project_id"] is None
+        assert body["memory_mode"] == "no_project"
+
+    @pytest.mark.asyncio
+    async def test_get_session_memory_mode_static(self, client, mock_pool):
+        """K-CLEAN-5 (D-K8-04): with a project linked, mode is 'static'.
+        `degraded` is not representable on GET — that only ever arrives
+        via the per-turn SSE memory-mode event."""
+        project_id = str(uuid4())
+        mock_pool.fetchrow.return_value = make_session_record(project_id=project_id)
+        resp = await client.get(f"/v1/chat/sessions/{TEST_SESSION_ID}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["project_id"] == project_id
+        assert body["memory_mode"] == "static"
+
 
 class TestPatchSession:
     @pytest.mark.asyncio
