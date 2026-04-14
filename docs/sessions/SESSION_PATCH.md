@@ -10,7 +10,7 @@
 - Last Updated: 2026-04-14 (session 39 continuation — **K11.3 Cypher schema runner landed**, K11.1+K11.2+K11.3 = Neo4j wired end-to-end against live 2026.03)
 - Updated By: Assistant (K11.3 caps the Neo4j-infra slice. Schema file ships 6 unique constraints + 13 composite/single indexes + 5 vector indexes per KSA §3.4. K11.3-I1: existence constraints removed — Enterprise-only on community edition; user_id NOT NULL stays enforced by K11.4's `assert_user_id_param`. Neo4j image bumped 2025.10 → 2026.03 community after user pushback. 369/369 knowledge-service tests pass against live Neo4j; 12 new K11.3 tests (8 parser unit + 4 integration). Repo code must keep going through K11.4 — schema runner is the one documented exception.)
 - Active Branch: `main` (ahead of origin by session-38 + session-39 commits — user pushes manually)
-- HEAD: K11.6-R1 review-fix commit (this session, on top of K11.6)
+- HEAD: K11.7 events+facts commit (this session, on top of K11.6-R1)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -117,6 +117,34 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K11.7 — Events + Facts repositories ✅ (session 39 continuation, Track 2)
+
+**Goal:** Cypher repos for `:Event` and `:Fact` nodes — discrete narrative events and typed propositional statements extracted from chapters/chat. Same idempotency + multi-source pattern as K11.5a entities and K11.6 relations. Closes the K11 node-repo trilogy (entities + relations + events + facts) so K11.8 (provenance) and K17 (LLM extractor) have a complete write surface.
+
+**Files:**
+- [services/knowledge-service/app/db/neo4j_repos/canonical.py](services/knowledge-service/app/db/neo4j_repos/canonical.py) — added `canonicalize_text` helper (lower + collapse whitespace + strip punctuation, NO honorific stripping). Used by both event_id and fact_id derivation. Kept separate from `canonicalize_entity_name` so an entity name rule change doesn't silently re-key every event in the graph.
+- [services/knowledge-service/app/db/neo4j_repos/events.py](services/knowledge-service/app/db/neo4j_repos/events.py) — NEW: `event_id()` deterministic hash, `Event` Pydantic model, 5 repo functions (`merge_event`, `get_event`, `list_events_for_chapter`, `list_events_in_order`, `delete_events_with_zero_evidence`).
+- [services/knowledge-service/app/db/neo4j_repos/facts.py](services/knowledge-service/app/db/neo4j_repos/facts.py) — NEW: `fact_id()` deterministic hash, `Fact` Pydantic model, `FACT_TYPES` closed enum (`decision`/`preference`/`milestone`/`negation`), 5 repo functions (`merge_fact`, `get_fact`, `list_facts_by_type`, `invalidate_fact`, `delete_facts_with_zero_evidence`).
+- [services/knowledge-service/tests/integration/db/test_events_repo.py](services/knowledge-service/tests/integration/db/test_events_repo.py) — NEW: 19 integration tests.
+- [services/knowledge-service/tests/integration/db/test_facts_repo.py](services/knowledge-service/tests/integration/db/test_facts_repo.py) — NEW: 20 integration tests.
+
+**Acceptance criteria (from K11.7 plan):**
+- ✅ Merge is idempotent — re-extraction of the same `(user, project, chapter, title)` (event) or `(user, project, type, content)` (fact) tuple returns the same node, no duplicates. Verified by `count(...)` after a duplicate merge.
+- ✅ Temporal queries work — `list_events_in_order` uses the K11.3 `event_user_order` index for narrative-order range scans (`after_order < e.event_order < before_order`); `list_events_for_chapter` uses `event_user_chapter`.
+- ✅ Fact type filter — `list_facts_by_type(type=...)` matches one of the 4 closed enum values; `type=None` returns all. Type cardinality is 4 so a label scan with WHERE is fast enough; K11.3-R2 can add a `(user_id, type)` index if profiling shows pain.
+
+**Multi-source semantics (mirrors K11.5a `merge_entity` and K11.6 `create_relation`):**
+- Both `merge_event` and `merge_fact` accumulate distinct `source_types` and take the max `confidence` across calls.
+- `merge_fact` also flips `pending_validation` to the new value when confidence beats the stored one — Pass 2 LLM promotion of a Pass 1 quarantined fact upgrades in place.
+- `merge_event` participants list union-merges with dedup (pure Cypher comprehension, no APOC dependency on the merge path).
+- `merge_event` summary / event_order / chronological_order: first non-null write wins. Re-merging without those fields preserves existing values.
+
+**Cross-user safety:** every Cypher carries `$user_id`, every MATCH filters on it, every test verifies `get_*` returns None for cross-user reads.
+
+**Test results:** 39 new tests, all green on first run (19 events + 20 facts). Full knowledge-service suite: **522 passed, 93 skipped** against live Neo4j 2026.03.1 (was 483; +39 K11.7). Zero regressions.
+
+**What K11.7 unblocks:** K11.8 (provenance) — depends on Event and Fact nodes existing so EVIDENCED_BY edges can attach. K17 (LLM extractor) — can now write events and facts directly through this surface. The L4 timeline retrieval (KSA §4.2) — `list_events_in_order` is exactly the Cypher shape it needs. Memory UI "Quarantine" tab — `list_facts_by_type(exclude_pending=False, min_confidence=0.0)`.
 
 ### K11.6 — Relations repository (`:RELATES_TO` edges) ✅ (session 39 continuation, Track 2)
 

@@ -19,6 +19,7 @@ import re
 __all__ = [
     "HONORIFICS",
     "canonicalize_entity_name",
+    "canonicalize_text",
     "entity_canonical_id",
 ]
 
@@ -96,6 +97,29 @@ def canonicalize_entity_name(name: str) -> str:
         if normalized.endswith(h):
             normalized = normalized[: -len(h)]
 
+    normalized = _WHITESPACE_RE.sub(" ", normalized)
+    normalized = _PUNCTUATION_RE.sub("", normalized)
+    return normalized.strip()
+
+
+def canonicalize_text(text: str) -> str:
+    """Generic text normalizer for K11.7 events and facts.
+
+    Lowercase + strip outer whitespace + collapse internal
+    whitespace runs + strip punctuation (apostrophes preserved).
+    Does NOT strip honorifics — those are entity-specific. Used
+    to derive deterministic ids for events and facts so the same
+    description re-extracted from the same chapter collapses to
+    one node.
+
+    Steps mirror `canonicalize_entity_name` minus the honorific
+    pass; if you change one, change the other or factor out the
+    shared core. Kept intentionally separate so an entity name
+    rule change doesn't silently re-key every event in the graph.
+    """
+    if not isinstance(text, str):
+        raise TypeError(f"text must be str, got {type(text).__name__}")
+    normalized = text.strip().lower()
     normalized = _WHITESPACE_RE.sub(" ", normalized)
     normalized = _PUNCTUATION_RE.sub("", normalized)
     return normalized.strip()
