@@ -470,7 +470,7 @@ do it as part of K11.
 ### Tasks
 
 ```
-[ ] K11.1 Deploy Neo4j v2026.01 in docker-compose
+[✓] K11.1 Deploy Neo4j v2026.03 in docker-compose
     Files:
       - infra/docker-compose.yml (MODIFY — add neo4j service)
       - infra/.env.example (MODIFY — add NEO4J_* vars)
@@ -499,7 +499,7 @@ do it as part of K11.
 ```
 
 ```
-[ ] K11.2 Neo4j driver setup in knowledge-service
+[✓] K11.2 Neo4j driver setup in knowledge-service
     Files:
       - services/knowledge-service/pyproject.toml (MODIFY — add neo4j driver)
       - services/knowledge-service/app/db/neo4j.py (NEW)
@@ -517,7 +517,7 @@ do it as part of K11.
 ```
 
 ```
-[ ] K11.3 Cypher schema init script
+[✓] K11.3 Cypher schema init script
     Files:
       - services/knowledge-service/app/db/neo4j_schema.cypher (NEW)
       - services/knowledge-service/app/db/neo4j_schema.py (NEW — runs the script)
@@ -567,7 +567,7 @@ do it as part of K11.
 ```
 
 ```
-[ ] K11.5 Repository: entities (Neo4j) — with two-layer anchoring
+[✓] K11.5 Repository: entities (Neo4j) — with two-layer anchoring
     Files:
       - services/knowledge-service/app/db/neo4j_repos/entities.py (NEW)
     Description:
@@ -621,7 +621,7 @@ do it as part of K11.
 ```
 
 ```
-[ ] K11.6 Repository: relations (RELATES_TO edges)
+[✓] K11.6 Repository: relations (RELATES_TO edges)
     Files:
       - services/knowledge-service/app/db/neo4j_repos/relations.py (NEW)
     Description:
@@ -641,7 +641,7 @@ do it as part of K11.
 ```
 
 ```
-[ ] K11.7 Repository: events + facts
+[✓] K11.7 Repository: events + facts
     Files:
       - services/knowledge-service/app/db/neo4j_repos/events.py (NEW)
       - services/knowledge-service/app/db/neo4j_repos/facts.py (NEW)
@@ -660,7 +660,7 @@ do it as part of K11.
 ```
 
 ```
-[ ] K11.8 Repository: provenance (EVIDENCED_BY + ExtractionSource)
+[✓] K11.8 Repository: provenance (EVIDENCED_BY + ExtractionSource)
     Files:
       - services/knowledge-service/app/db/neo4j_repos/provenance.py (NEW)
     Description:

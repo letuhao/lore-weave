@@ -7,10 +7,11 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 39 continuation — **K11.3 Cypher schema runner landed**, K11.1+K11.2+K11.3 = Neo4j wired end-to-end against live 2026.03)
-- Updated By: Assistant (K11.3 caps the Neo4j-infra slice. Schema file ships 6 unique constraints + 13 composite/single indexes + 5 vector indexes per KSA §3.4. K11.3-I1: existence constraints removed — Enterprise-only on community edition; user_id NOT NULL stays enforced by K11.4's `assert_user_id_param`. Neo4j image bumped 2025.10 → 2026.03 community after user pushback. 369/369 knowledge-service tests pass against live Neo4j; 12 new K11.3 tests (8 parser unit + 4 integration). Repo code must keep going through K11.4 — schema runner is the one documented exception.)
+- Last Updated: 2026-04-15 (session 39 continuation END — **Neo4j repo trilogy + provenance complete**; K11.1 → K11.8 all landed with second-pass review fixes against live Neo4j 2026.03.1)
+- Updated By: Assistant (one continuous session continuation that took Track 2's K11 cluster from "schema applied" to "every node + edge + provenance writer green against live Neo4j". 8 feature commits + 7 review-fix commits = 15 commits. Test count went from 369 → **554 passed, 93 skipped** across the knowledge-service suite. Every K11.x task got a feature commit immediately followed by an `*-R1` second-pass review-fix commit that tightened multi-tenant filters, plugged perf footguns, normalized empty-string vs NULL gotchas, and cleaned up at least one real safety bug per task. Plan doc K11.1 → K11.8 checkboxes flipped `[ ]` → `[✓]`. K11.4 was already done in session 38.)
 - Active Branch: `main` (ahead of origin by session-38 + session-39 commits — user pushes manually)
-- HEAD: K11.8-R1 review-fix commit (this session, on top of K11.8)
+- HEAD: K11.8-R1 review-fix commit + this docs(session) commit
+- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V15.md` (Track 2 K11 cluster closed)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
