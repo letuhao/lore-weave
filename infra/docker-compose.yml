@@ -632,7 +632,7 @@ services:
   # set in the env — unset = skip silently, set = fail-fast on
   # unreachable.
   neo4j:
-    image: neo4j:2025.10-community
+    image: neo4j:2026.03-community
     environment:
       NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-loreweave_dev_neo4j}
       NEO4J_PLUGINS: '["apoc"]'

@@ -8,7 +8,8 @@ from fastapi.responses import JSONResponse
 from app.clients.glossary_client import close_glossary_client, init_glossary_client
 from app.config import settings
 from app.db.migrate import run_migrations
-from app.db.neo4j import close_neo4j_driver, init_neo4j_driver
+from app.db.neo4j import close_neo4j_driver, get_neo4j_driver, init_neo4j_driver
+from app.db.neo4j_schema import run_neo4j_schema
 from app.db.pool import close_pools, create_pools, get_knowledge_pool
 from app.logging_config import setup_logging, trace_id_var
 from app.middleware.trace_id import TraceIdMiddleware
@@ -31,6 +32,12 @@ async def lifespan(app: FastAPI):
     # K11.2 — Neo4j driver. No-op in Track 1 mode (NEO4J_URI empty);
     # fail-fast on unreachable Neo4j when configured.
     await init_neo4j_driver()
+    # K11.3 — apply the Cypher schema (constraints + indexes +
+    # vector indexes) on every startup. Idempotent. Only runs when
+    # the K11.2 driver init actually configured a connection;
+    # Track 1 mode skips this entirely.
+    if settings.neo4j_uri:
+        await run_neo4j_schema(get_neo4j_driver())
     logger.info("knowledge-service started on port %d", settings.port)
     try:
         yield

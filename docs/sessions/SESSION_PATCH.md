@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-15 (session 39 extended — Track 1 closed + **K10.4 extraction_jobs repo = first Track 2 task landed**)
-- Updated By: Assistant (after Track 1 closed, proceeded directly into Track 2 with K10.4. Money-critical atomic try_spend repo ships first because K11/K17 depend on its budget-cap contract. Single-statement UPDATE with CASE expression on pre-update `cost_spent_usd` per KSA §5.5. 14 integration tests including two concurrency race harnesses (10 workers × $0.15 vs $1.00, 20 workers × $0.05 vs $0.50). Full knowledge-service suite: 414 passing (was 400). Plan doc K10.4 checkbox flipped. Session 39 commit total: 19.)
+- Last Updated: 2026-04-14 (session 39 continuation — **K11.3 Cypher schema runner landed**, K11.1+K11.2+K11.3 = Neo4j wired end-to-end against live 2026.03)
+- Updated By: Assistant (K11.3 caps the Neo4j-infra slice. Schema file ships 6 unique constraints + 13 composite/single indexes + 5 vector indexes per KSA §3.4. K11.3-I1: existence constraints removed — Enterprise-only on community edition; user_id NOT NULL stays enforced by K11.4's `assert_user_id_param`. Neo4j image bumped 2025.10 → 2026.03 community after user pushback. 369/369 knowledge-service tests pass against live Neo4j; 12 new K11.3 tests (8 parser unit + 4 integration). Repo code must keep going through K11.4 — schema runner is the one documented exception.)
 - Active Branch: `main` (ahead of origin by session-38 + session-39 commits — user pushes manually)
-- HEAD: `d02d346` — K10.4 extraction_jobs repository + atomic try_spend
+- HEAD: K11.3 commit (this session)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -116,6 +116,26 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K11.3 — Neo4j Cypher schema runner + Neo4j 2026.03 bump ✅ (session 39 continuation, Track 2)
+
+**Goal:** apply the Track 2 extraction graph schema (KSA §3.4) on every knowledge-service startup against the K11.2-wired driver. Idempotent, fail-fast on the first bad statement, and a single source of truth for what indexes/constraints the K11.5+ entity repos can rely on.
+
+**Files:**
+- [services/knowledge-service/app/db/neo4j_schema.cypher](services/knowledge-service/app/db/neo4j_schema.cypher) — NEW: 6 unique constraints, 8 composite indexes (all `user_id`-prefixed), 3 evidence-count indexes, 2 source indexes, 5 vector indexes (entity 384/1024/1536/3072 + event 1024). Every statement uses `IF NOT EXISTS`.
+- [services/knowledge-service/app/db/neo4j_schema.py](services/knowledge-service/app/db/neo4j_schema.py) — NEW: `load_schema_statements()` parser (strips `//` comments, splits on `;`), `run_neo4j_schema(driver)` runner, `Neo4jSchemaError` wrapping the offending statement.
+- [services/knowledge-service/app/main.py](services/knowledge-service/app/main.py) — lifespan calls `run_neo4j_schema(get_neo4j_driver())` after `init_neo4j_driver()` when `settings.neo4j_uri` is set. Track 1 mode (empty URI) skips both.
+- [services/knowledge-service/tests/unit/test_neo4j_schema_parser.py](services/knowledge-service/tests/unit/test_neo4j_schema_parser.py) — 8 unit tests for the parser (offline, no Neo4j).
+- [services/knowledge-service/tests/integration/db/test_neo4j_schema.py](services/knowledge-service/tests/integration/db/test_neo4j_schema.py) — 4 integration tests against live Neo4j (skips when `TEST_NEO4J_URI` unset): apply-clean, idempotent (run twice), vector dimensions spot-check via `SHOW INDEXES YIELD name, type, options WHERE type = 'VECTOR'`, error-wraps-statement via fabricated bad schema.
+- [infra/docker-compose.yml](infra/docker-compose.yml) — Neo4j image bump `2025.10-community` → `2026.03-community` folded in here (was in K11.1 commit but slipped to outdated; user pushback "shouldn't use outdated").
+
+**K11.3-I1 — existence constraints removed (Enterprise-only).** First integration run failed at statement 7/26: `CREATE CONSTRAINT entity_user_id_exists ... REQUIRE e.user_id IS NOT NULL` returned `Neo.DatabaseError.Schema.ConstraintCreationFailed — Property existence constraint requires Neo4j Enterprise Edition`. We run community in dev + prod. Removed all 4 existence constraints (entity/event/fact/extraction_source). The user_id NOT NULL invariant is enforced at the **application layer** by K11.4's `assert_user_id_param` wrapper — every repo call already goes through it, and the composite indexes are all `user_id`-prefixed so a missing-user_id write would also miss the index. The `.cypher` file's prior comment "Community edition supports it on node properties since 2025.01" was wrong and is replaced with the rationale above.
+
+**Test results:** 12/12 K11.3 tests green (8 parser + 4 integration). Full knowledge-service suite: **369 passed, 93 skipped** against `bolt://localhost:7688` live Neo4j 2026.03.1. Zero regressions.
+
+**Schema runner is the documented exception to K11.4.** Module docstring spells it out: schema operations are global (no user filter applies), and the assertion wrapper would raise if asked to run them. Schema lives in this one module *only* so the exception surface is small and reviewable. Repo code MUST go through K11.4.
+
+**What K11.3 unblocks:** K11.5 (entity repo with two-layer glossary anchor), K11.6 (relations repo), K11.7 (events + facts repo) — all three can assume the indexes + constraints exist on every startup. No defensive `CREATE INDEX` calls inside repo code.
 
 ### K10.4 extraction_jobs repository + atomic try_spend ✅ (session 39, first Track 2 task)
 
