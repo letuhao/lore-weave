@@ -21,6 +21,7 @@ cascade), §5.0 (canonical_id).
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Any
 
@@ -31,6 +32,8 @@ from app.db.neo4j_repos.canonical import (
     canonicalize_entity_name,
     entity_canonical_id,
 )
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "Entity",
@@ -812,7 +815,19 @@ async def link_to_glossary(
     the calling user (e.g., someone passed a stale id or a
     cross-tenant id).
     """
+    if not canonical_id:
+        raise ValueError("canonical_id must be a non-empty string")
+    if not glossary_entity_id:
+        raise ValueError("glossary_entity_id must be a non-empty string")
+    if not name:
+        raise ValueError("name must be a non-empty string")
+    if not kind:
+        raise ValueError("kind must be a non-empty string")
     canonical_name = canonicalize_entity_name(name)
+    if not canonical_name:
+        raise ValueError(
+            f"name {name!r} canonicalizes to empty string — refuse to link"
+        )
     aliases_with_display = list(aliases or [])
     if name not in aliases_with_display:
         aliases_with_display.insert(0, name)
@@ -847,26 +862,77 @@ async def get_entity_by_glossary_id(
     boundaries, the caller can find it again via this function
     even though `entity_canonical_id(new_name, kind)` no longer
     matches the stored id.
+
+    Multi-row safety: the K11.3 schema enforces uniqueness on
+    `e.glossary_entity_id` (K11.5b-R1/R1), so a properly-applied
+    schema makes multi-row results impossible. The runtime
+    safety net below catches the brief window where a misuse,
+    a missing schema, or a race could produce two rows — instead
+    of crashing on `result.single()`, we iterate, take the first
+    row, and warn if a second row exists. Belt + suspenders.
     """
+    if not glossary_entity_id:
+        raise ValueError("glossary_entity_id must be a non-empty string")
     result = await run_read(
         session,
         _FIND_BY_GLOSSARY_ID_CYPHER,
         user_id=user_id,
         glossary_entity_id=glossary_entity_id,
     )
-    record = await result.single()
-    if record is None:
-        return None
-    return _node_to_entity(record["e"])
+    first: Entity | None = None
+    extra_count = 0
+    async for record in result:
+        if first is None:
+            first = _node_to_entity(record["e"])
+        else:
+            extra_count += 1
+    if extra_count:
+        logger.error(
+            "K11.5b-R1/R2: get_entity_by_glossary_id found %d extra row(s) "
+            "for glossary_entity_id=%r user_id=%r — schema constraint "
+            "entity_glossary_id_unique should have prevented this. "
+            "Returning the first match; investigate the data.",
+            extra_count,
+            glossary_entity_id,
+            user_id,
+        )
+    return first
 
 
+# K11.5b-R1/R3: inline anchor_score recompute on unlink.
+#
+# The naive shape "SET anchor_score = 0.0" makes the entity
+# invisible in vector ranking until the next batch
+# recompute_anchor_score pass runs (because weighted_score =
+# raw_score * 0). A user who clicks "unlink" expects the entity
+# to lose its boost, NOT to vanish. We compute the post-unlink
+# score inline from the same mention_count / max(mention_count)
+# formula recompute uses, scoped to the entity's own project's
+# discovered set.
+#
+# Two-phase Cypher: first MATCH the target, capture its
+# project_id, then compute max(mention_count) over the
+# discovered set in that project, then SET. We can't use a
+# CALL { ... } subquery here because the inner aggregation needs
+# a `WITH` boundary the outer SET respects.
 _UNLINK_GLOSSARY_CYPHER = """
-MATCH (e:Entity {id: $id})
-WHERE e.user_id = $user_id
-SET e.glossary_entity_id = NULL,
-    e.anchor_score = 0.0,
-    e.updated_at = datetime()
-RETURN e
+MATCH (target:Entity {id: $id})
+WHERE target.user_id = $user_id
+WITH target, target.project_id AS pid
+OPTIONAL MATCH (peer:Entity)
+WHERE peer.user_id = $user_id
+  AND peer.project_id = pid
+  AND peer.glossary_entity_id IS NULL
+  AND peer.archived_at IS NULL
+  AND peer.id <> target.id
+WITH target, max(peer.mention_count) AS max_mentions
+SET target.glossary_entity_id = NULL,
+    target.anchor_score = CASE
+      WHEN max_mentions IS NULL OR max_mentions = 0 THEN 0.0
+      ELSE toFloat(target.mention_count) / toFloat(max_mentions)
+    END,
+    target.updated_at = datetime()
+RETURN target AS e
 """
 
 
@@ -879,16 +945,27 @@ async def unlink_from_glossary(
     """Manual unlink — clear `glossary_entity_id` without archiving.
 
     Per the K11.5 plan: "called when user manually unlinks". The
-    entity stays visible in RAG queries but loses its anchor
-    boost (`anchor_score → 0.0`). A subsequent
-    `recompute_anchor_score` pass will restore a fractional score
-    based on `mention_count / max_mention_count`.
+    entity stays visible in RAG queries; its `anchor_score` is
+    immediately recomputed inline from
+    `mention_count / max(mention_count)` over the discovered set
+    in the same project, matching what
+    `recompute_anchor_score` would assign on its next pass.
+
+    K11.5b-R1/R3: inline recompute fix. The previous shape set
+    `anchor_score = 0.0` and relied on a later batch recompute
+    to restore a fractional score. That made a just-unlinked
+    entity vanish from vector search ranking
+    (`weighted_score = raw_score * 0`) — wrong UX for what is
+    meant to be a "lose the boost" action, not a "hide the
+    entity" action.
 
     Distinct from `archive_entity`: archive hides the entity from
-    RAG entirely; unlink keeps it visible but un-anchored. KSA
-    §3.4.E does not specify the unlink path explicitly — this
-    matches the K11.5 plan acceptance row.
+    RAG entirely; unlink keeps it visible at its discovered-tier
+    score. KSA §3.4.E does not specify the unlink path
+    explicitly — this matches the K11.5 plan acceptance row.
     """
+    if not canonical_id:
+        raise ValueError("canonical_id must be a non-empty string")
     result = await run_write(
         session,
         _UNLINK_GLOSSARY_CYPHER,

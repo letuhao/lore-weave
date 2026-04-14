@@ -45,6 +45,17 @@ FOR (p:Project) REQUIRE p.id IS UNIQUE;
 CREATE CONSTRAINT session_id_unique IF NOT EXISTS
 FOR (s:Session) REQUIRE s.id IS UNIQUE;
 
+// K11.5b-R1/R1: glossary FK uniqueness. Two `:Entity` nodes
+// must never share the same `glossary_entity_id` — the FK is
+// the rename-aware lookup key for `get_entity_by_glossary_id`
+// and a duplicate would crash `result.single()`. Neo4j
+// uniqueness constraints allow multiple NULLs but reject
+// duplicate non-NULL values, which is exactly the semantics we
+// want for a nullable FK. Discovered entities (FK = NULL) are
+// unaffected.
+CREATE CONSTRAINT entity_glossary_id_unique IF NOT EXISTS
+FOR (e:Entity) REQUIRE e.glossary_entity_id IS UNIQUE;
+
 // ─────────────────────────────────────────────────────────────────
 // user_id NOT NULL — enforced at the APPLICATION layer, not here.
 //

@@ -70,6 +70,7 @@ EXPECTED_CONSTRAINTS = {
     "extraction_source_id_unique",
     "project_id_unique",
     "session_id_unique",
+    "entity_glossary_id_unique",
 }
 
 EXPECTED_REGULAR_INDEXES = {

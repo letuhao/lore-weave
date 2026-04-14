@@ -294,14 +294,32 @@ async def test_k11_5b_vector_does_not_cross_user_boundary(neo4j_driver):
             )
 
 
-@pytest.mark.asyncio
-async def test_k11_5b_supported_vector_dims_matches_schema():
-    """Every supported dim must have a matching CREATE VECTOR INDEX
-    statement in the schema. K11.3-R1 schema currently ships
-    384/1024/1536/3072; the K11.5b constant must mirror it.
+def test_k11_5b_supported_vector_dims_matches_schema():
+    """K11.5b-R1/R5 drift guard. Parse `neo4j_schema.cypher` for
+    every `entity_embeddings_<dim>` index name and assert the
+    set equals `SUPPORTED_VECTOR_DIMS`. The schema file is the
+    source of truth — if a future schema edit adds dim 768 and
+    forgets to update the constant, this test fails loud.
+    Previously the test compared two hardcoded sets, which
+    defeated the point of having a guard.
+
+    Sync (not async) and Neo4j-free — runs even when
+    TEST_NEO4J_URI is unset.
     """
-    expected = {384, 1024, 1536, 3072}
-    assert set(SUPPORTED_VECTOR_DIMS) == expected
+    import re
+
+    from app.db.neo4j_schema import _SCHEMA_PATH
+
+    raw = _SCHEMA_PATH.read_text(encoding="utf-8-sig")
+    schema_dims = {
+        int(m.group(1))
+        for m in re.finditer(r"entity_embeddings_(\d+)", raw)
+    }
+    assert schema_dims, "no entity_embeddings_<dim> indexes found in schema"
+    assert set(SUPPORTED_VECTOR_DIMS) == schema_dims, (
+        f"SUPPORTED_VECTOR_DIMS {SUPPORTED_VECTOR_DIMS} does not match "
+        f"schema vector indexes {sorted(schema_dims)}"
+    )
 
 
 # ── link_to_glossary / get_entity_by_glossary_id / unlink ────────────
@@ -421,6 +439,10 @@ async def test_k11_5b_get_by_glossary_id_returns_none_when_missing(
 
 @pytest.mark.asyncio
 async def test_k11_5b_unlink_clears_link_without_archiving(neo4j_driver, test_user):
+    """Single anchored entity, no peers in the project. After
+    unlink there are no discovered peers to derive a max from, so
+    the inline recompute returns 0.0 — but the entity is NOT
+    archived and is still queryable."""
     async with neo4j_driver.session() as session:
         anchored = await upsert_glossary_anchor(
             session,
@@ -437,9 +459,192 @@ async def test_k11_5b_unlink_clears_link_without_archiving(neo4j_driver, test_us
         )
     assert unlinked is not None
     assert unlinked.glossary_entity_id is None
-    assert unlinked.anchor_score == 0.0
+    assert unlinked.anchor_score == 0.0  # no peers → max is NULL → 0
     # NOT archived — still active.
     assert unlinked.archived_at is None
+
+
+@pytest.mark.asyncio
+async def test_k11_5b_unlink_recomputes_score_inline_from_peers(
+    neo4j_driver, test_user
+):
+    """K11.5b-R1/R3 fix. After unlink, the entity's score must be
+    immediately set to its discovered-tier value (mention_count
+    over the project's max), NOT 0. This is what makes "unlink"
+    mean "lose the boost", not "vanish from search ranking".
+    """
+    async with neo4j_driver.session() as session:
+        # Two discovered peers in the same project: max=200.
+        peer_lo = await merge_entity(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            name="Alpha",
+            kind="character",
+            source_type="book_content",
+        )
+        peer_hi = await merge_entity(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            name="Beta",
+            kind="character",
+            source_type="book_content",
+        )
+        await session.run(
+            "MATCH (e:Entity) WHERE e.id IN [$a, $b] "
+            "WITH e, CASE e.id WHEN $a THEN 50 ELSE 200 END AS mc "
+            "SET e.mention_count = mc",
+            a=peer_lo.id,
+            b=peer_hi.id,
+        )
+        # The anchored entity to unlink — give it mention_count=100.
+        anchored = await upsert_glossary_anchor(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            glossary_entity_id="gloss-recompute",
+            name="Phoenix",
+            kind="creature",
+        )
+        await session.run(
+            "MATCH (e:Entity {id: $id}) SET e.mention_count = 100",
+            id=anchored.id,
+        )
+        unlinked = await unlink_from_glossary(
+            session,
+            user_id=test_user,
+            canonical_id=anchored.id,
+        )
+    assert unlinked is not None
+    assert unlinked.glossary_entity_id is None
+    # Discovered peers' max = 200; unlinked entity's count = 100.
+    # Inline recompute: 100/200 = 0.5.
+    assert unlinked.anchor_score == pytest.approx(0.5)
+
+
+@pytest.mark.asyncio
+async def test_k11_5b_unlink_returns_none_for_missing(neo4j_driver, test_user):
+    async with neo4j_driver.session() as session:
+        result = await unlink_from_glossary(
+            session,
+            user_id=test_user,
+            canonical_id="0" * 32,
+        )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_k11_5b_unlink_validates_canonical_id():
+    # Fake session not needed — validation happens before any
+    # driver interaction.
+    with pytest.raises(ValueError, match="canonical_id"):
+        await unlink_from_glossary(
+            session=None,  # type: ignore[arg-type]
+            user_id="u-1",
+            canonical_id="",
+        )
+
+
+@pytest.mark.asyncio
+async def test_k11_5b_link_validates_inputs():
+    """K11.5b-R1/R4 validation guard. link_to_glossary must reject
+    empty inputs before touching the driver — empty strings would
+    silently break downstream `IS NULL` checks (a `glossary_entity_id`
+    of `""` is NOT NULL in Cypher, so find_gap_candidates would
+    treat the entity as anchored even though no real glossary
+    entry backs it).
+    """
+    for kwargs, match in (
+        (
+            dict(canonical_id="", glossary_entity_id="g", name="N", kind="k"),
+            "canonical_id",
+        ),
+        (
+            dict(canonical_id="a" * 32, glossary_entity_id="", name="N", kind="k"),
+            "glossary_entity_id",
+        ),
+        (
+            dict(canonical_id="a" * 32, glossary_entity_id="g", name="", kind="k"),
+            "name",
+        ),
+        (
+            dict(canonical_id="a" * 32, glossary_entity_id="g", name="N", kind=""),
+            "kind",
+        ),
+        (
+            dict(canonical_id="a" * 32, glossary_entity_id="g", name="!!!", kind="k"),
+            "canonicalizes to empty",
+        ),
+    ):
+        with pytest.raises(ValueError, match=match):
+            await link_to_glossary(
+                session=None,  # type: ignore[arg-type]
+                user_id="u-1",
+                **kwargs,
+            )
+
+
+@pytest.mark.asyncio
+async def test_k11_5b_get_by_glossary_id_validates_input():
+    with pytest.raises(ValueError, match="glossary_entity_id"):
+        await get_entity_by_glossary_id(
+            session=None,  # type: ignore[arg-type]
+            user_id="u-1",
+            glossary_entity_id="",
+        )
+
+
+@pytest.mark.asyncio
+async def test_k11_5b_glossary_id_uniqueness_enforced_by_schema(
+    neo4j_driver, test_user
+):
+    """K11.5b-R1/R1: the schema constraint
+    `entity_glossary_id_unique` must reject a second entity
+    trying to take an already-claimed glossary FK. Verify by
+    creating two entities with different canonical ids and trying
+    to link both to the same glossary FK."""
+    async with neo4j_driver.session() as session:
+        a = await merge_entity(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            name="EntityA",
+            kind="character",
+            source_type="book_content",
+        )
+        b = await merge_entity(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            name="EntityB",
+            kind="character",
+            source_type="book_content",
+        )
+        # First link succeeds.
+        await link_to_glossary(
+            session,
+            user_id=test_user,
+            canonical_id=a.id,
+            glossary_entity_id="gloss-shared",
+            name="Shared",
+            kind="character",
+            aliases=["Shared"],
+        )
+        # Second link to the SAME FK should be rejected by the
+        # uniqueness constraint. Neo4j raises a ConstraintError.
+        from neo4j.exceptions import ConstraintError
+
+        with pytest.raises(ConstraintError):
+            await link_to_glossary(
+                session,
+                user_id=test_user,
+                canonical_id=b.id,
+                glossary_entity_id="gloss-shared",
+                name="Shared",
+                kind="character",
+                aliases=["Shared"],
+            )
 
 
 # ── recompute_anchor_score ────────────────────────────────────────────
