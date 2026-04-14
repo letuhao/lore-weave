@@ -327,7 +327,7 @@ Track 2 planning, not the other way around.
 ### Tasks
 
 ```
-[ ] K10.1 Migration: extraction_pending table
+[✓] K10.1 Migration: extraction_pending table
     Files:
       - services/knowledge-service/migrations/20260501_010_extraction_pending.sql (NEW)
     Description:
@@ -348,7 +348,7 @@ Track 2 planning, not the other way around.
 ```
 
 ```
-[ ] K10.2 Migration: extraction_jobs table
+[✓] K10.2 Migration: extraction_jobs table
     Files:
       - services/knowledge-service/migrations/20260501_011_extraction_jobs.sql (NEW)
     Description:
@@ -368,7 +368,7 @@ Track 2 planning, not the other way around.
 ```
 
 ```
-[ ] K10.3 Migration: extraction fields on knowledge_projects
+[✓] K10.3 Migration: extraction fields on knowledge_projects
     Files:
       - services/knowledge-service/migrations/20260501_012_projects_extraction_fields.sql (NEW)
     Description:
@@ -544,7 +544,7 @@ do it as part of K11.
 ```
 
 ```
-[ ] K11.4 Multi-tenant query helpers
+[✓] K11.4 Multi-tenant query helpers
     Files:
       - services/knowledge-service/app/db/neo4j_helpers.py (NEW)
     Description:
@@ -863,7 +863,7 @@ do it as part of K11.
 ```
 
 ```
-[ ] K11.Z Provenance write validator (L-CH-06)
+[✓] K11.Z Provenance write validator (L-CH-06)
     Files:
       - services/knowledge-service/app/neo4j/provenance_validator.py (NEW)
       - services/knowledge-service/app/neo4j/writer.py (MODIFY — wrap writes)
@@ -2143,7 +2143,7 @@ adds high-confidence facts, and runs via worker-ai with user's BYOK.
 ```
 
 ```
-[ ] K17.9 Golden-set benchmark harness (L-CH-01, L-CH-09)
+[~] K17.9 Golden-set benchmark harness (L-CH-01, L-CH-09) — scaffold done, real wiring pending K17.2+K18.3
     Files:
       - services/knowledge-service/eval/golden_set.yaml (NEW)
       - services/knowledge-service/eval/run_benchmark.py (NEW)
@@ -2285,7 +2285,7 @@ extraction enabled. Completes the user-facing memory experience.
 ```
 
 ```
-[ ] K18.2a Query intent classifier (runs BEFORE L2/L3 selectors)
+[✓] K18.2a Query intent classifier (runs BEFORE L2/L3 selectors)
     Files:
       - services/knowledge-service/app/context/intent/classifier.py (NEW)
     Description:

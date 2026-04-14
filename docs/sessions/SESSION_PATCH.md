@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 38 — K7c–K7e + K8.1..K8.4 + K9.1 + Track 2 design update + K18.2a + K18.2a second-pass fixes + K11.Z pure validator + K11.Z second-pass fixes + K10.1/K10.2/K10.3 migrations + K11.4 Cypher helper + K17.9 golden-set scaffold COMPLETE; Gate 4 + Gate 5 deferred to next session)
-- Updated By: Assistant (Track 2 design reshaped from free-context-hub lessons — added L-CH-01..L-CH-12, 4 new tasks: K11.Z provenance validator, K17.9 + K17.9.1 golden-set harness, K18.2a intent classifier. Then executed K18.2a end-to-end through the 9-phase workflow — first laptop-friendly Track 2 task, zero runtime deps.)
-- Active Branch: `main` (K18.2a commit pending)
-- HEAD: K18.2a commit (see git log) — K7c = `160de10`, K7d/K7e/K8.2/K8.3/K8.4/K9.1/D-CHAT-01 committed
+- Last Updated: 2026-04-14 (session 38 END — K7c–K7e + K8.1..K8.4 + K9.1 + Track 2 design update + K18.2a + K11.Z + K10.1/K10.2/K10.3 + K11.4 + K17.9 scaffold ALL COMPLETE with second-pass reviews; Gate 4 + Gate 5 deferred to next session)
+- Updated By: Assistant (session 38 shipped 5 laptop-friendly Track 2 tasks end-to-end through the 9-phase workflow: K18.2a intent classifier, K11.Z provenance validator, K10.1/K10.2/K10.3 extraction lifecycle tables, K11.4 multi-tenant Cypher helpers, K17.9 golden-set benchmark scaffold. Every task followed BUILD → second-pass review → fix commit. Real infra-dependent work (Gate 4 e2e, Gate 5 UX smoke, T01-T13 integration pack) deferred to next session.)
+- Active Branch: `main` (ahead of origin by session-38 commits — user pushes manually)
+- HEAD: `55aba32` — K17.9-R1..R3 review fixes
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V7.md` — full context for next agent
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
