@@ -2,6 +2,7 @@
   "nav": {
     "workspace": "ワークスペース",
     "chat": "チャット",
+    "memory": "メモリ",
     "browse": "閲覧",
     "usage": "使用量",
     "leaderboard": "ランキング",

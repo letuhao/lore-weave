@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   BookOpen,
+  Brain,
   MessageCircle,
   Search,
   BarChart3,
@@ -30,6 +31,7 @@ type NavItem = { to: string; icon: React.ElementType; labelKey: string; auth?: b
 const mainNav: NavItem[] = [
   { to: '/books', icon: BookOpen, labelKey: 'nav.workspace', auth: true },
   { to: '/chat', icon: MessageCircle, labelKey: 'nav.chat', auth: true },
+  { to: '/memory/projects', icon: Brain, labelKey: 'nav.memory', auth: true },
   { to: '/browse', icon: Search, labelKey: 'nav.browse' },
 ];
 

@@ -2,6 +2,7 @@
   "nav": {
     "workspace": "Workspace",
     "chat": "Chat",
+    "memory": "Memory",
     "browse": "Browse",
     "trash": "Trash",
     "usage": "Usage",

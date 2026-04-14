@@ -34,6 +34,7 @@ import { ForgotPage } from '@/pages/auth/ForgotPage';
 import { ResetPage } from '@/pages/auth/ResetPage';
 import { HomePage } from '@/pages/HomePage';
 import { UsagePage } from '@/pages/UsagePage';
+import { MemoryPage } from '@/pages/MemoryPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { BrowsePage } from '@/pages/BrowsePage';
 import { PublicBookDetailPage } from '@/pages/PublicBookDetailPage';
@@ -119,6 +120,10 @@ export function App() {
             <Route path="/books/:bookId/wiki" element={<BookDetailPage />} />
 
             {/* Chat — placeholder removed, see FullBleedLayout below */}
+
+            {/* Memory (Knowledge Service) */}
+            <Route path="/memory" element={<Navigate to="/memory/projects" replace />} />
+            <Route path="/memory/:tab" element={<MemoryPage />} />
 
             {/* Manage */}
             <Route path="/usage" element={<UsagePage />} />
