@@ -10,7 +10,7 @@
 - Last Updated: 2026-04-14 (session 39 continuation — **K11.3 Cypher schema runner landed**, K11.1+K11.2+K11.3 = Neo4j wired end-to-end against live 2026.03)
 - Updated By: Assistant (K11.3 caps the Neo4j-infra slice. Schema file ships 6 unique constraints + 13 composite/single indexes + 5 vector indexes per KSA §3.4. K11.3-I1: existence constraints removed — Enterprise-only on community edition; user_id NOT NULL stays enforced by K11.4's `assert_user_id_param`. Neo4j image bumped 2025.10 → 2026.03 community after user pushback. 369/369 knowledge-service tests pass against live Neo4j; 12 new K11.3 tests (8 parser unit + 4 integration). Repo code must keep going through K11.4 — schema runner is the one documented exception.)
 - Active Branch: `main` (ahead of origin by session-38 + session-39 commits — user pushes manually)
-- HEAD: K11.8 provenance commit (this session, on top of K11.7-R1)
+- HEAD: K11.8-R1 review-fix commit (this session, on top of K11.8)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -140,6 +140,15 @@
 **Test results:** 23 new tests, all green on first run. The KSA §3.8.5 scenario test verifies the full sequence: build → add_evidence×3 → remove_evidence → counter check (survivor=1, deletable=0) → cleanup (1 entity swept) → re-extract → counter restored. Full knowledge-service suite: **551 passed, 93 skipped** against live Neo4j 2026.03.1 (was 528; +23 K11.8). Zero regressions.
 
 **What K11.8 unblocks:** K11.9 (offline reconciler) — the offline drift detector that compares `evidence_count` to the actual edge count and corrects mismatches; K11.8 is the runtime primitive that should make K11.9 a no-op in steady state. K15 (pattern extractor) and K17 (LLM extractor) — both can now write entities/events/facts AND attach the provenance edges with the correct counter semantics. The Mode 3 timeline UI — can call `cleanup_zero_evidence_nodes` after a partial-extract user action.
+
+**K11.8-R1 second-pass review fixes (3 issues):**
+- **R1 (BUG)** — `get_extraction_source` and `delete_source_cascade` did not accept `project_id`. The `extraction_source_id` hash includes `project_id`, so two `:ExtractionSource` nodes with the same `(user, source_type, source_id)` but different project_ids have **different ids → both can exist**. The natural-key lookup ignored project_id, so when a user imported the same chapter id into two projects the neo4j 6.x driver emitted a `UserWarning: Expected a result with a single record, but found multiple` and returned a non-deterministic first record. Same class of bug as K11.7-R1/R2. Added optional `project_id: str | None = None` to both functions; the K11.3 `extraction_source_user_project` index makes the filter cheap. Verified by a regression test that asserts the warning fires WITHOUT the parameter and is silent WITH it.
+- **R2 (doc honesty)** — `delete_source_cascade` docstring sold the three-round-trip composition as "provably correct", which is true for each step in isolation but glossed over the cross-step atomicity gap. If step 2 (decrement + remove edges) succeeds and step 3 (delete source node) fails, the source node remains with zero incident edges. Re-calling `delete_source_cascade` recovers cleanly. Updated docstring to call out "NOT atomic across the three round-trips; recoverable via re-call. Proper exactly-once needs explicit transaction wrapping at the K11.9 reconciler layer".
+- **R3 (safety comment)** — `_build_add_evidence_cypher(label)` interpolates `label` into Cypher via f-string, which on its face violates the K11.4 "no f-strings in Cypher" rule. The interpolation is safe because the function is called only at module-load time with hardcoded `TARGET_LABELS` values, never with caller input — `add_evidence` validates against the closed enum before picking a prebuilt template. Added an explicit safety comment to make the argument visible to reviewers (same justification as K11.5b's vector index name dispatch).
+
+R4 (`_node_to_*` helper extraction) deferred per the K11.6/K11.7 review precedent.
+
+**Test delta:** +3 new tests (project_id filter on get_extraction_source, warning-on-collision regression, project_id filter on delete_source_cascade with two-project fixture). Full knowledge-service suite: **554 passed, 93 skipped** against live Neo4j 2026.03.1 (was 551; +3 R-fix tests). Zero regressions.
 
 ### K11.7 — Events + Facts repositories ✅ (session 39 continuation, Track 2)
 

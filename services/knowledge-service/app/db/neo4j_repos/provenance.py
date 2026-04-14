@@ -203,6 +203,7 @@ MATCH (s:ExtractionSource)
 WHERE s.user_id = $user_id
   AND s.source_type = $source_type
   AND s.source_id = $source_id
+  AND ($project_id IS NULL OR s.project_id = $project_id)
 RETURN s
 """
 
@@ -213,9 +214,25 @@ async def get_extraction_source(
     user_id: str,
     source_type: str,
     source_id: str,
+    project_id: str | None = None,
 ) -> ExtractionSource | None:
-    """Look up an extraction source by its natural key. Uses the
-    K11.3 `extraction_source_user_source` index."""
+    """Look up an extraction source by its natural key.
+
+    K11.8-R1/R1: optional `project_id` filter. The
+    `extraction_source_id` hash includes project_id, so two
+    `:ExtractionSource` nodes with the same
+    `(user, source_type, source_id)` but different project_ids
+    have **different ids** and both can exist. Without the
+    project filter, `result.single()` would raise
+    `ResultNotSingleError` when a user has imported the same
+    chapter id into two projects. Pass `project_id` whenever
+    you know which project owns the source.
+
+    Uses the `extraction_source_user_source` K11.3 index. With
+    `project_id` set, the planner can additionally narrow via
+    `extraction_source_user_project` — both indexes start with
+    `user_id`, so the planner picks whichever is more selective.
+    """
     if not source_type or not source_id:
         raise ValueError("source_type and source_id are required")
     result = await run_read(
@@ -224,6 +241,7 @@ async def get_extraction_source(
         user_id=user_id,
         source_type=source_type,
         source_id=source_id,
+        project_id=project_id,
     )
     record = await result.single()
     if record is None:
@@ -256,6 +274,21 @@ async def get_extraction_source(
 # persists. This is the cleanest way to surface "was this a
 # no-op?" to the caller without a separate pre-read.
 def _build_add_evidence_cypher(label: str) -> str:
+    # K11.8-R1/R3: this f-string is the ONE deliberate violation
+    # of the "no f-strings in Cypher" rule (K11.4 §3.6). Safety
+    # argument:
+    #   1. `label` comes from TARGET_LABELS, a closed Literal
+    #      enum hardcoded at module load time — never from
+    #      caller input.
+    #   2. The function is called exactly three times at module
+    #      load (`{label: _build... for label in TARGET_LABELS}`).
+    #   3. `add_evidence` validates the caller's `target_label`
+    #      against TARGET_LABELS BEFORE picking the prebuilt
+    #      template, so user input never reaches this f-string.
+    # Cypher labels can't be parameterised in a way that uses
+    # the per-label uniqueness constraint, so the dispatch must
+    # live in Python. Reviewers: if you add a fourth label,
+    # extend TARGET_LABELS — do NOT pass user input through.
     return f"""
 MATCH (target:{label} {{id: $target_id}})
 WHERE target.user_id = $user_id
@@ -445,6 +478,7 @@ async def delete_source_cascade(
     user_id: str,
     source_type: str,
     source_id: str,
+    project_id: str | None = None,
 ) -> int:
     """Decrement counters for every EVIDENCED_BY edge into the
     source, then DETACH DELETE the source node. Returns the
@@ -456,15 +490,32 @@ async def delete_source_cascade(
 
     Composed from `get_extraction_source` +
     `remove_evidence_for_source` + a bare node delete instead
-    of one packed Cypher statement — the per-target SET
-    semantics for "decrement the counter for each removed edge"
-    were hard to prove correct in a single query (a target with
-    two edges to the same source would either compound or not
-    depending on Cypher's row-iteration model). Three round-trips
-    is a fair price for a provably-correct cascade.
+    of one packed Cypher statement. An earlier draft tried to
+    do the cascade in one query but the per-row-SET semantics
+    for "decrement the counter for each removed edge" were
+    tangled when a target had multiple edges to the same source
+    (compound vs. non-compound depending on Cypher's
+    row-iteration model). Three round-trips per step is provably
+    correct.
 
-    Idempotent — calling on an already-deleted source returns 0
-    and does nothing.
+    **Atomicity caveat (K11.8-R1/R2).** This composition is
+    **NOT atomic across the three round-trips**. Each
+    `run_read`/`run_write` opens its own auto-commit
+    transaction. If the second call (decrement + remove edges)
+    succeeds but the third (delete source node) fails — network
+    blip, OOM — the source node remains with zero incident
+    edges. A subsequent `delete_source_cascade` call recovers
+    cleanly: `remove_evidence_for_source` no-ops on the empty
+    source, then the node delete completes. Proper exactly-once
+    semantics need explicit transaction wrapping at the K11.9
+    reconciler layer; out of K11.8 scope.
+
+    K11.8-R1/R1: `project_id` filter is forwarded to
+    `get_extraction_source` so a user with the same source_id
+    across two projects gets the right cascade target.
+
+    Idempotent on missing sources — calling on an already-
+    deleted source returns 0 and does nothing.
     """
     if not source_type or not source_id:
         raise ValueError("source_type and source_id are required")
@@ -473,6 +524,7 @@ async def delete_source_cascade(
         user_id=user_id,
         source_type=source_type,
         source_id=source_id,
+        project_id=project_id,
     )
     if src is None:
         return 0

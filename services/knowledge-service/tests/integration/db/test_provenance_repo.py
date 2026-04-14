@@ -769,3 +769,204 @@ async def test_k11_8_partial_reextract_cascade_scenario(
     assert survivor_final.evidence_count == 2
     # mention_count is monotonic — counts initial + reextract.
     assert survivor_final.mention_count == 3
+
+
+# ── K11.8-R1 review-fix tests ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_k11_8_r1_get_source_project_id_filter(neo4j_driver, test_user):
+    """K11.8-R1/R1 fix. Two ExtractionSource nodes with the same
+    (user, source_type, source_id) but different project_ids
+    have different hash ids — both can exist. Without the
+    project_id filter on the natural-key lookup, single() would
+    raise ResultNotSingleError."""
+    async with neo4j_driver.session() as session:
+        await upsert_extraction_source(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            source_type="chapter",
+            source_id="ch-shared",
+        )
+        await upsert_extraction_source(
+            session,
+            user_id=test_user,
+            project_id="p-2",
+            source_type="chapter",
+            source_id="ch-shared",
+        )
+        # Without project_id filter — would crash via single().
+        # With project_id — picks the right one.
+        p1 = await get_extraction_source(
+            session,
+            user_id=test_user,
+            source_type="chapter",
+            source_id="ch-shared",
+            project_id="p-1",
+        )
+        p2 = await get_extraction_source(
+            session,
+            user_id=test_user,
+            source_type="chapter",
+            source_id="ch-shared",
+            project_id="p-2",
+        )
+    assert p1 is not None
+    assert p1.project_id == "p-1"
+    assert p2 is not None
+    assert p2.project_id == "p-2"
+    assert p1.id != p2.id
+
+
+@pytest.mark.asyncio
+async def test_k11_8_r1_get_source_without_project_warns_on_collision(
+    neo4j_driver, test_user
+):
+    """Without the project_id filter, two same-natural-key
+    sources make `result.single()` emit a UserWarning AND
+    return a non-deterministic first record. neo4j 6.x driver
+    softened the contract from "raise" to "warn", but the
+    underlying bug is the same: the caller can't predict which
+    project's source it gets back. With project_id passed, no
+    warning fires."""
+    import warnings
+
+    async with neo4j_driver.session() as session:
+        await upsert_extraction_source(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            source_type="chapter",
+            source_id="ch-collide",
+        )
+        await upsert_extraction_source(
+            session,
+            user_id=test_user,
+            project_id="p-2",
+            source_type="chapter",
+            source_id="ch-collide",
+        )
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            await get_extraction_source(
+                session,
+                user_id=test_user,
+                source_type="chapter",
+                source_id="ch-collide",
+            )
+        # The neo4j driver warns about multi-record single().
+        assert any(
+            "single record" in str(w.message).lower() for w in caught
+        ), f"expected single-record warning, got {[str(w.message) for w in caught]}"
+
+        # With project_id passed, no warning fires.
+        with warnings.catch_warnings(record=True) as caught_clean:
+            warnings.simplefilter("always")
+            result = await get_extraction_source(
+                session,
+                user_id=test_user,
+                source_type="chapter",
+                source_id="ch-collide",
+                project_id="p-1",
+            )
+        assert result is not None
+        assert result.project_id == "p-1"
+        assert not any(
+            "single record" in str(w.message).lower() for w in caught_clean
+        )
+
+
+@pytest.mark.asyncio
+async def test_k11_8_r1_delete_source_cascade_project_id_filter(
+    neo4j_driver, test_user
+):
+    """K11.8-R1/R1 fix. The cascade must target the right
+    source when a user has the same source_id across projects.
+    Cascading p-1 must NOT touch p-2's source."""
+    async with neo4j_driver.session() as session:
+        kai_p1 = await merge_entity(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            name="Kai",
+            kind="character",
+            source_type="book_content",
+        )
+        kai_p2 = await merge_entity(
+            session,
+            user_id=test_user,
+            project_id="p-2",
+            name="Kai",
+            kind="character",
+            source_type="book_content",
+        )
+        src_p1 = await upsert_extraction_source(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            source_type="chapter",
+            source_id="ch-collide",
+        )
+        src_p2 = await upsert_extraction_source(
+            session,
+            user_id=test_user,
+            project_id="p-2",
+            source_type="chapter",
+            source_id="ch-collide",
+        )
+        await add_evidence(
+            session,
+            user_id=test_user,
+            target_label="Entity",
+            target_id=kai_p1.id,
+            source_id=src_p1.id,
+            extraction_model="gpt-4",
+            confidence=0.9,
+            job_id="j-p1",
+        )
+        await add_evidence(
+            session,
+            user_id=test_user,
+            target_label="Entity",
+            target_id=kai_p2.id,
+            source_id=src_p2.id,
+            extraction_model="gpt-4",
+            confidence=0.9,
+            job_id="j-p2",
+        )
+        # Cascade only p-1.
+        removed = await delete_source_cascade(
+            session,
+            user_id=test_user,
+            source_type="chapter",
+            source_id="ch-collide",
+            project_id="p-1",
+        )
+        # p-1 source gone, p-2 source still here.
+        gone_p1 = await get_extraction_source(
+            session,
+            user_id=test_user,
+            source_type="chapter",
+            source_id="ch-collide",
+            project_id="p-1",
+        )
+        kept_p2 = await get_extraction_source(
+            session,
+            user_id=test_user,
+            source_type="chapter",
+            source_id="ch-collide",
+            project_id="p-2",
+        )
+        # p-1 entity counter back to 0; p-2 entity still at 1.
+        kai_p1_after = await get_entity(
+            session, user_id=test_user, canonical_id=kai_p1.id
+        )
+        kai_p2_after = await get_entity(
+            session, user_id=test_user, canonical_id=kai_p2.id
+        )
+    assert removed == 1
+    assert gone_p1 is None
+    assert kept_p2 is not None
+    assert kai_p1_after.evidence_count == 0
+    assert kai_p2_after.evidence_count == 1
