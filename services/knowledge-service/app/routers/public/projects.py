@@ -25,8 +25,8 @@ from pydantic import BaseModel, Field
 
 from app.db.models import Project, ProjectCreate, ProjectUpdate
 from app.db.repositories.projects import ProjectsRepo
+from app.deps import get_projects_repo
 from app.middleware.jwt_auth import get_current_user
-from app.routers.context import get_projects_repo
 
 __all__ = ["router"]
 

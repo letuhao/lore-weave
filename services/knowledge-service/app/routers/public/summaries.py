@@ -1,0 +1,129 @@
+"""K7.3 — Summaries endpoints under /v1/knowledge/.
+
+Three routes:
+  - GET   /v1/knowledge/summaries                       → list user's summaries
+  - PATCH /v1/knowledge/summaries/global                → upsert L0 (global bio)
+  - PATCH /v1/knowledge/projects/{project_id}/summary   → upsert L1 (project)
+
+Empty content is allowed and persisted as an empty row — does NOT
+delete. K7d owns user-data deletion; K7c owns content edits only.
+
+Cross-user / nonexistent project_id on the project-summary PATCH
+collapses to 404 per KSA §6.4 (don't leak existence). Because
+knowledge_summaries has no FK to knowledge_projects, we explicitly
+ownership-check the project via ProjectsRepo.get before upserting —
+otherwise an attacker could plant orphan summary rows under a
+project_id they don't own.
+"""
+
+from uuid import UUID
+
+import asyncpg
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.db.models import Summary, SummaryContent
+from app.db.repositories.summaries import SummariesRepo
+from app.deps import get_summaries_repo
+from app.middleware.jwt_auth import get_current_user
+
+__all__ = ["router"]
+
+router = APIRouter(
+    prefix="/v1/knowledge",
+    tags=["public"],
+    dependencies=[Depends(get_current_user)],
+)
+
+
+# ── request / response models ─────────────────────────────────────────────
+
+
+class SummaryUpdate(BaseModel):
+    # SummaryContent is Annotated[str, max_length=50000]. Empty string
+    # is intentionally allowed — see module docstring.
+    content: SummaryContent
+
+
+class SummariesListResponse(BaseModel):
+    # `global` is a Python keyword; alias lets the JSON field be
+    # `global` while the attribute is `global_`. populate_by_name
+    # lets test code construct via either spelling.
+    model_config = ConfigDict(populate_by_name=True)
+
+    global_: Summary | None = Field(default=None, alias="global")
+    projects: list[Summary] = Field(default_factory=list)
+
+
+# ── helpers ───────────────────────────────────────────────────────────────
+
+
+def _check_violation(exc: asyncpg.CheckViolationError) -> HTTPException:
+    """DB CHECK constraint hit — Pydantic should have caught it first,
+    but defense-in-depth: surface as 422 not 500."""
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        detail=f"value out of bounds: {exc.constraint_name}",
+    )
+
+
+# ── endpoints ─────────────────────────────────────────────────────────────
+
+
+@router.get("/summaries", response_model=SummariesListResponse)
+async def list_summaries(
+    user_id: UUID = Depends(get_current_user),
+    repo: SummariesRepo = Depends(get_summaries_repo),
+) -> SummariesListResponse:
+    rows = await repo.list_for_user(user_id)
+    global_row: Summary | None = None
+    projects: list[Summary] = []
+    for row in rows:
+        if row.scope_type == "global":
+            # Schema invariant: at most one global row per user
+            # (UNIQUE on (user_id, scope_type, scope_id) with
+            # scope_id IS NULL). Defensive: keep the first.
+            if global_row is None:
+                global_row = row
+        elif row.scope_type == "project":
+            projects.append(row)
+        # session/entity scopes are Track 2 — silently skipped.
+    return SummariesListResponse(global_=global_row, projects=projects)
+
+
+@router.patch("/summaries/global", response_model=Summary)
+async def update_global_summary(
+    body: SummaryUpdate,
+    user_id: UUID = Depends(get_current_user),
+    repo: SummariesRepo = Depends(get_summaries_repo),
+) -> Summary:
+    try:
+        return await repo.upsert(user_id, "global", None, body.content)
+    except asyncpg.CheckViolationError as exc:
+        raise _check_violation(exc)
+
+
+@router.patch(
+    "/projects/{project_id}/summary",
+    response_model=Summary,
+)
+async def update_project_summary(
+    project_id: UUID,
+    body: SummaryUpdate,
+    user_id: UUID = Depends(get_current_user),
+    repo: SummariesRepo = Depends(get_summaries_repo),
+) -> Summary:
+    # Ownership + upsert in a single CTE — atomic, no TOCTOU window,
+    # one pool acquisition. Returns None if the user does not own the
+    # project (cross-user OR nonexistent), which we collapse to 404
+    # per KSA §6.4 don't-leak-existence rule.
+    try:
+        result = await repo.upsert_project_scoped(user_id, project_id, body.content)
+    except asyncpg.CheckViolationError as exc:
+        raise _check_violation(exc)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="project not found",
+        )
+    return result

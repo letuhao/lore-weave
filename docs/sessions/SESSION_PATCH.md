@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 37 — Knowledge Service K5 + K6 + K7a + K7b COMPLETE, all reviews + fixes shipped)
-- Updated By: Assistant (7 of 9 Track 1 phases done + K7 partially — K5 chat-service integration, K6 degradation (timeouts/cache/circuit breaker/metrics), K7.1 JWT middleware, K7.2 public Projects CRUD API. Every phase review-passed, every review-fix landed in the same session. Three deferrals cleared during K7b: D-K1-01 / D-K1-02 / D-K1-03.)
-- Active Branch: `main` (+10 ahead of origin)
-- HEAD: `4fbda14` — K7b-I1..I7 review fixes (delete cascade order, archive RETURNING, cursor UnicodeError, CheckViolation test)
+- Last Updated: 2026-04-14 (session 38 — Knowledge Service K7c COMPLETE, review-fixes shipped)
+- Updated By: Assistant (K7.3 public Summaries endpoints — GET /v1/knowledge/summaries, PATCH /summaries/global, PATCH /projects/{id}/summary. Refactor: hoisted DI helpers to new app/deps.py module so public routers stop reaching across into app/routers/context.py. Review pass added LIMIT-1000 hard cap + intentional CASE-based scope ordering on SummariesRepo.list_for_user.)
+- Active Branch: `main` (+10 ahead of origin, K7c not yet committed)
+- HEAD: `4fbda14` — K7b-I1..I7 review fixes (K7c work uncommitted in working tree)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V7.md` — full context for next agent
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -112,6 +112,25 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K7c — Public Summaries Endpoints ✅ (session 38, uncommitted)
+
+**Files:** new `app/deps.py` (hoisted DI helpers), new `app/routers/public/summaries.py`, new `tests/unit/test_public_summaries.py`, `SummariesRepo.list_for_user` added, small import updates in `app/routers/context.py` + `app/routers/public/projects.py` + `app/main.py`.
+
+- **Three endpoints under /v1/knowledge/**: `GET /summaries`, `PATCH /summaries/global`, `PATCH /projects/{project_id}/summary`. Body schema for both PATCHes: `{content: str}` with `SummaryContent` Annotated max_length=50000. Empty string is allowed and persisted (does NOT delete — K7d owns user-data deletion).
+- **Cross-router refactor (planned cleanup from K7b handoff):** new `app/deps.py` is now the canonical home for `get_summaries_repo` / `get_projects_repo` / `get_glossary_client`. Both `app/routers/context.py` (internal) and `app/routers/public/{projects,summaries}.py` import from `app.deps`. `context.py` re-exports the three names so existing tests' `app.dependency_overrides[app.routers.context.get_projects_repo] = ...` still work — pure refactor, zero behavioural change. K7b's awkward cross-router import is gone.
+- **Project ownership check on PATCH project-summary:** `knowledge_summaries` has no FK to `knowledge_projects` (`scope_id` is nullable + shared across multiple scope_types), so an upsert against an unknown / cross-user `project_id` would silently plant an orphan row. Router calls `projects_repo.get(user_id, project_id)` first; None → 404. Test `test_patch_project_summary_cross_user_returns_404` verifies the orphan was NOT planted (`summaries_repo._rows == {}` and `invalidations == []`).
+- **`SummariesRepo.list_for_user`:** new method returning all of a user's summary rows in one round-trip. Ordered by intentional `CASE scope_type` (global → project → session → entity) then `updated_at DESC`, with a hard `LIMIT 1000` safety belt so a user with thousands of project rows can't DoS the Memory page. Track 1 expects one global + a handful of projects per user — if anyone hits the cap that's a clear signal we need router-level pagination on GET /summaries.
+- **Response envelope** `SummariesListResponse`: `{global: Summary | null, projects: [Summary]}`. `global` is a Python keyword so the field is named `global_` with `Field(alias="global")` and `populate_by_name=True`. Router partitions the rows from `list_for_user` and silently skips session/entity scopes (defensive — Track 1 only writes global/project anyway).
+- **422 mapping:** both PATCH endpoints catch `asyncpg.CheckViolationError` and return 422 with `detail="value out of bounds: <constraint_name>"`. Pydantic gates the public surface; the DB CHECK + 422 mapping is defense-in-depth and exercised via the `_ExplodingSummariesRepo` fake.
+- **K7c review pass (two rounds, all fixes landed before session end):**
+  - **First pass (in-line with BUILD):** K7c-I2 (MEDIUM, `list_for_user` ordering CASE-based + LIMIT 1000), K7c-I6 (LOW, dead `ProjectCreate` import), K7c-I7 (MEDIUM, hard cap on un-paginated list).
+  - **Second pass (deeper review):** **K7c-R1 (MEDIUM)** — replaced the router's two-step "ownership check then upsert" with a single `SummariesRepo.upsert_project_scoped(user_id, project_id, content)` CTE: `WITH owned AS (SELECT 1 FROM knowledge_projects WHERE user_id=$1 AND project_id=$2), upserted AS (INSERT … SELECT … WHERE EXISTS (SELECT 1 FROM owned) ON CONFLICT … RETURNING …) SELECT * FROM upserted`. Returns `Summary | None`; None → 404 in the router. **Closes the TOCTOU window between ownership check and upsert** AND halves DB pool acquisitions on the hot edit path. The router's `update_project_summary` no longer takes a `projects_repo` dep at all. K7c-R2 (LOW) — new test `test_list_global_appears_first_regardless_of_seed_order` defends the `CASE scope_type` ORDER BY; FakeSummariesRepo now mirrors the real ordering. K7c-R3 (LOW) — dropped dead `ScopeType` import. K7c-R5 (LOW) — `app/deps.py` docstring flags itself as canonical home so future devs don't redefine the helpers elsewhere. K7c-R6 (LOW) — both create-path tests now assert `version == 1`.
+  - K7c-R4 (`raise … from exc` chain) intentionally skipped for K7b consistency.
+
+**Tests after K7c (knowledge-service):** **184/184** would-be passing (164 baseline + 20 new — 19 originals + R2 ordering test). Verified locally: `python -m pytest tests/unit/test_public_summaries.py tests/unit/test_public_projects.py` → 47 passed; full suite → 168 passed (the 17 missing are pre-existing httpx/SSL truststore environment failures in `test_glossary_client.py` + `test_circuit_breaker.py` + `test_config.py` that reproduce on clean main, unrelated to K7c).
+
+---
 
 ### K7b — Public Projects CRUD API ✅ (session 37)
 

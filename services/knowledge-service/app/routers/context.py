@@ -22,36 +22,30 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.clients.glossary_client import GlossaryClient
-from app.clients.glossary_client import get_glossary_client as _get_glossary_client_singleton
 from app.context.builder import ProjectNotFound, build_context
-from app.db.pool import get_knowledge_pool
 from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.summaries import SummariesRepo
+from app.deps import get_glossary_client, get_projects_repo, get_summaries_repo
 from app.metrics import context_build_duration_seconds
 from app.middleware.internal_auth import require_internal_token
 
 logger = logging.getLogger(__name__)
+
+# Re-exported for back-compat with existing test dependency_overrides
+# that reference `app.routers.context.get_*_repo`. The canonical home
+# is `app.deps`.
+__all__ = [
+    "router",
+    "get_summaries_repo",
+    "get_projects_repo",
+    "get_glossary_client",
+]
 
 router = APIRouter(
     prefix="/internal/context",
     tags=["Internal"],
     dependencies=[Depends(require_internal_token)],
 )
-
-
-# ── dependency-injection helpers ────────────────────────────────────────────
-
-
-async def get_summaries_repo() -> SummariesRepo:
-    return SummariesRepo(get_knowledge_pool())
-
-
-async def get_projects_repo() -> ProjectsRepo:
-    return ProjectsRepo(get_knowledge_pool())
-
-
-async def get_glossary_client() -> GlossaryClient:
-    return _get_glossary_client_singleton()
 
 
 # ── request / response models ──────────────────────────────────────────────
