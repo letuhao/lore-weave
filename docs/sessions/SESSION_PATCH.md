@@ -7,7 +7,7 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 38 — K7c–K7e + K8.1..K8.4 + K9.1 + Track 2 design update + K18.2a + K18.2a second-pass fixes + K11.Z pure validator + K11.Z second-pass fixes + K10.1/K10.2/K10.3 migrations + K11.4 Cypher helper COMPLETE; Gate 4 + Gate 5 deferred to next session)
+- Last Updated: 2026-04-14 (session 38 — K7c–K7e + K8.1..K8.4 + K9.1 + Track 2 design update + K18.2a + K18.2a second-pass fixes + K11.Z pure validator + K11.Z second-pass fixes + K10.1/K10.2/K10.3 migrations + K11.4 Cypher helper + K17.9 golden-set scaffold COMPLETE; Gate 4 + Gate 5 deferred to next session)
 - Updated By: Assistant (Track 2 design reshaped from free-context-hub lessons — added L-CH-01..L-CH-12, 4 new tasks: K11.Z provenance validator, K17.9 + K17.9.1 golden-set harness, K18.2a intent classifier. Then executed K18.2a end-to-end through the 9-phase workflow — first laptop-friendly Track 2 task, zero runtime deps.)
 - Active Branch: `main` (K18.2a commit pending)
 - HEAD: K18.2a commit (see git log) — K7c = `160de10`, K7d/K7e/K8.2/K8.3/K8.4/K9.1/D-CHAT-01 committed
@@ -116,6 +116,37 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K17.9 — Golden-set benchmark harness (scaffold) ✅ (session 38, Track 2 — laptop-friendly)
+
+**Fifth Track 2 task.** Ports ContextHub's embedding-model benchmark methodology (L-CH-01, L-CH-09) to the knowledge-service domain — the fixture + pure metric math + harness skeleton that the real extractor plugs into when K17.2 + K18.3 land. Full end-to-end wiring is deferred; this ships the laptop-friendly slice.
+
+**Files (all NEW):**
+- [eval/__init__.py](services/knowledge-service/eval/__init__.py)
+- [eval/golden_set.yaml](services/knowledge-service/eval/golden_set.yaml) — 10 seed entities across the 5 K18.2a intent classes; 20 queries (12 easy + 6 hard + 2 negative); threshold block matching the Track 2 spec (`recall_at_3 ≥ 0.75`, `mrr ≥ 0.65`, `avg_score_positive ≥ 0.60`, `negative_control_max_score ≤ 0.50`, `max_stddev < 0.05`, `min_runs: 3`).
+- [eval/metrics.py](services/knowledge-service/eval/metrics.py) — pure `recall_at_k`, `reciprocal_rank`, `mean`, `stddev` (population). No I/O, no driver.
+- [eval/run_benchmark.py](services/knowledge-service/eval/run_benchmark.py) — `GoldenSet` / `GoldenQuery` dataclasses, `load_golden_set`, `QueryRunner` Protocol (the seam), `ScoredResult`, `BenchmarkRunner` (≥`min_runs` passes, computes stddev), `BenchmarkReport` with `passes_thresholds()` and `to_json()`.
+- [tests/unit/test_benchmark_metrics.py](services/knowledge-service/tests/unit/test_benchmark_metrics.py) — 24 tests: metric math (full hit / partial / miss / k-bounds / empty-expected / zero-k reject), stddev edge cases (<2 samples, constant, known value), fixture load + threshold round-trip, negative-query shape, `_PerfectRunner` passes all gates, `_BrokenRunner` fails negative control, `runs < min_runs` forces fail, `runs=0` raises, report is JSON-serializable, per-query `top_ids` preserved.
+
+**Design decisions:**
+- **`QueryRunner` is a Protocol, not a concrete class.** The real implementation needs K17.2 (LLM extractor) + K18.3 (Mode 3 selector), neither of which exist yet. A structural Protocol lets unit tests inject a mock today and the real runner drop in later with zero harness churn — same pattern as K11.4's `CypherSession`.
+- **20 queries, not 18 as the spec says.** 12 + 6 + 2 = 20; the spec's "18" line is off-by-two arithmetic. Going with the categorical breakdown since the threshold math is per-band.
+- **`negative_control_max_score` uses `max` across all negative queries, not "≥1 of 2 < 0.5".** The spec phrasing is an OR but `max` implements AND (both negatives must score low). Strictly stricter than spec — flagged here, leaving strict because a benchmark gate that lets one negative sneak through is a weak gate.
+- **`avg_score_positive` is `mean(max(hit_scores per query))`.** For single-expected easy queries this is the hit score; for multi-expected hard queries it's the best hit's score. Spec is ambiguous; locked by test.
+- **No embedding wiring, no DB, no Neo4j.** The harness is a pure aggregator. `run_benchmark.py` knows nothing about embeddings — that's the runner's job, and the runner lands with K17.2/K18.3.
+
+**Self-review:** no bugs found. Three nits flagged (negative-control stricter than spec; avg-score aggregation ambiguous; `stddev_recall` only vs. all-metric stddev) — all documented above, none blocking.
+
+**Test results:** 24/24 pass in 0.27s.
+
+**Why this was the right fifth Track 2 task:**
+1. The benchmark is the Gate-12 pass criterion for "extraction may be enabled on this project" — every Track 2 extraction task eventually points at this fixture. Landing the schema early lets K17.2/K18.3 target it from day one instead of bolting it on at the end.
+2. Pure functions + Protocol seam = laptop-friendly with zero infra, same pattern as K11.Z / K11.4.
+3. ContextHub's own benchmark run showed code-embedding models at 0.381 avg score on natural language. The fixture is designed so `nomic-embed-code` should FAIL the thresholds — that's the sanity check L-CH-01 is pointing at, and having it ready means the first real benchmark run catches model-selection mistakes immediately.
+
+**What K17.9 unblocks:** K17.2 (LLM extractor) and K18.3 (Mode 3 selector) both gain a concrete target fixture. K17.9.1 (migration `project_embedding_benchmark_runs`) remains deferred — it depends on K10 being applied against a live DB, which is Gate 4 work next session.
+
+---
 
 ### K11.4 — Multi-tenant Cypher query helpers ✅ (session 38, Track 2 — laptop-friendly)
 

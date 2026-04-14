@@ -1,0 +1,124 @@
+# K17.9 — golden-set fixture.
+#
+# Seed entities cover the 5 K18.2a intent classes: FACTUAL, RELATIONAL,
+# HISTORICAL, TEMPORAL, DEFINITIONAL. Queries are 12 easy (exact name
+# hit) + 6 hard (paraphrase / relational / historical) + 2 negative
+# (should return nothing). Thresholds are the gate for "extraction may
+# be enabled on this project".
+
+entities:
+  - id: ent-001
+    name: Kaelen Voss
+    kind: character
+    summary: Exiled swordmaster of the northern duchy.
+  - id: ent-002
+    name: Mira Solenne
+    kind: character
+    summary: Court alchemist to House Solenne.
+  - id: ent-003
+    name: House Solenne
+    kind: faction
+    summary: Southern merchant house that rose after the Coin Wars.
+  - id: ent-004
+    name: The Ashen Pact
+    kind: event
+    summary: Treaty ending the Ember campaign, signed in year 812.
+  - id: ent-005
+    name: Duskwatch
+    kind: location
+    summary: Frontier fort guarding the northern pass.
+  - id: ent-006
+    name: Starbound Order
+    kind: faction
+    summary: Dissolved knightly order predating House Solenne.
+  - id: ent-007
+    name: Emberglass
+    kind: item
+    summary: Rare alchemical reagent used in Mira's elixirs.
+  - id: ent-008
+    name: Coin Wars
+    kind: event
+    summary: Economic conflict of 780-790 that reshaped the southern houses.
+  - id: ent-009
+    name: Greyvein River
+    kind: location
+    summary: River bordering the northern duchy and Duskwatch.
+  - id: ent-010
+    name: Oath of Iron
+    kind: concept
+    summary: Binding vow sworn by Starbound Order initiates.
+
+queries:
+  # ── 12 easy — exact name hit ──────────────────────────────────────
+  - q: Who is Kaelen Voss?
+    expected: [ent-001]
+    band: easy
+  - q: Who is Mira Solenne?
+    expected: [ent-002]
+    band: easy
+  - q: What is House Solenne?
+    expected: [ent-003]
+    band: easy
+  - q: What was the Ashen Pact?
+    expected: [ent-004]
+    band: easy
+  - q: Where is Duskwatch?
+    expected: [ent-005]
+    band: easy
+  - q: What is the Starbound Order?
+    expected: [ent-006]
+    band: easy
+  - q: What is Emberglass?
+    expected: [ent-007]
+    band: easy
+  - q: What were the Coin Wars?
+    expected: [ent-008]
+    band: easy
+  - q: Where is the Greyvein River?
+    expected: [ent-009]
+    band: easy
+  - q: What is the Oath of Iron?
+    expected: [ent-010]
+    band: easy
+  - q: Tell me about Kaelen Voss
+    expected: [ent-001]
+    band: easy
+  - q: Describe Duskwatch fort
+    expected: [ent-005]
+    band: easy
+
+  # ── 6 hard — paraphrase / relational / historical ─────────────────
+  - q: Which alchemist serves the Solenne family?
+    expected: [ent-002, ent-003]
+    band: hard
+  - q: What treaty ended the Ember campaign?
+    expected: [ent-004]
+    band: hard
+  - q: Which knightly order existed before House Solenne rose to power?
+    expected: [ent-006]
+    band: hard
+  - q: What reagent does Mira use in her elixirs?
+    expected: [ent-007, ent-002]
+    band: hard
+  - q: What conflict reshaped the southern merchant houses?
+    expected: [ent-008, ent-003]
+    band: hard
+  - q: What vow do Starbound initiates take?
+    expected: [ent-010, ent-006]
+    band: hard
+
+  # ── 2 negative — should return nothing above threshold ────────────
+  - q: Who is the dragon queen of Ravencourt?
+    expected: []
+    band: negative
+  - q: What is the Celestial Codex?
+    expected: []
+    band: negative
+
+thresholds:
+  recall_at_3: 0.75
+  mrr: 0.65
+  avg_score_positive: 0.60
+  negative_control_max_score: 0.50
+  max_stddev: 0.05
+  min_runs: 3
