@@ -33,11 +33,18 @@ from __future__ import annotations
 import hashlib
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
+
+# K11.6-R1/R1: 1-hop direction options. "both" returns outgoing
+# AND incoming edges, which is what the L2 RAG context loader
+# actually needs ("facts about Kai" includes both Kai-as-subject
+# and Kai-as-object). KSA §4.2 example only shows outgoing
+# because that one query was subject-anchored.
+RelationDirection = Literal["outgoing", "incoming", "both"]
 
 logger = logging.getLogger(__name__)
 
@@ -336,32 +343,111 @@ async def get_relation(
 
 
 # K11.5a's `entity_user_canonical` index makes the anchor lookup
-# fast. The traversal then follows outgoing RELATES_TO edges —
-# Neo4j keeps incident edges adjacent in storage, so the per-hop
+# fast. The traversal then follows incident RELATES_TO edges —
+# Neo4j keeps adjacency info next to the node, so the per-hop
 # cost is bounded by the entity's fan-out, not the global graph.
 #
-# Filters:
+# Filters (apply to all three direction templates):
 #   - r.confidence >= $min_confidence (0.8 default excludes Pass 1
 #     quarantined edges)
 #   - r.valid_until IS NULL (excludes superseded relations)
-#   - coalesce(r.pending_validation, false) = false (matches KSA L2 loader at
-#     line 2125-2126)
-#   - object archived_at IS NULL by default (no broken pointers
+#   - coalesce(r.pending_validation, false) = false when
+#     $exclude_pending is true (matches KSA L2 loader)
+#   - peer.archived_at IS NULL by default (no broken pointers
 #     into hidden entities)
-_FIND_RELATIONS_1HOP_CYPHER = """
-MATCH (anchor:Entity {id: $entity_id})-[r:RELATES_TO]->(obj:Entity)
+#   - both anchor and peer must share $project_id when set
+#     (K11.6-R1/R2: cross-project edges are usually noise for the
+#     L2 loader)
+#
+# Three templates, one per direction. We pick at call time so
+# Neo4j can plan each shape optimally — a single template with
+# `(anchor)-[r]-(peer)` (undirected) would force the planner to
+# walk both sides for the outgoing-only case.
+
+_FIND_RELATIONS_1HOP_OUTGOING_CYPHER = """
+MATCH (anchor:Entity {id: $entity_id})-[r:RELATES_TO]->(peer:Entity)
 WHERE anchor.user_id = $user_id
-  AND obj.user_id = $user_id
+  AND peer.user_id = $user_id
+  AND ($project_id IS NULL OR anchor.project_id = $project_id)
+  AND ($project_id IS NULL OR peer.project_id = $project_id)
   AND r.confidence >= $min_confidence
   AND r.valid_until IS NULL
   AND (NOT $exclude_pending OR coalesce(r.pending_validation, false) = false)
-  AND ($include_archived_object OR obj.archived_at IS NULL)
+  AND ($include_archived_peer OR peer.archived_at IS NULL)
 RETURN properties(r) AS rel,
        properties(anchor) AS subj,
-       properties(obj) AS obj
-ORDER BY r.confidence DESC, r.predicate ASC, obj.name ASC
+       properties(peer) AS obj
+ORDER BY r.confidence DESC, r.predicate ASC, peer.name ASC
 LIMIT $limit
 """
+
+_FIND_RELATIONS_1HOP_INCOMING_CYPHER = """
+MATCH (peer:Entity)-[r:RELATES_TO]->(anchor:Entity {id: $entity_id})
+WHERE anchor.user_id = $user_id
+  AND peer.user_id = $user_id
+  AND ($project_id IS NULL OR anchor.project_id = $project_id)
+  AND ($project_id IS NULL OR peer.project_id = $project_id)
+  AND r.confidence >= $min_confidence
+  AND r.valid_until IS NULL
+  AND (NOT $exclude_pending OR coalesce(r.pending_validation, false) = false)
+  AND ($include_archived_peer OR peer.archived_at IS NULL)
+RETURN properties(r) AS rel,
+       properties(peer) AS subj,
+       properties(anchor) AS obj
+ORDER BY r.confidence DESC, r.predicate ASC, peer.name ASC
+LIMIT $limit
+"""
+
+# UNION of the two single-direction queries. Each arm runs against
+# its own template so the planner can use the directional traversal.
+# UNION (not UNION ALL) deduplicates a self-loop edge that would
+# otherwise appear twice.
+_FIND_RELATIONS_1HOP_BOTH_CYPHER = """
+CALL {
+  WITH $user_id AS user_id, $entity_id AS entity_id,
+       $project_id AS project_id, $min_confidence AS min_confidence,
+       $exclude_pending AS exclude_pending,
+       $include_archived_peer AS include_archived_peer
+  MATCH (anchor:Entity {id: entity_id})-[r:RELATES_TO]->(peer:Entity)
+  WHERE anchor.user_id = user_id
+    AND peer.user_id = user_id
+    AND (project_id IS NULL OR anchor.project_id = project_id)
+    AND (project_id IS NULL OR peer.project_id = project_id)
+    AND r.confidence >= min_confidence
+    AND r.valid_until IS NULL
+    AND (NOT exclude_pending OR coalesce(r.pending_validation, false) = false)
+    AND (include_archived_peer OR peer.archived_at IS NULL)
+  RETURN properties(r) AS rel,
+         properties(anchor) AS subj,
+         properties(peer) AS obj
+  UNION
+  WITH $user_id AS user_id, $entity_id AS entity_id,
+       $project_id AS project_id, $min_confidence AS min_confidence,
+       $exclude_pending AS exclude_pending,
+       $include_archived_peer AS include_archived_peer
+  MATCH (peer:Entity)-[r:RELATES_TO]->(anchor:Entity {id: entity_id})
+  WHERE anchor.user_id = user_id
+    AND peer.user_id = user_id
+    AND (project_id IS NULL OR anchor.project_id = project_id)
+    AND (project_id IS NULL OR peer.project_id = project_id)
+    AND r.confidence >= min_confidence
+    AND r.valid_until IS NULL
+    AND (NOT exclude_pending OR coalesce(r.pending_validation, false) = false)
+    AND (include_archived_peer OR peer.archived_at IS NULL)
+  RETURN properties(r) AS rel,
+         properties(peer) AS subj,
+         properties(anchor) AS obj
+}
+RETURN rel, subj, obj
+ORDER BY rel.confidence DESC, rel.predicate ASC
+LIMIT $limit
+"""
+
+_DIRECTION_TO_CYPHER: dict[str, str] = {
+    "outgoing": _FIND_RELATIONS_1HOP_OUTGOING_CYPHER,
+    "incoming": _FIND_RELATIONS_1HOP_INCOMING_CYPHER,
+    "both": _FIND_RELATIONS_1HOP_BOTH_CYPHER,
+}
 
 
 async def find_relations_for_entity(
@@ -369,26 +455,46 @@ async def find_relations_for_entity(
     *,
     user_id: str,
     entity_id: str,
+    project_id: str | None = None,
+    direction: RelationDirection = "both",
     min_confidence: float = 0.8,
     exclude_pending: bool = True,
-    include_archived_object: bool = False,
+    include_archived_peer: bool = False,
     limit: int = 100,
 ) -> list[Relation]:
-    """1-hop outgoing RELATES_TO traversal from the given entity.
+    """1-hop RELATES_TO traversal from the given entity.
+
+    K11.6-R1/R1 fix: returns BOTH directions by default. The KSA
+    §4.2 "facts about Kai" loader needs `(Kai)-[loyal_to]->(X)`
+    AND `(Y)-[ally_of]->(Kai)` — the previous outgoing-only shape
+    silently dropped the latter. `direction="outgoing"` and
+    `direction="incoming"` opt into single-direction queries
+    when the caller knows what they want.
+
+    K11.6-R1/R2 fix: optional `project_id` filter. The L2 RAG
+    loader scopes queries to the chapter's project; without this
+    filter, cross-project edges from other works pollute the
+    context. `project_id=None` keeps the "all projects for this
+    user" behavior for callers that genuinely need it (memory UI
+    cross-project search).
 
     Default filters match the L2 RAG context loader (KSA lines
     2123-2127): confidence >= 0.8, valid_until IS NULL,
-    pending_validation IS NOT TRUE. These can be overridden for
-    the memory UI's "Quarantine" tab (set
-    `exclude_pending=False`).
+    pending_validation = false. Override `exclude_pending=False`
+    for the memory UI's "Quarantine" tab.
 
-    Archived target entities are excluded by default — a relation
-    that points into a hidden entity creates a dangling pointer
-    in the L2 context. Override with `include_archived_object=True`
-    if you specifically want those (e.g., timeline reconstruction).
+    Archived peer entities (the "other end" of the edge,
+    regardless of direction) are excluded by default — a relation
+    that points at a hidden entity creates a dangling pointer in
+    the L2 context. Override with `include_archived_peer=True`.
     """
     if not entity_id:
         raise ValueError("entity_id must be a non-empty string")
+    if direction not in _DIRECTION_TO_CYPHER:
+        raise ValueError(
+            f"direction must be one of {sorted(_DIRECTION_TO_CYPHER)}, "
+            f"got {direction!r}"
+        )
     if min_confidence < 0.0 or min_confidence > 1.0:
         raise ValueError(
             f"min_confidence must be in [0,1], got {min_confidence}"
@@ -396,14 +502,16 @@ async def find_relations_for_entity(
     if limit <= 0:
         raise ValueError(f"limit must be positive, got {limit}")
 
+    cypher = _DIRECTION_TO_CYPHER[direction]
     result = await run_read(
         session,
-        _FIND_RELATIONS_1HOP_CYPHER,
+        cypher,
         user_id=user_id,
         entity_id=entity_id,
+        project_id=project_id,
         min_confidence=min_confidence,
         exclude_pending=exclude_pending,
-        include_archived_object=include_archived_object,
+        include_archived_peer=include_archived_peer,
         limit=limit,
     )
     return [
@@ -437,6 +545,9 @@ MATCH (anchor:Entity {id: $entity_id})-[r1:RELATES_TO]->(via:Entity)
 WHERE anchor.user_id = $user_id
   AND via.user_id = $user_id
   AND target.user_id = $user_id
+  AND ($project_id IS NULL OR anchor.project_id = $project_id)
+  AND ($project_id IS NULL OR via.project_id = $project_id)
+  AND ($project_id IS NULL OR target.project_id = $project_id)
   AND r1.predicate IN $hop1_types
   AND ($hop2_types IS NULL OR r2.predicate IN $hop2_types)
   AND r1.confidence >= $min_confidence
@@ -466,6 +577,7 @@ async def find_relations_2hop(
     entity_id: str,
     hop1_types: list[str],
     hop2_types: list[str] | None = None,
+    project_id: str | None = None,
     min_confidence: float = 0.8,
     limit: int = 100,
 ) -> list[RelationHop]:
@@ -504,6 +616,7 @@ async def find_relations_2hop(
         entity_id=entity_id,
         hop1_types=list(hop1_types),
         hop2_types=list(hop2_types) if hop2_types is not None else None,
+        project_id=project_id,
         min_confidence=min_confidence,
         limit=limit,
     )

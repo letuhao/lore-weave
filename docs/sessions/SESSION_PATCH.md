@@ -10,7 +10,7 @@
 - Last Updated: 2026-04-14 (session 39 continuation — **K11.3 Cypher schema runner landed**, K11.1+K11.2+K11.3 = Neo4j wired end-to-end against live 2026.03)
 - Updated By: Assistant (K11.3 caps the Neo4j-infra slice. Schema file ships 6 unique constraints + 13 composite/single indexes + 5 vector indexes per KSA §3.4. K11.3-I1: existence constraints removed — Enterprise-only on community edition; user_id NOT NULL stays enforced by K11.4's `assert_user_id_param`. Neo4j image bumped 2025.10 → 2026.03 community after user pushback. 369/369 knowledge-service tests pass against live Neo4j; 12 new K11.3 tests (8 parser unit + 4 integration). Repo code must keep going through K11.4 — schema runner is the one documented exception.)
 - Active Branch: `main` (ahead of origin by session-38 + session-39 commits — user pushes manually)
-- HEAD: K11.6 relations-repo commit (this session, on top of K11.5b-R1)
+- HEAD: K11.6-R1 review-fix commit (this session, on top of K11.6)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -144,6 +144,14 @@
 **Test results:** 26/26 K11.6 tests green. Full knowledge-service suite: **477 passed, 93 skipped** against live Neo4j 2026.03.1 (was 451; +26 K11.6). Zero regressions.
 
 **What K11.6 unblocks:** K17 (LLM extractor) — can now write SVO triples through `create_relation` with full Pass 1/Pass 2 confidence promotion semantics. K11.8 (provenance) — depends on relations existing so EVIDENCED_BY edges can attach. The L2 RAG context loader — the 1-hop and 2-hop helpers are exactly the Cypher shapes documented in KSA §4.2.
+
+**K11.6-R1 second-pass review fixes (2 issues):**
+- **R1 (BUG)** — `find_relations_for_entity` only returned outgoing edges. The KSA §4.2 "facts about Kai" loader needs BOTH `(Kai)-[loyal_to]->(X)` AND `(Y)-[ally_of]->(Kai)` — the previous outgoing-only shape silently dropped half the relations. Added `direction: "outgoing" | "incoming" | "both"` parameter with default `"both"`. The "both" path is a `CALL { … UNION … }` subquery (same shape as K11.5a-R1's `find_entities_by_name`) so each arm runs against its own directional template and the planner can pick optimal traversal. Renamed `include_archived_object` → `include_archived_peer` since the "other end" is now the peer regardless of direction.
+- **R2 (BUG)** — Neither `find_relations_for_entity` nor `find_relations_2hop` accepted a `project_id` filter. Both walked the user's entire graph regardless of project, so the L2 RAG loader (which queries within the chapter's project) would surface facts from unrelated works. Added optional `project_id: str | None = None` to both. When set, both endpoints (and the `via` node for 2-hop) must share the project. `project_id=None` keeps the cross-project behavior for callers that explicitly need it (memory UI cross-project search).
+
+R3 (2-hop direction options), R4 (helper extraction), R5 (edge property index), R6 (Pydantic field validation) deferred per the original review recommendation.
+
+**Test delta:** +6 new tests (default-both-directions, outgoing-only, incoming-only, direction validation, 1-hop project_id filter, 2-hop project_id filter). Renamed parameter required updating one existing test (`include_archived_object` → `include_archived_peer`). Full knowledge-service suite: **483 passed, 93 skipped** against live Neo4j 2026.03.1 (was 477; +6 R-fix tests). Zero regressions.
 
 ### K11.5b — Entities repository (Neo4j) — vector + linking slice ✅ (session 39 continuation, Track 2)
 

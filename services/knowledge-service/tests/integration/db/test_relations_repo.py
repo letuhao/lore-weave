@@ -486,7 +486,7 @@ async def test_k11_6_find_1hop_excludes_archived_object_by_default(
             session,
             user_id=test_user,
             entity_id=kai.id,
-            include_archived_object=True,
+            include_archived_peer=True,
         )
     assert active == []
     assert len(with_archived) == 1
@@ -718,3 +718,294 @@ async def test_k11_6_invalidate_validates_input():
             user_id="u-1",
             relation_id="",
         )
+
+
+# ── K11.6-R1 review-fix tests ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_k11_6_r1_find_1hop_default_returns_both_directions(
+    neo4j_driver, test_user
+):
+    """K11.6-R1/R1 fix. The L2 RAG loader needs both
+    Kai-as-subject AND Kai-as-object edges. Default direction is
+    'both' so the previous outgoing-only shape no longer silently
+    drops half the relations."""
+    async with neo4j_driver.session() as session:
+        kai = await _entity(session, user_id=test_user, name="Kai")
+        ally = await _entity(session, user_id=test_user, name="Ally")
+        admirer = await _entity(session, user_id=test_user, name="Admirer")
+        # Kai → ally  (Kai is subject)
+        await create_relation(
+            session,
+            user_id=test_user,
+            subject_id=kai.id,
+            predicate="ally_of",
+            object_id=ally.id,
+            confidence=0.9,
+        )
+        # admirer → Kai (Kai is object)
+        await create_relation(
+            session,
+            user_id=test_user,
+            subject_id=admirer.id,
+            predicate="loyal_to",
+            object_id=kai.id,
+            confidence=0.9,
+        )
+        rels = await find_relations_for_entity(
+            session, user_id=test_user, entity_id=kai.id
+        )
+    assert len(rels) == 2
+    predicates = {(r.subject_name, r.predicate, r.object_name) for r in rels}
+    assert ("Kai", "ally_of", "Ally") in predicates
+    assert ("Admirer", "loyal_to", "Kai") in predicates
+
+
+@pytest.mark.asyncio
+async def test_k11_6_r1_find_1hop_outgoing_only(neo4j_driver, test_user):
+    async with neo4j_driver.session() as session:
+        kai = await _entity(session, user_id=test_user, name="Kai")
+        ally = await _entity(session, user_id=test_user, name="Ally")
+        admirer = await _entity(session, user_id=test_user, name="Admirer")
+        await create_relation(
+            session,
+            user_id=test_user,
+            subject_id=kai.id,
+            predicate="ally_of",
+            object_id=ally.id,
+            confidence=0.9,
+        )
+        await create_relation(
+            session,
+            user_id=test_user,
+            subject_id=admirer.id,
+            predicate="loyal_to",
+            object_id=kai.id,
+            confidence=0.9,
+        )
+        rels = await find_relations_for_entity(
+            session,
+            user_id=test_user,
+            entity_id=kai.id,
+            direction="outgoing",
+        )
+    assert len(rels) == 1
+    assert rels[0].subject_name == "Kai"
+    assert rels[0].predicate == "ally_of"
+
+
+@pytest.mark.asyncio
+async def test_k11_6_r1_find_1hop_incoming_only(neo4j_driver, test_user):
+    async with neo4j_driver.session() as session:
+        kai = await _entity(session, user_id=test_user, name="Kai")
+        ally = await _entity(session, user_id=test_user, name="Ally")
+        admirer = await _entity(session, user_id=test_user, name="Admirer")
+        await create_relation(
+            session,
+            user_id=test_user,
+            subject_id=kai.id,
+            predicate="ally_of",
+            object_id=ally.id,
+            confidence=0.9,
+        )
+        await create_relation(
+            session,
+            user_id=test_user,
+            subject_id=admirer.id,
+            predicate="loyal_to",
+            object_id=kai.id,
+            confidence=0.9,
+        )
+        rels = await find_relations_for_entity(
+            session,
+            user_id=test_user,
+            entity_id=kai.id,
+            direction="incoming",
+        )
+    assert len(rels) == 1
+    assert rels[0].subject_name == "Admirer"
+    assert rels[0].object_name == "Kai"
+    assert rels[0].predicate == "loyal_to"
+
+
+@pytest.mark.asyncio
+async def test_k11_6_r1_find_1hop_validates_direction():
+    with pytest.raises(ValueError, match="direction"):
+        await find_relations_for_entity(
+            session=None,  # type: ignore[arg-type]
+            user_id="u-1",
+            entity_id="e",
+            direction="sideways",  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.asyncio
+async def test_k11_6_r1_find_1hop_project_id_filter(neo4j_driver, test_user):
+    """K11.6-R1/R2 fix. project_id filter excludes cross-project
+    edges. Two projects (p-1 and p-2) for the same user; an edge
+    in p-2 must NOT appear when querying with project_id='p-1'."""
+    async with neo4j_driver.session() as session:
+        kai_p1 = await merge_entity(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            name="Kai",
+            kind="character",
+            source_type="book_content",
+            confidence=0.9,
+        )
+        ally_p1 = await merge_entity(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            name="Ally1",
+            kind="character",
+            source_type="book_content",
+            confidence=0.9,
+        )
+        kai_p2 = await merge_entity(
+            session,
+            user_id=test_user,
+            project_id="p-2",
+            name="Kai",
+            kind="character",
+            source_type="book_content",
+            confidence=0.9,
+        )
+        ally_p2 = await merge_entity(
+            session,
+            user_id=test_user,
+            project_id="p-2",
+            name="Ally2",
+            kind="character",
+            source_type="book_content",
+            confidence=0.9,
+        )
+        await create_relation(
+            session,
+            user_id=test_user,
+            subject_id=kai_p1.id,
+            predicate="ally_of",
+            object_id=ally_p1.id,
+            confidence=0.9,
+        )
+        await create_relation(
+            session,
+            user_id=test_user,
+            subject_id=kai_p2.id,
+            predicate="ally_of",
+            object_id=ally_p2.id,
+            confidence=0.9,
+        )
+        # Querying the p-1 Kai with project_id=p-1 returns only
+        # the p-1 ally relation.
+        scoped = await find_relations_for_entity(
+            session,
+            user_id=test_user,
+            entity_id=kai_p1.id,
+            project_id="p-1",
+        )
+        assert len(scoped) == 1
+        assert scoped[0].object_name == "Ally1"
+        # No project filter returns only edges where p-1 Kai is
+        # an endpoint — the p-2 edge has different endpoints.
+        unscoped = await find_relations_for_entity(
+            session,
+            user_id=test_user,
+            entity_id=kai_p1.id,
+        )
+        assert len(unscoped) == 1
+        assert unscoped[0].object_name == "Ally1"
+
+
+@pytest.mark.asyncio
+async def test_k11_6_r1_find_2hop_project_id_filter(neo4j_driver, test_user):
+    """K11.6-R1/R2 fix. 2-hop must not cross project boundaries
+    when project_id is set."""
+    async with neo4j_driver.session() as session:
+        # In p-1: Kai → Phoenix → Crown
+        kai = await merge_entity(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            name="Kai",
+            kind="character",
+            source_type="book_content",
+            confidence=0.9,
+        )
+        phoenix = await merge_entity(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            name="Phoenix",
+            kind="character",
+            source_type="book_content",
+            confidence=0.9,
+        )
+        crown = await merge_entity(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            name="Crown",
+            kind="character",
+            source_type="book_content",
+            confidence=0.9,
+        )
+        # In p-2: a stray entity that should NOT be reachable
+        rogue = await merge_entity(
+            session,
+            user_id=test_user,
+            project_id="p-2",
+            name="Rogue",
+            kind="character",
+            source_type="book_content",
+            confidence=0.9,
+        )
+        await create_relation(
+            session,
+            user_id=test_user,
+            subject_id=kai.id,
+            predicate="ally_of",
+            object_id=phoenix.id,
+            confidence=0.9,
+        )
+        await create_relation(
+            session,
+            user_id=test_user,
+            subject_id=phoenix.id,
+            predicate="loyal_to",
+            object_id=crown.id,
+            confidence=0.9,
+        )
+        # Cross-project edge: Phoenix (p-1) → Rogue (p-2)
+        await create_relation(
+            session,
+            user_id=test_user,
+            subject_id=phoenix.id,
+            predicate="loyal_to",
+            object_id=rogue.id,
+            confidence=0.9,
+        )
+        # With project_id=p-1, only Kai → Phoenix → Crown is
+        # returned. The cross-project Rogue path is filtered out.
+        scoped = await find_relations_2hop(
+            session,
+            user_id=test_user,
+            entity_id=kai.id,
+            hop1_types=["ally_of"],
+            hop2_types=["loyal_to"],
+            project_id="p-1",
+        )
+        assert len(scoped) == 1
+        assert scoped[0].hop2.object_name == "Crown"
+        # Without project_id, both targets are reachable.
+        unscoped = await find_relations_2hop(
+            session,
+            user_id=test_user,
+            entity_id=kai.id,
+            hop1_types=["ally_of"],
+            hop2_types=["loyal_to"],
+        )
+        targets = {h.hop2.object_name for h in unscoped}
+        assert targets == {"Crown", "Rogue"}
