@@ -13,6 +13,11 @@ import type {
 
 const BASE = '/v1/knowledge';
 
+// Mirrors the helper in src/api.ts — needed for raw `fetch()` calls
+// (the export endpoint streams a file and can't go through apiJson).
+// Keeping this local matches the pattern in src/features/books/api.ts.
+const apiBase = () => (import.meta.env.VITE_API_BASE as string | undefined) || '';
+
 export const knowledgeApi = {
   // ── projects ───────────────────────────────────────────────────────────
 
@@ -107,7 +112,7 @@ export const knowledgeApi = {
   // attachment header. We fetch it directly (not apiJson) so the
   // browser can trigger the download via Blob + object URL.
   async exportUserData(token: string): Promise<{ blob: Blob; filename: string }> {
-    const res = await fetch(`${BASE}/user-data/export`, {
+    const res = await fetch(`${apiBase()}${BASE}/user-data/export`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) {
