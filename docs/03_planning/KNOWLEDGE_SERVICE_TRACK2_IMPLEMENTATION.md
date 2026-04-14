@@ -401,7 +401,7 @@ Track 2 planning, not the other way around.
 ```
 
 ```
-[ ] K10.4 Repository: extraction_jobs
+[✓] K10.4 Repository: extraction_jobs
     Files:
       - services/knowledge-service/app/db/repositories/extraction_jobs.py (NEW)
     Description:
