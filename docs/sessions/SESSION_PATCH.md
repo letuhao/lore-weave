@@ -7,7 +7,7 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 38 — K7c–K7e + K8.1..K8.4 + K9.1 + Track 2 design update + K18.2a + K18.2a second-pass fixes COMPLETE; Gate 4 + Gate 5 deferred to next session)
+- Last Updated: 2026-04-14 (session 38 — K7c–K7e + K8.1..K8.4 + K9.1 + Track 2 design update + K18.2a + K18.2a second-pass fixes + K11.Z pure validator COMPLETE; Gate 4 + Gate 5 deferred to next session)
 - Updated By: Assistant (Track 2 design reshaped from free-context-hub lessons — added L-CH-01..L-CH-12, 4 new tasks: K11.Z provenance validator, K17.9 + K17.9.1 golden-set harness, K18.2a intent classifier. Then executed K18.2a end-to-end through the 9-phase workflow — first laptop-friendly Track 2 task, zero runtime deps.)
 - Active Branch: `main` (K18.2a commit pending)
 - HEAD: K18.2a commit (see git log) — K7c = `160de10`, K7d/K7e/K8.2/K8.3/K8.4/K9.1/D-CHAT-01 committed
@@ -116,6 +116,40 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K11.Z — Provenance write validator (pure function slice) ✅ (session 38, Track 2 — laptop-friendly)
+
+**Second Track 2 task executed.** Pure validator function that rejects bad provenance data before it reaches Neo4j. Encodes ContextHub lesson L-CH-06: their git-intelligence wrote literal `"[object Object]"` into `source_refs` and the data survived in the DB because no query ever filtered on the field. Provenance is write-heavy, read-rare — corruption is invisible until an eval.
+
+**Scope** (deliberately sliced to the laptop-friendly pure-function portion):
+- ✅ `validate_provenance(props)` — pure function, no I/O, no DB calls.
+- ✅ `ProvenanceValidationError` with `field` / `value` / `reason` for downstream `extraction_errors` logging.
+- ⏸️ Wrapping `writer.py` (deferred — needs K11.1 Neo4j schema which doesn't exist yet).
+- ⏸️ Postgres existence checks for `chapter_id` / `chunk_id` / `book_id` (deferred — needs K10.2 `extraction_errors` table).
+- ⏸️ `provenance_validation_failed` metric counter (deferred — pair with writer wrap).
+
+**Files (all NEW):**
+- [app/neo4j/__init__.py](services/knowledge-service/app/neo4j/__init__.py) — re-exports.
+- [app/neo4j/provenance_validator.py](services/knowledge-service/app/neo4j/provenance_validator.py) — ~140 lines. Bad-input classes rejected: empty/whitespace strings, serializer sentinels (`[object Object]`, `undefined`, `null`, `None`, `NaN` — case-insensitive), Python repr leaks (`<x.Y object at 0xDEADBEEF>`), non-string in string fields, non-list in `source_refs`, empty `source_refs`, confidence outside [0, 1], `NaN` confidence, `bool` rejected as confidence (Python quirk: `True` passes `isinstance(_, int)`), non-numeric confidence, bad ISO-8601 timestamps, non-dict props.
+- [tests/unit/test_provenance_validator.py](services/knowledge-service/tests/unit/test_provenance_validator.py) — 31 tests including 1000-sample seeded fuzz + per-call latency budget.
+
+**Test results:** 31/31 pass in 0.46s. Fuzz: 1000/1000 bad inputs rejected. Per-call latency budget < 0.5ms measured over 10k iterations on known-good input. Unknown fields pass through (deny-list, not whitelist — K11.1 will own the schema contract).
+
+**Design decisions:**
+- **Deny-list over whitelist.** Track 2's Neo4j schema (K11.1) is not finalized — a whitelist would need to be rewritten when the shape changes. Deny-list catches exactly the known-bad classes from L-CH-06 and passes everything else through. When K11.1 lands, the writer wrap becomes the schema gate; the validator stays deny-list.
+- **First-fail, not batch.** `validate_provenance` raises on the first bad field rather than collecting all errors. Batching was considered but rejected: the extraction_errors row needs one field+value+reason tuple, and a second corruption in the same bag is almost certainly a cascade from the first. Simpler beats comprehensive here.
+- **`bool` explicitly rejected for confidence.** Python's `True` / `False` pass `isinstance(x, int)`, so without an explicit bool check a writer that accidentally passed `{"confidence": True}` would slip through as `1.0`. One-line fix, one test case.
+- **Indexed error location for `source_refs[i]`.** When a list of chunk refs has one bad entry, the error reports `field="source_refs[1]"` not just `"source_refs"` so the caller can pinpoint which chunk in an extractor batch misfired.
+
+**Why this was the right second Track 2 task:**
+1. Pure Python, no infra — same laptop constraint as K18.2a.
+2. L-CH-06 is the second-highest-leverage ContextHub lesson after L-CH-07 — silent data corruption is the hardest class of bug to catch later.
+3. Ship-now even though dependent tasks aren't ready: the validator is a pure function whose contract won't change when K11.1 lands.
+4. Unblocks K15 / K17 extractor authors — they can import and call `validate_provenance` from day one, so the validator is already in place when Neo4j writes are wired up.
+
+**What K11.Z unblocks:** any extraction code (K15 pattern extractor, K17 LLM extractor) can call `validate_provenance(props)` immediately before a Neo4j write even before the writer wrap exists. When K11.1 lands, all those direct calls migrate trivially to the wrapped writer; no API churn.
+
+---
 
 ### K18.2a — Query intent classifier ✅ (session 38, Track 2 — laptop-friendly)
 
