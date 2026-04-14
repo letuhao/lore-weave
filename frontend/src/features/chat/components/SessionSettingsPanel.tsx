@@ -164,7 +164,22 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
     // Send explicit null so chat-service's model_fields_set sees it.
     const next = value === '' ? null : value;
     setSelectedProjectId(next);
-    patchSession({ project_id: next });
+    // K9.1-R1: bypass the shared debounce. The picker is a single
+    // discrete commit, not a typing buffer — and the dominant UX
+    // pattern is "pick, click-outside to close" which fires the
+    // panel unmount inside the 500ms debounce window. The unmount
+    // cleanup at line 81 would clear the pending timer and the
+    // PATCH would never be sent. Calling chatApi directly here
+    // makes the change durable. The pre-existing close-during-
+    // debounce bug also affects every other field on this panel
+    // (model selector especially) and is tracked as D-CHAT-01.
+    if (!accessToken) return;
+    void chatApi
+      .patchSession(accessToken, session.session_id, { project_id: next })
+      .then((updated) => onSessionUpdate(updated))
+      .catch((err) => {
+        toast.error(`Save failed: ${(err as Error).message}`);
+      });
   }
 
   // ── Group models by provider ──────────────────────────────────────────────
@@ -231,6 +246,7 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
             <div className="h-9 animate-pulse rounded-md bg-muted" />
           ) : (
             <select
+              aria-label="Project memory"
               value={selectedProjectId ?? ''}
               onChange={(e) => handleProjectChange(e.target.value)}
               className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-ring focus:shadow-[0_0_0_3px_rgba(212,149,42,0.2)]"
