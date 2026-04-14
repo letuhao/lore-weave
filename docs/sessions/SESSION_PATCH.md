@@ -7,7 +7,7 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 38 — K7c–K7e + K8.1..K8.4 + K9.1 + Track 2 design update + K18.2a COMPLETE; Gate 4 + Gate 5 deferred to next session)
+- Last Updated: 2026-04-14 (session 38 — K7c–K7e + K8.1..K8.4 + K9.1 + Track 2 design update + K18.2a + K18.2a second-pass fixes COMPLETE; Gate 4 + Gate 5 deferred to next session)
 - Updated By: Assistant (Track 2 design reshaped from free-context-hub lessons — added L-CH-01..L-CH-12, 4 new tasks: K11.Z provenance validator, K17.9 + K17.9.1 golden-set harness, K18.2a intent classifier. Then executed K18.2a end-to-end through the 9-phase workflow — first laptop-friendly Track 2 task, zero runtime deps.)
 - Active Branch: `main` (K18.2a commit pending)
 - HEAD: K18.2a commit (see git log) — K7c = `160de10`, K7d/K7e/K8.2/K8.3/K8.4/K9.1/D-CHAT-01 committed
@@ -172,6 +172,14 @@ provider-registry — classifies in-process with regex + K4.3's existing
 5. Zero collision risk with the Track 1 deferred items (Gate 4, Gate 5, T01–T13) — it adds new files in a new package, doesn't touch any existing surface.
 
 **What K18.2a unblocks:** K18.1 (Mode 3 scaffold) and K18.3 (L3 semantic selector) can now both read `IntentResult.hop_count` / `recency_weight` instead of branching on raw regex. K18.3's dynamic pool sizing and hub-file penalty (L-CH-02/03) can use the same intent classes to tune per-query.
+
+**Second-pass review (post-commit) — 4 regex false-positive fixes:**
+Adversarial probing beyond the 50-query golden set exposed gaps the original fixture didn't cover. Fixed in follow-up commit:
+- **I1 (HIGH)** — bare `just` in `_RECENT` was hijacking `"I just want to know about Kai"` / `"Just tell me about Master Lin"` / `"I just started reading"` into RECENT_EVENT. Tightened to `just (now|happened|arrived|said|did|finished)`.
+- **I2 (MEDIUM)** — `_RELATIONAL_STRONG` phrases fired with zero entities, so `"What is the connection between good and evil?"` / `"Who knows what the future holds?"` became RELATIONAL. Gated strong phrasing on `len(entities) >= 1` — still allows the implied-second-entity case (`"Who knows Kai?"`) per L-CH-07.
+- **I3 (MEDIUM)** — `"used to"` in `_HISTORICAL_STRONG` misfired on the idiom `"What is this used to do?"`. Tightened to `used to (be|have|live|exist|rule|serve)`.
+- **I4 (LOW)** — `_FALSE_POSITIVE_ENTITY_WORDS` missing `Have`, `Has`, `Are`, `Is`, `Do`, `Did`, `Does`, `Can`, `Should`, `Just`, `Right`, `Currently`, `Now` — all sentence-initial K4.3 false positives. Added.
+- **Fixture extended** with 6 adversarial queries locking in the fixes (bare-`just` idioms, zero-entity relational-strong, idiomatic `used to`, standalone `used to rule` true positive). Golden set grew from 50 → 56 queries, still 100% passing. 17/17 unit tests pass, p95 latency unchanged. 11/11 adversarial probes now correct (were 4/11 before the fix).
 
 ---
 

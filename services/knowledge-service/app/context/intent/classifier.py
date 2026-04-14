@@ -50,9 +50,12 @@ class IntentResult:
 
 
 # Strong past anchors — win even when an entity is present.
+# Note: bare "used to" is idiomatic ("what is this used to do?") so we
+# require a following be/have/live/exist to keep it unambiguous.
 _HISTORICAL_STRONG = re.compile(
     r"\b(back when|long ago|years? ago|chapters? ago|originally|"
-    r"at first|in the beginning|used to|was once)\b",
+    r"at first|in the beginning|used to (be|have|live|exist|rule|serve)|"
+    r"was once)\b",
     re.IGNORECASE,
 )
 
@@ -63,8 +66,11 @@ _HISTORICAL_WEAK = re.compile(
     re.IGNORECASE,
 )
 
+# Present/near-past anchors. Bare "just" is banned — too idiomatic
+# ("I just want to", "just tell me") — require a temporal companion.
 _RECENT = re.compile(
-    r"\b(just|right now|at the moment|currently|this chapter|"
+    r"\b(just (now|happened|arrived|said|did|finished)|"
+    r"right now|at the moment|currently|this chapter|"
     r"a moment ago|happening now|right here|present moment)\b",
     re.IGNORECASE,
 )
@@ -96,11 +102,13 @@ _FALSE_POSITIVE_ENTITY_WORDS = frozenset(
         # Temporal anchors (mirror the regex vocabulary)
         "Before", "After", "Long", "Originally", "Previously",
         "Years", "Chapters", "Earlier", "Recently",
+        "Just", "Right", "Currently", "Now",
         # Sentence-start interrogatives / fillers that escape K4.3
         # because K4.3's own stopword list is tuned for mid-sentence
         # use, not position 0.
         "Who", "What", "Where", "When", "Why", "How",
         "Tell", "Describe", "Explain", "Summarize",
+        "Are", "Is", "Do", "Did", "Does", "Can", "Should", "Have", "Has",
     )
 )
 
@@ -165,10 +173,14 @@ def classify(message: str) -> IntentResult:
         signals.append(f"entities:{len(entities)}")
 
     # 1. RELATIONAL wins first.
-    # Strong phrasing alone is enough; otherwise need ≥2 entities + a
-    # relational keyword so "What does Kai know?" (1 entity + `know`)
-    # stays SPECIFIC_ENTITY.
-    if relational_strong or (len(entities) >= 2 and relational_kw):
+    # Strong phrasing needs ≥1 entity (the other half implied, e.g.
+    # "Who knows Kai?") — without any entity, "connection between good
+    # and evil" is general philosophy, not a relational graph query.
+    # Otherwise need ≥2 entities + a relational keyword so "What does
+    # Kai know?" (1 entity + `know`) stays SPECIFIC_ENTITY.
+    if (relational_strong and len(entities) >= 1) or (
+        len(entities) >= 2 and relational_kw
+    ):
         return IntentResult(
             intent=Intent.RELATIONAL,
             entities=entities,

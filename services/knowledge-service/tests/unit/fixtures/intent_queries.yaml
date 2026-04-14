@@ -17,10 +17,14 @@ specific_entity:
   - "What did Kai do before the battle?"
   - "Where is Master Lin from?"
   - "What is the Dragon Lord's real name?"
+  # Adversarial — I1: bare "just" must not hijack to RECENT_EVENT.
+  - "I just want to know about Kai"
+  - "Just tell me about Master Lin"
 
 recent_event:
   - "What is Kai doing right now?"
   - "What just happened to Aria?"
+  - "What just happened to Kai?"
   - "What's happening now in the throne room?"
   - "What is the Emperor doing at the moment?"
   - "What are they currently planning?"
@@ -31,6 +35,7 @@ recent_event:
   - "In the present moment, where is Aria?"
 
 historical:
+  - "The Emperor used to rule the northern lands"
   - "What happened back when the Empire fell?"
   - "Long ago, who ruled the kingdom?"
   - "Originally, what was the Dragon Lord's role?"
@@ -65,3 +70,11 @@ general:
   - "Describe the setting"
   - "What is the tone of the book?"
   - "How does the story begin?"
+  # Adversarial — I2: relational-strong phrasing without entities is
+  # general philosophy, not a graph query.
+  - "What is the connection between good and evil?"
+  - "What is the relationship between magic and technology?"
+  - "Who knows what the future holds?"
+  # Adversarial — I1: bare "just" is idiomatic, not temporal.
+  - "I just started reading"
+
