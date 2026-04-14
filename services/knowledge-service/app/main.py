@@ -1,14 +1,15 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.clients.glossary_client import close_glossary_client, init_glossary_client
 from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pools, create_pools, get_knowledge_pool
-from app.logging_config import setup_logging
+from app.logging_config import setup_logging, trace_id_var
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import context, health, metrics, ping
 from app.routers.public import projects as public_projects
@@ -45,6 +46,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(Exception)
+async def _trace_id_500_handler(request: Request, exc: Exception) -> JSONResponse:
+    """K7e: include the trace id in the 500 body so a caller staring
+    at an error in the UI can grep it straight to this service's
+    logs. Starlette's default handler returns plain text; overriding
+    it is the standard FastAPI pattern.
+
+    HTTPException (4xx + explicit 5xx from handlers) is NOT caught
+    here — FastAPI's built-in HTTPException handler runs first and
+    keeps its own envelope.
+    """
+    logger.exception("unhandled exception (500): %s", exc)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "internal server error", "trace_id": trace_id_var.get()},
+        headers={"X-Trace-Id": trace_id_var.get() or ""},
+    )
+
 
 app.include_router(health.router)
 app.include_router(ping.public_router)

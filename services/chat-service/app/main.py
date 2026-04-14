@@ -2,14 +2,15 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from app.client.knowledge_client import close_knowledge_client, init_knowledge_client
 from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool, get_pool
+from app.middleware.trace_id import TraceIdMiddleware, current_trace_id
 from app.routers import messages, outputs, sessions, voice
 from app.storage.minio_client import delete_object, ensure_bucket
 
@@ -59,6 +60,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="chat-service", lifespan=lifespan)
 
+# TraceIdMiddleware is added first so it ends up innermost in
+# Starlette's stack — CORS wraps it, which is what we want: CORS
+# preflight OPTIONS responses are handled by CORSMiddleware directly
+# (no trace id needed), while every normal request/response still
+# flows through TraceIdMiddleware and carries X-Trace-Id.
+app.add_middleware(TraceIdMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -66,6 +73,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(Exception)
+async def _trace_id_500_handler(request: Request, exc: Exception) -> JSONResponse:
+    """K7e: include the trace id in the 500 body so a caller staring
+    at an error can grep it straight to this service's logs.
+    HTTPException keeps its own envelope via FastAPI's built-in handler."""
+    logger.exception("unhandled exception (500): %s", exc)
+    tid = current_trace_id()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "internal server error", "trace_id": tid},
+        headers={"X-Trace-Id": tid or ""},
+    )
+
 
 app.include_router(sessions.router)
 app.include_router(messages.router)

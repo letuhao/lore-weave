@@ -26,6 +26,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import settings
+from app.middleware.trace_id import current_trace_id
 
 logger = logging.getLogger(__name__)
 
@@ -149,11 +150,18 @@ class KnowledgeClient:
         if project_id:
             body["project_id"] = project_id
 
+        # K7e: forward the caller's trace_id so knowledge-service (and
+        # glossary-service, one hop further) can stitch their logs to
+        # the originating chat turn. Empty string → no header, which
+        # lets knowledge-service generate its own id.
+        tid = current_trace_id()
+        call_headers = {"X-Trace-Id": tid} if tid else None
+
         attempts = self._retries + 1
         last_err_summary: str | None = None
         for _ in range(attempts):
             try:
-                resp = await self._http.post(url, json=body)
+                resp = await self._http.post(url, json=body, headers=call_headers)
             except httpx.TimeoutException:
                 last_err_summary = "timeout"
                 continue

@@ -18,6 +18,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import settings
+from app.logging_config import trace_id_var
 from app.metrics import circuit_open as circuit_open_gauge
 
 __all__ = ["GlossaryClient", "GlossaryEntityForContext"]
@@ -141,6 +142,12 @@ class GlossaryClient:
         if self._cb_is_open():
             return []
 
+        # K7e: forward the inbound trace id so glossary-service can
+        # stitch its logs to the originating chat turn. Empty string →
+        # no header, which lets glossary-service generate its own id.
+        tid = trace_id_var.get()
+        call_headers = {"X-Trace-Id": tid} if tid else None
+
         # K4-I4: log AT MOST one warning per call. Per-attempt logging
         # used to spam logs during outages (N candidates × M retries ×
         # every chat turn). Now: silent on individual retries, one
@@ -149,7 +156,7 @@ class GlossaryClient:
         last_err_summary: str | None = None
         for _ in range(attempts):
             try:
-                resp = await self._http.post(url, json=body)
+                resp = await self._http.post(url, json=body, headers=call_headers)
             except httpx.TimeoutException:
                 last_err_summary = "timeout"
                 continue

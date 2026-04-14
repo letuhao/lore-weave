@@ -47,6 +47,11 @@ func (s *Server) fetchBookProjection(ctx context.Context, bookID uuid.UUID) (*bo
 	if s.cfg.InternalServiceToken != "" {
 		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
 	}
+	// K7e: forward the caller's trace id so book-service can stitch
+	// its logs to the chat → knowledge → glossary → book chain.
+	if tid := TraceIDFromContext(ctx); tid != "" {
+		req.Header.Set(traceIDHeader, tid)
+	}
 	res, err := bookHTTPClient.Do(req)
 	if err != nil {
 		return nil, http.StatusServiceUnavailable
@@ -73,6 +78,11 @@ func (s *Server) fetchBookChapters(ctx context.Context, bookID uuid.UUID) ([]cha
 	}
 	if s.cfg.InternalServiceToken != "" {
 		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	}
+	// K7e: forward the caller's trace id so book-service can stitch
+	// its logs to the chat → knowledge → glossary → book chain.
+	if tid := TraceIDFromContext(ctx); tid != "" {
+		req.Header.Set(traceIDHeader, tid)
 	}
 	res, err := bookHTTPClient.Do(req)
 	if err != nil {

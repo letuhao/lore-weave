@@ -336,3 +336,65 @@ class TestSingleLogPerFailure:
         unavailable = [r for r in caplog.records if "unavailable" in r.getMessage()]
         assert len(unavailable) == 1
         await client.aclose()
+
+
+# ── K7e trace_id forwarding ───────────────────────────────────────────────
+
+
+class TestTraceIdForwarding:
+    @pytest.mark.asyncio
+    async def test_forwards_trace_id_when_set(self):
+        from app.middleware.trace_id import trace_id_var
+
+        captured: list = []
+        client = _make_client(_capture(captured))
+        token = trace_id_var.set("abc123")
+        try:
+            await client.build_context(user_id="u", message="hi")
+        finally:
+            trace_id_var.reset(token)
+        assert captured[0].headers.get("x-trace-id") == "abc123"
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_omits_trace_id_when_unset(self):
+        from app.middleware.trace_id import trace_id_var
+
+        captured: list = []
+        client = _make_client(_capture(captured))
+        # Make sure no prior test leaked a value into this task.
+        token = trace_id_var.set("")
+        try:
+            await client.build_context(user_id="u", message="hi")
+        finally:
+            trace_id_var.reset(token)
+        # Empty contextvar → no header. Knowledge-service will mint its own.
+        assert "x-trace-id" not in captured[0].headers
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_trace_id_forwarded_on_retry(self):
+        """The header must be attached to every attempt, not just the
+        first — otherwise a retry after a 5xx would desynchronise
+        chat's view of the id from knowledge-service's."""
+        from app.middleware.trace_id import trace_id_var
+
+        captured: list = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured.append(request)
+            if len(captured) == 1:
+                return httpx.Response(503, text="down")
+            return httpx.Response(200, json={
+                "mode": "no_project", "context": "", "recent_message_count": 50, "token_count": 0,
+            })
+
+        client = _make_client(handler)
+        token = trace_id_var.set("retry-id")
+        try:
+            await client.build_context(user_id="u", message="hi")
+        finally:
+            trace_id_var.reset(token)
+        assert len(captured) == 2
+        assert all(r.headers.get("x-trace-id") == "retry-id" for r in captured)
+        await client.aclose()

@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 38 — Knowledge Service K7c + K7d COMPLETE, second-pass review fixes shipped)
-- Updated By: Assistant (K7.5 + K7.6 user-data export + GDPR erasure — GET /v1/knowledge/user-data/export returns a full JSON bundle with 507 overflow guards on BOTH projects AND summaries; DELETE /v1/knowledge/user-data atomically purges summaries + projects for the caller via a standalone UserDataRepo transaction, followed by in-process cache invalidation for every L0/L1 key owned by the user. Both routes emit GDPR audit-log records.)
-- Active Branch: `main` (+2 ahead of origin, K7d committed)
-- HEAD: K7d commit (see git log) — K7c = `160de10`, K7d = latest
+- Last Updated: 2026-04-14 (session 38 — Knowledge Service K7c + K7d + K7e COMPLETE, D-K5-01 cleared)
+- Updated By: Assistant (K7e end-to-end X-Trace-Id propagation across chat → knowledge → glossary → book, + JSON 500 envelopes carrying trace_id in all three services. Clears D-K5-01.)
+- Active Branch: `main` (K7e commit pending)
+- HEAD: K7e commit (see git log) — K7c = `160de10`, K7d = committed, K7e = this commit
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V7.md` — full context for next agent
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -28,7 +28,6 @@
 |---|---|---|---|
 | D-K2a-01 | K2a | Glossary summary DB CHECK `content <> ''` (glossary-service side, different schema) | Standalone glossary-service pass |
 | D-K2a-02 | K2a | Glossary summary size cap (glossary-service side) | Standalone glossary-service pass |
-| D-K5-01 | K5 | End-to-end `X-Trace-Id` propagation across chat → knowledge → glossary internal calls + trace_id in 500 response bodies (supersedes D-K4a-02) | K7e |
 
 ### Track 2 planning (document only, no Track 1 action)
 
@@ -71,7 +70,7 @@
 | K5-I7 | K5 review | Test patch style (brittle to import refactor) — fixed via `httpx.MockTransport` constructor injection (zero `@patch` decorators in `test_knowledge_client.py` now) |
 | K5-I9 | K5 review | Mis-flagged. KnowledgeClient is per-worker by design and works correctly with multi-worker uvicorn (httpx.AsyncClient is constructed after fork inside the lifespan). Removed from review notes. |
 | K6-I1..I4 | K6 review | All 4 review items fixed in the same commit as K6 BUILD plus follow-up: I1 unused `attempt` loop var → `_`; I2 added TTL-expiration test (tiny-TTL `cachetools.TTLCache` monkeypatched into the cache module); I3 `context_build_duration_seconds` histogram now labels error paths as `"not_found"` / `"not_implemented"` / `"error"` instead of lumping all under `"error"`; I4 conftest autouse fixture resets the `circuit_open` gauge between tests so a breaker-tripping test doesn't leak state into the next test's metric assertions. |
-| D-K5-01 | K5 | Re-targeted K6 → K7e — the trace_id work spans middleware in 3 services (chat/knowledge/glossary) and naturally belongs with K7's public API + JWT middleware phase. Not drift: K6 was the graceful-degradation phase, not the observability phase. |
+| D-K5-01 | K5 | **Cleared in K7e (this commit).** chat-service and glossary-service now have matching trace_id middleware (ASGI + chi), both forward `X-Trace-Id` on outbound internal calls (KnowledgeClient, GlossaryClient, book_client.go), and all three services return JSON 500 envelopes carrying `trace_id`. Full chain: chat → knowledge → glossary → book. |
 | K7a-I1..I3 | K7a review | Empty-bearer regression test, `alg=none` + HS512 whitelist regression tests, sub-claim guard clause re-ordered for readability. Commit `b4b70de`. |
 | **D-K1-01** | **K1** | **Cleared in K7b (commit `575cc36`). `SummaryContent` Annotated str (max_length=50000) in `app/db/models.py` + matching `knowledge_summaries_content_len` CHECK constraint in `app/db/migrate.py`. Pydantic guards public API, DB CHECK is defense-in-depth.** |
 | **D-K1-02** | **K1** | **Cleared in K7b (commit `575cc36`). `ProjectInstructions` Annotated str (max_length=20000) + `ProjectDescription` (max_length=2000) in models, matching idempotent `knowledge_projects_instructions_len` and `knowledge_projects_description_len` CHECK constraints in migrate.py. PATCH route maps `asyncpg.CheckViolationError` → 422.** |
@@ -112,6 +111,38 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K7e — End-to-End X-Trace-Id Propagation ✅ (session 38, commit pending)
+
+**Clears D-K5-01.** Three-service middleware + outbound-client plumbing so a single `X-Trace-Id` survives the full chat → knowledge → glossary → book hop, and JSON 500 envelopes carry the id back to callers.
+
+**Files — chat-service:**
+- `app/middleware/trace_id.py` (NEW) — pure-ASGI middleware (not `BaseHTTPMiddleware`) so the `trace_id_var` ContextVar is set in the same task that runs the endpoint. Mirrors knowledge-service's existing pattern. Inbound `X-Trace-Id` adopted verbatim, else `uuid.uuid4().hex` generated; echoed on response.
+- `app/main.py` — mounts `TraceIdMiddleware` first (ends up innermost via Starlette's reverse-insert stack — CORS wraps it, preflights handled by CORS before TraceId runs, normal requests flow through both). Adds `@app.exception_handler(Exception)` returning `{detail, trace_id}` JSON with `X-Trace-Id` header.
+- `app/client/knowledge_client.py` — `build_context` reads `current_trace_id()` once per call and forwards the header on **every** retry attempt (not just the first).
+- `tests/test_trace_id_middleware.py` (NEW, 4 tests) + `tests/test_knowledge_client.py::TestTraceIdForwarding` (3 new tests) — covers generation, adoption, contextvar isolation, retry-consistency, and empty-var → no-header.
+
+**Files — glossary-service:**
+- `internal/api/trace_id.go` (NEW) — `traceIDMiddleware` + `jsonRecovererMiddleware` + `TraceIDFromContext` + `newTraceID` (32-char hex, same wire format as the Python services). The recoverer replaces chi's `middleware.Recoverer` so panic responses carry the trace id in both the response body and the `X-Trace-Id` header.
+- `internal/api/server.go` — middleware stack is now `RequestID → RealIP → traceID → jsonRecoverer`. chi's `RequestID` is deliberately kept — it's per-request-lifecycle (for panic logs); `X-Trace-Id` is the cross-service id and the two are independent.
+- `internal/api/book_client.go` — both `fetchBookProjection` and `fetchBookChapters` forward `TraceIDFromContext(ctx)` as `X-Trace-Id` to book-service.
+- `internal/api/trace_id_test.go` (NEW, 5 tests in package `api` — not `api_test` — so we can reach unexported `traceIDMiddleware`/`jsonRecovererMiddleware`/`newTraceID` without building a full `Server`). Covers generate-when-absent, adopt-incoming, empty-outside-middleware, 500-from-panic carries trace id, and `newTraceID` format.
+
+**Files — knowledge-service:**
+- `app/clients/glossary_client.py` — `select_for_context` reads `trace_id_var.get()` after the circuit-breaker check and forwards the header on every retry attempt. Empty var → no header (glossary-service will mint one).
+- `app/main.py` — adds `@app.exception_handler(Exception)` returning `{detail, trace_id}` JSON with `X-Trace-Id` header, using the existing `trace_id_var` from `app.logging_config`.
+- `tests/unit/test_trace_id_propagation.py` (NEW, 4 tests) — uses `object.__new__(GlossaryClient)` to skip `__init__` and avoid a pre-existing local-env truststore/SSL failure unrelated to this work. Uses `httpx.MockTransport` (same pattern as `test_knowledge_client.py`) for request capture. Tests: forwards on outbound, omits when unset, 500 handler body + header, 500 handler does not swallow HTTPException (404 keeps FastAPI's own envelope, trace id still echoed via middleware).
+
+**Test results after K7e:**
+- chat-service: **161/161 non-env tests passing** (154 baseline + 7 new trace_id tests).
+- glossary-service: `go test ./...` all green (5 new Go tests).
+- knowledge-service: **180/180 non-env tests passing** (176 baseline + 4 new trace_id tests).
+
+**K7e second-pass review:** one comment in `chat-service/app/main.py` was inaccurate — the original note claimed "TraceIdMiddleware before CORSMiddleware so the header lands on preflights". Starlette stacks middleware such that the last-added is outermost, so CORS actually wraps TraceId and preflight OPTIONS never reach it. **Behaviour is correct** (normal requests still get X-Trace-Id; preflights don't need it), but the comment was wrong. Fixed in this commit. No functional issues found.
+
+**Why not Redis pub/sub / OpenTelemetry:** Track 1 scope is "can an operator grep one id across three services' logs". Full distributed tracing (spans, parent/child, W3C traceparent) is Track 2 — a `traceparent` header could live alongside `X-Trace-Id` later without breaking the current plumbing.
+
+---
 
 ### K7d — User Data Export + GDPR Erasure ✅ (session 38, commit pending)
 

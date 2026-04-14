@@ -30,7 +30,12 @@ func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Recoverer)
+	// traceIDMiddleware before jsonRecovererMiddleware so a panicking
+	// handler's recovery response carries the incoming trace id. We
+	// swap chi's built-in Recoverer for our JSON version that embeds
+	// the trace id in both the response body and the X-Trace-Id header.
+	r.Use(traceIDMiddleware)
+	r.Use(jsonRecovererMiddleware)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		if s.pool != nil {
