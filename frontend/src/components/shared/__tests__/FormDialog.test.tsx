@@ -11,7 +11,27 @@ describe('FormDialog', () => {
 
   it('renders title when open', () => {
     render(<FormDialog {...defaultProps}><div>form content</div></FormDialog>);
-    expect(screen.getByText('Create book')).toBeInTheDocument();
+    // Use heading role to disambiguate from the sr-only description
+    // fallback which mirrors the title text (Gate-5-I2).
+    expect(screen.getByRole('heading', { name: 'Create book' })).toBeInTheDocument();
+  });
+
+  it('always renders an accessible Description (Gate-5-I2)', () => {
+    // Without a `description` prop the dialog must still emit a
+    // Radix Dialog.Description so screen readers and Radix's own
+    // aria-describedby check are satisfied. The fallback content
+    // mirrors the title, but is sr-only so it doesn't change the
+    // visual layout.
+    render(
+      <FormDialog {...defaultProps}><div>content</div></FormDialog>,
+    );
+    const dialog = screen.getByRole('dialog');
+    const describedById = dialog.getAttribute('aria-describedby');
+    expect(describedById).toBeTruthy();
+    const desc = document.getElementById(describedById!);
+    expect(desc).not.toBeNull();
+    expect(desc).toHaveClass('sr-only');
+    expect(desc?.textContent).toBe('Create book');
   });
 
   it('renders children', () => {

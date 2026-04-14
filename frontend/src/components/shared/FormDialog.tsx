@@ -19,11 +19,21 @@ export function FormDialog({ open, onOpenChange, title, description, children, f
         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-background p-6 shadow-lg">
           <div className="mb-4">
             <Dialog.Title className="font-serif text-lg font-semibold">{title}</Dialog.Title>
-            {description && (
-              <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-                {description}
-              </Dialog.Description>
-            )}
+            {/* Gate-5-I2: always render Description so Radix doesn't
+                warn about missing aria-describedby. When the caller
+                doesn't supply visible copy, fall back to an sr-only
+                announcement that mirrors the title — gives screen
+                readers something to read without changing the visual
+                layout for sighted users. */}
+            <Dialog.Description
+              className={
+                description
+                  ? 'mt-1 text-sm text-muted-foreground'
+                  : 'sr-only'
+              }
+            >
+              {description ?? title}
+            </Dialog.Description>
           </div>
 
           {children}
