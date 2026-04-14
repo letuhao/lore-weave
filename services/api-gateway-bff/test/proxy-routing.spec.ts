@@ -35,9 +35,26 @@ describe('Gateway proxy routing', () => {
   let glossaryServer: http.Server;
   let chatServer: http.Server;
   let videoGenServer: http.Server;
+  let statisticsServer: http.Server;
+  let notificationServer: http.Server;
+  let knowledgeServer: http.Server;
 
   beforeAll(async () => {
-    [authServer, bookServer, sharingServer, catalogServer, providerRegistryServer, usageBillingServer, translationServer, glossaryServer, chatServer, videoGenServer] = await Promise.all([
+    [
+      authServer,
+      bookServer,
+      sharingServer,
+      catalogServer,
+      providerRegistryServer,
+      usageBillingServer,
+      translationServer,
+      glossaryServer,
+      chatServer,
+      videoGenServer,
+      statisticsServer,
+      notificationServer,
+      knowledgeServer,
+    ] = await Promise.all([
       startUpstream('auth'),
       startUpstream('books'),
       startUpstream('sharing'),
@@ -48,6 +65,9 @@ describe('Gateway proxy routing', () => {
       startUpstream('glossary'),
       startUpstream('chat'),
       startUpstream('video-gen'),
+      startUpstream('statistics'),
+      startUpstream('notification'),
+      startUpstream('knowledge'),
     ]);
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -66,6 +86,9 @@ describe('Gateway proxy routing', () => {
       glossaryUrl: urlOf(glossaryServer),
       chatUrl: urlOf(chatServer),
       videoGenUrl: urlOf(videoGenServer),
+      statisticsUrl: urlOf(statisticsServer),
+      notificationUrl: urlOf(notificationServer),
+      knowledgeUrl: urlOf(knowledgeServer),
     });
     await app.init();
   });
@@ -83,6 +106,9 @@ describe('Gateway proxy routing', () => {
       new Promise((resolve) => glossaryServer.close(resolve)),
       new Promise((resolve) => chatServer.close(resolve)),
       new Promise((resolve) => videoGenServer.close(resolve)),
+      new Promise((resolve) => statisticsServer.close(resolve)),
+      new Promise((resolve) => notificationServer.close(resolve)),
+      new Promise((resolve) => knowledgeServer.close(resolve)),
     ]);
   });
 
