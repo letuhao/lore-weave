@@ -158,24 +158,16 @@ async def stream_response(
     )
 
     # ── K-CLEAN-5 (D-K8-04): emit memory_mode to the FE ─────────────────────
-    # `kctx.mode` is one of mode_1 / mode_2 / mode_3 / degraded. Map the
-    # internal names to the FE-facing surface (no_project / static /
-    # degraded) so the chat header MemoryIndicator can render a degraded
-    # pill when the knowledge call fell back. The event must be emitted
-    # BEFORE the first text-delta so the FE can flip the indicator before
-    # any tokens render — otherwise the user sees a project-name badge
-    # while the AI is actually answering with no project memory.
-    fe_memory_mode: str
-    if kctx.mode == "degraded":
-        fe_memory_mode = "degraded"
-    elif kctx.mode == "mode_1":
-        fe_memory_mode = "no_project"
-    else:
-        # mode_2 (project memory injected) and mode_3 (extraction —
-        # not yet implemented in Track 1) both surface as "static"
-        # for the FE indicator: a project is linked and its memory
-        # made it into the prompt.
-        fe_memory_mode = "static"
+    # knowledge-service build_context emits mode="no_project"
+    # (Mode 1), mode="static" (Mode 2), or mode="degraded" (client
+    # fallback). T01-T19-I1: the original K-CLEAN-5 code checked
+    # for "mode_1"/"mode_2" which never matched — every mode
+    # silently fell through to the else branch and surfaced as
+    # "static", so the FE degraded badge never fired. The e2e
+    # suite caught the mismatch. The FE memory_mode vocabulary is
+    # already a subset of the backend vocabulary, so forwarding
+    # the mode string as-is is both simpler AND the safest fix.
+    fe_memory_mode = kctx.mode
 
     # ── Build message history (size from knowledge_service) ─────────────────
     history_limit = max(1, kctx.recent_message_count)
