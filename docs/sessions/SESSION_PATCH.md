@@ -7,11 +7,11 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-14 (session 39 — Gate 4 + Gate 5 + K-CLEAN cluster + D-K8 correctness cluster + T01-T19 e2e cross-service suite ALL COMPLETE; Track 1 fully closed)
-- Updated By: Assistant (session 39 end-state: Track 1 is feature-complete AND end-to-end verified across backend + frontend + cross-service. Final half of the session implemented the Track-1-runnable subset of the T01-T20 cross-service catalogue as a new `tests/e2e/` pytest suite hitting the live compose stack. 6/6 scenarios green (T01 project defaults, T02 Mode 2 context, T03 Mode 1 context, T17 glossary entity in Mode 2, T18 cross-user isolation security, T19 user-data delete cascade). The e2e suite caught **T01-T19-I1**: a real bug in my earlier K-CLEAN-5 code — the chat-service SSE memory_mode mapping checked for "mode_1"/"mode_2" but knowledge-service actually emits "no_project"/"static", so every context build silently reported "static" to the FE including the degraded fallback path. Fixed by forwarding kctx.mode as-is. This is exactly the kind of bug unit tests + introspection miss and e2e tests catch. Session 39 commit total: 15.)
+- Last Updated: 2026-04-14 (session 39 — Track 1 ✅ **100% CLOSED**. Gate 4 + Gate 5 + K-CLEAN cluster + D-K8 correctness cluster + T01-T19 e2e + D-K2a standalone glossary pass ALL COMPLETE.)
+- Updated By: Assistant (session 39 absolute end: after T01-T19 the user audited the deferred-items table and asked whether Track 1 was actually done. Two items remained — D-K2a-01 and D-K2a-02, glossary-service summary defense-in-depth CHECKs carried since K2a as "standalone glossary-service pass" that was never scheduled. Landed in one focused commit: `shortDescConstraintsSQL` in migrate.go adds two CHECKs (non-empty OR NULL, length ≤ 500 chars) with an idempotent backfill for any pre-existing empty-string rows. Wired into main.go after UpShortDescAuto. Live verified on the compose stack: empty-string and 501-char writes both rejected by the DB, 500-char and NULL writes accepted. T01-T19 still 6/6 green. Track 1 deferred items now contain ZERO Track 1-tagged work — everything remaining is Track 2 (D-K8-02 partial, D-T2-*), fix-on-pain perf (P-K*), or conscious won't-fix. Session 39 commit total: 17.)
 - Active Branch: `main` (ahead of origin by session-38 + session-39 commits — user pushes manually)
-- HEAD: `c8dd43b` — T01-T19 e2e cross-service scenarios + T01-T19-I1 fix
-- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V13.md` — full session 39 context for next agent
+- HEAD: `0b6c29a` — D-K2a-01 + D-K2a-02 short_description defense-in-depth CHECKs
+- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` — Track 1 closing handoff for next agent
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
 ---
@@ -26,8 +26,6 @@
 
 | ID | Origin | Description | Target phase |
 |---|---|---|---|
-| D-K2a-01 | K2a | Glossary summary DB CHECK `content <> ''` (glossary-service side, different schema) | Standalone glossary-service pass |
-| D-K2a-02 | K2a | Glossary summary size cap (glossary-service side) | Standalone glossary-service pass |
 | D-K8-02 (partial remaining) | K8 draft review | **Project card building/ready/paused/failed states + extraction stat tiles.** Restore button shipped in K-CLEAN-3 (session 39); the building/ready/paused/failed states + entity/fact/event/glossary stat tiles still need Track 2 K11/K17 to produce the data they would render. | Track 2 (Gate 12) |
 
 ### Track 2 planning (document only, no Track 1 action)
@@ -62,6 +60,7 @@
 
 | ID | Origin | How it was resolved |
 |---|---|---|
+| **D-K2a-01 + D-K2a-02** | **K2a** | **Cleared in session 39, commit `0b6c29a`.** Added defense-in-depth CHECK constraints on `glossary_entities.short_description` via a new `shortDescConstraintsSQL` + `UpShortDescConstraints` Go migration step wired into `cmd/glossary-service/main.go`. Constraint 1 (`glossary_entities_short_desc_non_empty`): `short_description IS NULL OR short_description <> ''`. Constraint 2 (`glossary_entities_short_desc_len`): `short_description IS NULL OR length(short_description) <= 500` — matches the API handler's rune-counted 500-char cap. Backfill step inside the migration converts any existing empty-string rows to NULL so ADD CONSTRAINT doesn't fail on pre-existing data. Idempotent via the same `DO $$ BEGIN IF NOT EXISTS (SELECT ... FROM pg_constraint WHERE conname = ...) THEN ALTER TABLE ... END IF; END$$` pattern the rest of the glossary migrate file uses. Live verified on the compose stack: empty-string and 501-char writes both rejected by the DB, 500-char and NULL writes accepted. **This was the last Track 1-tagged deferred item.** |
 | **D-K8-01** | **K8 draft review** | **Cleared in session 39, commits `c4e537c` (backend) + `52bc30e` (frontend).** Added a new `knowledge_summary_versions` append-only history table with unique (summary_id, version) index and ON DELETE CASCADE to the parent. Repo `upsert()` + `upsert_project_scoped()` now run the upsert AND a history insert in a single transaction, with a `FOR UPDATE` lock on the pre-update row so concurrent writers serialise cleanly. Three new endpoints — `GET /summaries/global/versions`, `GET /summaries/global/versions/{v}`, `POST /summaries/global/versions/{v}/rollback`. Rollback creates a NEW version whose content is a copy of the target; the displaced row goes to history with `edit_source='rollback'`. Strict If-Match on rollback. Frontend: new `VersionsPanel` component inline below the GlobalBioTab editor, `useGlobalSummaryVersions` hook for list + rollback mutation, preview modal + rollback confirm dialog. 15 new backend tests (9 unit + 6 integration) all green; live verified via Playwright (list → view preview → rollback → new monotonic version). ~20 new i18n keys per locale across en/vi/ja/zh-TW. Track 1 only ships global scope; project-scoped endpoints are Track 2 but the repo layer supports both. |
 | **D-K8-03** | **K8.2 review** | **Cleared in session 39, commit `4a57333`.** Optimistic concurrency (HTTP If-Match / ETag) end-to-end across knowledge-service projects + summaries + api-gateway-bff + frontend. Schema: added missing `version INT NOT NULL DEFAULT 1` to `knowledge_projects` (already existed on `knowledge_summaries`). Repo `update()` / `upsert()` gained optional `expected_version` kwarg; atomic `UPDATE ... WHERE ... AND version = $N` with follow-up SELECT on 0-row paths to distinguish 404 from 412. New `VersionMismatchError` in the repositories package carries the current row for the 412 body. Routers: strict If-Match (428 if missing, 412 if stale, 200 + fresh ETag on success), `_parse_if_match` helper accepts `W/"<n>"`, `"<n>"`, or bare `<n>`. **D-K8-03-I1** (CORS preflight blocking If-Match header) caught live via Playwright on the first FE save attempt — fixed by adding `If-Match` to `allowedHeaders` and `ETag` to `exposedHeaders` in gateway-setup.ts. Frontend: `isVersionConflict<T>` type guard on `apiJson`-thrown errors (attached parsed body), `ifMatch()` header helper, all `update*` methods take `expectedVersion`. `ProjectFormModal` captures `project.version` as `baselineVersion` state on edit open; on 412 refreshes baseline from `err.current.version`, keeps dialog open, preserves user edits for re-apply. `GlobalBioTab` extends its existing `baseline` tracking with `baselineVersion` using the same pattern; null on first save, captured version on subsequent saves. `ProjectsTab.handleRestore` passes `project.version` through existing `updateProject` call. 17 new tests (7 projects + 3 summaries unit + 4 projects + 3 summaries integration) plus 6 existing test fixtures updated for the new `version` field. Full live round-trip verified via Playwright: create → edit dialog → out-of-band curl PATCH → FE save → 412 → baseline refresh → retry → 200. |
 | **D-K8-04** | **K8.4 review** | **Cleared in K-CLEAN-5 (session 39, commit `6c238a6`).** Implemented end-to-end across chat-service + api-gateway-bff + frontend. chat-service ChatSession model gained `memory_mode: str = "no_project"`; the GET `_row_to_session` derives it from project_id (no_project / static); stream_service emits a `memory-mode` SSE event before the first text-delta on every turn (mode_1 → no_project, mode_2/mode_3 → static, degraded → degraded). FE useChatMessages parses the event and fires onMemoryModeRef; ChatStreamContext registers a handler that updates activeSession.memory_mode; MemoryIndicator gained a `memoryMode` prop, renders a "DEGRADED" warning-colored pill + popover explanation when the mode is degraded. Gateway gained a graceful 503 envelope on knowledge-service unreachable (pair with Gate-5-I4 — same commit). Originally paired with D-T2-04 cross-process cache invalidation, but that pairing was wrong: memory_mode is a per-response field, no event bus needed. |
@@ -117,6 +116,50 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### D-K2a standalone glossary-service pass — Track 1 final close-out ✅ (session 39)
+
+**Goal:** after the user asked "is Track 1 final done?", audited the deferred-items table and found two items still Track 1-tagged under "Standalone glossary-service pass" target phase: D-K2a-01 (empty-string CHECK on `short_description`) and D-K2a-02 (size cap CHECK). Both carried since K2a and never scheduled. Closed in one commit.
+
+**Commit:** `0b6c29a` — both constraints + wiring, 80 LOC, 1 file in `internal/migrate/migrate.go` + 1 file in `cmd/glossary-service/main.go`.
+
+**Design notes:**
+
+1. **Defense-in-depth, not primary validation.** The API handler (`patchEntity` in `entity_handler.go:730-756`) already coerces trimmed-empty → NULL and rejects > 500 runes with 422. The CHECKs backstop direct SQL writes that bypass the API — backfills, admin psql sessions, future repo code that forgets the coercion.
+
+2. **Backfill before ADD CONSTRAINT.** Any pre-existing `short_description = ''` rows are UPDATE'd to NULL first, then the constraint is added. Without this, a dev env that had persisted a `''` through some pre-coercion code path would fail the migration.
+
+3. **Rune-counted cap matches the API.** `length()` on TEXT in Postgres counts characters, not bytes, so CJK content gets the same 500-char budget as Latin (matches the API's `utf8.RuneCountInString` check).
+
+4. **Idempotent via `DO $$ ... pg_constraint WHERE conname = ... $$`.** Same pattern as `knowledge_summaries_content_len` on the knowledge-service side (K7b) and the other glossary-service constraint additions in `migrate.go`.
+
+**Live verification (compose stack):**
+
+| Input | Expected | Actual |
+|---|---|---|
+| `short_description = ''` | reject with `glossary_entities_short_desc_non_empty` | ✅ rejected |
+| `short_description = repeat('x', 501)` | reject with `glossary_entities_short_desc_len` | ✅ rejected |
+| `short_description = repeat('y', 500)` | accept | ✅ UPDATE 1 |
+| `short_description = NULL` | accept | ✅ UPDATE 1 |
+
+**Regression check:** T01-T19 cross-service e2e suite still 6/6 passing. glossary-service Go test suite still green.
+
+**Track 1 deferred items audit (post-D-K2a):**
+
+```
+Track 1-tagged deferred items: 0
+Track 2-tagged items (legitimate):
+  - D-K8-02 partial    → blocked on Track 2 K11/K17 data
+  - D-T2-01..D-T2-05   → planned Track 2 scope
+Fix-on-pain perf:
+  - P-K2a-01, P-K2a-02, P-K3-01, P-K3-02
+Conscious won't-fix:
+  - 6 items (hard-coded English LLM prompts, backup infra, etc.)
+```
+
+**Track 1 is 100% closed.** Session 39 commit total: 17. Forward motion from here is exclusively Track 2.
+
+---
 
 ### T01-T19 cross-service e2e suite — Track 1 subset ✅ (session 39)
 
