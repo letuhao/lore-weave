@@ -188,6 +188,23 @@ Phase     │ Role              │ What Happens
 
 When playing each role, shift perspective accordingly. Architect thinks about system boundaries. PO thinks about user value and acceptance. Lead thinks about code quality and maintainability. Developer thinks about correctness and efficiency. QA thinks about what can break.
 
+### Phases 8 + 9 are mandatory — do not skip
+
+AI agents habitually declare a task "done" the moment QC passes (Phase 7) and forget Phases 8 and 9. **That is a bug, not a shortcut.** Work that isn't recorded in `docs/sessions/SESSION_PATCH.md` and committed to git does not exist for the next session — the next agent will re-plan from stale state and redo work.
+
+Checklist at the end of **every** 9-phase cycle, before considering the task closed:
+
+1. **Phase 8 — SESSION**:
+   - Update `docs/sessions/SESSION_PATCH.md` header metadata (Last Updated, Updated By, HEAD)
+   - Add a "Current Active Work" entry for the completed phase with files touched, the review issues found and fixed, and the test count delta
+   - Move any cleared deferrals to "Recently cleared", add any new ones to the appropriate table
+2. **Phase 9 — COMMIT**:
+   - Stage only the files you actually changed (no `git add -A`)
+   - Write a commit message that names the phase, lists the review fixes landed in the same commit, and records the final test count
+   - Include the SESSION_PATCH update **in the same commit** as the code — they describe the same unit of work
+
+**Rule of thumb:** if you catch yourself saying "I'll update SESSION_PATCH later" or "I'll batch the commit with the next task", stop. That's the drift the workflow exists to prevent. One 9-phase cycle = one SESSION_PATCH update + one commit, every time.
+
 ---
 
 ## Module Progression
