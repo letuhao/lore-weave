@@ -10,7 +10,7 @@
 - Last Updated: 2026-04-14 (session 39 continuation — **K11.3 Cypher schema runner landed**, K11.1+K11.2+K11.3 = Neo4j wired end-to-end against live 2026.03)
 - Updated By: Assistant (K11.3 caps the Neo4j-infra slice. Schema file ships 6 unique constraints + 13 composite/single indexes + 5 vector indexes per KSA §3.4. K11.3-I1: existence constraints removed — Enterprise-only on community edition; user_id NOT NULL stays enforced by K11.4's `assert_user_id_param`. Neo4j image bumped 2025.10 → 2026.03 community after user pushback. 369/369 knowledge-service tests pass against live Neo4j; 12 new K11.3 tests (8 parser unit + 4 integration). Repo code must keep going through K11.4 — schema runner is the one documented exception.)
 - Active Branch: `main` (ahead of origin by session-38 + session-39 commits — user pushes manually)
-- HEAD: K11.7-R1 review-fix commit (this session, on top of K11.7)
+- HEAD: K11.8 provenance commit (this session, on top of K11.7-R1)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -117,6 +117,29 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K11.8 — Provenance repository (`ExtractionSource` + `EVIDENCED_BY`) ✅ (session 39 continuation, Track 2)
+
+**Goal:** the bookkeeping layer that makes partial extraction operations safe and composable. KSA §3.4.C invariant — "an entity/fact is deleted iff its EVIDENCED_BY edge count reaches zero" — needs an atomic counter increment on edge create + a counter decrement on edge remove. K11.8 ships both, plus the cascade orchestration the K11.5/K11.7 race-window warnings have been pointing at.
+
+**Files:**
+- [services/knowledge-service/app/db/neo4j_repos/provenance.py](services/knowledge-service/app/db/neo4j_repos/provenance.py) — NEW: `extraction_source_id()` deterministic hash, `ExtractionSource` Pydantic model, `EvidenceWriteResult` + `CleanupResult`, `SOURCE_TYPES` (`chapter`/`chat_message`/`glossary_entity`/`manual`) + `TARGET_LABELS` (`Entity`/`Event`/`Fact`) closed enums, 7 repo functions: `upsert_extraction_source`, `get_extraction_source`, `add_evidence`, `remove_evidence_for_source`, `delete_source_cascade`, `cleanup_zero_evidence_nodes` (orchestrates K11.5a + K11.7 sweepers).
+- [services/knowledge-service/tests/integration/db/test_provenance_repo.py](services/knowledge-service/tests/integration/db/test_provenance_repo.py) — NEW: 23 integration tests, including the KSA §3.8.5 end-to-end partial-reextract cascade scenario.
+
+**Acceptance criteria (from K11.8 plan):**
+- ✅ `evidence_count` stays in sync with the actual edge count — `add_evidence` increments only on the ON CREATE branch (re-running the same `(target, source, job_id)` is a no-op via the `_just_created` marker pattern), `remove_evidence_for_source` decrements once per removed edge in the same statement.
+- ✅ Partial re-extract cascade works (KSA §3.8.5): `remove_evidence_for_source` → `cleanup_zero_evidence_nodes` → re-run extraction restores survivors. End-to-end test verifies a survivor with evidence in two chapters drops from count=2 to 1 (and is preserved), while an entity with evidence only in the deleted chapter drops to 0 and gets swept. mention_count is intentionally monotonic — it represents "times observed" for K11.5b's anchor-score recompute, not a live edge count.
+- ✅ Parameterized Cypher only — every query goes through K11.4's `run_read`/`run_write`. `add_evidence` dispatches to one of three label-specific templates in Python (Cypher labels can't be parameterized in a way that uses an index); `dim` is validated against `TARGET_LABELS` before the f-string builds the template, so injection is structurally impossible.
+
+**Atomic counter primitive:** the `add_evidence` Cypher uses a `_just_created` marker property that ON CREATE sets to `true`, ON MATCH sets to `false`. After the MERGE, the value is read into a `created` variable, then `REMOVE`d so the property never persists on the edge. This is the cleanest way to surface "was this a no-op?" to the caller without a separate pre-read query. Counter increments live in the same `ON CREATE SET` block so they only fire when the edge is actually new.
+
+**Cascade orchestration:** `delete_source_cascade` is composed from `get_extraction_source` + `remove_evidence_for_source` + a bare node delete instead of one packed Cypher statement. An earlier draft tried to do the cascade in one query but the per-row-SET semantics for "decrement the counter for each removed edge" got tangled when a target had multiple edges to the same source (compound vs. non-compound depending on Cypher's row-iteration model). Three round-trips is a fair price for a provably-correct cascade.
+
+**`cleanup_zero_evidence_nodes`** delegates to the K11.5a `delete_entities_with_zero_evidence`, K11.7 `delete_events_with_zero_evidence`, and K11.7 `delete_facts_with_zero_evidence` sweepers — each uses its own `(user_id, evidence_count)` composite index from K11.3-R1, so the cost is bounded by the calling user's churn rather than the global graph. Returns a typed `CleanupResult` with per-label counts plus a `.total` property.
+
+**Test results:** 23 new tests, all green on first run. The KSA §3.8.5 scenario test verifies the full sequence: build → add_evidence×3 → remove_evidence → counter check (survivor=1, deletable=0) → cleanup (1 entity swept) → re-extract → counter restored. Full knowledge-service suite: **551 passed, 93 skipped** against live Neo4j 2026.03.1 (was 528; +23 K11.8). Zero regressions.
+
+**What K11.8 unblocks:** K11.9 (offline reconciler) — the offline drift detector that compares `evidence_count` to the actual edge count and corrects mismatches; K11.8 is the runtime primitive that should make K11.9 a no-op in steady state. K15 (pattern extractor) and K17 (LLM extractor) — both can now write entities/events/facts AND attach the provenance edges with the correct counter semantics. The Mode 3 timeline UI — can call `cleanup_zero_evidence_nodes` after a partial-extract user action.
 
 ### K11.7 — Events + Facts repositories ✅ (session 39 continuation, Track 2)
 
