@@ -8,9 +8,10 @@ import { knowledgeApi } from '../api';
 
 // GDPR tab — two irreversible actions against /v1/knowledge/user-data.
 // Export streams a file attachment (handled in knowledgeApi via raw
-// fetch + Blob), Delete is guarded by a destructive ConfirmDialog
-// with a type-to-confirm token so accidental clicks can't nuke the
-// user's whole knowledge graph.
+// fetch + Blob), Delete is guarded by a FormDialog with a
+// type-to-confirm token so accidental clicks can't nuke the user's
+// whole knowledge graph. (ConfirmDialog doesn't accept children,
+// so FormDialog is the right primitive for the token input.)
 
 const DELETE_CONFIRM_TOKEN = 'DELETE';
 

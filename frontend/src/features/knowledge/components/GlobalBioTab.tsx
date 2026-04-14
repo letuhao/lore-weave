@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/shared';
 import { useSummaries } from '../hooks/useSummaries';
@@ -16,15 +16,24 @@ export function GlobalBioTab() {
   // Track the server-side content we last synced against so we can
   // detect unsaved edits without making setState in the render path.
   const [baseline, setBaseline] = useState('');
+  // K8.3-R4: contentRef + baselineRef let the effect below read the
+  // latest values without re-subscribing (would cause an infinite
+  // loop). We need them to skip server-sync when the local buffer
+  // has unsaved edits — otherwise the post-save react-query refetch
+  // races ahead of the user's next keystrokes and wipes them.
+  const contentRef = useRef(content);
+  const baselineRef = useRef(baseline);
+  contentRef.current = content;
+  baselineRef.current = baseline;
 
-  // Pull server state into the textarea on first load and after a
-  // successful save (react-query invalidation refreshes `global`).
-  // Skipping the effect while editing would be nicer but needs a
-  // dirty-flag heuristic — for Track 1, if the server version changes
-  // while the user is editing we just prefer the server (D-K8-03 is
-  // about the same lost-update class of bug).
   useEffect(() => {
     const next = global?.content ?? '';
+    // If the user has unsaved edits (content diverges from the
+    // baseline we last synced), keep them. A background refetch
+    // must not clobber in-flight typing. The trade-off: if another
+    // device also edited concurrently, we prefer the local edits —
+    // same lost-update surface tracked as D-K8-03.
+    if (contentRef.current !== baselineRef.current) return;
     setContent(next);
     setBaseline(next);
   }, [global?.content, global?.version]);
@@ -39,9 +48,12 @@ export function GlobalBioTab() {
   const handleSave = async () => {
     if (!canSave) return;
     try {
-      // Empty string clears the bio — backend accepts it as a delete
-      // sentinel. Trim on send so whitespace-only is also a clear.
-      await updateGlobal({ content: trimmed });
+      // K8.3-R5: preserve the user's internal formatting (e.g.
+      // trailing newlines for markdown paragraphs). Only collapse
+      // the whitespace-only case to "" so it acts as a clear, since
+      // the backend treats "" as "no global bio set".
+      const payload = trimmed === '' ? '' : content;
+      await updateGlobal({ content: payload });
       toast.success('Global bio saved');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Save failed');
