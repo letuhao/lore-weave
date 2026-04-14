@@ -195,6 +195,8 @@ async def test_k10_4_advance_cursor(pool):
     user = uuid4()
     project_id = await _make_project(pool, user)
     job = await repo.create(user, _job_payload(project_id))
+    # K10.4-I2: cursor advance only allowed on running/paused jobs.
+    await repo.update_status(user, job.job_id, "running")
     advanced = await repo.advance_cursor(
         user, job.job_id, {"chapter_index": 5}, items_processed_delta=3
     )
@@ -393,3 +395,218 @@ async def test_k10_4_try_spend_concurrency_race_with_small_estimates(pool):
     assert job_row is not None
     assert job_row.status == "paused"
     assert job_row.cost_spent_usd == Decimal("0.5000")
+
+
+# ── K10.4 review-fix regressions ────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_k10_4_i1_update_status_rejects_terminal_complete(pool):
+    """K10.4-I1: a complete job cannot be transitioned back to running.
+    The UPDATE matches 0 rows and the method returns None. Any
+    `try_spend` against the still-complete job continues to return
+    `not_running`."""
+    repo = ExtractionJobsRepo(pool)
+    user = uuid4()
+    project_id = await _make_project(pool, user)
+    job = await repo.create(user, _job_payload(project_id))
+    await repo.update_status(user, job.job_id, "running")
+    await repo.complete(user, job.job_id)
+
+    # Attempt resurrection: should return None.
+    revived = await repo.update_status(user, job.job_id, "running")
+    assert revived is None
+    # Row unchanged.
+    current = await repo.get(user, job.job_id)
+    assert current is not None
+    assert current.status == "complete"
+    assert current.completed_at is not None
+
+    # Defense-in-depth: try_spend on the still-complete job returns
+    # not_running, no money leaked.
+    result = await repo.try_spend(user, job.job_id, Decimal("0.10"))
+    assert result.outcome == "not_running"
+    current2 = await repo.get(user, job.job_id)
+    assert current2 is not None
+    assert current2.cost_spent_usd == Decimal("0")
+
+
+@pytest.mark.asyncio
+async def test_k10_4_i1_update_status_rejects_terminal_cancelled(pool):
+    """K10.4-I1: cancelled jobs are likewise terminal."""
+    repo = ExtractionJobsRepo(pool)
+    user = uuid4()
+    project_id = await _make_project(pool, user)
+    job = await repo.create(user, _job_payload(project_id))
+    await repo.update_status(user, job.job_id, "running")
+    await repo.cancel(user, job.job_id)
+
+    for target in ("running", "paused", "pending", "complete"):
+        revived = await repo.update_status(user, job.job_id, target)  # type: ignore[arg-type]
+        assert revived is None, f"transition cancelled → {target} should be blocked"
+    current = await repo.get(user, job.job_id)
+    assert current is not None
+    assert current.status == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_k10_4_i1_update_status_rejects_terminal_failed(pool):
+    """K10.4-I1: failed jobs are terminal — the retry use case is
+    served by creating a new job, not resurrecting the old one."""
+    repo = ExtractionJobsRepo(pool)
+    user = uuid4()
+    project_id = await _make_project(pool, user)
+    job = await repo.create(user, _job_payload(project_id))
+    await repo.update_status(user, job.job_id, "running")
+    await repo.update_status(user, job.job_id, "failed", error_message="llm refused")
+
+    revived = await repo.update_status(user, job.job_id, "running")
+    assert revived is None
+    current = await repo.get(user, job.job_id)
+    assert current is not None
+    assert current.status == "failed"
+    # K10.4-I3: the error_message set on the failed transition is
+    # preserved across the failed call (it can't be cleared because
+    # nothing can transition out of failed).
+    assert current.error_message == "llm refused"
+
+
+@pytest.mark.asyncio
+async def test_k10_4_i3_error_message_cleared_on_non_failed_transition(pool):
+    """K10.4-I3: error_message is only kept when the target state is
+    `failed`. Every other (non-terminal) transition clears any prior
+    error message. Combined with I1 (failed is terminal) this means
+    error_message is write-once per job lifetime — set on the single
+    `* → failed` transition and never touched again."""
+    repo = ExtractionJobsRepo(pool)
+    user = uuid4()
+    project_id = await _make_project(pool, user)
+    job = await repo.create(user, _job_payload(project_id))
+    # Hypothetical: a stale error_message somehow persisted on a
+    # non-failed row. Simulate via direct SQL bypass since the API
+    # path now clears it on every non-failed transition.
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE extraction_jobs SET error_message = $1 WHERE job_id = $2",
+            "stale error",
+            job.job_id,
+        )
+
+    # Any non-failed transition clears it.
+    running = await repo.update_status(user, job.job_id, "running")
+    assert running is not None
+    assert running.error_message is None
+
+
+@pytest.mark.asyncio
+async def test_k10_4_i2_advance_cursor_rejects_terminal_states(pool):
+    """K10.4-I2: advance_cursor only succeeds on running/paused jobs.
+    Terminal jobs (complete/cancelled/failed) AND pending jobs (not
+    yet dispatched) all return None."""
+    repo = ExtractionJobsRepo(pool)
+    user = uuid4()
+    project_id = await _make_project(pool, user)
+
+    # Pending — not dispatched yet, can't advance cursor.
+    pending_job = await repo.create(user, _job_payload(project_id))
+    result = await repo.advance_cursor(user, pending_job.job_id, {"x": 1})
+    assert result is None
+
+    # Complete — terminal.
+    complete_job = await repo.create(user, _job_payload(project_id))
+    await repo.update_status(user, complete_job.job_id, "running")
+    await repo.complete(user, complete_job.job_id)
+    result = await repo.advance_cursor(user, complete_job.job_id, {"x": 1})
+    assert result is None
+
+    # Cancelled — terminal.
+    cancelled_job = await repo.create(user, _job_payload(project_id))
+    await repo.update_status(user, cancelled_job.job_id, "running")
+    await repo.cancel(user, cancelled_job.job_id)
+    result = await repo.advance_cursor(user, cancelled_job.job_id, {"x": 1})
+    assert result is None
+
+    # Failed — terminal.
+    failed_job = await repo.create(user, _job_payload(project_id))
+    await repo.update_status(user, failed_job.job_id, "running")
+    await repo.update_status(user, failed_job.job_id, "failed", error_message="x")
+    result = await repo.advance_cursor(user, failed_job.job_id, {"x": 1})
+    assert result is None
+
+    # Paused — allowed (worker may drain in-flight work before
+    # fully stopping).
+    paused_job = await repo.create(user, _job_payload(project_id))
+    await repo.update_status(user, paused_job.job_id, "running")
+    await repo.update_status(user, paused_job.job_id, "paused")
+    result = await repo.advance_cursor(user, paused_job.job_id, {"x": 1})
+    assert result is not None
+    assert result.items_processed == 1
+
+
+@pytest.mark.asyncio
+async def test_k10_4_i7_advance_cursor_rejects_negative_delta(pool):
+    """K10.4-I7: `items_processed_delta` must be non-negative.
+    Negative values would corrupt the progress counter."""
+    repo = ExtractionJobsRepo(pool)
+    user = uuid4()
+    project_id = await _make_project(pool, user)
+    job = await repo.create(user, _job_payload(project_id))
+    await repo.update_status(user, job.job_id, "running")
+
+    with pytest.raises(ValueError, match="items_processed_delta"):
+        await repo.advance_cursor(
+            user, job.job_id, {"x": 1}, items_processed_delta=-1
+        )
+
+    # Zero is allowed (cursor-only update without an item advance).
+    result = await repo.advance_cursor(
+        user, job.job_id, {"x": 2}, items_processed_delta=0
+    )
+    assert result is not None
+    assert result.items_processed == 0
+    assert result.current_cursor == {"x": 2}
+
+
+def test_k10_4_i4_create_rejects_negative_max_spend():
+    """K10.4-I4: ExtractionJobCreate Pydantic validation rejects
+    negative max_spend_usd at construction time. Caller never gets
+    to the SQL layer."""
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        ExtractionJobCreate(
+            project_id=uuid4(),
+            scope="chapters",
+            llm_model="test",
+            embedding_model="test",
+            max_spend_usd=Decimal("-0.01"),
+        )
+
+
+def test_k10_4_i4_create_rejects_empty_model_strings():
+    """K10.4-I4: llm_model and embedding_model must be non-empty.
+    The extraction worker would fail cryptically on '' so we catch
+    it at the model boundary."""
+    from pydantic import ValidationError
+    for kwargs in (
+        {"llm_model": "", "embedding_model": "ok"},
+        {"llm_model": "ok", "embedding_model": ""},
+    ):
+        with pytest.raises(ValidationError):
+            ExtractionJobCreate(
+                project_id=uuid4(),
+                scope="chapters",
+                **kwargs,  # type: ignore[arg-type]
+            )
+
+
+def test_k10_4_i4_create_rejects_negative_items_total():
+    """K10.4-I4: items_total is an optional non-negative int."""
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        ExtractionJobCreate(
+            project_id=uuid4(),
+            scope="chapters",
+            llm_model="ok",
+            embedding_model="ok",
+            items_total=-1,
+        )

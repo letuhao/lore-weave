@@ -41,12 +41,13 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 import asyncpg
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
     "ExtractionJob",
@@ -84,7 +85,7 @@ class ExtractionJob(BaseModel):
     user_id: UUID
     project_id: UUID
     scope: JobScope
-    scope_range: dict | None = None
+    scope_range: dict[str, Any] | None = None
     status: JobStatus
 
     llm_model: str
@@ -93,28 +94,36 @@ class ExtractionJob(BaseModel):
 
     items_total: int | None = None
     items_processed: int = 0
-    current_cursor: dict | None = None
+    current_cursor: dict[str, Any] | None = None
     cost_spent_usd: Decimal = Decimal("0")
 
-    started_at: object | None = None  # datetime, asyncpg → python native
-    paused_at: object | None = None
-    completed_at: object | None = None
-    created_at: object
-    updated_at: object
+    started_at: datetime | None = None
+    paused_at: datetime | None = None
+    completed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
     error_message: str | None = None
 
 
 class ExtractionJobCreate(BaseModel):
     """Caller-facing payload for `create`. `user_id` is enforced at the
-    method signature, not the payload, so callers can't inject it."""
+    method signature, not the payload, so callers can't inject it.
+
+    K10.4-I4: input validation. `max_spend_usd` must be non-negative
+    (a negative cap would cause the first `try_spend` to immediately
+    auto-pause, which is confusing). `llm_model` / `embedding_model`
+    must be non-empty strings (the extraction worker will try to
+    instantiate a model by name and fail cryptically on ""). `items_total`
+    is optional but must be non-negative when provided.
+    """
 
     project_id: UUID
     scope: JobScope
-    llm_model: str
-    embedding_model: str
-    max_spend_usd: Decimal | None = None
-    scope_range: dict | None = None
-    items_total: int | None = None
+    llm_model: Annotated[str, Field(min_length=1, max_length=200)]
+    embedding_model: Annotated[str, Field(min_length=1, max_length=200)]
+    max_spend_usd: Annotated[Decimal, Field(ge=0)] | None = None
+    scope_range: dict[str, Any] | None = None
+    items_total: Annotated[int, Field(ge=0)] | None = None
 
 
 # ── try_spend outcome ────────────────────────────────────────────────────
@@ -247,10 +256,27 @@ class ExtractionJobsRepo:
     ) -> ExtractionJob | None:
         """Generic status setter. Also updates the derived timestamp
         columns (`started_at` / `paused_at` / `completed_at`) based
-        on the target status. Does NOT enforce a state machine — the
-        caller is the extraction worker and is trusted to pass valid
-        transitions. For the budget-critical reservation path, use
-        `try_spend` instead.
+        on the target status.
+
+        K10.4-I1: terminal states (`complete`, `cancelled`, `failed`)
+        CANNOT be transitioned out of. Attempting to revive a
+        terminal job returns `None` (same as "not found / cross-user"
+        — caller can `get()` after a `None` return to disambiguate).
+        The retry use case is served by creating a NEW job, not
+        resurrecting the old one — cleaner audit trail AND neutralises
+        any risk that a stale `try_spend` could leak money on a
+        zombie-resurrected job.
+
+        K10.4-I3: `error_message` is only kept when the target state
+        is `failed`. Every other transition clears it. Given that
+        once-failed is terminal (per I1 above), this means the
+        error message is write-once: the single `* → failed`
+        transition sets it, and nothing ever touches it again.
+
+        Does NOT enforce a general state machine beyond the terminal
+        lock — the extraction worker is trusted to pass valid
+        non-terminal transitions. For the budget-critical reservation
+        path, use `try_spend` instead.
         """
         query = f"""
         UPDATE extraction_jobs
@@ -269,11 +295,13 @@ class ExtractionJobsRepo:
             ELSE completed_at
           END,
           error_message = CASE
-            WHEN $4::text IS NOT NULL THEN $4
-            ELSE error_message
+            WHEN $3 = 'failed' THEN $4
+            ELSE NULL
           END,
           updated_at = now()
-        WHERE user_id = $1 AND job_id = $2
+        WHERE user_id = $1
+          AND job_id = $2
+          AND status NOT IN ('complete', 'cancelled', 'failed')
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as conn:
@@ -298,7 +326,7 @@ class ExtractionJobsRepo:
         self,
         user_id: UUID,
         job_id: UUID,
-        cursor: dict,
+        cursor: dict[str, Any],
         *,
         items_processed_delta: int = 1,
     ) -> ExtractionJob | None:
@@ -307,18 +335,41 @@ class ExtractionJobsRepo:
         right place. NOT the same call as `try_spend` — cost is
         reserved before the LLM call, cursor advance happens after.
 
+        K10.4-D1 (plan deviation): the original K10.4 spec lists
+        `advance_cursor(job_id, cursor_data)` as cursor-only.
+        Combining cursor + items_processed advance into one method
+        halves the SQL round-trips on the hot path, since they
+        always co-occur in practice. The combined shape is
+        defended in tests.
+
+        K10.4-I2: only jobs in `running` or `paused` can advance
+        their cursor. Pending jobs haven't started; complete /
+        cancelled / failed are terminal. Any other state returns
+        `None`.
+
+        K10.4-I7: `items_processed_delta` must be >= 0. Negative
+        values would corrupt the progress counter and have no
+        legitimate use case. Caller passes 0 explicitly when they
+        want a cursor-only update without an item advance.
+
         Does NOT touch `cost_spent_usd` — cost reconciliation
         (estimated vs actual) is a separate step handled by the
         caller via a direct `UPDATE ... SET cost_spent_usd = ...`
         when needed. K10.4 keeps this repo method scope-limited.
         """
+        if items_processed_delta < 0:
+            raise ValueError(
+                f"items_processed_delta must be >= 0, got {items_processed_delta}",
+            )
         query = f"""
         UPDATE extraction_jobs
         SET
           current_cursor = $3::jsonb,
           items_processed = items_processed + $4,
           updated_at = now()
-        WHERE user_id = $1 AND job_id = $2
+        WHERE user_id = $1
+          AND job_id = $2
+          AND status IN ('running', 'paused')
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as conn:
