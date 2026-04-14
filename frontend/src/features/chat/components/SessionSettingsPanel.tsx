@@ -51,8 +51,17 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
     session.project_id,
   );
 
-  // Debounce timer
+  // D-CHAT-01: debounce + accumulator. We coalesce all PATCHes that
+  // arrive within the 500ms window into a single pending payload so
+  // (a) close-during-debounce flushes the change instead of dropping
+  // it, and (b) two unrelated edits (e.g. temperature then top_p)
+  // don't clobber each other through the shared timer. The previous
+  // implementation kept only the latest argument and lost the rest.
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingPatchRef = useRef<PatchSessionPayload | null>(null);
+  // Held in a ref so the unmount cleanup can call the latest closure
+  // without the effect re-subscribing on every render of the parent.
+  const flushPendingRef = useRef<() => void>(() => undefined);
 
   // Load user models
   useEffect(() => {
@@ -89,27 +98,60 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
     return () => window.removeEventListener('mousedown', handleClick);
   }, [onClose]);
 
-  // Cleanup debounce timer on unmount
+  // ── Save helper (debounced PATCH with flush-on-unmount) ───────────────────
+  const flushPatch = useCallback(() => {
+    const patch = pendingPatchRef.current;
+    pendingPatchRef.current = null;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (!patch || !accessToken) return;
+    void chatApi
+      .patchSession(accessToken, session.session_id, patch)
+      .then((updated) => onSessionUpdate(updated))
+      .catch((err) => {
+        toast.error(`Save failed: ${(err as Error).message}`);
+      });
+  }, [accessToken, session.session_id, onSessionUpdate]);
+
+  // Keep the ref pointing at the latest flushPatch so unmount cleanup
+  // (which only runs once with empty deps) calls the current closure.
+  flushPendingRef.current = flushPatch;
+
+  // Flush any pending patch on unmount instead of dropping it. The
+  // dominant UX is "change one thing, click outside to dismiss" — that
+  // close fires inside the debounce window, and the previous cleanup
+  // (clearTimeout only) lost the change every time.
   useEffect(() => {
     return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      flushPendingRef.current();
     };
   }, []);
 
-  // ── Save helper (debounced PATCH) ─────────────────────────────────────────
   const patchSession = useCallback(
     (patch: PatchSessionPayload) => {
       if (!accessToken) return;
+      // Merge into the pending payload. generation_params is nested
+      // and each call passes only the fields the handler touched, so
+      // it needs its own shallow merge — otherwise a temperature edit
+      // followed by a top_p edit within 500ms would drop temperature.
+      const prev = pendingPatchRef.current ?? {};
+      const mergedGenParams =
+        patch.generation_params || prev.generation_params
+          ? { ...(prev.generation_params ?? {}), ...(patch.generation_params ?? {}) }
+          : undefined;
+      pendingPatchRef.current = {
+        ...prev,
+        ...patch,
+        ...(mergedGenParams ? { generation_params: mergedGenParams } : {}),
+      };
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
-        void chatApi.patchSession(accessToken, session.session_id, patch).then((updated) => {
-          onSessionUpdate(updated);
-        }).catch((err) => {
-          toast.error(`Save failed: ${(err as Error).message}`);
-        });
+        flushPatch();
       }, 500);
     },
-    [accessToken, session.session_id, onSessionUpdate],
+    [accessToken, flushPatch],
   );
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -164,22 +206,7 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
     // Send explicit null so chat-service's model_fields_set sees it.
     const next = value === '' ? null : value;
     setSelectedProjectId(next);
-    // K9.1-R1: bypass the shared debounce. The picker is a single
-    // discrete commit, not a typing buffer — and the dominant UX
-    // pattern is "pick, click-outside to close" which fires the
-    // panel unmount inside the 500ms debounce window. The unmount
-    // cleanup at line 81 would clear the pending timer and the
-    // PATCH would never be sent. Calling chatApi directly here
-    // makes the change durable. The pre-existing close-during-
-    // debounce bug also affects every other field on this panel
-    // (model selector especially) and is tracked as D-CHAT-01.
-    if (!accessToken) return;
-    void chatApi
-      .patchSession(accessToken, session.session_id, { project_id: next })
-      .then((updated) => onSessionUpdate(updated))
-      .catch((err) => {
-        toast.error(`Save failed: ${(err as Error).message}`);
-      });
+    patchSession({ project_id: next });
   }
 
   // ── Group models by provider ──────────────────────────────────────────────
