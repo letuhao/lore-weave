@@ -10,7 +10,7 @@
 - Last Updated: 2026-04-14 (session 39 continuation — **K11.3 Cypher schema runner landed**, K11.1+K11.2+K11.3 = Neo4j wired end-to-end against live 2026.03)
 - Updated By: Assistant (K11.3 caps the Neo4j-infra slice. Schema file ships 6 unique constraints + 13 composite/single indexes + 5 vector indexes per KSA §3.4. K11.3-I1: existence constraints removed — Enterprise-only on community edition; user_id NOT NULL stays enforced by K11.4's `assert_user_id_param`. Neo4j image bumped 2025.10 → 2026.03 community after user pushback. 369/369 knowledge-service tests pass against live Neo4j; 12 new K11.3 tests (8 parser unit + 4 integration). Repo code must keep going through K11.4 — schema runner is the one documented exception.)
 - Active Branch: `main` (ahead of origin by session-38 + session-39 commits — user pushes manually)
-- HEAD: K11.3-R1 review-fix commit (this session, on top of K11.3)
+- HEAD: K11.5a entities-repo commit (this session, on top of K11.3-R1)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -117,6 +117,38 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K11.5a — Entities repository (Neo4j) — core CRUD slice ✅ (session 39 continuation, Track 2)
+
+**Goal:** first consumer of the K11.3 schema + K11.4 query helpers. Ships the half of K11.5 that K11.6/K11.7 actually depend on (idempotent merge + lookup + soft-archive + cascade-delete) so those repos can land independently. Vector search, anchor-score recompute, and gap-candidate queries are deferred to K11.5b.
+
+**Files:**
+- [services/knowledge-service/app/db/neo4j_repos/__init__.py](services/knowledge-service/app/db/neo4j_repos/__init__.py) — NEW package; docstring documents that every Cypher in this layer goes through K11.4's `run_read`/`run_write`.
+- [services/knowledge-service/app/db/neo4j_repos/canonical.py](services/knowledge-service/app/db/neo4j_repos/canonical.py) — NEW: `canonicalize_entity_name`, `entity_canonical_id` (KSA §5.0), `HONORIFICS` list. Pure functions, zero I/O.
+- [services/knowledge-service/app/db/neo4j_repos/entities.py](services/knowledge-service/app/db/neo4j_repos/entities.py) — NEW: Pydantic `Entity` model + 7 repo functions (`merge_entity`, `upsert_glossary_anchor`, `get_entity`, `find_entities_by_name`, `archive_entity`, `restore_entity`, `delete_entities_with_zero_evidence`). Every Cypher routes through `run_read`/`run_write`.
+- [services/knowledge-service/tests/unit/test_canonical.py](services/knowledge-service/tests/unit/test_canonical.py) — NEW: 32 unit tests for the canonical helpers (KSA §5.0 example table + multi-tenant scoping + edge cases).
+- [services/knowledge-service/tests/integration/db/test_entities_repo.py](services/knowledge-service/tests/integration/db/test_entities_repo.py) — NEW: 19 integration tests against live Neo4j 2026.03.1.
+- [services/knowledge-service/tests/integration/db/conftest.py](services/knowledge-service/tests/integration/db/conftest.py) — added shared `neo4j_driver` fixture (function-scoped, applies K11.3 schema lazily, skips when `TEST_NEO4J_URI` unset). K11.5b/K11.6/K11.7 will reuse it.
+
+**Acceptance criteria (per K11.5 plan, K11.5a half):**
+- ✅ `merge_entity` is idempotent — re-running with same `(user_id, project_id, name, kind)` returns the same `id` and creates no duplicate node (verified via `count(e)`).
+- ✅ Honorific-stacked names canonicalize to one node — `"Master Kai"`, `"kai"`, `"KAI"` all collapse to the same node, accumulating each spelling in `aliases` and each `source_type`.
+- ✅ `confidence` takes the max across writes (LLM `0.9` survives a later pattern `0.1`).
+- ✅ `upsert_glossary_anchor` is idempotent + sets `anchor_score=1.0` + can promote an already-discovered entity to anchor without creating a duplicate.
+- ✅ `archive_entity` preserves the node, its outgoing `RELATES_TO` edge, and the target node — verified by traversal after archive (no cascade).
+- ✅ `find_entities_by_name` matches via canonicalized form OR alias spelling; ranks anchored above discovered.
+- ✅ `find_entities_by_name` excludes archived by default; `include_archived=True` opts in.
+- ✅ Cross-user safety: `get_entity` returns `None` when called with a different user's `canonical_id`; `delete_entities_with_zero_evidence` only touches the calling user's nodes.
+
+**Bug found during self-test — frozenset hash randomization (K11.5a-I1).** First run of the canonical tests revealed that `HONORIFICS` was a `frozenset`, whose iteration order is hash-randomized between Python interpreter restarts. This means stacked-honorific stripping (e.g., `"Master Lord Kai"`) could produce different canonical_ids on different process boots — the entire canonical_id contract was non-deterministic. Fixed by switching to a `tuple` sorted longest-first, plus a regression test that asserts the type and ordering. Without this fix, the K11.6/K11.7 idempotency guarantee would have broken the moment a second worker process started.
+
+**Bug found during self-test — neo4j.time.DateTime not Pydantic-compatible (K11.5a-I2).** Pydantic v2 only validates stdlib `datetime.datetime`, but the bolt driver hands back its own `neo4j.time.DateTime` class. Fixed in `_node_to_entity` by converting via `val.to_native()` for `created_at`/`updated_at`/`archived_at` before model validation.
+
+**Known limitation (deferred to K11.5b):** `upsert_glossary_anchor` cannot rename across canonical boundaries. If a glossary edit changes the entity name such that `canonicalize_entity_name(new) != canonicalize_entity_name(old)`, the next upsert creates a NEW node instead of renaming the existing one (because the canonical_id is derived from name+kind). K11.5b's `link_to_glossary` will own the rename path: lookup by `glossary_entity_id`, update name in place.
+
+**Test results:** 51 new tests, all green (32 canonical unit + 19 entities integration). Full knowledge-service suite: **423 passed, 93 skipped** against live Neo4j 2026.03.1 (was 372; +51 new). Zero regressions.
+
+**What K11.5a unblocks:** K11.5b (vector search + anchor recompute + linking), K11.6 (relations repo — needs `merge_entity` to create both endpoints), K11.7 (events + facts repo — needs `merge_entity` for entity references in event participants). K15 (pattern extractor) and K17 (LLM extractor) can also start writing entities directly through this surface.
 
 ### K11.3 — Neo4j Cypher schema runner + Neo4j 2026.03 bump ✅ (session 39 continuation, Track 2)
 
