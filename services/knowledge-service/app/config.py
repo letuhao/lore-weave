@@ -33,5 +33,18 @@ class Settings(BaseSettings):
     context_l1_timeout_s: float = 0.1
     context_glossary_timeout_s: float = 0.2
 
+    # K11.2 — Neo4j connection (Track 2 extraction graph). Empty
+    # `neo4j_uri` means "skip Neo4j init at startup" — Track 1 dev
+    # keeps working without Neo4j running. Set to e.g.
+    # bolt://neo4j:7687 to enable. When set, the lifespan hook
+    # fail-fasts on unreachable Neo4j (per the K11.2 spec).
+    neo4j_uri: str = ""
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "loreweave_dev_neo4j"
+    # Driver-level connection acquisition timeout. Short on
+    # purpose so a misconfigured URI fails the startup check
+    # within ~5s rather than hanging the container.
+    neo4j_connection_timeout_s: float = 5.0
+
 
 settings = Settings()

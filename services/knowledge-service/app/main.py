@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from app.clients.glossary_client import close_glossary_client, init_glossary_client
 from app.config import settings
 from app.db.migrate import run_migrations
+from app.db.neo4j import close_neo4j_driver, init_neo4j_driver
 from app.db.pool import close_pools, create_pools, get_knowledge_pool
 from app.logging_config import setup_logging, trace_id_var
 from app.middleware.trace_id import TraceIdMiddleware
@@ -27,11 +28,15 @@ async def lifespan(app: FastAPI):
     await run_migrations(get_knowledge_pool())
     # Long-lived httpx client for glossary-service calls (K4b).
     init_glossary_client()
+    # K11.2 — Neo4j driver. No-op in Track 1 mode (NEO4J_URI empty);
+    # fail-fast on unreachable Neo4j when configured.
+    await init_neo4j_driver()
     logger.info("knowledge-service started on port %d", settings.port)
     try:
         yield
     finally:
         await close_glossary_client()
+        await close_neo4j_driver()
         await close_pools()
         logger.info("knowledge-service stopped")
 
