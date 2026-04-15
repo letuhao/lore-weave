@@ -184,9 +184,18 @@ async def test_k11_9_reconciles_event_drift(neo4j_driver, test_user):
         result = await reconcile_evidence_count(session, user_id=test_user)
         after = await _read_counter("Event")
 
+        # K11.9-R2/I2: verify the node's cached counter actually
+        # landed at 0. Returned count + metric delta alone would
+        # stay green even if the SET clause ever regressed.
+        row = await (await session.run(
+            "MATCH (e:Event {id: $id}) RETURN e.evidence_count AS c",
+            id=event.id,
+        )).single()
+
     assert result.events_fixed == 1
     assert result.entities_fixed == 0
     assert after - before == 1
+    assert row["c"] == 0
 
 
 @pytest.mark.asyncio
@@ -213,8 +222,15 @@ async def test_k11_9_reconciles_fact_drift(neo4j_driver, test_user):
         result = await reconcile_evidence_count(session, user_id=test_user)
         after = await _read_counter("Fact")
 
+        # K11.9-R2/I2: same as Event — read back the node.
+        row = await (await session.run(
+            "MATCH (f:Fact {id: $id}) RETURN f.evidence_count AS c",
+            id=fact.id,
+        )).single()
+
     assert result.facts_fixed == 1
     assert after - before == 1
+    assert row["c"] == 0
 
 
 # ── under-count drift (edges exist, counter lags) ─────────────────────

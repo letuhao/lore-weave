@@ -147,8 +147,17 @@ async def _reconcile_label(
         project_id=project_id,
     )
     record = await result.single()
+    # K11.9-R2/I1: `RETURN count(*) AS fixed` always produces
+    # exactly one row, so `record is None` would indicate a driver
+    # or session anomaly — NOT a clean-run zero. A silent `return
+    # 0` here would hide the anomaly; raise instead. A reconciler
+    # whose whole purpose is to catch write-path bugs should fail
+    # loudly on its own impossible states.
     if record is None:
-        return 0
+        raise RuntimeError(
+            f"K11.9: reconcile_evidence_count returned no row for "
+            f"label={label!r} — driver or session anomaly"
+        )
     fixed = int(record["fixed"])
     if fixed > 0:
         evidence_count_drift_fixed_total.labels(node_label=label).inc(fixed)
@@ -177,10 +186,15 @@ async def reconcile_evidence_count(
 
     Returns:
         ReconcileResult with per-label fix counts. A clean run
-        returns all zeros. A non-zero total logs a WARNING because
-        drift in steady state means a write-path bug somewhere —
-        K11.8 `add_evidence` / `remove_evidence_for_source` are the
-        two functions to audit first.
+        returns all zeros. A non-zero total logs a WARNING so the
+        operator can correlate with recent activity. Known
+        legitimate drift sources (not bugs): partial-failure
+        windows in K11.8 `delete_source_cascade` (documented
+        non-atomic across three round-trips), bulk glossary-sync
+        imports that write EVIDENCED_BY via raw Cypher, and test
+        fixtures that bypass the repo layer. Persistent drift on
+        the happy path, however, points at a write-path bug —
+        audit `add_evidence` / `remove_evidence_for_source` first.
 
     Emits:
         `knowledge_evidence_count_drift_fixed_total{node_label}`
@@ -214,8 +228,8 @@ async def reconcile_evidence_count(
         logger.warning(
             "K11.9: reconcile_evidence_count fixed drift user=%s "
             "project=%s entities=%d events=%d facts=%d total=%d "
-            "— investigate the write path, this should be zero in "
-            "steady state",
+            "— correlate with recent activity; see docstring for "
+            "known legitimate drift sources vs. write-path bugs",
             user_id,
             project_id,
             entities_fixed,
