@@ -156,14 +156,21 @@ class _Accumulator:
     Keyed by a case-folded normalization of the surface form so
     'Kai' and 'kai' collapse into one row; the first-seen display
     form wins as the `name` field for debugging clarity.
+
+    `counted_spans` deduplicates `bump_count` calls across passes
+    by `(start, end)` character offset. Without this, a single
+    textual mention that's matched by multiple passes (e.g., a
+    glossary name AND the capitalized phrase regex) would inflate
+    the frequency counter. K15.2-R2/I1.
     """
 
-    __slots__ = ("display", "signals", "count")
+    __slots__ = ("display", "signals", "count", "counted_spans")
 
     def __init__(self, display: str) -> None:
         self.display: str = display
         self.signals: dict[str, float] = {}
         self.count: int = 0
+        self.counted_spans: set[tuple[int, int]] = set()
 
     def add_signal(self, name: str, weight: float) -> None:
         # Take the max if the same signal fires twice (e.g., two
@@ -173,7 +180,13 @@ class _Accumulator:
         if weight > prev:
             self.signals[name] = weight
 
-    def bump_count(self) -> None:
+    def bump_count_for_span(self, span: tuple[int, int]) -> None:
+        """Register a textual mention at `span`. Idempotent per
+        span — repeated calls with the same span are no-ops, so
+        multiple passes over the same mention only count once."""
+        if span in self.counted_spans:
+            return
+        self.counted_spans.add(span)
         self.count += 1
 
 
@@ -211,7 +224,11 @@ def extract_entity_candidates(
     if not text:
         return []
 
-    glossary_set: set[str] = {name for name in (glossary_names or ()) if name}
+    # K15.2-R2/I2: glossary iteration must be deterministic. A set
+    # would be hash-order iterated, and when two glossary candidates
+    # tie on confidence the tie-break falls to `insertion_order`,
+    # which would then vary across runs. Sort + dedupe via a list.
+    glossary_list: list[str] = sorted({n for n in (glossary_names or ()) if n})
     acc: dict[str, _Accumulator] = {}
     insertion_order: dict[str, int] = {}
 
@@ -235,7 +252,7 @@ def extract_entity_candidates(
     # match. Restricting the boundary to ASCII word chars means:
     #   - "Kai" inside "Kairos" → "r" is ASCII-word → rejected (good)
     #   - "凯" inside "凯笑了"   → "笑" is NOT ASCII-word → accepted
-    for gname in glossary_set:
+    for gname in glossary_list:
         pattern = re.compile(
             rf"(?<![A-Za-z0-9_]){re.escape(gname)}(?![A-Za-z0-9_])",
             re.IGNORECASE,
@@ -245,11 +262,19 @@ def extract_entity_candidates(
             if entry is None:
                 continue
             entry.add_signal("glossary", _WEIGHT_GLOSSARY)
-            entry.bump_count()
+            entry.bump_count_for_span(match.span())
 
     # Pass A2 — quoted names. Strip inner whitespace; reject if the
     # captured group is empty after strip or if it would collide
     # with a stopword.
+    #
+    # K15.2-R2/I1: bump count here using `bump_count_for_span` on
+    # the inner group's span. For Latin quoted names, the capitalized
+    # pass will also match the same text and try to bump — the span
+    # dedup set absorbs the duplicate. For CJK quoted names, the
+    # capitalized pass never matches, so this is the only place
+    # their mentions get counted — without this, CJK quoted names
+    # would always have count=0 regardless of mention frequency.
     for pattern in _QUOTED_NAME_RES:
         for match in pattern.finditer(text):
             quoted = match.group(1).strip()
@@ -259,9 +284,7 @@ def extract_entity_candidates(
             if entry is None:
                 continue
             entry.add_signal("quoted", _WEIGHT_QUOTED)
-            # Don't bump_count here — quoted occurrences are also
-            # matched by the capitalized pass when applicable, and
-            # double-counting a single mention skews frequency.
+            entry.bump_count_for_span(match.span(1))
 
     # Pass A3 — capitalized phrases + verb-adjacency scan.
     # We walk two regexes over the same text: `_CAPITALIZED_PHRASE_RE`
@@ -277,15 +300,12 @@ def extract_entity_candidates(
         entry = _get(phrase)
         if entry is None:
             continue
-        # K15.2-R1: only bump count if the glossary pass didn't
-        # already claim this candidate. Without the gate, every
-        # glossary-matched Latin-script name would register twice
-        # (once via Pass A1 glossary, again via Pass A3 capitalized)
-        # and collect a spurious +0.05 frequency bonus on a single
-        # textual mention. The capitalized *signal* still applies
-        # via add_signal's max-merge — only the counter changes.
-        if "glossary" not in entry.signals:
-            entry.bump_count()
+        # K15.2-R1 / R2-I1: `bump_count_for_span` is idempotent per
+        # (start, end), so a Latin-script name already counted by
+        # the glossary pass or quoted pass is silently ignored here.
+        # Replaces the R1 `"glossary" not in signals` gate, which
+        # handled glossary overlap but not quoted overlap.
+        entry.bump_count_for_span(match.span())
         entry.add_signal("capitalized", _WEIGHT_CAPITALIZED)
         if _fold(phrase) in verb_adjacent:
             entry.add_signal("verb_adjacent", _WEIGHT_VERB_ADJACENT)

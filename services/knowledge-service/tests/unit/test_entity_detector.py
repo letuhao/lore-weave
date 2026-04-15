@@ -268,6 +268,72 @@ def test_k15_2_acceptance_90_percent_coverage_on_fixture():
     )
 
 
+# ── R2 regressions ───────────────────────────────────────────────────
+
+
+def test_k15_2_r2_i1_cjk_quoted_name_accrues_frequency_bonus():
+    """K15.2-R2/I1: a CJK name quoted multiple times (no glossary,
+    no capitalized-pass coverage) must still accrue a frequency
+    bonus. Before the span-dedup rewrite, the quoted pass never
+    bumped `count`, leaving CJK-quoted names permanently at
+    count=0 regardless of mention frequency.
+    """
+    text = "\u300c凯\u300d跑了。\u300c凯\u300d停下。\u300c凯\u300d笑了。"
+    out = extract_entity_candidates(text)
+    assert len(out) == 1
+    kai = out[0]
+    assert kai.name == "凯"
+    assert "quoted" in kai.signals
+    assert "frequency" in kai.signals, (
+        f"CJK quoted name with 3 mentions should have frequency signal, "
+        f"got {kai.signals}"
+    )
+
+
+def test_k15_2_r2_i1_latin_quoted_and_capitalized_dedups_span():
+    """K15.2-R2/I1: when a Latin quoted name is ALSO captured by
+    the capitalized-phrase regex at the same span, the two passes
+    must not double-bump the counter. A single mention should
+    produce count=1, no frequency bonus.
+    """
+    text = 'Alice whispered "Shadow" once.'
+    # "Shadow" is matched by: (a) the quoted pass on the
+    # inner-group span, (b) the capitalized-phrase pass on the
+    # same characters. Both call bump_count_for_span with the
+    # same (start, end) → only one counter bump.
+    out = extract_entity_candidates(text)
+    shadow = next(c for c in out if c.name == "Shadow")
+    assert "quoted" in shadow.signals
+    assert "capitalized" in shadow.signals
+    assert "frequency" not in shadow.signals, (
+        f"single-mention Latin quoted+capitalized should not "
+        f"collect frequency bonus, got {shadow.signals}"
+    )
+
+
+def test_k15_2_r2_i2_output_deterministic_across_calls():
+    """K15.2-R2/I2: same input must produce identical output
+    across calls. Before the sorted glossary-list fix, set
+    iteration order was hash-randomized, so when two glossary
+    candidates tied on confidence their order would differ
+    across runs. Lock determinism in.
+    """
+    text = (
+        "Kai fought Drake at dawn. "
+        "Drake struck first. Kai blocked."
+    )
+    glossary = ["Kai", "Drake", "Phoenix", "Water Kingdom"]
+
+    out1 = extract_entity_candidates(text, glossary_names=glossary)
+    out2 = extract_entity_candidates(text, glossary_names=glossary)
+    out3 = extract_entity_candidates(text, glossary_names=list(reversed(glossary)))
+
+    # Same input → identical output
+    assert out1 == out2
+    # Order of glossary_names input must not affect output
+    assert out1 == out3
+
+
 # ── stopwords: the acceptance "ignores common nouns" ─────────────────
 
 
