@@ -1309,9 +1309,17 @@ events. Quarantined (not loaded into L2 until Pass 2 confirms).
 ### Tasks
 
 ```
-[ ] K15.1 Canonicalization function (§5.0)
+[✓] K15.1 Canonicalization function (§5.0)
+    Retcon note: implemented under K11.5 at
+      services/knowledge-service/app/db/neo4j_repos/canonical.py
+      (not the planned extraction/ path — repo layer is the right
+      home since every Neo4j write needs the canonical_id, not just
+      the extractor). Unit tests at tests/unit/test_canonical.py,
+      37 cases including CJK (Han, Hiragana, Katakana, Hangul) +
+      mixed-script honorific suffix. K15.2+ imports via
+      `from app.db.neo4j_repos.canonical import ...`.
     Files:
-      - services/knowledge-service/app/extraction/canonicalize.py (NEW)
+      - services/knowledge-service/app/db/neo4j_repos/canonical.py (shipped)
     Description:
       Per KSA §5.0:
         - canonicalize_entity_name(name) → normalized form

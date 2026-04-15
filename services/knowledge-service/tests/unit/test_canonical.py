@@ -41,6 +41,15 @@ from app.db.neo4j_repos.canonical import (
         # Punctuation stripped
         ("Kai!", "kai"),
         ("Kai, the Brave.", "kai the brave"),
+        # K15.1: CJK scripts preserved. Python's \w is Unicode-aware
+        # so Han/Hiragana/Katakana/Hangul pass through the punctuation
+        # strip unchanged. Case-folding is a no-op on these scripts.
+        ("凯", "凯"),
+        ("凯·英雄", "凯英雄"),  # middle dot stripped as punctuation
+        ("カイ", "カイ"),
+        ("카이", "카이"),
+        # Japanese honorific suffix on a CJK name still strips
+        ("カイ-sama", "カイ"),
     ],
 )
 def test_k11_5a_canonicalize_examples(raw: str, expected: str):
