@@ -204,6 +204,59 @@ async def test_k15_10_metric_incremented(neo4j_driver, test_user):
 
 
 @pytest.mark.asyncio
+async def test_k15_10_tenant_isolation(neo4j_driver):
+    """R2/I1: a tenant-scoped sweep must NOT touch another tenant's
+    aged quarantine facts, even when both are older than the TTL.
+    Guards against a one-character Cypher typo flipping the tenant
+    predicate (OR → AND, missing parens) into a global sweep."""
+    user_a = f"u-k15-10a-{uuid.uuid4().hex[:12]}"
+    user_b = f"u-k15-10b-{uuid.uuid4().hex[:12]}"
+    try:
+        async with neo4j_driver.session() as raw:
+            fact_a = await merge_fact(
+                raw, user_id=user_a, project_id="p-1",
+                type="negation", content="A pending",
+                confidence=0.5, pending_validation=True,
+                source_type="chapter",
+            )
+            fact_b = await merge_fact(
+                raw, user_id=user_b, project_id="p-1",
+                type="negation", content="B pending",
+                confidence=0.5, pending_validation=True,
+                source_type="chapter",
+            )
+        await _backdate_fact(
+            neo4j_driver, user_id=user_a, fact_id=fact_a.id, hours=30,
+        )
+        await _backdate_fact(
+            neo4j_driver, user_id=user_b, fact_id=fact_b.id, hours=30,
+        )
+
+        async with neo4j_driver.session() as raw:
+            invalidated = await run_quarantine_cleanup(
+                raw, user_id=user_a, ttl_hours=24,
+            )
+        assert invalidated == 1
+
+        async with neo4j_driver.session() as raw:
+            result = await raw.run(
+                "MATCH (f:Fact {id: $id}) RETURN f.valid_until AS vu",
+                id=fact_b.id,
+            )
+            record = await result.single()
+        assert record["vu"] is None, (
+            "tenant isolation broken: user_a sweep touched user_b"
+        )
+    finally:
+        async with neo4j_driver.session() as session:
+            for uid in (user_a, user_b):
+                await session.run(
+                    "MATCH (n) WHERE n.user_id = $user_id DETACH DELETE n",
+                    user_id=uid,
+                )
+
+
+@pytest.mark.asyncio
 async def test_k15_10_invalid_ttl_raises(neo4j_driver, test_user):
     async with neo4j_driver.session() as raw:
         with pytest.raises(ValueError):

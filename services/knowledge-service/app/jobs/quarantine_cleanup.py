@@ -36,6 +36,13 @@ Production callers should always scope to a tenant.
   - Respect project_id — the TTL is a tenant-wide policy, not
     per-project. If a per-project override becomes necessary it
     should live in K18 governance, not here.
+  - Clean facts that have `pending_validation=true` but a NULL
+    `updated_at`. Neo4j NULL comparison makes them unreachable by
+    the TTL predicate (NULL < x is NULL). This is a deliberate
+    fail-safe: facts without a timestamp came from a legacy/bulk
+    import path that skipped K11 stamping, and we'd rather leak
+    them into the Quarantine UI than risk sweeping something whose
+    age we cannot verify. Fix the writer, not this sweeper.
 
 Reference: KSA §5.1 quarantine model, K15.10 plan row in
 KNOWLEDGE_SERVICE_TRACK2_IMPLEMENTATION.md.
@@ -45,7 +52,7 @@ from __future__ import annotations
 
 import logging
 
-from app.db.neo4j_helpers import CypherSession, run_write
+from app.db.neo4j_helpers import CypherSession, assert_user_id_param
 from app.metrics import quarantine_auto_invalidated_total
 
 logger = logging.getLogger(__name__)
@@ -65,8 +72,7 @@ WHERE coalesce(f.pending_validation, false) = true
   AND f.valid_until IS NULL
   AND f.updated_at < datetime() - duration({hours: $ttl_hours})
   AND ($user_id IS NULL OR f.user_id = $user_id)
-SET f.valid_until = datetime(),
-    f.updated_at = datetime()
+SET f.valid_until = datetime()
 RETURN count(f) AS invalidated
 """
 
@@ -95,8 +101,13 @@ async def run_quarantine_cleanup(
     if ttl_hours <= 0:
         raise ValueError(f"ttl_hours must be > 0, got {ttl_hours}")
 
-    result = await run_write(
-        session,
+    # Bypass run_write because it types user_id as str; this is the
+    # one caller that legitimately passes None (admin global sweep).
+    # The $user_id reference safety check still applies — the Cypher
+    # above handles the NULL branch explicitly via
+    # `($user_id IS NULL OR f.user_id = $user_id)`.
+    assert_user_id_param(_CLEANUP_CYPHER)
+    result = await session.run(
         _CLEANUP_CYPHER,
         user_id=user_id,
         ttl_hours=ttl_hours,

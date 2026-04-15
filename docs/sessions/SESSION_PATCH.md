@@ -147,7 +147,13 @@
 - **R1/I3 (LOW, ACCEPTED)** — cleanup advances `updated_at` on the touched row, but `valid_until IS NOT NULL` filter keeps the sweep idempotent (verified by test).
 - **R1/I4 (LOW, ACCEPTED)** — metric is label-less. Adding a `user_id` label would explode cardinality for hundreds of tenants; the aggregate counter is sufficient for the "Pass 2 falling behind" alert.
 
-**Test results:** 6/6 K15.10 integration tests pass. K15 cluster overall: all K15.1..K15.10 green.
+**R2 critical review (same session):**
+- **R2/I1 (MEDIUM, FIXED) — missing cross-tenant isolation test.** All 6 R1 tests used a single tenant; a one-character typo in the `($user_id IS NULL OR f.user_id = $user_id)` predicate (e.g. `OR`→`AND`, dropped parens) would silently turn a tenant sweep into a global one. Added `test_k15_10_tenant_isolation`: two tenants, both with aged quarantine facts, sweep scoped to tenant A, assert tenant B's fact still has `valid_until IS NULL`.
+- **R2/I2 (LOW, FIXED) — `run_write` type contract violated.** `quarantine_cleanup` was the only repo caller passing `user_id=None` through `run_write`, whose signature declares `user_id: str`. Swapped to a direct `assert_user_id_param` + `session.run` call with a comment explaining why the tenant rail is deliberately bypassed for the admin global-sweep path. Other callers of `run_write` keep the strict `str` contract.
+- **R2/I3 (LOW, DOCUMENTED) — legacy facts with NULL `updated_at` are unreachable by the TTL predicate.** Neo4j's `NULL < datetime()` evaluates to NULL → filtered out, so any fact imported via a path that skipped K11 timestamp stamping will sit in quarantine forever. Deliberate fail-safe: sweeping a fact whose age cannot be verified is worse than leaking it into the Quarantine UI. Called out explicitly in the module docstring's "does NOT do" list so the next engineer doesn't waste an hour debugging it.
+- **R2/I4 (LOW, FIXED) — cleanup was writing `updated_at = datetime()` alongside `valid_until`, conflating "last content change" with "last state change".** Downstream diff-UI or activity-feed consumers that read `updated_at` would see phantom updates. Dropped the `updated_at` write; idempotency is already guaranteed by the `valid_until IS NULL` filter.
+
+**Test results:** 6 + 1 (R2/I1 regression) K15.10 tests — not executed this session because laptop infra can't run live-Neo4j integration tests. Changes are code-review-only; tests remain valid and will run in the next session with infra. K15 cluster overall: all K15.1..K15.10 implementation complete.
 
 **What K15.10 unblocks:** K19/K20 scheduler wiring can hook this job on an hourly cron alongside the K11.9 reconciler. K18 promotion flow gains a bounded quarantine lifetime — facts either get validated within 24h or auto-vanish from retrieval.
 
