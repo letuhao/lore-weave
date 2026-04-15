@@ -191,11 +191,21 @@ async def write_extraction(
         if not folded:
             continue
         kind = cand.kind_hint or _DEFAULT_ENTITY_KIND
+        # K15.8-R2/I1: sanitize the persisted name. K15.2's capitalized-
+        # phrase regex can capture attack phrases like "Ignore Previous
+        # Instructions" as entity candidates, and without this guard the
+        # raw phrase would land in `:Entity.name` where admin UIs, export
+        # dumps, Grafana snapshots, and any non-LLM consumer would see it
+        # un-neutralized. Folding still uses the raw name so downstream
+        # triples/negations resolve against the surface form the sentence
+        # actually contained. `neutralize_injection` is idempotent, so
+        # benign names pass through unchanged.
+        name_clean, _ = neutralize_injection(cand.name, project_id=project_id)
         entity = await merge_entity(
             session,
             user_id=user_id,
             project_id=project_id,
-            name=cand.name,
+            name=name_clean,
             kind=kind,
             source_type=source_type,
             confidence=cand.confidence,

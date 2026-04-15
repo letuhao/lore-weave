@@ -60,28 +60,6 @@ __all__ = [
 ]
 
 
-def _combine_messages(
-    user_message: str | None,
-    assistant_message: str | None,
-) -> str:
-    """Join the two turn halves with a blank line between them.
-
-    Either side may be None or empty — `"\\n\\n".join` on a list
-    that filters both out yields `""`, which the extractors treat
-    as "no text" and short-circuit. The blank line matters: K15.3
-    `split_by_language` uses sentence-end punctuation as a split
-    signal, and a missing separator between user and assistant
-    content would occasionally fuse the last user sentence with
-    the first assistant sentence into a single span.
-    """
-    parts = [
-        p.strip()
-        for p in (user_message, assistant_message)
-        if p and p.strip()
-    ]
-    return "\n\n".join(parts)
-
-
 async def extract_from_chat_turn(
     session: CypherSession,
     *,
@@ -106,7 +84,14 @@ async def extract_from_chat_turn(
             CLI re-extract invocations.
         source_id: natural key of the source (chat turn id).
         job_id: unique per extraction run. K15.7 uses this for
-            evidence-edge idempotency.
+            evidence-edge idempotency: `(target_id, source_id,
+            job_id)` is the dedupe key. Callers MUST pass a fresh
+            `job_id` per re-extraction wave — reusing it across
+            different turns is safe (different `source_id`s produce
+            different edges), but reusing it across re-runs of the
+            same turn is the intended no-op. See
+            `test_k15_8_same_job_id_different_sources_both_write`
+            for the contract.
         user_message: raw user turn text. May be None / empty.
         assistant_message: raw assistant turn text. May be None /
             empty.
@@ -120,20 +105,37 @@ async def extract_from_chat_turn(
         a result with all counters at 0 but a non-empty source_id
         (source node is still upserted).
     """
-    text = _combine_messages(user_message, assistant_message)
+    # K15.8-R2/I2: extract per-half, not on the combined corpus.
+    # Combining user + assistant into one text leaks cross-half
+    # anchoring — K15.4's nearest-neighbor subject/object resolver
+    # could pair a subject from the user's question with an object
+    # from the assistant's answer and fabricate a relation neither
+    # side actually stated. Running the extractors on each half
+    # independently keeps sentence neighborhoods within the half
+    # that uttered them. K15.7 dedupes entities across halves via
+    # its (folded_name, kind_hint) key so repeated entities collapse
+    # to one :Entity node with one evidence edge.
+    halves = [
+        part.strip()
+        for part in (user_message, assistant_message)
+        if part and part.strip()
+    ]
+    text = "\n\n".join(halves)
 
-    # Observability-only call: fires `injection_pattern_matched_total`
-    # at orchestrator level so dashboards can distinguish
-    # "injection seen in raw turn" from "injection seen in stored
-    # fact content". Sanitized output is discarded; extractors run
-    # on the raw text so their pattern regexes aren't confused by
-    # injected `[FICTIONAL] ` tokens.
+    # Observability-only call on the combined corpus: fires
+    # `injection_pattern_matched_total` at orchestrator level so
+    # dashboards see attack shapes at intake independently of
+    # whether a fact survives to K15.7's write path. The sanitized
+    # output is discarded — extractors run on raw halves so their
+    # pattern regexes aren't confused by injected `[FICTIONAL] `
+    # tokens. R2/I1 (K15.8) closes the entity-name persistence gap
+    # at write time.
     if text:
         neutralize_injection(text, project_id=project_id)
 
     glossary_list = list(glossary_names or ())
 
-    if not text:
+    if not halves:
         # Empty turn: still upsert the source so re-extract on the
         # same turn_id stays idempotent at K11.8 level.
         return await write_extraction(
@@ -146,11 +148,19 @@ async def extract_from_chat_turn(
             extraction_model=extraction_model,
         )
 
-    entities = extract_entity_candidates(
-        text, glossary_names=glossary_list
-    )
-    triples = extract_triples(text, glossary_names=glossary_list)
-    negations = extract_negations(text, glossary_names=glossary_list)
+    entities = []
+    triples = []
+    negations = []
+    for half in halves:
+        entities.extend(
+            extract_entity_candidates(half, glossary_names=glossary_list)
+        )
+        triples.extend(
+            extract_triples(half, glossary_names=glossary_list)
+        )
+        negations.extend(
+            extract_negations(half, glossary_names=glossary_list)
+        )
 
     return await write_extraction(
         session,

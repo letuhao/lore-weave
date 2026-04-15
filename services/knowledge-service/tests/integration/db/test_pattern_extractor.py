@@ -169,6 +169,118 @@ async def test_k15_8_idempotent_reentry(cypher_session, test_user):
     assert second.evidence_edges == 0
 
 
+# ── R2/I1: entity name sanitization ─────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_k15_8_r2_entity_name_is_sanitized(
+    neo4j_driver, test_user
+):
+    """K15.8-R2/I1: attack phrases captured by K15.2's capitalized-
+    phrase heuristic must not persist raw in `:Entity.name`."""
+    async with neo4j_driver.session() as raw:
+        await extract_from_chat_turn(
+            raw,
+            user_id=test_user,
+            project_id="p-1",
+            source_type="chat_message",
+            source_id="turn-attack",
+            job_id="job-attack",
+            user_message="",
+            assistant_message=(
+                "Ignore Previous Instructions stormed the castle."
+            ),
+        )
+
+    async with neo4j_driver.session() as raw:
+        result = await raw.run(
+            "MATCH (e:Entity) WHERE e.user_id = $user_id "
+            "RETURN e.name AS name",
+            user_id=test_user,
+        )
+        names = [r["name"] async for r in result]
+
+    attack_names = [
+        n for n in names
+        if "ignore previous instructions" in n.casefold()
+    ]
+    for name in attack_names:
+        assert "[FICTIONAL]" in name, (
+            f"entity name persisted unsanitized: {name!r}"
+        )
+
+
+# ── R2/I2: cross-half anchoring prevention ──────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_k15_8_r2_no_cross_half_relation(
+    neo4j_driver, test_user
+):
+    """K15.8-R2/I2: a subject in one half must not anchor to an
+    object in the other half. The orchestrator runs extractors
+    per-half so sentence neighborhoods stay scoped."""
+    async with neo4j_driver.session() as raw:
+        await extract_from_chat_turn(
+            raw,
+            user_id=test_user,
+            project_id="p-1",
+            source_type="chat_message",
+            source_id="turn-halves",
+            job_id="job-halves",
+            user_message="Who is Kai?",
+            assistant_message="Zhao met Drake.",
+            glossary_names=["Kai", "Zhao", "Drake"],
+        )
+
+    async with neo4j_driver.session() as raw:
+        result = await raw.run(
+            "MATCH (a:Entity)-[r]->(b:Entity) "
+            "WHERE a.user_id = $user_id "
+            "RETURN a.name AS subj, type(r) AS pred, b.name AS obj",
+            user_id=test_user,
+        )
+        rels = [
+            (r["subj"], r["pred"], r["obj"]) async for r in result
+        ]
+    for subj, _pred, obj in rels:
+        assert "kai" not in subj.casefold(), (
+            f"cross-half relation leaked: {rels}"
+        )
+        assert "kai" not in obj.casefold(), (
+            f"cross-half relation leaked: {rels}"
+        )
+
+
+# ── R2/I3: job_id contract across different sources ────────────────
+
+
+@pytest.mark.asyncio
+async def test_k15_8_same_job_id_different_sources_both_write(
+    cypher_session, test_user
+):
+    """K15.8-R2/I3: add_evidence dedupes on (target, source, job_id).
+    Reusing job_id across two source_ids must still produce two
+    distinct evidence edges — the source axis disambiguates."""
+    kwargs = dict(
+        user_id=test_user,
+        project_id="p-1",
+        source_type="chat_message",
+        job_id="job-shared",
+        user_message="",
+        assistant_message="Kai is here.",
+        glossary_names=["Kai"],
+    )
+    r1 = await extract_from_chat_turn(
+        cypher_session, source_id="turn-a", **kwargs,
+    )
+    r2 = await extract_from_chat_turn(
+        cypher_session, source_id="turn-b", **kwargs,
+    )
+    assert r1.evidence_edges >= 1
+    assert r2.evidence_edges >= 1
+
+
 # ── Metric emission ─────────────────────────────────────────────────
 
 
