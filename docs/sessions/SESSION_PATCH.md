@@ -7,11 +7,12 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-15 (session 39 continuation END — **Neo4j repo trilogy + provenance complete**; K11.1 → K11.8 all landed with second-pass review fixes against live Neo4j 2026.03.1)
-- Updated By: Assistant (one continuous session continuation that took Track 2's K11 cluster from "schema applied" to "every node + edge + provenance writer green against live Neo4j". 8 feature commits + 7 review-fix commits = 15 commits. Test count went from 369 → **554 passed, 93 skipped** across the knowledge-service suite. Every K11.x task got a feature commit immediately followed by an `*-R1` second-pass review-fix commit that tightened multi-tenant filters, plugged perf footguns, normalized empty-string vs NULL gotchas, and cleaned up at least one real safety bug per task. Plan doc K11.1 → K11.8 checkboxes flipped `[ ]` → `[✓]`. K11.4 was already done in session 38.)
-- Active Branch: `main` (ahead of origin by session-38 + session-39 commits — user pushes manually)
-- HEAD: K11.8-R1 review-fix commit + this docs(session) commit
-- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V15.md` (Track 2 K11 cluster closed)
+- Last Updated: 2026-04-15 (session 40 — **K11.9 offline reconciler COMPLETE** with R1 second-pass review fixes; closes K11 cluster)
+- Updated By: Assistant (session 40 shipped K11.9 end-to-end through the 9-phase workflow: offline reconciler for cached `evidence_count` drift on `:Entity|:Event|:Fact` nodes per KSA §3.6 + 101 §3.6. 2 commits — K11.9 feat + K11.9-R1 review fixes. R1 caught a defensive-paranoia gap around cross-user EVIDENCED_BY edges, demoted clean-run logging to debug, and decoupled a pure guard test from the neo4j_driver fixture. Test count: **547 passed** (10 new K11.9 + 1 R1 regression test). Full suite 547 passed, 93 skipped; zero K11 regressions.)
+- Active Branch: `main` (ahead of origin by session 38–40 commits — user pushes manually)
+- HEAD: K11.9-R1 review-fix commit (pending Phase 9)
+- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V16.md` (K11.9 added, K11 cluster fully closed)
+- **Previous Handoff:** `docs/sessions/SESSION_HANDOFF_V15.md` (K11.1 → K11.8)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -118,6 +119,38 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K11.9 — Evidence count drift reconciler ✅ (session 40, Track 2)
+
+**Goal:** offline safety net for the cached `evidence_count` property on `:Entity|:Event|:Fact` nodes. K11.8 is the runtime primitive that keeps the counter in sync with the actual `EVIDENCED_BY` edge count — K11.9 is the daily drift detector that catches the cases where it isn't: caller bypassing `add_evidence`, partial-operation cascade crashing between edge delete and counter decrement (K11.8 `delete_source_cascade` is intentionally non-atomic across its three round-trips), glossary sync via raw Cypher, test fixtures bypassing the repo layer, or a future bug in the write path. Per KSA §3.6 + 101 §3.6: "Should normally fix zero nodes; a non-zero result indicates a bug in the write path".
+
+**Files (all NEW):**
+- [app/jobs/__init__.py](services/knowledge-service/app/jobs/__init__.py) — new package for offline maintenance jobs.
+- [app/jobs/reconcile_evidence_count.py](services/knowledge-service/app/jobs/reconcile_evidence_count.py) — `ReconcileResult` Pydantic model, `RECONCILE_LABELS` closed enum, `reconcile_evidence_count(session, *, user_id, project_id=None)` public entry. Three per-label Cypher templates built at module load via closed-enum f-string dispatch (same pattern as K11.8 `add_evidence` — reviewers: do NOT pass user input through `_build_reconcile_cypher`).
+- [app/metrics.py](services/knowledge-service/app/metrics.py) — new `knowledge_evidence_count_drift_fixed_total{node_label}` Counter with all three labels pre-initialized via `.inc(0)` so the series is visible on first scrape.
+- [tests/integration/db/test_reconcile_evidence_count.py](services/knowledge-service/tests/integration/db/test_reconcile_evidence_count.py) — 11 tests: clean run on bare entity, clean run with real evidence written via `add_evidence`, entity/event/fact over-count drift correction, under-count drift (edge exists but counter lags), multi-tenant isolation (drift in two users, reconcile only one), project_id scope narrowing, closed-enum guard, empty-user-id ValueError (no live Neo4j needed), and the K11.9-R1/R1 cross-user-edge defensive test.
+
+**Design decisions:**
+- **Per-label queries, not `(n:Entity OR n:Event OR n:Fact)`.** The OR-across-labels form defeats Neo4j's label-scoped index and degenerates into a full graph scan (V15 §9 lesson — same reason K11.6 split `find_entities_by_name` into a `CALL { … UNION … }` subquery). Three queries, each hits `<label>_user_*` composite index.
+- **`project_id` optional from day one.** Every K11.x R1 round found a project_id gap in find/list helpers; K11.9 ships with the filter from commit 1 per V15 §9 "Don'ts".
+- **`OPTIONAL MATCH` + `count(r)` returns 0 for edge-less nodes** because Neo4j's `count()` skips nulls (standard Cypher). Means a node with cached=0 and actual=0 is skipped by the `cached <> actual_count` WHERE — no wasted writes.
+- **`coalesce(n.evidence_count, 0)`** normalizes legacy nodes that pre-date the counter field or had the property deleted.
+- **`SET n.updated_at = datetime()` on fix** so downstream caches (L0/L1 context builder, read paths) invalidate when the reconciler touches a node.
+- **Metric is a Counter, not a Gauge.** "Drift fixed across runs" is monotonic; a dashboard can compute "drift fixed in last N hours" via `rate()`. A Gauge would only show the last run's value.
+- **WARNING-level log on drift > 0, DEBUG on clean.** R1/R2 demoted the clean-run path to debug because a daily job across many users would flood logs at INFO.
+- **`mention_count` intentionally NOT reconciled.** It's a monotonic "times observed" counter for anchor-score recompute, not a live edge count (K11.8 docstring).
+- **Orphan `:ExtractionSource` cleanup is NOT in K11.9 scope.** K11.8-R1/R2 left that as a documented gap under `delete_source_cascade` non-atomicity; fixing it requires explicit transaction wrapping which is a separate task. This reconciler fixes counters only.
+
+**K11.9-R1 second-pass review fixes (3 issues):**
+- **R1 (defensive, HIGH)** — the original `OPTIONAL MATCH (n)-[r:EVIDENCED_BY]->()` counted every outgoing EVIDENCED_BY edge without filtering the target's `user_id`. K11.8 `add_evidence` only creates matched-user edges, so in steady state this is a no-op — but the reconciler exists to catch write-path bugs, and a cross-user edge is exactly the kind of bug we should not count toward the user's drift. A reconciler that ignored user_id on the other endpoint would "correct" user A's counter up to match a rogue cross-user edge, masking real drift. Fix: `->(src:ExtractionSource) WHERE src.user_id = $user_id`. Added regression test `test_k11_9_r1_ignores_cross_user_evidenced_by` that creates exactly this condition.
+- **R2 (noise, MEDIUM)** — clean-run `logger.info` fires per user on every run. For a daily job across many users this floods. Demoted to `logger.debug`; the orchestrator that calls this can log the aggregate at INFO.
+- **R3 (test coupling, LOW)** — `test_k11_9_empty_user_id_rejected` was decorated with the `neo4j_driver` fixture but never touched the driver — the `ValueError` fires in the pure guard before any session call. Rewrote the test to use a throwaway `_ShouldNeverRun` stub so it stays green when `TEST_NEO4J_URI` is unset.
+
+**Test results:** 11/11 K11.9 tests pass in ~2.2s against live Neo4j 2026.03.1. Full knowledge-service suite: **547 passed, 93 skipped** (baseline was 554 − 17 env-broken truststore tests + 10 new K11.9 tests). Zero K11 regressions. The 3 failures + 14 errors elsewhere are the pre-existing `personal_kas.cer` SSL-path truststore issue documented in the Won't-fix list — unrelated to K11.9.
+
+**What K11.9 unblocks:** the K11 cluster is now fully closed. K15 (pattern extractor) and K17 (LLM extractor) can start writing against the full K11 surface knowing the offline reconciler will catch any counter drift their write paths introduce. K19/K20 cleanup-scheduler work can schedule `reconcile_evidence_count` daily at low traffic per KSA §3.6.
+
+---
 
 ### K11.8 — Provenance repository (`ExtractionSource` + `EVIDENCED_BY`) ✅ (session 39 continuation, Track 2)
 

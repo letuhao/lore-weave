@@ -19,6 +19,7 @@ __all__ = [
     "cache_miss_total",
     "circuit_open",
     "context_build_duration_seconds",
+    "evidence_count_drift_fixed_total",
 ]
 
 registry = CollectorRegistry()
@@ -61,3 +62,18 @@ context_build_duration_seconds = Histogram(
     ["mode"],
     registry=registry,
 )
+
+# K11.9 offline reconciler. Monotonic counter: increments by the number
+# of nodes whose cached evidence_count was corrected on each run. Non-
+# zero means a write-path somewhere missed an increment/decrement and
+# should be investigated — the reconciler fixes the symptom, not the
+# cause.
+evidence_count_drift_fixed_total = Counter(
+    "knowledge_evidence_count_drift_fixed_total",
+    "Nodes where the K11.9 reconciler corrected drift between cached "
+    "evidence_count and actual EVIDENCED_BY edge count",
+    ["node_label"],
+    registry=registry,
+)
+for _label in ("Entity", "Event", "Fact"):
+    evidence_count_drift_fixed_total.labels(node_label=_label).inc(0)

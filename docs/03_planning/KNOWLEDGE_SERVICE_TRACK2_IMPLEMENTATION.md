@@ -687,7 +687,7 @@ do it as part of K11.
 ```
 
 ```
-[ ] K11.9 Evidence count reconciler (weekly job)
+[✓] K11.9 Evidence count reconciler (weekly job)
     Files:
       - services/knowledge-service/app/jobs/reconcile_evidence_count.py (NEW)
     Description:
