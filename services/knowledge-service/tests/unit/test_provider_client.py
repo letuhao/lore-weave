@@ -627,6 +627,128 @@ async def test_metrics_counter_fires_on_invalid_request_without_histogram():
 # ── Lifecycle ─────────────────────────────────────────────────────────
 
 
+# ── K17.2b-R3 regressions ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_happy_path_without_usage_field():
+    # K17.2b-R3 D9: some providers (notably older Ollama builds) omit
+    # the `usage` object entirely. The client must still return a
+    # valid ChatCompletionResponse with default-zero usage, not raise.
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = _ok_body("hello")
+        body.pop("usage", None)  # explicitly drop usage
+        return httpx.Response(200, json=body)
+
+    client = _make_client(handler)
+    try:
+        result = await client.chat_completion(
+            user_id="u-1",
+            model_source="user_model",
+            model_ref="11111111-1111-1111-1111-111111111111",
+            messages=_messages(),
+        )
+    finally:
+        await client.aclose()
+
+    assert result.content == "hello"
+    assert result.usage.prompt_tokens == 0
+    assert result.usage.completion_tokens == 0
+    assert result.usage.total_tokens == 0
+
+
+@pytest.mark.asyncio
+async def test_rate_limited_captures_retry_after_header():
+    # K17.2b-R3 D8: ProviderRateLimited carries Retry-After so K17.3
+    # can honor upstream backoff hints.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            429,
+            headers={"Retry-After": "42"},
+            json={"error": {"message": "slow down"}},
+        )
+
+    client = _make_client(handler)
+    try:
+        with pytest.raises(ProviderRateLimited) as excinfo:
+            await client.chat_completion(
+                user_id="u-1",
+                model_source="user_model",
+                model_ref="11111111-1111-1111-1111-111111111111",
+                messages=_messages(),
+            )
+    finally:
+        await client.aclose()
+
+    assert excinfo.value.retry_after_s == 42.0
+
+
+@pytest.mark.asyncio
+async def test_rate_limited_without_retry_after_is_none():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, json={"error": {"message": "slow down"}})
+
+    client = _make_client(handler)
+    try:
+        with pytest.raises(ProviderRateLimited) as excinfo:
+            await client.chat_completion(
+                user_id="u-1",
+                model_source="user_model",
+                model_ref="11111111-1111-1111-1111-111111111111",
+                messages=_messages(),
+            )
+    finally:
+        await client.aclose()
+    assert excinfo.value.retry_after_s is None
+
+
+@pytest.mark.asyncio
+async def test_rate_limited_with_unparseable_retry_after_is_none():
+    # HTTP-date form (RFC 7231) is intentionally not parsed — we
+    # fall back to None so K17.3 uses exponential backoff.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            429,
+            headers={"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"},
+            json={"error": {"message": "slow down"}},
+        )
+
+    client = _make_client(handler)
+    try:
+        with pytest.raises(ProviderRateLimited) as excinfo:
+            await client.chat_completion(
+                user_id="u-1",
+                model_source="user_model",
+                model_ref="11111111-1111-1111-1111-111111111111",
+                messages=_messages(),
+            )
+    finally:
+        await client.aclose()
+    assert excinfo.value.retry_after_s is None
+
+
+def test_invalid_base_url_raises_at_construction():
+    # K17.2b-R3 D12: the module docstring promises startup fail-fast
+    # on a misconfigured base URL. ProviderClient.__init__ must
+    # actually parse the URL and raise rather than silently build
+    # a client that errors on the first call.
+    with pytest.raises(httpx.InvalidURL):
+        ProviderClient(
+            base_url="not-a-valid-url",
+            internal_token="tok",
+            timeout_s=5.0,
+        )
+
+
+def test_empty_base_url_raises_at_construction():
+    with pytest.raises(httpx.InvalidURL):
+        ProviderClient(
+            base_url="",
+            internal_token="tok",
+            timeout_s=5.0,
+        )
+
+
 @pytest.mark.asyncio
 async def test_aclose_is_idempotent():
     def handler(request: httpx.Request) -> httpx.Response:

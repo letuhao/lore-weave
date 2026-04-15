@@ -47,7 +47,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
@@ -58,6 +58,12 @@ from app.metrics import (
     provider_chat_completion_duration_seconds,
     provider_chat_completion_total,
 )
+
+# K17.2b-R3 D1 — derive the runtime tuple from the Literal so a future
+# edit that adds a new source to the Literal automatically updates
+# local validation. Same pattern as K17.1-R2 ALLOWED_PROMPT_NAMES.
+ModelSource = Literal["user_model", "platform_model"]
+_VALID_MODEL_SOURCES: tuple[str, ...] = tuple(get_args(ModelSource))
 
 __all__ = [
     "ProviderClient",
@@ -117,7 +123,26 @@ class ProviderAuthError(ProviderError):
 
 
 class ProviderRateLimited(ProviderError):
-    """429 — retry with backoff."""
+    """429 — retry with backoff.
+
+    `retry_after_s` (K17.2b-R3 D8) is the upstream provider's
+    requested backoff in seconds, parsed from the `Retry-After`
+    response header. It is `None` when the header is absent or
+    unparseable. K17.3 retry logic should prefer this value over
+    its own exponential backoff when present — honoring upstream
+    hints avoids pathological retry storms and banned keys.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        trace_id: str | None = None,
+        status_code: int | None = None,
+        retry_after_s: float | None = None,
+    ) -> None:
+        super().__init__(message, trace_id=trace_id, status_code=status_code)
+        self.retry_after_s = retry_after_s
 
 
 class ProviderUpstreamError(ProviderError):
@@ -166,8 +191,6 @@ class ChatCompletionResponse(BaseModel):
 
 # ── Client ────────────────────────────────────────────────────────────
 
-_VALID_MODEL_SOURCES = ("user_model", "platform_model")
-
 
 class ProviderClient:
     """Thin async wrapper around httpx.AsyncClient for the BYOK proxy.
@@ -179,12 +202,23 @@ class ProviderClient:
 
     def __init__(
         self,
+        *,
         base_url: str,
         internal_token: str,
         timeout_s: float,
-        *,
         transport: httpx.AsyncBaseTransport | None = None,  # test hook only
     ) -> None:
+        # K17.2b-R3 D12 — parse the base URL at construction time so
+        # a misconfigured setting fails fast in the startup lifespan
+        # hook (per the module docstring promise) rather than silently
+        # constructing a client that errors on the first extraction
+        # call. `httpx.URL` raises `httpx.InvalidURL` on garbage input.
+        parsed = httpx.URL(base_url)
+        if not parsed.scheme or not parsed.host:
+            raise httpx.InvalidURL(
+                f"provider_registry_internal_url missing scheme or host: {base_url!r}"
+            )
+
         self._base_url = base_url.rstrip("/")
         # Separate connect and overall budgets: 5s to establish the
         # TCP+TLS handshake (fails fast when provider-registry is
@@ -318,10 +352,25 @@ class ProviderClient:
                 )
             if status == 429:
                 outcome = "rate_limited"
+                # K17.2b-R3 D8: honor upstream Retry-After when
+                # present. Only the "delta-seconds" form is parsed;
+                # HTTP-date form (RFC 7231) is rarer in LLM providers
+                # and is intentionally ignored — K17.3 will fall back
+                # to exponential backoff when retry_after_s is None.
+                retry_after_s: float | None = None
+                retry_after_raw = resp.headers.get("Retry-After")
+                if retry_after_raw:
+                    try:
+                        retry_after_s = float(retry_after_raw.strip())
+                        if retry_after_s < 0:
+                            retry_after_s = None
+                    except ValueError:
+                        retry_after_s = None
                 raise ProviderRateLimited(
                     "provider rate limited",
                     trace_id=trace_id,
                     status_code=status,
+                    retry_after_s=retry_after_s,
                 )
             if status == 413:
                 # K17.2a-R3 (C12): provider-registry enforces a 4 MiB
@@ -428,11 +477,37 @@ class ProviderClient:
             # the HTTP attempt actually started — invalid_request fails
             # before the timer so observing a zero would be misleading.
             provider_chat_completion_total.labels(outcome=outcome).inc()
+            elapsed: float | None = None
             if started:
                 elapsed = time.perf_counter() - start
                 provider_chat_completion_duration_seconds.labels(
                     outcome=outcome
                 ).observe(elapsed)
+
+            # K17.2b-R3 D7 — structured log so ops can correlate a
+            # failing extraction back to trace_id + outcome + model_ref
+            # without having to cross-reference metrics and exception
+            # text. WARNING on failure (grep-friendly), DEBUG on
+            # success (verbose only when explicitly enabled).
+            if outcome == "ok":
+                logger.debug(
+                    "provider_chat_completion outcome=ok "
+                    "model_source=%s model_ref=%s elapsed_s=%.3f trace_id=%s",
+                    model_source,
+                    model_ref,
+                    elapsed if elapsed is not None else -1.0,
+                    trace_id or "",
+                )
+            else:
+                logger.warning(
+                    "provider_chat_completion outcome=%s "
+                    "model_source=%s model_ref=%s elapsed_s=%s trace_id=%s",
+                    outcome,
+                    model_source,
+                    model_ref,
+                    f"{elapsed:.3f}" if elapsed is not None else "n/a",
+                    trace_id or "",
+                )
 
 
 # ── Module-level singleton ────────────────────────────────────────────

@@ -10,7 +10,7 @@
 - Last Updated: 2026-04-15 (session 42 — K17.2 BYOK LLM proxy shipped, K17.2a + K17.2b pair with R1/R2 reviews; test debt from session 41 paid in full)
 - Updated By: Assistant (session 42 — infra-capable PC, Docker Compose stack up including Neo4j + Postgres; full knowledge-service suite at 930 passing; K17.2 ready to unblock K17.3–K17.8 LLM extractors.)
 - Active Branch: `main` (ahead of origin by session 38–42 commits — user pushes manually)
-- HEAD: K17.2a-R3 + K17.2c integration tests (pending commit)
+- HEAD: K17.2b-R3 + K17.2c-R1 follow-up reviews (pending commit)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -34,6 +34,8 @@
 | D-K17.2a-01 | K17.2a-R3 review C4 | **provider-registry has zero Prometheus metrics.** The proxy rewrite path (K17.2a) has no counter on outcome (ok / invalid_json / too_large / empty_model / missing_credential / decrypt_failed), so a sudden wave of rejections would be invisible until someone reads the logs. Adding metrics requires pulling in `github.com/prometheus/client_golang`, a `Collector` + `/metrics` route, and a middleware to count by route — a material infra expansion that doesn't fit K17.2a's "S" scope. The other Go services in the monorepo (glossary, book, etc.) have the same gap, so this is more fairly framed as an ops cross-cutting task. | K19/K20 ops cleanup |
 | D-PROXY-01 | K17.2a-R3 review C10 (origin pre-existing) | **The empty-credential guard was added to `doProxy` but the same condition can still bite other endpoints** (e.g. K17.2a-R3 fixed the proxy path, but `verifyModelsEndpoint`, `verifySTT`, `verifyTTS`, etc. all SELECT `COALESCE(pc.secret_ciphertext,'')` and don't guard against the empty case). None currently crash — they all hit upstream 401 — but each surfaces a cryptic error instead of a clear one. Sweep for other sites and apply the same pattern. | Next provider-registry cleanup |
 | D-K17.2a-02 | K17.2a-R3 review C12 (cleared in the same commit) | **413 classification landed in the same R3 commit** — this row is documentation of the original issue and the clearing. ProviderClient now maps 413 to `ProviderUpstreamError("... body too large (PROXY_BODY_TOO_LARGE, 4 MiB cap)")` so extraction job failures are greppable. Kept here as a pointer rather than deleted outright so the pre-fix state is discoverable from the patch history. | — (cleared) |
+| D-K17.2c-01 | K17.2c-R1 review T22 | **K17.2c tests bypass the chi router and `requireInternalToken` middleware.** All K17.2c tests call `srv.doProxy(...)` directly, skipping the actual HTTP routing layer and the `internalProxy` wrapper that validates the `X-Internal-Token` header + query params (`user_id`, `model_source`, `model_ref`). Full-router coverage would require mounting the chi router and calling `srv.Router().ServeHTTP(...)` — doable but ~20 LOC per test for coverage that's 80% already tested in `TestInvokeModelValidationAndUnauthorized`. The doProxy internals are the risky part and are now fully covered; router-layer plumbing is stable. | Next proxy hardening pass |
+| D-K17.2b-01 | K17.2b-R3 review D3 | **`ProviderClient` returns `ProviderDecodeError` for tool_calls-shaped responses** where `message.content` is `null` but `message.tool_calls` is a non-empty array. Fine for K17.4–K17.7 which use `response_format={"type": "json_object"}` text-only. A future tool-based extractor would need a new `chat_completion_with_tools()` method (or a union return type) — flagged so we don't accidentally re-test the same edge case in every new extractor. | K17.8+ or first tool-based extractor |
 
 ### Track 2 planning (document only, no Track 1 action)
 
@@ -125,6 +127,63 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K17.2b-R3 + K17.2c-R1 — follow-up reviews of session-42 K17.2 siblings ✅ (session 42, Track 2)
+
+**Goal:** after K17.2a-R3 landed (commit `b8b8972`), apply the same third-pass review discipline to K17.2b (Python ProviderClient, had Phase 3 R1 + Phase 6 R2 but no third pass) and K17.2c (the integration-test file that was born inside the K17.2a-R3 commit and had zero review). The review discipline is mandatory after every BUILD, and K17.2c had skipped Phase 3/6 entirely as a side effect of being a follow-up task.
+
+---
+
+**K17.2c-R1 (first review ever, critical full pass):**
+
+25 issue candidates (T1–T25). Tally: 3 must-fix HIGH gaps (T18, T19, T23), 1 comment-only MEDIUM (T14), 1 deferred HIGH (T22), 6 verified as non-bugs, rest accepted/cosmetic.
+
+**Issues fixed (4):**
+- **T14** — Race-safety comment added at the top of the test file. The captured-variable reads (`capturedBody`, `capturedPath`, etc.) are safe because `srv.doProxy` calls `srv.invokeClient.Do(...)` which blocks synchronously until the upstream handler has returned; the `net/http` client's internal sync primitives provide the happens-before edge. Un-machine-verifiable in this environment because `go test -race` needs cgo which is unavailable on the Windows build. Comment documents the reasoning so a future maintainer doesn't "fix" it by adding an unnecessary mutex.
+- **T18** — `TestDoProxyInvalidModelSourceRejected` — exercises the `else: PROXY_VALIDATION_ERROR` branch at [server.go:287](services/provider-registry-service/internal/api/server.go#L287) for a garbage `model_source`. No seed needed.
+- **T19** — `TestDoProxyPlatformModelBypassesC10Guard` — covers the `platform_model` code path (different SELECT from platform_models table) and verifies the K17.2a-R3 C10 empty-credential guard is correctly scoped to `user_model` only. Platform models with empty ciphertext must still reach the upstream call step.
+- **T23** — `TestDoProxyDecryptFailedOnCorruptCiphertext` — seeds a credential with a bogus base64 string and asserts 500 `PROXY_DECRYPT_FAILED` without contacting the upstream.
+
+**Issue deferred (1 new row D-K17.2c-01):** T22 — tests call `doProxy` directly, bypassing the chi router + `requireInternalToken` middleware + `internalProxy` query-param wrapper. Full-router coverage is possible but scope-expansive; deferred to next proxy hardening pass.
+
+**K17.2c files:**
+- [services/provider-registry-service/internal/api/proxy_integration_test.go](services/provider-registry-service/internal/api/proxy_integration_test.go) — three new tests + race-safety comment block.
+
+**Test count:** K17.2c integration suite **7 → 10** tests. Full provider-registry `go test ./...` green.
+
+---
+
+**K17.2b-R3 (third pass, focused):**
+
+14 issue candidates (D1–D14). Tally: 5 must-fix (D1, D7, D8, D9, D12, D14), 3 verified as non-bugs, 1 deferred HIGH (D3), rest accepted/cosmetic.
+
+**Issues fixed (6):**
+- **D1 (consistency)** — `_VALID_MODEL_SOURCES` tuple now derived from the `ModelSource = Literal[...]` via `get_args(ModelSource)`. Single source of truth. Same pattern as K17.1-R2 `ALLOWED_PROMPT_NAMES`.
+- **D7 (HIGH — ops gap)** — Zero logging was a real ops blindspot. Added a structured log line at the tail of the `finally` block: WARNING on failure, DEBUG on success, carrying `outcome`, `model_source`, `model_ref`, `elapsed_s`, `trace_id`. Grep-friendly on failure and doesn't drown info logs on success.
+- **D8 (HIGH — retry budget)** — `ProviderRateLimited` now carries `retry_after_s: float | None`, parsed from the `Retry-After` response header. K17.3 retry logic will prefer this value over its own exponential backoff when present, honoring upstream hints to avoid pathological retry storms. Only delta-seconds form is parsed; HTTP-date form falls back to `None`.
+- **D9 (test gap)** — New `test_happy_path_without_usage_field` — older Ollama builds sometimes omit the `usage` object entirely. Line 418's `else {}` fallback for missing/non-dict `usage` is now covered; default-zero `ChatCompletionUsage` returned on the happy path.
+- **D12 (HIGH — broken promise)** — `ProviderClient.__init__` now calls `httpx.URL(base_url)` at construction and raises `httpx.InvalidURL` on malformed input. The module docstring's "fail-fast on misconfigured base URL at startup" promise is now actually delivered: lifespan's eager `get_provider_client()` construction aborts knowledge-service startup with a clear error instead of silently deferring the failure to the first extraction call.
+- **D14 (signature safety)** — `base_url`, `internal_token`, `timeout_s` are now keyword-only via a leading `*` in `__init__`. A refactor-typo that swaps `timeout` and `token` would previously have compiled silently (both are primitives); now it's a TypeError at call time.
+
+**Issue deferred (1 new row D-K17.2b-01):** D3 — tool_calls-shaped responses (`content: null` + `tool_calls: [...]`) currently fail with `ProviderDecodeError`. Fine for K17.4–K17.7 JSON-mode extractors. A future tool-based extractor will need a new method or union return type. Flagged so the same edge case isn't re-discovered in every new extractor.
+
+**Issues verified as non-bugs (3 worth flagging because they looked wrong at first glance):**
+- **D4** — `try/finally` on `return`: Python `finally` runs on both success and exception paths. `ok` counter increment on the happy path is correct.
+- **D6** — Streaming responses: body-builder never sets `stream: true`; callers cannot pass it through; safe by omission. Future streaming support would require a new method.
+- **D10** — `prometheus_client.Counter` is thread-safe and `.labels()` lookup is internally locked.
+
+**K17.2b files:**
+- [services/knowledge-service/app/clients/provider_client.py](services/knowledge-service/app/clients/provider_client.py) — `ModelSource` Literal + derived frozenset, `ProviderRateLimited.retry_after_s` field, keyword-only `__init__`, URL validation at construction, 429 branch extracts `Retry-After`, finally-block structured logging.
+- [services/knowledge-service/tests/unit/test_provider_client.py](services/knowledge-service/tests/unit/test_provider_client.py) — 6 new tests: happy-path-without-usage, rate-limited-with/without/unparseable Retry-After, and two URL-validation tests (`test_invalid_base_url_raises_at_construction`, `test_empty_base_url_raises_at_construction`).
+
+**Test results:**
+- knowledge-service: **937 passing** (up from 931 — 6 new K17.2b-R3 tests), 0 skipped, 0 failed
+- provider-registry: **10/10** K17.2c tests green (up from 7), full `go test ./...` green
+- Live smoke: knowledge-service container rebuilt + restarted cleanly; D12 URL validator accepts the compose default `http://provider-registry-service:8085` without error; structured log wiring does not fire spurious warnings at startup.
+
+**K17.2b + K17.2c review criticality context:** D7 (zero logging) and D12 (broken fail-fast promise) were ops-relevant and would have been felt by K17.4 extraction debugging. D8 (Retry-After) is a retry-logic correctness enabler for K17.3. The K17.2c test additions close specific HTTP-status-branch coverage holes (`invalid model_source`, `platform_model` SELECT, decrypt failure) that were invisible at K17.2c-BUILD time. The review did not find any real bugs — every "must-fix" was a defensive or observability improvement that's cheap now and costly to debug in production.
+
+---
 
 ### K17.2a-R3 — third-pass implementation review + follow-ups ✅ (session 42, Track 2)
 
