@@ -409,6 +409,159 @@ async def test_k11_9_r1_ignores_cross_user_evidenced_by(neo4j_driver, test_user)
             )
 
 
+# ── compositional: drift on all three labels in one call ─────────────
+
+
+@pytest.mark.asyncio
+async def test_k11_9_r3_fixes_all_three_labels_in_one_run(neo4j_driver, test_user):
+    """K11.9-R3/I1: inject drift on Entity + Event + Fact
+    simultaneously and verify a single reconcile call fixes all
+    three. Guards the sequential composition in
+    reconcile_evidence_count — a regression that passed the same
+    label to all three _reconcile_label calls would not be caught
+    by the per-label tests above.
+    """
+    async with neo4j_driver.session() as session:
+        entity = await merge_entity(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            name="Mira",
+            kind="character",
+            source_type="book_content",
+            confidence=0.8,
+        )
+        event = await merge_event(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            title="Mira crosses the river",
+            chapter_id="ch-1",
+            event_order=1,
+            confidence=0.8,
+        )
+        fact = await merge_fact(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            type="decision",
+            content="Mira swore fealty",
+            confidence=0.8,
+        )
+        await session.run(
+            """
+            MATCH (n) WHERE n.id IN [$e, $v, $f] AND n.user_id = $u
+            SET n.evidence_count = 9
+            """,
+            e=entity.id,
+            v=event.id,
+            f=fact.id,
+            u=test_user,
+        )
+
+        result = await reconcile_evidence_count(session, user_id=test_user)
+
+        rows = await (await session.run(
+            """
+            MATCH (n) WHERE n.id IN [$e, $v, $f] AND n.user_id = $u
+            RETURN n.id AS id, n.evidence_count AS c
+            """,
+            e=entity.id,
+            v=event.id,
+            f=fact.id,
+            u=test_user,
+        )).data()
+
+    assert result.entities_fixed == 1
+    assert result.events_fixed == 1
+    assert result.facts_fixed == 1
+    assert result.total == 3
+    by_id = {r["id"]: r["c"] for r in rows}
+    assert by_id[entity.id] == 0
+    assert by_id[event.id] == 0
+    assert by_id[fact.id] == 0
+
+
+# ── legacy node: evidence_count property absent ──────────────────────
+
+
+@pytest.mark.asyncio
+async def test_k11_9_r3_normalizes_missing_evidence_count(neo4j_driver, test_user):
+    """K11.9-R3/I2: a legacy node that pre-dates the counter field
+    has NO `evidence_count` property at all (not 0, absent).
+    `coalesce(n.evidence_count, 0)` should treat it as 0; if the
+    node has one real EVIDENCED_BY edge, reconcile should bump it
+    to 1. Guards the coalesce path documented in the query comment.
+    """
+    async with neo4j_driver.session() as session:
+        entity = await merge_entity(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            name="Legacy",
+            kind="character",
+            source_type="book_content",
+            confidence=0.8,
+        )
+        # Remove the property entirely (simulates legacy node).
+        await session.run(
+            """
+            MATCH (e:Entity {id: $id}) WHERE e.user_id = $u
+            REMOVE e.evidence_count
+            """,
+            id=entity.id,
+            u=test_user,
+        )
+        # Sanity check — property is really gone.
+        row0 = await (await session.run(
+            """
+            MATCH (e:Entity {id: $id})
+            RETURN e.evidence_count AS c, 'evidence_count' IN keys(e) AS present
+            """,
+            id=entity.id,
+        )).single()
+        assert row0["present"] is False
+
+        # Case A: no edges at all → coalesce(NULL, 0) == 0 == actual
+        # → NO drift, no fix. The reconciler must not SET
+        # evidence_count back onto a legacy node that still has
+        # zero edges (would be churn).
+        result_a = await reconcile_evidence_count(session, user_id=test_user)
+        assert result_a.entities_fixed == 0
+
+        # Case B: attach one real edge, run again → drift (0 vs 1)
+        src = await upsert_extraction_source(
+            session,
+            user_id=test_user,
+            project_id="p-1",
+            source_type="chapter",
+            source_id="ch-legacy",
+        )
+        await session.run(
+            """
+            MATCH (e:Entity {id: $eid}), (s:ExtractionSource {id: $sid})
+            WHERE e.user_id = $u AND s.user_id = $u
+            MERGE (e)-[r:EVIDENCED_BY {job_id: 'legacy-job'}]->(s)
+              ON CREATE SET r.extracted_at = datetime(),
+                            r.extraction_model = 'legacy',
+                            r.confidence = 0.5
+            """,
+            eid=entity.id,
+            sid=src.id,
+            u=test_user,
+        )
+
+        result_b = await reconcile_evidence_count(session, user_id=test_user)
+
+        row = await (await session.run(
+            "MATCH (e:Entity {id: $id}) RETURN e.evidence_count AS c",
+            id=entity.id,
+        )).single()
+
+    assert result_b.entities_fixed == 1
+    assert row["c"] == 1
+
+
 # ── project_id filter ─────────────────────────────────────────────────
 
 
