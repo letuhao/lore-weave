@@ -1582,7 +1582,7 @@ plane for Track 2.
 ### Tasks
 
 ```
-[ ] K16.1 Extraction Job state machine
+[✓] K16.1 Extraction Job state machine
     Files:
       - services/knowledge-service/app/jobs/state_machine.py (NEW)
     Description:

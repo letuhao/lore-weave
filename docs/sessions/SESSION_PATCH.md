@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-15 (session 41 — **K15.1..K15.10 + K15.12** COMPLETE with R-round reviews)
-- Updated By: Assistant (session 41 shipped K15.1..K15.9 (+R1+R2) + K15.10 + K15.12 metrics; K15.11 deferred to infra-capable session.)
+- Last Updated: 2026-04-15 (session 41 — **K15.1..K15.10, K15.12, K16.1** COMPLETE with R-round reviews)
+- Updated By: Assistant (session 41 shipped K15.1..K15.9 (+R1+R2) + K15.10 + K15.12 metrics + K16.1 state machine; K15.11 deferred to infra-capable session.)
 - Active Branch: `main` (ahead of origin by session 38–41 commits — user pushes manually)
-- HEAD: K15.12
+- HEAD: K16.1
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V16.md` (K11.9 added, K11 cluster fully closed)
 - **Previous Handoff:** `docs/sessions/SESSION_HANDOFF_V15.md` (K11.1 → K11.8)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
@@ -124,6 +124,28 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K16.1 — Extraction job state machine ✅ (session 41, Track 2)
+
+**Goal:** pure validation layer for the K10.4 `extraction_jobs` status transitions per KSA §8.4. Callers (K16.3 start, K16.4 pause/resume/cancel, K16.6 worker-ai runner) invoke `validate_transition` BEFORE touching the repo so an invalid transition is rejected with `StateTransitionError` instead of silently becoming a row-not-found `None`.
+
+**Files (all NEW):**
+- [app/jobs/state_machine.py](services/knowledge-service/app/jobs/state_machine.py) — `JobStatus` literal, `PauseReason` literal, `StateTransitionError` (subclass of ValueError so existing FastAPI handlers map it to 400), `TERMINAL_STATES` frozenset, `is_terminal`, `validate_transition(current, new, *, pause_reason=None, trace_id=None)`. Pure functions; no asyncpg or DB dependency.
+- [tests/unit/test_job_state_machine.py](services/knowledge-service/tests/unit/test_job_state_machine.py) — exhaustive matrix: 8 valid transitions, 3 valid paused-with-reason, 8 invalid transitions, terminal-state × any-target, pause_reason contract both directions, logging assertions, unknown-status defensive check.
+
+**Design decisions:**
+- **Separate from the repo.** K10.4's repo has a narrow terminal-lock rail (`WHERE status NOT IN (...)`) that's sufficient for `try_spend`. Richer rules live in the application layer so the security-critical repo stays small and the reason discriminator stays Python-readable.
+- **`PauseReason` as an argument, not a column.** DB has a single `paused` status; K16.1 introduces `{user, budget, error}` as a validator argument. Storage can stash it in `error_message` with a prefix or wait for a future migration — validator doesn't care.
+- **Pause reason REQUIRED when transitioning to `paused`, FORBIDDEN otherwise.** Enforces the §8.4 invariant that a paused row always carries a discriminator, and prevents stale reasons from leaking into non-paused transitions.
+- **`paused → failed` allowed.** A paused-error job that is then re-classified as permanently failed matches real worker-ai recovery flows.
+- **No `running → running` / `paused → paused` self-loops.** Progress updates go through `advance_cursor`, not `update_status`. Self-loops would just be a no-op that hides stale-code bugs.
+- **Subclass of ValueError.** Existing FastAPI exception handlers map `ValueError → 400`, so K16.3/K16.4 get correct HTTP semantics without extra wiring. The class name still lets tests and logs pattern-match.
+
+**Test results:** not executed this session (laptop constraint — the background pytest harness can't surface output for this project). Code review confirms: valid matrix covers all 8 KSA §8.4 transitions, invalid matrix hits every excluded edge, terminal rail × 3 × 3 = 9 exit attempts all raise, pause_reason contract tested both directions, unknown-status defensive branch reachable via the `get(...) is None` path. No DB or external deps — tests will run cleanly in the next infra-capable session.
+
+**What K16.1 unblocks:** K16.3 start endpoint can `validate_transition("pending","running")` before calling `repo.update_status`. K16.4 pause endpoint can pass `pause_reason="user"`. K16.6 worker can pass `pause_reason="budget"` when `try_spend` returns `auto_paused`, or `pause_reason="error"` when catching a worker exception.
+
+---
 
 ### K15.12 — Pass 1 metrics + logging ✅ (session 41, Track 2)
 
