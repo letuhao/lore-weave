@@ -199,6 +199,13 @@ def detect_primary_language(text: str) -> str:
 #      chunk and hide minority languages from per-sentence dispatch.
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?\n])\s+|(?<=[。！？])")
 
+# A chunk is "extractable" only if it contains at least one letter-
+# like character. Pure-punctuation chunks ("...", "!!!???") emitted
+# by split_by_language would otherwise route through langdetect
+# (raising LangDetectException → "en" fallback) and propagate down
+# the pipeline as fake sentences. K15.3-R2/I1.
+_HAS_LETTER_RE = re.compile(r"\w", re.UNICODE)
+
 
 def split_by_language(text: str) -> list[tuple[str, str]]:
     """Split `text` into `(sentence, language)` pairs.
@@ -218,6 +225,11 @@ def split_by_language(text: str) -> list[tuple[str, str]]:
     for chunk in chunks:
         stripped = chunk.strip()
         if not stripped:
+            continue
+        # K15.3-R2/I1: drop chunks with no letter-like characters.
+        # Pure-punctuation "..." / "!!!???" would otherwise route
+        # through langdetect and surface as noise result entries.
+        if not _HAS_LETTER_RE.search(stripped):
             continue
         out.append((stripped, detect_primary_language(stripped)))
     return out

@@ -151,6 +151,24 @@ def test_k15_3_r1_split_mixed_script_isolates_languages():
     assert "Zhao" not in cjk_chunk, "CJK merged with trailing Latin"
 
 
+def test_k15_3_r2_split_drops_pure_punctuation_chunks():
+    """K15.3-R2/I1: pure-punctuation chunks ("...", "!!!???") must
+    not surface as result entries. Before the fix, they routed
+    through langdetect, raised LangDetectException, fell back to
+    "en", and propagated downstream as fake sentences with no
+    extractable content.
+    """
+    out = split_by_language("Hello world. ... Kai walked slowly.")
+    chunks = [s for s, _ in out]
+    assert "..." not in chunks
+    assert all(any(ch.isalpha() for ch in s) for s in chunks), (
+        f"letterless chunk survived: {chunks}"
+    )
+
+    # Text that is ONLY punctuation collapses to empty result.
+    assert split_by_language("...!!!???") == []
+
+
 def test_k15_3_split_drops_whitespace_chunks():
     text = "Kai walked.     \n\n   Zhao bowed."
     out = split_by_language(text)
