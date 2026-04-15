@@ -1426,7 +1426,7 @@ events. Quarantined (not loaded into L2 until Pass 2 confirms).
 ```
 
 ```
-[ ] K15.6 Prompt injection neutralizer (§5.1.5 Defense 2)
+[✓] K15.6 Prompt injection neutralizer (§5.1.5 Defense 2)
     Files:
       - services/knowledge-service/app/extraction/injection_defense.py (NEW)
     Description:

@@ -20,6 +20,7 @@ __all__ = [
     "circuit_open",
     "context_build_duration_seconds",
     "evidence_count_drift_fixed_total",
+    "injection_pattern_matched_total",
 ]
 
 registry = CollectorRegistry()
@@ -77,3 +78,16 @@ evidence_count_drift_fixed_total = Counter(
 )
 for _label in ("Entity", "Event", "Fact"):
     evidence_count_drift_fixed_total.labels(node_label=_label).inc(0)
+
+# K15.6 prompt injection defense (KSA §5.1.5 Defense 2 + Defense 4).
+# Monotonic counter: one increment per pattern match in extracted text.
+# `project_id` is bounded by user/tenant count; `pattern` is bounded by
+# the closed list in injection_defense.INJECTION_PATTERNS (~15 entries).
+# Cardinality is acceptable for Track 1 hobby scale.
+injection_pattern_matched_total = Counter(
+    "knowledge_injection_pattern_matched_total",
+    "Number of prompt-injection pattern hits detected by "
+    "neutralize_injection at extraction or context-build time",
+    ["project_id", "pattern"],
+    registry=registry,
+)

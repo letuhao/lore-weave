@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-15 (session 41 — **K15.1 retcon + K15.2 + K15.3 + K15.4 + K15.5 (+R1)** all COMPLETE with R-round reviews)
-- Updated By: Assistant (session 41 shipped five K15 tasks: K15.1 retcon + K15.2 entity detector (R1+R2) + K15.3 per-language patterns (R1+R2) + K15.4 SVO triple extractor (R1+R2 passive-voice fix) + K15.5 negation fact extractor (R1 trailing-NP stop-word gate). K15 cluster tests: 145 passed (37 canonical + 25 entity detector + 27 patterns + 34 triple extractor + 22 negation).)
+- Last Updated: 2026-04-15 (session 41 — **K15.1..K15.6 (all +R1)** COMPLETE with R-round reviews)
+- Updated By: Assistant (session 41 shipped six K15 tasks: K15.1 retcon + K15.2 entity detector (R1+R2) + K15.3 per-language patterns (R1+R2) + K15.4 SVO triple extractor (R1+R2 passive-voice fix) + K15.5 negation fact extractor (R1 trailing-NP stop-word gate) + K15.6 prompt injection neutralizer (R1 scan-then-tag for overlapping counters). K15 cluster tests: 178 passed (37 canonical + 25 entity detector + 27 patterns + 34 triple extractor + 22 negation + 33 injection defense).)
 - Active Branch: `main` (ahead of origin by session 38–41 commits — user pushes manually)
-- HEAD: K15.5-R1 (pending Phase 9)
+- HEAD: K15.6-R1 (pending Phase 9)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V16.md` (K11.9 added, K11 cluster fully closed)
 - **Previous Handoff:** `docs/sessions/SESSION_HANDOFF_V15.md` (K11.1 → K11.8)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
@@ -122,6 +122,35 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K15.6 — Prompt injection neutralizer ✅ (session 41, Track 2)
+
+**Goal:** per KSA §5.1.5 Defense 2, scan extracted text for known prompt-injection phrases and prepend a `[FICTIONAL] ` marker so downstream LLMs treat the phrase as quoted story content, not an authoritative command. Also emit a Prometheus counter per pattern hit for §5.1.5 Defense 4 audit logging.
+
+**Files:**
+- [app/extraction/injection_defense.py](services/knowledge-service/app/extraction/injection_defense.py) — NEW. `INJECTION_PATTERNS` (22 named patterns across EN/ZH/JA/VI + role tags) + `neutralize_injection(text, *, project_id=None) -> tuple[str, int]`.
+- [app/metrics.py](services/knowledge-service/app/metrics.py) — added `injection_pattern_matched_total` counter with `project_id` + `pattern` labels.
+- [tests/unit/test_injection_defense.py](services/knowledge-service/tests/unit/test_injection_defense.py) — NEW. 33 tests covering EN/ZH/JA/VI patterns, clean passthrough, idempotent re-run, marker placement, narrative fidelity, metric emission, R1 regressions, and KSA §5.1.5 canonical example.
+
+**Design decisions:**
+- **Scan-then-tag, not sequential sub.** The naive `re.sub` loop would let pattern A's inserted `[FICTIONAL] ` marker split pattern B's span, so B's counter would never fire even though B's phrase is present. K15.6 collects all matches across all patterns on the original text first, bumps each counter, then applies insertions — every pattern gets observability regardless of list order. (R1/I1 regression.)
+- **Per-match insertion, no span merging.** Every distinct match start gets its own `[FICTIONAL] ` marker. Merging overlapping spans into one marker would leave inner patterns un-protected by the idempotency lookbehind on a second call — `en_system_prompt` inside `"Reveal the system prompt"` would be re-tagged on every pass. Per-match insertion makes second-pass a true no-op.
+- **Fixed-width lookbehind for idempotency.** `(?<!\[FICTIONAL\] )` is wrapped around every compiled pattern so `neutralize_injection(neutralize_injection(x)) == neutralize_injection(x)`. Required because KSA calls this at BOTH extraction time (K15.7) AND context-build time (K18.7).
+- **Named patterns for Grafana.** Each regex paired with a stable short name (`en_ignore_prior`, `zh_system_prompt`, etc.) used as the metric label — raw regex strings would be unreadable and unstable.
+- **`project_id=None` maps to `"unknown"` label.** Unit tests and orchestrator probes without a tenant context can still call the function and the metric stays correctly labelled.
+- **Returns `(text, hit_count)` tuple.** Hit count is useful for caller-level logging; metric is side-effect-emitted on every hit.
+- **No content deletion.** Narrative fidelity requirement from KSA — a villain quoting "ignore previous instructions" in a chapter is legitimate fiction; we tag it, not delete it.
+
+**R1 critical review (same session):**
+- **R1/I1 (MEDIUM, FIXED) — overlapping-pattern counter undercounting.** Initial sequential-sub implementation ran patterns in list order. When `en_system_prompt` fired first on `"Reveal the system prompt"`, it inserted `[FICTIONAL] ` in the middle of `en_reveal_secret`'s intended match span, so `en_reveal_secret`'s counter never incremented — breaking the "metric incremented on detection" acceptance criterion for observability. Fix: scan-then-tag design that collects all matches across all patterns on the original text before any substitution. Three R1 regression tests added.
+- **R1/I2 (LOW, KNOWN) — broad pattern false positives.** `system\s*prompt` matches legitimate prose like `"the system prompt engineer"`. KSA §5.1.5 explicitly accepts this cost as proportionate for a hobby-scale project. No fix.
+- **R1/I3 (NOTED) — per-match insertion is slightly noisier output.** `"[FICTIONAL] Reveal the [FICTIONAL] system prompt"` has two markers where a merged-span approach would have one. Correctness (idempotent re-entry) trumps aesthetics; the LLM reads past markers fine.
+
+**Test results:** 33/33 K15.6 tests pass. K15 cluster total: **178 passed** (37 canonical + 25 entity detector + 27 patterns + 34 triple extractor + 22 negation + 33 injection defense).
+
+**What K15.6 unblocks:** K15.7 (extraction writer — calls `neutralize_injection` on every fact's `sentence` field before Neo4j write, per KSA §5.1.5 extraction-time defense), K15.8 (orchestrator — calls it as the sanitize step per the plan row), K18.7 (context builder — defense-in-depth second pass at context-build time).
+
+---
 
 ### K15.5 — Negation fact extractor ✅ (session 41, Track 2)
 
