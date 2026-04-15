@@ -10,7 +10,7 @@
 - Last Updated: 2026-04-15 (session 42 — K17.2 BYOK LLM proxy shipped, K17.2a + K17.2b pair with R1/R2 reviews; test debt from session 41 paid in full)
 - Updated By: Assistant (session 42 — infra-capable PC, Docker Compose stack up including Neo4j + Postgres; full knowledge-service suite at 930 passing; K17.2 ready to unblock K17.3–K17.8 LLM extractors.)
 - Active Branch: `main` (ahead of origin by session 38–42 commits — user pushes manually)
-- HEAD: K17.2 pair landed (pending commit)
+- HEAD: K17.2a-R3 + K17.2c integration tests (pending commit)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -31,6 +31,9 @@
 | D-K11.9-02 | K11.9 plan scope | **Orphan `:ExtractionSource` cleanup not covered by K11.9.** The reconciler fixes `evidence_count` drift only. Orphan `ExtractionSource` nodes left behind by `delete_source_cascade` partial failures (K11.8-R1/R2 documented non-atomic three round-trips) need a separate sweep. Pair with K11.9-01 since both are scheduler-layer offline jobs. | K19/K20 scheduler cleanup |
 | D-K15.5-01 | K15.5-R1/I2 | **All-caps sentences return no negations.** `"KAI DOES NOT KNOW ZHAO."` yields zero facts. Root cause is upstream in K15.2 `_CAPITALIZED_PHRASE_RE` which greedily fuses the entire all-caps sentence into a single "entity" spanning the negation marker — so `_nearest_preceding_entity` has no candidate ending before the marker. Fix requires teaching K15.2 to reject all-caps multi-word fusion or split on verbs, which is broader than a K15.5 follow-up. K17 LLM fallback handles these at Pass 2. | K15.2 hardening pass or K17 LLM |
 | D-K11.3-01 | K11.3-R1 review | **Lifespan startup leaks resources on partial failure.** If `run_neo4j_schema` (or `run_migrations`, or any pre-`yield` startup step) raises in [services/knowledge-service/app/main.py](services/knowledge-service/app/main.py), `__aenter__` propagates the exception and the post-`yield` cleanup never runs — driver, asyncpg pools, and httpx client all leak. Pre-existing structural issue; K11.3 inherits it but doesn't worsen. Fix: wrap startup in a try/except that closes everything before re-raising, or split lifespan into per-resource async-context-managers and stack them. | Gate 4 hardening pass |
+| D-K17.2a-01 | K17.2a-R3 review C4 | **provider-registry has zero Prometheus metrics.** The proxy rewrite path (K17.2a) has no counter on outcome (ok / invalid_json / too_large / empty_model / missing_credential / decrypt_failed), so a sudden wave of rejections would be invisible until someone reads the logs. Adding metrics requires pulling in `github.com/prometheus/client_golang`, a `Collector` + `/metrics` route, and a middleware to count by route — a material infra expansion that doesn't fit K17.2a's "S" scope. The other Go services in the monorepo (glossary, book, etc.) have the same gap, so this is more fairly framed as an ops cross-cutting task. | K19/K20 ops cleanup |
+| D-PROXY-01 | K17.2a-R3 review C10 (origin pre-existing) | **The empty-credential guard was added to `doProxy` but the same condition can still bite other endpoints** (e.g. K17.2a-R3 fixed the proxy path, but `verifyModelsEndpoint`, `verifySTT`, `verifyTTS`, etc. all SELECT `COALESCE(pc.secret_ciphertext,'')` and don't guard against the empty case). None currently crash — they all hit upstream 401 — but each surfaces a cryptic error instead of a clear one. Sweep for other sites and apply the same pattern. | Next provider-registry cleanup |
+| D-K17.2a-02 | K17.2a-R3 review C12 (cleared in the same commit) | **413 classification landed in the same R3 commit** — this row is documentation of the original issue and the clearing. ProviderClient now maps 413 to `ProviderUpstreamError("... body too large (PROXY_BODY_TOO_LARGE, 4 MiB cap)")` so extraction job failures are greppable. Kept here as a pointer rather than deleted outright so the pre-fix state is discoverable from the patch history. | — (cleared) |
 
 ### Track 2 planning (document only, no Track 1 action)
 
@@ -122,6 +125,48 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K17.2a-R3 — third-pass implementation review + follow-ups ✅ (session 42, Track 2)
+
+**Goal:** after landing K17.2a+K17.2b (commits `325fcfa`, `8d28e24`), user requested a third-pass critical review of the K17.2a Go implementation. Fifteen issues surfaced (C1–C15); this entry captures the ones actionable in the same session.
+
+**Issues fixed (6):**
+- **C1** — `doProxy` file docstring said "forwards the request body as-is (any content-type)" but that's no longer true for JSON bodies. Updated the docstring to describe the K17.2a rewrite.
+- **C3** — inline comment added at the `io.ReadAll(r.Body)` block explaining we rely on Go's net/http server to close `r.Body` on handler return, and that the outbound proxyReq uses a fresh `*bytes.Reader`.
+- **C10** — new defensive guard in `doProxy`: if `modelSource == "user_model" && secretCipher == ""`, return `500 PROXY_MISSING_CREDENTIAL`. A user_model row without a linked credential ciphertext is an invalid state (pre-existing bug — platform_model legitimately has empty ciphertext so the guard is scoped to `user_model`). Integration test `TestDoProxyUserModelWithEmptyCredentialRejected` covers it.
+- **C12** — ProviderClient (K17.2b) now explicitly classifies HTTP 413 as `ProviderUpstreamError("... body too large (PROXY_BODY_TOO_LARGE, 4 MiB cap)")`. The class's module docstring now documents the 4 MiB cap with a three-bullet guide on what typically causes it. New unit test `test_413_body_too_large_raises_upstream_with_explicit_message`.
+- **C13** — replaced the bare `_ = providerKind` dead-store with a one-line comment explaining that `providerKind` is resolved for future provider-specific rewriting (e.g. Anthropic `system`, Ollama `options`) but unused on the generic path today. Stops a future maintainer from deleting it without understanding why.
+- **K17.2c (C11)** — NEW sibling task: **doProxy live-pool integration tests**. Seven new Go tests in `proxy_integration_test.go` that run against live Postgres (compose) via `TEST_PROVIDER_REGISTRY_DB_URL`, using seeded `provider_credentials` + `user_models` rows and an `httptest.NewServer` upstream. Each test scopes its rows to a fresh UUID user_id and cleans up in `t.Cleanup`. Tests skip cleanly when `TEST_PROVIDER_REGISTRY_DB_URL` is unset. Coverage:
+  - `TestDoProxyRewritesJSONModelField` — end-to-end verification the rewrite block hits the upstream with `model` replaced and other fields (`messages`, `temperature`) preserved
+  - `TestDoProxyForwardsAuthorizationHeader` — decrypted secret is injected as `Authorization: Bearer <secret>`
+  - `TestDoProxyBodyTooLargeRejected` — 4 MiB cap fires with 413 `PROXY_BODY_TOO_LARGE`, upstream is NOT called
+  - `TestDoProxyInvalidJSONRejected` — malformed JSON gives 400 `PROXY_INVALID_JSON_BODY`
+  - `TestDoProxyNonJSONPassthrough` — multipart body passes through byte-for-byte, Content-Type header preserved
+  - `TestDoProxyUserModelWithEmptyCredentialRejected` — the C10 regression; user_model with empty ciphertext gives 500 `PROXY_MISSING_CREDENTIAL`
+  - `TestDoProxyModelNotFound` — unknown model_ref gives 404 `PROXY_MODEL_NOT_FOUND`
+
+**Issues deferred (3 rows added to Deferred Items):**
+- **C4 → D-K17.2a-01** — provider-registry Prometheus metrics. Genuinely out of scope for a K17.2a follow-up; the service has zero metrics infrastructure, and adding it pulls in `client_golang`, a new collector, a `/metrics` route, and a middleware. Framed as an ops cross-cutting task covering all Go services that lack metrics today. Target K19/K20 ops cleanup.
+- **C10 sweep → D-PROXY-01** — K17.2a-R3 fixed the proxy path, but the same `COALESCE(pc.secret_ciphertext,'')` + silent-empty pattern exists on `verifyModelsEndpoint`, `verifySTT`, `verifyTTS`, etc. None crashes today — they all forward the anonymous request and get a cryptic upstream 401 — but each deserves the same early-fail. Target next provider-registry cleanup.
+- **C12 → D-K17.2a-02** — cleared in the same commit (the 413 classification shipped here). Row kept as a pointer so patch history is discoverable from SESSION_PATCH.
+
+**Issues verified as non-bugs (6):**
+C2 (bodyLen logic handles all four content-type × content-length combinations correctly), C5 (zero-length short-circuit is intentional for GET-with-JSON-CT-no-body), C6 (4MiB peak memory is fine at Track 1 scale), C7 (`err` shadowing verified correct, all scopes clean), C8 (bodyReader = r.Body fallback for non-JSON chunked is Go-handled), C9 (Transfer-Encoding header is never leaked — Go dynamically manages it), C14 (Content-Length stringification via strconv is canonical and behavior-preserving vs copying client's raw header value).
+
+**Files touched:**
+- [services/provider-registry-service/internal/api/server.go](services/provider-registry-service/internal/api/server.go) — docstring (C1), `r.Body` close comment (C3), `providerKind` comment (C13), empty-credential guard (C10)
+- [services/provider-registry-service/internal/api/proxy_integration_test.go](services/provider-registry-service/internal/api/proxy_integration_test.go) — NEW, 7 live-pool integration tests (K17.2c / C11)
+- [services/knowledge-service/app/clients/provider_client.py](services/knowledge-service/app/clients/provider_client.py) — 4 MiB cap documentation (C12) + 413 classification branch (C12)
+- [services/knowledge-service/tests/unit/test_provider_client.py](services/knowledge-service/tests/unit/test_provider_client.py) — 413 regression test (C12)
+
+**Test results:**
+- knowledge-service: **931 passed**, 0 skipped, 0 failed (up from 930 — 1 new 413 test)
+- provider-registry: **12/12** K17.2a+K17.2c Go tests green (5 helper + 7 integration); full `go test ./...` green
+- Live smoke: provider-registry rebuilt + restarted cleanly; compose stack all healthy.
+
+**K17.2a-R3 criticality context:** the review did not find any real bugs in the committed K17.2a code. The fixes landed here are split between (a) quality improvements (docstring, inline comments, dead-store rationalization) that would have been fine to defer, and (b) defensive hardening (C10 empty-credential guard, C12 413 classification) that is cheap to land now and costly to debug in production. The K17.2c integration tests close the "doProxy has zero Go-native coverage" gap identified at R1 — previously it relied on K17.2b's Python MockTransport-based tests, which never actually exercised the Go HTTP wiring.
+
+---
 
 ### K17.2 — provider-registry BYOK LLM client ✅ (session 42, Track 2)
 

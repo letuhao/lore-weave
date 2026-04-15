@@ -7,6 +7,17 @@ body's "model" field to the server-resolved provider model name (K17.2a),
 and forwards to the upstream provider with the API key injected. This
 module never sees the provider's API key.
 
+Body size cap: provider-registry enforces a 4 MiB hard limit on JSON
+request bodies (PROXY_BODY_TOO_LARGE → HTTP 413). Chat-completion bodies
+are almost always under 100 KB even with context-stuffed prompts, so
+hitting this cap means either:
+  (a) an extractor is feeding a whole book at once — split the input,
+  (b) known_entities substitution in a K17.1 prompt is pathologically
+      large — cap it at the extractor layer,
+  (c) a bug. This client classifies 413 as `ProviderUpstreamError` with
+      an explicit "body too large" message so the cause is greppable in
+      job-failure rows.
+
 Unlike `glossary_client`, this client does NOT gracefully degrade. An
 extraction call that can't reach the LLM must fail loudly so the K16
 job state machine can quarantine the job and the K17.3 retry wrapper
@@ -309,6 +320,19 @@ class ProviderClient:
                 outcome = "rate_limited"
                 raise ProviderRateLimited(
                     "provider rate limited",
+                    trace_id=trace_id,
+                    status_code=status,
+                )
+            if status == 413:
+                # K17.2a-R3 (C12): provider-registry enforces a 4 MiB
+                # hard cap on JSON bodies. Classify distinctly so the
+                # failure reason is obvious in job-failure rows — this
+                # almost always means the caller needs to split its
+                # input rather than retry.
+                outcome = "upstream"
+                raise ProviderUpstreamError(
+                    "provider rejected request: body too large "
+                    "(PROXY_BODY_TOO_LARGE, 4 MiB cap)",
                     trace_id=trace_id,
                     status_code=status,
                 )

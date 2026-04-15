@@ -258,8 +258,11 @@ func (s *Server) internalProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 // doProxy is the shared transparent proxy logic used by both publicProxy and internalProxy.
-// Resolves provider credentials, forwards the request body as-is (any content-type),
-// injects the provider API key, and streams the response back.
+// Resolves provider credentials from (user_id, model_source, model_ref), rewrites the
+// request body's "model" field for JSON bodies so callers don't need to know the upstream
+// provider's model name (K17.2a), passes non-JSON bodies (multipart audio, etc.) through
+// unchanged, injects the decrypted provider API key as Authorization, and streams the
+// upstream response back.
 func (s *Server) doProxy(w http.ResponseWriter, r *http.Request, userID uuid.UUID, modelSource string, modelRefStr string) {
 	modelRef, err := uuid.Parse(modelRefStr)
 	if err != nil {
@@ -297,6 +300,10 @@ WHERE platform_model_id=$1 AND status='active'
 		return
 	}
 
+	// providerKind is resolved but unused by the generic proxy path.
+	// Provider-specific rewriting (e.g. Anthropic `system` handling,
+	// Ollama `options` mapping) would read this field. Kept in scope
+	// so a future edit can use it without touching the SELECT.
 	_ = providerKind
 
 	// K17.2a — defensive guard. provider_model_name is NOT NULL in the
@@ -307,6 +314,24 @@ WHERE platform_model_id=$1 AND status='active'
 	if providerModelName == "" {
 		writeError(w, http.StatusInternalServerError, "PROXY_MODEL_RESOLUTION_EMPTY",
 			"resolved provider_model_name is empty")
+		return
+	}
+
+	// K17.2a-R3 (C10) — early-fail for a user_model that somehow
+	// has no credential ciphertext. The row shape allows it because
+	// of the COALESCE at SELECT time, but a real user_model MUST
+	// have a linked, active provider_credential — the JOIN already
+	// enforces pc.status='active'. An empty cipher here means the
+	// credential row exists with a NULL/empty ciphertext, which is
+	// an invalid state. Proxying with no Authorization header would
+	// hit the upstream and 401; better to return a loud 500 so the
+	// bad state gets noticed.
+	//
+	// Platform models legitimately have no per-user secret (line 281
+	// SELECTs empty strings), so this guard is scoped to user_model.
+	if modelSource == "user_model" && secretCipher == "" {
+		writeError(w, http.StatusInternalServerError, "PROXY_MISSING_CREDENTIAL",
+			"user_model has no provider credential ciphertext")
 		return
 	}
 
@@ -356,6 +381,11 @@ WHERE platform_model_id=$1 AND status='active'
 		// 4MiB cap — generous for chat completion bodies (even
 		// context-stuffed calls are well under 1MB) but finite so
 		// a malformed or hostile caller can't OOM the proxy.
+		//
+		// We fully drain r.Body here but do NOT explicitly close it.
+		// Go's net/http server closes the inbound body when the
+		// handler returns, so this is safe. The outbound proxyReq
+		// below uses a fresh *bytes.Reader over the rewritten bytes.
 		const maxJSONBodyBytes = 4 * 1024 * 1024
 		raw, readErr := io.ReadAll(io.LimitReader(r.Body, maxJSONBodyBytes+1))
 		if readErr != nil {

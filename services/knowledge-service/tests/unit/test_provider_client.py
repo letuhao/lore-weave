@@ -182,6 +182,34 @@ async def test_upstream_5xx_raises():
 
 
 @pytest.mark.asyncio
+async def test_413_body_too_large_raises_upstream_with_explicit_message():
+    # K17.2a-R3 (C12): provider-registry's 4 MiB JSON body cap surfaces
+    # as HTTP 413 PROXY_BODY_TOO_LARGE. We classify it as
+    # ProviderUpstreamError (non-retry) with an explicit message so
+    # the cause is obvious in job-failure rows.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            413,
+            json={"code": "PROXY_BODY_TOO_LARGE", "message": "request body exceeds 4MiB JSON cap"},
+        )
+
+    client = _make_client(handler)
+    try:
+        with pytest.raises(ProviderUpstreamError) as excinfo:
+            await client.chat_completion(
+                user_id="u-1",
+                model_source="user_model",
+                model_ref="11111111-1111-1111-1111-111111111111",
+                messages=_messages(),
+            )
+    finally:
+        await client.aclose()
+    assert excinfo.value.status_code == 413
+    assert "body too large" in str(excinfo.value).lower()
+    assert "4 mib" in str(excinfo.value).lower()
+
+
+@pytest.mark.asyncio
 async def test_other_4xx_raises_upstream():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(400, json={"code": "PROXY_VALIDATION_ERROR"})
