@@ -122,20 +122,22 @@ def validate_transition(
     current: JobStatus,
     new: JobStatus,
     *,
+    trace_id: str,
     pause_reason: PauseReason | None = None,
-    trace_id: str | None = None,
 ) -> None:
     """Validate a status transition and log it.
 
     Args:
         current: the job's current status.
         new: the target status.
+        trace_id: REQUIRED request/worker trace id for the log
+            line (R1/I4). The K16 acceptance criteria explicitly
+            require every transition to carry one; a None default
+            would let callers silently satisfy the log format
+            while violating the contract.
         pause_reason: REQUIRED when `new == "paused"`, FORBIDDEN
             otherwise. Enforces the KSA §8.4 invariant that a
             paused row always carries a reason discriminator.
-        trace_id: optional request/worker trace id for the log
-            line. The K16 acceptance criteria explicitly require
-            every transition to be logged with a trace id.
 
     Raises:
         StateTransitionError: if `current → new` is not in the
@@ -172,10 +174,13 @@ def validate_transition(
                 f"'paused', not '{new}'"
             )
 
+    # R1/I3: log says "validated", not "applied". Actual persist
+    # happens in the caller's repo.update_status; a K16.3/K16.6
+    # wrapper will add a post-persist log line when it lands.
     logger.info(
-        "K16.1: job transition %s → %s%s trace_id=%s",
+        "K16.1: job transition validated %s → %s%s trace_id=%s",
         current,
         new,
         f" reason={pause_reason}" if pause_reason else "",
-        trace_id or "<unset>",
+        trace_id,
     )

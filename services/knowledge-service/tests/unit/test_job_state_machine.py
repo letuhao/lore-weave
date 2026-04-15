@@ -34,12 +34,14 @@ from app.jobs.state_machine import (
     ],
 )
 def test_k16_1_valid_transition_no_reason(current, new):
-    validate_transition(current, new)
+    validate_transition(current, new, trace_id="t-1")
 
 
 @pytest.mark.parametrize("reason", ["user", "budget", "error"])
 def test_k16_1_running_to_paused_requires_reason(reason):
-    validate_transition("running", "paused", pause_reason=reason)
+    validate_transition(
+        "running", "paused", pause_reason=reason, trace_id="t-1"
+    )
 
 
 # ── invalid transitions ──────────────────────────────────────────────
@@ -60,7 +62,7 @@ def test_k16_1_running_to_paused_requires_reason(reason):
 )
 def test_k16_1_invalid_transition_rejected(current, new):
     with pytest.raises(StateTransitionError, match="invalid transition"):
-        validate_transition(current, new)
+        validate_transition(current, new, trace_id="t-1")
 
 
 # ── terminal-state rail ──────────────────────────────────────────────
@@ -70,7 +72,7 @@ def test_k16_1_invalid_transition_rejected(current, new):
 @pytest.mark.parametrize("target", ["running", "paused", "pending"])
 def test_k16_1_terminal_state_cannot_exit(terminal, target):
     with pytest.raises(StateTransitionError, match="terminal state"):
-        validate_transition(terminal, target)
+        validate_transition(terminal, target, trace_id="t-1")
 
 
 def test_k16_1_is_terminal_matches_set():
@@ -87,7 +89,7 @@ def test_k16_1_is_terminal_matches_set():
 
 def test_k16_1_paused_without_reason_raises():
     with pytest.raises(StateTransitionError, match="requires a pause_reason"):
-        validate_transition("running", "paused")
+        validate_transition("running", "paused", trace_id="t-1")
 
 
 @pytest.mark.parametrize(
@@ -96,7 +98,9 @@ def test_k16_1_paused_without_reason_raises():
 )
 def test_k16_1_non_paused_with_reason_raises(current, new):
     with pytest.raises(StateTransitionError, match="only valid"):
-        validate_transition(current, new, pause_reason="user")
+        validate_transition(
+            current, new, pause_reason="user", trace_id="t-1"
+        )
 
 
 # ── logging ──────────────────────────────────────────────────────────
@@ -108,12 +112,15 @@ def test_k16_1_logs_transition_with_trace_id(caplog):
         validate_transition("running", "complete", trace_id="trace-abc")
     assert any("running → complete" in r.message for r in caplog.records)
     assert any("trace-abc" in r.message for r in caplog.records)
+    assert any("validated" in r.message for r in caplog.records)
 
 
 def test_k16_1_logs_pause_reason(caplog):
     import logging as _logging
     with caplog.at_level(_logging.INFO, logger="app.jobs.state_machine"):
-        validate_transition("running", "paused", pause_reason="budget")
+        validate_transition(
+            "running", "paused", pause_reason="budget", trace_id="t-1"
+        )
     assert any("reason=budget" in r.message for r in caplog.records)
 
 
@@ -122,4 +129,21 @@ def test_k16_1_logs_pause_reason(caplog):
 
 def test_k16_1_unknown_current_status():
     with pytest.raises(StateTransitionError, match="unknown current status"):
-        validate_transition("weird_state", "running")  # type: ignore[arg-type]
+        validate_transition("weird_state", "running", trace_id="t-1")  # type: ignore[arg-type]
+
+
+# ── R1/I1: drift guard against the repo's JobStatus literal ─────────
+
+
+def test_k16_1_jobstatus_matches_repo_literal():
+    """If K10.4's repo enum gains or drops a state, this test
+    fails loudly so the state machine matrix can be updated in
+    the same PR instead of silently diverging."""
+    from typing import get_args
+
+    from app.db.repositories.extraction_jobs import (
+        JobStatus as RepoJobStatus,
+    )
+    from app.jobs.state_machine import JobStatus as SmJobStatus
+
+    assert set(get_args(SmJobStatus)) == set(get_args(RepoJobStatus))
