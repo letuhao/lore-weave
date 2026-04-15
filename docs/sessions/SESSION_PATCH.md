@@ -10,7 +10,7 @@
 - Last Updated: 2026-04-15 (session 42 — K17.2 BYOK LLM proxy shipped, K17.2a + K17.2b pair with R1/R2 reviews; test debt from session 41 paid in full)
 - Updated By: Assistant (session 42 — infra-capable PC, Docker Compose stack up including Neo4j + Postgres; full knowledge-service suite at 930 passing; K17.2 ready to unblock K17.3–K17.8 LLM extractors.)
 - Active Branch: `main` (ahead of origin by session 38–42 commits — user pushes manually)
-- HEAD: K17.3 LLM JSON extraction wrapper (pending commit)
+- HEAD: K17.3-R3 third-pass review follow-ups (pending commit)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -127,6 +127,45 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K17.3-R3 — third-pass implementation review + follow-ups ✅ (session 42, Track 2)
+
+**Goal:** after K17.3 landed at `ab10efe`, apply third-pass critical review (same discipline as K17.2a-R3). 15 issue candidates (F1–F15) surfaced; 7 real must-fixes landed in this commit. The review found **two real bugs** (F2/F4 raw_content loss, F9 fence-stripping gap) and **one real documentation lie** (F11 max LLM call count) — not just quality improvements.
+
+**Must-fixes landed (7):**
+
+- **F2/F4 (HIGH real bug)** — `ExtractionError.raw_content` was LOST on the `_do_fix_up` provider-exhausted path. Scenario: first attempt returns unparseable content → we enter fix-up → fix-up call raises `ProviderUpstreamError` → `ExtractionError(stage="provider_exhausted", raw_content=None)`. The first-attempt content was in hand but never threaded through. **Critical debugging signal.** Fixed by adding `first_attempt_content` parameter to `_do_fix_up` and populating `raw_content` with it on the provider-error branch. Two new regression tests (`test_r3_f2_raw_content_captured_on_parse_retry_provider_exhausted`, `test_r3_f4_raw_content_captured_on_validate_retry_provider_exhausted`).
+
+- **F3 (MEDIUM latent)** — `isinstance` chain classifying retry-eligible provider errors relied on a flat hierarchy (`ProviderRateLimited`, `ProviderUpstreamError`, `ProviderTimeout` as siblings). A future refactor making one inherit from another would silently misclassify. Added explicit `isinstance(exc, ProviderTimeout)` branch and a final `AssertionError` guard against unknown types. Also made `retry_after: float | None = None` an explicit initialization so future branches that forget to set it don't accidentally inherit stale values.
+
+- **F5 (HIGH test gap)** — Two failure paths were untested: "parse fail → `_do_fix_up` call raises provider error" and "validate fail → `_do_fix_up` call raises provider error". These are the exact paths where F2/F4 matter. Both are now covered by the regression tests named above.
+
+- **F6 (MEDIUM defensive)** — `_build_parse_retry_messages` and `_build_validate_retry_messages` put `bad_content` verbatim into the retry prompt. Pathological LLM echo (entire chapter echoed back) would double the retry context size. Added `_cap_bad_content` helper with 8 KB cap + "… (previous response truncated)" suffix. Regression test `test_r3_f6_bad_content_capped_in_parse_retry_prompt` feeds 18000 chars of garbage, asserts the retry prompt's assistant turn is shorter.
+
+- **F8 (MEDIUM real bug in logging)** — `str(last_error)[:500]` emitted multi-line strings (Pydantic `ValidationError` has newlines). Broke single-line grep consumers. Now `.replace("\n", " ").replace("\r", " ")` before logging.
+
+- **F9 (HIGH real coverage gap)** — LLMs routinely wrap JSON in markdown code fences (` ```json\n{...}\n``` `) regardless of `response_format`. Local LMs (Ollama, LM Studio) do this constantly. Without fence-stripping, every fenced response burns a retry. **Real production impact for Track 1 local-LM users.** Added `_strip_code_fences` helper + `_CODE_FENCE_RE` that handles `json`/`JSON`/unlabeled fences with or without leading newlines. Applied on BOTH first-attempt and retry parse paths. Three new regression tests: fenced JSON parsed on first try (no retry burned), unlabeled fence parsed, fenced JSON on retry path.
+
+- **F11 (HIGH real docstring lie)** — Module docstring claimed "Total LLM call budget per invocation: max 2". **Actual max is 3** (initial + HTTP retry + JSON fix-up retry, independent budgets). Rewrote the docstring to describe HTTP-retry and JSON-retry as independent budgets each capped at 1, maximum total 3 LLM calls per invocation.
+
+**Accepted (8 worth flagging):**
+- F1: `client = client or get_provider_client()` — safe today because `ProviderClient` instances are always truthy; `client if client is not None else ...` would be cleaner but the current shape works
+- F7, F10, F13, F14, F15: cosmetic / forward-compatibility notes
+- F12: `provider_exhausted` metric bucket conflates "initial HTTP retry failed" and "fix-up call failed". K17.9 will tell us if splitting is worth it.
+
+**Files touched:**
+- [services/knowledge-service/app/extraction/llm_json_parser.py](services/knowledge-service/app/extraction/llm_json_parser.py) — `_CODE_FENCE_RE` + `_strip_code_fences` helper (F9), `_BAD_CONTENT_PROMPT_CAP` + `_cap_bad_content` helper (F6), `_log_terminal_failure` newline replacement (F8), explicit `isinstance` + AssertionError (F3), `first_attempt_content` threaded through `_do_fix_up` (F2/F4), docstring rewrite (F11), fence-stripping wired into both `json.loads` call sites.
+- [services/knowledge-service/tests/unit/test_llm_json_parser.py](services/knowledge-service/tests/unit/test_llm_json_parser.py) — 6 new R3 regression tests covering F9 (three variants), F2, F4, F6.
+
+**Test results:**
+- knowledge-service: **966 passing** (up from 960 — 6 new R3 tests), 0 skipped, 0 failed
+- Live smoke: knowledge-service rebuilt + restarted cleanly; no log regressions from the newline-stripping change.
+
+**K17.3-R3 criticality context:** F9 (fence stripping) is the single most production-impactful fix. Without it, every local-LM extraction that emits fenced JSON would burn the fix-up retry, halving the effective budget for the real failure modes the retry was designed for. F2/F4 (raw_content threading) recovers a debugging signal that K16 job-failure rows would otherwise lose on any parse-then-provider-error scenario. F11 (docstring correctness) is low-impact but would have caused future confusion — "max 2" contradicted the actual 3-call maximum.
+
+**No deferrals opened.** All 15 review issues are either fixed, accepted with rationale, or intentionally deferred to K17.9 golden-set tuning (F12, F14).
+
+---
 
 ### K17.3 — LLM JSON extraction wrapper ✅ (session 42, Track 2)
 

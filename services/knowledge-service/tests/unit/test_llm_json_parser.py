@@ -474,6 +474,122 @@ async def test_response_format_passed_through():
 # ── ExtractionError.raw_content capture ──────────────────────────────
 
 
+# ── R3 regressions ────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_r3_f9_code_fenced_json_parsed_without_retry():
+    # R3 F9: LLMs (especially local ones) often wrap JSON in markdown
+    # code fences even when instructed not to. The client must strip
+    # fences on BOTH first attempt and retry so we don't burn retries
+    # on pure formatting issues.
+    fake = FakeProviderClient()
+    fake.queue_response(f"```json\n{_VALID_JSON}\n```")
+    result = await extract_json(
+        EntityExtractionResponse,
+        **_DEFAULT_CALL,
+        client=_client_kwarg(fake),
+    )
+    assert isinstance(result, EntityExtractionResponse)
+    assert len(result.entities) == 1
+    # Crucially: only ONE call. The fence was stripped on the first
+    # attempt; no retry was burned.
+    assert len(fake.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_r3_f9_code_fenced_json_without_json_language_tag():
+    # Some providers emit ``` without the "json" language tag.
+    fake = FakeProviderClient()
+    fake.queue_response(f"```\n{_VALID_JSON}\n```")
+    result = await extract_json(
+        EntityExtractionResponse,
+        **_DEFAULT_CALL,
+        client=_client_kwarg(fake),
+    )
+    assert isinstance(result, EntityExtractionResponse)
+    assert len(fake.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_r3_f9_code_fence_stripped_on_retry_path_too():
+    # If the first attempt is REALLY bad (not even fence-wrapped) but
+    # the retry returns fence-wrapped JSON, we still accept it.
+    fake = FakeProviderClient()
+    fake.queue_response(_BAD_JSON)
+    fake.queue_response(f"```json\n{_VALID_JSON}\n```")
+    result = await extract_json(
+        EntityExtractionResponse,
+        **_DEFAULT_CALL,
+        client=_client_kwarg(fake),
+    )
+    assert isinstance(result, EntityExtractionResponse)
+    assert len(fake.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_r3_f2_raw_content_captured_on_parse_retry_provider_exhausted():
+    # R3 F2/F4: when the first attempt returns bad JSON and the fix-up
+    # call raises a provider error, ExtractionError.raw_content must
+    # carry the FIRST attempt's content, not None. Without this fix,
+    # operators lose the debugging signal for "what did the LLM say
+    # before the fix-up call errored out?".
+    fake = FakeProviderClient()
+    fake.queue_response("this is definitely not json")
+    fake.queue_exception(ProviderUpstreamError("502 on fix-up", status_code=502))
+    with pytest.raises(ExtractionError) as excinfo:
+        await extract_json(
+            EntityExtractionResponse,
+            **_DEFAULT_CALL,
+            client=_client_kwarg(fake),
+        )
+    assert excinfo.value.stage == "provider_exhausted"
+    assert excinfo.value.raw_content == "this is definitely not json"
+    assert len(fake.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_r3_f4_raw_content_captured_on_validate_retry_provider_exhausted():
+    # Same F2/F4 story for the validate retry path.
+    fake = FakeProviderClient()
+    fake.queue_response(_WRONG_SHAPE_JSON)
+    fake.queue_exception(ProviderTimeout("timeout on fix-up"))
+    with pytest.raises(ExtractionError) as excinfo:
+        await extract_json(
+            EntityExtractionResponse,
+            **_DEFAULT_CALL,
+            client=_client_kwarg(fake),
+        )
+    assert excinfo.value.stage == "provider_exhausted"
+    assert excinfo.value.raw_content == _WRONG_SHAPE_JSON
+    assert len(fake.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_r3_f6_bad_content_capped_in_parse_retry_prompt():
+    # R3 F6: pathological LLM echo (entire chapter echoed back) must
+    # be capped in the retry prompt so it can't blow the context
+    # budget. Cap is 8000 chars.
+    fake = FakeProviderClient()
+    pathological = "NOT JSON " * 2000  # ~18000 chars of garbage
+    fake.queue_response(pathological)
+    fake.queue_response(_VALID_JSON)
+    result = await extract_json(
+        EntityExtractionResponse,
+        **_DEFAULT_CALL,
+        client=_client_kwarg(fake),
+    )
+    assert isinstance(result, EntityExtractionResponse)
+
+    # Inspect the retry prompt: the assistant turn (bad_content) must
+    # be capped at 8000 chars + a truncation suffix.
+    retry_messages = fake.calls[1]["messages"]
+    assistant_turn = retry_messages[2]
+    assert assistant_turn["role"] == "assistant"
+    assert len(assistant_turn["content"]) < len(pathological)
+    assert "truncated" in assistant_turn["content"].lower()
+
+
 @pytest.mark.asyncio
 async def test_raw_content_captured_on_parse_exhaustion():
     fake = FakeProviderClient()

@@ -16,12 +16,21 @@ Wraps `ProviderClient.chat_completion` (K17.2b) with:
      ProviderAuthError, ProviderInvalidRequest, ProviderDecodeError)
      surface as ExtractionError(stage="provider") immediately.
 
-Retry contract: ONE retry per invocation, not one retry per failure
-mode. If the first HTTP call succeeds but the JSON fails to parse, we
-spend the retry on a parse fix-up turn; if THAT succeeds HTTP-level
-but also fails to parse, we raise ExtractionError. We do NOT chain
-parse-retry → validate-retry. Total LLM call budget per invocation:
-max 2.
+Retry contract: the HTTP-retry budget and the JSON-retry budget are
+independent; each is capped at 1 retry. The maximum total LLM call
+count per `extract_json` invocation is therefore THREE:
+
+  1. Initial HTTP call (always)
+  2. Optional HTTP retry if the initial call raised a retry-eligible
+     provider error (ProviderRateLimited / ProviderUpstreamError /
+     ProviderTimeout). Honors Retry-After for rate limiting.
+  3. Optional JSON fix-up retry if the response from step 1 or step 2
+     failed to parse as JSON OR failed Pydantic validation.
+
+We do NOT chain parse-retry → validate-retry within the JSON-retry
+budget: if the fix-up call itself returns unparseable or invalid-shape
+JSON, we raise ExtractionError immediately. The "one retry" is one
+fix-up turn, not one retry per failure mode on the same turn.
 
 The `outcome` metric label measures JSON QUALITY, not HTTP retry
 count. A first-try JSON success where the HTTP call happened to hit
@@ -56,6 +65,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Literal, TypeVar
 
@@ -101,6 +111,43 @@ ExtractionStage = Literal[
 # so a deeply nested error message doesn't blow the context budget.
 _VALIDATION_ERROR_PROMPT_CAP = 1000
 
+# R3 F6 — cap LLM-echoed content in retry prompts so a pathological
+# response (entire chapter echoed back) cannot double the retry's
+# context size and blow past the proxy's 4 MiB body cap.
+_BAD_CONTENT_PROMPT_CAP = 8000
+
+# R3 F9 — LLMs frequently wrap JSON in markdown code fences even when
+# asked not to. Local models (Ollama, LM Studio) do this routinely
+# regardless of `response_format`. Strip common fence patterns before
+# `json.loads` on BOTH first attempt and retry so we don't burn the
+# fix-up retry budget on a pure-formatting issue.
+#
+# Patterns handled:
+#   ```json\n{...}\n```
+#   ```\n{...}\n```
+#   ```json{...}```          (no leading newline, some models)
+# Matches the first fenced block only — trailing text (e.g. "Here is
+# the JSON:" prose after the fence) is left to the LLM prompt to
+# discourage rather than the parser to handle.
+_CODE_FENCE_RE = re.compile(
+    r"```(?:json|JSON)?\s*\n?(.*?)\n?\s*```",
+    re.DOTALL,
+)
+
+
+def _strip_code_fences(content: str) -> str:
+    """Return the content inside the first ```...``` block, or the
+    original content if no fence is found. Whitespace-trimmed.
+
+    R3 F9. Handles the common "LLM ignored the instructions and wrapped
+    its JSON in a markdown fence" failure mode without burning a retry.
+    """
+    stripped = content.strip()
+    match = _CODE_FENCE_RE.search(stripped)
+    if match:
+        return match.group(1).strip()
+    return stripped
+
 
 class ExtractionError(Exception):
     """Terminal failure from `extract_json`.
@@ -141,6 +188,16 @@ def _build_initial_messages(
     return messages
 
 
+def _cap_bad_content(bad_content: str) -> str:
+    """R3 F6 — cap LLM-echoed content so the retry prompt can't blow
+    the context budget on a pathological echo. 8 KB is generous for
+    any realistic JSON response; anything longer is almost certainly
+    the LLM echoing its entire input back."""
+    if len(bad_content) > _BAD_CONTENT_PROMPT_CAP:
+        return bad_content[:_BAD_CONTENT_PROMPT_CAP] + "… (previous response truncated)"
+    return bad_content
+
+
 def _build_parse_retry_messages(
     system: str | None,
     user_prompt: str,
@@ -148,7 +205,7 @@ def _build_parse_retry_messages(
     parse_error: str,
 ) -> list[dict[str, str]]:
     base = _build_initial_messages(system, user_prompt)
-    base.append({"role": "assistant", "content": bad_content})
+    base.append({"role": "assistant", "content": _cap_bad_content(bad_content)})
     base.append(
         {
             "role": "user",
@@ -171,7 +228,7 @@ def _build_validate_retry_messages(
     validation_error: str,
 ) -> list[dict[str, str]]:
     base = _build_initial_messages(system, user_prompt)
-    base.append({"role": "assistant", "content": bad_content})
+    base.append({"role": "assistant", "content": _cap_bad_content(bad_content)})
     # Truncate overly-long ValidationError text to protect the
     # downstream context budget (Phase 3 review issue 4).
     if len(validation_error) > _VALIDATION_ERROR_PROMPT_CAP:
@@ -246,6 +303,9 @@ def _log_terminal_failure(
     model_source: str,
     model_ref: str,
 ) -> None:
+    # R3 F8 — collapse newlines so Pydantic ValidationError (which is
+    # multi-line) still produces a single grep-friendly log line.
+    error_line = str(last_error)[:500].replace("\n", " ").replace("\r", " ")
     logger.warning(
         "llm_json_extraction outcome=%s stage=%s "
         "model_source=%s model_ref=%s trace_id=%s error=%s: %s",
@@ -255,7 +315,7 @@ def _log_terminal_failure(
         model_ref,
         trace_id or "",
         type(last_error).__name__,
-        str(last_error)[:500],
+        error_line,
     )
 
 
@@ -307,19 +367,27 @@ async def extract_json(
     try:
         response = await _call_chat(client, call_args, initial_messages)
     except (ProviderRateLimited, ProviderUpstreamError, ProviderTimeout) as exc:
+        retry_after: float | None = None
         if isinstance(exc, ProviderRateLimited):
             retry_reason = "rate_limited"
-            # R1 E2 — `if exc.retry_after_s:` is intentionally falsy
-            # for both None and 0.0. A server that sends
-            # `Retry-After: 0` means "retry immediately" — skipping
-            # sleep is correct, not a bug.
+            # R1 E2 — `if retry_after:` is intentionally falsy for both
+            # None and 0.0. A server that sends `Retry-After: 0` means
+            # "retry immediately" — skipping sleep is correct.
             retry_after = exc.retry_after_s
         elif isinstance(exc, ProviderUpstreamError):
             retry_reason = "upstream"
-            retry_after = None
-        else:
+        elif isinstance(exc, ProviderTimeout):
             retry_reason = "timeout"
-            retry_after = None
+        else:
+            # R3 F3 — unreachable today (flat provider-error hierarchy,
+            # the except tuple explicitly enumerates the three types)
+            # but guards against a future refactor that makes one class
+            # inherit from another and silently drops into the wrong
+            # elif branch. Raises loudly instead of misclassifying.
+            raise AssertionError(
+                f"unexpected retry-eligible provider error class: "
+                f"{type(exc).__name__}"
+            ) from exc
 
         _inc_retry(retry_reason)
         if retry_after:
@@ -362,8 +430,10 @@ async def extract_json(
 
     # ── First HTTP response is in hand — parse and validate ───────────
 
+    first_attempt_content = response.content
+    cleaned = _strip_code_fences(first_attempt_content)  # R3 F9
     try:
-        parsed = json.loads(response.content)
+        parsed = json.loads(cleaned)
     except json.JSONDecodeError as exc:
         _inc_retry("parse")
         return await _do_fix_up(
@@ -371,11 +441,12 @@ async def extract_json(
             client,
             call_args,
             _build_parse_retry_messages(
-                system, user_prompt, response.content, str(exc)
+                system, user_prompt, first_attempt_content, str(exc)
             ),
             trace_id=trace_id,
             model_source=model_source,
             model_ref=model_ref,
+            first_attempt_content=first_attempt_content,
         )
 
     try:
@@ -387,11 +458,12 @@ async def extract_json(
             client,
             call_args,
             _build_validate_retry_messages(
-                system, user_prompt, response.content, str(exc)
+                system, user_prompt, first_attempt_content, str(exc)
             ),
             trace_id=trace_id,
             model_source=model_source,
             model_ref=model_ref,
+            first_attempt_content=first_attempt_content,
         )
 
     _inc_outcome("ok_first_try")
@@ -417,6 +489,7 @@ async def _do_fix_up(
     trace_id: str | None,
     model_source: str,
     model_ref: str,
+    first_attempt_content: str,
 ) -> T:
     """Single fix-up attempt. On ANY failure (provider, parse, or
     validate), raise `ExtractionError` — the retry budget is spent.
@@ -424,6 +497,12 @@ async def _do_fix_up(
     Note: the `messages` list already includes the fix-up turn, so
     the caller builds the full conversation. We just issue the call
     and interpret the response.
+
+    R3 F2/F4 — `first_attempt_content` is threaded through so a
+    provider-exhausted fix-up raise still populates
+    `ExtractionError.raw_content` with the original bad output. Without
+    this, the debugging context is lost: operators see "fix-up hit a
+    502" but have no record of what the first attempt returned.
     """
     try:
         response = await _call_chat(client, call_args, messages)
@@ -437,12 +516,14 @@ async def _do_fix_up(
             stage="provider_exhausted",
             trace_id=trace_id,
             last_error=exc,
+            raw_content=first_attempt_content,  # R3 F2/F4
         ) from exc
 
     raw = response.content
+    cleaned = _strip_code_fences(raw)  # R3 F9
 
     try:
-        parsed = json.loads(raw)
+        parsed = json.loads(cleaned)
     except json.JSONDecodeError as exc:
         _inc_outcome("parse_exhausted")
         _log_terminal_failure(
