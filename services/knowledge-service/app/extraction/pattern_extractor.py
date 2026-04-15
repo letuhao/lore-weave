@@ -132,28 +132,33 @@ async def extract_from_chat_turn(
     # that uttered them. K15.7 dedupes entities across halves via
     # its (folded_name, kind_hint) key so repeated entities collapse
     # to one :Entity node with one evidence edge.
+    # K15.12-R1/I3: start the timer and open the try/finally BEFORE
+    # any work, so the histogram observes even if glossary_names
+    # iteration or injection sanitisation raises. Otherwise a "latency
+    # went dark" alert would miss hard failures in the pre-extract
+    # prep stage.
     started = time.perf_counter()
-    halves = [
-        part.strip()
-        for part in (user_message, assistant_message)
-        if part and part.strip()
-    ]
-    text = "\n\n".join(halves)
-
-    # Observability-only call on the combined corpus: fires
-    # `injection_pattern_matched_total` at orchestrator level so
-    # dashboards see attack shapes at intake independently of
-    # whether a fact survives to K15.7's write path. The sanitized
-    # output is discarded — extractors run on raw halves so their
-    # pattern regexes aren't confused by injected `[FICTIONAL] `
-    # tokens. R2/I1 (K15.8) closes the entity-name persistence gap
-    # at write time.
-    if text:
-        neutralize_injection(text, project_id=project_id)
-
-    glossary_list = list(glossary_names or ())
-
     try:
+        halves = [
+            part.strip()
+            for part in (user_message, assistant_message)
+            if part and part.strip()
+        ]
+        text = "\n\n".join(halves)
+
+        # Observability-only call on the combined corpus: fires
+        # `injection_pattern_matched_total` at orchestrator level so
+        # dashboards see attack shapes at intake independently of
+        # whether a fact survives to K15.7's write path. The
+        # sanitized output is discarded — extractors run on raw
+        # halves so their pattern regexes aren't confused by injected
+        # `[FICTIONAL] ` tokens. R2/I1 (K15.8) closes the entity-name
+        # persistence gap at write time.
+        if text:
+            neutralize_injection(text, project_id=project_id)
+
+        glossary_list = list(glossary_names or ())
+
         if not halves:
             # Empty turn: still upsert the source so re-extract on
             # the same turn_id stays idempotent at K11.8 level.
@@ -318,21 +323,25 @@ async def extract_from_chapter(
         `ExtractionWriteResult` from K15.7 reflecting the *combined*
         counts across all chunks (post-dedupe at the writer).
     """
+    # K15.12-R1/I3: open try/finally BEFORE chunking and injection
+    # so a ValueError from _split_chapter_into_chunks or an iterator
+    # failure on glossary_names still records the latency.
     started = time.perf_counter()
-    chunks = _split_chapter_into_chunks(
-        chapter_text, budget=chunk_char_budget
-    )
-
-    # Orchestrator-level injection observability on the full body.
-    # Same rationale as extract_from_chat_turn: sanitized output is
-    # discarded; extractors consume raw chunks so regex patterns
-    # aren't confused by injected `[FICTIONAL] ` tokens.
-    if chapter_text and chapter_text.strip():
-        neutralize_injection(chapter_text, project_id=project_id)
-
-    glossary_list = list(glossary_names or ())
-
     try:
+        chunks = _split_chapter_into_chunks(
+            chapter_text, budget=chunk_char_budget
+        )
+
+        # Orchestrator-level injection observability on the full
+        # body. Same rationale as extract_from_chat_turn: sanitized
+        # output is discarded; extractors consume raw chunks so
+        # regex patterns aren't confused by injected `[FICTIONAL] `
+        # tokens.
+        if chapter_text and chapter_text.strip():
+            neutralize_injection(chapter_text, project_id=project_id)
+
+        glossary_list = list(glossary_names or ())
+
         if not chunks:
             return await write_extraction(
                 session,

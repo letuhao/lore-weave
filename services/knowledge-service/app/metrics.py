@@ -115,6 +115,15 @@ for _kind in ("entity", "relation", "fact"):
 # "extractor found nothing" from "extractor found plenty but writer
 # dropped them as duplicates or missing-endpoint". `kind` cardinality
 # is closed at 3 (entity | triple | negation).
+#
+# **Semantics (K15.12-R1/I1):** this counts *raw extractor work*, not
+# unique candidates. Re-extracting the same chat turn / chapter with
+# the same job_id is a writer-level no-op (K15.7 dedupes) but still
+# increments this counter by the full candidate set. A dashboard
+# panel computing "extraction → write conversion ratio" must account
+# for re-runs drifting the ratio above 1.0; the intended alerting
+# use is "did the extractor do any work at all in window W", not
+# "how many unique facts did we harvest".
 pass1_candidates_extracted_total = Counter(
     "knowledge_pass1_candidates_extracted_total",
     "Pattern-extractor candidates produced by K15.8/K15.9 orchestrators "
