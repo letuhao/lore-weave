@@ -10,7 +10,7 @@
 - Last Updated: 2026-04-15 (session 41 — **K15.1..K15.10, K15.12, K16.1, K17.1** COMPLETE with R-round reviews)
 - Updated By: Assistant (session 41 shipped K15.1..K15.9 (+R1+R2), K15.10, K15.12, K16.1 state machine, K17.1 LLM prompts; K15.11 deferred to infra-capable session.)
 - Active Branch: `main` (ahead of origin by session 38–41 commits — user pushes manually)
-- HEAD: K17.1
+- HEAD: K17.1-R2
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V16.md` (K11.9 added, K11 cluster fully closed)
 - **Previous Handoff:** `docs/sessions/SESSION_HANDOFF_V15.md` (K11.1 → K11.8)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
@@ -124,6 +124,19 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K17.1-R2 — LLM prompts second-pass review ✅ (session 41, Track 2)
+
+**Issues found & fixed:**
+- **I1 (medium)** — module docstring said tests should call `load_prompt.cache_clear()`, but `load_prompt` isn't `@lru_cache`d; `_load_raw` is. A future test author following the docstring would hit `AttributeError`. Corrected docstring to `_load_raw.cache_clear()`.
+- **I2 (low)** — `ALLOWED_PROMPT_NAMES` frozenset literally duplicated the `PromptName` Literal members. Drift risk if one edit adds a kind and the other doesn't. Now derived via `frozenset(get_args(PromptName))` — single source of truth.
+- **I3 (low)** — `_cache_clear()` test hook was defined but never referenced by the test file (tests import `_load_raw` directly for placeholder assertions, not for cache clearing). Deleted dead code; any future test that needs clearing can call `_load_raw.cache_clear()` directly per the corrected docstring.
+
+**Files touched:** [app/extraction/llm_prompts/__init__.py](services/knowledge-service/app/extraction/llm_prompts/__init__.py).
+
+**Test results:** unchanged (laptop constraint); pure-python loader edits, no behavioural change to the public API.
+
+---
 
 ### K17.1 — LLM extraction prompts ✅ (session 41, Track 2)
 

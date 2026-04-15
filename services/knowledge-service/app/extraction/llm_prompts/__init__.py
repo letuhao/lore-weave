@@ -12,11 +12,11 @@ kwargs at call time rather than silently embedding a literal
 would only surface as confusing model output hours later.
 
 **LRU-cached raw loads:** the markdown files are read once per
-process via `@lru_cache`. Prompt content is effectively immutable
-at runtime (baked into the container image), so re-reading on
-every extract call would be pure waste. Tests that hot-swap prompt
-files must call `load_prompt.cache_clear()` — see the K17.1 test
-file.
+process via `@lru_cache` on `_load_raw`. Prompt content is
+effectively immutable at runtime (baked into the container image),
+so re-reading on every extract call would be pure waste. Tests
+that hot-swap prompt files must call `_load_raw.cache_clear()`
+to see fresh contents.
 
 **Closed prompt name set:** `_ALLOWED_NAMES` is a frozenset of the
 four extractor kinds. Attempting to load anything else raises
@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Literal, get_args
 
 __all__ = [
     "PromptName",
@@ -44,9 +44,10 @@ __all__ = [
 # the runtime KeyError from _load_raw.
 PromptName = Literal["entity", "relation", "event", "fact"]
 
-ALLOWED_PROMPT_NAMES: frozenset[str] = frozenset(
-    {"entity", "relation", "event", "fact"}
-)
+# R2/I2: derive the runtime closed-set from the Literal so a future
+# edit that adds a prompt kind in one place but forgets the other
+# can't drift.
+ALLOWED_PROMPT_NAMES: frozenset[str] = frozenset(get_args(PromptName))
 
 _PROMPTS_DIR = Path(__file__).parent
 
@@ -98,8 +99,3 @@ def load_prompt(name: PromptName, **substitutions: str) -> str:
     return template.format_map(_StrictDict(substitutions))
 
 
-def _cache_clear() -> None:
-    """Test hook: clear the raw-load LRU cache so tests that write
-    to a temporary prompt file see fresh contents. Not part of the
-    public API — underscore-prefixed."""
-    _load_raw.cache_clear()
