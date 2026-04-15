@@ -1491,7 +1491,7 @@ events. Quarantined (not loaded into L2 until Pass 2 confirms).
 ```
 
 ```
-[ ] K15.9 Orchestrator: extract_from_chapter
+[✓] K15.9 Orchestrator: extract_from_chapter
     Files:
       - services/knowledge-service/app/extraction/pattern_extractor.py (MODIFY)
     Description:

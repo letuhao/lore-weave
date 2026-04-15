@@ -57,7 +57,19 @@ from app.extraction.triple_extractor import extract_triples
 
 __all__ = [
     "extract_from_chat_turn",
+    "extract_from_chapter",
 ]
+
+
+# K15.9: chunk size for chapter-scale extraction. Chapters frequently
+# run 3–10k characters; K15.2's capitalized-phrase scan and K15.4's
+# per-sentence SVO regex are each O(n) per pattern and do a quadratic-
+# ish pass when they call back into entity detection per sentence.
+# Splitting into ~4k-char chunks keeps a single pass bounded without
+# fragmenting sentences — we split on paragraph boundaries (blank
+# lines) first and only fall back to hard slicing when a single
+# paragraph exceeds the budget.
+_CHAPTER_CHUNK_CHAR_BUDGET = 4000
 
 
 async def extract_from_chat_turn(
@@ -160,6 +172,164 @@ async def extract_from_chat_turn(
         )
         negations.extend(
             extract_negations(half, glossary_names=glossary_list)
+        )
+
+    return await write_extraction(
+        session,
+        user_id=user_id,
+        project_id=project_id,
+        source_type=source_type,
+        source_id=source_id,
+        job_id=job_id,
+        entities=entities,
+        triples=triples,
+        negations=negations,
+        extraction_model=extraction_model,
+    )
+
+
+def _split_chapter_into_chunks(
+    text: str,
+    *,
+    budget: int = _CHAPTER_CHUNK_CHAR_BUDGET,
+) -> list[str]:
+    """Split a chapter into extraction-sized chunks on paragraph
+    boundaries. Paragraphs larger than `budget` are hard-sliced on
+    character count — K15.3's per-sentence splitter inside each
+    extractor still sees sentence boundaries correctly, so a hard
+    slice at character level only risks bisecting one sentence per
+    oversized paragraph. For Track 1 hobby-scale text that's
+    acceptable; the K17 LLM pass re-anchors facts by content hash
+    on Pass 2, so a one-sentence bisect doesn't leak into the
+    promoted graph.
+
+    Returns a list of non-empty chunks. An empty / whitespace-only
+    chapter returns `[]`.
+    """
+    if budget <= 0:
+        raise ValueError(f"budget must be > 0, got {budget}")
+    if not text or not text.strip():
+        return []
+
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0
+
+    for para in paragraphs:
+        if len(para) > budget:
+            # Flush whatever is buffered, then hard-slice the big
+            # paragraph directly into the output.
+            if current:
+                chunks.append("\n\n".join(current))
+                current = []
+                current_len = 0
+            for start in range(0, len(para), budget):
+                chunks.append(para[start : start + budget])
+            continue
+
+        projected = current_len + len(para) + (2 if current else 0)
+        if current and projected > budget:
+            chunks.append("\n\n".join(current))
+            current = [para]
+            current_len = len(para)
+        else:
+            current.append(para)
+            current_len = projected
+
+    if current:
+        chunks.append("\n\n".join(current))
+
+    return chunks
+
+
+async def extract_from_chapter(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    source_type: str,
+    source_id: str,
+    job_id: str,
+    chapter_text: str,
+    glossary_names: Iterable[str] | None = None,
+    extraction_model: str = "pattern-v1",
+    chunk_char_budget: int = _CHAPTER_CHUNK_CHAR_BUDGET,
+) -> ExtractionWriteResult:
+    """Run the Pass 1 pattern pipeline on a chapter-sized input.
+
+    Differs from `extract_from_chat_turn` in three ways:
+      1. Input is a single text body (no user/assistant split).
+      2. Text is split into paragraph-boundary chunks bounded by
+         `chunk_char_budget` so K15.2's capitalized-phrase scan and
+         K15.4's per-sentence SVO regex don't run quadratic passes
+         over a full chapter in one shot.
+      3. All chunks share the same `source_id` / `job_id`, so
+         K15.7's `(folded_name, kind_hint)` dedupe collapses
+         entities that repeat across chunks, and `add_evidence`
+         idempotency makes re-extraction a no-op.
+
+    The writer is called exactly once with the accumulated
+    candidates from every chunk. Writing per-chunk would be
+    equally correct but would fire the extraction_source upsert
+    N times, inflate per-write metric samples, and make
+    `skipped_missing_endpoint` counters harder to read.
+
+    Args:
+        session: K11.4 CypherSession.
+        user_id: tenant id.
+        project_id: optional project scope.
+        source_type: K11.8 source type — typically `"chapter"`.
+        source_id: natural key of the chapter (e.g., chapter uuid).
+        job_id: unique per extraction run.
+        chapter_text: the full chapter body. Empty / whitespace-only
+            is a no-op that still upserts the source.
+        glossary_names: optional known entity display names.
+        extraction_model: evidence-edge tag; defaults to `"pattern-v1"`.
+        chunk_char_budget: override the default chunk size for
+            testing; production callers should leave it at the
+            module default.
+
+    Returns:
+        `ExtractionWriteResult` from K15.7 reflecting the *combined*
+        counts across all chunks (post-dedupe at the writer).
+    """
+    chunks = _split_chapter_into_chunks(
+        chapter_text, budget=chunk_char_budget
+    )
+
+    # Orchestrator-level injection observability on the full body.
+    # Same rationale as extract_from_chat_turn: sanitized output is
+    # discarded; extractors consume raw chunks so regex patterns
+    # aren't confused by injected `[FICTIONAL] ` tokens.
+    if chapter_text and chapter_text.strip():
+        neutralize_injection(chapter_text, project_id=project_id)
+
+    glossary_list = list(glossary_names or ())
+
+    if not chunks:
+        return await write_extraction(
+            session,
+            user_id=user_id,
+            project_id=project_id,
+            source_type=source_type,
+            source_id=source_id,
+            job_id=job_id,
+            extraction_model=extraction_model,
+        )
+
+    entities = []
+    triples = []
+    negations = []
+    for chunk in chunks:
+        entities.extend(
+            extract_entity_candidates(chunk, glossary_names=glossary_list)
+        )
+        triples.extend(
+            extract_triples(chunk, glossary_names=glossary_list)
+        )
+        negations.extend(
+            extract_negations(chunk, glossary_names=glossary_list)
         )
 
     return await write_extraction(

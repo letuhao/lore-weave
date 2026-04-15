@@ -16,7 +16,10 @@ import uuid
 import pytest
 import pytest_asyncio
 
-from app.extraction.pattern_extractor import extract_from_chat_turn
+from app.extraction.pattern_extractor import (
+    extract_from_chapter,
+    extract_from_chat_turn,
+)
 from app.metrics import (
     injection_pattern_matched_total,
     pass1_facts_written_total,
@@ -279,6 +282,109 @@ async def test_k15_8_same_job_id_different_sources_both_write(
     )
     assert r1.evidence_edges >= 1
     assert r2.evidence_edges >= 1
+
+
+# ── K15.9: chapter orchestrator ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_k15_9_chapter_extracts_across_chunks(
+    cypher_session, test_user
+):
+    """Multi-paragraph chapter spanning multiple chunks must still
+    produce a coherent graph — entities that repeat across chunks
+    dedupe to one :Entity, relations and negations in each chunk
+    fire correctly."""
+    chapter = "\n\n".join(
+        [
+            "Kai met Zhao at the river.",
+            "Later, Kai fought Drake in the forest.",
+            "Zhao did not trust Drake from the beginning.",
+            "Kai does not know Phoenix.",
+        ]
+    )
+    result = await extract_from_chapter(
+        cypher_session,
+        user_id=test_user,
+        project_id="p-1",
+        source_type="chapter",
+        source_id="ch-multi",
+        job_id="job-multi",
+        chapter_text=chapter,
+        glossary_names=["Kai", "Zhao", "Drake", "Phoenix"],
+        chunk_char_budget=40,  # force multiple chunks
+    )
+
+    assert result.entities_merged >= 4  # Kai, Zhao, Drake, Phoenix
+    assert result.relations_created >= 1
+    assert result.facts_merged >= 1
+
+
+@pytest.mark.asyncio
+async def test_k15_9_chapter_empty_still_upserts_source(
+    cypher_session, test_user
+):
+    result = await extract_from_chapter(
+        cypher_session,
+        user_id=test_user,
+        project_id="p-1",
+        source_type="chapter",
+        source_id="ch-empty",
+        job_id="job-empty",
+        chapter_text="   \n\n  \n",
+    )
+    assert result.entities_merged == 0
+    assert result.source_id
+
+
+@pytest.mark.asyncio
+async def test_k15_9_chapter_idempotent_reentry(
+    cypher_session, test_user
+):
+    kwargs = dict(
+        user_id=test_user,
+        project_id="p-1",
+        source_type="chapter",
+        source_id="ch-idem",
+        job_id="job-idem",
+        chapter_text=(
+            "Kai met Zhao.\n\nKai does not know Drake."
+        ),
+        glossary_names=["Kai", "Zhao", "Drake"],
+    )
+    first = await extract_from_chapter(cypher_session, **kwargs)
+    second = await extract_from_chapter(cypher_session, **kwargs)
+    assert first.entities_merged == second.entities_merged
+    assert second.evidence_edges == 0
+
+
+@pytest.mark.asyncio
+async def test_k15_9_chapter_large_body_handled(
+    cypher_session, test_user
+):
+    """Acceptance: 10k+ char chapter without OOM or crash. We use
+    a synthetic body built from repeated paragraphs — the assertion
+    is that the function returns a valid result, not that the
+    content is deeply meaningful."""
+    paragraph = (
+        "Kai met Zhao at the river and they spoke at length. "
+        "Drake watched from the trees without a word."
+    )
+    chapter = "\n\n".join([paragraph] * 120)
+    assert len(chapter) > 10_000
+
+    result = await extract_from_chapter(
+        cypher_session,
+        user_id=test_user,
+        project_id="p-1",
+        source_type="chapter",
+        source_id="ch-large",
+        job_id="job-large",
+        chapter_text=chapter,
+        glossary_names=["Kai", "Zhao", "Drake"],
+    )
+    assert result.entities_merged >= 3
+    assert result.source_id
 
 
 # ── Metric emission ─────────────────────────────────────────────────

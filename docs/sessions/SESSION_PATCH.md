@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-15 (session 41 — **K15.1..K15.8** COMPLETE with R-round reviews)
-- Updated By: Assistant (session 41 shipped eight K15 tasks: K15.1..K15.7 (+R1+R2) + K15.8 orchestrator `extract_from_chat_turn`. K15 cluster tests: 137 passed in extraction subset.)
+- Last Updated: 2026-04-15 (session 41 — **K15.1..K15.9** COMPLETE with R-round reviews)
+- Updated By: Assistant (session 41 shipped nine K15 tasks: K15.1..K15.8 (+R1+R2) + K15.9 chapter orchestrator with chunking.)
 - Active Branch: `main` (ahead of origin by session 38–41 commits — user pushes manually)
-- HEAD: K15.8 (pending Phase 9)
+- HEAD: K15.9 (pending Phase 9)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V16.md` (K11.9 added, K11 cluster fully closed)
 - **Previous Handoff:** `docs/sessions/SESSION_HANDOFF_V15.md` (K11.1 → K11.8)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
@@ -123,6 +123,33 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K15.9 — Chapter extraction orchestrator ✅ (session 41, Track 2)
+
+**Goal:** per the K15.9 plan row, add `extract_from_chapter` that handles chapter-sized text (10k+ chars) by chunking on paragraph boundaries before running the Pass 1 pipeline. Avoids running K15.2/K15.4 scans quadratically over an entire chapter in one shot while preserving entity dedupe across chunks via K15.7's writer-level key.
+
+**Files:**
+- [app/extraction/pattern_extractor.py](services/knowledge-service/app/extraction/pattern_extractor.py) — added `_split_chapter_into_chunks(text, budget)` helper + `extract_from_chapter(...)` async orchestrator. Chunks prefer paragraph boundaries (`\n\n` split); oversized paragraphs are hard-sliced at char budget as a fallback. One `write_extraction` call per chapter, with accumulated candidates from every chunk — K15.7 dedupes entities by `(folded_name, kind_hint)` so cross-chunk repetition collapses to one `:Entity`.
+- [tests/unit/test_chapter_chunking.py](services/knowledge-service/tests/unit/test_chapter_chunking.py) — NEW. 8 chunker unit tests (empty, single-short, merge-small, split-at-boundary, hard-slice-oversized, buffered-flush, no-content-loss, invalid-budget).
+- [tests/integration/db/test_pattern_extractor.py](services/knowledge-service/tests/integration/db/test_pattern_extractor.py) — added 4 K15.9 integration tests: multi-chunk chapter, empty body source upsert, idempotent re-entry, and a 10k+ char body acceptance test.
+
+**Design decisions:**
+- **Single write per chapter, not per chunk.** All chunks share the same `source_id` / `job_id`, so writing per-chunk would fire `upsert_extraction_source` N times and inflate metric samples. K15.7's writer-level dedupe makes one consolidated write correct.
+- **Default chunk budget 4000 chars.** Covers typical paragraphs without fragmenting sentences; configurable via `chunk_char_budget` parameter for tests (the multi-chunk integration test forces budget=40 to guarantee chunk boundaries). Production callers leave it at the module default.
+- **Paragraph-boundary split first, hard-slice fallback.** A paragraph larger than the budget gets sliced on character count — K15.3's per-sentence splitter still sees sentence boundaries inside each slice, so the only risk is bisecting one sentence per oversized paragraph. K17 LLM pass re-anchors on Pass 2.
+- **No content deletion on oversized input.** The chunker never drops text; the hard-slice path guarantees every character lands in some chunk. Unit test `test_no_content_loss_across_normal_chapter` asserts this explicitly.
+
+**R1 critical review (same session):**
+- **R1/I1 (LOW, FIXED) — zero/negative budget infinite-loops.** `range(0, len(para), 0)` would spin forever if a caller passed `chunk_char_budget=0`. Added explicit `ValueError` guard at chunker entry + regression test.
+- **R1/I2 (LOW, ACCEPTED) — hard-slice bisects mid-sentence.** Oversized paragraphs are sliced on character count, occasionally cutting one sentence. K15.3 drops partial sentences cleanly; K17 re-anchors by content hash on Pass 2. Documented in the chunker docstring.
+- **R1/I3 (LOW, ACCEPTED) — K15.2 frequency bonus is per-chunk, not chapter-wide.** An entity mentioned 20× across 5 chunks gets the +0.05-per-repeat bonus capped per chunk rather than across the whole chapter. K15.7 dedupe keeps the highest per-chunk confidence so the persisted node is at the best observed score. Fine for Pass 1 quarantine.
+- **R1/I4 (LOW, ACCEPTED) — `chapter_text.strip()` called twice.** Once by the orchestrator for the injection-metric guard, once inside the chunker. Trivial.
+
+**Test results:** 8/8 chunker unit + 4/4 K15.9 integration + existing 9 K15.8 integration = 21/21 in the extraction orchestrator subset. No regressions.
+
+**What K15.9 unblocks:** chapter-level re-extraction flows (worker-ai batch import, CLI `re-extract --chapter`, glossary-service entity sync). K15.10 (quarantine cleanup) is next.
+
+---
 
 ### K15.8 — Pattern extraction orchestrator ✅ (session 41, Track 2)
 
