@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-15 (session 40 — **K11.9 offline reconciler COMPLETE** with R1 second-pass review fixes; closes K11 cluster)
-- Updated By: Assistant (session 40 shipped K11.9 end-to-end through the 9-phase workflow: offline reconciler for cached `evidence_count` drift on `:Entity|:Event|:Fact` nodes per KSA §3.6 + 101 §3.6. 2 commits — K11.9 feat + K11.9-R1 review fixes. R1 caught a defensive-paranoia gap around cross-user EVIDENCED_BY edges, demoted clean-run logging to debug, and decoupled a pure guard test from the neo4j_driver fixture. Test count: **547 passed** (10 new K11.9 + 1 R1 regression test). Full suite 547 passed, 93 skipped; zero K11 regressions.)
-- Active Branch: `main` (ahead of origin by session 38–40 commits — user pushes manually)
-- HEAD: K11.9-R1 review-fix commit (pending Phase 9)
+- Last Updated: 2026-04-15 (session 41 — **K15.1 retcon + K15.2 entity detector + K15.3 per-language pattern sets** all COMPLETE with R-round reviews)
+- Updated By: Assistant (session 41 carried Track 2 extraction from K11 close into K15: K15.1 retconned as already shipped under K11.5 canonical helper with added CJK test coverage; K15.2 shipped two-pass pattern-based entity detector with R1 (double-count gate) and R2 (span-dedup rewrite + glossary determinism) fixes; K15.3 shipped per-language pattern package (en/vi/zh/ja/ko) + langdetect dispatch with R1 fix for CJK sentence splitting. K15 cluster tests: 88 passed (37 canonical + 25 entity detector + 26 patterns).)
+- Active Branch: `main` (ahead of origin by session 38–41 commits — user pushes manually)
+- HEAD: K15.3 + R1 fix (pending Phase 9)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V16.md` (K11.9 added, K11 cluster fully closed)
 - **Previous Handoff:** `docs/sessions/SESSION_HANDOFF_V15.md` (K11.1 → K11.8)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
@@ -121,6 +121,70 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K15.3 — Per-language pattern sets + dispatch ✅ (session 41, Track 2)
+
+**Goal:** per KSA §5.4, give the pattern extractor per-language regex bundles for DECISION / PREFERENCE / MILESTONE / NEGATION / SKIP markers, plus a language-detect dispatch that routes input to the right set. Supports en / vi / zh / ja / ko; mixed-language paragraphs split per sentence.
+
+**Files (all NEW):**
+- [app/extraction/patterns/__init__.py](services/knowledge-service/app/extraction/patterns/__init__.py) — `PatternSet` frozen dataclass, `get_patterns(lang)` with English fallback, `detect_primary_language(text)` (langdetect-seeded, `zh-cn`/`zh-tw`→`zh` normalized), `split_by_language(text)` for per-sentence routing. `DetectorFactory.seed = 0` at import time.
+- [app/extraction/patterns/en.py](services/knowledge-service/app/extraction/patterns/en.py), [vi.py](services/knowledge-service/app/extraction/patterns/vi.py), [zh.py](services/knowledge-service/app/extraction/patterns/zh.py), [ja.py](services/knowledge-service/app/extraction/patterns/ja.py), [ko.py](services/knowledge-service/app/extraction/patterns/ko.py) — each module exports 5 tuples of raw regex strings, compact per KSA coverage policy (6-10 patterns per category).
+- [tests/unit/test_patterns.py](services/knowledge-service/tests/unit/test_patterns.py) — 26 tests covering package shape, per-language detection, mixed-content splitting, per-language marker matching, cross-language isolation, and the R1 regression.
+- [requirements.txt](services/knowledge-service/requirements.txt) — added `langdetect>=1.0.9` (pure-Python port of Google's language-detection library, no native deps).
+
+**Design decisions:**
+- **Literal-enum SUPPORTED_LANGUAGES.** Closed set prevents typos; unknown codes fall back to English rather than raising — per KSA, a best-effort pass is better than failing a novel with a French aside.
+- **`[A-Za-z0-9_]` ASCII boundary is only in K15.2 glossary regex, NOT here.** These patterns use `\b` for Latin languages (vi/en) and literal substrings for CJK (zh/ja/ko), since `\b` is unreliable around kanji/hangul.
+- **`DetectorFactory.seed = 0` at import time.** langdetect is probabilistic — without a seed, a borderline sentence could flip languages across interpreter restarts, breaking test stability and metric series.
+- **`zh-cn`/`zh-tw` → `zh` normalization.** langdetect returns ISO 639-1 + region; our pattern modules use 2-letter buckets.
+- **`detect_primary_language` returns `"mixed"` only if top prob <0.7.** Callers use that signal to invoke `split_by_language` for per-sentence fan-out.
+
+**K15.3-R1 second-pass review fix (1 issue):**
+- **R1 (CJK splitter under-split, HIGH)** — the initial `_SENTENCE_SPLIT_RE = (?<=[.!?。！？\n])\s+` required whitespace after the terminator, but CJK prose has no inter-sentence whitespace. Every Chinese/Japanese sentence merged into one chunk, hiding the minority language from per-sentence dispatch. Rewrote as two alternations: Latin `(?<=[.!?\n])\s+` (keeps "3.14" / "e.g." protection) and CJK `(?<=[。！？])` (unconditional split). Regression test `test_k15_3_r1_split_cjk_sentences_without_whitespace` + `test_k15_3_r1_split_mixed_script_isolates_languages` both added and pass.
+
+**Test results:** 26/26 K15.3 pattern tests pass in ~0.7s. K15 cluster total: **88 passed** (37 canonical + 25 entity detector + 26 patterns). Full unit suite has pre-existing config/glossary_client errors unrelated to K15.3 — zero regressions.
+
+**What K15.3 unblocks:** K15.4 (triple extractor — needs SKIP_MARKERS to filter hypotheticals before SVO pattern runs) and K15.5 (negation detector — needs NEGATION_MARKERS per language). K15 cluster is half-done; K15.4–K15.7 remain.
+
+---
+
+### K15.2 — Entity candidate extractor (two-pass, pattern-based) ✅ (session 41, Track 2)
+
+**Goal:** per KSA §5.1, surface entity candidates from prose with confidence scores feeding the Pass 1 quarantine pipeline. Two-pass algorithm (candidate collection → signal scoring) over capitalized phrases, quoted names, verb-adjacency, and glossary exact matches.
+
+**Files (all NEW):**
+- [app/extraction/__init__.py](services/knowledge-service/app/extraction/__init__.py) — package docstring only.
+- [app/extraction/entity_detector.py](services/knowledge-service/app/extraction/entity_detector.py) — `EntityCandidate` Pydantic model, `extract_entity_candidates(text, *, glossary_names=None)` public entry, `_Accumulator` with span-dedup set for idempotent counter bumping across passes, `COMMON_NOUN_STOPWORDS` frozenset.
+- [tests/unit/test_entity_detector.py](services/knowledge-service/tests/unit/test_entity_detector.py) — 25 tests covering smoke, stopword filter, glossary ranking, quoted names across 4 quote families, frequency bonus (including R1 single-mention gate), CJK via glossary-only path, sorting, and the 90% coverage acceptance fixture.
+
+**Design decisions:**
+- **ASCII-only boundary class `(?<![A-Za-z0-9_])...(?![A-Za-z0-9_])` for glossary regex.** Python's `\b` / `\w` is Unicode-aware, which means for a CJK glossary entry like `凯` inside `凯笑了`, a `\w` lookbehind sees `笑` as a word char and rejects every match. The ASCII-only boundary rejects "Kai" inside "Kairos" (because "r" is ASCII-word) while accepting `凯` surrounded by CJK (because `笑` is not).
+- **`counted_spans: set[tuple[int, int]]` for idempotent counter bumping.** A single textual mention can be matched by multiple passes (glossary + capitalized, quoted + capitalized). Without dedup, each pass bumps the counter and inflates frequency bonus spuriously. Keying on `(start, end)` character offsets makes `bump_count_for_span` idempotent.
+- **`sorted({n for n in glossary_names})` for determinism.** Set iteration is hash-randomized; when two glossary candidates tie on confidence the insertion-order tiebreak would flip across runs, breaking test stability.
+
+**K15.2-R1 second-pass review fix (1 issue):**
+- **R1 (double-count gate, HIGH)** — glossary pass + capitalized pass both bumped counter on the same Latin mention, awarding a phantom +0.05 frequency bonus on a single mention of a glossary name. Initial fix: `"glossary" not in entry.signals` gate in capitalized pass.
+
+**K15.2-R2 second-pass review fixes (2 issues):**
+- **R2/I1 (quoted-pass asymmetry, HIGH)** — CJK quoted names never accrued frequency bonus because (a) the quoted pass skipped bump_count in the R1 hotfix, and (b) the capitalized pass doesn't match CJK. The R1 gate handled glossary-overlap but not quoted-overlap. Rewrote to span-dedup: every pass calls `bump_count_for_span(match.span)`, and the `counted_spans` set absorbs duplicates cleanly. Supersedes the R1 gate. Regression: `test_k15_2_r2_i1_cjk_quoted_name_accrues_frequency_bonus` and `test_k15_2_r2_i1_latin_quoted_and_capitalized_dedups_span`.
+- **R2/I2 (non-deterministic output, MEDIUM)** — `glossary_set: set[str]` had hash-randomized iteration. Fixed with `sorted({...})`. Regression: `test_k15_2_r2_i2_output_deterministic_across_calls`.
+
+**Test results:** 25/25 K15.2 + 26/26 K15.3 + 37/37 canonical = 88 passing in the K15 cluster.
+
+**What K15.2 unblocks:** K15.4 (triple extractor consumes EntityCandidates as subject/object nominees), K15.7 (candidate writer with `pending_validation=true`).
+
+---
+
+### K15.1 — Entity name canonicalization ✅ retcon (session 41, Track 2)
+
+**Goal:** formalize K15.1 as shipped. The canonical helper was already in place under K11.5 at [app/db/neo4j_repos/canonical.py](services/knowledge-service/app/db/neo4j_repos/canonical.py) as `canonicalize_entity_name` — the K15.1 plan had a planned new path that would duplicate the existing helper. Retcon: flip plan to [✓], add a note pointing to the actual module, and backfill CJK test coverage that the K11.5 tests didn't cover.
+
+**Files touched:**
+- [tests/unit/test_canonical.py](services/knowledge-service/tests/unit/test_canonical.py) — added 5 CJK parametrized cases (Han simplified `凯`, Han + dot-separator `凯·英雄 → 凯英雄`, Katakana `カイ`, Hangul `카이`, mixed `カイ-sama → カイ`).
+
+**Test results:** 37/37 canonical tests pass.
+
+---
 
 ### K11.9 — Evidence count drift reconciler ✅ (session 40, Track 2)
 

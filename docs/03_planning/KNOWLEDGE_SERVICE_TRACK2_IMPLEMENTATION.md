@@ -1361,7 +1361,7 @@ events. Quarantined (not loaded into L2 until Pass 2 confirms).
 ```
 
 ```
-[ ] K15.3 Per-language pattern sets (§5.4)
+[✓] K15.3 Per-language pattern sets (§5.4)
     Files:
       - services/knowledge-service/app/extraction/patterns/__init__.py (NEW)
       - services/knowledge-service/app/extraction/patterns/en.py (NEW)
