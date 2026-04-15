@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-15 (session 41 — **K15.1 retcon + K15.2 + K15.3 + K15.4 + K15.5** all COMPLETE with R-round reviews)
-- Updated By: Assistant (session 41 shipped five K15 tasks: K15.1 retcon + K15.2 entity detector (R1+R2) + K15.3 per-language patterns (R1+R2) + K15.4 SVO triple extractor (R1+R2 passive-voice fix) + K15.5 negation fact extractor. K15 cluster tests: 143 passed (37 canonical + 25 entity detector + 27 patterns + 34 triple extractor + 20 negation).)
+- Last Updated: 2026-04-15 (session 41 — **K15.1 retcon + K15.2 + K15.3 + K15.4 + K15.5 (+R1)** all COMPLETE with R-round reviews)
+- Updated By: Assistant (session 41 shipped five K15 tasks: K15.1 retcon + K15.2 entity detector (R1+R2) + K15.3 per-language patterns (R1+R2) + K15.4 SVO triple extractor (R1+R2 passive-voice fix) + K15.5 negation fact extractor (R1 trailing-NP stop-word gate). K15 cluster tests: 145 passed (37 canonical + 25 entity detector + 27 patterns + 34 triple extractor + 22 negation).)
 - Active Branch: `main` (ahead of origin by session 38–41 commits — user pushes manually)
-- HEAD: K15.5 (pending Phase 9)
+- HEAD: K15.5-R1 (pending Phase 9)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V16.md` (K11.9 added, K11 cluster fully closed)
 - **Previous Handoff:** `docs/sessions/SESSION_HANDOFF_V15.md` (K11.1 → K11.8)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
@@ -31,6 +31,7 @@
 | D-K8-02 (partial remaining) | K8 draft review | **Project card building/ready/paused/failed states + extraction stat tiles.** Restore button shipped in K-CLEAN-3 (session 39); the building/ready/paused/failed states + entity/fact/event/glossary stat tiles still need Track 2 K11/K17 to produce the data they would render. | Track 2 (Gate 12) |
 | D-K11.9-01 | K11.9-R3 review | **Reconciler has no batching / LIMIT / resumable job state.** [services/knowledge-service/app/jobs/reconcile_evidence_count.py](services/knowledge-service/app/jobs/reconcile_evidence_count.py) runs a full per-label scan (`MATCH (n:{label}) WHERE n.user_id = $user_id`) on every invocation — no `LIMIT`, no `CALL { ... } IN TRANSACTIONS OF N ROWS`, no cursor. For a tenant with 100K+ entities this streams every row through WITH/WHERE even when zero nodes drift, and a mid-scan timeout restarts from scratch. Track 1 OK because test tenants are small and the job runs on a quiet schedule. Fix needs periodic-commit transaction semantics + resumable job state — belongs with the scheduler wiring, not the reconciler primitive. | K19/K20 scheduler cleanup |
 | D-K11.9-02 | K11.9 plan scope | **Orphan `:ExtractionSource` cleanup not covered by K11.9.** The reconciler fixes `evidence_count` drift only. Orphan `ExtractionSource` nodes left behind by `delete_source_cascade` partial failures (K11.8-R1/R2 documented non-atomic three round-trips) need a separate sweep. Pair with K11.9-01 since both are scheduler-layer offline jobs. | K19/K20 scheduler cleanup |
+| D-K15.5-01 | K15.5-R1/I2 | **All-caps sentences return no negations.** `"KAI DOES NOT KNOW ZHAO."` yields zero facts. Root cause is upstream in K15.2 `_CAPITALIZED_PHRASE_RE` which greedily fuses the entire all-caps sentence into a single "entity" spanning the negation marker — so `_nearest_preceding_entity` has no candidate ending before the marker. Fix requires teaching K15.2 to reject all-caps multi-word fusion or split on verbs, which is broader than a K15.5 follow-up. K17 LLM fallback handles these at Pass 2. | K15.2 hardening pass or K17 LLM |
 | D-K11.3-01 | K11.3-R1 review | **Lifespan startup leaks resources on partial failure.** If `run_neo4j_schema` (or `run_migrations`, or any pre-`yield` startup step) raises in [services/knowledge-service/app/main.py](services/knowledge-service/app/main.py), `__aenter__` propagates the exception and the post-`yield` cleanup never runs — driver, asyncpg pools, and httpx client all leak. Pre-existing structural issue; K11.3 inherits it but doesn't worsen. Fix: wrap startup in a try/except that closes everything before re-raising, or split lifespan into per-resource async-context-managers and stack them. | Gate 4 hardening pass |
 
 ### Track 2 planning (document only, no Track 1 action)
@@ -137,7 +138,14 @@
 - **Subject-missing sentences silently skipped.** A bare "is unaware of the danger" with no named entity contributes no useful semantic content — dropping is better than emitting a subject=None fact.
 - **CJK works with glossary.** K15.2 handles CJK via glossary-only (English-first capitalized regex can't see Chinese characters), so anchoring CJK negations requires the caller to pass `glossary_names`.
 
-**Test results:** 20/20 K15.5 tests pass. K15 cluster total: **143 passed** (37 canonical + 25 entity detector + 27 patterns + 34 triple extractor + 20 negation).
+**Test results:** 22/22 K15.5 tests pass (20 initial + 2 R1 regressions). K15 cluster total: **145 passed** (37 canonical + 25 entity detector + 27 patterns + 34 triple extractor + 22 negation).
+
+**R1 critical review (same session):**
+- **R1/I1 (MEDIUM, FIXED) — trailing-NP fallback captured prepositions and manner adverbs.** Probes showed `"Kai does not know the answer of the riddle"` → object=`"answer of the"` and `"is unaware of the plot"` → object=`"of the plot"` (pure PP). Root cause: `_TRAILING_NP_RE` had no stop-word gate while K15.4's object capture did. Fix: mirror K15.4's `_OBJ_STOP_WORDS` into local `_NP_STOP_WORDS` with negative lookaheads on every token position of the NP alternation. Two regression tests added.
+- **R1/I2 (DEFER) — all-caps sentences return no negations.** `"KAI DOES NOT KNOW ZHAO."` produces zero facts. Root cause is upstream in K15.2: `_CAPITALIZED_PHRASE_RE` greedily fuses the entire all-caps sentence into a single "entity" that spans the negation marker, so `_nearest_preceding_entity` finds no candidate ending before the marker. Fixing this properly means teaching K15.2 to reject all-caps multi-word fusion or to split on verbs — out of scope for a K15.5 follow-up. Track 2 / K17 LLM fallback will catch these. Added as deferral D-K15.5-01.
+- **R1/I3 (minor, noted) — apostrophe-s token boundary.** `"Kai does not know Kai's brother"` captures `"Kai's"` as the object (token-level split on `'s`). Display form still recognizable; not worth a fix pass.
+
+**Positive R1 findings:** multi-marker dispatch, reported-speech inner-clause negation, trailing-empty → None, missing-subject skip, interrupters ("Kai, however, does not know..."), and inverted construction all behave correctly.
 
 **What K15.5 unblocks:** K15.6 (prompt injection neutralizer — independent of K15.5 but planned in the same cluster), K15.7 (extraction writer — serializes `NegationFact` to `:Fact {type: 'negation'}` nodes with `pending_validation=true`).
 

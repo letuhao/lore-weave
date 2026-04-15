@@ -97,6 +97,32 @@ def test_k15_5_object_falls_back_to_trailing_np_when_no_entity():
     assert "answer" in n.object_.lower()
 
 
+def test_k15_5_r1_trailing_np_rejects_preposition_leak():
+    """K15.5-R1/I1 regression: trailing-NP fallback must not
+    swallow a following preposition. `"the answer of the riddle"`
+    previously yielded `"answer of the"` — a PP fused into what
+    should be a bare NP."""
+    out = extract_negations("Kai does not know the answer of the riddle.")
+    assert len(out) >= 1
+    n = out[0]
+    assert n.subject == "Kai"
+    assert n.object_ is not None
+    assert "of" not in n.object_.split()
+    assert "answer" in n.object_.lower()
+
+
+def test_k15_5_r1_trailing_np_rejects_pure_pp():
+    """K15.5-R1/I1 regression: `"is unaware of the plot"` previously
+    yielded `object="of the plot"`. The fallback must return None or
+    a non-PP when the tail begins with a preposition."""
+    out = extract_negations("Drake is unaware of the plot.")
+    assert len(out) >= 1
+    n = next((x for x in out if x.subject == "Drake"), None)
+    assert n is not None
+    # Tail starts with "of" — fallback NP should reject the PP.
+    assert n.object_ is None or not n.object_.lower().startswith("of")
+
+
 def test_k15_5_object_none_when_trailing_empty():
     """Marker at end-of-sentence with no tail → object is None."""
     out = extract_negations("Kai is unaware.")

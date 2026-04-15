@@ -74,13 +74,30 @@ __all__ = [
 
 _QUARANTINE_CONFIDENCE = 0.5
 
+# Stop-words the trailing-NP fallback must not enter. Mirrors K15.4
+# `_OBJ_STOP_WORDS`: conjunctions fuse clauses, prepositions fuse
+# adverbial PPs, manner adverbs fuse the PP that follows them.
+# K15.5-R1/I1: probe `"Kai does not know the answer of the riddle"`
+# captured `"answer of the"`, and `"is unaware of the plot"` captured
+# a pure PP as object. Same negative-lookahead gate fixes both.
+_NP_STOP_WORDS = (
+    "and", "or", "but", "nor", "yet", "so",
+    "into", "onto", "upon", "at", "on", "in", "with",
+    "from", "to", "by", "for", "of", "about", "through",
+    "over", "under", "across", "against", "between", "toward", "towards",
+    "slowly", "quickly", "silently", "carefully", "suddenly", "softly",
+    "loudly", "calmly", "barely", "hardly", "finally", "already",
+)
+_NP_STOP = r"(?:" + r"|".join(_NP_STOP_WORDS) + r")"
+
 # Trailing-NP fallback for the object slot when no entity candidate
 # follows the negation marker. Captures up to 3 word tokens,
-# optionally preceded by an article. Same stop-word gate as K15.4
-# triple extractor so PPs/adverbs don't fuse in.
+# optionally preceded by an article, rejecting any token that starts
+# with a stop-word (conjunction / preposition / manner adverb).
 _TRAILING_NP_RE = re.compile(
     r"(?:the\s+|a\s+|an\s+)?"
-    r"([\w'-]+(?:\s+[\w'-]+){0,2})"
+    rf"((?!{_NP_STOP}\b)[\w'-]+"
+    rf"(?:\s+(?!{_NP_STOP}\b)[\w'-]+){{0,2}})"
 )
 
 
