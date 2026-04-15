@@ -7,13 +7,11 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-15 (session 41 — **K15.1..K15.10, K15.12, K16.1, K17.1** COMPLETE with R-round reviews)
-- Updated By: Assistant (session 41 shipped K15.1..K15.9 (+R1+R2), K15.10, K15.12, K16.1 state machine, K17.1 LLM prompts; K15.11 deferred to infra-capable session.)
+- Last Updated: 2026-04-15 (session 41 END — K15.10, K15.12, K16.1, K17.1 all shipped with R1/R2 reviews)
+- Updated By: Assistant (session 41 END — laptop-friendly Track 2 slice COMPLETE; 11 commits landed; remaining K15/K16/K17 tasks need infra and are deferred to the next session.)
 - Active Branch: `main` (ahead of origin by session 38–41 commits — user pushes manually)
-- HEAD: K17.1-R2
-- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V16.md` (K11.9 added, K11 cluster fully closed)
-- **Previous Handoff:** `docs/sessions/SESSION_HANDOFF_V15.md` (K11.1 → K11.8)
-- **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
+- HEAD: K17.1-R2 (`c4052e6`) + handoff consolidation
+- **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
 ---
