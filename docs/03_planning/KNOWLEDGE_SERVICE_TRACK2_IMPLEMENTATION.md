@@ -1391,7 +1391,7 @@ events. Quarantined (not loaded into L2 until Pass 2 confirms).
 ```
 
 ```
-[ ] K15.4 Triple extractor (SVO patterns)
+[✓] K15.4 Triple extractor (SVO patterns)
     Files:
       - services/knowledge-service/app/extraction/triple_extractor.py (NEW)
     Description:

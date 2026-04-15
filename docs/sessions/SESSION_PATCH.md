@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-15 (session 41 — **K15.1 retcon + K15.2 entity detector + K15.3 per-language pattern sets** all COMPLETE with R-round reviews)
-- Updated By: Assistant (session 41 carried Track 2 extraction from K11 close into K15: K15.1 retconned as already shipped under K11.5 canonical helper with added CJK test coverage; K15.2 shipped two-pass pattern-based entity detector with R1 (double-count gate) and R2 (span-dedup rewrite + glossary determinism) fixes; K15.3 shipped per-language pattern package (en/vi/zh/ja/ko) + langdetect dispatch with R1 fix for CJK sentence splitting. K15 cluster tests: 88 passed (37 canonical + 25 entity detector + 26 patterns).)
+- Last Updated: 2026-04-15 (session 41 — **K15.1 retcon + K15.2 + K15.3 + K15.4** all COMPLETE with R-round reviews)
+- Updated By: Assistant (session 41 carried Track 2 extraction from K11 close through four K15 tasks: K15.1 retcon + K15.2 entity detector (R1+R2 fixes) + K15.3 per-language pattern dispatch (R1+R2 fixes) + K15.4 SVO triple extractor (R1 fixes for compound-clause fusion and adverbial-PP fusion). K15 cluster tests: 115 passed (37 canonical + 25 entity detector + 27 patterns + 29 triple extractor).)
 - Active Branch: `main` (ahead of origin by session 38–41 commits — user pushes manually)
-- HEAD: K15.3 + R1 fix (pending Phase 9)
+- HEAD: K15.4 + R1 fix (pending Phase 9)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V16.md` (K11.9 added, K11 cluster fully closed)
 - **Previous Handoff:** `docs/sessions/SESSION_HANDOFF_V15.md` (K11.1 → K11.8)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
@@ -121,6 +121,33 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K15.4 — Triple extractor (SVO patterns) ✅ (session 41, Track 2)
+
+**Goal:** per KSA §5.1, pattern-based SVO extraction on sentences. Each extracted triple gets `confidence=0.5` and `pending_validation=True` per the quarantine model — K17 LLM refines, K18 validator promotes or drops.
+
+**Files (all NEW):**
+- [app/extraction/triple_extractor.py](services/knowledge-service/app/extraction/triple_extractor.py) — `Triple` Pydantic model (with `object` alias for the Python keyword), `extract_triples(text, *, glossary_names=None)` public entry. Four-step algorithm: K15.3 sentence split → per-sentence SKIP_MARKER filter → English SVO regex scan → entity-candidate cross-reference.
+- [tests/unit/test_triple_extractor.py](services/knowledge-service/tests/unit/test_triple_extractor.py) — 29 tests covering smoke, verb forms, multi-word subj/obj, article stripping, hypothetical-skip, reported-speech-skip, negation, CJK no-op, self-reference drop, 30-sentence precision acceptance, and R1 regressions.
+
+**Design decisions:**
+- **No `re.IGNORECASE` on the SVO regex.** `[A-Z]` in the subject phrase MUST be strictly uppercase; otherwise greedy multi-cap fusion swallows lowercase "is"/"was" into the subject capture (`"Kai is fighting"` → subj="Kai is"). Caught during initial build.
+- **Closed irregular-verb list (~40 verbs).** Cover past tense like `drew` / `struck` / `fought` that don't fit `-ed` / `-s` / `-ing` shapes. KSA 80%-coverage policy — not exhaustive.
+- **Sentence preserved on `Triple`.** K17 LLM cross-check and K18 validator both need the source span to surface "evidence text" in review UIs.
+- **Object cross-reference is permissive, subject cross-reference is strict.** Common-noun objects are legal ("Kai drew the sword"), but bare common-noun subjects almost always indicate a regex false-positive.
+- **CJK yields no triples by design.** K15.4 is English-first per KSA §5.1 scope; the Latin-only `[A-Z]` subject regex never matches CJK, so Chinese/Japanese sentences produce zero triples. K17 LLM is the multilingual fallback.
+
+**K15.4-R1 second-pass review fixes (2 issues):**
+- **R1/I1 (compound fusion, HIGH)** — `"Kai walked and Drake followed."` produced `(Kai, walked, and Drake followed)`. The object regex greedily swallowed the conjunction and the following clause into one object, producing a confidently-wrong triple that would poison the K18 validator. Same root cause: `"Kai killed Zhao and Drake."` fused both targets into `"Zhao and Drake"`. Fix: `_OBJ_STOP_WORDS` negative-lookahead gate rejecting conjunctions (`and`/`or`/`but`/`nor`/`yet`/`so`) at both the object-start and continuation positions. Regression: `test_k15_4_r1_i1_compound_clause_not_fused` + `test_k15_4_r1_i1_object_conjunction_takes_first_only`.
+- **R1/I2 (adverbial PP fusion, MEDIUM)** — `"Kai walked slowly into the room."` produced `(Kai, walked, slowly into the room)`. The object captured an adverbial PP where "walked" was intransitive — no real direct object exists. Fix: extended `_OBJ_STOP_WORDS` to include common prepositions (`into`/`at`/`on`/`with`/`from`/`to`/`by`/...) and manner adverbs (`slowly`/`quickly`/`silently`/...). Regression: `test_k15_4_r1_i2_adverbial_pp_not_fused_into_object`.
+
+Phrasal verbs ("bowed to") are NOT supported as a consequence — the preposition is blocked. Acceptable per KSA 80%-coverage policy; K17 LLM is the multilingual + phrasal-verb fallback.
+
+**Test results:** 29/29 K15.4 pattern tests pass. K15 cluster total: **115 passed** (37 canonical + 25 entity detector + 26 patterns + 29 triple extractor). Acceptance corpus (30 mixed clean/trap sentences) clears the 80%-precision bar.
+
+**What K15.4 unblocks:** K15.5 (negation fact extractor — reuses SKIP_MARKER dispatch + NEGATION_MARKERS from K15.3), K15.7 (extraction writer — serializes `Triple` instances to `:Fact` nodes with `pending_validation=true`).
+
+---
 
 ### K15.3 — Per-language pattern sets + dispatch ✅ (session 41, Track 2)
 
