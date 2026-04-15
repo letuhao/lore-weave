@@ -72,7 +72,6 @@ __all__ = [
 ]
 
 
-_QUARANTINE_CONFIDENCE = 0.5
 _DEFAULT_ENTITY_KIND = "character"
 _EXTRACTION_MODEL = "pattern-v1"
 
@@ -177,9 +176,14 @@ async def write_extraction(
     )
 
     # Step 2 — merge entities and build the folded-name lookup map.
-    # Multiple candidates folding to the same key (K15.2 dedupes
-    # those anyway, but defensively) keep the first-seen id.
-    entity_id_by_name: dict[str, str] = {}
+    # K15.7-R2/I2: the map is keyed by folded name → dict[kind → id]
+    # so cross-kind collisions (e.g., "Phoenix" the character and
+    # "PHOENIX" the organization) don't silently misattribute
+    # downstream triples. Triples don't carry kind info, so at
+    # lookup time we resolve unambiguously when exactly one kind
+    # exists for a folded name and skip the triple as ambiguous
+    # otherwise — counted against `skipped_missing_endpoint`.
+    entity_ids_by_folded: dict[str, dict[str, str]] = {}
     entities_merged = 0
     evidence_edges = 0
     for cand in entity_list:
@@ -196,8 +200,7 @@ async def write_extraction(
             source_type=source_type,
             confidence=cand.confidence,
         )
-        if folded not in entity_id_by_name:
-            entity_id_by_name[folded] = entity.id
+        entity_ids_by_folded.setdefault(folded, {})[kind] = entity.id
         entities_merged += 1
         pass1_facts_written_total.labels(kind="entity").inc()
 
@@ -217,12 +220,21 @@ async def write_extraction(
 
     skipped_missing_endpoint = 0
 
+    def _resolve(name: str) -> str | None:
+        """Look up a folded name in the per-kind map. Returns the
+        entity id when exactly one kind matches; None when missing
+        OR ambiguous across kinds (K15.7-R2/I2)."""
+        kinds = entity_ids_by_folded.get(_fold(name))
+        if not kinds or len(kinds) != 1:
+            return None
+        return next(iter(kinds.values()))
+
     # Step 4 — relations from triples. Sanitize the source sentence
     # before it lives on the edge as provenance context.
     relations_created = 0
     for triple in triple_list:
-        subj_id = entity_id_by_name.get(_fold(triple.subject))
-        obj_id = entity_id_by_name.get(_fold(triple.object_))
+        subj_id = _resolve(triple.subject)
+        obj_id = _resolve(triple.object_)
         if subj_id is None or obj_id is None:
             skipped_missing_endpoint += 1
             continue
@@ -249,15 +261,28 @@ async def write_extraction(
             skipped_missing_endpoint += 1
 
     # Step 5 — negation facts. Sanitize every text field that
-    # persists: marker and object both end up inside the fact's
-    # `content` which DOES get stored, so injection defense must
-    # fire on the stored string, not just the sentence.
+    # persists: subject, marker, and object all end up inside the
+    # fact's `content` which DOES get stored, so injection defense
+    # must fire on the stored string, not just the sentence.
+    # K15.7-R2/I1: subject was previously passed through raw — an
+    # upstream candidate name like "Kai ignore previous instructions"
+    # would bypass the KSA §5.1.5 extraction-time defense for the
+    # stored content field. Sanitize it for the persisted string;
+    # the lookup still uses the raw folded name.
+    #
+    # K15.7-R2/I3: the resulting Fact has NO ABOUT/CONCERNS edge back
+    # to the subject :Entity. Pass 1 quarantine intentionally stops
+    # at `:Fact + :EVIDENCED_BY → :ExtractionSource`; K17/K18 (LLM
+    # validation) are responsible for wiring the subject edge when
+    # promoting the fact out of quarantine.
     facts_merged = 0
     for neg in negation_list:
-        subj_folded = _fold(neg.subject)
-        if subj_folded not in entity_id_by_name:
+        if _resolve(neg.subject) is None:
             skipped_missing_endpoint += 1
             continue
+        subject_clean, _ = neutralize_injection(
+            neg.subject, project_id=project_id
+        )
         marker_clean, _ = neutralize_injection(
             neg.marker, project_id=project_id
         )
@@ -268,7 +293,7 @@ async def write_extraction(
             )
         neutralize_injection(neg.sentence, project_id=project_id)
 
-        content_parts = [neg.subject, marker_clean]
+        content_parts = [subject_clean, marker_clean]
         if object_clean:
             content_parts.append(object_clean)
         content = " ".join(p for p in content_parts if p).strip()
