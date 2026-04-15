@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-15 (session 41 — **K15.1..K15.9** COMPLETE with R-round reviews)
-- Updated By: Assistant (session 41 shipped nine K15 tasks: K15.1..K15.8 (+R1+R2) + K15.9 chapter orchestrator with chunking.)
+- Last Updated: 2026-04-15 (session 41 — **K15.1..K15.10** COMPLETE with R-round reviews)
+- Updated By: Assistant (session 41 shipped ten K15 tasks: K15.1..K15.9 (+R1+R2) + K15.10 quarantine cleanup job.)
 - Active Branch: `main` (ahead of origin by session 38–41 commits — user pushes manually)
-- HEAD: K15.9 (pending Phase 9)
+- HEAD: K15.10 (pending Phase 9)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V16.md` (K11.9 added, K11 cluster fully closed)
 - **Previous Handoff:** `docs/sessions/SESSION_HANDOFF_V15.md` (K11.1 → K11.8)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
@@ -53,6 +53,7 @@
 | P-K3-01 | K3 | Backfill UPDATE on `short_description` also fires snapshot trigger per row |
 | P-K3-02 | K3 | Description PATCH triggers 4 UPDATEs for 1 logical operation (CTE + trigger + regen + trigger-again) |
 | P-K15.8-01 | K15.8-R1/I3 | **Orchestrator re-runs entity detection 3–4× per turn.** `extract_triples` and `extract_negations` both call `extract_entity_candidates` internally for per-sentence anchoring, so a full chat turn runs the K15.2 entity detector once at the orchestrator's explicit call plus one more time per extractor. Refactor path: thread pre-extracted candidates through the detector signatures. Track 1 accepts the cost at hobby scale; revisit if extraction latency ever trips the <2s plan-row budget. |
+| P-K15.10-01 | K15.10-R1/I1 | **Global quarantine sweep has no LIMIT or resumable state.** [services/knowledge-service/app/jobs/quarantine_cleanup.py](services/knowledge-service/app/jobs/quarantine_cleanup.py) with `user_id=None` runs `MATCH (f:Fact) WHERE pending_validation=true AND updated_at < now-TTL` across the whole graph in one transaction. Fine for hobby-scale test tenants; will need periodic-commit + cursor state for a production deployment with many tenants and a backlogged Pass 2. Pair with P-K11.9-01 scheduler cleanup since both are tenant-wide offline sweepers. |
 
 ### Won't-fix (conscious decisions, not debt)
 
@@ -123,6 +124,34 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K15.10 — Quarantine cleanup job ✅ (session 41, Track 2)
+
+**Goal:** per KSA §5.1 quarantine model, safety-net batch job that soft-invalidates Pass 1 facts stuck with `pending_validation=true` past a configurable TTL (default 24h). Guards against worker-ai outages, provider budget exhaustion, or disabled auto-validation leaving facts in the quarantine forever.
+
+**Files (all NEW except metrics):**
+- [app/jobs/quarantine_cleanup.py](services/knowledge-service/app/jobs/quarantine_cleanup.py) — NEW. `run_quarantine_cleanup(session, *, user_id=None, ttl_hours=24) -> int` async entry point. Single Cypher statement that matches facts where `pending_validation=true AND valid_until IS NULL AND updated_at < now - duration({hours: ttl_hours})`, sets `valid_until = datetime()`, and returns the count.
+- [app/metrics.py](services/knowledge-service/app/metrics.py) — added `quarantine_auto_invalidated_total` label-less counter. Non-zero value means Pass 2 is falling behind.
+- [tests/integration/db/test_quarantine_cleanup.py](services/knowledge-service/tests/integration/db/test_quarantine_cleanup.py) — NEW. 6 live-Neo4j tests: old quarantined fact invalidated, fresh quarantined fact untouched, promoted fact untouched (even if old), idempotent re-run (second pass is no-op), metric increment, invalid TTL raises.
+
+**Design decisions:**
+- **Soft-invalidate via `valid_until`, never delete.** The K11.7 model treats `valid_until IS NOT NULL` as "no longer active" while preserving provenance. A hard delete would orphan `EVIDENCED_BY` edges and force a K11.9 reconciler run.
+- **`pending_validation` stays `true` after invalidation.** Distinguishes "quarantined and never promoted" (the audit trail we want) from "promoted then later invalidated for a different reason". The `valid_until IS NULL` filter is the authoritative "active" check.
+- **Tenant-scoped by default.** `user_id=None` enables a global admin sweep, but production callers must scope to a tenant. Docstring warns.
+- **No `project_id` override.** TTL is a tenant-wide policy; per-project TTLs belong in K18 governance.
+- **Idempotent by construction.** `valid_until IS NULL` gates the match, so the second run finds zero rows. Covered by `test_k15_10_already_invalidated_fact_untouched`.
+
+**R1 critical review (same session):**
+- **R1/I1 (PERF, DEFERRED) — global sweep has no LIMIT or cursor state.** `user_id=None` scans every `:Fact` node in one transaction. Fine for hobby-scale tenants; will need periodic-commit + resumable state for production. Logged as **P-K15.10-01** in the Deferred Items table, paired with `P-K11.9-01` since both are tenant-wide offline sweepers.
+- **R1/I2 (LOW, ACCEPTED)** — no composite index on `(pending_validation, updated_at)` for `:Fact`. Track 1 test tenants are tiny; revisit if quarantine backlogs grow.
+- **R1/I3 (LOW, ACCEPTED)** — cleanup advances `updated_at` on the touched row, but `valid_until IS NOT NULL` filter keeps the sweep idempotent (verified by test).
+- **R1/I4 (LOW, ACCEPTED)** — metric is label-less. Adding a `user_id` label would explode cardinality for hundreds of tenants; the aggregate counter is sufficient for the "Pass 2 falling behind" alert.
+
+**Test results:** 6/6 K15.10 integration tests pass. K15 cluster overall: all K15.1..K15.10 green.
+
+**What K15.10 unblocks:** K19/K20 scheduler wiring can hook this job on an hourly cron alongside the K11.9 reconciler. K18 promotion flow gains a bounded quarantine lifetime — facts either get validated within 24h or auto-vanish from retrieval.
+
+---
 
 ### K15.9 — Chapter extraction orchestrator ✅ (session 41, Track 2)
 

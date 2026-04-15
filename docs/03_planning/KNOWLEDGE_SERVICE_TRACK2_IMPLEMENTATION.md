@@ -1507,7 +1507,7 @@ events. Quarantined (not loaded into L2 until Pass 2 confirms).
 ```
 
 ```
-[ ] K15.10 Quarantine cleanup job
+[✓] K15.10 Quarantine cleanup job
     Files:
       - services/knowledge-service/app/jobs/quarantine_cleanup.py (NEW)
     Description:

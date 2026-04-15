@@ -22,6 +22,7 @@ __all__ = [
     "evidence_count_drift_fixed_total",
     "injection_pattern_matched_total",
     "pass1_facts_written_total",
+    "quarantine_auto_invalidated_total",
 ]
 
 registry = CollectorRegistry()
@@ -106,3 +107,18 @@ pass1_facts_written_total = Counter(
 )
 for _kind in ("entity", "relation", "fact"):
     pass1_facts_written_total.labels(kind=_kind).inc(0)
+
+# K15.10 quarantine cleanup job. Monotonic counter: increments by the
+# number of Pass 1 facts whose `pending_validation=true` flag outlived
+# the TTL (default 24h) and were soft-invalidated by the cleanup sweep.
+# Non-zero means Pass 2 (K17 LLM validator) is not keeping up — either
+# worker-ai is down, provider budget is exhausted, or auto-validation
+# is disabled. Label-less: cardinality stays bounded regardless of
+# tenant count.
+quarantine_auto_invalidated_total = Counter(
+    "knowledge_quarantine_auto_invalidated_total",
+    "Pass 1 facts soft-invalidated by the K15.10 quarantine cleanup "
+    "job after exceeding the pending_validation TTL",
+    registry=registry,
+)
+quarantine_auto_invalidated_total.inc(0)
