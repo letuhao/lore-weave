@@ -1410,7 +1410,7 @@ events. Quarantined (not loaded into L2 until Pass 2 confirms).
 ```
 
 ```
-[ ] K15.5 Negation fact extractor
+[✓] K15.5 Negation fact extractor
     Files:
       - services/knowledge-service/app/extraction/negation.py (NEW)
     Description:

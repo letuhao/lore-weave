@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-15 (session 41 — **K15.1 retcon + K15.2 + K15.3 + K15.4** all COMPLETE with R-round reviews)
-- Updated By: Assistant (session 41 carried Track 2 extraction from K11 close through four K15 tasks: K15.1 retcon + K15.2 entity detector (R1+R2 fixes) + K15.3 per-language pattern dispatch (R1+R2 fixes) + K15.4 SVO triple extractor (R1 fixes for compound-clause fusion and adverbial-PP fusion). K15 cluster tests: 115 passed (37 canonical + 25 entity detector + 27 patterns + 29 triple extractor).)
+- Last Updated: 2026-04-15 (session 41 — **K15.1 retcon + K15.2 + K15.3 + K15.4 + K15.5** all COMPLETE with R-round reviews)
+- Updated By: Assistant (session 41 shipped five K15 tasks: K15.1 retcon + K15.2 entity detector (R1+R2) + K15.3 per-language patterns (R1+R2) + K15.4 SVO triple extractor (R1+R2 passive-voice fix) + K15.5 negation fact extractor. K15 cluster tests: 143 passed (37 canonical + 25 entity detector + 27 patterns + 34 triple extractor + 20 negation).)
 - Active Branch: `main` (ahead of origin by session 38–41 commits — user pushes manually)
-- HEAD: K15.4 + R1 fix (pending Phase 9)
+- HEAD: K15.5 (pending Phase 9)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V16.md` (K11.9 added, K11 cluster fully closed)
 - **Previous Handoff:** `docs/sessions/SESSION_HANDOFF_V15.md` (K11.1 → K11.8)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
@@ -121,6 +121,27 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K15.5 — Negation fact extractor ✅ (session 41, Track 2)
+
+**Goal:** per KSA §4.2, pattern-based negation detection emitting `NegationFact` quarantine records (`confidence=0.5`, `pending_validation=True`) for the Pass 1 pipeline. Reuses K15.3 NEGATION_MARKERS per language + K15.2 entity candidates for subject/object anchoring.
+
+**Files (all NEW):**
+- [app/extraction/negation.py](services/knowledge-service/app/extraction/negation.py) — `NegationFact` Pydantic model (with `object` alias, `fact_type="negation"`), `extract_negations(text, *, glossary_names=None)` public entry. Four-step algorithm: K15.3 sentence split → per-sentence NEGATION_MARKER scan → K15.2 entity candidates for anchoring → nearest-preceding-entity subject + nearest-following-entity (or trailing-NP fallback) object.
+- [tests/unit/test_negation.py](services/knowledge-service/tests/unit/test_negation.py) — 20 tests covering smoke, multiple English markers, multi-word subject, nearest-preceding anchoring, trailing-NP fallback, subject-missing skip, model alias round-trip, CJK with glossary, hypothetical NOT filtered (documented difference from K15.4), and a 6-case parametrized acceptance corpus.
+
+**Design decisions:**
+- **No SKIP_MARKER filter.** K15.4 triple extractor DOES apply SKIP_MARKERS because an SVO in a hypothetical is a false positive; K15.5 does NOT because a negation inside a conditional is still a negation (just with a condition attached). Caller can pre-filter upstream if desired. This asymmetry is documented in the module docstring and a dedicated test case.
+- **Subject anchored on nearest-preceding entity.** Candidates are re-located to sentence offsets via case-insensitive substring search (K15.2 doesn't export spans), then walked directionally. When multiple entities precede the marker, the latest one wins — "Drake met Kai. Kai does not know Zhao." anchors "Kai" to the second sentence.
+- **Object has a trailing-NP fallback.** "Kai does not know the answer" has no following entity, so a simple regex captures a ≤3-token NP after the marker. Not perfect; K17 LLM refines.
+- **Subject-missing sentences silently skipped.** A bare "is unaware of the danger" with no named entity contributes no useful semantic content — dropping is better than emitting a subject=None fact.
+- **CJK works with glossary.** K15.2 handles CJK via glossary-only (English-first capitalized regex can't see Chinese characters), so anchoring CJK negations requires the caller to pass `glossary_names`.
+
+**Test results:** 20/20 K15.5 tests pass. K15 cluster total: **143 passed** (37 canonical + 25 entity detector + 27 patterns + 34 triple extractor + 20 negation).
+
+**What K15.5 unblocks:** K15.6 (prompt injection neutralizer — independent of K15.5 but planned in the same cluster), K15.7 (extraction writer — serializes `NegationFact` to `:Fact {type: 'negation'}` nodes with `pending_validation=true`).
+
+---
 
 ### K15.4 — Triple extractor (SVO patterns) ✅ (session 41, Track 2)
 
