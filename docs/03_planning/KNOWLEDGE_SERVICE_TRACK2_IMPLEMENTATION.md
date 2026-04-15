@@ -1914,7 +1914,7 @@ adds high-confidence facts, and runs via worker-ai with user's BYOK.
 ### Tasks
 
 ```
-[ ] K17.1 LLM extraction prompts
+[✓] K17.1 LLM extraction prompts
     Files:
       - services/knowledge-service/app/extraction/llm_prompts/__init__.py (NEW)
       - services/knowledge-service/app/extraction/llm_prompts/entity_extraction.md (NEW)

@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-15 (session 41 — **K15.1..K15.10, K15.12, K16.1** COMPLETE with R-round reviews)
-- Updated By: Assistant (session 41 shipped K15.1..K15.9 (+R1+R2) + K15.10 + K15.12 metrics + K16.1 state machine; K15.11 deferred to infra-capable session.)
+- Last Updated: 2026-04-15 (session 41 — **K15.1..K15.10, K15.12, K16.1, K17.1** COMPLETE with R-round reviews)
+- Updated By: Assistant (session 41 shipped K15.1..K15.9 (+R1+R2), K15.10, K15.12, K16.1 state machine, K17.1 LLM prompts; K15.11 deferred to infra-capable session.)
 - Active Branch: `main` (ahead of origin by session 38–41 commits — user pushes manually)
-- HEAD: K16.1
+- HEAD: K17.1
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V16.md` (K11.9 added, K11 cluster fully closed)
 - **Previous Handoff:** `docs/sessions/SESSION_HANDOFF_V15.md` (K11.1 → K11.8)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
@@ -124,6 +124,32 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K17.1 — LLM extraction prompts ✅ (session 41, Track 2)
+
+**Goal:** ship the four Pass 2 extraction prompt templates (entity / relation / event / fact) and a loader that substitutes `{text}` and `{known_entities}` into them with strict missing-key semantics. Unblocks K17.4..K17.7 LLM extractors.
+
+**Files (all NEW):**
+- [app/extraction/llm_prompts/__init__.py](services/knowledge-service/app/extraction/llm_prompts/__init__.py) — `load_prompt(name, **substitutions)` with `_StrictDict` that raises `KeyError` on missing placeholders, `@lru_cache`d raw file loads, `ALLOWED_PROMPT_NAMES` closed frozenset to block path traversal.
+- [app/extraction/llm_prompts/entity_extraction.md](services/knowledge-service/app/extraction/llm_prompts/entity_extraction.md) — person/place/organization/artifact/concept kinds, alias folding, reported-speech and hypothetical disambiguation, KNOWN_ENTITIES canonicalization rule, confidence floor 0.5, one worked example.
+- [app/extraction/llm_prompts/relation_extraction.md](services/knowledge-service/app/extraction/llm_prompts/relation_extraction.md) — (subject, predicate, object, polarity, modality, confidence) tuples, canonical snake_case predicate set, explicit negation + evidentiality rules.
+- [app/extraction/llm_prompts/event_extraction.md](services/knowledge-service/app/extraction/llm_prompts/event_extraction.md) — time-indexed events with participants / location / time_cue / kind, "verb of change" filter, reported events captured with explicit hedging in summary.
+- [app/extraction/llm_prompts/fact_extraction.md](services/knowledge-service/app/extraction/llm_prompts/fact_extraction.md) — standalone facts distinct from relations (no predicate) and events (no verb of change); five types (description / attribute / negation / temporal / causal); negation facts first-class per KSA §4.5 absence detection requirement.
+- [tests/unit/test_llm_prompts.py](services/knowledge-service/tests/unit/test_llm_prompts.py) — 4 loader happy-path tests (one per prompt), missing-key raises, extra-key ignored, unknown-prompt rejected, path-traversal rejected, JSON-fence integrity regression (catches unescaped `{`/`}` in future prompt edits).
+
+**Design decisions:**
+- **Strict missing-key substitution.** `_StrictDict.__missing__` raises `KeyError` with a clear message instead of letting `str.format_map` leave a literal `{text}` in the prompt sent to the LLM — a silent failure mode that would only surface hours later as confusing model output.
+- **Closed prompt name set.** `ALLOWED_PROMPT_NAMES` is a frozenset checked BEFORE the disk read, so `load_prompt("../../etc/passwd", ...)` raises instead of reading arbitrary files.
+- **`@lru_cache` the raw file read.** Prompt files are immutable at runtime; re-reading on every extract call would be pure waste. `_cache_clear()` is exposed as a test hook.
+- **Extra kwargs silently ignored.** `str.format_map` only queries keys it finds in the template, so callers can pass a superset without knowing each template's exact vars — deliberate relaxation to keep K17.4..K17.7 call sites simple.
+- **Double-braced JSON examples.** Every `{` / `}` in the prompt markdown is `{{` / `}}` to pass through `format_map` unchanged. The JSON-fence integrity test catches any future edit that forgets the escape.
+- **Each prompt ends with "Return only the JSON object."** K17.3's parser can rely on this marker when detecting malformed output.
+
+**Test results:** not executed this session (laptop pytest harness constraint). All tests are pure-python (no LLM, no network, no DB) — ready to run in the next infra-capable session. Code review confirms: happy-path substitution works, missing-key path reachable, extra-key path reachable, unknown-name path reachable, JSON-fence test would flag unescaped braces because a lone `{` inside a prompt would either raise a KeyError on format_map (if it looks like `{key}`) or survive as-is (if it's `{ }` with content format_map can't parse, which the unescape test still catches via the assertion that no `{{` remains post-substitution).
+
+**What K17.1 unblocks:** K17.4 entity LLM extractor (calls `load_prompt("entity", ...)`), K17.5 relation, K17.6 event, K17.7 fact. Each extractor adds a Pydantic schema + calls K17.3's retry-on-parse-failure wrapper once K17.2 provider-registry client lands.
+
+---
 
 ### K16.1 — Extraction job state machine ✅ (session 41, Track 2)
 
