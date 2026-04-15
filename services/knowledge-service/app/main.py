@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.clients.glossary_client import close_glossary_client, init_glossary_client
+from app.clients.provider_client import close_provider_client, get_provider_client
 from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.neo4j import close_neo4j_driver, get_neo4j_driver, init_neo4j_driver
@@ -29,6 +30,11 @@ async def lifespan(app: FastAPI):
     await run_migrations(get_knowledge_pool())
     # Long-lived httpx client for glossary-service calls (K4b).
     init_glossary_client()
+    # K17.2 — long-lived httpx client for provider-registry BYOK LLM
+    # calls. Singleton is lazy-constructed by the first get_provider_client
+    # call, but we touch it here so a misconfigured base URL surfaces at
+    # startup rather than at first extraction job.
+    get_provider_client()
     # K11.2 — Neo4j driver. No-op in Track 1 mode (NEO4J_URI empty);
     # fail-fast on unreachable Neo4j when configured.
     await init_neo4j_driver()
@@ -42,6 +48,11 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        # Phase 3 review issue 8: close in reverse dependency order.
+        # ProviderClient is a leaf (nothing downstream depends on it)
+        # so tear it down first, then glossary, then Neo4j, then DB
+        # pools.
+        await close_provider_client()
         await close_glossary_client()
         await close_neo4j_driver()
         await close_pools()

@@ -169,3 +169,50 @@ quarantine_auto_invalidated_total = Counter(
     registry=registry,
 )
 quarantine_auto_invalidated_total.inc(0)
+
+# K17.2 provider-registry BYOK LLM client. One counter + one histogram,
+# both keyed on the same `outcome` label so a Grafana panel can join
+# them on a single query. Label is closed at 8 values:
+#   ok              — 2xx with a parseable body
+#   not_found       — 404 PROXY_MODEL_NOT_FOUND
+#   auth            — 401/403 provider auth failure
+#   rate_limited    — 429
+#   upstream        — 5xx (incl. 502 PROXY_UPSTREAM_ERROR) and transport errors
+#   timeout         — httpx.TimeoutException
+#   decode          — 2xx with missing/invalid choices
+#   invalid_request — local validation failure before the HTTP call
+_PROVIDER_OUTCOMES = (
+    "ok",
+    "not_found",
+    "auth",
+    "rate_limited",
+    "upstream",
+    "timeout",
+    "decode",
+    "invalid_request",
+)
+
+provider_chat_completion_total = Counter(
+    "knowledge_provider_chat_completion_total",
+    "K17.2 provider-registry chat-completion calls from knowledge-service",
+    ["outcome"],
+    registry=registry,
+)
+for _o in _PROVIDER_OUTCOMES:
+    provider_chat_completion_total.labels(outcome=_o)
+
+provider_chat_completion_duration_seconds = Histogram(
+    "knowledge_provider_chat_completion_duration_seconds",
+    "K17.2 provider-registry chat-completion latency (seconds)",
+    ["outcome"],
+    # Extraction LLM calls are the slowest thing the service does;
+    # top bucket is 120s because 60s is the per-call budget and we
+    # want at least one bucket above the budget to catch overruns.
+    buckets=(0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0),
+    registry=registry,
+)
+for _o in _PROVIDER_OUTCOMES:
+    if _o != "invalid_request":
+        # invalid_request fails before the timer starts, so no
+        # histogram observation is recorded for that outcome.
+        provider_chat_completion_duration_seconds.labels(outcome=_o)

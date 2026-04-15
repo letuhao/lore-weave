@@ -33,6 +33,17 @@ class Settings(BaseSettings):
     context_l1_timeout_s: float = 0.1
     context_glossary_timeout_s: float = 0.2
 
+    # K17.2 — provider-registry BYOK client for LLM extraction calls.
+    # Calls provider-registry's /internal/proxy/v1/chat/completions
+    # endpoint, which resolves the user's BYOK model from
+    # (user_id, model_source, model_ref) and forwards to the upstream
+    # provider with credentials injected server-side. Knowledge-service
+    # never sees the provider API key.
+    provider_registry_internal_url: str = "http://provider-registry-service:8085"
+    # LLMs are slow. 60s is the plan-row budget; extractors that need
+    # longer should split their work rather than raise this.
+    provider_client_timeout_s: float = 60.0
+
     # K11.2 — Neo4j connection (Track 2 extraction graph). Empty
     # `neo4j_uri` means "skip Neo4j init at startup" — Track 1 dev
     # keeps working without Neo4j running. Set to e.g.

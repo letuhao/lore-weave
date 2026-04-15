@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-15 (session 41 END — K15.10, K15.12, K16.1, K17.1 all shipped with R1/R2 reviews)
-- Updated By: Assistant (session 41 END — laptop-friendly Track 2 slice COMPLETE; 11 commits landed; remaining K15/K16/K17 tasks need infra and are deferred to the next session.)
-- Active Branch: `main` (ahead of origin by session 38–41 commits — user pushes manually)
-- HEAD: K17.1-R2 (`c4052e6`) + handoff consolidation
+- Last Updated: 2026-04-15 (session 42 — K17.2 BYOK LLM proxy shipped, K17.2a + K17.2b pair with R1/R2 reviews; test debt from session 41 paid in full)
+- Updated By: Assistant (session 42 — infra-capable PC, Docker Compose stack up including Neo4j + Postgres; full knowledge-service suite at 930 passing; K17.2 ready to unblock K17.3–K17.8 LLM extractors.)
+- Active Branch: `main` (ahead of origin by session 38–42 commits — user pushes manually)
+- HEAD: K17.2 pair landed (pending commit)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -122,6 +122,44 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K17.2 — provider-registry BYOK LLM client ✅ (session 42, Track 2)
+
+**Goal:** ship the HTTP client that lets knowledge-service invoke a user's BYOK chat model via provider-registry's transparent proxy. Unblocks K17.3 (JSON retry wrapper) and K17.4–K17.7 (four LLM extractors). Split into **K17.2a** (Go — provider-registry proxy body model rewrite) and **K17.2b** (Python — ProviderClient) because Phase 3 design review discovered the proxy was not actually transparent: `doProxy` resolved `provider_model_name` from the DB then threw it away (lines 299-300 `_ = providerKind; _ = providerModelName`) and forwarded the client body verbatim. A caller that doesn't already know the provider's model name (knowledge-service — chat-service sidesteps this via LiteLLM direct) could not use the proxy for chat completions. **K17.2a** closes the gap; **K17.2b** builds the consumer on top.
+
+**K17.2a files:**
+- [services/provider-registry-service/internal/api/server.go](services/provider-registry-service/internal/api/server.go) — new `rewriteJSONBodyModel` helper + `doProxy` inline JSON rewrite block (~60 new LOC, 2 new error codes `PROXY_INVALID_JSON_BODY` / `PROXY_BODY_TOO_LARGE` / `PROXY_MODEL_RESOLUTION_EMPTY` / `PROXY_REMARSHAL_FAILED`). 4MiB body cap via `io.LimitReader`. Empty-body short-circuit preserves GET semantics. Content-Length recomputed from the rewritten body because `encoding/json` key sort changes byte length.
+- [services/provider-registry-service/internal/api/proxy_rewrite_test.go](services/provider-registry-service/internal/api/proxy_rewrite_test.go) — NEW, 5 unit tests on the pure helper: ReplacesModel, AddsModelWhenMissing, PreservesNestedAndUnknownFields, IgnoresClientSuppliedModel (security regression — a malicious caller cannot bypass BYOK resolution by sending its own model string), RejectsInvalidJSON.
+
+**K17.2b files:**
+- [services/knowledge-service/app/clients/provider_client.py](services/knowledge-service/app/clients/provider_client.py) — NEW, ~400 LOC. Exception hierarchy rooted at `ProviderError` with 7 subclasses (`ProviderInvalidRequest`, `ProviderModelNotFound`, `ProviderAuthError`, `ProviderRateLimited`, `ProviderUpstreamError`, `ProviderTimeout`, `ProviderDecodeError`) so K17.3 retry wrapper can whitelist retry-eligible errors with `except (ProviderRateLimited, ProviderUpstreamError, ProviderTimeout)`. `ChatCompletionResponse` + `ChatCompletionUsage` Pydantic models with `extra="ignore"` to tolerate provider body variance. Full HTTP status classifier: 404 → not_found, 401/403 → auth, 429 → rate_limited, 5xx → upstream, other 4xx → upstream, `httpx.TimeoutException` → timeout, `httpx.RequestError` → upstream. **200-with-error-body classifier** (Phase 3 Issue 7 + Phase 6 Issue B5): LiteLLM sometimes surfaces rate errors as 200 responses with `{"error": {"type": "rate_limit_error"}}` and empty choices — reclassify by substring-matching `"rate"` in error type/message, else upstream. Module-level singleton `_client` lazy-constructed by `get_provider_client()`, torn down by `close_provider_client()`.
+- [services/knowledge-service/app/config.py](services/knowledge-service/app/config.py) — two new fields: `provider_registry_internal_url` (default `http://provider-registry-service:8085`) and `provider_client_timeout_s` (default 60.0 per plan-row K17.2 budget).
+- [services/knowledge-service/app/metrics.py](services/knowledge-service/app/metrics.py) — `knowledge_provider_chat_completion_total{outcome}` counter + `knowledge_provider_chat_completion_duration_seconds{outcome}` histogram, both closed at 8 outcomes (`ok|not_found|auth|rate_limited|upstream|timeout|decode|invalid_request`). Invalid_request is counter-only — the histogram is intentionally not registered for that label because the failure fires before the timer starts. Histogram buckets top out at 120s so a 60s budget overrun lands in its own bucket.
+- [services/knowledge-service/app/main.py](services/knowledge-service/app/main.py) — lifespan constructs `get_provider_client()` on startup (eager, so a misconfigured base URL fails-fast at startup instead of on the first extraction job) and `close_provider_client()` FIRST in shutdown teardown (Phase 3 Issue 8: leaf-first teardown order — provider before glossary before Neo4j before DB pools).
+- [services/knowledge-service/tests/unit/test_provider_client.py](services/knowledge-service/tests/unit/test_provider_client.py) — NEW, **24 tests**, all using `httpx.MockTransport` constructor injection (K5-I7 pattern, zero `@patch` decorators): happy path, 8 error classifications, trace_id forwarding, internal_token forwarding, response_format/temperature/max_tokens pass-through, 3 local-validation cases, `ProviderInvalidRequest` subclass guarantee, 3 metrics tests (success counter, failure counter, invalid_request counter WITHOUT histogram observation), aclose idempotency, and **B5 R1-fix regression pair** (200 with empty choices + rate error → ProviderRateLimited, 200 with `error: null` + valid choices → ok).
+
+**Acceptance (Phase 7 QC):** all K17.2a + K17.2b criteria met (details in the 9-phase trace). Live smoke: provider-registry rebuilt + restarted, knowledge-service rebuilt + restarted cleanly, `/metrics` endpoint exposes all 8 outcome labels for the counter and 7 for the histogram (invalid_request correctly excluded).
+
+**Test results:** knowledge-service **930 passed, 0 skipped, 0 failed** (up from 906 at session 41 end — 24 new ProviderClient tests landed with zero regressions). provider-registry `go test ./...` fully green.
+
+**Phase 3 pre-code review issues and their resolutions:**
+- I1+I2 (must-fix) — Added `ProviderInvalidRequest(ProviderError)` so local-validation failures don't escape K17.3's `except ProviderError` net. All 4 validation branches (model_source, model_ref, user_id, messages) raise it.
+- I3 (fix-in-build) — histogram observation guarded by `started` flag so invalid_request path fires counter but NOT histogram.
+- I4 (accept) — `transport=None` kwarg kept as public API for test injection; K5 precedent.
+- I5 (accept) — retry metrics are K17.3's job.
+- I6 (accept-with-narrowing) — `raw: dict` kept, docstring says extractors MUST NOT read fields off it.
+- I7 (must-fix) — 200-with-error-body classifier implemented + 2 tests.
+- I8 (fix-in-build) — teardown order reversed: provider → glossary → neo4j → pools.
+- I10 (fix-in-build) — added `test_internal_token_header_present`.
+- I13 (must-fix) — was the entire motivation for K17.2a. Proxy now rewrites `model` server-side; ProviderClient sends `"proxy-resolved"` placeholder.
+
+**Phase 6 R1 post-code review:**
+- **B5 (must-fix)** — original guard `"choices" not in body_json` was wrong for `{"choices": [], "error": {rate_limit}}` — would raise `ProviderDecodeError` instead of `ProviderRateLimited`, costing K17.3 a retry signal. Fixed by checking error field first (if present + non-null + non-empty, classify; else fall through to choices-decoding). Two regression tests added (one for the fix, one counterpart verifying `error: null + valid choices` still succeeds).
+- B1–B4, B6–B8 — either accept or already-correct; no action.
+
+**K17.2 criticality context:** K17.2 is the unblock key for K17.3–K17.8. K17.4 (entity extractor) can start immediately now — `load_prompt("entity_extraction", ...)` (K17.1) + `chat_completion(...)` (K17.2b) + JSON parse/retry (K17.3) is the full stack. K17.3 is a ~100 LOC wrapper; K17.4–K17.7 are the real LLM-quality work.
+
+---
 
 ### K17.1-R2 — LLM prompts second-pass review ✅ (session 41, Track 2)
 
