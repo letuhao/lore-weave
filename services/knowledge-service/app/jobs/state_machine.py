@@ -101,6 +101,18 @@ class StateTransitionError(ValueError):
 # Note: `running → running` and `paused → paused` are NOT self-loops
 # — a worker that wants to update progress calls `advance_cursor`,
 # which is a different repo method that does not touch status.
+#
+# R2/I3: `paused → paused` with a *different* reason (e.g. budget-
+# paused job then user-paused on top) is also rejected. Rationale:
+# the schema has no pause_reason column yet, so there's nothing to
+# update — the reason lives only in application state. When a
+# future migration adds a `pause_reason` column, K16.4 can either
+# allow this as a self-loop that updates the reason, or introduce
+# an explicit `change_pause_reason` repo method. For now callers
+# that want to "upgrade" a pause reason must first transition back
+# to running (validator allows `paused → running`) and then
+# re-pause with the new reason — or just accept that the first
+# reason wins.
 _VALID_TRANSITIONS: dict[JobStatus, frozenset[JobStatus]] = {
     "pending": frozenset({"running", "cancelled"}),
     "running": frozenset({"paused", "complete", "failed", "cancelled"}),
