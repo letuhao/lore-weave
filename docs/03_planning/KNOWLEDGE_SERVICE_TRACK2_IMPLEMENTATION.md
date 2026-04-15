@@ -1446,7 +1446,7 @@ events. Quarantined (not loaded into L2 until Pass 2 confirms).
 ```
 
 ```
-[ ] K15.7 Write extracted facts to Neo4j (quarantined)
+[✓] K15.7 Write extracted facts to Neo4j (quarantined)
     Files:
       - services/knowledge-service/app/extraction/pattern_writer.py (NEW)
     Description:

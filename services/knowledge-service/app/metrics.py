@@ -21,6 +21,7 @@ __all__ = [
     "context_build_duration_seconds",
     "evidence_count_drift_fixed_total",
     "injection_pattern_matched_total",
+    "pass1_facts_written_total",
 ]
 
 registry = CollectorRegistry()
@@ -91,3 +92,17 @@ injection_pattern_matched_total = Counter(
     ["project_id", "pattern"],
     registry=registry,
 )
+
+# K15.7 pattern extraction writer. Counts nodes/edges actually
+# persisted to Neo4j by the Pass 1 pattern pipeline, split by kind
+# so dashboards can tell whether the bottleneck is entity, relation,
+# or fact creation. `kind` cardinality is closed at 3.
+pass1_facts_written_total = Counter(
+    "knowledge_pass1_facts_written_total",
+    "Entities / relations / facts written to Neo4j by the K15.7 "
+    "pattern-extraction writer (quarantine confidence 0.5)",
+    ["kind"],
+    registry=registry,
+)
+for _kind in ("entity", "relation", "fact"):
+    pass1_facts_written_total.labels(kind=_kind).inc(0)

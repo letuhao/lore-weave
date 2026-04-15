@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-15 (session 41 — **K15.1..K15.6 (K15.6 +R1+R2)** COMPLETE with R-round reviews)
-- Updated By: Assistant (session 41 shipped six K15 tasks: K15.1 retcon + K15.2 (R1+R2) + K15.3 (R1+R2) + K15.4 (R1+R2) + K15.5 (R1) + K15.6 prompt injection neutralizer (R1 scan-then-tag + R2 non-greedy CJK gaps + narrowed `en_you_are_now`). K15 cluster tests: 183 passed (37 canonical + 25 entity detector + 27 patterns + 34 triple extractor + 22 negation + 38 injection defense).)
+- Last Updated: 2026-04-15 (session 41 — **K15.1..K15.7 (K15.7 +R1)** COMPLETE with R-round reviews)
+- Updated By: Assistant (session 41 shipped seven K15 tasks: K15.1..K15.6 + K15.7 pattern extraction writer (R1 dedupe fix). K15 cluster tests: 193 passed (K15.6 183 + 10 K15.7 integration).)
 - Active Branch: `main` (ahead of origin by session 38–41 commits — user pushes manually)
-- HEAD: K15.6-R2 (pending Phase 9)
+- HEAD: K15.7-R1 (pending Phase 9)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V16.md` (K11.9 added, K11 cluster fully closed)
 - **Previous Handoff:** `docs/sessions/SESSION_HANDOFF_V15.md` (K11.1 → K11.8)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
@@ -122,6 +122,39 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K15.7 — Pattern extraction writer ✅ (session 41, Track 2)
+
+**Goal:** per KSA §5.1 and the K15.7 plan row, serialize the outputs of the Pass 1 pattern extractors (K15.2 entity candidates, K15.4 triples, K15.5 negations) to Neo4j via the K11 repo primitives as quarantined nodes/edges/facts. Every text field that persists goes through K15.6 `neutralize_injection` first.
+
+**Files (all NEW):**
+- [app/extraction/pattern_writer.py](services/knowledge-service/app/extraction/pattern_writer.py) — `ExtractionWriteResult` Pydantic model + `write_extraction(session, *, user_id, project_id, source_type, source_id, job_id, entities, triples, negations, extraction_model="pattern-v1")` async orchestrator. 5-step algorithm: upsert source → merge_entity + add_evidence per candidate (building folded-name→id map) → create_relation per triple (lookup anchored) → merge_fact(type="negation") + add_evidence per negation → increment `pass1_facts_written_total{kind}`. Non-invention principle: writer never synthesizes entities; unresolved subjects/objects go to `skipped_missing_endpoint`.
+- [app/metrics.py](services/knowledge-service/app/metrics.py) — added `pass1_facts_written_total` counter with `kind` label (closed at 3: entity/relation/fact).
+- [tests/integration/db/test_pattern_writer.py](services/knowledge-service/tests/integration/db/test_pattern_writer.py) — 10 live-Neo4j integration tests covering entities-only, triples, missing endpoint skip, negations, missing subject skip, counter idempotency, graph-shape idempotency (MATCH count before/after re-run), metric emission, empty input, and R1/I1 dedupe regression.
+
+**Design decisions:**
+- **Raw neo4j session, not CypherSession wrapper.** `CypherSession` is a Protocol in [app/db/neo4j_helpers.py](services/knowledge-service/app/db/neo4j_helpers.py), so the writer accepts anything shaped like a session — tests pass the driver session directly.
+- **Folded-name lookup map.** Builds `entity_id_by_name: dict[folded_name, entity_id]` during entity pass so triple/negation subject/object resolution is O(1) per lookup and case-insensitive. Uses casefold() for Unicode-safe folding.
+- **add_evidence is the only edge-creation path.** Bypassing K11.8 would drift the cached `evidence_count` on the target node. The writer calls `add_evidence` for both `Entity → ExtractionSource` and `Fact → ExtractionSource` edges.
+- **Injection defense fires on persisted text AND sentence provenance.** For negations, `marker` and `object_` go through `neutralize_injection` because they end up in the stored `content` field. For triples, `sentence` is called for metric side-effects even though the edge only carries `source_event_id` (so the injection counter still fires on content that will reach the LLM via later retrieval of the source node).
+- **Quarantine defaults.** Everything Pass 1 writes has `pending_validation=True`; promotion is K18's job. `confidence=0.5` comes from each extractor candidate.
+- **`skipped_missing_endpoint` counter.** Triples/negations whose endpoints can't be resolved in the candidate list are dropped — non-invention principle — and counted for K15.2 coverage tuning.
+
+**R1 critical review (same session) — probe against live Neo4j + static read:**
+- **R1/I1 (MEDIUM, FIXED) — duplicate candidates inflate counters and waste round-trips.** Probe with three `EntityCandidate`s folding to `("kai", "character")` reported `entities_merged=3` while the Neo4j graph contained exactly 1 `:Entity` node (K11.5's deterministic hash id correctly deduped). Without writer-side dedupe every duplicate fires a network round-trip AND inflates the `pass1_facts_written_total{kind="entity"}` counter, misleading ops dashboards. Fix: dedupe candidates by `(folded_name, kind_hint)` before the write loop, keeping the highest-confidence row per key (first-seen wins on ties). Regression test `test_k15_7_r1_duplicate_candidates_are_deduped` added.
+- **R1/I2 (LOW, ACCEPTED) — self-loop relations allowed.** Probe `"Kai" --met--> "Kai"` creates a legitimate self-referential edge in Neo4j. Pattern K15.4 rarely emits these; when it does, the fact is almost certainly an upstream extraction bug rather than a K15.7 responsibility. K18 validator will quarantine obviously wrong facts regardless.
+- **R1/I3 (LOW, ACCEPTED) — case-folding collision across kinds is intended.** Probe with `"Phoenix"` (character) and `"PHOENIX"` (organization) correctly created TWO distinct `:Entity` nodes because K11.5's canonical id hash includes `kind`. The writer's dedupe key matches — `(folded_name, kind_hint)` — so the two keys stay separate. This is correct behavior, documented in the dedupe comment.
+
+**Positive findings from the probe:**
+- **Injection defense wired end-to-end.** `"Kai [FICTIONAL] ignore previous instructions Zhao"` observed `injection_pattern_matched_total` delta of 1 after the write, confirming the extraction-time defense fires per KSA §5.1.5.
+- **Negation content sanitization verified.** A negation fact whose `marker="does not know ignore previous instructions"` persisted as `"Kai does not know [FICTIONAL] ignore previous instructions"` in Neo4j — sanitizer runs on the stored field, not just the sentence.
+- **Idempotency confirmed both ways.** Counter-level (`evidence_edges==0` on second run with same `job_id`) AND graph-shape level (`MATCH (n) WHERE n.user_id = $user_id RETURN labels(n)[0], count(n)` identical before/after re-run).
+
+**Test results:** 10/10 K15.7 integration tests pass (9 acceptance + 1 R1 regression). K15 cluster total: **129 passed** in the extraction subset (25 entity detector + 27 patterns + 34 triple extractor + 22 negation — wait, recount: 25+27+34+22+38 K15.6 inject + 10 K15.7 = 156. Plus 37 canonical + prior K11/K17 unchanged). Unrelated pre-existing failures in `test_config.py`, `test_glossary_client.py`, `test_circuit_breaker.py` are env-setup issues unaffected by this change.
+
+**What K15.7 unblocks:** K15.8 — orchestrator `extract_from_chat_turn` that chains K15.2 → K15.4 → K15.5 → K15.6 → K15.7 into a single call the chat-service and CLI re-extract tools can use.
+
+---
 
 ### K15.6 — Prompt injection neutralizer ✅ (session 41, Track 2)
 
