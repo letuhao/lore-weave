@@ -10,7 +10,7 @@
 - Last Updated: 2026-04-15 (session 42 — K17.2 BYOK LLM proxy shipped, K17.2a + K17.2b pair with R1/R2 reviews; test debt from session 41 paid in full)
 - Updated By: Assistant (session 42 — infra-capable PC, Docker Compose stack up including Neo4j + Postgres; full knowledge-service suite at 930 passing; K17.2 ready to unblock K17.3–K17.8 LLM extractors.)
 - Active Branch: `main` (ahead of origin by session 38–42 commits — user pushes manually)
-- HEAD: K17.2b-R3 + K17.2c-R1 follow-up reviews (pending commit)
+- HEAD: K17.3 LLM JSON extraction wrapper (pending commit)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -127,6 +127,76 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K17.3 — LLM JSON extraction wrapper ✅ (session 42, Track 2)
+
+**Goal:** ship [services/knowledge-service/app/extraction/llm_json_parser.py](services/knowledge-service/app/extraction/llm_json_parser.py), the generic wrapper around K17.2b's `ProviderClient.chat_completion` that parses the response as JSON, validates against a caller-supplied Pydantic schema, and retries once on failure. Unblocks K17.4–K17.7 (the four LLM extractors).
+
+**Retry contract:** one retry per invocation, not one per failure mode. Three failure paths share the same budget:
+- **Retry-eligible provider error** (`ProviderRateLimited`, `ProviderUpstreamError`, `ProviderTimeout`) — repeat the exact same initial call. For `ProviderRateLimited`, honor `retry_after_s` via injectable `sleep_fn` (K17.2b-R3 D8 work paid off here).
+- **Malformed JSON** — send a parse fix-up turn: `[system, user, assistant=bad_content, user=fix-up]`, asking the LLM to return ONLY corrected JSON.
+- **Schema validation failure** — send a validate fix-up turn with the Pydantic `ValidationError` text (truncated to 1000 chars to protect context budget).
+
+**Non-retry provider errors** (`ProviderModelNotFound`, `ProviderAuthError`, `ProviderInvalidRequest`, `ProviderDecodeError`) surface as `ExtractionError(stage="provider")` immediately — no retry.
+
+**Total LLM call budget per `extract_json` invocation: max 2.** No chaining across failure modes (no "parse fail → retry → validate fail → another retry").
+
+**Public surface:**
+```python
+async def extract_json(
+    schema: type[T],  # T bound to pydantic.BaseModel
+    *,
+    user_id: str,
+    model_source: Literal["user_model", "platform_model"],
+    model_ref: str,
+    system: str | None,
+    user_prompt: str,
+    temperature: float = 0.0,
+    max_tokens: int | None = None,
+    response_format: dict[str, Any] | None = None,
+    sleep_fn: Callable[[float], Awaitable[None]] = asyncio.sleep,  # test hook
+    client: ProviderClient | None = None,  # test hook
+) -> T
+```
+
+Callers (K17.4–K17.7) pass a Pydantic `BaseModel` subclass for `schema`. System and user prompts are separate strings — K17.3 builds the initial messages list `[{system}, {user}]`. For providers that silently ignore `response_format` (Ollama, some vLLM), the retry fix-up prompt carries the load with "Return ONLY the corrected JSON" instruction.
+
+**ExtractionError:** carries `stage` (`retry_parse` / `retry_validate` / `provider` / `provider_exhausted`), `trace_id`, `last_error` (the chained ProviderError/JSONDecodeError/ValidationError), and `raw_content` (the last bad LLM output) so K16 job-failure rows can persist it for post-mortem debugging.
+
+**Metrics:** two new prometheus counters in [services/knowledge-service/app/metrics.py](services/knowledge-service/app/metrics.py):
+- `knowledge_llm_json_extraction_total{outcome}` — closed label set of 6: `ok_first_try | ok_after_retry | parse_exhausted | validate_exhausted | provider_exhausted | provider_non_retry`. **Outcome measures JSON quality, NOT HTTP retry count.** A first-try JSON success whose underlying HTTP call happened to hit a 429 is still `ok_first_try`; the HTTP retry is captured in the next counter.
+- `knowledge_llm_json_extraction_retry_total{reason}` — closed label set of 5: `parse | validate | rate_limited | upstream | timeout`.
+
+Counter-only — no histogram. K17.2b's `provider_chat_completion_duration_seconds` already measures LLM latency at the HTTP layer, and a second histogram here would double-count when K17.9 golden-set harness aggregates.
+
+**Files:**
+- NEW [services/knowledge-service/app/extraction/llm_json_parser.py](services/knowledge-service/app/extraction/llm_json_parser.py) — ~400 LOC including three message builders, `_ChatCallArgs` dataclass (Phase 3 issue 3 — replaces an 11-parameter call chain), `_do_fix_up` internal helper, `extract_json` public entry point, structured logging (WARNING on terminal failure, INFO on ok_after_retry, DEBUG on ok_first_try).
+- NEW [services/knowledge-service/tests/unit/test_llm_json_parser.py](services/knowledge-service/tests/unit/test_llm_json_parser.py) — 23 tests using a hand-rolled `FakeProviderClient` (not `httpx.MockTransport`) that queues responses/exceptions and captures call kwargs. Covers all 15 Phase 1 acceptance criteria plus 8 bonus scenarios.
+- EDIT [services/knowledge-service/app/metrics.py](services/knowledge-service/app/metrics.py) — two new Counter series.
+
+**Phase 3 pre-code review issues:**
+- **I1 (must-fix)** — `_do_fix_up` initial draft had an unreachable `ok_after_retry` counter increment after the validated return. Restructured so the counter fires just before `return validated`.
+- **I3 (fix-in-build)** — parameter count explosion on helper functions. Bundled into `_ChatCallArgs` frozen dataclass.
+- **I4 (must-fix)** — `ValidationError.__str__()` can be 500+ chars; truncation cap at 1000 in the validate fix-up prompt to protect the LLM context budget.
+- **I6 (fix-in-build)** — structured logging to match K17.2b-R3 D7 pattern.
+- **I7 (must-fix)** — `outcome` label semantics clarified: measures JSON quality, not HTTP retry count. Documented in metric help text.
+- **I10 (must-fix)** — "Return ONLY JSON" instruction in retry prompt kept even when caller passes `response_format={"type": "json_object"}` — load-bearing for providers that silently ignore the parameter.
+
+**Phase 6 R1 post-code review:**
+- **E1 (HIGH — fixed in R2)** — three provider-retry branches were near-identical 17-line duplicates. Collapsed into a single `except (ProviderRateLimited, ProviderUpstreamError, ProviderTimeout) as exc:` block with inline classification + conditional sleep for `ProviderRateLimited.retry_after_s`. Saved ~34 lines.
+- **E2 (comment-only)** — `if exc.retry_after_s:` is intentionally falsy for both `None` and `0.0`. `Retry-After: 0` means "retry immediately", skipping sleep is correct. Documented inline.
+- **E3 (accept + document)** — a retry call that hits a non-retry provider error (e.g., first raises `ProviderRateLimited`, retry raises `ProviderModelNotFound`) is still bucketed as `provider_exhausted`. Rare in practice; if K17.9 golden-set shows it matters, split the bucket then.
+- **E4** — `ProviderDecodeError` in the non-retry bucket matches K17.2b's classification. Consistent.
+- **E6** — `_do_fix_up` happy-path counter + return order verified correct after Phase 3 I1 fix.
+- **E9 (must-fix)** — added `test_rate_limited_retry_after_zero_does_not_sleep` regression test for the `retry_after_s=0.0` branch.
+
+**Test results:**
+- knowledge-service: **960 passing** (up from 937 — 23 new K17.3 tests), 0 skipped, 0 failed
+- Live smoke: knowledge-service rebuilt + restarted cleanly; `/metrics` exposes all 6 outcome labels and 5 retry-reason labels, fully pre-initialized at zero.
+
+**K17.3 criticality context:** K17.3 is the unblock key for K17.4–K17.7. Each extractor now has a complete stack — `load_prompt(name, ...)` from K17.1, `extract_json(schema, ...)` from K17.3, transparent BYOK LLM proxying via K17.2. K17.4 (entity extractor) should be the next task: its schema is the simplest (a flat list of `EntityCandidate` records), and it can serve as the integration smoke test that validates the whole K17.1→K17.3 stack end-to-end against a real LLM in compose.
+
+---
 
 ### K17.2b-R3 + K17.2c-R1 — follow-up reviews of session-42 K17.2 siblings ✅ (session 42, Track 2)
 

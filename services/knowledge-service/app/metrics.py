@@ -216,3 +216,43 @@ for _o in _PROVIDER_OUTCOMES:
         # invalid_request fails before the timer starts, so no
         # histogram observation is recorded for that outcome.
         provider_chat_completion_duration_seconds.labels(outcome=_o)
+
+# K17.3 LLM JSON extraction wrapper metrics. Counter-only — per-call
+# latency is already captured by provider_chat_completion_duration_seconds
+# at the HTTP layer, and a second histogram here would double-count
+# when K17.9 golden-set harness aggregates the data.
+#
+# `outcome` label semantics measure JSON QUALITY, not HTTP retry
+# count: `ok_first_try` means the first 2xx response parsed + validated
+# on the first attempt, even if the HTTP call itself took a retry due
+# to a transient provider error. HTTP retry is captured separately in
+# `retry_total{reason=rate_limited|upstream|timeout}`.
+_LLM_JSON_OUTCOMES = (
+    "ok_first_try",
+    "ok_after_retry",
+    "parse_exhausted",
+    "validate_exhausted",
+    "provider_exhausted",
+    "provider_non_retry",
+)
+
+llm_json_extraction_total = Counter(
+    "knowledge_llm_json_extraction_total",
+    "K17.3 LLM JSON extraction attempts by outcome (JSON quality, "
+    "not HTTP retry count)",
+    ["outcome"],
+    registry=registry,
+)
+for _o in _LLM_JSON_OUTCOMES:
+    llm_json_extraction_total.labels(outcome=_o)
+
+_LLM_JSON_RETRY_REASONS = ("parse", "validate", "rate_limited", "upstream", "timeout")
+
+llm_json_extraction_retry_total = Counter(
+    "knowledge_llm_json_extraction_retry_total",
+    "K17.3 LLM JSON extraction retry attempts by reason",
+    ["reason"],
+    registry=registry,
+)
+for _r in _LLM_JSON_RETRY_REASONS:
+    llm_json_extraction_retry_total.labels(reason=_r)
