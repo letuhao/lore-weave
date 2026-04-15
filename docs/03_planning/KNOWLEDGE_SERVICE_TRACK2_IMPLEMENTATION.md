@@ -1340,9 +1340,11 @@ events. Quarantined (not loaded into L2 until Pass 2 confirms).
 ```
 
 ```
-[ ] K15.2 Entity candidate extractor (two-pass)
+[✓] K15.2 Entity candidate extractor (two-pass)
     Files:
+      - services/knowledge-service/app/extraction/__init__.py (NEW)
       - services/knowledge-service/app/extraction/entity_detector.py (NEW)
+      - services/knowledge-service/tests/unit/test_entity_detector.py (NEW)
     Description:
       Port from Track 1 K4.3 but extend:
         1. Candidate extraction: capitalized words, quoted names, glossary matches, repeated nouns
