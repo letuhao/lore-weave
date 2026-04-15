@@ -211,6 +211,15 @@ def _split_chapter_into_chunks(
     if not text or not text.strip():
         return []
 
+    # K15.9-R2/I1: normalize line endings before splitting on "\n\n".
+    # Windows-authored chapters (Word exports, Notepad, glossary-service
+    # DB dumps from Windows hosts) use "\r\n\r\n" between paragraphs,
+    # which contains no literal "\n\n" substring. Without normalization,
+    # `split("\n\n")` would return a single element containing the whole
+    # body, forcing every chapter through the hard-slice fallback and
+    # silently losing paragraph-boundary signal.
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
     chunks: list[str] = []
     current: list[str] = []

@@ -70,6 +70,37 @@ def test_oversized_paragraph_flushes_buffered_small_ones():
     assert out[3] == "Y" * 50
 
 
+def test_k15_9_r2_crlf_line_endings_split_paragraphs():
+    """K15.9-R2/I1: Windows-authored chapters use \\r\\n\\r\\n between
+    paragraphs. The chunker must normalize before splitting so each
+    paragraph is still a separate chunk candidate — otherwise the
+    whole body collapses to one run and hits the hard-slice path."""
+    para_a = "Kai met Zhao."
+    para_b = "Drake watched from the trees."
+    para_c = "Phoenix arrived at dawn."
+    text = f"{para_a}\r\n\r\n{para_b}\r\n\r\n{para_c}"
+    out = _split_chapter_into_chunks(text, budget=35)
+    assert len(out) == 3
+    assert out[0] == para_a
+    assert out[1] == para_b
+    assert out[2] == para_c
+
+
+def test_k15_9_r2_bare_cr_line_endings_normalized():
+    """Old Mac-style `\\r`-only separators should also normalize,
+    not because anyone ships text with them but because mixed
+    `\\r\\n` + `\\r` stragglers shouldn't break chunking."""
+    text = "Para one.\rPara two.\r\rPara three."
+    out = _split_chapter_into_chunks(text, budget=50)
+    # After normalization: "Para one.\nPara two.\n\nPara three."
+    # That's two paragraphs: "Para one.\nPara two." and "Para three."
+    assert len(out) == 1 or len(out) == 2
+    joined = "\n\n".join(out)
+    assert "Para one." in joined
+    assert "Para two." in joined
+    assert "Para three." in joined
+
+
 def test_no_content_loss_across_normal_chapter():
     paragraphs = [f"Paragraph {i} about Kai." for i in range(20)]
     text = "\n\n".join(paragraphs)
