@@ -68,8 +68,14 @@ _RAW_PATTERNS: tuple[tuple[str, str], ...] = (
      r"forget\s+(?:everything|all|previous)"),
     ("en_new_instructions",
      r"new\s+instructions:"),
+    # K15.6-R2/I2: originally `r"you\s+are\s+now\s+"` which fired on
+    # any narrative "you are now in the forest". Narrowed to require
+    # an identity-assignment follow-up noun — the attack shape is
+    # "you are now {a,an,the}? {assistant,model,AI,GPT,chatbot,...}".
     ("en_you_are_now",
-     r"you\s+are\s+now\s+"),
+     r"you\s+are\s+now\s+(?:a\s+|an\s+|the\s+)?"
+     r"(?:\w+\s+){0,2}?"  # optional adjective(s) — "a helpful assistant"
+     r"(?:assistant|model|ai|gpt|chatbot|bot|agent|system)\b"),
 
     # ── English: secret exfiltration ────────────────────────────────
     ("en_system_prompt",
@@ -85,24 +91,31 @@ _RAW_PATTERNS: tuple[tuple[str, str], ...] = (
     ("role_im_start", r"<\|im_start\|>"),
 
     # ── Chinese (zh) — literal substrings, no \b (no word boundaries) ─
+    # K15.6-R2/I1: the `{0,16}` gaps were originally greedy, which
+    # made `"无视指令 然后 无视指令"` match as a single range spanning
+    # both occurrences. One marker was inserted, then a second call
+    # re-tagged the inner occurrence → non-idempotent. Non-greedy
+    # `{0,16}?` makes finditer surface each occurrence separately so
+    # every start position gets its own marker and the lookbehind
+    # rejects all of them on a re-entry.
     # "无视...指令" = ignore ... instructions
-    ("zh_ignore_instructions", r"无视[^\n]{0,16}指令"),
+    ("zh_ignore_instructions", r"无视[^\n]{0,16}?指令"),
     # "忽略...指令" = disregard ... instructions (alt phrasing)
-    ("zh_disregard_instructions", r"忽略[^\n]{0,16}指令"),
+    ("zh_disregard_instructions", r"忽略[^\n]{0,16}?指令"),
     # "系统提示" = system prompt
     ("zh_system_prompt", r"系统提示"),
 
     # ── Japanese (ja) ───────────────────────────────────────────────
     # "以前の...指示...無視" = ignore previous instructions
-    ("ja_ignore_prior", r"以前[^\n]{0,16}指示[^\n]{0,16}無視"),
+    ("ja_ignore_prior", r"以前[^\n]{0,16}?指示[^\n]{0,16}?無視"),
     # "システムプロンプト" = system prompt
     ("ja_system_prompt", r"システムプロンプト"),
 
     # ── Vietnamese (vi) ─────────────────────────────────────────────
     # "bỏ qua ... chỉ dẫn" = ignore ... instructions
-    ("vi_ignore_instructions", r"bỏ\s*qua[^\n]{0,16}chỉ\s*dẫn"),
+    ("vi_ignore_instructions", r"bỏ\s*qua[^\n]{0,16}?chỉ\s*dẫn"),
     # "quên ... hướng dẫn" = forget ... guidance
-    ("vi_forget_guidance", r"quên[^\n]{0,16}hướng\s*dẫn"),
+    ("vi_forget_guidance", r"quên[^\n]{0,16}?hướng\s*dẫn"),
 )
 
 

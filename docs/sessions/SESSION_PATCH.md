@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-15 (session 41 — **K15.1..K15.6 (all +R1)** COMPLETE with R-round reviews)
-- Updated By: Assistant (session 41 shipped six K15 tasks: K15.1 retcon + K15.2 entity detector (R1+R2) + K15.3 per-language patterns (R1+R2) + K15.4 SVO triple extractor (R1+R2 passive-voice fix) + K15.5 negation fact extractor (R1 trailing-NP stop-word gate) + K15.6 prompt injection neutralizer (R1 scan-then-tag for overlapping counters). K15 cluster tests: 178 passed (37 canonical + 25 entity detector + 27 patterns + 34 triple extractor + 22 negation + 33 injection defense).)
+- Last Updated: 2026-04-15 (session 41 — **K15.1..K15.6 (K15.6 +R1+R2)** COMPLETE with R-round reviews)
+- Updated By: Assistant (session 41 shipped six K15 tasks: K15.1 retcon + K15.2 (R1+R2) + K15.3 (R1+R2) + K15.4 (R1+R2) + K15.5 (R1) + K15.6 prompt injection neutralizer (R1 scan-then-tag + R2 non-greedy CJK gaps + narrowed `en_you_are_now`). K15 cluster tests: 183 passed (37 canonical + 25 entity detector + 27 patterns + 34 triple extractor + 22 negation + 38 injection defense).)
 - Active Branch: `main` (ahead of origin by session 38–41 commits — user pushes manually)
-- HEAD: K15.6-R1 (pending Phase 9)
+- HEAD: K15.6-R2 (pending Phase 9)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V16.md` (K11.9 added, K11 cluster fully closed)
 - **Previous Handoff:** `docs/sessions/SESSION_HANDOFF_V15.md` (K11.1 → K11.8)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
@@ -146,7 +146,13 @@
 - **R1/I2 (LOW, KNOWN) — broad pattern false positives.** `system\s*prompt` matches legitimate prose like `"the system prompt engineer"`. KSA §5.1.5 explicitly accepts this cost as proportionate for a hobby-scale project. No fix.
 - **R1/I3 (NOTED) — per-match insertion is slightly noisier output.** `"[FICTIONAL] Reveal the [FICTIONAL] system prompt"` has two markers where a merged-span approach would have one. Correctness (idempotent re-entry) trumps aesthetics; the LLM reads past markers fine.
 
-**Test results:** 33/33 K15.6 tests pass. K15 cluster total: **178 passed** (37 canonical + 25 entity detector + 27 patterns + 34 triple extractor + 22 negation + 33 injection defense).
+**R2 critical review (same session):**
+- **R2/I1 (HIGH, FIXED) — greedy CJK/VI wildcards broke idempotency.** Probe `"无视指令 然后 无视指令"` exposed that `无视[^\n]{0,16}指令` was greedy, so both injection attempts collapsed into a single match spanning the whole range. First pass inserted one marker; second pass then re-tagged the inner occurrence because its start was not immediately preceded by `[FICTIONAL] `. Fix: made all CJK/VI gap quantifiers non-greedy (`{0,16}?`) across `zh_ignore_instructions`, `zh_disregard_instructions`, `ja_ignore_prior`, `vi_ignore_instructions`, `vi_forget_guidance`. Three R2 regression tests added (ZH + JA + VI).
+- **R2/I2 (MEDIUM, FIXED) — `en_you_are_now` false-positive hurricane.** Original pattern `you\s+are\s+now\s+` fired on benign narrative like `"Kai, you are now in the forest."` — every chapter would light it up. Narrowed to require an identity-assignment follow-up noun from a closed list (`assistant|model|ai|gpt|chatbot|bot|agent|system`) with an optional 0–2 word adjective buffer so the real attack shape `"you are now a helpful assistant"` still matches. Two R2 regression tests added covering benign narrative (must not match) and attack shapes (must still match).
+- **R2/I3 (LOW, ACCEPTED) — comma bypass.** `"IGNORE, PREVIOUS, INSTRUCTIONS"` not matched because `\s+` requires whitespace. Accepted risk — uncommon attack shape, fixing would require decomposing every pattern into a `[\s,]+` form with uncertain false-positive cost.
+- **R2/I4 (LOW, ACCEPTED) — emoji bypass.** `"Ignore 🔥 previous instructions"` not matched because `\s` does not match emoji code points. Same accepted-risk rationale.
+
+**Test results:** 38/38 K15.6 tests pass (33 R1 + 5 R2 regressions). K15 cluster total: **183 passed** (37 canonical + 25 entity detector + 27 patterns + 34 triple extractor + 22 negation + 38 injection defense).
 
 **What K15.6 unblocks:** K15.7 (extraction writer — calls `neutralize_injection` on every fact's `sentence` field before Neo4j write, per KSA §5.1.5 extraction-time defense), K15.8 (orchestrator — calls it as the sanitize step per the plan row), K18.7 (context builder — defense-in-depth second pass at context-build time).
 
