@@ -128,11 +128,17 @@ pass1_candidates_extracted_total = Counter(
     "knowledge_pass1_candidates_extracted_total",
     "Pattern-extractor candidates produced by K15.8/K15.9 orchestrators "
     "before K15.7 writer dedupe (entity / triple / negation)",
-    ["kind"],
+    ["kind", "source_kind"],
     registry=registry,
 )
+# K15.12-R2/I5: split by source_kind so dashboards can compare
+# chapter-extractor vs chat-extractor yield per call. Cardinality
+# stays bounded at 3 × 2 = 6 series.
 for _kind in ("entity", "triple", "negation"):
-    pass1_candidates_extracted_total.labels(kind=_kind).inc(0)
+    for _sk in ("chat_turn", "chapter"):
+        pass1_candidates_extracted_total.labels(
+            kind=_kind, source_kind=_sk
+        ).inc(0)
 
 # K15.12 orchestrator wall-time histogram. `source_kind` is closed at
 # 2 (chat_turn | chapter). Buckets target the acceptance envelope from

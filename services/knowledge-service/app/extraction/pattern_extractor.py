@@ -186,9 +186,15 @@ async def extract_from_chat_turn(
                 extract_negations(half, glossary_names=glossary_list)
             )
 
-        pass1_candidates_extracted_total.labels(kind="entity").inc(len(entities))
-        pass1_candidates_extracted_total.labels(kind="triple").inc(len(triples))
-        pass1_candidates_extracted_total.labels(kind="negation").inc(len(negations))
+        pass1_candidates_extracted_total.labels(
+            kind="entity", source_kind="chat_turn"
+        ).inc(len(entities))
+        pass1_candidates_extracted_total.labels(
+            kind="triple", source_kind="chat_turn"
+        ).inc(len(triples))
+        pass1_candidates_extracted_total.labels(
+            kind="negation", source_kind="chat_turn"
+        ).inc(len(negations))
 
         return await write_extraction(
             session,
@@ -367,9 +373,15 @@ async def extract_from_chapter(
                 extract_negations(chunk, glossary_names=glossary_list)
             )
 
-        pass1_candidates_extracted_total.labels(kind="entity").inc(len(entities))
-        pass1_candidates_extracted_total.labels(kind="triple").inc(len(triples))
-        pass1_candidates_extracted_total.labels(kind="negation").inc(len(negations))
+        pass1_candidates_extracted_total.labels(
+            kind="entity", source_kind="chapter"
+        ).inc(len(entities))
+        pass1_candidates_extracted_total.labels(
+            kind="triple", source_kind="chapter"
+        ).inc(len(triples))
+        pass1_candidates_extracted_total.labels(
+            kind="negation", source_kind="chapter"
+        ).inc(len(negations))
 
         return await write_extraction(
             session,
