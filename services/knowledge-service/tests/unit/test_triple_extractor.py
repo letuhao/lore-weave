@@ -60,7 +60,6 @@ def test_k15_4_triple_model_alias_round_trip():
     [
         ("Kai killed Zhao.", "killed"),
         ("Kai fights Drake.", "fights"),
-        ("Kai is fighting Drake.", "is"),
         ("Kai took the sword.", "took"),
         ("Kai gave Mira the book.", "gave"),
         ("Kai met Phoenix at dawn.", "met"),
@@ -231,6 +230,49 @@ def test_k15_4_r1_i2_adverbial_pp_not_fused_into_object():
         obj = t.object_.lower()
         assert "slowly" not in obj, f"adverb leaked: {t}"
         assert "into" not in obj, f"preposition leaked: {t}"
+
+
+# ── R2 regressions ──────────────────────────────────────────────────
+
+
+def test_k15_4_r2_i1_passive_voice_not_inverted():
+    """K15.4-R2/I1: "Kai was killed by Drake" must NOT produce
+    `(Kai, was, killed)`. Before the fix, auxiliary verbs (was,
+    were, is, are, has, had) were in the main-verb alternation, so
+    the SVO regex happily matched passive constructions as if the
+    patient were the agent — inverting reality and producing
+    confidently-wrong triples that would poison K18 validation.
+
+    Fix: remove auxiliaries from the verb alternation. Passive /
+    progressive / perfect tenses are K17 LLM's job.
+    """
+    out = extract_triples("Kai was killed by Drake.")
+    for t in out:
+        assert t.predicate not in {"was", "is", "were", "are", "has", "had", "did"}, (
+            f"auxiliary leaked as main verb: {t}"
+        )
+        # Most importantly: Kai must not be labeled as agent of "killed"
+        assert not (t.subject == "Kai" and "killed" in t.object_.lower()), (
+            f"passive inversion: {t}"
+        )
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "Kai was killed by Drake.",
+        "Zhao was captured at dawn.",
+        "Mira is loved by all.",
+        "The sword was broken.",
+        "Drake had fought before.",
+    ],
+)
+def test_k15_4_r2_i1_auxiliary_verbs_never_main(sentence: str):
+    """Any SVO triple produced from a sentence with an auxiliary
+    construction must not use the auxiliary as the predicate."""
+    out = extract_triples(sentence)
+    for t in out:
+        assert t.predicate not in {"was", "is", "were", "are", "has", "had", "did"}
 
 
 # ── acceptance: 80%+ precision on fixture corpus ────────────────────

@@ -68,6 +68,16 @@ __all__ = [
 # provisional, high enough that a supporting K17 LLM hit can promote.
 _QUARANTINE_CONFIDENCE = 0.5
 
+# Auxiliary verbs that must never surface as the predicate of a
+# pattern-extracted triple. The generic `[a-z]+s` / `[a-z]+ed`
+# alternations in `_VERB` will still match them ("is" matches
+# `[a-z]+s`, "had" matches `[a-z]+ed`-ish paths), so a post-match
+# rejection is the reliable fence. Pattern path skips these; K17
+# LLM handles passive / progressive / perfect tenses. K15.4-R2/I1.
+_AUXILIARY_VERBS = frozenset(
+    {"is", "was", "were", "are", "has", "have", "had", "did", "do", "does", "be", "been", "being"}
+)
+
 
 # ── Output model ────────────────────────────────────────────────────
 
@@ -104,11 +114,17 @@ _SUBJ = r"(?P<subj>[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*)*)"
 # Note: `said` is present because we need to RECOGNIZE it so the
 # SVO shape matches; the SKIP_MARKERS filter drops reported speech
 # upstream before this regex runs.
+# Verb alternation — main verbs only. Auxiliaries (is/was/were/are/
+# has/had/did) are deliberately EXCLUDED: they lead passive /
+# progressive / perfect constructions where the literal auxiliary
+# is not the semantic verb. K15.4-R2/I1 found that accepting "was"
+# as a main verb produced `(Kai, was, killed)` from "Kai was killed
+# by Drake" — inverting agent and patient. Tense-aware parsing is
+# K17 LLM's job; the pattern path just skips these.
 _VERB = (
     r"(?P<verb>"
     r"(?:[a-z]+ed|[a-z]+s|[a-z]+ing)"
-    r"|is|was|were|are|has|had|did"
-    # Closed list of common irregular verbs. Keep compact (~30) per
+    # Closed list of common irregular verbs. Keep compact (~40) per
     # KSA coverage policy; K17 LLM catches the rest.
     r"|said|went|came|saw|knew|took|gave|met|told"
     r"|killed|fought|loved|hated|drew|grew|threw|blew|flew|struck"
@@ -206,6 +222,13 @@ def extract_triples(
             verb = match.group("verb").strip()
             obj_raw = match.group("obj").strip()
             obj = _OBJ_STRIP_LEADING_ARTICLE_RE.sub("", obj_raw).strip()
+
+            # K15.4-R2/I1: auxiliary verbs leading passive / progressive /
+            # perfect constructions would invert agent and patient
+            # ("Kai was killed by Drake" → (Kai, was, killed) is wrong).
+            # Drop the whole triple; K17 LLM handles these.
+            if verb.casefold() in _AUXILIARY_VERBS:
+                continue
 
             if not _is_valid_subject(subj, entity_forms):
                 continue
