@@ -7,10 +7,12 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-15 (session 42 — K17.2 BYOK LLM proxy shipped, K17.2a + K17.2b pair with R1/R2 reviews; test debt from session 41 paid in full)
-- Updated By: Assistant (session 42 — infra-capable PC, Docker Compose stack up including Neo4j + Postgres; full knowledge-service suite at 930 passing; K17.2 ready to unblock K17.3–K17.8 LLM extractors.)
+- Last Updated: 2026-04-15 (session 42 END — K17.2 full stack (a/b/c) + K17.3 LLM JSON wrapper shipped; three R3 reviews; session 41 test debt paid in full)
+- Updated By: Assistant (session 42 END — infra-capable PC, full Docker Compose stack up including Neo4j (profile) + Postgres + provider-registry; knowledge-service suite at **966 passing** (up from 906 at session start); provider-registry Go K17.2 tests at 15/15; zero regressions, zero skips. K17.4 entity extractor is fully unblocked for next session.)
 - Active Branch: `main` (ahead of origin by session 38–42 commits — user pushes manually)
-- HEAD: K17.3-R3 third-pass review follow-ups (pending commit)
+- HEAD: K17.3-R3 (`5f2cc66`)
+- **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 42 end — next session MUST update in place too, do NOT create `_V18.md`)
+- **Session 42 commit count:** 7 commits (K17.2a, K17.2b, K17.2a-R3 + K17.2c, K17.2bc-R3, K17.3, K17.3-R3)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
