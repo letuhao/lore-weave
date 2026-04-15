@@ -1543,7 +1543,7 @@ events. Quarantined (not loaded into L2 until Pass 2 confirms).
 ```
 
 ```
-[ ] K15.12 Metrics + logging
+[✓] K15.12 Metrics + logging
     Files:
       - services/knowledge-service/app/extraction/metrics.py (NEW)
     Description:

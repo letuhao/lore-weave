@@ -43,6 +43,7 @@ KNOWLEDGE_SERVICE_TRACK2_IMPLEMENTATION.md.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterable
 
 from app.db.neo4j_helpers import CypherSession
@@ -54,6 +55,10 @@ from app.extraction.pattern_writer import (
     write_extraction,
 )
 from app.extraction.triple_extractor import extract_triples
+from app.metrics import (
+    pass1_candidates_extracted_total,
+    pass1_extraction_duration_seconds,
+)
 
 __all__ = [
     "extract_from_chat_turn",
@@ -127,6 +132,7 @@ async def extract_from_chat_turn(
     # that uttered them. K15.7 dedupes entities across halves via
     # its (folded_name, kind_hint) key so repeated entities collapse
     # to one :Entity node with one evidence edge.
+    started = time.perf_counter()
     halves = [
         part.strip()
         for part in (user_message, assistant_message)
@@ -147,9 +153,38 @@ async def extract_from_chat_turn(
 
     glossary_list = list(glossary_names or ())
 
-    if not halves:
-        # Empty turn: still upsert the source so re-extract on the
-        # same turn_id stays idempotent at K11.8 level.
+    try:
+        if not halves:
+            # Empty turn: still upsert the source so re-extract on
+            # the same turn_id stays idempotent at K11.8 level.
+            return await write_extraction(
+                session,
+                user_id=user_id,
+                project_id=project_id,
+                source_type=source_type,
+                source_id=source_id,
+                job_id=job_id,
+                extraction_model=extraction_model,
+            )
+
+        entities = []
+        triples = []
+        negations = []
+        for half in halves:
+            entities.extend(
+                extract_entity_candidates(half, glossary_names=glossary_list)
+            )
+            triples.extend(
+                extract_triples(half, glossary_names=glossary_list)
+            )
+            negations.extend(
+                extract_negations(half, glossary_names=glossary_list)
+            )
+
+        pass1_candidates_extracted_total.labels(kind="entity").inc(len(entities))
+        pass1_candidates_extracted_total.labels(kind="triple").inc(len(triples))
+        pass1_candidates_extracted_total.labels(kind="negation").inc(len(negations))
+
         return await write_extraction(
             session,
             user_id=user_id,
@@ -157,35 +192,15 @@ async def extract_from_chat_turn(
             source_type=source_type,
             source_id=source_id,
             job_id=job_id,
+            entities=entities,
+            triples=triples,
+            negations=negations,
             extraction_model=extraction_model,
         )
-
-    entities = []
-    triples = []
-    negations = []
-    for half in halves:
-        entities.extend(
-            extract_entity_candidates(half, glossary_names=glossary_list)
-        )
-        triples.extend(
-            extract_triples(half, glossary_names=glossary_list)
-        )
-        negations.extend(
-            extract_negations(half, glossary_names=glossary_list)
-        )
-
-    return await write_extraction(
-        session,
-        user_id=user_id,
-        project_id=project_id,
-        source_type=source_type,
-        source_id=source_id,
-        job_id=job_id,
-        entities=entities,
-        triples=triples,
-        negations=negations,
-        extraction_model=extraction_model,
-    )
+    finally:
+        pass1_extraction_duration_seconds.labels(
+            source_kind="chat_turn"
+        ).observe(time.perf_counter() - started)
 
 
 def _split_chapter_into_chunks(
@@ -303,6 +318,7 @@ async def extract_from_chapter(
         `ExtractionWriteResult` from K15.7 reflecting the *combined*
         counts across all chunks (post-dedupe at the writer).
     """
+    started = time.perf_counter()
     chunks = _split_chapter_into_chunks(
         chapter_text, budget=chunk_char_budget
     )
@@ -316,7 +332,36 @@ async def extract_from_chapter(
 
     glossary_list = list(glossary_names or ())
 
-    if not chunks:
+    try:
+        if not chunks:
+            return await write_extraction(
+                session,
+                user_id=user_id,
+                project_id=project_id,
+                source_type=source_type,
+                source_id=source_id,
+                job_id=job_id,
+                extraction_model=extraction_model,
+            )
+
+        entities = []
+        triples = []
+        negations = []
+        for chunk in chunks:
+            entities.extend(
+                extract_entity_candidates(chunk, glossary_names=glossary_list)
+            )
+            triples.extend(
+                extract_triples(chunk, glossary_names=glossary_list)
+            )
+            negations.extend(
+                extract_negations(chunk, glossary_names=glossary_list)
+            )
+
+        pass1_candidates_extracted_total.labels(kind="entity").inc(len(entities))
+        pass1_candidates_extracted_total.labels(kind="triple").inc(len(triples))
+        pass1_candidates_extracted_total.labels(kind="negation").inc(len(negations))
+
         return await write_extraction(
             session,
             user_id=user_id,
@@ -324,32 +369,12 @@ async def extract_from_chapter(
             source_type=source_type,
             source_id=source_id,
             job_id=job_id,
+            entities=entities,
+            triples=triples,
+            negations=negations,
             extraction_model=extraction_model,
         )
-
-    entities = []
-    triples = []
-    negations = []
-    for chunk in chunks:
-        entities.extend(
-            extract_entity_candidates(chunk, glossary_names=glossary_list)
-        )
-        triples.extend(
-            extract_triples(chunk, glossary_names=glossary_list)
-        )
-        negations.extend(
-            extract_negations(chunk, glossary_names=glossary_list)
-        )
-
-    return await write_extraction(
-        session,
-        user_id=user_id,
-        project_id=project_id,
-        source_type=source_type,
-        source_id=source_id,
-        job_id=job_id,
-        entities=entities,
-        triples=triples,
-        negations=negations,
-        extraction_model=extraction_model,
-    )
+    finally:
+        pass1_extraction_duration_seconds.labels(
+            source_kind="chapter"
+        ).observe(time.perf_counter() - started)

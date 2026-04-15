@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-15 (session 41 — **K15.1..K15.10** COMPLETE with R-round reviews)
-- Updated By: Assistant (session 41 shipped ten K15 tasks: K15.1..K15.9 (+R1+R2) + K15.10 quarantine cleanup job.)
+- Last Updated: 2026-04-15 (session 41 — **K15.1..K15.10 + K15.12** COMPLETE with R-round reviews)
+- Updated By: Assistant (session 41 shipped K15.1..K15.9 (+R1+R2) + K15.10 + K15.12 metrics; K15.11 deferred to infra-capable session.)
 - Active Branch: `main` (ahead of origin by session 38–41 commits — user pushes manually)
-- HEAD: K15.10 (pending Phase 9)
+- HEAD: K15.12
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V16.md` (K11.9 added, K11 cluster fully closed)
 - **Previous Handoff:** `docs/sessions/SESSION_HANDOFF_V15.md` (K11.1 → K11.8)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
@@ -124,6 +124,27 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K15.12 — Pass 1 metrics + logging ✅ (session 41, Track 2)
+
+**Goal:** satisfy KSA §9.6 Pass 1 observability bullet — expose candidate counts and orchestrator wall-time so dashboards can tell "extractor found nothing" apart from "extractor found plenty but writer dropped them". Existing `pass1_facts_written_total` (K15.7) covers the write-side; this task adds the pre-write side.
+
+**Files:**
+- [app/metrics.py](services/knowledge-service/app/metrics.py) — added `pass1_candidates_extracted_total{kind="entity|triple|negation"}` Counter and `pass1_extraction_duration_seconds{source_kind="chat_turn|chapter"}` Histogram with KSA-aligned buckets (0.05 → 60s). Both label sets pre-initialised so series are visible on first scrape.
+- [app/extraction/pattern_extractor.py](services/knowledge-service/app/extraction/pattern_extractor.py) — wrapped `extract_from_chat_turn` and `extract_from_chapter` with `time.perf_counter()` bracketing in a try/finally so the histogram records even on exception paths, and incremented candidate counters per kind right before the writer call.
+
+**Design decisions:**
+- **Pre-write counter, not write-side.** `pass1_facts_written_total` already measures post-dedupe writes; the new counter measures extractor output *before* dedupe/missing-endpoint filtering. Two metrics let dashboards compute an extraction→write conversion ratio and alarm on drift.
+- **Closed-set labels only.** `kind` ∈ {entity,triple,negation}, `source_kind` ∈ {chat_turn,chapter}. Cardinality bounded regardless of tenant count.
+- **Try/finally around timing.** Guarantees the histogram always observes, even if `write_extraction` raises, so a "latency went dark" alert reliably fires on hard extractor failures.
+- **Coarser-than-default buckets.** KSA §5.1 acceptance is chat <2s, chapter <30s. The default prom buckets (5ms..10s) compress the chapter regime; custom buckets keep p95 visible on a laptop.
+- **No per-call log line.** K15.7/K15.8/K15.9 already emit structured results via their return value; adding an orchestrator logger.info would duplicate noise. `/metrics` is the interface.
+
+**Not executed this session (laptop constraint):** manual `/metrics` scrape. The changes are import-level additive (new Counter/Histogram in the existing registry) and wrap the hot path in a no-op-on-success timing block; next infra-capable session can verify via `curl :port/metrics | grep pass1_`.
+
+**K15.11 deferred:** the glossary sync handler needs live glossary-service HTTP + event bus, not laptop-friendly. Tracked as the only remaining open item in the K15 cluster.
+
+---
 
 ### K15.10 — Quarantine cleanup job ✅ (session 41, Track 2)
 

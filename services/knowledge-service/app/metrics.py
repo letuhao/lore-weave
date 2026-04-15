@@ -22,6 +22,8 @@ __all__ = [
     "evidence_count_drift_fixed_total",
     "injection_pattern_matched_total",
     "pass1_facts_written_total",
+    "pass1_candidates_extracted_total",
+    "pass1_extraction_duration_seconds",
     "quarantine_auto_invalidated_total",
 ]
 
@@ -107,6 +109,36 @@ pass1_facts_written_total = Counter(
 )
 for _kind in ("entity", "relation", "fact"):
     pass1_facts_written_total.labels(kind=_kind).inc(0)
+
+# K15.12 pattern-extraction orchestrator counters. Track candidates
+# produced *before* K15.7 dedupe/write, so dashboards can distinguish
+# "extractor found nothing" from "extractor found plenty but writer
+# dropped them as duplicates or missing-endpoint". `kind` cardinality
+# is closed at 3 (entity | triple | negation).
+pass1_candidates_extracted_total = Counter(
+    "knowledge_pass1_candidates_extracted_total",
+    "Pattern-extractor candidates produced by K15.8/K15.9 orchestrators "
+    "before K15.7 writer dedupe (entity / triple / negation)",
+    ["kind"],
+    registry=registry,
+)
+for _kind in ("entity", "triple", "negation"):
+    pass1_candidates_extracted_total.labels(kind=_kind).inc(0)
+
+# K15.12 orchestrator wall-time histogram. `source_kind` is closed at
+# 2 (chat_turn | chapter). Buckets target the acceptance envelope from
+# KSA §5.1: chat turn <2s, chapter <30s. Coarser than the default
+# prom buckets so a laptop-scale p95 doesn't land in the same bucket
+# as a degenerate timeout.
+pass1_extraction_duration_seconds = Histogram(
+    "knowledge_pass1_extraction_duration_seconds",
+    "Wall-time of K15.8/K15.9 Pass 1 extraction orchestrator calls",
+    ["source_kind"],
+    buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0),
+    registry=registry,
+)
+for _sk in ("chat_turn", "chapter"):
+    pass1_extraction_duration_seconds.labels(source_kind=_sk)
 
 # K15.10 quarantine cleanup job. Monotonic counter: increments by the
 # number of Pass 1 facts whose `pending_validation=true` flag outlived
