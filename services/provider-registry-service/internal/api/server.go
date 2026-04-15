@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -297,7 +298,17 @@ WHERE platform_model_id=$1 AND status='active'
 	}
 
 	_ = providerKind
-	_ = providerModelName
+
+	// K17.2a — defensive guard. provider_model_name is NOT NULL in the
+	// schema and every live adapter populates it, but a bad migration
+	// or hand-edited row could leave it empty. Fail unambiguously here
+	// rather than silently forwarding an empty "model" field to the
+	// upstream provider and getting a cryptic 400 back.
+	if providerModelName == "" {
+		writeError(w, http.StatusInternalServerError, "PROXY_MODEL_RESOLUTION_EMPTY",
+			"resolved provider_model_name is empty")
+		return
+	}
 
 	secret := ""
 	if secretCipher != "" {
@@ -317,19 +328,77 @@ WHERE platform_model_id=$1 AND status='active'
 	baseURL := strings.TrimRight(endpointBaseURL, "/")
 	targetURL := baseURL + "/" + targetPath
 
-	// Forward the request body as-is
-	proxyReq, err := http.NewRequestWithContext(r.Context(), r.Method, targetURL, r.Body)
+	// K17.2a — transparent model rewrite for JSON bodies.
+	//
+	// Historically doProxy resolved provider_model_name from the DB but
+	// discarded it and forwarded r.Body verbatim. That forced every
+	// caller to know the upstream provider's model string, which
+	// defeats the BYOK proxy's whole point. For JSON bodies we now
+	// unmarshal, overwrite "model", and re-marshal. Non-JSON bodies
+	// (multipart/form-data audio, etc.) still pass through unchanged.
+	//
+	// We intentionally overwrite even if the client set its own
+	// "model" — callers MUST NOT try to bypass BYOK resolution by
+	// supplying an arbitrary model string. The server's resolution
+	// from (user_id, model_source, model_ref) is authoritative.
+	//
+	// Note: encoding/json sorts map keys alphabetically on marshal,
+	// so the rewritten body's byte length typically differs from the
+	// original even when semantically identical. That is why we
+	// recompute Content-Length from len(rewritten) rather than
+	// copying the client's header value.
+	var bodyReader io.Reader = r.Body
+	var bodyLen int64 = r.ContentLength
+
+	contentType := r.Header.Get("Content-Type")
+	isJSON := strings.HasPrefix(contentType, "application/json")
+	if isJSON && r.ContentLength != 0 {
+		// 4MiB cap — generous for chat completion bodies (even
+		// context-stuffed calls are well under 1MB) but finite so
+		// a malformed or hostile caller can't OOM the proxy.
+		const maxJSONBodyBytes = 4 * 1024 * 1024
+		raw, readErr := io.ReadAll(io.LimitReader(r.Body, maxJSONBodyBytes+1))
+		if readErr != nil {
+			writeError(w, http.StatusBadRequest, "PROXY_INVALID_JSON_BODY",
+				"failed to read request body")
+			return
+		}
+		if int64(len(raw)) > maxJSONBodyBytes {
+			writeError(w, http.StatusRequestEntityTooLarge, "PROXY_BODY_TOO_LARGE",
+				"request body exceeds 4MiB JSON cap")
+			return
+		}
+		var parsed map[string]any
+		if err := json.Unmarshal(raw, &parsed); err != nil {
+			writeError(w, http.StatusBadRequest, "PROXY_INVALID_JSON_BODY",
+				"request body is not valid JSON")
+			return
+		}
+		rewritten, err := rewriteJSONBodyModel(parsed, providerModelName)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "PROXY_REMARSHAL_FAILED",
+				"failed to re-marshal body")
+			return
+		}
+		bodyReader = bytes.NewReader(rewritten)
+		bodyLen = int64(len(rewritten))
+	}
+
+	// Forward the (possibly rewritten) request body
+	proxyReq, err := http.NewRequestWithContext(r.Context(), r.Method, targetURL, bodyReader)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "PROXY_REQUEST_FAILED", "failed to create proxy request")
 		return
 	}
 
-	// Copy content-type and content-length headers
-	if ct := r.Header.Get("Content-Type"); ct != "" {
+	// Copy content-type header as-is. Content-Length is recomputed
+	// from the (possibly rewritten) body above.
+	if ct := contentType; ct != "" {
 		proxyReq.Header.Set("Content-Type", ct)
 	}
-	if cl := r.Header.Get("Content-Length"); cl != "" {
-		proxyReq.Header.Set("Content-Length", cl)
+	if bodyLen > 0 {
+		proxyReq.ContentLength = bodyLen
+		proxyReq.Header.Set("Content-Length", strconv.FormatInt(bodyLen, 10))
 	}
 
 	// Set auth with decrypted provider API key
@@ -353,6 +422,24 @@ WHERE platform_model_id=$1 AND status='active'
 	}
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
+}
+
+// rewriteJSONBodyModel overwrites the "model" field of a parsed JSON
+// chat-completion request body with the server-resolved provider model
+// name, then marshals it back to bytes. K17.2a helper — isolated from
+// doProxy so it can be unit-tested without a pgx pool or upstream.
+//
+// The input is a map[string]any rather than a typed struct because
+// chat-completion bodies vary wildly across providers (OpenAI
+// tool_calls, Anthropic system messages, Ollama options). Every field
+// other than "model" must survive the round-trip unchanged.
+//
+// Returns the re-marshaled body or an error if marshaling fails (which,
+// for a map populated via json.Unmarshal, can only happen on nested
+// values that are not JSON-marshalable — i.e. never in practice).
+func rewriteJSONBodyModel(parsed map[string]any, providerModelName string) ([]byte, error) {
+	parsed["model"] = providerModelName
+	return json.Marshal(parsed)
 }
 
 type errorBody struct {
