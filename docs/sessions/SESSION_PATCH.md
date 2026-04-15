@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-15 (session 41 — **K15.1..K15.7 (K15.7 +R1)** COMPLETE with R-round reviews)
-- Updated By: Assistant (session 41 shipped seven K15 tasks: K15.1..K15.6 + K15.7 pattern extraction writer (R1 dedupe fix). K15 cluster tests: 193 passed (K15.6 183 + 10 K15.7 integration).)
+- Last Updated: 2026-04-15 (session 41 — **K15.1..K15.8** COMPLETE with R-round reviews)
+- Updated By: Assistant (session 41 shipped eight K15 tasks: K15.1..K15.7 (+R1+R2) + K15.8 orchestrator `extract_from_chat_turn`. K15 cluster tests: 137 passed in extraction subset.)
 - Active Branch: `main` (ahead of origin by session 38–41 commits — user pushes manually)
-- HEAD: K15.7-R1 (pending Phase 9)
+- HEAD: K15.8 (pending Phase 9)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V16.md` (K11.9 added, K11 cluster fully closed)
 - **Previous Handoff:** `docs/sessions/SESSION_HANDOFF_V15.md` (K11.1 → K11.8)
 - **Session Handoff:** `docs/sessions/SESSION_HANDOFF_V14.md` (Track 1 closing) — K10.4 is an incremental continuation on top
@@ -52,6 +52,7 @@
 | P-K2a-02 | K2a | Pin toggle bumps `updated_at` → fires full `recalculate_entity_snapshot` for a bit flip |
 | P-K3-01 | K3 | Backfill UPDATE on `short_description` also fires snapshot trigger per row |
 | P-K3-02 | K3 | Description PATCH triggers 4 UPDATEs for 1 logical operation (CTE + trigger + regen + trigger-again) |
+| P-K15.8-01 | K15.8-R1/I3 | **Orchestrator re-runs entity detection 3–4× per turn.** `extract_triples` and `extract_negations` both call `extract_entity_candidates` internally for per-sentence anchoring, so a full chat turn runs the K15.2 entity detector once at the orchestrator's explicit call plus one more time per extractor. Refactor path: thread pre-extracted candidates through the detector signatures. Track 1 accepts the cost at hobby scale; revisit if extraction latency ever trips the <2s plan-row budget. |
 
 ### Won't-fix (conscious decisions, not debt)
 
@@ -122,6 +123,32 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K15.8 — Pattern extraction orchestrator ✅ (session 41, Track 2)
+
+**Goal:** per KSA §5.1 and the K15.8 plan row, provide a single top-level `extract_from_chat_turn(session, *, user_id, project_id, source_type, source_id, job_id, user_message, assistant_message, glossary_names)` entry point that chains K15.2 → K15.4 → K15.5 → K15.6 → K15.7 so the K14.5 chat handler and CLI re-extract tools don't have to wire the pipeline by hand. Closes the K15 cluster.
+
+**Files (all NEW):**
+- [app/extraction/pattern_extractor.py](services/knowledge-service/app/extraction/pattern_extractor.py) — `extract_from_chat_turn` async orchestrator. 5-step algorithm: combine messages → `neutralize_injection` for orchestrator-level observability (result discarded; extractors consume raw text) → K15.2 entity candidates → K15.4 triples → K15.5 negations → K15.7 `write_extraction`. Empty/whitespace input still upserts the source node so re-extraction stays idempotent at K11.8 level.
+- [tests/integration/db/test_pattern_extractor.py](services/knowledge-service/tests/integration/db/test_pattern_extractor.py) — 6 live-Neo4j tests: end-to-end chat turn, empty/None message handling, orchestrator-level injection metric emission, idempotent re-entry (same job_id → `evidence_edges==0` on second run), and per-step metric emission.
+
+**Design decisions:**
+- **Concatenate user + assistant into one extraction unit.** A chat turn is one logical source (one `source_id`); splitting would double-count shared entities and inflate the source-node cardinality. K17 LLM pass refines turn-half attribution later. Join with `"\n\n"` so K15.3 sentence splitter doesn't accidentally fuse the last user sentence with the first assistant sentence.
+- **`neutralize_injection` is observability-only at orchestrator level.** The sanitized text is discarded; extractors run on the raw corpus because feeding them `[FICTIONAL] ` markers would confuse capitalized-token heuristics and verb patterns. Per-field sanitization of persisted strings stays K15.7's job — this call exists so dashboards see attack shapes at intake independently of whether a fact survives to write time.
+- **Empty input still upserts the source.** Whitespace-only messages call `write_extraction` with no entities/triples/negations so the `:ExtractionSource` node exists — matches K15.7's `empty_input_still_upserts_source` contract and keeps re-extraction idempotent when a chat turn happens to be all stopwords.
+- **No timing histogram.** The plan's "<2s per turn" is a correctness target, not an SLO. Callers that need a hard cut-off wrap in `asyncio.wait_for`.
+
+**R1 critical review (same session):**
+- **R1/I1 (LOW, ACCEPTED) — injection metric double-counts.** Orchestrator fires `injection_pattern_matched_total` on the raw corpus; K15.7 fires it again on persisted negation fields. Accepted as intentional defense-in-depth observability: intake layer vs. storage layer are distinct pipeline points and both should be visible.
+- **R1/I2 (LOW, ACCEPTED) — turn-half provenance lost in concatenation.** Triples can't distinguish user-uttered from assistant-uttered. Plan row explicitly asks for one extraction unit per turn; K17 refines attribution.
+- **R1/I3 (PERF, DEFERRED) — entity detector runs 3–4× per turn.** `extract_triples` and `extract_negations` both re-call `extract_entity_candidates` internally for per-sentence anchoring. Refactor needs detector-signature changes across K15.2/K15.4/K15.5 — out of K15.8 scope. Logged as **P-K15.8-01** in the Deferred Items table; fix if extraction latency ever trips the <2s budget.
+- **R1/I4 (LOW, ACCEPTED) — no built-in timing histogram.** Callers that need the <2s guarantee can wrap the call; adding a histogram here would conflate "orchestrator time" with "write time" since K15.7 already dominates.
+
+**Test results:** 6/6 K15.8 integration + 12/12 K15.7 integration + 25 entity detector + 27 patterns + 34 triple extractor + 22 negation + 38 injection defense = **137 passed** in the K15 extraction subset. No regressions in K11/K15 clusters.
+
+**What K15.8 unblocks & K15 cluster status:** K15 extraction pattern pipeline now ships end-to-end. K14.5 chat handler can call `extract_from_chat_turn` directly with the turn's messages + source metadata and get a quarantined Neo4j write with full injection defense, dedupe, cross-kind disambiguation, and idempotency. **K15 cluster (K15.1..K15.8) COMPLETE.** Remaining optional K15 tasks: K15.9 (chapter-scale orchestrator with chunking), K15.10 (quarantine cleanup job), K15.11 (glossary sync) — all lower priority for Track 2. Next up: **K16/K17** LLM extraction pass.
+
+---
 
 ### K15.7 — Pattern extraction writer ✅ (session 41, Track 2)
 

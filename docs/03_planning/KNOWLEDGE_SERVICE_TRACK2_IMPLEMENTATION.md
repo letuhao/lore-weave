@@ -1467,7 +1467,7 @@ events. Quarantined (not loaded into L2 until Pass 2 confirms).
 ```
 
 ```
-[ ] K15.8 Orchestrator: extract_from_chat_turn
+[✓] K15.8 Orchestrator: extract_from_chat_turn
     Files:
       - services/knowledge-service/app/extraction/pattern_extractor.py (NEW)
     Description:
