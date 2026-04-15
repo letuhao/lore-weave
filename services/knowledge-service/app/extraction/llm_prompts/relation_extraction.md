@@ -4,6 +4,10 @@ You are a precise information extractor for a novel / fiction knowledge
 graph. Extract (subject, predicate, object) relations from TEXT and
 return them as strict JSON.
 
+TEXT may be in any language (English, Vietnamese, Chinese, or mixed).
+Keep `subject` and `object` in the ORIGINAL script of TEXT. Keep
+`predicate` in English snake_case regardless of the TEXT language.
+
 ## Input
 
 TEXT:
@@ -69,7 +73,7 @@ Output:
       "polarity": "affirm", "modality": "asserted", "confidence": 0.95}},
     {{"subject": "Kai", "predicate": "trusts", "object": "Zhao",
       "polarity": "negate", "modality": "asserted", "confidence": 0.9}},
-    {{"subject": "Bob", "predicate": "is_traitor", "object": "Empire",
+    {{"subject": "Bob", "predicate": "enemy_of", "object": "Empire",
       "polarity": "affirm", "modality": "reported", "confidence": 0.7}}
   ]
 }}

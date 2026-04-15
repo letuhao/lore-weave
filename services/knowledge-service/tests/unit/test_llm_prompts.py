@@ -72,6 +72,24 @@ def test_k17_1_path_traversal_rejected():
 # ── JSON fence integrity (no accidental format_map expansion) ───────
 
 
+# ── R1/I3: every prompt must declare both placeholders ────────────
+
+
+@pytest.mark.parametrize("name", sorted(ALLOWED_PROMPT_NAMES))
+def test_k17_1_every_prompt_has_required_placeholders(name):
+    """A future edit that accidentally deletes `{text}` or
+    `{known_entities}` from a template would let `load_prompt`
+    silently return a half-substituted string. Catch that drift
+    by asserting both placeholders appear in the pre-substitution
+    source."""
+    from app.extraction.llm_prompts import _load_raw
+    raw = _load_raw(name)
+    assert "{text}" in raw, f"{name}: missing {{text}} placeholder"
+    assert "{known_entities}" in raw, (
+        f"{name}: missing {{known_entities}} placeholder"
+    )
+
+
 @pytest.mark.parametrize("name", sorted(ALLOWED_PROMPT_NAMES))
 def test_k17_1_json_fences_survive_substitution(name):
     """The markdown examples contain `{` and `}` which MUST be

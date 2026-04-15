@@ -5,6 +5,10 @@ graph. Extract narrative events from TEXT and return them as strict
 JSON. Events are time-indexed happenings with participants — distinct
 from static relations.
 
+TEXT may be in any language (English, Vietnamese, Chinese, or mixed).
+Keep `name`, `participants`, `location`, `time_cue`, and `summary` in
+the ORIGINAL script of TEXT. Keep `kind` values in English.
+
 ## Input
 
 TEXT:

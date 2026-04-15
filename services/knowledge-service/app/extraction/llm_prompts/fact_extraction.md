@@ -6,6 +6,10 @@ narrator or a character asserts about the world, distinct from
 relations (which need a typed predicate) and events (which need a
 verb of change).
 
+TEXT may be in any language (English, Vietnamese, Chinese, or mixed).
+Keep `content` and `subject` in the ORIGINAL script of TEXT. Keep
+`type`, `polarity`, and `modality` values in English.
+
 ## Input
 
 TEXT:

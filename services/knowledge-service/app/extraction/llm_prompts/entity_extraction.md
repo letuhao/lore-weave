@@ -4,6 +4,10 @@ You are a precise information extractor for a novel / fiction knowledge
 graph. Extract named entities from the TEXT below and return them as
 strict JSON conforming to the schema.
 
+TEXT may be in any language (English, Vietnamese, Chinese, or mixed).
+Keep entity `name` values in the ORIGINAL script of TEXT — do not
+transliterate or translate. JSON keys and `kind` values stay English.
+
 ## Input
 
 TEXT:

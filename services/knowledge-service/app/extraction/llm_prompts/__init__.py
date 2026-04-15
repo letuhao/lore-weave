@@ -31,6 +31,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 __all__ = [
     "PromptName",
@@ -38,7 +39,10 @@ __all__ = [
     "ALLOWED_PROMPT_NAMES",
 ]
 
-PromptName = str  # one of ALLOWED_PROMPT_NAMES, enforced at runtime
+# R1/I4: real Literal type so static checkers flag typoed callers
+# (e.g. `load_prompt("entitiy", ...)`) instead of relying only on
+# the runtime KeyError from _load_raw.
+PromptName = Literal["entity", "relation", "event", "fact"]
 
 ALLOWED_PROMPT_NAMES: frozenset[str] = frozenset(
     {"entity", "relation", "event", "fact"}
