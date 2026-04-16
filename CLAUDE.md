@@ -157,53 +157,143 @@ LoreWeave is a hobby project with **no fixed deadline**. This shapes how reviews
 
 ---
 
-## Task Workflow (9 phases per task)
+## Task Workflow (11 phases)
+
+**ENFORCEMENT: State machine (`.workflow-state.json`) + hooks block commits without verification.**
 
 Every task follows this workflow. The agent plays all roles sequentially.
 
 ```
-Phase     │ Role              │ What Happens
-──────────┼───────────────────┼──────────────────────────────────────
-1. PLAN   │ Architect + PO    │ Define scope, acceptance criteria, deps
-2. DESIGN │ Lead              │ API contract / component API / data flow
-3. REVIEW │ PO + Lead         │ Review design before coding
-4. BUILD  │ Developer         │ Write code (backend then frontend)
-5. TEST   │ Developer         │ Run locally, fix bugs, write unit tests
-6. REVIEW │ Lead              │ Code review (patterns, security, a11y)
-7. QC     │ QA / PO           │ Test against acceptance criteria
-8. SESSION│ Developer         │ Update SESSION_PATCH.md + task status
-9. COMMIT │ Developer         │ Git commit + push
+Phase      | Role              | What Happens
+-----------|-------------------|----------------------------------------------
+1. CLARIFY | Architect + PO    | Brainstorm, ask questions, define scope
+2. DESIGN  | Lead              | API contract / component API / data flow
+3. REVIEW  | PO + Lead         | Review design spec before coding
+4. PLAN    | Lead + Developer  | Decompose into bite-sized tasks (2-5 min)
+5. BUILD   | Developer         | Write code (TDD: red -> green -> refactor)
+6. VERIFY  | Developer         | Evidence-based verification gate
+7. REVIEW  | Lead              | Code review (spec compliance + quality)
+8. QC      | QA / PO           | Test against acceptance criteria
+9. SESSION | Developer         | Update session notes + task status
+10. COMMIT | Developer         | Git commit (+ push if approved)
+11. RETRO  | All               | Record decision/workaround if learned
 ```
 
-**Status tracking:** `[ ]` not started · `[P]` plan · `[D]` design · `[B]` build · `[R]` review · `[Q]` QC · `[S]` session · `[✓]` done
+**Status tracking:** `[ ]` not started · `[C]` clarify · `[D]` design · `[P]` plan · `[B]` build · `[V]` verify · `[R]` review · `[Q]` QC · `[S]` session · `[x]` done
 
-**Task types:** `[FE]` frontend only · `[BE]` backend only · `[FS]` full-stack (backend + frontend)
+**Task types:** `[FE]` frontend · `[BE]` backend · `[FS]` full-stack
 
-**Role perspectives:**
-- **Architect** — scoping, dependencies, system-level impact
-- **PO (Product Owner)** — acceptance criteria, design sign-off, final QC
-- **Lead** — technical design, code review (patterns, security, a11y)
-- **Developer** — implementation, testing, session tracking, commits
-- **QA** — test against acceptance criteria, edge cases, regression
+### Task Size Classification (MANDATORY — do this BEFORE any work)
 
-When playing each role, shift perspective accordingly. Architect thinks about system boundaries. PO thinks about user value and acceptance. Lead thinks about code quality and maintainability. Developer thinks about correctness and efficiency. QA thinks about what can break.
+Count 3 things before starting:
 
-### Phases 8 + 9 are mandatory — do not skip
+| Metric | How to count |
+|--------|-------------|
+| **Files touched** | How many files will be created or modified? |
+| **Logic changes** | How many functions/methods/handlers will change behavior? (not formatting) |
+| **Side effects** | Does it change: API contract, DB schema, config, external behavior, types used by other files? |
 
-AI agents habitually declare a task "done" the moment QC passes (Phase 7) and forget Phases 8 and 9. **That is a bug, not a shortcut.** Work that isn't recorded in `docs/sessions/SESSION_PATCH.md` and committed to git does not exist for the next session — the next agent will re-plan from stale state and redo work.
+| Size | Files | Logic | Side effects | Allowed skips |
+|------|-------|-------|--------------|---------------|
+| **XS** | 1 | 0-1 | None | CLARIFY + PLAN |
+| **S** | 1-2 | 2-3 | None | PLAN only |
+| **M** | 3-5 | 4+ | Maybe | None |
+| **L** | 6+ | Any | Yes | None. Write plan file. |
+| **XL** | 10+ | Any | Yes | None. Write spec + plan. Subagent recommended. |
 
-Checklist at the end of **every** 9-phase cycle, before considering the task closed:
+```bash
+./scripts/workflow-gate.sh size XS 1 1 0     # Classify task
+./scripts/workflow-gate.sh phase build        # Enter phase
+./scripts/workflow-gate.sh complete build "tests pass" # Complete with evidence
+./scripts/workflow-gate.sh status             # Check progress
+```
 
-1. **Phase 8 — SESSION**:
+Script blocks: undersizing, phase jumps, commits without VERIFY+SESSION.
+
+### Anti-Skip Rules (MANDATORY)
+
+- Agent must NEVER self-authorize skips — ask user
+- If you catch yourself about to skip — STOP, announce the skip attempt, ask the user
+- If during BUILD you discover the task is larger than classified — STOP, reclassify, announce to user
+- User can authorize skips explicitly — agent must never self-authorize
+
+**Phase transition protocol:**
+1. State task size classification before starting (XS/S/M/L/XL with counts)
+2. Before starting any phase, run `./scripts/workflow-gate.sh phase <name>`
+3. Before leaving any phase, run `./scripts/workflow-gate.sh complete <name> "<evidence>"`
+4. If during work you discover the task is larger than classified — STOP, reclassify
+
+### Role Perspectives
+
+| Role | Thinks about... |
+|------|-----------------|
+| **Architect** | System boundaries, dependencies, scoping, impact analysis |
+| **PO (Product Owner)** | User value, acceptance criteria, design sign-off, final QC |
+| **Lead** | Technical design, plan quality, code review (patterns, security, a11y) |
+| **Developer** | Correctness, TDD, efficiency, verification, session tracking |
+| **QA** | What can break — edge cases, regression, acceptance criteria |
+
+When playing each role, shift perspective accordingly. Don't just check boxes — think from that role's viewpoint.
+
+### Phase 6: VERIFY (Evidence Gate)
+
+5-step gate before ANY completion claim:
+
+| Step | Action |
+|------|--------|
+| 1. Identify | What command proves the claim? (test, build, lint, curl...) |
+| 2. Run | Execute it fresh — not from memory or cache |
+| 3. Read | Complete output including exit codes |
+| 4. Confirm | Does output actually match the claim? |
+| 5. Claim | Only now state the result, with evidence |
+
+**Red flags — stop immediately if you catch yourself:**
+- Using "should work", "probably passes", "seems fine"
+- About to commit/push without fresh test run
+- Trusting prior output without re-running
+
+### Phase 7: REVIEW (2-Stage Code Review)
+
+| Stage | Focus |
+|-------|-------|
+| **1. Spec compliance** | Does code implement what was designed? Missing requirements? Scope creep? |
+| **2. Code quality** | Patterns, security, a11y, performance, maintainability |
+
+Both stages must pass. If issues found: fix → re-verify (Phase 6) → re-review.
+
+### Phases 9 + 10 are mandatory — do not skip
+
+AI agents declare tasks "done" after QC and forget SESSION + COMMIT. **That is a bug, not a shortcut.** Work that isn't recorded in `docs/sessions/SESSION_PATCH.md` and committed to git does not exist for the next session.
+
+Checklist at the end of **every** cycle:
+
+1. **Phase 9 — SESSION**:
    - Update `docs/sessions/SESSION_PATCH.md` header metadata (Last Updated, Updated By, HEAD)
-   - Add a "Current Active Work" entry for the completed phase with files touched, the review issues found and fixed, and the test count delta
-   - Move any cleared deferrals to "Recently cleared", add any new ones to the appropriate table
-2. **Phase 9 — COMMIT**:
+   - Add a "Current Active Work" entry with files touched, review issues found/fixed, test count delta
+   - Move cleared deferrals to "Recently cleared", add new ones
+2. **Phase 10 — COMMIT**:
    - Stage only the files you actually changed (no `git add -A`)
-   - Write a commit message that names the phase, lists the review fixes landed in the same commit, and records the final test count
-   - Include the SESSION_PATCH update **in the same commit** as the code — they describe the same unit of work
+   - Write a commit message that names the phase + review fixes + test count
+   - Include SESSION_PATCH update **in the same commit** as the code
 
-**Rule of thumb:** if you catch yourself saying "I'll update SESSION_PATCH later" or "I'll batch the commit with the next task", stop. That's the drift the workflow exists to prevent. One 9-phase cycle = one SESSION_PATCH update + one commit, every time.
+### Phase 11: RETRO
+
+- If a non-obvious decision was made → record it (decision log, ADR, lesson)
+- If a workaround was needed → record it with context
+- If nothing notable → skip this phase
+
+### Debugging Protocol
+
+Activated whenever a bug is encountered during any phase. **NO FIXES WITHOUT ROOT CAUSE.**
+
+```
+1. INVEST  — Read errors fully, reproduce, trace data flow backward
+2. PATTERN — Find working examples, compare every difference
+3. HYPOTHE — State hypothesis, test one variable at a time
+4. FIX     — Write failing test -> implement single fix -> verify
+```
+
+**Hard stop:** If 3+ fix attempts fail → stop, question the architecture, discuss with user.
 
 ---
 
