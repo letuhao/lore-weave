@@ -83,10 +83,8 @@ class LLMEventCandidate(BaseModel):
     the participant could not be matched against K17.4 output.
 
     ``event_id`` is a deterministic hash of
-    ``(user_id, name_normalized, sorted_resolved_participant_ids)``
-    — only set when at least one participant is resolved. Events
-    with zero resolved participants get ``event_id=None``; the
-    caller decides whether to create ad-hoc entity nodes or drop.
+    ``(user_id, name_normalized, sorted_participant_display_names)``.
+    Always set because events without participants are dropped.
     """
 
     name: str
@@ -105,14 +103,17 @@ class LLMEventCandidate(BaseModel):
 def _compute_event_id(
     user_id: str,
     name_normalized: str,
-    resolved_ids: list[str],
+    display_names: list[str],
 ) -> str:
-    """Deterministic event ID from (user_id, name, participants).
+    """Deterministic event ID from (user_id, name, all participants).
 
-    Same hashing approach as K11.6 ``relation_id``.
+    Hashes the full display-name list (not just resolved IDs) so that
+    events with the same name but different participant lists produce
+    distinct IDs — e.g. ("Battle", ["Kai", "Stranger"]) vs
+    ("Battle", ["Kai"]) won't collide.
     """
-    sorted_ids = sorted(resolved_ids)
-    raw = f"v1:{user_id}:{name_normalized}:{','.join(sorted_ids)}"
+    sorted_names = sorted(n.lower() for n in display_names)
+    raw = f"v1:{user_id}:{name_normalized}:{','.join(sorted_names)}"
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
@@ -152,7 +153,8 @@ async def extract_events(
     Returns:
         List of ``LLMEventCandidate`` sorted by confidence descending.
         Events whose participants cannot be resolved have
-        ``participant_ids=[None, ...]`` / ``event_id=None``.
+        ``participant_ids=[None, ...]`` but ``event_id`` is always
+        set (hashed from display names).
 
     Raises:
         ExtractionError: on terminal LLM / parse / validation failure
@@ -266,13 +268,11 @@ def _postprocess(
                 display_names.append(p_name)
                 participant_ids.append(None)
 
-        # Compute event_id when at least one participant resolved
-        resolved_ids = [pid for pid in participant_ids if pid is not None]
-        eid: str | None = None
-        if resolved_ids:
-            eid = _compute_event_id(
-                user_id, _normalize_event_name(name), resolved_ids,
-            )
+        # Compute event_id from display names (always available since
+        # we filter empty participants above).
+        eid = _compute_event_id(
+            user_id, _normalize_event_name(name), display_names,
+        )
 
         candidate = LLMEventCandidate(
             name=name,
@@ -287,19 +287,11 @@ def _postprocess(
         )
 
         # Dedup by event_id (higher confidence wins)
-        if eid:
-            if eid in seen:
-                if evt.confidence > seen[eid].confidence:
-                    seen[eid] = candidate
-            else:
+        if eid in seen:
+            if evt.confidence > seen[eid].confidence:
                 seen[eid] = candidate
         else:
-            synth_key = (
-                f"{_normalize_event_name(name)}"
-                f":{':'.join(sorted(p.lower() for p in display_names))}"
-            )
-            if synth_key not in seen or evt.confidence > seen[synth_key].confidence:
-                seen[synth_key] = candidate
+            seen[eid] = candidate
 
     return sorted(
         seen.values(),

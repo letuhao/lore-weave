@@ -29,7 +29,6 @@ from app.clients.provider_client import (
     ProviderClient,
     ProviderAuthError,
 )
-from app.db.neo4j_repos.canonical import entity_canonical_id
 from app.extraction.llm_entity_extractor import LLMEntityCandidate
 from app.extraction.llm_event_extractor import (
     LLMEventCandidate,
@@ -230,7 +229,8 @@ async def test_unresolvable_participants_get_none_ids():
 
     assert len(result) == 1
     assert result[0].participant_ids == [None]
-    assert result[0].event_id is None
+    # event_id is always set (hashed from display names, not resolved IDs)
+    assert result[0].event_id is not None
 
 
 @pytest.mark.asyncio
