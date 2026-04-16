@@ -234,6 +234,15 @@ def test_predicate_normalization():
     assert _normalize_predicate("child_of") == "child_of"
 
 
+def test_predicate_normalization_non_latin():
+    """R2 I6/I7: non-ASCII predicates must be preserved, not stripped."""
+    assert _normalize_predicate("属于") == "属于"
+    assert _normalize_predicate("  관계  ") == "관계"
+    assert _normalize_predicate("работает в") == "работает_в"
+    # Mixed ASCII + Unicode
+    assert _normalize_predicate("is 朋友 of") == "is_朋友_of"
+
+
 @pytest.mark.asyncio
 async def test_polarity_and_modality_preserved():
     """Polarity and modality from LLM response are preserved."""

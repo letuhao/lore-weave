@@ -104,7 +104,7 @@ class LLMRelationCandidate(BaseModel):
 
 # ── Predicate normalization ──────────────────────────────────────────
 
-_NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
+_NON_WORD_RE = re.compile(r"[^\w]+", re.UNICODE)
 
 
 def _normalize_predicate(pred: str) -> str:
@@ -113,7 +113,7 @@ def _normalize_predicate(pred: str) -> str:
     'Works For' → 'works_for', 'married-to' → 'married_to'.
     Prompt instructs snake_case but LLMs are inconsistent.
     """
-    result = _NON_ALNUM_RE.sub("_", pred.strip().lower())
+    result = _NON_WORD_RE.sub("_", pred.strip().lower())
     return result.strip("_")
 
 
