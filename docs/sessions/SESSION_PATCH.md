@@ -7,12 +7,12 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-16 (session 43 — K17.4 + K17.4-R2 + K17.5 shipped)
-- Updated By: Assistant (session 43 — knowledge-service unit tests at **684 passing** (14 K17.4 + 12 K17.5 = 26 new tests); zero regressions)
-- Active Branch: `main` (ahead of origin by session 38–43 commits — user pushes manually)
-- HEAD: K17.5 (pending commit)
-- **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 43 — next session MUST update in place too, do NOT create `_V18.md`)
-- **Session 43 commit count:** 3 commits (K17.4, K17.4-R2, K17.5)
+- Last Updated: 2026-04-16 (session 44 — K17.5-R2 + K17.6 + workflow v2 upgrade)
+- Updated By: Assistant (session 44 — knowledge-service unit tests at **697 passing** (13 K17.5-R2 + 13 K17.6 = +14 new tests vs session 43); zero regressions)
+- Active Branch: `main` (ahead of origin by session 38–44 commits — user pushes manually)
+- HEAD: K17.6 (pending commit)
+- **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
+- **Session 44 commit count:** 0 so far (pending)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -130,13 +130,58 @@
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
 
+### K17.6 — Event LLM extractor ✅ (session 44, Track 2)
+
+**Goal:** ship [services/knowledge-service/app/extraction/llm_event_extractor.py](services/knowledge-service/app/extraction/llm_event_extractor.py), the third LLM-powered extractor. Extracts narrative events (time-indexed happenings with participants) from text, resolves participant names to K17.4 entity canonical IDs, and derives deterministic `event_id` via sha256 hash.
+
+**Key design decisions:**
+- **Participant resolution** — takes `entities: list[LLMEntityCandidate]` from K17.4. Builds case-insensitive lookup by name, canonical_name, aliases (same pattern as K17.5). `participant_ids` mirrors `participants` positionally — `None` for unresolvable.
+- **event_id derivation** — `sha256(f"v1:{user_id}:{name_normalized}:{sorted_resolved_participant_ids}")`. Only set when at least one participant is resolved.
+- **Dedup** — by `event_id` when available; by synthetic `name:sorted_participants` key when unresolved. Higher confidence wins.
+- **Events without participants are dropped** — prompt rule 2.
+- **Curly brace escaping** — same K17.4-R2 I1/I7 pattern.
+
+**Models:**
+- `EventExtractionResponse(BaseModel)` — outer wrapper: `events: list[_LLMEvent]`
+- `_LLMEvent(BaseModel)` — raw LLM output: name, kind, participants, location, time_cue, summary, confidence
+- `LLMEventCandidate(BaseModel)` — post-processed: adds `participant_ids`, `event_id`
+- `EventKind = Literal["action", "dialogue", "battle", "travel", "discovery", "death", "birth", "other"]`
+
+**Files:**
+- NEW [services/knowledge-service/app/extraction/llm_event_extractor.py](services/knowledge-service/app/extraction/llm_event_extractor.py) — ~260 LOC
+- NEW [services/knowledge-service/tests/unit/test_llm_event_extractor.py](services/knowledge-service/tests/unit/test_llm_event_extractor.py) — 13 tests
+
+**Test results:**
+- 40/40 across K17.4 + K17.5 + K17.6, zero regressions
+
+**No deferrals opened.**
+
+---
+
+### K17.5-R2 — second-pass review follow-ups ✅ (session 44, Track 2)
+
+**Goal:** R2 critical review of K17.5 surfaced 9 issue candidates (I1–I9); 2 must-fix landed.
+
+**Must-fixes landed (2):**
+- **I6 (HIGH real bug)** — `_normalize_predicate` used `re.compile(r"[^a-z0-9]+")` which stripped all non-ASCII characters. Multilingual predicates (Chinese `属于`, Korean `관계`, etc.) normalized to empty string and were silently dropped. **Fixed by changing to `re.compile(r"[^\w]+", re.UNICODE)`** which preserves Unicode word characters.
+- **I7 (MEDIUM test gap)** — added `test_predicate_normalization_non_latin` covering Chinese, Korean, Cyrillic, and mixed ASCII+Unicode predicates.
+
+**Accepted (2):** I1 (unused project_id — forward-compat), I4 (polarity/modality dedup — design choice).
+**Verified non-issue (5):** I2, I3, I5, I8, I9.
+
+**Files:**
+- MODIFIED [services/knowledge-service/app/extraction/llm_relation_extractor.py](services/knowledge-service/app/extraction/llm_relation_extractor.py) — regex fix
+- MODIFIED [services/knowledge-service/tests/unit/test_llm_relation_extractor.py](services/knowledge-service/tests/unit/test_llm_relation_extractor.py) — +1 test (13 total)
+
+---
+
 ### K17.5 — Relation LLM extractor ✅ (session 43, Track 2)
 
 **Goal:** ship [services/knowledge-service/app/extraction/llm_relation_extractor.py](services/knowledge-service/app/extraction/llm_relation_extractor.py), the second LLM-powered extractor. Extracts (subject, predicate, object) relations from text, resolves subject/object to K17.4 entity canonical IDs, and derives deterministic `relation_id` via K11.6.
 
 **Key design decisions:**
 - **Entity resolution** — takes `entities: list[LLMEntityCandidate]` from K17.4 as input. Builds case-insensitive lookup by name, canonical_name, and aliases. Relations with unresolvable endpoints get `subject_id=None` / `object_id=None` / `relation_id=None` — K17.8 orchestrator decides how to handle.
-- **Predicate normalization** — `_normalize_predicate` lowercases, strips, collapses non-alphanum to underscores. "Works For" → "works_for". CJK predicates normalize to empty → dropped (prompt instructs English snake_case).
+- **Predicate normalization** — `_normalize_predicate` lowercases, strips, collapses non-word chars to underscores. "Works For" → "works_for". Unicode word chars preserved (K17.5-R2 I6 fix).
 - **Polarity + modality** — affirm/negate × asserted/reported/hypothetical. Prompt instructs LLM to capture negation ("Alice does not trust Bob" → `polarity: negate`) and evidentiality ("Alice said Bob is a spy" → `modality: reported`).
 - **Dedup** — by `relation_id` when both endpoints resolved; by synthetic `subject:predicate:object` key when unresolved. Higher confidence wins.
 - **Curly brace escaping** — same K17.4-R2 I1/I7 pattern.
