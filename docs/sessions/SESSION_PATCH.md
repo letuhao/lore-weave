@@ -7,12 +7,12 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-16 (session 44 — K17.5-R2 + K17.6 + K17.6-PR + K17.7 + workflow v2.1)
-- Updated By: Assistant (session 44 — knowledge-service unit tests: 52 across K17.4–K17.7 (14+13+13+12), zero regressions)
+- Last Updated: 2026-04-16 (session 44 — K17.5-R2 + K17.6 + K17.6-PR + K17.7 + K17.7-R2 + K17.8 + workflow v2.1)
+- Updated By: Assistant (session 44 — knowledge-service unit tests: 70 across K17.4–K17.8 (14+13+13+14+9+7), zero regressions)
 - Active Branch: `main` (ahead of origin by session 38–44 commits — user pushes manually)
-- HEAD: K17.7 (pending commit)
+- HEAD: K17.8 (pending commit)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
-- **Session 44 commit count:** 3 so far (K17.5-R2, workflow v2, K17.6)
+- **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -130,6 +130,32 @@
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
 
+### K17.8 — Pass 2 orchestrator + writer ✅ (session 44, Track 2)
+
+**Goal:** ship the Pass 2 LLM extraction orchestrator and writer — the glue that makes K17.4–K17.7 actually useful by persisting results to Neo4j.
+
+**Key design decisions:**
+- **Single `pass2_writer.py`** — maps all 4 candidate types to K11 repo calls + provenance edges. Mirrors K15.7 pattern.
+- **Entity gate** — if K17.4 returns 0 entities, skip K17.5/6/7 (nothing to anchor relations/events/facts against).
+- **Concurrent extraction** — K17.5/6/7 run via `asyncio.gather` after entities are extracted.
+- **Endpoint validation** — writer checks relation endpoint IDs against actually-merged entity IDs, not just candidate IDs.
+- **`pending_validation=False`** — Pass 2 is trusted, not quarantined like Pass 1.
+- **Injection defense** — all persisted text goes through `neutralize_injection`.
+
+**Files:**
+- NEW [services/knowledge-service/app/extraction/pass2_writer.py](services/knowledge-service/app/extraction/pass2_writer.py) — ~260 LOC
+- NEW [services/knowledge-service/app/extraction/pass2_orchestrator.py](services/knowledge-service/app/extraction/pass2_orchestrator.py) — ~230 LOC
+- NEW [services/knowledge-service/tests/unit/test_pass2_writer.py](services/knowledge-service/tests/unit/test_pass2_writer.py) — 9 tests
+- NEW [services/knowledge-service/tests/unit/test_pass2_orchestrator.py](services/knowledge-service/tests/unit/test_pass2_orchestrator.py) — 7 tests
+
+**Post-review:** 0 issues found.
+
+**Test results:** 70/70 across K17.4–K17.8, zero regressions.
+
+**No deferrals opened.**
+
+---
+
 ### K17.7 — Fact LLM extractor ✅ (session 44, Track 2)
 
 **Goal:** ship [services/knowledge-service/app/extraction/llm_fact_extractor.py](services/knowledge-service/app/extraction/llm_fact_extractor.py), the fourth and final LLM-powered extractor. Extracts standalone factual claims from text, resolves optional subject to K17.4 entity canonical ID, derives deterministic `fact_id` via sha256 hash of content.
@@ -143,11 +169,15 @@
 
 **Files:**
 - NEW [services/knowledge-service/app/extraction/llm_fact_extractor.py](services/knowledge-service/app/extraction/llm_fact_extractor.py) — ~220 LOC
-- NEW [services/knowledge-service/tests/unit/test_llm_fact_extractor.py](services/knowledge-service/tests/unit/test_llm_fact_extractor.py) — 12 tests
+- NEW [services/knowledge-service/tests/unit/test_llm_fact_extractor.py](services/knowledge-service/tests/unit/test_llm_fact_extractor.py) — 14 tests
 
 **Post-review:** 0 issues found.
 
-**Test results:** 52/52 across K17.4–K17.7, zero regressions.
+**R2 review:** 4 candidates, 2 accepted (I1 content-only hash intentional, I2 forward-compat export), 2 nice-to-fix test gaps closed:
+- I3: `test_empty_content_facts_are_skipped` — empty/whitespace content dropped
+- I4: `test_whitespace_variant_dedup` — whitespace variants produce same fact_id
+
+**Test results:** 54/54 across K17.4–K17.7, zero regressions.
 
 **No deferrals opened.**
 
