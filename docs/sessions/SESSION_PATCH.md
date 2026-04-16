@@ -7,12 +7,12 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-16 (session 43 — K17.4 entity LLM extractor + R2 review follow-ups shipped)
-- Updated By: Assistant (session 43 — knowledge-service unit tests at **672 passing** (14 K17.4 tests: 12 original + 2 R2 regression); zero regressions)
+- Last Updated: 2026-04-16 (session 43 — K17.4 + K17.4-R2 + K17.5 shipped)
+- Updated By: Assistant (session 43 — knowledge-service unit tests at **684 passing** (14 K17.4 + 12 K17.5 = 26 new tests); zero regressions)
 - Active Branch: `main` (ahead of origin by session 38–43 commits — user pushes manually)
-- HEAD: K17.4 (pending commit)
+- HEAD: K17.5 (pending commit)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 43 — next session MUST update in place too, do NOT create `_V18.md`)
-- **Session 43 commit count:** 2 commits (K17.4 entity LLM extractor, K17.4-R2 review follow-ups)
+- **Session 43 commit count:** 3 commits (K17.4, K17.4-R2, K17.5)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -129,6 +129,38 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K17.5 — Relation LLM extractor ✅ (session 43, Track 2)
+
+**Goal:** ship [services/knowledge-service/app/extraction/llm_relation_extractor.py](services/knowledge-service/app/extraction/llm_relation_extractor.py), the second LLM-powered extractor. Extracts (subject, predicate, object) relations from text, resolves subject/object to K17.4 entity canonical IDs, and derives deterministic `relation_id` via K11.6.
+
+**Key design decisions:**
+- **Entity resolution** — takes `entities: list[LLMEntityCandidate]` from K17.4 as input. Builds case-insensitive lookup by name, canonical_name, and aliases. Relations with unresolvable endpoints get `subject_id=None` / `object_id=None` / `relation_id=None` — K17.8 orchestrator decides how to handle.
+- **Predicate normalization** — `_normalize_predicate` lowercases, strips, collapses non-alphanum to underscores. "Works For" → "works_for". CJK predicates normalize to empty → dropped (prompt instructs English snake_case).
+- **Polarity + modality** — affirm/negate × asserted/reported/hypothetical. Prompt instructs LLM to capture negation ("Alice does not trust Bob" → `polarity: negate`) and evidentiality ("Alice said Bob is a spy" → `modality: reported`).
+- **Dedup** — by `relation_id` when both endpoints resolved; by synthetic `subject:predicate:object` key when unresolved. Higher confidence wins.
+- **Curly brace escaping** — same K17.4-R2 I1/I7 pattern.
+
+**Models:**
+- `RelationExtractionResponse(BaseModel)` — outer wrapper: `relations: list[_LLMRelation]`
+- `_LLMRelation(BaseModel)` — raw LLM output: subject, predicate, `object_` (alias "object"), polarity, modality, confidence
+- `LLMRelationCandidate(BaseModel)` — post-processed: adds `subject_id`, `object_id`, `relation_id`
+
+**Files:**
+- NEW [services/knowledge-service/app/extraction/llm_relation_extractor.py](services/knowledge-service/app/extraction/llm_relation_extractor.py) — ~320 LOC
+- NEW [services/knowledge-service/tests/unit/test_llm_relation_extractor.py](services/knowledge-service/tests/unit/test_llm_relation_extractor.py) — 12 tests
+
+**Phase 6 R1 review findings:**
+- E1 (fixed): removed unused `canonicalize_entity_name` + `entity_canonical_id` imports
+- E2 (fixed): removed unused `known_entities` parameter from `_build_entity_lookup`
+- E3–E5: accepted (field name "object" OK in Pydantic, synthetic dedup key correct, CJK predicate → empty → dropped is correct)
+
+**Test results:**
+- knowledge-service unit tests: **672 passing** (660 pre-existing + 12 new K17.5), 0 K17.5 failures
+
+**No deferrals opened.**
+
+---
 
 ### K17.4-R2 — second-pass review follow-ups ✅ (session 43, Track 2)
 
