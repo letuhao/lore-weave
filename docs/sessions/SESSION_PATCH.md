@@ -7,12 +7,12 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-16 (session 43 — K17.4 entity LLM extractor shipped)
-- Updated By: Assistant (session 43 — knowledge-service unit tests at **670 passing** (12 new K17.4 tests); zero regressions)
+- Last Updated: 2026-04-16 (session 43 — K17.4 entity LLM extractor + R2 review follow-ups shipped)
+- Updated By: Assistant (session 43 — knowledge-service unit tests at **672 passing** (14 K17.4 tests: 12 original + 2 R2 regression); zero regressions)
 - Active Branch: `main` (ahead of origin by session 38–43 commits — user pushes manually)
 - HEAD: K17.4 (pending commit)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 43 — next session MUST update in place too, do NOT create `_V18.md`)
-- **Session 43 commit count:** 1 commit (K17.4 entity LLM extractor)
+- **Session 43 commit count:** 2 commits (K17.4 entity LLM extractor, K17.4-R2 review follow-ups)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -129,6 +129,32 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K17.4-R2 — second-pass review follow-ups ✅ (session 43, Track 2)
+
+**Goal:** R2 critical review of K17.4 surfaced 15 issue candidates (I1–I15); 3 must-fix + 2 test gaps landed in this commit.
+
+**Must-fixes landed (3):**
+
+- **I1/I7 (HIGH real bug)** — `text` and `known_entities` containing literal `{curly_braces}` crashed `load_prompt`'s `str.format_map` with `KeyError`. Common in code-quoting novels, system-prompt fiction, or entity names like `"The {Ancient} One"`. **Fixed by escaping `{` → `{{` and `}` → `}}` on both caller-supplied values before substitution.** Two regression tests: text with `{host: "localhost"}` + known_entities with `{Ancient}`.
+
+- **I3 (MEDIUM doc)** — `extract_entities` can return two candidates with the same display `name` but different `kind` (e.g. "Kai/person" and "Kai/concept") because `canonical_id` hashes name+kind. **Undocumented.** Added explicit docstring note that the caller (K17.8) is responsible for reconciling same-name-different-kind duplicates. New test `test_r2_i12_same_name_different_kind_produces_two_candidates`.
+
+**Accepted (5 worth flagging):**
+- I5: empty `name` from LLM → silently dropped by `if not name: continue` guard
+- I8: duplicate aliases → handled by `set()` dedup in `_merge_aliases`
+- I14: `LLMEntityCandidate.kind` is `str` not `EntityKind` Literal — intentionally loose output model
+- I13: `ExtractionError` imported but not directly used — legitimate for callers who catch it
+- I15: `FakeProviderClient` duplicated across test files — premature to share
+
+**Files touched:**
+- [services/knowledge-service/app/extraction/llm_entity_extractor.py](services/knowledge-service/app/extraction/llm_entity_extractor.py) — curly brace escaping (I1/I7), docstring clarification (I3)
+- [services/knowledge-service/tests/unit/test_llm_entity_extractor.py](services/knowledge-service/tests/unit/test_llm_entity_extractor.py) — 2 new regression tests (I10, I12)
+
+**Test results:**
+- knowledge-service unit tests: **672 passing** (660 + 12 original K17.4 + 2 R2), 0 K17.4 failures
+
+---
 
 ### K17.4 — Entity LLM extractor ✅ (session 43, Track 2)
 

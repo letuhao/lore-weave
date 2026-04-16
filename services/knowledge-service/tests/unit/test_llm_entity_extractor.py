@@ -400,6 +400,68 @@ async def test_confidence_ordering():
 
 
 @pytest.mark.asyncio
+async def test_r2_i1_text_with_curly_braces_does_not_crash():
+    """R2 I1/I7: text or known_entities containing { } must not crash
+    load_prompt's str.format_map. Common in code-quoting novels or
+    entity names like 'The {Ancient} One'."""
+    fake = FakeProviderClient()
+    fake.queue_response(
+        _make_response(
+            _entity("Config Server", "artifact", 0.8),
+        )
+    )
+
+    result = await extract_entities(
+        text='The config was {host: "localhost", port: 8080}.',
+        known_entities=["The {Ancient} One"],
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        model_source="user_model",
+        model_ref="test-model",
+        client=_as_client(fake),
+    )
+
+    assert len(result) == 1
+    assert result[0].name == "Config Server"
+    # Verify the curly braces survived into the prompt text
+    assert len(fake.calls) == 1
+    messages = fake.calls[0]["messages"]
+    user_msg = next(m for m in messages if m["role"] == "user")
+    assert "{host:" in user_msg["content"]
+    assert "{Ancient}" in user_msg["content"]
+
+
+@pytest.mark.asyncio
+async def test_r2_i12_same_name_different_kind_produces_two_candidates():
+    """R2 I3/I12: same display name with different kinds should produce
+    two separate candidates (different canonical_id because kind is
+    part of the hash)."""
+    fake = FakeProviderClient()
+    fake.queue_response(
+        _make_response(
+            _entity("Kai", "person", 0.9),
+            _entity("Kai", "concept", 0.7),
+        )
+    )
+
+    result = await extract_entities(
+        text="Kai is both a person and a concept.",
+        known_entities=[],
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        model_source="user_model",
+        model_ref="test-model",
+        client=_as_client(fake),
+    )
+
+    assert len(result) == 2
+    kinds = {c.kind for c in result}
+    assert kinds == {"person", "concept"}
+    ids = {c.canonical_id for c in result}
+    assert len(ids) == 2  # different canonical_ids
+
+
+@pytest.mark.asyncio
 async def test_canonical_name_computed():
     """canonical_name is the output of canonicalize_entity_name."""
     fake = FakeProviderClient()

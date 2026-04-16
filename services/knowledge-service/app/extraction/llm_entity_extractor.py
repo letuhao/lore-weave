@@ -116,7 +116,12 @@ async def extract_entities(
 
     Returns:
         Deduplicated list of ``LLMEntityCandidate`` sorted by
-        confidence descending.
+        confidence descending. Deduplication is by ``canonical_id``,
+        which hashes ``(user_id, project_id, name, kind)``. Two
+        candidates CAN share the same display ``name`` if their
+        ``kind`` differs (e.g. "Kai" as person vs. concept). The
+        caller (K17.8 orchestrator) is responsible for reconciling
+        same-name-different-kind duplicates if that's undesirable.
 
     Raises:
         ExtractionError: on terminal LLM / parse / validation failure
@@ -125,10 +130,20 @@ async def extract_entities(
     if not text or not text.strip():
         return []
 
+    # I1/I7 (R2): escape curly braces in caller-supplied values before
+    # substitution. load_prompt uses str.format_map internally — literal
+    # { or } in the text (common in code-quoting novels, system-prompt
+    # fiction, or entity names like "The {Ancient} One") would be
+    # misinterpreted as format placeholders and raise KeyError.
+    safe_text = text.replace("{", "{{").replace("}", "}}")
+    safe_known = json.dumps(
+        known_entities, ensure_ascii=False
+    ).replace("{", "{{").replace("}", "}}")
+
     user_prompt = load_prompt(
         "entity",
-        text=text,
-        known_entities=json.dumps(known_entities, ensure_ascii=False),
+        text=safe_text,
+        known_entities=safe_known,
     )
 
     response = await extract_json(
