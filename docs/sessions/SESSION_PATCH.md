@@ -7,12 +7,12 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-15 (session 42 END — K17.2 full stack (a/b/c) + K17.3 LLM JSON wrapper shipped; three R3 reviews; session 41 test debt paid in full)
-- Updated By: Assistant (session 42 END — infra-capable PC, full Docker Compose stack up including Neo4j (profile) + Postgres + provider-registry; knowledge-service suite at **966 passing** (up from 906 at session start); provider-registry Go K17.2 tests at 15/15; zero regressions, zero skips. K17.4 entity extractor is fully unblocked for next session.)
-- Active Branch: `main` (ahead of origin by session 38–42 commits — user pushes manually)
-- HEAD: K17.3-R3 (`5f2cc66`)
-- **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 42 end — next session MUST update in place too, do NOT create `_V18.md`)
-- **Session 42 commit count:** 7 commits (K17.2a, K17.2b, K17.2a-R3 + K17.2c, K17.2bc-R3, K17.3, K17.3-R3)
+- Last Updated: 2026-04-16 (session 43 — K17.4 entity LLM extractor shipped)
+- Updated By: Assistant (session 43 — knowledge-service unit tests at **670 passing** (12 new K17.4 tests); zero regressions)
+- Active Branch: `main` (ahead of origin by session 38–43 commits — user pushes manually)
+- HEAD: K17.4 (pending commit)
+- **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 43 — next session MUST update in place too, do NOT create `_V18.md`)
+- **Session 43 commit count:** 1 commit (K17.4 entity LLM extractor)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -129,6 +129,51 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K17.4 — Entity LLM extractor ✅ (session 43, Track 2)
+
+**Goal:** ship [services/knowledge-service/app/extraction/llm_entity_extractor.py](services/knowledge-service/app/extraction/llm_entity_extractor.py), the first LLM-powered extractor in the K17 pipeline. Extracts named entities from text via K17.1→K17.3 stack (prompt loader → BYOK LLM client → JSON parse/retry wrapper), returns post-processed candidates with deterministic canonical IDs (K15.1).
+
+**Public surface:**
+```python
+async def extract_entities(
+    text: str,
+    known_entities: list[str],
+    *,
+    user_id: str,
+    project_id: str | None,
+    model_source: Literal["user_model", "platform_model"],
+    model_ref: str,
+    client: ProviderClient | None = None,
+) -> list[LLMEntityCandidate]
+```
+
+**Key design decisions:**
+- **No separate system prompt** — the entity_extraction.md template (K17.1) bundles role instruction + extraction rules + output schema in one document, passed as `user_prompt` with `system=None`. Simpler than splitting and the template was designed as one unit.
+- **Known entities anchoring** — case-insensitive match snaps LLM output to the canonical spelling from `known_entities` (prompt rule 5).
+- **Deduplication by canonical_id** — LLM may return near-duplicates ("Kai" / "KAI"); merged into one candidate with higher confidence and union aliases.
+- **No Prometheus counters** — relies on K17.3's `llm_json_extraction_total{outcome}` and `llm_json_extraction_retry_total{reason}` counters. K17.8 orchestrator adds entity-count metrics when it writes.
+
+**Models:**
+- `EntityExtractionResponse(BaseModel)` — outer wrapper: `entities: list[_LLMEntity]`
+- `_LLMEntity(BaseModel)` — raw LLM output: `name`, `kind` (6-value Literal), `aliases`, `confidence`
+- `LLMEntityCandidate(BaseModel)` — post-processed: adds `canonical_name`, `canonical_id`
+
+**Files:**
+- NEW [services/knowledge-service/app/extraction/llm_entity_extractor.py](services/knowledge-service/app/extraction/llm_entity_extractor.py) — ~250 LOC, `extract_entities` public entry point + `_postprocess`, `_anchor_name`, `_merge_aliases` helpers.
+- NEW [services/knowledge-service/tests/unit/test_llm_entity_extractor.py](services/knowledge-service/tests/unit/test_llm_entity_extractor.py) — 12 tests with FakeProviderClient.
+
+**Phase 6 R1 review findings:**
+- E6 (fixed): unused `Any` import removed.
+- E1–E5: accepted (empty name guard exists, confidence range is intentionally 0.0-1.0, double-strip is defensive, no custom metrics needed).
+
+**Test results:**
+- knowledge-service unit tests: **670 passing** (658 pre-existing + 12 new K17.4), 0 K17.4 failures
+- Pre-existing SSL/config errors (3 failed, 14 errors) unchanged — not K17.4 related.
+
+**No deferrals opened.** All acceptance criteria met.
+
+---
 
 ### K17.3-R3 — third-pass implementation review + follow-ups ✅ (session 42, Track 2)
 
