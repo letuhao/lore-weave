@@ -7,12 +7,12 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-16 (session 44 — K17.5-R2 + K17.6 + workflow v2 upgrade)
-- Updated By: Assistant (session 44 — knowledge-service unit tests at **697 passing** (13 K17.5-R2 + 13 K17.6 = +14 new tests vs session 43); zero regressions)
+- Last Updated: 2026-04-16 (session 44 — K17.5-R2 + K17.6 + K17.6-PR + K17.7 + workflow v2.1)
+- Updated By: Assistant (session 44 — knowledge-service unit tests: 52 across K17.4–K17.7 (14+13+13+12), zero regressions)
 - Active Branch: `main` (ahead of origin by session 38–44 commits — user pushes manually)
-- HEAD: K17.6 (pending commit)
+- HEAD: K17.7 (pending commit)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
-- **Session 44 commit count:** 0 so far (pending)
+- **Session 44 commit count:** 3 so far (K17.5-R2, workflow v2, K17.6)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
 - **Session 37 commit count:** 10 commits (chat-service K5 + knowledge-service K6 + K7a + K7b, each with its review-fix follow-up)
 
@@ -129,6 +129,38 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K17.7 — Fact LLM extractor ✅ (session 44, Track 2)
+
+**Goal:** ship [services/knowledge-service/app/extraction/llm_fact_extractor.py](services/knowledge-service/app/extraction/llm_fact_extractor.py), the fourth and final LLM-powered extractor. Extracts standalone factual claims from text, resolves optional subject to K17.4 entity canonical ID, derives deterministic `fact_id` via sha256 hash of content.
+
+**Key design decisions:**
+- **Single optional subject** — unlike relations (subject+object) or events (participants list). `subject=None` is valid for universal claims ("The Empire was vast").
+- **fact_id derivation** — `sha256(f"v1:{user_id}:{content_normalized}")`. Content-based dedup: same factual sentence from different passages produces same ID.
+- **`_normalize_content`** — lowercase, strip, collapse whitespace before hashing for robust dedup.
+- **5 fact types** — description, attribute, negation, temporal, causal.
+- **Polarity + modality** — same as K17.5 relations.
+
+**Files:**
+- NEW [services/knowledge-service/app/extraction/llm_fact_extractor.py](services/knowledge-service/app/extraction/llm_fact_extractor.py) — ~220 LOC
+- NEW [services/knowledge-service/tests/unit/test_llm_fact_extractor.py](services/knowledge-service/tests/unit/test_llm_fact_extractor.py) — 12 tests
+
+**Post-review:** 0 issues found.
+
+**Test results:** 52/52 across K17.4–K17.7, zero regressions.
+
+**No deferrals opened.**
+
+---
+
+### K17.6-PR — post-review follow-ups ✅ (session 44, Track 2)
+
+**Post-review of K17.6 surfaced 2 findings:**
+
+- **F1 (MEDIUM real bug)** — `_compute_event_id` hashed only resolved participant IDs, causing collisions between events with same name but different unresolved participants. **Fixed by hashing display names instead of resolved IDs.** Also simplified: `event_id` is now always set (no more `None` case), removed dead synth_key dedup path.
+- **F2 (LOW cleanup)** — removed unused `entity_canonical_id` import from test file.
+
+---
 
 ### K17.6 — Event LLM extractor ✅ (session 44, Track 2)
 
