@@ -1,0 +1,69 @@
+# --- AGENTIC WORKFLOW v2.1 (paste into your CLAUDE.md) ---
+# Remove this header line after pasting.
+# Full docs: see WORKFLOW.md in the agentic-workflow bundle.
+
+## Task Workflow (12 phases)
+
+**ENFORCEMENT: State machine (`.workflow-state.json`) + hooks block commits without verification.**
+
+```
+Phase          | Role              | What Happens
+---------------|-------------------|----------------------------------------------
+1. CLARIFY     | Architect + PO    | Brainstorm, ask questions, define scope
+2. DESIGN      | Lead              | API contract / component API / data flow
+3. REVIEW      | PO + Lead         | Review design spec before coding
+4. PLAN        | Lead + Developer  | Decompose into bite-sized tasks (2-5 min)
+5. BUILD       | Developer         | Write code (TDD: red -> green -> refactor)
+6. VERIFY      | Developer         | Evidence-based verification gate
+7. REVIEW      | Lead              | Code review (spec compliance + quality)
+8. QC          | QA / PO           | Test against acceptance criteria
+9. POST-REVIEW | Human + Developer | Human-interactive review (context reset)
+10. SESSION    | Developer         | Update session notes + task status
+11. COMMIT     | Developer         | Git commit (+ push if approved)
+12. RETRO      | All               | Record decision/workaround if learned
+```
+
+### Task Size (MANDATORY — classify BEFORE work)
+
+Count: files touched, logic changes, side effects (API/DB/config/types).
+
+| Size | Files | Logic | Side effects | Allowed skips |
+|------|-------|-------|--------------|---------------|
+| XS   | 1     | 0-1   | None         | CLARIFY + PLAN |
+| S    | 1-2   | 2-3   | None         | PLAN only |
+| M+   | 3+    | Any   | Any          | **None** |
+
+```bash
+./scripts/workflow-gate.sh size XS 1 1 0     # Classify
+./scripts/workflow-gate.sh phase build        # Enter phase
+./scripts/workflow-gate.sh complete build "tests pass" # Complete with evidence
+./scripts/workflow-gate.sh status             # Check progress
+```
+
+Script blocks: undersizing, phase jumps, commits without VERIFY+POST-REVIEW+SESSION.
+
+### Anti-Skip Rules
+
+- Agent must NEVER self-authorize skips — ask user
+- If you catch yourself skipping — STOP, announce, ask
+- If task grows during BUILD — STOP, reclassify
+
+### Verify Gate (Phase 6)
+
+Run command -> Read output -> Confirm match -> THEN claim. No "should work."
+
+### POST-REVIEW (Phase 9) — NEVER skippable
+
+**Why:** AI agents suffer from author blindness. Human interaction forces a context reset — the agent re-reads code from scratch instead of relying on what it *thinks* it wrote.
+
+1. **Present summary to human** — list files, decisions, verification evidence. **STOP and WAIT.**
+2. **After human responds** — re-read ALL changed files from disk (not from memory)
+3. **Adversarial review** — actively try to break: null handling, edge cases, API mismatches, cache staleness, missing validation, broken callers
+4. **If issues found** — fix, loop back to VERIFY. Report count and severity.
+
+### Debugging Protocol
+
+NO FIXES WITHOUT ROOT CAUSE. Trace -> Hypothesize -> Test one variable -> Fix.
+Hard stop after 3 failed attempts — question architecture.
+
+# --- END AGENTIC WORKFLOW v2.1 ---
