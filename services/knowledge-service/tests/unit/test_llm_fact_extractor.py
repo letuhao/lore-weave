@@ -450,3 +450,56 @@ async def test_empty_facts_from_llm():
     )
 
     assert result == []
+
+
+@pytest.mark.asyncio
+async def test_empty_content_facts_are_skipped():
+    """R2 I3: Facts with empty or whitespace-only content are dropped."""
+    fake = FakeProviderClient()
+    fake.queue_response(
+        _make_response(
+            _fact("", "description", subject="Kai", confidence=0.9),
+            _fact("   ", "attribute", subject="Kai", confidence=0.8),
+            _fact("Kai is brave.", "attribute", subject="Kai", confidence=0.7),
+        )
+    )
+
+    result = await extract_facts(
+        text="Kai is brave.",
+        entities=ENTITIES,
+        known_entities=["Kai"],
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        model_source="user_model",
+        model_ref="test-model",
+        client=_as_client(fake),
+    )
+
+    assert len(result) == 1
+    assert result[0].content == "Kai is brave."
+
+
+@pytest.mark.asyncio
+async def test_whitespace_variant_dedup():
+    """R2 I4: Facts differing only in whitespace produce same fact_id → dedup."""
+    fake = FakeProviderClient()
+    fake.queue_response(
+        _make_response(
+            _fact("Kai  is   brave.", "attribute", subject="Kai", confidence=0.8),
+            _fact("Kai is brave.", "attribute", subject="Kai", confidence=0.95),
+        )
+    )
+
+    result = await extract_facts(
+        text="Kai is brave.",
+        entities=ENTITIES,
+        known_entities=["Kai"],
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        model_source="user_model",
+        model_ref="test-model",
+        client=_as_client(fake),
+    )
+
+    assert len(result) == 1
+    assert result[0].confidence == 0.95
