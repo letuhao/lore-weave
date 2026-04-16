@@ -19,7 +19,7 @@ STATE_FILE=".workflow-state.json"
 
 # Phase order (index = sequence number)
 # [CUSTOMIZE] Add/remove phases to match your workflow
-PHASES=("clarify" "design" "review-design" "plan" "build" "verify" "review-code" "qc" "session" "commit" "retro")
+PHASES=("clarify" "design" "review-design" "plan" "build" "verify" "review-code" "qc" "post-review" "session" "commit" "retro")
 
 # Phases skippable per size classification:
 # XS: clarify + plan   S: plan only   M/L/XL: nothing
@@ -330,6 +330,29 @@ print('yes' if 'verify' in phases else 'no')
     exit 1
   fi
 
+  # Check that post-review phase was completed
+  local postreview_done
+  postreview_done=$($PYTHON_CMD -c "
+import json
+state = json.load(open('$STATE_FILE'))
+phases = [p['phase'] for p in state.get('phases_completed', [])]
+print('yes' if 'post-review' in phases else 'no')
+" 2>/dev/null || echo "no")
+
+  if [[ "$postreview_done" == "no" ]]; then
+    echo ""
+    echo "============================================"
+    echo "  COMMIT BLOCKED: Phase 9 POST-REVIEW not done"
+    echo "============================================"
+    echo ""
+    echo "You must complete the human-interactive post-review before committing."
+    echo "Present your changes to the user, wait for their response, then re-read"
+    echo "all changed files and do an adversarial review."
+    echo "  ./scripts/workflow-gate.sh complete post-review \"<review findings>\""
+    echo ""
+    exit 1
+  fi
+
   # [CUSTOMIZE] Remove this block if your project doesn't use session tracking
   # Check that session phase was completed
   local session_done
@@ -352,7 +375,7 @@ print('yes' if 'session' in phases else 'no')
     exit 1
   fi
 
-  echo "OK: Pre-commit checks passed (verify + session completed)"
+  echo "OK: Pre-commit checks passed (verify + post-review + session completed)"
   exit 0
 }
 
@@ -370,7 +393,7 @@ state = json.load(open('$STATE_FILE'))
 completed = [p['phase'] for p in state.get('phases_completed', [])]
 skipped = [p['phase'] for p in state.get('phases_skipped', [])]
 current = state.get('current_phase', 'none')
-phases = ['clarify','design','review-design','plan','build','verify','review-code','qc','session','commit','retro']
+phases = ['clarify','design','review-design','plan','build','verify','review-code','qc','post-review','session','commit','retro']
 
 size = state.get('size', 'NOT SET')
 counts = state.get('size_counts', {})

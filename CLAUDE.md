@@ -157,29 +157,30 @@ LoreWeave is a hobby project with **no fixed deadline**. This shapes how reviews
 
 ---
 
-## Task Workflow (11 phases)
+## Task Workflow (12 phases)
 
 **ENFORCEMENT: State machine (`.workflow-state.json`) + hooks block commits without verification.**
 
 Every task follows this workflow. The agent plays all roles sequentially.
 
 ```
-Phase      | Role              | What Happens
------------|-------------------|----------------------------------------------
-1. CLARIFY | Architect + PO    | Brainstorm, ask questions, define scope
-2. DESIGN  | Lead              | API contract / component API / data flow
-3. REVIEW  | PO + Lead         | Review design spec before coding
-4. PLAN    | Lead + Developer  | Decompose into bite-sized tasks (2-5 min)
-5. BUILD   | Developer         | Write code (TDD: red -> green -> refactor)
-6. VERIFY  | Developer         | Evidence-based verification gate
-7. REVIEW  | Lead              | Code review (spec compliance + quality)
-8. QC      | QA / PO           | Test against acceptance criteria
-9. SESSION | Developer         | Update session notes + task status
-10. COMMIT | Developer         | Git commit (+ push if approved)
-11. RETRO  | All               | Record decision/workaround if learned
+Phase          | Role              | What Happens
+---------------|-------------------|----------------------------------------------
+1. CLARIFY     | Architect + PO    | Brainstorm, ask questions, define scope
+2. DESIGN      | Lead              | API contract / component API / data flow
+3. REVIEW      | PO + Lead         | Review design spec before coding
+4. PLAN        | Lead + Developer  | Decompose into bite-sized tasks (2-5 min)
+5. BUILD       | Developer         | Write code (TDD: red -> green -> refactor)
+6. VERIFY      | Developer         | Evidence-based verification gate
+7. REVIEW      | Lead              | Code review (spec compliance + quality)
+8. QC          | QA / PO           | Test against acceptance criteria
+9. POST-REVIEW | Human + Developer | Human-interactive review (context reset)
+10. SESSION    | Developer         | Update session notes + task status
+11. COMMIT     | Developer         | Git commit (+ push if approved)
+12. RETRO      | All               | Record decision/workaround if learned
 ```
 
-**Status tracking:** `[ ]` not started · `[C]` clarify · `[D]` design · `[P]` plan · `[B]` build · `[V]` verify · `[R]` review · `[Q]` QC · `[S]` session · `[x]` done
+**Status tracking:** `[ ]` not started · `[C]` clarify · `[D]` design · `[P]` plan · `[B]` build · `[V]` verify · `[R]` review · `[Q]` QC · `[PR]` post-review · `[S]` session · `[x]` done
 
 **Task types:** `[FE]` frontend · `[BE]` backend · `[FS]` full-stack
 
@@ -208,7 +209,7 @@ Count 3 things before starting:
 ./scripts/workflow-gate.sh status             # Check progress
 ```
 
-Script blocks: undersizing, phase jumps, commits without VERIFY+SESSION.
+Script blocks: undersizing, phase jumps, commits without VERIFY+POST-REVIEW+SESSION.
 
 ### Anti-Skip Rules (MANDATORY)
 
@@ -261,22 +262,41 @@ When playing each role, shift perspective accordingly. Don't just check boxes �
 
 Both stages must pass. If issues found: fix → re-verify (Phase 6) → re-review.
 
-### Phases 9 + 10 are mandatory — do not skip
+### Phase 9: POST-REVIEW (Human-Interactive Context Reset) — NEVER skippable
+
+**Why:** AI agents suffer from author blindness — they can't objectively review code they just wrote because the reasoning is still in context. Human interaction forces a context reset.
+
+**Step 1 — Present summary to human (MANDATORY STOP):**
+- List all files created/modified with one-line descriptions
+- Summarize what was built and key design decisions
+- Report verification evidence (build, tests, type-check)
+- **STOP and WAIT for human response.** Do NOT proceed until the human replies.
+
+**Step 2 — After human responds, adversarial review:**
+- **Re-read ALL changed files from disk** — do NOT rely on memory or prior context
+- Review with adversarial mindset: actively try to break the code
+- Check: logic errors, null handling, API mismatches, state bugs, integration breakage, security
+
+**Step 3 — Report findings:**
+- If issues found: list with severity, fix → loop back to Phase 6 VERIFY
+- If clean: state "Post-review: 0 issues found" with evidence of what was checked
+
+### Phases 10 + 11 are mandatory — do not skip
 
 AI agents declare tasks "done" after QC and forget SESSION + COMMIT. **That is a bug, not a shortcut.** Work that isn't recorded in `docs/sessions/SESSION_PATCH.md` and committed to git does not exist for the next session.
 
 Checklist at the end of **every** cycle:
 
-1. **Phase 9 — SESSION**:
+1. **Phase 10 — SESSION**:
    - Update `docs/sessions/SESSION_PATCH.md` header metadata (Last Updated, Updated By, HEAD)
    - Add a "Current Active Work" entry with files touched, review issues found/fixed, test count delta
    - Move cleared deferrals to "Recently cleared", add new ones
-2. **Phase 10 — COMMIT**:
+2. **Phase 11 — COMMIT**:
    - Stage only the files you actually changed (no `git add -A`)
    - Write a commit message that names the phase + review fixes + test count
    - Include SESSION_PATCH update **in the same commit** as the code
 
-### Phase 11: RETRO
+### Phase 12: RETRO
 
 - If a non-obvious decision was made → record it (decision log, ADR, lesson)
 - If a workaround was needed → record it with context
