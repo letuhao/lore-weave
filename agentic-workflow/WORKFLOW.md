@@ -1,8 +1,10 @@
-# Agent Workflow v2
+# Agent Workflow v2.2
 
 > A structured development workflow for AI coding agents. Combines the best of [Superpowers](https://github.com/obra/superpowers) (execution discipline, TDD, verification gates) with session persistence, role-based review, and enforcement mechanisms.
 >
 > **How to use:** Paste this into your `CLAUDE.md` or agent instructions. Customize paths marked with `[CUSTOMIZE]`.
+>
+> **v2.2 — POST-REVIEW reshaped.** Self-adversarial re-read right after BUILD has a very low hit rate (agents pattern-match to their own reasoning and rubber-stamp "0 issues"). POST-REVIEW is now a **human checkpoint only**. Deep adversarial review is an on-demand command: `/review-impl` (see `.claude/commands/review-impl.md`).
 
 ---
 
@@ -23,7 +25,7 @@ Phase          | Role              | What Happens
 6. VERIFY      | Developer         | Evidence-based verification gate
 7. REVIEW      | Lead              | Code review (spec compliance + quality)
 8. QC          | QA / PO           | Test against acceptance criteria
-9. POST-REVIEW | Human + Developer | Human-interactive review (context reset)
+9. POST-REVIEW | Human + Developer | Human-interactive CHECKPOINT (context reset, NOT deep review)
 10. SESSION    | Developer         | Update session notes + task status
 11. COMMIT     | Developer         | Git commit (+ push if approved)
 12. RETRO      | All               | Record decision/workaround if learned
@@ -91,7 +93,7 @@ Skipping: CLARIFY, PLAN -> straight to BUILD
 | Skip PLAN, jump to BUILD | "It's a small change" | Small changes grow; no plan = no checkpoint |
 | Skip VERIFY after BUILD | "Tests passed earlier" | Stale results are not evidence |
 | Skip REVIEW after VERIFY | "I wrote it, I know it's correct" | Author blindness is real |
-| Skip POST-REVIEW | "I already reviewed in phase 7" | Phase 7 review has author blindness — you wrote this code moments ago. POST-REVIEW forces context reset via human interaction, then fresh re-read from disk. **NEVER skippable.** |
+| Skip POST-REVIEW | "I already reviewed in phase 7" | Phase 7 has author blindness — you wrote this code moments ago. POST-REVIEW forces a **human-interactive pause** so the user can veto, redirect, or request `/review-impl`. **NEVER skippable**, but kept intentionally lightweight (see Phase 9 below). |
 | Skip SESSION before COMMIT | "I'll update later" | You won't. Context is lost |
 | Combine multiple phases | "CLARIFY+DESIGN+PLAN in one go" | Phases exist to create pause points |
 
@@ -222,36 +224,38 @@ Both stages must pass. If issues found: fix -> re-verify (Phase 6) -> re-review.
 - Edge cases, error states, regression checks
 - If QC fails: loop back to Phase 5 BUILD
 
-### Phase 9: POST-REVIEW (Human-Interactive Context Reset)
+### Phase 9: POST-REVIEW (Human-Interactive Checkpoint) — NEVER skippable
 
-**Why this phase exists:** AI agents suffer from author blindness — they can't objectively review code they just wrote because the reasoning is still in context. A forced human interaction breaks the agent's thought chain, effectively resetting its perspective. When the agent resumes after the human responds, it re-reads code from scratch rather than relying on what it *thinks* it wrote.
+**Why this phase exists:** To give the human a **forcing-function pause** before SESSION and COMMIT burn the diff in. The value is the human stop — user can veto, redirect, or ask for deeper scrutiny.
 
-**This phase is NEVER skippable, regardless of task size.**
+**Why it is NOT a deep self-review:** Self-adversarial-review-right-after-writing-code does not work reliably. Agents pattern-match to their own reasoning and emit "0 issues found" as a ritual close-out, even when real coverage gaps exist. The earlier v2.1 wording of this phase ("re-read from disk, actively try to break the code") was well-intentioned but in practice produces rubber-stamps. Deep review is moved to an **explicit separate mental mode** — the `/review-impl` command.
 
-**Step 1 — Present summary to human (MANDATORY STOP):**
-- List all files created/modified with one-line descriptions
-- Summarize what was built and key design decisions
-- Report verification evidence (build, tests, type-check)
-- **STOP and WAIT for human response.** Do NOT proceed until the human replies.
+**What this phase IS:**
 
-**Step 2 — After human responds, adversarial review:**
-- **Re-read ALL changed files from disk** — do NOT rely on memory or prior context
-- Review with an adversarial mindset: actively try to break the code
-- Check these categories:
+1. **Present a concise summary** — files touched, key decisions, verify evidence (tests/build/lint).
+2. **STOP and WAIT for human response.** Do NOT proceed until the human replies.
+3. If the human asks for a deeper look (or the code is safety-sensitive — auth, tenant isolation, destructive ops, injection defense), invoke `/review-impl` before continuing.
+4. If the human approves, proceed to SESSION.
 
-| Category | What to look for |
-|----------|-----------------|
-| **Logic** | Off-by-one, null handling, missing edge cases, wrong operator |
-| **Data flow** | Can fields be null when code assumes non-null? Are transformations reversible when they should be? |
-| **API contract** | Request/response mismatch, missing validation, wrong HTTP status codes |
-| **State** | Cache staleness, race conditions, stale closures |
-| **Integration** | Does the new code break existing callers? Are mocks in tests updated? |
-| **Security** | Input validation at boundaries, injection, auth bypass |
+**What this phase is NOT:**
 
-**Step 3 — Report findings:**
-- If issues found: list them with severity, then fix → loop back to Phase 6 VERIFY
-- If no issues found: state explicitly "Post-review: 0 issues found" with evidence of what was checked
-- Complete with: `./scripts/workflow-gate.sh complete post-review "<N issues found, M fixed>"`
+- A ritual self-re-read that ends in "Post-review: 0 issues found." If you catch yourself about to output that line without a specific concern, you are rubber-stamping — just present the summary and stop.
+- A substitute for `/review-impl`. Those serve different purposes and live in different mental modes.
+
+**Completion evidence format:**
+```
+./scripts/workflow-gate.sh complete post-review "summary presented, human approved: <one-liner of their response>"
+```
+
+If `/review-impl` ran during this phase, fold its findings into the evidence string.
+
+**When to proactively suggest `/review-impl` in your summary (without being asked):**
+- Auth, credential, or token handling
+- Tenant-isolation boundaries
+- Destructive operations (delete, truncate, force-push)
+- Injection / sanitization defenses
+- Non-trivial integration points (new service boundary, external API)
+- Anything the user previously flagged as load-bearing
 
 ### Phase 10: SESSION
 
@@ -356,7 +360,8 @@ CLARIFY -> DESIGN -> REVIEW -> PLAN -> BUILD -> VERIFY -> REVIEW -> QC -> POST-R
 Size classification: count files + logic + side_effects BEFORE starting
 Skip CLARIFY+PLAN: only XS (1 file, 0-1 logic, 0 side effects)
 Skip PLAN only: XS or S (1-2 files, 0 side effects)
-POST-REVIEW: NEVER skippable — present to human, wait, re-read code fresh, adversarial review
+POST-REVIEW: NEVER skippable — but lightweight: present to human, wait, proceed on approval
+Deep adversarial review: `/review-impl` (on-demand, not part of the default loop)
 Skip TDD for: UI layout, config, docs, migrations
 Hard stop debugging after: 3 failed fix attempts
 Verify gate: run command -> read output -> then claim
@@ -371,4 +376,4 @@ Verify gate: run command -> read output -> then claim
 
 ---
 
-*Workflow v2.1 — last updated 2026-04-16*
+*Workflow v2.2 — last updated 2026-04-17*

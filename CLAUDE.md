@@ -174,7 +174,7 @@ Phase          | Role              | What Happens
 6. VERIFY      | Developer         | Evidence-based verification gate
 7. REVIEW      | Lead              | Code review (spec compliance + quality)
 8. QC          | QA / PO           | Test against acceptance criteria
-9. POST-REVIEW | Human + Developer | Human-interactive review (context reset)
+9. POST-REVIEW | Human + Developer | Human-interactive CHECKPOINT (context reset, NOT deep review)
 10. SESSION    | Developer         | Update session notes + task status
 11. COMMIT     | Developer         | Git commit (+ push if approved)
 12. RETRO      | All               | Record decision/workaround if learned
@@ -262,24 +262,27 @@ When playing each role, shift perspective accordingly. Don't just check boxes �
 
 Both stages must pass. If issues found: fix → re-verify (Phase 6) → re-review.
 
-### Phase 9: POST-REVIEW (Human-Interactive Context Reset) — NEVER skippable
+### Phase 9: POST-REVIEW (Human-Interactive Checkpoint) — NEVER skippable
 
-**Why:** AI agents suffer from author blindness — they can't objectively review code they just wrote because the reasoning is still in context. Human interaction forces a context reset.
+**Why:** This phase is a **forcing-function checkpoint**, not a deep review. Its value is the human stop — giving the user a chance to veto, redirect, or request specifics before SESSION/COMMIT burns the diff in. Deep adversarial review is **NOT** done here because self-adversarial-review-right-after-writing-code does not work reliably (author blindness persists even with a "re-read from disk" ritual — the agent pattern-matches to its own reasoning and rubber-stamps). Deep review is an explicit separate act — see **`/review-impl`** below.
 
-**Step 1 — Present summary to human (MANDATORY STOP):**
-- List all files created/modified with one-line descriptions
-- Summarize what was built and key design decisions
-- Report verification evidence (build, tests, type-check)
-- **STOP and WAIT for human response.** Do NOT proceed until the human replies.
+**What this phase IS:**
+- Present a concise summary to the human (files touched, design decisions, verify evidence)
+- **STOP and WAIT for human response.** Do not proceed until human replies.
+- If the human asks for a deeper look, invoke `/review-impl` (or equivalent) — that's a *different* mental mode.
+- If the human approves, proceed to SESSION.
 
-**Step 2 — After human responds, adversarial review:**
-- **Re-read ALL changed files from disk** — do NOT rely on memory or prior context
-- Review with adversarial mindset: actively try to break the code
-- Check: logic errors, null handling, API mismatches, state bugs, integration breakage, security
+**What this phase is NOT:**
+- A ritual self-re-read that produces "0 issues found" every time. If you catch yourself about to output that line without a specific concern, you're rubber-stamping. Just present the summary and stop.
 
-**Step 3 — Report findings:**
-- If issues found: list with severity, fix → loop back to Phase 6 VERIFY
-- If clean: state "Post-review: 0 issues found" with evidence of what was checked
+**When deep adversarial review is warranted:**
+- Safety-sensitive code (auth, injection defense, tenant isolation, destructive ops)
+- Non-trivial integration points
+- User explicitly asks for it
+
+In those cases the user invokes `/review-impl` after POST-REVIEW. That command re-reads files from disk with an explicit adversarial prompt scoped to the *surface area the tests don't cover*, not the tests themselves.
+
+**Completion evidence format:** `"summary presented, human approved: <one-liner of their response>"`. If the human asked for `/review-impl`, run it before completing POST-REVIEW and fold its findings into the evidence.
 
 ### Phases 10 + 11 are mandatory — do not skip
 

@@ -1,9 +1,9 @@
-# Agentic Workflow v2.1
+# Agentic Workflow v2.2
 
 A drop-in structured workflow for AI coding agents (Claude Code, Cursor, Codex, etc.).  
 Prevents agents from skipping phases, undersizing tasks, and committing without verification.
 
-**v2.1 adds POST-REVIEW** — a mandatory human-interactive review phase that forces an AI context reset, eliminating author blindness by making the agent re-read all code from scratch after human interaction.
+**v2.2 — POST-REVIEW reshaped.** The v2.1 "re-read from disk and adversarially review" step rubber-stamps in practice — agents pattern-match to their own reasoning and emit "0 issues found" as a ritual close-out. POST-REVIEW is now a **human-interactive checkpoint only** (present summary → wait for human). Deep adversarial review is an on-demand command: **`/review-impl`** (`.claude/commands/review-impl.md`). Same forcing-function value, honest about what works.
 
 ## What's inside
 
@@ -15,7 +15,9 @@ agentic-workflow/
 ├── scripts/
 │   └── workflow-gate.sh      # State machine + enforcement script
 └── .claude/
-    └── settings.json         # Claude Code hooks (pre-commit gate)
+    ├── settings.json         # Claude Code hooks (pre-commit gate)
+    └── commands/
+        └── review-impl.md    # /review-impl — on-demand adversarial review (v2.2)
 ```
 
 ## Quick Start (3 steps)
@@ -60,7 +62,7 @@ Layer 3 (Hook)            → Hook intercepts git commit, blocks it hard
 CLARIFY → DESIGN → REVIEW → PLAN → BUILD → VERIFY → REVIEW → QC → POST-REVIEW → SESSION → COMMIT → RETRO
 ```
 
-**POST-REVIEW** is the key innovation: human interaction forces the AI to stop its thought chain. When it resumes, it must re-read all changed code from disk — not from memory. This eliminates author blindness and catches bugs that self-review misses.
+**POST-REVIEW** is a human-interactive checkpoint — the agent presents a concise summary, stops, and waits. The value is the forcing-function pause: the user can veto, redirect, or ask for `/review-impl` before the diff gets committed. Self-adversarial review *immediately* after BUILD rubber-stamps too often to be load-bearing, so deep review is moved out of the default loop into the on-demand **`/review-impl`** command.
 
 ### Task Size Classification
 
@@ -76,7 +78,7 @@ Agents can't self-judge "small vs large." The protocol forces objective counting
 
 The script validates counts vs claimed size — **agents cannot undersize**.
 
-**POST-REVIEW is never skippable** — it's the only phase that requires human interaction, which is exactly what makes it effective.
+**POST-REVIEW is never skippable** — it's the only phase that requires human interaction, which is exactly what makes it effective. But the agent should NOT perform a self-adversarial review inside this phase by default — invoke `/review-impl` only when the human asks or when the code is safety-sensitive (auth, tenant isolation, destructive ops, injection defense, new integration boundaries).
 
 ### Script Commands
 

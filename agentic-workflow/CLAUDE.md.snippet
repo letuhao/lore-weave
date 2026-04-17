@@ -1,6 +1,7 @@
-# --- AGENTIC WORKFLOW v2.1 (paste into your CLAUDE.md) ---
+# --- AGENTIC WORKFLOW v2.2 (paste into your CLAUDE.md) ---
 # Remove this header line after pasting.
 # Full docs: see WORKFLOW.md in the agentic-workflow bundle.
+# v2.2: POST-REVIEW reshaped as human checkpoint; deep review moved to /review-impl.
 
 ## Task Workflow (12 phases)
 
@@ -17,7 +18,7 @@ Phase          | Role              | What Happens
 6. VERIFY      | Developer         | Evidence-based verification gate
 7. REVIEW      | Lead              | Code review (spec compliance + quality)
 8. QC          | QA / PO           | Test against acceptance criteria
-9. POST-REVIEW | Human + Developer | Human-interactive review (context reset)
+9. POST-REVIEW | Human + Developer | Human CHECKPOINT (not deep review — see /review-impl)
 10. SESSION    | Developer         | Update session notes + task status
 11. COMMIT     | Developer         | Git commit (+ push if approved)
 12. RETRO      | All               | Record decision/workaround if learned
@@ -52,18 +53,28 @@ Script blocks: undersizing, phase jumps, commits without VERIFY+POST-REVIEW+SESS
 
 Run command -> Read output -> Confirm match -> THEN claim. No "should work."
 
-### POST-REVIEW (Phase 9) — NEVER skippable
+### POST-REVIEW (Phase 9) — NEVER skippable, but lightweight
 
-**Why:** AI agents suffer from author blindness. Human interaction forces a context reset — the agent re-reads code from scratch instead of relying on what it *thinks* it wrote.
+**Why:** Forcing-function human pause before SESSION/COMMIT burns the diff in. Lets the user veto, redirect, or request deeper review.
 
-1. **Present summary to human** — list files, decisions, verification evidence. **STOP and WAIT.**
-2. **After human responds** — re-read ALL changed files from disk (not from memory)
-3. **Adversarial review** — actively try to break: null handling, edge cases, API mismatches, cache staleness, missing validation, broken callers
-4. **If issues found** — fix, loop back to VERIFY. Report count and severity.
+**Why it is NOT a self-adversarial re-read:** That pattern rubber-stamps "0 issues" in practice — author blindness persists even with a "re-read from disk" ritual. Deep review is an explicit separate command.
+
+1. **Present a concise summary** — files touched, key decisions, verify evidence. **STOP and WAIT.**
+2. **If the human asks for a deeper look — or the code is safety-sensitive** (auth, tenant isolation, destructive ops, injection defense, new integration boundary) — invoke `/review-impl`.
+3. **If the human approves — proceed to SESSION.**
+
+**Do NOT output "Post-review: 0 issues found" as the default close-out.** That line is the tell that you're rubber-stamping. Complete with:
+```
+./scripts/workflow-gate.sh complete post-review "summary presented, human approved: <one-liner>"
+```
+
+### /review-impl (on-demand adversarial review)
+
+Separate from POST-REVIEW. Invoke when: human asks, safety-sensitive code, or something feels off. Scoped to ask *what the test coverage misses*, not *whether the tests as written pass*. See `.claude/commands/review-impl.md`.
 
 ### Debugging Protocol
 
 NO FIXES WITHOUT ROOT CAUSE. Trace -> Hypothesize -> Test one variable -> Fix.
 Hard stop after 3 failed attempts — question architecture.
 
-# --- END AGENTIC WORKFLOW v2.1 ---
+# --- END AGENTIC WORKFLOW v2.2 ---

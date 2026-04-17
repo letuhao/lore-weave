@@ -32,6 +32,15 @@ else
   echo "[x] .claude/settings.json"
 fi
 
+# 2b. Copy slash commands (v2.2: /review-impl)
+mkdir -p "$TARGET/.claude/commands"
+if [[ -f "$TARGET/.claude/commands/review-impl.md" ]]; then
+  echo "[!] .claude/commands/review-impl.md already exists — NOT overwriting"
+else
+  cp "$SCRIPT_DIR/.claude/commands/review-impl.md" "$TARGET/.claude/commands/review-impl.md"
+  echo "[x] .claude/commands/review-impl.md"
+fi
+
 # 3. Update .gitignore
 if [[ -f "$TARGET/.gitignore" ]]; then
   if grep -q "workflow-state.json" "$TARGET/.gitignore"; then
