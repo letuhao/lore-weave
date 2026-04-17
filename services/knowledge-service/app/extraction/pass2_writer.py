@@ -64,7 +64,13 @@ class Pass2WriteResult(BaseModel):
 
 
 def _sanitize(text: str, project_id: str | None) -> str:
-    """Injection-sanitize a text field before persisting."""
+    """Injection-sanitize a text field before persisting.
+
+    KSA §5.1.5 Defense 2 (extraction-time). See K15.6
+    ``neutralize_injection`` for the pattern set and
+    ``tests/unit/test_pass2_writer.py`` K17.9 section for
+    regression coverage on every persisted text field.
+    """
     cleaned, _ = neutralize_injection(text, project_id=project_id)
     return cleaned
 
