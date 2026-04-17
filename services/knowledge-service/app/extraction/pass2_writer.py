@@ -134,6 +134,10 @@ async def write_pass2_extraction(
         name_clean = _sanitize(ent.name, project_id)
         if not name_clean.strip():
             continue
+        # NOTE: ``ent.aliases`` is intentionally dropped here — K11.5
+        # ``merge_entity`` does not yet accept an ``aliases`` parameter.
+        # Alias persistence is tracked for K18+. See K17.9 negative
+        # assertion tests pinning this behavior.
         entity = await merge_entity(
             session,
             user_id=user_id,
@@ -171,6 +175,11 @@ async def write_pass2_extraction(
             skipped += 1
             continue
 
+        # Predicate is pre-normalized by K17.5 `_normalize_predicate`
+        # (`[^\w]+` → `_`), which already strips most English injection
+        # markers. CJK (e.g. `无视指令`) survives normalization because
+        # CJK characters are `\w` in Python 3, so sanitize is still
+        # load-bearing — see K17.9 predicate CJK test.
         predicate_clean = _sanitize(rel.predicate, project_id)
         result = await create_relation(
             session,
@@ -195,6 +204,10 @@ async def write_pass2_extraction(
         if not name_clean.strip():
             continue
 
+        # NOTE: ``evt.location`` and ``evt.time_cue`` are intentionally
+        # dropped here — K11.7 ``merge_event`` does not yet accept
+        # these parameters. Tracked for K18+. See K17.9 negative
+        # assertion test pinning this behavior.
         event = await merge_event(
             session,
             user_id=user_id,
@@ -229,6 +242,12 @@ async def write_pass2_extraction(
         if not content_clean.strip():
             continue
 
+        # NOTE: ``fact.subject`` and ``fact.subject_id`` are intentionally
+        # dropped here — K11.7 ``merge_fact`` does not yet accept a
+        # subject. Tracked for K18+. Additionally, ``fact.fact_id`` is
+        # treated as advisory: K11.7 ``merge_fact`` derives its own ID
+        # from the sanitized content hash, not the candidate's raw-
+        # content-derived ``fact_id``. See K17.9 negative assertion test.
         f = await merge_fact(
             session,
             user_id=user_id,
