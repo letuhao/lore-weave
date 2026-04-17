@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-17 (session 45 — K17.9-R1 `/review-impl` follow-ups)
-- Updated By: Assistant (session 45 — K17.9-R1: CJK predicate test added, dropped-field negative assertions, metric-read refactored off empty-child instantiation, _event helper surgical summary kwarg, writer comments documenting intentional drops)
+- Last Updated: 2026-04-17 (session 45 — K17.10-partial golden-set harness + 3 of 5 fixtures)
+- Updated By: Assistant (session 45 — K17.10-partial: pure-logic eval harness (precision/recall/FP-trap with K15.1 + K17.5 canonicalizers), 18/18 unit tests, opt-in pytest marker, 3 English fixtures. 2 remaining English fixtures blocked by Anthropic output content filter; see handoff.)
 - Active Branch: `main` (ahead of origin by session 38–45 commits — user pushes manually)
-- HEAD: K17.9-R1 (pending commit)
+- HEAD: K17.10-partial (pending commit)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -38,6 +38,8 @@
 | D-K17.2a-02 | K17.2a-R3 review C12 (cleared in the same commit) | **413 classification landed in the same R3 commit** — this row is documentation of the original issue and the clearing. ProviderClient now maps 413 to `ProviderUpstreamError("... body too large (PROXY_BODY_TOO_LARGE, 4 MiB cap)")` so extraction job failures are greppable. Kept here as a pointer rather than deleted outright so the pre-fix state is discoverable from the patch history. | — (cleared) |
 | D-K17.2c-01 | K17.2c-R1 review T22 | **K17.2c tests bypass the chi router and `requireInternalToken` middleware.** All K17.2c tests call `srv.doProxy(...)` directly, skipping the actual HTTP routing layer and the `internalProxy` wrapper that validates the `X-Internal-Token` header + query params (`user_id`, `model_source`, `model_ref`). Full-router coverage would require mounting the chi router and calling `srv.Router().ServeHTTP(...)` — doable but ~20 LOC per test for coverage that's 80% already tested in `TestInvokeModelValidationAndUnauthorized`. The doProxy internals are the risky part and are now fully covered; router-layer plumbing is stable. | Next proxy hardening pass |
 | D-K17.2b-01 | K17.2b-R3 review D3 | **`ProviderClient` returns `ProviderDecodeError` for tool_calls-shaped responses** where `message.content` is `null` but `message.tool_calls` is a non-empty array. Fine for K17.4–K17.7 which use `response_format={"type": "json_object"}` text-only. A future tool-based extractor would need a new `chat_completion_with_tools()` method (or a union return type) — flagged so we don't accidentally re-test the same edge case in every new extractor. | K17.8+ or first tool-based extractor |
+| D-K17.10-01 | K17.10 session 45 | **2 remaining English fixtures blocked by Anthropic output content filter.** Harness + loader are feature-complete and unit-tested (18/18). Only 3 of the planned 5 English fixtures landed (alice_ch01, alice_ch02, sherlock_scandal_ch01). Two attempts to generate Conan Doyle text ("A Scandal in Bohemia" ch. 2 and "The Red-Headed League" ch. 1) hit the filter. Next session either (a) user pastes Gutenberg text directly or (b) swap to different public-domain sources (Pride & Prejudice / Tom Sawyer / Little Women). Dropping two new directories under `tests/fixtures/golden_chapters/` with `chapter.txt` + `expected.yaml` is the entire remaining work — zero code changes needed. | K17.10-v1-complete (session 46) |
+| D-K17.10-02 | K17.10 scope decision | **Xianxia + Vietnamese fixture pairs.** v1 deliberately English-only so thresholds can be tuned on a stable seed before adding multilingual variance. Per KSA §9.9 the v2 run should include 2 xianxia + 2 Vietnamese chapters to exercise CJK canonicalization and mixed-script predicate normalization. | K17.10-v2 (after thresholds stabilize) |
 
 ### Track 2 planning (document only, no Track 1 action)
 
@@ -129,6 +131,51 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K17.10-partial — Golden-set extraction-quality eval (harness + 3/5 fixtures) ⚠ (session 45, Track 2)
+
+**Goal:** close the K17.10 plan row "Golden-set quality eval per KSA §9.9" — annotate chapter fixtures, write a harness that scores LLM extraction output, gate precision ≥0.80, recall ≥0.70, FP-trap-rate ≤0.15 via an opt-in pytest marker.
+
+**Status:** partial. Harness logic is 100% complete + unit-tested (18/18). Only 3 of the 5 planned English fixtures landed this session; the remaining 2 are blocked by an external constraint (Anthropic output content filter triggered on generated 19th-century public-domain prose), documented and deferred to session 46.
+
+**Key design decisions (CLARIFY + DESIGN phases):**
+- **v1 English-only scope (5 chapters):** 2 Alice + 2 Sherlock + 1 Moby Dick for a baseline macro-mean. Xianxia + Vietnamese pairs deferred to v2 so we can tune thresholds on a stable seed first.
+- **Macro-mean, not micro-weighted:** one big chapter shouldn't dominate. `mean(chapter_P)`, `mean(chapter_R)`, `mean(chapter_trap_rate)`.
+- **Unified TP/FP/FN across entities+relations+events per chapter:** treats each extraction item equally so the chapter-level rates don't get skewed by the ratio between the three kinds.
+- **Event summary matching:** asymmetric Jaccard `|actual ∩ expected| / |expected tokens|` with threshold 0.50. Asymmetric on purpose — we care that the expected idea shows up in the actual, LLM paraphrase should not penalize.
+- **Trap hits count as BOTH precision-hurting FP AND trap-rate numerator.** Denominator for precision is `tp + fp + fp_trap` so the extractor cannot game precision by racing toward the traps.
+- **Imports K15.1 `canonicalize_entity_name` and K17.5 `_normalize_predicate` directly** — deliberate private-API import on `_normalize_predicate` with an inline comment. Duplicating the normalizer would cause silent quality-eval drift on any future K17.5 change.
+- **No Neo4j writes.** The test calls `extract_entities` → `extract_relations` → `extract_events` directly (no Pass 2 writer), so the eval doesn't mutate graph state even when run live.
+- **Opt-in `--run-quality` pytest flag.** Without it the `@pytest.mark.quality` test is skipped with a clear reason; CI stays free and deterministic.
+- **Env-tunable thresholds:** `KNOWLEDGE_EVAL_MIN_PRECISION`, `KNOWLEDGE_EVAL_MIN_RECALL`, `KNOWLEDGE_EVAL_MAX_FP_TRAP`. Also: `KNOWLEDGE_EVAL_MODEL`, `KNOWLEDGE_EVAL_MODEL_SOURCE`, `KNOWLEDGE_EVAL_USER_ID`, `KNOWLEDGE_EVAL_PROJECT_ID`. Skips cleanly when required env is missing.
+- **`expected.yaml` schema:** `source` (title/author/chapter/license) + `entities` (name, kind, aliases) + `relations` (subject, predicate, object) + `events` (summary, participants) + `traps` (kind + identifying fields + reason).
+
+**Files (new):**
+- NEW [services/knowledge-service/tests/quality/eval_harness.py](../../services/knowledge-service/tests/quality/eval_harness.py) — 383 LOC pure-logic harness. Dataclasses + `load_chapter_fixture`/`iter_chapter_fixtures`/`score_chapter`/`aggregate_scores`.
+- NEW [services/knowledge-service/tests/quality/conftest.py](../../services/knowledge-service/tests/quality/conftest.py) — `--run-quality` opt-in flag.
+- NEW [services/knowledge-service/tests/quality/test_extraction_eval.py](../../services/knowledge-service/tests/quality/test_extraction_eval.py) — LLM entry point, reads env + scores + threshold-asserts.
+- NEW [services/knowledge-service/tests/quality/__init__.py](../../services/knowledge-service/tests/quality/__init__.py)
+- NEW [services/knowledge-service/tests/unit/test_eval_harness.py](../../services/knowledge-service/tests/unit/test_eval_harness.py) — 18 deterministic unit tests covering matching, trap counting, macro-mean, fixture round-trip.
+- NEW [services/knowledge-service/tests/fixtures/golden_chapters/alice_ch01/](../../services/knowledge-service/tests/fixtures/golden_chapters/alice_ch01/) — chapter.txt + expected.yaml (3 entities, 2 relations, 2 events, 2 traps).
+- NEW [services/knowledge-service/tests/fixtures/golden_chapters/alice_ch02/](../../services/knowledge-service/tests/fixtures/golden_chapters/alice_ch02/) — 5 entities, 1 relation, 4 events, 2 traps.
+- NEW [services/knowledge-service/tests/fixtures/golden_chapters/sherlock_scandal_ch01/](../../services/knowledge-service/tests/fixtures/golden_chapters/sherlock_scandal_ch01/) — 4 entities, 2 relations, 2 events, 3 traps.
+- NEW [services/knowledge-service/tests/fixtures/golden_chapters/README.md](../../services/knowledge-service/tests/fixtures/golden_chapters/README.md) — schema, add-fixture workflow, content-filter gotcha, v1 manifest.
+- MODIFIED [services/knowledge-service/pytest.ini](../../services/knowledge-service/pytest.ini) — registered `quality` marker.
+
+**Test results:**
+- 18/18 `tests/unit/test_eval_harness.py` green in 0.45s.
+- `pytest tests/quality/` (no flag) → 1 skipped with the opt-in reason, as designed.
+- Pre-existing 3 failures + 14 errors in `test_config.py`/`test_circuit_breaker.py`/`test_glossary_client.py` (SSL/truststore OSError) — confirmed on HEAD via `git stash`; unrelated to K17.10.
+
+**Blocker (deferred to session 46, D-K17.10-01):** Anthropic output content filter killed two attempts to generate public-domain Conan Doyle chapter excerpts for fixtures 4 and 5. Specifically: "A Scandal in Bohemia" ch. 2 and "The Red-Headed League" ch. 1 both hit "Output blocked by content filtering policy" when asked to reproduce the Project Gutenberg text. Workarounds for next session: (a) user pastes the excerpts from Project Gutenberg directly rather than asking the model to reproduce; (b) swap to lower-risk public-domain works (Pride & Prejudice opening, The Adventures of Tom Sawyer, Little Women). The harness + test entry point require zero changes to accept the two new fixtures — drop two directories under `golden_chapters/` and they score automatically. Documented in `golden_chapters/README.md` so future maintainers don't hit the same surprise.
+
+**Workflow note:** task was classified XL (12 files / 6 logic units / 0 side effects) per CLAUDE.md §Task Size Classification. First classification attempt (L) was rejected by `workflow-gate.sh` and reclassified to XL, per the anti-undersizing check.
+
+**Deferrals opened:**
+- D-K17.10-01 — 2 remaining English fixtures. Target phase: K17.10-v1-complete (session 46).
+- D-K17.10-02 (existing scope decision, re-confirmed) — xianxia + Vietnamese fixture pairs. Target phase: K17.10-v2 (post-threshold-tuning).
+
+---
 
 ### K17.9-R1 — `/review-impl` adversarial follow-ups ✅ (session 45, Track 2)
 

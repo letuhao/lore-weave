@@ -1,0 +1,45 @@
+# K17.10 golden fixture — Alice in Wonderland, Ch. 1 (opening)
+# Source: Project Gutenberg #11 (Lewis Carroll, 1865). Public domain.
+# v1 annotation (illustrative) — re-verify before pinning as hard gate.
+
+source:
+  title: "Alice's Adventures in Wonderland"
+  author: "Lewis Carroll"
+  chapter: 1
+  license: "Public domain (Project Gutenberg #11)"
+
+entities:
+  - name: Alice
+    kind: person
+    aliases: []
+  - name: White Rabbit
+    kind: person
+    aliases: ["Rabbit", "the Rabbit"]
+  - name: sister
+    kind: person
+    aliases: ["her sister"]
+
+relations:
+  - subject: Alice
+    predicate: sits_by
+    object: sister
+  - subject: Alice
+    predicate: follows
+    object: White Rabbit
+
+events:
+  - summary: "White Rabbit runs past Alice on the bank"
+    participants: [Alice, White Rabbit]
+  - summary: "Alice follows the White Rabbit down a rabbit hole"
+    participants: [Alice, White Rabbit]
+
+traps:
+  # "daisy-chain" — considered only, never made. Extractor that emits
+  # it as an entity/event is over-eager.
+  - kind: event
+    summary: "Alice makes a daisy chain"
+    reason: "Only considered, never performed"
+  # The watch — it's mentioned but it's a prop, not an actor.
+  - kind: entity
+    name: the watch
+    reason: "Prop referenced by the Rabbit; not a first-class entity at this scale"

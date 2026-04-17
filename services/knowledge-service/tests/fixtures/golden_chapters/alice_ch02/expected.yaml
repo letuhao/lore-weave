@@ -1,0 +1,51 @@
+# K17.10 golden fixture — Alice in Wonderland, Ch. 2 (opening)
+# Source: Project Gutenberg #11. Public domain.
+# v1 annotation (illustrative) — re-verify before pinning as hard gate.
+
+source:
+  title: "Alice's Adventures in Wonderland"
+  author: "Lewis Carroll"
+  chapter: 2
+  license: "Public domain (Project Gutenberg #11)"
+
+entities:
+  - name: Alice
+    kind: person
+    aliases: []
+  - name: White Rabbit
+    kind: person
+    aliases: ["Rabbit", "the Rabbit"]
+  - name: Duchess
+    kind: person
+    aliases: ["the Duchess"]
+  - name: hall
+    kind: location
+    aliases: []
+  - name: garden
+    kind: location
+    aliases: []
+
+relations:
+  - subject: White Rabbit
+    predicate: serves
+    object: Duchess
+
+events:
+  - summary: "Alice grows larger than nine feet tall"
+    participants: [Alice]
+  - summary: "Alice picks up a golden key and moves toward the garden door"
+    participants: [Alice]
+  - summary: "Alice sits down and cries"
+    participants: [Alice]
+  - summary: "White Rabbit returns dressed in gloves carrying a fan"
+    participants: [White Rabbit]
+
+traps:
+  # Alice's feet — personified in speech, but not a first-class entity.
+  - kind: entity
+    name: feet
+    reason: "Alice personifies her feet in dialogue; not an actor"
+  # The Duchess is named but never appears in this excerpt.
+  - kind: event
+    summary: "Alice meets the Duchess"
+    reason: "Duchess is only foreshadowed by the Rabbit, never appears here"

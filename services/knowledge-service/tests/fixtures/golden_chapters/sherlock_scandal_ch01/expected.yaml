@@ -1,0 +1,51 @@
+# K17.10 golden fixture — "A Scandal in Bohemia", opening.
+# Source: Project Gutenberg #1661 (Arthur Conan Doyle, 1892). Public domain.
+# v1 annotation (illustrative) — re-verify before pinning as hard gate.
+
+source:
+  title: "The Adventures of Sherlock Holmes — A Scandal in Bohemia"
+  author: "Arthur Conan Doyle"
+  chapter: 1
+  license: "Public domain (Project Gutenberg #1661)"
+
+entities:
+  - name: Sherlock Holmes
+    kind: person
+    aliases: ["Holmes"]
+  - name: Irene Adler
+    kind: person
+    aliases: ["THE woman", "the woman"]
+  - name: Watson
+    kind: person
+    aliases: ["I", "narrator"]
+  - name: Baker Street
+    kind: location
+    aliases: []
+
+relations:
+  - subject: Watson
+    predicate: lived_with
+    object: Sherlock Holmes
+  - subject: Sherlock Holmes
+    predicate: resides_at
+    object: Baker Street
+
+events:
+  - summary: "Watson passes through Baker Street on the night of 20 March 1888"
+    participants: [Watson]
+  - summary: "Watson resolves to visit Sherlock Holmes again"
+    participants: [Watson, Sherlock Holmes]
+
+traps:
+  # "A Study in Scarlet" is a book/case reference, not an event in this chapter.
+  - kind: event
+    summary: "Watson investigates the Study in Scarlet"
+    reason: "Only referenced as a prior case; not happening in this text"
+  # Cocaine is mentioned as a habit — extracting as entity/event is over-eager.
+  - kind: entity
+    name: cocaine
+    reason: "Mentioned in narration as Holmes's habit; not an actor or event subject"
+  # The patient Watson is returning from is mentioned but not named or present.
+  - kind: entity
+    name: patient
+    reason: "Offscreen, unnamed, no identity"
