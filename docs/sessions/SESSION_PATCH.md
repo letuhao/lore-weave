@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K16.2 cost estimation + K17.10-v1-complete + Dockerfile)
-- Updated By: Assistant (session 46 — K16.2 extraction cost estimation endpoint, K17.10-v1 fixtures complete, K17.10-R1 review fixes, multi-stage Dockerfile. 772 tests.)
+- Last Updated: 2026-04-18 (session 46 — K16.3 start job + K16.2 estimate + K17.10 + Dockerfile)
+- Updated By: Assistant (session 46 — K16.3 start extraction job, K16.2 cost estimation, K17.10-v1 fixtures, K17.10-R1 review fixes, multi-stage Dockerfile. 782 tests.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: ef755a5 (K17.10-R1)
+- HEAD: bdf029f (K16.2)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -134,6 +134,34 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K16.3 — Start extraction job endpoint ✅ (session 46)
+
+**Goal:** `POST /v1/knowledge/projects/{id}/extraction/start` — create and start an extraction job atomically.
+
+**Files:**
+- MODIFIED [services/knowledge-service/app/routers/public/extraction.py](../../services/knowledge-service/app/routers/public/extraction.py) — start endpoint: project ownership → 409 active-job guard → atomic transaction (create job + update project + pending→running)
+- MODIFIED [services/knowledge-service/app/db/repositories/projects.py](../../services/knowledge-service/app/db/repositories/projects.py) — `set_extraction_state()` method with optional `conn` for transaction use; `extraction_status` typed as `ExtractionStatus` Literal
+- MODIFIED [services/knowledge-service/app/db/migrate.py](../../services/knowledge-service/app/db/migrate.py) — `idx_extraction_jobs_one_active_per_project` unique partial index
+- NEW [services/knowledge-service/tests/unit/test_extraction_start.py](../../services/knowledge-service/tests/unit/test_extraction_start.py) — 10 unit tests
+
+**Key design decisions:**
+- **Unique partial index** on `extraction_jobs(project_id) WHERE status IN ('pending','running','paused')` — the real concurrency guard. Two concurrent POSTs: second INSERT fails with `UniqueViolationError` → 409. The pre-transaction `list_active` check is a fast-path optimization only.
+- **Single transaction**: job INSERT + project UPDATE + status transition all in one `conn.transaction()`.
+- **Worker notification deferred** to K16.6 (worker polls for running jobs).
+- **Monthly budget check deferred** to K16.11.
+
+**R1 review fixes (6 issues):**
+1. MED: Unique partial index + `UniqueViolationError` → 409 (replaces broken TOCTOU SELECT)
+2. LOW: `extraction_status` param typed as `ExtractionStatus` Literal
+3. LOW: Pre-check uses `list_active` (filters by active status) instead of `list_for_project(limit=1)`
+4. LOW: `set_extraction_state` return value checked — None → 404 inside transaction
+5. COSMETIC: Renamed `job_data` → `validated` with comment on validation-only use
+6. COSMETIC: Documented pool patch lifecycle in tests
+
+**Verify:** 10/10 start tests, 782/782 full suite. Zero regressions.
+
+---
 
 ### K16.2 — Extraction cost estimation endpoint ✅ (session 46)
 

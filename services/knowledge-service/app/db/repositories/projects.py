@@ -12,7 +12,7 @@ from uuid import UUID
 import asyncpg
 
 from app.context import cache
-from app.db.models import Project, ProjectCreate, ProjectUpdate
+from app.db.models import ExtractionStatus, Project, ProjectCreate, ProjectUpdate
 from app.db.repositories import VersionMismatchError
 
 _SELECT_COLS = """
@@ -245,6 +245,47 @@ class ProjectsRepo:
         if current is None:
             return None
         raise VersionMismatchError(current)
+
+    async def set_extraction_state(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        *,
+        extraction_enabled: bool,
+        extraction_status: ExtractionStatus,
+        embedding_model: str | None = None,
+        conn: "asyncpg.Connection | None" = None,
+    ) -> Project | None:
+        """K16.3: atomically update extraction-related fields on a project.
+
+        Accepts an optional `conn` so the caller can run this inside
+        an existing transaction (e.g., the start-job endpoint creates
+        the job row and updates the project in one transaction).
+
+        Returns the updated project or None if the project doesn't
+        exist / belongs to another user.
+        """
+        query = f"""
+        UPDATE knowledge_projects
+        SET extraction_enabled = $3,
+            extraction_status = $4,
+            embedding_model = COALESCE($5, embedding_model),
+            updated_at = now()
+        WHERE user_id = $1 AND project_id = $2
+        RETURNING {_SELECT_COLS}
+        """
+        if conn is not None:
+            row = await conn.fetchrow(
+                query, user_id, project_id,
+                extraction_enabled, extraction_status, embedding_model,
+            )
+        else:
+            async with self._pool.acquire() as c:
+                row = await c.fetchrow(
+                    query, user_id, project_id,
+                    extraction_enabled, extraction_status, embedding_model,
+                )
+        return _row_to_project(row) if row else None
 
     async def archive(
         self, user_id: UUID, project_id: UUID

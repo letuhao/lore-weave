@@ -255,6 +255,15 @@ CREATE INDEX IF NOT EXISTS idx_extraction_jobs_active
   ON extraction_jobs (status)
   WHERE status IN ('pending','running','paused');
 
+-- K16.3 — at most one active job per project. Without this, two
+-- concurrent POST /extraction/start requests can both INSERT under
+-- READ COMMITTED isolation (neither sees the other's uncommitted row).
+-- The unique partial index makes the second INSERT fail with a
+-- UniqueViolationError that the endpoint maps to 409.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_extraction_jobs_one_active_per_project
+  ON extraction_jobs (project_id)
+  WHERE status IN ('pending','running','paused');
+
 -- ═══════════════════════════════════════════════════════════════
 -- K10.2b — extraction_errors
 -- Not in the original K10 task list but K11.Z depends on it: when the
