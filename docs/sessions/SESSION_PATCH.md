@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K16.10 + K16.2–K16.9 + K17.10 + Dockerfile)
-- Updated By: Assistant (session 46 — K16.2–K16.10 extraction lifecycle, K17.10-v1 + R1, Dockerfile. 844 tests across 2 services.)
+- Last Updated: 2026-04-18 (session 46 — K16.2–K16.14 complete + K17.10 + Dockerfile)
+- Updated By: Assistant (session 46 — K16.2–K16.14 extraction lifecycle complete (K16.13 was pre-existing), K17.10-v1 + R1, Dockerfile. 860 tests across 2 services.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: 9a7bbc0 (K16.9)
+- HEAD: 2fab33c (K16.10-R1)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -134,6 +134,20 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K16.11–K16.14 — Budget, cost API, stats cache ✅ (session 46)
+
+**K16.11** — `app/jobs/budget.py`: `can_start_job` (monthly budget check with rollover + 80% warning), `record_spending` (atomic month-aware counter). 7 tests.
+
+**K16.12** — `app/routers/public/costs.py`: `GET /costs` (user total), `GET /projects/{id}/costs` (per-project by job), `PUT /projects/{id}/budget` (set monthly cap). 6 tests.
+
+**K16.13** — Already done: `knowledgeProxy` in gateway-setup.ts covers all `/v1/knowledge/*` routes. No changes needed.
+
+**K16.14** — `app/jobs/stats_updater.py`: `increment_stats` (per-batch delta), `reconcile_project_stats` (full recount from Neo4j). 2 tests.
+
+**Verify:** 15 new tests, 847/847 knowledge-service, 860 total.
+
+---
 
 ### K16.10 — Change embedding model endpoint ✅ (session 46)
 
