@@ -236,3 +236,103 @@ async def test_internal_token_header_sent(gc: GlossaryClient):
         )
 
     assert captured_token == ["unit-test-token"]
+
+
+# ── K11.10 list_entities HTTP-level coverage ─────────────────────────
+# GlossaryClient.list_entities was added for K11.10 but never had
+# direct HTTP tests until the K13.0 review-impl sweep exposed the gap.
+
+
+def _known_entities_url(book_id: str) -> str:
+    return (
+        f"http://glossary-service:8088/internal/books/{book_id}/known-entities"
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_entities_success_returns_list(gc: GlossaryClient):
+    book_id = uuid4()
+    payload = [
+        {"entity_id": "a", "name": "Arthur", "kind_code": "person", "aliases": ["Art"]},
+        {"entity_id": "b", "name": "Merlin", "kind_code": "person", "aliases": []},
+    ]
+    with respx.mock() as mock:
+        mock.get(_known_entities_url(str(book_id))).mock(
+            return_value=httpx.Response(200, json=payload),
+        )
+        out = await gc.list_entities(book_id)
+
+    assert out == payload
+
+
+@pytest.mark.asyncio
+async def test_list_entities_forwards_status_filter(gc: GlossaryClient):
+    """status_filter must be sent as the `status` query param — the Go
+    handler at extraction_handler.go looks for that exact key.
+    """
+    book_id = uuid4()
+    captured_params: list[str] = []
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        captured_params.append(request.url.params.get("status") or "")
+        return httpx.Response(200, json=[])
+
+    with respx.mock() as mock:
+        mock.get(_known_entities_url(str(book_id))).mock(side_effect=capture)
+        await gc.list_entities(book_id, status_filter="inactive")
+
+    assert captured_params == ["inactive"]
+
+
+@pytest.mark.asyncio
+async def test_list_entities_5xx_returns_none(gc: GlossaryClient):
+    """5xx must be treated as a soft failure — caller falls back to
+    no-anchor extraction rather than crashing the job.
+    """
+    book_id = uuid4()
+    with respx.mock() as mock:
+        mock.get(_known_entities_url(str(book_id))).mock(
+            return_value=httpx.Response(500),
+        )
+        out = await gc.list_entities(book_id)
+
+    assert out is None
+
+
+@pytest.mark.asyncio
+async def test_list_entities_connection_error_returns_none(gc: GlossaryClient):
+    book_id = uuid4()
+    with respx.mock() as mock:
+        mock.get(_known_entities_url(str(book_id))).mock(
+            side_effect=httpx.ConnectError("boom"),
+        )
+        out = await gc.list_entities(book_id)
+
+    assert out is None
+
+
+@pytest.mark.asyncio
+async def test_list_entities_internal_token_and_trace_id_sent(gc: GlossaryClient):
+    from app.logging_config import trace_id_var
+
+    book_id = uuid4()
+    captured: list[tuple[str, str]] = []
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        captured.append(
+            (
+                request.headers.get("X-Internal-Token", ""),
+                request.headers.get("X-Trace-Id", ""),
+            )
+        )
+        return httpx.Response(200, json=[])
+
+    token = trace_id_var.set("trace-abc")
+    try:
+        with respx.mock() as mock:
+            mock.get(_known_entities_url(str(book_id))).mock(side_effect=capture)
+            await gc.list_entities(book_id)
+    finally:
+        trace_id_var.reset(token)
+
+    assert captured == [("unit-test-token", "trace-abc")]

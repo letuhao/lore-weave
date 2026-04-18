@@ -287,6 +287,7 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type entityOut struct {
+		EntityID string   `json:"entity_id"`
 		Name     string   `json:"name"`
 		KindCode string   `json:"kind_code"`
 		Aliases  []string `json:"aliases"`
@@ -313,6 +314,7 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 			continue // skip entities without a name
 		}
 		result = append(result, entityOut{
+			EntityID: entityID,
 			Name:     name,
 			KindCode: kindCode,
 			Aliases:  aliases,

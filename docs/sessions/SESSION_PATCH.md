@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K13 chat outbox + worker-infra MAXLEN/cold-start + K14 + workflow-gate + K12 + K11.10 + K15.11 + K17.11-12 + K16 + K17.10 + Dockerfile)
-- Updated By: Assistant (session 46 — K13 chat-service transactional outbox + chat.turn_completed emission, worker-infra per-stream MAXLEN + 42P01 silent-retry with per-source transition logging, K14 (8 tasks), workflow-gate Python rewrite, K12.1-K12.3, K11.10/K15.11/K17.11-12, K16 complete, K17.10. 893 + new K13 tests.)
+- Last Updated: 2026-04-18 (session 46 — K13.0+K13.1 anchor loader + nightly refresh + K13 chat outbox + worker-infra MAXLEN/cold-start + K14 + workflow-gate + K12 + K11.10 + K15.11 + K17.11-12 + K16 + K17.10 + Dockerfile)
+- Updated By: Assistant (session 46 — K13.0 glossary anchor pre-loader, K13.1 nightly anchor-score refresh with advisory-lock + per-project Neo4j session + glossary HTTP client coverage + Go known-entities handler tests, plus K13/K14/workflow-gate/K12/K11.10/K15.11/K17.11-12/K16/K17.10. 948 knowledge-service tests + new glossary-service api tests.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: 3f02c49 (workflow-gate fix) → K13 commit pending
+- HEAD: d72f026 (K13 chat outbox) → K13.0+K13.1 commit pending
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -134,6 +134,39 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K13.0 + K13.1 — glossary anchor pre-loader + nightly refresh ✅ (session 46)
+
+**Goal:** Ship the Pass 0 anchor pre-loader (K13.0) and the nightly anchor_score refresh job (K13.1) as thin orchestrators over existing tested primitives (`upsert_glossary_anchor`, `recompute_anchor_score`, `GlossaryClient.list_entities`).
+
+**New files (4):**
+- [services/knowledge-service/app/extraction/anchor_loader.py](../../services/knowledge-service/app/extraction/anchor_loader.py) — `Anchor` dataclass + `load_glossary_anchors(session, glossary_client, *, user_id, project_id, book_id, status_filter)`. Idempotency inherited from the repo's MERGE. Per-entry isolation: client failure → `[]` + WARNING; per-entry upsert failure → log + skip; missing `entity_id`/`name` → skip.
+- [services/knowledge-service/app/jobs/compute_anchor_score.py](../../services/knowledge-service/app/jobs/compute_anchor_score.py) — `RefreshResult` + `refresh_anchor_scores(pool, session_factory)`. Iterates `knowledge_projects WHERE is_archived=false AND extraction_enabled=true` and calls `recompute_anchor_score` per project. **Hardened in review-impl:** wraps the sweep in `pg_try_advisory_lock(1_301_01_00)` so overlapping cron returns early with `lock_skipped=True` instead of double-sweeping; opens a fresh Neo4j session per project via `SessionFactory` so a driver fault on one project doesn't abort the rest.
+- [services/knowledge-service/tests/unit/test_anchor_loader.py](../../services/knowledge-service/tests/unit/test_anchor_loader.py) — 5 cases (client-failure, happy path, per-entry error isolation, empty glossary, invalid-input skip).
+- [services/knowledge-service/tests/unit/test_compute_anchor_score.py](../../services/knowledge-service/tests/unit/test_compute_anchor_score.py) — 6 cases (iterate-all, per-project-failure, no-projects, SQL filter defense, lock-contended, lock-released-on-error).
+
+**Modified (3):**
+- [services/glossary-service/internal/api/extraction_handler.go](../../services/glossary-service/internal/api/extraction_handler.go) — `/known-entities` response struct gains `EntityID` field (backward-compat additive; LLM-prompt consumers ignore unknown fields). Required because `upsert_glossary_anchor(glossary_entity_id=...)` needs the UUID to anchor in Neo4j.
+- [services/knowledge-service/tests/unit/test_glossary_client.py](../../services/knowledge-service/tests/unit/test_glossary_client.py) — +5 HTTP-level tests for `list_entities` (pre-existing coverage gap exposed during review-impl): success, status-filter forwarded as query param, 5xx→None, connect-error→None, `X-Internal-Token` + `X-Trace-Id` headers sent.
+- [services/glossary-service/internal/api/known_entities_test.go](../../services/glossary-service/internal/api/known_entities_test.go) — NEW. 3 unit tests (token required, wrong token, bad UUID) + 1 DB integration test that seeds 2 entities with chapter_links and asserts `entity_id` is non-empty in the response. Integration test follows the existing `GLOSSARY_TEST_DB_URL` skip pattern from `export_handler_test.go`.
+
+**Review-impl fixes applied before commit:**
+1. Dead `kind_code or kind or "unknown"` fallback removed — glossary is SSOT, `kind_code` is the only real path.
+2. HTTP-layer test coverage for `GlossaryClient.list_entities` (was untested).
+3. Go handler test coverage for `/known-entities` (was untested).
+4. `refresh_anchor_scores` now guards against overlapping cron via Postgres advisory lock and isolates Neo4j driver faults via per-project session factory.
+
+**Out of scope (documented trade-offs):**
+- No `pipeline.py` / `pass2_orchestrator` hook. `load_glossary_anchors` returns `list[Anchor]` for a future resolver integration.
+- No cron scheduler wiring. `refresh_anchor_scores` is a function — whoever schedules it owns the trigger.
+- No Prometheus metrics. Log lines carry counts for now.
+- Corpus-level ≥20%-duplicate-reduction smoke test (per K13.0 plan acceptance) deferred to Track 2 acceptance cycle when anchors are actually consumed by a resolver.
+
+**Verify:** knowledge-service 948/948 pass (was 941/941 before fixes: +5 glossary_client, +2 compute_anchor_score from review-impl hardening); glossary-service `internal/api` ok (4 new tests — 3 unit pass, 1 integration skips cleanly without DB); `go build ./...` clean.
+
+**Signature note for future wiring:** `refresh_anchor_scores(pool, session_factory)` takes a zero-arg callable returning an `AbstractAsyncContextManager[CypherSession]`. Use `lambda: neo4j_session()` from [app/db/neo4j.py:150](../../services/knowledge-service/app/db/neo4j.py#L150) when hooking a scheduler.
+
+---
 
 ### K13 — chat-service transactional outbox + chat.turn_completed ✅ (session 46)
 
