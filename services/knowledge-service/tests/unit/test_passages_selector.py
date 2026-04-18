@@ -215,6 +215,38 @@ async def test_historical_intent_inverts_recency_preference(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_recency_auto_anchors_to_newest_passage(monkeypatch):
+    """When caller doesn't supply current_chapter_index, the selector
+    auto-anchors "now" to max(chapter_index) in the hit pool. Without
+    this fallback, every passage sees age=0 and recency weighting is
+    dead in production (no caller currently passes the param).
+    """
+    client = MagicMock()
+    client.embed = AsyncMock(return_value=_embed_result())
+
+    hits = [
+        _hit("Newest.", 0.80, chapter_index=50),
+        _hit("Oldest.", 0.80, chapter_index=1),
+    ]
+    monkeypatch.setattr(
+        "app.context.selectors.passages.find_passages_by_vector",
+        AsyncMock(return_value=hits),
+    )
+
+    result = await select_l3_passages(
+        MagicMock(), client,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        message="originally who ruled",
+        intent=_intent(intent=Intent.HISTORICAL, recency_weight=-1.0),
+        embedding_model="bge-m3", embedding_dim=1024,
+        user_uuid=USER_UUID,
+        # NOTE: no current_chapter_index passed — selector auto-anchors.
+    )
+    # Historical intent + pool-anchored recency → oldest wins.
+    assert result[0].text == "Oldest."
+
+
+@pytest.mark.asyncio
 async def test_mmr_drops_near_duplicate_passages(monkeypatch):
     """Two near-identical passages shouldn't both land in top-N."""
     client = MagicMock()

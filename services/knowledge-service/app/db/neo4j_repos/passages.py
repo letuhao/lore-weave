@@ -104,8 +104,18 @@ def passage_canonical_id(
     return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
 
 
-_UPSERT_PASSAGE_CYPHER = """
-MERGE (p:Passage {id: $id})
+# The `{embed_prop}` placeholder is f-string-substituted at call time
+# with the dim-specific property name (e.g. "embedding_1024"). Dim is
+# validated against SUPPORTED_PASSAGE_DIMS before substitution so
+# this is injection-safe — the set of possible values is closed.
+#
+# An earlier version used per-dim CALL subqueries with WHERE filters
+# on null params; Neo4j's CROSS APPLY semantics dropped the outer
+# row whenever any subquery filter evaluated false, causing the
+# function to raise "returned no row" despite the matching SET
+# running. Dynamic Cypher sidesteps that entirely.
+_UPSERT_PASSAGE_CYPHER_TEMPLATE = """
+MERGE (p:Passage {{id: $id}})
 ON CREATE SET
   p.user_id = $user_id,
   p.project_id = $project_id,
@@ -116,6 +126,7 @@ ON CREATE SET
   p.embedding_model = $embedding_model,
   p.is_hub = $is_hub,
   p.chapter_index = $chapter_index,
+  p.{embed_prop} = $embedding,
   p.created_at = datetime(),
   p.updated_at = datetime()
 ON MATCH SET
@@ -123,32 +134,8 @@ ON MATCH SET
   p.embedding_model = $embedding_model,
   p.is_hub = $is_hub,
   p.chapter_index = $chapter_index,
+  p.{embed_prop} = $embedding,
   p.updated_at = datetime()
-WITH p
-CALL {
-  WITH p
-  WITH p WHERE $embedding_384 IS NOT NULL
-  SET p.embedding_384 = $embedding_384
-  RETURN p AS _p384
-}
-CALL {
-  WITH p
-  WITH p WHERE $embedding_1024 IS NOT NULL
-  SET p.embedding_1024 = $embedding_1024
-  RETURN p AS _p1024
-}
-CALL {
-  WITH p
-  WITH p WHERE $embedding_1536 IS NOT NULL
-  SET p.embedding_1536 = $embedding_1536
-  RETURN p AS _p1536
-}
-CALL {
-  WITH p
-  WITH p WHERE $embedding_3072 IS NOT NULL
-  SET p.embedding_3072 = $embedding_3072
-  RETURN p AS _p3072
-}
 WITH p WHERE p.user_id = $user_id
 RETURN p
 """
@@ -200,13 +187,15 @@ async def upsert_passage(
         chunk_index=chunk_index,
     )
 
-    # Route the embedding to the matching property; the rest stay None.
-    embedding_params = {f"embedding_{d}": None for d in SUPPORTED_PASSAGE_DIMS}
-    embedding_params[f"embedding_{embedding_dim}"] = embedding
+    # Dim was validated above against the closed set SUPPORTED_PASSAGE_DIMS,
+    # so this f-string substitution has no injection surface.
+    cypher = _UPSERT_PASSAGE_CYPHER_TEMPLATE.format(
+        embed_prop=f"embedding_{embedding_dim}",
+    )
 
     result = await run_write(
         session,
-        _UPSERT_PASSAGE_CYPHER,
+        cypher,
         user_id=user_id,
         id=canonical_id,
         project_id=project_id,
@@ -217,7 +206,7 @@ async def upsert_passage(
         embedding_model=embedding_model,
         is_hub=is_hub,
         chapter_index=chapter_index,
-        **embedding_params,
+        embedding=embedding,
     )
     record = await result.single()
     if record is None:

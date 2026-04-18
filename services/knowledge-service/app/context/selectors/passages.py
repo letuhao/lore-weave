@@ -197,8 +197,18 @@ async def select_l3_passages(
     # 3-5. Score each hit: hub penalty + recency weight.
     hub_penalty = _HUB_PENALTY.get(intent.intent, 0.5)
     recency_w = intent.recency_weight
+    # If the caller didn't supply a current chapter, treat the newest
+    # passage in the pool as "now" — otherwise every passage would see
+    # age=0 and recency weighting would produce no differentiation.
+    ref_chapter = current_chapter_index
+    if ref_chapter is None:
+        chapter_indices = [
+            h.passage.chapter_index for h in hits
+            if h.passage.chapter_index is not None
+        ]
+        ref_chapter = max(chapter_indices) if chapter_indices else None
     scored = [
-        (_apply_post_filters(hit, hub_penalty, recency_w, current_chapter_index), hit)
+        (_apply_post_filters(hit, hub_penalty, recency_w, ref_chapter), hit)
         for hit in hits
     ]
 
