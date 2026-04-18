@@ -1,121 +1,171 @@
-# Session Handoff — Session 45 END / Session 46 START (K17.10-partial)
+# Session Handoff — Session 46 END / Session 47 START (Track 2 close-out mid-flight)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-17 (session 45 END)
-> **HEAD:** K17.10-partial (2 commits this session: K17.9-R1 + K17.10-partial)
-> **Branch:** `main` (ahead of origin by sessions 38–45 commits — user pushes manually)
+> **Date:** 2026-04-18 (session 46 END)
+> **HEAD:** `9aa9910` (Cycle 6 review-impl fixes — docstring staleness + test alignment)
+> **Branch:** `main` (ahead of origin by sessions 38–46 commits — user pushes manually)
 
 ---
 
 ## 1. TL;DR — what shipped this session
 
-Session 45 shipped two things:
-
-1. **K17.9-R1** — `/review-impl` adversarial follow-ups. Deep re-read of K17.9 caught 5 real issues (1 MED, 2 LOW, 1 COSMETIC, 1 TRIVIAL) the initial self-review rubber-stamped. Fixes + 1 new CJK predicate injection test, landed in commit `7f8702c`.
-2. **K17.10-partial** — Golden-set extraction-quality eval, harness complete, 3 of 5 English fixtures landed. Remaining 2 English fixtures blocked by Anthropic output content filter (see §4 below for the resume plan).
+Session 46 was a large close-out session. 12 commits landed 6 of 9 planned Track 2 close-out cycles. Key artifacts:
 
 ```
-K17.9-R1  /review-impl follow-ups          ✅  +1 CJK test, comments, test hygiene (commit 7f8702c)
-K17.10    Golden-set quality eval          ⚠  PARTIAL: harness 100% done + unit-tested; 3/5 fixtures
+Track 2 close-out roadmap (session 46)   ✅  9 cycles defined, 6 shipped
+  Cycle 1a  D-K18.3-01 passage ingestion  ✅  Mode 3 end-to-end LIVE with real data
+  Cycle 1b  K12.4 FE embedding picker     ✅  users can configure embedding_model via UI
+  Cycle 2   Debris sweep                  ✅  3/7 shipped (5 honest re-deferred)
+  Cycle 3   Lifecycle + scheduler         ✅  3/5 full + 2/5 LIMIT-half (cursor deferred)
+  Cycle 4   Provider-registry hardening   ✅  2/3 (D-K16.2-01 re-deferred)
+  Cycle 5   Extraction quality + perf     ✅  4/4
+  Cycle 6   RAG quality (3 sub-cycles)    ✅  3/3
+  Cycle 7   K18 final polish              ⏳  NEXT
+  Cycle 8   Large infra (3 commits)       ⏳
+  Cycle 9   Gate-4 alignment              ⏳
 ```
 
-**Test execution:**
-- `tests/unit/test_eval_harness.py`: **18/18 pass in 0.45s**
-- `tests/quality/` without flag: 1 skipped (opt-in `--run-quality`), as designed
-- `test_pass2_writer.py`: **15/15** after K17.9-R1
-- Pre-existing environmental failures (SSL/truststore `OSError [Errno 22]`) in `test_config.py` / `test_circuit_breaker.py` / `test_glossary_client.py` — **not caused by this session**, confirmed on HEAD via `git stash`.
+**Test execution at session end:**
+- knowledge-service unit: **1049/1049 pass** (up from 1026 at start of session)
+- chat-service unit: **169/169 pass** (stable)
+- glossary-service: `go build ./...` clean, `go test ./...` passes
+- provider-registry-service: `go build ./...` clean, `go test ./...` passes
+
+**Deferred-items drift reconciliation (commit `6727c2d`):** 6 items that shipped in cycles 1–3 were still listed as open in the Deferred Items table (only Cycle 4's 2 items had been struck through). Audited + reconciled — 6 struck, 2 amended to "partial" (LIMIT shipped, cursor deferred).
 
 ---
 
-## 2. Where to pick up (K17.10 resume plan — top priority)
+## 2. Where to pick up — Cycle 7 (K18 final polish)
 
 ```
-K17.1–K17.9     LLM extraction pipeline + injection defense   ✅
-K17.10          Golden-set quality eval                        ⚠ PARTIAL
-  ├─ harness (eval_harness.py + tests)                        ✅ 18/18
-  ├─ opt-in pytest marker + LLM entry point                    ✅
-  ├─ alice_ch01 / alice_ch02 / sherlock_scandal_ch01           ✅
-  ├─ 4th English fixture                                       ← NEXT
-  └─ 5th English fixture                                       ← NEXT
-K17.10-v2       Xianxia + Vietnamese fixtures                  ← after v1 + threshold tuning
-K16.2–K16.15    Extraction job lifecycle                       ← parallel track
+Cycle 1 — 1a + 1b                        ✅
+Cycle 2 — debris sweep                    ✅
+Cycle 3 — lifecycle + scheduler           ✅ (3/5 + 2/5 partial)
+Cycle 4 — provider-registry               ✅ (2/3)
+Cycle 5 — extraction quality + perf       ✅ (4/4)
+Cycle 6 — RAG quality (6a/6b/6c)          ✅ (3/3)
+Cycle 7 — K18 final polish                ← NEXT
+  ├─ K18.9  prompt caching hints (cache_control markers)
+  └─ P-K18.3-02  MMR embedding cosine (optional projection flag)
+Cycle 8 — large infra (3 commits)         ← after Cycle 7
+  ├─ D-K18.3-02  generative rerank (LM Studio)
+  ├─ D-T2-04  cross-process cache invalidation
+  └─ D-T2-05  glossary breaker probe half-open guarantee
+Cycle 9 — Gate-4 alignment                 ← final before Gate 13
+  └─ K17.9.1 migration items
+Gate 13 E2E + Chaos tests C01–C08          ← after all cycles
 ```
 
-### Resume recipe (30-60 min expected)
+### Resume recipe
 
-1. **Read the README** at [services/knowledge-service/tests/fixtures/golden_chapters/README.md](../../services/knowledge-service/tests/fixtures/golden_chapters/README.md) — schema, annotation rules, the content-filter gotcha.
-2. **Get two public-domain excerpts** (3–5 paragraphs each). Safer sources than Conan Doyle (which tripped the filter twice):
-   - *Pride and Prejudice* ch. 1 — "It is a truth universally acknowledged…" (Project Gutenberg #1342)
-   - *The Adventures of Tom Sawyer* ch. 1 — "TOM!" aunt Polly scene (Gutenberg #74)
-   - *Little Women* ch. 1 opening (Gutenberg #514)
-   - *Moby Dick* ch. 1 opener "Call me Ishmael…" (Gutenberg #2701) — already planned
-   - If Conan Doyle specifically matters: paste directly from Gutenberg instead of asking the model to reproduce.
-3. **Annotate each** following the schema in `expected.yaml` files of the 3 existing fixtures. 3–6 entities, 2–4 relations, 2–4 events, 2–3 traps per chapter. Conservative — when in doubt, make it a trap.
-4. **Verify** with `pytest tests/unit/test_eval_harness.py -v` — the `test_iter_chapter_fixtures_sorted` test will round-trip both new fixtures through the loader.
-5. **(Optional) Run the live eval** once the fixture set is complete, to sanity-check thresholds:
-   ```bash
-   export ANTHROPIC_API_KEY=…
-   export KNOWLEDGE_EVAL_MODEL=claude-haiku-4-5-20251001
-   export KNOWLEDGE_EVAL_MODEL_SOURCE=user_model
-   export KNOWLEDGE_EVAL_USER_ID=<uuid>
-   pytest tests/quality/ --run-quality -v -s
-   ```
-6. **Close D-K17.10-01** in SESSION_PATCH.md "Recently cleared" once the two fixtures land.
+1. **Read [SESSION_PATCH.md §Track 2 Close-out Roadmap](SESSION_PATCH.md#track-2-close-out-roadmap-session-46)** — especially the Cycle 7 / 8 / 9 rows for scope.
+2. **Check the Deferred Items "Naturally-next-phase" table** — any item with Target phase "Cycle 7 / 8 / 9" is in scope now. The re-deferred items from Cycles 2 & 4 (D-K17.10-02, D-K16.2-01, D-K16.2-02, P-K2a-02, P-K3-01, P-K3-02) are **out of scope** for Track 2 close-out and stay deferred.
+3. **Cycle 7 is small** (prompt caching hint markers + MMR embedding flag) — start there. Single commit.
+4. **Cycle 8 is 3 commits** — one per sub-item because each changes observable behavior that should be reviewable independently.
+5. **Use the workflow gate:** `python scripts/workflow-gate.py reset && python scripts/workflow-gate.py size <XS|S|M|L|XL> <files> <logic> <effects>` before starting each cycle, phase per phase through to RETRO.
 
-### Alternative: hand-code the fixtures
+### Things that are good to know before Cycle 7
 
-The filter is on **model output**, not input. You (the user) can paste the chapter text into the session and the model can then annotate it — filter bypassed entirely. That's the most reliable path.
+- **K18.9 prompt caching** references Anthropic's `cache_control` markers on message turns. The idea is to mark stable memory-block segments (L0, project instructions, L1 summary, glossary) as cacheable so subsequent turns in the same session can skip re-tokenizing them. Chat-service opts in; no contract break for non-caching providers.
+- **P-K18.3-02 MMR embedding cosine** — the current Mode 3 MMR loop uses Jaccard token overlap for the redundancy term because `find_passages_by_vector` strips vectors from projections to keep responses small. The fix adds an optional `include_vectors: bool` flag to the Neo4j repo function; MMR uses real cosine when present, falls back to Jaccard otherwise.
 
 ---
 
-## 3. Deferred items — 2 new this session
+## 3. What changed in the Deferred Items table this session
 
-| ID | Description | Target |
+### Cleared this session (moved to Recently cleared)
+
+| ID | Cycle | What was done |
 |---|---|---|
-| **D-K17.10-01** | 2 remaining English fixtures blocked by content filter. Harness is feature-complete; just need two more `{chapter_id}/chapter.txt + expected.yaml` pairs. | K17.10-v1-complete (session 46) |
-| **D-K17.10-02** | Xianxia (2) + Vietnamese (2) fixtures. v1 stays English-only so thresholds can stabilize on a clean seed. | K17.10-v2 (after v1 threshold tuning) |
+| **D-K18.3-01** | 1a | Passage ingestion pipeline — K14 consumer + chunker + embedder + upsert. Mode 3 now returns real passages. |
+| **K12.4** | 1b | FE embedding-model picker on project edit; auto-derives `embedding_dimension`. |
+| **D-PROXY-01** | 2 | Empty-credential guard across 6 provider-registry sites. |
+| **D-K17.2c-01** | 2 | Router-layer tests for K17.2c. |
+| **P-K2a-01** | 2 | Glossary BackfillSnapshots → single set-based query (~100× faster). |
+| **D-K11.3-01** | 3 | Lifespan startup try/except + reverse-order cleanup. |
+| **D-K11.9-02** | 3 | Orphan `:ExtractionSource` sweep. |
+| **D-K17.2a-01** | 4 | Prometheus /metrics on provider-registry, 4 counter vecs × 12 outcomes, 75 call sites. |
+| **D-K17.2b-01** | 4 | `tool_calls` parser support (content=null + tool_calls[] accepted). |
+| **D-K15.5-01** | 5 | All-caps fusion fix + multi-whitespace robust tokenization (added in review-impl). |
+| **P-K15.8-01** | 5 | Pre-built sentence_candidates map shared across triple + negation extractors. |
+| **P-K13.0-01** | 5 | Anchor pre-load TTLCache(256, 60s). |
+| **P-K18.3-01** | 5 | Query embedding TTLCache(512, 30s) keyed by user_uuid too (review-impl). |
+| **D-T2-01** | 6a | tiktoken.cl100k_base swap for CJK accuracy (with len/4 fallback). |
+| **D-T2-02** | 6b | glossary FTS → `ts_rank_cd` with flag 33 (log-length + [0,1] scaling). |
+| **D-T2-03** | 6c | `recent_message_count` unified behind env var `RECENT_MESSAGE_COUNT`. |
 
-All other deferrals unchanged. See [SESSION_PATCH.md §Deferred Items](SESSION_PATCH.md).
+### Re-deferred this session (still in Deferred Items)
+
+| ID | Reason |
+|---|---|
+| D-K16.2-01 | Needs `pricing_policy` JSONB schema design first — not a one-liner. |
+| D-K16.2-02 | Blocked on book-service chapters range-filter support. |
+| D-K17.10-02 | Needs user-provided xianxia + Vietnamese chapter data. |
+| P-K2a-02 | Trigger redesign (pin-toggle snapshot), cross-cutting glossary perf pass. |
+| P-K3-01, P-K3-02 | Trigger chain redesign, same glossary perf pass. |
+
+### Still open partial (LIMIT shipped, cursor-state still open)
+
+| ID | Status |
+|---|---|
+| D-K11.9-01 | Reconciler LIMIT-batching done; cursor-state (resumable from mid-scan) needs job-state table — targeted at K19/K20 scheduler cleanup. |
+| P-K15.10-01 | Quarantine sweep LIMIT done; cursor-state same situation. |
 
 ---
 
 ## 4. Important context the next agent must know
 
-### K17.10 — the Anthropic content-filter gotcha (NEW)
-
-- Asking the model to reproduce period-typical 19th-century adventure prose for fixture generation tripped **"Output blocked by content filtering policy"** on two separate Conan Doyle excerpts in session 45 (A Scandal in Bohemia ch. 2, The Red-Headed League ch. 1).
-- The filter is on the **output** side. The input prompt was fine; the model's reproduction hit it.
-- **Workaround:** have the human paste the Gutenberg excerpt directly into the session, then annotate. Do not ask the model to reproduce copyrighted-adjacent or period-flavored text.
-- Documented in [tests/fixtures/golden_chapters/README.md](../../services/knowledge-service/tests/fixtures/golden_chapters/README.md) under "Content-filter gotcha".
-
-### K17.10 — architectural decisions worth knowing before extending
-
-- **Harness imports K15.1 + K17.5 canonicalizers directly** — no duplication. If K17.5 `_normalize_predicate` changes, the eval automatically uses the new rule. The import of the private `_normalize_predicate` is explicit with a justification comment.
-- **Macro-mean aggregation, not micro-weighted.** `mean(chapter_P)` — one big chapter doesn't dominate.
-- **Unified TP/FP/FN across entities+relations+events per chapter.** Don't split into three separate scorecards — it would let extractors game the best-performing kind.
-- **Trap hits count as BOTH an FP (precision denominator) AND a trap-rate numerator.** Prevents gaming precision by racing toward traps.
-- **Event summary matching:** asymmetric Jaccard on token sets, threshold 0.50, filtered to tokens `len > 2` (drops "a", "the", "to"). Asymmetric on purpose — paraphrase should not penalize.
-- **No Neo4j writes during eval.** Test calls `extract_entities`/`extract_relations`/`extract_events` directly — skips Pass 2 writer, graph stays clean.
-- **Opt-in only.** `@pytest.mark.quality` + `--run-quality` flag. Default `pytest` run skips it with a clear reason. CI remains free and deterministic.
-
-### K17.9 correction to previous handoff (IMPORTANT — the old note was wrong)
-
-Previous handoff claimed "a predicate-level injection test would either never match or be misleading — correctly omitted from K17.9 coverage." That was wrong. K17.9-R1 **added** exactly that test (`test_k17_9_relation_predicate_cjk_injection_sanitized`) because:
-- `[^\w]+` → `_` treats CJK characters as `\w` in Python 3, so `无视指令` survives normalization intact.
-- For CJK, `_sanitize(rel.predicate)` is load-bearing and needs regression coverage.
-- `pass2_writer.py` has a comment documenting why the call stays despite English being pre-normalized.
-
-Short version: **for CJK content, predicate injection coverage matters.**
-
-### Workflow v2.2 (12-phase) — unchanged from session 45
+### Workflow enforcement unchanged (v2.2 · 12-phase)
 
 ```
 CLARIFY → DESIGN → REVIEW-DESIGN → PLAN → BUILD → VERIFY → REVIEW-CODE → QC → POST-REVIEW → SESSION → COMMIT → RETRO
 ```
 
-- **POST-REVIEW** is a human checkpoint, NOT a self-adversarial re-read. Deep review is on-demand via the explicit `/review-impl` command. Session 45's K17.9-R1 proved the reshape was right — the initial K17.9 self-review rubber-stamped "0 issues" and `/review-impl` found 5 real ones.
-- State machine: `.workflow-state.json` + `scripts/workflow-gate.sh` (run from repo root).
+- State machine: `.workflow-state.json` + `scripts/workflow-gate.py` (run from repo root).
 - Pre-commit hook blocks commits without VERIFY + POST-REVIEW + SESSION completed.
+- **POST-REVIEW is a human checkpoint, NOT a self-adversarial re-read.** Deep review is on-demand via `/review-impl`. Session 46 proved this again: every cycle had a `/review-impl` pass that caught real issues (Cycle 2 missed the 6th D-PROXY-01 site, Cycle 3 had an invalid Cypher `LIMIT CASE`, Cycle 4 had 62 missing counter sites, Cycle 5 embed cache missed user_uuid, Cycle 5 had a multi-whitespace tokenizer gap, Cycle 6 had docstring staleness).
+
+### Review-impl pattern worth keeping
+
+Every cycle this session ended with a second-pass review-impl pass — several found HIGH issues the initial self-review missed. The pattern was:
+1. Commit cycle.
+2. User asks "let's review implement issues" → I re-read the diff adversarially.
+3. Real issues surface → separate follow-up commit.
+
+Do this for Cycles 7–9 too. It's not ceremony; it's finding real bugs before they escape.
+
+### Caches shipped this session (both per-worker-process)
+
+- `knowledge-service/app/routers/internal_extraction.py` — anchor pre-load TTLCache(256, 60s). Key `(user_id, project_id)`. Exceptions NOT cached.
+- `knowledge-service/app/context/selectors/passages.py` — query embedding TTLCache(512, 30s). Key `(user_uuid, project_id, embedding_model, message)`. Empty/failure NOT cached.
+- Both in `cachetools.TTLCache`. No manual invalidation — short TTL handles drift.
+
+### Cross-service env knobs introduced this session
+
+- `RECENT_MESSAGE_COUNT` (default 50) — read by both `knowledge-service/Settings.recent_message_count` and `chat-service/Settings.recent_message_count`. Mode 3 keeps its own tighter 20 independent of this knob.
+
+### New deps added
+
+- `tiktoken>=0.7` — added to `services/knowledge-service/requirements.txt`. Cycle 6a. Falls back to `len/4` if import fails (air-gapped installs).
+
+### Pre-existing failing tests to ignore
+
+- `translation-service/tests/test_glossary_client.py` + `test_pipeline_v2.py` — pydantic Settings validation errors at module-import time (missing `RABBITMQ_URL`, `INTERNAL_SERVICE_TOKEN`, `JWT_SECRET`, `DATABASE_URL`). Pre-existing before Cycle 6a — confirmed via `git stash` during session 46. Not caused by any cycle work.
+
+### Mode 3 is now end-to-end live
+
+Before session 46, Mode 3 (full context mode with L3 passages) had the selector code but no passage data — all retrievals returned `[]`. After Cycle 1a (D-K18.3-01), the K14 event consumer ingests chapter.saved events through chunker → embedder → upsert. After Cycle 1b (K12.4), users can configure which embedding model from the UI. A brand-new project with an embedding model set now sees passages populate as chapters are saved.
+
+### Counter coverage expanded in provider-registry (Cycle 4)
+
+- `/metrics` route now live; unauthed, in-cluster scrapers only.
+- Counter series: `provider_registry_proxy_requests_total`, `..._invoke_requests_total`, `..._embed_requests_total`, `..._verify_requests_total`. Each labelled on `outcome`.
+- 12 outcome constants. All 48 combos pre-seeded so dashboards can `rate()` from first scrape.
+- 75 call sites across 5 handlers. Don't use this as a template without understanding the initial version shipped with only 13 sites — review-impl caught missing success paths + most error paths. Every `return` in a handler should count SOMETHING.
+
+### tiktoken swap behavior
+
+`estimate_tokens("一位神秘的刀客的故事")` returns **14** now (was 2 under `len/4`). Any Mode-2/Mode-3 context budget that was implicitly over-promising for CJK users is now accurate. If any test fixture hardcodes expected token counts from the old heuristic, it needs to be recomputed — we did this for 4 test files already (`test_token_counter.py`, `test_no_project_mode.py`, `test_static_mode.py`, `test_public_summaries.py`). Integration tests in `tests/integration/db/test_context_build.py` still hardcode `50` for `recent_message_count` and that's the one we didn't convert; if you touch that file for other reasons, prefer `settings.recent_message_count` to stay in sync.
 
 ### Infra & test invocation (unchanged)
 
@@ -127,26 +177,25 @@ CLARIFY → DESIGN → REVIEW-DESIGN → PLAN → BUILD → VERIFY → REVIEW-CO
 
 - `entity_canonical_id` scopes by `user_id` + `project_id`. `project_id=None` → `"global"` in the hash key.
 
-### Pre-existing failing tests to ignore
-
-`test_config.py` / `test_circuit_breaker.py` / `test_glossary_client.py` throw `OSError: [Errno 22]` from `truststore._api.load_verify_locations`. This is an environment/SSL issue pre-existing on HEAD (verified via `git stash`). Not in scope for K17.10 work. Fix is separate infra hygiene.
-
 ---
 
-## 5. Session 45 stats
+## 5. Session 46 stats
 
-| Metric | Before session 45 | After session 45 | Delta |
+| Metric | Before session 46 | After session 46 | Delta |
 |---|---|---|---|
-| `test_pass2_writer.py` tests | 7 | **15** | **+8 (K17.9 + K17.9-R1 CJK test)** |
-| `test_eval_harness.py` tests | 0 | **18** | **+18 (new K17.10)** |
-| K17.4–K17.10 extraction-scoped unit tests | 70 | **≈186** (185 extraction + 18 harness = 203 total; 18 unit harness + 185 K17 pipeline) | — |
-| Golden fixtures | 0 | **3 of 5 planned English** | +3 |
-| Session commits | 0 | **2** (K17.9-R1 landed `7f8702c`; K17.10-partial pending) | — |
-| New deferred items | — | **2** (D-K17.10-01 + D-K17.10-02) | +2 |
-| Production behavior changes | — | 0 | — |
+| Total knowledge-service unit tests | 1026 | **1049** | **+23** |
+| chat-service unit tests | 169 | **169** | stable |
+| Deferred items open | ~24 | ~6 naturally-next-phase + 4 re-deferred + 2 partial + 5 won't-fix | **−16 cleared** |
+| Cycles complete (of 9) | 0 | **6** | +6 |
+| Session commits | 0 | **12** | +12 |
+| Review-impl follow-up commits | 0 | **2** (Cycle 5, Cycle 6) | +2 |
+| New deps | — | `tiktoken>=0.7` (knowledge-service) | +1 |
+| New env knobs | — | `RECENT_MESSAGE_COUNT` | +1 |
 
 ---
 
 ## 6. Housekeeping note
 
-This file is the single, unversioned handoff. **Future sessions MUST update this file in place — do NOT create a `_V19.md`.**
+This file is the single, unversioned handoff. **Future sessions MUST update this file in place — do NOT create a `_V47.md` or similar.**
+
+Track 2 close-out is ~67% done. Cycles 7–9 + Gate 13 + Chaos tests are the remaining scope before Track 2 is closed and we can pick up Track 3 (or resume hobby-project features).
