@@ -18,6 +18,90 @@
 
 ---
 
+## Track 2 Close-out Roadmap (session 46)
+
+> **Why this section exists:** K18 cluster landed in session 46 (commits `d6455b8` → `2025951` → `06e5c30` → `d4527e0`). Mode 3 is live end-to-end, but ~24 Deferred Items remain from across the Track 2 arc. This roadmap splits them into 9 bounded cycles so each can close in a single workflow pass without the "just a bit more" scope drift that kills quality.
+>
+> **Rule:** cycles execute in number order by default. A higher-numbered cycle can jump ahead only if the cycles it depends on are clearly marked as done.
+
+### Cycle 1 — Gate 13 prerequisites (must-ship)
+Two commits. Nothing after this cycle should start until both land.
+
+| Sub | Item | Size | Files |
+|---|---|---|---|
+| 1a | **D-K18.3-01** passage ingestion pipeline | **XL** | K14 consumer gains `chapter.saved` / `chapter.deleted` handlers → `book_client.get_chapter_text` → new chunker → `embedding_client.embed` in batches → `upsert_passage` / `delete_passages_for_source`. |
+| 1b | **K12.4** frontend embedding picker | M | `<EmbeddingModelSelector>` in project-settings UI; reads provider-registry, writes `embedding_model` on project PATCH. |
+
+### Cycle 2 — Small debris sweep
+One commit. Each sub-item is <1h; they're batched because they're leftover polish with no interdependencies.
+
+- **D-PROXY-01** empty-credential guard sweep (provider-registry endpoints)
+- **D-K17.2c-01** router-layer tests for K17.2c
+- **D-K17.10-02** 2 xianxia + 2 Vietnamese golden-set fixtures
+- **D-K16.2-02** `scope_range` threaded through `book_client.count_chapters`
+- **P-K2a-01** + **P-K2a-02** backfill loop + pin-snapshot (glossary)
+- **P-K3-01** + **P-K3-02** shortdesc backfill + PATCH trigger chain (glossary)
+
+### Cycle 3 — Lifecycle + scheduler cleanup
+One commit. Same surface (startup/cron paths).
+
+- **D-K11.3-01** lifespan partial-failure cleanup (wrap startup in try/except so driver/pool/client all close on crash)
+- **D-K11.9-01** reconciler LIMIT + cursor state (resumable from mid-scan)
+- **D-K11.9-02** orphan `ExtractionSource` cleanup
+- **P-K11.9-01** reconciler batching (folds into D-K11.9-01)
+- **P-K15.10-01** quarantine sweep LIMIT + cursor (same scheduler-cleanup theme)
+
+### Cycle 4 — Provider-registry hardening
+One commit. All Go, all provider-registry-service.
+
+- **D-K17.2a-01** Prometheus metrics (`prometheus/client_golang` dep + `/metrics` route + outcome counters)
+- **D-K17.2b-01** tool_calls `ProviderDecodeError` → proper support for `message.content=null + tool_calls[]`
+- **D-K16.2-01** model-specific pricing lookup (drops the `$2/M tokens` placeholder)
+
+### Cycle 5 — Extraction quality + perf
+One commit. All in knowledge-service extraction pipeline.
+
+- **D-K15.5-01** K15.2 all-caps entity fusion fix (stop capturing whole all-caps sentences as one "entity")
+- **P-K15.8-01** entity detection reuse across K15.2/4/5 (detector signature change)
+- **P-K13.0-01** anchor pre-load TTL cache (per `(user_id, book_id)`, ~60s)
+- **P-K18.3-01** query-embedding TTL cache (per `(project_id, model, message_hash)`, ~30s)
+
+### Cycle 6 — RAG quality (Track 2 polish)
+Three commits — each needs golden-set re-measurement after, so separated.
+
+- **6a · D-T2-01** tiktoken swap for CJK token count (cross-service)
+- **6b · D-T2-02** `ts_rank_cd` with normalization flag (K4b RAG quality)
+- **6c · D-T2-03** unify `recent_message_count` constants across chat + knowledge
+
+### Cycle 7 — K18 final polish
+One commit.
+
+- **K18.9** prompt caching hints (`cache_control` markers on stable vs volatile memory-block segments, chat-service opts in)
+- **P-K18.3-02** MMR embedding cosine (optional embedding projection on `find_passages_by_vector` + in-memory reuse in MMR loop)
+
+### Cycle 8 — Large infra (each its own cycle)
+Three separate commits.
+
+- **8a · D-K18.3-02** generative rerank (LM Studio post-MMR reorder, config-gated)
+- **8b · D-T2-04** cross-process cache invalidation (Redis pub/sub for L0/L1)
+- **8c · D-T2-05** glossary breaker half-open probe (`asyncio.Lock` to bound concurrent probes)
+
+### Cycle 9 — Gate-4 alignment
+One commit, depends on Gate 4 being run against live DB.
+
+- **K17.9.1** `project_embedding_benchmark_runs` migration
+
+### Then
+**Gate 13 end-to-end verification → Chaos tests C01–C08 → Track 2 formally closed.**
+
+### Summary
+- **9 cycles, ~12 commits total**
+- Cycles 1–5 are the "must do before Gate 13" tier
+- Cycles 6–8 are polish; can ship post-Gate-13 if scheduling pressure appears
+- Cycle 9 sits behind a separate Gate 4 dependency
+
+---
+
 ## Deferred Items (cross-session tracking)
 
 > **Why this section exists:** during multi-phase builds deferred items tend to drift out of mind. Every item below is something a review found and deliberately postponed rather than ignored. Check this list at the start of every phase — any row whose "Target phase" equals the current phase is a must-do.
