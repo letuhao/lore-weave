@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K16.7 + K16.6 + K16.2–K16.5 + K17.10 + Dockerfile)
-- Updated By: Assistant (session 46 — K16.7 backfill, K16.6 worker-ai, K16.2–K16.5 extraction lifecycle, K17.10-v1 + R1, Dockerfile. 827 tests across 2 services.)
+- Last Updated: 2026-04-18 (session 46 — K16.8 + K16.7 + K16.6 + K16.2–K16.5 + K17.10 + Dockerfile)
+- Updated By: Assistant (session 46 — K16.2–K16.8 extraction lifecycle complete, K17.10-v1 + R1, Dockerfile. 833 tests across 2 services.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: 73eac91 (K16.6b)
+- HEAD: 1aa0834 (K16.7)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -134,6 +134,22 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K16.8 — Delete graph endpoint ✅ (session 46)
+
+**Goal:** `DELETE /v1/knowledge/projects/{id}/extraction/graph` — delete all Neo4j data for a project while keeping raw data.
+
+**Files:**
+- MODIFIED [extraction.py](../../services/knowledge-service/app/routers/public/extraction.py) — DELETE endpoint: project check → 409 if active job → DETACH DELETE per label (Entity/Event/Fact/ExtractionSource) → set project disabled
+- NEW [test_extraction_delete_graph.py](../../services/knowledge-service/tests/unit/test_extraction_delete_graph.py) — 6 tests
+
+**R1 review fixes:**
+1. MED: Documented unbatched DETACH DELETE limitation (ref D-K11.9-01)
+2. LOW: Added Neo4j error test — verifies fail-safe (project state unchanged on Neo4j failure)
+
+**Verify:** 6/6 delete tests, 820/820 knowledge-service, 833 total.
+
+---
 
 ### K16.7 — Backfill handler (items_total population) ✅ (session 46)
 

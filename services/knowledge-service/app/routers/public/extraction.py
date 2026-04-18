@@ -1,7 +1,7 @@
-"""K16.2–K16.3 — Extraction lifecycle endpoints under /v1/knowledge/projects/{id}/extraction.
+"""K16.2–K16.8 — Extraction lifecycle endpoints under /v1/knowledge/projects/{id}/extraction.
 
-K16.2: cost estimation. K16.3: start extraction job.
-K16.4–K16.10 will add pause/resume/cancel/delete/rebuild.
+K16.2: cost estimation. K16.3: start. K16.4: pause/resume/cancel.
+K16.5: job status. K16.8: delete graph.
 
 Authentication: JWT via router-level + per-route dependency (same
 pattern as projects.py — see the double-dependency note there).
@@ -21,6 +21,8 @@ from pydantic import BaseModel, Field
 
 from app.clients.book_client import BookClient
 from app.clients.glossary_client import GlossaryClient
+from app.config import settings as app_settings
+from app.db.neo4j import neo4j_session
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.extraction_jobs import (
     ExtractionJob,
@@ -479,6 +481,94 @@ async def cancel_extraction_job(
         "K16.4: job cancelled job_id=%s trace_id=%s", job.job_id, trace_id,
     )
     return updated
+
+
+# ── K16.8 — Delete graph ──────────────────────────────────────────────
+
+# Neo4j labels to delete per project. Relationships attached to these
+# nodes are auto-deleted by Neo4j's DETACH DELETE.
+_GRAPH_LABELS = ["Entity", "Event", "Fact", "ExtractionSource"]
+
+
+@router.delete(
+    "/{project_id}/extraction/graph",
+    status_code=status.HTTP_200_OK,
+)
+async def delete_extraction_graph(
+    project_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+) -> dict:
+    """Delete all Neo4j graph data for a project. Keeps raw data.
+
+    Deletes :Entity, :Event, :Fact, :ExtractionSource nodes and all
+    their relationships (RELATES_TO, EVIDENCED_BY, etc.) for this
+    project. Sets project.extraction_status = 'disabled'.
+
+    Returns 404 if project doesn't exist. Returns 409 if an extraction
+    job is currently active (must cancel first).
+    """
+    project = await projects_repo.get(user_id, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="project not found",
+        )
+
+    # Block delete if an active job exists
+    active = await jobs_repo.list_active(user_id)
+    for j in active:
+        if j.project_id == project_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"cannot delete graph while job {j.job_id} is active (status={j.status}); cancel it first",
+            )
+
+    if not app_settings.neo4j_uri:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Neo4j not configured",
+        )
+
+    # Delete all project-scoped nodes from Neo4j.
+    # NOTE: unbatched DETACH DELETE — loads all matching nodes in one
+    # transaction. Acceptable at hobby scale; for 100K+ node projects
+    # this would need CALL { ... } IN TRANSACTIONS batching (same
+    # limitation as D-K11.9-01 reconciler).
+    deleted_total = 0
+    async with neo4j_session() as session:
+        for label in _GRAPH_LABELS:
+            result = await session.run(
+                f"MATCH (n:{label}) "
+                "WHERE n.user_id = $user_id AND n.project_id = $project_id "
+                "DETACH DELETE n "
+                "RETURN count(n) AS deleted",
+                user_id=str(user_id),
+                project_id=str(project_id),
+            )
+            record = await result.single()
+            count = record["deleted"] if record else 0
+            deleted_total += count
+
+    # Update project state
+    await projects_repo.set_extraction_state(
+        user_id, project_id,
+        extraction_enabled=False,
+        extraction_status="disabled",
+    )
+
+    trace_id = trace_id_var.get()
+    logger.info(
+        "K16.8: graph deleted project_id=%s nodes=%d trace_id=%s",
+        project_id, deleted_total, trace_id,
+    )
+
+    return {
+        "project_id": str(project_id),
+        "nodes_deleted": deleted_total,
+        "extraction_status": "disabled",
+    }
 
 
 # ── K16.5 — Job status + project job list ────────────────────────────
