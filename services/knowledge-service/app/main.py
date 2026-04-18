@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -52,14 +53,50 @@ async def lifespan(app: FastAPI):
     # Track 1 mode skips this entirely.
     if settings.neo4j_uri:
         await run_neo4j_schema(get_neo4j_driver())
+    # K14.1 — start event consumer as background task.
+    # Imports inline to avoid circular imports (consumer needs pool).
+    consumer_task = None
+    try:
+        from app.events.consumer import EventConsumer
+        from app.events.dispatcher import EventDispatcher
+        from app.events.handlers import (
+            handle_chat_turn,
+            handle_chapter_saved,
+            handle_chapter_deleted,
+        )
+
+        dispatcher = EventDispatcher()
+        dispatcher.register("chat.turn_completed", handle_chat_turn)
+        dispatcher.register("chapter.saved", handle_chapter_saved)
+        dispatcher.register("chapter.deleted", handle_chapter_deleted)
+
+        consumer = EventConsumer(
+            redis_url=settings.redis_url,
+            pool=get_knowledge_pool(),
+            dispatcher=dispatcher,
+        )
+        consumer_task = asyncio.create_task(consumer.run())
+        logger.info("K14.1: event consumer started as background task")
+    except Exception:
+        logger.warning("K14.1: event consumer failed to start (non-fatal)", exc_info=True)
+
     logger.info("knowledge-service started on port %d", settings.port)
     try:
         yield
     finally:
+        # Stop event consumer first
+        if consumer_task is not None:
+            try:
+                await consumer.stop()
+                consumer_task.cancel()
+                try:
+                    await consumer_task
+                except asyncio.CancelledError:
+                    pass
+            except Exception:
+                logger.warning("Error stopping event consumer", exc_info=True)
+
         # Phase 3 review issue 8: close in reverse dependency order.
-        # ProviderClient is a leaf (nothing downstream depends on it)
-        # so tear it down first, then glossary, then Neo4j, then DB
-        # pools.
         await close_provider_client()
         await close_embedding_client()
         await close_book_client()

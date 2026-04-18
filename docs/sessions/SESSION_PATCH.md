@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K12.1-K12.3 + K11.10 + K15.11 + K17.11-12 + K16 + K17.10 + Dockerfile)
-- Updated By: Assistant (session 46 — K12.1-K12.3 embedding pipeline, K11.10/K15.11/K17.11-12, K16 complete, K17.10. 870 tests across 2 services + Go.)
+- Last Updated: 2026-04-18 (session 46 — K14 Redis event pipeline + workflow-gate fix + K12 + K11.10 + K15.11 + K17.11-12 + K16 + K17.10 + Dockerfile)
+- Updated By: Assistant (session 46 — K14 Redis event consumer (8 tasks), workflow-gate Python rewrite + pre-commit hook, K12.1-K12.3, K11.10/K15.11/K17.11-12, K16 complete, K17.10. 893 tests.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: d7e29cb (K11.10+K15.11+K17.12-R1)
+- HEAD: 3f02c49 (workflow-gate fix)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -134,6 +134,42 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K14 — Redis Streams event pipeline ✅ (session 46)
+
+**Goal:** Complete event consumer pipeline for knowledge-service — all 8 K14 tasks.
+
+**New files (4):**
+- [app/events/consumer.py](../../services/knowledge-service/app/events/consumer.py) — K14.1+K14.2+K14.8: XREADGROUP loop, pending catch-up, DLQ with retry counter
+- [app/events/dispatcher.py](../../services/knowledge-service/app/events/dispatcher.py) — K14.3: event_type→handler routing
+- [app/events/gating.py](../../services/knowledge-service/app/events/gating.py) — K14.4: should_extract with 10s TTL cache
+- [app/events/handlers.py](../../services/knowledge-service/app/events/handlers.py) — K14.5-K14.7: chat turn, chapter saved, chapter deleted
+
+**Modified:**
+- requirements.txt: added `redis[hiredis]>=5.0`
+- migrate.py: `dead_letter_events` table
+- main.py: consumer started as background asyncio task in lifespan
+
+**Streams:** `loreweave:events:chapter`, `loreweave:events:chat`, `loreweave:events:glossary` (MAXLEN 10000)
+**Consumer group:** `knowledge-extractor`
+
+**R1 review fixes (4 issues):**
+1. HIGH: book-service outbox has no `user_id` in payload — handlers now resolve user_id from `knowledge_projects.user_id` via book_id (globally unique)
+2. MED: chat handler falls back to DB lookup when user_id missing from payload
+3. LOW: `extraction_pending` DELETE now scopes by `user_id` (defense-in-depth)
+4. LOW: `_process_pending` backpressure documented (handlers queue cheaply)
+
+**Verify:** 23/23 K14 tests, 880/880 full suite. 893 total.
+
+---
+
+### Workflow-gate Python rewrite ✅ (session 46)
+
+**Root cause:** bash `workflow-gate.sh` failed on Windows — conda's Python activation injected `goto :error` batch syntax into inline Python subprocesses, silently corrupting state writes.
+
+**Fix:** [scripts/workflow-gate.py](../../scripts/workflow-gate.py) — Python rewrite, cross-platform. [.git/hooks/pre-commit](../../.git/hooks/pre-commit) runs it on every commit. Blocks commits unless VERIFY + POST-REVIEW + SESSION completed. No state file → no enforcement (harmless no-op).
+
+---
 
 ### K12.1–K12.3 — BYOK embedding pipeline ✅ (session 46)
 

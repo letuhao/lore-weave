@@ -298,6 +298,25 @@ CREATE INDEX IF NOT EXISTS idx_extraction_errors_job
 
 CREATE INDEX IF NOT EXISTS idx_extraction_errors_project
   ON extraction_errors (project_id, created_at DESC);
+
+-- ═══════════════════════════════════════════════════════════════
+-- K14.8 — dead letter events for the event consumer
+-- Events that exhausted retry attempts go here for manual inspection.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS dead_letter_events (
+  dlq_id          UUID PRIMARY KEY DEFAULT uuidv7(),
+  stream          TEXT NOT NULL,
+  message_id      TEXT NOT NULL,
+  event_type      TEXT NOT NULL,
+  aggregate_id    TEXT,
+  payload         JSONB,
+  error           TEXT,
+  retry_count     INT NOT NULL DEFAULT 0,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_dlq_created
+  ON dead_letter_events (created_at DESC);
 """
 
 

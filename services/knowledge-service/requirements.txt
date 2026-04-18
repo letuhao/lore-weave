@@ -13,6 +13,8 @@ PyYAML>=6.0
 # gated on NEO4J_URI being set; the import itself is unconditional
 # but driver init only fires when configured.
 neo4j>=5.27
+# K14.1 — Redis Streams consumer for event pipeline.
+redis[hiredis]>=5.0
 # K15.3 — language detection for per-language pattern dispatch.
 # Port of Google's language-detection library; pure Python, no
 # native deps. Seeded for deterministic output in app code.
