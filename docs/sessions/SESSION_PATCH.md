@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K16.3 start job + K16.2 estimate + K17.10 + Dockerfile)
-- Updated By: Assistant (session 46 — K16.3 start extraction job, K16.2 cost estimation, K17.10-v1 fixtures, K17.10-R1 review fixes, multi-stage Dockerfile. 782 tests.)
+- Last Updated: 2026-04-18 (session 46 — K16.4 + K16.3 + K16.2 + K17.10 + Dockerfile)
+- Updated By: Assistant (session 46 — K16.4 pause/resume/cancel, K16.3 start job, K16.2 estimate, K17.10-v1 fixtures + R1, Dockerfile. 796 tests.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: bdf029f (K16.2)
+- HEAD: 8c488f3 (K16.3)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -134,6 +134,31 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K16.4 — Pause/resume/cancel extraction endpoints ✅ (session 46)
+
+**Goal:** Three state-transition endpoints for extraction job lifecycle control.
+
+**Files:**
+- MODIFIED [services/knowledge-service/app/routers/public/extraction.py](../../services/knowledge-service/app/routers/public/extraction.py) — pause/resume/cancel endpoints + `_validate_or_409` + `_get_active_job_for_project` helpers
+- NEW [services/knowledge-service/tests/unit/test_extraction_lifecycle.py](../../services/knowledge-service/tests/unit/test_extraction_lifecycle.py) — 14 unit tests
+
+**Key design decisions:**
+- State transitions validated via K16.1 `validate_transition`, mapped to 409 via `_validate_or_409` helper
+- Pause/resume mirror job state to project (`extraction_status='paused'`/`'building'`) so frontend can show status without separate job fetch
+- Cancel sets project `extraction_status='disabled'` per spec; non-atomic with job update (documented, job is source of truth)
+- `_validate_or_409` typed with `JobStatus` + `PauseReason` Literals
+
+**R1 review fixes (5 issues):**
+1. MED: Non-atomic cancel documented with K16.6 reconciliation note
+2. LOW: Pause/resume now sync project extraction_status
+3. LOW: 3 new tests assert `set_extraction_state` called with correct args
+4. LOW: TODO comment on `list_active` efficiency
+5. COSMETIC: `_validate_or_409` params typed as `JobStatus`/`PauseReason`
+
+**Verify:** 14/14 lifecycle tests, 796/796 full suite. Zero regressions.
+
+---
 
 ### K16.3 — Start extraction job endpoint ✅ (session 46)
 

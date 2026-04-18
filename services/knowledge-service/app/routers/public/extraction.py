@@ -36,7 +36,7 @@ from app.deps import (
     get_glossary_client,
     get_projects_repo,
 )
-from app.jobs.state_machine import validate_transition
+from app.jobs.state_machine import JobStatus, PauseReason, StateTransitionError, validate_transition
 from app.logging_config import trace_id_var
 from app.middleware.jwt_auth import get_current_user
 
@@ -315,3 +315,167 @@ async def start_extraction_job(
         job_id, project_id, body.scope, trace_id,
     )
     return job
+
+
+# ── K16.4 — Pause / Resume / Cancel ─────────────────────────────────
+
+
+def _validate_or_409(
+    current: JobStatus, new: JobStatus, *, trace_id: str, pause_reason: PauseReason | None = None,
+) -> None:
+    """Validate a state transition, raising 409 on invalid."""
+    try:
+        validate_transition(
+            current, new, trace_id=trace_id, pause_reason=pause_reason,
+        )
+    except StateTransitionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        )
+
+
+async def _get_active_job_for_project(
+    user_id: UUID,
+    project_id: UUID,
+    jobs_repo: ExtractionJobsRepo,
+    projects_repo: ProjectsRepo,
+) -> ExtractionJob:
+    """Shared helper: verify project ownership and find the active job.
+
+    Raises 404 if the project doesn't exist or has no active job.
+    """
+    project = await projects_repo.get(user_id, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="project not found",
+        )
+    # TODO: add a project-scoped active-job lookup if this becomes a
+    # performance concern. list_active fetches all active jobs across
+    # all projects; fine at hobby scale (unique index limits one per project).
+    active = await jobs_repo.list_active(user_id)
+    for j in active:
+        if j.project_id == project_id:
+            return j
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="no active extraction job for this project",
+    )
+
+
+@router.post(
+    "/{project_id}/extraction/pause",
+    response_model=ExtractionJob,
+)
+async def pause_extraction_job(
+    project_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+) -> ExtractionJob:
+    """Pause a running extraction job (user-initiated)."""
+    job = await _get_active_job_for_project(
+        user_id, project_id, jobs_repo, projects_repo,
+    )
+    trace_id = trace_id_var.get()
+    _validate_or_409(
+        job.status, "paused", trace_id=trace_id, pause_reason="user",
+    )
+    updated = await jobs_repo.update_status(user_id, job.job_id, "paused")
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="job status changed concurrently",
+        )
+    # Mirror job state to project so the frontend can show paused
+    # without a separate job-status fetch.
+    await projects_repo.set_extraction_state(
+        user_id, project_id,
+        extraction_enabled=True,
+        extraction_status="paused",
+    )
+    logger.info(
+        "K16.4: job paused job_id=%s trace_id=%s", job.job_id, trace_id,
+    )
+    return updated
+
+
+@router.post(
+    "/{project_id}/extraction/resume",
+    response_model=ExtractionJob,
+)
+async def resume_extraction_job(
+    project_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+) -> ExtractionJob:
+    """Resume a paused extraction job."""
+    job = await _get_active_job_for_project(
+        user_id, project_id, jobs_repo, projects_repo,
+    )
+    trace_id = trace_id_var.get()
+    _validate_or_409(
+        job.status, "running", trace_id=trace_id,
+    )
+    updated = await jobs_repo.update_status(user_id, job.job_id, "running")
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="job status changed concurrently",
+        )
+    # Mirror job state back to project.
+    await projects_repo.set_extraction_state(
+        user_id, project_id,
+        extraction_enabled=True,
+        extraction_status="building",
+    )
+    logger.info(
+        "K16.4: job resumed job_id=%s trace_id=%s", job.job_id, trace_id,
+    )
+    return updated
+
+
+@router.post(
+    "/{project_id}/extraction/cancel",
+    response_model=ExtractionJob,
+)
+async def cancel_extraction_job(
+    project_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+) -> ExtractionJob:
+    """Cancel an extraction job. Preserves partial graph.
+
+    Transitions project.extraction_status to 'disabled' per K16.4 spec.
+    """
+    job = await _get_active_job_for_project(
+        user_id, project_id, jobs_repo, projects_repo,
+    )
+    trace_id = trace_id_var.get()
+    _validate_or_409(
+        job.status, "cancelled", trace_id=trace_id,
+    )
+    updated = await jobs_repo.update_status(user_id, job.job_id, "cancelled")
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="job status changed concurrently",
+        )
+    # Update project extraction status — partial graph is preserved.
+    # NOTE: this is NOT atomic with the job status update above. If the
+    # process crashes between the two, the project stays 'building'
+    # pointing at a cancelled job. The job status is the source of truth;
+    # the project status is advisory. K16.6 worker should reconcile
+    # project state on job completion/cancellation.
+    await projects_repo.set_extraction_state(
+        user_id, project_id,
+        extraction_enabled=False,
+        extraction_status="disabled",
+    )
+    logger.info(
+        "K16.4: job cancelled job_id=%s trace_id=%s", job.job_id, trace_id,
+    )
+    return updated
