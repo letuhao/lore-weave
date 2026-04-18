@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-17 (session 45 — K17.10-partial golden-set harness + 3 of 5 fixtures)
-- Updated By: Assistant (session 45 — K17.10-partial: pure-logic eval harness (precision/recall/FP-trap with K15.1 + K17.5 canonicalizers), 18/18 unit tests, opt-in pytest marker, 3 English fixtures. 2 remaining English fixtures blocked by Anthropic output content filter; see handoff.)
-- Active Branch: `main` (ahead of origin by session 38–45 commits — user pushes manually)
-- HEAD: K17.10-partial (pending commit)
+- Last Updated: 2026-04-18 (session 46 — knowledge-service Dockerfile multi-stage build)
+- Updated By: Assistant (session 46 — multi-stage Dockerfile: deps/test/production stages, .dockerignore, 757/757 tests pass in Docker)
+- Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
+- HEAD: bbe2d08 (K17.10-partial)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -131,6 +131,26 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### DOCKER-KS — knowledge-service Dockerfile multi-stage build ✅ (session 46)
+
+**Goal:** Harden the knowledge-service Dockerfile with multi-stage build (deps/test/production), add `.dockerignore`, enable `docker build --target test` as a CI gate.
+
+**Files:**
+- MODIFIED [services/knowledge-service/Dockerfile](../../services/knowledge-service/Dockerfile) — 3-stage build: `deps` (pip install cached), `test` (runs 757 unit tests), `production` (slim final image, non-root user)
+- NEW [services/knowledge-service/.dockerignore](../../services/knowledge-service/.dockerignore) — excludes .git, __pycache__, caches, README
+
+**Key decisions:**
+- Test secrets passed as inline `RUN` env vars (not `ENV`) to avoid Docker build warnings and layer leakage.
+- `eval/` included in test stage (needed by `test_benchmark_metrics.py`), excluded from production via selective `COPY`.
+- Pinned `python:3.12-slim` matching chat-service baseline.
+
+**Verify evidence:**
+- `docker build --target production .` — clean build, deps cached
+- `docker build --target test .` — **757/757 pass in 3.08s** inside Linux container
+- Pre-existing SSL/truststore failures (`test_config.py`, `test_circuit_breaker.py`, `test_glossary_client.py`) confirmed resolved in both local Windows (Python 3.13.12) and Docker (Python 3.12) — upstream truststore fix, no code change needed.
+
+---
 
 ### K17.10-partial — Golden-set extraction-quality eval (harness + 3/5 fixtures) ⚠ (session 45, Track 2)
 
