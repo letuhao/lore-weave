@@ -2233,17 +2233,31 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		return
 	}
 
-	// Validate model is embedding-capable
+	// Resolve adapter for the provider kind
 	adapter, err := provider.ResolveAdapter(providerKind, s.invokeClient)
 	if err != nil {
 		writeError(w, http.StatusConflict, "EMBED_PROVIDER_ERROR", "failed to resolve adapter")
 		return
 	}
 
-	// Dispatch embedding call
-	result, err := provider.Embed(r.Context(), adapter, endpointBaseURL, secret, providerModelName, in.Texts)
+	// TODO(K12.1): validate that providerModelName is classified as
+	// capability="embedding" before dispatching. Currently relies on
+	// the upstream provider rejecting non-embedding models with a 4xx.
+	// Proper fix: store capability per user_model row, or query the
+	// adapter's ListModels + classify.
+
+	// Dispatch embedding call — pass invokeClient (no fixed timeout,
+	// request context controls cancellation)
+	result, err := provider.Embed(r.Context(), adapter, s.invokeClient, endpointBaseURL, secret, providerModelName, in.Texts)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "EMBED_PROVIDER_FAILED", err.Error())
+		errMsg := err.Error()
+		// Map upstream 4xx (bad model, unsupported) to 400 so the caller
+		// can distinguish "wrong model" from "provider down."
+		if strings.Contains(errMsg, "provider error 4") || strings.Contains(errMsg, "does not support") {
+			writeError(w, http.StatusBadRequest, "EMBED_MODEL_INVALID", errMsg)
+			return
+		}
+		writeError(w, http.StatusBadGateway, "EMBED_PROVIDER_FAILED", errMsg)
 		return
 	}
 

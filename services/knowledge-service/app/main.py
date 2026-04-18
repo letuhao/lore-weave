@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.clients.book_client import close_book_client, get_book_client
+from app.clients.embedding_client import close_embedding_client, get_embedding_client
 from app.clients.glossary_client import close_glossary_client, init_glossary_client
 from app.clients.provider_client import close_provider_client, get_provider_client
 from app.config import settings
@@ -35,6 +36,8 @@ async def lifespan(app: FastAPI):
     init_glossary_client()
     # K16.2 — long-lived httpx client for book-service chapter counts.
     get_book_client()
+    # K12.2 — long-lived httpx client for embedding calls.
+    get_embedding_client()
     # K17.2 — long-lived httpx client for provider-registry BYOK LLM
     # calls. Singleton is lazy-constructed by the first get_provider_client
     # call, but we touch it here so a misconfigured base URL surfaces at
@@ -58,6 +61,7 @@ async def lifespan(app: FastAPI):
         # so tear it down first, then glossary, then Neo4j, then DB
         # pools.
         await close_provider_client()
+        await close_embedding_client()
         await close_book_client()
         await close_glossary_client()
         await close_neo4j_driver()

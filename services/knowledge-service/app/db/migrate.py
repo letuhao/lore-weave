@@ -184,7 +184,9 @@ ALTER TABLE knowledge_projects
   ADD COLUMN IF NOT EXISTS stat_glossary_count    INT NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS stat_updated_at        TIMESTAMPTZ;
 
--- K12.3 — embedding config
+-- K12.3 — embedding config. These columns are accessed via direct SQL
+-- (same pattern as budget columns), NOT through the Project Pydantic
+-- model or _SELECT_COLS — kept separate to avoid bloating generic reads.
 ALTER TABLE knowledge_projects
   ADD COLUMN IF NOT EXISTS embedding_provider_id  UUID,
   ADD COLUMN IF NOT EXISTS embedding_dimension    INT;

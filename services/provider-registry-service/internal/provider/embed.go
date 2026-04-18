@@ -14,33 +14,32 @@ type EmbedResult struct {
 	Model      string      `json:"model"`
 }
 
-// defaultClient is a package-level HTTP client for embedding calls.
-// Reuses the same client for all providers (connection pooling).
-var defaultClient = &http.Client{}
-
 // Embed dispatches an embedding call to the correct provider endpoint.
-// Each adapter knows its own endpoint shape:
+// The caller passes the HTTP client (typically the server's invokeClient
+// which has no fixed timeout — context deadline controls cancellation).
+//
+// Provider endpoint shapes:
 //   - OpenAI/LM Studio: POST /v1/embeddings {model, input}
 //   - Ollama:           POST /api/embed {model, input}
 //   - Anthropic:        no embedding support → error
-func Embed(ctx context.Context, adapter Adapter, endpointBaseURL, secret, model string, texts []string) (*EmbedResult, error) {
+func Embed(ctx context.Context, adapter Adapter, client *http.Client, endpointBaseURL, secret, model string, texts []string) (*EmbedResult, error) {
 	switch adapter.(type) {
 	case *openaiAdapter:
-		return embedOpenAI(ctx, endpointBaseURL, secret, model, texts)
+		return embedOpenAI(ctx, client, endpointBaseURL, secret, model, texts)
 	case *lmStudioAdapter:
-		return embedOpenAI(ctx, endpointBaseURL, secret, model, texts)
+		return embedOpenAI(ctx, client, endpointBaseURL, secret, model, texts)
 	case *ollamaAdapter:
-		return embedOllama(ctx, endpointBaseURL, model, texts)
+		return embedOllama(ctx, client, endpointBaseURL, model, texts)
 	case *anthropicAdapter:
 		return nil, fmt.Errorf("anthropic does not support embeddings")
 	default:
 		// Custom/unknown adapters: try OpenAI-compatible path
-		return embedOpenAI(ctx, endpointBaseURL, secret, model, texts)
+		return embedOpenAI(ctx, client, endpointBaseURL, secret, model, texts)
 	}
 }
 
 // embedOpenAI calls POST /v1/embeddings (OpenAI-compatible).
-func embedOpenAI(ctx context.Context, endpointBaseURL, secret, model string, texts []string) (*EmbedResult, error) {
+func embedOpenAI(ctx context.Context, client *http.Client, endpointBaseURL, secret, model string, texts []string) (*EmbedResult, error) {
 	base := strings.TrimRight(endpointBaseURL, "/")
 	if base == "" {
 		base = openaiBaseURL
@@ -53,7 +52,7 @@ func embedOpenAI(ctx context.Context, endpointBaseURL, secret, model string, tex
 		"model": model,
 		"input": texts,
 	}
-	out, err := postJSON(ctx, defaultClient, base+"/v1/embeddings", headers, payload)
+	out, err := postJSON(ctx, client, base+"/v1/embeddings", headers, payload)
 	if err != nil {
 		return nil, fmt.Errorf("embedding call failed: %w", err)
 	}
@@ -61,7 +60,7 @@ func embedOpenAI(ctx context.Context, endpointBaseURL, secret, model string, tex
 }
 
 // embedOllama calls POST /api/embed (Ollama native).
-func embedOllama(ctx context.Context, endpointBaseURL, model string, texts []string) (*EmbedResult, error) {
+func embedOllama(ctx context.Context, client *http.Client, endpointBaseURL, model string, texts []string) (*EmbedResult, error) {
 	base := strings.TrimRight(endpointBaseURL, "/")
 	if base == "" {
 		base = ollamaDefaultBase
@@ -70,7 +69,7 @@ func embedOllama(ctx context.Context, endpointBaseURL, model string, texts []str
 		"model": model,
 		"input": texts,
 	}
-	out, err := postJSON(ctx, defaultClient, base+"/api/embed", nil, payload)
+	out, err := postJSON(ctx, client, base+"/api/embed", nil, payload)
 	if err != nil {
 		return nil, fmt.Errorf("ollama embedding call failed: %w", err)
 	}
