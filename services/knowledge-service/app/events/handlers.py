@@ -81,10 +81,17 @@ async def handle_chat_turn(event: EventData, *, pool: asyncpg.Pool) -> None:
 async def handle_chapter_saved(event: EventData, *, pool: asyncpg.Pool) -> None:
     """K14.6 — chapter.saved handler.
 
-    Same pattern as chat turn: queue in extraction_pending.
-    Worker-ai will process via book-service chapter text lookup.
+    Two side effects:
+      1. Queue the chapter in `extraction_pending` so worker-ai can
+         run Pass 2 LLM extraction later (K14.6 original).
+      2. **D-K18.3-01**: ingest passages for K18.3 L3 semantic search
+         (fetch text → chunk → embed → upsert `:Passage` nodes).
 
-    Note: book-service outbox payload is {"book_id": "<uuid>"} — no
+    Both are idempotent and independent — passage ingestion runs
+    even if extraction is paused/disabled on the project, because L3
+    passages are useful for Mode 3 regardless of extraction state.
+
+    Note: book-service outbox payload is `{"book_id": "<uuid>"}` — no
     user_id. We resolve user_id from knowledge_projects via book_id
     (book_id is globally unique).
     """
@@ -96,9 +103,14 @@ async def handle_chapter_saved(event: EventData, *, pool: asyncpg.Pool) -> None:
         logger.warning("chapter.saved missing chapter_id or book_id: %s", event.message_id)
         return
 
-    # Look up project + user via book_id (globally unique, no user_id needed)
+    # Look up project + user + embedding config via book_id (globally unique).
+    # We pull embedding_model + embedding_dimension so the ingester doesn't
+    # need to re-query the project row.
     project_row = await pool.fetchrow(
-        "SELECT project_id, user_id FROM knowledge_projects WHERE book_id = $1 LIMIT 1",
+        """
+        SELECT project_id, user_id, embedding_model, embedding_dimension
+        FROM knowledge_projects WHERE book_id = $1 LIMIT 1
+        """,
         book_id,
     )
     if project_row is None:
@@ -107,7 +119,10 @@ async def handle_chapter_saved(event: EventData, *, pool: asyncpg.Pool) -> None:
 
     project_id = project_row["project_id"]
     user_id = project_row["user_id"]
+    embedding_model = project_row["embedding_model"]
+    embedding_dim = project_row["embedding_dimension"]
 
+    # 1. Queue for Pass 2 extraction.
     repo = ExtractionPendingRepo(pool)
     await repo.queue_event(
         user_id,
@@ -119,8 +134,60 @@ async def handle_chapter_saved(event: EventData, *, pool: asyncpg.Pool) -> None:
             aggregate_id=_uuid(chapter_id) or project_id,
         ),
     )
+    logger.info(
+        "K14.6: chapter.saved queued for extraction: chapter=%s project=%s",
+        chapter_id, project_id,
+    )
 
-    logger.info("K14.6: chapter.saved queued: chapter=%s project=%s", chapter_id, project_id)
+    # 2. D-K18.3-01: ingest passages for L3 semantic search.
+    if not embedding_model or not embedding_dim:
+        logger.debug(
+            "D-K18.3-01: skipping passage ingest — project %s has no "
+            "embedding_model/embedding_dimension configured",
+            project_id,
+        )
+        return
+
+    # Inline imports avoid circular imports at module load (events.consumer
+    # loads handlers at startup before the Neo4j driver is wired). Keep
+    # imports OUTSIDE the try/except below so an ImportError crashes
+    # loud — swallowing it as "non-fatal" would mask refactor bugs.
+    from app.config import settings
+
+    if not settings.neo4j_uri:
+        logger.debug(
+            "D-K18.3-01: skipping passage ingest — NEO4J_URI unset (Track 1 mode)"
+        )
+        return
+
+    from app.clients.book_client import get_book_client
+    from app.clients.embedding_client import get_embedding_client
+    from app.db.neo4j import neo4j_session
+    from app.extraction.passage_ingester import ingest_chapter_passages
+
+    chapter_uuid = _uuid(chapter_id)
+    if chapter_uuid is None:
+        return
+
+    try:
+        async with neo4j_session() as session:
+            await ingest_chapter_passages(
+                session,
+                get_book_client(),
+                get_embedding_client(),
+                user_id=user_id,
+                project_id=project_id,
+                book_id=book_id,
+                chapter_id=chapter_uuid,
+                chapter_index=None,  # book-service doesn't expose sort_order here yet
+                embedding_model=embedding_model,
+                embedding_dim=embedding_dim,
+            )
+    except Exception:
+        logger.warning(
+            "D-K18.3-01: passage ingest failed for chapter=%s project=%s — non-fatal",
+            chapter_id, project_id, exc_info=True,
+        )
 
 
 async def handle_chapter_deleted(event: EventData, *, pool: asyncpg.Pool) -> None:
@@ -163,11 +230,16 @@ async def handle_chapter_deleted(event: EventData, *, pool: asyncpg.Pool) -> Non
         )
 
         # Neo4j cascade — delete ExtractionSource + orphaned entities
-        # This requires Neo4j which may not be configured. Do best-effort.
+        # + D-K18.3-01 :Passage nodes for this chapter. Best-effort
+        # (Neo4j may not be configured).
         try:
             from app.config import settings
             if settings.neo4j_uri:
                 from app.db.neo4j import neo4j_session
+                from app.extraction.passage_ingester import (
+                    delete_chapter_passages,
+                )
+                chapter_uuid = _uuid(chapter_id)
                 async with neo4j_session() as session:
                     # Delete extraction source and cascade
                     await session.run(
@@ -180,9 +252,19 @@ async def handle_chapter_deleted(event: EventData, *, pool: asyncpg.Pool) -> Non
                         user_id=str(user_id),
                         project_id=str(project_id),
                     )
+                    # D-K18.3-01: drop the chapter's passages too.
+                    if chapter_uuid is not None:
+                        passage_count = await delete_chapter_passages(
+                            session,
+                            user_id=user_id,
+                            chapter_id=chapter_uuid,
+                        )
+                    else:
+                        passage_count = 0
                     logger.info(
-                        "K14.7: chapter deleted cascade: chapter=%s project=%s",
-                        chapter_id, project_id,
+                        "K14.7: chapter deleted cascade: chapter=%s project=%s "
+                        "passages_deleted=%d",
+                        chapter_id, project_id, passage_count,
                     )
         except Exception:
             logger.warning(

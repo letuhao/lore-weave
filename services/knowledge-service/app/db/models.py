@@ -35,6 +35,9 @@ class Project(BaseModel):
     extraction_enabled: bool
     extraction_status: ExtractionStatus
     embedding_model: str | None = None
+    # K12.3 column surfaced for K18.3 / D-K18.3-01 ingestion; the
+    # passage_ingester + L3 selector need the dim at call time.
+    embedding_dimension: int | None = None
     extraction_config: dict
     last_extracted_at: datetime | None = None
     estimated_cost_usd: Decimal

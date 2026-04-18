@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K18 commit 3 of 3 FINAL: K18.7 token budget + K18.8 dispatcher flip. Mode 3 now live. K18.10 falls out naturally. Plus K18 commits 1–2, K13 full, K14, K17/K16/etc.)
-- Updated By: Assistant (session 46 — K18.7 budget enforcer with priority drops + K18.8 dispatcher flip (Mode 3 routes via extraction_enabled); chat-service integration automatic via kctx.recent_message_count. 1035 knowledge-service tests.)
+- Last Updated: 2026-04-18 (session 46 — Cycle 1a D-K18.3-01 passage ingestion pipeline live. Mode 3 now end-to-end with real data: chapter.saved → chunk → embed → upsert_passage. Plus all prior K18 cluster, K13 full, K14, etc.)
+- Updated By: Assistant (session 46 — Cycle 1a of Track 2 close-out: passage ingester + chunker + book_client.get_chapter_text + handler wiring + Project.embedding_dimension surfaced. 1060 knowledge-service tests.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: 06e5c30 (K18.3-R1 review-impl fixes) → K18 commit 3 FINAL pending
+- HEAD: 4b8d4af (roadmap) → Cycle 1a commit pending
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -223,6 +223,53 @@ One commit, depends on Gate 4 being run against live DB.
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### Cycle 1a — D-K18.3-01 passage ingestion pipeline ✅ (session 46)
+
+**Mode 3 is now end-to-end with real data.** Every chapter saved in book-service propagates through: outbox → worker-infra relay → Redis stream → knowledge-service K14 consumer → K18.3 ingester → `:Passage` nodes. The L3 selector built in K18 commit 2 now has something to retrieve.
+
+**First cycle of the Track 2 close-out roadmap.** Deferral D-K18.3-01 is cleared.
+
+**New files (3):**
+- [app/extraction/passage_ingester.py](../../services/knowledge-service/app/extraction/passage_ingester.py) — `chunk_text(text, target_chars=1500, overlap_chars=200, min_chunk_chars=100)` with paragraph-first → sentence-fallback → char-cut layering; `_tail_at_word_boundary()` helper so overlap doesn't slice mid-word; `ingest_chapter_passages()` orchestrator (fetch → chunk → embed batch → delete stale → upsert N); `delete_chapter_passages()` for the .deleted handler.
+- [tests/unit/test_passage_ingester.py](../../services/knowledge-service/tests/unit/test_passage_ingester.py) — NEW with 14 cases (empty, tiny drop, single fit, multi-pack, oversized split, boundary constants, word-boundary helper direct, mid-word property check, unsupported dim skip, null text, embed fail, happy path, per-chunk dim mismatch, delete delegation).
+- [tests/unit/test_book_client.py](../../services/knowledge-service/tests/unit/test_book_client.py) — NEW with 7 cases for the HTTP client (including the new `get_chapter_text` method).
+
+**Modified (4):**
+- [app/clients/book_client.py](../../services/knowledge-service/app/clients/book_client.py) — `get_chapter_text(book_id, chapter_id) → str | None`. Calls `/internal/books/{id}/chapters/{id}.text_content` (already built by book-service from `chapter_blocks`). Safe-default `None` on any failure.
+- [app/events/handlers.py](../../services/knowledge-service/app/events/handlers.py) — `handle_chapter_saved` now ingests passages **after** queuing the extraction_pending row. Independent side effects; passage ingestion runs even if extraction is paused. `handle_chapter_deleted` also drops the chapter's passages in the same Neo4j cascade block.
+- [app/db/models.py](../../services/knowledge-service/app/db/models.py) — `Project.embedding_dimension: int | None = None` surfaced (K12.3 wrote the column but never exposed it to Python). Required so the handler can pass `embedding_dim` to the ingester without a fallback-table dance.
+- [app/db/repositories/projects.py](../../services/knowledge-service/app/db/repositories/projects.py) — `_SELECT_COLS` gains `embedding_dimension`.
+- [tests/unit/test_event_handlers.py](../../services/knowledge-service/tests/unit/test_event_handlers.py) — 1 existing case updated (project_row now includes embedding fields), +2 new cases (ingestion fires when configured, skips cleanly when not).
+
+**Review-impl fixes before commit:**
+1. **HIGH** — handler lazy imports were inside `try/except`, so any future `ImportError` would log silently as "ingest failed — non-fatal". Moved imports OUT of the `try`, kept only orchestrated logic inside.
+2. **MEDIUM** — chunker overlap-prefix could start mid-word (`"...thed fire on Arth"`). New `_tail_at_word_boundary` helper snaps overlap to whitespace. Falls back to raw tail for CJK / whitespace-free scripts since sub-word tokenization handles those at embed time.
+
+**Known limitations (documented, not blockers):**
+- Chunker joins same-paragraph sentences with `"\n\n"` — stored `text` has extra paragraph-breaks compared to original. Embeddings are robust to this.
+- Sentence-split regex misses abbreviations (`"Mr. Smith"`) and decimals (`"3.14 pi"`). MVP limitation; a real fix needs spaCy or similar.
+- `chapter_index=None` forwarded — book-service outbox payload doesn't ship `sort_order`. Recency weighting in L3 still works via the pool-anchor fallback built in K18.3-R1.
+
+**End-to-end flow now live:**
+```
+book-service saves chapter → outbox_events → worker-infra relay
+  → Redis loreweave:events:chapter
+  → knowledge-service K14 consumer → handle_chapter_saved
+  → extraction_pending queued (unchanged)
+  → IF project.embedding_model + .embedding_dimension configured:
+    → book_client.get_chapter_text
+    → chunk_text (paragraph/sentence/overlap-aware)
+    → embedding_client.embed (one batch call)
+    → delete_passages_for_source + upsert_passage × N
+  → Mode 3 /context/build → L3 selector finds passages → <passages> block renders
+```
+
+**Verify:** knowledge-service 1060/1060 pass (+25 from 1035: 14 ingester/chunker + 7 book_client + 2 new handler cases + 2 updated/variant).
+
+**Up next in roadmap:** Cycle 1b (K12.4 frontend embedding picker) so users can actually configure `embedding_model` on a project. Then Cycles 2-5.
+
+---
 
 ### K18 commit 3 of 3 FINAL — token budget + dispatcher flip → Mode 3 live ✅ (session 46)
 

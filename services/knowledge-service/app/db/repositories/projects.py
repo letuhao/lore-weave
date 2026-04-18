@@ -17,9 +17,9 @@ from app.db.repositories import VersionMismatchError
 
 _SELECT_COLS = """
   project_id, user_id, name, description, project_type, book_id, instructions,
-  extraction_enabled, extraction_status, embedding_model, extraction_config,
-  last_extracted_at, estimated_cost_usd, actual_cost_usd, is_archived, version,
-  created_at, updated_at
+  extraction_enabled, extraction_status, embedding_model, embedding_dimension,
+  extraction_config, last_extracted_at, estimated_cost_usd, actual_cost_usd,
+  is_archived, version, created_at, updated_at
 """
 
 # Explicit allowlist for dynamic UPDATE SET. Pydantic's ProjectUpdate already

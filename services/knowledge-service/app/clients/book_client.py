@@ -68,6 +68,45 @@ class BookClient:
             )
             return None
 
+    async def get_chapter_text(
+        self, book_id: UUID, chapter_id: UUID,
+    ) -> str | None:
+        """Fetch the aggregated plain text of a chapter.
+
+        Calls `/internal/books/{book_id}/chapters/{chapter_id}` which
+        returns a JSON body with `text_content` — a string built from
+        the chapter_blocks denormalized rows joined on double newline.
+
+        Returns None on any failure (book or chapter missing, network
+        error, empty text_content). Used by K18.3 passage ingestion
+        (D-K18.3-01). The caller's degradation policy treats None as
+        "skip this chapter's passages" — Mode 3 still works without
+        passages for that chapter.
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/chapters/{chapter_id}"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(
+                url, headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning(
+                    "book-service %s returned %d, trace_id=%s",
+                    url, resp.status_code, tid,
+                )
+                return None
+            data = resp.json()
+            text = data.get("text_content")
+            if not isinstance(text, str) or not text.strip():
+                return None
+            return text
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning(
+                "book-service unavailable fetching chapter text: %s trace_id=%s",
+                exc, tid,
+            )
+            return None
+
 
 def init_book_client() -> "BookClient":
     global _client
