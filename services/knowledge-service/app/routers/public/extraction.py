@@ -668,6 +668,105 @@ async def rebuild_extraction(
     return job
 
 
+# ── K16.10 — Change embedding model ─────────────────────────────────
+
+
+class ChangeEmbeddingModelRequest(BaseModel):
+    embedding_model: str = Field(min_length=1, max_length=200)
+
+
+@router.put(
+    "/{project_id}/embedding-model",
+    status_code=status.HTTP_200_OK,
+)
+async def change_embedding_model(
+    project_id: UUID,
+    body: ChangeEmbeddingModelRequest,
+    confirm: bool = False,
+    user_id: UUID = Depends(get_current_user),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+) -> dict:
+    """Change a project's embedding model.
+
+    Without ``?confirm=true``: returns a warning that the change
+    requires deleting the existing graph (destructive).
+
+    With ``?confirm=true``: deletes the graph, updates the embedding
+    model, and sets extraction_status='disabled'. The user must
+    explicitly start a new extraction job afterwards.
+    """
+    project = await projects_repo.get(user_id, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="project not found",
+        )
+
+    # Block if active job exists
+    active = await jobs_repo.list_active(user_id)
+    for j in active:
+        if j.project_id == project_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"cannot change model while job {j.job_id} is active; cancel it first",
+            )
+
+    current_model = project.embedding_model or "(none)"
+    new_model = body.embedding_model
+
+    if not confirm:
+        return {
+            "warning": "Changing the embedding model requires deleting the existing knowledge graph. "
+                       "Pass ?confirm=true to proceed.",
+            "current_model": current_model,
+            "new_model": new_model,
+            "action_required": "confirm",
+        }
+
+    # Confirmed — delete graph + update model
+    if not app_settings.neo4j_uri:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Neo4j not configured",
+        )
+
+    deleted_total = 0
+    async with neo4j_session() as session:
+        for label in _GRAPH_LABELS:
+            result = await session.run(
+                f"MATCH (n:{label}) "
+                "WHERE n.user_id = $user_id AND n.project_id = $project_id "
+                "DETACH DELETE n "
+                "RETURN count(n) AS deleted",
+                user_id=str(user_id),
+                project_id=str(project_id),
+            )
+            record = await result.single()
+            deleted_total += record["deleted"] if record else 0
+
+    await projects_repo.set_extraction_state(
+        user_id, project_id,
+        extraction_enabled=False,
+        extraction_status="disabled",
+        embedding_model=new_model,
+    )
+
+    trace_id = trace_id_var.get()
+    logger.info(
+        "K16.10: embedding model changed project_id=%s %s→%s nodes_deleted=%d trace_id=%s",
+        project_id, current_model, new_model, deleted_total, trace_id,
+    )
+
+    return {
+        "project_id": str(project_id),
+        "previous_model": current_model,
+        "new_model": new_model,
+        "nodes_deleted": deleted_total,
+        "extraction_status": "disabled",
+    }
+
+
 # ── K16.5 — Job status + project job list ────────────────────────────
 
 # Separate router for job-level endpoints (not under /projects/{id}).
