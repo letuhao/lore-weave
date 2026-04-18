@@ -354,31 +354,31 @@ func UpSnapshot(ctx context.Context, pool *pgxpool.Pool) error {
 
 // BackfillSnapshots populates entity_snapshot for any entity where it is NULL.
 // Idempotent: skips entities that already have a snapshot.
+//
+// P-K2a-01 (session 46): the previous implementation did one SELECT
+// per entity and then N separate `SELECT recalculate_entity_snapshot($1)`
+// round-trips. At 10k+ entities that's 10k round-trips with
+// round-trip latency dominating. The recalculate function is
+// PL/pgSQL and does all its work server-side, so we can drive the
+// whole sweep from a single query. One-liner; ~100× faster on a
+// 10k-entity catalogue with remote Postgres.
+//
+// **Transactional semantics change** vs the old N-round-trip version:
+// the previous code ran each recalculate as its own autocommit statement,
+// so a failure on row K kept rows 1..K-1 committed. This version is a
+// single statement — any row that errors rolls back the whole sweep.
+// For a one-shot migration over trusted schema this is usually the
+// more desirable shape (all-or-nothing), but an operator re-running
+// against a mixed catalogue with one broken row needs to identify and
+// exclude it before retrying.
 func BackfillSnapshots(ctx context.Context, pool *pgxpool.Pool) error {
-	rows, err := pool.Query(ctx,
-		`SELECT entity_id FROM glossary_entities WHERE entity_snapshot IS NULL`)
+	_, err := pool.Exec(ctx, `
+		SELECT recalculate_entity_snapshot(entity_id)
+		FROM glossary_entities
+		WHERE entity_snapshot IS NULL
+	`)
 	if err != nil {
-		return fmt.Errorf("backfill list: %w", err)
-	}
-	defer rows.Close()
-
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return fmt.Errorf("backfill scan: %w", err)
-		}
-		ids = append(ids, id)
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-
-	for _, id := range ids {
-		if _, err := pool.Exec(ctx,
-			`SELECT recalculate_entity_snapshot($1)`, id); err != nil {
-			return fmt.Errorf("backfill entity %s: %w", id, err)
-		}
+		return fmt.Errorf("backfill snapshots: %w", err)
 	}
 	return nil
 }

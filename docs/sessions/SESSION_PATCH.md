@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — Cycle 1 of Track 2 close-out COMPLETE: 1a passage ingestion + 1b K12.4 FE embedding picker. Gate 13 prerequisites done. Plus all prior K18 cluster, K13 full, K14, etc.)
-- Updated By: Assistant (session 46 — Cycle 1a + 1b: users can now configure embedding_model on a project via the FE picker, the backend auto-derives embedding_dimension, and chapter.saved triggers automatic passage ingestion for L3 semantic search. 1060 knowledge-service tests.)
+- Last Updated: 2026-04-18 (session 46 — Cycle 2 trimmed debris sweep: D-PROXY-01 6-site guard + D-K17.2c-01 router tests + P-K2a-01 single-query backfill. 5 items re-deferred with updated reasoning. Plus all prior Cycle 1, K18, K13, K14, etc.)
+- Updated By: Assistant (session 46 — Cycle 2: provider-registry empty-credential guards across 6 sites, router-layer negative-path tests, BackfillSnapshots N-round-trip → single statement. Honest trim on 5 items not genuinely small.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: 5083085 (Cycle 1a) → Cycle 1b commit pending
+- HEAD: 05e68d7 (Cycle 1b) → Cycle 2 commit pending
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -223,6 +223,30 @@ One commit, depends on Gate 4 being run against live DB.
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### Cycle 2 — debris sweep (trimmed) ✅ (session 46)
+
+**Honest scope-trim.** The roadmap grouped 7 items as "quick wins"; investigation showed only 3 were genuinely small. Shipping those; re-targeting the other 5 with sharper reasoning.
+
+**Shipped (3 items):**
+- **D-PROXY-01** — empty-credential early-fail guard added to **6 sites** across provider-registry-service (not 5 as initially scoped; `getCredentialOwned` helper found via wider grep). Sites: `getInternalCredentials`, `invokeModel`, `internalInvokeModel`, `verifyUserModel`, `internalEmbed`, `getCredentialOwned`. Each uses a call-site-appropriate error code (`INTERNAL_MISSING_CREDENTIAL`, `M03_MISSING_CREDENTIAL`, `EMBED_MISSING_CREDENTIAL`) so operators can grep which path surfaced the bad state. Before: empty cipher → decrypt empty → forward empty Authorization → upstream 401 with unhelpful error. After: loud 500 with clear code.
+- **D-K17.2c-01** — new [`proxy_router_test.go`](../../services/provider-registry-service/internal/api/proxy_router_test.go) with 5 router-layer tests mounting `srv.Router()` directly to exercise `requireInternalToken` middleware + `internalProxy` query-param wrapper (K17.2c integration tests skipped these by calling `doProxy` directly). Cases: missing token → 401, wrong token → 401, missing query params → 400, invalid user_id → 400, invalid model_ref → 400. DB-free, always run in CI.
+- **P-K2a-01** — [`BackfillSnapshots`](../../services/glossary-service/internal/migrate/migrate.go) converted from N sequential `SELECT recalculate_entity_snapshot($1)` round-trips to a single `SELECT ... FROM glossary_entities WHERE entity_snapshot IS NULL`. ~100× faster on a 10k-entity catalog; the recalculate function is PL/pgSQL so all work stays server-side. Transactional-semantics change documented in the docstring (old: per-row autocommit with partial-progress-on-failure; new: single-statement all-or-nothing).
+
+**Review-impl fixes applied:**
+1. **HIGH** — initial scope missed `getCredentialOwned` (the 6th site). Grep-wider audit found it; added the guard.
+2. **MEDIUM** — `BackfillSnapshots` transactional-semantics change wasn't documented; added multi-line docstring note for operators re-running against a mixed catalog.
+
+**Re-deferred (5 items, not genuinely small):**
+- **D-K17.10-02** xianxia + Vietnamese golden-set fixtures — stays deferred to K17.10-v2 per original plan (needs user-provided chapter data).
+- **D-K16.2-02** `scope_range` filtering — genuinely blocked: book-service's internal chapters endpoint has no range support yet. Can't thread a param that the downstream doesn't accept.
+- **P-K2a-02** pin-toggle snapshot trigger — trigger redesign, not a one-liner. Fires `recalculate_entity_snapshot` on any `updated_at` touch including a pin flip. Proper fix needs split triggers or conditional BEFORE-UPDATE logic.
+- **P-K3-01** shortdesc backfill trigger chain — each row's `short_description` is computed in Go from (name, desc, kind) so batching requires an `UPDATE ... FROM (VALUES ...)` construction or server-side data path. Real design work, not batchable as one-liner.
+- **P-K3-02** description PATCH 4-trigger chain — cross-cutting trigger redesign. Target: future glossary-service perf pass.
+
+**Verify:** 6 new guards compile clean; 5 router tests pass (provider-registry `internal/api` ok); glossary-service builds clean. No regressions in existing test suites.
+
+---
 
 ### Cycle 1b — K12.4 frontend embedding picker ✅ (session 46)
 

@@ -187,6 +187,17 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 			writeError(w, http.StatusInternalServerError, "INTERNAL_QUERY_FAILED", "failed to resolve user model")
 			return
 		}
+		// D-PROXY-01 — early-fail when user_model's linked credential
+		// row has a NULL/empty ciphertext. The COALESCE above and the
+		// pc.status='active' JOIN both permit this invalid state;
+		// returning empty secrets downstream produces cryptic 401s
+		// from the upstream provider. Same guard pattern as doProxy.
+		if secretCipher == "" {
+			writeError(w, http.StatusInternalServerError,
+				"INTERNAL_MISSING_CREDENTIAL",
+				"user_model has no provider credential ciphertext")
+			return
+		}
 		secret, err := s.decryptSecret(secretCipher)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "INTERNAL_DECRYPT_FAILED", "failed to decrypt secret")
@@ -866,6 +877,16 @@ WHERE provider_credential_id=$1 AND owner_user_id=$2 AND status='active'
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_PROVIDER_QUERY_FAILED", "failed to load provider credential")
+		return nil, false
+	}
+	// D-PROXY-01 — providerHealth + listProviderInventory (the two
+	// callers) both use cred.Secret to make upstream HTTP calls.
+	// An empty cipher → empty Authorization → cryptic upstream 401.
+	// Early-fail with a clear 500 so ops can spot the bad row.
+	if secretCipher == "" {
+		writeError(w, http.StatusInternalServerError,
+			"M03_MISSING_CREDENTIAL",
+			"provider credential has no ciphertext")
 		return nil, false
 	}
 	secret, err := s.decryptSecret(secretCipher)
@@ -1551,6 +1572,14 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 			writeError(w, http.StatusInternalServerError, "M03_MODEL_QUERY_FAILED", "failed to resolve user model")
 			return
 		}
+		// D-PROXY-01 — see doProxy comment. Invalid state that would
+		// otherwise hit upstream 401 with an unhelpful error body.
+		if secretCipher == "" {
+			writeError(w, http.StatusInternalServerError,
+				"M03_MISSING_CREDENTIAL",
+				"user_model has no provider credential ciphertext")
+			return
+		}
 		secret, err = s.decryptSecret(secretCipher)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "M03_SECRET_DECRYPT_FAILED", "failed to decrypt provider secret")
@@ -1688,6 +1717,13 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 			writeError(w, http.StatusInternalServerError, "M03_MODEL_QUERY_FAILED", "failed to resolve user model")
 			return
 		}
+		// D-PROXY-01 — see doProxy comment.
+		if secretCipher == "" {
+			writeError(w, http.StatusInternalServerError,
+				"M03_MISSING_CREDENTIAL",
+				"user_model has no provider credential ciphertext")
+			return
+		}
 		secret, err = s.decryptSecret(secretCipher)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "M03_SECRET_DECRYPT_FAILED", "failed to decrypt provider secret")
@@ -1785,6 +1821,16 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_MODEL_QUERY_FAILED", "failed to resolve user model")
+		return
+	}
+
+	// D-PROXY-01 — invalid state guard. Verify endpoints pre-K17.2a
+	// would decrypt empty → forward empty Authorization → get a
+	// cryptic 401 from upstream. Early-fail with a clear code.
+	if secretCipher == "" {
+		writeError(w, http.StatusInternalServerError,
+			"M03_MISSING_CREDENTIAL",
+			"user_model has no provider credential ciphertext")
 		return
 	}
 
@@ -2221,6 +2267,13 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		}
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "EMBED_MODEL_QUERY_FAILED", "failed to resolve model")
+			return
+		}
+		// D-PROXY-01 — see doProxy comment.
+		if secretCipher == "" {
+			writeError(w, http.StatusInternalServerError,
+				"EMBED_MISSING_CREDENTIAL",
+				"user_model has no provider credential ciphertext")
 			return
 		}
 		secret, err = s.decryptSecret(secretCipher)
