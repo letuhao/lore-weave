@@ -45,6 +45,7 @@ docstring for the rationale.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Any, Literal, get_args
@@ -97,13 +98,14 @@ class _TokenBucket:
 
     def __init__(self, max_rate: float = 10.0) -> None:
         self._max_rate = max_rate
-        self._buckets: dict[str, tuple[float, float]] = {}  # user_id → (tokens, last_refill)
+        # user_id → (tokens, last_refill_monotonic).
+        # Grows unbounded — acceptable at hobby scale (few users).
+        # For shared deployments, add a periodic sweep of entries
+        # older than 1 minute.
+        self._buckets: dict[str, tuple[float, float]] = {}
 
     async def acquire(self, user_id: str) -> None:
         """Wait until a token is available for this user."""
-        import asyncio
-        import time
-
         now = time.monotonic()
         tokens, last = self._buckets.get(user_id, (self._max_rate, now))
 

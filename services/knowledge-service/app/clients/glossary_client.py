@@ -304,6 +304,10 @@ class GlossaryClient:
         """POST /v1/glossary/books/{book_id}/wiki/generate.
 
         Propose wiki stubs for extracted entities. Returns None on failure.
+        NOTE: this calls a public endpoint (/v1/glossary/...) which
+        requires JWT auth. The GlossaryClient sends X-Internal-Token
+        instead. Glossary-service must accept internal-token auth on
+        this route, or a dedicated /internal/ route is needed.
         """
         url = f"{self._base_url}/v1/glossary/books/{book_id}/wiki/generate"
         tid = trace_id_var.get()

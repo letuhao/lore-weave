@@ -18,6 +18,7 @@ from typing import Any
 from uuid import UUID
 
 from app.db.neo4j_helpers import CypherSession
+from app.db.neo4j_repos.canonical import canonicalize_entity_name, entity_canonical_id
 
 __all__ = ["sync_glossary_entity_to_neo4j"]
 
@@ -42,16 +43,21 @@ async def sync_glossary_entity_to_neo4j(
     always have confidence=1.0 and source_type='glossary' — they are
     user-curated and bypass the quarantine pipeline.
 
+    ON CREATE sets all fields including those from the standard Entity
+    schema (id, canonical_version, source_types, anchor_score,
+    evidence_count, mention_count, archived_at) for consistency with
+    extraction-created entities.
+
     Returns a dict with the node id and whether it was created or updated.
     """
-    from app.db.neo4j_repos.canonical import canonicalize_entity_name
-
     canonical_name = canonicalize_entity_name(name)
+    canonical_id = entity_canonical_id(user_id, project_id, name, kind)
 
     result = await session.run(
         """
         MERGE (e:Entity {user_id: $user_id, glossary_entity_id: $glossary_entity_id})
         ON CREATE SET
+          e.id = $canonical_id,
           e.name = $name,
           e.canonical_name = $canonical_name,
           e.kind = $kind,
@@ -60,6 +66,12 @@ async def sync_glossary_entity_to_neo4j(
           e.project_id = $project_id,
           e.confidence = 1.0,
           e.source_type = 'glossary',
+          e.source_types = ['glossary'],
+          e.canonical_version = 1,
+          e.anchor_score = 1.0,
+          e.evidence_count = 0,
+          e.mention_count = 0,
+          e.archived_at = NULL,
           e.created_at = datetime(),
           e.updated_at = datetime()
         ON MATCH SET
@@ -75,6 +87,7 @@ async def sync_glossary_entity_to_neo4j(
         user_id=user_id,
         project_id=project_id or "global",
         glossary_entity_id=glossary_entity_id,
+        canonical_id=canonical_id,
         name=name,
         canonical_name=canonical_name,
         kind=kind,
