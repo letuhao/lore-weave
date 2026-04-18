@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K16.2–K16.14 complete + K17.10 + Dockerfile)
-- Updated By: Assistant (session 46 — K16.2–K16.14 extraction lifecycle complete (K16.13 was pre-existing), K17.10-v1 + R1, Dockerfile. 860 tests across 2 services.)
+- Last Updated: 2026-04-18 (session 46 — K16 COMPLETE + K17.10 + Dockerfile)
+- Updated By: Assistant (session 46 — K16.2–K16.15 extraction lifecycle COMPLETE, K17.10-v1 + R1, Dockerfile. 862 tests across 2 services.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: 2fab33c (K16.10-R1)
+- HEAD: e7949d1 (K16.11-K16.14-R1)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -134,6 +134,19 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K16.15 — Extraction lifecycle integration test ✅ (session 46)
+
+**Goal:** End-to-end test chaining all extraction endpoints: estimate → start → poll → pause → resume → cancel → list history → delete graph → rebuild.
+
+**Files:**
+- NEW [tests/integration/test_extraction_lifecycle.py](../../services/knowledge-service/tests/integration/test_extraction_lifecycle.py) — 1 test, 9 steps, mocked backends with `_MockState` for consistent state machine transitions
+
+**Verify:** 849 knowledge-service (848 unit + 1 integration), 862 total.
+
+**K16 is COMPLETE.** All 14 tasks shipped (K16.13 was pre-existing).
+
+---
 
 ### K16.11–K16.14 — Budget, cost API, stats cache ✅ (session 46)
 
