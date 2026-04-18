@@ -9,6 +9,7 @@ import type {
   ProjectType,
   ProjectUpdatePayload,
 } from '../types';
+import { EmbeddingModelPicker } from './EmbeddingModelPicker';
 
 // Caps mirror the backend Pydantic StringConstraints in
 // services/knowledge-service/app/db/models.py. Keeping them in sync
@@ -49,6 +50,11 @@ export function ProjectFormModal({
   const [projectType, setProjectType] = useState<ProjectType>('general');
   const [instructions, setInstructions] = useState('');
   const [bookId, setBookId] = useState('');
+  // K12.4: embedding_model is edit-only — switching it mid-extraction
+  // is a rebuild-worthy change, so we expose it on the edit form but
+  // not on create (new projects have no extracted data yet).
+  const [embeddingModel, setEmbeddingModel] = useState<string | null>(null);
+  const [initialEmbeddingModel, setInitialEmbeddingModel] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // D-K8-03: track the version at dialog open time so we can send it
   // back in If-Match on save. Updated on 412 so the user can retry
@@ -76,6 +82,8 @@ export function ProjectFormModal({
       setProjectType(project.project_type);
       setInstructions(project.instructions);
       setBookId(project.book_id ?? '');
+      setEmbeddingModel(project.embedding_model);
+      setInitialEmbeddingModel(project.embedding_model);
       setBaselineVersion(project.version);
     } else {
       setName('');
@@ -83,6 +91,8 @@ export function ProjectFormModal({
       setProjectType('general');
       setInstructions('');
       setBookId('');
+      setEmbeddingModel(null);
+      setInitialEmbeddingModel(null);
       setBaselineVersion(null);
     }
   }, [open, mode, project]);
@@ -112,16 +122,19 @@ export function ProjectFormModal({
           book_id: bookIdPayload,
         });
       } else if (project && baselineVersion != null) {
-        await onUpdate(
-          project.project_id,
-          {
-            name: trimmedName,
-            description: trimmedDescription,
-            instructions: trimmedInstructions,
-            book_id: bookIdPayload,
-          },
-          baselineVersion,
-        );
+        const patch: ProjectUpdatePayload = {
+          name: trimmedName,
+          description: trimmedDescription,
+          instructions: trimmedInstructions,
+          book_id: bookIdPayload,
+        };
+        // K12.4: include embedding_model only when the user changed it.
+        // Omitting the field leaves the column unchanged on the backend
+        // (ProjectUpdate.model_dump(exclude_unset=True) pattern).
+        if (embeddingModel !== initialEmbeddingModel) {
+          patch.embedding_model = embeddingModel;
+        }
+        await onUpdate(project.project_id, patch, baselineVersion);
       }
       if (openRef.current) {
         toast.success(
@@ -274,6 +287,16 @@ export function ProjectFormModal({
             {instructions.length} / {INSTRUCTIONS_MAX}
           </span>
         </label>
+
+        {/* K12.4: embedding model is edit-only. Create flow keeps the
+            form minimal; users pick a model after the project exists. */}
+        {mode === 'edit' && (
+          <EmbeddingModelPicker
+            value={embeddingModel}
+            onChange={setEmbeddingModel}
+            disabled={saving}
+          />
+        )}
       </div>
     </FormDialog>
   );

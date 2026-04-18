@@ -68,6 +68,12 @@ class ProjectUpdate(BaseModel):
       to `true` is rejected at the router with 422 — archive uses the
       dedicated `POST /archive` endpoint which has the 404-oracle
       hardening (does not leak whether a project exists). K-CLEAN-3.
+    - `embedding_model` (K12.4): omit to leave unchanged. Set to a
+      known model name (e.g. "bge-m3", "text-embedding-3-small") to
+      switch the project's vector space. Set to None to clear. The
+      repo auto-derives `embedding_dimension` from the model name
+      via the `EMBEDDING_MODEL_TO_DIM` map — callers never pass the
+      dimension directly.
     """
 
     name: ProjectName | None = None
@@ -75,6 +81,7 @@ class ProjectUpdate(BaseModel):
     instructions: ProjectInstructions | None = None
     book_id: UUID | None = None
     is_archived: bool | None = None
+    embedding_model: str | None = None
 
 
 class Summary(BaseModel):

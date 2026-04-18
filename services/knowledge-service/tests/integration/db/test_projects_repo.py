@@ -262,6 +262,52 @@ async def test_update_clears_book_id(pool):
 
 
 @pytest.mark.asyncio
+async def test_k12_4_update_embedding_model_auto_derives_dimension(pool):
+    """K12.4: PATCH embedding_model also sets embedding_dimension via
+    the EMBEDDING_MODEL_TO_DIM map. Clearing the model (None) clears
+    the dim. Unknown models yield dim=None so the downstream L3
+    pipeline skips cleanly."""
+    repo = ProjectsRepo(pool)
+    user = uuid4()
+    p = await repo.create(user, _mk("s"))
+    assert p.embedding_model is None
+    assert p.embedding_dimension is None
+
+    # Set a known model → dim auto-derived.
+    out = await repo.update(
+        user, p.project_id, ProjectUpdate(embedding_model="bge-m3"),
+    )
+    assert out is not None
+    assert out.embedding_model == "bge-m3"
+    assert out.embedding_dimension == 1024
+
+    # Switch to another known model → dim updates.
+    out = await repo.update(
+        user, p.project_id,
+        ProjectUpdate(embedding_model="text-embedding-3-small"),
+    )
+    assert out is not None
+    assert out.embedding_dimension == 1536
+
+    # Clear the model → dim also cleared.
+    out = await repo.update(
+        user, p.project_id, ProjectUpdate(embedding_model=None),
+    )
+    assert out is not None
+    assert out.embedding_model is None
+    assert out.embedding_dimension is None
+
+    # Unknown model → dim stays None (downstream L3 skips cleanly).
+    out = await repo.update(
+        user, p.project_id,
+        ProjectUpdate(embedding_model="some-unsupported-model"),
+    )
+    assert out is not None
+    assert out.embedding_model == "some-unsupported-model"
+    assert out.embedding_dimension is None
+
+
+@pytest.mark.asyncio
 async def test_create_rejects_whitespace_only_name():
     with pytest.raises(ValidationError):
         ProjectCreate(name="   ", project_type="general")

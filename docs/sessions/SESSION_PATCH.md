@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — Cycle 1a D-K18.3-01 passage ingestion pipeline live. Mode 3 now end-to-end with real data: chapter.saved → chunk → embed → upsert_passage. Plus all prior K18 cluster, K13 full, K14, etc.)
-- Updated By: Assistant (session 46 — Cycle 1a of Track 2 close-out: passage ingester + chunker + book_client.get_chapter_text + handler wiring + Project.embedding_dimension surfaced. 1060 knowledge-service tests.)
+- Last Updated: 2026-04-18 (session 46 — Cycle 1 of Track 2 close-out COMPLETE: 1a passage ingestion + 1b K12.4 FE embedding picker. Gate 13 prerequisites done. Plus all prior K18 cluster, K13 full, K14, etc.)
+- Updated By: Assistant (session 46 — Cycle 1a + 1b: users can now configure embedding_model on a project via the FE picker, the backend auto-derives embedding_dimension, and chapter.saved triggers automatic passage ingestion for L3 semantic search. 1060 knowledge-service tests.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: 4b8d4af (roadmap) → Cycle 1a commit pending
+- HEAD: 5083085 (Cycle 1a) → Cycle 1b commit pending
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -223,6 +223,44 @@ One commit, depends on Gate 4 being run against live DB.
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### Cycle 1b — K12.4 frontend embedding picker ✅ (session 46)
+
+**Closes Cycle 1 of the Track 2 close-out roadmap.** Users can now configure `embedding_model` on a project via the UI; the backend auto-derives `embedding_dimension`; and Cycle 1a's passage ingester picks up the configured model on the next `chapter.saved` event.
+
+**Backend (2 files):**
+- [app/db/models.py](../../services/knowledge-service/app/db/models.py) — `ProjectUpdate.embedding_model: str | None = None`.
+- [app/db/repositories/projects.py](../../services/knowledge-service/app/db/repositories/projects.py) — `_UPDATABLE_COLUMNS` + `_NULLABLE_UPDATE_COLUMNS` gain both `embedding_model` and the derived `embedding_dimension` (defense-in-depth allowlist intact). `update()` auto-derives `embedding_dimension` from `EMBEDDING_MODEL_TO_DIM` — single source of truth shared with the L3 selector. Null model clears the dim; unknown model strings yield `dim=None` (downstream L3 pipeline skips cleanly).
+
+**Frontend (3 files):**
+- [frontend/src/features/knowledge/types.ts](../../frontend/src/features/knowledge/types.ts) — `Project.embedding_dimension: number | null` + `ProjectUpdatePayload.embedding_model?: string | null`.
+- [frontend/src/features/knowledge/components/EmbeddingModelPicker.tsx](../../frontend/src/features/knowledge/components/EmbeddingModelPicker.tsx) — NEW. Fetches user's BYOK embedding-capable models via `aiModelsApi.listUserModels({capability:'embedding'})`. Renders loading / empty / error states. Shows a synthetic "(not in your registry)" option when the project's current value isn't in the fetched list (prevents the UI from lying about state when a model was deleted after assignment).
+- [frontend/src/features/knowledge/components/ProjectFormModal.tsx](../../frontend/src/features/knowledge/components/ProjectFormModal.tsx) — wires the picker in edit-only (create stays minimal). Payload includes `embedding_model` only when the user changed it, so harmless edits don't bump the project `version`.
+
+**Tests:**
+- +1 integration test `test_k12_4_update_embedding_model_auto_derives_dimension` (suite 1060 unchanged; +1 skipped without DB env). Covers 4 cases: set known → dim=1024, switch known → dim=1536, clear → dim=None, unknown → dim=None with model stored.
+
+**Review-impl fixes applied before commit:**
+1. **HIGH** — `embedding_dimension` was being added to `updates` AFTER the allowlist check at [projects.py:202](../../services/knowledge-service/app/db/repositories/projects.py#L202), bypassing defense-in-depth. Added to `_UPDATABLE_COLUMNS` + `_NULLABLE_UPDATE_COLUMNS` so the auto-derive flows through the allowlist.
+2. **MEDIUM** — picker's `<select>` had no matching `<option>` when the project's current `value` wasn't in the fetched list (model deleted / server-side name). Browsers silently fell back to "None", lying about the state. Added a synthetic orphan option.
+3. **LOW** — picker's "no models configured" empty-state message could render on an unauthed page, falsely suggesting the registry was empty. Gated on `accessToken` being present.
+
+**End-to-end acceptance for Gate 13 prerequisites:**
+```
+User: Edit project → pick embedding model → save
+  → PATCH /v1/knowledge/projects/{id} {embedding_model: "bge-m3"}
+  → repo auto-sets embedding_dimension=1024
+Next chapter.saved event
+  → handler reads project.embedding_model + embedding_dimension
+  → ingester fetches chapter text, chunks, embeds, upserts :Passage × N
+Mode 3 /context/build
+  → L3 selector embeds query with same model, finds passages
+  → <passages> block renders in memory XML
+```
+
+**Cycle 1 (1a + 1b) COMPLETE.** Both Gate 13 must-ship items shipped. Next up: Cycle 2 debris sweep.
+
+---
 
 ### Cycle 1a — D-K18.3-01 passage ingestion pipeline ✅ (session 46)
 

@@ -25,6 +25,8 @@ export interface Project {
   extraction_enabled: boolean;
   extraction_status: ExtractionStatus;
   embedding_model: string | null;
+  // K12.4: dimension derived from embedding_model server-side.
+  embedding_dimension: number | null;
   extraction_config: Record<string, unknown>;
   last_extracted_at: string | null;
   estimated_cost_usd: string;
@@ -57,6 +59,11 @@ export interface ProjectUpdatePayload {
   // direction from the FE (set false); archive uses the dedicated
   // POST /archive endpoint.
   is_archived?: boolean;
+  // K12.4: embedding_model governs which vector space the project's
+  // :Passage nodes live in (consumed by K18.3 L3 semantic search).
+  // Omit to leave unchanged; null to clear; a known model name to set.
+  // The backend auto-derives embedding_dimension from the model name.
+  embedding_model?: string | null;
 }
 
 export interface ProjectListResponse {

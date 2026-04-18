@@ -26,14 +26,29 @@ _SELECT_COLS = """
 # restricts fields, but we defend-in-depth by checking every field name
 # against this set before building SQL.
 _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
-    {"name", "description", "instructions", "book_id", "is_archived"}
+    {"name", "description", "instructions", "book_id", "is_archived",
+     "embedding_model",
+     # K12.4: embedding_dimension is a DERIVED column — it's not
+     # present on ProjectUpdate, Pydantic will reject it on direct
+     # PATCH attempts. It's added to `updates` inside the auto-derive
+     # block when embedding_model changes, and needs allowlist
+     # membership so the defense-in-depth check doesn't treat it
+     # as a code bug.
+     "embedding_dimension"}
 )
 
 # Columns that accept NULL. For everything else, a None value on an
 # explicitly-set field is treated as "skip" (not "set to NULL") so we
-# don't violate NOT NULL constraints. book_id is the only nullable
-# updatable column — setting it to None explicitly clears the link.
-_NULLABLE_UPDATE_COLUMNS: frozenset[str] = frozenset({"book_id"})
+# don't violate NOT NULL constraints.
+# - `book_id`: None clears the book link.
+# - `embedding_model` (K12.4): None clears the model selection. When
+#   embedding_model is updated we also auto-update embedding_dimension
+#   via the EMBEDDING_MODEL_TO_DIM map in the update() method.
+# - `embedding_dimension` (K12.4 derived): nullable when model is
+#   cleared or unknown to the map.
+_NULLABLE_UPDATE_COLUMNS: frozenset[str] = frozenset(
+    {"book_id", "embedding_model", "embedding_dimension"}
+)
 
 
 def _rows_changed(status: str) -> int:
@@ -200,6 +215,21 @@ class ProjectsRepo:
                 # Skip None on NOT-NULL columns; treat as no-op for that field.
                 continue
             updates[field] = value
+
+        # K12.4: when embedding_model changes, auto-derive embedding_dimension
+        # from the single-source-of-truth map in the L3 selector. Unknown
+        # models get dimension=None and the downstream L3 / passage pipeline
+        # skips cleanly. Clearing the model (None) clears the dim too.
+        if "embedding_model" in updates:
+            # Local import sidesteps a circular with context.selectors at
+            # module load — projects.py is imported by deps.py which gets
+            # pulled into app startup well before context modules.
+            from app.context.selectors.passages import EMBEDDING_MODEL_TO_DIM
+            model = updates["embedding_model"]
+            if model is None:
+                updates["embedding_dimension"] = None
+            else:
+                updates["embedding_dimension"] = EMBEDDING_MODEL_TO_DIM.get(model)
 
         if not updates:
             # No-op: K7b contract preserves updated_at AND version. Even
