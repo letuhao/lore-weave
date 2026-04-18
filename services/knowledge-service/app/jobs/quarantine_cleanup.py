@@ -72,6 +72,8 @@ WHERE coalesce(f.pending_validation, false) = true
   AND f.valid_until IS NULL
   AND f.updated_at < datetime() - duration({hours: $ttl_hours})
   AND ($user_id IS NULL OR f.user_id = $user_id)
+WITH f
+LIMIT COALESCE($limit, 2147483647)
 SET f.valid_until = datetime()
 RETURN count(f) AS invalidated
 """
@@ -82,6 +84,7 @@ async def run_quarantine_cleanup(
     *,
     user_id: str | None = None,
     ttl_hours: int = DEFAULT_TTL_HOURS,
+    limit: int | None = None,
 ) -> int:
     """Soft-invalidate quarantined facts older than `ttl_hours`.
 
@@ -92,6 +95,12 @@ async def run_quarantine_cleanup(
         ttl_hours: facts whose `updated_at` is older than
             `now - ttl_hours` AND still have `pending_validation=true`
             get soft-invalidated. Default 24h per KSA §5.1.
+        limit: P-K15.10-01 (session 46). Cap on facts invalidated
+            per call. `None` means "invalidate everything that
+            matches the TTL filter in one statement" — fine for
+            hobby-scale tenants, problematic under a large backlog.
+            When set, the scheduler should loop until a call
+            returns zero.
 
     Returns:
         Number of facts invalidated on this run. The
@@ -100,6 +109,8 @@ async def run_quarantine_cleanup(
     """
     if ttl_hours <= 0:
         raise ValueError(f"ttl_hours must be > 0, got {ttl_hours}")
+    if limit is not None and limit <= 0:
+        raise ValueError(f"limit must be positive when set, got {limit}")
 
     # Bypass run_write because it types user_id as str; this is the
     # one caller that legitimately passes None (admin global sweep).
@@ -111,6 +122,7 @@ async def run_quarantine_cleanup(
         _CLEANUP_CYPHER,
         user_id=user_id,
         ttl_hours=ttl_hours,
+        limit=limit,
     )
     record = await result.single()
     invalidated = int(record["invalidated"]) if record else 0

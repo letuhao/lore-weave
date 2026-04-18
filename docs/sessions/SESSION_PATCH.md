@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — Cycle 2 trimmed debris sweep: D-PROXY-01 6-site guard + D-K17.2c-01 router tests + P-K2a-01 single-query backfill. 5 items re-deferred with updated reasoning. Plus all prior Cycle 1, K18, K13, K14, etc.)
-- Updated By: Assistant (session 46 — Cycle 2: provider-registry empty-credential guards across 6 sites, router-layer negative-path tests, BackfillSnapshots N-round-trip → single statement. Honest trim on 5 items not genuinely small.)
+- Last Updated: 2026-04-18 (session 46 — Cycle 3 lifecycle + scheduler cleanup: lifespan partial-failure cleanup + reconciler/quarantine/orphan-source LIMIT batching. Plus Cycles 1–2, K18, K13, K14, etc.)
+- Updated By: Assistant (session 46 — Cycle 3: D-K11.3-01 startup try/except + D-K11.9-01+P-K11.9-01 reconciler LIMIT + D-K11.9-02 new orphan-source cleanup + P-K15.10-01 quarantine LIMIT. 1075 knowledge-service tests.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: 05e68d7 (Cycle 1b) → Cycle 2 commit pending
+- HEAD: ae7d43a (Cycle 2) → Cycle 3 commit pending
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -223,6 +223,42 @@ One commit, depends on Gate 4 being run against live DB.
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### Cycle 3 — lifecycle + scheduler cleanup ✅ (session 46)
+
+**5 deferred items cleared.** Uniform LIMIT-batching shape across reconciler, quarantine cleanup, and the new orphan `:ExtractionSource` cleanup gives the future cron scheduler one loop pattern for all three. Startup partial-failure cleanup prevents resource leaks when any pre-yield init step crashes.
+
+**Modified (3):**
+- [app/main.py](../../services/knowledge-service/app/main.py) — **D-K11.3-01**: pre-yield init wrapped in `try/except`. On failure, a new `_close_all_startup_resources()` helper runs every `close_*` in reverse-dependency order (provider → embedding → book → glossary → Neo4j driver → pools) then re-raises the original exception. Per-close exceptions are logged but don't mask the real startup error.
+- [app/jobs/reconcile_evidence_count.py](../../services/knowledge-service/app/jobs/reconcile_evidence_count.py) — **D-K11.9-01 + P-K11.9-01**: new `limit_per_label: int | None = None` parameter threads into each of the three per-label Cypher queries. `None` preserves legacy "scan everything" shape for hobby tenants; positive int caps each SET batch so the scheduler can loop until clean.
+- [app/jobs/quarantine_cleanup.py](../../services/knowledge-service/app/jobs/quarantine_cleanup.py) — **P-K15.10-01**: same `limit` pattern on the quarantine sweep.
+
+**New (1):**
+- [app/jobs/orphan_extraction_source_cleanup.py](../../services/knowledge-service/app/jobs/orphan_extraction_source_cleanup.py) — **D-K11.9-02**: `delete_orphan_extraction_sources(session, user_id, project_id=None, limit=None)`. Finds `:ExtractionSource` nodes with zero incoming `EVIDENCED_BY` edges (survivors of partial-failure windows in K11.8's non-atomic `delete_source_cascade`) and `DETACH DELETE`s them. Same "do not run concurrently with extraction" caveat as K11.9 reconciler — same transaction-local race.
+
+**Tests (+15):**
+- [tests/unit/test_orphan_source_cleanup.py](../../services/knowledge-service/tests/unit/test_orphan_source_cleanup.py) NEW, 7 cases
+- [tests/unit/test_scheduler_jobs_limit.py](../../services/knowledge-service/tests/unit/test_scheduler_jobs_limit.py) NEW, 6 cases (reconciler + quarantine LIMIT validation + forwarding)
+- [tests/unit/test_lifespan_startup_cleanup.py](../../services/knowledge-service/tests/unit/test_lifespan_startup_cleanup.py) NEW, 2 cases (teardown order + original-exception not masked)
+
+**Review-impl fix before commit (HIGH):**
+Initial Cypher used `LIMIT CASE WHEN $limit IS NULL THEN 2147483647 ELSE $limit END` across all 3 jobs. Neo4j 5 `LIMIT` accepts expressions but NOT expressions that reference parameters or query variables — my form would have errored on the first live Neo4j call. Unit tests didn't catch it because they mock `run_write`; integration tests skip without `TEST_NEO4J_URI`. Fixed: `LIMIT COALESCE($limit, 2147483647)` — idiomatic, portable across Neo4j 5.x, semantically identical.
+
+**Known limitations (not fixed, documented):**
+- `LIMIT` without `ORDER BY` is non-deterministic, but the scheduler loop converges: each batch transitions drifty rows to non-drifty.
+- Full-scan on `MATCH (n:Label)` still runs per call regardless of LIMIT. LIMIT caps write-transaction size (the main ask); pagination via cursor-state is the bigger half of P-K11.9-01's original scope, separate future cycle.
+
+**Scheduler-loop shape available now:**
+```python
+while True:
+    r = await job(session, ..., limit=BATCH_SIZE)
+    if r.total == 0: break  # or r == 0 for quarantine/orphan
+```
+Adopt once the cron scheduler is wired (separate from Cycle 3's scope).
+
+**Verify:** knowledge-service 1075/1075 pass (+15 from 1060).
+
+---
 
 ### Cycle 2 — debris sweep (trimmed) ✅ (session 46)
 

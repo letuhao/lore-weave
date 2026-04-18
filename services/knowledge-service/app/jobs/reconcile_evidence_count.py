@@ -113,6 +113,12 @@ class ReconcileResult(BaseModel):
 #   - RETURN count(*) aggregates post-SET, so the return is one
 #     row with the fixed total
 def _build_reconcile_cypher(label: str) -> str:
+    # D-K11.9-01 + P-K11.9-01 (session 46): optional `$limit` caps
+    # the number of drifty nodes fixed per call. A NULL limit means
+    # "no cap" (the legacy hobby-scale path); a positive int yields
+    # a bounded fix set so the scheduler can loop until the result
+    # comes back with zero fixes without holding one long
+    # transaction across 100k-node tenants.
     return f"""
 MATCH (n:{label})
 WHERE n.user_id = $user_id
@@ -122,6 +128,8 @@ OPTIONAL MATCH (n)-[r:EVIDENCED_BY]->(src:ExtractionSource)
 WITH n, count(r) AS actual_count
 WITH n, actual_count, coalesce(n.evidence_count, 0) AS cached
 WHERE cached <> actual_count
+WITH n, actual_count
+LIMIT COALESCE($limit, 2147483647)
 SET n.evidence_count = actual_count,
     n.updated_at = datetime()
 RETURN count(*) AS fixed
@@ -139,12 +147,14 @@ async def _reconcile_label(
     label: str,
     user_id: str,
     project_id: str | None,
+    limit: int | None,
 ) -> int:
     result = await run_write(
         session,
         _RECONCILE_CYPHER[label],
         user_id=user_id,
         project_id=project_id,
+        limit=limit,
     )
     record = await result.single()
     # K11.9-R2/I1: `RETURN count(*) AS fixed` always produces
@@ -169,6 +179,7 @@ async def reconcile_evidence_count(
     *,
     user_id: str,
     project_id: str | None = None,
+    limit_per_label: int | None = None,
 ) -> ReconcileResult:
     """Scan `:Entity|:Event|:Fact` nodes for the given user and
     correct any drift between `evidence_count` and the actual
@@ -183,6 +194,13 @@ async def reconcile_evidence_count(
             given project are reconciled — cheap path for per-project
             maintenance (e.g., after a project rebuild). When None,
             reconciles every node owned by the user.
+        limit_per_label: D-K11.9-01 (session 46). When set, each of
+            the three per-label queries fixes at most this many
+            drifty nodes. The caller (scheduler loop) invokes the
+            reconciler repeatedly until a pass returns zero fixes.
+            `None` keeps the legacy "scan everything in one go"
+            shape — fine for hobby-scale tenants, too aggressive
+            for a production tenant with 100k+ entities.
 
     Returns:
         ReconcileResult with per-label fix counts. A clean run
@@ -207,15 +225,22 @@ async def reconcile_evidence_count(
     """
     if not user_id:
         raise ValueError("user_id is required for reconcile_evidence_count")
+    if limit_per_label is not None and limit_per_label <= 0:
+        raise ValueError(
+            f"limit_per_label must be positive when set, got {limit_per_label}"
+        )
 
     entities_fixed = await _reconcile_label(
-        session, label="Entity", user_id=user_id, project_id=project_id
+        session, label="Entity", user_id=user_id,
+        project_id=project_id, limit=limit_per_label,
     )
     events_fixed = await _reconcile_label(
-        session, label="Event", user_id=user_id, project_id=project_id
+        session, label="Event", user_id=user_id,
+        project_id=project_id, limit=limit_per_label,
     )
     facts_fixed = await _reconcile_label(
-        session, label="Fact", user_id=user_id, project_id=project_id
+        session, label="Fact", user_id=user_id,
+        project_id=project_id, limit=limit_per_label,
     )
 
     result = ReconcileResult(

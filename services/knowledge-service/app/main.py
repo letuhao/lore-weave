@@ -27,32 +27,70 @@ from app.routers.public import user_data as public_user_data
 logger = logging.getLogger(__name__)
 
 
+async def _close_all_startup_resources() -> None:
+    """D-K11.3-01 (session 46) — partial-startup cleanup.
+
+    If any pre-yield step raises, this runs every close_* that is
+    safe to call regardless of whether the corresponding init
+    actually completed. close_* functions are idempotent / no-op
+    when the resource is None or already closed.
+
+    Teardown order mirrors the post-yield block (reverse dependency).
+    """
+    for close_fn_name, close_fn in (
+        ("provider_client", close_provider_client),
+        ("embedding_client", close_embedding_client),
+        ("book_client", close_book_client),
+        ("glossary_client", close_glossary_client),
+        ("neo4j_driver", close_neo4j_driver),
+        ("pools", close_pools),
+    ):
+        try:
+            await close_fn()
+        except Exception:
+            logger.warning(
+                "startup cleanup: failed to close %s (non-fatal)",
+                close_fn_name, exc_info=True,
+            )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging(settings.log_level)
-    # Fail-fast: if either pool cannot be created, raise and stop startup.
-    await create_pools(settings.knowledge_db_url, settings.glossary_db_url)
-    await run_migrations(get_knowledge_pool())
-    # Long-lived httpx client for glossary-service calls (K4b).
-    init_glossary_client()
-    # K16.2 — long-lived httpx client for book-service chapter counts.
-    get_book_client()
-    # K12.2 — long-lived httpx client for embedding calls.
-    get_embedding_client()
-    # K17.2 — long-lived httpx client for provider-registry BYOK LLM
-    # calls. Singleton is lazy-constructed by the first get_provider_client
-    # call, but we touch it here so a misconfigured base URL surfaces at
-    # startup rather than at first extraction job.
-    get_provider_client()
-    # K11.2 — Neo4j driver. No-op in Track 1 mode (NEO4J_URI empty);
-    # fail-fast on unreachable Neo4j when configured.
-    await init_neo4j_driver()
-    # K11.3 — apply the Cypher schema (constraints + indexes +
-    # vector indexes) on every startup. Idempotent. Only runs when
-    # the K11.2 driver init actually configured a connection;
-    # Track 1 mode skips this entirely.
-    if settings.neo4j_uri:
-        await run_neo4j_schema(get_neo4j_driver())
+    # D-K11.3-01: wrap startup so a failure mid-init closes what DID
+    # initialize. Without this the post-yield cleanup only runs when
+    # the yield is reached, leaking pools/drivers/clients on any
+    # startup exception.
+    try:
+        # Fail-fast: if either pool cannot be created, raise and stop startup.
+        await create_pools(settings.knowledge_db_url, settings.glossary_db_url)
+        await run_migrations(get_knowledge_pool())
+        # Long-lived httpx client for glossary-service calls (K4b).
+        init_glossary_client()
+        # K16.2 — long-lived httpx client for book-service chapter counts.
+        get_book_client()
+        # K12.2 — long-lived httpx client for embedding calls.
+        get_embedding_client()
+        # K17.2 — long-lived httpx client for provider-registry BYOK LLM
+        # calls. Singleton is lazy-constructed by the first get_provider_client
+        # call, but we touch it here so a misconfigured base URL surfaces at
+        # startup rather than at first extraction job.
+        get_provider_client()
+        # K11.2 — Neo4j driver. No-op in Track 1 mode (NEO4J_URI empty);
+        # fail-fast on unreachable Neo4j when configured.
+        await init_neo4j_driver()
+        # K11.3 — apply the Cypher schema (constraints + indexes +
+        # vector indexes) on every startup. Idempotent. Only runs when
+        # the K11.2 driver init actually configured a connection;
+        # Track 1 mode skips this entirely.
+        if settings.neo4j_uri:
+            await run_neo4j_schema(get_neo4j_driver())
+    except Exception:
+        logger.exception(
+            "lifespan startup failed before yield — running partial cleanup"
+        )
+        await _close_all_startup_resources()
+        raise
     # K14.1 — start event consumer as background task.
     # Imports inline to avoid circular imports (consumer needs pool).
     consumer_task = None
