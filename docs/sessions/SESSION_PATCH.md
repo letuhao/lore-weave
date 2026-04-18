@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — Cycle 4 provider-registry hardening: Prometheus metrics across proxy/invoke/embed/verify + tool_calls parser support. Plus Cycles 1–3, K18, K13, K14, etc.)
-- Updated By: Assistant (session 46 — Cycle 4: D-K17.2a-01 Prometheus metrics (75 counter sites across 5 handlers, 4 counter vecs pre-seeded) + D-K17.2b-01 tool_calls parser extension. D-K16.2-01 re-deferred. 1026 knowledge-service tests, 5 new Go tests.)
+- Last Updated: 2026-04-18 (session 46 — Cycle 5 extraction quality + perf: D-K15.5-01 all-caps fusion fix + P-K15.8-01 detector reuse + P-K13.0-01 anchor TTL cache + P-K18.3-01 query embedding TTL cache. Plus Cycles 1–4, K18, K13, K14, etc.)
+- Updated By: Assistant (session 46 — Cycle 5: 4 items shipped. 1047 knowledge-service tests (+21). Review-impl fix: embedding cache key gains user_uuid.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: b08b3c7 (Cycle 3) → Cycle 4 commit pending
+- HEAD: 6727c2d (drift-reconcile) → Cycle 5 commit pending
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -59,13 +59,13 @@ One commit. 2 of 3 items shipped — see "Cycle 4" in Current Active Work below.
 - ✅ **D-K17.2b-01** tool_calls parser support — `content=null + tool_calls[]` no longer errors
 - ⏸️ **D-K16.2-01** model-specific pricing lookup — re-deferred, needs `pricing_policy` JSONB schema design first
 
-### Cycle 5 — Extraction quality + perf
-One commit. All in knowledge-service extraction pipeline.
+### Cycle 5 — Extraction quality + perf ✅ (session 46)
+One commit. All in knowledge-service extraction/context pipeline. All 4 items shipped.
 
-- **D-K15.5-01** K15.2 all-caps entity fusion fix (stop capturing whole all-caps sentences as one "entity")
-- **P-K15.8-01** entity detection reuse across K15.2/4/5 (detector signature change)
-- **P-K13.0-01** anchor pre-load TTL cache (per `(user_id, book_id)`, ~60s)
-- **P-K18.3-01** query-embedding TTL cache (per `(project_id, model, message_hash)`, ~30s)
+- ✅ **D-K15.5-01** K15.2 all-caps entity fusion fix — `_iter_tokens_if_all_caps_run` splits runs where every token is all-uppercase
+- ✅ **P-K15.8-01** entity detection reuse — optional `sentence_candidates` kw-param on triple/negation extractors; orchestrator pre-builds once per half/chunk
+- ✅ **P-K13.0-01** anchor pre-load TTLCache(256, 60s) keyed by `(user_id, project_id)`
+- ✅ **P-K18.3-01** query-embedding TTLCache(512, 30s) keyed by `(user_id, project_id, model, message)` — user_id added via review-impl fix
 
 ### Cycle 6 — RAG quality (Track 2 polish)
 Three commits — each needs golden-set re-measurement after, so separated.
@@ -116,7 +116,7 @@ One commit, depends on Gate 4 being run against live DB.
 | D-K8-02 (partial remaining) | K8 draft review | **Project card building/ready/paused/failed states + extraction stat tiles.** Restore button shipped in K-CLEAN-3 (session 39); the building/ready/paused/failed states + entity/fact/event/glossary stat tiles still need Track 2 K11/K17 to produce the data they would render. | Track 2 (Gate 12) |
 | D-K11.9-01 (partial) | K11.9-R3 review | **Reconciler LIMIT shipped; cursor-state still deferred.** Cycle 3 added `limit_per_label: int | None` parameter to the three per-label Cypher queries (write-transaction size is now capped). Still open: pagination via cursor-state for resumable-from-mid-scan — the "bigger half" of the original scope, needs a job-state table so a mid-scan timeout can pick up where it left off. Pair with cron scheduler wiring. | K19/K20 scheduler cleanup |
 | ~~D-K11.9-02~~ | ~~K11.9 plan scope~~ | **Cleared in session 46 Cycle 3.** See "Recently cleared" below. | — |
-| D-K15.5-01 | K15.5-R1/I2 | **All-caps sentences return no negations.** `"KAI DOES NOT KNOW ZHAO."` yields zero facts. Root cause is upstream in K15.2 `_CAPITALIZED_PHRASE_RE` which greedily fuses the entire all-caps sentence into a single "entity" spanning the negation marker — so `_nearest_preceding_entity` has no candidate ending before the marker. Fix requires teaching K15.2 to reject all-caps multi-word fusion or split on verbs, which is broader than a K15.5 follow-up. K17 LLM fallback handles these at Pass 2. | K15.2 hardening pass or K17 LLM |
+| ~~D-K15.5-01~~ | ~~K15.5-R1/I2~~ | **Cleared in session 46 Cycle 5.** See "Recently cleared" below. | — |
 | ~~D-K11.3-01~~ | ~~K11.3-R1 review~~ | **Cleared in session 46 Cycle 3.** See "Recently cleared" below. | — |
 | ~~D-K17.2a-01~~ | ~~K17.2a-R3 review C4~~ | **Cleared in session 46 Cycle 4.** See "Recently cleared" below. | — |
 | ~~D-PROXY-01~~ | ~~K17.2a-R3 review C10~~ | **Cleared in session 46 Cycle 2.** See "Recently cleared" below. | — |
@@ -148,10 +148,10 @@ One commit, depends on Gate 4 being run against live DB.
 | P-K2a-02 | K2a | Pin toggle bumps `updated_at` → fires full `recalculate_entity_snapshot` for a bit flip |
 | P-K3-01 | K3 | Backfill UPDATE on `short_description` also fires snapshot trigger per row |
 | P-K3-02 | K3 | Description PATCH triggers 4 UPDATEs for 1 logical operation (CTE + trigger + regen + trigger-again) |
-| P-K15.8-01 | K15.8-R1/I3 | **Orchestrator re-runs entity detection 3–4× per turn.** `extract_triples` and `extract_negations` both call `extract_entity_candidates` internally for per-sentence anchoring, so a full chat turn runs the K15.2 entity detector once at the orchestrator's explicit call plus one more time per extractor. Refactor path: thread pre-extracted candidates through the detector signatures. Track 1 accepts the cost at hobby scale; revisit if extraction latency ever trips the <2s plan-row budget. |
+| ~~P-K15.8-01~~ | ~~K15.8-R1/I3~~ | **Cleared in session 46 Cycle 5.** See "Recently cleared" below. |
 | P-K15.10-01 (partial) | K15.10-R1/I1 | **LIMIT shipped; cursor-state still deferred.** Cycle 3 added a `limit: int | None` parameter to the global quarantine sweep. Still open: periodic-commit + resumable cursor state for a backlogged Pass 2 at production tenant count. Pair with D-K11.9-01 (partial) scheduler cleanup since both are tenant-wide offline sweepers. |
-| P-K13.0-01 | K13.0 review-impl (session 46) | **Anchor pre-load re-runs per extract-item call.** [`services/knowledge-service/app/routers/internal_extraction.py`](services/knowledge-service/app/routers/internal_extraction.py) `_load_anchors_for_extraction` calls glossary `/known-entities` HTTP + upserts every anchor to Neo4j (idempotent MERGE) on every chapter item. For a 100-chapter job with 100 glossary entries that's 100 glossary calls + 10k MERGE round-trips used only for Pass 0. Fix: short-TTL (~60s) in-process cache keyed by (user_id, book_id) — many items in one job share the same book. Track 1 accepts the cost at hobby scale. |
-| P-K18.3-01 | K18.3 Path-C build (session 46) | **Query-embedding cache for multi-turn chats.** [`selectors/passages.py`](services/knowledge-service/app/context/selectors/passages.py) embeds the user message on every Mode 3 build. In a long back-and-forth in the same project, consecutive turns re-embed similar (sometimes identical) queries. Fix: TTL cache keyed by `(project_id, embedding_model, message)` with a short window (~30s). Saves a provider-registry embed round-trip per turn after the first. |
+| ~~P-K13.0-01~~ | ~~K13.0 review-impl (session 46)~~ | **Cleared in session 46 Cycle 5.** See "Recently cleared" below. |
+| ~~P-K18.3-01~~ | ~~K18.3 Path-C build (session 46)~~ | **Cleared in session 46 Cycle 5.** See "Recently cleared" below. |
 | P-K18.3-02 | K18.3 Path-C build (session 46) | **MMR uses Jaccard token overlap, not embedding cosine.** The repo projection strips vectors from returned `Passage` rows to keep response size small, so the selector falls back to word-Jaccard for the redundancy term. Works fine for English at pool ≤ 40; CJK + paraphrased-but-distinct passages may cluster more aggressively than they should. Fix: keep per-hit vectors in memory for the duration of the MMR loop (add optional projection flag to `find_passages_by_vector`). |
 
 ### Won't-fix (conscious decisions, not debt)
@@ -167,6 +167,10 @@ One commit, depends on Gate 4 being run against live DB.
 
 | ID | Origin | How it was resolved |
 |---|---|---|
+| **D-K15.5-01** | **K15.5-R1/I2** | **Cleared in session 46 Cycle 5.** New `_iter_tokens_if_all_caps_run` helper in [`entity_detector.py`](../../services/knowledge-service/app/extraction/entity_detector.py) splits `_CAPITALIZED_PHRASE_RE` matches when every token is all-uppercase ("KAI DOES NOT KNOW ZHAO" → ["KAI", "ZHAO"] individually; stopwords fall out via existing filter). Single-token all-caps ("NASA") preserved. Trade-off: multi-word acronyms ("UNITED NATIONS") lose multi-word form but each token surfaces and K17 LLM reassembles at Pass 2. End-to-end verified: `extract_negations("KAI DOES NOT KNOW ZHAO.")` now returns a proper `NegationFact`. +5 detector tests, +1 negation regression test. |
+| **P-K15.8-01** | **K15.8-R1/I3** | **Cleared in session 46 Cycle 5.** Added optional kw-only `sentence_candidates: Mapping[str, list[EntityCandidate]] \| None` to `extract_triples` and `extract_negations`. Orchestrator ([`pattern_extractor.py`](../../services/knowledge-service/app/extraction/pattern_extractor.py) new `_build_sentence_candidate_map`) pre-builds the per-sentence map once per half/chunk and passes to both extractors — cuts 2× redundant per-sentence scans to 1× in both `chat_turn_extract` and `chapter_extract` loops. Backward compatible: None/missing-key falls back to self-scan. +3 negation tests prove reuse vs. fallback. |
+| **P-K13.0-01** | **K13.0 review-impl (session 46)** | **Cleared in session 46 Cycle 5.** `cachetools.TTLCache(256, 60s)` in [`internal_extraction.py`](../../services/knowledge-service/app/routers/internal_extraction.py) keyed by `(str(user_id), str(project_id) or "")`. A 100-chapter extraction job pays one real anchor load + 99 cache hits instead of 100 glossary HTTP calls + 100×N Neo4j MERGEs. Successful loads + deterministic-empty paths (None project_id, no book_id) cached; exceptions NOT cached so transient glossary outages don't lock in bad state. 5 tests in [`test_anchor_cache.py`](../../services/knowledge-service/tests/unit/test_anchor_cache.py) cover each branch. |
+| **P-K18.3-01** | **K18.3 Path-C build (session 46)** | **Cleared in session 46 Cycle 5.** `cachetools.TTLCache(512, 30s)` in [`passages.py`](../../services/knowledge-service/app/context/selectors/passages.py) keyed by `(str(user_uuid), project_id, embedding_model, message)`. Consecutive chat turns in the same project with repeated/identical queries skip the embed round-trip. Only successful non-empty vectors cached; `EmbeddingError` + empty-embeddings responses skip caching so a transient outage retries cleanly. Review-impl added `user_uuid` to the key so two users sharing a project with different BYOK providers under the same model-name can't cross-contaminate. 7 tests in [`test_query_embedding_cache.py`](../../services/knowledge-service/tests/unit/test_query_embedding_cache.py) cover hit/miss axes + failure-not-cached behavior. |
 | **D-K18.3-01** | **K18.3 Path-C scope (session 46)** | **Cleared in session 46 Cycle 1a.** Passage ingestion pipeline now end-to-end: `handle_chapter_saved` fetches chapter text via `book_client.get_chapter_text`, chunks with new `chunk_text()` helper (paragraph-first → sentence-fallback → char-cut + word-boundary overlap), embeds via `embedding_client`, upserts `:Passage` nodes. `handle_chapter_deleted` drops the chapter's passages. 14 new ingester tests + 7 new book_client tests + 2 handler tests. L3 selector now returns populated passages; Mode 3 `<passages>` block fills from real data. |
 | **D-PROXY-01** | **K17.2a-R3 review C10** | **Cleared in session 46 Cycle 2.** Empty-credential early-fail guard added to **6 sites** across provider-registry-service: `getInternalCredentials`, `invokeModel`, `internalInvokeModel`, `verifyUserModel`, `internalEmbed`, `getCredentialOwned`. Each uses a call-site-appropriate error code (`INTERNAL_MISSING_CREDENTIAL`, `M03_MISSING_CREDENTIAL`, `EMBED_MISSING_CREDENTIAL`) so operators can grep which path surfaced the bad state. Review-impl caught the 6th site (`getCredentialOwned`) via a wider grep audit after the initial scope of 5. |
 | **D-K17.2c-01** | **K17.2c-R1 review T22** | **Cleared in session 46 Cycle 2.** New [`proxy_router_test.go`](../../services/provider-registry-service/internal/api/proxy_router_test.go) mounts `srv.Router()` directly to exercise `requireInternalToken` middleware + `internalProxy` query-param wrapper (K17.2c integration tests skipped these by calling `doProxy` directly). 5 DB-free cases: missing token → 401, wrong token → 401, missing query params → 400, invalid user_id → 400, invalid model_ref → 400. |
@@ -232,6 +236,42 @@ One commit, depends on Gate 4 being run against live DB.
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### Cycle 5 — extraction quality + perf ✅ (session 46)
+
+**All 4 items shipped.** Extraction pipeline now handles all-caps yelled sentences correctly and collapses 2-3× redundant entity-detector work per chunk. Two short-TTL caches eliminate the per-item anchor pre-load and per-turn query embedding round-trips at active-use cadence.
+
+**Modified (6):**
+- [app/extraction/entity_detector.py](../../services/knowledge-service/app/extraction/entity_detector.py) — **D-K15.5-01**: new `_iter_tokens_if_all_caps_run` helper. When `_CAPITALIZED_PHRASE_RE` matches a multi-token phrase where EVERY token is all-uppercase ("KAI DOES NOT KNOW ZHAO"), split into individual tokens so stopwords ("DOES", "NOT", "KNOW") drop out via the existing filter and "KAI" + "ZHAO" each become anchorable entities. Single-token all-caps matches ("NASA") stay intact. Trade-off: multi-word acronyms like "UNITED NATIONS" split, but each token still surfaces and K17 LLM reassembles at Pass 2.
+- [app/extraction/triple_extractor.py](../../services/knowledge-service/app/extraction/triple_extractor.py) + [app/extraction/negation.py](../../services/knowledge-service/app/extraction/negation.py) — **P-K15.8-01**: new kw-only `sentence_candidates: Mapping[str, list[EntityCandidate]] | None` parameter. When provided AND the sentence is a key, reuse — else fall through to `extract_entity_candidates`. Backward compatible.
+- [app/extraction/pattern_extractor.py](../../services/knowledge-service/app/extraction/pattern_extractor.py) — **P-K15.8-01**: new `_build_sentence_candidate_map` helper runs `split_by_language` + `extract_entity_candidates` once per sentence, returns a dict. Both `chat_turn_extract` and `chapter_extract` loops pre-build the map once per half/chunk and pass to both `extract_triples` and `extract_negations` — cuts 2× redundant per-sentence scans to 1×.
+- [app/routers/internal_extraction.py](../../services/knowledge-service/app/routers/internal_extraction.py) — **P-K13.0-01**: `cachetools.TTLCache(maxsize=256, ttl=60)` wrapping `_load_anchors_for_extraction`. Key `(str(user_id), str(project_id) or "")`. Caches successful loads AND deterministic-empty paths (project_id=None, no book_id) but NOT exceptions — transient glossary outages shouldn't lock in bad state for 60s.
+- [app/context/selectors/passages.py](../../services/knowledge-service/app/context/selectors/passages.py) — **P-K18.3-01**: `cachetools.TTLCache(maxsize=512, ttl=30)` wrapping the embedding step in `select_l3_passages`. Key `(str(user_uuid), project_id, embedding_model, message)`. Only successful vectors cached; `EmbeddingError` and empty responses skip the cache.
+
+**Tests (+21):**
+- [tests/unit/test_entity_detector.py](../../services/knowledge-service/tests/unit/test_entity_detector.py) — +5 cases: all-caps sentence splits, single all-caps token preserved (NASA), mixed-case phrase preserved (Commander Zhao), two-token all-caps still splits, partial-caps phrase not split.
+- [tests/unit/test_negation.py](../../services/knowledge-service/tests/unit/test_negation.py) — +4 cases: all-caps sentence now extracts negation end-to-end (D-K15.5-01 regression), precomputed candidates take precedence over re-scan (P-K15.8-01 proof), missing sentence in map falls back to scan, `None` disables lookup.
+- [tests/unit/test_anchor_cache.py](../../services/knowledge-service/tests/unit/test_anchor_cache.py) NEW, 5 tests: None project_id caches as empty, second call is cache hit (DB + glossary not re-touched), exception not cached, no-book-id caches as empty, different users don't share cache.
+- [tests/unit/test_query_embedding_cache.py](../../services/knowledge-service/tests/unit/test_query_embedding_cache.py) NEW, 7 tests: repeated query hits cache, different message/project/model/user all miss cache, EmbeddingError not cached, empty embeddings response not cached.
+
+**Review-impl fix applied before commit (HIGH):**
+Initial embedding-cache key was `(project_id, embedding_model, message)`. Two users sharing a project can use different BYOK providers under the same model-name string — their vectors aren't guaranteed interchangeable. Added `str(user_uuid)` to the key so cross-provider mismatches can't contaminate via cache. New test `test_different_user_misses_cache` proves the separation.
+
+**Live verification:**
+```
+>>> extract_negations("KAI DOES NOT KNOW ZHAO.")
+[NegationFact(subject='KAI', marker='DOES NOT KNOW', object_='ZHAO', ...)]
+```
+Before the D-K15.5-01 fix this returned `[]` — greedy fusion hid the entity boundaries.
+
+**Known limitations (not fixed, documented):**
+- `_build_sentence_candidate_map` runs an extra `split_by_language` at orchestrator level. Net cost still lower because each extractor saves one per-sentence scan they used to pay.
+- Caches are per-worker-process. With uvicorn `--workers N`, each worker has its own copy — correct by design.
+- Cache doesn't include `model_source` (`user_model` vs `platform_model`). Platform models under the same user's view are already distinct via the `embedding_model` string in the key; only contrived misconfiguration could collide.
+
+**Verify:** 1047 knowledge-service unit tests pass (+21 from Cycle 4's 1026).
+
+---
 
 ### Cycle 4 — provider-registry hardening ✅ (session 46)
 

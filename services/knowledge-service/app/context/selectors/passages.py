@@ -42,6 +42,8 @@ import math
 from dataclasses import dataclass
 from typing import Iterable
 
+from cachetools import TTLCache
+
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.context.intent.classifier import Intent, IntentResult
 from app.db.neo4j_helpers import CypherSession
@@ -123,6 +125,37 @@ class L3Passage:
     chapter_index: int | None
 
 
+# ── query embedding cache (P-K18.3-01) ──────────────────────────────
+
+_QUERY_EMBEDDING_CACHE_TTL_S = 30.0
+_QUERY_EMBEDDING_CACHE_MAX = 512
+
+# Per-worker-process cache for the query embedding step. In a
+# multi-turn chat the user often sends consecutive messages whose
+# first-pass meaning is similar ("Tell me about Kai." → "and what
+# happened next?"); repeated or near-identical queries across turns
+# pay provider-registry's embedding round-trip every time without
+# this cache. A 30s TTL matches the rhythm of active chat without
+# leaking stale embeddings into long-idle sessions.
+#
+# Key: (user_id, project_id, embedding_model, message) — user_id is
+# included because two users sharing a project could be using
+# DIFFERENT providers configured under the same model name string;
+# their embedding vectors aren't guaranteed to be interchangeable
+# across providers, even for an identically-named model. Partitioning
+# the cache by user sidesteps that correctness risk at trivially
+# higher miss rate.
+# Value: list[float] (the vector) — not the full EmbedResult,
+# which carries provider metadata we don't need for re-lookup.
+#
+# Populated only on successful embedding; failed calls (empty vector,
+# EmbeddingError) do NOT populate so a transient provider outage
+# doesn't lock in an empty result for 30s.
+_query_embedding_cache: TTLCache[tuple[str, str, str, str], list[float]] = TTLCache(
+    maxsize=_QUERY_EMBEDDING_CACHE_MAX, ttl=_QUERY_EMBEDDING_CACHE_TTL_S,
+)
+
+
 # ── public selector ─────────────────────────────────────────────────
 
 
@@ -160,24 +193,32 @@ async def select_l3_passages(
     if not message or not message.strip():
         return []
 
-    # 1. Embed the query.
-    try:
-        result = await embedding_client.embed(
-            user_id=user_uuid,
-            model_source=model_source,
-            model_ref=embedding_model,
-            texts=[message],
-        )
-    except EmbeddingError:
-        logger.warning(
-            "K18.3: embedding failed project=%s — degrading to empty L3",
-            project_id, exc_info=True,
-        )
-        return []
+    # 1. Embed the query. P-K18.3-01: cache hit short-circuits the
+    # provider-registry round-trip for repeated/near-identical queries
+    # inside a 30s window (multi-turn chat case).
+    cache_key = (str(user_uuid), project_id, embedding_model, message)
+    cached_vector = _query_embedding_cache.get(cache_key)
+    if cached_vector is not None:
+        query_vector = cached_vector
+    else:
+        try:
+            result = await embedding_client.embed(
+                user_id=user_uuid,
+                model_source=model_source,
+                model_ref=embedding_model,
+                texts=[message],
+            )
+        except EmbeddingError:
+            logger.warning(
+                "K18.3: embedding failed project=%s — degrading to empty L3",
+                project_id, exc_info=True,
+            )
+            return []
 
-    if not result.embeddings:
-        return []
-    query_vector = result.embeddings[0]
+        if not result.embeddings:
+            return []
+        query_vector = result.embeddings[0]
+        _query_embedding_cache[cache_key] = query_vector
 
     # 2. Dim-routed vector search with intent-tuned pool size.
     pool_size = _POOL_SIZE.get(intent.intent, 30)

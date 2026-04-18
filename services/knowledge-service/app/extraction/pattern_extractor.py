@@ -47,9 +47,10 @@ import time
 from collections.abc import Iterable
 
 from app.db.neo4j_helpers import CypherSession
-from app.extraction.entity_detector import extract_entity_candidates
+from app.extraction.entity_detector import EntityCandidate, extract_entity_candidates
 from app.extraction.injection_defense import neutralize_injection
 from app.extraction.negation import extract_negations
+from app.extraction.patterns import split_by_language
 from app.extraction.pattern_writer import (
     ExtractionWriteResult,
     write_extraction,
@@ -179,11 +180,24 @@ async def extract_from_chat_turn(
             entities.extend(
                 extract_entity_candidates(half, glossary_names=glossary_list)
             )
+            # P-K15.8-01: pre-build per-sentence entity candidate map
+            # once, reuse across triples + negations (each ran its own
+            # per-sentence scan before). Saves one extract_entity_candidates
+            # pass per sentence per half.
+            sent_cands = _build_sentence_candidate_map(half, glossary_list)
             triples.extend(
-                extract_triples(half, glossary_names=glossary_list)
+                extract_triples(
+                    half,
+                    glossary_names=glossary_list,
+                    sentence_candidates=sent_cands,
+                )
             )
             negations.extend(
-                extract_negations(half, glossary_names=glossary_list)
+                extract_negations(
+                    half,
+                    glossary_names=glossary_list,
+                    sentence_candidates=sent_cands,
+                )
             )
 
         pass1_candidates_extracted_total.labels(
@@ -212,6 +226,33 @@ async def extract_from_chat_turn(
         pass1_extraction_duration_seconds.labels(
             source_kind="chat_turn"
         ).observe(time.perf_counter() - started)
+
+
+def _build_sentence_candidate_map(
+    text: str, glossary_list: list[str],
+) -> dict[str, list[EntityCandidate]]:
+    """P-K15.8-01 — pre-extract entity candidates per sentence.
+
+    Orchestrator-level helper that splits `text` via `split_by_language`
+    (the same splitter each extractor uses internally) and runs
+    `extract_entity_candidates` once per sentence. The returned dict
+    lets `extract_triples` and `extract_negations` skip their own
+    per-sentence scan for the same text body.
+
+    Keys are the exact sentence strings that `split_by_language`
+    yields, so lookups in the extractors hit reliably — both sides
+    consume the same splitter.
+    """
+    out: dict[str, list[EntityCandidate]] = {}
+    for sentence, _lang in split_by_language(text):
+        # Skip duplicates (identical sentences appear in some prompts);
+        # first wins — output is deterministic since extract is stable.
+        if sentence in out:
+            continue
+        out[sentence] = extract_entity_candidates(
+            sentence, glossary_names=glossary_list,
+        )
+    return out
 
 
 def _split_chapter_into_chunks(
@@ -366,11 +407,22 @@ async def extract_from_chapter(
             entities.extend(
                 extract_entity_candidates(chunk, glossary_names=glossary_list)
             )
+            # P-K15.8-01: pre-build per-sentence entity candidate map
+            # once, reuse across triples + negations.
+            sent_cands = _build_sentence_candidate_map(chunk, glossary_list)
             triples.extend(
-                extract_triples(chunk, glossary_names=glossary_list)
+                extract_triples(
+                    chunk,
+                    glossary_names=glossary_list,
+                    sentence_candidates=sent_cands,
+                )
             )
             negations.extend(
-                extract_negations(chunk, glossary_names=glossary_list)
+                extract_negations(
+                    chunk,
+                    glossary_names=glossary_list,
+                    sentence_candidates=sent_cands,
+                )
             )
 
         pass1_candidates_extracted_total.labels(

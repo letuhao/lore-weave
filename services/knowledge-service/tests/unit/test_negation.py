@@ -40,6 +40,70 @@ def test_k15_5_simple_does_not_know():
     assert n.pending_validation is True
 
 
+def test_k15_5_all_caps_sentence_now_extracts_negation():
+    # D-K15.5-01 regression: before the entity_detector all-caps
+    # split, "KAI DOES NOT KNOW ZHAO" greedily fused into one "entity"
+    # spanning the negation marker, leaving no anchorable subject.
+    # The fix split the run into individual tokens so "KAI" and
+    # "ZHAO" are anchorable. This test guards the full extraction
+    # path, not just the detector.
+    out = extract_negations("KAI DOES NOT KNOW ZHAO.")
+    assert len(out) == 1
+    n = out[0]
+    assert n.subject == "KAI"
+    assert n.object_ == "ZHAO"
+
+
+def test_k15_8_precomputed_candidates_reused_instead_of_rescanning():
+    # P-K15.8-01: when the orchestrator passes sentence_candidates,
+    # extract_negations must use them instead of calling
+    # extract_entity_candidates again. Proof: pass a candidate list
+    # that references entities NOT present in the real text — the
+    # extractor should trust the override.
+    from app.extraction.entity_detector import EntityCandidate
+
+    text = "Kai does not know Zhao."
+    # Override: pretend Kai and Zhao are not the actual surface —
+    # use the PRE-BUILT map with a bogus fake entity. If the
+    # extractor ignored sentence_candidates and re-scanned, the
+    # real "Kai"/"Zhao" would surface and subject anchoring would
+    # use them. Using a single bogus entity at position 0 means
+    # the nearest-preceding-entity search can still anchor something
+    # but it'll be the bogus name, not "Kai".
+    fake = [EntityCandidate(name="FAKE_SENTINEL", confidence=0.9)]
+    out = extract_negations(
+        text,
+        sentence_candidates={"Kai does not know Zhao.": fake},
+    )
+    # The subject will be "" or unanchored — the key assertion is
+    # that "Kai" is NOT surfaced as subject because the pre-built
+    # map took precedence. Since FAKE_SENTINEL doesn't appear in the
+    # text, _entity_spans won't find it and no subject anchors →
+    # empty output. That's the proof.
+    assert all(n.subject != "Kai" for n in out)
+
+
+def test_k15_8_missing_sentence_falls_back_to_scan():
+    # P-K15.8-01: if the map doesn't contain a sentence, the
+    # extractor must fall back to its own scan — backward compat.
+    out = extract_negations(
+        "Kai does not know Zhao.",
+        sentence_candidates={},  # empty dict, sentence not a key
+    )
+    assert len(out) == 1
+    assert out[0].subject == "Kai"
+
+
+def test_k15_8_none_disables_lookup():
+    # Passing None is equivalent to not passing — existing behavior.
+    out = extract_negations(
+        "Kai does not know Zhao.",
+        sentence_candidates=None,
+    )
+    assert len(out) == 1
+    assert out[0].subject == "Kai"
+
+
 def test_k15_5_is_unaware_marker():
     out = extract_negations("Kai is unaware of the plot.")
     assert len(out) >= 1

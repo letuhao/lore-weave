@@ -41,12 +41,13 @@ KNOWLEDGE_SERVICE_TRACK2_IMPLEMENTATION.md.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 from pydantic import BaseModel, Field
 
 from app.extraction.entity_detector import (
     COMMON_NOUN_STOPWORDS,
+    EntityCandidate,
     extract_entity_candidates,
 )
 from app.extraction.patterns import (
@@ -183,6 +184,7 @@ def extract_triples(
     text: str,
     *,
     glossary_names: Iterable[str] | None = None,
+    sentence_candidates: Mapping[str, list[EntityCandidate]] | None = None,
 ) -> list[Triple]:
     """Scan text for SVO triples with quarantine confidence.
 
@@ -191,6 +193,13 @@ def extract_triples(
         glossary_names: optional set of known entity display names.
             Forwarded to `extract_entity_candidates` for per-sentence
             entity surface validation of subjects/objects.
+        sentence_candidates: **P-K15.8-01** optional pre-built
+            per-sentence candidate lookup. When a sentence (verbatim,
+            as produced by `split_by_language`) is a key here, the
+            entry is reused instead of re-invoking the entity
+            detector. Callers that also run `extract_negations` on
+            the same text benefit from building this once and
+            passing it to both. Absent key → detector fallback.
 
     Returns:
         List of `Triple`, in first-seen order. Empty input or text
@@ -210,12 +219,13 @@ def extract_triples(
         # Entity candidates for this sentence — used to validate
         # subject/object aren't bare common nouns that slipped past
         # the SVO regex's capitalized-phrase gate.
-        entity_forms = {
-            c.name.casefold()
-            for c in extract_entity_candidates(
+        if sentence_candidates is not None and sentence in sentence_candidates:
+            candidates = sentence_candidates[sentence]
+        else:
+            candidates = extract_entity_candidates(
                 sentence, glossary_names=glossary_list
             )
-        }
+        entity_forms = {c.name.casefold() for c in candidates}
 
         for match in _SVO_RE.finditer(sentence):
             subj = match.group("subj").strip()

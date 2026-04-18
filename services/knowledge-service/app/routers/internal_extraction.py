@@ -17,6 +17,7 @@ import time
 from typing import Literal
 from uuid import UUID
 
+from cachetools import TTLCache
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
@@ -95,6 +96,32 @@ class ExtractItemResponse(BaseModel):
 # ── Helpers ──────────────────────────────────────────────────────────
 
 
+_ANCHOR_CACHE_TTL_S = 60.0
+_ANCHOR_CACHE_MAX = 256
+
+# P-K13.0-01 — short-TTL cache for anchor pre-load.
+#
+# Every /extract-item call runs _load_anchors_for_extraction once.
+# A 100-chapter extraction job makes 100 identical calls (same
+# user_id, same project_id) within the job's runtime window,
+# producing 100 glossary HTTP calls + 100×N MERGE round-trips to
+# upsert the same anchor set. Caching the result for 60s collapses
+# that to one real load + 99 cache hits for the common case.
+#
+# Key: (str(user_id), str(project_id_or_none))
+# Value: list[Anchor] — only successful loads are cached. Empty
+# lists from the early-out paths (project_id=None, no book_id) are
+# ALSO cached because they're the correct answer; re-running the
+# SELECT inside the TTL would be wasted work.
+#
+# Per-process. On worker restart the cache empties and the first
+# call refills it. No manual invalidation — 60s is short enough
+# that glossary edits show up quickly and no cleanup is required.
+_anchor_cache: TTLCache[tuple[str, str], list[Anchor]] = TTLCache(
+    maxsize=_ANCHOR_CACHE_MAX, ttl=_ANCHOR_CACHE_TTL_S,
+)
+
+
 async def _load_anchors_for_extraction(
     *, user_id: UUID, project_id: UUID | None,
 ) -> list[Anchor]:
@@ -109,8 +136,19 @@ async def _load_anchors_for_extraction(
 
     Per-entry failures inside load_glossary_anchors are already
     isolated there; this helper only handles the outer envelope.
+
+    **P-K13.0-01:** results are cached per `(user_id, project_id)`
+    with a 60s TTL so bulk extraction jobs don't re-run the glossary
+    fetch + anchor MERGE loop on every item.
     """
+    # Cache key uses stringified UUIDs so None project_id maps to "".
+    cache_key = (str(user_id), str(project_id) if project_id else "")
+    cached = _anchor_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     if project_id is None:
+        _anchor_cache[cache_key] = []
         return []
     try:
         async with get_knowledge_pool().acquire() as conn:
@@ -121,21 +159,26 @@ async def _load_anchors_for_extraction(
             )
         book_id = row["book_id"] if row else None
         if book_id is None:
+            _anchor_cache[cache_key] = []
             return []
         async with neo4j_session() as anchor_session:
-            return await load_glossary_anchors(
+            anchors = await load_glossary_anchors(
                 anchor_session,
                 get_glossary_client(),
                 user_id=str(user_id),
                 project_id=str(project_id),
                 book_id=book_id,
             )
+        _anchor_cache[cache_key] = anchors
+        return anchors
     except Exception:
         logger.warning(
             "K13.0: anchor pre-load failed for project=%s — "
             "extraction will run without anchor bias",
             project_id, exc_info=True,
         )
+        # Don't cache failures — a transient glossary outage
+        # shouldn't lock in empty anchors for 60s.
         return []
 
 

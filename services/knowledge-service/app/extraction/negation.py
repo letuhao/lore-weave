@@ -51,7 +51,7 @@ KNOWLEDGE_SERVICE_TRACK2_IMPLEMENTATION.md.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 from pydantic import BaseModel, Field
 
@@ -133,6 +133,7 @@ def extract_negations(
     text: str,
     *,
     glossary_names: Iterable[str] | None = None,
+    sentence_candidates: Mapping[str, list[EntityCandidate]] | None = None,
 ) -> list[NegationFact]:
     """Scan text for negation facts with quarantine confidence.
 
@@ -140,6 +141,13 @@ def extract_negations(
         text: raw input — a chat turn, chapter paragraph, etc.
         glossary_names: optional known entity display names, forwarded
             to `extract_entity_candidates` for per-sentence anchoring.
+        sentence_candidates: **P-K15.8-01** optional pre-built
+            per-sentence candidate lookup. When a sentence (verbatim,
+            as produced by `split_by_language`) is a key here, the
+            entry is reused instead of re-invoking the entity
+            detector. Paired with the identical parameter on
+            `extract_triples` so orchestrators build the map once
+            per text body.
 
     Returns:
         List of `NegationFact` in first-seen order. Sentences where
@@ -168,9 +176,12 @@ def extract_negations(
             continue
 
         # Entity candidates once per sentence — anchors for subject/object.
-        candidates = extract_entity_candidates(
-            sentence, glossary_names=glossary_list
-        )
+        if sentence_candidates is not None and sentence in sentence_candidates:
+            candidates = sentence_candidates[sentence]
+        else:
+            candidates = extract_entity_candidates(
+                sentence, glossary_names=glossary_list
+            )
         candidate_spans = _entity_spans(sentence, candidates)
 
         for m_start, m_end, marker_text in marker_hits:

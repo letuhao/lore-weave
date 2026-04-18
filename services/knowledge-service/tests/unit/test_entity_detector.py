@@ -351,3 +351,60 @@ def test_k15_2_generic_referents_never_surface():
         "the hero",
     ):
         assert bad not in names_lower
+
+
+# ── D-K15.5-01: all-caps sentence fusion fix ─────────────────────────
+
+
+def test_k15_5_all_caps_sentence_splits_into_individual_names():
+    # Regression test for D-K15.5-01: `_CAPITALIZED_PHRASE_RE` used to
+    # greedily fuse "KAI DOES NOT KNOW ZHAO" into one "entity" spanning
+    # the negation marker, so downstream negation extraction couldn't
+    # anchor a subject. Now the detector splits all-caps multi-token
+    # runs into individual tokens; stopwords ("DOES", "NOT", "KNOW")
+    # fall out via the stopword filter.
+    text = "KAI DOES NOT KNOW ZHAO."
+    names = {c.name for c in extract_entity_candidates(text)}
+    assert "KAI" in names
+    assert "ZHAO" in names
+    assert "KAI DOES NOT KNOW ZHAO" not in names
+
+
+def test_k15_5_single_all_caps_token_preserved():
+    # A single-token all-caps match ("NASA") is almost always a
+    # legitimate acronym proper noun. The split logic must leave it
+    # untouched.
+    text = "NASA launched the satellite."
+    names = {c.name for c in extract_entity_candidates(text)}
+    assert "NASA" in names
+
+
+def test_k15_5_mixed_case_multi_token_preserved():
+    # "Commander Zhao" is normal title-case proper-noun fusion and
+    # must NOT be split — only ALL-caps runs trigger the split.
+    text = "Commander Zhao stood at the gate."
+    names = {c.name for c in extract_entity_candidates(text)}
+    assert "Commander Zhao" in names
+
+
+def test_k15_5_all_caps_two_token_name_still_splits():
+    # Trade-off: "JOHN SMITH" as a two-word all-caps name will split
+    # into "JOHN" and "SMITH" individually. That's the right call
+    # for the dominant failure mode (yelled sentences); a multi-word
+    # acronym like "UNITED NATIONS" loses its multi-word form but
+    # each token still surfaces and K17 LLM reassembles at Pass 2.
+    text = "UNITED NATIONS met today."
+    names = {c.name for c in extract_entity_candidates(text)}
+    assert "UNITED" in names
+    assert "NATIONS" in names
+    assert "UNITED NATIONS" not in names
+
+
+def test_k15_5_partial_caps_phrase_not_split():
+    # "Mr. KAI" — one uppercase-only token alongside a mixed-case
+    # token. Only ALL tokens being all-caps triggers the split, so
+    # this stays fused as "Mr KAI" (after period strip).
+    text = "Dr Strange cast a spell."
+    names = {c.name for c in extract_entity_candidates(text)}
+    # Mixed-case "Dr Strange" preserved as a single phrase.
+    assert "Dr Strange" in names

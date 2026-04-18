@@ -194,6 +194,46 @@ def _fold(name: str) -> str:
     return name.strip().casefold()
 
 
+def _iter_tokens_if_all_caps_run(
+    phrase: str, span: tuple[int, int],
+) -> list[tuple[str, tuple[int, int]]]:
+    """D-K15.5-01 — split ALL-UPPERCASE multi-token runs.
+
+    Returns the original (phrase, span) untouched unless every token
+    in the phrase is all-uppercase AND the phrase has more than one
+    token. In that case, returns each token with its absolute offsets
+    inside the source text.
+
+    A single-token all-caps match like "NASA" stays as-is — the
+    failure mode this fix targets is yelled sentences, not single-
+    word acronyms which are typically legitimate proper nouns.
+    """
+    if " " not in phrase:
+        return [(phrase, span)]
+    tokens = phrase.split(" ")
+    # Require at least one alpha char in each token — a stray hyphen
+    # or apostrophe alone shouldn't be called all-upper.
+    if not all(
+        any(ch.isalpha() for ch in tok) and tok == tok.upper()
+        for tok in tokens
+    ):
+        return [(phrase, span)]
+
+    # Rebuild absolute spans per token by walking the phrase.
+    start0 = span[0]
+    out: list[tuple[str, tuple[int, int]]] = []
+    cursor = 0
+    for tok in tokens:
+        # Find next occurrence of tok after cursor inside `phrase`.
+        # split(" ") on single-space joins guarantees the order and
+        # offsets are stable.
+        idx = phrase.index(tok, cursor)
+        tok_start = start0 + idx
+        out.append((tok, (tok_start, tok_start + len(tok))))
+        cursor = idx + len(tok)
+    return out
+
+
 # ── Public API ──────────────────────────────────────────────────────
 
 
@@ -296,19 +336,29 @@ def extract_entity_candidates(
         verb_adjacent.add(_fold(match.group(1)))
 
     for match in _CAPITALIZED_PHRASE_RE.finditer(text):
-        phrase = match.group()
-        entry = _get(phrase)
-        if entry is None:
-            continue
-        # K15.2-R1 / R2-I1: `bump_count_for_span` is idempotent per
-        # (start, end), so a Latin-script name already counted by
-        # the glossary pass or quoted pass is silently ignored here.
-        # Replaces the R1 `"glossary" not in signals` gate, which
-        # handled glossary overlap but not quoted overlap.
-        entry.bump_count_for_span(match.span())
-        entry.add_signal("capitalized", _WEIGHT_CAPITALIZED)
-        if _fold(phrase) in verb_adjacent:
-            entry.add_signal("verb_adjacent", _WEIGHT_VERB_ADJACENT)
+        # D-K15.5-01: a match where every token is ALL-uppercase
+        # (e.g. "KAI DOES NOT KNOW ZHAO") is almost always a
+        # yelled/stylized sentence, not a multi-word proper noun.
+        # Fusing the whole span hides real entity boundaries and
+        # breaks downstream negation/SVO anchoring. Split such runs
+        # into their individual tokens so "KAI" and "ZHAO" each
+        # become candidates; stopwords like "DOES", "NOT", "KNOW"
+        # fall out via the normal `_get()` filter.
+        for sub_phrase, sub_span in _iter_tokens_if_all_caps_run(
+            match.group(), match.span(),
+        ):
+            entry = _get(sub_phrase)
+            if entry is None:
+                continue
+            # K15.2-R1 / R2-I1: `bump_count_for_span` is idempotent
+            # per (start, end), so a Latin-script name already counted
+            # by the glossary pass or quoted pass is silently ignored
+            # here. Replaces the R1 `"glossary" not in signals` gate,
+            # which handled glossary overlap but not quoted overlap.
+            entry.bump_count_for_span(sub_span)
+            entry.add_signal("capitalized", _WEIGHT_CAPITALIZED)
+            if _fold(sub_phrase) in verb_adjacent:
+                entry.add_signal("verb_adjacent", _WEIGHT_VERB_ADJACENT)
 
     # Pass B — score + materialize. Drop candidates that collected
     # zero signals (defensive — _get filters stopwords so this is
