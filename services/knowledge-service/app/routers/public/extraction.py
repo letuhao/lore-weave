@@ -498,6 +498,29 @@ async def cancel_extraction_job(
 _GRAPH_LABELS = ["Entity", "Event", "Fact", "ExtractionSource"]
 
 
+async def _delete_project_graph(user_id: UUID, project_id: UUID) -> int:
+    """Delete all Neo4j nodes for a project. Returns total nodes deleted.
+
+    Shared by K16.8 (delete), K16.9 (rebuild), K16.10 (change model).
+    Caller must check neo4j_uri is set before calling.
+    NOTE: unbatched DETACH DELETE — see D-K11.9-01.
+    """
+    deleted_total = 0
+    async with neo4j_session() as session:
+        for label in _GRAPH_LABELS:
+            result = await session.run(
+                f"MATCH (n:{label}) "
+                "WHERE n.user_id = $user_id AND n.project_id = $project_id "
+                "DETACH DELETE n "
+                "RETURN count(n) AS deleted",
+                user_id=str(user_id),
+                project_id=str(project_id),
+            )
+            record = await result.single()
+            deleted_total += record["deleted"] if record else 0
+    return deleted_total
+
+
 @router.delete(
     "/{project_id}/extraction/graph",
     status_code=status.HTTP_200_OK,
@@ -539,25 +562,7 @@ async def delete_extraction_graph(
             detail="Neo4j not configured",
         )
 
-    # Delete all project-scoped nodes from Neo4j.
-    # NOTE: unbatched DETACH DELETE — loads all matching nodes in one
-    # transaction. Acceptable at hobby scale; for 100K+ node projects
-    # this would need CALL { ... } IN TRANSACTIONS batching (same
-    # limitation as D-K11.9-01 reconciler).
-    deleted_total = 0
-    async with neo4j_session() as session:
-        for label in _GRAPH_LABELS:
-            result = await session.run(
-                f"MATCH (n:{label}) "
-                "WHERE n.user_id = $user_id AND n.project_id = $project_id "
-                "DETACH DELETE n "
-                "RETURN count(n) AS deleted",
-                user_id=str(user_id),
-                project_id=str(project_id),
-            )
-            record = await result.single()
-            count = record["deleted"] if record else 0
-            deleted_total += count
+    deleted_total = await _delete_project_graph(user_id, project_id)
 
     # Update project state
     await projects_repo.set_extraction_state(
@@ -630,15 +635,7 @@ async def rebuild_extraction(
         )
 
     # Step 1: Delete existing graph
-    async with neo4j_session() as session:
-        for label in _GRAPH_LABELS:
-            await session.run(
-                f"MATCH (n:{label}) "
-                "WHERE n.user_id = $user_id AND n.project_id = $project_id "
-                "DETACH DELETE n",
-                user_id=str(user_id),
-                project_id=str(project_id),
-            )
+    await _delete_project_graph(user_id, project_id)
 
     # Step 2: Start new job with scope=all via shared helper
     trace_id = trace_id_var.get()
@@ -715,6 +712,13 @@ async def change_embedding_model(
     current_model = project.embedding_model or "(none)"
     new_model = body.embedding_model
 
+    # Same-model no-op guard
+    if current_model == new_model:
+        return {
+            "message": "model unchanged",
+            "current_model": current_model,
+        }
+
     if not confirm:
         return {
             "warning": "Changing the embedding model requires deleting the existing knowledge graph. "
@@ -731,19 +735,7 @@ async def change_embedding_model(
             detail="Neo4j not configured",
         )
 
-    deleted_total = 0
-    async with neo4j_session() as session:
-        for label in _GRAPH_LABELS:
-            result = await session.run(
-                f"MATCH (n:{label}) "
-                "WHERE n.user_id = $user_id AND n.project_id = $project_id "
-                "DETACH DELETE n "
-                "RETURN count(n) AS deleted",
-                user_id=str(user_id),
-                project_id=str(project_id),
-            )
-            record = await result.single()
-            deleted_total += record["deleted"] if record else 0
+    deleted_total = await _delete_project_graph(user_id, project_id)
 
     await projects_repo.set_extraction_state(
         user_id, project_id,

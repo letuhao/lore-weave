@@ -145,3 +145,13 @@ def test_confirm_without_neo4j_returns_503(mock_settings):
     client, _ = _make_client()
     resp = client.put(_url(confirm=True), json=_body())
     assert resp.status_code == 503
+
+
+def test_same_model_returns_unchanged():
+    """Changing to the same model is a no-op — no graph delete."""
+    client, repo = _make_client()
+    resp = client.put(_url(), json=_body(model="bge-m3"))  # same as stub
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["message"] == "model unchanged"
+    repo.set_extraction_state.assert_not_called()
