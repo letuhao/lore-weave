@@ -213,8 +213,14 @@ class ChatCompletionUsage(BaseModel):
 class ChatCompletionResponse(BaseModel):
     """Parsed response from provider-registry's chat completion proxy.
 
-    Only `content` is guaranteed populated — it's the first choice's
-    message content, which every OpenAI-compatible provider returns.
+    `content` carries the text body. For **tool-calling** responses
+    (D-K17.2b-01) providers return `content=null` alongside a
+    `tool_calls` array; we surface both: `content=""` (empty, not
+    None) and `tool_calls` populated with the parsed call entries.
+    JSON-mode callers (K17.4–K17.7) read `content` and ignore
+    `tool_calls` — behavior unchanged. A future tool-calling
+    extractor reads both.
+
     `model` is echoed from the upstream's body (may differ from the
     resolved name in edge cases like LiteLLM routing).
 
@@ -227,6 +233,7 @@ class ChatCompletionResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     content: str
+    tool_calls: list[dict[str, Any]] = Field(default_factory=list)
     model: str = ""
     usage: ChatCompletionUsage = Field(default_factory=ChatCompletionUsage)
     raw: dict[str, Any] = Field(default_factory=dict)
@@ -502,17 +509,39 @@ class ProviderClient:
             first = choices[0] or {}
             message = first.get("message") or {}
             content = message.get("content")
+            tool_calls_raw = message.get("tool_calls")
+            # Normalize tool_calls into a list of dicts (provider may
+            # omit the field entirely → None; we coerce to []).
+            tool_calls: list[dict[str, Any]] = []
+            if isinstance(tool_calls_raw, list):
+                tool_calls = [
+                    tc for tc in tool_calls_raw if isinstance(tc, dict)
+                ]
+
+            # D-K17.2b-01: accept tool-calling responses where the
+            # provider legitimately returns content=null alongside a
+            # populated tool_calls[] array. Previously this raised
+            # ProviderDecodeError; now we surface content="" and the
+            # caller can inspect `tool_calls`. Callers that only use
+            # `content` (K17.4–K17.7 JSON-mode extractors) treat an
+            # empty string as "no output" — behavior unchanged for
+            # them. A genuinely malformed response (content missing
+            # AND tool_calls missing/empty) still raises.
             if not isinstance(content, str):
-                outcome = "decode"
-                raise ProviderDecodeError(
-                    "provider response missing choices[0].message.content",
-                    trace_id=trace_id,
-                    status_code=status,
-                )
+                if not tool_calls:
+                    outcome = "decode"
+                    raise ProviderDecodeError(
+                        "provider response missing both "
+                        "choices[0].message.content and tool_calls",
+                        trace_id=trace_id,
+                        status_code=status,
+                    )
+                content = ""
 
             usage_obj = body_json.get("usage") if isinstance(body_json.get("usage"), dict) else {}
             return ChatCompletionResponse(
                 content=content,
+                tool_calls=tool_calls,
                 model=str(body_json.get("model") or ""),
                 usage=ChatCompletionUsage(**usage_obj),
                 raw=body_json,

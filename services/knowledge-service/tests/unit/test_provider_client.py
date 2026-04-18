@@ -301,6 +301,155 @@ async def test_decode_error_on_missing_content():
         await client.aclose()
 
 
+# ── D-K17.2b-01: tool_calls parser support ───────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_tool_calls_with_null_content_succeeds():
+    # D-K17.2b-01: OpenAI-style tool-calling responses return
+    # content=null with a populated tool_calls array. The parser
+    # must surface content="" (empty string, not None) and preserve
+    # tool_calls entries verbatim.
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = _ok_body()
+        body["choices"][0]["message"]["content"] = None
+        body["choices"][0]["message"]["tool_calls"] = [
+            {
+                "id": "call_abc",
+                "type": "function",
+                "function": {
+                    "name": "lookup_entity",
+                    "arguments": '{"name": "Aragorn"}',
+                },
+            }
+        ]
+        body["choices"][0]["finish_reason"] = "tool_calls"
+        return httpx.Response(200, json=body)
+
+    client = _make_client(handler)
+    try:
+        result = await client.chat_completion(
+            user_id="u-1",
+            model_source="user_model",
+            model_ref="11111111-1111-1111-1111-111111111111",
+            messages=_messages(),
+        )
+    finally:
+        await client.aclose()
+
+    assert result.content == ""
+    assert len(result.tool_calls) == 1
+    assert result.tool_calls[0]["id"] == "call_abc"
+    assert result.tool_calls[0]["function"]["name"] == "lookup_entity"
+
+
+@pytest.mark.asyncio
+async def test_tool_calls_with_missing_content_field_succeeds():
+    # Some providers omit the content key entirely (not even `null`)
+    # on tool-calling responses. Same handling as content=null.
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = _ok_body()
+        body["choices"][0]["message"].pop("content")
+        body["choices"][0]["message"]["tool_calls"] = [
+            {"id": "c1", "type": "function",
+             "function": {"name": "f", "arguments": "{}"}}
+        ]
+        return httpx.Response(200, json=body)
+
+    client = _make_client(handler)
+    try:
+        result = await client.chat_completion(
+            user_id="u-1",
+            model_source="user_model",
+            model_ref="11111111-1111-1111-1111-111111111111",
+            messages=_messages(),
+        )
+    finally:
+        await client.aclose()
+
+    assert result.content == ""
+    assert len(result.tool_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_content_present_and_tool_calls_absent_defaults_empty_list():
+    # JSON-mode extraction responses (K17.4–K17.7) don't include
+    # tool_calls. Confirm the field defaults to [] without blowing up.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_ok_body("hello"))
+
+    client = _make_client(handler)
+    try:
+        result = await client.chat_completion(
+            user_id="u-1",
+            model_source="user_model",
+            model_ref="11111111-1111-1111-1111-111111111111",
+            messages=_messages(),
+        )
+    finally:
+        await client.aclose()
+
+    assert result.content == "hello"
+    assert result.tool_calls == []
+
+
+@pytest.mark.asyncio
+async def test_tool_calls_non_dict_entries_filtered():
+    # Defensive: if a provider returns a malformed tool_calls entry
+    # (string, null, whatever), filter it out rather than blowing up
+    # Pydantic validation downstream.
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = _ok_body()
+        body["choices"][0]["message"]["content"] = None
+        body["choices"][0]["message"]["tool_calls"] = [
+            {"id": "good", "type": "function",
+             "function": {"name": "f", "arguments": "{}"}},
+            "bad-string-entry",
+            None,
+            42,
+        ]
+        return httpx.Response(200, json=body)
+
+    client = _make_client(handler)
+    try:
+        result = await client.chat_completion(
+            user_id="u-1",
+            model_source="user_model",
+            model_ref="11111111-1111-1111-1111-111111111111",
+            messages=_messages(),
+        )
+    finally:
+        await client.aclose()
+
+    assert len(result.tool_calls) == 1
+    assert result.tool_calls[0]["id"] == "good"
+
+
+@pytest.mark.asyncio
+async def test_decode_error_when_both_content_and_tool_calls_missing():
+    # Strict fallback: no content AND no tool_calls (or empty list)
+    # is genuinely malformed — keep raising ProviderDecodeError so
+    # the K16 state machine quarantines instead of treating empty
+    # output as "extraction found nothing".
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = _ok_body()
+        body["choices"][0]["message"]["content"] = None
+        body["choices"][0]["message"]["tool_calls"] = []
+        return httpx.Response(200, json=body)
+
+    client = _make_client(handler)
+    try:
+        with pytest.raises(ProviderDecodeError):
+            await client.chat_completion(
+                user_id="u-1",
+                model_source="user_model",
+                model_ref="11111111-1111-1111-1111-111111111111",
+                messages=_messages(),
+            )
+    finally:
+        await client.aclose()
+
+
 # ── Phase 3 review Issue 7: 200-with-error body ──────────────────────
 
 

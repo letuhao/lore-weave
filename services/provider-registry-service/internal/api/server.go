@@ -71,6 +71,11 @@ func (s *Server) Router() http.Handler {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 
+	// D-K17.2a-01 — Prometheus metrics. Unauthed on purpose (same
+	// convention as every other Go service's /metrics); scraper
+	// must be in-cluster.
+	r.Method(http.MethodGet, "/metrics", metricsHandler())
+
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		if s.pool != nil {
 			if err := s.pool.Ping(r.Context()); err != nil {
@@ -233,6 +238,7 @@ WHERE platform_model_id=$1 AND status='active'
 func (s *Server) publicProxy(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := s.auth(r)
 	if !ok {
+		ProxyRequestsTotal.WithLabelValues(OutcomeAuthFailed).Inc()
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
 	}
@@ -241,6 +247,7 @@ func (s *Server) publicProxy(w http.ResponseWriter, r *http.Request) {
 	modelRefStr := r.URL.Query().Get("model_ref")
 
 	if modelSource == "" || modelRefStr == "" {
+		ProxyRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "PROXY_VALIDATION_ERROR", "model_source and model_ref query params required")
 		return
 	}
@@ -257,11 +264,13 @@ func (s *Server) internalProxy(w http.ResponseWriter, r *http.Request) {
 	modelRefStr := r.URL.Query().Get("model_ref")
 
 	if userIDStr == "" || modelSource == "" || modelRefStr == "" {
+		ProxyRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "PROXY_VALIDATION_ERROR", "user_id, model_source, and model_ref query params required")
 		return
 	}
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
+		ProxyRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "PROXY_VALIDATION_ERROR", "invalid user_id")
 		return
 	}
@@ -278,6 +287,7 @@ func (s *Server) internalProxy(w http.ResponseWriter, r *http.Request) {
 func (s *Server) doProxy(w http.ResponseWriter, r *http.Request, userID uuid.UUID, modelSource string, modelRefStr string) {
 	modelRef, err := uuid.Parse(modelRefStr)
 	if err != nil {
+		ProxyRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "PROXY_VALIDATION_ERROR", "invalid model_ref")
 		return
 	}
@@ -299,15 +309,18 @@ FROM platform_models
 WHERE platform_model_id=$1 AND status='active'
 `, modelRef).Scan(&providerKind, &providerModelName, &endpointBaseURL, &secretCipher)
 	} else {
+		ProxyRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "PROXY_VALIDATION_ERROR", "invalid model_source")
 		return
 	}
 
 	if err == pgx.ErrNoRows {
+		ProxyRequestsTotal.WithLabelValues(OutcomeModelNotFound).Inc()
 		writeError(w, http.StatusNotFound, "PROXY_MODEL_NOT_FOUND", "model not found or inactive")
 		return
 	}
 	if err != nil {
+		ProxyRequestsTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 		writeError(w, http.StatusInternalServerError, "PROXY_QUERY_FAILED", "failed to resolve model")
 		return
 	}
@@ -324,6 +337,7 @@ WHERE platform_model_id=$1 AND status='active'
 	// rather than silently forwarding an empty "model" field to the
 	// upstream provider and getting a cryptic 400 back.
 	if providerModelName == "" {
+		ProxyRequestsTotal.WithLabelValues(OutcomeEmptyModel).Inc()
 		writeError(w, http.StatusInternalServerError, "PROXY_MODEL_RESOLUTION_EMPTY",
 			"resolved provider_model_name is empty")
 		return
@@ -342,6 +356,7 @@ WHERE platform_model_id=$1 AND status='active'
 	// Platform models legitimately have no per-user secret (line 281
 	// SELECTs empty strings), so this guard is scoped to user_model.
 	if modelSource == "user_model" && secretCipher == "" {
+		ProxyRequestsTotal.WithLabelValues(OutcomeMissingCredential).Inc()
 		writeError(w, http.StatusInternalServerError, "PROXY_MISSING_CREDENTIAL",
 			"user_model has no provider credential ciphertext")
 		return
@@ -351,6 +366,7 @@ WHERE platform_model_id=$1 AND status='active'
 	if secretCipher != "" {
 		secret, err = s.decryptSecret(secretCipher)
 		if err != nil {
+			ProxyRequestsTotal.WithLabelValues(OutcomeDecryptFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "PROXY_DECRYPT_FAILED", "failed to decrypt secret")
 			return
 		}
@@ -359,6 +375,7 @@ WHERE platform_model_id=$1 AND status='active'
 	// Build target URL: {base_url}/{target_path}
 	targetPath := chi.URLParam(r, "*")
 	if targetPath == "" {
+		ProxyRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "PROXY_VALIDATION_ERROR", "target path required")
 		return
 	}
@@ -406,12 +423,14 @@ WHERE platform_model_id=$1 AND status='active'
 			return
 		}
 		if int64(len(raw)) > maxJSONBodyBytes {
+			ProxyRequestsTotal.WithLabelValues(OutcomeTooLarge).Inc()
 			writeError(w, http.StatusRequestEntityTooLarge, "PROXY_BODY_TOO_LARGE",
 				"request body exceeds 4MiB JSON cap")
 			return
 		}
 		var parsed map[string]any
 		if err := json.Unmarshal(raw, &parsed); err != nil {
+			ProxyRequestsTotal.WithLabelValues(OutcomeInvalidJSON).Inc()
 			writeError(w, http.StatusBadRequest, "PROXY_INVALID_JSON_BODY",
 				"request body is not valid JSON")
 			return
@@ -451,12 +470,18 @@ WHERE platform_model_id=$1 AND status='active'
 	// Execute
 	resp, err := s.invokeClient.Do(proxyReq)
 	if err != nil {
+		ProxyRequestsTotal.WithLabelValues(OutcomeProviderError).Inc()
 		writeError(w, http.StatusBadGateway, "PROXY_UPSTREAM_ERROR", "provider request failed: "+err.Error())
 		return
 	}
 	defer resp.Body.Close()
 
-	// Stream response back as-is (headers + body)
+	// Stream response back as-is (headers + body). "ok" from the
+	// proxy's perspective means we successfully forwarded and got a
+	// response — even a 5xx from upstream counts as a successful
+	// proxy. Business-level outcomes (4xx/5xx from provider) are
+	// visible via the caller's own instrumentation.
+	ProxyRequestsTotal.WithLabelValues(OutcomeOK).Inc()
 	for key, vals := range resp.Header {
 		for _, val := range vals {
 			w.Header().Add(key, val)
@@ -1537,6 +1562,7 @@ func (s *Server) deletePlatformModel(w http.ResponseWriter, r *http.Request) {
 func (s *Server) invokeModel(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := s.auth(r)
 	if !ok {
+		InvokeRequestsTotal.WithLabelValues(OutcomeAuthFailed).Inc()
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
 	}
@@ -1546,11 +1572,13 @@ func (s *Server) invokeModel(w http.ResponseWriter, r *http.Request) {
 		Input       map[string]any `json:"input"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
 		return
 	}
 	modelRef, err := uuid.Parse(in.ModelRef)
 	if err != nil {
+		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid model_ref")
 		return
 	}
@@ -1565,16 +1593,19 @@ JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credenti
 WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
 `, modelRef, userID).Scan(&modelID, &providerKind, &providerModelName, &endpointBaseURL, &secretCipher)
 		if err == pgx.ErrNoRows {
+			InvokeRequestsTotal.WithLabelValues(OutcomeModelNotFound).Inc()
 			writeError(w, http.StatusNotFound, "M03_MODEL_NOT_FOUND", "user model not found or inactive")
 			return
 		}
 		if err != nil {
+			InvokeRequestsTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "M03_MODEL_QUERY_FAILED", "failed to resolve user model")
 			return
 		}
 		// D-PROXY-01 — see doProxy comment. Invalid state that would
 		// otherwise hit upstream 401 with an unhelpful error body.
 		if secretCipher == "" {
+			InvokeRequestsTotal.WithLabelValues(OutcomeMissingCredential).Inc()
 			writeError(w, http.StatusInternalServerError,
 				"M03_MISSING_CREDENTIAL",
 				"user_model has no provider credential ciphertext")
@@ -1582,6 +1613,7 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		}
 		secret, err = s.decryptSecret(secretCipher)
 		if err != nil {
+			InvokeRequestsTotal.WithLabelValues(OutcomeDecryptFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "M03_SECRET_DECRYPT_FAILED", "failed to decrypt provider secret")
 			return
 		}
@@ -1592,25 +1624,30 @@ FROM platform_models
 WHERE platform_model_id=$1 AND status='active'
 `, modelRef).Scan(&modelID, &providerKind, &providerModelName)
 		if err == pgx.ErrNoRows {
+			InvokeRequestsTotal.WithLabelValues(OutcomeModelNotFound).Inc()
 			writeError(w, http.StatusNotFound, "M03_MODEL_NOT_FOUND", "platform model not found or inactive")
 			return
 		}
 		if err != nil {
+			InvokeRequestsTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "M03_MODEL_QUERY_FAILED", "failed to resolve platform model")
 			return
 		}
 		// Platform model route intentionally requires adapter path only; secret/endpoint handled by adapter config.
 	} else {
+		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid model_source")
 		return
 	}
 	adapter, err := provider.ResolveAdapter(providerKind, s.invokeClient)
 	if err != nil {
+		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusConflict, "M03_PROVIDER_ROUTE_VIOLATION", "model route violation")
 		return
 	}
 	output, usage, err := adapter.Invoke(r.Context(), endpointBaseURL, secret, providerModelName, in.Input)
 	if err != nil {
+		InvokeRequestsTotal.WithLabelValues(OutcomeProviderError).Inc()
 		writeError(w, http.StatusBadGateway, "M03_PROVIDER_INVOKE_FAILED", "provider invoke failed")
 		return
 	}
@@ -1628,13 +1665,16 @@ WHERE platform_model_id=$1 AND status='active'
 		"request_status": "success",
 	})
 	if err != nil {
+		InvokeRequestsTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 		writeError(w, http.StatusBadGateway, "M03_BILLING_RECORD_FAILED", "failed to write usage log")
 		return
 	}
 	if decision == "rejected" {
+		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusPaymentRequired, "M03_BILLING_REJECTED", "quota and credits exhausted")
 		return
 	}
+	InvokeRequestsTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"request_id":    requestID,
 		"usage_log_id":  logID,
@@ -1656,11 +1696,13 @@ WHERE platform_model_id=$1 AND status='active'
 func (s *Server) internalInvokeModel(w http.ResponseWriter, r *http.Request) {
 	userIDStr := r.URL.Query().Get("user_id")
 	if userIDStr == "" {
+		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "user_id query param required")
 		return
 	}
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
+		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid user_id")
 		return
 	}
@@ -1675,6 +1717,7 @@ func (s *Server) internalInvokeModel(w http.ResponseWriter, r *http.Request) {
 		MaxTokens   *int     `json:"max_tokens"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
 		return
 	}
@@ -1695,6 +1738,7 @@ func (s *Server) internalInvokeModel(w http.ResponseWriter, r *http.Request) {
 
 	modelRef, err := uuid.Parse(in.ModelRef)
 	if err != nil {
+		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid model_ref")
 		return
 	}
@@ -1710,15 +1754,18 @@ JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credenti
 WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
 `, modelRef, userID).Scan(&modelID, &providerKind, &providerModelName, &endpointBaseURL, &secretCipher)
 		if err == pgx.ErrNoRows {
+			InvokeRequestsTotal.WithLabelValues(OutcomeModelNotFound).Inc()
 			writeError(w, http.StatusNotFound, "M03_MODEL_NOT_FOUND", "user model not found or inactive")
 			return
 		}
 		if err != nil {
+			InvokeRequestsTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "M03_MODEL_QUERY_FAILED", "failed to resolve user model")
 			return
 		}
 		// D-PROXY-01 — see doProxy comment.
 		if secretCipher == "" {
+			InvokeRequestsTotal.WithLabelValues(OutcomeMissingCredential).Inc()
 			writeError(w, http.StatusInternalServerError,
 				"M03_MISSING_CREDENTIAL",
 				"user_model has no provider credential ciphertext")
@@ -1726,6 +1773,7 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		}
 		secret, err = s.decryptSecret(secretCipher)
 		if err != nil {
+			InvokeRequestsTotal.WithLabelValues(OutcomeDecryptFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "M03_SECRET_DECRYPT_FAILED", "failed to decrypt provider secret")
 			return
 		}
@@ -1736,25 +1784,30 @@ FROM platform_models
 WHERE platform_model_id=$1 AND status='active'
 `, modelRef).Scan(&modelID, &providerKind, &providerModelName)
 		if err == pgx.ErrNoRows {
+			InvokeRequestsTotal.WithLabelValues(OutcomeModelNotFound).Inc()
 			writeError(w, http.StatusNotFound, "M03_MODEL_NOT_FOUND", "platform model not found or inactive")
 			return
 		}
 		if err != nil {
+			InvokeRequestsTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "M03_MODEL_QUERY_FAILED", "failed to resolve platform model")
 			return
 		}
 	} else {
+		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid model_source")
 		return
 	}
 
 	adapter, err := provider.ResolveAdapter(providerKind, s.invokeClient)
 	if err != nil {
+		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusConflict, "M03_PROVIDER_ROUTE_VIOLATION", "model route violation")
 		return
 	}
 	output, usage, err := adapter.Invoke(r.Context(), endpointBaseURL, secret, providerModelName, in.Input)
 	if err != nil {
+		InvokeRequestsTotal.WithLabelValues(OutcomeProviderError).Inc()
 		writeError(w, http.StatusBadGateway, "M03_PROVIDER_INVOKE_FAILED", "provider invoke failed")
 		return
 	}
@@ -1773,13 +1826,16 @@ WHERE platform_model_id=$1 AND status='active'
 		"request_status": "success",
 	})
 	if err != nil {
+		InvokeRequestsTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 		writeError(w, http.StatusBadGateway, "M03_BILLING_RECORD_FAILED", "failed to write usage log")
 		return
 	}
 	if decision == "rejected" {
+		InvokeRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusPaymentRequired, "M03_BILLING_REJECTED", "quota and credits exhausted")
 		return
 	}
+	InvokeRequestsTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"request_id":    requestID,
 		"usage_log_id":  logID,
@@ -1797,11 +1853,13 @@ WHERE platform_model_id=$1 AND status='active'
 func (s *Server) verifyUserModel(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := s.auth(r)
 	if !ok {
+		VerifyRequestsTotal.WithLabelValues(OutcomeAuthFailed).Inc()
 		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
 		return
 	}
 	modelID, ok := parseUUIDParam(w, r, "user_model_id")
 	if !ok {
+		VerifyRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		return
 	}
 
@@ -1816,10 +1874,12 @@ JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credenti
 WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
 `, modelID, userID).Scan(&providerKind, &providerModelName, &endpointBaseURL, &secretCipher, &capabilityFlagsJSON)
 	if err == pgx.ErrNoRows {
+		VerifyRequestsTotal.WithLabelValues(OutcomeModelNotFound).Inc()
 		writeError(w, http.StatusNotFound, "M03_MODEL_NOT_FOUND", "user model not found or inactive")
 		return
 	}
 	if err != nil {
+		VerifyRequestsTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 		writeError(w, http.StatusInternalServerError, "M03_MODEL_QUERY_FAILED", "failed to resolve user model")
 		return
 	}
@@ -1828,6 +1888,7 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 	// would decrypt empty → forward empty Authorization → get a
 	// cryptic 401 from upstream. Early-fail with a clear code.
 	if secretCipher == "" {
+		VerifyRequestsTotal.WithLabelValues(OutcomeMissingCredential).Inc()
 		writeError(w, http.StatusInternalServerError,
 			"M03_MISSING_CREDENTIAL",
 			"user_model has no provider credential ciphertext")
@@ -1836,6 +1897,7 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 
 	secret, err := s.decryptSecret(secretCipher)
 	if err != nil {
+		VerifyRequestsTotal.WithLabelValues(OutcomeDecryptFailed).Inc()
 		writeError(w, http.StatusInternalServerError, "M03_SECRET_DECRYPT_FAILED", "failed to decrypt provider secret")
 		return
 	}
@@ -1857,6 +1919,7 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		result := s.verifySTT(ctx, endpointBaseURL, secret, providerModelName)
 		result["latency_ms"] = time.Since(start).Milliseconds()
 		result["capability"] = "stt"
+		VerifyRequestsTotal.WithLabelValues(OutcomeOK).Inc()
 		writeJSON(w, http.StatusOK, result)
 		return
 
@@ -1865,6 +1928,7 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		result := s.verifyTTS(ctx, endpointBaseURL, secret, providerModelName)
 		result["latency_ms"] = time.Since(start).Milliseconds()
 		result["capability"] = "tts"
+		VerifyRequestsTotal.WithLabelValues(OutcomeOK).Inc()
 		writeJSON(w, http.StatusOK, result)
 		return
 
@@ -1873,6 +1937,7 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		result := s.verifyModelsEndpoint(ctx, endpointBaseURL, secret)
 		result["latency_ms"] = time.Since(start).Milliseconds()
 		result["capability"] = "image_gen"
+		VerifyRequestsTotal.WithLabelValues(OutcomeOK).Inc()
 		writeJSON(w, http.StatusOK, result)
 		return
 
@@ -1881,6 +1946,7 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		result := s.verifyModelsEndpoint(ctx, endpointBaseURL, secret)
 		result["latency_ms"] = time.Since(start).Milliseconds()
 		result["capability"] = "video_gen"
+		VerifyRequestsTotal.WithLabelValues(OutcomeOK).Inc()
 		writeJSON(w, http.StatusOK, result)
 		return
 
@@ -1891,6 +1957,7 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 	verifyClient := &http.Client{Timeout: 5 * time.Minute}
 	adapter, err := provider.ResolveAdapter(providerKind, verifyClient)
 	if err != nil {
+		VerifyRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusConflict, "M03_PROVIDER_ROUTE_VIOLATION", "unsupported provider kind")
 		return
 	}
@@ -1906,6 +1973,10 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 	latencyMs := time.Since(start).Milliseconds()
 
 	if invokeErr != nil {
+		// Verification completed with a negative answer. Counter-wise
+		// this is a provider-side failure — the verify RPC did its job,
+		// but the upstream provider rejected the ping.
+		VerifyRequestsTotal.WithLabelValues(OutcomeProviderError).Inc()
 		writeJSON(w, http.StatusOK, map[string]any{
 			"verified":   false,
 			"latency_ms": latencyMs,
@@ -1925,6 +1996,7 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		preview = preview[:200] + "…"
 	}
 
+	VerifyRequestsTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"verified":         true,
 		"latency_ms":       latencyMs,
@@ -2218,11 +2290,13 @@ func (s *Server) recordInvocation(ctx context.Context, payload map[string]any) (
 func (s *Server) internalEmbed(w http.ResponseWriter, r *http.Request) {
 	userIDStr := r.URL.Query().Get("user_id")
 	if userIDStr == "" {
+		EmbedRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "EMBED_VALIDATION", "user_id query param required")
 		return
 	}
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
+		EmbedRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "EMBED_VALIDATION", "invalid user_id")
 		return
 	}
@@ -2233,20 +2307,24 @@ func (s *Server) internalEmbed(w http.ResponseWriter, r *http.Request) {
 		Texts       []string `json:"texts"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		EmbedRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "EMBED_VALIDATION", "invalid payload")
 		return
 	}
 	if len(in.Texts) == 0 {
+		EmbedRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "EMBED_VALIDATION", "texts must be non-empty")
 		return
 	}
 	if in.ModelRef == "" {
+		EmbedRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "EMBED_VALIDATION", "model_ref required")
 		return
 	}
 
 	modelRef, err := uuid.Parse(in.ModelRef)
 	if err != nil {
+		EmbedRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "EMBED_VALIDATION", "invalid model_ref")
 		return
 	}
@@ -2262,15 +2340,18 @@ JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credenti
 WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
 `, modelRef, userID).Scan(new(uuid.UUID), &providerKind, &providerModelName, &endpointBaseURL, &secretCipher)
 		if err == pgx.ErrNoRows {
+			EmbedRequestsTotal.WithLabelValues(OutcomeModelNotFound).Inc()
 			writeError(w, http.StatusNotFound, "EMBED_MODEL_NOT_FOUND", "user model not found or inactive")
 			return
 		}
 		if err != nil {
+			EmbedRequestsTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "EMBED_MODEL_QUERY_FAILED", "failed to resolve model")
 			return
 		}
 		// D-PROXY-01 — see doProxy comment.
 		if secretCipher == "" {
+			EmbedRequestsTotal.WithLabelValues(OutcomeMissingCredential).Inc()
 			writeError(w, http.StatusInternalServerError,
 				"EMBED_MISSING_CREDENTIAL",
 				"user_model has no provider credential ciphertext")
@@ -2278,10 +2359,12 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		}
 		secret, err = s.decryptSecret(secretCipher)
 		if err != nil {
+			EmbedRequestsTotal.WithLabelValues(OutcomeDecryptFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "EMBED_SECRET_FAILED", "failed to decrypt secret")
 			return
 		}
 	} else {
+		EmbedRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "EMBED_VALIDATION", "model_source must be user_model")
 		return
 	}
@@ -2289,6 +2372,7 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 	// Resolve adapter for the provider kind
 	adapter, err := provider.ResolveAdapter(providerKind, s.invokeClient)
 	if err != nil {
+		EmbedRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusConflict, "EMBED_PROVIDER_ERROR", "failed to resolve adapter")
 		return
 	}
@@ -2307,12 +2391,15 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		// Map upstream 4xx (bad model, unsupported) to 400 so the caller
 		// can distinguish "wrong model" from "provider down."
 		if strings.Contains(errMsg, "provider error 4") || strings.Contains(errMsg, "does not support") {
+			EmbedRequestsTotal.WithLabelValues(OutcomeValidationError).Inc()
 			writeError(w, http.StatusBadRequest, "EMBED_MODEL_INVALID", errMsg)
 			return
 		}
+		EmbedRequestsTotal.WithLabelValues(OutcomeProviderError).Inc()
 		writeError(w, http.StatusBadGateway, "EMBED_PROVIDER_FAILED", errMsg)
 		return
 	}
 
+	EmbedRequestsTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, result)
 }
