@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
 from datetime import datetime, timezone
+from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -74,6 +74,11 @@ def test_get_user_costs(mock_pool):
 @patch("app.routers.public.costs.get_knowledge_pool")
 def test_get_project_costs(mock_pool):
     pool = AsyncMock()
+    pool.fetchrow = AsyncMock(return_value={
+        "monthly_budget_usd": Decimal("25.00"),
+        "current_month_spent_usd": Decimal("8.50"),
+        "current_month_key": datetime.now(timezone.utc).strftime("%Y-%m"),
+    })
     pool.fetch = AsyncMock(return_value=[])
     mock_pool.return_value = pool
 
@@ -82,6 +87,8 @@ def test_get_project_costs(mock_pool):
     assert resp.status_code == 200
     data = resp.json()
     assert data["project_id"] == str(_TEST_PROJECT)
+    assert float(data["monthly_budget_usd"]) == 25.0
+    assert float(data["current_month_usd"]) == 8.5
 
 
 def test_get_project_costs_not_found():

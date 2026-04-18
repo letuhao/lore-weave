@@ -8,6 +8,7 @@ knowledge_projects budget columns.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import UUID
 
@@ -92,6 +93,26 @@ async def get_project_costs(
                             detail="project not found")
 
     pool = get_knowledge_pool()
+
+    # Read budget/month columns directly — these aren't on the Project
+    # Pydantic model (kept out of _SELECT_COLS to avoid bloating the
+    # generic repo reads). Same pattern as budget.py.
+    budget_row = await pool.fetchrow(
+        """
+        SELECT monthly_budget_usd, current_month_spent_usd, current_month_key
+        FROM knowledge_projects
+        WHERE user_id = $1 AND project_id = $2
+        """,
+        user_id, project_id,
+    )
+    month_key = datetime.now(timezone.utc).strftime("%Y-%m")
+    current_month = Decimal("0")
+    monthly_budget = None
+    if budget_row:
+        monthly_budget = budget_row["monthly_budget_usd"]
+        if budget_row["current_month_key"] == month_key:
+            current_month = budget_row["current_month_spent_usd"] or Decimal("0")
+
     rows = await pool.fetch(
         """
         SELECT job_id, scope, status, cost_spent_usd, created_at
@@ -116,8 +137,8 @@ async def get_project_costs(
     return ProjectCostSummary(
         project_id=project_id,
         all_time_usd=project.actual_cost_usd,
-        current_month_usd=Decimal("0"),  # derived from project row below
-        monthly_budget_usd=getattr(project, "monthly_budget_usd", None),
+        current_month_usd=current_month,
+        monthly_budget_usd=monthly_budget,
         jobs=jobs,
     )
 

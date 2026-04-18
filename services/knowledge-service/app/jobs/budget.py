@@ -68,7 +68,11 @@ async def can_start_job(
     spent = row["current_month_spent_usd"] or Decimal("0")
     stored_key = row["current_month_key"]
 
-    # Month rollover — reset counter
+    # Month rollover — reset counter.
+    # NOTE: TOCTOU window between SELECT and UPDATE. Two concurrent
+    # calls at the month boundary could both reset. Acceptable because
+    # the per-job try_spend is the real atomic guard; monthly budget
+    # is an advisory pre-check.
     if stored_key != month_key:
         await pool.execute(
             """

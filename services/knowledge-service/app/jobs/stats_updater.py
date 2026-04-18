@@ -63,6 +63,10 @@ async def reconcile_project_stats(
     Returns the reconciled counts. Should be called on a daily
     schedule or after a graph delete/rebuild.
     """
+    # stat_glossary_count is NOT reconciled here — it comes from
+    # glossary-service (different DB), not Neo4j. Update it via
+    # GlossaryClient.count_entities when glossary-service integration
+    # is wired (K16.14-v2).
     counts = {}
     for label, col in [
         ("Entity", "stat_entity_count"),
