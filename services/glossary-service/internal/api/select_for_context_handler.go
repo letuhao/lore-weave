@@ -343,9 +343,21 @@ func (s *Server) queryFTSTier(
 	if limit <= 0 {
 		return nil
 	}
+	// D-T2-02: ts_rank_cd (cover density) is higher-quality than the
+	// frequency-only ts_rank for multi-word queries; for single-word
+	// queries it degrades to equivalent semantics so we don't lose
+	// anything. Normalization flag 33 = 1|32:
+	//   1  → divide by (1 + log(doc_len))  — stops long descriptions
+	//                                        from outranking short-name
+	//                                        matches
+	//   32 → scale to [0,1] via rank / (rank + 1) — bounded output for
+	//                                              future cross-tier
+	//                                              score blending
+	// search_vector is a tsvector with positions (default); ts_rank_cd
+	// requires positions, which we already have.
 	query := fmt.Sprintf(`
 		SELECT %s,
-		       ts_rank(e.search_vector, plainto_tsquery('simple', $3)) AS rank
+		       ts_rank_cd(e.search_vector, plainto_tsquery('simple', $3), 33) AS rank
 		FROM glossary_entities e
 		JOIN entity_kinds ek ON ek.kind_id = e.kind_id
 		WHERE e.book_id = $1
