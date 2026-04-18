@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K13.0 resolver integration (pattern/pass2 writers consume Anchor[]) + K13.0 anchor loader + K13.1 nightly refresh + K13 chat outbox + worker-infra MAXLEN/cold-start + K14 + workflow-gate + K12 + K11.10 + K15.11 + K17.11-12 + K16 + K17.10 + Dockerfile)
-- Updated By: Assistant (session 46 — K13.0 resolver integration with extractor→glossary kind normalization so Pass 2 LLM candidates actually hit anchors. 963 knowledge-service tests. Plus everything above.)
+- Last Updated: 2026-04-18 (session 46 — K13 full wire-up: cron loop + live-extraction anchor plumbing + Prometheus metrics + all K13.0 + K13.1 + K13 chat outbox + worker-infra MAXLEN/cold-start + K14 + workflow-gate + K12 + K11.10 + K15.11 + K17.11-12 + K16 + K17.10 + Dockerfile)
+- Updated By: Assistant (session 46 — K13.1 cron loop in lifespan, anchors loaded in /extract-item router, anchor_resolver_hits/misses_total + anchor_refresh_runs_total Prometheus counters. 970 knowledge-service tests.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: a0c5984 (K13.0+K13.1 loader/refresh) → K13.0 resolver integration commit pending
+- HEAD: b785444 (K13.0 resolver) → K13 full wire-up commit pending
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -63,6 +63,7 @@
 | P-K3-02 | K3 | Description PATCH triggers 4 UPDATEs for 1 logical operation (CTE + trigger + regen + trigger-again) |
 | P-K15.8-01 | K15.8-R1/I3 | **Orchestrator re-runs entity detection 3–4× per turn.** `extract_triples` and `extract_negations` both call `extract_entity_candidates` internally for per-sentence anchoring, so a full chat turn runs the K15.2 entity detector once at the orchestrator's explicit call plus one more time per extractor. Refactor path: thread pre-extracted candidates through the detector signatures. Track 1 accepts the cost at hobby scale; revisit if extraction latency ever trips the <2s plan-row budget. |
 | P-K15.10-01 | K15.10-R1/I1 | **Global quarantine sweep has no LIMIT or resumable state.** [services/knowledge-service/app/jobs/quarantine_cleanup.py](services/knowledge-service/app/jobs/quarantine_cleanup.py) with `user_id=None` runs `MATCH (f:Fact) WHERE pending_validation=true AND updated_at < now-TTL` across the whole graph in one transaction. Fine for hobby-scale test tenants; will need periodic-commit + cursor state for a production deployment with many tenants and a backlogged Pass 2. Pair with P-K11.9-01 scheduler cleanup since both are tenant-wide offline sweepers. |
+| P-K13.0-01 | K13.0 review-impl (session 46) | **Anchor pre-load re-runs per extract-item call.** [`services/knowledge-service/app/routers/internal_extraction.py`](services/knowledge-service/app/routers/internal_extraction.py) `_load_anchors_for_extraction` calls glossary `/known-entities` HTTP + upserts every anchor to Neo4j (idempotent MERGE) on every chapter item. For a 100-chapter job with 100 glossary entries that's 100 glossary calls + 10k MERGE round-trips used only for Pass 0. Fix: short-TTL (~60s) in-process cache keyed by (user_id, book_id) — many items in one job share the same book. Track 1 accepts the cost at hobby scale. |
 
 ### Won't-fix (conscious decisions, not debt)
 
@@ -134,6 +135,34 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K13 full wire-up — cron loop + live extraction + Prometheus ✅ (session 46)
+
+**Goal:** Close the three remaining out-of-scope items from K13.0/K13.1 so the full pipeline runs end-to-end on a live service.
+
+**New files (2):**
+- [app/jobs/anchor_refresh_loop.py](../../services/knowledge-service/app/jobs/anchor_refresh_loop.py) — `run_anchor_refresh_loop(pool, session_factory, interval_s=86400, startup_delay_s=300)`. Cancellation-safe sleeps, per-iteration error isolation, outcome metric per run.
+- [tests/unit/test_anchor_refresh_loop.py](../../services/knowledge-service/tests/unit/test_anchor_refresh_loop.py) — 4 cases: first tick + interval, error recovery, outcome-metric increments, startup cancellation.
+
+**Modified (5):**
+- [app/main.py](../../services/knowledge-service/app/main.py) — starts `asyncio.create_task(run_anchor_refresh_loop(...))` in lifespan (skipped in Track 1 / no-Neo4j mode). Cancels before event consumer on shutdown.
+- [app/routers/internal_extraction.py](../../services/knowledge-service/app/routers/internal_extraction.py) — new `_load_anchors_for_extraction` helper does `project_id → book_id` lookup via knowledge_projects, calls `load_glossary_anchors`, threads result into `extract_pass2_chapter` / `extract_pass2_chat_turn`. Any failure → WARN + `[]`, extraction still runs.
+- [app/extraction/pass2_orchestrator.py](../../services/knowledge-service/app/extraction/pass2_orchestrator.py) — `anchors` param threaded through `_run_pipeline` + both entry points + all 3 `write_pass2_extraction` call sites (empty-text gate, no-entities gate, full-write).
+- [app/extraction/entity_resolver.py](../../services/knowledge-service/app/extraction/entity_resolver.py) — increments `anchor_resolver_hits_total{kind}` / `anchor_resolver_misses_total{kind}`. **Review-impl MEDIUM fix:** miss counter guarded by `if index:` so empty-index calls (Mode 1 chat, Track 1, or degraded anchor-load) don't peg the miss rate at 100% and drown the real signal.
+- [app/metrics.py](../../services/knowledge-service/app/metrics.py) — three new Counters: `knowledge_anchor_resolver_hits_total{kind}`, `knowledge_anchor_resolver_misses_total{kind}`, `knowledge_anchor_refresh_runs_total{outcome=ok|lock_skipped|error}` (outcome labels pre-seeded).
+
+**Modified tests:** [tests/unit/test_entity_resolver.py](../../services/knowledge-service/tests/unit/test_entity_resolver.py) — +3 cases: hit increment, miss increment, empty-index does NOT increment miss.
+
+**Deferred item added:** `P-K13.0-01` — anchor pre-load re-runs per extract-item call. For an N-chapter job with M glossary entries, that's N glossary HTTP calls + N*M Neo4j MERGE ops used only for Pass 0. Fixable with a short-TTL in-process cache keyed by `(user_id, book_id)`. Logged in "Perf items" section; Track 1 accepts the cost at hobby scale.
+
+**Production flow (end-to-end):**
+1. On service start: 5-minute warm-up → first anchor-score refresh → every 24h after
+2. On each `/extract-item` call: router loads anchors (best-effort, degrading on failure) → pass2 orchestrator runs → resolver short-circuits merge on anchor hit → `add_evidence` links edge to anchor's canonical_id
+3. Dashboards query `anchor_resolver_hits_total / (hits+misses)` for per-kind hit rate and `anchor_refresh_runs_total{outcome}` for cron health
+
+**Verify:** 970/970 tests pass / 253 skipped (+7 from 963: 4 loop + 2 hit/miss + 1 empty-index-no-miss).
+
+---
 
 ### K13.0 resolver integration — writers now consume Anchor[] ✅ (session 46)
 

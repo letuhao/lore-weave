@@ -35,6 +35,7 @@ from typing import Literal
 
 from app.clients.provider_client import ProviderClient
 from app.db.neo4j_helpers import CypherSession
+from app.extraction.anchor_loader import Anchor
 from app.extraction.llm_entity_extractor import extract_entities
 from app.extraction.llm_event_extractor import extract_events
 from app.extraction.llm_fact_extractor import extract_facts
@@ -62,6 +63,7 @@ async def _run_pipeline(
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     client: ProviderClient | None = None,
+    anchors: list[Anchor] | None = None,
 ) -> Pass2WriteResult:
     """Core pipeline shared by chat_turn and chapter entry points."""
     # Empty text → write empty source for idempotency, return zeros.
@@ -74,6 +76,7 @@ async def _run_pipeline(
             source_id=source_id,
             job_id=job_id,
             extraction_model=model_ref,
+            anchors=anchors,
         )
 
     started = time.perf_counter()
@@ -105,6 +108,7 @@ async def _run_pipeline(
             source_id=source_id,
             job_id=job_id,
             extraction_model=model_ref,
+            anchors=anchors,
         )
 
     entity_names = [e.name for e in entities]
@@ -149,6 +153,7 @@ async def _run_pipeline(
         events=event_cands,
         facts=fact_cands,
         extraction_model=model_ref,
+        anchors=anchors,
     )
 
 
@@ -166,12 +171,18 @@ async def extract_pass2_chat_turn(
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     client: ProviderClient | None = None,
+    anchors: list[Anchor] | None = None,
 ) -> Pass2WriteResult:
     """Run the Pass 2 LLM pipeline on a chat turn.
 
     Concatenates user + assistant messages, then runs the full
     K17.4→K17.7 pipeline. Same source_type/source_id pattern as
     K15.8's ``extract_from_chat_turn``.
+
+    `anchors`: optional K13.0 glossary-anchor index. When supplied,
+    extraction candidates matching a curated anchor (by folded
+    name/alias + normalized kind) link to the anchor's canonical_id
+    instead of minting a duplicate `:Entity`.
     """
     halves = [
         part.strip()
@@ -192,6 +203,7 @@ async def extract_pass2_chat_turn(
         model_source=model_source,
         model_ref=model_ref,
         client=client,
+        anchors=anchors,
     )
 
 
@@ -208,11 +220,15 @@ async def extract_pass2_chapter(
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     client: ProviderClient | None = None,
+    anchors: list[Anchor] | None = None,
 ) -> Pass2WriteResult:
     """Run the Pass 2 LLM pipeline on a chapter.
 
     Single text body — no user/assistant split. The caller (K16.6
     job runner) handles chunking if needed.
+
+    `anchors`: optional K13.0 glossary-anchor index (see
+    ``extract_pass2_chat_turn`` for details).
     """
     return await _run_pipeline(
         session,
@@ -226,4 +242,5 @@ async def extract_pass2_chapter(
         model_source=model_source,
         model_ref=model_ref,
         client=client,
+        anchors=anchors,
     )

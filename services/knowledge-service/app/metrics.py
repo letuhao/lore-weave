@@ -25,6 +25,9 @@ __all__ = [
     "pass1_candidates_extracted_total",
     "pass1_extraction_duration_seconds",
     "quarantine_auto_invalidated_total",
+    "anchor_resolver_hits_total",
+    "anchor_resolver_misses_total",
+    "anchor_refresh_runs_total",
 ]
 
 registry = CollectorRegistry()
@@ -256,3 +259,35 @@ llm_json_extraction_retry_total = Counter(
 )
 for _r in _LLM_JSON_RETRY_REASONS:
     llm_json_extraction_retry_total.labels(reason=_r)
+
+
+# ── K13.0 anchor resolver ──────────────────────────────────────────
+
+# Hit = extraction candidate matched a glossary anchor → merge_entity
+# was skipped and the evidence edge links to the existing anchor.
+# Miss = no match → merge_entity ran (existing behavior pre-K13.0).
+# The kind label is the GLOSSARY kind (normalized), so dashboards can
+# drill into per-kind hit rates.
+anchor_resolver_hits_total = Counter(
+    "knowledge_anchor_resolver_hits_total",
+    "K13.0 anchor hits in resolve_or_merge_entity",
+    ["kind"],
+    registry=registry,
+)
+anchor_resolver_misses_total = Counter(
+    "knowledge_anchor_resolver_misses_total",
+    "K13.0 anchor misses in resolve_or_merge_entity",
+    ["kind"],
+    registry=registry,
+)
+
+# K13.1 anchor_score refresh loop run count + outcome.
+anchor_refresh_runs_total = Counter(
+    "knowledge_anchor_refresh_runs_total",
+    "K13.1 nightly anchor-score refresh loop runs by outcome",
+    ["outcome"],
+    registry=registry,
+)
+# Pre-seed labels so zeros appear in /metrics before the first run.
+for _outcome in ("ok", "lock_skipped", "error"):
+    anchor_refresh_runs_total.labels(outcome=_outcome)

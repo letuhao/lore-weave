@@ -20,6 +20,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
+from app.clients.glossary_client import get_glossary_client
 from app.clients.provider_client import (
     ProviderAuthError,
     ProviderDecodeError,
@@ -33,6 +34,8 @@ from app.clients.provider_client import (
 )
 from app.config import settings
 from app.db.neo4j import neo4j_session
+from app.db.pool import get_knowledge_pool
+from app.extraction.anchor_loader import Anchor, load_glossary_anchors
 from app.extraction.pass2_orchestrator import (
     extract_pass2_chapter,
     extract_pass2_chat_turn,
@@ -89,6 +92,53 @@ class ExtractItemResponse(BaseModel):
     duration_seconds: float = 0.0
 
 
+# ── Helpers ──────────────────────────────────────────────────────────
+
+
+async def _load_anchors_for_extraction(
+    *, user_id: UUID, project_id: UUID | None,
+) -> list[Anchor]:
+    """K13.0 Pass 0: pre-load glossary anchors before Pass 2 runs.
+
+    Returns an empty list (extraction proceeds without anchor bias) if:
+      - project_id is None (chat-only, no book)
+      - no knowledge_projects row matches (user_id, project_id)
+      - project has no book_id linked (Mode 1 project)
+      - glossary_client.list_entities fails (circuit open, 5xx, …)
+      - any Neo4j hiccup during the upsert loop
+
+    Per-entry failures inside load_glossary_anchors are already
+    isolated there; this helper only handles the outer envelope.
+    """
+    if project_id is None:
+        return []
+    try:
+        async with get_knowledge_pool().acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT book_id FROM knowledge_projects "
+                "WHERE project_id = $1 AND user_id = $2",
+                project_id, user_id,
+            )
+        book_id = row["book_id"] if row else None
+        if book_id is None:
+            return []
+        async with neo4j_session() as anchor_session:
+            return await load_glossary_anchors(
+                anchor_session,
+                get_glossary_client(),
+                user_id=str(user_id),
+                project_id=str(project_id),
+                book_id=book_id,
+            )
+    except Exception:
+        logger.warning(
+            "K13.0: anchor pre-load failed for project=%s — "
+            "extraction will run without anchor bias",
+            project_id, exc_info=True,
+        )
+        return []
+
+
 # ── Endpoint ─────────────────────────────────────────────────────────
 
 
@@ -113,6 +163,12 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
     started = time.perf_counter()
     provider_client = get_provider_client()
 
+    # K13.0 — pre-load glossary anchors. Degrades to [] on any failure
+    # so extraction still runs (without duplicate-reduction benefit).
+    anchors = await _load_anchors_for_extraction(
+        user_id=body.user_id, project_id=body.project_id,
+    )
+
     try:
         async with neo4j_session() as session:
             if body.item_type == "chapter":
@@ -133,6 +189,7 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
                     model_source=body.model_source,
                     model_ref=body.model_ref,
                     client=provider_client,
+                    anchors=anchors,
                 )
             else:  # "chat_turn" — Pydantic Literal rejects other values at 422
                 if not body.user_message and not body.assistant_message:
@@ -153,6 +210,7 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
                     model_source=body.model_source,
                     model_ref=body.model_ref,
                     client=provider_client,
+                    anchors=anchors,
                 )
     except HTTPException:
         raise  # re-raise validation errors (422)

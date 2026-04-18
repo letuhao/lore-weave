@@ -253,3 +253,102 @@ async def test_resolve_pass2_place_hits_location_anchor(monkeypatch):
         source_type="chapter",
     )
     assert ent.id == anchor.canonical_id
+
+
+# ── Prometheus counters ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_resolve_increments_hit_counter_on_anchor_hit(monkeypatch):
+    from app.metrics import anchor_resolver_hits_total
+
+    anchor = _anchor("Arthur", kind="character")
+    idx = build_anchor_index([anchor])
+
+    # Bypass the "merge must not call" guard — we're checking the hit path.
+    async def fake_merge(*a, **kw):
+        raise AssertionError("miss path should not fire on hit")
+
+    monkeypatch.setattr(
+        "app.extraction.entity_resolver.merge_entity", fake_merge,
+    )
+
+    before = anchor_resolver_hits_total.labels(kind="character")._value.get()
+    await resolve_or_merge_entity(
+        MagicMock(), idx,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        name="Arthur", kind="person",  # LLM kind normalizes to character
+        source_type="chapter",
+    )
+    after = anchor_resolver_hits_total.labels(kind="character")._value.get()
+    assert after - before == 1
+
+
+@pytest.mark.asyncio
+async def test_resolve_increments_miss_counter_on_no_match(monkeypatch):
+    from app.metrics import anchor_resolver_misses_total
+
+    idx = build_anchor_index([_anchor("Arthur", kind="character")])
+
+    async def fake_merge(session, **kwargs):
+        return Entity(
+            id="minted",
+            user_id=kwargs["user_id"],
+            project_id=kwargs["project_id"],
+            name=kwargs["name"],
+            canonical_name=kwargs["name"].lower(),
+            kind=kwargs["kind"],
+        )
+
+    monkeypatch.setattr(
+        "app.extraction.entity_resolver.merge_entity", fake_merge,
+    )
+
+    # No anchor for "Lancelot" → miss. Lookup kind is "character" (normalized
+    # from "person"), so the miss is labelled "character".
+    before = anchor_resolver_misses_total.labels(kind="character")._value.get()
+    await resolve_or_merge_entity(
+        MagicMock(), idx,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        name="Lancelot", kind="person",
+        source_type="chapter",
+    )
+    after = anchor_resolver_misses_total.labels(kind="character")._value.get()
+    assert after - before == 1
+
+
+@pytest.mark.asyncio
+async def test_resolve_does_not_bump_miss_counter_when_index_empty(monkeypatch):
+    """Empty index = "no anchors available" — not a miss worth counting.
+
+    Otherwise Mode-1 chat sessions (no book, no glossary, no anchors)
+    would peg the miss counter at 100% forever, drowning out the
+    hit/miss ratio signal from projects that actually have anchors.
+    """
+    from app.metrics import anchor_resolver_misses_total
+
+    empty: dict = {}
+
+    async def fake_merge(session, **kwargs):
+        return Entity(
+            id="minted",
+            user_id=kwargs["user_id"],
+            project_id=kwargs["project_id"],
+            name=kwargs["name"],
+            canonical_name=kwargs["name"].lower(),
+            kind=kwargs["kind"],
+        )
+
+    monkeypatch.setattr(
+        "app.extraction.entity_resolver.merge_entity", fake_merge,
+    )
+
+    before = anchor_resolver_misses_total.labels(kind="character")._value.get()
+    await resolve_or_merge_entity(
+        MagicMock(), empty,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        name="Lancelot", kind="person",
+        source_type="chapter",
+    )
+    after = anchor_resolver_misses_total.labels(kind="character")._value.get()
+    assert after == before  # NOT incremented

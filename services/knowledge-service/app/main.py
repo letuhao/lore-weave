@@ -80,11 +80,46 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("K14.1: event consumer failed to start (non-fatal)", exc_info=True)
 
+    # K13.1 — start nightly anchor_score refresh loop as background task.
+    # Skipped in Track 1 / no-Neo4j mode since recompute_anchor_score has
+    # nothing to do without a graph.
+    refresh_task = None
+    if settings.neo4j_uri:
+        try:
+            from app.db.neo4j import neo4j_session
+            from app.jobs.anchor_refresh_loop import run_anchor_refresh_loop
+
+            def _anchor_session_factory():
+                return neo4j_session()
+
+            refresh_task = asyncio.create_task(
+                run_anchor_refresh_loop(
+                    get_knowledge_pool(),
+                    _anchor_session_factory,
+                )
+            )
+            logger.info("K13.1: anchor-refresh loop started as background task")
+        except Exception:
+            logger.warning(
+                "K13.1: anchor-refresh loop failed to start (non-fatal)",
+                exc_info=True,
+            )
+
     logger.info("knowledge-service started on port %d", settings.port)
     try:
         yield
     finally:
-        # Stop event consumer first
+        # Stop anchor-refresh loop first (quick cancel).
+        if refresh_task is not None:
+            refresh_task.cancel()
+            try:
+                await refresh_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.warning("Error stopping anchor-refresh loop", exc_info=True)
+
+        # Stop event consumer next.
         if consumer_task is not None:
             try:
                 await consumer.stop()

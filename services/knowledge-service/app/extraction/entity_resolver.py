@@ -26,6 +26,10 @@ from app.db.neo4j_helpers import CypherSession
 from app.db.neo4j_repos.canonical import canonicalize_entity_name
 from app.db.neo4j_repos.entities import Entity, merge_entity
 from app.extraction.anchor_loader import Anchor
+from app.metrics import (
+    anchor_resolver_hits_total,
+    anchor_resolver_misses_total,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -139,10 +143,10 @@ async def resolve_or_merge_entity(
 
     On miss, falls through to `merge_entity` (existing behavior).
     """
-    anchor = index.get(
-        (_fold(name), normalize_kind_for_anchor_lookup(kind))
-    )
+    lookup_kind = normalize_kind_for_anchor_lookup(kind)
+    anchor = index.get((_fold(name), lookup_kind))
     if anchor is not None:
+        anchor_resolver_hits_total.labels(kind=lookup_kind).inc()
         return Entity(
             id=anchor.canonical_id,
             user_id=user_id,
@@ -154,6 +158,13 @@ async def resolve_or_merge_entity(
             glossary_entity_id=anchor.glossary_entity_id,
             anchor_score=1.0,
         )
+    # Only record misses when there WAS an index to check against.
+    # With an empty index every candidate would record a miss, pegging
+    # the metric at 100% and making it useless for dashboards — a
+    # Mode-1 chat session has no book, no glossary, and no anchors,
+    # but the extraction is still working as intended.
+    if index:
+        anchor_resolver_misses_total.labels(kind=lookup_kind).inc()
     return await merge_entity(
         session,
         user_id=user_id,
