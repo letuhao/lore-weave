@@ -14,6 +14,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.context.formatters.token_counter import estimate_tokens
 from app.db.models import ScopeType, Summary
 from app.deps import get_summaries_repo
 from app.middleware.jwt_auth import get_current_user
@@ -36,7 +37,7 @@ def _make_summary(
         scope_type=scope_type,
         scope_id=scope_id,
         content=content,
-        token_count=max(1, len(content) // 4),
+        token_count=estimate_tokens(content),
         version=1,
         created_at=now,
         updated_at=now,
@@ -110,7 +111,7 @@ class FakeSummariesRepo:
             )
             row = existing.model_copy(update={
                 "content": content,
-                "token_count": max(1, len(content) // 4),
+                "token_count": estimate_tokens(content),
                 "version": existing.version + 1,
                 "updated_at": datetime.now(timezone.utc),
             })

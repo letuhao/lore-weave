@@ -12,6 +12,7 @@ from uuid import uuid4
 import pytest
 
 from app.clients.glossary_client import GlossaryEntityForContext
+from app.context.formatters.token_counter import estimate_tokens
 from app.context.modes.static import build_static_mode
 from app.db.models import Project, Summary
 
@@ -50,7 +51,7 @@ def _summary(content: str, scope_type="global", scope_id=None) -> Summary:
         scope_type=scope_type,
         scope_id=scope_id,
         content=content,
-        token_count=len(content) // 4,
+        token_count=estimate_tokens(content),
         version=1,
         created_at=now,
         updated_at=now,

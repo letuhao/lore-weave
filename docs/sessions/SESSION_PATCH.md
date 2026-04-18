@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — Cycle 5 extraction quality + perf: D-K15.5-01 all-caps fusion fix + P-K15.8-01 detector reuse + P-K13.0-01 anchor TTL cache + P-K18.3-01 query embedding TTL cache. Plus Cycles 1–4, K18, K13, K14, etc.)
-- Updated By: Assistant (session 46 — Cycle 5: 4 items shipped. 1047 knowledge-service tests (+21). Review-impl fix: embedding cache key gains user_uuid.)
+- Last Updated: 2026-04-18 (session 46 — Cycle 6a RAG quality: D-T2-01 tiktoken swap for token estimator across knowledge-service + translation-service. Plus Cycles 1–5, K18, K13, K14, etc.)
+- Updated By: Assistant (session 46 — Cycle 6a: D-T2-01 token_counter.py → tiktoken.cl100k_base with graceful len/4 fallback; summaries.py dedup; translation-service glossary_client adopts its own CJK-aware chunk_splitter estimator. 1049 knowledge-service tests pass.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: 6727c2d (drift-reconcile) → Cycle 5 commit pending
+- HEAD: 4bb3124 (Cycle 5 review-impl) → Cycle 6a commit pending
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -67,12 +67,12 @@ One commit. All in knowledge-service extraction/context pipeline. All 4 items sh
 - ✅ **P-K13.0-01** anchor pre-load TTLCache(256, 60s) keyed by `(user_id, project_id)`
 - ✅ **P-K18.3-01** query-embedding TTLCache(512, 30s) keyed by `(user_id, project_id, model, message)` — user_id added via review-impl fix
 
-### Cycle 6 — RAG quality (Track 2 polish)
+### Cycle 6 — RAG quality (Track 2 polish) 🟡 (session 46, in progress)
 Three commits — each needs golden-set re-measurement after, so separated.
 
-- **6a · D-T2-01** tiktoken swap for CJK token count (cross-service)
-- **6b · D-T2-02** `ts_rank_cd` with normalization flag (K4b RAG quality)
-- **6c · D-T2-03** unify `recent_message_count` constants across chat + knowledge
+- ✅ **6a · D-T2-01** tiktoken swap for CJK token count (cross-service)
+- ⏳ **6b · D-T2-02** `ts_rank_cd` with normalization flag (K4b RAG quality)
+- ⏳ **6c · D-T2-03** unify `recent_message_count` constants across chat + knowledge
 
 ### Cycle 7 — K18 final polish
 One commit.
@@ -134,7 +134,7 @@ One commit, depends on Gate 4 being run against live DB.
 
 | ID | Origin | Description |
 |---|---|---|
-| D-T2-01 | K2b, K4a | CJK token estimate undercounts by ~3× — swap `len/4` heuristic for tiktoken |
+| ~~D-T2-01~~ | ~~K2b, K4a~~ | **Cleared in session 46 Cycle 6a.** See "Recently cleared" below. |
 | D-T2-02 | K4b | `ts_rank` non-normalized — switch to `ts_rank_cd` with normalization flag |
 | D-T2-03 | K5 | Unify `DEGRADED_RECENT_MESSAGE_COUNT` (chat-service) and the Mode-1/Mode-2 builder constants (knowledge-service) behind a single config knob — currently both default to 50 in two unrelated files |
 | D-T2-04 | K6 | Cross-process cache invalidation for L0/L1 (Redis pub/sub or event bus). Track 1 accepts ≤60s staleness per-instance; KSA §7.3 confirms this is Track 2 scope |
@@ -167,6 +167,7 @@ One commit, depends on Gate 4 being run against live DB.
 
 | ID | Origin | How it was resolved |
 |---|---|---|
+| **D-T2-01** | **K2b, K4a** | **Cleared in session 46 Cycle 6a.** `knowledge-service/token_counter.py` swapped from `len/4` heuristic to `tiktoken.cl100k_base`. CJK sample "一位神秘的刀客的故事" now counts 14 tokens (was 2 under old heuristic). Graceful fallback to len/4 if tiktoken can't import/load — Track 1 paths stay runnable. `summaries.py` deduplicated its private copy. `translation-service/glossary_client.py` adopted its own CJK-aware `chunk_splitter.estimate_tokens` at its remaining raw-heuristic call site. Four test files aligned to call `estimate_tokens()` instead of hardcoded `len//4`. 1049 unit tests pass. |
 | **D-K15.5-01** | **K15.5-R1/I2** | **Cleared in session 46 Cycle 5.** New `_iter_tokens_if_all_caps_run` helper in [`entity_detector.py`](../../services/knowledge-service/app/extraction/entity_detector.py) splits `_CAPITALIZED_PHRASE_RE` matches when every token is all-uppercase ("KAI DOES NOT KNOW ZHAO" → ["KAI", "ZHAO"] individually; stopwords fall out via existing filter). Single-token all-caps ("NASA") preserved. Trade-off: multi-word acronyms ("UNITED NATIONS") lose multi-word form but each token surfaces and K17 LLM reassembles at Pass 2. End-to-end verified: `extract_negations("KAI DOES NOT KNOW ZHAO.")` now returns a proper `NegationFact`. +5 detector tests, +1 negation regression test. |
 | **P-K15.8-01** | **K15.8-R1/I3** | **Cleared in session 46 Cycle 5.** Added optional kw-only `sentence_candidates: Mapping[str, list[EntityCandidate]] \| None` to `extract_triples` and `extract_negations`. Orchestrator ([`pattern_extractor.py`](../../services/knowledge-service/app/extraction/pattern_extractor.py) new `_build_sentence_candidate_map`) pre-builds the per-sentence map once per half/chunk and passes to both extractors — cuts 2× redundant per-sentence scans to 1× in both `chat_turn_extract` and `chapter_extract` loops. Backward compatible: None/missing-key falls back to self-scan. +3 negation tests prove reuse vs. fallback. |
 | **P-K13.0-01** | **K13.0 review-impl (session 46)** | **Cleared in session 46 Cycle 5.** `cachetools.TTLCache(256, 60s)` in [`internal_extraction.py`](../../services/knowledge-service/app/routers/internal_extraction.py) keyed by `(str(user_id), str(project_id) or "")`. A 100-chapter extraction job pays one real anchor load + 99 cache hits instead of 100 glossary HTTP calls + 100×N Neo4j MERGEs. Successful loads + deterministic-empty paths (None project_id, no book_id) cached; exceptions NOT cached so transient glossary outages don't lock in bad state. 5 tests in [`test_anchor_cache.py`](../../services/knowledge-service/tests/unit/test_anchor_cache.py) cover each branch. |
@@ -236,6 +237,28 @@ One commit, depends on Gate 4 being run against live DB.
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### Cycle 6a — D-T2-01 tiktoken swap ✅ (session 46)
+
+**Token estimator now accurate for CJK.** Old `len/4` heuristic estimated 2 tokens for a 10-char Chinese string that actually costs ~14 with GPT-4's tokenizer — context budgets were silently over-promised by 3-7× on CJK content, causing oversized prompts and truncation in Mode-2/Mode-3 outputs.
+
+**Modified (4):**
+- [app/context/formatters/token_counter.py](../../services/knowledge-service/app/context/formatters/token_counter.py) — rewrote `estimate_tokens` to use `tiktoken.get_encoding("cl100k_base").encode(text)`. Module-level lazy-init with broad-except fallback to `len/4` when tiktoken import fails or BPE asset can't load (air-gapped installs). Defensives (None/non-string/empty) preserved. Same public API — all call-sites transparently adopt the new behavior.
+- [app/db/repositories/summaries.py](../../services/knowledge-service/app/db/repositories/summaries.py) — deleted duplicate local `_estimate_tokens`; now imports from `token_counter`.
+- [requirements.txt](../../services/knowledge-service/requirements.txt) — added `tiktoken>=0.7`.
+- [services/translation-service/app/workers/glossary_client.py](../../services/translation-service/app/workers/glossary_client.py) — the inline `len(line) // 4 + 1` in `build_glossary_context` now delegates to the service's existing CJK-aware `chunk_splitter.estimate_tokens`. Not a tiktoken swap (translation-service has its own ratio-based heuristic that already accounts for CJK), but closes the raw-heuristic gap at the one remaining call site.
+
+**Tests aligned (4):**
+- [tests/unit/test_token_counter.py](../../services/knowledge-service/tests/unit/test_token_counter.py) — rewritten. Old tests hardcoded `len/4` outcomes (`assert estimate_tokens("abcd") == 1`, `estimate_tokens("x" * 400) == 100`) which no longer match tiktoken's BPE compression. Replaced with observable-behavior tests: non-empty returns ≥1, CJK counts higher than the old heuristic, CJK counts ≥ 1 token per char, monotonic with length.
+- [tests/unit/test_no_project_mode.py](../../services/knowledge-service/tests/unit/test_no_project_mode.py) + [test_static_mode.py](../../services/knowledge-service/tests/unit/test_static_mode.py) + [test_public_summaries.py](../../services/knowledge-service/tests/unit/test_public_summaries.py) — helpers that built `Summary` fixtures via `token_count=len(content) // 4` now call `estimate_tokens(content)`. Stays in sync with whatever impl the estimator uses — no future regression if the internals change again.
+
+**Verify:** 1049 knowledge-service unit tests pass (unchanged count — rewritten tests cover the same surface). Smoke-test: `estimate_tokens("一位神秘的刀客的故事")` → 14 (was 2).
+
+**Known limitations (not fixed, documented):**
+- `translation-service/chunk_splitter.estimate_tokens` and `knowledge-service/token_counter.estimate_tokens` are now two different impls (CJK-ratio vs. BPE). Acceptable: translation-service's estimator is domain-specific (chunk-splitting for translation prompts) and already handles CJK; knowledge-service needs BPE fidelity for context budget. A future consolidation would pick one — probably tiktoken — but cross-service shared-utils don't exist yet in the monorepo.
+- `translation-service` has 2 other `len / 4` usages — `poc_v2_glossary.py` (POC, explicitly skip) and are trivial. Left alone.
+
+---
 
 ### Cycle 5 — extraction quality + perf ✅ (session 46)
 

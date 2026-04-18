@@ -1,15 +1,39 @@
-"""Rough token estimator.
+"""Token estimator.
 
-Track 1 uses a len/4 heuristic — good enough for budget enforcement
-when the budgets themselves are approximate. Track 2 switches to
-tiktoken for accurate counts, at which point this module becomes a
-thin shim around `tiktoken.encoding_for_model().encode(text)`.
+D-T2-01: swapped from `len/4` heuristic to tiktoken's cl100k_base
+encoding. The old heuristic undercounts CJK by ~3-7× (a 10-char
+Chinese string estimated at 2 tokens actually consumes ~14 with
+GPT-4's tokenizer), so budgets were over-promised for CJK content.
+cl100k_base matches GPT-4 / Claude-3.x tokenization closely enough
+for budget enforcement.
 
 Handles None and non-string input defensively — the caller never has
 to wrap this in a try/except.
+
+Fallback: if tiktoken can't be imported (dev env without the dep,
+sandboxed test), we log once at import time and use `len/4`. Track 1
+paths must still run.
 """
 
+from __future__ import annotations
+
+import logging
+
+logger = logging.getLogger(__name__)
+
 __all__ = ["estimate_tokens"]
+
+
+try:
+    import tiktoken
+
+    _encoder = tiktoken.get_encoding("cl100k_base")
+except Exception:  # tiktoken missing, network-less install, etc.
+    _encoder = None
+    logger.warning(
+        "tiktoken unavailable — falling back to len/4 heuristic "
+        "for token counting. CJK content will be under-budgeted."
+    )
 
 
 def estimate_tokens(text: str | None) -> int:
@@ -19,7 +43,8 @@ def estimate_tokens(text: str | None) -> int:
         text = str(text)
     if not text:
         return 0
-    # 1 token ≈ 4 characters for English (OpenAI cl100k_base rule of thumb).
-    # CJK undercounts at ~0.75 tokens per character but we accept that
-    # for Track 1 — budgets are 1000+ tokens so a 30 % error is survivable.
-    return max(1, len(text) // 4)
+    if _encoder is None:
+        # Fallback — the old len/4 heuristic. Preserved only for the
+        # tiktoken-missing case; not the expected path.
+        return max(1, len(text) // 4)
+    return max(1, len(_encoder.encode(text)))

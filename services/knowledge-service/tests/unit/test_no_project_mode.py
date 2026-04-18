@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.context.formatters.token_counter import estimate_tokens
 from app.context.modes.no_project import build_no_project_mode
 from app.db.models import Summary
 
@@ -17,7 +18,7 @@ def _summary(content: str) -> Summary:
         scope_type="global",
         scope_id=None,
         content=content,
-        token_count=len(content) // 4,
+        token_count=estimate_tokens(content),
         version=1,
         created_at=now,
         updated_at=now,

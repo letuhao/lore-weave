@@ -30,10 +30,7 @@ _VERSION_SELECT_COLS = """
 """
 
 
-def _estimate_tokens(content: str) -> int:
-    # Rough heuristic — 1 token ≈ 4 chars for English. CJK will
-    # underestimate; Track 3 switches to tiktoken.
-    return max(1, len(content) // 4)
+from app.context.formatters.token_counter import estimate_tokens as _estimate_tokens
 
 
 def _rows_changed(status: str) -> int:

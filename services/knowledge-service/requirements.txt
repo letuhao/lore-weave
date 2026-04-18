@@ -19,3 +19,8 @@ redis[hiredis]>=5.0
 # Port of Google's language-detection library; pure Python, no
 # native deps. Seeded for deterministic output in app code.
 langdetect>=1.0.9
+# D-T2-01 — tiktoken for accurate token counting (CJK especially).
+# The len/4 heuristic undercounts CJK by ~3-7x, which over-promises
+# context budget. tiktoken.cl100k_base matches GPT-4/Claude-3.x
+# tokenization closely enough for budget enforcement.
+tiktoken>=0.7

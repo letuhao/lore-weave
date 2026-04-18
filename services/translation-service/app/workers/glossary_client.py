@@ -147,14 +147,19 @@ def build_glossary_context(
 
     # Build JSONL lines within token budget
     lines: list[str] = []
+    # D-T2-01: use the CJK-aware estimator from chunk_splitter instead
+    # of the raw len/4. Glossary JSONL lines are mostly ASCII metadata
+    # with CJK names embedded — the old heuristic under-budgeted CJK-
+    # heavy glossaries and overran the target token ceiling.
+    from app.workers.chunk_splitter import estimate_tokens as _estimate_tokens
+
     token_estimate = 0
     selected: list[GlossaryEntry] = []
     correction_map: dict[str, str] = {}
 
     for score, entry in scored:
         line = entry.to_jsonl(target_language)
-        # Rough estimate: ~4 chars per token for this metadata text
-        line_tokens = len(line) // 4 + 1
+        line_tokens = _estimate_tokens(line) + 1
         if token_estimate + line_tokens > max_tokens:
             break
 
