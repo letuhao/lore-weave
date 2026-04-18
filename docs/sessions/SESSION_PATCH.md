@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K16.6a + K16.2–K16.5 + K17.10 + Dockerfile)
-- Updated By: Assistant (session 46 — K16.6a internal extract-item endpoint, K16.2–K16.5 extraction lifecycle, K17.10-v1 + R1, Dockerfile. 814 tests.)
+- Last Updated: 2026-04-18 (session 46 — K16.6 worker-ai + K16.2–K16.5 + K17.10 + Dockerfile)
+- Updated By: Assistant (session 46 — K16.6 worker-ai service (a+b), K16.2–K16.5 extraction lifecycle, K17.10-v1 + R1, Dockerfile. 824 tests across 2 services.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: b48f3d9 (K16.5)
+- HEAD: 1b36f1f (K16.6a)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -134,6 +134,34 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K16.6b — worker-ai service + extraction job runner ✅ (session 46)
+
+**Goal:** New `services/worker-ai/` Python service that polls for running extraction jobs and processes them item by item via knowledge-service's internal extract-item endpoint.
+
+**New service files:**
+- `app/config.py` — settings (DB, service URLs, poll interval, timeouts)
+- `app/clients.py` — KnowledgeClient (extract-item), BookClient (chapters)
+- `app/runner.py` — poll loop, item processing, pause/cancel/budget detection, cursor-based resume
+- `app/main.py` — async entry point with poll loop
+- `Dockerfile`, `.dockerignore`, `requirements.txt`, `requirements-test.txt`, `pytest.ini`
+- `tests/test_runner.py` — 10 unit tests
+
+**Also modified:** `infra/docker-compose.yml` — added `worker-ai` service entry.
+
+**R1 review fixes (6 issues):**
+1. HIGH: project_id→book_id resolution before book-service calls (was passing wrong UUID)
+2. MED: BookClient reads `text_content` field (was `plain_text`/`body` — wrong)
+3. MED: Per-item retry counter (_MAX_RETRIES_PER_ITEM=3) prevents infinite loops; retries tracked in cursor
+4. LOW: glossary_sync scope TODO documented
+5. LOW: Missing cursor chapter → logs warning and restarts from beginning (not silent completion)
+6. COSMETIC: Removed unused `sys` import
+
+**Architecture:** worker-ai handles job lifecycle (poll, try_spend, cursor, pause/cancel). knowledge-service handles extraction + Neo4j writes (via POST /internal/extraction/extract-item). Clean microservice boundary.
+
+**Verify:** 10/10 worker-ai tests, 814/814 knowledge-service. 824 total.
+
+---
 
 ### K16.6a — Internal extract-item endpoint ✅ (session 46)
 

@@ -1,0 +1,263 @@
+"""K16.6b — Unit tests for the extraction job runner.
+
+Tests the core process_job logic with mocked DB pool and HTTP clients.
+"""
+
+from __future__ import annotations
+
+from decimal import Decimal
+from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
+
+import pytest
+
+from app.clients import BookClient, ChapterInfo, ExtractionResult, KnowledgeClient
+from app.runner import JobRow, process_job, poll_and_run, _get_running_jobs
+
+
+# ── Helpers ──────────────────────────────────────────────────────────
+
+
+def _job(**overrides) -> JobRow:
+    defaults = dict(
+        job_id=uuid4(),
+        user_id=uuid4(),
+        project_id=uuid4(),
+        scope="chapters",
+        scope_range=None,
+        status="running",
+        llm_model="test-model",
+        embedding_model="bge-m3",
+        max_spend_usd=Decimal("10.00"),
+        items_total=5,
+        items_processed=0,
+        current_cursor=None,
+        cost_spent_usd=Decimal("0"),
+    )
+    defaults.update(overrides)
+    return JobRow(**defaults)
+
+
+def _ok_result(source_id: str = "ch-1") -> ExtractionResult:
+    return ExtractionResult(
+        source_id=source_id,
+        entities_merged=2,
+        relations_created=1,
+        events_merged=1,
+        facts_merged=3,
+    )
+
+
+def _error_result(retryable: bool = True) -> ExtractionResult:
+    return ExtractionResult(
+        source_id="ch-1",
+        entities_merged=0,
+        relations_created=0,
+        events_merged=0,
+        facts_merged=0,
+        retryable=retryable,
+        error="something broke",
+    )
+
+
+_TEST_BOOK_ID = uuid4()
+
+
+def _mock_pool(book_id=_TEST_BOOK_ID):
+    """Create a mock asyncpg pool.
+
+    fetchval is called for both _get_project_book_id (returns UUID)
+    and _refresh_job_status (returns str). We use side_effect to
+    return book_id first, then 'running' for all subsequent calls.
+    """
+    pool = AsyncMock()
+    pool.fetchval = AsyncMock(side_effect=[book_id, *["running"] * 100])
+    # Default: try_spend succeeds
+    pool.fetchrow = AsyncMock(return_value={"cost_spent_usd": Decimal("0.004"), "status": "running"})
+    # Default: execute succeeds
+    pool.execute = AsyncMock()
+    # Default: no pending chat turns
+    pool.fetch = AsyncMock(return_value=[])
+    return pool
+
+
+def _mock_knowledge_client(result=None):
+    client = AsyncMock(spec=KnowledgeClient)
+    client.extract_item = AsyncMock(return_value=result or _ok_result())
+    return client
+
+
+def _mock_book_client(chapters=None, text="Chapter text here."):
+    client = AsyncMock(spec=BookClient)
+    if chapters is None:
+        chapters = [ChapterInfo(chapter_id="ch-1", title="Ch 1", sort_order=1)]
+    client.list_chapters = AsyncMock(return_value=chapters)
+    client.get_chapter_text = AsyncMock(return_value=text)
+    return client
+
+
+# ── process_job: chapters scope ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_process_job_chapters_success():
+    """Happy path: one chapter extracted, job completed."""
+    job = _job(scope="chapters")
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    bc = _mock_book_client()
+
+    await process_job(pool, kc, bc, job)
+
+    # Should have called extract_item once
+    kc.extract_item.assert_called_once()
+    # Should have advanced cursor
+    assert pool.execute.call_count >= 2  # advance_cursor + complete_job
+
+
+@pytest.mark.asyncio
+async def test_process_job_multiple_chapters():
+    """Multiple chapters processed in order."""
+    chapters = [
+        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i)
+        for i in range(3)
+    ]
+    job = _job(scope="chapters")
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    bc = _mock_book_client(chapters=chapters)
+
+    await process_job(pool, kc, bc, job)
+
+    assert kc.extract_item.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_process_job_pause_detected():
+    """Job paused mid-run — runner stops processing."""
+    chapters = [
+        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i)
+        for i in range(5)
+    ]
+    job = _job(scope="chapters")
+    pool = _mock_pool()
+    # fetchval: book_id, then running (1st chapter), then paused (2nd)
+    pool.fetchval = AsyncMock(side_effect=[_TEST_BOOK_ID, "running", "paused"])
+    kc = _mock_knowledge_client()
+    bc = _mock_book_client(chapters=chapters)
+
+    await process_job(pool, kc, bc, job)
+
+    # Only 1 chapter processed before pause detected
+    assert kc.extract_item.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_process_job_cancel_detected():
+    """Job cancelled — runner stops immediately."""
+    job = _job(scope="chapters")
+    pool = _mock_pool()
+    # fetchval: book_id, then cancelled
+    pool.fetchval = AsyncMock(side_effect=[_TEST_BOOK_ID, "cancelled"])
+    kc = _mock_knowledge_client()
+    bc = _mock_book_client()
+
+    await process_job(pool, kc, bc, job)
+
+    kc.extract_item.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_process_job_budget_auto_pause():
+    """try_spend returns auto_paused — runner stops."""
+    job = _job(scope="chapters")
+    pool = _mock_pool()
+    pool.fetchrow = AsyncMock(
+        return_value={"cost_spent_usd": Decimal("10"), "status": "paused"},
+    )
+    kc = _mock_knowledge_client()
+    bc = _mock_book_client()
+
+    await process_job(pool, kc, bc, job)
+
+    kc.extract_item.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_process_job_permanent_error_fails_job():
+    """Permanent extraction error → job transitions to failed."""
+    job = _job(scope="chapters")
+    pool = _mock_pool()
+    kc = _mock_knowledge_client(result=_error_result(retryable=False))
+    bc = _mock_book_client()
+
+    await process_job(pool, kc, bc, job)
+
+    # Should have called execute for fail_job + update_project
+    fail_calls = [
+        c for c in pool.execute.call_args_list
+        if "failed" in str(c)
+    ]
+    assert len(fail_calls) >= 1
+
+
+@pytest.mark.asyncio
+async def test_process_job_retryable_error_stops_run_for_retry():
+    """Retryable error — runner stops this run (retry on next poll).
+    Cursor is updated with retry count but not advanced past the item."""
+    job = _job(scope="chapters")
+    pool = _mock_pool()
+    kc = _mock_knowledge_client(result=_error_result(retryable=True))
+    bc = _mock_book_client()
+
+    await process_job(pool, kc, bc, job)
+
+    # Only one extraction attempt this run
+    kc.extract_item.assert_called_once()
+    # Cursor should be updated with retry count (items_delta=0)
+    cursor_calls = [
+        c for c in pool.execute.call_args_list
+        if "items_processed" in str(c)
+    ]
+    assert len(cursor_calls) >= 1
+
+
+@pytest.mark.asyncio
+async def test_process_job_no_book_id():
+    """Project with no book_id — chapters scope returns empty."""
+    job = _job(scope="chapters")
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    bc = _mock_book_client()
+    bc.list_chapters = AsyncMock(return_value=None)
+
+    await process_job(pool, kc, bc, job)
+
+    kc.extract_item.assert_not_called()
+
+
+# ── poll_and_run ─────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_poll_no_jobs_returns_zero():
+    pool = _mock_pool()
+    pool.fetch = AsyncMock(return_value=[])
+    kc = _mock_knowledge_client()
+    bc = _mock_book_client()
+
+    count = await poll_and_run(pool, kc, bc)
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_process_job_chapter_text_unavailable_skips():
+    """Chapter with no text — skipped, cursor advanced."""
+    job = _job(scope="chapters")
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    bc = _mock_book_client(text=None)
+
+    await process_job(pool, kc, bc, job)
+
+    kc.extract_item.assert_not_called()  # skipped

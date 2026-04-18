@@ -460,6 +460,29 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  worker-ai:
+    build:
+      context: ../services/worker-ai
+      dockerfile: Dockerfile
+    environment:
+      KNOWLEDGE_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      BOOK_SERVICE_URL: http://book-service:8082
+      LOG_LEVEL: INFO
+      POLL_INTERVAL_S: "5"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      knowledge-service:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
   statistics-service:
     build:
       context: ../services/statistics-service
