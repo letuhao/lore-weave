@@ -70,6 +70,7 @@ def _patch_mode3_pieces(
     glossary_entities: list | None = None,
     l2_result: L2FactResult | None = None,
     l2_raises: bool = False,
+    l3_passages: list | None = None,
 ):
     """Patch out all the I/O the Mode 3 builder does."""
     monkeypatch.setattr(
@@ -96,6 +97,12 @@ def _patch_mode3_pieces(
             "app.context.modes.full.select_l2_facts",
             AsyncMock(return_value=l2_result or L2FactResult()),
         )
+
+    # L3: patch the lazy-imported symbol inside passages selector module.
+    monkeypatch.setattr(
+        "app.context.selectors.passages.select_l3_passages",
+        AsyncMock(return_value=l3_passages or []),
+    )
 
     # neo4j_session context-manager factory.
     @asynccontextmanager
@@ -239,3 +246,89 @@ async def test_recent_message_count_is_20(monkeypatch):
         message="Hi",
     )
     assert result.recent_message_count == 20
+
+
+# ── K18.3 L3 passage integration ────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_l3_passages_rendered_in_block(monkeypatch):
+    """L3 selector returns passages → Mode 3 emits a <passages> block."""
+    from app.context.selectors.passages import L3Passage
+    passages = [
+        L3Passage(
+            text="Arthur draws Excalibur from the stone.",
+            source_type="chapter",
+            source_id="chap-1",
+            chunk_index=0,
+            score=0.92,
+            is_hub=False,
+            chapter_index=1,
+        ),
+    ]
+    _patch_mode3_pieces(monkeypatch, l3_passages=passages)
+
+    # Project needs an embedding_model so the L3 path doesn't short-circuit.
+    project = _project()
+    project.embedding_model = "bge-m3"
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=MagicMock(),  # mocked at selector level
+        user_id=USER_ID,
+        project=project,
+        message="Tell me about Arthur",
+    )
+    assert "<passages>" in result.context
+    assert "Arthur draws Excalibur" in result.context
+    assert 'source_type="chapter"' in result.context
+
+
+@pytest.mark.asyncio
+async def test_l3_empty_when_no_embedding_client(monkeypatch):
+    """No embedding_client → L3 stays empty and <passages> block is absent."""
+    _patch_mode3_pieces(monkeypatch)
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=None,   # Track 1 / caller didn't wire one
+        user_id=USER_ID,
+        project=_project(),
+        message="Tell me about Arthur",
+    )
+    assert "<passages>" not in result.context
+
+
+@pytest.mark.asyncio
+async def test_l3_hits_count_as_absence_coverage(monkeypatch):
+    """Entity mentioned in a passage but not in L2 facts should NOT
+    land in <no_memory_for>."""
+    from app.context.selectors.passages import L3Passage
+    passages = [
+        L3Passage(
+            text="Morgana cast her shadow over the realm.",
+            source_type="chapter",
+            source_id="chap-5",
+            chunk_index=3,
+            score=0.80,
+            is_hub=False,
+            chapter_index=5,
+        ),
+    ]
+    _patch_mode3_pieces(monkeypatch, l3_passages=passages)
+
+    project = _project()
+    project.embedding_model = "bge-m3"
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=MagicMock(),
+        user_id=USER_ID,
+        project=project,
+        message="Tell me about Morgana",
+    )
+    # Morgana IS in a passage — absence detection should NOT flag it.
+    assert "<no_memory_for>" not in result.context

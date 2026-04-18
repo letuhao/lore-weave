@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K18 commit 1 of 3: Mode 3 scaffold + L2 fact selector + absence detection + L1↔L2 dedup + CoT instructions. Plus K13 full wire-up + K13.0 resolver + all prior K13/K14/K17/K16/etc.)
-- Updated By: Assistant (session 46 — K18.1 Mode 3 builder scaffold, K18.2 L2 fact selector, K18.4 dedup extension, K18.5 absence detection, K18.6 CoT instructions. 1012 knowledge-service tests.)
+- Last Updated: 2026-04-18 (session 46 — K18 commit 2 of 3 (Path C): full passage infrastructure + K18.3 selector with intent pool sizing + hub penalty + MMR + recency. Plus all prior K18 commit 1, K13/K14/K17/K16/etc.)
+- Updated By: Assistant (session 46 — Path C: `:Passage` schema + vector indexes, passages repo, K18.3 L3 selector, wire into modes/full.py. 4 new deferred items tracked. 1026 knowledge-service tests.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: 936d2de (K13 wire-up) → K18 commit 1 pending
+- HEAD: d6455b8 (K18 commit 1) → K18 commit 2 pending
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -42,6 +42,8 @@
 | D-K16.2-01 | K16.2-R1 review | **Model-specific pricing lookup.** Estimate endpoint uses hardcoded `$2/M tokens` placeholder. When provider-registry exposes model pricing, swap `_DEFAULT_COST_PER_TOKEN` for a dynamic lookup keyed on `llm_model`. The `max_spend_usd` on the actual job is the real guard; this only affects the preview dialog. | K16.6 or provider-registry pricing API |
 | D-K16.2-02 | K16.2-R1 review | **`scope_range` filtering.** Field is accepted on the request model but not forwarded to data sources. Book-service's internal chapters endpoint doesn't support range filtering yet. When it does, thread `scope_range.chapter_range` through `BookClient.count_chapters` as query params. | K16.3 or book-service range support |
 | D-K17.10-02 | K17.10 scope decision | **Xianxia + Vietnamese fixture pairs.** v1 deliberately English-only so thresholds can be tuned on a stable seed before adding multilingual variance. Per KSA §9.9 the v2 run should include 2 xianxia + 2 Vietnamese chapters to exercise CJK canonicalization and mixed-script predicate normalization. | K17.10-v2 (after thresholds stabilize) |
+| D-K18.3-01 | K18.3 Path-C scope (session 46) | **Passage ingestion pipeline.** [`neo4j_repos/passages.py`](services/knowledge-service/app/db/neo4j_repos/passages.py) ships upsert + dim-routed vector search + `delete_passages_for_source`, and [`selectors/passages.py`](services/knowledge-service/app/context/selectors/passages.py) queries them — but **nothing populates the `:Passage` nodes yet**. A producer-side commit needs to: (a) listen for `chapter.saved` events (K14 consumer), (b) fetch chapter text via `book_client`, (c) chunk (overlap-based splitter), (d) embed via `embedding_client` (K12.2), (e) call `upsert_passage`. Also needs a `delete_passages_for_source` call on `chapter.deleted`. Until this lands, L3 returns `[]` and Mode 3's `<passages>` block stays empty — code path live, no data. | K18.3-ingest (next K18 work, before Gate 13) |
+| D-K18.3-02 | K18.3 Path-C scope (session 46) | **Generative rerank (LM Studio) after MMR.** Plan row K18.3 acceptance allows this as optional — pool sizing is still measurable via log line. Ship when/if a rerank model is configured; integrate as a post-MMR pass that reorders the final top-N. | K18.3-rerank (post-Gate-13) |
 
 ### Track 2 planning (document only, no Track 1 action)
 
@@ -64,6 +66,8 @@
 | P-K15.8-01 | K15.8-R1/I3 | **Orchestrator re-runs entity detection 3–4× per turn.** `extract_triples` and `extract_negations` both call `extract_entity_candidates` internally for per-sentence anchoring, so a full chat turn runs the K15.2 entity detector once at the orchestrator's explicit call plus one more time per extractor. Refactor path: thread pre-extracted candidates through the detector signatures. Track 1 accepts the cost at hobby scale; revisit if extraction latency ever trips the <2s plan-row budget. |
 | P-K15.10-01 | K15.10-R1/I1 | **Global quarantine sweep has no LIMIT or resumable state.** [services/knowledge-service/app/jobs/quarantine_cleanup.py](services/knowledge-service/app/jobs/quarantine_cleanup.py) with `user_id=None` runs `MATCH (f:Fact) WHERE pending_validation=true AND updated_at < now-TTL` across the whole graph in one transaction. Fine for hobby-scale test tenants; will need periodic-commit + cursor state for a production deployment with many tenants and a backlogged Pass 2. Pair with P-K11.9-01 scheduler cleanup since both are tenant-wide offline sweepers. |
 | P-K13.0-01 | K13.0 review-impl (session 46) | **Anchor pre-load re-runs per extract-item call.** [`services/knowledge-service/app/routers/internal_extraction.py`](services/knowledge-service/app/routers/internal_extraction.py) `_load_anchors_for_extraction` calls glossary `/known-entities` HTTP + upserts every anchor to Neo4j (idempotent MERGE) on every chapter item. For a 100-chapter job with 100 glossary entries that's 100 glossary calls + 10k MERGE round-trips used only for Pass 0. Fix: short-TTL (~60s) in-process cache keyed by (user_id, book_id) — many items in one job share the same book. Track 1 accepts the cost at hobby scale. |
+| P-K18.3-01 | K18.3 Path-C build (session 46) | **Query-embedding cache for multi-turn chats.** [`selectors/passages.py`](services/knowledge-service/app/context/selectors/passages.py) embeds the user message on every Mode 3 build. In a long back-and-forth in the same project, consecutive turns re-embed similar (sometimes identical) queries. Fix: TTL cache keyed by `(project_id, embedding_model, message)` with a short window (~30s). Saves a provider-registry embed round-trip per turn after the first. |
+| P-K18.3-02 | K18.3 Path-C build (session 46) | **MMR uses Jaccard token overlap, not embedding cosine.** The repo projection strips vectors from returned `Passage` rows to keep response size small, so the selector falls back to word-Jaccard for the redundancy term. Works fine for English at pool ≤ 40; CJK + paraphrased-but-distinct passages may cluster more aggressively than they should. Fix: keep per-hit vectors in memory for the duration of the MMR loop (add optional projection flag to `find_passages_by_vector`). |
 
 ### Won't-fix (conscious decisions, not debt)
 
@@ -135,6 +139,40 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K18 commit 2 of 3 — passage infrastructure + K18.3 L3 selector (Path C) ✅ (session 46)
+
+**Path-C decision:** K18.3 as specified required infrastructure that didn't exist (no `:Passage` nodes, no vector index on chunked text). User chose "build the full infra" over the simpler alternatives (skip L3 for now, or proxy via Events). This commit ships the storage + retrieval side end-to-end; ingestion is tracked as D-K18.3-01.
+
+**New files (3):**
+- [app/db/neo4j_repos/passages.py](../../services/knowledge-service/app/db/neo4j_repos/passages.py) — `Passage` Pydantic model, `upsert_passage` (idempotent MERGE by `passage_canonical_id(user_id, project_id, source_type, source_id, chunk_index)`), `delete_passages_for_source`, `find_passages_by_vector` (dim-routed, oversample-and-filter for tenant scope).
+- [app/context/selectors/passages.py](../../services/knowledge-service/app/context/selectors/passages.py) — K18.3 L3 selector: embed query → dim-routed search → intent-aware pool size (SPECIFIC_ENTITY=20 / GENERAL=RELATIONAL=40) → hub-file penalty (SPECIFIC_ENTITY=0.3×, GENERAL=0.9×) → signed recency weight (HISTORICAL inverts) → MMR diversification (λ=0.7, Jaccard redundancy) → top-N (intent-aware, 5–10). `EMBEDDING_MODEL_TO_DIM` fallback table for projects without explicit `embedding_dimension`.
+- [tests/integration/db/test_passages_repo.py](../../services/knowledge-service/tests/integration/db/test_passages_repo.py) — NEW with 6 cases, DB-skip harness.
+- [tests/unit/test_passages_selector.py](../../services/knowledge-service/tests/unit/test_passages_selector.py) — NEW with 9 cases covering all 3 rank layers + skip paths.
+
+**Modified (3):**
+- [app/db/neo4j_schema.cypher](../../services/knowledge-service/app/db/neo4j_schema.cypher) — `:Passage` UNIQUE constraint + `passage_user_project` + `passage_user_source` indexes + 4 per-dim vector indexes (384/1024/1536/3072).
+- [app/context/modes/full.py](../../services/knowledge-service/app/context/modes/full.py) — `build_full_mode` gained optional `embedding_client` param; L2 + L3 run in parallel via `asyncio.gather`; `<passages>` block rendered; L3 texts feed `detect_absences` so entities mentioned only in passages no longer flag as absences; instructions `has_passages` flag now driven by real data.
+- [app/config.py](../../services/knowledge-service/app/config.py) — `context_l3_timeout_s: float = 2.0` (wider than L2's 0.3 because the embed call dominates).
+
+**Tests updated:** [tests/unit/test_mode_full.py](../../services/knowledge-service/tests/unit/test_mode_full.py) +3 (L3 passages render, no-embedding-client skips, L3 passage covers absence).
+
+**Deferrals tracked (4 new rows in SESSION_PATCH):**
+- `D-K18.3-01` (naturally-next-phase): **passage ingestion pipeline** — this commit's producer-side counterpart. Without ingestion, L3 returns `[]`. Target: K18.3-ingest, before Gate 13.
+- `D-K18.3-02` (naturally-next-phase): **generative rerank** — LM Studio post-MMR reorder. Optional per plan row.
+- `P-K18.3-01` (perf): **query-embedding cache** — Mode 3 re-embeds similar messages across turns in the same chat.
+- `P-K18.3-02` (perf): **MMR embedding-cosine over Jaccard** — repo strips vectors so we fall back to word-Jaccard; may over-cluster on CJK.
+
+**Verify:** knowledge-service 1026/1026 pass (+14 from 1012: 9 L3 selector + 3 mode-full L3 + 2 sanity/schema-drift). Integration tests skip cleanly without `TEST_NEO4J_URI`.
+
+**Out of scope (still commit 3):**
+- K18.7 token budget enforcement
+- K18.8 dispatcher flip
+- K18.10 chat-service integration
+
+Chat-service still can't reach Mode 3 — the dispatcher at [builder.py:54](../../services/knowledge-service/app/context/builder.py#L54) keeps `NotImplementedError`.
+
+---
 
 ### K18 foundation — Mode 3 scaffold, L2 facts, dedup, absence, CoT ✅ (session 46, commit 1 of 3)
 

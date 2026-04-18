@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     # 2-hop + negation listing. Tighter than glossary because the L2
     # queries run against an indexed graph, not an HTTP service.
     context_l2_timeout_s: float = 0.3
+    # K18.3 — Mode 3 L3 passage selector budget. Embed(1 text) via
+    # provider-registry + Neo4j vector query + MMR. The embed call
+    # dominates; 2s leaves headroom for local LM Studio on small
+    # chunks while still capping a pathologically slow cloud model.
+    context_l3_timeout_s: float = 2.0
 
     # K16.2 — book-service HTTP client for chapter counts in cost estimation.
     book_service_url: str = "http://book-service:8082"

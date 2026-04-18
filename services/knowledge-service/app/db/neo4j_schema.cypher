@@ -205,3 +205,63 @@ OPTIONS {
     `vector.similarity_function`: 'cosine'
   }
 };
+
+// ─────────────────────────────────────────────────────────────────
+// K18.3 :Passage — L3 semantic-search surface.
+//
+// Holds the raw chunked text excerpted from source_type-scoped
+// inputs (chapter chunks, project summary chunks, long bio chunks).
+// Populated by a future ingestion pipeline — this commit ships the
+// target schema + repo + selector so the code path is live, but
+// the nodes stay empty until ingestion lands.
+//
+// `is_hub` flags chunks whose source is an L1 summary or long
+// character bio. The K18.3 selector applies a penalty to these so
+// specific-entity queries don't return the whole summary instead
+// of the specific detail (ContextHub lesson L-CH-03).
+// ─────────────────────────────────────────────────────────────────
+
+CREATE CONSTRAINT passage_id_unique IF NOT EXISTS
+FOR (p:Passage) REQUIRE p.id IS UNIQUE;
+
+CREATE INDEX passage_user_project IF NOT EXISTS
+FOR (p:Passage) ON (p.user_id, p.project_id);
+
+CREATE INDEX passage_user_source IF NOT EXISTS
+FOR (p:Passage) ON (p.user_id, p.source_type, p.source_id);
+
+CREATE VECTOR INDEX passage_embeddings_384 IF NOT EXISTS
+FOR (p:Passage) ON (p.embedding_384)
+OPTIONS {
+  indexConfig: {
+    `vector.dimensions`: 384,
+    `vector.similarity_function`: 'cosine'
+  }
+};
+
+CREATE VECTOR INDEX passage_embeddings_1024 IF NOT EXISTS
+FOR (p:Passage) ON (p.embedding_1024)
+OPTIONS {
+  indexConfig: {
+    `vector.dimensions`: 1024,
+    `vector.similarity_function`: 'cosine'
+  }
+};
+
+CREATE VECTOR INDEX passage_embeddings_1536 IF NOT EXISTS
+FOR (p:Passage) ON (p.embedding_1536)
+OPTIONS {
+  indexConfig: {
+    `vector.dimensions`: 1536,
+    `vector.similarity_function`: 'cosine'
+  }
+};
+
+CREATE VECTOR INDEX passage_embeddings_3072 IF NOT EXISTS
+FOR (p:Passage) ON (p.embedding_3072)
+OPTIONS {
+  indexConfig: {
+    `vector.dimensions`: 3072,
+    `vector.similarity_function`: 'cosine'
+  }
+};

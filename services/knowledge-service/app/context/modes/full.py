@@ -34,6 +34,7 @@ import asyncio
 import logging
 from uuid import UUID
 
+from app.clients.embedding_client import EmbeddingClient
 from app.clients.glossary_client import GlossaryClient
 from app.config import settings
 from app.context.formatters.dedup import (
@@ -48,6 +49,7 @@ from app.context.modes.no_project import BuiltContext
 from app.context.selectors.absence import detect_absences
 from app.context.selectors.facts import L2FactResult, select_l2_facts
 from app.context.selectors.glossary import select_glossary_for_context
+from app.context.selectors.passages import L3Passage, select_l3_passages
 from app.context.selectors.projects import load_project_summary
 from app.context.selectors.summaries import load_global_summary
 from app.db.models import Project
@@ -102,6 +104,68 @@ async def _safe_l2_facts(
         return L2FactResult()
 
 
+async def _safe_l3_passages(
+    embedding_client: EmbeddingClient | None,
+    *,
+    user_id: UUID,
+    project: Project,
+    message: str,
+    intent: IntentResult,
+) -> list[L3Passage]:
+    """Run the L3 selector under a Neo4j session with a timeout.
+
+    Returns `[]` when embedding is not configured, the embedding
+    call fails, the vector search returns nothing, or any exception
+    propagates. The selector itself handles most of these; this
+    wrapper adds the timeout ceiling and the session plumbing.
+    """
+    from app.context.selectors.passages import (
+        EMBEDDING_MODEL_TO_DIM,
+        select_l3_passages,
+    )
+
+    if embedding_client is None or not project.embedding_model:
+        return []
+
+    embedding_dim = EMBEDDING_MODEL_TO_DIM.get(project.embedding_model)
+    if embedding_dim is None:
+        logger.debug(
+            "Mode 3 L3 skipped: unknown embedding_model=%s",
+            project.embedding_model,
+        )
+        return []
+
+    try:
+        async with neo4j_session() as session:
+            return await asyncio.wait_for(
+                select_l3_passages(
+                    session,
+                    embedding_client,
+                    user_id=str(user_id),
+                    project_id=str(project.project_id),
+                    message=message,
+                    intent=intent,
+                    embedding_model=project.embedding_model,
+                    embedding_dim=embedding_dim,
+                    user_uuid=user_id,
+                ),
+                timeout=settings.context_l3_timeout_s,
+            )
+    except asyncio.TimeoutError:
+        layer_timeout_total.labels(layer="l3").inc()
+        logger.warning(
+            "Mode 3 L3 timeout user_id=%s project_id=%s budget=%.3fs",
+            user_id, project.project_id, settings.context_l3_timeout_s,
+        )
+        return []
+    except Exception:
+        logger.warning(
+            "Mode 3 L3 failed user_id=%s project_id=%s — degrading",
+            user_id, project.project_id, exc_info=True,
+        )
+        return []
+
+
 def _render_facts_block(facts: L2FactResult) -> list[str]:
     """Render the `<facts>` block; empty if nothing to show."""
     if facts.total() == 0:
@@ -134,12 +198,16 @@ async def build_full_mode(
     user_id: UUID,
     project: Project,
     message: str,
+    embedding_client: EmbeddingClient | None = None,
 ) -> BuiltContext:
     """Build the Mode 3 memory block.
 
     Mirrors Mode 2's layer-timeout pattern for L0/L1/glossary, then
-    adds the L2 fact selector and absence detection on top.
-    Intent-aware CoT instructions close the block.
+    adds the L2 fact selector, L3 semantic passages, and absence
+    detection on top. Intent-aware CoT instructions close the block.
+
+    `embedding_client` is optional — callers in Track 1 / no-Neo4j
+    mode pass `None` and the L3 layer cleanly returns empty.
     """
     # ── L0 / L1 / glossary (reuse Mode-2 shape) ─────────────────────────
     try:
@@ -181,12 +249,19 @@ async def build_full_mode(
             min_overlap=settings.dedup_min_overlap,
         )
 
-    # ── L2 facts (Neo4j) ────────────────────────────────────────────────
+    # ── L2 facts + L3 passages (Neo4j, parallel) ────────────────────────
     # Classify once: the same IntentResult drives both the L2 selector's
     # hop-count / recency gating AND the instruction-block hint text.
     intent_obj = classify(message)
-    l2_facts = await _safe_l2_facts(
-        user_id=user_id, project=project, intent=intent_obj,
+    l2_facts, l3_passages = await asyncio.gather(
+        _safe_l2_facts(
+            user_id=user_id, project=project, intent=intent_obj,
+        ),
+        _safe_l3_passages(
+            embedding_client,
+            user_id=user_id, project=project,
+            message=message, intent=intent_obj,
+        ),
     )
     mentioned_entities = list(intent_obj.entities)
 
@@ -201,8 +276,10 @@ async def build_full_mode(
         )
 
     # ── absence detection ───────────────────────────────────────────────
-    # L3 hits are None in Commit 1 — K18.3 wires them through in Commit 2.
-    absences = detect_absences(mentioned_entities, l2_facts, l3_hits=None)
+    # L3 passages now feed into absence: an entity mentioned in a passage
+    # counts as "covered" even if no L2 fact exists for it.
+    l3_texts = [p.text for p in l3_passages]
+    absences = detect_absences(mentioned_entities, l2_facts, l3_hits=l3_texts)
 
     # ── render ──────────────────────────────────────────────────────────
     lines: list[str] = ['<memory mode="full">']
@@ -252,6 +329,19 @@ async def build_full_mode(
 
     lines.extend(_render_facts_block(l2_facts))
 
+    if l3_passages:
+        lines.append("  <passages>")
+        for p in l3_passages:
+            attrs = (
+                f'source_type="{sanitize_for_xml(p.source_type)}" '
+                f'source_id="{sanitize_for_xml(p.source_id)}" '
+                f'score="{p.score:.2f}"'
+            )
+            lines.append(f"    <passage {attrs}>")
+            lines.append(f"      {sanitize_for_xml(p.text)}")
+            lines.append("    </passage>")
+        lines.append("  </passages>")
+
     if absences:
         lines.append("  <no_memory_for>")
         for name in absences:
@@ -261,7 +351,7 @@ async def build_full_mode(
     instructions = build_instructions_block(
         intent_obj.intent,
         has_facts=l2_facts.total() > 0,
-        has_passages=False,  # Commit 2 adds L3
+        has_passages=bool(l3_passages),
         has_absences=bool(absences),
     )
     lines.append(f"  <instructions>{sanitize_for_xml(instructions)}</instructions>")
