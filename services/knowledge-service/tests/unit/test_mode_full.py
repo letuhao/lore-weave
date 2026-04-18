@@ -128,7 +128,9 @@ async def test_empty_everything_still_emits_valid_block(monkeypatch):
         message="greetings",
     )
     assert result.mode == "full"
-    assert result.recent_message_count == 20  # Mode 3 tighter than Mode 2's 50
+    # Mode 3 uses its own tighter constant (20) independent of the
+    # D-T2-03 RECENT_MESSAGE_COUNT env knob — by design.
+    assert result.recent_message_count == 20
     assert '<memory mode="full">' in result.context
     assert "<project" in result.context
     assert "<instructions>" in result.context

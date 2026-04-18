@@ -12,6 +12,7 @@ from uuid import uuid4
 import pytest
 
 from app.clients.glossary_client import GlossaryEntityForContext
+from app.config import settings
 from app.context.formatters.token_counter import estimate_tokens
 from app.context.modes.static import build_static_mode
 from app.db.models import Project, Summary
@@ -93,7 +94,9 @@ async def test_full_block_with_l0_l1_and_glossary():
     )
 
     assert built.mode == "static"
-    assert built.recent_message_count == 50
+    # D-T2-03: builder now reads settings.recent_message_count (the
+    # shared knob with chat-service's fallback).
+    assert built.recent_message_count == settings.recent_message_count
 
     root = ET.fromstring(built.context)
     assert root.tag == "memory"

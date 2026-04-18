@@ -14,6 +14,7 @@ from uuid import UUID
 import asyncpg
 
 from app.context import cache
+from app.context.formatters.token_counter import estimate_tokens as _estimate_tokens
 from app.db.models import ScopeType, Summary, SummaryVersion
 from app.db.repositories import VersionMismatchError
 
@@ -28,9 +29,6 @@ _VERSION_SELECT_COLS = """
   version_id, summary_id, user_id, version, content, token_count,
   created_at, edit_source
 """
-
-
-from app.context.formatters.token_counter import estimate_tokens as _estimate_tokens
 
 
 def _rows_changed(status: str) -> int:

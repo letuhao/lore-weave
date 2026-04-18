@@ -2,9 +2,11 @@
 
 Graceful degradation is the contract: every failure path (timeout,
 transport error, 5xx, 4xx, decode error, unexpected shape) returns a
-"degraded" KnowledgeContext with no memory and the default 50-message
-replay budget. The caller never sees an exception — chat must keep
-working when knowledge-service is unavailable.
+"degraded" KnowledgeContext with no memory and the fallback replay
+budget (DEGRADED_RECENT_MESSAGE_COUNT, resolved from
+`settings.recent_message_count` at import; default 50, env
+`RECENT_MESSAGE_COUNT`). The caller never sees an exception — chat
+must keep working when knowledge-service is unavailable.
 
 Pattern follows app/clients/billing_client.py (long-lived module-level
 singleton via get_knowledge_client()) and is structurally identical to

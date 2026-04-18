@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.config import settings
 from app.context.formatters.token_counter import estimate_tokens
 from app.context.modes.no_project import build_no_project_mode
 from app.db.models import Summary
@@ -32,7 +33,10 @@ async def test_no_summary_returns_instructions_only():
 
     built = await build_no_project_mode(repo, uuid4())
     assert built.mode == "no_project"
-    assert built.recent_message_count == 50
+    # D-T2-03: builder now reads settings.recent_message_count, which
+    # is the knob shared with chat-service's fallback. Tests use the
+    # same source so a tune doesn't require test edits.
+    assert built.recent_message_count == settings.recent_message_count
     assert built.token_count > 0
     assert "<user>" not in built.context
     assert "<instructions>" in built.context

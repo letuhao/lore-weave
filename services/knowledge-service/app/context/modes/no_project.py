@@ -5,9 +5,10 @@ identity (L0) plus a short instruction telling the LLM this session
 isn't attached to any project. No glossary, no project-level context,
 no extraction.
 
-Invoked when the chat session has `project_id IS NULL`. The caller's
-recent_message_count is 50 — chat-service replays the last 50 messages
-as usual.
+Invoked when the chat session has `project_id IS NULL`. The returned
+`recent_message_count` comes from `settings.recent_message_count`
+(D-T2-03; default 50, env `RECENT_MESSAGE_COUNT`) — chat-service
+replays the last N messages as usual.
 """
 
 import asyncio
