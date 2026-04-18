@@ -114,6 +114,8 @@ containing certain period-typical phrases. Workarounds:
 | `alice_ch01`               | Alice in Wonderland ch. 1 opening   | Classic rabbit-hole scene |
 | `alice_ch02`               | Alice in Wonderland ch. 2 opening   | "Curiouser and curiouser" |
 | `sherlock_scandal_ch01`    | "A Scandal in Bohemia" ch. 1 opening | Watson framing            |
+| `pride_prejudice_ch01`     | Pride and Prejudice ch. 1            | Mr. & Mrs. Bennet discuss Bingley |
+| `little_women_ch01`        | Little Women ch. 1 opening           | Four March sisters by the fire |
 
-Two more English fixtures and the xianxia / Vietnamese pairs are
-deferred to v2. See `docs/sessions/SESSION_PATCH.md` for status.
+v1 English fixture set is complete (5/5). Xianxia and Vietnamese pairs
+are deferred to v2. See `docs/sessions/SESSION_PATCH.md` for status.

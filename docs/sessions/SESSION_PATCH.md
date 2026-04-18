@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — knowledge-service Dockerfile multi-stage build)
-- Updated By: Assistant (session 46 — multi-stage Dockerfile: deps/test/production stages, .dockerignore, 757/757 tests pass in Docker)
+- Last Updated: 2026-04-18 (session 46 — K17.10-v1-complete + Dockerfile multi-stage)
+- Updated By: Assistant (session 46 — 2 remaining English fixtures landed (pride_prejudice_ch01, little_women_ch01), v1 fixture set 5/5 complete. Also: multi-stage Dockerfile.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: bbe2d08 (K17.10-partial)
+- HEAD: 4c586ad (Dockerfile multi-stage)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -38,7 +38,7 @@
 | D-K17.2a-02 | K17.2a-R3 review C12 (cleared in the same commit) | **413 classification landed in the same R3 commit** — this row is documentation of the original issue and the clearing. ProviderClient now maps 413 to `ProviderUpstreamError("... body too large (PROXY_BODY_TOO_LARGE, 4 MiB cap)")` so extraction job failures are greppable. Kept here as a pointer rather than deleted outright so the pre-fix state is discoverable from the patch history. | — (cleared) |
 | D-K17.2c-01 | K17.2c-R1 review T22 | **K17.2c tests bypass the chi router and `requireInternalToken` middleware.** All K17.2c tests call `srv.doProxy(...)` directly, skipping the actual HTTP routing layer and the `internalProxy` wrapper that validates the `X-Internal-Token` header + query params (`user_id`, `model_source`, `model_ref`). Full-router coverage would require mounting the chi router and calling `srv.Router().ServeHTTP(...)` — doable but ~20 LOC per test for coverage that's 80% already tested in `TestInvokeModelValidationAndUnauthorized`. The doProxy internals are the risky part and are now fully covered; router-layer plumbing is stable. | Next proxy hardening pass |
 | D-K17.2b-01 | K17.2b-R3 review D3 | **`ProviderClient` returns `ProviderDecodeError` for tool_calls-shaped responses** where `message.content` is `null` but `message.tool_calls` is a non-empty array. Fine for K17.4–K17.7 which use `response_format={"type": "json_object"}` text-only. A future tool-based extractor would need a new `chat_completion_with_tools()` method (or a union return type) — flagged so we don't accidentally re-test the same edge case in every new extractor. | K17.8+ or first tool-based extractor |
-| D-K17.10-01 | K17.10 session 45 | **2 remaining English fixtures blocked by Anthropic output content filter.** Harness + loader are feature-complete and unit-tested (18/18). Only 3 of the planned 5 English fixtures landed (alice_ch01, alice_ch02, sherlock_scandal_ch01). Two attempts to generate Conan Doyle text ("A Scandal in Bohemia" ch. 2 and "The Red-Headed League" ch. 1) hit the filter. Next session either (a) user pastes Gutenberg text directly or (b) swap to different public-domain sources (Pride & Prejudice / Tom Sawyer / Little Women). Dropping two new directories under `tests/fixtures/golden_chapters/` with `chapter.txt` + `expected.yaml` is the entire remaining work — zero code changes needed. | K17.10-v1-complete (session 46) |
+| ~~D-K17.10-01~~ | ~~K17.10 session 45~~ | **Cleared in session 46.** See "Recently cleared" below. | — |
 | D-K17.10-02 | K17.10 scope decision | **Xianxia + Vietnamese fixture pairs.** v1 deliberately English-only so thresholds can be tuned on a stable seed before adding multilingual variance. Per KSA §9.9 the v2 run should include 2 xianxia + 2 Vietnamese chapters to exercise CJK canonicalization and mixed-script predicate normalization. | K17.10-v2 (after thresholds stabilize) |
 
 ### Track 2 planning (document only, no Track 1 action)
@@ -75,6 +75,7 @@
 
 | ID | Origin | How it was resolved |
 |---|---|---|
+| **D-K17.10-01** | **K17.10 session 45** | **Cleared in session 46.** User provided full Gutenberg texts; two new fixtures added: `pride_prejudice_ch01` (Pride and Prejudice ch. 1 — Mr. & Mrs. Bennet discuss Bingley, 4 entities, 3 relations, 2 events, 3 traps) and `little_women_ch01` (Little Women ch. 1 opening — four March sisters by the fire, 6 entities, 3 relations, 3 events, 3 traps). v1 English fixture set now complete at 5/5. All 18 eval harness unit tests pass. |
 | **D-K2a-01 + D-K2a-02** | **K2a** | **Cleared in session 39, commit `0b6c29a`.** Added defense-in-depth CHECK constraints on `glossary_entities.short_description` via a new `shortDescConstraintsSQL` + `UpShortDescConstraints` Go migration step wired into `cmd/glossary-service/main.go`. Constraint 1 (`glossary_entities_short_desc_non_empty`): `short_description IS NULL OR short_description <> ''`. Constraint 2 (`glossary_entities_short_desc_len`): `short_description IS NULL OR length(short_description) <= 500` — matches the API handler's rune-counted 500-char cap. Backfill step inside the migration converts any existing empty-string rows to NULL so ADD CONSTRAINT doesn't fail on pre-existing data. Idempotent via the same `DO $$ BEGIN IF NOT EXISTS (SELECT ... FROM pg_constraint WHERE conname = ...) THEN ALTER TABLE ... END IF; END$$` pattern the rest of the glossary migrate file uses. Live verified on the compose stack: empty-string and 501-char writes both rejected by the DB, 500-char and NULL writes accepted. **This was the last Track 1-tagged deferred item.** |
 | **D-K8-01** | **K8 draft review** | **Cleared in session 39, commits `c4e537c` (backend) + `52bc30e` (frontend).** Added a new `knowledge_summary_versions` append-only history table with unique (summary_id, version) index and ON DELETE CASCADE to the parent. Repo `upsert()` + `upsert_project_scoped()` now run the upsert AND a history insert in a single transaction, with a `FOR UPDATE` lock on the pre-update row so concurrent writers serialise cleanly. Three new endpoints — `GET /summaries/global/versions`, `GET /summaries/global/versions/{v}`, `POST /summaries/global/versions/{v}/rollback`. Rollback creates a NEW version whose content is a copy of the target; the displaced row goes to history with `edit_source='rollback'`. Strict If-Match on rollback. Frontend: new `VersionsPanel` component inline below the GlobalBioTab editor, `useGlobalSummaryVersions` hook for list + rollback mutation, preview modal + rollback confirm dialog. 15 new backend tests (9 unit + 6 integration) all green; live verified via Playwright (list → view preview → rollback → new monotonic version). ~20 new i18n keys per locale across en/vi/ja/zh-TW. Track 1 only ships global scope; project-scoped endpoints are Track 2 but the repo layer supports both. |
 | **D-K8-03** | **K8.2 review** | **Cleared in session 39, commit `4a57333`.** Optimistic concurrency (HTTP If-Match / ETag) end-to-end across knowledge-service projects + summaries + api-gateway-bff + frontend. Schema: added missing `version INT NOT NULL DEFAULT 1` to `knowledge_projects` (already existed on `knowledge_summaries`). Repo `update()` / `upsert()` gained optional `expected_version` kwarg; atomic `UPDATE ... WHERE ... AND version = $N` with follow-up SELECT on 0-row paths to distinguish 404 from 412. New `VersionMismatchError` in the repositories package carries the current row for the 412 body. Routers: strict If-Match (428 if missing, 412 if stale, 200 + fresh ETag on success), `_parse_if_match` helper accepts `W/"<n>"`, `"<n>"`, or bare `<n>`. **D-K8-03-I1** (CORS preflight blocking If-Match header) caught live via Playwright on the first FE save attempt — fixed by adding `If-Match` to `allowedHeaders` and `ETag` to `exposedHeaders` in gateway-setup.ts. Frontend: `isVersionConflict<T>` type guard on `apiJson`-thrown errors (attached parsed body), `ifMatch()` header helper, all `update*` methods take `expectedVersion`. `ProjectFormModal` captures `project.version` as `baselineVersion` state on edit open; on 412 refreshes baseline from `err.current.version`, keeps dialog open, preserves user edits for re-apply. `GlobalBioTab` extends its existing `baseline` tracking with `baselineVersion` using the same pattern; null on first save, captured version on subsequent saves. `ProjectsTab.handleRestore` passes `project.version` through existing `updateProject` call. 17 new tests (7 projects + 3 summaries unit + 4 projects + 3 summaries integration) plus 6 existing test fixtures updated for the new `version` field. Full live round-trip verified via Playwright: create → edit dialog → out-of-band curl PATCH → FE save → 412 → baseline refresh → retry → 200. |
@@ -131,6 +132,23 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K17.10-v1-complete — Golden-set fixture set complete (5/5 English) ✅ (session 46)
+
+**Goal:** Close D-K17.10-01 by adding the 2 remaining English fixtures. Zero code changes — only new fixture directories.
+
+**Files (new):**
+- NEW [tests/fixtures/golden_chapters/pride_prejudice_ch01/](../../services/knowledge-service/tests/fixtures/golden_chapters/pride_prejudice_ch01/) — chapter.txt + expected.yaml. Pride and Prejudice ch. 1: 4 entities, 3 relations, 2 events, 3 traps.
+- NEW [tests/fixtures/golden_chapters/little_women_ch01/](../../services/knowledge-service/tests/fixtures/golden_chapters/little_women_ch01/) — chapter.txt + expected.yaml. Little Women ch. 1 opening: 6 entities, 3 relations, 3 events, 3 traps.
+- MODIFIED [tests/fixtures/golden_chapters/README.md](../../services/knowledge-service/tests/fixtures/golden_chapters/README.md) — updated v1 manifest to reflect 5/5 complete.
+
+**Source texts:** user provided full Gutenberg files; excerpts trimmed to 3–5 paragraph openings per the fixture guidelines. Both are unambiguously public domain.
+
+**Verify evidence:** 18/18 `test_eval_harness.py` pass in 0.24s. `test_iter_chapter_fixtures_sorted` confirms all 5 fixtures load and round-trip cleanly.
+
+**Deferral closed:** D-K17.10-01 moved to "Recently cleared" in SESSION_PATCH.
+
+---
 
 ### DOCKER-KS — knowledge-service Dockerfile multi-stage build ✅ (session 46)
 

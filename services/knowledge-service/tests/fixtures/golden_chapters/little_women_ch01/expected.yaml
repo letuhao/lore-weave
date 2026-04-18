@@ -1,0 +1,62 @@
+# K17.10 golden fixture — Little Women, Ch. 1 (opening)
+# Source: Project Gutenberg #514 (Louisa May Alcott, 1868). Public domain.
+# v1 annotation (illustrative) — re-verify before pinning as hard gate.
+
+source:
+  title: "Little Women"
+  author: "Louisa May Alcott"
+  chapter: 1
+  license: "Public domain (Project Gutenberg #514)"
+
+entities:
+  - name: Jo
+    kind: person
+    aliases: ["Josephine", "Jo March"]
+  - name: Meg
+    kind: person
+    aliases: ["Margaret"]
+  - name: Beth
+    kind: person
+    aliases: ["Elizabeth", "Little Miss Tranquility", "Mouse"]
+  - name: Amy
+    kind: person
+    aliases: []
+  - name: Father
+    kind: person
+    aliases: ["Papa"]
+  - name: Mother
+    kind: person
+    aliases: ["Marmee"]
+
+relations:
+  - subject: Meg
+    predicate: is_eldest_sister_of
+    object: Jo
+  - subject: Jo
+    predicate: wants_to_fight_with
+    object: Father
+  - subject: Beth
+    predicate: is_peacemaker_among
+    object: Jo
+
+events:
+  - summary: "The four March sisters discuss not having Christmas presents because their father is away at war"
+    participants: [Jo, Meg, Beth, Amy]
+  - summary: "Jo and Amy quarrel about boyish behavior and ladylike manners until Beth makes peace"
+    participants: [Jo, Amy, Beth]
+  - summary: "Meg lectures Jo and Amy about their behavior as young ladies"
+    participants: [Meg, Jo, Amy]
+
+traps:
+  # The King children — mentioned only as a comparison, never appear.
+  - kind: entity
+    name: King children
+    reason: "Only referenced in passing comparison; do not appear or act in the chapter"
+  # Undine and Sintran — a book Jo wants to buy, not an entity in the story.
+  - kind: entity
+    name: Undine and Sintran
+    reason: "Title of a book Jo wants to purchase; not a character or meaningful entity"
+  # The army sock — a prop Jo is knitting, not an entity.
+  - kind: entity
+    name: army sock
+    reason: "A prop Jo is knitting; not a first-class entity at this scale"
