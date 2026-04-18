@@ -1,7 +1,10 @@
 """Unit tests for K4.12 cross-layer L1/glossary dedup."""
 
 from app.clients.glossary_client import GlossaryEntityForContext
-from app.context.formatters.dedup import filter_entities_not_in_summary
+from app.context.formatters.dedup import (
+    filter_entities_not_in_summary,
+    filter_facts_not_in_summary,
+)
 
 
 def _entity(name="Alice", desc=None, aliases=None, is_pinned=False) -> GlossaryEntityForContext:
@@ -106,3 +109,49 @@ def test_min_overlap_tunable():
     summary = "Alice walks."  # only 1-token overlap (alice)
     kept = filter_entities_not_in_summary(entities, summary, min_overlap=1)
     assert kept == []  # With threshold=1 it drops
+
+
+# ── K18.4 filter_facts_not_in_summary ────────────────────────────────
+
+
+def test_facts_empty_summary_keeps_all():
+    facts = ["Kai trusts Zhao", "Arthur does not know Morgan"]
+    assert filter_facts_not_in_summary(facts, "") == facts
+    assert filter_facts_not_in_summary(facts, None) == facts
+
+
+def test_facts_covered_by_summary_dropped():
+    # ≥4-char tokens in fact: trusts, lancelot, arthur.
+    # Summary reproduces trusts + lancelot → 2 tokens overlap → drop.
+    facts = ["Arthur trusts Lancelot deeply"]
+    summary = "In the court of Camelot, Arthur trusts Lancelot with his life."
+    kept = filter_facts_not_in_summary(facts, summary)
+    assert kept == []
+
+
+def test_facts_default_threshold_keeps_partial_match():
+    # Only 1 overlapping ≥4-char token → below threshold → keep.
+    facts = ["Arthur trusts Lancelot"]
+    summary = "Arthur sat alone."
+    kept = filter_facts_not_in_summary(facts, summary)
+    assert kept == facts
+
+
+def test_facts_order_preserved():
+    facts = [
+        "Arthur trusts Lancelot",
+        "Morgana betrays Merlin",
+        "Galahad seeks Grail",
+    ]
+    # Summary covers the Morgana fact (morgana + betrays + merlin = 3 tokens).
+    summary = "In a shocking turn, Morgana betrays Merlin mid-ritual."
+    kept = filter_facts_not_in_summary(facts, summary)
+    assert kept == ["Arthur trusts Lancelot", "Galahad seeks Grail"]
+
+
+def test_facts_threshold_tunable():
+    # 1-token overlap ("arthur"). Default=2 keeps; threshold=1 drops.
+    facts = ["Arthur trusts Lancelot"]
+    summary = "Arthur led his knights."
+    assert filter_facts_not_in_summary(facts, summary) == facts
+    assert filter_facts_not_in_summary(facts, summary, min_overlap=1) == []

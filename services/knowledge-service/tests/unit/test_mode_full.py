@@ -1,0 +1,241 @@
+"""K18.1 — unit tests for the Mode 3 builder scaffold."""
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from decimal import Decimal
+from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID, uuid4
+
+import pytest
+
+from app.context.modes.full import build_full_mode
+from app.context.selectors.facts import L2FactResult
+from app.db.models import Project, Summary
+
+
+USER_ID = UUID("11111111-1111-1111-1111-111111111111")
+
+
+def _project(
+    *, name: str = "My Novel",
+    project_id: UUID | None = None,
+    book_id: UUID | None = None,
+    instructions: str = "",
+    extraction_enabled: bool = True,
+) -> Project:
+    now = datetime.now(timezone.utc)
+    return Project(
+        project_id=project_id or uuid4(),
+        user_id=USER_ID,
+        name=name,
+        description="",
+        project_type="book",
+        book_id=book_id,
+        instructions=instructions,
+        extraction_enabled=extraction_enabled,
+        extraction_status="disabled",
+        embedding_model=None,
+        extraction_config={},
+        last_extracted_at=None,
+        estimated_cost_usd=Decimal("0"),
+        actual_cost_usd=Decimal("0"),
+        is_archived=False,
+        version=1,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _summary(content: str, scope_type: str = "global") -> Summary:
+    now = datetime.now(timezone.utc)
+    return Summary(
+        summary_id=uuid4(),
+        user_id=USER_ID,
+        scope_type=scope_type,
+        scope_id=None,
+        content=content,
+        token_count=None,
+        version=1,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _patch_mode3_pieces(
+    monkeypatch,
+    *,
+    l0_summary=None,
+    l1_summary=None,
+    glossary_entities: list | None = None,
+    l2_result: L2FactResult | None = None,
+    l2_raises: bool = False,
+):
+    """Patch out all the I/O the Mode 3 builder does."""
+    monkeypatch.setattr(
+        "app.context.modes.full.load_global_summary",
+        AsyncMock(return_value=l0_summary),
+    )
+    monkeypatch.setattr(
+        "app.context.modes.full.load_project_summary",
+        AsyncMock(return_value=l1_summary),
+    )
+    monkeypatch.setattr(
+        "app.context.modes.full.select_glossary_for_context",
+        AsyncMock(return_value=glossary_entities or []),
+    )
+
+    if l2_raises:
+        async def raise_l2(*a, **kw):
+            raise RuntimeError("neo4j down")
+        monkeypatch.setattr(
+            "app.context.modes.full.select_l2_facts", raise_l2,
+        )
+    else:
+        monkeypatch.setattr(
+            "app.context.modes.full.select_l2_facts",
+            AsyncMock(return_value=l2_result or L2FactResult()),
+        )
+
+    # neo4j_session context-manager factory.
+    @asynccontextmanager
+    async def fake_session():
+        yield MagicMock()
+    monkeypatch.setattr("app.context.modes.full.neo4j_session", fake_session)
+
+
+@pytest.mark.asyncio
+async def test_empty_everything_still_emits_valid_block(monkeypatch):
+    """No L0, no L1, no glossary, no L2, no absences — still a valid
+    Mode 3 envelope with just project + instructions."""
+    _patch_mode3_pieces(monkeypatch)
+
+    project = _project(name="Test")
+    # "greetings" is lowercase → intent classifier extracts no entities,
+    # so no absence block is emitted for this "empty-everything" case.
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        user_id=USER_ID,
+        project=project,
+        message="greetings",
+    )
+    assert result.mode == "full"
+    assert result.recent_message_count == 20  # Mode 3 tighter than Mode 2's 50
+    assert '<memory mode="full">' in result.context
+    assert "<project" in result.context
+    assert "<instructions>" in result.context
+    assert "<facts>" not in result.context
+    assert "<no_memory_for>" not in result.context
+
+
+@pytest.mark.asyncio
+async def test_l2_facts_appear_in_facts_block(monkeypatch):
+    l2 = L2FactResult(
+        background=["Arthur — trusts — Lancelot"],
+        negative=["Arthur does not know Morgana"],
+    )
+    _patch_mode3_pieces(monkeypatch, l2_result=l2)
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        user_id=USER_ID,
+        project=_project(),
+        message="Tell me about Arthur",
+    )
+    assert "<facts>" in result.context
+    assert "<background>" in result.context
+    assert "Arthur — trusts — Lancelot" in result.context
+    assert "<negative>" in result.context
+    assert "Arthur does not know Morgana" in result.context
+
+
+@pytest.mark.asyncio
+async def test_absence_block_appears_when_entities_unknown(monkeypatch):
+    """Message mentions entities the L2 selector didn't return facts for."""
+    _patch_mode3_pieces(monkeypatch, l2_result=L2FactResult())
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        user_id=USER_ID,
+        project=_project(),
+        message="What does Arthur know about Lancelot?",
+    )
+    assert "<no_memory_for>" in result.context
+    assert "Arthur" in result.context
+    assert "Lancelot" in result.context
+
+
+@pytest.mark.asyncio
+async def test_neo4j_failure_degrades_to_mode2_shape(monkeypatch):
+    """L2 query throws → Mode 3 still builds, just without facts."""
+    _patch_mode3_pieces(monkeypatch, l2_raises=True)
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        user_id=USER_ID,
+        project=_project(),
+        message="anything",
+    )
+    assert result.mode == "full"
+    assert "<facts>" not in result.context
+    # Instructions still present → LLM gets guidance even without graph.
+    assert "<instructions>" in result.context
+
+
+@pytest.mark.asyncio
+async def test_l1_summary_dedupes_l2_facts(monkeypatch):
+    """Facts already covered by the L1 summary must be dropped."""
+    l1 = _summary(
+        "In the court of Camelot, Arthur trusts Lancelot with his life.",
+        scope_type="project",
+    )
+    l2 = L2FactResult(background=[
+        "Arthur trusts Lancelot deeply",  # covered by L1 (2+ overlap)
+        "Galahad seeks Grail",             # not covered
+    ])
+    _patch_mode3_pieces(monkeypatch, l1_summary=l1, l2_result=l2)
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        user_id=USER_ID,
+        project=_project(),
+        message="Tell me about Arthur and Galahad",
+    )
+    assert "Galahad seeks Grail" in result.context
+    assert "Arthur trusts Lancelot deeply" not in result.context
+
+
+@pytest.mark.asyncio
+async def test_project_instructions_included(monkeypatch):
+    _patch_mode3_pieces(monkeypatch)
+
+    project = _project(instructions="Write in formal tone.")
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        user_id=USER_ID,
+        project=project,
+        message="Hi",
+    )
+    assert "formal tone" in result.context
+
+
+@pytest.mark.asyncio
+async def test_recent_message_count_is_20(monkeypatch):
+    """Mode 3 uses 20 messages — verified because chat-service's K18.10
+    relies on this value to trim history."""
+    _patch_mode3_pieces(monkeypatch)
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        user_id=USER_ID,
+        project=_project(),
+        message="Hi",
+    )
+    assert result.recent_message_count == 20

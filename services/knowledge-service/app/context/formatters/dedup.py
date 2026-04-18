@@ -28,7 +28,7 @@ from typing import Iterable
 from app.clients.glossary_client import GlossaryEntityForContext
 from app.context.formatters.stopwords import KEYWORD_STOPWORDS_LOWER
 
-__all__ = ["filter_entities_not_in_summary"]
+__all__ = ["filter_entities_not_in_summary", "filter_facts_not_in_summary"]
 
 
 # Match Unicode word characters. \w in Python's `re` covers Latin
@@ -95,4 +95,37 @@ def filter_entities_not_in_summary(
             # Summary already covers this entity — drop the glossary row.
             continue
         kept.append(e)
+    return kept
+
+
+def filter_facts_not_in_summary(
+    fact_texts: Iterable[str],
+    summary_text: str | None,
+    *,
+    min_overlap: int = 2,
+) -> list[str]:
+    """K18.4 — drop fact strings already expressed by the L1 summary.
+
+    Takes raw fact-sentence strings (e.g. "Arthur trusts Lancelot",
+    "Morgana does not know Merlin") and returns those whose token
+    overlap with the summary is below `min_overlap`.
+
+    Threshold matches the entity version's default (2 distinct
+    ≥4-char tokens). Note the ≥4-char filter in `_tokenize` — short
+    names like "Kai" (3 chars) don't count toward overlap, so the
+    threshold only triggers when the summary reproduces enough of
+    the fact's longer content words to make the L2 row redundant.
+
+    Order is preserved so the L2 selector's ranking stays intact.
+    """
+    summary_tokens = _tokenize(summary_text or "")
+    if not summary_tokens:
+        return list(fact_texts)
+
+    kept: list[str] = []
+    for fact in fact_texts:
+        overlap = _tokenize(fact) & summary_tokens
+        if len(overlap) >= min_overlap:
+            continue
+        kept.append(fact)
     return kept

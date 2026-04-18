@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K13 full wire-up: cron loop + live-extraction anchor plumbing + Prometheus metrics + all K13.0 + K13.1 + K13 chat outbox + worker-infra MAXLEN/cold-start + K14 + workflow-gate + K12 + K11.10 + K15.11 + K17.11-12 + K16 + K17.10 + Dockerfile)
-- Updated By: Assistant (session 46 — K13.1 cron loop in lifespan, anchors loaded in /extract-item router, anchor_resolver_hits/misses_total + anchor_refresh_runs_total Prometheus counters. 970 knowledge-service tests.)
+- Last Updated: 2026-04-18 (session 46 — K18 commit 1 of 3: Mode 3 scaffold + L2 fact selector + absence detection + L1↔L2 dedup + CoT instructions. Plus K13 full wire-up + K13.0 resolver + all prior K13/K14/K17/K16/etc.)
+- Updated By: Assistant (session 46 — K18.1 Mode 3 builder scaffold, K18.2 L2 fact selector, K18.4 dedup extension, K18.5 absence detection, K18.6 CoT instructions. 1012 knowledge-service tests.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: b785444 (K13.0 resolver) → K13 full wire-up commit pending
+- HEAD: 936d2de (K13 wire-up) → K18 commit 1 pending
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -135,6 +135,41 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K18 foundation — Mode 3 scaffold, L2 facts, dedup, absence, CoT ✅ (session 46, commit 1 of 3)
+
+**Goal:** Ship the Mode 3 building blocks so Commit 2 can plug in L3 semantic retrieval and Commit 3 can flip the dispatcher + wire into chat-service.
+
+**New files (4):**
+- [app/context/modes/full.py](../../services/knowledge-service/app/context/modes/full.py) — `build_full_mode` Mode 3 scaffold. Assembles L0 / L1 summary / glossary (Mode-2 shape) + `<facts>` + `<no_memory_for>` + intent-aware `<instructions>`. Runs `classify(message)` once per build and threads the `IntentResult` into both the L2 selector and the instruction-block hint text. Degrades to Mode-2 shape when Neo4j is unavailable or L2 times out. `recent_message_count=20` (tighter than Mode 2's 50 — graph carries durable memory).
+- [app/context/selectors/facts.py](../../services/knowledge-service/app/context/selectors/facts.py) — K18.2 L2 fact selector. `L2FactResult` dataclass with four buckets (`current` / `recent` / `background` / `negative`); Commit 1 puts everything non-negation in `background` because chapter provenance isn't yet on edges. Resolves entity names → canonical IDs via `find_entities_by_name`, then runs `find_relations_for_entity` (1-hop, always) and `find_relations_2hop` (only when `intent.hop_count=2`). Negations post-filtered to those mentioning a resolved entity.
+- [app/context/selectors/absence.py](../../services/knowledge-service/app/context/selectors/absence.py) — K18.5. Case-insensitive substring coverage check across L2 + optional L3. Order-preserving dedupe. Known trade-off: "Arthur" in "Arthuria" counts as coverage; word-boundary matching would hurt CJK, so substring wins.
+- [app/context/formatters/instructions.py](../../services/knowledge-service/app/context/formatters/instructions.py) — K18.6. `build_instructions_block` composes base line + intent-specific hint + 3 conditional lines (facts / passages / absences). `locale` parameter reserved (Track 1 is English-only).
+
+**Modified (2):**
+- [app/context/formatters/dedup.py](../../services/knowledge-service/app/context/formatters/dedup.py) — K18.4. Added `filter_facts_not_in_summary` mirroring the entity version, threshold=2, ≥4-char token filter means short names (Kai) don't count toward overlap so the threshold only triggers on real prose-level coverage.
+- [app/config.py](../../services/knowledge-service/app/config.py) — new `context_l2_timeout_s: float = 0.3` (tighter than glossary's 0.2 because L2 queries an indexed graph, not HTTP).
+
+**New tests (+43, suite 1012/1012 was 970):**
+- `test_mode_full.py` — 7 cases (empty-everything, facts appear, absence block, Neo4j failure degrades, L1 dedupes L2, project instructions, recent_message_count=20)
+- `test_facts_selector.py` — 9 cases (formatters, empty intent, 1-hop-only, 2-hop on relational, dedupe across entities, negation filter, unresolved entity)
+- `test_absence_selector.py` — 10 cases
+- `test_instructions.py` — 11 cases
+- `test_dedup.py` — +6 for facts variant
+
+**Review-impl fixes applied before commit:**
+1. Dead `_indent` helper in `modes/full.py` removed.
+2. Intent classifier was running twice per Mode 3 build — `_safe_l2_facts` refactored to accept `IntentResult`, caller classifies once and threads.
+
+**Out of scope (commit 2 & 3):**
+- K18.3 L3 semantic passage selector (embeddings + MMR + hub-penalty) — Commit 2
+- K18.7 token budget enforcement — Commit 3
+- K18.8 dispatcher flip — Commit 3 (dispatcher still raises `NotImplementedError`)
+- K18.10 chat-service integration — Commit 3
+
+Chat-service will **not** see Mode 3 yet — this commit ships the foundation.
+
+---
 
 ### K13 full wire-up — cron loop + live extraction + Prometheus ✅ (session 46)
 

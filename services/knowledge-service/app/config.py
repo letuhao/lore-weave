@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     context_l0_timeout_s: float = 0.1
     context_l1_timeout_s: float = 0.1
     context_glossary_timeout_s: float = 0.2
+    # K18.1 — Mode 3 L2 fact selector budget. Neo4j 1-hop + optional
+    # 2-hop + negation listing. Tighter than glossary because the L2
+    # queries run against an indexed graph, not an HTTP service.
+    context_l2_timeout_s: float = 0.3
 
     # K16.2 — book-service HTTP client for chapter counts in cost estimation.
     book_service_url: str = "http://book-service:8082"
