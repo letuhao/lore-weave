@@ -21,11 +21,17 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.clients.embedding_client import EmbeddingClient
 from app.clients.glossary_client import GlossaryClient
 from app.context.builder import ProjectNotFound, build_context
 from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.summaries import SummariesRepo
-from app.deps import get_glossary_client, get_projects_repo, get_summaries_repo
+from app.deps import (
+    get_embedding_client,
+    get_glossary_client,
+    get_projects_repo,
+    get_summaries_repo,
+)
 from app.metrics import context_build_duration_seconds
 from app.middleware.internal_auth import require_internal_token
 
@@ -79,6 +85,7 @@ async def build(
     summaries_repo: SummariesRepo = Depends(get_summaries_repo),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     glossary_client: GlossaryClient = Depends(get_glossary_client),
+    embedding_client: EmbeddingClient = Depends(get_embedding_client),
 ) -> ContextBuildResponse:
     # K6.5: observe end-to-end build duration. Label distinguishes
     # successful modes (no_project/static/full) from each error path
@@ -94,6 +101,7 @@ async def build(
             user_id=req.user_id,
             project_id=req.project_id,
             message=req.message,
+            embedding_client=embedding_client,
         )
         _mode_label = built.mode
     except ProjectNotFound:
@@ -101,14 +109,6 @@ async def build(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="project not found",
-        )
-    except NotImplementedError as exc:
-        # Mode 3 (full extraction) is Track 2 scope. chat-service gets
-        # a clear 501 and falls back to plain replay.
-        _mode_label = "not_implemented"
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail=str(exc),
         )
     except Exception as exc:
         logger.exception("context build failed: %s", exc)

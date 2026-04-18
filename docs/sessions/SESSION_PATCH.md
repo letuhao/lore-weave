@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K18 commit 2 of 3 (Path C): full passage infrastructure + K18.3 selector with intent pool sizing + hub penalty + MMR + recency. Plus all prior K18 commit 1, K13/K14/K17/K16/etc.)
-- Updated By: Assistant (session 46 — Path C: `:Passage` schema + vector indexes, passages repo, K18.3 L3 selector, wire into modes/full.py. 4 new deferred items tracked. 1026 knowledge-service tests.)
+- Last Updated: 2026-04-18 (session 46 — K18 commit 3 of 3 FINAL: K18.7 token budget + K18.8 dispatcher flip. Mode 3 now live. K18.10 falls out naturally. Plus K18 commits 1–2, K13 full, K14, K17/K16/etc.)
+- Updated By: Assistant (session 46 — K18.7 budget enforcer with priority drops + K18.8 dispatcher flip (Mode 3 routes via extraction_enabled); chat-service integration automatic via kctx.recent_message_count. 1035 knowledge-service tests.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: d6455b8 (K18 commit 1) → K18 commit 2 pending
+- HEAD: 06e5c30 (K18.3-R1 review-impl fixes) → K18 commit 3 FINAL pending
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -139,6 +139,45 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K18 commit 3 of 3 FINAL — token budget + dispatcher flip → Mode 3 live ✅ (session 46)
+
+**The switch flips.** After this commit chat-service routes extraction-enabled projects to Mode 3 end-to-end. Gate 13 is now reachable pending passage ingestion (D-K18.3-01).
+
+**Modified (4):**
+- [app/config.py](../../services/knowledge-service/app/config.py) — `mode3_token_budget: int = 6000`.
+- [app/context/modes/full.py](../../services/knowledge-service/app/context/modes/full.py) — **K18.7**: extracted `_render_mode3()` (pure render) + new `_enforce_budget()` that trims in KSA §4.4.4 priority order: passages (lowest-score first) → absences → background facts → glossary (tail). Protected: L0, project instructions, L1 summary, current/recent/negative facts, mode-level `<instructions>`. Render-and-count loop until under budget or all drops exhausted (warns + returns as-is if L0/L1 alone still exceed).
+- [app/context/builder.py](../../services/knowledge-service/app/context/builder.py) — **K18.8**: removed `NotImplementedError`; `extraction_enabled=true` routes to `build_full_mode`; new `embedding_client: EmbeddingClient | None` keyword arg threaded to the Mode 3 builder.
+- [app/routers/context.py](../../services/knowledge-service/app/routers/context.py) — injects `embedding_client = Depends(get_embedding_client)`; removed the `NotImplementedError → 501` handler.
+
+**Tests (+8, suite 1035/1035 was 1027):**
+- [tests/unit/test_mode_full.py](../../services/knowledge-service/tests/unit/test_mode_full.py) — +4 budget cases: drops passages first, lowest-score first, explicit `token_count ≤ budget` invariant, protected layers never drop.
+- [tests/unit/test_context_dispatcher.py](../../services/knowledge-service/tests/unit/test_context_dispatcher.py) — NEW with 4 routing tests: no_project → Mode 1, disabled → Mode 2, enabled → Mode 3 with embedding_client threaded, missing → ProjectNotFound.
+- [tests/integration/db/test_context_build.py](../../services/knowledge-service/tests/integration/db/test_context_build.py) — updated `test_mode3_extraction_enabled_*` from 501-assertion to 200 + `mode=full` + `recent_message_count=20`.
+
+**K18.10 chat-service — zero code change.** [chat-service `stream_service.py:173`](../../services/chat-service/app/services/stream_service.py#L173) already uses `kctx.recent_message_count`, so Mode 3's 20-message window threads through naturally.
+
+**Review-impl fix before commit:** added explicit `test_budget_token_count_respects_budget` so the K18.7 invariant (`token_count ≤ budget`) is asserted directly, not inferred from content presence/absence. Also: almost tore down a "redundant lazy import" in `_safe_l3_passages` — turned out to be load-bearing for test patch semantics, so restored with an inline comment explaining why.
+
+**End-to-end path now live:**
+```
+chat session with project_id + extraction_enabled=true
+  → POST /internal/context/build (router injects embedding_client)
+  → dispatcher: extraction_enabled=true → build_full_mode
+  → L0 + L1 + glossary (Mode-2 shape) + L2 facts + L3 passages + absences + intent-aware <instructions>
+  → K18.7 budget enforcer trims to mode3_token_budget (default 6000)
+  → BuiltContext(mode="full", recent_message_count=20)
+  → chat-service trims history to 20 messages + injects memory block into system prompt
+```
+
+**Still deferred (won't block Gate 13 semantically — just keeps <passages> empty until done):**
+- **D-K18.3-01** passage ingestion pipeline — the single remaining piece of work for true Mode 3 value.
+- K18.9 prompt caching hints (optional per plan)
+- Other K18.3 perf/rerank items already tracked.
+
+K18 cluster (K18.1..K18.10 minus K18.9 deferred) is now **COMPLETE**.
+
+---
 
 ### K18 commit 2 of 3 — passage infrastructure + K18.3 L3 selector (Path C) ✅ (session 46)
 

@@ -308,7 +308,12 @@ async def test_mode2_glossary_service_down_still_renders(pool, app_with_pool: Fa
 
 
 @pytest.mark.asyncio
-async def test_mode3_extraction_enabled_returns_501(pool, app_with_pool: FastAPI):
+async def test_mode3_extraction_enabled_returns_full_block(pool, app_with_pool: FastAPI):
+    """K18.8 — dispatcher now flipped. extraction_enabled=true routes
+    to Mode 3 and returns a `<memory mode="full">` block. Pre-K18.8
+    this test asserted 501; we now assert Mode 3 renders cleanly even
+    with zero extracted data (empty L2, empty L3) because the build
+    pipeline degrades gracefully to a facts-less block."""
     user_id = uuid4()
     projects = ProjectsRepo(pool)
     p = await projects.create(
@@ -327,8 +332,13 @@ async def test_mode3_extraction_enabled_returns_501(pool, app_with_pool: FastAPI
             json={"user_id": str(user_id), "project_id": str(p.project_id)},
             headers={"X-Internal-Token": "ctx_test_token"},
         )
-    assert r.status_code == 501
-    assert "Mode 3" in r.json()["detail"] or "extraction" in r.json()["detail"].lower()
+    assert r.status_code == 200
+    body = r.json()
+    assert body["mode"] == "full"
+    assert '<memory mode="full">' in body["context"]
+    # Fresh project with no extraction = 20-message history limit
+    # (Mode 3 tighter than Mode 2's 50).
+    assert body["recent_message_count"] == 20
 
 
 @pytest.mark.asyncio

@@ -41,6 +41,14 @@ class Settings(BaseSettings):
     # dominates; 2s leaves headroom for local LM Studio on small
     # chunks while still capping a pathologically slow cloud model.
     context_l3_timeout_s: float = 2.0
+    # K18.7 — Mode 3 memory-block token budget. The full L0+L1+glossary
+    # +facts+passages+absences payload can easily exceed useful limits
+    # on a small-context model. When over budget, the Mode 3 builder
+    # drops in reverse-priority order: passages (lowest score first)
+    # → absences → background facts → glossary trimmed. L0, project
+    # instructions, L1 summary, negative facts, and the CoT
+    # instructions block are protected.
+    mode3_token_budget: int = 6000
 
     # K16.2 — book-service HTTP client for chapter counts in cost estimation.
     book_service_url: str = "http://book-service:8082"

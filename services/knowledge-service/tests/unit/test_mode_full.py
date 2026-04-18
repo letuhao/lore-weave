@@ -302,6 +302,164 @@ async def test_l3_empty_when_no_embedding_client(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_budget_drops_passages_first(monkeypatch):
+    """K18.7: when over budget, passages are dropped before any
+    other block (lowest priority)."""
+    from app.context.selectors.passages import L3Passage
+    # 10 passages × ~50 tokens each = ~500 tokens from passages alone
+    passages = [
+        L3Passage(
+            text=("filler " * 40) + f"passage {i}",
+            source_type="chapter", source_id=f"ch-{i}", chunk_index=0,
+            score=0.9 - (i * 0.01), is_hub=False, chapter_index=i,
+        )
+        for i in range(10)
+    ]
+    _patch_mode3_pieces(monkeypatch, l3_passages=passages)
+
+    project = _project()
+    project.embedding_model = "bge-m3"
+
+    # Tight budget forces the trim.
+    monkeypatch.setattr(
+        "app.context.modes.full.settings.mode3_token_budget", 80,
+    )
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=MagicMock(),
+        user_id=USER_ID,
+        project=project,
+        message="Tell me",
+    )
+    # Passages must be trimmed to fit budget.
+    passage_count_in_output = result.context.count("<passage ")
+    assert passage_count_in_output < 10
+    # Some pieces survive — project block is protected.
+    assert "<project" in result.context
+
+
+@pytest.mark.asyncio
+async def test_budget_drops_lowest_score_passages_first(monkeypatch):
+    """K18.7: when trimming passages, lowest-score ones go first."""
+    from app.context.selectors.passages import L3Passage
+    passages = [
+        L3Passage(
+            text=("word " * 30) + f"top-{i}",
+            source_type="chapter", source_id=f"ch-{i}", chunk_index=0,
+            score=(0.3 + i * 0.1),  # 0.3, 0.4, 0.5, 0.6, 0.7
+            is_hub=False, chapter_index=i,
+        )
+        for i in range(5)
+    ]
+    _patch_mode3_pieces(monkeypatch, l3_passages=passages)
+
+    project = _project()
+    project.embedding_model = "bge-m3"
+    # Budget chosen so ~2 passages fit — forces the trimmer to drop
+    # the lowest-score ones first.
+    monkeypatch.setattr(
+        "app.context.modes.full.settings.mode3_token_budget", 200,
+    )
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=MagicMock(),
+        user_id=USER_ID,
+        project=project,
+        message="Tell me",
+    )
+    # Highest-score passage (top-4, score=0.7) survives. Lowest-score
+    # (top-0, score=0.3) is trimmed first.
+    assert "top-4" in result.context
+    assert "top-0" not in result.context
+
+
+@pytest.mark.asyncio
+async def test_budget_token_count_respects_budget(monkeypatch):
+    """K18.7 — the contract: after trimming, token_count <= budget.
+
+    This explicitly exercises the primary K18.7 invariant rather than
+    inferring it from content presence/absence."""
+    from app.context.selectors.passages import L3Passage
+    passages = [
+        L3Passage(
+            text=("filler " * 30) + f"passage {i}",
+            source_type="chapter", source_id=f"ch-{i}", chunk_index=0,
+            score=0.9 - (i * 0.05), is_hub=False, chapter_index=i,
+        )
+        for i in range(10)
+    ]
+    _patch_mode3_pieces(monkeypatch, l3_passages=passages)
+
+    project = _project()
+    project.embedding_model = "bge-m3"
+    budget = 250
+    monkeypatch.setattr(
+        "app.context.modes.full.settings.mode3_token_budget", budget,
+    )
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=MagicMock(),
+        user_id=USER_ID,
+        project=project,
+        message="Tell me",
+    )
+    # Core K18.7 invariant.
+    assert result.token_count <= budget, (
+        f"budget violated: {result.token_count} > {budget}\n"
+        f"context=\n{result.context}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_budget_keeps_l0_l1_instructions_protected(monkeypatch):
+    """K18.7: L0, L1, project instructions, and mode-instructions are
+    NEVER dropped even under extreme budget pressure."""
+    from app.context.selectors.passages import L3Passage
+    l0 = _summary("User bio: I am a novelist.")
+    l1 = _summary("Project summary: a fantasy epic.", scope_type="project")
+    big_passage = L3Passage(
+        text="huge passage " * 200,
+        source_type="chapter", source_id="ch-1", chunk_index=0,
+        score=0.99, is_hub=False, chapter_index=1,
+    )
+    _patch_mode3_pieces(
+        monkeypatch,
+        l0_summary=l0, l1_summary=l1,
+        l3_passages=[big_passage],
+    )
+
+    project = _project(instructions="Always be formal.")
+    project.embedding_model = "bge-m3"
+
+    # Unreasonably small budget — forces every drop path to run.
+    monkeypatch.setattr(
+        "app.context.modes.full.settings.mode3_token_budget", 50,
+    )
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=MagicMock(),
+        user_id=USER_ID,
+        project=project,
+        message="hi",
+    )
+    # Protected layers remain.
+    assert "User bio" in result.context
+    assert "Project summary" in result.context
+    assert "Always be formal." in result.context
+    assert "<instructions>" in result.context  # CoT block
+    # Passage was dropped.
+    assert "<passage " not in result.context
+
+
+@pytest.mark.asyncio
 async def test_l3_hits_count_as_absence_coverage(monkeypatch):
     """Entity mentioned in a passage but not in L2 facts should NOT
     land in <no_memory_for>."""

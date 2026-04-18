@@ -49,7 +49,7 @@ from app.context.modes.no_project import BuiltContext
 from app.context.selectors.absence import detect_absences
 from app.context.selectors.facts import L2FactResult, select_l2_facts
 from app.context.selectors.glossary import select_glossary_for_context
-from app.context.selectors.passages import L3Passage, select_l3_passages
+from app.context.selectors.passages import L3Passage  # select_l3_passages is lazy-imported in _safe_l3_passages for test-patchability
 from app.context.selectors.projects import load_project_summary
 from app.context.selectors.summaries import load_global_summary
 from app.db.models import Project
@@ -119,6 +119,10 @@ async def _safe_l3_passages(
     propagates. The selector itself handles most of these; this
     wrapper adds the timeout ceiling and the session plumbing.
     """
+    # Lazy import is deliberate — test helpers patch
+    # `app.context.selectors.passages.select_l3_passages` directly, and
+    # a top-level import here would bind the original reference at
+    # module load time, making the monkeypatch a no-op.
     from app.context.selectors.passages import (
         EMBEDDING_MODEL_TO_DIM,
         select_l3_passages,
@@ -191,6 +195,207 @@ def _render_facts_block(facts: L2FactResult) -> list[str]:
     return lines
 
 
+def _render_mode3(
+    *,
+    project: Project,
+    l0,
+    l1_summary,
+    entities: list,
+    l2_facts: L2FactResult,
+    l3_passages: list[L3Passage],
+    absences: list[str],
+    intent_obj: IntentResult,
+) -> str:
+    """Pure render of Mode 3 pieces → XML string.
+
+    Extracted so the budget enforcer can call us repeatedly with
+    progressively trimmed pieces until the output fits.
+    """
+    lines: list[str] = ['<memory mode="full">']
+
+    if l0 is not None and l0.content.strip():
+        lines.append(f"  <user>{sanitize_for_xml(l0.content)}</user>")
+
+    proj_attrs = f'name="{sanitize_for_xml(project.name)}"'
+    lines.append(f"  <project {proj_attrs}>")
+    if project.instructions and project.instructions.strip():
+        lines.append(
+            f"    <instructions>{sanitize_for_xml(project.instructions)}</instructions>"
+        )
+    if l1_summary is not None and l1_summary.content.strip():
+        lines.append(
+            f"    <summary>{sanitize_for_xml(l1_summary.content)}</summary>"
+        )
+    lines.append("  </project>")
+
+    if entities:
+        lines.append("  <glossary>")
+        for e in entities:
+            attrs = (
+                f'kind="{sanitize_for_xml(e.kind_code)}" '
+                f'tier="{sanitize_for_xml(e.tier)}" '
+                f'score="{e.rank_score:.2f}"'
+            )
+            lines.append(f"    <entity {attrs}>")
+            if e.cached_name:
+                lines.append(f"      <name>{sanitize_for_xml(e.cached_name)}</name>")
+            if e.cached_aliases:
+                joined = ", ".join(a for a in e.cached_aliases if a)
+                if joined:
+                    lines.append(
+                        f"      <aliases>{sanitize_for_xml(joined)}</aliases>"
+                    )
+            if e.short_description:
+                lines.append(
+                    f"      <description>"
+                    f"{sanitize_for_xml(e.short_description)}</description>"
+                )
+            lines.append("    </entity>")
+        lines.append("  </glossary>")
+
+    lines.extend(_render_facts_block(l2_facts))
+
+    if l3_passages:
+        lines.append("  <passages>")
+        for p in l3_passages:
+            attrs = (
+                f'source_type="{sanitize_for_xml(p.source_type)}" '
+                f'source_id="{sanitize_for_xml(p.source_id)}" '
+                f'score="{p.score:.2f}"'
+            )
+            lines.append(f"    <passage {attrs}>")
+            lines.append(f"      {sanitize_for_xml(p.text)}")
+            lines.append("    </passage>")
+        lines.append("  </passages>")
+
+    if absences:
+        lines.append("  <no_memory_for>")
+        for name in absences:
+            lines.append(f"    <entity>{sanitize_for_xml(name)}</entity>")
+        lines.append("  </no_memory_for>")
+
+    instructions = build_instructions_block(
+        intent_obj.intent,
+        has_facts=l2_facts.total() > 0,
+        has_passages=bool(l3_passages),
+        has_absences=bool(absences),
+    )
+    lines.append(f"  <instructions>{sanitize_for_xml(instructions)}</instructions>")
+    lines.append("</memory>")
+
+    return "\n".join(lines)
+
+
+def _enforce_budget(
+    *,
+    project: Project,
+    l0,
+    l1_summary,
+    entities: list,
+    l2_facts: L2FactResult,
+    l3_passages: list[L3Passage],
+    absences: list[str],
+    intent_obj: IntentResult,
+    budget_tokens: int,
+) -> tuple[str, int]:
+    """K18.7 — trim in reverse priority until under budget.
+
+    Returns `(rendered_xml, token_count)`. The passed-in lists are
+    copied defensively; the caller's objects are not mutated.
+
+    Drop order (KSA §4.4.4, lowest priority first):
+      1. `<passages>` — drop lowest-score entries
+      2. `<no_memory_for>` — drop all
+      3. background facts — drop all (keep current/recent/negative)
+      4. glossary — drop lowest-scored entries
+    Never dropped: L0, project instructions, L1 summary, current /
+    recent / negative facts, mode-level instructions.
+    """
+    # Defensive copies so retries don't mutate caller state.
+    passages = list(l3_passages)
+    abs_list = list(absences)
+    ent_list = list(entities)
+    facts = L2FactResult(
+        current=list(l2_facts.current),
+        recent=list(l2_facts.recent),
+        background=list(l2_facts.background),
+        negative=list(l2_facts.negative),
+    )
+
+    def render_and_count() -> tuple[str, int]:
+        out = _render_mode3(
+            project=project, l0=l0, l1_summary=l1_summary,
+            entities=ent_list, l2_facts=facts,
+            l3_passages=passages, absences=abs_list,
+            intent_obj=intent_obj,
+        )
+        return out, estimate_tokens(out)
+
+    rendered, tokens = render_and_count()
+    if tokens <= budget_tokens:
+        return rendered, tokens
+
+    # Pass 1: drop lowest-score passages progressively.
+    if passages:
+        # Sort by score descending so we drop from the tail (lowest score).
+        passages.sort(key=lambda p: p.score, reverse=True)
+        while passages and tokens > budget_tokens:
+            passages.pop()
+            rendered, tokens = render_and_count()
+        if tokens <= budget_tokens:
+            logger.info(
+                "K18.7: budget enforced by trimming passages (final=%d, tokens=%d/%d)",
+                len(passages), tokens, budget_tokens,
+            )
+            return rendered, tokens
+
+    # Pass 2: drop absences entirely.
+    if abs_list:
+        abs_list.clear()
+        rendered, tokens = render_and_count()
+        if tokens <= budget_tokens:
+            logger.info(
+                "K18.7: budget enforced by dropping absences (tokens=%d/%d)",
+                tokens, budget_tokens,
+            )
+            return rendered, tokens
+
+    # Pass 3: drop background facts (keep current/recent/negative).
+    if facts.background:
+        facts.background.clear()
+        rendered, tokens = render_and_count()
+        if tokens <= budget_tokens:
+            logger.info(
+                "K18.7: budget enforced by dropping background facts "
+                "(tokens=%d/%d)",
+                tokens, budget_tokens,
+            )
+            return rendered, tokens
+
+    # Pass 4: trim glossary from the tail until under budget.
+    # Assume entities arrive in rank order; pop from the end.
+    if ent_list:
+        while ent_list and tokens > budget_tokens:
+            ent_list.pop()
+            rendered, tokens = render_and_count()
+        if tokens <= budget_tokens:
+            logger.info(
+                "K18.7: budget enforced by trimming glossary "
+                "(final=%d, tokens=%d/%d)",
+                len(ent_list), tokens, budget_tokens,
+            )
+            return rendered, tokens
+
+    # Couldn't fit even with everything trimmed — render what's left
+    # (L0/L1/instructions are protected) and log the overshoot.
+    logger.warning(
+        "K18.7: block exceeds budget even after all drops "
+        "(tokens=%d > budget=%d) — L0/L1/instructions only may still be too large",
+        tokens, budget_tokens,
+    )
+    return rendered, tokens
+
+
 async def build_full_mode(
     summaries_repo: SummariesRepo,
     glossary_client: GlossaryClient,
@@ -205,6 +410,8 @@ async def build_full_mode(
     Mirrors Mode 2's layer-timeout pattern for L0/L1/glossary, then
     adds the L2 fact selector, L3 semantic passages, and absence
     detection on top. Intent-aware CoT instructions close the block.
+    Token budget enforcement (K18.7) trims in reverse priority when
+    the full payload exceeds `settings.mode3_token_budget`.
 
     `embedding_client` is optional — callers in Track 1 / no-Neo4j
     mode pass `None` and the L3 layer cleanly returns empty.
@@ -281,86 +488,22 @@ async def build_full_mode(
     l3_texts = [p.text for p in l3_passages]
     absences = detect_absences(mentioned_entities, l2_facts, l3_hits=l3_texts)
 
-    # ── render ──────────────────────────────────────────────────────────
-    lines: list[str] = ['<memory mode="full">']
-
-    if l0 is not None and l0.content.strip():
-        lines.append(f"  <user>{sanitize_for_xml(l0.content)}</user>")
-
-    proj_attrs = f'name="{sanitize_for_xml(project.name)}"'
-    lines.append(f"  <project {proj_attrs}>")
-    if project.instructions and project.instructions.strip():
-        lines.append(
-            f"    <instructions>{sanitize_for_xml(project.instructions)}</instructions>"
-        )
-    if l1_summary is not None and l1_summary.content.strip():
-        lines.append(
-            f"    <summary>{sanitize_for_xml(l1_summary.content)}</summary>"
-        )
-    lines.append("  </project>")
-
-    if entities:
-        lines.append("  <glossary>")
-        for e in entities:
-            # Reuse Mode 2's entity renderer inline — duplicating the
-            # 15-line helper is less churn than exposing it cross-module
-            # for a scaffold that'll change in Commit 3.
-            attrs = (
-                f'kind="{sanitize_for_xml(e.kind_code)}" '
-                f'tier="{sanitize_for_xml(e.tier)}" '
-                f'score="{e.rank_score:.2f}"'
-            )
-            lines.append(f"    <entity {attrs}>")
-            if e.cached_name:
-                lines.append(f"      <name>{sanitize_for_xml(e.cached_name)}</name>")
-            if e.cached_aliases:
-                joined = ", ".join(a for a in e.cached_aliases if a)
-                if joined:
-                    lines.append(
-                        f"      <aliases>{sanitize_for_xml(joined)}</aliases>"
-                    )
-            if e.short_description:
-                lines.append(
-                    f"      <description>"
-                    f"{sanitize_for_xml(e.short_description)}</description>"
-                )
-            lines.append("    </entity>")
-        lines.append("  </glossary>")
-
-    lines.extend(_render_facts_block(l2_facts))
-
-    if l3_passages:
-        lines.append("  <passages>")
-        for p in l3_passages:
-            attrs = (
-                f'source_type="{sanitize_for_xml(p.source_type)}" '
-                f'source_id="{sanitize_for_xml(p.source_id)}" '
-                f'score="{p.score:.2f}"'
-            )
-            lines.append(f"    <passage {attrs}>")
-            lines.append(f"      {sanitize_for_xml(p.text)}")
-            lines.append("    </passage>")
-        lines.append("  </passages>")
-
-    if absences:
-        lines.append("  <no_memory_for>")
-        for name in absences:
-            lines.append(f"    <entity>{sanitize_for_xml(name)}</entity>")
-        lines.append("  </no_memory_for>")
-
-    instructions = build_instructions_block(
-        intent_obj.intent,
-        has_facts=l2_facts.total() > 0,
-        has_passages=bool(l3_passages),
-        has_absences=bool(absences),
+    # ── render + K18.7 budget enforcement ───────────────────────────────
+    context, token_count = _enforce_budget(
+        project=project,
+        l0=l0,
+        l1_summary=l1_summary,
+        entities=list(entities),
+        l2_facts=l2_facts,
+        l3_passages=l3_passages,
+        absences=absences,
+        intent_obj=intent_obj,
+        budget_tokens=settings.mode3_token_budget,
     )
-    lines.append(f"  <instructions>{sanitize_for_xml(instructions)}</instructions>")
-    lines.append("</memory>")
 
-    context = "\n".join(lines)
     return BuiltContext(
         mode="full",
         context=context,
         recent_message_count=_RECENT_MESSAGE_COUNT,
-        token_count=estimate_tokens(context),
+        token_count=token_count,
     )
