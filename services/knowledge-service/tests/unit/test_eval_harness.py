@@ -134,6 +134,18 @@ def test_entity_double_actual_does_not_double_match():
     assert score.fp == 1
 
 
+def test_entity_kind_mismatch_is_fp():
+    """R1 fix #1: correct name but wrong kind should be FP, not TP."""
+    fix = _fixture(entities=[ExpectedEntity(name="Alice", kind="person")])
+    actual = ActualExtraction(
+        entities=[("Alice", "location")], relations=[], events=[]
+    )
+    score = score_chapter(fix, actual)
+    assert score.tp == 0
+    assert score.fp == 1
+    assert score.fn == 1
+
+
 # ── Relation matching ───────────────────────────────────────────────
 
 
@@ -154,7 +166,7 @@ def test_relation_triple_equality_after_normalization():
     # Actual uses alias + different casing + hyphenated predicate
     actual = ActualExtraction(
         entities=[("Alice", "person"), ("Rabbit", "person")],
-        relations=[("alice", "Follows", "Rabbit")],
+        relations=[("alice", "Follows", "Rabbit", "affirm")],
         events=[],
     )
     score = score_chapter(fix, actual)
@@ -174,13 +186,35 @@ def test_relation_predicate_mismatch_is_fp():
     )
     actual = ActualExtraction(
         entities=[("Alice", "person"), ("Rabbit", "person")],
-        relations=[("Alice", "ignores", "Rabbit")],
+        relations=[("Alice", "ignores", "Rabbit", "affirm")],
         events=[],
     )
     score = score_chapter(fix, actual)
     assert score.tp == 2  # both entities
     assert score.fp == 1  # wrong predicate
     assert score.fn == 1  # expected relation missing
+
+
+def test_relation_negate_polarity_does_not_match_affirm():
+    """R1 fix #2: a negated relation must not match an affirm expected."""
+    fix = _fixture(
+        entities=[
+            ExpectedEntity(name="Alice", kind="person"),
+            ExpectedEntity(name="Rabbit", kind="person"),
+        ],
+        relations=[
+            ExpectedRelation(subject="Alice", predicate="follows", object="Rabbit")
+        ],
+    )
+    actual = ActualExtraction(
+        entities=[("Alice", "person"), ("Rabbit", "person")],
+        relations=[("Alice", "follows", "Rabbit", "negate")],
+        events=[],
+    )
+    score = score_chapter(fix, actual)
+    assert score.tp == 2  # entities match
+    assert score.fp == 1  # negated relation is FP
+    assert score.fn == 1  # affirm relation unmatched
 
 
 # ── Event matching ──────────────────────────────────────────────────
@@ -296,7 +330,7 @@ def test_trap_relation_hit_counted():
     )
     actual = ActualExtraction(
         entities=[("Alice", "person"), ("Queen", "person")],
-        relations=[("Alice", "meets", "Queen")],
+        relations=[("Alice", "meets", "Queen", "affirm")],
         events=[],
     )
     score = score_chapter(fix, actual)
@@ -318,6 +352,57 @@ def test_no_trap_hit_rate_zero():
     score = score_chapter(fix, actual)
     assert score.fp_trap == 0
     assert score.fp_trap_rate == 0.0
+
+
+def test_trap_event_with_participants_requires_participant_match():
+    """R1 fix #4: event trap with participants must check participant set."""
+    fix = _fixture(
+        traps=[
+            ExpectedTrap(
+                kind="event",
+                summary="Alice meets the Duchess in the garden",
+                participants=("Alice", "Duchess"),
+                reason="only foreshadowed",
+            )
+        ],
+    )
+    # Same summary overlap but different participants — should NOT trigger.
+    actual = ActualExtraction(
+        entities=[],
+        relations=[],
+        events=[("Alice meets the Duchess in the garden", ("Alice", "Queen"))],
+    )
+    score = score_chapter(fix, actual)
+    assert score.fp_trap == 0
+
+    # Same summary overlap AND same participants — should trigger.
+    actual2 = ActualExtraction(
+        entities=[],
+        relations=[],
+        events=[("Alice meets the Duchess in the garden", ("Alice", "Duchess"))],
+    )
+    score2 = score_chapter(fix, actual2)
+    assert score2.fp_trap == 1
+
+
+def test_trap_event_without_participants_matches_on_summary_only():
+    """Event trap with no participants falls back to summary-only matching."""
+    fix = _fixture(
+        traps=[
+            ExpectedTrap(
+                kind="event",
+                summary="Alice meets the Duchess in the garden",
+                reason="only foreshadowed",
+            )
+        ],
+    )
+    actual = ActualExtraction(
+        entities=[],
+        relations=[],
+        events=[("Alice meets the Duchess in the garden", ("Anyone",))],
+    )
+    score = score_chapter(fix, actual)
+    assert score.fp_trap == 1
 
 
 # ── Aggregate ───────────────────────────────────────────────────────
@@ -393,6 +478,7 @@ traps:
     assert len(fixture.entities) == 1
     assert fixture.entities[0].aliases == ("Ally",)
     assert len(fixture.relations) == 1
+    assert fixture.relations[0].polarity == "affirm"  # default
     assert len(fixture.events) == 1
     assert fixture.events[0].participants == ("Alice",)
     assert len(fixture.traps) == 1

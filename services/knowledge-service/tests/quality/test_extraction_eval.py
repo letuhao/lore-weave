@@ -170,7 +170,7 @@ async def test_extraction_quality_meets_thresholds(tmp_path: Path) -> None:
 
         actual = ActualExtraction(
             entities=[(e.name, e.kind) for e in entities],
-            relations=[(r.subject, r.predicate, r.object) for r in relations],
+            relations=[(r.subject, r.predicate, r.object, r.polarity) for r in relations],
             events=[(ev.summary, tuple(ev.participants)) for ev in events],
         )
         score = score_chapter(fixture, actual)

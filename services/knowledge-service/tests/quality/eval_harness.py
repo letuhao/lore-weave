@@ -67,6 +67,7 @@ class ExpectedRelation:
     subject: str
     predicate: str
     object: str
+    polarity: str = "affirm"  # "affirm" | "negate" — matches LLM extractor output
 
 
 @dataclass(frozen=True)
@@ -83,6 +84,7 @@ class ExpectedTrap:
     predicate: str | None = None
     object: str | None = None
     summary: str | None = None
+    participants: tuple[str, ...] = ()  # event traps: match participants too
     reason: str = ""
 
 
@@ -105,7 +107,7 @@ class ActualExtraction:
     """
 
     entities: list[tuple[str, str]]  # (name, kind)
-    relations: list[tuple[str, str, str]]  # (subj, pred, obj)
+    relations: list[tuple[str, str, str, str]]  # (subj, pred, obj, polarity)
     events: list[tuple[str, tuple[str, ...]]]  # (summary, participants)
 
 
@@ -150,7 +152,10 @@ def load_chapter_fixture(chapter_dir: Path) -> ChapterFixture:
     ]
     relations = [
         ExpectedRelation(
-            subject=r["subject"], predicate=r["predicate"], object=r["object"]
+            subject=r["subject"],
+            predicate=r["predicate"],
+            object=r["object"],
+            polarity=r.get("polarity", "affirm"),
         )
         for r in (expected_raw.get("relations") or [])
     ]
@@ -169,6 +174,7 @@ def load_chapter_fixture(chapter_dir: Path) -> ChapterFixture:
             predicate=t.get("predicate"),
             object=t.get("object"),
             summary=t.get("summary"),
+            participants=tuple(t.get("participants", []) or []),
             reason=t.get("reason", ""),
         )
         for t in (expected_raw.get("traps") or [])
@@ -240,16 +246,19 @@ def score_chapter(
     each extraction as one "item" so the chapter-level rates don't
     get skewed by the ratio between entities / relations / events.
     """
-    # Entities
+    # Entities — match on canonical name AND kind (lowercased).
     matched_expected_ents: set[int] = set()
     ent_tp = 0
     ent_fp = 0
-    for act_name, _kind in actual.entities:
+    for act_name, act_kind in actual.entities:
         hit = False
         for i, exp in enumerate(fixture.entities):
             if i in matched_expected_ents:
                 continue
-            if _entity_matches_expected(act_name, exp):
+            if (
+                _entity_matches_expected(act_name, exp)
+                and act_kind.lower() == exp.kind.lower()
+            ):
                 matched_expected_ents.add(i)
                 ent_tp += 1
                 hit = True
@@ -279,7 +288,7 @@ def score_chapter(
     matched_expected_rels: set[int] = set()
     rel_tp = 0
     rel_fp = 0
-    for act_subj, act_pred, act_obj in actual.relations:
+    for act_subj, act_pred, act_obj, act_polarity in actual.relations:
         hit = False
         for i, exp in enumerate(fixture.relations):
             if i in matched_expected_rels:
@@ -288,6 +297,7 @@ def score_chapter(
                 _rel_endpoint_matches(act_subj, exp.subject)
                 and _canon_pred(act_pred) == _canon_pred(exp.predicate)
                 and _rel_endpoint_matches(act_obj, exp.object)
+                and act_polarity == exp.polarity
             ):
                 matched_expected_rels.add(i)
                 rel_tp += 1
@@ -297,8 +307,9 @@ def score_chapter(
             rel_fp += 1
     rel_fn = len(fixture.relations) - len(matched_expected_rels)
 
-    # Events — participant-set equality on canonical form +
-    # token-overlap on summary above threshold.
+    # Events — strict participant-set equality (not subset/superset)
+    # on canonical form + token-overlap on summary above threshold.
+    # An extra or missing participant makes the event FP+FN, not TP.
     matched_expected_evts: set[int] = set()
     evt_tp = 0
     evt_fp = 0
@@ -330,7 +341,7 @@ def score_chapter(
             if any(_canon_name(n) == tname for n, _ in actual.entities):
                 fp_trap += 1
         elif trap.kind == "relation" and trap.subject and trap.predicate and trap.object:
-            for a_s, a_p, a_o in actual.relations:
+            for a_s, a_p, a_o, _a_pol in actual.relations:
                 if (
                     _canon_name(a_s) == _canon_name(trap.subject)
                     and _canon_pred(a_p) == _canon_pred(trap.predicate)
@@ -339,8 +350,20 @@ def score_chapter(
                     fp_trap += 1
                     break
         elif trap.kind == "event" and trap.summary:
-            for a_sum, _a_parts in actual.events:
-                if _event_overlap(a_sum, trap.summary) >= event_overlap_threshold:
+            for a_sum, a_parts in actual.events:
+                overlap_ok = (
+                    _event_overlap(a_sum, trap.summary) >= event_overlap_threshold
+                )
+                # If trap specifies participants, require set match too
+                # (symmetric with event TP matching). If no participants
+                # on the trap, summary overlap alone triggers the hit.
+                if trap.participants:
+                    trap_parts = {_canon_name(p) for p in trap.participants}
+                    actual_parts = {_canon_name(p) for p in a_parts}
+                    if overlap_ok and actual_parts == trap_parts:
+                        fp_trap += 1
+                        break
+                elif overlap_ok:
                     fp_trap += 1
                     break
 

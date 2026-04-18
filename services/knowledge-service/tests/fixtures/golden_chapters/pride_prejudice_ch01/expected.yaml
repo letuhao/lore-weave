@@ -29,9 +29,6 @@ relations:
   - subject: Mrs. Bennet
     predicate: wants_to_marry_daughters_to
     object: Bingley
-  - subject: Mr. Bennet
-    predicate: prefers
-    object: Lizzy
 
 events:
   - summary: "Mrs. Bennet tells Mr. Bennet that Netherfield Park has been rented by a wealthy single man named Bingley"
