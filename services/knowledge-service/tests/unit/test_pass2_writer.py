@@ -147,7 +147,7 @@ async def test_empty_input_upserts_source(mock_upsert_source):
 
 @pytest.mark.asyncio
 @patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
-@patch(f"{_PATCH_BASE}.merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
 async def test_entities_merged_with_evidence(
     mock_upsert_source, mock_merge, mock_evidence,
@@ -180,7 +180,7 @@ async def test_entities_merged_with_evidence(
 @pytest.mark.asyncio
 @patch(f"{_PATCH_BASE}.create_relation", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
-@patch(f"{_PATCH_BASE}.merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
 async def test_relations_created_when_endpoints_merged(
     mock_upsert_source, mock_merge, mock_evidence, mock_create_rel,
@@ -211,7 +211,7 @@ async def test_relations_created_when_endpoints_merged(
 @pytest.mark.asyncio
 @patch(f"{_PATCH_BASE}.create_relation", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
-@patch(f"{_PATCH_BASE}.merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
 async def test_relations_skip_unresolvable_endpoints(
     mock_upsert_source, mock_merge, mock_evidence, mock_create_rel,
@@ -243,7 +243,7 @@ async def test_relations_skip_unresolvable_endpoints(
 @pytest.mark.asyncio
 @patch(f"{_PATCH_BASE}.create_relation", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
-@patch(f"{_PATCH_BASE}.merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
 async def test_relations_skip_endpoints_not_in_merged_set(
     mock_upsert_source, mock_merge, mock_evidence, mock_create_rel,
@@ -345,7 +345,7 @@ async def test_facts_merged_with_evidence(
 
 @pytest.mark.asyncio
 @patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
-@patch(f"{_PATCH_BASE}.merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
 async def test_k17_9_entity_name_injection_sanitized(
     mock_upsert_source, mock_merge, mock_evidence,
@@ -522,7 +522,7 @@ async def test_k17_9_event_participant_injection_sanitized(
 @pytest.mark.asyncio
 @patch(f"{_PATCH_BASE}.create_relation", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
-@patch(f"{_PATCH_BASE}.merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
 async def test_k17_9_relation_predicate_cjk_injection_sanitized(
     mock_upsert_source, mock_merge, mock_evidence, mock_create_rel,
@@ -641,7 +641,7 @@ async def test_k17_9_fact_content_injection_sanitized(
 
 @pytest.mark.asyncio
 @patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
-@patch(f"{_PATCH_BASE}.merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
 async def test_k17_9_clean_content_not_tagged_and_no_metric_bump(
     mock_upsert_source, mock_merge, mock_evidence,
@@ -697,7 +697,7 @@ async def test_k17_9_clean_content_not_tagged_and_no_metric_bump(
 @patch(f"{_PATCH_BASE}.merge_fact", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.create_relation", new_callable=AsyncMock)
-@patch(f"{_PATCH_BASE}.merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
 async def test_full_pipeline_all_candidate_types(
     mock_upsert_source, mock_merge_entity, mock_create_rel,
@@ -731,3 +731,98 @@ async def test_full_pipeline_all_candidate_types(
     assert result.events_merged == 1
     assert result.facts_merged == 1
     assert result.evidence_edges == 4  # 2 entities + 1 event + 1 fact
+
+
+# ── K13.0 resolver integration ──────────────────────────────────
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch("app.extraction.entity_resolver.merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_anchor_hit_skips_merge_entity(
+    mock_upsert_source, mock_merge_entity, mock_add_evidence,
+):
+    """When an anchor is pre-loaded and an LLM candidate matches it
+    (by folded name + kind), the resolver short-circuits merge_entity
+    and links the evidence edge to the anchor's canonical_id.
+
+    This is the K13.0-resolver integration test — without it the
+    pre-loader would be cosmetic (anchor nodes sit in Neo4j but new
+    duplicate nodes get minted alongside them).
+    """
+    from app.extraction.anchor_loader import Anchor
+
+    mock_upsert_source.return_value = _make_source_result("src-anchor-hit")
+    mock_add_evidence.return_value = _make_evidence_result(created=True)
+
+    # Glossary uses kind_code='character'; LLM extractor emits
+    # kind='person'. The resolver's normalization layer maps
+    # extractor→glossary at lookup time so this Pass 2 candidate
+    # still hits the anchor.
+    anchor = Anchor(
+        canonical_id="canon-arthur-character",
+        glossary_entity_id="glossary-arthur-uuid",
+        name="Arthur",
+        kind="character",
+        aliases=("Art",),
+    )
+
+    result = await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-anchor",
+        job_id=JOB_ID,
+        entities=[_entity("Arthur", kind="person")],
+        anchors=[anchor],
+    )
+
+    # merge_entity MUST NOT be called — resolver returned the anchor.
+    mock_merge_entity.assert_not_called()
+
+    # Evidence edge should target the anchor's canonical_id.
+    assert mock_add_evidence.await_count == 1
+    target_id = mock_add_evidence.await_args.kwargs.get("target_id")
+    assert target_id == "canon-arthur-character"
+
+    assert result.entities_merged == 1
+    assert result.evidence_edges == 1
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch("app.extraction.entity_resolver.merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_anchor_miss_still_mints_new_entity(
+    mock_upsert_source, mock_merge_entity, mock_add_evidence,
+):
+    """Anchor index present but no match for this candidate → falls
+    through to merge_entity as before.
+    """
+    from app.extraction.anchor_loader import Anchor
+
+    mock_upsert_source.return_value = _make_source_result("src-anchor-miss")
+    mock_add_evidence.return_value = _make_evidence_result(created=True)
+    mock_merge_entity.return_value = _make_entity_result("eid-lancelot")
+
+    anchor = Anchor(
+        canonical_id="canon-arthur-character",
+        glossary_entity_id="glossary-arthur-uuid",
+        name="Arthur",
+        kind="character",
+        aliases=(),
+    )
+
+    result = await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-anchor",
+        job_id=JOB_ID,
+        entities=[_entity("Lancelot", kind="person")],
+        anchors=[anchor],
+    )
+
+    mock_merge_entity.assert_awaited_once()
+    merge_kwargs = mock_merge_entity.await_args.kwargs
+    assert merge_kwargs["name"] == "Lancelot"
+    assert result.entities_merged == 1

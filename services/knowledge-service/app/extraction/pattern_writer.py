@@ -53,14 +53,18 @@ from collections.abc import Iterable
 from pydantic import BaseModel
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.entities import merge_entity
 from app.db.neo4j_repos.facts import merge_fact
 from app.db.neo4j_repos.provenance import (
     add_evidence,
     upsert_extraction_source,
 )
 from app.db.neo4j_repos.relations import create_relation
+from app.extraction.anchor_loader import Anchor
 from app.extraction.entity_detector import EntityCandidate
+from app.extraction.entity_resolver import (
+    build_anchor_index,
+    resolve_or_merge_entity,
+)
 from app.extraction.injection_defense import neutralize_injection
 from app.extraction.negation import NegationFact
 from app.extraction.triple_extractor import Triple
@@ -110,6 +114,7 @@ async def write_extraction(
     triples: Iterable[Triple] = (),
     negations: Iterable[NegationFact] = (),
     extraction_model: str = _EXTRACTION_MODEL,
+    anchors: Iterable[Anchor] = (),
 ) -> ExtractionWriteResult:
     """Persist a Pass 1 extraction batch to Neo4j.
 
@@ -137,6 +142,11 @@ async def write_extraction(
     """
     triple_list = list(triples)
     negation_list = list(negations)
+
+    # K13.0 resolver: build anchor index once per batch. Empty index
+    # (default) makes `resolve_or_merge_entity` fall through to
+    # `merge_entity` for every candidate — preserves pre-K13.0 behavior.
+    anchor_index = build_anchor_index(anchors)
 
     # K15.7-R1/I1: dedupe entities by (folded_name, kind_hint) keeping
     # the highest-confidence candidate per key. Without this, a K15.2
@@ -201,8 +211,9 @@ async def write_extraction(
         # actually contained. `neutralize_injection` is idempotent, so
         # benign names pass through unchanged.
         name_clean, _ = neutralize_injection(cand.name, project_id=project_id)
-        entity = await merge_entity(
+        entity = await resolve_or_merge_entity(
             session,
+            anchor_index,
             user_id=user_id,
             project_id=project_id,
             name=name_clean,

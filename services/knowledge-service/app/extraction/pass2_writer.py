@@ -32,11 +32,15 @@ import logging
 from pydantic import BaseModel
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.entities import merge_entity
 from app.db.neo4j_repos.events import merge_event
 from app.db.neo4j_repos.facts import merge_fact
 from app.db.neo4j_repos.provenance import add_evidence, upsert_extraction_source
 from app.db.neo4j_repos.relations import create_relation
+from app.extraction.anchor_loader import Anchor
+from app.extraction.entity_resolver import (
+    build_anchor_index,
+    resolve_or_merge_entity,
+)
 from app.extraction.injection_defense import neutralize_injection
 from app.extraction.llm_entity_extractor import LLMEntityCandidate
 from app.extraction.llm_event_extractor import LLMEventCandidate
@@ -88,6 +92,7 @@ async def write_pass2_extraction(
     events: list[LLMEventCandidate] | None = None,
     facts: list[LLMFactCandidate] | None = None,
     extraction_model: str = "llm-v1",
+    anchors: list[Anchor] | None = None,
 ) -> Pass2WriteResult:
     """Persist Pass 2 LLM extraction candidates to Neo4j.
 
@@ -116,6 +121,10 @@ async def write_pass2_extraction(
     event_list = events or []
     fact_list = facts or []
 
+    # K13.0 resolver: pre-build anchor index. Empty (default) preserves
+    # pre-K13.0 behavior where every candidate mints a new :Entity.
+    anchor_index = build_anchor_index(anchors or [])
+
     # Step 1 — upsert provenance source (idempotent).
     source = await upsert_extraction_source(
         session,
@@ -138,8 +147,9 @@ async def write_pass2_extraction(
         # ``merge_entity`` does not yet accept an ``aliases`` parameter.
         # Alias persistence is tracked for K18+. See K17.9 negative
         # assertion tests pinning this behavior.
-        entity = await merge_entity(
+        entity = await resolve_or_merge_entity(
             session,
+            anchor_index,
             user_id=user_id,
             project_id=project_id,
             name=name_clean,

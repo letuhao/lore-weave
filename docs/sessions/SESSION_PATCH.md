@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K13.0+K13.1 anchor loader + nightly refresh + K13 chat outbox + worker-infra MAXLEN/cold-start + K14 + workflow-gate + K12 + K11.10 + K15.11 + K17.11-12 + K16 + K17.10 + Dockerfile)
-- Updated By: Assistant (session 46 — K13.0 glossary anchor pre-loader, K13.1 nightly anchor-score refresh with advisory-lock + per-project Neo4j session + glossary HTTP client coverage + Go known-entities handler tests, plus K13/K14/workflow-gate/K12/K11.10/K15.11/K17.11-12/K16/K17.10. 948 knowledge-service tests + new glossary-service api tests.)
+- Last Updated: 2026-04-18 (session 46 — K13.0 resolver integration (pattern/pass2 writers consume Anchor[]) + K13.0 anchor loader + K13.1 nightly refresh + K13 chat outbox + worker-infra MAXLEN/cold-start + K14 + workflow-gate + K12 + K11.10 + K15.11 + K17.11-12 + K16 + K17.10 + Dockerfile)
+- Updated By: Assistant (session 46 — K13.0 resolver integration with extractor→glossary kind normalization so Pass 2 LLM candidates actually hit anchors. 963 knowledge-service tests. Plus everything above.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: d72f026 (K13 chat outbox) → K13.0+K13.1 commit pending
+- HEAD: a0c5984 (K13.0+K13.1 loader/refresh) → K13.0 resolver integration commit pending
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -134,6 +134,37 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K13.0 resolver integration — writers now consume Anchor[] ✅ (session 46)
+
+**Goal:** Make K13.0's `load_glossary_anchors` actually reduce duplicate `:Entity` nodes. Before this commit, anchors were pre-loaded but the two writers (`pattern_writer`, `pass2_writer`) still called `merge_entity` directly, minting new nodes for anchor names. K13.0's ≥20% duplicate-reduction acceptance was cosmetic without this integration.
+
+**New file:**
+- [services/knowledge-service/app/extraction/entity_resolver.py](../../services/knowledge-service/app/extraction/entity_resolver.py) — `AnchorIndex` type, `build_anchor_index(anchors)`, `normalize_kind_for_anchor_lookup(kind)`, `resolve_or_merge_entity(session, index, …)`. Synthetic Entity returned on anchor hit (callers only use `.id`, so no Neo4j round-trip needed).
+
+**Modified writers:**
+- [pattern_writer.py](../../services/knowledge-service/app/extraction/pattern_writer.py) — added `anchors: Iterable[Anchor] = ()` param; `merge_entity` call at line 208 replaced with `resolve_or_merge_entity`.
+- [pass2_writer.py](../../services/knowledge-service/app/extraction/pass2_writer.py) — added `anchors: list[Anchor] | None = None` param; same replacement at line 145.
+
+Both accept `anchors=()`/`None` as default → pre-K13.0 behavior preserved when callers don't pass anchors.
+
+**Review-impl HIGH fix — kind vocabulary normalization.** Discovered during `/review-impl`: LLM extractor emits `{person,place,organization,artifact,concept,other}` while glossary `kind_code` is `{character,location,item,event,terminology,trope,…}`. Without a translation layer Pass 2 (LLM) candidates would never hit anchors despite all other logic being correct. Fix: `_EXTRACTOR_TO_GLOSSARY_KIND` map applied **at lookup time only** (not index build) — anchors keep their native glossary kinds; Pass 1 writers that emit glossary-aligned kinds natively pass through unchanged.
+
+**Test delta:**
+- [test_entity_resolver.py](../../services/knowledge-service/tests/unit/test_entity_resolver.py) — NEW: 13 cases (8 core + 5 kind-normalization including `person`→`character` Pass 2 hit, `place`→`location` Pass 2 hit, Pass 1 pass-through, unknown-kind pass-through)
+- [test_pass2_writer.py](../../services/knowledge-service/tests/unit/test_pass2_writer.py) — +2 anchor-integration cases (anchor hit skips `merge_entity`, anchor miss still mints); 8 existing `@patch` decorators updated from `merge_entity` → `resolve_or_merge_entity` (the symbol pass2_writer now calls)
+
+**Semantic note on anchor hit (NOT a bug):** On hit the resolver skips `merge_entity`'s `ON MATCH SET`. This is **correct** because:
+- `source_types=['glossary']` is the right provenance for an anchor (chapter mentions live on `EVIDENCED_BY` edges, not in the node-level array)
+- `confidence=1.0` for anchors already beats any merge-time value
+- anchor aliases are authoritative from glossary
+- `mention_count` isn't touched by `merge_entity` anyway
+
+**Verify:** knowledge-service 963/963 pass (was 948 → +15 from this task). Existing integration tests for pattern_writer/pass2_writer still green via the `anchors=()` default path.
+
+**Acceptance path now works end-to-end:** `anchor_loader` pre-loads glossary → `build_anchor_index` keys by (folded_name, glossary_kind) → LLM extractor emits `{name: "Arthur", kind: "person"}` → `resolve_or_merge_entity` normalizes `person`→`character` → hits anchor → returns anchor's canonical_id → no new `:Entity` minted → `add_evidence` creates the evidence edge → anchor accumulates provenance via edges.
+
+---
 
 ### K13.0 + K13.1 — glossary anchor pre-loader + nightly refresh ✅ (session 46)
 
