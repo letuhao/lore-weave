@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K16.8 + K16.7 + K16.6 + K16.2–K16.5 + K17.10 + Dockerfile)
-- Updated By: Assistant (session 46 — K16.2–K16.8 extraction lifecycle complete, K17.10-v1 + R1, Dockerfile. 833 tests across 2 services.)
+- Last Updated: 2026-04-18 (session 46 — K16.9 + K16.2–K16.8 + K17.10 + Dockerfile)
+- Updated By: Assistant (session 46 — K16.2–K16.9 extraction lifecycle, K17.10-v1 + R1, Dockerfile. 838 tests across 2 services.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: 1aa0834 (K16.7)
+- HEAD: c0ec75d (K16.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -134,6 +134,22 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K16.9 — Rebuild endpoint (delete + start) ✅ (session 46)
+
+**Goal:** `POST /v1/knowledge/projects/{id}/extraction/rebuild` — delete graph then start scope=all job in one call.
+
+**Files:**
+- MODIFIED [extraction.py](../../services/knowledge-service/app/routers/public/extraction.py) — rebuild endpoint + `_create_and_start_job` shared helper (extracted from K16.3, now used by both start and rebuild)
+- NEW [test_extraction_rebuild.py](../../services/knowledge-service/tests/unit/test_extraction_rebuild.py) — 5 tests
+
+**R1 review fixes:**
+1. MED: Shared `_create_and_start_job` helper eliminates duplicated transaction logic between start and rebuild — includes the None-check from K16.3-R1 that the copy-paste had omitted
+2. LOW: Duplication eliminated — future changes to job-creation logic only need one edit
+
+**Verify:** 5/5 rebuild + 10/10 start tests (shared helper), 825/825 knowledge-service, 838 total.
+
+---
 
 ### K16.8 — Delete graph endpoint ✅ (session 46)
 

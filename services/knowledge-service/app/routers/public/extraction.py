@@ -184,6 +184,75 @@ async def estimate_extraction_cost(
     )
 
 
+# ── Shared: create + start job transaction ───────────────────────────
+
+
+async def _create_and_start_job(
+    user_id: UUID,
+    project_id: UUID,
+    validated: ExtractionJobCreate,
+    projects_repo: ProjectsRepo,
+    trace_id: str,
+) -> UUID:
+    """Atomically create a job, update project state, and transition
+    to running. Used by both K16.3 (start) and K16.9 (rebuild).
+
+    Returns the new job_id. Raises 409 on concurrent start
+    (unique partial index), 404 if project vanishes mid-transaction.
+    """
+    pool = get_knowledge_pool()
+    try:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                job_row = await conn.fetchrow(
+                    """
+                    INSERT INTO extraction_jobs
+                      (user_id, project_id, scope, scope_range, llm_model,
+                       embedding_model, max_spend_usd, items_total)
+                    VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8)
+                    RETURNING job_id
+                    """,
+                    user_id,
+                    project_id,
+                    validated.scope,
+                    json.dumps(validated.scope_range) if validated.scope_range else None,
+                    validated.llm_model,
+                    validated.embedding_model,
+                    validated.max_spend_usd,
+                    validated.items_total,
+                )
+                job_id = job_row["job_id"]
+
+                updated_project = await projects_repo.set_extraction_state(
+                    user_id, project_id,
+                    extraction_enabled=True,
+                    extraction_status="building",
+                    embedding_model=validated.embedding_model,
+                    conn=conn,
+                )
+                if updated_project is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="project vanished during transaction",
+                    )
+
+                validate_transition("pending", "running", trace_id=trace_id)
+                await conn.execute(
+                    """
+                    UPDATE extraction_jobs
+                    SET status = 'running', started_at = now(), updated_at = now()
+                    WHERE job_id = $1 AND user_id = $2
+                    """,
+                    job_id, user_id,
+                )
+    except asyncpg.UniqueViolationError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="project already has an active extraction job (concurrent start)",
+        )
+    return job_id
+
+
 # ── K16.3 — Start extraction job ────────────────────────────────────
 
 
@@ -227,16 +296,8 @@ async def start_extraction_job(
                 detail=f"project already has an active extraction job ({j.job_id}, status={j.status})",
             )
 
-    # 3. Atomic transaction: create job + update project + transition to running.
-    # Concurrency guard: the unique partial index
-    # idx_extraction_jobs_one_active_per_project (K16.3 migration)
-    # prevents two concurrent starts from both succeeding — the second
-    # INSERT hits a UniqueViolationError which we map to 409.
+    # 3. Validate + create job atomically.
     trace_id = trace_id_var.get()
-
-    # Validate fields via Pydantic before touching the DB. The INSERT
-    # uses conn directly (not jobs_repo.create) so the transaction
-    # spans both the job INSERT and the project UPDATE atomically.
     validated = ExtractionJobCreate(
         project_id=project_id,
         scope=body.scope,
@@ -247,62 +308,9 @@ async def start_extraction_job(
         items_total=body.items_total,
     )
 
-    pool = get_knowledge_pool()
-    try:
-        async with pool.acquire() as conn:
-            async with conn.transaction():
-                # 3a. Create job in pending state
-                insert_query = """
-                INSERT INTO extraction_jobs
-                  (user_id, project_id, scope, scope_range, llm_model,
-                   embedding_model, max_spend_usd, items_total)
-                VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8)
-                RETURNING job_id
-                """
-                job_row = await conn.fetchrow(
-                    insert_query,
-                    user_id,
-                    project_id,
-                    validated.scope,
-                    json.dumps(validated.scope_range) if validated.scope_range else None,
-                    validated.llm_model,
-                    validated.embedding_model,
-                    validated.max_spend_usd,
-                    validated.items_total,
-                )
-                job_id = job_row["job_id"]
-
-                # 3b. Update project extraction state
-                updated_project = await projects_repo.set_extraction_state(
-                    user_id, project_id,
-                    extraction_enabled=True,
-                    extraction_status="building",
-                    embedding_model=body.embedding_model,
-                    conn=conn,
-                )
-                if updated_project is None:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail="project vanished during transaction",
-                    )
-
-                # 3c. Transition job: pending → running
-                validate_transition(
-                    "pending", "running", trace_id=trace_id,
-                )
-                await conn.execute(
-                    """
-                    UPDATE extraction_jobs
-                    SET status = 'running', started_at = now(), updated_at = now()
-                    WHERE job_id = $1 AND user_id = $2
-                    """,
-                    job_id, user_id,
-                )
-    except asyncpg.UniqueViolationError:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="project already has an active extraction job (concurrent start)",
-        )
+    job_id = await _create_and_start_job(
+        user_id, project_id, validated, projects_repo, trace_id,
+    )
 
     # 4. Re-read the final job state outside the transaction
     job = await jobs_repo.get(user_id, job_id)
@@ -569,6 +577,95 @@ async def delete_extraction_graph(
         "nodes_deleted": deleted_total,
         "extraction_status": "disabled",
     }
+
+
+# ── K16.9 — Rebuild (delete graph + start new job) ──────────────────
+
+
+class RebuildRequest(BaseModel):
+    llm_model: str = Field(min_length=1, max_length=200)
+    embedding_model: str = Field(min_length=1, max_length=200)
+    max_spend_usd: Annotated[Decimal, Field(ge=0)] | None = None
+
+
+@router.post(
+    "/{project_id}/extraction/rebuild",
+    response_model=ExtractionJob,
+    status_code=status.HTTP_201_CREATED,
+)
+async def rebuild_extraction(
+    project_id: UUID,
+    body: RebuildRequest,
+    user_id: UUID = Depends(get_current_user),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+) -> ExtractionJob:
+    """Delete the existing graph and start a full extraction rebuild.
+
+    Combines K16.8 (delete graph) + K16.3 (start job with scope=all).
+    The delete runs first; if the start fails, the graph is gone but
+    the project is in 'disabled' state (user can retry). True cross-DB
+    atomicity (Neo4j + Postgres) is not possible without 2PC.
+    """
+    project = await projects_repo.get(user_id, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="project not found",
+        )
+
+    # Block if active job exists
+    active = await jobs_repo.list_active(user_id)
+    for j in active:
+        if j.project_id == project_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"cannot rebuild while job {j.job_id} is active (status={j.status}); cancel it first",
+            )
+
+    if not app_settings.neo4j_uri:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Neo4j not configured",
+        )
+
+    # Step 1: Delete existing graph
+    async with neo4j_session() as session:
+        for label in _GRAPH_LABELS:
+            await session.run(
+                f"MATCH (n:{label}) "
+                "WHERE n.user_id = $user_id AND n.project_id = $project_id "
+                "DETACH DELETE n",
+                user_id=str(user_id),
+                project_id=str(project_id),
+            )
+
+    # Step 2: Start new job with scope=all via shared helper
+    trace_id = trace_id_var.get()
+    validated = ExtractionJobCreate(
+        project_id=project_id,
+        scope="all",
+        llm_model=body.llm_model,
+        embedding_model=body.embedding_model,
+        max_spend_usd=body.max_spend_usd,
+    )
+
+    job_id = await _create_and_start_job(
+        user_id, project_id, validated, projects_repo, trace_id,
+    )
+
+    job = await jobs_repo.get(user_id, job_id)
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="job created but not found on re-read",
+        )
+
+    logger.info(
+        "K16.9: rebuild started job_id=%s project_id=%s trace_id=%s",
+        job_id, project_id, trace_id,
+    )
+    return job
 
 
 # ── K16.5 — Job status + project job list ────────────────────────────
