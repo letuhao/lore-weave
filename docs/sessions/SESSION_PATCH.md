@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K16.4 + K16.3 + K16.2 + K17.10 + Dockerfile)
-- Updated By: Assistant (session 46 — K16.4 pause/resume/cancel, K16.3 start job, K16.2 estimate, K17.10-v1 fixtures + R1, Dockerfile. 796 tests.)
+- Last Updated: 2026-04-18 (session 46 — K16.5 + K16.4 + K16.3 + K16.2 + K17.10 + Dockerfile)
+- Updated By: Assistant (session 46 — K16.2–K16.5 extraction lifecycle, K17.10-v1 fixtures + R1, Dockerfile. 803 tests.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: 8c488f3 (K16.3)
+- HEAD: ad2f576 (K16.4)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -134,6 +134,21 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K16.5 — Job status + project job list endpoints ✅ (session 46)
+
+**Goal:** `GET /v1/knowledge/extraction/jobs/{job_id}` with ETag/304 conditional GET + `GET /v1/knowledge/projects/{id}/extraction/jobs` (history list).
+
+**Files:**
+- MODIFIED [extraction.py](../../services/knowledge-service/app/routers/public/extraction.py) — `jobs_router` with ETag support, project job list
+- MODIFIED [main.py](../../services/knowledge-service/app/main.py) — mount `jobs_router`
+- NEW [test_extraction_job_status.py](../../services/knowledge-service/tests/unit/test_extraction_job_status.py) — 7 tests
+
+**R1 review fixes:** return type annotation `-> Response` (was `-> ExtractionJob`), OpenAPI-only comment on `response_model`.
+
+**Verify:** 7/7 status tests, 803/803 full suite.
+
+---
 
 ### K16.4 — Pause/resume/cancel extraction endpoints ✅ (session 46)
 

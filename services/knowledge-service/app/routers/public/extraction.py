@@ -16,7 +16,7 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
 from app.clients.book_client import BookClient
@@ -479,3 +479,72 @@ async def cancel_extraction_job(
         "K16.4: job cancelled job_id=%s trace_id=%s", job.job_id, trace_id,
     )
     return updated
+
+
+# ── K16.5 — Job status + project job list ────────────────────────────
+
+# Separate router for job-level endpoints (not under /projects/{id}).
+jobs_router = APIRouter(
+    prefix="/v1/knowledge/extraction",
+    tags=["extraction"],
+    dependencies=[Depends(get_current_user)],
+)
+
+
+def _etag(job: ExtractionJob) -> str:
+    """Weak ETag from updated_at timestamp. Changes on every progress
+    update (advance_cursor bumps updated_at), so conditional GET
+    correctly returns 304 when the frontend's cached state is current."""
+    return f'W/"{int(job.updated_at.timestamp() * 1000)}"'
+
+
+@jobs_router.get(
+    "/jobs/{job_id}",
+    response_model=ExtractionJob,  # OpenAPI schema only — bypassed when returning Response directly
+)
+async def get_extraction_job(
+    job_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+    if_none_match: str | None = Header(default=None, alias="If-None-Match"),
+) -> Response:
+    """Get detailed status of a specific extraction job.
+
+    Supports If-None-Match for etag-based conditional GET (KSA §6.3).
+    Returns 304 if the job hasn't changed since the client's last fetch.
+    Cross-user access returns 404 (not 403) per KSA §6.4.
+    """
+    job = await jobs_repo.get(user_id, job_id)
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="job not found",
+        )
+    etag = _etag(job)
+    if if_none_match and if_none_match.strip() == etag:
+        raise HTTPException(status_code=status.HTTP_304_NOT_MODIFIED)
+    return Response(
+        content=job.model_dump_json(),
+        media_type="application/json",
+        headers={"ETag": etag},
+    )
+
+
+@router.get(
+    "/{project_id}/extraction/jobs",
+    response_model=list[ExtractionJob],
+)
+async def list_extraction_jobs(
+    project_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+) -> list[ExtractionJob]:
+    """List all extraction jobs for a project (history), newest first."""
+    project = await projects_repo.get(user_id, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="project not found",
+        )
+    return await jobs_repo.list_for_project(user_id, project_id)
