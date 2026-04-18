@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     context_l1_timeout_s: float = 0.1
     context_glossary_timeout_s: float = 0.2
 
+    # K16.2 — book-service HTTP client for chapter counts in cost estimation.
+    book_service_url: str = "http://book-service:8082"
+    book_client_timeout_s: float = 5.0
+
     # K17.2 — provider-registry BYOK client for LLM extraction calls.
     # Calls provider-registry's /internal/proxy/v1/chat/completions
     # endpoint, which resolves the user's BYOK model from

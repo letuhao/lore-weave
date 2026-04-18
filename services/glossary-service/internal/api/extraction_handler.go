@@ -890,3 +890,29 @@ func containsTag(tags []string, tag string) bool {
 	return false
 }
 
+// ── K16.2: Entity count for cost estimation ───────────────────────────────
+
+// internalEntityCount returns the count of non-deleted glossary entities
+// for a book. Used by knowledge-service's extraction cost estimation
+// endpoint (K16.2). Lightweight — single COUNT query, no pagination.
+// Returns 0 for nonexistent books — safe default for cost estimation
+// (the caller treats 0 as "no glossary entities to process").
+//
+// Route: GET /internal/books/{book_id}/entity-count
+func (s *Server) internalEntityCount(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	var count int
+	err := s.pool.QueryRow(r.Context(),
+		`SELECT COUNT(*) FROM glossary_entities WHERE book_id = $1 AND deleted_at IS NULL`,
+		bookID,
+	).Scan(&count)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to count entities")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"count": count})
+}
+

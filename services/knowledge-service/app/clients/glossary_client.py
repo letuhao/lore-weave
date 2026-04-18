@@ -211,6 +211,30 @@ class GlossaryClient:
         )
         return []
 
+    async def count_entities(self, book_id: UUID) -> int | None:
+        """GET /internal/books/{book_id}/entity-count.
+
+        K16.2 cost estimation helper. Returns entity count or None on
+        failure. Does NOT use the circuit breaker — cost estimation is
+        user-initiated and not on the chat hot path.
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/entity-count"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(
+                url, headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning(
+                    "glossary entity-count %d, trace_id=%s",
+                    resp.status_code, tid,
+                )
+                return None
+            return int(resp.json().get("count", 0))
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning("glossary entity-count failed: %s", exc)
+            return None
+
 
 # ── module-level singleton managed by lifespan ─────────────────────────────
 

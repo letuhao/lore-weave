@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K17.10-v1-complete + Dockerfile multi-stage)
-- Updated By: Assistant (session 46 — 2 remaining English fixtures landed (pride_prejudice_ch01, little_women_ch01), v1 fixture set 5/5 complete. Also: multi-stage Dockerfile.)
+- Last Updated: 2026-04-18 (session 46 — K16.2 cost estimation + K17.10-v1-complete + Dockerfile)
+- Updated By: Assistant (session 46 — K16.2 extraction cost estimation endpoint, K17.10-v1 fixtures complete, K17.10-R1 review fixes, multi-stage Dockerfile. 772 tests.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: 4c586ad (Dockerfile multi-stage)
+- HEAD: ef755a5 (K17.10-R1)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -39,6 +39,8 @@
 | D-K17.2c-01 | K17.2c-R1 review T22 | **K17.2c tests bypass the chi router and `requireInternalToken` middleware.** All K17.2c tests call `srv.doProxy(...)` directly, skipping the actual HTTP routing layer and the `internalProxy` wrapper that validates the `X-Internal-Token` header + query params (`user_id`, `model_source`, `model_ref`). Full-router coverage would require mounting the chi router and calling `srv.Router().ServeHTTP(...)` — doable but ~20 LOC per test for coverage that's 80% already tested in `TestInvokeModelValidationAndUnauthorized`. The doProxy internals are the risky part and are now fully covered; router-layer plumbing is stable. | Next proxy hardening pass |
 | D-K17.2b-01 | K17.2b-R3 review D3 | **`ProviderClient` returns `ProviderDecodeError` for tool_calls-shaped responses** where `message.content` is `null` but `message.tool_calls` is a non-empty array. Fine for K17.4–K17.7 which use `response_format={"type": "json_object"}` text-only. A future tool-based extractor would need a new `chat_completion_with_tools()` method (or a union return type) — flagged so we don't accidentally re-test the same edge case in every new extractor. | K17.8+ or first tool-based extractor |
 | ~~D-K17.10-01~~ | ~~K17.10 session 45~~ | **Cleared in session 46.** See "Recently cleared" below. | — |
+| D-K16.2-01 | K16.2-R1 review | **Model-specific pricing lookup.** Estimate endpoint uses hardcoded `$2/M tokens` placeholder. When provider-registry exposes model pricing, swap `_DEFAULT_COST_PER_TOKEN` for a dynamic lookup keyed on `llm_model`. The `max_spend_usd` on the actual job is the real guard; this only affects the preview dialog. | K16.6 or provider-registry pricing API |
+| D-K16.2-02 | K16.2-R1 review | **`scope_range` filtering.** Field is accepted on the request model but not forwarded to data sources. Book-service's internal chapters endpoint doesn't support range filtering yet. When it does, thread `scope_range.chapter_range` through `BookClient.count_chapters` as query params. | K16.3 or book-service range support |
 | D-K17.10-02 | K17.10 scope decision | **Xianxia + Vietnamese fixture pairs.** v1 deliberately English-only so thresholds can be tuned on a stable seed before adding multilingual variance. Per KSA §9.9 the v2 run should include 2 xianxia + 2 Vietnamese chapters to exercise CJK canonicalization and mixed-script predicate normalization. | K17.10-v2 (after thresholds stabilize) |
 
 ### Track 2 planning (document only, no Track 1 action)
@@ -132,6 +134,44 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K16.2 — Extraction cost estimation endpoint ✅ (session 46)
+
+**Goal:** `POST /v1/knowledge/projects/{id}/extraction/estimate` — preview cost and item counts for a proposed extraction job (KSA §5.5).
+
+**Files:**
+- NEW [services/knowledge-service/app/clients/book_client.py](../../services/knowledge-service/app/clients/book_client.py) — HTTP client for book-service internal API (chapter counts)
+- NEW [services/knowledge-service/app/routers/public/extraction.py](../../services/knowledge-service/app/routers/public/extraction.py) — extraction router with estimate endpoint
+- NEW [services/knowledge-service/tests/unit/test_extraction_estimate.py](../../services/knowledge-service/tests/unit/test_extraction_estimate.py) — 11 unit tests
+- MODIFIED [services/glossary-service/internal/api/extraction_handler.go](../../services/glossary-service/internal/api/extraction_handler.go) — new `GET /internal/books/{book_id}/entity-count` endpoint
+- MODIFIED [services/glossary-service/internal/api/server.go](../../services/glossary-service/internal/api/server.go) — mount entity-count route
+- MODIFIED [services/knowledge-service/app/clients/glossary_client.py](../../services/knowledge-service/app/clients/glossary_client.py) — `count_entities()` method
+- MODIFIED [services/knowledge-service/app/config.py](../../services/knowledge-service/app/config.py) — `book_service_url`, `book_client_timeout_s`
+- MODIFIED [services/knowledge-service/app/deps.py](../../services/knowledge-service/app/deps.py) — DI for BookClient, ExtractionJobsRepo, ExtractionPendingRepo
+- MODIFIED [services/knowledge-service/app/main.py](../../services/knowledge-service/app/main.py) — mount extraction router, init/close BookClient
+
+**Cross-service data flow:**
+- Chapter count → book-service `GET /internal/books/{book_id}/chapters?limit=1` → `total`
+- Pending chat turns → `extraction_pending.count_pending()` (existing repo)
+- Glossary entities → glossary-service `GET /internal/books/{book_id}/entity-count` → `count`
+- Token estimation: 2000/chapter + 800/chat + 300/glossary (KSA §5.5 heuristics)
+- Cost range: `base * 0.7` (low) to `base * 1.3` (high) at $2/M tokens placeholder
+
+**R1 review fixes (6 issues):**
+1. MED: `scope_range` documented as not-yet-implemented + test added (D-K16.2-02)
+2. MED: Test sentinel `_NO_PROJECT` replaces confusing `project=None` override
+3. LOW: `autouse` fixture clears `dependency_overrides` between tests
+4. LOW: Go endpoint comment about nonexistent book returning 0
+5. LOW: Deferral D-K16.2-01 for model-specific pricing
+6. COSMETIC: BookClient `trace_id_var.get()` aligned with GlossaryClient
+
+**Verify:** 11/11 estimate tests, 772/772 full suite. Zero regressions.
+
+**Deferrals opened:**
+- D-K16.2-01 — Model-specific pricing lookup from provider-registry (currently uses hardcoded $2/M placeholder)
+- D-K16.2-02 — `scope_range` filtering not forwarded to data sources (accepted but ignored; book-service doesn't support range filtering yet)
+
+---
 
 ### K17.10-v1-complete — Golden-set fixture set complete (5/5 English) ✅ (session 46)
 
