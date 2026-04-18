@@ -114,6 +114,16 @@ _ANCHOR_CACHE_MAX = 256
 # ALSO cached because they're the correct answer; re-running the
 # SELECT inside the TTL would be wasted work.
 #
+# **Side-effect caveat:** the uncached path runs
+# `load_glossary_anchors` which MERGEs each anchor as a Neo4j
+# `:Entity` node. On cache hit we skip that MERGE. Safe because the
+# first call per 60s window does the upsert and later calls in the
+# same window see the already-converged Neo4j state — MERGE is
+# idempotent so we're not missing state-building work, just
+# skipping redundant round-trips. If Neo4j is purged mid-job (rare,
+# maintenance only), downstream extraction may miss anchors until
+# the TTL expires or the worker restarts.
+#
 # Per-process. On worker restart the cache empties and the first
 # call refills it. No manual invalidation — 60s is short enough
 # that glossary edits show up quickly and no cleanup is required.

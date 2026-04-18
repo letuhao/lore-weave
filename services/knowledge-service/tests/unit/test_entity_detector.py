@@ -408,3 +408,25 @@ def test_k15_5_partial_caps_phrase_not_split():
     names = {c.name for c in extract_entity_candidates(text)}
     # Mixed-case "Dr Strange" preserved as a single phrase.
     assert "Dr Strange" in names
+
+
+def test_k15_5_all_caps_double_space_still_splits():
+    # review-impl: the regex allows `\s+` between tokens, so a
+    # double-space all-caps run must still split. Previously used
+    # `split(" ")` which produced empty-string tokens and caused
+    # the helper to bail out with the phrase unsplit.
+    text = "KAI  DOES  NOT  KNOW  ZHAO."
+    names = {c.name for c in extract_entity_candidates(text)}
+    assert "KAI" in names
+    assert "ZHAO" in names
+    # The greedy-fused sentence must NOT survive.
+    assert "KAI  DOES  NOT  KNOW  ZHAO" not in names
+
+
+def test_k15_5_all_caps_tab_separated_still_splits():
+    # Tab-separated yelled phrase — same correctness target as
+    # multi-space. _CAPITALIZED_PHRASE_RE's `\s+` matches tabs too.
+    text = "KAI\tDOES\tNOT\tKNOW\tZHAO"
+    names = {c.name for c in extract_entity_candidates(text)}
+    assert "KAI" in names
+    assert "ZHAO" in names

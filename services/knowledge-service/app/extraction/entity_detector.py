@@ -194,6 +194,13 @@ def _fold(name: str) -> str:
     return name.strip().casefold()
 
 
+# Used by `_iter_tokens_if_all_caps_run` to walk tokens inside a
+# matched phrase. Mirrors the separator class the main regex allows
+# (`\s+` between tokens), so phrases containing tabs, newlines, or
+# multiple spaces tokenize correctly.
+_NON_WS_TOKEN_RE = re.compile(r"\S+")
+
+
 def _iter_tokens_if_all_caps_run(
     phrase: str, span: tuple[int, int],
 ) -> list[tuple[str, tuple[int, int]]]:
@@ -207,31 +214,28 @@ def _iter_tokens_if_all_caps_run(
     A single-token all-caps match like "NASA" stays as-is — the
     failure mode this fix targets is yelled sentences, not single-
     word acronyms which are typically legitimate proper nouns.
+
+    Tokenization uses `\\S+` (any run of non-whitespace) so tabs,
+    newlines, and multiple spaces between words are handled the same
+    as single spaces — this matches the `\\s+` separator class in
+    `_CAPITALIZED_PHRASE_RE` itself.
     """
-    if " " not in phrase:
+    tokens = list(_NON_WS_TOKEN_RE.finditer(phrase))
+    if len(tokens) < 2:
         return [(phrase, span)]
-    tokens = phrase.split(" ")
     # Require at least one alpha char in each token — a stray hyphen
     # or apostrophe alone shouldn't be called all-upper.
     if not all(
-        any(ch.isalpha() for ch in tok) and tok == tok.upper()
-        for tok in tokens
+        any(ch.isalpha() for ch in m.group()) and m.group() == m.group().upper()
+        for m in tokens
     ):
         return [(phrase, span)]
 
-    # Rebuild absolute spans per token by walking the phrase.
     start0 = span[0]
-    out: list[tuple[str, tuple[int, int]]] = []
-    cursor = 0
-    for tok in tokens:
-        # Find next occurrence of tok after cursor inside `phrase`.
-        # split(" ") on single-space joins guarantees the order and
-        # offsets are stable.
-        idx = phrase.index(tok, cursor)
-        tok_start = start0 + idx
-        out.append((tok, (tok_start, tok_start + len(tok))))
-        cursor = idx + len(tok)
-    return out
+    return [
+        (m.group(), (start0 + m.start(), start0 + m.end()))
+        for m in tokens
+    ]
 
 
 # ── Public API ──────────────────────────────────────────────────────
