@@ -184,6 +184,11 @@ ALTER TABLE knowledge_projects
   ADD COLUMN IF NOT EXISTS stat_glossary_count    INT NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS stat_updated_at        TIMESTAMPTZ;
 
+-- K12.3 — embedding config
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS embedding_provider_id  UUID,
+  ADD COLUMN IF NOT EXISTS embedding_dimension    INT;
+
 -- ═══════════════════════════════════════════════════════════════
 -- K10.1 — extraction_pending
 -- Events that arrived while extraction was disabled for their project.

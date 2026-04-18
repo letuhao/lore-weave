@@ -15,6 +15,8 @@ should reach for `app.deps` first.
 
 from app.clients.book_client import BookClient
 from app.clients.book_client import get_book_client as _get_book_client_singleton
+from app.clients.embedding_client import EmbeddingClient
+from app.clients.embedding_client import get_embedding_client as _get_embedding_client_singleton
 from app.clients.glossary_client import GlossaryClient
 from app.clients.glossary_client import get_glossary_client as _get_glossary_client_singleton
 from app.db.pool import get_knowledge_pool
@@ -51,3 +53,7 @@ async def get_glossary_client() -> GlossaryClient:
 
 async def get_book_client() -> BookClient:
     return _get_book_client_singleton()
+
+
+async def get_embedding_client() -> EmbeddingClient:
+    return _get_embedding_client_singleton()

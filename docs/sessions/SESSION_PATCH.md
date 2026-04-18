@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K11.10 + K15.11 + K17.11 + K17.12 + K16 COMPLETE + K17.10 + Dockerfile)
-- Updated By: Assistant (session 46 — K11.10/K15.11/K17.11/K17.12 + K16 complete + K17.10. 866 tests across 2 services.)
+- Last Updated: 2026-04-18 (session 46 — K12.1-K12.3 + K11.10 + K15.11 + K17.11-12 + K16 + K17.10 + Dockerfile)
+- Updated By: Assistant (session 46 — K12.1-K12.3 embedding pipeline, K11.10/K15.11/K17.11-12, K16 complete, K17.10. 870 tests across 2 services + Go.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: 68b947d (K16.15-R1)
+- HEAD: d7e29cb (K11.10+K15.11+K17.12-R1)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -134,6 +134,20 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K12.1–K12.3 — BYOK embedding pipeline ✅ (session 46)
+
+**K12.1** (Go) — `provider-registry-service/internal/provider/embed.go`: `Embed()` function dispatches to OpenAI-compatible `/v1/embeddings` or Ollama `/api/embed`. Handler at `POST /internal/embed` with credential resolution. Anthropic → error (no embedding support).
+
+**K12.2** (Python) — `knowledge-service/app/clients/embedding_client.py`: `EmbeddingClient.embed()` with `EmbeddingError` (retryable flag), timeout 30s. 4 tests.
+
+**K12.3** — Migration: `embedding_provider_id UUID`, `embedding_dimension INT` columns on knowledge_projects. DI factory for EmbeddingClient.
+
+K12.4 (frontend picker) deferred — different stack.
+
+**Verify:** 4 new Python tests (857 KS), Go builds + tests pass (provider-registry). 870 total.
+
+---
 
 ### K11.10 + K15.11 + K17.11 + K17.12 — Glossary client, sync, rate limiter ✅ (session 46)
 

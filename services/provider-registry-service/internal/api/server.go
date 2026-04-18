@@ -133,6 +133,7 @@ func (s *Server) Router() http.Handler {
 		// Transparent proxy — forwards any content-type (multipart, binary, JSON) to provider
 		// with credential injection. Used for STT (file upload) and TTS (binary response).
 		r.HandleFunc("/proxy/*", s.internalProxy)
+		r.Post("/embed", s.internalEmbed)
 	})
 
 	return r
@@ -2161,4 +2162,90 @@ func (s *Server) recordInvocation(ctx context.Context, payload map[string]any) (
 		return uuid.Nil, "", 0, err
 	}
 	return out.UsageLogID, out.BillingMode, out.TotalCostUSD, nil
+}
+
+// ── K12.1 — Embedding endpoint ──────────────────────────────────────────────
+
+// internalEmbed handles POST /internal/embed.
+// Resolves the user's embedding model via BYOK credentials and
+// dispatches to the correct provider (OpenAI, Ollama, LM Studio).
+func (s *Server) internalEmbed(w http.ResponseWriter, r *http.Request) {
+	userIDStr := r.URL.Query().Get("user_id")
+	if userIDStr == "" {
+		writeError(w, http.StatusBadRequest, "EMBED_VALIDATION", "user_id query param required")
+		return
+	}
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "EMBED_VALIDATION", "invalid user_id")
+		return
+	}
+
+	var in struct {
+		ModelSource string   `json:"model_source"`
+		ModelRef    string   `json:"model_ref"`
+		Texts       []string `json:"texts"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "EMBED_VALIDATION", "invalid payload")
+		return
+	}
+	if len(in.Texts) == 0 {
+		writeError(w, http.StatusBadRequest, "EMBED_VALIDATION", "texts must be non-empty")
+		return
+	}
+	if in.ModelRef == "" {
+		writeError(w, http.StatusBadRequest, "EMBED_VALIDATION", "model_ref required")
+		return
+	}
+
+	modelRef, err := uuid.Parse(in.ModelRef)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "EMBED_VALIDATION", "invalid model_ref")
+		return
+	}
+
+	// Resolve credentials — same pattern as internalInvokeModel
+	var providerKind, providerModelName, endpointBaseURL, secret string
+	if in.ModelSource == "user_model" {
+		var secretCipher string
+		err = s.pool.QueryRow(r.Context(), `
+SELECT um.user_model_id, um.provider_kind, um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,'')
+FROM user_models um
+JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
+WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
+`, modelRef, userID).Scan(new(uuid.UUID), &providerKind, &providerModelName, &endpointBaseURL, &secretCipher)
+		if err == pgx.ErrNoRows {
+			writeError(w, http.StatusNotFound, "EMBED_MODEL_NOT_FOUND", "user model not found or inactive")
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "EMBED_MODEL_QUERY_FAILED", "failed to resolve model")
+			return
+		}
+		secret, err = s.decryptSecret(secretCipher)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "EMBED_SECRET_FAILED", "failed to decrypt secret")
+			return
+		}
+	} else {
+		writeError(w, http.StatusBadRequest, "EMBED_VALIDATION", "model_source must be user_model")
+		return
+	}
+
+	// Validate model is embedding-capable
+	adapter, err := provider.ResolveAdapter(providerKind, s.invokeClient)
+	if err != nil {
+		writeError(w, http.StatusConflict, "EMBED_PROVIDER_ERROR", "failed to resolve adapter")
+		return
+	}
+
+	// Dispatch embedding call
+	result, err := provider.Embed(r.Context(), adapter, endpointBaseURL, secret, providerModelName, in.Texts)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "EMBED_PROVIDER_FAILED", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
 }
