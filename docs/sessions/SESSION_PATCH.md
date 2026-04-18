@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — Cycle 6a+6b RAG quality: D-T2-01 tiktoken + D-T2-02 ts_rank_cd. Plus Cycles 1–5, K18, K13, K14, etc.)
-- Updated By: Assistant (session 46 — Cycle 6b: D-T2-02 glossary FTS tier ts_rank → ts_rank_cd with normalization flag 33 (length-norm + [0,1] scaling). go build+test clean.)
+- Last Updated: 2026-04-18 (session 46 — Cycle 6 complete: D-T2-01 tiktoken + D-T2-02 ts_rank_cd + D-T2-03 unified recent_message_count. Plus Cycles 1–5, K18, K13, K14, etc.)
+- Updated By: Assistant (session 46 — Cycle 6c: D-T2-03 both services now read RECENT_MESSAGE_COUNT env var via their Settings. 1049 knowledge + 169 chat tests pass.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: 930348c (Cycle 6a) → Cycle 6b commit pending
+- HEAD: b57b278 (Cycle 6b) → Cycle 6c commit pending
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -67,12 +67,12 @@ One commit. All in knowledge-service extraction/context pipeline. All 4 items sh
 - ✅ **P-K13.0-01** anchor pre-load TTLCache(256, 60s) keyed by `(user_id, project_id)`
 - ✅ **P-K18.3-01** query-embedding TTLCache(512, 30s) keyed by `(user_id, project_id, model, message)` — user_id added via review-impl fix
 
-### Cycle 6 — RAG quality (Track 2 polish) 🟡 (session 46, in progress)
-Three commits — each needs golden-set re-measurement after, so separated.
+### Cycle 6 — RAG quality (Track 2 polish) ✅ (session 46)
+Three commits — all shipped.
 
 - ✅ **6a · D-T2-01** tiktoken swap for CJK token count (cross-service)
 - ✅ **6b · D-T2-02** `ts_rank_cd` with normalization flag (K4b RAG quality)
-- ⏳ **6c · D-T2-03** unify `recent_message_count` constants across chat + knowledge
+- ✅ **6c · D-T2-03** unify `recent_message_count` constants across chat + knowledge
 
 ### Cycle 7 — K18 final polish
 One commit.
@@ -136,7 +136,7 @@ One commit, depends on Gate 4 being run against live DB.
 |---|---|---|
 | ~~D-T2-01~~ | ~~K2b, K4a~~ | **Cleared in session 46 Cycle 6a.** See "Recently cleared" below. |
 | ~~D-T2-02~~ | ~~K4b~~ | **Cleared in session 46 Cycle 6b.** See "Recently cleared" below. |
-| D-T2-03 | K5 | Unify `DEGRADED_RECENT_MESSAGE_COUNT` (chat-service) and the Mode-1/Mode-2 builder constants (knowledge-service) behind a single config knob — currently both default to 50 in two unrelated files |
+| ~~D-T2-03~~ | ~~K5~~ | **Cleared in session 46 Cycle 6c.** See "Recently cleared" below. |
 | D-T2-04 | K6 | Cross-process cache invalidation for L0/L1 (Redis pub/sub or event bus). Track 1 accepts ≤60s staleness per-instance; KSA §7.3 confirms this is Track 2 scope |
 | D-T2-05 | K6 | Glossary circuit-breaker half-open "one probe" guarantee — currently all concurrent calls race through when cooldown elapses. For Track 1 the breaker still re-opens on the first failure so the blast radius is bounded. Proper fix needs an asyncio.Lock or probe-in-flight flag; pair with D-T2-04 cache-invalidation work since both touch cross-call coordination |
 
@@ -167,6 +167,7 @@ One commit, depends on Gate 4 being run against live DB.
 
 | ID | Origin | How it was resolved |
 |---|---|---|
+| **D-T2-03** | **K5** | **Cleared in session 46 Cycle 6c.** Both services now have `recent_message_count: int = 50` in their `Settings` (knowledge-service + chat-service), both read env var `RECENT_MESSAGE_COUNT`. knowledge-service's Mode 1 + Mode 2 builders use `settings.recent_message_count` at call time. chat-service's `DEGRADED_RECENT_MESSAGE_COUNT` module constant is resolved from settings at import, so a tune propagates to both sides in a single env change. Mode 3's intentional tighter 20 stays separate. 1049 + 169 tests pass. |
 | **D-T2-02** | **K4b** | **Cleared in session 46 Cycle 6b.** glossary-service's FTS tier in `select_for_context_handler.go` swapped from `ts_rank(sv, q)` to `ts_rank_cd(sv, q, 33)`. Cover density ranking + log-length normalization + [0,1] scaling. Multi-word queries now reward proximity instead of scattered frequency; long descriptions stop outranking short-name exact matches. No schema/index change — search_vector already carries positions. go build+test clean. |
 | **D-T2-01** | **K2b, K4a** | **Cleared in session 46 Cycle 6a.** `knowledge-service/token_counter.py` swapped from `len/4` heuristic to `tiktoken.cl100k_base`. CJK sample "一位神秘的刀客的故事" now counts 14 tokens (was 2 under old heuristic). Graceful fallback to len/4 if tiktoken can't import/load — Track 1 paths stay runnable. `summaries.py` deduplicated its private copy. `translation-service/glossary_client.py` adopted its own CJK-aware `chunk_splitter.estimate_tokens` at its remaining raw-heuristic call site. Four test files aligned to call `estimate_tokens()` instead of hardcoded `len//4`. 1049 unit tests pass. |
 | **D-K15.5-01** | **K15.5-R1/I2** | **Cleared in session 46 Cycle 5.** New `_iter_tokens_if_all_caps_run` helper in [`entity_detector.py`](../../services/knowledge-service/app/extraction/entity_detector.py) splits `_CAPITALIZED_PHRASE_RE` matches when every token is all-uppercase ("KAI DOES NOT KNOW ZHAO" → ["KAI", "ZHAO"] individually; stopwords fall out via existing filter). Single-token all-caps ("NASA") preserved. Trade-off: multi-word acronyms ("UNITED NATIONS") lose multi-word form but each token surfaces and K17 LLM reassembles at Pass 2. End-to-end verified: `extract_negations("KAI DOES NOT KNOW ZHAO.")` now returns a proper `NegationFact`. +5 detector tests, +1 negation regression test. |
@@ -238,6 +239,24 @@ One commit, depends on Gate 4 being run against live DB.
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### Cycle 6c — D-T2-03 unify recent_message_count ✅ (session 46)
+
+**Two services now share one env knob.** Before: `knowledge-service` had `_RECENT_MESSAGE_COUNT = 50` in Mode 1 + Mode 2 builders, and `chat-service` had `DEGRADED_RECENT_MESSAGE_COUNT = 50` in its knowledge-client fallback. Both 50, but in two unrelated files — a tune would get half-applied.
+
+**Modified (4):**
+- [services/knowledge-service/app/config.py](../../services/knowledge-service/app/config.py) — new `recent_message_count: int = 50` setting. Env var `RECENT_MESSAGE_COUNT`.
+- [services/knowledge-service/app/context/modes/no_project.py](../../services/knowledge-service/app/context/modes/no_project.py) + [static.py](../../services/knowledge-service/app/context/modes/static.py) — read `settings.recent_message_count` at call time instead of module-level `_RECENT_MESSAGE_COUNT = 50`.
+- [services/chat-service/app/config.py](../../services/chat-service/app/config.py) — new `recent_message_count: int = 50` setting with matching env var name.
+- [services/chat-service/app/client/knowledge_client.py](../../services/chat-service/app/client/knowledge_client.py) — `DEGRADED_RECENT_MESSAGE_COUNT` stays exported for compat but now resolves from `settings.recent_message_count` at module load.
+
+**Review-impl fix:** initial edit added a redundant `from app.config import settings as _settings` in `knowledge_client.py` despite `settings` already being imported at the top. Cleaned up to use the existing import.
+
+**Not touched:** Mode 3 (`full.py`) keeps its `_RECENT_MESSAGE_COUNT = 20` — intentional tighter retrieval; noted in no_project.py's comment. If Mode 3 ever needs env-tuning, it'll get its own setting.
+
+**Verify:** 1049 knowledge-service + 169 chat-service tests pass.
+
+---
 
 ### Cycle 6b — D-T2-02 ts_rank_cd ✅ (session 46)
 

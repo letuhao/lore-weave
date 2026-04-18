@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     knowledge_client_timeout_s: float = 0.5      # 500ms total per Track1 doc
     knowledge_client_retries: int = 1            # one retry on 5xx/transport
 
+    # D-T2-03 — degraded-mode fallback when knowledge-service is unreachable
+    # or returns an error. Must agree with knowledge-service's Mode 1 + Mode 2
+    # `recent_message_count` (which also defaults to 50). Both services read
+    # env var RECENT_MESSAGE_COUNT so a tune stays in sync.
+    recent_message_count: int = 50
+
     class Config:
         env_file = ".env"
 

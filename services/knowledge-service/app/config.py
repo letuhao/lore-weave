@@ -25,6 +25,14 @@ class Settings(BaseSettings):
     # dedup is dropping entries it shouldn't.
     dedup_min_overlap: int = 2
 
+    # D-T2-03 — Mode 1 + Mode 2 `recent_message_count` returned in the
+    # context response. chat-service replays the last N messages of the
+    # session when this many are requested. PAIR: chat-service's
+    # `settings.recent_message_count` has the same default; both read
+    # env var RECENT_MESSAGE_COUNT so a tune stays in sync. Mode 3 has
+    # its own tighter constant (20) in full.py — by design.
+    recent_message_count: int = 50
+
     # K6.1 — per-layer timeouts inside the context builder. If any
     # layer exceeds its budget the builder skips that layer and
     # continues with the remaining pieces. Total ceiling defaults to

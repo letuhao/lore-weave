@@ -39,7 +39,13 @@ __all__ = [
     "DEGRADED_RECENT_MESSAGE_COUNT",
 ]
 
-DEGRADED_RECENT_MESSAGE_COUNT = 50
+# D-T2-03 — paired with knowledge-service's settings.recent_message_count.
+# Exported as a module-level constant for existing imports; value is
+# resolved from settings at import time. Both services default to 50
+# via the shared env var RECENT_MESSAGE_COUNT. Knowledge-service's
+# authoritative value is what non-degraded responses return; this is
+# the failsafe used only when knowledge-service is unreachable.
+DEGRADED_RECENT_MESSAGE_COUNT = settings.recent_message_count
 
 # Knowledge-service enforces max_length=4000 on its ContextBuildRequest.message
 # field (K4a-I6). Long user messages get truncated here so we don't eat a

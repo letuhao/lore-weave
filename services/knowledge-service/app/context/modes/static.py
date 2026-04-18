@@ -42,7 +42,9 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["build_static_mode"]
 
-_RECENT_MESSAGE_COUNT = 50
+# D-T2-03 — was a module-level 50. Now reads from settings so a
+# tune via RECENT_MESSAGE_COUNT env var applies here AND in
+# chat-service's KnowledgeClient fallback in one change.
 
 _INSTRUCTIONS = (
     "This session is attached to a project. Use the <project> instructions "
@@ -188,6 +190,6 @@ async def build_static_mode(
     return BuiltContext(
         mode="static",
         context=context,
-        recent_message_count=_RECENT_MESSAGE_COUNT,
+        recent_message_count=settings.recent_message_count,
         token_count=estimate_tokens(context),
     )

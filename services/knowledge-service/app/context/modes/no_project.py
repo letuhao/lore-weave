@@ -26,7 +26,9 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["BuiltContext", "build_no_project_mode"]
 
-_RECENT_MESSAGE_COUNT = 50
+# D-T2-03 — was a module-level 50. Now reads from settings so a
+# tune via RECENT_MESSAGE_COUNT env var applies here AND in
+# chat-service's KnowledgeClient fallback in one change.
 
 # Two instruction variants — the with-bio text references "above" which
 # is only accurate when a <user> element was actually emitted.
@@ -86,6 +88,6 @@ async def build_no_project_mode(
     return BuiltContext(
         mode="no_project",
         context=context,
-        recent_message_count=_RECENT_MESSAGE_COUNT,
+        recent_message_count=settings.recent_message_count,
         token_count=estimate_tokens(context),
     )
