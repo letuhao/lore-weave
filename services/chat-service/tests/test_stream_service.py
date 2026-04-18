@@ -51,7 +51,12 @@ def _make_pool_with_conn():
     async def fake_acquire():
         yield conn
 
+    @asynccontextmanager
+    async def fake_transaction():
+        yield
+
     pool.acquire = fake_acquire
+    conn.transaction = fake_transaction
     # Default fetchrow returns a session-like record with required fields
     pool.fetchrow.return_value = {
         "system_prompt": None,
@@ -261,6 +266,50 @@ class TestStreamResponse:
         ]
         assert len(insert_calls) == 1
         assert parent_id in insert_calls[0].args
+
+    @pytest.mark.asyncio
+    async def test_emits_outbox_event_on_turn_completed(self):
+        """K13.2: assistant turn persistence must insert an outbox event in the same transaction."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 2
+
+        billing = AsyncMock()
+
+        async def fake_acompletion(**kwargs):
+            yield _make_chunk("Response text")
+
+        with patch("app.services.stream_service.acompletion", return_value=fake_acompletion()):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="Hello",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(),
+                pool=pool,
+                billing=billing,
+            ):
+                pass
+
+        outbox_inserts = [
+            c for c in conn.execute.call_args_list
+            if "INSERT INTO outbox_events" in str(c)
+        ]
+        assert len(outbox_inserts) == 1, "expected exactly one outbox_events INSERT"
+
+        call = outbox_inserts[0]
+        # Payload is the 2nd positional arg after the SQL: (sql, aggregate_id, payload_json)
+        sql_text = call.args[0]
+        assert "chat.turn_completed" in sql_text
+        # aggregate_type must be 'chat' so outbox-relay publishes to
+        # loreweave:events:chat (consumed by knowledge-service).
+        assert "'chat'" in sql_text
+        payload_json = call.args[2]
+        payload = json.loads(payload_json)
+        assert payload["user_id"] == str(TEST_USER_ID)
+        assert payload["session_id"] == str(TEST_SESSION_ID)
+        assert payload["assistant_content_len"] == len("Response text")
 
     @pytest.mark.asyncio
     async def test_builds_message_history(self):

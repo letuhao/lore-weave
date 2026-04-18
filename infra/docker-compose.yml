@@ -438,7 +438,7 @@ services:
       WORKER_TASKS: "outbox-relay,outbox-cleanup,import-processor"
       EVENTS_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_events
       REDIS_URL: redis://redis:6379
-      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book,translation:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_translation"
+      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book,translation:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_translation,chat:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_chat"
       OUTBOX_CLEANUP_RETAIN_DAYS: "7"
       BOOK_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book
       PANDOC_URL: http://pandoc-server:3030

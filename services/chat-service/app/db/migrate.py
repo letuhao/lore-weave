@@ -119,6 +119,25 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_project
   ON chat_sessions(project_id) WHERE project_id IS NOT NULL;
+
+-- K13.1 — outbox_events: transactional outbox for event-driven pipeline.
+-- Matches book-service schema so worker-infra outbox-relay can pick up
+-- events uniformly. Worker-infra publishes to Redis Stream
+-- `loreweave:events:{aggregate_type}` and inserts into loreweave_events.event_log.
+CREATE TABLE IF NOT EXISTS outbox_events (
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
+  aggregate_type TEXT NOT NULL DEFAULT 'chat',
+  aggregate_id UUID NOT NULL,
+  event_type TEXT NOT NULL,
+  payload JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  published_at TIMESTAMPTZ,
+  retry_count INT NOT NULL DEFAULT 0,
+  last_error TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_outbox_pending
+  ON outbox_events(created_at) WHERE published_at IS NULL;
 """
 
 

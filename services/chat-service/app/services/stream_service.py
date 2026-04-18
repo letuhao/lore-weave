@@ -269,63 +269,89 @@ async def stream_response(
         final_reasoning = "".join(full_reasoning)
 
         # ── Persist assistant message ───────────────────────────────────────
+        # K13.2: wrap the three INSERTs + outbox event in one transaction
+        # so chat.turn_completed is only emitted when the message persists
+        # successfully. Rollback on any error discards both the message and
+        # the event.
         async with pool.acquire() as conn:
-            seq = await conn.fetchval(
-                "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM chat_messages WHERE session_id = $1",
-                session_id,
-            )
-            input_tok = getattr(last_usage, "prompt_tokens", None) if last_usage else None
-            output_tok = getattr(last_usage, "completion_tokens", None) if last_usage else None
+            async with conn.transaction():
+                seq = await conn.fetchval(
+                    "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM chat_messages WHERE session_id = $1",
+                    session_id,
+                )
+                input_tok = getattr(last_usage, "prompt_tokens", None) if last_usage else None
+                output_tok = getattr(last_usage, "completion_tokens", None) if last_usage else None
 
-            # Store metadata in content_parts JSONB
-            parts: dict = {}
-            if final_reasoning:
-                parts["reasoning"] = final_reasoning
-                parts["reasoning_length"] = len(final_reasoning)
-            parts["response_time_ms"] = round(response_time_ms)
-            if time_to_first_token is not None:
-                parts["time_to_first_token_ms"] = round(time_to_first_token)
-            content_parts = json.dumps(parts) if parts else None
+                # Store metadata in content_parts JSONB
+                parts: dict = {}
+                if final_reasoning:
+                    parts["reasoning"] = final_reasoning
+                    parts["reasoning_length"] = len(final_reasoning)
+                parts["response_time_ms"] = round(response_time_ms)
+                if time_to_first_token is not None:
+                    parts["time_to_first_token_ms"] = round(time_to_first_token)
+                content_parts = json.dumps(parts) if parts else None
 
-            await conn.execute(
-                """
-                INSERT INTO chat_messages
-                  (message_id, session_id, owner_user_id, role, content, content_parts,
-                   sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id)
-                VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0)
-                """,
-                msg_id, session_id, user_id, final_text, content_parts, seq,
-                input_tok, output_tok, model_ref, parent_message_id,
-            )
-
-            # Extract and persist output artifacts
-            artifacts = extract_outputs(final_text)
-            output_id = str(uuid4())
-            for i, artifact in enumerate(artifacts):
-                oid = output_id if i == 0 else str(uuid4())
                 await conn.execute(
                     """
-                    INSERT INTO chat_outputs
-                      (output_id, message_id, session_id, owner_user_id,
-                       output_type, content_text, language, title)
-                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                    INSERT INTO chat_messages
+                      (message_id, session_id, owner_user_id, role, content, content_parts,
+                       sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id)
+                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0)
                     """,
-                    oid, msg_id, session_id, user_id,
-                    artifact.output_type, artifact.content_text,
-                    artifact.language, artifact.title,
+                    msg_id, session_id, user_id, final_text, content_parts, seq,
+                    input_tok, output_tok, model_ref, parent_message_id,
                 )
 
-            # Update session stats
-            await conn.execute(
-                """
-                UPDATE chat_sessions
-                SET message_count = message_count + 1,
-                    last_message_at = now(),
-                    updated_at = now()
-                WHERE session_id = $1
-                """,
-                session_id,
-            )
+                # Extract and persist output artifacts
+                artifacts = extract_outputs(final_text)
+                output_id = str(uuid4())
+                for i, artifact in enumerate(artifacts):
+                    oid = output_id if i == 0 else str(uuid4())
+                    await conn.execute(
+                        """
+                        INSERT INTO chat_outputs
+                          (output_id, message_id, session_id, owner_user_id,
+                           output_type, content_text, language, title)
+                        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                        """,
+                        oid, msg_id, session_id, user_id,
+                        artifact.output_type, artifact.content_text,
+                        artifact.language, artifact.title,
+                    )
+
+                # Update session stats
+                await conn.execute(
+                    """
+                    UPDATE chat_sessions
+                    SET message_count = message_count + 1,
+                        last_message_at = now(),
+                        updated_at = now()
+                    WHERE session_id = $1
+                    """,
+                    session_id,
+                )
+
+                # K13.2: emit chat.turn_completed outbox event.
+                # aggregate_type drives the Redis Stream name via outbox-relay:
+                # 'chat' -> loreweave:events:chat (knowledge-service consumer).
+                outbox_payload = {
+                    "user_id": str(user_id),
+                    "project_id": str(project_id) if project_id else None,
+                    "session_id": str(session_id),
+                    "message_id": str(msg_id),
+                    "user_message_id": str(parent_message_id) if parent_message_id else None,
+                    "user_content_len": len(user_message_content) if user_message_content else 0,
+                    "assistant_content_len": len(final_text),
+                }
+                await conn.execute(
+                    """
+                    INSERT INTO outbox_events
+                      (event_type, aggregate_type, aggregate_id, payload)
+                    VALUES ('chat.turn_completed', 'chat', $1, $2::jsonb)
+                    """,
+                    msg_id, json.dumps(outbox_payload),
+                )
 
         # Send custom data annotation (IDs back to frontend)
         data_payload: dict = {"message_id": msg_id}

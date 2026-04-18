@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K14 Redis event pipeline + workflow-gate fix + K12 + K11.10 + K15.11 + K17.11-12 + K16 + K17.10 + Dockerfile)
-- Updated By: Assistant (session 46 — K14 Redis event consumer (8 tasks), workflow-gate Python rewrite + pre-commit hook, K12.1-K12.3, K11.10/K15.11/K17.11-12, K16 complete, K17.10. 893 tests.)
+- Last Updated: 2026-04-18 (session 46 — K13 chat outbox + worker-infra MAXLEN/cold-start + K14 + workflow-gate + K12 + K11.10 + K15.11 + K17.11-12 + K16 + K17.10 + Dockerfile)
+- Updated By: Assistant (session 46 — K13 chat-service transactional outbox + chat.turn_completed emission, worker-infra per-stream MAXLEN + 42P01 silent-retry with per-source transition logging, K14 (8 tasks), workflow-gate Python rewrite, K12.1-K12.3, K11.10/K15.11/K17.11-12, K16 complete, K17.10. 893 + new K13 tests.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: 3f02c49 (workflow-gate fix)
+- HEAD: 3f02c49 (workflow-gate fix) → K13 commit pending
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -134,6 +134,28 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K13 — chat-service transactional outbox + chat.turn_completed ✅ (session 46)
+
+**Goal:** Emit `chat.turn_completed` atomically with assistant message persistence so the knowledge-service consumer (K14) can extract from finished chat turns.
+
+**Modified (4):**
+- [services/chat-service/app/db/migrate.py](../../services/chat-service/app/db/migrate.py) — K13.1: `outbox_events` table (uuidv7 PK, aggregate_type default `'chat'`, payload JSONB, retry_count, last_error) + `idx_outbox_pending` partial index on `created_at WHERE published_at IS NULL`.
+- [services/chat-service/app/services/stream_service.py](../../services/chat-service/app/services/stream_service.py) — K13.2: wrapped the 3 assistant-persist INSERTs (chat_messages, chat_outputs, UPDATE chat_sessions) plus the new outbox INSERT in a single `async with conn.transaction()` block. On any failure, all four roll back together — no orphan outbox rows for non-persisted messages.
+- [infra/docker-compose.yml](../../infra/docker-compose.yml) — K13.3: added `chat:postgres://.../loreweave_chat` to `OUTBOX_SOURCES` so worker-infra's outbox-relay polls the chat DB.
+- [services/chat-service/tests/test_stream_service.py](../../services/chat-service/tests/test_stream_service.py) — added `fake_transaction` async-cm to the pool mock helper (needed because persist is now inside `conn.transaction()`); new test `test_emits_outbox_event_on_turn_completed` asserts the SQL + payload fields.
+
+**worker-infra collateral (fixed same PR — 2 review-impl issues the user asked to clean up):**
+- [services/worker-infra/internal/tasks/outbox_relay.go](../../services/worker-infra/internal/tasks/outbox_relay.go) — per-stream MAXLEN (`chapter:10k`, `chat:50k`, `glossary:10k`, default 10k) matching [101_DATA_RE_ENGINEERING_PLAN.md:697-700](../03_planning/101_DATA_RE_ENGINEERING_PLAN.md#L697-L700); `isUndefinedTable` helper swallows SQLSTATE `42P01` during cold start; new `tableMissing map[string]bool` + `noteTableState` helper logs exactly once per transition (ok→missing or missing→ok) instead of spamming every 30s.
+- [services/worker-infra/internal/tasks/outbox_relay_test.go](../../services/worker-infra/internal/tasks/outbox_relay_test.go) — new file. Covers `maxLenFor` (5 cases), `isUndefinedTable` (5 cases including wrapped via `errors.Join`), `noteTableState` transitions (first-miss, repeat-miss, recovery, per-source independence).
+
+**Review-code finding fixed before commit:** initial draft used `aggregate_type='chat_message'`, which would have published to `loreweave:events:chat_message` (outbox-relay uses `aggregate_type` as stream suffix) — but the knowledge-service consumer subscribes to `loreweave:events:chat`. Corrected to `'chat'` so events actually reach the consumer. DDL default updated to match.
+
+**Verify:** chat-service 169/169 pass (was 167/167 — +2 for outbox test and helper); worker-infra `internal/tasks` package ok (3 new tests). Pre-existing `config.TestLoadDefaults` failure is env-var-dependent and unchanged by this work (confirmed via `git stash` comparison).
+
+**End-to-end path now:** chat turn completes → atomic 4-row transaction persists msg + emits outbox event → worker-infra relays to Redis Stream `loreweave:events:chat` with MAXLEN 50000 → knowledge-service `EventConsumer` reads via XREADGROUP → `EventDispatcher` routes `chat.turn_completed` to `handle_chat_turn` → handler queues into `extraction_pending` for worker-ai.
+
+---
 
 ### K14 — Redis Streams event pipeline ✅ (session 46)
 
