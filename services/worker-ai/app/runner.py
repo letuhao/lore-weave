@@ -204,6 +204,21 @@ async def _get_project_book_id(
     return row
 
 
+async def _set_items_total(
+    pool: asyncpg.Pool, user_id: UUID, job_id: UUID, total: int,
+) -> None:
+    """Set items_total on a job (for progress percentage in UI)."""
+    await pool.execute(
+        """
+        UPDATE extraction_jobs
+        SET items_total = $3, updated_at = now()
+        WHERE user_id = $1 AND job_id = $2
+          AND status NOT IN ('complete', 'cancelled', 'failed')
+        """,
+        user_id, job_id, total,
+    )
+
+
 async def _update_project_status(
     pool: asyncpg.Pool, user_id: UUID, project_id: UUID,
     extraction_status: str,
@@ -323,12 +338,33 @@ async def process_job(
         # Resolve book_id from project (project_id ≠ book_id)
         book_id = await _get_project_book_id(pool, job.user_id, job.project_id)
 
-        # Enumerate items based on scope
+        # Pre-enumerate items. Done once — the results are reused for
+        # both K16.7 items_total counting and the main processing loop,
+        # avoiding a second HTTP call to book-service.
+        pre_chapters: list[ChapterInfo] | None = None
+        pre_pending: list[dict] | None = None
+
         if job.scope in ("chapters", "all"):
-            chapters = await _enumerate_chapters(
+            pre_chapters = await _enumerate_chapters(
                 book_client, book_id, job.current_cursor,
             )
-            for ch in chapters:
+        if job.scope in ("chat", "all"):
+            pre_pending = await _enumerate_pending_chat_turns(
+                pool, job.user_id, job.project_id,
+            )
+
+        # K16.7: if items_total wasn't set by the caller (backfill case),
+        # count items now so the UI can show progress percentage.
+        if job.items_total is None:
+            total = len(pre_chapters or []) + len(pre_pending or [])
+            await _set_items_total(pool, job.user_id, job.job_id, total)
+            logger.info("Job %s: items_total set to %d (chapters=%d, chat=%d)",
+                        job.job_id, total,
+                        len(pre_chapters or []), len(pre_pending or []))
+
+        # Process items based on scope
+        if pre_chapters:
+            for ch in pre_chapters:
                 # Check job status (pause/cancel detection)
                 status = await _refresh_job_status(pool, job.job_id)
                 if status != "running":
@@ -414,11 +450,8 @@ async def process_job(
                     result.entities_merged, result.relations_created,
                 )
 
-        if job.scope in ("chat", "all"):
-            pending = await _enumerate_pending_chat_turns(
-                pool, job.user_id, job.project_id,
-            )
-            for turn in pending:
+        if pre_pending:
+            for turn in pre_pending:
                 status = await _refresh_job_status(pool, job.job_id)
                 if status != "running":
                     logger.info("Job %s no longer running (status=%s), stopping", job.job_id, status)

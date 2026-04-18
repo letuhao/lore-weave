@@ -261,3 +261,74 @@ async def test_process_job_chapter_text_unavailable_skips():
     await process_job(pool, kc, bc, job)
 
     kc.extract_item.assert_not_called()  # skipped
+
+
+# ── K16.7: backfill — items_total population ─────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_backfill_sets_items_total_when_none():
+    """When items_total is None, runner counts items and sets it."""
+    chapters = [
+        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i)
+        for i in range(5)
+    ]
+    job = _job(scope="chapters", items_total=None)
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    bc = _mock_book_client(chapters=chapters)
+
+    await process_job(pool, kc, bc, job)
+
+    # items_total should be set via _set_items_total (execute call)
+    set_total_calls = [
+        c for c in pool.execute.call_args_list
+        if "items_total" in str(c)
+    ]
+    assert len(set_total_calls) >= 1
+    # All 5 chapters should be extracted
+    assert kc.extract_item.call_count == 5
+
+
+@pytest.mark.asyncio
+async def test_backfill_skips_items_total_when_already_set():
+    """When items_total is already set, runner does not overwrite it."""
+    job = _job(scope="chapters", items_total=10)
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    bc = _mock_book_client()
+
+    await process_job(pool, kc, bc, job)
+
+    # _set_items_total should NOT be called
+    set_total_calls = [
+        c for c in pool.execute.call_args_list
+        if "items_total = $3" in str(c)
+    ]
+    assert len(set_total_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_backfill_scope_all_counts_chapters_and_chat():
+    """scope=all counts both chapters and pending chat turns."""
+    chapters = [
+        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i)
+        for i in range(3)
+    ]
+    pending_rows = [
+        {"pending_id": uuid4(), "event_id": uuid4(), "event_type": "chat.turn",
+         "aggregate_type": "session", "aggregate_id": uuid4()}
+        for _ in range(2)
+    ]
+    job = _job(scope="all", items_total=None)
+    pool = _mock_pool()
+    # fetch is called for _enumerate_pending_chat_turns (twice: once for
+    # counting in backfill, once for actual processing)
+    pool.fetch = AsyncMock(return_value=pending_rows)
+    kc = _mock_knowledge_client()
+    bc = _mock_book_client(chapters=chapters)
+
+    await process_job(pool, kc, bc, job)
+
+    # 3 chapters + 2 chat turns = 5 extract calls
+    assert kc.extract_item.call_count == 5

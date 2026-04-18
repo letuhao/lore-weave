@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K16.6 worker-ai + K16.2–K16.5 + K17.10 + Dockerfile)
-- Updated By: Assistant (session 46 — K16.6 worker-ai service (a+b), K16.2–K16.5 extraction lifecycle, K17.10-v1 + R1, Dockerfile. 824 tests across 2 services.)
+- Last Updated: 2026-04-18 (session 46 — K16.7 + K16.6 + K16.2–K16.5 + K17.10 + Dockerfile)
+- Updated By: Assistant (session 46 — K16.7 backfill, K16.6 worker-ai, K16.2–K16.5 extraction lifecycle, K17.10-v1 + R1, Dockerfile. 827 tests across 2 services.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: 1b36f1f (K16.6a)
+- HEAD: 73eac91 (K16.6b)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -134,6 +134,22 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K16.7 — Backfill handler (items_total population) ✅ (session 46)
+
+**Goal:** Auto-populate `items_total` on extraction jobs for UI progress tracking. When the job runner starts processing a job where `items_total` is None, it counts chapters + pending chat turns and persists the total.
+
+**Files:**
+- MODIFIED [services/worker-ai/app/runner.py](../../services/worker-ai/app/runner.py) — pre-enumeration pattern: items counted once, reused for both items_total and processing (avoids double HTTP call to book-service). `_set_items_total` DB helper.
+- MODIFIED [services/worker-ai/tests/test_runner.py](../../services/worker-ai/tests/test_runner.py) — +3 tests
+
+**R1 review fixes (2 issues):**
+1. MED: Single enumeration — chapters/chat listed once, reused for counting + processing
+2. LOW: items_total=0 now set (was skipped by `> 0` guard)
+
+**Verify:** 13/13 worker-ai tests, 814/814 knowledge-service. 827 total.
+
+---
 
 ### K16.6b — worker-ai service + extraction job runner ✅ (session 46)
 
