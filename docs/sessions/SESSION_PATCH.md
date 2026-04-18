@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 — K16 COMPLETE + K17.10 + Dockerfile)
-- Updated By: Assistant (session 46 — K16.2–K16.15 extraction lifecycle COMPLETE, K17.10-v1 + R1, Dockerfile. 862 tests across 2 services.)
+- Last Updated: 2026-04-18 (session 46 — K11.10 + K15.11 + K17.11 + K17.12 + K16 COMPLETE + K17.10 + Dockerfile)
+- Updated By: Assistant (session 46 — K11.10/K15.11/K17.11/K17.12 + K16 complete + K17.10. 866 tests across 2 services.)
 - Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: e7949d1 (K16.11-K16.14-R1)
+- HEAD: 68b947d (K16.15-R1)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -134,6 +134,20 @@
 > - **knowledge-service: 164/164 passing** (up from 131/131 at end of session 36)
 > - **chat-service: 156/156 passing** (unchanged after K5 landed; stable)
 > - **glossary-service: all green** (untouched this session)
+
+### K11.10 + K15.11 + K17.11 + K17.12 — Glossary client, sync, rate limiter ✅ (session 46)
+
+**K17.11** — Already shipped by K16.6b (worker-ai calls extract-item → Pass 2). All 3 acceptance criteria met. Marked complete.
+
+**K17.12** — `_TokenBucket` rate limiter in `provider_client.py`. 10 calls/sec/user, per-user isolation, async sleep on exhaustion. 3 tests.
+
+**K11.10 (partial)** — Added `list_entities`, `propose_entities`, `generate_wiki_stubs` to `GlossaryClient`. Event subscriber (glossary.entity_created/updated/deleted) deferred to K14 (Redis streams pipeline).
+
+**K15.11** — `glossary_sync.py`: `sync_glossary_entity_to_neo4j` merges glossary entities as confidence=1.0, source_type='glossary' :Entity nodes. MERGE on (user_id, glossary_entity_id) for idempotency. Canonicalizes name. 3 tests.
+
+**Verify:** 6 new tests, 853/853 knowledge-service, 866 total.
+
+---
 
 ### K16.15 — Extraction lifecycle integration test ✅ (session 46)
 

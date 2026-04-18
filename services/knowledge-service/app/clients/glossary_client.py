@@ -235,6 +235,92 @@ class GlossaryClient:
             logger.warning("glossary entity-count failed: %s", exc)
             return None
 
+    # ── K11.10 — HTTP methods for extraction pipeline ────────────────
+
+    async def list_entities(
+        self, book_id: UUID, *, status_filter: str = "active",
+    ) -> list[dict] | None:
+        """GET /internal/books/{book_id}/known-entities.
+
+        Returns entity list for anchor pre-loading (K13.0).
+        Returns None on failure.
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/known-entities"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(
+                url,
+                headers={"X-Trace-Id": tid} if tid else None,
+                params={"status": status_filter},
+            )
+            if resp.status_code != 200:
+                logger.warning("glossary list-entities %d", resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("glossary list-entities failed: %s", exc)
+            return None
+
+    async def propose_entities(
+        self,
+        book_id: UUID,
+        *,
+        entities: list[dict],
+        source_language: str = "en",
+        attribute_actions: dict | None = None,
+    ) -> dict | None:
+        """POST /internal/books/{book_id}/extract-entities.
+
+        Bulk propose extraction candidates to glossary-service.
+        Returns the response or None on failure. Non-blocking — caller
+        should queue in extraction_pending on prolonged outage.
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/extract-entities"
+        tid = trace_id_var.get()
+        body = {
+            "source_language": source_language,
+            "attribute_actions": attribute_actions or {},
+            "entities": entities,
+        }
+        try:
+            resp = await self._http.post(
+                url, json=body,
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code not in (200, 201):
+                logger.warning("glossary propose-entities %d", resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("glossary propose-entities failed: %s", exc)
+            return None
+
+    async def generate_wiki_stubs(
+        self,
+        book_id: UUID,
+        *,
+        entity_ids: list[str],
+    ) -> dict | None:
+        """POST /v1/glossary/books/{book_id}/wiki/generate.
+
+        Propose wiki stubs for extracted entities. Returns None on failure.
+        """
+        url = f"{self._base_url}/v1/glossary/books/{book_id}/wiki/generate"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.post(
+                url,
+                json={"entity_ids": entity_ids},
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code not in (200, 201):
+                logger.warning("glossary wiki-generate %d", resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("glossary wiki-generate failed: %s", exc)
+            return None
+
 
 # ── module-level singleton managed by lifespan ─────────────────────────────
 

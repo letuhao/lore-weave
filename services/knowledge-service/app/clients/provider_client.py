@@ -84,6 +84,47 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
+# ── K17.12 — Token-bucket rate limiter ───────────────────────────────
+
+
+class _TokenBucket:
+    """Simple per-user token-bucket rate limiter.
+
+    max_rate: max calls per second per user.
+    Each user gets their own bucket. Tokens refill continuously.
+    Thread-safe within asyncio (single-threaded event loop).
+    """
+
+    def __init__(self, max_rate: float = 10.0) -> None:
+        self._max_rate = max_rate
+        self._buckets: dict[str, tuple[float, float]] = {}  # user_id → (tokens, last_refill)
+
+    async def acquire(self, user_id: str) -> None:
+        """Wait until a token is available for this user."""
+        import asyncio
+        import time
+
+        now = time.monotonic()
+        tokens, last = self._buckets.get(user_id, (self._max_rate, now))
+
+        # Refill tokens based on elapsed time
+        elapsed = now - last
+        tokens = min(self._max_rate, tokens + elapsed * self._max_rate)
+
+        if tokens < 1.0:
+            # Wait for a token to become available
+            wait = (1.0 - tokens) / self._max_rate
+            await asyncio.sleep(wait)
+            tokens = 1.0
+
+        tokens -= 1.0
+        self._buckets[user_id] = (tokens, time.monotonic())
+
+
+# Module-level rate limiter shared by all ProviderClient instances.
+_rate_limiter = _TokenBucket(max_rate=10.0)
+
+
 # ── Exception hierarchy ───────────────────────────────────────────────
 
 class ProviderError(Exception):
@@ -291,6 +332,9 @@ class ProviderClient:
                     "messages must be non-empty",
                     trace_id=trace_id,
                 )
+
+            # K17.12 — rate limit before making the LLM call
+            await _rate_limiter.acquire(user_id)
 
             # Build URL + body. The proxy rewrites `model` (K17.2a)
             # but OpenAI-schema clients reject a missing field, so we
