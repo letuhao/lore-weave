@@ -1,16 +1,24 @@
 import { Navigate, useParams, Link } from 'react-router-dom';
-import { FolderOpen, User, Lock } from 'lucide-react';
+import { FolderOpen, User, Lock, Briefcase, Users, Clock, Database } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { ProjectsTab } from '@/features/knowledge/components/ProjectsTab';
 import { GlobalBioTab } from '@/features/knowledge/components/GlobalBioTab';
 import { PrivacyTab } from '@/features/knowledge/components/PrivacyTab';
 
-type Tab = 'projects' | 'global' | 'privacy';
+type Tab = 'projects' | 'jobs' | 'global' | 'entities' | 'timeline' | 'raw' | 'privacy';
+
+// Placeholders for Jobs/Entities/Timeline/Raw land in K19b/d/e. Until then
+// the tabs render "Coming soon" so the K19a-shipped navigation is complete.
+type PlaceholderName = 'jobs' | 'entities' | 'timeline' | 'raw';
 
 const TAB_DEFS: { id: Tab; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'projects', icon: FolderOpen },
+  { id: 'jobs', icon: Briefcase },
   { id: 'global', icon: User },
+  { id: 'entities', icon: Users },
+  { id: 'timeline', icon: Clock },
+  { id: 'raw', icon: Database },
   { id: 'privacy', icon: Lock },
 ];
 
@@ -55,8 +63,22 @@ export function KnowledgePage() {
       </nav>
 
       {activeTab === 'projects' && <ProjectsTab />}
+      {activeTab === 'jobs' && <PlaceholderTab name="jobs" />}
       {activeTab === 'global' && <GlobalBioTab />}
+      {activeTab === 'entities' && <PlaceholderTab name="entities" />}
+      {activeTab === 'timeline' && <PlaceholderTab name="timeline" />}
+      {activeTab === 'raw' && <PlaceholderTab name="raw" />}
       {activeTab === 'privacy' && <PrivacyTab />}
+    </div>
+  );
+}
+
+function PlaceholderTab({ name }: { name: PlaceholderName }) {
+  const { t } = useTranslation('knowledge');
+  return (
+    <div className="rounded-lg border bg-card px-6 py-10 text-center">
+      <p className="mb-1.5 font-serif text-sm font-semibold">{t('placeholder.title')}</p>
+      <p className="text-xs text-muted-foreground">{t(`placeholder.bodies.${name}`)}</p>
     </div>
   );
 }

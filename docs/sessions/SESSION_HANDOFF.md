@@ -1,13 +1,21 @@
-# Session Handoff — Session 48 (Track 3 started; K19a.1-rename shipped)
+# Session Handoff — Session 48 (Track 3 started; K19a.1-rename + placeholders shipped)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-19 (session 48 — Track 3 launch)
-> **HEAD:** K19a.1-rename commit on top of `e694e44`
+> **HEAD:** K19a.1-placeholders commit on top of `d14d71b` on top of `e694e44`
 > **Branch:** `main` (ahead of origin by sessions 38–48 commits — user pushes manually)
+
+## Session 48 status — Track 3 cycles 1 + 2 shipped
+
+**Cycle 1 (K19a.1-rename, d14d71b):** pure `/memory` → `/knowledge` rename + nav retranslation (24 files).
+
+**Cycle 2 (K19a.1-placeholders, pending commit):** 4 placeholder tabs added. Navigation shell complete (7 tabs: Projects / Jobs / Global / Entities / Timeline / Raw / Privacy). Each new tab renders "Coming soon" + localized function description. Inline `PlaceholderTab` helper in [KnowledgePage.tsx](../../frontend/src/pages/KnowledgePage.tsx) keyed on `PlaceholderName` subset type.
+
+**User feedback captured mid-session:** future small tasks should be batched into single cycles (saved to memory `feedback_batch_small_tasks.md`). Next session should propose batched cycles when 2+ upcoming tasks are small and share files.
 
 ## Session 48 — K19a.1-rename (first Track 3 cycle) ✅
 
-Single cycle this session: pure `/memory` → `/knowledge` rename + nav retranslation.
+Pure `/memory` → `/knowledge` rename + nav retranslation.
 
 **What shipped:**
 - URL path + page file + component + i18n namespace all renamed to `knowledge`; hard-cut on `/memory` (old URLs 404)

@@ -5,8 +5,21 @@
     "tabs": {
       "label": "Tab tri thức",
       "projects": "Dự án",
+      "jobs": "Tác vụ",
       "global": "Chung",
+      "entities": "Thực thể",
+      "timeline": "Dòng thời gian",
+      "raw": "Dữ liệu thô",
       "privacy": "Quyền riêng tư"
+    }
+  },
+  "placeholder": {
+    "title": "Sắp ra mắt",
+    "bodies": {
+      "jobs": "Duyệt các tác vụ trích xuất đang chạy và đã hoàn tất.",
+      "entities": "Duyệt các thực thể được trích xuất vào đồ thị tri thức.",
+      "timeline": "Xem sự kiện và dữ kiện theo thứ tự thời gian.",
+      "raw": "Tìm kiếm vectơ trên toàn bộ ngăn kéo tri thức đã trích xuất."
     }
   },
   "projects": {

@@ -5,8 +5,21 @@
     "tabs": {
       "label": "Knowledge tabs",
       "projects": "Projects",
+      "jobs": "Jobs",
       "global": "Global",
+      "entities": "Entities",
+      "timeline": "Timeline",
+      "raw": "Raw",
       "privacy": "Privacy"
+    }
+  },
+  "placeholder": {
+    "title": "Coming soon",
+    "bodies": {
+      "jobs": "Browse active and historical extraction jobs.",
+      "entities": "Browse entities extracted into your knowledge graph.",
+      "timeline": "View facts and events chronologically.",
+      "raw": "Vector-search the full set of extracted knowledge drawers."
     }
   },
   "projects": {

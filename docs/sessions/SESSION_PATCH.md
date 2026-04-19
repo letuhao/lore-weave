@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-19 **(session 48 — Track 3 started, K19a.1-rename shipped)** — Track 2 still code-complete (T2-close-2 human Gate 13 loop remains). Track 3 first cycle: `/memory` → `/knowledge` URL + page + i18n namespace rename end-to-end, with retranslated nav label + 5 product-name strings per locale. Playwright-verified.
-- Updated By: Assistant (session 48 — 1 commit: K19a.1-rename. 24 files touched, balanced rename + retranslation. Dev server smoke-tested via Playwright MCP: /knowledge/* renders, /memory/* 404s, no i18n console errors.)
+- Last Updated: 2026-04-19 **(session 48 — Track 3 started, K19a.1-rename + K19a.1-placeholders shipped)** — Track 2 still code-complete (T2-close-2 human Gate 13 loop remains). Track 3: cycle 1 renamed /memory → /knowledge end-to-end; cycle 2 added 4 placeholder tabs (Jobs/Entities/Timeline/Raw) with "Coming soon" cards. Full 7-tab navigation shell now in place. Playwright-verified both cycles.
+- Updated By: Assistant (session 48 — 2 commits so far: K19a.1-rename (24 files, d14d71b) + K19a.1-placeholders (5 files). User feedback captured: batch small tasks into one workflow cycle rather than 12 phases × 3 — saved to memory.)
 - Active Branch: `main` (ahead of origin by sessions 38–48 commits — user pushes manually)
-- HEAD: `e694e44` at session 47 end; K19a.1-rename lands on top in session 48
+- HEAD: `d14d71b` (K19a.1-rename); K19a.1-placeholders lands on top
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -249,6 +249,31 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 ---
 
 ## Current Active Work
+
+### K19a.1-placeholders — 4 placeholder tabs (Jobs/Entities/Timeline/Raw) ✅ (session 48, Track 3 cycle 2)
+
+Closes the K19a.1 split. Pure FE (0 BE dependency verified pre-CLARIFY per feedback rule).
+
+**Scope:** 4 new tabs inserted into [KnowledgePage.tsx](../../frontend/src/pages/KnowledgePage.tsx) between Projects/Global and before Privacy. Each renders an inline `PlaceholderTab` card with localized "Coming soon" + user-visible function description (not phase IDs — less drift).
+
+**Final 7-tab order:** Projects → Jobs → Global → Entities → Timeline → Raw → Privacy. Icons: FolderOpen / Briefcase / User / Users / Clock / Database / Lock.
+
+**Files (5):**
+- [KnowledgePage.tsx](../../frontend/src/pages/KnowledgePage.tsx) — `Tab` union +4, `PlaceholderName` subset type, TAB_DEFS +4, 4 render branches, local `PlaceholderTab({ name })` helper using `useTranslation('knowledge')`
+- 4 × `frontend/src/i18n/locales/*/knowledge.json` — +4 `page.tabs.*` label keys + new `placeholder` block with shared `title` and per-tab `bodies.*` per locale
+
+**i18n key structure:**
+```
+page.tabs.{jobs, entities, timeline, raw}
+placeholder.title                   // shared "Coming soon" — DRY across 4 tabs
+placeholder.bodies.{jobs, entities, timeline, raw}
+```
+
+**Evidence:** tsc clean, vite build 5.93s, Playwright smoke walked `/knowledge/{jobs,entities,timeline,raw}` all rendering card + localized body, 7-tab order correct, bad-tab URL auto-redirects to `/knowledge/projects` (guard intact), zero i18n console errors.
+
+**User feedback captured for future cycles:** the next several Track 3 tasks that are each small should be batched into a single workflow cycle rather than run through 12 phases each — saved to `feedback_batch_small_tasks.md`.
+
+---
 
 ### K19a.1 — /memory → /knowledge rename + retranslation ✅ (session 48, first Track 3 cycle)
 
