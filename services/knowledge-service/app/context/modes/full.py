@@ -45,7 +45,7 @@ from app.context.formatters.instructions import build_instructions_block
 from app.context.formatters.token_counter import estimate_tokens
 from app.context.formatters.xml_escape import sanitize_for_xml
 from app.context.intent.classifier import IntentResult, classify
-from app.context.modes.no_project import BuiltContext
+from app.context.modes.no_project import BuiltContext, split_at_boundary
 from app.context.selectors.absence import detect_absences
 from app.context.selectors.facts import L2FactResult, select_l2_facts
 from app.context.selectors.glossary import select_glossary_for_context
@@ -205,11 +205,15 @@ def _render_mode3(
     l3_passages: list[L3Passage],
     absences: list[str],
     intent_obj: IntentResult,
-) -> str:
-    """Pure render of Mode 3 pieces → XML string.
+) -> tuple[str, str, str]:
+    """Pure render of Mode 3 pieces → (stable, volatile, context).
 
     Extracted so the budget enforcer can call us repeatedly with
-    progressively trimmed pieces until the output fits.
+    progressively trimmed pieces until the output fits. K18.9 returns
+    the three strings so the final BuiltContext carries the cacheable
+    prefix split — L0 and project instructions/summary don't change
+    under budget trimming (they're protected), so the stable segment
+    survives each re-render unchanged.
     """
     lines: list[str] = ['<memory mode="full">']
 
@@ -227,6 +231,9 @@ def _render_mode3(
             f"    <summary>{sanitize_for_xml(l1_summary.content)}</summary>"
         )
     lines.append("  </project>")
+    # K18.9: snapshot stable boundary right after </project>. Glossary
+    # onwards is message/intent-dependent and must not be cached.
+    stable_line_count = len(lines)
 
     if entities:
         lines.append("  <glossary>")
@@ -283,7 +290,7 @@ def _render_mode3(
     lines.append(f"  <instructions>{sanitize_for_xml(instructions)}</instructions>")
     lines.append("</memory>")
 
-    return "\n".join(lines)
+    return split_at_boundary(lines, stable_line_count)
 
 
 def _enforce_budget(
@@ -297,11 +304,12 @@ def _enforce_budget(
     absences: list[str],
     intent_obj: IntentResult,
     budget_tokens: int,
-) -> tuple[str, int]:
+) -> tuple[str, str, str, int]:
     """K18.7 — trim in reverse priority until under budget.
 
-    Returns `(rendered_xml, token_count)`. The passed-in lists are
-    copied defensively; the caller's objects are not mutated.
+    Returns `(stable_context, volatile_context, context, token_count)`.
+    The passed-in lists are copied defensively; the caller's objects
+    are not mutated.
 
     Drop order (KSA §4.4.4, lowest priority first):
       1. `<passages>` — drop lowest-score entries
@@ -310,6 +318,11 @@ def _enforce_budget(
       4. glossary — drop lowest-scored entries
     Never dropped: L0, project instructions, L1 summary, current /
     recent / negative facts, mode-level instructions.
+
+    K18.9: trimming only touches fields AFTER the </project> boundary
+    (glossary, facts, passages, absences, instructions), so the stable
+    prefix is identical across every retry — the split is consistent
+    end-to-end regardless of how many budget passes it takes.
     """
     # Defensive copies so retries don't mutate caller state.
     passages = list(l3_passages)
@@ -322,18 +335,18 @@ def _enforce_budget(
         negative=list(l2_facts.negative),
     )
 
-    def render_and_count() -> tuple[str, int]:
-        out = _render_mode3(
+    def render_and_count() -> tuple[str, str, str, int]:
+        stable, volatile, context = _render_mode3(
             project=project, l0=l0, l1_summary=l1_summary,
             entities=ent_list, l2_facts=facts,
             l3_passages=passages, absences=abs_list,
             intent_obj=intent_obj,
         )
-        return out, estimate_tokens(out)
+        return stable, volatile, context, estimate_tokens(context)
 
-    rendered, tokens = render_and_count()
+    stable, volatile, rendered, tokens = render_and_count()
     if tokens <= budget_tokens:
-        return rendered, tokens
+        return stable, volatile, rendered, tokens
 
     # Pass 1: drop lowest-score passages progressively.
     if passages:
@@ -341,50 +354,50 @@ def _enforce_budget(
         passages.sort(key=lambda p: p.score, reverse=True)
         while passages and tokens > budget_tokens:
             passages.pop()
-            rendered, tokens = render_and_count()
+            stable, volatile, rendered, tokens = render_and_count()
         if tokens <= budget_tokens:
             logger.info(
                 "K18.7: budget enforced by trimming passages (final=%d, tokens=%d/%d)",
                 len(passages), tokens, budget_tokens,
             )
-            return rendered, tokens
+            return stable, volatile, rendered, tokens
 
     # Pass 2: drop absences entirely.
     if abs_list:
         abs_list.clear()
-        rendered, tokens = render_and_count()
+        stable, volatile, rendered, tokens = render_and_count()
         if tokens <= budget_tokens:
             logger.info(
                 "K18.7: budget enforced by dropping absences (tokens=%d/%d)",
                 tokens, budget_tokens,
             )
-            return rendered, tokens
+            return stable, volatile, rendered, tokens
 
     # Pass 3: drop background facts (keep current/recent/negative).
     if facts.background:
         facts.background.clear()
-        rendered, tokens = render_and_count()
+        stable, volatile, rendered, tokens = render_and_count()
         if tokens <= budget_tokens:
             logger.info(
                 "K18.7: budget enforced by dropping background facts "
                 "(tokens=%d/%d)",
                 tokens, budget_tokens,
             )
-            return rendered, tokens
+            return stable, volatile, rendered, tokens
 
     # Pass 4: trim glossary from the tail until under budget.
     # Assume entities arrive in rank order; pop from the end.
     if ent_list:
         while ent_list and tokens > budget_tokens:
             ent_list.pop()
-            rendered, tokens = render_and_count()
+            stable, volatile, rendered, tokens = render_and_count()
         if tokens <= budget_tokens:
             logger.info(
                 "K18.7: budget enforced by trimming glossary "
                 "(final=%d, tokens=%d/%d)",
                 len(ent_list), tokens, budget_tokens,
             )
-            return rendered, tokens
+            return stable, volatile, rendered, tokens
 
     # Couldn't fit even with everything trimmed — render what's left
     # (L0/L1/instructions are protected) and log the overshoot.
@@ -393,7 +406,7 @@ def _enforce_budget(
         "(tokens=%d > budget=%d) — L0/L1/instructions only may still be too large",
         tokens, budget_tokens,
     )
-    return rendered, tokens
+    return stable, volatile, rendered, tokens
 
 
 async def build_full_mode(
@@ -489,7 +502,7 @@ async def build_full_mode(
     absences = detect_absences(mentioned_entities, l2_facts, l3_hits=l3_texts)
 
     # ── render + K18.7 budget enforcement ───────────────────────────────
-    context, token_count = _enforce_budget(
+    stable_context, volatile_context, context, token_count = _enforce_budget(
         project=project,
         l0=l0,
         l1_summary=l1_summary,
@@ -506,4 +519,6 @@ async def build_full_mode(
         context=context,
         recent_message_count=_RECENT_MESSAGE_COUNT,
         token_count=token_count,
+        stable_context=stable_context,
+        volatile_context=volatile_context,
     )

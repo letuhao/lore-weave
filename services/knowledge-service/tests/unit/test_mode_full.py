@@ -492,3 +492,84 @@ async def test_l3_hits_count_as_absence_coverage(monkeypatch):
     )
     # Morgana IS in a passage — absence detection should NOT flag it.
     assert "<no_memory_for>" not in result.context
+
+
+# ── K18.9 prompt-caching split ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_mode3_splits_at_project_boundary(monkeypatch):
+    """K18.9: stable_context ends at `</project>`; glossary/facts/
+    passages/absences/instructions are volatile. Invariant:
+    context == stable + volatile."""
+    _patch_mode3_pieces(
+        monkeypatch,
+        l0_summary=_summary("I am a novelist."),
+        l1_summary=_summary("Book 1."),
+    )
+
+    project = _project(instructions="Write terse prose.")
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=None,
+        user_id=USER_ID,
+        project=project,
+        message="tell me about someone",
+    )
+
+    assert result.context == result.stable_context + result.volatile_context
+    assert result.stable_context.rstrip().endswith("</project>")
+    # Volatile starts with one of the per-message sections.
+    volatile_head = result.volatile_context.lstrip()
+    assert volatile_head.startswith(("<glossary>", "<facts>", "<passages>", "<no_memory_for>", "<instructions>"))
+
+
+@pytest.mark.asyncio
+async def test_mode3_split_preserved_after_budget_trim(monkeypatch):
+    """K18.9: even when budget enforcer trims passages/glossary, the
+    stable prefix (L0 + project) is protected so stable_context is
+    identical to the non-trimmed case and the invariant holds."""
+    from app.context.selectors.passages import L3Passage
+
+    # Big passage payload so enforce_budget actually trims.
+    passages = [
+        L3Passage(
+            text=f"Passage {i} — " + ("filler content " * 20),
+            source_type="chapter", source_id=f"chap-{i}",
+            chunk_index=0, score=0.5 - i * 0.01,
+            is_hub=False, chapter_index=i,
+        )
+        for i in range(10)
+    ]
+    _patch_mode3_pieces(
+        monkeypatch,
+        l0_summary=_summary("Novelist."),
+        l1_summary=_summary("Project summary."),
+        l3_passages=passages,
+    )
+    # Force a tight budget so trimming fires.
+    monkeypatch.setattr(
+        "app.context.modes.full.settings.mode3_token_budget", 200,
+    )
+
+    project = _project(instructions="Be terse.")
+    project.embedding_model = "bge-m3"
+
+    result = await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=MagicMock(),
+        user_id=USER_ID,
+        project=project,
+        message="tell me",
+    )
+    # Stable prefix survives; invariant holds post-trim.
+    assert result.context == result.stable_context + result.volatile_context
+    assert result.stable_context.rstrip().endswith("</project>")
+    # Prove trim actually fired: some passages were dropped. The input
+    # had 10 passages totalling far more than the 200-token budget — at
+    # least one had to go. If the trim logic ever regresses to a
+    # no-op, this assertion catches it before the invariant check does.
+    passage_count_in_output = result.volatile_context.count("<passage ")
+    assert passage_count_in_output < 10

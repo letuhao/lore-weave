@@ -30,7 +30,7 @@ from app.config import settings
 from app.context.formatters.dedup import filter_entities_not_in_summary
 from app.context.formatters.token_counter import estimate_tokens
 from app.context.formatters.xml_escape import sanitize_for_xml
-from app.context.modes.no_project import BuiltContext
+from app.context.modes.no_project import BuiltContext, split_at_boundary
 from app.context.selectors.glossary import select_glossary_for_context
 from app.context.selectors.summaries import load_global_summary
 from app.context.selectors.projects import load_project_summary
@@ -174,6 +174,11 @@ async def build_static_mode(
             f"    <summary>{sanitize_for_xml(l1_summary.content)}</summary>"
         )
     lines.append("  </project>")
+    # K18.9: snapshot the line count right after </project>. Everything
+    # up to here (memory opening, <user>, <project>...</project>) is
+    # message-independent → cacheable. Everything after (glossary
+    # selected by FTS on `message`, instructions) is volatile.
+    stable_line_count = len(lines)
 
     # ── glossary (optional) ────────────────────────────────────────────
     if entities:
@@ -186,10 +191,12 @@ async def build_static_mode(
     lines.append(f"  <instructions>{sanitize_for_xml(_INSTRUCTIONS)}</instructions>")
     lines.append("</memory>")
 
-    context = "\n".join(lines)
+    stable, volatile, context = split_at_boundary(lines, stable_line_count)
     return BuiltContext(
         mode="static",
         context=context,
         recent_message_count=settings.recent_message_count,
         token_count=estimate_tokens(context),
+        stable_context=stable,
+        volatile_context=volatile,
     )

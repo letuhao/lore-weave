@@ -191,17 +191,43 @@ async def stream_response(
     # Each part is stripped so a trailing newline in (e.g.) the XML memory
     # block doesn't stack with the "\n\n" separator to produce triple
     # newlines in the final prompt (K5-I3).
-    system_parts: list[str] = []
-    if kctx.context:
-        stripped = kctx.context.strip()
-        if stripped:
-            system_parts.append(stripped)
-    if system_prompt:
-        stripped = system_prompt.strip()
-        if stripped:
-            system_parts.append(stripped)
-    if system_parts:
-        messages.insert(0, {"role": "system", "content": "\n\n".join(system_parts)})
+    #
+    # K18.9: when the provider is Anthropic AND the memory block came back
+    # pre-split by knowledge-service, emit structured system content with a
+    # `cache_control` marker on the stable prefix. Subsequent turns in the
+    # same session whose L0 + project block didn't change hit the prompt
+    # cache and skip re-tokenising the prefix. Non-Anthropic providers
+    # (and the degraded / unsplit fallback) take the plain-string path.
+    use_anthropic_cache = (
+        creds.provider_kind == "anthropic"
+        and kctx.stable_context.strip() != ""
+    )
+    if use_anthropic_cache:
+        parts: list[dict] = []
+        stable = kctx.stable_context.strip()
+        parts.append({
+            "type": "text",
+            "text": stable,
+            "cache_control": {"type": "ephemeral"},
+        })
+        volatile = kctx.volatile_context.strip()
+        if volatile:
+            parts.append({"type": "text", "text": volatile})
+        if system_prompt and system_prompt.strip():
+            parts.append({"type": "text", "text": system_prompt.strip()})
+        messages.insert(0, {"role": "system", "content": parts})
+    else:
+        system_parts: list[str] = []
+        if kctx.context:
+            stripped = kctx.context.strip()
+            if stripped:
+                system_parts.append(stripped)
+        if system_prompt:
+            stripped = system_prompt.strip()
+            if stripped:
+                system_parts.append(stripped)
+        if system_parts:
+            messages.insert(0, {"role": "system", "content": "\n\n".join(system_parts)})
 
     # Inject per-message context as a system message right before the last user message
     if context:

@@ -1,8 +1,8 @@
-# Session Handoff — Session 47 (Cycle 7a shipped, 7b pending)
+# Session Handoff — Session 47 END / Session 48 START (Cycle 7 complete, Cycle 8 next)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-19 (session 47 mid-flight — Cycle 7a committed, 7b next)
-> **HEAD (pre-session-47):** `9aa9910` (Cycle 6 review-impl fixes); session 47 commit hash pending
+> **Date:** 2026-04-19 (session 47 END)
+> **HEAD:** `7c666c9` (Cycle 7a); session 47 Cycle 7b commit hash pending (about to land)
 > **Branch:** `main` (ahead of origin by sessions 38–47 commits — user pushes manually)
 
 ---
@@ -35,7 +35,7 @@ Track 2 close-out roadmap (session 46)   ✅  9 cycles defined, 6 shipped
 
 ---
 
-## 2. Where to pick up — Cycle 7b (K18.9 prompt caching)
+## 2. Where to pick up — Cycle 8 (large infra, 3 commits)
 
 ```
 Cycle 1 — 1a + 1b                        ✅
@@ -44,13 +44,13 @@ Cycle 3 — lifecycle + scheduler           ✅ (3/5 + 2/5 partial)
 Cycle 4 — provider-registry               ✅ (2/3)
 Cycle 5 — extraction quality + perf       ✅ (4/4)
 Cycle 6 — RAG quality (6a/6b/6c)          ✅ (3/3)
-Cycle 7 — K18 final polish (split 7a/7b)
-  ├─ 7a  P-K18.3-02 MMR embedding cosine  ✅ (session 47, +top_n early-exit via review-impl)
-  └─ 7b  K18.9 prompt caching hints        ← NEXT
-Cycle 8 — large infra (3 commits)         ← after Cycle 7
-  ├─ D-K18.3-02  generative rerank (LM Studio)
-  ├─ D-T2-04  cross-process cache invalidation
-  └─ D-T2-05  glossary breaker probe half-open guarantee
+Cycle 7 — K18 final polish (split 7a/7b)  ✅ (session 47)
+  ├─ 7a  P-K18.3-02 MMR embedding cosine  ✅
+  └─ 7b  K18.9 prompt caching hints        ✅
+Cycle 8 — large infra (3 commits)         ← NEXT
+  ├─ 8a  D-K18.3-02  generative rerank (LM Studio)
+  ├─ 8b  D-T2-04  cross-process cache invalidation
+  └─ 8c  D-T2-05  glossary breaker probe half-open guarantee
 Cycle 9 — Gate-4 alignment                 ← final before Gate 13
   └─ K17.9.1 migration items
 Gate 13 E2E + Chaos tests C01–C08          ← after all cycles
@@ -58,27 +58,48 @@ Gate 13 E2E + Chaos tests C01–C08          ← after all cycles
 
 ### Resume recipe
 
-1. **Read [SESSION_PATCH.md §Track 2 Close-out Roadmap](SESSION_PATCH.md#track-2-close-out-roadmap-session-46)** — especially the Cycle 7b / 8 / 9 rows for scope.
-2. **Check the Deferred Items "Naturally-next-phase" table** — any item with Target phase "Cycle 7 / 8 / 9" is in scope now. The re-deferred items from Cycles 2 & 4 (D-K17.10-02, D-K16.2-01, D-K16.2-02, P-K2a-02, P-K3-01, P-K3-02) are **out of scope** for Track 2 close-out and stay deferred.
-3. **Cycle 7b (K18.9) is L-sized** — originally bundled with 7a as "single commit" but CLARIFY counted ~9-10 files (mode builders × 3 + schema + 2 chat-service files + tests). Split into its own commit.
-4. **Cycle 8 is 3 commits** — one per sub-item because each changes observable behavior that should be reviewable independently.
-5. **Use the workflow gate:** `python scripts/workflow-gate.py reset && python scripts/workflow-gate.py size <XS|S|M|L|XL> <files> <logic> <effects>` before starting each cycle, phase per phase through to RETRO.
+1. **Read [SESSION_PATCH.md §Track 2 Close-out Roadmap](SESSION_PATCH.md#track-2-close-out-roadmap-session-46)** — especially the Cycle 8 / 9 rows for scope.
+2. **Check the Deferred Items "Naturally-next-phase" table** — any item with Target phase "Cycle 8 / 9" is in scope now. Re-deferred items from earlier cycles (D-K17.10-02, D-K16.2-01, D-K16.2-02, P-K2a-02, P-K3-01, P-K3-02, D-K18.9-01) are **out of scope** for Track 2 close-out and stay deferred.
+3. **Cycle 8 is 3 separate commits** — one per sub-item because each changes observable behavior that should be reviewable independently.
+4. **Use the workflow gate:** `python scripts/workflow-gate.py reset && python scripts/workflow-gate.py size <XS|S|M|L|XL> <files> <logic> <effects>` before starting each cycle, phase per phase through to RETRO.
 
-### Things that are good to know before Cycle 7b
+### Things that are good to know before Cycle 8
 
-- **K18.9 prompt caching** references Anthropic's `cache_control` markers on message turns. The idea is to mark stable memory-block segments (L0, project instructions, L1 summary, glossary) as cacheable so subsequent turns in the same session can skip re-tokenizing them. Chat-service opts in; no contract break for non-caching providers.
-- **Boundary split:** Mode 3 memory block's stable prefix is `<user>` + `<project>` (instructions + summary) + `<glossary>`. Volatile starts at `<facts>` (intent-driven). Mode 2 has the same boundary minus facts. Mode 1 is entirely stable.
-- **Contract surface:** knowledge-service's `BuiltContext`/`ContextBuildResponse` needs a new field — either `stable_context_len: int` (byte offset) or split `stable_context`/`volatile_context`. Latter is cleaner; the whole-context backward-compat field can stay alongside.
-- **chat-service path:** detect `creds.provider_kind == "anthropic"` in `stream_service.py`, emit structured system content `[{"type":"text","text":stable,"cache_control":{"type":"ephemeral"}}, {"type":"text","text":volatile}]`. Non-Anthropic concatenates as today.
+- **8a D-K18.3-02 (generative rerank)** — LM Studio post-MMR reorder, config-gated. Take the final MMR top-N, call a rerank model to reorder, swap in the reordered list. Config flag so users without a rerank model don't pay the hop.
+- **8b D-T2-04 (cross-process cache invalidation)** — Redis pub/sub or event-bus for the knowledge-service L0/L1 summary caches. Currently per-worker-process caches drift up to 60 s; Track 1 accepts that staleness, Track 2 doesn't.
+- **8c D-T2-05 (glossary breaker half-open probe)** — when the glossary circuit-breaker cooldown elapses, all concurrent callers race through. Need an `asyncio.Lock` to let one probe through while others short-circuit until the probe resolves.
 
-### What 7a shipped (session 47, HEAD to be updated)
+### What Cycle 7 shipped (session 47)
 
+**7a P-K18.3-02** (HEAD `7c666c9`):
 - `PassageSearchHit.vector: list[float] | None = None` — transient per-search field, NOT on `Passage`.
 - `find_passages_by_vector(..., include_vectors: bool = False)` — opt-in vector projection via f-string-substituted `node.embedding_{dim} AS vector` (injection-safe, closed-set validation).
 - L3 selector passes `include_vectors=True`; `_mmr_rerank` per-pair cosine (when both have vectors) / Jaccard (fallback) with precomputed L2 norms keyed by `id(hit)`.
 - **Review-impl caught MED perf issue:** `_mmr_rerank` ranked the full pool (40) when the caller only consumed `[:top_n]`. Added `top_n` kwarg + early-exit. Benchmark: pool=40 dim=3072 full = 1196 ms, top_n=10 = 57 ms (21× win). Test proves both capped and uncapped paths.
-- +5 unit tests, +2 integration tests. 1273 passed + 95 skipped (live Neo4j).
-- Fixed 3 stale docstrings uncovered during review (Passage class, MMR inline comment, module "ingestion deferred" note).
+- +5 unit tests, +2 integration tests.
+- Fixed 3 stale docstrings.
+
+**7b K18.9** (about to land):
+- `BuiltContext` / `ContextBuildResponse` / `KnowledgeContext` gained `stable_context` + `volatile_context` (defaults `""`).
+- New `split_at_boundary(lines, n)` helper; explicit boundary newline so `context == stable + volatile` byte-for-byte.
+- Boundary: Mode 1 = whole block stable; Mode 2/3 stable ends at `</project>`.
+- `_enforce_budget` threaded 3-tuple (stable, volatile, context) through every trim pass — stable prefix survives each re-render unchanged.
+- chat-service `stream_service.py`: detects `creds.provider_kind == "anthropic"` + non-empty stable, emits `[{stable, cache_control: ephemeral}, {volatile}, {system_prompt}]`. Non-anthropic + empty-split keep existing concat path. LiteLLM's Anthropic adapter passes cache_control through unchanged.
+- Review-impl added `test_anthropic_includes_system_prompt_as_third_segment` (third-segment ordering + cache_control only on parts[0]) and strengthened budget-trim test to prove trim fired.
+- +6 knowledge-service tests, +7 chat-service tests.
+
+### New knobs / fields / contracts (Cycle 7)
+
+- `include_vectors: bool = False` kwarg on `find_passages_by_vector` — opt-in. Only the L3 selector sets it.
+- `PassageSearchHit.vector: list[float] | None = None` — populated only with include_vectors=True.
+- `BuiltContext.stable_context`, `BuiltContext.volatile_context` — invariant `context == stable + volatile`.
+- `ContextBuildResponse.stable_context`, `.volatile_context` — same pair exposed over the wire.
+- `KnowledgeContext.stable_context`, `.volatile_context` — defaults `""` for older-server compat.
+- chat-service now emits Anthropic structured system content for `provider_kind == "anthropic"` — the rest unchanged.
+
+### Deferred added this cycle
+
+- **D-K18.9-01**: system_prompt cache_control on anthropic path. Second `cache_control: ephemeral` marker on session-level persona. ~3 lines. Defer until a real long-persona user surfaces.
 
 ---
 

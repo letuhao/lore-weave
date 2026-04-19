@@ -96,3 +96,33 @@ async def test_cjk_summary_rendered():
     user = root.find("user")
     assert user is not None
     assert "武俠小說家" in (user.text or "")
+
+
+# ── K18.9 prompt-caching split ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_mode1_all_content_is_stable():
+    """K18.9: Mode 1 has no message-dependent content, so stable_context
+    carries the full block and volatile_context is empty. Anthropic
+    cache_control on stable then covers everything the client sends."""
+    repo = AsyncMock()
+    repo.get = AsyncMock(return_value=_summary("I am a novelist."))
+
+    built = await build_no_project_mode(repo, uuid4())
+    assert built.stable_context == built.context
+    assert built.volatile_context == ""
+    # Invariant: context is the concatenation of stable + volatile.
+    assert built.context == built.stable_context + built.volatile_context
+
+
+@pytest.mark.asyncio
+async def test_mode1_split_without_bio():
+    """No-bio Mode 1 still emits stable_context == context (the
+    instructions-only block is 100% stable)."""
+    repo = AsyncMock()
+    repo.get = AsyncMock(return_value=None)
+
+    built = await build_no_project_mode(repo, uuid4())
+    assert built.stable_context == built.context
+    assert built.volatile_context == ""

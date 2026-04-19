@@ -126,6 +126,59 @@ class TestKnowledgeClientHappyPath:
         assert body["message"] == "who is Alice?"
         await client.aclose()
 
+    @pytest.mark.asyncio
+    async def test_k18_9_split_fields_parsed(self):
+        """K18.9: `stable_context` + `volatile_context` come back as
+        plain strings. chat-service needs both to emit cache_control.
+        Test payload obeys the server-side invariant
+        context == stable + volatile (byte-for-byte)."""
+        stable = "<memory><project/>\n"
+        volatile = "</memory>"
+        payload = {
+            "mode": "static",
+            "context": stable + volatile,
+            "recent_message_count": 50,
+            "token_count": 10,
+            "stable_context": stable,
+            "volatile_context": volatile,
+        }
+        client = _make_client(_ok_response(payload))
+        result = await client.build_context(user_id="u")
+        assert result.stable_context == stable
+        assert result.volatile_context == volatile
+        assert result.context == result.stable_context + result.volatile_context
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_k18_9_split_fields_default_empty_for_older_server(self):
+        """Backward compat: older knowledge-service omits stable/
+        volatile; client defaults to '' so chat-service falls back to
+        the concat path."""
+        payload = {
+            "mode": "no_project",
+            "context": "<memory/>",
+            "recent_message_count": 50,
+            "token_count": 5,
+            # no stable_context / volatile_context fields
+        }
+        client = _make_client(_ok_response(payload))
+        result = await client.build_context(user_id="u")
+        assert result.stable_context == ""
+        assert result.volatile_context == ""
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_k18_9_degraded_has_empty_split_fields(self):
+        """Graceful-degradation path must not carry stale split fields
+        — otherwise chat-service could emit an Anthropic cache_control
+        pointing at nothing."""
+        client = _make_client(_raise(httpx.TimeoutException("boom")))
+        result = await client.build_context(user_id="u")
+        assert result.mode == "degraded"
+        assert result.stable_context == ""
+        assert result.volatile_context == ""
+        await client.aclose()
+
 
 # ── graceful degradation ───────────────────────────────────────────────────
 

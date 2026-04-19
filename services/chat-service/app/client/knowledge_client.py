@@ -61,6 +61,13 @@ class KnowledgeContext(BaseModel):
     `mode` may be one of:
       no_project / static / full   — successful build from knowledge-service
       degraded                      — synthesised on client-side failure
+
+    K18.9: `stable_context` + `volatile_context` carry the split of
+    `context` so chat-service can emit Anthropic cache_control markers
+    on the stable segment (message-independent prefix: L0 + project
+    instructions/summary). Fall back to `""` for both fields when
+    talking to an older knowledge-service build — chat-service then
+    uses the concat `context` path as before.
     """
 
     model_config = ConfigDict(extra="ignore")
@@ -69,6 +76,8 @@ class KnowledgeContext(BaseModel):
     context: str = ""
     recent_message_count: int = DEGRADED_RECENT_MESSAGE_COUNT
     token_count: int = 0
+    stable_context: str = ""
+    volatile_context: str = ""
 
 
 def _degraded() -> KnowledgeContext:

@@ -239,3 +239,51 @@ async def test_whitespace_only_l1_summary_treated_as_missing():
     )
     root = ET.fromstring(built.context)
     assert root.find("project/summary") is None
+
+
+# ── K18.9 prompt-caching split ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_mode2_splits_at_project_boundary():
+    """K18.9: stable_context ends at `</project>`; glossary onwards is
+    volatile because it's driven by the FTS search on the user's
+    message. Invariant: context == stable + volatile."""
+    summaries = AsyncMock(spec=SummariesRepo)
+    summaries.get = AsyncMock(side_effect=[
+        _summary("I am a novelist."),
+        _summary("Book 1.", "project", uuid4()),
+    ])
+    glossary = AsyncMock(spec=GlossaryClient)
+    glossary.select_for_context = AsyncMock(return_value=[_entity()])
+
+    built = await build_static_mode(
+        summaries, glossary,
+        user_id=uuid4(), project=_project(), message="who is Alice?",
+    )
+    # stable ends with </project> (plus the boundary newline).
+    assert built.stable_context.rstrip().endswith("</project>")
+    # volatile starts with glossary or instructions.
+    assert built.volatile_context.lstrip().startswith(("<glossary>", "<instructions>"))
+    # Byte-for-byte concat invariant.
+    assert built.context == built.stable_context + built.volatile_context
+    # Sanity: stable is a proper prefix of context.
+    assert built.context.startswith(built.stable_context)
+
+
+@pytest.mark.asyncio
+async def test_mode2_split_with_empty_glossary_still_holds_invariant():
+    """Even when glossary is empty, the mode still emits
+    <instructions>...</memory> as volatile. Invariant must still hold."""
+    summaries = AsyncMock(spec=SummariesRepo)
+    summaries.get = AsyncMock(side_effect=[None, None])
+    glossary = AsyncMock(spec=GlossaryClient)
+    glossary.select_for_context = AsyncMock(return_value=[])
+
+    built = await build_static_mode(
+        summaries, glossary,
+        user_id=uuid4(), project=_project(), message="",
+    )
+    assert built.context == built.stable_context + built.volatile_context
+    assert built.stable_context != ""
+    assert built.volatile_context != ""

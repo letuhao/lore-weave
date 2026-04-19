@@ -77,6 +77,11 @@ class ContextBuildResponse(BaseModel):
     context: str
     recent_message_count: int
     token_count: int
+    # K18.9 — cacheable prefix + per-message suffix. Invariant:
+    # context == stable_context + volatile_context. Default to "" so
+    # older chat-service clients that read only `context` keep working.
+    stable_context: str = ""
+    volatile_context: str = ""
 
 
 @router.post("/build", response_model=ContextBuildResponse)

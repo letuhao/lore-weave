@@ -349,3 +349,305 @@ class TestStreamResponse:
         assert captured_messages[0]["content"] == "first"
         assert captured_messages[1]["content"] == "reply"
         assert captured_messages[2]["content"] == "new msg"
+
+
+# ── K18.9 prompt-caching (cache_control on Anthropic system segments) ──────
+
+
+def _patched_knowledge(stable: str = "", volatile: str = "", context: str | None = None,
+                       mode: str = "static"):
+    """Return a MagicMock knowledge client that synthesises a
+    KnowledgeContext with the given split. Caller uses this via
+    `patch("app.services.stream_service.get_knowledge_client", ...)`."""
+    from app.client.knowledge_client import KnowledgeContext
+    if context is None:
+        context = stable + volatile
+    kctx = KnowledgeContext(
+        mode=mode, context=context, recent_message_count=50,
+        token_count=10,
+        stable_context=stable, volatile_context=volatile,
+    )
+    client = MagicMock()
+    client.build_context = AsyncMock(return_value=kctx)
+    return client
+
+
+class TestK18_9PromptCaching:
+    @pytest.mark.asyncio
+    async def test_anthropic_emits_structured_cache_control(self):
+        """K18.9: for Anthropic provider + non-empty stable_context,
+        the system message is a list of text parts with cache_control
+        on the stable segment."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+
+        stable = "<memory mode=\"static\"><project/>\n"
+        volatile = "<instructions>x</instructions></memory>"
+
+        captured_messages = []
+
+        async def fake_acompletion(**kwargs):
+            captured_messages.extend(kwargs.get("messages", []))
+            # Minimal stream: one chunk with content, then None to end
+            yield _make_chunk("ok")
+            yield _make_chunk(None)
+
+        from unittest.mock import patch as _patch
+
+        def fake_acompletion_wrapper(**kwargs):
+            return fake_acompletion(**kwargs)
+
+        with _patch(
+            "app.services.stream_service.get_knowledge_client",
+            return_value=_patched_knowledge(stable=stable, volatile=volatile),
+        ), _patch(
+            "app.services.stream_service.acompletion",
+            side_effect=fake_acompletion_wrapper,
+        ):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="q",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(provider_kind="anthropic"),
+                pool=pool,
+                billing=AsyncMock(),
+            ):
+                pass
+
+        # First captured message is the system one with structured content.
+        system_msg = captured_messages[0]
+        assert system_msg["role"] == "system"
+        parts = system_msg["content"]
+        assert isinstance(parts, list)
+        assert parts[0]["type"] == "text"
+        assert parts[0]["text"] == stable.strip()
+        assert parts[0]["cache_control"] == {"type": "ephemeral"}
+        assert parts[1]["text"] == volatile.strip()
+        # No cache_control on the volatile segment.
+        assert "cache_control" not in parts[1]
+
+    @pytest.mark.asyncio
+    async def test_anthropic_includes_system_prompt_as_third_segment(self):
+        """K18.9 + session-level system prompt: when user set a session
+        persona, it lands as a third un-cached text part after stable
+        and volatile. Catches accidental reorderings (stable must stay
+        first so cache_control marks the right byte range)."""
+        pool, conn = _make_pool_with_conn()
+        # Session has a non-null system_prompt this time.
+        pool.fetchrow.return_value = {
+            "system_prompt": "Write in the voice of a pirate.",
+            "generation_params": {},
+        }
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+
+        stable = "<memory mode=\"static\"><project/>\n"
+        volatile = "<instructions>x</instructions></memory>"
+
+        captured_messages = []
+
+        async def fake_acompletion(**kwargs):
+            captured_messages.extend(kwargs.get("messages", []))
+            yield _make_chunk("ok")
+            yield _make_chunk(None)
+
+        def fake_wrapper(**kwargs):
+            return fake_acompletion(**kwargs)
+
+        from unittest.mock import patch as _patch
+        with _patch(
+            "app.services.stream_service.get_knowledge_client",
+            return_value=_patched_knowledge(stable=stable, volatile=volatile),
+        ), _patch(
+            "app.services.stream_service.acompletion",
+            side_effect=fake_wrapper,
+        ):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="q",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(provider_kind="anthropic"),
+                pool=pool,
+                billing=AsyncMock(),
+            ):
+                pass
+
+        system_msg = captured_messages[0]
+        parts = system_msg["content"]
+        assert len(parts) == 3
+        # Order: stable (with cache_control) → volatile → system_prompt.
+        assert parts[0]["cache_control"] == {"type": "ephemeral"}
+        assert parts[0]["text"] == stable.strip()
+        assert "cache_control" not in parts[1]
+        assert parts[1]["text"] == volatile.strip()
+        assert "cache_control" not in parts[2]
+        assert parts[2]["text"] == "Write in the voice of a pirate."
+
+    @pytest.mark.asyncio
+    async def test_anthropic_mode1_all_stable_single_segment(self):
+        """Mode-1 case: volatile is empty. Anthropic path still emits
+        cache_control on the stable segment but omits the empty
+        volatile text part."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+
+        stable = "<memory mode=\"no_project\"><instructions>x</instructions></memory>"
+
+        captured_messages = []
+
+        async def fake_acompletion(**kwargs):
+            captured_messages.extend(kwargs.get("messages", []))
+            yield _make_chunk("ok")
+            yield _make_chunk(None)
+
+        def fake_wrapper(**kwargs):
+            return fake_acompletion(**kwargs)
+
+        from unittest.mock import patch as _patch
+        with _patch(
+            "app.services.stream_service.get_knowledge_client",
+            return_value=_patched_knowledge(stable=stable, volatile="", mode="no_project"),
+        ), _patch(
+            "app.services.stream_service.acompletion",
+            side_effect=fake_wrapper,
+        ):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="q",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(provider_kind="anthropic"),
+                pool=pool,
+                billing=AsyncMock(),
+            ):
+                pass
+
+        system_msg = captured_messages[0]
+        parts = system_msg["content"]
+        assert len(parts) == 1
+        assert parts[0]["cache_control"] == {"type": "ephemeral"}
+        assert parts[0]["text"] == stable.strip()
+
+    @pytest.mark.asyncio
+    async def test_non_anthropic_uses_string_concat_path(self):
+        """Non-Anthropic providers keep the existing plain-string
+        system content. cache_control would be ignored by OpenAI
+        anyway."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+
+        stable = "<memory><project/>\n"
+        volatile = "<instructions>x</instructions></memory>"
+
+        captured_messages = []
+
+        chunks = [_make_chunk("ok"), _make_chunk(None)]
+
+        # Non-Anthropic uses the OpenAI SDK path; patch AsyncOpenAI.
+        class FakeStream:
+            def __init__(self, cs): self.cs = cs
+            def __aiter__(self):
+                async def gen():
+                    for c in self.cs:
+                        # Force chunk shape so stream_service's model_extra
+                        # access doesn't crash. Re-use _make_chunk's shape.
+                        yield c
+                return gen()
+
+        class FakeCompletions:
+            async def create(self_, **kwargs):
+                captured_messages.extend(kwargs.get("messages", []))
+                return FakeStream(chunks)
+
+        class FakeChat:
+            completions = FakeCompletions()
+
+        class FakeClient:
+            chat = FakeChat()
+            async def close(self): pass
+
+        from unittest.mock import patch as _patch
+        with _patch(
+            "app.services.stream_service.get_knowledge_client",
+            return_value=_patched_knowledge(stable=stable, volatile=volatile),
+        ), _patch(
+            "app.services.stream_service.AsyncOpenAI",
+            return_value=FakeClient(),
+        ):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="q",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(provider_kind="openai",
+                                  provider_model_name="gpt-4",
+                                  base_url="https://api.openai.com/v1"),
+                pool=pool,
+                billing=AsyncMock(),
+            ):
+                pass
+
+        system_msg = captured_messages[0]
+        assert system_msg["role"] == "system"
+        # Plain string (not a list of parts).
+        assert isinstance(system_msg["content"], str)
+        assert (stable + volatile).strip() in system_msg["content"] or \
+               stable.strip() in system_msg["content"]
+
+    @pytest.mark.asyncio
+    async def test_anthropic_falls_back_to_concat_when_split_empty(self):
+        """Degraded / older-server responses carry empty stable/
+        volatile. Anthropic path must not emit an empty cache_control
+        part — it should fall back to the concat string path."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+
+        captured_messages = []
+
+        async def fake_acompletion(**kwargs):
+            captured_messages.extend(kwargs.get("messages", []))
+            yield _make_chunk("ok")
+            yield _make_chunk(None)
+
+        def fake_wrapper(**kwargs):
+            return fake_acompletion(**kwargs)
+
+        from unittest.mock import patch as _patch
+        # Empty stable AND non-empty legacy context (degraded path
+        # simulation: old server returned a blob under `context` only).
+        with _patch(
+            "app.services.stream_service.get_knowledge_client",
+            return_value=_patched_knowledge(
+                stable="", volatile="",
+                context="<memory>legacy blob</memory>",
+            ),
+        ), _patch(
+            "app.services.stream_service.acompletion",
+            side_effect=fake_wrapper,
+        ):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID,
+                user_message_content="q",
+                user_id=TEST_USER_ID,
+                model_source="user_model",
+                model_ref=TEST_MODEL_REF,
+                creds=_make_creds(provider_kind="anthropic"),
+                pool=pool,
+                billing=AsyncMock(),
+            ):
+                pass
+
+        system_msg = captured_messages[0]
+        # Fell back to plain-string concat.
+        assert isinstance(system_msg["content"], str)
+        assert "legacy blob" in system_msg["content"]
