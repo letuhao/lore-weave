@@ -248,3 +248,38 @@ def test_estimate_scope_range_accepted_without_error():
     data = resp.json()
     # Full count returned — scope_range is not yet applied
     assert data["items"]["chapters"] == 45
+
+
+def test_estimate_local_model_returns_zero_cost():
+    """T2-close-5 wiring proof: local / self-hosted models (bge,
+    llama, qwen, etc.) have $0 marginal cost, so the estimate
+    dialog should show zero instead of the legacy ~$2/M fallback.
+    Without `cost_per_token` on the hot path, this would fail — the
+    existing >0 assertions in the other tests don't catch a missed
+    wiring since the fallback happens to produce >0 too."""
+    client = _make_client(chapter_count=10, pending_count=0, entity_count=0)
+    resp = _post_estimate(client, "chapters", llm_model="bge-m3")
+    assert resp.status_code == 200
+    data = resp.json()
+    # Non-zero token count but zero cost — proves cost_per_token
+    # was consulted with the actual llm_model.
+    assert data["estimated_tokens"] > 0
+    assert float(data["estimated_cost_usd_low"]) == 0
+    assert float(data["estimated_cost_usd_high"]) == 0
+
+
+def test_estimate_paid_model_produces_known_magnitude():
+    """Sanity-check that `gpt-4o` (0.000005 per token) produces a
+    cost in the expected magnitude. Exact value would be brittle
+    (estimate bands swing ±30 %), but a floor/ceiling is safe."""
+    client = _make_client(chapter_count=10, pending_count=0, entity_count=0)
+    resp = _post_estimate(client, "chapters", llm_model="gpt-4o")
+    assert resp.status_code == 200
+    data = resp.json()
+    tokens = data["estimated_tokens"]  # 10 chapters × 2000 = 20,000
+    # base_cost = 20_000 * 0.000005 = 0.10; bands are 0.7x–1.3x.
+    low = float(data["estimated_cost_usd_low"])
+    high = float(data["estimated_cost_usd_high"])
+    assert 0.05 < low < 0.10
+    assert 0.10 < high < 0.15
+    assert tokens == 10 * 2000

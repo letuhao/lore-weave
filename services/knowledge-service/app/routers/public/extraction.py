@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from app.clients.book_client import BookClient
 from app.clients.glossary_client import GlossaryClient
 from app.config import settings as app_settings
+from app.pricing import cost_per_token
 from app.db.neo4j import neo4j_session
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.benchmark_runs import BenchmarkRunsRepo
@@ -61,9 +62,9 @@ _TOKENS_PER_CHAPTER = 2000
 _TOKENS_PER_CHAT_TURN = 800
 _TOKENS_PER_GLOSSARY_ENTITY = 300
 
-# Rough per-token cost for preview. This is a placeholder until
-# provider-registry exposes model pricing (D-K16.2-01).
-_DEFAULT_COST_PER_TOKEN = Decimal("0.000002")  # ~$2/M tokens
+# Per-token cost lookup now lives in `app.pricing` (T2-close-5 /
+# D-K16.2-01 cleared). Unknown models still fall back to the legacy
+# ~$2/M default there.
 
 # Seconds per item estimate for duration preview.
 _SECONDS_PER_ITEM = 2
@@ -167,7 +168,7 @@ async def estimate_extraction_cost(
         + glossary_entities * _TOKENS_PER_GLOSSARY_ENTITY
     )
 
-    base_cost = Decimal(estimated_tokens) * _DEFAULT_COST_PER_TOKEN
+    base_cost = Decimal(estimated_tokens) * cost_per_token(body.llm_model)
     cost_low = (base_cost * Decimal("0.7")).quantize(Decimal("0.01"))
     cost_high = (base_cost * Decimal("1.3")).quantize(Decimal("0.01"))
 
