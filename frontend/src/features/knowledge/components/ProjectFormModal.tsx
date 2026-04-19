@@ -44,7 +44,7 @@ export function ProjectFormModal({
   onCreate,
   onUpdate,
 }: Props) {
-  const { t } = useTranslation('memory');
+  const { t } = useTranslation('knowledge');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [projectType, setProjectType] = useState<ProjectType>('general');

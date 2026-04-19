@@ -31,10 +31,10 @@ type NavItem = { to: string; icon: React.ElementType; labelKey: string; auth?: b
 const mainNav: NavItem[] = [
   { to: '/books', icon: BookOpen, labelKey: 'nav.workspace', auth: true },
   { to: '/chat', icon: MessageCircle, labelKey: 'nav.chat', auth: true },
-  // K8.1-R1: `to` is `/memory` (not `/memory/projects`) so NavLink's
+  // K8.1-R1: `to` is `/knowledge` (not `/knowledge/projects`) so NavLink's
   // `startsWith(to + '/')` match keeps the entry active across all
-  // tab sub-routes. The /memory path itself redirects to /projects.
-  { to: '/memory', icon: Brain, labelKey: 'nav.memory', auth: true },
+  // tab sub-routes. The /knowledge path itself redirects to /projects.
+  { to: '/knowledge', icon: Brain, labelKey: 'nav.knowledge', auth: true },
   { to: '/browse', icon: Search, labelKey: 'nav.browse' },
 ];
 

@@ -1,9 +1,35 @@
-# Session Handoff — Session 47 END (Track 2 code-complete; Gate 13 human loop pending)
+# Session Handoff — Session 48 (Track 3 started; K19a.1-rename shipped)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-19 (session 47 END)
-> **HEAD:** `e694e44` (T2-close-4 Track 2 acceptance pack)
-> **Branch:** `main` (ahead of origin by sessions 38–47 commits — user pushes manually)
+> **Date:** 2026-04-19 (session 48 — Track 3 launch)
+> **HEAD:** K19a.1-rename commit on top of `e694e44`
+> **Branch:** `main` (ahead of origin by sessions 38–48 commits — user pushes manually)
+
+## Session 48 — K19a.1-rename (first Track 3 cycle) ✅
+
+Single cycle this session: pure `/memory` → `/knowledge` rename + nav retranslation.
+
+**What shipped:**
+- URL path + page file + component + i18n namespace all renamed to `knowledge`; hard-cut on `/memory` (old URLs 404)
+- 5 product-name-referring locale strings retranslated to Knowledge / ナレッジ / Tri thức / 知識; functional/state-machine references (`staticMemory` badge, `indicator.popover.projectHeading`, `picker.*`, body text) deliberately kept as "Memory" — they describe the AI's memory function, not the product name
+- `nav.memory` common-namespace key renamed + retranslated
+- `tMemory` local alias renamed to `tKnowledge` in SessionSettingsPanel
+- Playwright runtime evidence captured
+
+**What still says "Memory" intentionally:**
+- `projects.card.staticMemory` badge — technical state label from the 13-state memory-mode machine; backend `session.memory_mode` contract uses `"static"` / `"degraded"` / `"no_project"`
+- `indicator.popover.projectHeading` / `globalHeading` / `body text` / `picker.*` — describe the AI's memory function
+- Component names `MemoryIndicator`, `MemoryPage`-turned-history are a concept, not the URL — `MemoryIndicator` component kept; file renamed to `KnowledgePage.tsx`
+
+**Test-coverage gap (important for the NEXT i18n-touching cycle):** the vitest setup at [frontend/vitest.setup.ts:24-41](../../frontend/vitest.setup.ts) globally mocks `react-i18next` such that `useTranslation(anyNamespace)` returns keys verbatim. Unit tests provide **zero** evidence of namespace correctness. Future i18n renames must rely on exhaustive grep (including `<Trans ns=>`, `useTranslation([])` array form, `t('ns:key')` prefix form, `i18n.t`, `getFixedT`) + `tsc --noEmit` + `vite build` + Playwright. Do not over-trust vitest green.
+
+**Review-impl caught & fixed:** M1 (misleading `tMemory` alias post-namespace-rename), M2 (option c was half-shipped — retranslated 5 product labels per locale but kept functional descriptions), L1 (no runtime evidence — added Playwright smoke), L3 (2 stale "Memory page" comments).
+
+---
+
+## (Archived for reference) Session 47 END handoff
+
+> Previous session handoff content preserved below for context.
 
 ---
 

@@ -1,9 +1,9 @@
 {
   "page": {
-    "title": "記憶",
+    "title": "知識",
     "subtitle": "用於控制 AI 記住內容的專案、全域簡介與隱私設定。",
     "tabs": {
-      "label": "記憶分頁",
+      "label": "知識分頁",
       "projects": "專案",
       "global": "全域",
       "privacy": "隱私"
@@ -114,8 +114,8 @@
     }
   },
   "indicator": {
-    "label": "記憶指示器",
-    "title": "記憶",
+    "label": "知識指示器",
+    "title": "知識",
     "modes": {
       "global": "全域",
       "project": "專案",
@@ -129,7 +129,7 @@
       "projectBody": "此對話已連結到 <strong>{{name}}</strong>。AI 會看到您的全域簡介,以及該專案的摘要與術語表,在每次對話中都會用到。",
       "globalBody": "此對話未連結任何專案。AI 只會看到您的全域簡介。請在對話設定中連結專案,讓 AI 能存取書籍專屬的記憶。",
       "degradedBody": "上一輪對話無法連線到 knowledge service。AI 已切換為僅使用最近訊息的降級模式 — 您的專案記憶暫時未進入 prompt。一旦服務恢復,下一輪會自動恢復。",
-      "manage": "管理記憶"
+      "manage": "管理知識"
     }
   },
   "picker": {

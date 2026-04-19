@@ -9,7 +9,7 @@ import { ProjectCard } from './ProjectCard';
 import { ProjectFormModal } from './ProjectFormModal';
 
 export function ProjectsTab() {
-  const { t } = useTranslation('memory');
+  const { t } = useTranslation('knowledge');
   const [includeArchived, setIncludeArchived] = useState(false);
   const {
     items,

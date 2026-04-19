@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-19 **(session 47 END)** — **Track 2 code-complete, 20 commits shipped.** Only remaining: T2-close-2 (human-interactive Gate 13 loop, requires BYOK + real project; can't be automated). Track 3 can start anytime — all Track 2 surfaces are in place.
-- Updated By: Assistant (session 47 END — 20 commits across cycles 7a/7b/8a/8b/8c/9 + test-hygiene + Gate-13-report + T2-close-1a/1b-BE/1b-FE/5/6/7/3/4 + T2-polish-1/2a/2b/3. knowledge-service 1154 unit pass, chat-service 177 pass, glossary-service api 100% green for first time since pre-session-46, book-service api green.)
-- Active Branch: `main` (ahead of origin by sessions 38–47 commits — user pushes manually)
-- HEAD: `e694e44` (T2-close-4 Track 2 acceptance pack) at session 47 end
+- Last Updated: 2026-04-19 **(session 48 — Track 3 started, K19a.1-rename shipped)** — Track 2 still code-complete (T2-close-2 human Gate 13 loop remains). Track 3 first cycle: `/memory` → `/knowledge` URL + page + i18n namespace rename end-to-end, with retranslated nav label + 5 product-name strings per locale. Playwright-verified.
+- Updated By: Assistant (session 48 — 1 commit: K19a.1-rename. 24 files touched, balanced rename + retranslation. Dev server smoke-tested via Playwright MCP: /knowledge/* renders, /memory/* 404s, no i18n console errors.)
+- Active Branch: `main` (ahead of origin by sessions 38–48 commits — user pushes manually)
+- HEAD: `e694e44` at session 47 end; K19a.1-rename lands on top in session 48
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -249,6 +249,56 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 ---
 
 ## Current Active Work
+
+### K19a.1 — /memory → /knowledge rename + retranslation ✅ (session 48, first Track 3 cycle)
+
+**Track 3 starts here.** Pure rename + retranslation cycle — no feature changes, no BE touch, no API contract change. Classified XL (24 files final) because the URL path, i18n namespace, and locale file names all needed coherent rename.
+
+**Scope delivered:**
+- URL path `/memory` → `/knowledge` (hard-cut; old path returns app 404)
+- Page file `MemoryPage.tsx` → `KnowledgePage.tsx` + component rename
+- i18n namespace `memory` → `knowledge` (4 locale files renamed via `git mv`, 4 import variables + 4 registration keys in [i18n/index.ts](../../frontend/src/i18n/index.ts), 10 `useTranslation('memory')` call sites, 1 `<Trans ns="memory">` in [MemoryIndicator.tsx](../../frontend/src/features/knowledge/components/MemoryIndicator.tsx))
+- Nav label retranslation (option c): `nav.memory` key → `nav.knowledge` with localized copy change — Knowledge / ナレッジ / Tri thức / 知識
+- 5 product-name-referring keys per locale retranslated: `page.title`, `page.tabs.label`, `indicator.label`, `indicator.title`, `indicator.popover.manage`
+
+**Intentionally kept as "Memory"/"メモリ"/"記憶"/"Bộ nhớ"** (functional/state-machine references, NOT product naming):
+- `projects.card.staticMemory` badge — technical state label from the 13-state memory-mode machine (backend `memory_mode` contract)
+- `indicator.popover.projectHeading` / `globalHeading` / body text — describe the AI's memory function
+- `picker.*` in SessionSettingsPanel — links to session.memory_mode backend field
+- `page.subtitle` — contains verb "remembers"
+
+**Files touched (24):**
+- [frontend/src/App.tsx](../../frontend/src/App.tsx) — route path + import rename
+- [frontend/src/pages/KnowledgePage.tsx](../../frontend/src/pages/KnowledgePage.tsx) (renamed from `MemoryPage.tsx`) — component rename + internal links
+- [frontend/src/components/layout/Sidebar.tsx](../../frontend/src/components/layout/Sidebar.tsx) — nav link + `K8.1-R1` comment + labelKey
+- [frontend/src/features/knowledge/components/MemoryIndicator.tsx](../../frontend/src/features/knowledge/components/MemoryIndicator.tsx) — `to="/knowledge"`, `useTranslation('knowledge')`, `<Trans ns="knowledge">`
+- [frontend/src/features/chat/components/SessionSettingsPanel.tsx](../../frontend/src/features/chat/components/SessionSettingsPanel.tsx) — `useTranslation('knowledge')` + local alias `tMemory` → `tKnowledge` (review-impl M1)
+- 7 more `features/knowledge/components/*.tsx` — `useTranslation` callsite updates
+- [frontend/src/features/knowledge/hooks/useSummaryVersions.ts](../../frontend/src/features/knowledge/hooks/useSummaryVersions.ts) + [GlobalBioTab.tsx](../../frontend/src/features/knowledge/components/GlobalBioTab.tsx) — 2 stale "Memory page" comments fixed (review-impl L3)
+- [frontend/src/i18n/index.ts](../../frontend/src/i18n/index.ts) — 4 imports + 4 variables + 4 namespace keys renamed
+- 4 × `frontend/src/i18n/locales/*/knowledge.json` (renamed via `git mv` from `memory.json`) — 5 product-name keys retranslated per locale (review-impl M2)
+- 4 × `frontend/src/i18n/locales/*/common.json` — `nav.memory` key → `nav.knowledge` with localized value change
+
+**Review-impl findings and resolution (all HIGH/MED addressed; L2 documented):**
+| ID | Sev | Outcome |
+|---|---|---|
+| M1 | MED | ✅ Fixed — `tMemory` local alias in SessionSettingsPanel renamed to `tKnowledge` |
+| M2 | MED | ✅ Fixed — 5 product-name keys retranslated per locale (20 edits total); deliberate boundary between product name and functional description |
+| L1 | LOW | ✅ Fixed — Playwright-smoke-tested `/knowledge/projects`, `/knowledge/global`, `/knowledge/privacy`, `/knowledge` redirect, `/memory/projects` 404, sidebar nav, 0 i18n console errors |
+| L2 | LOW | 📝 Documented here — see "Test-coverage gap" below |
+| L3 | LOW | ✅ Fixed — 2 stale "Memory page" comments updated |
+
+**Test-coverage gap discovered (review-impl L2, no code change):** [`frontend/vitest.setup.ts:24-41`](../../frontend/vitest.setup.ts) globally mocks `react-i18next` such that `useTranslation(anyNamespace)` returns keys verbatim and `<Trans>` renders its children. Unit tests therefore provide **zero** evidence of i18n-namespace correctness — any rename that missed a call site would still pass vitest. Defense for this cycle rested entirely on exhaustive grep (including alternative patterns `<Trans ns=>`, `useTranslation([])`, `t('ns:key')`, `i18n.t`, `getFixedT` — all 0 hits post-rename) + `tsc --noEmit` + `vite build` + Playwright runtime. For future i18n-touching cycles: do not over-trust vitest green; always add runtime check. Not worth fixing the mock (it exists for good reason — every component test would otherwise need full i18n setup), but worth knowing.
+
+**Evidence:**
+- grep `/memory`, `useTranslation('memory')`, `MemoryPage`, `nav.memory`, `tMemory`, `"Memory page"`, product-label keys — all 0 hits post-rename
+- `tsc --noEmit` clean; `vite build` 5.82s success
+- Vitest: 89 pass / 3 pre-existing failures in `useEditorPanels.test.ts` (stash-verified not caused by this cycle)
+- Playwright on `http://localhost:5174/knowledge/*`: H1 renders "ナレッジ", tablist "ナレッジタブ", Sidebar link "ナレッジ", `/knowledge` redirects to `/knowledge/projects`, `/memory/projects` hard-404s. Zero i18n console errors (6 expected backend 500s because services weren't running in the smoke-test env).
+
+**Workflow:** 12-phase cycle run twice (looped back to BUILD after POST-REVIEW for option (c) scope extension, then a second time after `/review-impl` surfaced M1+M2+L3). `.workflow-state.json` gate enforced transitions.
+
+---
 
 **Phase 9: COMPLETE (12/12).** All phases 8A-8H + Phase 9 done. No placeholder tabs remain.
 

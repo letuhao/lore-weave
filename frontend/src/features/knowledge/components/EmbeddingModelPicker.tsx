@@ -36,7 +36,7 @@ interface Props {
 }
 
 export function EmbeddingModelPicker({ value, onChange, disabled, projectId }: Props) {
-  const { t } = useTranslation('memory');
+  const { t } = useTranslation('knowledge');
   const { accessToken } = useAuth();
   const [models, setModels] = useState<UserModel[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -170,7 +170,7 @@ export function EmbeddingModelPicker({ value, onChange, disabled, projectId }: P
 
 
 function BenchmarkBadge({ status }: { status: BenchmarkStatus }) {
-  const { t } = useTranslation('memory');
+  const { t } = useTranslation('knowledge');
   // Three states map to three colors + copy. Keep it inline + tiny —
   // this is a secondary signal the user glances at, not a full
   // report. The "See report" link is Track 3 K19b work.

@@ -28,7 +28,7 @@ interface Props {
 }
 
 export function MemoryIndicator({ projectId, memoryMode }: Props) {
-  const { t } = useTranslation('memory');
+  const { t } = useTranslation('knowledge');
   const [open, setOpen] = useState(false);
   const { accessToken } = useAuth();
 
@@ -107,7 +107,7 @@ export function MemoryIndicator({ projectId, memoryMode }: Props) {
               {isProject ? (
                 <Trans
                   i18nKey="indicator.popover.projectBody"
-                  ns="memory"
+                  ns="knowledge"
                   values={{
                     name: projectQuery.isLoading
                       ? t('indicator.popover.loading')
@@ -127,7 +127,7 @@ export function MemoryIndicator({ projectId, memoryMode }: Props) {
             )}
 
             <Link
-              to="/memory"
+              to="/knowledge"
               onClick={() => setOpen(false)}
               className="flex items-center justify-between rounded-md border px-2.5 py-1.5 text-[11px] text-muted-foreground hover:bg-secondary hover:text-foreground"
             >

@@ -23,7 +23,7 @@ interface Props {
 }
 
 export function VersionsPanel({ currentSummary, onClose }: Props) {
-  const { t, i18n } = useTranslation('memory');
+  const { t, i18n } = useTranslation('knowledge');
   const { items, isLoading, isError, error, rollback, isRollingBack } =
     useGlobalSummaryVersions();
   const [previewVersion, setPreviewVersion] = useState<SummaryVersion | null>(

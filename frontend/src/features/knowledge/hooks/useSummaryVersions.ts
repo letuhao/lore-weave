@@ -16,7 +16,7 @@ export function useGlobalSummaryVersions(enabled: boolean = true) {
     queryKey: QUERY_KEY,
     queryFn: () => knowledgeApi.listGlobalSummaryVersions(accessToken!),
     // Only fetch when the panel is actually open — keeps the
-    // Memory page's initial load cheap. The panel passes `true`
+    // Knowledge page's initial load cheap. The panel passes `true`
     // on mount.
     enabled: enabled && !!accessToken,
     // Stale immediately — the list is small and the user expects

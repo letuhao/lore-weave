@@ -14,12 +14,12 @@ const TAB_DEFS: { id: Tab; icon: React.ComponentType<{ className?: string }> }[]
   { id: 'privacy', icon: Lock },
 ];
 
-export function MemoryPage() {
-  const { t } = useTranslation('memory');
+export function KnowledgePage() {
+  const { t } = useTranslation('knowledge');
   const { tab } = useParams<{ tab: string }>();
 
   if (!tab || !TAB_DEFS.some((td) => td.id === tab)) {
-    return <Navigate to="/memory/projects" replace />;
+    return <Navigate to="/knowledge/projects" replace />;
   }
 
   const activeTab = tab as Tab;
@@ -37,7 +37,7 @@ export function MemoryPage() {
           return (
             <Link
               key={td.id}
-              to={`/memory/${td.id}`}
+              to={`/knowledge/${td.id}`}
               role="tab"
               aria-selected={activeTab === td.id}
               className={cn(

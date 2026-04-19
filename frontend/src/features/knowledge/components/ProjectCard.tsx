@@ -15,7 +15,7 @@ interface Props {
 }
 
 export function ProjectCard({ project, onEdit, onArchive, onRestore, onDelete }: Props) {
-  const { t } = useTranslation('memory');
+  const { t } = useTranslation('knowledge');
   const isArchived = project.is_archived;
   const typeLabel = t(`projects.form.typeOptions.${project.project_type}`);
 

@@ -14,11 +14,11 @@ import { VersionsPanel } from './VersionsPanel';
 const CONTENT_MAX = 50000;
 
 export function GlobalBioTab() {
-  const { t } = useTranslation('memory');
+  const { t } = useTranslation('knowledge');
   const { global, isLoading, isError, error, updateGlobal, isUpdatingGlobal } =
     useSummaries();
   // D-K8-01: history panel toggle. Starts collapsed so the initial
-  // Memory page load stays cheap — the versions query only fires
+  // Knowledge page load stays cheap — the versions query only fires
   // when `showVersions` flips to true.
   const [showVersions, setShowVersions] = useState(false);
 
