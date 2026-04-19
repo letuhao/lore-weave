@@ -113,7 +113,61 @@
         "retry": "再試行",
         "deleteGraph": "グラフを削除",
         "rebuild": "最初から再構築",
-        "viewError": "エラー詳細を表示"
+        "viewError": "エラー詳細を表示",
+        "disable": "無効化",
+        "changeModel": "埋め込みモデルを変更",
+        "extractNew": "新しい章を抽出",
+        "ignore": "無視",
+        "confirm": "確定"
+      },
+      "cards": {
+        "disabled": {
+          "body": "使用中: プロフィール + プロジェクト指示 + グロッサリー + 直近のメッセージ。",
+          "costZero": "コスト: $0"
+        },
+        "estimating": {
+          "body": "このスコープのコスト見積を取得中..."
+        },
+        "ready_to_build": {
+          "hint": "推定コスト: ${{low}} – ${{high}} · {{chapters}} 章、{{turns}} ターン、{{tokens}} トークン",
+          "durationSec": "約 {{n}} 秒",
+          "durationMin": "約 {{n}} 分"
+        },
+        "building_running": {
+          "progress": "{{processed}} / {{total}} 件",
+          "elapsed": "経過: {{elapsed}}",
+          "spent": "使用額: ${{spent}}",
+          "spentOfBudget": "使用額: ${{spent}} / ${{budget}}"
+        },
+        "building_paused_user": {
+          "body": "ジョブを一時停止しました。準備ができたら再開するか、キャンセルして部分グラフを残せます。"
+        },
+        "building_paused_budget": {
+          "body": "${{budget}} の上限に到達しました。上限を引き上げて再開するか、キャンセルして部分グラフを残せます。",
+          "remaining": "残り: ${{amount}}"
+        },
+        "building_paused_error": {
+          "body": "再試行可能なエラー: {{error}}"
+        },
+        "complete": {
+          "stats": "{{entities}} エンティティ · {{facts}} 事実 · {{events}} イベント · {{passages}} パッセージ",
+          "lastExtracted": "最終抽出: {{date}}"
+        },
+        "stale": {
+          "body": "前回の抽出以降、{{count}} 章が追加されました。今すぐ抽出するか無視できます。"
+        },
+        "failed": {
+          "body": "抽出に失敗しました: {{error}}"
+        },
+        "model_change_pending": {
+          "body": "{{oldModel}} から {{newModel}} への変更には既存グラフの削除と再構築が必要です。"
+        },
+        "cancelling": {
+          "body": "アクティブなジョブを停止中..."
+        },
+        "deleting": {
+          "body": "ナレッジグラフを削除中..."
+        }
       }
     }
   },

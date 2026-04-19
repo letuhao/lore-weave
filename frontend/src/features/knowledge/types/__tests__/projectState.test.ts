@@ -137,10 +137,13 @@ describe('canTransition — spot checks', () => {
 });
 
 // F2 defence — runtime proof that every ProjectStateKind label AND every
-// documented action key exists in every locale. The vitest.setup.ts
-// mock for react-i18next returns keys verbatim, so component tests
-// cannot catch missing/renamed i18n keys. This is the only test that can.
-describe('i18n keys cover every ProjectStateKind + every action in every locale', () => {
+// documented action key AND every documented card body-text key exists
+// in every locale. The vitest.setup.ts mock for react-i18next returns
+// keys verbatim, so component tests cannot catch missing/renamed i18n
+// keys. This is the only test that can.
+describe('i18n keys cover every ProjectStateKind + every action + every card body key in every locale', () => {
+  // Every action label referenced by any state card. Keep in sync with
+  // ProjectStateCardActions + the subset each card uses.
   const ACTIONS = [
     'buildGraph',
     'start',
@@ -151,6 +154,37 @@ describe('i18n keys cover every ProjectStateKind + every action in every locale'
     'deleteGraph',
     'rebuild',
     'viewError',
+    'disable',
+    'changeModel',
+    'extractNew',
+    'ignore',
+    'confirm',
+  ] as const;
+
+  // Every card body-text leaf path. Format: "{kind}.{leaf}" — flattened
+  // to keep the iterator simple. K19a.3 review-impl F3 defence.
+  const CARD_KEYS = [
+    'disabled.body',
+    'disabled.costZero',
+    'estimating.body',
+    'ready_to_build.hint',
+    'ready_to_build.durationSec',
+    'ready_to_build.durationMin',
+    'building_running.progress',
+    'building_running.elapsed',
+    'building_running.spent',
+    'building_running.spentOfBudget',
+    'building_paused_user.body',
+    'building_paused_budget.body',
+    'building_paused_budget.remaining',
+    'building_paused_error.body',
+    'complete.stats',
+    'complete.lastExtracted',
+    'stale.body',
+    'failed.body',
+    'model_change_pending.body',
+    'cancelling.body',
+    'deleting.body',
   ] as const;
 
   const LOCALES = [
@@ -175,6 +209,18 @@ describe('i18n keys cover every ProjectStateKind + every action in every locale'
       expect(actions).toHaveProperty(action);
       expect(typeof actions[action]).toBe('string');
       expect(actions[action].length).toBeGreaterThan(0);
+    }
+  });
+
+  it.each(LOCALES)('%s has state.cards.* for every documented card body', (_tag, bundle) => {
+    const cards = (bundle as any).projects?.state?.cards ?? {};
+    for (const keyPath of CARD_KEYS) {
+      const [kind, leaf] = keyPath.split('.');
+      expect(cards, `locale missing cards.${kind}`).toHaveProperty(kind);
+      const kindBucket = cards[kind] ?? {};
+      expect(kindBucket, `locale missing cards.${kind}.${leaf}`).toHaveProperty(leaf);
+      expect(typeof kindBucket[leaf]).toBe('string');
+      expect(kindBucket[leaf].length).toBeGreaterThan(0);
     }
   });
 });

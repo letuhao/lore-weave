@@ -113,7 +113,61 @@
         "retry": "Retry",
         "deleteGraph": "Delete graph",
         "rebuild": "Rebuild from scratch",
-        "viewError": "View error details"
+        "viewError": "View error details",
+        "disable": "Disable",
+        "changeModel": "Change embedding model",
+        "extractNew": "Extract new chapters",
+        "ignore": "Ignore",
+        "confirm": "Confirm"
+      },
+      "cards": {
+        "disabled": {
+          "body": "Using: your bio + project instructions + glossary + recent messages.",
+          "costZero": "Cost: $0"
+        },
+        "estimating": {
+          "body": "Fetching a cost estimate for this scope..."
+        },
+        "ready_to_build": {
+          "hint": "Estimated cost: ${{low}} – ${{high}} · {{chapters}} chapters, {{turns}} chat turns, {{tokens}} tokens",
+          "durationSec": "~{{n}}s estimated",
+          "durationMin": "~{{n}} min estimated"
+        },
+        "building_running": {
+          "progress": "{{processed}} / {{total}} items",
+          "elapsed": "Elapsed: {{elapsed}}",
+          "spent": "Spent: ${{spent}}",
+          "spentOfBudget": "Spent: ${{spent}} / ${{budget}}"
+        },
+        "building_paused_user": {
+          "body": "You paused this job. Resume when ready, or cancel to keep the partial graph."
+        },
+        "building_paused_budget": {
+          "body": "Hit the spend cap of ${{budget}}. Raise the cap and resume, or cancel to keep the partial graph.",
+          "remaining": "Remaining: ${{amount}}"
+        },
+        "building_paused_error": {
+          "body": "Retryable error: {{error}}"
+        },
+        "complete": {
+          "stats": "{{entities}} entities · {{facts}} facts · {{events}} events · {{passages}} passages",
+          "lastExtracted": "Last extracted: {{date}}"
+        },
+        "stale": {
+          "body": "{{count}} new chapters since last extraction. Extract them now or ignore."
+        },
+        "failed": {
+          "body": "Extraction failed: {{error}}"
+        },
+        "model_change_pending": {
+          "body": "Model change from {{oldModel}} to {{newModel}} requires deleting the existing graph and rebuilding."
+        },
+        "cancelling": {
+          "body": "Stopping the active job..."
+        },
+        "deleting": {
+          "body": "Removing the knowledge graph..."
+        }
       }
     }
   },

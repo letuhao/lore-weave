@@ -113,7 +113,61 @@
         "retry": "Thử lại",
         "deleteGraph": "Xóa đồ thị",
         "rebuild": "Xây lại từ đầu",
-        "viewError": "Xem chi tiết lỗi"
+        "viewError": "Xem chi tiết lỗi",
+        "disable": "Vô hiệu hóa",
+        "changeModel": "Đổi mô hình nhúng",
+        "extractNew": "Trích xuất chương mới",
+        "ignore": "Bỏ qua",
+        "confirm": "Xác nhận"
+      },
+      "cards": {
+        "disabled": {
+          "body": "Đang dùng: tiểu sử + chỉ dẫn dự án + glossary + tin nhắn gần đây.",
+          "costZero": "Chi phí: $0"
+        },
+        "estimating": {
+          "body": "Đang lấy ước tính chi phí cho phạm vi này..."
+        },
+        "ready_to_build": {
+          "hint": "Chi phí ước tính: ${{low}} – ${{high}} · {{chapters}} chương, {{turns}} lượt, {{tokens}} token",
+          "durationSec": "~{{n}} giây",
+          "durationMin": "~{{n}} phút"
+        },
+        "building_running": {
+          "progress": "{{processed}} / {{total}} mục",
+          "elapsed": "Đã trôi: {{elapsed}}",
+          "spent": "Đã dùng: ${{spent}}",
+          "spentOfBudget": "Đã dùng: ${{spent}} / ${{budget}}"
+        },
+        "building_paused_user": {
+          "body": "Bạn đã tạm dừng tác vụ này. Tiếp tục khi sẵn sàng, hoặc hủy để giữ lại đồ thị một phần."
+        },
+        "building_paused_budget": {
+          "body": "Đã chạm giới hạn chi ${{budget}}. Nâng giới hạn rồi tiếp tục, hoặc hủy để giữ lại đồ thị một phần.",
+          "remaining": "Còn lại: ${{amount}}"
+        },
+        "building_paused_error": {
+          "body": "Lỗi có thể thử lại: {{error}}"
+        },
+        "complete": {
+          "stats": "{{entities}} thực thể · {{facts}} sự kiện · {{events}} biến cố · {{passages}} đoạn văn",
+          "lastExtracted": "Trích xuất lần cuối: {{date}}"
+        },
+        "stale": {
+          "body": "{{count}} chương mới kể từ lần trích xuất trước. Trích xuất ngay hoặc bỏ qua."
+        },
+        "failed": {
+          "body": "Trích xuất thất bại: {{error}}"
+        },
+        "model_change_pending": {
+          "body": "Đổi từ {{oldModel}} sang {{newModel}} yêu cầu xóa đồ thị hiện tại và xây lại."
+        },
+        "cancelling": {
+          "body": "Đang dừng tác vụ đang chạy..."
+        },
+        "deleting": {
+          "body": "Đang xóa đồ thị tri thức..."
+        }
       }
     }
   },

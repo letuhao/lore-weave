@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-19 **(session 48 — Track 3 foundation shipped: rename + placeholders + state-machine types)** — Track 2 still code-complete (T2-close-2 human Gate 13 loop remains). Track 3 progress: cycle 1 renamed /memory → /knowledge; cycle 2 added 4 placeholder tabs; cycle 3 (batched K19a.2 + K19a.7-skeleton) shipped the 13-state TS discriminated union + transition helper + all state/action i18n keys × 4 locales. Foundation ready for K19a.3 ProjectStateCard.
-- Updated By: Assistant (session 48 — 3 commits so far: K19a.1-rename (d14d71b) + K19a.1-placeholders (bab8829) + batched K19a.2+7-skeleton. Adopted user's batching feedback starting cycle 3: 2 tasks in one workflow pass. /review-impl caught 9 findings (0 HIGH, 4 MED, 5 LOW), all fixed in-cycle.)
+- Last Updated: 2026-04-19 **(session 48 — Track 3 presentation layer complete: rename + placeholders + state types + 13 state cards)** — Track 2 still code-complete (T2-close-2 human Gate 13 loop remains). Track 3 progress: cycles 1-4 shipped. Cycle 4 delivers `ProjectStateCard` dispatcher + all 13 per-state subcomponents (pure presentational, callback-prop pattern, exhaustive switch). K19a.4 hook next.
+- Updated By: Assistant (session 48 — 4 commits so far: K19a.1-rename (d14d71b) + K19a.1-placeholders (bab8829) + K19a.2+7-skeleton (70a3136) + K19a.3 full. /review-impl caught 7 more findings this cycle (0 HIGH, 4 MED, 3 LOW), all fixed in-cycle. 52/52 tests pass.)
 - Active Branch: `main` (ahead of origin by sessions 38–48 commits — user pushes manually)
-- HEAD: `bab8829` (K19a.1-placeholders); K19a.2+7-skeleton lands on top
+- HEAD: `70a3136` (K19a.2+7-skeleton); K19a.3 lands on top
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -249,6 +249,40 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 ---
 
 ## Current Active Work
+
+### K19a.3 — ProjectStateCard dispatcher + 13 state-card subcomponents ✅ (session 48, Track 3 cycle 4)
+
+Full K19a.3 as one cycle (not split into shell+data). Pure presentational — every card uses callback-prop pattern; no card imports API calls. K19a.4 hook supplies the 14 callbacks.
+
+**Shipped (20 files):**
+- [`components/ProjectStateCard.tsx`](../../frontend/src/features/knowledge/components/ProjectStateCard.tsx) (NEW) — exhaustive switch on `state.kind` with `never` default (TS strict mode catches drift at compile time); `ProjectStateCardActions` interface (14 callbacks) with JSDoc documenting the "supply-all-14" contract
+- [`components/state_cards/shared.tsx`](../../frontend/src/features/knowledge/components/state_cards/shared.tsx) (NEW) — `StateCardShell`, `StateActionButton` (primary/secondary/destructive), `ProgressBar` with `role=progressbar` + aria-valuenow, `Spinner`
+- 13 × `components/state_cards/*.tsx` (NEW) — one per kind: `DisabledCard`, `EstimatingCard`, `ReadyToBuildCard`, `BuildingRunningCard`, `BuildingPausedUser/Budget/ErrorCard`, `CompleteCard`, `StaleCard`, `FailedCard`, `ModelChangePendingCard`, `CancellingCard`, `DeletingCard`
+- [`components/__tests__/ProjectStateCard.test.tsx`](../../frontend/src/features/knowledge/components/__tests__/ProjectStateCard.test.tsx) (NEW) — 26 tests: 13 dispatcher-variant renders + `canRetry` toggle + progressbar ARIA + 8 per-card callback-click tests
+- 4 × `i18n/locales/*/knowledge.json` — 5 new action keys (disable, changeModel, extractNew, ignore, confirm), 11 new `cards.{kind}.body/hint/stats/…` keys, then (from review-impl) 3 more keys per locale: `building_paused_budget.remaining`, `ready_to_build.durationSec/durationMin`, `complete.lastExtracted`
+- [`types/__tests__/projectState.test.ts`](../../frontend/src/features/knowledge/types/__tests__/projectState.test.ts) extended — ACTIONS list grew from 9 → 14; new `CARD_KEYS` constant with 21 leaf paths × 4 locales = 84 new runtime assertions
+
+**Review-impl findings and resolution (all 7 addressed in-cycle):**
+
+| ID | Sev | What | Fix |
+|---|---|---|---|
+| F1 | MED | `budgetRemaining` prop accepted but never rendered | Added `projects.state.cards.building_paused_budget.remaining` key + inline render |
+| F2 | MED | `BuildingPausedErrorCard` silently dropped `job` field; `BuildingPausedUserCard` didn't show spent | Threaded job through dispatcher; added progress bar + spent lines to both paused-error/user cards |
+| F3 | MED | 5 new `actions.*` + 11 new `cards.*` keys had no runtime coverage (vitest mock bypass regression) | New `CARD_KEYS` constant in projectState.test.ts iterates every leaf × 4 locales; ACTIONS extended to all 14 |
+| F4 | MED | 8 cards' callback wiring had no click tests | 8 new callback-click tests — every card's buttons now click-verified against the dispatcher's action routing |
+| F5 | LOW | `EstimatingCard` drops `scope` payload | Documented as intentional deferral to K19a.5 — inline comment explains why not rendered today |
+| F6 | LOW | `ReadyToBuildCard` dropped duration; `CompleteCard` dropped last_extracted_at | Added `durationSec`/`durationMin` (conditional) + `lastExtracted` keys with inline renders |
+| F7 | LOW | `ProjectStateCardActions` had no JSDoc | Added contract docstring |
+
+**Evidence:**
+- `tsc --noEmit` clean (catches exhaustive-switch drift via `never` default; `strict: true` confirmed in tsconfig.json)
+- **52/52 tests pass** (26 projectState + 26 ProjectStateCard)
+- `vite build` 7.91s
+- i18n runtime coverage: 13 labels + 14 actions + 21 card bodies = 48 key paths × 4 locales = 192 runtime assertions across both test files — the vitest-mock bypass (identified as L2 in cycle 1 review-impl) is now closed for every new key added in Track 3 so far
+
+**Ready for K19a.4.** The hook + ProjectsTab refactor can now consume `ProjectMemoryState` directly and supply the 14 callbacks wired to real API endpoints (`/extraction/start`, `/pause`, `/resume`, `/cancel`, `/jobs/{id}`). That cycle will be **FS** per the feedback rule.
+
+---
 
 ### K19a.2 + K19a.7-skeleton — state-machine types + i18n labels (batched) ✅ (session 48, Track 3 cycle 3)
 

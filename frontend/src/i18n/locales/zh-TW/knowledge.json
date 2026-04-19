@@ -113,7 +113,61 @@
         "retry": "重試",
         "deleteGraph": "刪除圖譜",
         "rebuild": "從頭重建",
-        "viewError": "檢視錯誤詳情"
+        "viewError": "檢視錯誤詳情",
+        "disable": "停用",
+        "changeModel": "變更嵌入模型",
+        "extractNew": "抽取新章節",
+        "ignore": "忽略",
+        "confirm": "確認"
+      },
+      "cards": {
+        "disabled": {
+          "body": "使用中：簡介 + 專案指示 + 術語表 + 最近訊息。",
+          "costZero": "成本：$0"
+        },
+        "estimating": {
+          "body": "正在取得此範圍的成本估算..."
+        },
+        "ready_to_build": {
+          "hint": "估算成本：${{low}} – ${{high}} · {{chapters}} 章、{{turns}} 對話、{{tokens}} token",
+          "durationSec": "約 {{n}} 秒",
+          "durationMin": "約 {{n}} 分鐘"
+        },
+        "building_running": {
+          "progress": "{{processed}} / {{total}} 項",
+          "elapsed": "已過：{{elapsed}}",
+          "spent": "已花費：${{spent}}",
+          "spentOfBudget": "已花費：${{spent}} / ${{budget}}"
+        },
+        "building_paused_user": {
+          "body": "你已暫停此作業。準備好時恢復,或取消以保留部分圖譜。"
+        },
+        "building_paused_budget": {
+          "body": "已達 ${{budget}} 花費上限。提高上限後恢復,或取消以保留部分圖譜。",
+          "remaining": "剩餘：${{amount}}"
+        },
+        "building_paused_error": {
+          "body": "可重試的錯誤:{{error}}"
+        },
+        "complete": {
+          "stats": "{{entities}} 實體 · {{facts}} 事實 · {{events}} 事件 · {{passages}} 段落",
+          "lastExtracted": "最後抽取:{{date}}"
+        },
+        "stale": {
+          "body": "自上次抽取以來有 {{count}} 個新章節。立即抽取或忽略。"
+        },
+        "failed": {
+          "body": "抽取失敗:{{error}}"
+        },
+        "model_change_pending": {
+          "body": "從 {{oldModel}} 變更至 {{newModel}} 需要刪除現有圖譜並重建。"
+        },
+        "cancelling": {
+          "body": "正在停止運行中的作業..."
+        },
+        "deleting": {
+          "body": "正在移除知識圖譜..."
+        }
       }
     }
   },

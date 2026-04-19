@@ -1,26 +1,40 @@
-# Session Handoff — Session 48 (Track 3 foundation: rename + placeholders + state types)
+# Session Handoff — Session 48 (Track 3 presentation layer complete; K19a.4 hook next)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-19 (session 48 — Track 3 foundation)
-> **HEAD:** K19a.2+7-skeleton commit on top of `bab8829` on top of `d14d71b` on top of `e694e44`
+> **Date:** 2026-04-19 (session 48 — Track 3 presentation layer complete)
+> **HEAD:** K19a.3 commit on top of `70a3136` on top of `bab8829` on top of `d14d71b` on top of `e694e44`
 > **Branch:** `main` (ahead of origin by sessions 38–48 commits — user pushes manually)
 
-## Session 48 status — Track 3 cycles 1 + 2 + 3 shipped
+## Session 48 status — Track 3 cycles 1 + 2 + 3 + 4 shipped
 
 **Cycle 1 (K19a.1-rename, d14d71b):** pure `/memory` → `/knowledge` rename + nav retranslation (24 files).
 
 **Cycle 2 (K19a.1-placeholders, bab8829):** 4 placeholder tabs added. Navigation shell complete (7 tabs: Projects / Jobs / Global / Entities / Timeline / Raw / Privacy). Each new tab renders "Coming soon" + localized function description.
 
-**Cycle 3 (K19a.2 + K19a.7-skeleton, pending commit):** **First batched cycle** per user feedback. Foundation types for the 13-state memory-mode UI: `ProjectMemoryState` discriminated union + supporting types (BE-aligned per review-impl F1) + `VALID_TRANSITIONS` map + `canTransition` helper + all state/action i18n keys × 4 locales. 22/22 tests passing including runtime i18n cross-locale checks that neutralize the vitest i18n mock bypass (identified as L2 in cycle 1 review-impl).
+**Cycle 3 (K19a.2 + K19a.7-skeleton, 70a3136):** **First batched cycle** per user feedback. Foundation types for the 13-state memory-mode UI: `ProjectMemoryState` discriminated union + supporting types (BE-aligned per review-impl F1) + `VALID_TRANSITIONS` map + `canTransition` helper + all state/action i18n keys × 4 locales. 22/22 tests passing including runtime i18n cross-locale checks that neutralize the vitest i18n mock bypass (identified as L2 in cycle 1 review-impl).
+
+**Cycle 4 (K19a.3 full, pending commit):** `ProjectStateCard` dispatcher + all 13 subcomponents + shared primitives + 26-test component test file. Pure presentational (callback-prop pattern, TS exhaustive switch). `ProjectStateCardActions` union of 14 callbacks. /review-impl caught 7 more findings (3 MED dispatcher/prop drops + 1 MED i18n-coverage regression + 3 LOW polish), all fixed in-cycle. i18n runtime coverage now tracks 48 key paths × 4 locales (192 assertions).
 
 **User feedback captured mid-session:** future small tasks should be batched into single cycles (saved to memory `feedback_batch_small_tasks.md`). Cycle 3 is the first application. Worked well — review-impl caught 9 findings in the batched scope that all got fixed in one pass.
 
-### What K19a.3 can now assume
+### What K19a.4 can now assume
 
-- Import `ProjectMemoryState`, `ProjectStateKind`, `canTransition` from `@/features/knowledge/types/projectState`.
-- All 13 state labels + 9 action-button strings exist at i18n paths `projects.state.labels.{kind}` and `projects.state.actions.{action}` in all 4 locales.
-- Types mirror BE shapes where they come from the wire (field names match `EstimateResponse`, `ExtractionJob`); UI-computed payload fields use camelCase.
-- Adding a 14th state kind is a compile error everywhere it matters (Record<ProjectStateKind, true> pattern in ALL_KINDS_MAP + exhaustive switch discipline in K19a.3 subcomponents will surface drift).
+- Import `ProjectStateCard`, `ProjectStateCardActions` from `@/features/knowledge/components/ProjectStateCard`.
+- Build a full 14-callback `ProjectStateCardActions` object + a derived `ProjectMemoryState`, pass both as props. Every card's buttons wire to the expected callback — verified by the 8 new F4 click tests.
+- Use `canTransition(from, to)` from the types module for optional button-visibility gating.
+- i18n: **48 key paths** exist in all 4 locales (13 labels + 14 actions + 21 card bodies). Adding another card body key also means adding to `CARD_KEYS` in `projectState.test.ts` — otherwise coverage regresses.
+- Adding a 14th `ProjectStateKind` is a compile error in 3 places: `ALL_KINDS_MAP` (Record exhaustiveness), `VALID_TRANSITIONS` (Record exhaustiveness), and `ProjectStateCard` dispatcher's `never` default. Plus the runtime `CARD_KEYS` test will flag missing body-text translations.
+
+### Wiring contract for the K19a.4 hook
+
+```ts
+const { state, actions } = useProjectState(project);
+// state: ProjectMemoryState (derived from project + active job)
+// actions: ProjectStateCardActions (14 callbacks all wired to API)
+return <ProjectStateCard state={state} actions={actions} />;
+```
+
+Per the feedback rule, K19a.4 is **FS** — the hook consumes BE endpoints (`/extraction/start`, `/pause`, `/resume`, `/cancel`, `/jobs/{id}`, `/v1/knowledge/projects/{id}` PATCH, etc.). BE audit at DESIGN phase of K19a.4 should enumerate every callback and its BE endpoint.
 
 ## Session 48 — K19a.1-rename (first Track 3 cycle) ✅
 
