@@ -36,6 +36,16 @@ import (
 // labels per counter vec — a dashboard distraction. Add new
 // outcomes in the same commit that introduces a call site that
 // Inc()s them.
+//
+// Cross-service note: book-service's metrics.go uses `not_found`
+// instead of `invalid_body` because its GET handlers have real
+// pgx.ErrNoRows → 404 paths but no JSON body to decode. glossary-
+// service is the inverse: POST `select_for_context` + `extract-
+// entities` have real JSON-decode error paths but return 0 rather
+// than 404 for missing books. Dashboards unioning both services
+// will see partial overlap on `{outcome}`; that's intentional —
+// forcing both to declare all 6 outcomes would re-introduce the
+// dead-label pollution this cycle fixed.
 const (
 	OutcomeOK              = "ok"
 	OutcomeValidationError = "validation_error"

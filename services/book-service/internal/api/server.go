@@ -71,6 +71,11 @@ func (s *Server) Router() http.Handler {
 		}
 		_, _ = w.Write([]byte("ok"))
 	})
+	// T2-polish-2b — Prometheus scrape endpoint. No auth; scrape is
+	// in-cluster only. Mounted outside /internal so scrapers don't
+	// need X-Internal-Token.
+	r.Method(http.MethodGet, "/metrics", metricsHandler())
+
 	r.Get("/health/ready", func(w http.ResponseWriter, r *http.Request) {
 		if s.pool == nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not ready", "error": "no db pool"})
@@ -1646,6 +1651,7 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3 AND b.owner_user_id=$4
 func (s *Server) getBookProjection(w http.ResponseWriter, r *http.Request) {
 	bookID, err := uuid.Parse(chi.URLParam(r, "book_id"))
 	if err != nil {
+		ProjectionTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid book id")
 		return
 	}
@@ -1663,10 +1669,12 @@ SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,
 FROM books b WHERE b.id=$1
 `, bookID).Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &createdAt, &chapterCount, &genreTags, &wikiSettings, &extractionProfile)
 	if errors.Is(err, pgx.ErrNoRows) {
+		ProjectionTotal.WithLabelValues(OutcomeNotFound).Inc()
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return
 	}
 	if err != nil {
+		ProjectionTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to load projection")
 		return
 	}
@@ -1682,6 +1690,7 @@ FROM books b WHERE b.id=$1
 		u := fmt.Sprintf("/v1/books/%s/cover", bookID)
 		coverURL = &u
 	}
+	ProjectionTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"book_id":           id,
 		"owner_user_id":     owner,
@@ -1703,16 +1712,19 @@ FROM books b WHERE b.id=$1
 func (s *Server) getInternalBookChapters(w http.ResponseWriter, r *http.Request) {
 	bookID, err := uuid.Parse(chi.URLParam(r, "book_id"))
 	if err != nil {
+		ChaptersListTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid book id")
 		return
 	}
 	var lifecycle string
 	if err := s.pool.QueryRow(r.Context(), `SELECT lifecycle_state FROM books WHERE id=$1`, bookID).Scan(&lifecycle); errors.Is(err, pgx.ErrNoRows) || lifecycle != "active" {
+		ChaptersListTotal.WithLabelValues(OutcomeNotFound).Inc()
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return
 	}
 	fromSort, toSort, rangeOK := parseSortRange(r)
 	if !rangeOK {
+		ChaptersListTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid from_sort/to_sort")
 		return
 	}
@@ -1747,6 +1759,7 @@ ORDER BY c.sort_order, c.created_at
 LIMIT $%d OFFSET $%d
 `, where, limitPos, offsetPos), listArgs...)
 	if err != nil {
+		ChaptersListTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list chapters")
 		return
 	}
@@ -1769,6 +1782,7 @@ LIMIT $%d OFFSET $%d
 			})
 		}
 	}
+	ChaptersListTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items":  items,
 		"total":  total,
@@ -1780,16 +1794,19 @@ LIMIT $%d OFFSET $%d
 func (s *Server) getInternalBookChapter(w http.ResponseWriter, r *http.Request) {
 	bookID, err := uuid.Parse(chi.URLParam(r, "book_id"))
 	if err != nil {
+		ChapterFetchTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid book id")
 		return
 	}
 	chapterID, err := uuid.Parse(chi.URLParam(r, "chapter_id"))
 	if err != nil {
+		ChapterFetchTotal.WithLabelValues(OutcomeValidationError).Inc()
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid chapter id")
 		return
 	}
 	var lifecycle string
 	if err := s.pool.QueryRow(r.Context(), `SELECT lifecycle_state FROM books WHERE id=$1`, bookID).Scan(&lifecycle); errors.Is(err, pgx.ErrNoRows) || lifecycle != "active" {
+		ChapterFetchTotal.WithLabelValues(OutcomeNotFound).Inc()
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return
 	}
@@ -1804,10 +1821,12 @@ JOIN chapter_drafts d ON d.chapter_id=c.id
 WHERE c.id=$1 AND c.book_id=$2 AND c.lifecycle_state='active'
 `, chapterID, bookID).Scan(&title, &sortOrder, &lang, &draftUpdated, &body)
 	if errors.Is(err, pgx.ErrNoRows) {
+		ChapterFetchTotal.WithLabelValues(OutcomeNotFound).Inc()
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
 		return
 	}
 	if err != nil {
+		ChapterFetchTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to load chapter")
 		return
 	}
@@ -1817,6 +1836,7 @@ WHERE c.id=$1 AND c.book_id=$2 AND c.lifecycle_state='active'
 SELECT string_agg(text_content, E'\n\n' ORDER BY block_index)
 FROM chapter_blocks WHERE chapter_id=$1
 `, chapterID).Scan(&textContent)
+	ChapterFetchTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"chapter_id":        chapterID,
 		"title":             nullableString(title),
