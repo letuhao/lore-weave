@@ -51,14 +51,14 @@ From KSA §9.10 — failure-injection scenarios:
 | C02 | Stop knowledge-service → chat works without memory | chat-service `test_knowledge_client.py` graceful-degradation suite (timeout, 5xx, 4xx, decode error, transport error — all return `mode="degraded"` with `context=""`) + stream_service path that tolerates empty context | ✅ **AUTOMATED** (unit-level) |
 | C03 | LLM provider 429 → job backs off and pauses | K17.12 rate limiter + K17.3 retry wrapper tests cover this; backoff behavior tested | ✅ **AUTOMATED** (unit-level) |
 | C04 | Embedding service OOM → job pauses with error | `EmbeddingError` handling in passage_ingester + L3 selector both covered; job-state "failed" transition tested | ✅ **AUTOMATED** (unit-level) |
-| C05 | Redis loses events → consumer catches up from event_log | K14.2 hybrid catch-up test coverage (event_log fallback path) | 🟡 **PARTIAL** (unit-level; live lossy-Redis run pending) |
-| C06 | Manually corrupt Neo4j data → rebuild from event_log succeeds | K14.x + K11.9 reconciler tests cover the rebuild path | 🟡 **PARTIAL** (unit-level; live corrupt-and-rebuild pending) |
+| C05 | Redis loses events → consumer catches up from event_log | K14.2 hybrid catch-up test coverage (event_log fallback path). T2-close-3 added `scripts/chaos/c05_redis_restart.sh` for live-run. | 🟡 **SCRIPTED** (unit-level automated + live script authored) |
+| C06 | Manually corrupt Neo4j data → rebuild from event_log succeeds | K14.x + K11.9 reconciler tests cover the rebuild path. T2-close-3 added `scripts/chaos/c06_neo4j_drift.sh` for live-run. | 🟡 **SCRIPTED** (unit-level automated + live script authored) |
 | C07 | User deletes project mid-extraction → clean cancel | ProjectsRepo delete + extraction_jobs cancel tests; cascade-delete tested end-to-end via migration integration tests | ✅ **AUTOMATED** (unit+integration) |
-| C08 | Bulk delete 1000 chapters → cascade rate-limited, no overload | K11.8 cascade-delete + K11.9 reconciler batching tests | 🟡 **PARTIAL** (unit-level; live bulk-delete stress test pending) |
+| C08 | Bulk delete 1000 chapters → cascade rate-limited, no overload | K11.8 cascade-delete + K11.9 reconciler batching tests. T2-close-3 added `scripts/chaos/c08_bulk_cascade.sh` for live-run (1000-event burst + drain assertion). | 🟡 **SCRIPTED** (unit-level automated + live script authored) |
 
 **Roll-up:**
 - ✅ **Automated pass:** 5 chaos scenarios (C01, C02, C03, C04, C07)
-- 🟡 **Partial (need live run):** 3 scenarios (C05, C06, C08)
+- 🟡 **Scripted (live runs one command away):** 3 scenarios (C05, C06, C08) — run `./scripts/chaos/c0{5,6,8}_*.sh` against a stack to capture live evidence. See `scripts/chaos/README.md`.
 
 ---
 
@@ -108,7 +108,7 @@ All T11–T20 have unit and/or integration coverage that passes in the 1418-test
 9. **Disable extraction** via UI, run a chat query, verify Mode 2 block (checkpoint 7).
 10. **Re-enable extraction**, verify the queue drains + Mode 3 returns (checkpoint 8).
 11. **Check cost tracking** against the provider's invoice (checkpoint 11).
-12. **Run chaos C05, C06, C08** live (stop Redis mid-run, corrupt Neo4j data, bulk-delete 1000 chapters) — or accept that unit-level coverage is sufficient for Track 2 close.
+12. **Run chaos C05, C06, C08** live (scripts under `scripts/chaos/` — each is a single `./c0X_*.sh` command, ~10-90 s each, with trap-based cleanup). Unit-level coverage is sufficient for Track 2 close; the scripts give live evidence for pre-production readiness when it's wanted.
 
 Checkpoint 12 (quality eval) is BLOCKED on the K17.9 golden-set harness being built. That's a separate piece of work, explicitly out of Track 2 close-out scope per the plan (the close-out shipped the migration table that the harness will eventually write to).
 
