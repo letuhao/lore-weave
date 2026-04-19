@@ -143,11 +143,45 @@ async def lifespan(app: FastAPI):
                 exc_info=True,
             )
 
+    # D-T2-04 — cross-process cache invalidator via Redis pub/sub.
+    # Only installed when redis_url is configured; Track 1 single-
+    # worker deploys stay local-only.
+    cache_invalidator = None
+    if settings.redis_url:
+        try:
+            from app.context import cache as cache_module
+            from app.context.cache_invalidation import CacheInvalidator
+
+            cache_invalidator = CacheInvalidator(settings.redis_url)
+            await cache_invalidator.start()
+            cache_module.set_invalidator(cache_invalidator)
+            logger.info(
+                "D-T2-04: cache invalidator registered (cross-process pub/sub active)"
+            )
+        except Exception:
+            logger.warning(
+                "D-T2-04: cache invalidator failed to start (non-fatal) — "
+                "falling back to local-only invalidation",
+                exc_info=True,
+            )
+
     logger.info("knowledge-service started on port %d", settings.port)
     try:
         yield
     finally:
-        # Stop anchor-refresh loop first (quick cancel).
+        # Stop cache invalidator first so in-flight publishes drain
+        # before we close the Redis client.
+        if cache_invalidator is not None:
+            try:
+                from app.context import cache as cache_module
+                cache_module.set_invalidator(None)
+                await cache_invalidator.stop()
+            except Exception:
+                logger.warning(
+                    "Error stopping cache invalidator", exc_info=True,
+                )
+
+        # Stop anchor-refresh loop next (quick cancel).
         if refresh_task is not None:
             refresh_task.cancel()
             try:
