@@ -41,17 +41,36 @@ class BookClient:
     async def aclose(self) -> None:
         await self._http.aclose()
 
-    async def count_chapters(self, book_id: UUID) -> int | None:
+    async def count_chapters(
+        self,
+        book_id: UUID,
+        *,
+        from_sort: int | None = None,
+        to_sort: int | None = None,
+    ) -> int | None:
         """Return the number of active chapters for a book.
+
+        Optional ``from_sort`` / ``to_sort`` scope the count to an
+        inclusive range of ``sort_order`` values. Passing ``None`` for
+        either leaves that end unbounded. D-K16.2-02 — used by the
+        extraction estimate endpoint so users previewing "chapters
+        10–20 only" see the range count rather than the whole book.
 
         Returns None on any failure (timeout, connection error, bad
         response) — the caller decides how to handle missing data.
         """
-        url = f"{self._base_url}/internal/books/{book_id}/chapters?limit=1"
+        params: dict[str, str] = {"limit": "1"}
+        if from_sort is not None:
+            params["from_sort"] = str(from_sort)
+        if to_sort is not None:
+            params["to_sort"] = str(to_sort)
+        url = f"{self._base_url}/internal/books/{book_id}/chapters"
         tid = trace_id_var.get()
         try:
             resp = await self._http.get(
-                url, headers={"X-Trace-Id": tid} if tid else None,
+                url,
+                params=params,
+                headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code != 200:
                 logger.warning(

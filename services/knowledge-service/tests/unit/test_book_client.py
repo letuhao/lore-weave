@@ -57,6 +57,86 @@ async def test_count_chapters_5xx_returns_none(bc: BookClient):
         assert await bc.count_chapters(book_id) is None
 
 
+@pytest.mark.asyncio
+async def test_count_chapters_forwards_sort_range_as_query_params(bc: BookClient):
+    """D-K16.2-02 — ``from_sort``/``to_sort`` kwargs must arrive at
+    book-service as query params, not as body or headers. The estimate
+    tests stub the whole client, so this is the only assertion that
+    the actual HTTP wire carries the range."""
+    book_id = uuid4()
+    captured: dict = {}
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        captured["query"] = dict(request.url.params)
+        return httpx.Response(200, json={"total": 7})
+
+    with respx.mock() as mock:
+        mock.get(_count_url(book_id)).mock(side_effect=capture)
+        result = await bc.count_chapters(book_id, from_sort=10, to_sort=20)
+
+    assert result == 7
+    assert captured["query"]["from_sort"] == "10"
+    assert captured["query"]["to_sort"] == "20"
+    assert captured["query"]["limit"] == "1"
+
+
+@pytest.mark.asyncio
+async def test_count_chapters_omits_sort_params_when_not_set(bc: BookClient):
+    """Unset kwargs must NOT materialise on the wire — otherwise
+    book-service would see ``from_sort=None`` (string) and reject 400."""
+    book_id = uuid4()
+    captured: dict = {}
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        captured["query"] = dict(request.url.params)
+        return httpx.Response(200, json={"total": 3})
+
+    with respx.mock() as mock:
+        mock.get(_count_url(book_id)).mock(side_effect=capture)
+        await bc.count_chapters(book_id)
+
+    assert "from_sort" not in captured["query"]
+    assert "to_sort" not in captured["query"]
+
+
+@pytest.mark.asyncio
+async def test_count_chapters_from_sort_only(bc: BookClient):
+    """One-sided range (upper unbounded) must omit ``to_sort``."""
+    book_id = uuid4()
+    captured: dict = {}
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        captured["query"] = dict(request.url.params)
+        return httpx.Response(200, json={"total": 5})
+
+    with respx.mock() as mock:
+        mock.get(_count_url(book_id)).mock(side_effect=capture)
+        await bc.count_chapters(book_id, from_sort=3)
+
+    assert captured["query"]["from_sort"] == "3"
+    assert "to_sort" not in captured["query"]
+
+
+@pytest.mark.asyncio
+async def test_count_chapters_from_sort_zero_sent_not_dropped(bc: BookClient):
+    """Regression: ``from_sort=0`` must reach the wire, not be dropped
+    as falsy — the handler distinguishes ``None`` (skip filter) from
+    ``0`` (filter starting at sort_order 0)."""
+    book_id = uuid4()
+    captured: dict = {}
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        captured["query"] = dict(request.url.params)
+        return httpx.Response(200, json={"total": 2})
+
+    with respx.mock() as mock:
+        mock.get(_count_url(book_id)).mock(side_effect=capture)
+        await bc.count_chapters(book_id, from_sort=0, to_sort=0)
+
+    assert captured["query"]["from_sort"] == "0"
+    assert captured["query"]["to_sort"] == "0"
+
+
 # ── get_chapter_text (D-K18.3-01) ───────────────────────────────────
 
 

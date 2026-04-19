@@ -31,6 +31,111 @@ func TestParseLimitOffset(t *testing.T) {
 	}
 }
 
+func TestParseSortRange(t *testing.T) {
+	t.Parallel()
+
+	// Unset params → (nil, nil, true) so the caller skips the filter.
+	req := httptest.NewRequest(http.MethodGet, "/?limit=10", nil)
+	from, to, ok := parseSortRange(req)
+	if !ok || from != nil || to != nil {
+		t.Fatalf("expected (nil, nil, true) for unset params, got (%v, %v, %v)", from, to, ok)
+	}
+
+	// Both set → both parsed.
+	req = httptest.NewRequest(http.MethodGet, "/?from_sort=3&to_sort=7", nil)
+	from, to, ok = parseSortRange(req)
+	if !ok || from == nil || *from != 3 || to == nil || *to != 7 {
+		t.Fatalf("expected (3, 7, true), got (%v, %v, %v)", derefInt(from), derefInt(to), ok)
+	}
+
+	// Only from set → to remains nil (unbounded upper end).
+	req = httptest.NewRequest(http.MethodGet, "/?from_sort=5", nil)
+	from, to, ok = parseSortRange(req)
+	if !ok || from == nil || *from != 5 || to != nil {
+		t.Fatalf("expected (5, nil, true), got (%v, %v, %v)", derefInt(from), derefInt(to), ok)
+	}
+
+	// from_sort=0 must NOT be treated as "unset" — the pointer is the
+	// difference. If this regresses, from_sort=0 silently becomes a
+	// no-op filter and users asking for "from chapter 0" would get the
+	// whole book back.
+	req = httptest.NewRequest(http.MethodGet, "/?from_sort=0&to_sort=2", nil)
+	from, to, ok = parseSortRange(req)
+	if !ok || from == nil || *from != 0 || to == nil || *to != 2 {
+		t.Fatalf("expected (0, 2, true), got (%v, %v, %v)", derefInt(from), derefInt(to), ok)
+	}
+
+	// Malformed → ok=false so the handler can 400.
+	for _, url := range []string{
+		"/?from_sort=abc",
+		"/?to_sort=-1",
+		"/?from_sort=1.5",
+		"/?from_sort=&to_sort=notnum",
+	} {
+		req = httptest.NewRequest(http.MethodGet, url, nil)
+		if _, _, ok := parseSortRange(req); ok {
+			t.Fatalf("expected ok=false for %s", url)
+		}
+	}
+}
+
+func derefInt(p *int) any {
+	if p == nil {
+		return nil
+	}
+	return *p
+}
+
+func TestBuildSortRangeFilter(t *testing.T) {
+	t.Parallel()
+
+	bookID := uuid.New()
+	baseSel := "c.book_id=$1 AND c.lifecycle_state='active'"
+	baseCnt := "book_id=$1 AND lifecycle_state='active'"
+
+	// No range → unchanged clauses, args untouched.
+	sel, cnt, args := buildSortRangeFilter(baseSel, baseCnt, []any{bookID}, nil, nil)
+	if sel != baseSel || cnt != baseCnt || len(args) != 1 {
+		t.Fatalf("nil range: got sel=%q cnt=%q args=%d", sel, cnt, len(args))
+	}
+
+	// Both ends → $2, $3 placeholders in order appended.
+	from, to := 3, 7
+	sel, cnt, args = buildSortRangeFilter(baseSel, baseCnt, []any{bookID}, &from, &to)
+	wantSel := baseSel + " AND c.sort_order >= $2 AND c.sort_order <= $3"
+	wantCnt := baseCnt + " AND sort_order >= $2 AND sort_order <= $3"
+	if sel != wantSel || cnt != wantCnt {
+		t.Fatalf("both ends: got sel=%q cnt=%q", sel, cnt)
+	}
+	if len(args) != 3 || args[1] != 3 || args[2] != 7 {
+		t.Fatalf("both ends: got args=%v", args)
+	}
+
+	// Only to_sort → $2 used for the upper bound even when from is nil.
+	sel, cnt, args = buildSortRangeFilter(baseSel, baseCnt, []any{bookID}, nil, &to)
+	if sel != baseSel+" AND c.sort_order <= $2" {
+		t.Fatalf("to-only sel: %q", sel)
+	}
+	if cnt != baseCnt+" AND sort_order <= $2" {
+		t.Fatalf("to-only cnt: %q", cnt)
+	}
+	if len(args) != 2 || args[1] != 7 {
+		t.Fatalf("to-only args: %v", args)
+	}
+
+	// Regression: from_sort=0 must produce a placeholder, not be
+	// collapsed as unset. Without pointer semantics, the SQL would
+	// drop the filter and return the full book.
+	zero := 0
+	sel, _, args = buildSortRangeFilter(baseSel, baseCnt, []any{bookID}, &zero, nil)
+	if sel != baseSel+" AND c.sort_order >= $2" {
+		t.Fatalf("from=0 sel: %q", sel)
+	}
+	if len(args) != 2 || args[1] != 0 {
+		t.Fatalf("from=0 args: %v", args)
+	}
+}
+
 func TestHelpers(t *testing.T) {
 	t.Parallel()
 

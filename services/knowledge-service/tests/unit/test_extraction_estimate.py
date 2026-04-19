@@ -236,18 +236,96 @@ def test_estimate_zero_items_returns_zero_cost():
     assert data["estimated_duration_seconds"] == 0
 
 
-def test_estimate_scope_range_accepted_without_error():
-    """R1 fix #1: scope_range is accepted but not yet forwarded to data
-    sources (D-K16.2-02). This test documents the current behavior:
-    the field is accepted, the estimate returns the full unfiltered count."""
-    client = _make_client(chapter_count=45, pending_count=0, entity_count=0)
+def _install_capturing_book_client(chapter_count: int = 10) -> dict:
+    """Install a book_client override that records kwargs of the most
+    recent ``count_chapters`` call into the returned ``captured`` dict.
+
+    Shared by the scope_range tests so the stub-plumbing boilerplate
+    lives in one place. Returns the dict; the caller asserts on its
+    keys after posting the estimate.
+    """
+    from app.main import app
+    from app.deps import get_book_client
+
+    captured: dict = {}
+
+    async def _count_chapters(book_id, *, from_sort=None, to_sort=None):
+        captured["book_id"] = book_id
+        captured["from_sort"] = from_sort
+        captured["to_sort"] = to_sort
+        return chapter_count
+
+    class _Stub:
+        count_chapters = staticmethod(_count_chapters)
+
+    app.dependency_overrides[get_book_client] = lambda: _Stub()
+    return captured
+
+
+def test_estimate_scope_range_forwards_chapter_range_to_book_client():
+    """D-K16.2-02 — scope_range.chapter_range is parsed and forwarded
+    to book-service as from_sort/to_sort query params, so the preview
+    count reflects the range the job will actually process."""
+    client = _make_client(chapter_count=11, pending_count=0, entity_count=0)
+    captured = _install_capturing_book_client(chapter_count=11)
+
     resp = _post_estimate(
         client, "chapters", scope_range={"chapter_range": [10, 20]},
     )
     assert resp.status_code == 200
     data = resp.json()
-    # Full count returned — scope_range is not yet applied
-    assert data["items"]["chapters"] == 45
+    assert data["items"]["chapters"] == 11
+    assert captured["from_sort"] == 10
+    assert captured["to_sort"] == 20
+
+
+def test_estimate_scope_range_all_scope_also_forwards():
+    """Range forwarding must also fire under scope='all', not only
+    scope='chapters' — otherwise the 'all' preview silently ignores
+    the range while the eventual job honours it."""
+    client = _make_client(
+        chapter_count=5, pending_count=3, entity_count=2,
+    )
+    captured = _install_capturing_book_client(chapter_count=5)
+
+    resp = _post_estimate(
+        client, "all", scope_range={"chapter_range": [3, 7]},
+    )
+    assert resp.status_code == 200
+    assert captured["from_sort"] == 3
+    assert captured["to_sort"] == 7
+
+
+def test_estimate_scope_range_malformed_rejected():
+    """Malformed chapter_range → 422 so the frontend can surface the
+    problem instead of the user approving a bogus estimate."""
+    client = _make_client(chapter_count=10, pending_count=0, entity_count=0)
+    for bad in (
+        {"chapter_range": [10]},           # wrong length
+        {"chapter_range": [10, 20, 30]},    # wrong length
+        {"chapter_range": ["a", "b"]},      # wrong types
+        {"chapter_range": [1.5, 2.5]},      # float not int
+        {"chapter_range": [-1, 5]},         # negative
+        {"chapter_range": "10-20"},         # not a list
+        {"chapter_range": [True, False]},   # bool is int-ish but rejected
+    ):
+        resp = _post_estimate(client, "chapters", scope_range=bad)
+        assert resp.status_code == 422, f"expected 422 for {bad}, got {resp.status_code}"
+
+
+def test_estimate_scope_range_omitted_leaves_range_unset():
+    """No scope_range → both from_sort/to_sort stay None so book-service
+    returns the full unfiltered count. Regression guard: we don't want
+    the estimate endpoint to accidentally pin from_sort=0 (which would
+    still be correct today but silently breaks if sort_order ever
+    allows negative values)."""
+    client = _make_client(chapter_count=45, pending_count=0, entity_count=0)
+    captured = _install_capturing_book_client(chapter_count=45)
+
+    resp = _post_estimate(client, "chapters")
+    assert resp.status_code == 200
+    assert captured["from_sort"] is None
+    assert captured["to_sort"] is None
 
 
 def test_estimate_local_model_returns_zero_cost():

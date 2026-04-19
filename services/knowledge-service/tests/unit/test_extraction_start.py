@@ -301,6 +301,23 @@ def test_start_job_with_scope_range_accepted():
     assert resp.status_code == 201
 
 
+def test_start_job_malformed_scope_range_rejected():
+    """review-impl MED #2 — the start endpoint must apply the same
+    chapter_range shape check the estimate endpoint applies, or a
+    client can bypass validation by skipping the preview step."""
+    client = _make_client()
+    for bad in (
+        {"chapter_range": [10]},
+        {"chapter_range": ["a", "b"]},
+        {"chapter_range": [1.5, 2.5]},
+        {"chapter_range": [-1, 5]},
+        {"chapter_range": "10-20"},
+        {"chapter_range": [True, False]},
+    ):
+        resp = _post_start(client, scope="chapters", scope_range=bad)
+        assert resp.status_code == 422, f"expected 422 for {bad}, got {resp.status_code}"
+
+
 def test_start_job_paused_job_blocks_new_start():
     """A paused job is still active — should block a new start."""
     paused = _job_stub(status="paused")

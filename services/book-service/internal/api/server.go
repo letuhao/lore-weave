@@ -274,6 +274,64 @@ func parseLimitOffset(r *http.Request) (limit, offset int) {
 	return
 }
 
+// parseSortRange reads the optional ?from_sort= and ?to_sort= query
+// params that the internal chapters endpoint uses to scope extraction
+// jobs to a chapter range (D-K16.2-02). Returns `(from, to, ok)` —
+// ok=false means the caller passed a malformed value we should reject
+// with 400. `*int` lets the SQL builder distinguish "not set" from
+// "set to 0" so from_sort=0 (chapter zero, if the user uses 0-indexed
+// sort orders) behaves correctly.
+func parseSortRange(r *http.Request) (from, to *int, ok bool) {
+	parse := func(key string) (*int, bool) {
+		raw := r.URL.Query().Get(key)
+		if raw == "" {
+			return nil, true
+		}
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 {
+			return nil, false
+		}
+		return &n, true
+	}
+	f, okF := parse("from_sort")
+	t, okT := parse("to_sort")
+	if !okF || !okT {
+		return nil, nil, false
+	}
+	return f, t, true
+}
+
+// buildSortRangeFilter is the pure SQL-builder used by
+// getInternalBookChapters for its chapter list + count queries. It
+// exists as its own function so unit tests can assert on the exact
+// WHERE fragments and placeholder positions without a real pgx pool
+// (review-impl LOW #4). `baseSel` is the table-qualified WHERE (for
+// the SELECT), `baseCount` is the unqualified one (for COUNT). The
+// caller owns the starting args slice so the function works for both
+// the count and list queries without duplicating placeholder math.
+func buildSortRangeFilter(
+	baseSel string,
+	baseCount string,
+	args []any,
+	fromSort *int,
+	toSort *int,
+) (selWhere string, countWhere string, outArgs []any) {
+	selWhere = baseSel
+	countWhere = baseCount
+	outArgs = args
+	if fromSort != nil {
+		outArgs = append(outArgs, *fromSort)
+		selWhere += fmt.Sprintf(" AND c.sort_order >= $%d", len(outArgs))
+		countWhere += fmt.Sprintf(" AND sort_order >= $%d", len(outArgs))
+	}
+	if toSort != nil {
+		outArgs = append(outArgs, *toSort)
+		selWhere += fmt.Sprintf(" AND c.sort_order <= $%d", len(outArgs))
+		countWhere += fmt.Sprintf(" AND sort_order <= $%d", len(outArgs))
+	}
+	return selWhere, countWhere, outArgs
+}
+
 func (s *Server) ensureQuotaRow(ctx context.Context, ownerID uuid.UUID) error {
 	_, err := s.pool.Exec(ctx, `
 INSERT INTO user_storage_quota(owner_user_id, used_bytes, quota_bytes)
@@ -1653,17 +1711,41 @@ func (s *Server) getInternalBookChapters(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return
 	}
+	fromSort, toSort, rangeOK := parseSortRange(r)
+	if !rangeOK {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid from_sort/to_sort")
+		return
+	}
+	// Swap if caller passed inverted range — the semantic is "inclusive
+	// range" and the from>to form is a caller typo, not a zero-match
+	// signal. Matches the knowledge-service estimate endpoint which also
+	// tolerates either ordering.
+	if fromSort != nil && toSort != nil && *fromSort > *toSort {
+		fromSort, toSort = toSort, fromSort
+	}
 	limit, offset := parseLimitOffset(r)
+
+	where, countWhere, countArgs := buildSortRangeFilter(
+		"c.book_id=$1 AND c.lifecycle_state='active'",
+		"book_id=$1 AND lifecycle_state='active'",
+		[]any{bookID},
+		fromSort, toSort,
+	)
 	var total int
-	_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM chapters WHERE book_id=$1 AND lifecycle_state='active'`, bookID).Scan(&total)
-	rows, err := s.pool.Query(r.Context(), `
+	_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM chapters WHERE `+countWhere, countArgs...).Scan(&total)
+
+	listArgs := append([]any{}, countArgs...)
+	listArgs = append(listArgs, limit, offset)
+	limitPos := len(countArgs) + 1
+	offsetPos := len(countArgs) + 2
+	rows, err := s.pool.Query(r.Context(), fmt.Sprintf(`
 SELECT c.id, c.title, c.sort_order, c.original_language, c.draft_updated_at,
   COALESCE((SELECT octet_length(d.body::text) / 5 FROM chapter_drafts d WHERE d.chapter_id = c.id LIMIT 1), 0) AS word_count_estimate
 FROM chapters c
-WHERE c.book_id=$1 AND c.lifecycle_state='active'
+WHERE %s
 ORDER BY c.sort_order, c.created_at
-LIMIT $2 OFFSET $3
-`, bookID, limit, offset)
+LIMIT $%d OFFSET $%d
+`, where, limitPos, offsetPos), listArgs...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list chapters")
 		return

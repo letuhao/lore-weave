@@ -70,6 +70,50 @@ _TOKENS_PER_GLOSSARY_ENTITY = 300
 _SECONDS_PER_ITEM = 2
 
 
+# ── scope_range helpers ─────────────────────────────────────────────
+
+
+def _extract_chapter_range(
+    scope_range: dict[str, Any] | None,
+) -> tuple[int | None, int | None]:
+    """Pull `chapter_range = [from, to]` out of ``scope_range`` or return
+    ``(None, None)`` if the caller didn't set one.
+
+    Raises 422 on malformed entries. Used by both the estimate and
+    start endpoints so the shape check is applied in exactly one place
+    — without this helper, the start path accepted garbage while
+    estimate rejected it (review-impl finding MED #2).
+
+    **Runner note (D-K16.2-02b):** the knowledge-service extraction
+    path is event-driven (chapter.saved → passage_ingester), so the
+    runner does not yet honour `chapter_range` — only the preview
+    count does. A future cycle must either:
+
+      (a) apply chapter_range as a filter inside the chapter.saved
+          event handler, OR
+      (b) switch the job model from event-reactive to batch-iterative
+          and drive chapter fetch from this range.
+
+    Until then, the estimate may under-report what the job will
+    actually process. `max_spend_usd` (K10.4 atomic try_spend) remains
+    the real financial guard.
+    """
+    if not scope_range or "chapter_range" not in scope_range:
+        return None, None
+    raw = scope_range["chapter_range"]
+    if (
+        not isinstance(raw, (list, tuple))
+        or len(raw) != 2
+        or not all(isinstance(v, int) and not isinstance(v, bool) for v in raw)
+        or any(v < 0 for v in raw)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="scope_range.chapter_range must be [int, int] with non-negative values",
+        )
+    return int(raw[0]), int(raw[1])
+
+
 # ── Request / response models ───────────────────────────────────────
 
 JobScope = Literal["chapters", "chat", "glossary_sync", "all"]
@@ -77,12 +121,20 @@ JobScope = Literal["chapters", "chat", "glossary_sync", "all"]
 
 class EstimateRequest(BaseModel):
     scope: JobScope
+    # D-K16.2-02 — `{"chapter_range": [from, to]}` (inclusive,
+    # sort_order-based ints). Forwarded to book-service so the preview
+    # reflects the filtered chapter count. See `_extract_chapter_range`
+    # for the runner-side gap (D-K16.2-02b) — chapter_range affects
+    # preview only until the event-driven runner honours it too.
     scope_range: dict | None = None
     llm_model: str = Field(min_length=1, max_length=200)
 
 
 class StartJobRequest(BaseModel):
     scope: JobScope
+    # Same shape as `EstimateRequest.scope_range`. Validated via
+    # `_extract_chapter_range` at request time so the DB never stores
+    # a malformed shape that the estimate path would have rejected.
     scope_range: dict[str, Any] | None = None
     llm_model: str = Field(min_length=1, max_length=200)
     embedding_model: str = Field(min_length=1, max_length=200)
@@ -140,16 +192,15 @@ async def estimate_extraction_cost(
 
     scope = body.scope
 
-    # TODO(K16.2): scope_range is accepted but not yet forwarded to
-    # data sources. Book-service's internal chapters endpoint does not
-    # support range filtering yet. Tracked as D-K16.2-02 in
-    # SESSION_PATCH. The field is kept on the request model so the
-    # frontend can start sending it without a contract change when
-    # filtering lands.
+    chapter_from, chapter_to = _extract_chapter_range(body.scope_range)
 
     # Chapter count — via book-service internal API
     if scope in ("chapters", "all") and project.book_id is not None:
-        count = await book_client.count_chapters(project.book_id)
+        count = await book_client.count_chapters(
+            project.book_id,
+            from_sort=chapter_from,
+            to_sort=chapter_to,
+        )
         chapters = count if count is not None else 0
 
     # Pending chat turns — from extraction_pending queue
@@ -290,6 +341,11 @@ async def start_extraction_job(
     Worker notification (Redis) is deferred to K16.6 — the worker
     polls for pending/running jobs.
     """
+    # 0. Validate scope_range.chapter_range shape (review-impl MED #2).
+    # Raises 422 on malformed payloads so the DB never stores a shape
+    # the estimate path would have rejected.
+    _extract_chapter_range(body.scope_range)
+
     # 1. Verify project exists and belongs to user
     project = await projects_repo.get(user_id, project_id)
     if project is None:
