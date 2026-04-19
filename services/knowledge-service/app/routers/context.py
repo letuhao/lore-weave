@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.glossary_client import GlossaryClient
+from app.clients.provider_client import ProviderClient
 from app.context.builder import ProjectNotFound, build_context
 from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.summaries import SummariesRepo
@@ -30,6 +31,7 @@ from app.deps import (
     get_embedding_client,
     get_glossary_client,
     get_projects_repo,
+    get_provider_client,
     get_summaries_repo,
 )
 from app.metrics import context_build_duration_seconds
@@ -91,6 +93,7 @@ async def build(
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     glossary_client: GlossaryClient = Depends(get_glossary_client),
     embedding_client: EmbeddingClient = Depends(get_embedding_client),
+    provider_client: ProviderClient = Depends(get_provider_client),
 ) -> ContextBuildResponse:
     # K6.5: observe end-to-end build duration. Label distinguishes
     # successful modes (no_project/static/full) from each error path
@@ -107,6 +110,7 @@ async def build(
             project_id=req.project_id,
             message=req.message,
             embedding_client=embedding_client,
+            provider_client=provider_client,
         )
         _mode_label = built.mode
     except ProjectNotFound:

@@ -484,6 +484,238 @@ def test_cosine_zero_magnitude_is_safe():
     assert _cosine([0.0, 0.0], 0.0, [0.0, 0.0], 0.0) == 0.0
 
 
+# ── D-K18.3-02 generative rerank ─────────────────────────────────────
+
+
+def _rerank_response(content: str):
+    """Build a ChatCompletionResponse-shaped mock return value."""
+    from app.clients.provider_client import (
+        ChatCompletionResponse,
+        ChatCompletionUsage,
+    )
+    return ChatCompletionResponse(
+        content=content,
+        usage=ChatCompletionUsage(),
+        model="test-rerank",
+        raw={},
+    )
+
+
+def _l3(text: str, score: float = 0.5) -> "object":
+    from app.context.selectors.passages import L3Passage
+    return L3Passage(
+        text=text,
+        source_type="chapter",
+        source_id="chap-1",
+        chunk_index=0,
+        score=score,
+        is_hub=False,
+        chapter_index=1,
+    )
+
+
+@pytest.mark.asyncio
+async def test_rerank_reorders_passages_per_llm_response():
+    from app.context.selectors.passages import rerank_passages
+
+    passages = [_l3("first"), _l3("second"), _l3("third")]
+    provider = MagicMock()
+    provider.chat_completion = AsyncMock(
+        return_value=_rerank_response('{"order": [2, 0, 1]}')
+    )
+
+    out = await rerank_passages(
+        provider,
+        query="test",
+        passages=passages,
+        model="llama-3",
+        user_id=USER_UUID,
+    )
+    assert [p.text for p in out] == ["third", "first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_rerank_prompt_carries_query_and_numbered_passages():
+    """Review-design guard: the LLM prompt must include `Query:` and
+    numbered `[i]` markers so a future prompt refactor that removes
+    them (and silently breaks the parse contract) is caught here."""
+    from app.context.selectors.passages import rerank_passages
+
+    passages = [_l3("alpha"), _l3("beta")]
+    provider = MagicMock()
+    provider.chat_completion = AsyncMock(
+        return_value=_rerank_response('{"order": [0, 1]}')
+    )
+
+    await rerank_passages(
+        provider, query="where is alpha",
+        passages=passages, model="llama-3", user_id=USER_UUID,
+    )
+    call = provider.chat_completion.await_args
+    user_msg = call.kwargs["messages"][1]["content"]
+    assert "Query: where is alpha" in user_msg
+    assert "[0] alpha" in user_msg
+    assert "[1] beta" in user_msg
+
+
+@pytest.mark.asyncio
+async def test_rerank_fallback_on_non_json_response():
+    """Any non-JSON body → keep original MMR order; never raises."""
+    from app.context.selectors.passages import rerank_passages
+
+    passages = [_l3("first"), _l3("second")]
+    provider = MagicMock()
+    provider.chat_completion = AsyncMock(
+        return_value=_rerank_response("not json at all")
+    )
+
+    out = await rerank_passages(
+        provider, query="q", passages=passages,
+        model="llama-3", user_id=USER_UUID,
+    )
+    assert [p.text for p in out] == ["first", "second"]  # unchanged
+
+
+@pytest.mark.asyncio
+async def test_rerank_handles_partial_order_by_appending_missing_indices():
+    """LLM returned [2] only — we should rerank [2] first, then fill
+    in the missing indices in original MMR order at the tail."""
+    from app.context.selectors.passages import rerank_passages
+
+    passages = [_l3("a"), _l3("b"), _l3("c"), _l3("d")]
+    provider = MagicMock()
+    provider.chat_completion = AsyncMock(
+        return_value=_rerank_response('{"order": [2]}')
+    )
+
+    out = await rerank_passages(
+        provider, query="q", passages=passages,
+        model="llama-3", user_id=USER_UUID,
+    )
+    assert [p.text for p in out] == ["c", "a", "b", "d"]
+
+
+@pytest.mark.asyncio
+async def test_rerank_drops_out_of_range_and_duplicate_indices():
+    """Malformed indices filtered out before fill-missing kicks in."""
+    from app.context.selectors.passages import rerank_passages
+
+    passages = [_l3("a"), _l3("b"), _l3("c")]
+    provider = MagicMock()
+    # out-of-range 99, duplicate 0, negative -1, bool True — all dropped.
+    provider.chat_completion = AsyncMock(
+        return_value=_rerank_response('{"order": [1, 99, 0, -1, 0, true]}')
+    )
+
+    out = await rerank_passages(
+        provider, query="q", passages=passages,
+        model="llama-3", user_id=USER_UUID,
+    )
+    # Valid picks: [1, 0]; missing: [2] → appended at tail.
+    assert [p.text for p in out] == ["b", "a", "c"]
+
+
+@pytest.mark.asyncio
+async def test_rerank_timeout_falls_back_to_mmr_order():
+    """Review-impl MED catch: a slow rerank model must NOT eat the L3
+    timeout and leave Mode 3 with zero passages. The inner timeout
+    fires first so the MMR order stays as the fallback — enabling
+    rerank never degrades context below the no-rerank baseline."""
+    import asyncio as _asyncio
+
+    from app.context.selectors.passages import rerank_passages
+
+    passages = [_l3("first"), _l3("second"), _l3("third")]
+
+    async def slow_chat(**kwargs):
+        # Sleep past the 50ms inner-timeout window used by this test.
+        await _asyncio.sleep(0.2)
+        return _rerank_response('{"order": [2, 1, 0]}')
+
+    provider = MagicMock()
+    provider.chat_completion = slow_chat  # real coroutine, not AsyncMock
+
+    out = await rerank_passages(
+        provider, query="q", passages=passages,
+        model="slow-llm", user_id=USER_UUID,
+        timeout_s=0.05,
+    )
+    # Fell back to MMR order despite the eventual 'successful' response.
+    assert [p.text for p in out] == ["first", "second", "third"]
+
+
+@pytest.mark.asyncio
+async def test_rerank_fallback_on_provider_error():
+    """Provider errors (timeout, upstream down) keep MMR order; the
+    selector never bubbles the exception up."""
+    from app.clients.provider_client import ProviderUpstreamError
+    from app.context.selectors.passages import rerank_passages
+
+    passages = [_l3("first"), _l3("second")]
+    provider = MagicMock()
+    provider.chat_completion = AsyncMock(
+        side_effect=ProviderUpstreamError("503"),
+    )
+
+    out = await rerank_passages(
+        provider, query="q", passages=passages,
+        model="llama-3", user_id=USER_UUID,
+    )
+    assert [p.text for p in out] == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_select_l3_skips_rerank_when_model_unset(monkeypatch):
+    """Default path: rerank_model=None → provider_client never called."""
+    client = MagicMock()
+    client.embed = AsyncMock(return_value=_embed_result())
+    hits = [_hit("a", 0.9), _hit("b", 0.8)]
+    monkeypatch.setattr(
+        "app.context.selectors.passages.find_passages_by_vector",
+        AsyncMock(return_value=hits),
+    )
+    provider = MagicMock()
+    provider.chat_completion = AsyncMock()
+
+    await select_l3_passages(
+        MagicMock(), client,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        message="q",
+        intent=_intent(),
+        embedding_model="bge-m3", embedding_dim=1024,
+        user_uuid=USER_UUID,
+        provider_client=provider,
+        rerank_model=None,  # opt-out
+    )
+    provider.chat_completion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_select_l3_skips_rerank_when_only_one_passage(monkeypatch):
+    """Single-passage pool: nothing to reorder; skip the LLM call."""
+    client = MagicMock()
+    client.embed = AsyncMock(return_value=_embed_result())
+    hits = [_hit("only one", 0.9)]
+    monkeypatch.setattr(
+        "app.context.selectors.passages.find_passages_by_vector",
+        AsyncMock(return_value=hits),
+    )
+    provider = MagicMock()
+    provider.chat_completion = AsyncMock()
+
+    await select_l3_passages(
+        MagicMock(), client,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        message="q",
+        intent=_intent(),
+        embedding_model="bge-m3", embedding_dim=1024,
+        user_uuid=USER_UUID,
+        provider_client=provider,
+        rerank_model="llama-3",
+    )
+    provider.chat_completion.assert_not_called()
+
+
 def test_embedding_model_to_dim_covers_supported_models():
     """Every mapped dim must be supported by passages.SUPPORTED_PASSAGE_DIMS
     OR the selector must be wise enough to skip unknown dims."""

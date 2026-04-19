@@ -36,6 +36,7 @@ from uuid import UUID
 
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.glossary_client import GlossaryClient
+from app.clients.provider_client import ProviderClient
 from app.config import settings
 from app.context.formatters.dedup import (
     filter_entities_not_in_summary,
@@ -111,6 +112,8 @@ async def _safe_l3_passages(
     project: Project,
     message: str,
     intent: IntentResult,
+    provider_client: ProviderClient | None = None,
+    rerank_model: str | None = None,
 ) -> list[L3Passage]:
     """Run the L3 selector under a Neo4j session with a timeout.
 
@@ -152,6 +155,8 @@ async def _safe_l3_passages(
                     embedding_model=project.embedding_model,
                     embedding_dim=embedding_dim,
                     user_uuid=user_id,
+                    provider_client=provider_client,
+                    rerank_model=rerank_model,
                 ),
                 timeout=settings.context_l3_timeout_s,
             )
@@ -417,6 +422,7 @@ async def build_full_mode(
     project: Project,
     message: str,
     embedding_client: EmbeddingClient | None = None,
+    provider_client: ProviderClient | None = None,
 ) -> BuiltContext:
     """Build the Mode 3 memory block.
 
@@ -473,6 +479,9 @@ async def build_full_mode(
     # Classify once: the same IntentResult drives both the L2 selector's
     # hop-count / recency gating AND the instruction-block hint text.
     intent_obj = classify(message)
+    # D-K18.3-02: opt-in generative rerank via extraction_config. Absent
+    # key or empty string = skip the LLM rerank hop, MMR order stands.
+    rerank_model = (project.extraction_config or {}).get("rerank_model") or None
     l2_facts, l3_passages = await asyncio.gather(
         _safe_l2_facts(
             user_id=user_id, project=project, intent=intent_obj,
@@ -481,6 +490,8 @@ async def build_full_mode(
             embedding_client,
             user_id=user_id, project=project,
             message=message, intent=intent_obj,
+            provider_client=provider_client,
+            rerank_model=rerank_model,
         ),
     )
     mentioned_entities = list(intent_obj.entities)

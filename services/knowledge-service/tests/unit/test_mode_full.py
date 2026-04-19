@@ -11,6 +11,14 @@ import pytest
 
 from app.context.modes.full import build_full_mode
 from app.context.selectors.facts import L2FactResult
+# Capture the REAL select_l3_passages at module import time — helpers
+# that re-import it later would pick up whichever mock a previous
+# `_patch_mode3_pieces` call installed (the AsyncMock), not the real
+# function, and the rerank-propagation tests would silently stub out
+# the code path they're trying to exercise.
+from app.context.selectors.passages import (
+    select_l3_passages as _REAL_SELECT_L3_PASSAGES,
+)
 from app.db.models import Project, Summary
 
 
@@ -523,6 +531,119 @@ async def test_mode3_splits_at_project_boundary(monkeypatch):
     # Volatile starts with one of the per-message sections.
     volatile_head = result.volatile_context.lstrip()
     assert volatile_head.startswith(("<glossary>", "<facts>", "<passages>", "<no_memory_for>", "<instructions>"))
+
+
+def _patch_l3_with_hits(monkeypatch, n: int = 3):
+    """Let the REAL select_l3_passages run end-to-end by un-patching
+    the AsyncMock that `_patch_mode3_pieces` installed for it, and
+    instead patch the deeper Neo4j `find_passages_by_vector` to
+    return in-memory hits. Used by the rerank propagation tests
+    where we need build_full_mode → selector → rerank_passages →
+    provider.chat_completion to actually fire."""
+    from app.db.neo4j_repos.passages import Passage, PassageSearchHit
+
+    # Undo the AsyncMock that _patch_mode3_pieces installed for
+    # select_l3_passages so the real function runs. Use the module-
+    # level _REAL_SELECT_L3_PASSAGES captured at import time — a
+    # fresh `from ... import` here would bind to whatever was last
+    # patched (i.e., the AsyncMock we're trying to undo).
+    monkeypatch.setattr(
+        "app.context.selectors.passages.select_l3_passages",
+        _REAL_SELECT_L3_PASSAGES,
+    )
+    hits = [
+        PassageSearchHit(
+            passage=Passage(
+                id=f"p{i}", user_id=str(USER_ID), project_id="p-1",
+                source_type="chapter", source_id=f"c{i}", chunk_index=0,
+                text=f"passage {i} content", embedding_model="bge-m3",
+                is_hub=False, chapter_index=i,
+            ),
+            raw_score=0.9 - i * 0.01,
+            vector=None,
+        )
+        for i in range(n)
+    ]
+    monkeypatch.setattr(
+        "app.context.selectors.passages.find_passages_by_vector",
+        AsyncMock(return_value=hits),
+    )
+
+
+@pytest.mark.asyncio
+async def test_rerank_model_from_extraction_config_triggers_rerank(monkeypatch):
+    """D-K18.3-02: project.extraction_config['rerank_model'] flows all
+    the way from build_full_mode → _safe_l3_passages → real
+    select_l3_passages → rerank_passages → provider.chat_completion.
+    Proves the opt-in config key actually reaches the LLM call site."""
+    # Full Mode 3 pipeline — but we use a REAL select_l3_passages, not
+    # a mock, so the rerank code path executes.
+    _patch_mode3_pieces(monkeypatch)  # L0/L1/L2 stubs
+    _patch_l3_with_hits(monkeypatch, n=3)
+
+    from app.clients.embedding_client import EmbeddingResult
+    from app.clients.provider_client import (
+        ChatCompletionResponse, ChatCompletionUsage,
+    )
+    provider = MagicMock()
+    provider.chat_completion = AsyncMock(return_value=ChatCompletionResponse(
+        content='{"order": [2, 0, 1]}',
+        usage=ChatCompletionUsage(), model="rerank-test", raw={},
+    ))
+
+    embedding = MagicMock()
+    embedding.embed = AsyncMock(return_value=EmbeddingResult(
+        embeddings=[[0.1] * 1024], dimension=1024, model="bge-m3",
+    ))
+
+    project = _project()
+    project.embedding_model = "bge-m3"
+    project.extraction_config = {"rerank_model": "llama-3-rerank"}
+
+    await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=embedding,
+        provider_client=provider,
+        user_id=USER_ID,
+        project=project,
+        message="who is arthur",
+    )
+    assert provider.chat_completion.await_count == 1
+    assert provider.chat_completion.await_args.kwargs["model_ref"] == "llama-3-rerank"
+
+
+@pytest.mark.asyncio
+async def test_rerank_skipped_when_extraction_config_has_no_rerank_model(
+    monkeypatch,
+):
+    """Default config (no rerank_model key) must not invoke the
+    provider. Projects without opt-in pay zero LLM cost."""
+    from app.clients.embedding_client import EmbeddingResult
+    _patch_mode3_pieces(monkeypatch)
+    _patch_l3_with_hits(monkeypatch, n=3)
+
+    provider = MagicMock()
+    provider.chat_completion = AsyncMock()
+    embedding = MagicMock()
+    embedding.embed = AsyncMock(return_value=EmbeddingResult(
+        embeddings=[[0.1] * 1024], dimension=1024, model="bge-m3",
+    ))
+
+    project = _project()
+    project.embedding_model = "bge-m3"
+    project.extraction_config = {}  # no rerank_model key
+
+    await build_full_mode(
+        summaries_repo=MagicMock(),
+        glossary_client=MagicMock(),
+        embedding_client=embedding,
+        provider_client=provider,
+        user_id=USER_ID,
+        project=project,
+        message="test",
+    )
+    provider.chat_completion.assert_not_called()
 
 
 @pytest.mark.asyncio

@@ -1,8 +1,8 @@
-# Session Handoff — Session 47 END / Session 48 START (Cycle 7 complete, Cycle 8 next)
+# Session Handoff — Session 47 END / Session 48 START (Cycles 7+8a complete, 8b next)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-19 (session 47 END)
-> **HEAD:** `7c666c9` (Cycle 7a); session 47 Cycle 7b commit hash pending (about to land)
+> **HEAD:** `8f282c3` (Cycle 7b); session 47 Cycle 8a commit hash pending (about to land)
 > **Branch:** `main` (ahead of origin by sessions 38–47 commits — user pushes manually)
 
 ---
@@ -35,7 +35,7 @@ Track 2 close-out roadmap (session 46)   ✅  9 cycles defined, 6 shipped
 
 ---
 
-## 2. Where to pick up — Cycle 8 (large infra, 3 commits)
+## 2. Where to pick up — Cycle 8b (cross-process cache invalidation)
 
 ```
 Cycle 1 — 1a + 1b                        ✅
@@ -47,9 +47,9 @@ Cycle 6 — RAG quality (6a/6b/6c)          ✅ (3/3)
 Cycle 7 — K18 final polish (split 7a/7b)  ✅ (session 47)
   ├─ 7a  P-K18.3-02 MMR embedding cosine  ✅
   └─ 7b  K18.9 prompt caching hints        ✅
-Cycle 8 — large infra (3 commits)         ← NEXT
-  ├─ 8a  D-K18.3-02  generative rerank (LM Studio)
-  ├─ 8b  D-T2-04  cross-process cache invalidation
+Cycle 8 — large infra (3 commits)
+  ├─ 8a  D-K18.3-02  generative rerank    ✅ (session 47)
+  ├─ 8b  D-T2-04  cross-process cache invalidation  ← NEXT
   └─ 8c  D-T2-05  glossary breaker probe half-open guarantee
 Cycle 9 — Gate-4 alignment                 ← final before Gate 13
   └─ K17.9.1 migration items
@@ -63,11 +63,15 @@ Gate 13 E2E + Chaos tests C01–C08          ← after all cycles
 3. **Cycle 8 is 3 separate commits** — one per sub-item because each changes observable behavior that should be reviewable independently.
 4. **Use the workflow gate:** `python scripts/workflow-gate.py reset && python scripts/workflow-gate.py size <XS|S|M|L|XL> <files> <logic> <effects>` before starting each cycle, phase per phase through to RETRO.
 
-### Things that are good to know before Cycle 8
+### Things that are good to know before Cycle 8b / 8c
 
-- **8a D-K18.3-02 (generative rerank)** — LM Studio post-MMR reorder, config-gated. Take the final MMR top-N, call a rerank model to reorder, swap in the reordered list. Config flag so users without a rerank model don't pay the hop.
 - **8b D-T2-04 (cross-process cache invalidation)** — Redis pub/sub or event-bus for the knowledge-service L0/L1 summary caches. Currently per-worker-process caches drift up to 60 s; Track 1 accepts that staleness, Track 2 doesn't.
 - **8c D-T2-05 (glossary breaker half-open probe)** — when the glossary circuit-breaker cooldown elapses, all concurrent callers race through. Need an `asyncio.Lock` to let one probe through while others short-circuit until the probe resolves.
+
+### Lessons carried forward (session 47)
+
+- **Don't re-import a "real" function after monkeypatch**. When a test helper `_patch_mode3_pieces` patches `foo` to an AsyncMock, a later `from pkg import foo as real_foo` binds `real_foo` to the AsyncMock, not the original. Capture the real reference at module load time (before any test runs) — see `_REAL_SELECT_L3_PASSAGES` in test_mode_full.py.
+- **Opt-in features still need inner timeouts**. Cycle 8a's rerank, if slow, was consuming the whole L3 budget and returning zero passages — strictly worse than not opting in. Always clamp sub-feature budgets so enabling an opt-in never regresses below the opt-out baseline.
 
 ### What Cycle 7 shipped (session 47)
 
@@ -79,7 +83,9 @@ Gate 13 E2E + Chaos tests C01–C08          ← after all cycles
 - +5 unit tests, +2 integration tests.
 - Fixed 3 stale docstrings.
 
-**7b K18.9** (about to land):
+**8a D-K18.3-02** (about to land): Post-MMR listwise generative rerank via `provider_client.chat_completion` with `{"order":[int,...]}` JSON mode. Opt-in via `project.extraction_config["rerank_model"]` (no DB migration). `rerank_passages()` in `selectors/passages.py` handles prompt construction (200-char passage snippets), forgiving parse (filter out-of-range / duplicate / bool; append missing indices at tail), and fail-safe fallback to MMR order on any error. Inner `asyncio.wait_for(timeout=1.0s)` prevents slow rerank from eating the 2s L3 budget. Wiring: `provider_client` plumbed through `deps.py::get_provider_client` → router → `build_context` → `build_full_mode` → `_safe_l3_passages` → `select_l3_passages`. Review-impl caught the timeout issue + added end-to-end test proving `extraction_config["rerank_model"]` reaches `chat_completion.model_ref`. +11 tests.
+
+**7b K18.9** (HEAD `8f282c3`):
 - `BuiltContext` / `ContextBuildResponse` / `KnowledgeContext` gained `stable_context` + `volatile_context` (defaults `""`).
 - New `split_at_boundary(lines, n)` helper; explicit boundary newline so `context == stable + volatile` byte-for-byte.
 - Boundary: Mode 1 = whole block stable; Mode 2/3 stable ends at `</project>`.
