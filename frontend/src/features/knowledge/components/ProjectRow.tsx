@@ -1,21 +1,26 @@
 import { Archive, ArchiveRestore, Pencil, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useProjectState } from '../hooks/useProjectState';
 import type { Project } from '../types';
+import { ProjectStateCard } from './ProjectStateCard';
 
-// K8 Track 1 renders the `disabled` state only. Other states
-// (building/paused/ready/failed) land with Track 2 Gate 12. See
-// SESSION_PATCH D-K8-02.
+// K19a.4 — replaces the Track 1 ProjectCard. One row per project:
+// header + CRUD toolbar (edit/archive/delete) above, state card
+// (K19a.3 dispatcher) below. CRUD actions stay side-by-side with
+// state-card actions per CLARIFY decision — keeps each button's
+// language clean ("Build graph" vs "Archive").
 
 interface Props {
   project: Project;
-  onEdit: (project: Project) => void;
-  onArchive: (project: Project) => void;
-  onRestore: (project: Project) => void;
-  onDelete: (project: Project) => void;
+  onEdit: (p: Project) => void;
+  onArchive: (p: Project) => void;
+  onRestore: (p: Project) => void;
+  onDelete: (p: Project) => void;
 }
 
-export function ProjectCard({ project, onEdit, onArchive, onRestore, onDelete }: Props) {
+export function ProjectRow({ project, onEdit, onArchive, onRestore, onDelete }: Props) {
   const { t } = useTranslation('knowledge');
+  const { state, actions } = useProjectState(project);
   const isArchived = project.is_archived;
   const typeLabel = t(`projects.form.typeOptions.${project.project_type}`);
 
@@ -24,25 +29,16 @@ export function ProjectCard({ project, onEdit, onArchive, onRestore, onDelete }:
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-2">
-            <h3 className="truncate font-serif text-[15px] font-semibold">
-              {project.name}
-            </h3>
-            <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-              {t('projects.card.staticMemory')}
-            </span>
+            <h3 className="truncate font-serif text-[15px] font-semibold">{project.name}</h3>
             {isArchived && (
               <span className="rounded-md bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning">
                 {t('projects.card.archivedBadge')}
               </span>
             )}
-            <span className="text-[11px] text-muted-foreground">
-              {typeLabel}
-            </span>
+            <span className="text-[11px] text-muted-foreground">{typeLabel}</span>
           </div>
           {project.description && (
-            <p className="line-clamp-2 text-xs text-muted-foreground">
-              {project.description}
-            </p>
+            <p className="line-clamp-2 text-xs text-muted-foreground">{project.description}</p>
           )}
           {project.book_id && (
             <p className="mt-1 font-mono text-[10px] text-muted-foreground">
@@ -85,6 +81,8 @@ export function ProjectCard({ project, onEdit, onArchive, onRestore, onDelete }:
           </button>
         </div>
       </div>
+
+      <ProjectStateCard state={state} actions={actions} />
     </div>
   );
 }

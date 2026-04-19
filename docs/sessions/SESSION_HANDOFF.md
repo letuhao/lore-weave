@@ -1,11 +1,11 @@
-# Session Handoff — Session 48 (Track 3 presentation layer complete; K19a.4 hook next)
+# Session Handoff — Session 48 (Track 3 state-machine loop closed; K19a.5 dialog next)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-19 (session 48 — Track 3 presentation layer complete)
-> **HEAD:** K19a.3 commit on top of `70a3136` on top of `bab8829` on top of `d14d71b` on top of `e694e44`
+> **Date:** 2026-04-19 (session 48 — Track 3 state-machine loop closed)
+> **HEAD:** K19a.4 commit on top of `af4cefa` on top of `70a3136` on top of `bab8829` on top of `d14d71b` on top of `e694e44`
 > **Branch:** `main` (ahead of origin by sessions 38–48 commits — user pushes manually)
 
-## Session 48 status — Track 3 cycles 1 + 2 + 3 + 4 shipped
+## Session 48 status — Track 3 cycles 1 + 2 + 3 + 4 + 5 shipped
 
 **Cycle 1 (K19a.1-rename, d14d71b):** pure `/memory` → `/knowledge` rename + nav retranslation (24 files).
 
@@ -13,11 +13,32 @@
 
 **Cycle 3 (K19a.2 + K19a.7-skeleton, 70a3136):** **First batched cycle** per user feedback. Foundation types for the 13-state memory-mode UI: `ProjectMemoryState` discriminated union + supporting types (BE-aligned per review-impl F1) + `VALID_TRANSITIONS` map + `canTransition` helper + all state/action i18n keys × 4 locales. 22/22 tests passing including runtime i18n cross-locale checks that neutralize the vitest i18n mock bypass (identified as L2 in cycle 1 review-impl).
 
-**Cycle 4 (K19a.3 full, pending commit):** `ProjectStateCard` dispatcher + all 13 subcomponents + shared primitives + 26-test component test file. Pure presentational (callback-prop pattern, TS exhaustive switch). `ProjectStateCardActions` union of 14 callbacks. /review-impl caught 7 more findings (3 MED dispatcher/prop drops + 1 MED i18n-coverage regression + 3 LOW polish), all fixed in-cycle. i18n runtime coverage now tracks 48 key paths × 4 locales (192 assertions).
+**Cycle 4 (K19a.3 full, af4cefa):** `ProjectStateCard` dispatcher + all 13 subcomponents + shared primitives + 26-test component test file. Pure presentational (callback-prop pattern, TS exhaustive switch). `ProjectStateCardActions` union of 14 callbacks. /review-impl caught 7 more findings (3 MED dispatcher/prop drops + 1 MED i18n-coverage regression + 3 LOW polish), all fixed in-cycle. i18n runtime coverage now tracks 48 key paths × 4 locales (192 assertions).
+
+**Cycle 5 (K19a.4 hook + BE graph-stats endpoint, pending commit):** First FS cycle of Track 3. New `GET /v1/knowledge/projects/{id}/graph-stats` endpoint (Cypher UNION-ALL aggregation, 6 BE unit tests). New `useProjectState(project)` hook: derives `ProjectMemoryState` from `(Project, jobs, stats)`, polls `/extraction/jobs` at 2s while active, wires 11 of 14 callbacks to real endpoints (pause/resume/cancel/retry/extractNew/delete/rebuild/confirmModelChange + 3 that stay toast-stubs pointing to K19a.5 + 4 that stay toast-stubs pointing to K19a.6). `ProjectCard.tsx` deleted, replaced by `ProjectRow.tsx`. /review-impl caught 9 findings (1 **HIGH** — missing `embedding_model` on `/start` + `/rebuild` payloads would 422 at runtime; 2 MED — no error handling, no scopeOfJob tests; 5 LOW + 1 cosmetic). All code findings fixed in-cycle; 3 LOW documented as known issues.
 
 **User feedback captured mid-session:** future small tasks should be batched into single cycles (saved to memory `feedback_batch_small_tasks.md`). Cycle 3 is the first application. Worked well — review-impl caught 9 findings in the batched scope that all got fixed in one pass.
 
-### What K19a.4 can now assume
+### What K19a.5 can now assume
+
+- `useProjectState(project)` hook returns `{ state, actions, isLoading, error }` — the dialog can import it to trigger estimate → confirm → start. When the Build button eventually opens the dialog, the dialog's Start button REPLACES `actions.onStart` (currently a toast-stub).
+- `knowledgeApi.estimateExtraction(projectId, {scope, llm_model, embedding_model}, token)` returns a `CostEstimate`. `knowledgeApi.startExtraction(projectId, {scope, llm_model, embedding_model}, token)` returns an `ExtractionJobWire`. Both are ready to call.
+- `EmbeddingModelPicker` (from K12.4) handles embedding-model selection UI; the dialog can reuse it.
+- Call `queryClient.invalidateQueries({queryKey: ['knowledge-project-jobs', projectId]})` after starting a job to flip the ProjectStateCard from DisabledCard → BuildingRunningCard on the next poll.
+
+### Known issues deferred from K19a.4 review-impl
+
+- **F4 (polling scale):** 2 queries × N projects. Bounded today by the 100-item pagination cap in ProjectsTab. If pagination is ever removed, consider a `/v1/knowledge/projects/active-jobs` aggregator.
+- **F7 (multi-device race):** polling stops for paused/complete/failed states. External state changes on another client aren't auto-refreshed. Future: always-on 30 s low-cadence poll OR SSE.
+- **F8 (action-API test gap):** the 11 real-action callbacks have no hook-level tests. `renderHook` + mocked `knowledgeApi` would cover them. Medium lift, future hardening.
+
+### What K19a.5 will replace
+
+- `actions.onStart` stub — becomes the dialog's Start button that calls `startExtraction`.
+- `actions.onBuildGraph` stub — becomes the dialog-opener trigger.
+- `actions.onViewError` stub — becomes the error-viewer modal trigger.
+
+### What K19a.3 can now assume
 
 - Import `ProjectStateCard`, `ProjectStateCardActions` from `@/features/knowledge/components/ProjectStateCard`.
 - Build a full 14-callback `ProjectStateCardActions` object + a derived `ProjectMemoryState`, pass both as props. Every card's buttons wire to the expected callback — verified by the 8 new F4 click tests.

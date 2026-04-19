@@ -5,8 +5,8 @@ import { useTranslation } from 'react-i18next';
 import { ConfirmDialog, EmptyState, SkeletonCard } from '@/components/shared';
 import { useProjects } from '../hooks/useProjects';
 import type { Project } from '../types';
-import { ProjectCard } from './ProjectCard';
 import { ProjectFormModal } from './ProjectFormModal';
+import { ProjectRow } from './ProjectRow';
 
 export function ProjectsTab() {
   const { t } = useTranslation('knowledge');
@@ -158,7 +158,7 @@ export function ProjectsTab() {
       {!isLoading && !isError && items.length > 0 && (
         <div className="flex flex-col gap-2">
           {items.map((project) => (
-            <ProjectCard
+            <ProjectRow
               key={project.project_id}
               project={project}
               onEdit={openEdit}

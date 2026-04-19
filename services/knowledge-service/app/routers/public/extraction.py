@@ -980,3 +980,77 @@ async def get_project_benchmark_status(
         mrr=row.mrr,
         created_at=row.created_at,
     )
+
+
+# ── K19a.4 — Graph stats (supports the FE ProjectStateCard) ──────────
+
+
+class GraphStatsResponse(BaseModel):
+    project_id: UUID
+    entity_count: int = 0
+    fact_count: int = 0
+    event_count: int = 0
+    passage_count: int = 0
+    last_extracted_at: Any = None  # datetime | None; serialises to ISO-8601
+
+
+_GRAPH_STATS_CYPHER = """
+CALL {
+  MATCH (e:Entity {user_id: $user_id, project_id: $project_id})
+  RETURN count(e) AS entity_count, 0 AS fact_count,
+         0 AS event_count, 0 AS passage_count
+  UNION ALL
+  MATCH (f:Fact {user_id: $user_id, project_id: $project_id})
+  RETURN 0, count(f), 0, 0
+  UNION ALL
+  MATCH (ev:Event {user_id: $user_id, project_id: $project_id})
+  RETURN 0, 0, count(ev), 0
+  UNION ALL
+  MATCH (p:Passage {user_id: $user_id, project_id: $project_id})
+  RETURN 0, 0, 0, count(p)
+}
+RETURN sum(entity_count) AS entity_count, sum(fact_count) AS fact_count,
+       sum(event_count) AS event_count, sum(passage_count) AS passage_count
+"""
+
+
+@router.get(
+    "/{project_id}/graph-stats",
+    response_model=GraphStatsResponse,
+)
+async def get_project_graph_stats(
+    project_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+) -> GraphStatsResponse:
+    """K19a.4 — count :Entity/:Fact/:Event/:Passage nodes scoped to the
+    (user, project) pair for the Track 3 ProjectStateCard stats line.
+
+    Returns zeros + `last_extracted_at=null` when the project has no
+    extraction history (graph is empty); callers render a "Ready"-style
+    state anyway because `extraction_enabled + status=complete` is the
+    authoritative signal. Cross-user access → 404.
+    """
+    project = await projects_repo.get(user_id, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="project not found",
+        )
+    params = {"user_id": str(user_id), "project_id": str(project_id)}
+    async with neo4j_session() as session:
+        result = await session.run(_GRAPH_STATS_CYPHER, params)
+        record = await result.single()
+    if record is None:
+        return GraphStatsResponse(
+            project_id=project_id,
+            last_extracted_at=project.last_extracted_at,
+        )
+    return GraphStatsResponse(
+        project_id=project_id,
+        entity_count=int(record["entity_count"] or 0),
+        fact_count=int(record["fact_count"] or 0),
+        event_count=int(record["event_count"] or 0),
+        passage_count=int(record["passage_count"] or 0),
+        last_extracted_at=project.last_extracted_at,
+    )

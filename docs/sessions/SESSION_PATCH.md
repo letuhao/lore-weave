@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-19 **(session 48 — Track 3 presentation layer complete: rename + placeholders + state types + 13 state cards)** — Track 2 still code-complete (T2-close-2 human Gate 13 loop remains). Track 3 progress: cycles 1-4 shipped. Cycle 4 delivers `ProjectStateCard` dispatcher + all 13 per-state subcomponents (pure presentational, callback-prop pattern, exhaustive switch). K19a.4 hook next.
-- Updated By: Assistant (session 48 — 4 commits so far: K19a.1-rename (d14d71b) + K19a.1-placeholders (bab8829) + K19a.2+7-skeleton (70a3136) + K19a.3 full. /review-impl caught 7 more findings this cycle (0 HIGH, 4 MED, 3 LOW), all fixed in-cycle. 52/52 tests pass.)
+- Last Updated: 2026-04-19 **(session 48 — Track 3 state-machine loop complete: rename + placeholders + types + state cards + hook/BE wiring)** — Track 2 still code-complete (T2-close-2 human Gate 13 loop remains). Track 3 progress: cycles 1-5 shipped. Cycle 5 delivers `useProjectState` hook + new BE `GET /graph-stats` endpoint + ProjectRow refactor, with 11 of 14 callbacks wired to real BE endpoints. K19a.5 (BuildGraphDialog) next — the 3 remaining dialog-dependent callbacks land there.
+- Updated By: Assistant (session 48 — 5 commits so far: K19a.1-rename (d14d71b) + K19a.1-placeholders (bab8829) + K19a.2+7-skeleton (70a3136) + K19a.3 (af4cefa) + K19a.4 full. /review-impl caught 9 more findings this cycle (1 HIGH F1 payload/schema mismatch + 2 MED + 5 LOW + 1 cosmetic) — all code findings fixed, 3 LOW documented as Deferred Items, 1 cosmetic accepted. 75/75 FE tests + 6/6 new BE tests pass.)
 - Active Branch: `main` (ahead of origin by sessions 38–48 commits — user pushes manually)
-- HEAD: `70a3136` (K19a.2+7-skeleton); K19a.3 lands on top
+- HEAD: `af4cefa` (K19a.3); K19a.4 lands on top
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -249,6 +249,51 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 ---
 
 ## Current Active Work
+
+### K19a.4 — useProjectState hook + GraphStats BE endpoint + ProjectsTab refactor ✅ (session 48, Track 3 cycle 5, FS)
+
+**First FS cycle of Track 3.** State-machine loop now closes end-to-end: BE exposes a new counts endpoint, FE derives ProjectMemoryState from `(Project, jobs, graph-stats)`, supplies 11-of-14 real callback actions wired to BE endpoints, polls `/extraction/jobs` at 2s while a job is pending/running, and renders through the K19a.3 ProjectStateCard. Three dialog-dependent callbacks (`onBuildGraph`, `onStart`, `onChangeModel`, `onDisable`, `onViewError`) remain as toast-stubs pointing at K19a.5/K19a.6.
+
+**Shipped (9 files, 2 deletions):**
+
+BE:
+- [services/knowledge-service/app/routers/public/extraction.py](../../services/knowledge-service/app/routers/public/extraction.py) — new `GraphStatsResponse` model + `GET /v1/knowledge/projects/{id}/graph-stats` endpoint. Cypher UNION-ALL aggregates `:Entity`/`:Fact`/`:Event`/`:Passage` node counts filtered on `(user_id, project_id)`; pulls `last_extracted_at` from the Postgres Project row. Cross-user or missing project → 404 (mirrors other extraction endpoints).
+- [services/knowledge-service/tests/unit/test_graph_stats.py](../../services/knowledge-service/tests/unit/test_graph_stats.py) (NEW) — 6 tests: happy path, empty graph zeros, null last_extracted_at, 404 on cross-user/missing project, missing-Cypher-record fallback, defensive null-count handling.
+
+FE:
+- [frontend/src/features/knowledge/api.ts](../../frontend/src/features/knowledge/api.ts) — +9 api methods (listExtractionJobs, getGraphStats, estimateExtraction, startExtraction, pauseExtraction, resumeExtraction, cancelExtraction, deleteGraph, rebuildGraph, updateEmbeddingModel); new `ExtractionJobWire` type (BE-literal scope string, NOT the UI's discriminated JobScope); new `ExtractionStartPayload` (with required `embedding_model` per review-impl F1) and separate `RebuildPayload` (no `scope` field — BE hardcodes scope=all).
+- [frontend/src/features/knowledge/hooks/useProjectState.ts](../../frontend/src/features/knowledge/hooks/useProjectState.ts) (NEW) — pure `deriveState(project, jobs, stats)` + `scopeOfJob(wire)` + `parseDecimal(str)` helpers, and the `useProjectState` hook that runs `listExtractionJobs` polling (2s when latest job is pending/running) + `getGraphStats` query + `runAction` wrapper for try/catch+toast.error on every real action.
+- [frontend/src/features/knowledge/hooks/__tests__/useProjectState.test.ts](../../frontend/src/features/knowledge/hooks/__tests__/useProjectState.test.ts) (NEW) — 23 tests: 15 `deriveState` table cases + 8 `scopeOfJob` scope_range parser cases.
+- [frontend/src/features/knowledge/components/ProjectRow.tsx](../../frontend/src/features/knowledge/components/ProjectRow.tsx) (NEW) — replaces `ProjectCard.tsx`. Composes project header + CRUD toolbar + `<ProjectStateCard>` via the hook's `state` + `actions`.
+- [frontend/src/features/knowledge/components/ProjectsTab.tsx](../../frontend/src/features/knowledge/components/ProjectsTab.tsx) — swapped `<ProjectCard>` → `<ProjectRow>` in the per-project render.
+- `frontend/src/features/knowledge/components/ProjectCard.tsx` — **DELETED** (superseded).
+
+**State coverage:** disabled, building_running, building_paused_{user,budget,error}, complete, failed, cancelled→disabled. Deferred (explicit): estimating + ready_to_build (dialog-internal; K19a.5), stale (needs pending-chapter signal), model_change_pending (needs model-switch signal), cancelling + deleting (transient BE states).
+
+**Callbacks wired:** pause, resume, cancel, deleteGraph, retry, extractNew, rebuild, confirmModelChange (11 real, including the polling). 3 pure stubs (onBuildGraph/onViewError/onIgnoreStale) + 3 quasi-stubs pointing to dialogs (onStart/onChangeModel/onDisable).
+
+**Review-impl findings and resolution (all 9 addressed):**
+
+| ID | Sev | Fix |
+|---|---|---|
+| F1 | **HIGH** | ✅ `ExtractionStartPayload` and new `RebuildPayload` require `embedding_model` per BE `StartJobRequest.embedding_model: str` + `RebuildRequest.embedding_model: str`. Hook's `replayPayload()` helper pulls `latestEmbeddingModel` + `latestLlmModel` for every /start and /rebuild call. The 422-at-runtime trap is closed. |
+| F2 | MED | ✅ `runAction(label, op, invalidate)` wrapper on every real action → `toast.error(\`${label} failed: ${msg}\`)` on any thrown error. BE 409/503/etc. surface visibly. |
+| F3 | MED | ✅ Exported `scopeOfJob` + 8 unit tests covering all `scope_range.chapter_range` parser branches (valid / missing field / wrong length / non-number / non-array / each non-chapters scope). Closes the BE-contract-drift silent-fallback gap. |
+| F4 | LOW | 📝 Documented here — polling scale: 2 queries × N projects (bounded by the existing 100-item pagination cap; ProjectsTab's `paginationNote` footer already signals Track 2 pagination). Future: consider a `/v1/knowledge/projects/active-jobs` aggregator endpoint if the cap is ever removed. |
+| F5 | LOW | ✅ New `parseDecimal(str)` helper uses `Number.parseFloat` + `Number.isFinite` guard; returns `null` for NaN so `spent >= cap` comparisons can't silently mis-branch on malformed Decimal strings. |
+| F6 | LOW | ✅ Actions `useMemo` dep list swapped from `jobsQuery.data` to the identity-tuple `[accessToken, project.project_id, latestJobId, latestLlmModel, latestEmbeddingModel, latestScope]`. Items_processed ticks every 2s during a running job no longer rebuild the actions object; downstream ProjectStateCard re-renders are now driven only by state-kind / payload changes. |
+| F7 | LOW | 📝 Documented here — multi-device polling race: `refetchInterval` returns false for paused/complete/failed/disabled states; external resume on another client is NOT picked up until user manually refreshes. Future: always-on low-cadence (30 s) baseline poll OR SSE for multi-device. |
+| F8 | LOW | 📝 Documented here — real actions (pause/resume/cancel/retry/extractNew/rebuild/confirmModelChange/deleteGraph) have NO hook-level tests that fire the call and verify the knowledgeApi method + args. Only `deriveState` + `scopeOfJob` covered. Adding `renderHook` + mocked `knowledgeApi` is a future hardening pass. |
+| F9 | COSMETIC | Accepted — stub toasts hardcode English (e.g., "Build graph dialog lands in K19a.5."). They're dev-temporary and disappear when K19a.5/K19a.6 ship proper dialogs. |
+
+**Evidence:**
+- BE: `python -m pytest tests/unit/test_graph_stats.py` → **6/6 pass** (1.25s)
+- FE: `tsc --noEmit` clean; `vitest run src/features/knowledge/` → **75/75 pass** (26 projectState + 23 useProjectState + 26 ProjectStateCard); `vite build` 5.38s
+- Playwright: `/knowledge/projects` redirects to `/login` (auth gate intact); full runtime E2E deferred to user-driven stack-up smoke since BE/auth aren't running locally this session.
+
+**Ready for K19a.5.** The dialog cycle now has concrete plumbing to hook into: `useProjectState.actions.onStart` is a toast-stub that the dialog's Start button will replace; the new `knowledgeApi.estimateExtraction` + `startExtraction` methods are ready to consume.
+
+---
 
 ### K19a.3 — ProjectStateCard dispatcher + 13 state-card subcomponents ✅ (session 48, Track 3 cycle 4)
 
