@@ -43,11 +43,16 @@ Cycles 1–9 (original close-out roadmap)   ✅ (sessions 46 + 47)
 Extended plan (negotiated session 47 — all deferrals either in-scope
 or genuinely Track-3-preloaded; no more re-deferrals mid-cycle):
 
-T2-close-1a  K17.9 harness core wiring         ✅ (session 47)
-T2-close-1b-BE  Benchmark gate + status endpoint  ✅ (session 47)
-T2-close-1b-FE  K12.4 picker badge + disable     ← NEXT
-T2-close-1b-CI  GitHub Actions benchmark job     ← NEXT
-T2-close-5   D-K16.2-01 model pricing
+T2-close-1a     K17.9 harness core wiring                ✅ (session 47)
+T2-close-1b-BE  Benchmark gate + status endpoint         ✅ (session 47)
+T2-close-1b-FE  K12.4 picker badge                       ✅ (session 47)
+T2-close-1b-CI  GitHub Actions benchmark job             🚫 (SCOPED OUT —
+                the project deliberately doesn't use CI/CD at this
+                stage; local test runs + manual commit gates are the
+                quality signal. If CI ever lands, the harness CLI is
+                already invoke-ready — `python -m eval.run_benchmark
+                --project-id=... --embedding-model=...`.)
+T2-close-5   D-K16.2-01 model pricing                    ← NEXT
 T2-close-6   D-K16.2-02 scope_range filter
 T2-close-7   P-K* glossary trigger perf pass
 T2-close-3   Chaos C05 / C06 / C08 live runs
@@ -55,7 +60,8 @@ T2-polish-1  Test-isolation audit
 T2-polish-2a Metrics endpoint on glossary-service
 T2-polish-2b Metrics endpoint on book-service
 T2-polish-3  D-K18.9-01 system_prompt cache_control
-T2-polish-4  CI integration-test wiring
+T2-polish-4  CI integration-test wiring                  🚫 (same reason
+                as 1b-CI — no CI infra by design)
 T2-close-2   Gate 13 human-loop walk-through
 T2-close-4   Track 2 acceptance pack (doc)
 preload      Add Track-3-preloaded section to SESSION_PATCH.md
