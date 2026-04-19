@@ -317,6 +317,44 @@ CREATE TABLE IF NOT EXISTS dead_letter_events (
 
 CREATE INDEX IF NOT EXISTS idx_dlq_created
   ON dead_letter_events (created_at DESC);
+
+-- ═══════════════════════════════════════════════════════════════
+-- K17.9.1 — project_embedding_benchmark_runs
+-- Output of the K17.9 golden-set harness. One row per harness run
+-- per (project, embedding_model, run_id) tuple — so re-running the
+-- same fixture on the same model under the same run_id fails
+-- cleanly on the UNIQUE rather than silently duplicating.
+-- FE surfaces the last run's score + pass/fail gate; the harness
+-- runs automatically when a user first enables extraction on a
+-- project (K12.4 picker → K17.9 runner). `passed` is the decision
+-- bit that actually blocks extraction if false.
+-- embedding_provider_id has no FK (lives in provider-registry DB).
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS project_embedding_benchmark_runs (
+  benchmark_run_id       UUID PRIMARY KEY DEFAULT uuidv7(),
+  project_id             UUID NOT NULL
+    REFERENCES knowledge_projects(project_id) ON DELETE CASCADE,
+  embedding_provider_id  UUID,                              -- no FK (cross-DB)
+  embedding_model        TEXT NOT NULL,
+  run_id                 TEXT NOT NULL,                     -- harness-emitted id
+  recall_at_3            DOUBLE PRECISION,
+  mrr                    DOUBLE PRECISION,
+  avg_score_positive     DOUBLE PRECISION,
+  stddev                 DOUBLE PRECISION,
+  negative_control_pass  BOOLEAN,
+  passed                 BOOLEAN NOT NULL,                  -- gate bit
+  raw_report             JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (project_id, embedding_model, run_id)
+);
+
+-- Covering index for the "latest run for project" FE query and
+-- for the "latest run per (project, embedding_model)" variant the
+-- K12.4 picker uses when a user switches models. `created_at DESC`
+-- lets the planner serve both via a single index scan.
+CREATE INDEX IF NOT EXISTS idx_benchmark_runs_project_latest
+  ON project_embedding_benchmark_runs
+    (project_id, embedding_model, created_at DESC);
 """
 
 

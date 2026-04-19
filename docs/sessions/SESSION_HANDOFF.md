@@ -1,8 +1,8 @@
-# Session Handoff — Session 47 END / Session 48 START (Cycle 8 complete, 9 next)
+# Session Handoff — Session 47 END / Session 48 START (Track 2 close-out roadmap DONE, Gate 13 + Chaos next)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-19 (session 47 END)
-> **HEAD:** `239b021` (Cycle 8b); session 47 Cycle 8c commit hash pending (about to land)
+> **HEAD:** `2732462` (Cycle 8c); session 47 Cycle 9 commit hash pending (about to land)
 > **Branch:** `main` (ahead of origin by sessions 38–47 commits — user pushes manually)
 
 ---
@@ -35,7 +35,7 @@ Track 2 close-out roadmap (session 46)   ✅  9 cycles defined, 6 shipped
 
 ---
 
-## 2. Where to pick up — Cycle 9 (Gate-4 alignment)
+## 2. Where to pick up — Gate 13 end-to-end verification
 
 ```
 Cycle 1 — 1a + 1b                        ✅
@@ -46,12 +46,14 @@ Cycle 5 — extraction quality + perf       ✅ (4/4)
 Cycle 6 — RAG quality (6a/6b/6c)          ✅ (3/3)
 Cycle 7 — K18 final polish (split 7a/7b)  ✅ (session 47)
 Cycle 8 — large infra (3 commits)         ✅ (session 47)
-  ├─ 8a  D-K18.3-02  generative rerank    ✅
-  ├─ 8b  D-T2-04  cross-process cache invalidation  ✅
-  └─ 8c  D-T2-05  glossary breaker probe half-open guarantee  ✅
-Cycle 9 — Gate-4 alignment                 ← NEXT (final before Gate 13)
-  └─ K17.9.1  project_embedding_benchmark_runs migration
-Gate 13 E2E + Chaos tests C01–C08          ← after Cycle 9
+Cycle 9 — Gate-4 alignment                ✅ (session 47)
+  └─ K17.9.1  project_embedding_benchmark_runs migration  ✅
+
+ALL 9 TRACK 2 CLOSE-OUT CYCLES COMPLETE.
+
+Remaining to formally close Track 2:
+  Gate 13 E2E end-to-end verification      ← NEXT
+  Chaos tests C01–C08                      ← after Gate 13
 ```
 
 ### Resume recipe
@@ -61,10 +63,11 @@ Gate 13 E2E + Chaos tests C01–C08          ← after Cycle 9
 3. **Cycle 8 is 3 separate commits** — one per sub-item because each changes observable behavior that should be reviewable independently.
 4. **Use the workflow gate:** `python scripts/workflow-gate.py reset && python scripts/workflow-gate.py size <XS|S|M|L|XL> <files> <logic> <effects>` before starting each cycle, phase per phase through to RETRO.
 
-### Things that are good to know before Cycle 9
+### Things that are good to know before Gate 13
 
-- **Cycle 9 · K17.9.1** — `project_embedding_benchmark_runs` migration. This is a Gate-4 alignment item (benchmark table shape needs to match what the Gate-4 eval run expects). Small, single-commit cycle; depends on Gate 4 being ready to run against live DB. Check the `docs/03_planning/` folder for K17.9.1 details before starting.
-- **After Cycle 9**: Gate 13 end-to-end verification (Mode 1/2/3 full stack with live services), then Chaos tests C01–C08 (failure-injection scenarios). Track 2 is formally closed after those pass.
+- **Gate 13 is E2E verification**, not a code cycle. It runs Mode 1/2/3 flows against the full compose stack with real Postgres + Neo4j + Redis + a real BYOK model. The goal is to catch anything the unit/integration suites missed at the layer boundaries. Likely involves Playwright MCP on the test account (`claude-test@loreweave.dev` / `Claude@Test2026`) and manual walk-throughs per the KSA acceptance criteria.
+- **Chaos tests C01–C08** are defined somewhere in `docs/03_planning/` (search for "C01" or "chaos"). They inject failures into specific services and assert the system degrades gracefully (Mode 3 → Mode 2, breaker opens, timeout skips, etc.). Mostly a matter of running the scripted injections and confirming the expected degradation + recovery.
+- **No more code changes needed** to close Track 2 — only verification. If Gate 13 or a chaos test finds a bug, a new cycle opens for that specific fix.
 
 ### Lessons carried forward (session 47)
 
@@ -81,7 +84,9 @@ Gate 13 E2E + Chaos tests C01–C08          ← after Cycle 9
 - +5 unit tests, +2 integration tests.
 - Fixed 3 stale docstrings.
 
-**8c D-T2-05** (about to land): Glossary circuit-breaker half-open single-probe guarantee. New `_cb_probe_in_flight` bool + `_cb_enter()` state machine returning `"closed"|"probe"|"open"`. Concurrent callers in the half-open window are serialized by the asyncio event loop — exactly one claims the probe (no await between check and set → atomic), the rest short-circuit. `select_for_context` wraps the HTTP retry loop in `try`/`finally` so the probe slot releases under every outcome. Validation: concurrent 5-caller test fires 1 HTTP call instead of 5. Before this fix, all concurrent callers at the cooldown-elapsed moment fired simultaneous probes, undoing the breaker's backpressure under load. +3 tests.
+**9 K17.9.1** (about to land): `project_embedding_benchmark_runs` migration — one new table appended to `app/db/migrate.py` (inline-DDL convention, not a separate `.sql` file per the plan-row's stale guidance). Stores K17.9 golden-set harness output keyed on `(project_id, embedding_model, run_id)` UNIQUE; `ON DELETE CASCADE` on project; covering index `(project_id, embedding_model, created_at DESC)` serves both latest-per-project and latest-per-project-per-model queries; `passed BOOLEAN NOT NULL` is the extraction-enable gate bit; `embedding_provider_id` is cross-DB (no FK, same rule as `user_id`/`book_id`). Review-impl added a full-column INSERT test and a cascade-preserves-other-projects test. +7 unit DDL smoke tests + 7 integration tests. 1319 unit pass + 20 migration integration pass with live Postgres.
+
+**8c D-T2-05** (HEAD `2732462`): Glossary circuit-breaker half-open single-probe guarantee. New `_cb_probe_in_flight` bool + `_cb_enter()` state machine returning `"closed"|"probe"|"open"`. Concurrent callers in the half-open window are serialized by the asyncio event loop — exactly one claims the probe (no await between check and set → atomic), the rest short-circuit. `select_for_context` wraps the HTTP retry loop in `try`/`finally` so the probe slot releases under every outcome. Validation: concurrent 5-caller test fires 1 HTTP call instead of 5. Before this fix, all concurrent callers at the cooldown-elapsed moment fired simultaneous probes, undoing the breaker's backpressure under load. +3 tests.
 
 **8b D-T2-04** (HEAD `239b021`): Cross-process L0/L1 cache invalidation via Redis pub/sub. New `app/context/cache_invalidation.py` holds a `CacheInvalidator` (publisher + subscriber on `loreweave:cache-invalidate` channel); per-process UUID origin filters self-messages; exponential-backoff reconnect (1 s → 10 s). `cache.py`'s `invalidate_l0 / invalidate_l1 / invalidate_all_for_user` fire-and-forget publish after the local pop; a `_pending_publishes` set holds task refs so Python doesn't GC them mid-send. `stop()` drains the set before closing Redis. New `apply_remote_l0 / l1 / user` helpers do the local pop WITHOUT re-publishing (prevents echo storm). Settings-gated: empty `redis_url` → invalidator never installs → Track 1 single-worker path unchanged. Review-impl caught check-then-use race on `_invalidator` (local-capture fix), weak idempotence test (added `from_url.call_count == 1`), missing end-to-end chain test (added one). +17 tests.
 

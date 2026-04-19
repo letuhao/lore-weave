@@ -113,3 +113,84 @@ def test_all_create_statements_are_idempotent():
         r"CREATE (?:UNIQUE )?INDEX (?!IF NOT EXISTS)", DDL
     )
     assert bare_create_index == [], f"non-idempotent CREATE INDEX: {bare_create_index}"
+
+
+# ── K17.9.1 — project_embedding_benchmark_runs ─────────────────────────────
+
+
+def test_benchmark_runs_table_present():
+    assert (
+        "CREATE TABLE IF NOT EXISTS project_embedding_benchmark_runs" in DDL
+    )
+
+
+def test_benchmark_runs_unique_constraint():
+    """Re-running the harness with the same (project, model, run_id)
+    must fail on the UNIQUE rather than silently duplicating."""
+    assert "UNIQUE (project_id, embedding_model, run_id)" in DDL
+
+
+def test_benchmark_runs_latest_query_index():
+    """Latest-run-per-project query must hit an index, not a seq scan.
+    Covering index includes embedding_model so filter-by-model is also
+    fast (K12.4 picker uses it when a user switches models)."""
+    assert "idx_benchmark_runs_project_latest" in DDL
+    assert "(project_id, embedding_model, created_at DESC)" in DDL
+
+
+def test_benchmark_runs_project_fk_cascades():
+    """When a project is deleted, its benchmark history is worthless —
+    cascade the delete like the other extraction_* tables do."""
+    # Increase the cascade-count floor to 4 now that a fourth table
+    # references knowledge_projects(project_id).
+    assert DDL.count(
+        "REFERENCES knowledge_projects(project_id) ON DELETE CASCADE"
+    ) >= 4
+
+
+def test_benchmark_runs_no_cross_db_fk_on_provider():
+    """embedding_provider_id points to a row in provider-registry's
+    own database — no cross-DB FK allowed (same rule as user_id /
+    book_id). A regression adding the FK would crash migrations."""
+    # The column is declared but no REFERENCES clause follows it.
+    import re
+    # Find the benchmark_runs table body.
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS project_embedding_benchmark_runs\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None, "benchmark_runs table not found"
+    body = m.group(1)
+    # embedding_provider_id line must not be followed by a REFERENCES.
+    prov_line = [
+        line for line in body.splitlines()
+        if "embedding_provider_id" in line
+    ]
+    assert prov_line, "embedding_provider_id column missing"
+    assert "REFERENCES" not in prov_line[0], (
+        "cross-DB FK on embedding_provider_id — lives in provider-registry"
+    )
+
+
+def test_benchmark_runs_passed_is_not_null():
+    """The `passed` bit is the extraction-enable gate. Nullable would
+    let the FE wait forever on 'unknown'."""
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS project_embedding_benchmark_runs\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None
+    body = m.group(1)
+    passed_line = [
+        line for line in body.splitlines()
+        if line.strip().startswith("passed ")
+    ]
+    assert passed_line, "passed column missing"
+    assert "NOT NULL" in passed_line[0]
+
+
+def test_benchmark_runs_raw_report_jsonb_with_default():
+    """raw_report is NOT NULL with an empty-object default so queries
+    don't need to guard against NULL when digging into the payload."""
+    assert "raw_report             JSONB NOT NULL DEFAULT '{}'::jsonb" in DDL
