@@ -1,5 +1,6 @@
 import { apiJson } from '../../api';
 import type {
+  BenchmarkStatus,
   Project,
   ProjectCreatePayload,
   ProjectListParams,
@@ -215,5 +216,31 @@ export const knowledgeApi = {
       method: 'DELETE',
       token,
     });
+  },
+
+  // ── T2-close-1b-FE — K17.9 benchmark status ─────────────────────────
+  /**
+   * Fetch the latest K17.9 benchmark run for a project, optionally
+   * scoped to a specific embedding model. Returns `has_run=false`
+   * (200) when nothing has been benchmarked yet — not a 404, so the
+   * FE can render a neutral "Run benchmark" badge instead of an error.
+   *
+   * Errors (404 = cross-user / nonexistent project) are thrown via
+   * apiJson so the caller can choose to degrade silently (show no
+   * badge) rather than alarming the user over a transient ownership
+   * issue.
+   */
+  getBenchmarkStatus(
+    projectId: string,
+    embeddingModel: string | null,
+    token: string,
+  ): Promise<BenchmarkStatus> {
+    const qs = new URLSearchParams();
+    if (embeddingModel) qs.set('embedding_model', embeddingModel);
+    const q = qs.toString();
+    return apiJson<BenchmarkStatus>(
+      `${BASE}/projects/${projectId}/benchmark-status${q ? `?${q}` : ''}`,
+      { token },
+    );
   },
 };

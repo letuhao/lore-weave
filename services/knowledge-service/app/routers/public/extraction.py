@@ -25,6 +25,7 @@ from app.config import settings as app_settings
 from app.db.neo4j import neo4j_session
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.benchmark_runs import BenchmarkRunsRepo
+from app.routers.internal_benchmark import BenchmarkStatusResponse
 from app.db.repositories.extraction_jobs import (
     ExtractionJob,
     ExtractionJobCreate,
@@ -876,3 +877,49 @@ async def list_extraction_jobs(
             detail="project not found",
         )
     return await jobs_repo.list_for_project(user_id, project_id)
+
+
+# ── T2-close-1b-FE — Public benchmark-status ────────────────────────
+
+
+@router.get(
+    "/{project_id}/benchmark-status",
+    response_model=BenchmarkStatusResponse,
+)
+async def get_project_benchmark_status(
+    project_id: UUID,
+    embedding_model: str | None = None,
+    user_id: UUID = Depends(get_current_user),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    benchmark_repo: BenchmarkRunsRepo = Depends(get_benchmark_runs_repo),
+) -> BenchmarkStatusResponse:
+    """Public (JWT-scoped) read of the latest K17.9 benchmark run for
+    a project. Returns the same shape as the internal endpoint so the
+    FE picker can render a pass/fail/missing badge when the user
+    selects an embedding model.
+
+    Cross-user / nonexistent project → 404 (no existence-leak). Uses
+    the same repo method the extraction-start gate uses, so the badge
+    never disagrees with the gate's decision.
+
+    `has_run=False` is a valid 200 response (FE renders a neutral
+    "no benchmark yet" state, not an error).
+    """
+    project = await projects_repo.get(user_id, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="project not found",
+        )
+    row = await benchmark_repo.get_latest(user_id, project_id, embedding_model)
+    if row is None:
+        return BenchmarkStatusResponse(has_run=False)
+    return BenchmarkStatusResponse(
+        has_run=True,
+        passed=row.passed,
+        run_id=row.run_id,
+        embedding_model=row.embedding_model,
+        recall_at_3=row.recall_at_3,
+        mrr=row.mrr,
+        created_at=row.created_at,
+    )

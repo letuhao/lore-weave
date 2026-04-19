@@ -289,12 +289,15 @@ export function ProjectFormModal({
         </label>
 
         {/* K12.4: embedding model is edit-only. Create flow keeps the
-            form minimal; users pick a model after the project exists. */}
+            form minimal; users pick a model after the project exists.
+            T2-close-1b-FE: project.project_id lets the picker fetch
+            the K17.9 benchmark-status badge for the selected model. */}
         {mode === 'edit' && (
           <EmbeddingModelPicker
             value={embeddingModel}
             onChange={setEmbeddingModel}
             disabled={saving}
+            projectId={project?.project_id}
           />
         )}
       </div>

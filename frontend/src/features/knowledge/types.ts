@@ -136,3 +136,18 @@ export interface UserDataExportBundle {
   projects: Project[];
   summaries: Summary[];
 }
+
+// ── T2-close-1b-FE — K17.9 benchmark status ─────────────────────────────
+// Mirrors services/knowledge-service/app/routers/internal_benchmark.py
+// BenchmarkStatusResponse. Used by the EmbeddingModelPicker badge.
+// `has_run=false` is a valid state (renders a neutral "no benchmark
+// yet" badge), NOT an error.
+export interface BenchmarkStatus {
+  has_run: boolean;
+  passed: boolean | null;
+  run_id: string | null;
+  embedding_model: string | null;
+  recall_at_3: number | null;
+  mrr: number | null;
+  created_at: string | null;
+}
