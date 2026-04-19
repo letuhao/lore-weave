@@ -87,6 +87,34 @@
       "created": "Đã tạo dự án",
       "updated": "Đã cập nhật dự án",
       "conflict": "Một thiết bị khác đã chỉnh sửa dự án này. Hãy xem bản mới nhất và lưu lại."
+    },
+    "state": {
+      "labels": {
+        "disabled": "Bộ nhớ tĩnh",
+        "estimating": "Đang tính chi phí…",
+        "ready_to_build": "Sẵn sàng xây dựng",
+        "building_running": "Đang xây dựng…",
+        "building_paused_user": "Tạm dừng",
+        "building_paused_budget": "Đã đạt ngân sách",
+        "building_paused_error": "Tạm dừng (lỗi)",
+        "complete": "Sẵn sàng",
+        "stale": "Có cập nhật chờ",
+        "failed": "Thất bại",
+        "model_change_pending": "Đổi mô hình cần xây lại",
+        "cancelling": "Đang hủy…",
+        "deleting": "Đang xóa đồ thị…"
+      },
+      "actions": {
+        "buildGraph": "Xây dựng đồ thị tri thức",
+        "start": "Bắt đầu",
+        "pause": "Tạm dừng",
+        "resume": "Tiếp tục",
+        "cancel": "Hủy",
+        "retry": "Thử lại",
+        "deleteGraph": "Xóa đồ thị",
+        "rebuild": "Xây lại từ đầu",
+        "viewError": "Xem chi tiết lỗi"
+      }
     }
   },
   "global": {

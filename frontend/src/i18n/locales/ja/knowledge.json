@@ -87,6 +87,34 @@
       "created": "プロジェクトを作成しました",
       "updated": "プロジェクトを更新しました",
       "conflict": "別のデバイスがこのプロジェクトを変更しました。最新の内容を確認してから保存し直してください。"
+    },
+    "state": {
+      "labels": {
+        "disabled": "静的メモリ",
+        "estimating": "コスト確認中…",
+        "ready_to_build": "ビルド準備完了",
+        "building_running": "構築中…",
+        "building_paused_user": "一時停止中",
+        "building_paused_budget": "予算上限到達",
+        "building_paused_error": "一時停止（エラー）",
+        "complete": "準備完了",
+        "stale": "更新待機中",
+        "failed": "失敗",
+        "model_change_pending": "モデル変更で再ビルドが必要",
+        "cancelling": "キャンセル中…",
+        "deleting": "グラフ削除中…"
+      },
+      "actions": {
+        "buildGraph": "ナレッジグラフを構築",
+        "start": "開始",
+        "pause": "一時停止",
+        "resume": "再開",
+        "cancel": "キャンセル",
+        "retry": "再試行",
+        "deleteGraph": "グラフを削除",
+        "rebuild": "最初から再構築",
+        "viewError": "エラー詳細を表示"
+      }
     }
   },
   "global": {

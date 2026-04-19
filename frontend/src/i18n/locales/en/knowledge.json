@@ -87,6 +87,34 @@
       "created": "Project created",
       "updated": "Project updated",
       "conflict": "Another device modified this project. Review the latest and save again."
+    },
+    "state": {
+      "labels": {
+        "disabled": "Static memory",
+        "estimating": "Checking cost...",
+        "ready_to_build": "Ready to build",
+        "building_running": "Building...",
+        "building_paused_user": "Paused",
+        "building_paused_budget": "Budget reached",
+        "building_paused_error": "Paused (error)",
+        "complete": "Ready",
+        "stale": "Updates pending",
+        "failed": "Failed",
+        "model_change_pending": "Model change requires rebuild",
+        "cancelling": "Cancelling...",
+        "deleting": "Deleting graph..."
+      },
+      "actions": {
+        "buildGraph": "Build knowledge graph",
+        "start": "Start",
+        "pause": "Pause",
+        "resume": "Resume",
+        "cancel": "Cancel",
+        "retry": "Retry",
+        "deleteGraph": "Delete graph",
+        "rebuild": "Rebuild from scratch",
+        "viewError": "View error details"
+      }
     }
   },
   "global": {

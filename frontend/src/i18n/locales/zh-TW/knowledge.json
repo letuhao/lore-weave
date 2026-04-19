@@ -87,6 +87,34 @@
       "created": "已建立專案",
       "updated": "已更新專案",
       "conflict": "另一個裝置已修改此專案。請先檢視最新內容再儲存。"
+    },
+    "state": {
+      "labels": {
+        "disabled": "靜態記憶",
+        "estimating": "檢查成本中…",
+        "ready_to_build": "準備建立",
+        "building_running": "建立中…",
+        "building_paused_user": "已暫停",
+        "building_paused_budget": "已達預算上限",
+        "building_paused_error": "已暫停（錯誤）",
+        "complete": "就緒",
+        "stale": "有待更新",
+        "failed": "失敗",
+        "model_change_pending": "模型變更需重建",
+        "cancelling": "取消中…",
+        "deleting": "刪除圖譜中…"
+      },
+      "actions": {
+        "buildGraph": "建立知識圖譜",
+        "start": "開始",
+        "pause": "暫停",
+        "resume": "恢復",
+        "cancel": "取消",
+        "retry": "重試",
+        "deleteGraph": "刪除圖譜",
+        "rebuild": "從頭重建",
+        "viewError": "檢視錯誤詳情"
+      }
     }
   },
   "global": {

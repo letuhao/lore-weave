@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-19 **(session 48 — Track 3 started, K19a.1-rename + K19a.1-placeholders shipped)** — Track 2 still code-complete (T2-close-2 human Gate 13 loop remains). Track 3: cycle 1 renamed /memory → /knowledge end-to-end; cycle 2 added 4 placeholder tabs (Jobs/Entities/Timeline/Raw) with "Coming soon" cards. Full 7-tab navigation shell now in place. Playwright-verified both cycles.
-- Updated By: Assistant (session 48 — 2 commits so far: K19a.1-rename (24 files, d14d71b) + K19a.1-placeholders (5 files). User feedback captured: batch small tasks into one workflow cycle rather than 12 phases × 3 — saved to memory.)
+- Last Updated: 2026-04-19 **(session 48 — Track 3 foundation shipped: rename + placeholders + state-machine types)** — Track 2 still code-complete (T2-close-2 human Gate 13 loop remains). Track 3 progress: cycle 1 renamed /memory → /knowledge; cycle 2 added 4 placeholder tabs; cycle 3 (batched K19a.2 + K19a.7-skeleton) shipped the 13-state TS discriminated union + transition helper + all state/action i18n keys × 4 locales. Foundation ready for K19a.3 ProjectStateCard.
+- Updated By: Assistant (session 48 — 3 commits so far: K19a.1-rename (d14d71b) + K19a.1-placeholders (bab8829) + batched K19a.2+7-skeleton. Adopted user's batching feedback starting cycle 3: 2 tasks in one workflow pass. /review-impl caught 9 findings (0 HIGH, 4 MED, 5 LOW), all fixed in-cycle.)
 - Active Branch: `main` (ahead of origin by sessions 38–48 commits — user pushes manually)
-- HEAD: `d14d71b` (K19a.1-rename); K19a.1-placeholders lands on top
+- HEAD: `bab8829` (K19a.1-placeholders); K19a.2+7-skeleton lands on top
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -249,6 +249,37 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 ---
 
 ## Current Active Work
+
+### K19a.2 + K19a.7-skeleton — state-machine types + i18n labels (batched) ✅ (session 48, Track 3 cycle 3)
+
+**First batched cycle** applying the new feedback rule (`feedback_batch_small_tasks.md`): two related small tasks run through one workflow pass instead of two.
+
+**Scope:** foundation layer for the 13-state memory-mode UI. Types + transition helper + all user-facing labels/actions across 4 locales. No UI components yet (K19a.3 next) and no derivation logic (K19a.4 later).
+
+**Shipped (6 files):**
+
+- [`frontend/src/features/knowledge/types/projectState.ts`](../../frontend/src/features/knowledge/types/projectState.ts) (NEW) — 13-kind discriminated union + 4 supporting types (JobScope, CostEstimate, ExtractionJobSummary, ExtractionJobStatus, GraphStats) + `VALID_TRANSITIONS` map + `canTransition` helper. Naming convention documented in header: snake_case for BE-mirrored shape fields (job_id, items_processed, cost_spent_usd, max_spend_usd) + camelCase for UI-computed payload fields (oldModel, budgetRemaining, canRetry, pendingCount).
+- [`frontend/src/features/knowledge/types/__tests__/projectState.test.ts`](../../frontend/src/features/knowledge/types/__tests__/projectState.test.ts) (NEW) — 22 tests covering: (a) every ProjectStateKind has a VALID_TRANSITIONS entry, (b) every referenced target is a valid kind, (c) `EXPECTED_EDGES` set diffed against actual table (catches both add AND remove drift), (d) 5 positive + 5 negative canTransition spot checks, (e) self-loop rejection regression guard, (f) 8 i18n runtime tests iterating all 4 locales × (13 labels + 9 actions) — neutralizes the vitest i18n mock bypass for this namespace.
+- 4 × `frontend/src/i18n/locales/*/knowledge.json` — `projects.state.labels.{13 state kinds}` + `projects.state.actions.{buildGraph, start, pause, resume, cancel, retry, deleteGraph, rebuild, viewError}` per locale with first-pass translations.
+
+**Review-impl findings and resolution (all 9 addressed in-cycle):**
+| ID | Sev | What | Fix |
+|---|---|---|---|
+| F1 | MED | BE type misalignment across 5 fields | ✅ CostEstimate mirrors `EstimateResponse`; ExtractionJobSummary mirrors BE subset (items_processed/total, cost_spent_usd, max_spend_usd, error_message, status); JobScope reshaped to `{kind: 'chapters'; range?}` matching BE's `scope_range` sub-field; added `glossary_sync` scope value and `ExtractionJobStatus` literal |
+| F2 | MED | i18n label/action exhaustiveness not runtime-tested | ✅ 8 new runtime tests iterate all 4 locales × 22 keys. `vitest.setup.ts` i18n mock can't catch this; explicit locale-JSON imports can |
+| F3 | MED | Positive-transition coverage was 17/30 edges | ✅ `EXPECTED_EDGES` Set<"from→to"> with 30 canonical entries + bidirectional diff test |
+| F4 | MED | `ALL_KINDS as const satisfies` didn't compile-check growth | ✅ Rewrote as `ALL_KINDS_MAP: Record<ProjectStateKind, true>` — TS now forces all union members as keys |
+| F5 | LOW | `ExtractionJobSummary.progress` too flat for KSA §8.4b mockup | ✅ Documented: BE returns flat items_processed/items_total; 3-source breakdown awaits BE expansion. K19a.3 renders single bar |
+| F6 | LOW | `last_extracted_at` format not documented | ✅ `/** ISO-8601 UTC. */` JSDocs on both `started_at` and `last_extracted_at` |
+| F7 | LOW | `building_running → building_running` self-loop was UI-meaningless | ✅ Removed. New regression test `rejects the self-loop that used to be in the table` |
+| F8 | LOW | No doc pointer from VALID_TRANSITIONS back to KSA §8.4 | ✅ Prominent comment: "Authoritative source: KNOWLEDGE_SERVICE_ARCHITECTURE.md §8.4. Do NOT add edges here without updating the diagram there first" |
+| F9 | LOW | camelCase/snake_case mixing in UI-derived types | ✅ Convention documented in file header + applied consistently |
+
+**Evidence:** tsc --noEmit clean; **22/22 tests pass**; vite build 5.45s.
+
+**Foundation layer complete.** K19a.3 (ProjectStateCard with 13 state subcomponents) can now consume `ProjectMemoryState` without reshape. K19a.4 (`useProjectState` hook) can derive state from BE fields without type gymnastics.
+
+---
 
 ### K19a.1-placeholders — 4 placeholder tabs (Jobs/Entities/Timeline/Raw) ✅ (session 48, Track 3 cycle 2)
 
