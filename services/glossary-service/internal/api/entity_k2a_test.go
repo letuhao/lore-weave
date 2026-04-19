@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -381,5 +382,209 @@ func TestK2aBackfillIdempotent(t *testing.T) {
 	}
 	if err := migrate.BackfillKnowledgeMemory(ctx, pool); err != nil {
 		t.Fatalf("second backfill: %v", err)
+	}
+}
+
+// ── T2-close-7 / P-K2a-02: trigger perf — updated_at NO LONGER triggers recalc
+
+// TestTriggerSkipsRecalcOnUpdatedAtOnly proves the self-trigger watch list
+// dropped updated_at. A bare UPDATE that bumps nothing but updated_at must
+// leave entity_snapshot untouched.
+func TestTriggerSkipsRecalcOnUpdatedAtOnly(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	ctx := context.Background()
+
+	bookID := "00000000-0000-0000-0000-00000000bbbb"
+	var kindID string
+	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+
+	var entityID string
+	pool.QueryRow(ctx,
+		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,
+		bookID, kindID).Scan(&entityID)
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
+	})
+
+	// Name the entity so recalculate_entity_snapshot produces a non-empty
+	// cached_name when we manually trigger it once below.
+	var nameAttrID string
+	pool.QueryRow(ctx,
+		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
+		kindID).Scan(&nameAttrID)
+	pool.Exec(ctx,
+		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
+		 VALUES($1,$2,'en','Alice')`, entityID, nameAttrID)
+
+	// Capture the snapshot's snapshot_at timestamp — the only source of
+	// truth for "did recalc run". We deliberately read it BEFORE and AFTER
+	// the updated_at bump.
+	var before, after string
+	pool.QueryRow(ctx,
+		`SELECT entity_snapshot->>'snapshot_at' FROM glossary_entities WHERE entity_id=$1`,
+		entityID).Scan(&before)
+
+	// Bump updated_at alone — this is the kind of write the API used to
+	// issue for pin toggles. With updated_at dropped from the trigger
+	// watch list, the recalc must NOT fire.
+	if _, err := pool.Exec(ctx,
+		`UPDATE glossary_entities SET updated_at = now() + interval '1 second' WHERE entity_id=$1`,
+		entityID); err != nil {
+		t.Fatalf("updated_at bump: %v", err)
+	}
+
+	pool.QueryRow(ctx,
+		`SELECT entity_snapshot->>'snapshot_at' FROM glossary_entities WHERE entity_id=$1`,
+		entityID).Scan(&after)
+
+	if before != after {
+		t.Errorf("updated_at bump should NOT re-run recalc (snapshot_at changed: %s -> %s)", before, after)
+	}
+}
+
+// TestTriggerStillFiresOnWatchedFields guards against the inverse regression:
+// dropping updated_at must not have accidentally broken the specific watches
+// for ANY of the fields the snapshot depends on. Table-driven over all seven
+// watched fields so a future rewrite that drops one is caught.
+func TestTriggerStillFiresOnWatchedFields(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	ctx := context.Background()
+
+	// Pre-fetch a second kind so the kind_id change has a distinct target.
+	var kindCharID, kindLocID string
+	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindCharID)
+	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='location' LIMIT 1`).Scan(&kindLocID)
+	if kindLocID == "" {
+		// Seed data may not include 'location'; pick any other kind.
+		pool.QueryRow(ctx,
+			`SELECT kind_id FROM entity_kinds WHERE kind_id <> $1 LIMIT 1`, kindCharID,
+		).Scan(&kindLocID)
+	}
+
+	cases := []struct {
+		name        string
+		setClause   string
+		args        []any
+		needsCharOK bool // true if the case needs a name seeded for snapshot to exist
+	}{
+		{"status", "status = 'inactive'", nil, true},
+		{"alive", "alive = false", nil, true},
+		{"tags", "tags = ARRAY['revised']", nil, true},
+		{"kind_id", "kind_id = $2", []any{kindLocID}, true},
+		{"short_description", "short_description = 'a brief'", nil, true},
+		{"deleted_at", "deleted_at = now()", nil, true},
+		{"permanently_deleted_at", "permanently_deleted_at = now()", nil, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bookID := "00000000-0000-0000-0000-0000" + fmt.Sprintf("%08x", len(tc.name)+0xbbcc)
+
+			var entityID string
+			pool.QueryRow(ctx,
+				`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,
+				bookID, kindCharID).Scan(&entityID)
+			t.Cleanup(func() {
+				pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
+			})
+
+			if tc.needsCharOK {
+				var nameAttrID string
+				pool.QueryRow(ctx,
+					`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
+					kindCharID).Scan(&nameAttrID)
+				pool.Exec(ctx,
+					`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
+					 VALUES($1,$2,'en','Bob')`, entityID, nameAttrID)
+			}
+
+			var before string
+			pool.QueryRow(ctx,
+				`SELECT entity_snapshot->>'snapshot_at' FROM glossary_entities WHERE entity_id=$1`,
+				entityID).Scan(&before)
+
+			args := append([]any{entityID}, tc.args...)
+			q := fmt.Sprintf(`UPDATE glossary_entities SET %s WHERE entity_id=$1`, tc.setClause)
+			if _, err := pool.Exec(ctx, q, args...); err != nil {
+				t.Fatalf("%s update: %v", tc.name, err)
+			}
+
+			var after string
+			pool.QueryRow(ctx,
+				`SELECT entity_snapshot->>'snapshot_at' FROM glossary_entities WHERE entity_id=$1`,
+				entityID).Scan(&after)
+
+			if before == after {
+				t.Errorf("%s change: recalc did not fire (snapshot_at unchanged = %s)", tc.name, before)
+			}
+		})
+	}
+}
+
+// TestPinSQLDoesNotBumpUpdatedAt simulates exactly what the pin handler
+// now writes — a single-column UPDATE with no `updated_at = now()` —
+// and asserts both updated_at and snapshot_at stay frozen. Verifies
+// the combined fix at the SQL layer without needing a book-service
+// mock for verifyBookOwner.
+func TestPinSQLDoesNotBumpUpdatedAt(t *testing.T) {
+	pool := openTestDB(t)
+	runK2aMigrations(t, pool)
+	ctx := context.Background()
+
+	bookID := "00000000-0000-0000-0000-00000000bbdd"
+	var kindID string
+	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+
+	var entityID string
+	pool.QueryRow(ctx,
+		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,
+		bookID, kindID).Scan(&entityID)
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
+	})
+
+	// Seed a name so recalc runs once and we have a baseline snapshot_at.
+	var nameAttrID string
+	pool.QueryRow(ctx,
+		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
+		kindID).Scan(&nameAttrID)
+	pool.Exec(ctx,
+		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
+		 VALUES($1,$2,'en','Cara')`, entityID, nameAttrID)
+
+	var entityUpdatedBefore, snapshotAtBefore string
+	pool.QueryRow(ctx,
+		`SELECT updated_at::text, entity_snapshot->>'snapshot_at'
+		 FROM glossary_entities WHERE entity_id=$1`,
+		entityID).Scan(&entityUpdatedBefore, &snapshotAtBefore)
+
+	// Emulate the NEW pin handler SQL verbatim — no updated_at bump.
+	if _, err := pool.Exec(ctx,
+		`UPDATE glossary_entities
+		 SET is_pinned_for_context = true
+		 WHERE entity_id = $1 AND book_id = $2 AND deleted_at IS NULL`,
+		entityID, bookID); err != nil {
+		t.Fatalf("pin SQL: %v", err)
+	}
+
+	var isPinned bool
+	var entityUpdatedAfter, snapshotAtAfter string
+	pool.QueryRow(ctx,
+		`SELECT is_pinned_for_context, updated_at::text, entity_snapshot->>'snapshot_at'
+		 FROM glossary_entities WHERE entity_id=$1`,
+		entityID).Scan(&isPinned, &entityUpdatedAfter, &snapshotAtAfter)
+
+	if !isPinned {
+		t.Error("pin: is_pinned_for_context was not set")
+	}
+	if entityUpdatedBefore != entityUpdatedAfter {
+		t.Errorf("pin: updated_at changed (%s -> %s); pin must be a timestamp-inert write",
+			entityUpdatedBefore, entityUpdatedAfter)
+	}
+	if snapshotAtBefore != snapshotAtAfter {
+		t.Errorf("pin: snapshot_at changed (%s -> %s); recalc must NOT fire for a pin toggle",
+			snapshotAtBefore, snapshotAtAfter)
 	}
 }

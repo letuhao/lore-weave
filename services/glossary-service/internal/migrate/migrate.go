@@ -655,21 +655,50 @@ CREATE INDEX IF NOT EXISTS idx_ge_pinned_book
   ON glossary_entities(book_id)
   WHERE is_pinned_for_context AND deleted_at IS NULL;
 
--- 3. Replace trig_fn_entity_self_snapshot so it ALSO fires when
---    short_description changes. Without this, direct SQL updates to
---    short_description (migrations, backfills, tests) would leave
---    search_vector stale. The normal API PATCH path always bumps
---    updated_at so the existing watch list already covered it, but we
---    defend against non-API writes too.
+-- 3. Replace trig_fn_entity_self_snapshot so it fires on the fields
+--    that materially change the snapshot OR the search_vector, and
+--    NOT on updated_at alone (T2-close-7 / P-K2a-02 & P-K3-02).
+--
+--    Why drop the updated_at watch: every API handler bumped updated_at
+--    on any write (pin toggle, description PATCH's CTE, etc.), which
+--    forced a full recalculate_entity_snapshot rebuild for writes that
+--    did not change a single snapshot-source field. The cost: one EAV
+--    scan + one evidences scan + one chapter_links scan + one
+--    search_vector rebuild per no-op touch.
+--
+--    Safety: every glossary_entities column that ends up in the
+--    snapshot JSONB sourced directly from this table has a specific
+--    watch (status / alive / tags / kind_id / short_description).
+--    EAV / attribute_translations / evidences / chapter_entity_links
+--    have their own dedicated triggers. updated_at is a side-effect
+--    of those upstream changes, not a cause, so dropping it cannot
+--    miss a real semantic edit.
+--
+--    Soft-delete defence (review-impl catch): deleted_at and
+--    permanently_deleted_at remain on the watch list even though they
+--    are not carried in the snapshot JSONB. Without this, a soft-
+--    delete or purge of an entity whose EAV state skipped the trigger
+--    (raw SQL, import, backup restore) would leave the recycle bin
+--    showing stale display data — 91_SS2_SOFT_DELETE_RECYCLE_BIN
+--    _DETAILED_DESIGN.md §1 documents this as a required invariant.
+--
+--    Consequence: snapshot.updated_at now records the last SEMANTIC
+--    change rather than the last touch. Callers that want "last
+--    touched" (e.g. sorting, audit) should read glossary_entities
+--    .updated_at directly. The knowledge-service snapshot consumer
+--    does not rely on snapshot.updated_at for freshness — the
+--    cached_name / cached_aliases / search_vector columns stay
+--    coherent because their write paths remain triggered.
 CREATE OR REPLACE FUNCTION trig_fn_entity_self_snapshot()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  IF NEW.status            IS DISTINCT FROM OLD.status
-  OR NEW.alive             IS DISTINCT FROM OLD.alive
-  OR NEW.tags              IS DISTINCT FROM OLD.tags
-  OR NEW.kind_id           IS DISTINCT FROM OLD.kind_id
-  OR NEW.updated_at        IS DISTINCT FROM OLD.updated_at
-  OR NEW.short_description IS DISTINCT FROM OLD.short_description
+  IF NEW.status                 IS DISTINCT FROM OLD.status
+  OR NEW.alive                  IS DISTINCT FROM OLD.alive
+  OR NEW.tags                   IS DISTINCT FROM OLD.tags
+  OR NEW.kind_id                IS DISTINCT FROM OLD.kind_id
+  OR NEW.short_description      IS DISTINCT FROM OLD.short_description
+  OR NEW.deleted_at             IS DISTINCT FROM OLD.deleted_at
+  OR NEW.permanently_deleted_at IS DISTINCT FROM OLD.permanently_deleted_at
   THEN
     PERFORM recalculate_entity_snapshot(NEW.entity_id);
   END IF;

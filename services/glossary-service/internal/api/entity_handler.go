@@ -823,9 +823,16 @@ func (s *Server) setEntityPinned(w http.ResponseWriter, r *http.Request, pinned 
 		return
 	}
 
+	// T2-close-7 / P-K2a-02: pin toggle no longer bumps updated_at.
+	// Pinning is a UX-only bit, not a semantic edit, and bumping
+	// updated_at used to fire the full entity_snapshot rebuild
+	// (recalculate_entity_snapshot) for no material change. The
+	// self-trigger's watch list dropped `updated_at` in the same
+	// cycle as defence-in-depth so even if a future callsite does
+	// bump `updated_at` alone, nothing recalcs.
 	tag, err := s.pool.Exec(r.Context(),
 		`UPDATE glossary_entities
-		 SET is_pinned_for_context = $1, updated_at = now()
+		 SET is_pinned_for_context = $1
 		 WHERE entity_id = $2 AND book_id = $3 AND deleted_at IS NULL`,
 		pinned, entityID, bookID)
 	if err != nil {

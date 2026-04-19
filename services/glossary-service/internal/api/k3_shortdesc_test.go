@@ -219,15 +219,32 @@ func TestK3_AutoRegenOnDescriptionUpdate(t *testing.T) {
 	srv := newExportServer(t, pool)
 	// Update the description row directly, then invoke the hook.
 	pool.Exec(ctx, `UPDATE entity_attribute_values SET original_value='Brand new first. Second.' WHERE attr_value_id=$1`, descAVID)
+
+	// Capture snapshot_at BEFORE regen — a real short_description change
+	// must advance snapshot_at (proves the self-trigger still fires post-
+	// guard). Without this, a mis-constructed `IS NOT DISTINCT FROM`
+	// guard would still pass the persisted-value assertion below.
+	var snapshotBefore string
+	pool.QueryRow(ctx,
+		`SELECT entity_snapshot->>'snapshot_at' FROM glossary_entities WHERE entity_id=$1`,
+		id).Scan(&snapshotBefore)
+
 	entityUUID, _ := uuid.Parse(id)
 	if err := srv.regenerateAutoShortDescription(ctx, entityUUID); err != nil {
 		t.Fatalf("regenerate: %v", err)
 	}
 
 	var sdAfter *string
-	pool.QueryRow(ctx, `SELECT short_description FROM glossary_entities WHERE entity_id=$1`, id).Scan(&sdAfter)
+	var snapshotAfter string
+	pool.QueryRow(ctx,
+		`SELECT short_description, entity_snapshot->>'snapshot_at'
+		 FROM glossary_entities WHERE entity_id=$1`,
+		id).Scan(&sdAfter, &snapshotAfter)
 	if sdAfter == nil || *sdAfter != "Brand new first." {
 		t.Errorf("after: want 'Brand new first.', got %v", sdAfter)
+	}
+	if snapshotBefore == snapshotAfter {
+		t.Errorf("real short_description change did not advance snapshot_at (%s); guard may have inverted", snapshotBefore)
 	}
 }
 
@@ -262,6 +279,71 @@ func TestK3_AutoRegenSkippedWhenUserOverride(t *testing.T) {
 	pool.QueryRow(ctx, `SELECT short_description FROM glossary_entities WHERE entity_id=$1`, id).Scan(&sd)
 	if sd == nil || *sd != "USER WROTE THIS" {
 		t.Errorf("user override was overwritten: want 'USER WROTE THIS', got %v", sd)
+	}
+}
+
+// T2-close-7 / P-K3-02: regen UPDATE must skip when the recomputed
+// short_description is already what's persisted. Without this guard,
+// every description PATCH — even a whitespace edit that doesn't change
+// the first sentence — fires a second full recalculate_entity_snapshot
+// on top of the eav-trigger's one.
+//
+// The cheapest proof: call regenerateAutoShortDescription twice in a
+// row with no description change between them, and observe that the
+// snapshot's `snapshot_at` timestamp does NOT advance on the second
+// call — proving the UPDATE affected zero rows and the self-trigger
+// did not fire.
+func TestK3_AutoRegenSkipsWhenShortDescUnchanged(t *testing.T) {
+	pool := openTestDB(t)
+	runK3Migrations(t, pool)
+	ctx := context.Background()
+
+	bookID := "00000000-0000-0000-0000-000000033005"
+	var kindID string
+	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	var nameAttr, descAttr string
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, kindID).Scan(&nameAttr)
+	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='description' LIMIT 1`, kindID).Scan(&descAttr)
+	t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID) })
+
+	var id string
+	pool.QueryRow(ctx,
+		`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,
+		bookID, kindID).Scan(&id)
+	pool.Exec(ctx,
+		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value) VALUES($1,$2,'en','Helga')`,
+		id, nameAttr)
+	pool.Exec(ctx,
+		`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value) VALUES($1,$2,'en','First sentence. Second sentence.')`,
+		id, descAttr)
+
+	srv := newExportServer(t, pool)
+	entityUUID, _ := uuid.Parse(id)
+
+	// First regen: short_description goes from NULL → "First sentence."
+	// This legitimately fires the self-trigger → recalc → snapshot_at
+	// advances. We capture the value after this first run as our baseline.
+	if err := srv.regenerateAutoShortDescription(ctx, entityUUID); err != nil {
+		t.Fatalf("first regen: %v", err)
+	}
+	var baseline string
+	pool.QueryRow(ctx,
+		`SELECT entity_snapshot->>'snapshot_at' FROM glossary_entities WHERE entity_id=$1`,
+		id).Scan(&baseline)
+
+	// Second regen with no description change — the IS DISTINCT guard
+	// must suppress the UPDATE, so the self-trigger must not fire and
+	// snapshot_at must stay put.
+	if err := srv.regenerateAutoShortDescription(ctx, entityUUID); err != nil {
+		t.Fatalf("second regen: %v", err)
+	}
+	var after string
+	pool.QueryRow(ctx,
+		`SELECT entity_snapshot->>'snapshot_at' FROM glossary_entities WHERE entity_id=$1`,
+		id).Scan(&after)
+
+	if baseline != after {
+		t.Errorf("no-op regen should not refire recalc (snapshot_at: %s -> %s)", baseline, after)
 	}
 }
 

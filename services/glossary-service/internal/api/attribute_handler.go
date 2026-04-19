@@ -218,11 +218,20 @@ func (s *Server) regenerateAutoShortDescription(ctx context.Context, entityID uu
 		return nil
 	}
 	// Guard with short_description_auto so a race with a user PATCH can't
-	// clobber a just-set manual value.
+	// clobber a just-set manual value. T2-close-7 / P-K2a-02 also adds
+	// `short_description IS DISTINCT FROM $1` — when the regenerated
+	// summary equals the one already persisted (e.g. whitespace-only
+	// description edit, no name change), the UPDATE affects zero rows
+	// and the self-trigger does not fire a second recalculate_entity_snapshot
+	// on top of the eav-trigger's one. Reduces the common description-PATCH
+	// path from 3 recalcs down to 1 (when short_description is unchanged)
+	// or 2 (when it legitimately changed).
 	_, err = s.pool.Exec(ctx, `
 		UPDATE glossary_entities
 		SET short_description = $1
-		WHERE entity_id = $2 AND short_description_auto = true`,
+		WHERE entity_id = $2
+		  AND short_description_auto = true
+		  AND short_description IS DISTINCT FROM $1`,
 		sd, entityID)
 	return err
 }
