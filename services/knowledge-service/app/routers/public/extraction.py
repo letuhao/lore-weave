@@ -24,6 +24,7 @@ from app.clients.glossary_client import GlossaryClient
 from app.config import settings as app_settings
 from app.db.neo4j import neo4j_session
 from app.db.pool import get_knowledge_pool
+from app.db.repositories.benchmark_runs import BenchmarkRunsRepo
 from app.db.repositories.extraction_jobs import (
     ExtractionJob,
     ExtractionJobCreate,
@@ -32,6 +33,7 @@ from app.db.repositories.extraction_jobs import (
 from app.db.repositories.extraction_pending import ExtractionPendingRepo
 from app.db.repositories.projects import ProjectsRepo
 from app.deps import (
+    get_benchmark_runs_repo,
     get_book_client,
     get_extraction_jobs_repo,
     get_extraction_pending_repo,
@@ -267,6 +269,7 @@ async def start_extraction_job(
     user_id: UUID = Depends(get_current_user),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+    benchmark_repo: BenchmarkRunsRepo = Depends(get_benchmark_runs_repo),
 ) -> ExtractionJob:
     """Create and start an extraction job for a project.
 
@@ -274,6 +277,13 @@ async def start_extraction_job(
     state to 'building', and transitions the job to 'running' — all
     in a single DB transaction. Returns 409 if another active job
     already exists for this project.
+
+    K17.9 benchmark gate: every call must have a passing
+    `project_embedding_benchmark_runs` row for the chosen
+    `embedding_model`, or the call is rejected with 409. This
+    prevents a user from enabling Mode 3 with an embedding model
+    that can't find their own entities — a silent quality
+    regression that the benchmark is designed to catch.
 
     Worker notification (Redis) is deferred to K16.6 — the worker
     polls for pending/running jobs.
@@ -295,6 +305,46 @@ async def start_extraction_job(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"project already has an active extraction job ({j.job_id}, status={j.status})",
             )
+
+    # 2.5. K17.9 benchmark gate. Rejects when no run exists for the
+    # chosen model OR when the latest run didn't pass thresholds.
+    # Error messages are user-neutral (no CLI instructions) — the FE
+    # picker surfaces a targeted CTA per `error_code`: the no-run
+    # branch drives a "Run benchmark" button, the failed branch drives
+    # a "See report" link. Keeping ops commands out of the public API
+    # response avoids confusing end users if the 409 surfaces in a
+    # toast before the picker's badge logic catches it.
+    latest_benchmark = await benchmark_repo.get_latest(
+        user_id, project_id, embedding_model=body.embedding_model,
+    )
+    if latest_benchmark is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error_code": "benchmark_missing",
+                "message": (
+                    f"no passing benchmark run for embedding_model "
+                    f"{body.embedding_model!r}; run the golden-set "
+                    "benchmark for this model before enabling extraction"
+                ),
+                "embedding_model": body.embedding_model,
+            },
+        )
+    if not latest_benchmark.passed:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error_code": "benchmark_failed",
+                "message": (
+                    "the most recent benchmark run for this embedding "
+                    "model did not pass the quality thresholds; "
+                    "extraction would produce low-quality results"
+                ),
+                "embedding_model": body.embedding_model,
+                "run_id": latest_benchmark.run_id,
+                "recall_at_3": latest_benchmark.recall_at_3,
+            },
+        )
 
     # 3. Validate + create job atomically.
     trace_id = trace_id_var.get()

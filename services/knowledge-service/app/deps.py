@@ -22,6 +22,7 @@ from app.clients.glossary_client import get_glossary_client as _get_glossary_cli
 from app.clients.provider_client import ProviderClient
 from app.clients.provider_client import get_provider_client as _get_provider_client_singleton
 from app.db.pool import get_knowledge_pool
+from app.db.repositories.benchmark_runs import BenchmarkRunsRepo
 from app.db.repositories.extraction_jobs import ExtractionJobsRepo
 from app.db.repositories.extraction_pending import ExtractionPendingRepo
 from app.db.repositories.projects import ProjectsRepo
@@ -63,3 +64,7 @@ async def get_embedding_client() -> EmbeddingClient:
 
 async def get_provider_client() -> ProviderClient:
     return _get_provider_client_singleton()
+
+
+async def get_benchmark_runs_repo() -> BenchmarkRunsRepo:
+    return BenchmarkRunsRepo(get_knowledge_pool())

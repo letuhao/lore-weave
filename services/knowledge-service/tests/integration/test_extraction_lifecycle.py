@@ -99,8 +99,12 @@ class _MockState:
 
 def _setup(state: _MockState) -> TestClient:
     """Wire up all DI overrides + pool/neo4j patches for the full lifecycle."""
+    from datetime import datetime as _dt, timezone as _tz
+
     from app.main import app
+    from app.db.repositories.benchmark_runs import BenchmarkRun
     from app.deps import (
+        get_benchmark_runs_repo,
         get_book_client,
         get_extraction_jobs_repo,
         get_extraction_pending_repo,
@@ -134,12 +138,28 @@ def _setup(state: _MockState) -> TestClient:
     glossary_client = AsyncMock(spec=GlossaryClient)
     glossary_client.count_entities = AsyncMock(return_value=200)
 
+    # K17.9 gate: override with a passing benchmark so the lifecycle
+    # test (which exercises the start-extraction flow) doesn't 409.
+    benchmark_repo = AsyncMock()
+    benchmark_repo.get_latest = AsyncMock(return_value=BenchmarkRun(
+        benchmark_run_id=uuid4(),
+        project_id=_TEST_PROJECT,
+        embedding_provider_id=None,
+        embedding_model="bge-m3",
+        run_id="lifecycle-test-passing",
+        recall_at_3=0.85, mrr=0.72, avg_score_positive=0.70,
+        stddev=0.03, negative_control_pass=True, passed=True,
+        raw_report={},
+        created_at=_dt.now(_tz.utc),
+    ))
+
     app.dependency_overrides[get_current_user] = lambda: _TEST_USER
     app.dependency_overrides[get_projects_repo] = lambda: projects_repo
     app.dependency_overrides[get_extraction_jobs_repo] = lambda: jobs_repo
     app.dependency_overrides[get_extraction_pending_repo] = lambda: pending_repo
     app.dependency_overrides[get_book_client] = lambda: book_client
     app.dependency_overrides[get_glossary_client] = lambda: glossary_client
+    app.dependency_overrides[get_benchmark_runs_repo] = lambda: benchmark_repo
 
     return TestClient(app, raise_server_exceptions=False)
 

@@ -23,6 +23,9 @@ from app.db.repositories.extraction_jobs import ExtractionJob
 
 # Sentinel for "project not found"
 _NO_PROJECT = object()
+# Sentinel for "no benchmark run yet" — distinct from None which means
+# "default (passing benchmark)" in _make_client's kwarg semantics.
+_NO_BENCHMARK = object()
 
 _TEST_USER = uuid4()
 _TEST_PROJECT = uuid4()
@@ -85,12 +88,35 @@ def _job_stub(**overrides) -> ExtractionJob:
     return ExtractionJob(**defaults)
 
 
+def _benchmark_run_stub(*, passed: bool = True, model: str = "bge-m3"):
+    """K17.9 gate: default to a passing run so existing tests keep
+    working without threading a benchmark row through every test."""
+    from datetime import datetime as _dt, timezone as _tz
+    from app.db.repositories.benchmark_runs import BenchmarkRun
+    return BenchmarkRun(
+        benchmark_run_id=uuid4(),
+        project_id=_TEST_PROJECT,
+        embedding_provider_id=None,
+        embedding_model=model,
+        run_id="existing-passing-run",
+        recall_at_3=0.85 if passed else 0.10,
+        mrr=0.72 if passed else 0.08,
+        avg_score_positive=0.70 if passed else 0.20,
+        stddev=0.03,
+        negative_control_pass=True,
+        passed=passed,
+        raw_report={},
+        created_at=_dt.now(_tz.utc),
+    )
+
+
 def _make_client(
     *,
     project=None,
     active_jobs: list | None = None,
     insert_side_effect=None,
     job_after_create: ExtractionJob | None = None,
+    benchmark=None,  # default: passing run; pass `_NO_BENCHMARK` for None
 ) -> TestClient:
     """Build a TestClient with all deps overridden.
 
@@ -100,9 +126,12 @@ def _make_client(
         insert_side_effect: if set, conn.fetchrow for INSERT raises this
             (e.g. asyncpg.UniqueViolationError for concurrent-start test).
         job_after_create: ExtractionJob returned by jobs_repo.get after commit.
+        benchmark: BenchmarkRun stub, _NO_BENCHMARK sentinel (→ returns None),
+            or None (→ defaults to a passing run). The K17.9 gate check.
     """
     from app.main import app
     from app.deps import (
+        get_benchmark_runs_repo,
         get_book_client,
         get_extraction_jobs_repo,
         get_extraction_pending_repo,
@@ -124,6 +153,14 @@ def _make_client(
     jobs_repo = AsyncMock()
     jobs_repo.list_active = AsyncMock(return_value=active_jobs or [])
     jobs_repo.get = AsyncMock(return_value=job_after_create or _job_stub())
+
+    benchmark_repo = AsyncMock()
+    if benchmark is _NO_BENCHMARK:
+        benchmark_repo.get_latest = AsyncMock(return_value=None)
+    else:
+        benchmark_repo.get_latest = AsyncMock(
+            return_value=benchmark if benchmark is not None else _benchmark_run_stub(),
+        )
 
     # Mock the pool + connection for the transaction block
     mock_conn = AsyncMock()
@@ -152,6 +189,7 @@ def _make_client(
     app.dependency_overrides[get_extraction_pending_repo] = lambda: AsyncMock()
     app.dependency_overrides[get_book_client] = lambda: AsyncMock(spec=BookClient)
     app.dependency_overrides[get_glossary_client] = lambda: AsyncMock(spec=GlossaryClient)
+    app.dependency_overrides[get_benchmark_runs_repo] = lambda: benchmark_repo
 
     client = TestClient(app, raise_server_exceptions=False)
     # Patch the pool at module level so the endpoint's get_knowledge_pool()
@@ -269,3 +307,47 @@ def test_start_job_paused_job_blocks_new_start():
     client = _make_client(active_jobs=[paused])
     resp = _post_start(client)
     assert resp.status_code == 409
+
+
+# ── K17.9 benchmark gate ─────────────────────────────────────────────
+
+
+def test_start_job_no_benchmark_returns_409():
+    """K17.9 gate: no benchmark row for the chosen embedding_model →
+    reject with 409 and a structured error_code the FE can dispatch on."""
+    client = _make_client(benchmark=_NO_BENCHMARK)
+    resp = _post_start(client)
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert detail["error_code"] == "benchmark_missing"
+    assert detail["embedding_model"] == "bge-m3"
+    assert "no passing benchmark" in detail["message"].lower()
+    # User-facing message must NOT leak the internal CLI command
+    # (review-impl MED fix).
+    assert "python -m eval" not in detail["message"]
+
+
+def test_start_job_failing_benchmark_returns_409():
+    """K17.9 gate: latest benchmark run has passed=False → reject
+    with error_code + run_id + metrics so the FE can render a link
+    to the failing report."""
+    failing = _benchmark_run_stub(passed=False)
+    client = _make_client(benchmark=failing)
+    resp = _post_start(client)
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert detail["error_code"] == "benchmark_failed"
+    assert detail["run_id"] == "existing-passing-run"  # run_id from the stub
+    assert detail["recall_at_3"] == pytest.approx(0.10)
+    assert "low-quality" in detail["message"]
+
+
+def test_start_job_passing_benchmark_succeeds():
+    """K17.9 gate: a passing benchmark lets the request through —
+    same shape as the existing happy-path test, just making the
+    benchmark-row path explicit."""
+    passing = _benchmark_run_stub(passed=True)
+    client = _make_client(benchmark=passing)
+    resp = _post_start(client)
+    assert resp.status_code == 201
+    assert resp.json()["status"] == "running"

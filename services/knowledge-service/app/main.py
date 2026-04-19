@@ -17,7 +17,14 @@ from app.db.neo4j_schema import run_neo4j_schema
 from app.db.pool import close_pools, create_pools, get_knowledge_pool
 from app.logging_config import setup_logging, trace_id_var
 from app.middleware.trace_id import TraceIdMiddleware
-from app.routers import context, health, internal_extraction, metrics, ping
+from app.routers import (
+    context,
+    health,
+    internal_benchmark,
+    internal_extraction,
+    metrics,
+    ping,
+)
 from app.routers.public import costs as public_costs
 from app.routers.public import extraction as public_extraction
 from app.routers.public import projects as public_projects
@@ -248,6 +255,7 @@ app.include_router(health.router)
 app.include_router(ping.public_router)
 app.include_router(ping.internal_router)
 app.include_router(context.router)
+app.include_router(internal_benchmark.router)
 app.include_router(internal_extraction.router)
 app.include_router(metrics.router)
 app.include_router(public_costs.router)

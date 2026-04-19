@@ -1,8 +1,8 @@
-# Session Handoff — Session 47 END (extended: K17.9 harness wiring; T2-close-1b next)
+# Session Handoff — Session 47 END (extended: K17.9 harness + gate; T2-close-1b-FE + 1b-CI next)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-19 (session 47 END — extended)
-> **HEAD:** `95d336e` (Gate 13 readiness doc); session 47 T2-close-1a commit hash pending
+> **HEAD:** `525eaa5` (T2-close-1a K17.9 harness); session 47 T2-close-1b-BE commit pending
 > **Branch:** `main` (ahead of origin by sessions 38–47 commits — user pushes manually)
 
 ---
@@ -43,18 +43,20 @@ Cycles 1–9 (original close-out roadmap)   ✅ (sessions 46 + 47)
 Extended plan (negotiated session 47 — all deferrals either in-scope
 or genuinely Track-3-preloaded; no more re-deferrals mid-cycle):
 
-T2-close-1a  K17.9 harness core wiring   ✅ (session 47, pending commit)
-T2-close-1b  K17.9 CI + FE gate hook      ← NEXT
+T2-close-1a  K17.9 harness core wiring         ✅ (session 47)
+T2-close-1b-BE  Benchmark gate + status endpoint  ✅ (session 47)
+T2-close-1b-FE  K12.4 picker badge + disable     ← NEXT
+T2-close-1b-CI  GitHub Actions benchmark job     ← NEXT
 T2-close-5   D-K16.2-01 model pricing
 T2-close-6   D-K16.2-02 scope_range filter
-T2-close-7   P-K* glossary trigger perf pass (P-K2a-02 + P-K3-01 + P-K3-02)
+T2-close-7   P-K* glossary trigger perf pass
 T2-close-3   Chaos C05 / C06 / C08 live runs
-T2-polish-1  Test-isolation audit (find siblings of the 3 we fixed)
+T2-polish-1  Test-isolation audit
 T2-polish-2a Metrics endpoint on glossary-service
 T2-polish-2b Metrics endpoint on book-service
-T2-polish-3  D-K18.9-01 system_prompt cache_control (fold into 2a or 2b)
-T2-polish-4  CI integration-test wiring (TEST_KNOWLEDGE_DB_URL / TEST_NEO4J_URI)
-T2-close-2   Gate 13 human-loop walk-through (needs BYOK + real chapters)
+T2-polish-3  D-K18.9-01 system_prompt cache_control
+T2-polish-4  CI integration-test wiring
+T2-close-2   Gate 13 human-loop walk-through
 T2-close-4   Track 2 acceptance pack (doc)
 preload      Add Track-3-preloaded section to SESSION_PATCH.md
 ```
@@ -66,11 +68,12 @@ preload      Add Track-3-preloaded section to SESSION_PATCH.md
 3. **Cycle 8 is 3 separate commits** — one per sub-item because each changes observable behavior that should be reviewable independently.
 4. **Use the workflow gate:** `python scripts/workflow-gate.py reset && python scripts/workflow-gate.py size <XS|S|M|L|XL> <files> <logic> <effects>` before starting each cycle, phase per phase through to RETRO.
 
-### Things that are good to know before T2-close-1b
+### Things that are good to know before T2-close-1b-FE + 1b-CI
 
-- **T2-close-1a shipped the K17.9 harness core (this session)**: `eval/fixture_loader.py`, `eval/mode3_query_runner.py`, `eval/persist.py`, CLI on `eval/run_benchmark.py`. Unit + integration tests pass. Live-run against a real BYOK model is a documented README step.
-- **T2-close-1b wires the harness into CI + FE**: new GitHub-Actions workflow (or extension) that runs `python -m eval.run_benchmark` against a test LM Studio model on every PR, AND a K12.4 picker hook that calls the knowledge-service project-benchmark-status endpoint and blocks extraction-enable when the latest benchmark `passed=false`. New internal endpoint likely needed: `GET /internal/projects/{id}/benchmark-status` returning the latest row from `project_embedding_benchmark_runs`.
-- **CLI live-run command** (for reference / README):
+- **1b-BE shipped this session**: `BenchmarkRunsRepo.get_latest`, `GET /internal/projects/{id}/benchmark-status`, and the benchmark gate in `POST /extraction/start`. The gate returns 409 with `detail={error_code: benchmark_missing | benchmark_failed, message, embedding_model, run_id?, recall_at_3?}` — FE dispatches on `error_code` to render the right CTA.
+- **1b-FE scope (NEXT)**: K12.4 picker fetches `/internal/projects/{id}/benchmark-status` via gateway (probably a new gateway-bff endpoint that adds auth), renders a badge (green passed / red failed / grey has_run=False), and disables the extraction-enable toggle when the selected embedding_model has no passing run. On 409 from the enable flow, reads `detail.error_code` and shows the targeted CTA. No new BE work — all shapes already in place.
+- **1b-CI scope**: GitHub Actions workflow that on every PR (or nightly) stands up the compose stack, registers a test BYOK model in provider-registry, runs `python -m eval.run_benchmark` against a canonical fixture project, and asserts exit 0. Gates merge on benchmark regressions. Requires repo secrets for the test model (likely LM Studio token).
+- **CLI live-run command** (unchanged):
   ```bash
   python -m eval.run_benchmark \
     --user-id=<uuid> \
@@ -78,7 +81,10 @@ preload      Add Track-3-preloaded section to SESSION_PATCH.md
     --embedding-model=bge-m3 \
     --runs=3
   ```
-  Needs `KNOWLEDGE_DB_URL`, `INTERNAL_SERVICE_TOKEN`, `NEO4J_URI` env vars set. Exits 0 on pass, 1 on fail, 2 on unknown model.
+
+### Extended plan's "no-more-re-deferrals" rule still holds
+
+Every remaining item is either in a T2-close cycle or Track-3-preloaded. The 1b split into BE/FE/CI was a size call, not a re-deferral.
 
 ### The extended plan's invariant
 
@@ -99,7 +105,9 @@ Every remaining deferral is now either **in-scope for a T2-close cycle** or **ex
 - +5 unit tests, +2 integration tests.
 - Fixed 3 stale docstrings.
 
-**T2-close-1a K17.9 harness core** (about to land): Real-wiring pass on the scaffold from session 45 — the `[~]` in the plan row said "scaffold done, real wiring pending K17.2+K18.3"; both have shipped. New `eval/fixture_loader.py` embeds `f"{name}. {summary}"` per golden-set entity (review-impl HIGH catch — summary-only indexing would have failed easy-band queries like "Who is Kaelen Voss?") + upserts as `source_type='benchmark_entity'` tagged `:Passage`. New `eval/mode3_query_runner.py` is the live `AsyncQueryRunner`: embed query → `find_passages_by_vector` → map `source_id` → entity_id. New `eval/persist.py` writes the report to `project_embedding_benchmark_runs` (Cycle 9's table). `eval/run_benchmark.py` gains `AsyncBenchmarkRunner` + CLI `_main()`. 13 new unit tests + 5 new integration tests. 1438 pass + 1 skip.
+**T2-close-1b-BE benchmark gate** (about to land): New `BenchmarkRunsRepo.get_latest` (user-scoped JOIN, JSONB parsed) + `GET /internal/projects/{id}/benchmark-status` (200 + `has_run: bool`) + benchmark gate in `POST /extraction/start` that rejects with 409 when no passing run for the chosen `embedding_model`. Error detail is structured (`error_code` + `message` + `embedding_model` + optional `run_id` / `recall_at_3`) so the FE can dispatch. Review-impl MED: original detail leaked the CLI command into the API response — fixed to user-neutral message. 18 new tests. 1456 pass + 1 skip.
+
+**T2-close-1a K17.9 harness core** (HEAD `525eaa5`): Real-wiring pass on the scaffold from session 45 — the `[~]` in the plan row said "scaffold done, real wiring pending K17.2+K18.3"; both have shipped. New `eval/fixture_loader.py` embeds `f"{name}. {summary}"` per golden-set entity (review-impl HIGH catch — summary-only indexing would have failed easy-band queries like "Who is Kaelen Voss?") + upserts as `source_type='benchmark_entity'` tagged `:Passage`. New `eval/mode3_query_runner.py` is the live `AsyncQueryRunner`: embed query → `find_passages_by_vector` → map `source_id` → entity_id. New `eval/persist.py` writes the report to `project_embedding_benchmark_runs` (Cycle 9's table). `eval/run_benchmark.py` gains `AsyncBenchmarkRunner` + CLI `_main()`. 13 new unit tests + 5 new integration tests. 1438 pass + 1 skip.
 
 **9 K17.9.1** (HEAD `e0a94a7`): `project_embedding_benchmark_runs` migration — one new table appended to `app/db/migrate.py` (inline-DDL convention, not a separate `.sql` file per the plan-row's stale guidance). Stores K17.9 golden-set harness output keyed on `(project_id, embedding_model, run_id)` UNIQUE; `ON DELETE CASCADE` on project; covering index `(project_id, embedding_model, created_at DESC)` serves both latest-per-project and latest-per-project-per-model queries; `passed BOOLEAN NOT NULL` is the extraction-enable gate bit; `embedding_provider_id` is cross-DB (no FK, same rule as `user_id`/`book_id`). Review-impl added a full-column INSERT test and a cascade-preserves-other-projects test. +7 unit DDL smoke tests + 7 integration tests. 1319 unit pass + 20 migration integration pass with live Postgres.
 
