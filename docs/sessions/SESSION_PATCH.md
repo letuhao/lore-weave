@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-19 (session 47 — T2-close-4 acceptance pack shipped. Single-doc evidence trail covering all 26 cycles, per-service test counts, chaos status, /metrics surfaces, cleared deferrals, Track 3 preload gaps, replay commands. **All code-path T2 close-out + polish cycles complete.** Only remaining: T2-close-2 (human-interactive Gate 13 checkpoints) + optional Track-3-preload SESSION_PATCH touch-up.)
-- Updated By: Assistant (session 47 — 20 commits: 7a/7b/8a/8b/8c/9 + test-hygiene + Gate-13-report + 1a + 1b-BE + 1b-FE + 5 + 6 + 7 + 3 + polish-1 + polish-2a + polish-2b + polish-3 + close-4. Track 2 shipped from this session's lens.)
-- Active Branch: `main` (ahead of origin by session 38–47 commits — user pushes manually)
-- HEAD: ff9ef11 (T2-polish-3 cache_control); T2-close-4 acceptance pack about to land
+- Last Updated: 2026-04-19 **(session 47 END)** — **Track 2 code-complete, 20 commits shipped.** Only remaining: T2-close-2 (human-interactive Gate 13 loop, requires BYOK + real project; can't be automated). Track 3 can start anytime — all Track 2 surfaces are in place.
+- Updated By: Assistant (session 47 END — 20 commits across cycles 7a/7b/8a/8b/8c/9 + test-hygiene + Gate-13-report + T2-close-1a/1b-BE/1b-FE/5/6/7/3/4 + T2-polish-1/2a/2b/3. knowledge-service 1154 unit pass, chat-service 177 pass, glossary-service api 100% green for first time since pre-session-46, book-service api green.)
+- Active Branch: `main` (ahead of origin by sessions 38–47 commits — user pushes manually)
+- HEAD: `e694e44` (T2-close-4 Track 2 acceptance pack) at session 47 end
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -95,13 +95,16 @@ One commit.
 ### Then
 **Gate 13 end-to-end verification → Chaos tests C01–C08 → Track 2 formally closed.**
 
-**All 9 cycles of the Track 2 close-out roadmap are now complete** (session 47 shipped cycles 7a/7b/8a/8b/8c/9; cycles 1–6 shipped in session 46). The only remaining work to formally close Track 2 is the gate 13 end-to-end run and the C01–C08 chaos tests.
+**All 9 cycles of the original Track 2 close-out roadmap are complete** (session 47 shipped cycles 7a/7b/8a/8b/8c/9; cycles 1–6 shipped in session 46). **The extended T2-close-out plan negotiated mid-session 47 is also complete** (T2-close-1a/1b-BE/1b-FE/5/6/7/3/4 + T2-polish-1/2a/2b/3; T2-close-1b-CI + T2-polish-4 scoped out by user decision; chaos C05/C06/C08 promoted to 🟡 SCRIPTED via `scripts/chaos/`). The single remaining Track 2 item is **T2-close-2** — the human-interactive Gate 13 loop (BYOK + real project + chat turns) which can't be automated.
+
+See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page Track 2 delivery evidence view.
 
 ### Summary
-- **9 cycles, ~12 commits total**
-- Cycles 1–5 are the "must do before Gate 13" tier
-- Cycles 6–8 are polish; can ship post-Gate-13 if scheduling pressure appears
-- Cycle 9 sits behind a separate Gate 4 dependency
+- **Original roadmap: 9 cycles, ~12 commits** (sessions 46 + 47)
+- **Extended close-out plan: 13 cycles, 20 commits** (session 47)
+- All chaos scenarios automated or scripted (C01–C04+C07 automated unit-level; C05/C06/C08 scripted live-run one-command-away)
+- Observability: /metrics now on all 3 Go services facing knowledge-service hot paths
+- Track 2 code-complete; only the Gate 13 human attestation remains
 
 ---
 

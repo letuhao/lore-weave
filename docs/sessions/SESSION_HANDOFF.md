@@ -1,149 +1,90 @@
-# Session Handoff — Session 47 END (extended: K17.9 harness + gate; T2-close-1b-FE + 1b-CI next)
+# Session Handoff — Session 47 END (Track 2 code-complete; Gate 13 human loop pending)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-19 (session 47 END — extended)
-> **HEAD:** `525eaa5` (T2-close-1a K17.9 harness); session 47 T2-close-1b-BE commit pending
+> **Date:** 2026-04-19 (session 47 END)
+> **HEAD:** `e694e44` (T2-close-4 Track 2 acceptance pack)
 > **Branch:** `main` (ahead of origin by sessions 38–47 commits — user pushes manually)
 
 ---
 
 ## 1. TL;DR — what shipped this session
 
-Session 46 was a large close-out session. 12 commits landed 6 of 9 planned Track 2 close-out cycles. Key artifacts:
+**20 commits. Track 2 code-complete.** Session 47 executed the full Track 2 close-out extended plan the user negotiated mid-session. All T2-close-* and T2-polish-* cycles shipped; the only remaining Track 2 item is the Gate 13 human-interactive checkpoint loop (T2-close-2), which can't be automated and is waiting on the user.
 
 ```
-Track 2 close-out roadmap (session 46)   ✅  9 cycles defined, 6 shipped
-  Cycle 1a  D-K18.3-01 passage ingestion  ✅  Mode 3 end-to-end LIVE with real data
-  Cycle 1b  K12.4 FE embedding picker     ✅  users can configure embedding_model via UI
-  Cycle 2   Debris sweep                  ✅  3/7 shipped (5 honest re-deferred)
-  Cycle 3   Lifecycle + scheduler         ✅  3/5 full + 2/5 LIMIT-half (cursor deferred)
-  Cycle 4   Provider-registry hardening   ✅  2/3 (D-K16.2-01 re-deferred)
-  Cycle 5   Extraction quality + perf     ✅  4/4
-  Cycle 6   RAG quality (3 sub-cycles)    ✅  3/3
-  Cycle 7   K18 final polish              ⏳  NEXT
-  Cycle 8   Large infra (3 commits)       ⏳
-  Cycle 9   Gate-4 alignment              ⏳
+Track 2 close-out (26 cycles total, sessions 46 + 47)
+
+Session 46  (12 commits, shipped first)
+  Cycles 1–6 of the original Track 2 close-out roadmap
+
+Session 47  (20 commits, extended-plan close-out)
+  Cycle 7a   P-K18.3-02 MMR embedding cosine              ✅  7c666c9
+  Cycle 7b   K18.9 Anthropic prompt cache_control         ✅  8f282c3
+  Cycle 8a   D-K18.3-02 generative rerank                 ✅  e5aeb96
+  Cycle 8b   D-T2-04 cross-process cache invalidation     ✅  239b021
+  Cycle 8c   D-T2-05 glossary breaker half-open probe     ✅  2732462
+  Cycle 9    K17.9.1 benchmark-runs migration             ✅  e0a94a7
+  test-hygiene one-active-job-per-project fixes            ✅  609de2b
+  Gate-13-report doc                                       ✅  95d336e
+  T2-close-1a   K17.9 golden-set harness core wiring      ✅  525eaa5
+  T2-close-1b-BE   benchmark gate + status endpoint       ✅  849be7f
+  T2-close-1b-FE   picker badge + public endpoint         ✅  a484e25
+  scope-out docs T2-close-1b-CI + T2-polish-4              ✅  34a4d8f
+  T2-close-5   D-K16.2-01 per-model USD pricing           ✅  ed9f13d
+  T2-close-6   D-K16.2-02 scope_range.chapter_range       ✅  01b8eda
+  T2-close-7   P-K2a-02 + P-K3-02 glossary trigger perf   ✅  02067e2
+  T2-close-3   scripted C05/C06/C08 chaos harness         ✅  fae8ce1
+  T2-polish-1  test-isolation audit + 2 Go test fixes     ✅  8e3410d
+  T2-polish-2a /metrics for glossary-service              ✅  0464919
+  T2-polish-2b /metrics for book-service                  ✅  98623aa
+  T2-polish-3  D-K18.9-01 cache_control on system_prompt  ✅  ff9ef11
+  T2-close-4   Track 2 acceptance pack (doc)              ✅  e694e44
 ```
 
-**Test execution at session end:**
-- knowledge-service unit: **1049/1049 pass** (up from 1026 at start of session)
-- chat-service unit: **169/169 pass** (stable)
-- glossary-service: `go build ./...` clean, `go test ./...` passes
-- provider-registry-service: `go build ./...` clean, `go test ./...` passes
+**Test execution at session END:**
+- knowledge-service unit: **1154 pass** (up from 1049 at session 46 end)
+- chat-service unit: **177 pass** (up from 169)
+- glossary-service api: **100% green in 3.0 s** (was 2 persistent failures — both stale test bugs fixed in polish-1)
+- book-service api: **green + new `parseSortRange` / `buildSortRangeFilter` tests**
+- provider-registry-service: green
 
-**Deferred-items drift reconciliation (commit `6727c2d`):** 6 items that shipped in cycles 1–3 were still listed as open in the Deferred Items table (only Cycle 4's 2 items had been struck through). Audited + reconciled — 6 struck, 2 amended to "partial" (LIMIT shipped, cursor deferred).
+**Scoped out by user decision (not deferred):**
+- T2-close-1b-CI — GitHub Actions benchmark job (no CI/CD at this stage)
+- T2-polish-4 — CI integration-test wiring (same reason)
 
 ---
 
-## 2. Where to pick up — Track 2 close-out extended plan (post-roadmap cycles)
+## 2. Where to pick up — Track 2 sealing + Track 3 onramp
 
-```
-Cycles 1–9 (original close-out roadmap)   ✅ (sessions 46 + 47)
+### Option A — Close Gate 13 (recommended first)
 
-Extended plan (negotiated session 47 — all deferrals either in-scope
-or genuinely Track-3-preloaded; no more re-deferrals mid-cycle):
+The only code-path-adjacent Track 2 task remaining is **T2-close-2**: the 12-step Gate 13 human-interactive checkpoint walkthrough in [GATE_13_READINESS.md §5](GATE_13_READINESS.md). Requires:
 
-T2-close-1a     K17.9 harness core wiring                ✅ (session 47)
-T2-close-1b-BE  Benchmark gate + status endpoint         ✅ (session 47)
-T2-close-1b-FE  K12.4 picker badge                       ✅ (session 47)
-T2-close-1b-CI  GitHub Actions benchmark job             🚫 (SCOPED OUT —
-                the project deliberately doesn't use CI/CD at this
-                stage; local test runs + manual commit gates are the
-                quality signal. If CI ever lands, the harness CLI is
-                already invoke-ready — `python -m eval.run_benchmark
-                --project-id=... --embedding-model=...`.)
-T2-close-5   D-K16.2-01 model pricing                    ← NEXT
-T2-close-6   D-K16.2-02 scope_range filter
-T2-close-7   P-K* glossary trigger perf pass
-T2-close-3   Chaos C05 / C06 / C08 live runs
-T2-polish-1  Test-isolation audit
-T2-polish-2a Metrics endpoint on glossary-service
-T2-polish-2b Metrics endpoint on book-service
-T2-polish-3  D-K18.9-01 system_prompt cache_control
-T2-polish-4  CI integration-test wiring                  🚫 (same reason
-                as 1b-CI — no CI infra by design)
-T2-close-2   Gate 13 human-loop walk-through
-T2-close-4   Track 2 acceptance pack (doc)
-preload      Add Track-3-preloaded section to SESSION_PATCH.md
-```
+1. BYOK credentials for one LLM provider (Anthropic / OpenAI / LM Studio) + one embedding model (bge-m3 on LM Studio or text-embedding-3-small on OpenAI).
+2. A test project with 2–3 real chapters loaded via book-service API.
+3. Driving the UI: enable extraction → wait for job → open chat → ask broad / specific / relational queries → inspect chat-service logs for `<memory mode="full">` → send 25+ messages to prove only last 20 in history → ask a contradiction-of-negation question → disable/re-enable extraction → check cost against provider invoice.
+4. Optionally run the chaos scripts live for extra confidence: `./scripts/chaos/c0{5,6,8}_*.sh`.
 
-### Resume recipe
+Outcome: append a §10 Gate 13 attestation to [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) with captured evidence (log excerpts, screenshots, invoice line).
 
-1. **Read [SESSION_PATCH.md §Track 2 Close-out Roadmap](SESSION_PATCH.md#track-2-close-out-roadmap-session-46)** — especially the Cycle 8 / 9 rows for scope.
-2. **Check the Deferred Items "Naturally-next-phase" table** — any item with Target phase "Cycle 8 / 9" is in scope now. Re-deferred items from earlier cycles (D-K17.10-02, D-K16.2-01, D-K16.2-02, P-K2a-02, P-K3-01, P-K3-02, D-K18.9-01) are **out of scope** for Track 2 close-out and stay deferred.
-3. **Cycle 8 is 3 separate commits** — one per sub-item because each changes observable behavior that should be reviewable independently.
-4. **Use the workflow gate:** `python scripts/workflow-gate.py reset && python scripts/workflow-gate.py size <XS|S|M|L|XL> <files> <logic> <effects>` before starting each cycle, phase per phase through to RETRO.
+This is the **only** remaining step before Track 2 is formally closed. Code-wise nothing else blocks Track 3.
 
-### Things that are good to know before T2-close-1b-FE + 1b-CI
+### Option B — Start Track 3 planning
 
-- **1b-BE shipped this session**: `BenchmarkRunsRepo.get_latest`, `GET /internal/projects/{id}/benchmark-status`, and the benchmark gate in `POST /extraction/start`. The gate returns 409 with `detail={error_code: benchmark_missing | benchmark_failed, message, embedding_model, run_id?, recall_at_3?}` — FE dispatches on `error_code` to render the right CTA.
-- **1b-FE scope (NEXT)**: K12.4 picker fetches `/internal/projects/{id}/benchmark-status` via gateway (probably a new gateway-bff endpoint that adds auth), renders a badge (green passed / red failed / grey has_run=False), and disables the extraction-enable toggle when the selected embedding_model has no passing run. On 409 from the enable flow, reads `detail.error_code` and shows the targeted CTA. No new BE work — all shapes already in place.
-- **1b-CI scope**: GitHub Actions workflow that on every PR (or nightly) stands up the compose stack, registers a test BYOK model in provider-registry, runs `python -m eval.run_benchmark` against a canonical fixture project, and asserts exit 0. Gates merge on benchmark regressions. Requires repo secrets for the test model (likely LM Studio token).
-- **CLI live-run command** (unchanged):
-  ```bash
-  python -m eval.run_benchmark \
-    --user-id=<uuid> \
-    --project-id=<uuid> \
-    --embedding-model=bge-m3 \
-    --runs=3
-  ```
+If the Gate 13 loop is being deferred, Track 3 can start anytime because all Track 2 surfaces are shipped. The Deferred Items table in SESSION_PATCH has a "Track 3 preload" list with specific target phases — open that table and pick the cluster that fits the next session's scope.
 
-### Extended plan's "no-more-re-deferrals" rule still holds
+Track 3 preload clusters (each has a target phase listed in Deferred Items):
+- **D-K16.2-02b** — runner-side `chapter_range` enforcement (dormant today; frontend doesn't send `scope_range` yet).
+- **D-K11.9-01 + P-K15.10-01 (partial)** — cursor-state for resumable reconciler + quarantine sweep. Paired with a job-state table. Target: K19/K20 scheduler cleanup.
+- **D-K8-02 (remaining)** — project card stat tiles (entity / fact / event / glossary counts). Needs FE wiring on top of already-shipped BE surfaces.
+- **D-K17.10-02** — xianxia + Vietnamese K17.10 fixtures.
+- **P-K3-01 / P-K3-02 (full path)** — per-row short_description backfill → set-based SQL. Blocked on `shortdesc.Generate` ported to SQL; same port unblocks full P-K3-02.
 
-Every remaining item is either in a T2-close cycle or Track-3-preloaded. The 1b split into BE/FE/CI was a size call, not a re-deferral.
+### Resume recipe (either option)
 
-### The extended plan's invariant
-
-Every remaining deferral is now either **in-scope for a T2-close cycle** or **explicitly Track-3-preloaded**. No more "fix when profiling shows pain" / "wait for upstream dep" re-deferrals — each one has a concrete owner cycle.
-
-### Lessons carried forward (session 47)
-
-- **Don't re-import a "real" function after monkeypatch**. When a test helper `_patch_mode3_pieces` patches `foo` to an AsyncMock, a later `from pkg import foo as real_foo` binds `real_foo` to the AsyncMock, not the original. Capture the real reference at module load time (before any test runs) — see `_REAL_SELECT_L3_PASSAGES` in test_mode_full.py.
-- **Opt-in features still need inner timeouts**. Cycle 8a's rerank, if slow, was consuming the whole L3 budget and returning zero passages — strictly worse than not opting in. Always clamp sub-feature budgets so enabling an opt-in never regresses below the opt-out baseline.
-
-### What Cycle 7 shipped (session 47)
-
-**7a P-K18.3-02** (HEAD `7c666c9`):
-- `PassageSearchHit.vector: list[float] | None = None` — transient per-search field, NOT on `Passage`.
-- `find_passages_by_vector(..., include_vectors: bool = False)` — opt-in vector projection via f-string-substituted `node.embedding_{dim} AS vector` (injection-safe, closed-set validation).
-- L3 selector passes `include_vectors=True`; `_mmr_rerank` per-pair cosine (when both have vectors) / Jaccard (fallback) with precomputed L2 norms keyed by `id(hit)`.
-- **Review-impl caught MED perf issue:** `_mmr_rerank` ranked the full pool (40) when the caller only consumed `[:top_n]`. Added `top_n` kwarg + early-exit. Benchmark: pool=40 dim=3072 full = 1196 ms, top_n=10 = 57 ms (21× win). Test proves both capped and uncapped paths.
-- +5 unit tests, +2 integration tests.
-- Fixed 3 stale docstrings.
-
-**T2-close-1b-BE benchmark gate** (about to land): New `BenchmarkRunsRepo.get_latest` (user-scoped JOIN, JSONB parsed) + `GET /internal/projects/{id}/benchmark-status` (200 + `has_run: bool`) + benchmark gate in `POST /extraction/start` that rejects with 409 when no passing run for the chosen `embedding_model`. Error detail is structured (`error_code` + `message` + `embedding_model` + optional `run_id` / `recall_at_3`) so the FE can dispatch. Review-impl MED: original detail leaked the CLI command into the API response — fixed to user-neutral message. 18 new tests. 1456 pass + 1 skip.
-
-**T2-close-1a K17.9 harness core** (HEAD `525eaa5`): Real-wiring pass on the scaffold from session 45 — the `[~]` in the plan row said "scaffold done, real wiring pending K17.2+K18.3"; both have shipped. New `eval/fixture_loader.py` embeds `f"{name}. {summary}"` per golden-set entity (review-impl HIGH catch — summary-only indexing would have failed easy-band queries like "Who is Kaelen Voss?") + upserts as `source_type='benchmark_entity'` tagged `:Passage`. New `eval/mode3_query_runner.py` is the live `AsyncQueryRunner`: embed query → `find_passages_by_vector` → map `source_id` → entity_id. New `eval/persist.py` writes the report to `project_embedding_benchmark_runs` (Cycle 9's table). `eval/run_benchmark.py` gains `AsyncBenchmarkRunner` + CLI `_main()`. 13 new unit tests + 5 new integration tests. 1438 pass + 1 skip.
-
-**9 K17.9.1** (HEAD `e0a94a7`): `project_embedding_benchmark_runs` migration — one new table appended to `app/db/migrate.py` (inline-DDL convention, not a separate `.sql` file per the plan-row's stale guidance). Stores K17.9 golden-set harness output keyed on `(project_id, embedding_model, run_id)` UNIQUE; `ON DELETE CASCADE` on project; covering index `(project_id, embedding_model, created_at DESC)` serves both latest-per-project and latest-per-project-per-model queries; `passed BOOLEAN NOT NULL` is the extraction-enable gate bit; `embedding_provider_id` is cross-DB (no FK, same rule as `user_id`/`book_id`). Review-impl added a full-column INSERT test and a cascade-preserves-other-projects test. +7 unit DDL smoke tests + 7 integration tests. 1319 unit pass + 20 migration integration pass with live Postgres.
-
-**8c D-T2-05** (HEAD `2732462`): Glossary circuit-breaker half-open single-probe guarantee. New `_cb_probe_in_flight` bool + `_cb_enter()` state machine returning `"closed"|"probe"|"open"`. Concurrent callers in the half-open window are serialized by the asyncio event loop — exactly one claims the probe (no await between check and set → atomic), the rest short-circuit. `select_for_context` wraps the HTTP retry loop in `try`/`finally` so the probe slot releases under every outcome. Validation: concurrent 5-caller test fires 1 HTTP call instead of 5. Before this fix, all concurrent callers at the cooldown-elapsed moment fired simultaneous probes, undoing the breaker's backpressure under load. +3 tests.
-
-**8b D-T2-04** (HEAD `239b021`): Cross-process L0/L1 cache invalidation via Redis pub/sub. New `app/context/cache_invalidation.py` holds a `CacheInvalidator` (publisher + subscriber on `loreweave:cache-invalidate` channel); per-process UUID origin filters self-messages; exponential-backoff reconnect (1 s → 10 s). `cache.py`'s `invalidate_l0 / invalidate_l1 / invalidate_all_for_user` fire-and-forget publish after the local pop; a `_pending_publishes` set holds task refs so Python doesn't GC them mid-send. `stop()` drains the set before closing Redis. New `apply_remote_l0 / l1 / user` helpers do the local pop WITHOUT re-publishing (prevents echo storm). Settings-gated: empty `redis_url` → invalidator never installs → Track 1 single-worker path unchanged. Review-impl caught check-then-use race on `_invalidator` (local-capture fix), weak idempotence test (added `from_url.call_count == 1`), missing end-to-end chain test (added one). +17 tests.
-
-**8a D-K18.3-02** (HEAD `e5aeb96`): Post-MMR listwise generative rerank via `provider_client.chat_completion` with `{"order":[int,...]}` JSON mode. Opt-in via `project.extraction_config["rerank_model"]` (no DB migration). `rerank_passages()` in `selectors/passages.py` handles prompt construction (200-char passage snippets), forgiving parse (filter out-of-range / duplicate / bool; append missing indices at tail), and fail-safe fallback to MMR order on any error. Inner `asyncio.wait_for(timeout=1.0s)` prevents slow rerank from eating the 2s L3 budget. Wiring: `provider_client` plumbed through `deps.py::get_provider_client` → router → `build_context` → `build_full_mode` → `_safe_l3_passages` → `select_l3_passages`. Review-impl caught the timeout issue + added end-to-end test proving `extraction_config["rerank_model"]` reaches `chat_completion.model_ref`. +11 tests.
-
-**7b K18.9** (HEAD `8f282c3`):
-- `BuiltContext` / `ContextBuildResponse` / `KnowledgeContext` gained `stable_context` + `volatile_context` (defaults `""`).
-- New `split_at_boundary(lines, n)` helper; explicit boundary newline so `context == stable + volatile` byte-for-byte.
-- Boundary: Mode 1 = whole block stable; Mode 2/3 stable ends at `</project>`.
-- `_enforce_budget` threaded 3-tuple (stable, volatile, context) through every trim pass — stable prefix survives each re-render unchanged.
-- chat-service `stream_service.py`: detects `creds.provider_kind == "anthropic"` + non-empty stable, emits `[{stable, cache_control: ephemeral}, {volatile}, {system_prompt}]`. Non-anthropic + empty-split keep existing concat path. LiteLLM's Anthropic adapter passes cache_control through unchanged.
-- Review-impl added `test_anthropic_includes_system_prompt_as_third_segment` (third-segment ordering + cache_control only on parts[0]) and strengthened budget-trim test to prove trim fired.
-- +6 knowledge-service tests, +7 chat-service tests.
-
-### New knobs / fields / contracts (Cycle 7)
-
-- `include_vectors: bool = False` kwarg on `find_passages_by_vector` — opt-in. Only the L3 selector sets it.
-- `PassageSearchHit.vector: list[float] | None = None` — populated only with include_vectors=True.
-- `BuiltContext.stable_context`, `BuiltContext.volatile_context` — invariant `context == stable + volatile`.
-- `ContextBuildResponse.stable_context`, `.volatile_context` — same pair exposed over the wire.
-- `KnowledgeContext.stable_context`, `.volatile_context` — defaults `""` for older-server compat.
-- chat-service now emits Anthropic structured system content for `provider_kind == "anthropic"` — the rest unchanged.
-
-### Deferred added this cycle
-
-- **D-K18.9-01**: system_prompt cache_control on anthropic path. Second `cache_control: ephemeral` marker on session-level persona. ~3 lines. Defer until a real long-persona user surfaces.
+1. **Read [SESSION_PATCH.md](SESSION_PATCH.md) + [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md)** — the acceptance pack is the single-page view; SESSION_PATCH has everything else.
+2. **Check Deferred Items "Naturally-next-phase" table** — any row whose Target equals the phase you're entering is in scope.
+3. **Use the workflow gate:** `python scripts/workflow-gate.py reset` then `size <XS|S|M|L|XL> <files> <logic> <effects>` before each cycle; phase-by-phase through RETRO.
 
 ---
 
@@ -151,41 +92,38 @@ Every remaining deferral is now either **in-scope for a T2-close cycle** or **ex
 
 ### Cleared this session (moved to Recently cleared)
 
-| ID | Cycle | What was done |
+| ID | Cycle | Summary |
 |---|---|---|
-| **D-K18.3-01** | 1a | Passage ingestion pipeline — K14 consumer + chunker + embedder + upsert. Mode 3 now returns real passages. |
-| **K12.4** | 1b | FE embedding-model picker on project edit; auto-derives `embedding_dimension`. |
-| **D-PROXY-01** | 2 | Empty-credential guard across 6 provider-registry sites. |
-| **D-K17.2c-01** | 2 | Router-layer tests for K17.2c. |
-| **P-K2a-01** | 2 | Glossary BackfillSnapshots → single set-based query (~100× faster). |
-| **D-K11.3-01** | 3 | Lifespan startup try/except + reverse-order cleanup. |
-| **D-K11.9-02** | 3 | Orphan `:ExtractionSource` sweep. |
-| **D-K17.2a-01** | 4 | Prometheus /metrics on provider-registry, 4 counter vecs × 12 outcomes, 75 call sites. |
-| **D-K17.2b-01** | 4 | `tool_calls` parser support (content=null + tool_calls[] accepted). |
-| **D-K15.5-01** | 5 | All-caps fusion fix + multi-whitespace robust tokenization (added in review-impl). |
-| **P-K15.8-01** | 5 | Pre-built sentence_candidates map shared across triple + negation extractors. |
-| **P-K13.0-01** | 5 | Anchor pre-load TTLCache(256, 60s). |
-| **P-K18.3-01** | 5 | Query embedding TTLCache(512, 30s) keyed by user_uuid too (review-impl). |
-| **D-T2-01** | 6a | tiktoken.cl100k_base swap for CJK accuracy (with len/4 fallback). |
-| **D-T2-02** | 6b | glossary FTS → `ts_rank_cd` with flag 33 (log-length + [0,1] scaling). |
-| **D-T2-03** | 6c | `recent_message_count` unified behind env var `RECENT_MESSAGE_COUNT`. |
+| **D-K16.2-01** | T2-close-5 | Per-model USD pricing table (`app/pricing.py`) for cost preview — replaces legacy ~$2/M fallback. |
+| **D-K16.2-02** | T2-close-6 | `scope_range.chapter_range` threaded through estimate endpoint → `BookClient.count_chapters(from_sort=, to_sort=)` → book-service `parseSortRange` + `buildSortRangeFilter`. |
+| **D-K18.3-02** | 8a | Generative listwise rerank on top of MMR, opt-in via `extraction_config["rerank_model"]`, inner timeout 1s, fail-safe fallback. |
+| **D-T2-04** | 8b | Cross-process L0/L1 cache invalidation via Redis pub/sub. |
+| **D-T2-05** | 8c | Glossary circuit-breaker half-open single-probe guarantee. |
+| **D-K18.9-01** | T2-polish-3 | `cache_control` on session `system_prompt` — second Anthropic cache breakpoint used. |
+| **K17.9 (harness core + BE gate + FE badge + migration)** | T2-close-1a/1b-BE/1b-FE + Cycle 9 | Golden-set benchmark end-to-end live. `project_embedding_benchmark_runs` table + gate in `/extraction/start` + picker badge + `GET /v1/knowledge/projects/{id}/benchmark-status`. |
+| **P-K18.3-02** | 7a | MMR embedding cosine + `top_n` early-exit (21× perf win on dim=3072 pool=40). |
+| **K18.9** | 7b | Anthropic prompt caching: structured system content with `cache_control: ephemeral` on stable memory prefix. |
+| **P-K2a-02 + P-K3-02 (partial)** | T2-close-7 | Glossary trigger watch-list rewrite; pin toggle 1→0 recalcs, description PATCH 3→1 (no-op) / 2 (real). |
+| **Chaos C05/C06/C08 (scripted)** | T2-close-3 | `scripts/chaos/{c05,c06,c08}_*.sh` authored + smoke-tested. |
+| **T2-polish-1 test-isolation audit** | T2-polish-1 | Python suite audited clean; 2 pre-existing broken Go tests fixed. |
+| **T2-polish-2a /metrics glossary** | T2-polish-2a | 4 counter vecs + 8 call sites pre-seeded; review-impl caught + killed 16 dead labels. |
+| **T2-polish-2b /metrics book-service** | T2-polish-2b | 3 counter vecs, cross-service label divergence documented. |
+| **T2-close-4 acceptance pack** | T2-close-4 | `TRACK_2_ACCEPTANCE_PACK.md` consolidates Track 2 evidence. |
 
-### Re-deferred this session (still in Deferred Items)
+### Still deferred (explicit Track-3-preload, no re-deferrals this session)
 
-| ID | Reason |
+| ID | Target |
 |---|---|
-| D-K16.2-01 | Needs `pricing_policy` JSONB schema design first — not a one-liner. |
-| D-K16.2-02 | Blocked on book-service chapters range-filter support. |
-| D-K17.10-02 | Needs user-provided xianxia + Vietnamese chapter data. |
-| P-K2a-02 | Trigger redesign (pin-toggle snapshot), cross-cutting glossary perf pass. |
-| P-K3-01, P-K3-02 | Trigger chain redesign, same glossary perf pass. |
+| D-K8-02 (remaining stat tiles) | Track 2 Gate 12 or Track 3 |
+| D-K11.9-01 (partial, cursor state) | K19/K20 scheduler cleanup |
+| P-K15.10-01 (partial, cursor state) | Paired with D-K11.9-01 |
+| D-K17.10-02 | K17.10-v2 after threshold stabilisation |
+| D-K16.2-02b (runner-side chapter_range) | Track 3 (when FE range-picker ships or batch-iterative runner lands) |
+| D-K18.3-02b (if any — none currently) | — |
+| P-K3-01 (backfill Go→SQL port) | Track 3 |
+| P-K3-02 full path (same port) | Track 3 |
 
-### Still open partial (LIMIT shipped, cursor-state still open)
-
-| ID | Status |
-|---|---|
-| D-K11.9-01 | Reconciler LIMIT-batching done; cursor-state (resumable from mid-scan) needs job-state table — targeted at K19/K20 scheduler cleanup. |
-| P-K15.10-01 | Quarantine sweep LIMIT done; cursor-state same situation. |
+No new deferrals added this session besides **D-K16.2-02b** (review-impl catch during T2-close-6 — runner is event-driven and doesn't honour `chapter_range`; preview filters but runner doesn't, dormant until FE sends `scope_range`).
 
 ---
 
@@ -197,81 +135,84 @@ Every remaining deferral is now either **in-scope for a T2-close cycle** or **ex
 CLARIFY → DESIGN → REVIEW-DESIGN → PLAN → BUILD → VERIFY → REVIEW-CODE → QC → POST-REVIEW → SESSION → COMMIT → RETRO
 ```
 
-- State machine: `.workflow-state.json` + `scripts/workflow-gate.py` (run from repo root).
-- Pre-commit hook blocks commits without VERIFY + POST-REVIEW + SESSION completed.
-- **POST-REVIEW is a human checkpoint, NOT a self-adversarial re-read.** Deep review is on-demand via `/review-impl`. Session 46 proved this again: every cycle had a `/review-impl` pass that caught real issues (Cycle 2 missed the 6th D-PROXY-01 site, Cycle 3 had an invalid Cypher `LIMIT CASE`, Cycle 4 had 62 missing counter sites, Cycle 5 embed cache missed user_uuid, Cycle 5 had a multi-whitespace tokenizer gap, Cycle 6 had docstring staleness).
+State machine: `.workflow-state.json` + `scripts/workflow-gate.py` from repo root. Pre-commit hook blocks commits without VERIFY + POST-REVIEW + SESSION completed.
 
-### Review-impl pattern worth keeping
+**POST-REVIEW is a human checkpoint, NOT self-adversarial re-read.** Deep review is on-demand via `/review-impl`. Every cycle this session had a `/review-impl` pass and several caught HIGH issues the initial self-review missed (examples: T2-close-3 found 3 HIGH blockers in chaos scripts; T2-close-6 found 6 findings including a shared-validator bypass; T2-close-7 found a soft-delete regression from the initial trigger-rewrite).
 
-Every cycle this session ended with a second-pass review-impl pass — several found HIGH issues the initial self-review missed. The pattern was:
-1. Commit cycle.
-2. User asks "let's review implement issues" → I re-read the diff adversarially.
-3. Real issues surface → separate follow-up commit.
+### Key semantic changes this session
 
-Do this for Cycles 7–9 too. It's not ceremony; it's finding real bugs before they escape.
+1. **`entity_snapshot.updated_at` semantics changed (T2-close-7).** Pin toggle no longer bumps `updated_at`, and the self-trigger dropped `updated_at` from its watch list. `snapshot.updated_at` now tracks last-**semantic**-change, not last-**touch**. Callers wanting last-touch should read `glossary_entities.updated_at` directly.
+2. **`scope_range.chapter_range` is preview-only (T2-close-6).** The estimate endpoint filters; the event-driven extraction runner does not yet honour the range. Dormant today because no frontend sends `scope_range`. Tracked as D-K16.2-02b.
+3. **Anthropic 2 of 4 cache breakpoints used (7b + polish-3).** parts[0] = stable memory (cached), parts[1] = volatile memory (uncached, changes per-message), parts[2] = session system_prompt (cached).
 
-### Caches shipped this session (both per-worker-process)
+### Observability surfaces — all 3 Go services on knowledge-service hot paths
 
-- `knowledge-service/app/routers/internal_extraction.py` — anchor pre-load TTLCache(256, 60s). Key `(user_id, project_id)`. Exceptions NOT cached.
-- `knowledge-service/app/context/selectors/passages.py` — query embedding TTLCache(512, 30s). Key `(user_uuid, project_id, embedding_model, message)`. Empty/failure NOT cached.
-- Both in `cachetools.TTLCache`. No manual invalidation — short TTL handles drift.
+| Service | Endpoint | Counters |
+|---|---|---|
+| provider-registry | `/metrics` (session 46) | 4 (proxy / invoke / embed / verify) |
+| glossary-service | `/metrics` (T2-polish-2a) | 4 (select_for_context / bulk_extract / known_entities / entity_count) |
+| book-service | `/metrics` (T2-polish-2b) | 3 (projection / chapters_list / chapter_fetch) |
 
-### Cross-service env knobs introduced this session
+Outcome label sets differ intentionally between glossary (`invalid_body`) and book (`not_found`). Cross-ref comments in both metrics.go files explain why. Do NOT "normalize" them.
 
-- `RECENT_MESSAGE_COUNT` (default 50) — read by both `knowledge-service/Settings.recent_message_count` and `chat-service/Settings.recent_message_count`. Mode 3 keeps its own tighter 20 independent of this knob.
+### Chaos scripts — live-run when needed
 
-### New deps added
+`scripts/chaos/` contains `lib.sh` + `c05_redis_restart.sh` + `c06_neo4j_drift.sh` + `c08_bulk_cascade.sh` + `README.md`. Each exits `0` on PASS, dies with `FAIL <reason>` on failure, and uses `trap cleanup EXIT` so a failed run still sweeps test data. Test UUIDs prefixed `00000000-0000-0000-c0XX-...` for manual sweep. Prereqs: the `infra-*` compose stack running.
 
-- `tiktoken>=0.7` — added to `services/knowledge-service/requirements.txt`. Cycle 6a. Falls back to `len/4` if import fails (air-gapped installs).
+### Benchmark harness is live and gate-active
 
-### Pre-existing failing tests to ignore
+`python -m eval.run_benchmark --project-id=<uuid> --embedding-model=<model>` runs the K17.9 golden-set harness. A passing row in `project_embedding_benchmark_runs` is now required to start an extraction job — the `POST /extraction/start` endpoint returns 409 with structured `{error_code: benchmark_missing | benchmark_failed, ...}` otherwise. The K12.4 embedding-model picker shows a 3-state badge (green passed / red failed / grey no-run) that drives the CTA.
 
-- `translation-service/tests/test_glossary_client.py` + `test_pipeline_v2.py` — pydantic Settings validation errors at module-import time (missing `RABBITMQ_URL`, `INTERNAL_SERVICE_TOKEN`, `JWT_SECRET`, `DATABASE_URL`). Pre-existing before Cycle 6a — confirmed via `git stash` during session 46. Not caused by any cycle work.
+### Caches + breakers shipped this session (all per-worker-process unless noted)
 
-### Mode 3 is now end-to-end live
+- `_anchor_cache` TTLCache(256, 60s) — `internal_extraction.py` (session 46).
+- `_query_embedding_cache` TTLCache(512, 30s) — `selectors/passages.py` (session 46).
+- L0/L1 TTLCache + **cross-process pub/sub invalidation** via `CacheInvalidator` on Redis channel `loreweave:cache-invalidate` (Cycle 8b this session). Settings-gated on `redis_url`.
+- Glossary breaker with half-open single-probe guarantee (Cycle 8c this session).
 
-Before session 46, Mode 3 (full context mode with L3 passages) had the selector code but no passage data — all retrievals returned `[]`. After Cycle 1a (D-K18.3-01), the K14 event consumer ingests chapter.saved events through chunker → embedder → upsert. After Cycle 1b (K12.4), users can configure which embedding model from the UI. A brand-new project with an embedding model set now sees passages populate as chapters are saved.
+### Pre-existing failing tests (not this session's fault)
 
-### Counter coverage expanded in provider-registry (Cycle 4)
+- `book-service/internal/config TestLoadValidation` — missing `INTERNAL_SERVICE_TOKEN` env in test setup; the validation requirement was added later. Confirmed via `git stash`.
+- `translation-service/tests/test_glossary_client.py` + `test_pipeline_v2.py` — module-import pydantic Settings validation errors (pre-existing before session 46).
 
-- `/metrics` route now live; unauthed, in-cluster scrapers only.
-- Counter series: `provider_registry_proxy_requests_total`, `..._invoke_requests_total`, `..._embed_requests_total`, `..._verify_requests_total`. Each labelled on `outcome`.
-- 12 outcome constants. All 48 combos pre-seeded so dashboards can `rate()` from first scrape.
-- 75 call sites across 5 handlers. Don't use this as a template without understanding the initial version shipped with only 13 sites — review-impl caught missing success paths + most error paths. Every `return` in a handler should count SOMETHING.
+### New deps this session
 
-### tiktoken swap behavior
-
-`estimate_tokens("一位神秘的刀客的故事")` returns **14** now (was 2 under `len/4`). Any Mode-2/Mode-3 context budget that was implicitly over-promising for CJK users is now accurate. If any test fixture hardcodes expected token counts from the old heuristic, it needs to be recomputed — we did this for 4 test files already (`test_token_counter.py`, `test_no_project_mode.py`, `test_static_mode.py`, `test_public_summaries.py`). Integration tests in `tests/integration/db/test_context_build.py` still hardcode `50` for `recent_message_count` and that's the one we didn't convert; if you touch that file for other reasons, prefer `settings.recent_message_count` to stay in sync.
+- `github.com/prometheus/client_golang v1.23.2` on **both** glossary-service and book-service (from T2-polish-2a/2b). Session 46 already added it to provider-registry. `go.mod` + `go.sum` committed.
 
 ### Infra & test invocation (unchanged)
 
-- Compose: `cd infra && docker compose up -d`; Neo4j profile: `docker compose --profile neo4j up -d neo4j`
-- Neo4j port: **7688**, Postgres port: **5555**
-- pytest from `services/knowledge-service/`. Quality eval is opt-in: `pytest tests/quality/ --run-quality`.
-
-### Multi-tenant safety rail (unchanged)
-
-- `entity_canonical_id` scopes by `user_id` + `project_id`. `project_id=None` → `"global"` in the hash key.
+- Compose: `cd infra && docker compose up -d`; Neo4j profile: `docker compose --profile neo4j up -d neo4j`.
+- Neo4j port: **7688**, Postgres port: **5555**, Neo4j creds `neo4j / loreweave_dev_neo4j` (note the `_neo4j` suffix — chaos scripts default to this).
+- pytest from `services/knowledge-service/` (unit: `-q tests/unit/`; integration needs `TEST_KNOWLEDGE_DB_URL` + `TEST_NEO4J_URI`).
+- Go tests from `services/<svc>/` (`go test ./...`); glossary-service integration needs `GLOSSARY_TEST_DB_URL`.
 
 ---
 
-## 5. Session 46 stats
+## 5. Session 47 stats
 
-| Metric | Before session 46 | After session 46 | Delta |
+| Metric | Before session 47 | After session 47 | Delta |
 |---|---|---|---|
-| Total knowledge-service unit tests | 1026 | **1049** | **+23** |
-| chat-service unit tests | 169 | **169** | stable |
-| Deferred items open | ~24 | ~6 naturally-next-phase + 4 re-deferred + 2 partial + 5 won't-fix | **−16 cleared** |
-| Cycles complete (of 9) | 0 | **6** | +6 |
-| Session commits | 0 | **12** | +12 |
-| Review-impl follow-up commits | 0 | **2** (Cycle 5, Cycle 6) | +2 |
-| New deps | — | `tiktoken>=0.7` (knowledge-service) | +1 |
-| New env knobs | — | `RECENT_MESSAGE_COUNT` | +1 |
+| Total knowledge-service unit tests | 1049 | **1154** | **+105** |
+| chat-service unit tests | 169 | **177** | **+8** |
+| glossary-service api test status | 2 failing (stale) | **100% green** | 2 fixed |
+| book-service api test status | green | **green + new tests** | new units |
+| Deferred items open | ~6 naturally-next + 4 re-deferred + 2 partial | **~6 naturally-next / partial only (no re-deferrals)** | ~4 cleared |
+| Cycles complete (original Track 2 roadmap) | 6/9 | **9/9** | +3 |
+| T2-close extended plan cycles | 0 | **9/9** (1 scoped out) | +9 |
+| T2-polish extended plan cycles | 0 | **4/4** (1 scoped out) | +4 |
+| Session commits | 0 | **20** | +20 |
+| Review-impl follow-up catches | — | ~20 HIGH/MED/LOW findings across cycles | — |
+| New deps | — | `prometheus/client_golang v1.23.2` on glossary + book | +1 dep × 2 services |
+| New env knobs | — | — | stable |
+| Services with /metrics | 1 (provider-registry) | **3** (+ glossary + book) | +2 |
+| Chaos scripts (scripted live runs) | 0 | **3** (C05/C06/C08) | +3 |
 
 ---
 
 ## 6. Housekeeping note
 
-This file is the single, unversioned handoff. **Future sessions MUST update this file in place — do NOT create a `_V47.md` or similar.**
+This file is the single, unversioned handoff. **Future sessions MUST update this file in place — do NOT create a `_V48.md` or similar.**
 
-Track 2 close-out is ~67% done. Cycles 7–9 + Gate 13 + Chaos tests are the remaining scope before Track 2 is closed and we can pick up Track 3 (or resume hobby-project features).
+Track 2 is **code-complete**. The repo is in a clean state to either (a) execute the Gate 13 human loop to formally seal Track 2, or (b) begin Track 3 planning — neither blocks the other. All deferrals have explicit target phases; no "we'll come back to it" rows remain.
+
+When the Gate 13 human loop is run, append §10 attestation to [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) with the captured evidence, and move the T2-close-2 row out of "remaining" in SESSION_PATCH's header metadata.
