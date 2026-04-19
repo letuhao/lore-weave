@@ -162,3 +162,152 @@ async def test_4xx_does_not_trip_breaker(gc: GlossaryClient):
 
     assert gc._cb_opened_at is None
     assert gc._cb_fail_count == 0
+
+
+# ── D-T2-05 half-open probe serialization ──────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_half_open_serializes_concurrent_probes(
+    gc: GlossaryClient, monkeypatch,
+):
+    """D-T2-05: when cooldown has elapsed, N concurrent callers must
+    NOT all dog-pile the upstream. Exactly one gets to probe; the
+    rest short-circuit to [] and observe no HTTP call.
+
+    Without the `_cb_probe_in_flight` guard, every coroutine that
+    reaches `_cb_enter` during the half-open window would see the
+    breaker as "openable" and fire its own request — undoing the
+    whole point of a circuit breaker under load."""
+    import asyncio
+
+    book_id = uuid4()
+
+    # Trip the breaker.
+    with respx.mock() as mock:
+        mock.post(_url_for(str(book_id))).respond(503, text="down")
+        for _ in range(3):
+            await gc.select_for_context(
+                user_id=uuid4(), book_id=book_id, query="q"
+            )
+    assert gc._cb_opened_at is not None
+
+    # Fast-forward past cooldown.
+    real_mono = time.monotonic
+    offset = gc._CB_COOLDOWN_S + 1
+    monkeypatch.setattr(
+        "app.clients.glossary_client.time.monotonic",
+        lambda: real_mono() + offset,
+    )
+
+    # Upstream answer pauses long enough for concurrent callers to
+    # arrive while the probe is still in flight.
+    async def slow_200(request):
+        await asyncio.sleep(0.05)
+        return httpx.Response(200, json={"entities": []})
+
+    with respx.mock() as mock:
+        route = mock.post(_url_for(str(book_id))).mock(side_effect=slow_200)
+
+        # Fire 5 concurrent calls. Probe should serialize them.
+        results = await asyncio.gather(*[
+            gc.select_for_context(
+                user_id=uuid4(), book_id=book_id, query="q"
+            )
+            for _ in range(5)
+        ])
+
+    # Exactly ONE HTTP call fired — the claimed probe. Four others
+    # short-circuited to [] via the "open" state.
+    assert route.call_count == 1, (
+        f"expected 1 probe call, got {route.call_count} — "
+        "probe serialization guard missing"
+    )
+    # All results are empty lists (short-circuits return [], the
+    # probe returned entities=[] too).
+    assert all(r == [] for r in results)
+    # Probe closed the breaker on success.
+    assert gc._cb_opened_at is None
+    # Probe slot released.
+    assert gc._cb_probe_in_flight is False
+
+
+@pytest.mark.asyncio
+async def test_probe_slot_released_after_failure(
+    gc: GlossaryClient, monkeypatch,
+):
+    """Probe fails → breaker re-opens AND `_cb_probe_in_flight`
+    returns to False so the NEXT cooldown window can claim a fresh
+    probe. Without the release, subsequent probes would be forever
+    blocked by a stuck flag."""
+    book_id = uuid4()
+
+    with respx.mock() as mock:
+        mock.post(_url_for(str(book_id))).respond(503, text="down")
+        for _ in range(3):
+            await gc.select_for_context(
+                user_id=uuid4(), book_id=book_id, query="q"
+            )
+
+    # Fast-forward past cooldown (first window).
+    real_mono = time.monotonic
+    offset = gc._CB_COOLDOWN_S + 1
+    monkeypatch.setattr(
+        "app.clients.glossary_client.time.monotonic",
+        lambda: real_mono() + offset,
+    )
+
+    # Probe fails.
+    with respx.mock() as mock:
+        mock.post(_url_for(str(book_id))).respond(503, text="still down")
+        await gc.select_for_context(
+            user_id=uuid4(), book_id=book_id, query="q"
+        )
+
+    # Slot released even though the probe failed — next cooldown can
+    # re-probe.
+    assert gc._cb_probe_in_flight is False
+    assert gc._cb_opened_at is not None  # still open
+
+
+@pytest.mark.asyncio
+async def test_probe_slot_released_after_http_exception(
+    gc: GlossaryClient, monkeypatch,
+):
+    """An unexpected exception inside the retry loop must still
+    release the probe slot (finally block). Simulate this by mocking
+    httpx.AsyncClient.post to raise a surprise error."""
+    book_id = uuid4()
+
+    with respx.mock() as mock:
+        mock.post(_url_for(str(book_id))).respond(503, text="down")
+        for _ in range(3):
+            await gc.select_for_context(
+                user_id=uuid4(), book_id=book_id, query="q"
+            )
+
+    real_mono = time.monotonic
+    offset = gc._CB_COOLDOWN_S + 1
+    monkeypatch.setattr(
+        "app.clients.glossary_client.time.monotonic",
+        lambda: real_mono() + offset,
+    )
+
+    # Force a non-httpx exception mid-call (e.g. a typo-level
+    # RuntimeError from some future refactor).
+    from unittest.mock import AsyncMock as _AsyncMock
+
+    async def raising_post(*args, **kwargs):
+        raise RuntimeError("surprise!")
+
+    monkeypatch.setattr(gc._http, "post", _AsyncMock(side_effect=raising_post))
+
+    # The unexpected RuntimeError bubbles up — that's fine. What
+    # matters is that the probe slot gets released so the next
+    # cooldown window isn't blocked forever.
+    with pytest.raises(RuntimeError):
+        await gc.select_for_context(
+            user_id=uuid4(), book_id=book_id, query="q"
+        )
+
+    assert gc._cb_probe_in_flight is False

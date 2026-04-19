@@ -1,8 +1,8 @@
-# Session Handoff — Session 47 END / Session 48 START (Cycles 7+8a+8b complete, 8c next)
+# Session Handoff — Session 47 END / Session 48 START (Cycle 8 complete, 9 next)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-19 (session 47 END)
-> **HEAD:** `e5aeb96` (Cycle 8a); session 47 Cycle 8b commit hash pending (about to land)
+> **HEAD:** `239b021` (Cycle 8b); session 47 Cycle 8c commit hash pending (about to land)
 > **Branch:** `main` (ahead of origin by sessions 38–47 commits — user pushes manually)
 
 ---
@@ -35,7 +35,7 @@ Track 2 close-out roadmap (session 46)   ✅  9 cycles defined, 6 shipped
 
 ---
 
-## 2. Where to pick up — Cycle 8c (glossary breaker half-open probe)
+## 2. Where to pick up — Cycle 9 (Gate-4 alignment)
 
 ```
 Cycle 1 — 1a + 1b                        ✅
@@ -45,15 +45,13 @@ Cycle 4 — provider-registry               ✅ (2/3)
 Cycle 5 — extraction quality + perf       ✅ (4/4)
 Cycle 6 — RAG quality (6a/6b/6c)          ✅ (3/3)
 Cycle 7 — K18 final polish (split 7a/7b)  ✅ (session 47)
-  ├─ 7a  P-K18.3-02 MMR embedding cosine  ✅
-  └─ 7b  K18.9 prompt caching hints        ✅
-Cycle 8 — large infra (3 commits)
-  ├─ 8a  D-K18.3-02  generative rerank    ✅ (session 47)
-  ├─ 8b  D-T2-04  cross-process cache invalidation  ✅ (session 47)
-  └─ 8c  D-T2-05  glossary breaker probe half-open guarantee  ← NEXT
-Cycle 9 — Gate-4 alignment                 ← final before Gate 13
-  └─ K17.9.1 migration items
-Gate 13 E2E + Chaos tests C01–C08          ← after all cycles
+Cycle 8 — large infra (3 commits)         ✅ (session 47)
+  ├─ 8a  D-K18.3-02  generative rerank    ✅
+  ├─ 8b  D-T2-04  cross-process cache invalidation  ✅
+  └─ 8c  D-T2-05  glossary breaker probe half-open guarantee  ✅
+Cycle 9 — Gate-4 alignment                 ← NEXT (final before Gate 13)
+  └─ K17.9.1  project_embedding_benchmark_runs migration
+Gate 13 E2E + Chaos tests C01–C08          ← after Cycle 9
 ```
 
 ### Resume recipe
@@ -63,9 +61,10 @@ Gate 13 E2E + Chaos tests C01–C08          ← after all cycles
 3. **Cycle 8 is 3 separate commits** — one per sub-item because each changes observable behavior that should be reviewable independently.
 4. **Use the workflow gate:** `python scripts/workflow-gate.py reset && python scripts/workflow-gate.py size <XS|S|M|L|XL> <files> <logic> <effects>` before starting each cycle, phase per phase through to RETRO.
 
-### Things that are good to know before Cycle 8c
+### Things that are good to know before Cycle 9
 
-- **8c D-T2-05 (glossary breaker half-open probe)** — when the glossary circuit-breaker cooldown elapses, all concurrent callers race through. Need an `asyncio.Lock` to let one probe through while others short-circuit until the probe resolves. Related code: look for `_cb_fail_count` / circuit-breaker logic in `services/knowledge-service/app/clients/glossary_client.py`.
+- **Cycle 9 · K17.9.1** — `project_embedding_benchmark_runs` migration. This is a Gate-4 alignment item (benchmark table shape needs to match what the Gate-4 eval run expects). Small, single-commit cycle; depends on Gate 4 being ready to run against live DB. Check the `docs/03_planning/` folder for K17.9.1 details before starting.
+- **After Cycle 9**: Gate 13 end-to-end verification (Mode 1/2/3 full stack with live services), then Chaos tests C01–C08 (failure-injection scenarios). Track 2 is formally closed after those pass.
 
 ### Lessons carried forward (session 47)
 
@@ -82,7 +81,9 @@ Gate 13 E2E + Chaos tests C01–C08          ← after all cycles
 - +5 unit tests, +2 integration tests.
 - Fixed 3 stale docstrings.
 
-**8b D-T2-04** (about to land): Cross-process L0/L1 cache invalidation via Redis pub/sub. New `app/context/cache_invalidation.py` holds a `CacheInvalidator` (publisher + subscriber on `loreweave:cache-invalidate` channel); per-process UUID origin filters self-messages; exponential-backoff reconnect (1 s → 10 s). `cache.py`'s `invalidate_l0 / invalidate_l1 / invalidate_all_for_user` fire-and-forget publish after the local pop; a `_pending_publishes` set holds task refs so Python doesn't GC them mid-send. `stop()` drains the set before closing Redis. New `apply_remote_l0 / l1 / user` helpers do the local pop WITHOUT re-publishing (prevents echo storm). Settings-gated: empty `redis_url` → invalidator never installs → Track 1 single-worker path unchanged. Review-impl caught check-then-use race on `_invalidator` (local-capture fix), weak idempotence test (added `from_url.call_count == 1`), missing end-to-end chain test (added one). +17 tests.
+**8c D-T2-05** (about to land): Glossary circuit-breaker half-open single-probe guarantee. New `_cb_probe_in_flight` bool + `_cb_enter()` state machine returning `"closed"|"probe"|"open"`. Concurrent callers in the half-open window are serialized by the asyncio event loop — exactly one claims the probe (no await between check and set → atomic), the rest short-circuit. `select_for_context` wraps the HTTP retry loop in `try`/`finally` so the probe slot releases under every outcome. Validation: concurrent 5-caller test fires 1 HTTP call instead of 5. Before this fix, all concurrent callers at the cooldown-elapsed moment fired simultaneous probes, undoing the breaker's backpressure under load. +3 tests.
+
+**8b D-T2-04** (HEAD `239b021`): Cross-process L0/L1 cache invalidation via Redis pub/sub. New `app/context/cache_invalidation.py` holds a `CacheInvalidator` (publisher + subscriber on `loreweave:cache-invalidate` channel); per-process UUID origin filters self-messages; exponential-backoff reconnect (1 s → 10 s). `cache.py`'s `invalidate_l0 / invalidate_l1 / invalidate_all_for_user` fire-and-forget publish after the local pop; a `_pending_publishes` set holds task refs so Python doesn't GC them mid-send. `stop()` drains the set before closing Redis. New `apply_remote_l0 / l1 / user` helpers do the local pop WITHOUT re-publishing (prevents echo storm). Settings-gated: empty `redis_url` → invalidator never installs → Track 1 single-worker path unchanged. Review-impl caught check-then-use race on `_invalidator` (local-capture fix), weak idempotence test (added `from_url.call_count == 1`), missing end-to-end chain test (added one). +17 tests.
 
 **8a D-K18.3-02** (HEAD `e5aeb96`): Post-MMR listwise generative rerank via `provider_client.chat_completion` with `{"order":[int,...]}` JSON mode. Opt-in via `project.extraction_config["rerank_model"]` (no DB migration). `rerank_passages()` in `selectors/passages.py` handles prompt construction (200-char passage snippets), forgiving parse (filter out-of-range / duplicate / bool; append missing indices at tail), and fail-safe fallback to MMR order on any error. Inner `asyncio.wait_for(timeout=1.0s)` prevents slow rerank from eating the 2s L3 budget. Wiring: `provider_client` plumbed through `deps.py::get_provider_client` → router → `build_context` → `build_full_mode` → `_safe_l3_passages` → `select_l3_passages`. Review-impl caught the timeout issue + added end-to-end test proving `extraction_config["rerank_model"]` reaches `chat_completion.model_ref`. +11 tests.
 

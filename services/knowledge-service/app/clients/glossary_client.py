@@ -12,6 +12,7 @@ FastAPI dependency_overrides rather than hitting the real URL.
 
 import logging
 import time
+from typing import Literal
 from uuid import UUID
 
 import httpx
@@ -73,29 +74,67 @@ class GlossaryClient:
         )
         self._cb_fail_count = 0
         self._cb_opened_at: float | None = None
+        # D-T2-05 — when the cooldown has elapsed, the breaker is
+        # half-open and at most ONE caller gets to probe the
+        # upstream. Without this flag, every concurrent caller that
+        # arrived during the cooldown would all fire simultaneous
+        # probes the instant it ended and the breaker would see N
+        # failures at once. With the flag, the first arrival claims
+        # the probe, the rest short-circuit, and we preserve the
+        # "one probe per half-open window" invariant. Atomic in
+        # single-threaded asyncio (the claim happens without any
+        # intervening `await`).
+        self._cb_probe_in_flight = False
 
     async def aclose(self) -> None:
         await self._http.aclose()
 
-    def _cb_is_open(self) -> bool:
-        """Return True if the breaker is currently fast-failing.
+    def _cb_enter(self) -> Literal["closed", "probe", "open"]:
+        """Atomic breaker-state check + probe claim (no `await`).
 
-        Returns False when the breaker is closed OR when the cooldown
-        has elapsed (half-open probe is allowed through). The caller
-        decides what to do with that probe based on its outcome.
+        Returns:
+          "closed" — breaker healthy, caller proceeds normally.
+          "probe"  — cooldown elapsed AND no probe in flight; THIS
+                     caller is the single probe. Caller MUST release
+                     via `_cb_exit_probe()` in a `finally` block.
+          "open"   — short-circuit: either still inside cooldown OR
+                     another caller is already probing.
+
+        Concurrent callers hitting the half-open window are serialized
+        by the event loop scheduler — only one returns "probe", the
+        rest see the flag already set and return "open". D-T2-05.
         """
         if self._cb_opened_at is None:
-            return False
-        if time.monotonic() - self._cb_opened_at >= self._CB_COOLDOWN_S:
-            # Cooldown elapsed — let one probe through.
-            return False
-        return True
+            return "closed"
+        if time.monotonic() - self._cb_opened_at < self._CB_COOLDOWN_S:
+            return "open"
+        # Cooldown elapsed — try to claim the half-open probe slot.
+        if self._cb_probe_in_flight:
+            return "open"
+        self._cb_probe_in_flight = True
+        logger.debug(
+            "glossary circuit breaker half-open: probe claimed"
+        )
+        return "probe"
+
+    def _cb_exit_probe(self) -> None:
+        """Release the half-open probe slot regardless of outcome.
+
+        Must be called in a `finally` block by whichever caller got
+        "probe" from `_cb_enter()`. Release is idempotent — calling
+        twice is a no-op."""
+        self._cb_probe_in_flight = False
 
     def _cb_record_success(self) -> None:
         if self._cb_opened_at is not None:
             logger.info("glossary circuit breaker closed (probe succeeded)")
         self._cb_fail_count = 0
         self._cb_opened_at = None
+        # Defense-in-depth: the `finally` block in the caller already
+        # releases this, but resetting here too means a future
+        # refactor that detaches success-recording from the probe
+        # release path can't leave a stale flag.
+        self._cb_probe_in_flight = False
         circuit_open_gauge.labels(service="glossary").set(0)
 
     def _cb_record_failure(self) -> None:
@@ -135,12 +174,17 @@ class GlossaryClient:
             "exclude_ids": exclude_ids or [],
         }
 
-        # K6.4 — circuit breaker short-circuit. If the breaker is open
-        # (and still within cooldown), return [] immediately without
-        # touching the HTTP client. The gauge is already set; no new
-        # log line per call to avoid log spam during outages.
-        if self._cb_is_open():
+        # K6.4 — circuit breaker gate. `_cb_enter` returns one of three
+        # states: "closed" (breaker healthy, proceed), "probe" (this
+        # caller is the single half-open probe and must release the
+        # claim in finally), or "open" (fast-fail, return []). D-T2-05
+        # adds the single-probe guarantee: concurrent callers during
+        # the half-open window are serialized so only one hits the
+        # upstream; others short-circuit instead of dog-piling.
+        cb_state = self._cb_enter()
+        if cb_state == "open":
             return []
+        probe_claimed = cb_state == "probe"
 
         # K7e: forward the inbound trace id so glossary-service can
         # stitch its logs to the originating chat turn. Empty string →
@@ -148,68 +192,83 @@ class GlossaryClient:
         tid = trace_id_var.get()
         call_headers = {"X-Trace-Id": tid} if tid else None
 
-        # K4-I4: log AT MOST one warning per call. Per-attempt logging
-        # used to spam logs during outages (N candidates × M retries ×
-        # every chat turn). Now: silent on individual retries, one
-        # consolidated warning at the end if we couldn't get a result.
-        attempts = self._retries + 1
-        last_err_summary: str | None = None
-        for _ in range(attempts):
-            try:
-                resp = await self._http.post(url, json=body, headers=call_headers)
-            except httpx.TimeoutException:
-                last_err_summary = "timeout"
-                continue
-            except httpx.HTTPError as exc:
-                last_err_summary = f"transport: {type(exc).__name__}"
-                continue
-
-            if resp.status_code >= 500:
-                last_err_summary = f"{resp.status_code}"
-                continue
-
-            if resp.status_code >= 400:
-                # 4xx is not retried — stable request problem. One log line.
-                logger.warning(
-                    "glossary client %d (no retry) body=%s",
-                    resp.status_code, resp.text[:200],
-                )
-                return []
-
-            try:
-                data = resp.json()
-            except Exception as exc:
-                logger.warning("glossary client decode failure: %s", exc)
-                return []
-
-            entities_raw = data.get("entities") if isinstance(data, dict) else None
-            if not isinstance(entities_raw, list):
-                logger.warning("glossary client unexpected payload shape")
-                return []
-
-            parsed: list[GlossaryEntityForContext] = []
-            for row in entities_raw:
+        try:
+            # K4-I4: log AT MOST one warning per call. Per-attempt
+            # logging used to spam logs during outages (N candidates ×
+            # M retries × every chat turn). Now: silent on individual
+            # retries, one consolidated warning at the end if we
+            # couldn't get a result.
+            attempts = self._retries + 1
+            last_err_summary: str | None = None
+            for _ in range(attempts):
                 try:
-                    parsed.append(GlossaryEntityForContext.model_validate(row))
-                except Exception as exc:
-                    logger.warning("glossary client row validate skip: %s", exc)
-            # Success path — this is the only place the breaker closes.
-            # 4xx / decode / shape failures return [] above but do NOT
-            # record success, because the upstream service IS
-            # responsive — they just indicate a bad request, which
-            # shouldn't hold the breaker open either way.
-            self._cb_record_success()
-            return parsed
+                    resp = await self._http.post(url, json=body, headers=call_headers)
+                except httpx.TimeoutException:
+                    last_err_summary = "timeout"
+                    continue
+                except httpx.HTTPError as exc:
+                    last_err_summary = f"transport: {type(exc).__name__}"
+                    continue
 
-        # All attempts exhausted — single warning summarising the failure.
-        # This IS a breaker-worthy failure (service is unreachable or
-        # consistently 5xx).
-        self._cb_record_failure()
-        logger.warning(
-            "glossary client unavailable after %d attempts: %s",
-            attempts, last_err_summary or "unknown",
-        )
-        return []
+                if resp.status_code >= 500:
+                    last_err_summary = f"{resp.status_code}"
+                    continue
+
+                if resp.status_code >= 400:
+                    # 4xx is not retried — stable request problem.
+                    # Breaker state unchanged: upstream IS responsive,
+                    # just rejecting this specific call. The probe
+                    # slot is released in the finally block, so a
+                    # subsequent caller during the same half-open
+                    # window can immediately claim a fresh probe
+                    # (correct: the service is up, we have no reason
+                    # to keep the breaker holding closed callers off).
+                    logger.warning(
+                        "glossary client %d (no retry) body=%s",
+                        resp.status_code, resp.text[:200],
+                    )
+                    return []
+
+                try:
+                    data = resp.json()
+                except Exception as exc:
+                    logger.warning("glossary client decode failure: %s", exc)
+                    return []
+
+                entities_raw = data.get("entities") if isinstance(data, dict) else None
+                if not isinstance(entities_raw, list):
+                    logger.warning("glossary client unexpected payload shape")
+                    return []
+
+                parsed: list[GlossaryEntityForContext] = []
+                for row in entities_raw:
+                    try:
+                        parsed.append(GlossaryEntityForContext.model_validate(row))
+                    except Exception as exc:
+                        logger.warning("glossary client row validate skip: %s", exc)
+                # Success path — this is the only place the breaker closes.
+                # 4xx / decode / shape failures return [] above but do NOT
+                # record success, because the upstream service IS
+                # responsive — they just indicate a bad request, which
+                # shouldn't hold the breaker open either way.
+                self._cb_record_success()
+                return parsed
+
+            # All attempts exhausted — single warning summarising the failure.
+            # This IS a breaker-worthy failure (service is unreachable or
+            # consistently 5xx).
+            self._cb_record_failure()
+            logger.warning(
+                "glossary client unavailable after %d attempts: %s",
+                attempts, last_err_summary or "unknown",
+            )
+            return []
+        finally:
+            # Always release the probe slot — success, failure,
+            # cancellation, or any unexpected exception. Lets the next
+            # half-open caller probe in the next cooldown window.
+            if probe_claimed:
+                self._cb_exit_probe()
 
     async def count_entities(self, book_id: UUID) -> int | None:
         """GET /internal/books/{book_id}/entity-count.
