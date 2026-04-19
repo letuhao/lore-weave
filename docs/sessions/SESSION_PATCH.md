@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-18 (session 46 END — Cycles 1–6 complete, review-impl fix commits for 5 + 6. Remaining: Cycles 7–9 + Gate 13 E2E + Chaos tests.)
-- Updated By: Assistant (session 46 — 12 commits across Cycles 1a/1b/2/3/4/5/6a/6b/6c + drift reconcile + 2 review-impl fixes. 1049 knowledge-service + 169 chat-service tests pass at session END.)
-- Active Branch: `main` (ahead of origin by session 38–46 commits — user pushes manually)
-- HEAD: 9aa9910 (Cycle 6 review-impl fixes — docstring staleness + test alignment)
+- Last Updated: 2026-04-19 (session 47 — Cycle 7a P-K18.3-02 MMR cosine shipped; Cycle 7b K18.9 pending.)
+- Updated By: Assistant (session 47 — Cycle 7a + review-impl fix in single commit; 1054 knowledge-service unit tests pass + 95 skipped.)
+- Active Branch: `main` (ahead of origin by session 38–47 commits — user pushes manually)
+- HEAD: 9aa9910 (Cycle 6 review-impl fixes — docstring staleness + test alignment); session 47 Cycle 7a about to land
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -74,11 +74,11 @@ Three commits — all shipped.
 - ✅ **6b · D-T2-02** `ts_rank_cd` with normalization flag (K4b RAG quality)
 - ✅ **6c · D-T2-03** unify `recent_message_count` constants across chat + knowledge
 
-### Cycle 7 — K18 final polish
-One commit.
+### Cycle 7 — K18 final polish (split 7a/7b)
+Originally "one commit"; split after CLARIFY scoped the pair at ~12 files combined.
 
-- **K18.9** prompt caching hints (`cache_control` markers on stable vs volatile memory-block segments, chat-service opts in)
-- **P-K18.3-02** MMR embedding cosine (optional embedding projection on `find_passages_by_vector` + in-memory reuse in MMR loop)
+- ✅ **7a · P-K18.3-02** MMR embedding cosine (session 47) — `PassageSearchHit.vector` field + `include_vectors: bool = False` kwarg on `find_passages_by_vector`; selector passes `include_vectors=True`; `_mmr_rerank` now per-pair branches cosine-when-vectors / Jaccard-fallback with precomputed norms + top_n early-exit (review-impl caught the full-pool waste: ~1.2 s → ~57 ms at dim=3072 pool=40).
+- **7b · K18.9** prompt caching hints (`cache_control` markers on stable vs volatile memory-block segments, chat-service opts in) — NEXT
 
 ### Cycle 8 — Large infra (each its own cycle)
 Three separate commits.
@@ -152,7 +152,7 @@ One commit, depends on Gate 4 being run against live DB.
 | P-K15.10-01 (partial) | K15.10-R1/I1 | **LIMIT shipped; cursor-state still deferred.** Cycle 3 added a `limit: int | None` parameter to the global quarantine sweep. Still open: periodic-commit + resumable cursor state for a backlogged Pass 2 at production tenant count. Pair with D-K11.9-01 (partial) scheduler cleanup since both are tenant-wide offline sweepers. |
 | ~~P-K13.0-01~~ | ~~K13.0 review-impl (session 46)~~ | **Cleared in session 46 Cycle 5.** See "Recently cleared" below. |
 | ~~P-K18.3-01~~ | ~~K18.3 Path-C build (session 46)~~ | **Cleared in session 46 Cycle 5.** See "Recently cleared" below. |
-| P-K18.3-02 | K18.3 Path-C build (session 46) | **MMR uses Jaccard token overlap, not embedding cosine.** The repo projection strips vectors from returned `Passage` rows to keep response size small, so the selector falls back to word-Jaccard for the redundancy term. Works fine for English at pool ≤ 40; CJK + paraphrased-but-distinct passages may cluster more aggressively than they should. Fix: keep per-hit vectors in memory for the duration of the MMR loop (add optional projection flag to `find_passages_by_vector`). |
+| ~~P-K18.3-02~~ | ~~K18.3 Path-C build (session 46)~~ | **Cleared in session 47 Cycle 7a.** See "Recently cleared" below. |
 
 ### Won't-fix (conscious decisions, not debt)
 
@@ -167,6 +167,7 @@ One commit, depends on Gate 4 being run against live DB.
 
 | ID | Origin | How it was resolved |
 |---|---|---|
+| **P-K18.3-02** | **K18.3 Path-C build (session 46)** | **Cleared in session 47 Cycle 7a.** `PassageSearchHit` gained `vector: list[float] \| None = None` (stays off `Passage` itself so the persistent projection contract is unchanged). `find_passages_by_vector` gained `include_vectors: bool = False` kwarg; when True, the Cypher RETURN clause f-string-substitutes `node.embedding_{dim} AS vector` (injection-safe via the same closed-set pattern as `_UPSERT_PASSAGE_CYPHER_TEMPLATE`) and hits carry the stored vector. The L3 selector flips include_vectors=True; `_mmr_rerank` per-pair branches cosine-when-both-have-vectors / Jaccard-fallback, with precomputed per-hit L2 norms keyed by `id(hit)` so each cosine is one dot + one div. **Review-impl caught** that MMR was ranking the full pool (40) despite the caller only consuming `[:top_n]`; added `top_n` kwarg + early-exit — measured benchmark: pool=40 dim=3072 full = 1196 ms, top_n=10 = 57 ms (21× win). +5 unit tests (cosine-vs-Jaccard divergence, Jaccard fallback, mixed vectors, zero-magnitude safety, top_n early-exit) + 2 integration tests (default omits vector, include_vectors projects embedding). Also fixed 3 stale docstrings uncovered during review: old inline MMR comment saying "redundancy proxy = Jaccard... we strip those in the repo", `Passage` class doc saying "downstream consumers only use metadata + text for MMR", and the module-level "Ingestion is deferred to a later commit" note (D-K18.3-01 shipped Cycle 1a). 1273 passed + 95 skipped with live Neo4j. |
 | **D-T2-03** | **K5** | **Cleared in session 46 Cycle 6c.** Both services now have `recent_message_count: int = 50` in their `Settings` (knowledge-service + chat-service), both read env var `RECENT_MESSAGE_COUNT`. knowledge-service's Mode 1 + Mode 2 builders use `settings.recent_message_count` at call time. chat-service's `DEGRADED_RECENT_MESSAGE_COUNT` module constant is resolved from settings at import, so a tune propagates to both sides in a single env change. Mode 3's intentional tighter 20 stays separate. 1049 + 169 tests pass. |
 | **D-T2-02** | **K4b** | **Cleared in session 46 Cycle 6b.** glossary-service's FTS tier in `select_for_context_handler.go` swapped from `ts_rank(sv, q)` to `ts_rank_cd(sv, q, 33)`. Cover density ranking + log-length normalization + [0,1] scaling. Multi-word queries now reward proximity instead of scattered frequency; long descriptions stop outranking short-name exact matches. No schema/index change — search_vector already carries positions. go build+test clean. |
 | **D-T2-01** | **K2b, K4a** | **Cleared in session 46 Cycle 6a.** `knowledge-service/token_counter.py` swapped from `len/4` heuristic to `tiktoken.cl100k_base`. CJK sample "一位神秘的刀客的故事" now counts 14 tokens (was 2 under old heuristic). Graceful fallback to len/4 if tiktoken can't import/load — Track 1 paths stay runnable. `summaries.py` deduplicated its private copy. `translation-service/glossary_client.py` adopted its own CJK-aware `chunk_splitter.estimate_tokens` at its remaining raw-heuristic call site. Four test files aligned to call `estimate_tokens()` instead of hardcoded `len//4`. 1049 unit tests pass. |

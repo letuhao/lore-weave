@@ -154,6 +154,58 @@ async def test_find_passages_by_vector_respects_tenant(neo4j_driver, test_user):
 
 
 @pytest.mark.asyncio
+async def test_find_passages_by_vector_default_omits_vector(
+    neo4j_driver, test_user,
+):
+    """P-K18.3-02: default call (include_vectors=False) keeps the
+    existing projection — vector stays None so callers that don't
+    opt in don't pay the list[float] transport cost."""
+    async with neo4j_driver.session() as session:
+        await upsert_passage(
+            session, user_id=test_user, project_id="p-1",
+            source_type="chapter", source_id="chap-1", chunk_index=0,
+            text="default path", embedding=_vec(0.5), embedding_dim=DIM,
+            embedding_model="bge-m3",
+        )
+        hits = await find_passages_by_vector(
+            session, user_id=test_user, project_id="p-1",
+            query_vector=_vec(0.5), dim=DIM,
+            embedding_model="bge-m3", limit=5,
+        )
+    assert hits, "expected at least one hit"
+    assert all(h.vector is None for h in hits)
+
+
+@pytest.mark.asyncio
+async def test_find_passages_by_vector_include_vectors_projects_embedding(
+    neo4j_driver, test_user,
+):
+    """P-K18.3-02: include_vectors=True projects the stored embedding
+    onto PassageSearchHit.vector so MMR can use real cosine distance."""
+    stored = _vec(0.5)
+    async with neo4j_driver.session() as session:
+        await upsert_passage(
+            session, user_id=test_user, project_id="p-1",
+            source_type="chapter", source_id="chap-1", chunk_index=0,
+            text="with vector", embedding=stored, embedding_dim=DIM,
+            embedding_model="bge-m3",
+        )
+        hits = await find_passages_by_vector(
+            session, user_id=test_user, project_id="p-1",
+            query_vector=stored, dim=DIM,
+            embedding_model="bge-m3", limit=5,
+            include_vectors=True,
+        )
+    assert hits, "expected at least one hit"
+    hit = next(h for h in hits if h.passage.text == "with vector")
+    assert hit.vector is not None
+    assert len(hit.vector) == DIM
+    # Neo4j round-trip should preserve float values to machine precision.
+    assert hit.vector[0] == pytest.approx(stored[0], abs=1e-6)
+    assert hit.vector[-1] == pytest.approx(stored[-1], abs=1e-6)
+
+
+@pytest.mark.asyncio
 async def test_find_passages_by_vector_bad_dim_raises():
     # No session needed — raises at arg-validation before the query.
     from unittest.mock import MagicMock

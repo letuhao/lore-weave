@@ -3,12 +3,8 @@
 `:Passage` nodes hold raw chunked text (chapter chunks, L1 summary
 chunks, long-bio chunks) with a per-dimension embedding vector. The
 K18.3 L3 semantic selector queries them via `find_passages_by_vector`.
-
-**Ingestion is deferred to a later commit.** This module only provides
-the storage + query primitives; the producer side (fetch chapter text
-from book-service, chunk, embed, upsert) lands separately. Without an
-ingestion pipeline the graph has zero Passage nodes and L3 returns an
-empty list — the rest of Mode 3 still works.
+Ingestion lives in `app/extraction/passage_ingester.py`, driven by
+the K14 event consumer (D-K18.3-01, Cycle 1a).
 
 Multi-tenant safety: every function takes `user_id` and every Cypher
 statement filters `WHERE p.user_id = $user_id`. The vector-search
@@ -47,11 +43,11 @@ SUPPORTED_PASSAGE_DIMS: tuple[int, ...] = (384, 1024, 1536, 3072)
 class Passage(BaseModel):
     """Pydantic projection of a `:Passage` node.
 
-    The embedding vector itself is NOT projected — it's potentially
-    large (up to 3072 floats) and callers that need the vector have
-    already embedded their own query to search with. Downstream
-    consumers (the L3 selector) only use metadata + text for MMR
-    and hub-penalty scoring.
+    The embedding vector is NOT on this model — it's potentially large
+    (up to 3072 floats) and would bleed into every serialisation of a
+    passage node. When a caller needs vectors for a search-time decision
+    (P-K18.3-02 MMR cosine), they come back on `PassageSearchHit.vector`
+    instead, which is the transient per-query tuple.
     """
 
     id: str
@@ -75,10 +71,17 @@ class PassageSearchHit(BaseModel):
     index. The selector applies its own post-ranking (hub penalty,
     recency weight, MMR) — this repo only does the index call + the
     tenant-scope filter.
+
+    `vector` is the stored embedding, populated only when the caller
+    asks for it via `include_vectors=True` (P-K18.3-02). It stays off
+    `Passage` itself because `Passage` is the persistent projection;
+    the vector is a per-search artifact, not part of the node's
+    serialisation contract.
     """
 
     passage: Passage
     raw_score: float
+    vector: list[float] | None = None
 
 
 def passage_canonical_id(
@@ -245,14 +248,19 @@ async def delete_passages_for_source(
     return int(record["deleted"]) if record else 0
 
 
-_FIND_BY_VECTOR_CYPHER = """
+# The `{vector_projection}` placeholder is f-string-substituted at call
+# time with either an empty string (default, no vector projection) or
+# `, node.embedding_{dim} AS vector` (P-K18.3-02). `dim` is validated
+# against SUPPORTED_PASSAGE_DIMS before substitution, same injection-safe
+# closed-set pattern as `_UPSERT_PASSAGE_CYPHER_TEMPLATE`.
+_FIND_BY_VECTOR_CYPHER_TEMPLATE = """
 CALL db.index.vector.queryNodes($index_name, $oversample_limit, $query_vector)
 YIELD node, score
 WITH node, score
 WHERE node.user_id = $user_id
   AND ($project_id IS NULL OR node.project_id = $project_id)
   AND ($embedding_model IS NULL OR node.embedding_model = $embedding_model)
-RETURN node AS p, score AS raw_score
+RETURN node AS p, score AS raw_score{vector_projection}
 ORDER BY raw_score DESC
 LIMIT $limit
 """
@@ -268,6 +276,7 @@ async def find_passages_by_vector(
     embedding_model: str | None = None,
     limit: int = 40,
     oversample_factor: int = 10,
+    include_vectors: bool = False,
 ) -> list[PassageSearchHit]:
     """Dim-routed semantic search over `:Passage` nodes.
 
@@ -275,6 +284,13 @@ async def find_passages_by_vector(
     post-filter on tenant scope. The selector (K18.3) applies its
     own MMR + hub-penalty ranking on top of `raw_score`, so this
     repo returns straight cosine similarity without any weighting.
+
+    `include_vectors=True` (P-K18.3-02) projects the stored embedding
+    back onto each `PassageSearchHit.vector` so the MMR redundancy
+    term can use real cosine distance between hits instead of the
+    text-only Jaccard fallback. Costs one list[float] per hit in the
+    response payload — default stays False so the passage selector
+    (the only current caller) opts in explicitly.
     """
     if dim not in SUPPORTED_PASSAGE_DIMS:
         raise ValueError(
@@ -290,10 +306,19 @@ async def find_passages_by_vector(
     if oversample_factor < 1:
         raise ValueError(f"oversample_factor must be >= 1, got {oversample_factor}")
 
+    # dim was validated above against the closed set SUPPORTED_PASSAGE_DIMS,
+    # so the f-string substitution has no injection surface.
+    vector_projection = (
+        f", node.embedding_{dim} AS vector" if include_vectors else ""
+    )
+    cypher = _FIND_BY_VECTOR_CYPHER_TEMPLATE.format(
+        vector_projection=vector_projection,
+    )
+
     index_name = f"passage_embeddings_{dim}"
     result = await run_read(
         session,
-        _FIND_BY_VECTOR_CYPHER,
+        cypher,
         user_id=user_id,
         index_name=index_name,
         oversample_limit=limit * oversample_factor,
@@ -304,10 +329,13 @@ async def find_passages_by_vector(
     )
     hits: list[PassageSearchHit] = []
     async for record in result:
+        vector_raw = record["vector"] if include_vectors else None
+        vector = [float(x) for x in vector_raw] if vector_raw is not None else None
         hits.append(
             PassageSearchHit(
                 passage=_node_to_passage(record["p"]),
                 raw_score=float(record["raw_score"]),
+                vector=vector,
             )
         )
     return hits

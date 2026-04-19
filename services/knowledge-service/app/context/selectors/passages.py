@@ -25,11 +25,9 @@ Runs after K18.2a classified the user's intent. Steps:
   7. Return ranked `L3Passage` list, truncated to final top-N.
 
 **What's deferred:**
-  - Rerank step (LM Studio generative rerank). The plan's acceptance
-    criterion allows this as optional; pool sizing is still
+  - Rerank step (LM Studio generative rerank — D-K18.3-02). The plan's
+    acceptance criterion allows this as optional; pool sizing is still
     observable via the log line.
-  - Ingestion pipeline. This selector returns `[]` when no passages
-    exist — harmless.
 
 Reference: KSA §4.3, ContextHub lessons L-CH-02 (dynamic pool),
 L-CH-03 (hub penalty), L-CH-07 (intent routing before retrieval).
@@ -221,6 +219,10 @@ async def select_l3_passages(
         _query_embedding_cache[cache_key] = query_vector
 
     # 2. Dim-routed vector search with intent-tuned pool size.
+    # P-K18.3-02: include_vectors=True so MMR's redundancy term can
+    # use real embedding cosine distance between passages instead of
+    # the cheap text-Jaccard fallback. The extra list[float] per hit
+    # adds ~4-12 KB per response at pool_size * dim; fine at pool<=40.
     pool_size = _POOL_SIZE.get(intent.intent, 30)
     hits = await find_passages_by_vector(
         session,
@@ -230,6 +232,7 @@ async def select_l3_passages(
         dim=embedding_dim,
         embedding_model=embedding_model,
         limit=pool_size,
+        include_vectors=True,
     )
 
     if not hits:
@@ -254,14 +257,24 @@ async def select_l3_passages(
     ]
 
     # 6. MMR diversification (greedy).
-    #    Relevance = post-filter score; redundancy proxy = Jaccard
-    #    token overlap on the raw text (cheap, language-neutral
-    #    enough for MVP; a real embedding-based MMR would re-use
-    #    per-passage vectors but we strip those in the repo).
-    ordered = _mmr_rerank(scored, _MMR_LAMBDA)
-
-    # 7. Truncate to final top-N.
+    #    Relevance = post-filter score; redundancy term = embedding
+    #    cosine between hits (P-K18.3-02). The repo round-trips the
+    #    stored vector onto each PassageSearchHit when include_vectors
+    #    is set at the query site above, so MMR gets real semantic
+    #    distance. Word-Jaccard stays as the fallback if any hit
+    #    somehow lacks a vector (e.g., a future caller opts out).
+    #
+    #    top_n is passed in so MMR can stop after the final-cut set is
+    #    filled. With cosine at dim=3072 and pool=40, ranking the full
+    #    pool costs ~1.2 s (benchmark) vs. ~57 ms for top_n=10 — the
+    #    caller only uses `ordered[:top_n]` anyway, so early-exit is a
+    #    pure win. Critical at higher embedding dims where ranking the
+    #    tail would eat most of the L3 timeout budget.
     top_n = _FINAL_TOP_N.get(intent.intent, 10)
+    ordered = _mmr_rerank(scored, _MMR_LAMBDA, top_n=top_n)
+
+    # 7. Truncate to final top-N (MMR already stopped there; this is a
+    # belt-and-braces for the fallback path where top_n was None).
     final = ordered[:top_n]
 
     logger.info(
@@ -318,7 +331,9 @@ def _apply_post_filters(
 
 
 def _jaccard(a: str, b: str) -> float:
-    """Cheap similarity for MMR redundancy term. Word-level Jaccard."""
+    """Word-level Jaccard — MMR redundancy fallback when vectors are
+    unavailable (include_vectors=False path, or a hit that raced the
+    vector projection)."""
     sa = set(a.lower().split())
     sb = set(b.lower().split())
     if not sa or not sb:
@@ -328,31 +343,79 @@ def _jaccard(a: str, b: str) -> float:
     return inter / union if union else 0.0
 
 
+def _cosine(a: list[float], na: float, b: list[float], nb: float) -> float:
+    """Cosine similarity with pre-computed L2 norms.
+
+    Returns 0.0 if either vector has zero magnitude — safer than
+    raising, because MMR treats 0 as "not redundant" which is the
+    conservative call for a degenerate vector.
+    """
+    if na == 0.0 or nb == 0.0:
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    return dot / (na * nb)
+
+
+def _norm(v: list[float]) -> float:
+    """L2 norm for the cosine denominator. Separated from `_cosine` so
+    we can precompute per-hit once and amortize across the N² loop."""
+    return math.sqrt(sum(x * x for x in v))
+
+
 def _mmr_rerank(
     scored: Iterable[tuple[float, PassageSearchHit]],
     lam: float,
+    *,
+    top_n: int | None = None,
 ) -> list[tuple[float, PassageSearchHit]]:
     """Greedy MMR. Picks next passage maximizing
     `lam * relevance - (1-lam) * max(similarity_to_selected)`.
 
-    Runs in O(n²) which is fine at our pool size (≤ 40 candidates).
+    Redundancy uses embedding cosine when both the candidate and the
+    selected hit carry vectors (P-K18.3-02); otherwise falls back to
+    word-Jaccard on text. Norms are cached per hit so each cosine is
+    one dot product + one divide.
+
+    `top_n` caps how many passages get selected — the outer selector
+    truncates to top_n anyway, and MMR ranking past that bound is pure
+    waste. Without this cap, pool=40 at dim=3072 spends ~1.2 s ranking
+    30 tail passages that get dropped; capping to top_n=10 cuts that to
+    ~57 ms (measured). `None` means "rank everything" for callers that
+    need the full ordering.
     """
     candidates = list(scored)
     if not candidates:
         return []
+    # Pre-compute L2 norms so cosine in the hot loop is just a dot/div.
+    # Keyed by id(hit) — pairs are rebuilt by the selector each turn so
+    # the identity stays stable for the duration of this function call.
+    norms: dict[int, float] = {}
+    for _, hit in candidates:
+        if hit.vector is not None:
+            norms[id(hit)] = _norm(hit.vector)
+
     # Sort candidates by relevance score so the first pick is the
     # unambiguous top relevance row.
     candidates.sort(key=lambda pair: pair[0], reverse=True)
     selected: list[tuple[float, PassageSearchHit]] = [candidates.pop(0)]
 
     while candidates:
+        if top_n is not None and len(selected) >= top_n:
+            break
         best_idx = -1
         best_mmr = -math.inf
         for i, (rel, hit) in enumerate(candidates):
-            redundancy = max(
-                _jaccard(hit.passage.text, sel_hit.passage.text)
-                for _, sel_hit in selected
-            )
+            redundancy = 0.0
+            for _, sel_hit in selected:
+                if hit.vector is not None and sel_hit.vector is not None:
+                    red = _cosine(
+                        hit.vector, norms[id(hit)],
+                        sel_hit.vector, norms[id(sel_hit)],
+                    )
+                else:
+                    red = _jaccard(hit.passage.text, sel_hit.passage.text)
+                if red > redundancy:
+                    redundancy = red
             mmr = lam * rel - (1.0 - lam) * redundancy
             if mmr > best_mmr:
                 best_mmr = mmr

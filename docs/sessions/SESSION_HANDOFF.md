@@ -1,9 +1,9 @@
-# Session Handoff — Session 46 END / Session 47 START (Track 2 close-out mid-flight)
+# Session Handoff — Session 47 (Cycle 7a shipped, 7b pending)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-18 (session 46 END)
-> **HEAD:** `9aa9910` (Cycle 6 review-impl fixes — docstring staleness + test alignment)
-> **Branch:** `main` (ahead of origin by sessions 38–46 commits — user pushes manually)
+> **Date:** 2026-04-19 (session 47 mid-flight — Cycle 7a committed, 7b next)
+> **HEAD (pre-session-47):** `9aa9910` (Cycle 6 review-impl fixes); session 47 commit hash pending
+> **Branch:** `main` (ahead of origin by sessions 38–47 commits — user pushes manually)
 
 ---
 
@@ -35,7 +35,7 @@ Track 2 close-out roadmap (session 46)   ✅  9 cycles defined, 6 shipped
 
 ---
 
-## 2. Where to pick up — Cycle 7 (K18 final polish)
+## 2. Where to pick up — Cycle 7b (K18.9 prompt caching)
 
 ```
 Cycle 1 — 1a + 1b                        ✅
@@ -44,9 +44,9 @@ Cycle 3 — lifecycle + scheduler           ✅ (3/5 + 2/5 partial)
 Cycle 4 — provider-registry               ✅ (2/3)
 Cycle 5 — extraction quality + perf       ✅ (4/4)
 Cycle 6 — RAG quality (6a/6b/6c)          ✅ (3/3)
-Cycle 7 — K18 final polish                ← NEXT
-  ├─ K18.9  prompt caching hints (cache_control markers)
-  └─ P-K18.3-02  MMR embedding cosine (optional projection flag)
+Cycle 7 — K18 final polish (split 7a/7b)
+  ├─ 7a  P-K18.3-02 MMR embedding cosine  ✅ (session 47, +top_n early-exit via review-impl)
+  └─ 7b  K18.9 prompt caching hints        ← NEXT
 Cycle 8 — large infra (3 commits)         ← after Cycle 7
   ├─ D-K18.3-02  generative rerank (LM Studio)
   ├─ D-T2-04  cross-process cache invalidation
@@ -58,16 +58,27 @@ Gate 13 E2E + Chaos tests C01–C08          ← after all cycles
 
 ### Resume recipe
 
-1. **Read [SESSION_PATCH.md §Track 2 Close-out Roadmap](SESSION_PATCH.md#track-2-close-out-roadmap-session-46)** — especially the Cycle 7 / 8 / 9 rows for scope.
+1. **Read [SESSION_PATCH.md §Track 2 Close-out Roadmap](SESSION_PATCH.md#track-2-close-out-roadmap-session-46)** — especially the Cycle 7b / 8 / 9 rows for scope.
 2. **Check the Deferred Items "Naturally-next-phase" table** — any item with Target phase "Cycle 7 / 8 / 9" is in scope now. The re-deferred items from Cycles 2 & 4 (D-K17.10-02, D-K16.2-01, D-K16.2-02, P-K2a-02, P-K3-01, P-K3-02) are **out of scope** for Track 2 close-out and stay deferred.
-3. **Cycle 7 is small** (prompt caching hint markers + MMR embedding flag) — start there. Single commit.
+3. **Cycle 7b (K18.9) is L-sized** — originally bundled with 7a as "single commit" but CLARIFY counted ~9-10 files (mode builders × 3 + schema + 2 chat-service files + tests). Split into its own commit.
 4. **Cycle 8 is 3 commits** — one per sub-item because each changes observable behavior that should be reviewable independently.
 5. **Use the workflow gate:** `python scripts/workflow-gate.py reset && python scripts/workflow-gate.py size <XS|S|M|L|XL> <files> <logic> <effects>` before starting each cycle, phase per phase through to RETRO.
 
-### Things that are good to know before Cycle 7
+### Things that are good to know before Cycle 7b
 
 - **K18.9 prompt caching** references Anthropic's `cache_control` markers on message turns. The idea is to mark stable memory-block segments (L0, project instructions, L1 summary, glossary) as cacheable so subsequent turns in the same session can skip re-tokenizing them. Chat-service opts in; no contract break for non-caching providers.
-- **P-K18.3-02 MMR embedding cosine** — the current Mode 3 MMR loop uses Jaccard token overlap for the redundancy term because `find_passages_by_vector` strips vectors from projections to keep responses small. The fix adds an optional `include_vectors: bool` flag to the Neo4j repo function; MMR uses real cosine when present, falls back to Jaccard otherwise.
+- **Boundary split:** Mode 3 memory block's stable prefix is `<user>` + `<project>` (instructions + summary) + `<glossary>`. Volatile starts at `<facts>` (intent-driven). Mode 2 has the same boundary minus facts. Mode 1 is entirely stable.
+- **Contract surface:** knowledge-service's `BuiltContext`/`ContextBuildResponse` needs a new field — either `stable_context_len: int` (byte offset) or split `stable_context`/`volatile_context`. Latter is cleaner; the whole-context backward-compat field can stay alongside.
+- **chat-service path:** detect `creds.provider_kind == "anthropic"` in `stream_service.py`, emit structured system content `[{"type":"text","text":stable,"cache_control":{"type":"ephemeral"}}, {"type":"text","text":volatile}]`. Non-Anthropic concatenates as today.
+
+### What 7a shipped (session 47, HEAD to be updated)
+
+- `PassageSearchHit.vector: list[float] | None = None` — transient per-search field, NOT on `Passage`.
+- `find_passages_by_vector(..., include_vectors: bool = False)` — opt-in vector projection via f-string-substituted `node.embedding_{dim} AS vector` (injection-safe, closed-set validation).
+- L3 selector passes `include_vectors=True`; `_mmr_rerank` per-pair cosine (when both have vectors) / Jaccard (fallback) with precomputed L2 norms keyed by `id(hit)`.
+- **Review-impl caught MED perf issue:** `_mmr_rerank` ranked the full pool (40) when the caller only consumed `[:top_n]`. Added `top_n` kwarg + early-exit. Benchmark: pool=40 dim=3072 full = 1196 ms, top_n=10 = 57 ms (21× win). Test proves both capped and uncapped paths.
+- +5 unit tests, +2 integration tests. 1273 passed + 95 skipped (live Neo4j).
+- Fixed 3 stale docstrings uncovered during review (Passage class, MMR inline comment, module "ingestion deferred" note).
 
 ---
 
