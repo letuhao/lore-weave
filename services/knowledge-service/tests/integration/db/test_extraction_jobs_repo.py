@@ -109,24 +109,46 @@ async def test_k10_4_list_for_project(pool):
     repo = ExtractionJobsRepo(pool)
     user = uuid4()
     project_id = await _make_project(pool, user)
-    # Three jobs, all for the same project.
-    for _ in range(3):
-        await repo.create(user, _job_payload(project_id))
+    # Three jobs on the same project. K16.3's
+    # idx_extraction_jobs_one_active_per_project unique index only
+    # permits ONE row with status in ('pending','running','paused')
+    # per project at any instant, so the first two jobs must be
+    # cycled to a terminal state before the next create.
+    job1 = await repo.create(user, _job_payload(project_id))
+    await repo.update_status(user, job1.job_id, "running")
+    await repo.complete(user, job1.job_id)
+    job2 = await repo.create(user, _job_payload(project_id))
+    await repo.update_status(user, job2.job_id, "running")
+    await repo.update_status(
+        user, job2.job_id, "failed", error_message="stub",
+    )
+    job3 = await repo.create(user, _job_payload(project_id))  # stays pending
     jobs = await repo.list_for_project(user, project_id)
     assert len(jobs) == 3
     assert all(j.project_id == project_id for j in jobs)
+    assert {j.job_id for j in jobs} == {job1.job_id, job2.job_id, job3.job_id}
 
 
 @pytest.mark.asyncio
 async def test_k10_4_list_active_filters_terminal_states(pool):
     repo = ExtractionJobsRepo(pool)
     user = uuid4()
-    project_id = await _make_project(pool, user)
-    j_pending = await repo.create(user, _job_payload(project_id))
-    j_running = await repo.create(user, _job_payload(project_id))
-    j_complete = await repo.create(user, _job_payload(project_id))
-    j_failed = await repo.create(user, _job_payload(project_id))
-    j_cancelled = await repo.create(user, _job_payload(project_id))
+    # list_active filters across ALL of the user's projects, so put
+    # each job on its own project — K16.3's one-active-job-per-project
+    # unique partial index would otherwise reject having both a
+    # pending and a running job on the same project simultaneously,
+    # which is exactly the end-state this test needs to assert.
+    p_pending = await _make_project(pool, user)
+    p_running = await _make_project(pool, user)
+    p_complete = await _make_project(pool, user)
+    p_failed = await _make_project(pool, user)
+    p_cancelled = await _make_project(pool, user)
+
+    j_pending = await repo.create(user, _job_payload(p_pending))
+    j_running = await repo.create(user, _job_payload(p_running))
+    j_complete = await repo.create(user, _job_payload(p_complete))
+    j_failed = await repo.create(user, _job_payload(p_failed))
+    j_cancelled = await repo.create(user, _job_payload(p_cancelled))
 
     await repo.update_status(user, j_running.job_id, "running")
     await repo.update_status(user, j_complete.job_id, "complete")
@@ -502,32 +524,40 @@ async def test_k10_4_i3_error_message_cleared_on_non_failed_transition(pool):
 async def test_k10_4_i2_advance_cursor_rejects_terminal_states(pool):
     """K10.4-I2: advance_cursor only succeeds on running/paused jobs.
     Terminal jobs (complete/cancelled/failed) AND pending jobs (not
-    yet dispatched) all return None."""
+    yet dispatched) all return None.
+
+    Each job lives on its own project because K16.3's
+    idx_extraction_jobs_one_active_per_project unique partial index
+    wouldn't allow a pending job to coexist with another pending /
+    running / paused job on the same project."""
     repo = ExtractionJobsRepo(pool)
     user = uuid4()
-    project_id = await _make_project(pool, user)
 
     # Pending — not dispatched yet, can't advance cursor.
-    pending_job = await repo.create(user, _job_payload(project_id))
+    pending_project = await _make_project(pool, user)
+    pending_job = await repo.create(user, _job_payload(pending_project))
     result = await repo.advance_cursor(user, pending_job.job_id, {"x": 1})
     assert result is None
 
     # Complete — terminal.
-    complete_job = await repo.create(user, _job_payload(project_id))
+    complete_project = await _make_project(pool, user)
+    complete_job = await repo.create(user, _job_payload(complete_project))
     await repo.update_status(user, complete_job.job_id, "running")
     await repo.complete(user, complete_job.job_id)
     result = await repo.advance_cursor(user, complete_job.job_id, {"x": 1})
     assert result is None
 
     # Cancelled — terminal.
-    cancelled_job = await repo.create(user, _job_payload(project_id))
+    cancelled_project = await _make_project(pool, user)
+    cancelled_job = await repo.create(user, _job_payload(cancelled_project))
     await repo.update_status(user, cancelled_job.job_id, "running")
     await repo.cancel(user, cancelled_job.job_id)
     result = await repo.advance_cursor(user, cancelled_job.job_id, {"x": 1})
     assert result is None
 
     # Failed — terminal.
-    failed_job = await repo.create(user, _job_payload(project_id))
+    failed_project = await _make_project(pool, user)
+    failed_job = await repo.create(user, _job_payload(failed_project))
     await repo.update_status(user, failed_job.job_id, "running")
     await repo.update_status(user, failed_job.job_id, "failed", error_message="x")
     result = await repo.advance_cursor(user, failed_job.job_id, {"x": 1})
@@ -535,7 +565,8 @@ async def test_k10_4_i2_advance_cursor_rejects_terminal_states(pool):
 
     # Paused — allowed (worker may drain in-flight work before
     # fully stopping).
-    paused_job = await repo.create(user, _job_payload(project_id))
+    paused_project = await _make_project(pool, user)
+    paused_job = await repo.create(user, _job_payload(paused_project))
     await repo.update_status(user, paused_job.job_id, "running")
     await repo.update_status(user, paused_job.job_id, "paused")
     result = await repo.advance_cursor(user, paused_job.job_id, {"x": 1})
