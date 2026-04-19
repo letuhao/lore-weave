@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-19 **(session 48 — Track 3 state-machine loop complete: rename + placeholders + types + state cards + hook/BE wiring)** — Track 2 still code-complete (T2-close-2 human Gate 13 loop remains). Track 3 progress: cycles 1-5 shipped. Cycle 5 delivers `useProjectState` hook + new BE `GET /graph-stats` endpoint + ProjectRow refactor, with 11 of 14 callbacks wired to real BE endpoints. K19a.5 (BuildGraphDialog) next — the 3 remaining dialog-dependent callbacks land there.
-- Updated By: Assistant (session 48 — 5 commits so far: K19a.1-rename (d14d71b) + K19a.1-placeholders (bab8829) + K19a.2+7-skeleton (70a3136) + K19a.3 (af4cefa) + K19a.4 full. /review-impl caught 9 more findings this cycle (1 HIGH F1 payload/schema mismatch + 2 MED + 5 LOW + 1 cosmetic) — all code findings fixed, 3 LOW documented as Deferred Items, 1 cosmetic accepted. 75/75 FE tests + 6/6 new BE tests pass.)
+- Last Updated: 2026-04-19 **(session 48 END — Track 3 state-machine loop closed end-to-end)** — 5 commits across 5 cycles. Track 2 still code-complete (T2-close-2 human Gate 13 loop remains). Track 3 K19a progress: rename + placeholders + types + 13 state cards + useProjectState hook + new BE graph-stats endpoint — all shipped. K19a.5 (BuildGraphDialog + error viewer) is the next cycle; it replaces the 3 remaining dialog-dependent toast-stubs (`onStart`, `onBuildGraph`, `onViewError`).
+- Updated By: Assistant (session 48 END — 5 commits: K19a.1-rename (d14d71b, 24 files) + K19a.1-placeholders (bab8829, 5 files) + K19a.2+7-skeleton (70a3136, 6 files) + K19a.3 (af4cefa, 20 files) + K19a.4 FS (5a726be, 9 files + 1 delete). First FS cycle of Track 3 validated the feedback rule end-to-end. /review-impl caught 1 HIGH + 15 MED/LOW findings across the 5 cycles — every code finding fixed in-cycle; LOW documentation items added to Deferred Items. Final test counts: 75 FE (knowledge) / 6 BE (graph-stats).)
 - Active Branch: `main` (ahead of origin by sessions 38–48 commits — user pushes manually)
-- HEAD: `af4cefa` (K19a.3); K19a.4 lands on top
+- HEAD: `5a726be` (K19a.4) at session 48 end
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)

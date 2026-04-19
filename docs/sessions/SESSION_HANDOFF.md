@@ -1,11 +1,31 @@
-# Session Handoff — Session 48 (Track 3 state-machine loop closed; K19a.5 dialog next)
+# Session Handoff — Session 48 END (Track 3 K19a foundation done; K19a.5 dialog next)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-19 (session 48 — Track 3 state-machine loop closed)
-> **HEAD:** K19a.4 commit on top of `af4cefa` on top of `70a3136` on top of `bab8829` on top of `d14d71b` on top of `e694e44`
+> **Date:** 2026-04-19 (session 48 END)
+> **HEAD:** `5a726be` (K19a.4)
 > **Branch:** `main` (ahead of origin by sessions 38–48 commits — user pushes manually)
 
-## Session 48 status — Track 3 cycles 1 + 2 + 3 + 4 + 5 shipped
+## Session 48 — 5 Track 3 cycles shipped
+
+```
+Track 3 K19a progress (session 48)
+
+Cycle 1  K19a.1-rename           /memory → /knowledge end-to-end     d14d71b
+Cycle 2  K19a.1-placeholders     4 Coming-soon tabs                   bab8829
+Cycle 3  K19a.2 + K19a.7-skel    13-state TS types + i18n labels     70a3136
+Cycle 4  K19a.3                  dispatcher + 13 state subcards      af4cefa
+Cycle 5  K19a.4                  hook + BE graph-stats + ProjectRow  5a726be
+```
+
+**Final test counts at session 48 end:**
+- Frontend (knowledge): **75 pass** (26 projectState + 23 useProjectState + 26 ProjectStateCard)
+- Backend (new this session): **6 pass** (test_graph_stats.py)
+- Track 2 regression tests: still green per last session 47 runs
+- /review-impl caught **1 HIGH + ~15 MED/LOW findings** across the 5 cycles; every code finding fixed in-cycle, 3 LOW documented as known issues (see F4/F7/F8 below)
+
+**User feedback adopted this session:**
+- Cycle 3 onwards: batch small related tasks into one workflow cycle (rule saved to memory `feedback_batch_small_tasks.md`)
+- FE draft HTML → BE audit at DESIGN phase, reclassify to FS if BE is missing (rule saved to memory `feedback_fe_draft_html_be_check.md`) — K19a.4 validated this: the graph-stats endpoint gap was caught pre-CLARIFY, user picked `(c) add BE now` rather than defer
 
 **Cycle 1 (K19a.1-rename, d14d71b):** pure `/memory` → `/knowledge` rename + nav retranslation (24 files).
 
@@ -15,7 +35,7 @@
 
 **Cycle 4 (K19a.3 full, af4cefa):** `ProjectStateCard` dispatcher + all 13 subcomponents + shared primitives + 26-test component test file. Pure presentational (callback-prop pattern, TS exhaustive switch). `ProjectStateCardActions` union of 14 callbacks. /review-impl caught 7 more findings (3 MED dispatcher/prop drops + 1 MED i18n-coverage regression + 3 LOW polish), all fixed in-cycle. i18n runtime coverage now tracks 48 key paths × 4 locales (192 assertions).
 
-**Cycle 5 (K19a.4 hook + BE graph-stats endpoint, pending commit):** First FS cycle of Track 3. New `GET /v1/knowledge/projects/{id}/graph-stats` endpoint (Cypher UNION-ALL aggregation, 6 BE unit tests). New `useProjectState(project)` hook: derives `ProjectMemoryState` from `(Project, jobs, stats)`, polls `/extraction/jobs` at 2s while active, wires 11 of 14 callbacks to real endpoints (pause/resume/cancel/retry/extractNew/delete/rebuild/confirmModelChange + 3 that stay toast-stubs pointing to K19a.5 + 4 that stay toast-stubs pointing to K19a.6). `ProjectCard.tsx` deleted, replaced by `ProjectRow.tsx`. /review-impl caught 9 findings (1 **HIGH** — missing `embedding_model` on `/start` + `/rebuild` payloads would 422 at runtime; 2 MED — no error handling, no scopeOfJob tests; 5 LOW + 1 cosmetic). All code findings fixed in-cycle; 3 LOW documented as known issues.
+**Cycle 5 (K19a.4 hook + BE graph-stats endpoint, 5a726be):** First FS cycle of Track 3. New `GET /v1/knowledge/projects/{id}/graph-stats` endpoint (Cypher UNION-ALL aggregation, 6 BE unit tests). New `useProjectState(project)` hook: derives `ProjectMemoryState` from `(Project, jobs, stats)`, polls `/extraction/jobs` at 2s while active, wires 11 of 14 callbacks to real endpoints (pause/resume/cancel/retry/extractNew/delete/rebuild/confirmModelChange + 3 that stay toast-stubs pointing to K19a.5 + 4 that stay toast-stubs pointing to K19a.6). `ProjectCard.tsx` deleted, replaced by `ProjectRow.tsx`. /review-impl caught 9 findings (1 **HIGH** — missing `embedding_model` on `/start` + `/rebuild` payloads would 422 at runtime; 2 MED — no error handling, no scopeOfJob tests; 5 LOW + 1 cosmetic). All code findings fixed in-cycle; 3 LOW documented as known issues.
 
 **User feedback captured mid-session:** future small tasks should be batched into single cycles (saved to memory `feedback_batch_small_tasks.md`). Cycle 3 is the first application. Worked well — review-impl caught 9 findings in the batched scope that all got fixed in one pass.
 
@@ -34,28 +54,19 @@
 
 ### What K19a.5 will replace
 
-- `actions.onStart` stub — becomes the dialog's Start button that calls `startExtraction`.
-- `actions.onBuildGraph` stub — becomes the dialog-opener trigger.
-- `actions.onViewError` stub — becomes the error-viewer modal trigger.
+- `actions.onStart` stub — becomes the dialog's Start button calling `knowledgeApi.startExtraction`.
+- `actions.onBuildGraph` stub — becomes the dialog-opener trigger on DisabledCard.
+- `actions.onViewError` stub — becomes the error-viewer modal trigger on Failed/BuildingPausedError cards.
 
-### What K19a.3 can now assume
+### Retro note — lesson for future FS cycles
 
-- Import `ProjectStateCard`, `ProjectStateCardActions` from `@/features/knowledge/components/ProjectStateCard`.
-- Build a full 14-callback `ProjectStateCardActions` object + a derived `ProjectMemoryState`, pass both as props. Every card's buttons wire to the expected callback — verified by the 8 new F4 click tests.
-- Use `canTransition(from, to)` from the types module for optional button-visibility gating.
-- i18n: **48 key paths** exist in all 4 locales (13 labels + 14 actions + 21 card bodies). Adding another card body key also means adding to `CARD_KEYS` in `projectState.test.ts` — otherwise coverage regresses.
-- Adding a 14th `ProjectStateKind` is a compile error in 3 places: `ALL_KINDS_MAP` (Record exhaustiveness), `VALID_TRANSITIONS` (Record exhaustiveness), and `ProjectStateCard` dispatcher's `never` default. Plus the runtime `CARD_KEYS` test will flag missing body-text translations.
+Review-impl HIGH F1 (missing `embedding_model` on /start + /rebuild payloads) was a real 422-at-runtime trap that NO test layer could have caught: vitest doesn't hit BE, pytest doesn't hit FE, and Playwright smoke was blocked by BE not running. For FS cycles, review-impl MUST explicitly audit FE payload shape against the BE Pydantic schema — it's the only layer that catches this class of bug.
 
-### Wiring contract for the K19a.4 hook
+### FS cycle checklist going forward
 
-```ts
-const { state, actions } = useProjectState(project);
-// state: ProjectMemoryState (derived from project + active job)
-// actions: ProjectStateCardActions (14 callbacks all wired to API)
-return <ProjectStateCard state={state} actions={actions} />;
-```
-
-Per the feedback rule, K19a.4 is **FS** — the hook consumes BE endpoints (`/extraction/start`, `/pause`, `/resume`, `/cancel`, `/jobs/{id}`, `/v1/knowledge/projects/{id}` PATCH, etc.). BE audit at DESIGN phase of K19a.4 should enumerate every callback and its BE endpoint.
+1. **At CLARIFY:** enumerate every FE action → BE endpoint pair in a table.
+2. **At DESIGN:** read the BE Pydantic request model for each endpoint; confirm every required field has a source in the FE state/props.
+3. **At /review-impl:** re-read the Pydantic models; trace every payload construction call site; flag any optional-on-FE / required-on-BE mismatches as HIGH.
 
 ## Session 48 — K19a.1-rename (first Track 3 cycle) ✅
 

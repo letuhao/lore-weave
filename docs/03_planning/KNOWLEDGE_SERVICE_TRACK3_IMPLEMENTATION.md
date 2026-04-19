@@ -158,6 +158,26 @@ Tracks 1/2 already established.
 **Goal:** The most important memory UI tab — users see their projects with
 clear state, can create/edit/delete, and trigger extraction jobs.
 
+### Session 48 progress (2026-04-19)
+
+| Sub-task | Status | Commit | Notes |
+|---|---|---|---|
+| K19a.1 route + page scaffold | ✅ | d14d71b | `/memory` → `/knowledge` end-to-end rename (URL + page + i18n namespace). Plan originally said NEW; actual work was rename of Track 1's MemoryPage to KnowledgePage. |
+| K19a.1-placeholders (split from K19a.1) | ✅ | bab8829 | 4 placeholder tabs: Jobs / Entities / Timeline / Raw. Each renders a localized "Coming soon" card. 7-tab shell complete (incl. Projects / Global / Privacy). |
+| K19a.2 TS discriminated union | ✅ | 70a3136 | `ProjectStateKind`, `ProjectMemoryState`, `VALID_TRANSITIONS`, `canTransition` in `features/knowledge/types/projectState.ts`. 22 tests including exhaustive edge-diff against KSA §8.4. BE-aligned supporting types (CostEstimate mirrors `EstimateResponse`, ExtractionJobSummary mirrors BE subset, etc.). |
+| K19a.7 i18n labels skeleton (batched with K19a.2) | ✅ | 70a3136 | All 13 state labels + 14 action-button labels × 4 locales (en / ja / vi / zh-TW). Runtime coverage tests iterate every key path × every locale (192 assertions) — closes the vitest-mock bypass for this namespace. |
+| K19a.3 ProjectStateCard + 13 subcomponents | ✅ | af4cefa | Dispatcher with exhaustive `never`-default switch; each card's own minimal typed Props; callback-prop pattern. 26 component tests (13 dispatcher variants + 13 behavior assertions incl. 8 callback-click tests, progressbar ARIA, canRetry toggle). Shared `StateCardShell`, `StateActionButton`, `ProgressBar`, `Spinner`. |
+| K19a.4 useProjectState hook + graph-stats BE | ✅ | 5a726be | First Track 3 FS cycle. New `GET /v1/knowledge/projects/{id}/graph-stats` BE endpoint (Cypher UNION-ALL counting :Entity/:Fact/:Event/:Passage × 6 tests). Hook: derives state from `(Project, jobs, stats)`, polls `/extraction/jobs` at 2s while active, wires 11 of 14 callbacks; 3 toast-stubs pointing to K19a.5, 3 toast-stubs pointing to K19a.6. `ProjectCard.tsx` deleted, replaced by `ProjectRow.tsx`. 23 tests (15 `deriveState` + 8 `scopeOfJob`). |
+| K19a.5 BuildGraphDialog + error viewer | ⏭️ NEXT | — | Replaces toast-stubs for `onStart`, `onBuildGraph`, `onViewError`. Plan says Est: L. |
+| K19a.6 ProjectEditor extension | blocked | — | Change embedding model dialog + disable-without-delete + budget field. Replaces `onChangeModel`, `onDisable` toast-stubs. Depends on K19a.5. |
+| K19a.7 i18n polish (remaining) | tail | — | Per-feature string review once K19a.5/6 land. |
+| K19a.8 Storybook | optional | — | Plan says optional; skip unless state-machine bugs need visual debugging. |
+
+**Deferred from session-48 review-impl (K19a.4 F4/F7/F8):**
+- Polling scale — 2 queries × N projects, bounded by the 100-item pagination cap; consider an aggregator endpoint if pagination is ever removed.
+- Multi-device race on paused/complete states — polling stops; external state changes on another client aren't auto-refreshed. Future: always-on low-cadence poll or SSE.
+- Hook action-API test gap — the 11 real-action callbacks have no hook-level tests (`renderHook` + mocked `knowledgeApi` needed); only pure `deriveState` + `scopeOfJob` covered.
+
 ### Tasks
 
 ```
