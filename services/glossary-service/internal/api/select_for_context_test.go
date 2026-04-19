@@ -359,8 +359,13 @@ func TestSelectForContext_MaxTokensBudget(t *testing.T) {
 	srv, token := newContextTestServer(t, pool)
 
 	bookID := "00000000-0000-0000-0000-0000000c4008"
+	// T2-polish-1: short_description is capped at 500 chars by the
+	// glossary_entities_short_desc_len CHECK constraint. The earlier
+	// 2000-char seed (pre-CHECK) would insert-fail. 500 chars is
+	// ~125 tokens — budget tuned below so max_tokens still cuts
+	// after ~1 entity with the smaller per-entity cost.
 	longDesc := ""
-	for i := 0; i < 2000; i++ {
+	for i := 0; i < 500; i++ {
 		longDesc += "x"
 	}
 	seedContextBook(t, pool, bookID, []seedEntity{
@@ -372,7 +377,7 @@ func TestSelectForContext_MaxTokensBudget(t *testing.T) {
 	_, resp := callSelectForContext(t, srv, bookID, map[string]interface{}{
 		"query":        "",
 		"max_entities": 10,
-		"max_tokens":   300, // should fit ~1 of the big entities (~500 tokens each)
+		"max_tokens":   150, // ~125 tokens/entity, so should fit ~1
 	}, token)
 	if resp == nil {
 		t.Fatal("nil response")

@@ -68,9 +68,16 @@ func TestKnownEntities_BadUUIDReturns400(t *testing.T) {
 func TestKnownEntities_ReturnsEntityID(t *testing.T) {
 	pool := openTestDB(t)
 	ctx := context.Background()
-	runMigrations(t, pool)
+	// T2-polish-1: runMigrations stops at UpSnapshot, but the
+	// known-entities handler filters on the `alive` column added by
+	// UpExtraction (default true). Without that migration the handler
+	// query raises SQLSTATE 42703 on the live test DB. Use the fuller
+	// runK2aMigrations which chains Up → Seed → UpSnapshot →
+	// UpSoftDelete → UpExtraction → UpEvidenceChapterIndex →
+	// UpKnowledgeMemory.
+	runK2aMigrations(t, pool)
 
-	bookID := "00000000-0000-0000-ke01-000000000001"
+	bookID := "00000000-0000-0000-0001-000000000001"
 
 	// Look up the 'character' kind + its name/aliases attribute defs.
 	var kindID, nameAttrID, aliasesAttrID string
@@ -112,13 +119,16 @@ func TestKnownEntities_ReturnsEntityID(t *testing.T) {
 	entB := seedEntity("Merlin", "")
 
 	// 2 chapter links per entity clears min_frequency=2.
+	// T2-polish-1: original SQL had 5 columns but only 4 values
+	// (chapter_index was in the column list but not the VALUES
+	// tuple), so every INSERT failed silently and the handler got 0
+	// rows. Fixed by passing chapter_index as $2.
 	link := func(eid string, chapterIdx int) {
 		pool.Exec(ctx,
 			`INSERT INTO chapter_entity_links(entity_id,chapter_id,chapter_title,chapter_index,relevance)
-			 VALUES($1,gen_random_uuid(),'Ch','major') RETURNING link_id`,
-			eid,
+			 VALUES($1,gen_random_uuid(),'Ch',$2,'major')`,
+			eid, chapterIdx,
 		)
-		_ = chapterIdx
 	}
 	link(entA, 1)
 	link(entA, 2)
