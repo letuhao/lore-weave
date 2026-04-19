@@ -192,12 +192,19 @@ async def stream_response(
     # block doesn't stack with the "\n\n" separator to produce triple
     # newlines in the final prompt (K5-I3).
     #
-    # K18.9: when the provider is Anthropic AND the memory block came back
-    # pre-split by knowledge-service, emit structured system content with a
-    # `cache_control` marker on the stable prefix. Subsequent turns in the
-    # same session whose L0 + project block didn't change hit the prompt
-    # cache and skip re-tokenising the prefix. Non-Anthropic providers
-    # (and the degraded / unsplit fallback) take the plain-string path.
+    # K18.9 + T2-polish-3 (D-K18.9-01): when the provider is Anthropic
+    # AND the memory block came back pre-split by knowledge-service,
+    # emit structured system content with `cache_control` markers on
+    # BOTH the stable-memory prefix AND the session-level system_prompt.
+    # Anthropic allows up to 4 cache breakpoints per request; we use 2:
+    #   parts[0]: stable memory (L0 + project + Mode-2/3 prefix up to </project>)
+    #     → cached; changes only when L0 / project summary / memory-mode flip
+    #   parts[1]: volatile memory (Mode-2/3 glossary + facts + passages)
+    #     → NOT cached; changes per-message by intent
+    #   parts[2]: session system_prompt (persona / tone / instructions)
+    #     → cached; stable per-session, doesn't change between turns
+    # Non-Anthropic providers and the degraded / unsplit fallback take
+    # the plain-string path.
     use_anthropic_cache = (
         creds.provider_kind == "anthropic"
         and kctx.stable_context.strip() != ""
@@ -214,7 +221,11 @@ async def stream_response(
         if volatile:
             parts.append({"type": "text", "text": volatile})
         if system_prompt and system_prompt.strip():
-            parts.append({"type": "text", "text": system_prompt.strip()})
+            parts.append({
+                "type": "text",
+                "text": system_prompt.strip(),
+                "cache_control": {"type": "ephemeral"},
+            })
         messages.insert(0, {"role": "system", "content": parts})
     else:
         system_parts: list[str] = []

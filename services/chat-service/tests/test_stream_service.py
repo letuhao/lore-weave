@@ -431,10 +431,14 @@ class TestK18_9PromptCaching:
 
     @pytest.mark.asyncio
     async def test_anthropic_includes_system_prompt_as_third_segment(self):
-        """K18.9 + session-level system prompt: when user set a session
-        persona, it lands as a third un-cached text part after stable
-        and volatile. Catches accidental reorderings (stable must stay
-        first so cache_control marks the right byte range)."""
+        """K18.9 + T2-polish-3 (D-K18.9-01): the session system_prompt
+        lands as a third part after stable and volatile, AND carries
+        its own cache_control ephemeral marker because the persona is
+        stable per-session (doesn't change between turns). Anthropic
+        allows up to 4 cache breakpoints; we use 2 — stable memory +
+        system prompt — and leave volatile memory uncached because
+        it changes per-message. Catches accidental reorderings (stable
+        must stay first so cache_control marks the right byte range)."""
         pool, conn = _make_pool_with_conn()
         # Session has a non-null system_prompt this time.
         pool.fetchrow.return_value = {
@@ -480,12 +484,14 @@ class TestK18_9PromptCaching:
         system_msg = captured_messages[0]
         parts = system_msg["content"]
         assert len(parts) == 3
-        # Order: stable (with cache_control) → volatile → system_prompt.
+        # Order: stable (cache_control) → volatile (no cache) → system_prompt (cache_control).
+        # Two cache breakpoints used out of Anthropic's four — volatile is
+        # intentionally uncached because it changes per-message.
         assert parts[0]["cache_control"] == {"type": "ephemeral"}
         assert parts[0]["text"] == stable.strip()
         assert "cache_control" not in parts[1]
         assert parts[1]["text"] == volatile.strip()
-        assert "cache_control" not in parts[2]
+        assert parts[2]["cache_control"] == {"type": "ephemeral"}
         assert parts[2]["text"] == "Write in the voice of a pirate."
 
     @pytest.mark.asyncio
