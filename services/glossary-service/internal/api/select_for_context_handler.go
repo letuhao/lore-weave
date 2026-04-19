@@ -97,11 +97,15 @@ func estimateEntityTokens(e *glossaryEntityForContext) int {
 func (s *Server) internalSelectForContext(w http.ResponseWriter, r *http.Request) {
 	bookID, ok := parsePathUUID(w, r, "book_id")
 	if !ok {
+		// T2-polish-2a: parsePathUUID writes the error itself; count
+		// the outcome here so dashboards see invalid path UUIDs.
+		SelectForContextTotal.WithLabelValues(OutcomeValidationError).Inc()
 		return
 	}
 
 	var req selectForContextRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		SelectForContextTotal.WithLabelValues(OutcomeInvalidBody).Inc()
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
 		return
 	}
@@ -181,10 +185,12 @@ func (s *Server) internalSelectForContext(w http.ResponseWriter, r *http.Request
 
 	// ── Tier 0: pinned ─────────────────────────────────────────────────────
 	if err := s.queryPinnedTier(ctx, bookID, excludedList, pinnedCap, add); err != nil {
+		SelectForContextTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "pinned query failed")
 		return
 	}
 	if budgetExhausted() {
+		SelectForContextTotal.WithLabelValues(OutcomeOK).Inc()
 		s.writeContextResponse(w, selected, tokensUsed)
 		return
 	}
@@ -193,19 +199,23 @@ func (s *Server) internalSelectForContext(w http.ResponseWriter, r *http.Request
 	hadQuery := req.Query != ""
 	if hadQuery {
 		if err := s.queryExactTier(ctx, bookID, excludedList, req.Query, remaining(), add); err != nil {
+			SelectForContextTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "exact query failed")
 			return
 		}
 		if budgetExhausted() {
+			SelectForContextTotal.WithLabelValues(OutcomeOK).Inc()
 			s.writeContextResponse(w, selected, tokensUsed)
 			return
 		}
 
 		if err := s.queryFTSTier(ctx, bookID, excludedList, req.Query, remaining(), add); err != nil {
+			SelectForContextTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "fts query failed")
 			return
 		}
 		if budgetExhausted() {
+			SelectForContextTotal.WithLabelValues(OutcomeOK).Inc()
 			s.writeContextResponse(w, selected, tokensUsed)
 			return
 		}
@@ -220,11 +230,13 @@ func (s *Server) internalSelectForContext(w http.ResponseWriter, r *http.Request
 	// query results with random recently-edited entities.
 	if !hadQuery || len(selected) == 0 {
 		if err := s.queryRecentTier(ctx, bookID, excludedList, remaining(), add); err != nil {
+			SelectForContextTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "recent query failed")
 			return
 		}
 	}
 
+	SelectForContextTotal.WithLabelValues(OutcomeOK).Inc()
 	s.writeContextResponse(w, selected, tokensUsed)
 }
 

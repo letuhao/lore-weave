@@ -47,6 +47,11 @@ func (s *Server) Router() http.Handler {
 		}
 		_, _ = w.Write([]byte("ok"))
 	})
+	// T2-polish-2a — Prometheus scrape endpoint. Same convention as
+	// provider-registry: no auth, in-cluster scrape only, not exposed
+	// via the gateway.
+	r.Method(http.MethodGet, "/metrics", metricsHandler())
+
 	r.Get("/health/ready", func(w http.ResponseWriter, r *http.Request) {
 		if s.pool == nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not ready", "error": "no db pool"})

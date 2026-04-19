@@ -188,6 +188,7 @@ func (s *Server) internalExtractionProfile(w http.ResponseWriter, r *http.Reques
 func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 	bookID, ok := parsePathUUID(w, r, "book_id")
 	if !ok {
+		KnownEntitiesTotal.WithLabelValues(OutcomeValidationError).Inc()
 		return
 	}
 	ctx := r.Context()
@@ -281,6 +282,7 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
+		KnownEntitiesTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to query known entities")
 		return
 	}
@@ -299,6 +301,7 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 		var entityID, kindCode, name, aliasesRaw string
 		var freq int
 		if err := rows.Scan(&entityID, &kindCode, &name, &aliasesRaw, &freq); err != nil {
+			KnownEntitiesTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to scan entity")
 			return
 		}
@@ -324,6 +327,7 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 	if result == nil {
 		result = []entityOut{}
 	}
+	KnownEntitiesTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -366,12 +370,14 @@ type entityResult struct {
 func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 	bookID, ok := parsePathUUID(w, r, "book_id")
 	if !ok {
+		BulkExtractTotal.WithLabelValues(OutcomeValidationError).Inc()
 		return
 	}
 	ctx := r.Context()
 
 	var req bulkUpsertRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BulkExtractTotal.WithLabelValues(OutcomeInvalidBody).Inc()
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON body")
 		return
 	}
@@ -379,6 +385,9 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		req.SourceLanguage = "zh"
 	}
 	if len(req.Entities) == 0 {
+		// Empty batch is a valid no-op — count as OK so dashboards
+		// don't treat pre-filter zero-arrays as errors.
+		BulkExtractTotal.WithLabelValues(OutcomeOK).Inc()
 		writeJSON(w, http.StatusOK, map[string]any{
 			"created": 0, "updated": 0, "skipped": 0, "entities": []entityResult{},
 		})
@@ -388,6 +397,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 	// Pre-load kind_id map (code → kind_id)
 	kindMap, err := s.loadKindMap(ctx)
 	if err != nil {
+		BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to load kinds")
 		return
 	}
@@ -395,6 +405,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 	// Pre-load attr_def map (kind_id+code → attr_def_id)
 	attrDefMap, err := s.loadAttrDefMap(ctx)
 	if err != nil {
+		BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to load attribute definitions")
 		return
 	}
@@ -423,6 +434,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		// 1. Find existing entity by normalized name or alias match
 		existingID, err := s.findEntityByNameOrAlias(ctx, bookID, kindID, ent.Name)
 		if err != nil {
+			BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "entity lookup failed")
 			return
 		}
@@ -435,6 +447,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			// 2. CREATE new entity
 			entityID, err := s.createExtractedEntity(ctx, bookID, kindID, ent, actions, attrDefMap, req.SourceLanguage)
 			if err != nil {
+				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to create entity: "+err.Error())
 				return
 			}
@@ -452,6 +465,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			// 3. MERGE with existing entity
 			written, skippedAttrs, err := s.mergeExtractedEntity(ctx, existingID, kindID, ent, actions, attrDefMap, req.SourceLanguage)
 			if err != nil {
+				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to merge entity: "+err.Error())
 				return
 			}
@@ -518,6 +532,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 	if results == nil {
 		results = []entityResult{}
 	}
+	BulkExtractTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"created":  created,
 		"updated":  updated,
@@ -904,6 +919,7 @@ func containsTag(tags []string, tag string) bool {
 func (s *Server) internalEntityCount(w http.ResponseWriter, r *http.Request) {
 	bookID, ok := parsePathUUID(w, r, "book_id")
 	if !ok {
+		EntityCountTotal.WithLabelValues(OutcomeValidationError).Inc()
 		return
 	}
 	var count int
@@ -912,9 +928,11 @@ func (s *Server) internalEntityCount(w http.ResponseWriter, r *http.Request) {
 		bookID,
 	).Scan(&count)
 	if err != nil {
+		EntityCountTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to count entities")
 		return
 	}
+	EntityCountTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{"count": count})
 }
 
