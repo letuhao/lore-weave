@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-19 **(session 48 END — Track 3 state-machine loop closed end-to-end)** — 5 commits across 5 cycles. Track 2 still code-complete (T2-close-2 human Gate 13 loop remains). Track 3 K19a progress: rename + placeholders + types + 13 state cards + useProjectState hook + new BE graph-stats endpoint — all shipped. K19a.5 (BuildGraphDialog + error viewer) is the next cycle; it replaces the 3 remaining dialog-dependent toast-stubs (`onStart`, `onBuildGraph`, `onViewError`).
-- Updated By: Assistant (session 48 END — 5 commits: K19a.1-rename (d14d71b, 24 files) + K19a.1-placeholders (bab8829, 5 files) + K19a.2+7-skeleton (70a3136, 6 files) + K19a.3 (af4cefa, 20 files) + K19a.4 FS (5a726be, 9 files + 1 delete). First FS cycle of Track 3 validated the feedback rule end-to-end. /review-impl caught 1 HIGH + 15 MED/LOW findings across the 5 cycles — every code finding fixed in-cycle; LOW documentation items added to Deferred Items. Final test counts: 75 FE (knowledge) / 6 BE (graph-stats).)
-- Active Branch: `main` (ahead of origin by sessions 38–48 commits — user pushes manually)
-- HEAD: `5a726be` (K19a.4) at session 48 end
+- Last Updated: 2026-04-20 **(session 49 — K19a.5 BuildGraphDialog + ErrorViewerDialog shipped)** — 1 commit, closes the dialog-dependent gap from K19a.4. The 3 toast-stubs (`onStart`, `onBuildGraph`, `onViewError`) are now wired: parent `ProjectRow` lifts dialog state and merges overrides on top of the hook's silent no-ops. /review-impl caught 7 findings (2 MED + 4 LOW + 1 COSMETIC); all fixed in-cycle. Final test counts: 100 FE (knowledge, +25 from 75 baseline). Track 2 still code-complete (T2-close-2 human Gate 13 loop remains). Next cycle: K19a.6 (change-embedding-model dialog + disable-without-delete).
+- Updated By: Assistant (session 49 — 1 commit K19a.5 (13 files: 2 new dialogs + 2 new test files + api.ts + hook + ProjectRow + projectState.test.ts + 4 i18n locales). review-impl follow-up was exhaustive: F1 (BE `{detail:{message}}` extractor as exported `readBackendError` + 4 pure unit tests), F2 (`chapters` scope hidden when !book_id + noBookHint × 4 locales), F3 (unused import), F4 (actions memo narrowed to stable errorPayloadKey), F5 (onStarted signature dropped unused job arg), F6 (Confirm gated by benchmark-status query sharing queryKey with picker), F7 (in-code FE→BE contract comment). Test deltas: +16 dialog tests, +5 error viewer, +37 DIALOG_KEYS × 4 locales runtime assertions. 7 new D-K19a.5-* deferred items logged below.)
+- Active Branch: `main` (ahead of origin by sessions 38–49 commits — user pushes manually)
+- HEAD: TBD at session 49 end (was `5a726be` K19a.4 at session 48 end)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -136,6 +136,13 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 | ~~D-K18.3-01~~ | ~~K18.3 Path-C scope (session 46)~~ | **Cleared in session 46 Cycle 1a.** See "Recently cleared" below. | — |
 | ~~D-K18.3-02~~ | ~~K18.3 Path-C scope (session 46)~~ | **Cleared in session 47 Cycle 8a.** See "Recently cleared" below. | — |
 | ~~D-K18.9-01~~ | ~~K18.9 scope (session 47)~~ | **Cleared in session 47 T2-polish-3.** See "Recently cleared" below. | — |
+| D-K19a.5-01 | K19a.5 plan (session 49) | **Change-embedding-model dialog.** `useProjectState.actions.onChangeModel` still toasts `"lands in K19a.6"`. The K19a.6 cycle builds the model-switch confirm dialog that replaces it (shows old→new model + warning that switching embedding model requires graph rebuild). Depends on K19a.5 (shared patterns: `EmbeddingModelPicker` reuse, BE `PUT /projects/{id}/embedding-model` already live). | K19a.6 |
+| D-K19a.5-02 | K19a.5 plan (session 49) | **Disable-without-delete flow.** `useProjectState.actions.onDisable` still toasts `"use Delete graph for now"`. K19a.6 adds a path that flips `extraction_enabled=false` while preserving the existing graph (contrast with DeleteGraph which wipes Neo4j + Postgres). BE endpoint already exists (`PATCH /projects/{id}` with `extraction_enabled: false`). | K19a.6 |
+| D-K19a.5-03 | K19a.5 plan (session 49) | **Monthly budget remaining context in BuildGraphDialog.** The max_spend field shows only raw hint text; the plan calls for `"You have $X monthly remaining"` context beside it (K19b.6 `CostSummary` scope). Needs a `GET /v1/me/usage/monthly-remaining` endpoint that doesn't exist yet — Track 2 K16.12 billing service carries the data. | K19b.6 |
+| D-K19a.5-04 | K19a.5 plan (session 49) | **Chapter-range picker for chapters scope.** Dialog omits `scope_range.chapter_range` — BE preview honours it (D-K16.2-02 cleared in T2-close-6) but runner doesn't (D-K16.2-02b still open). Adding the picker now would be misleading until the runner catches up. Tied to D-K16.2-02b — when the runner honours range, ship both together. | Track 3 (paired with D-K16.2-02b) |
+| D-K19a.5-05 | K19a.4 F8 + K19a.5 plan | **Hook-level tests for 11 real-action callbacks in `useProjectState`.** Inherited from K19a.4 F8 deferral — K19a.5 did not advance coverage. `renderHook` + mocked `knowledgeApi` would cover pause/resume/cancel/retry/extractNew/delete/rebuild/confirmModelChange. Medium lift; value grows as more cycles depend on the hook. | Naturally-next (hook hardening before K19a.7 polish) |
+| D-K19a.5-06 | K19a.5 plan (session 49) | **`glossary_sync` scope option in BuildGraphDialog.** Plan deliberately ships chapters/chat/all in MVP. BE accepts `glossary_sync` as a `JobScope` literal (extraction.py:119) but the sync flow isn't wired on the FE yet. Revisit when glossary sync surfaces land. | K19a.7 polish |
+| D-K19a.5-07 | K19a.5 review-impl F6 | **"Run benchmark" CTA in BuildGraphDialog when `has_run=false`.** Dialog currently disables Confirm when the picker's benchmark status is missing/failed and relies on the picker's badge to explain. A dedicated button that kicks off `eval/run_benchmark.py` for the selected model would close the loop inside the dialog. Requires a POST endpoint exposing the benchmark harness (currently CLI-only). | Track 3 polish |
 
 ### Track 2 planning (document only, no Track 1 action)
 
@@ -249,6 +256,52 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 ---
 
 ## Current Active Work
+
+### K19a.5 — BuildGraphDialog + ErrorViewerDialog ✅ (session 49, Track 3 cycle 6)
+
+Closes the dialog-dependent gap from K19a.4. The three toast-stubs (`onBuildGraph`, `onStart`, `onViewError`) are replaced: `ProjectRow` lifts dialog state and merges override dispatchers onto `useProjectState`'s now-silent no-ops. Two new dialogs shipped (BuildGraphDialog, ErrorViewerDialog).
+
+**Shipped (13 files):**
+
+FE:
+- [frontend/src/features/knowledge/components/BuildGraphDialog.tsx](../../frontend/src/features/knowledge/components/BuildGraphDialog.tsx) (NEW) — form + `useQuery` estimate (debounced 300ms, keyed by `[projectId, scope, llmModel]`) + `useQuery` benchmark-status (shared queryKey with `EmbeddingModelPicker` — react-query dedupes) + startExtraction mutation. Exports pure `readBackendError(err)` extractor for the `{detail:{message}}` shape.
+- [frontend/src/features/knowledge/components/ErrorViewerDialog.tsx](../../frontend/src/features/knowledge/components/ErrorViewerDialog.tsx) (NEW) — shared viewer for `failed` + `building_paused_error`. Optional job summary + pre-wrapped error text + Copy button (degrades silently on insecure contexts).
+- [frontend/src/features/knowledge/components/ProjectRow.tsx](../../frontend/src/features/knowledge/components/ProjectRow.tsx) — lift dialog state; merge actions over `baseActions` via stable `errorPayloadKey` (narrowed from `state` to prevent re-creation on poll-tick).
+- [frontend/src/features/knowledge/hooks/useProjectState.ts](../../frontend/src/features/knowledge/hooks/useProjectState.ts) — 3 toast-stubs (`onBuildGraph`, `onStart`, `onViewError`) → silent no-ops owned by parent.
+- [frontend/src/features/knowledge/api.ts](../../frontend/src/features/knowledge/api.ts) — new `EstimateExtractionPayload` (narrower than Start — BE `EstimateRequest` doesn't take `embedding_model`/`max_spend_usd`); `estimateExtraction` signature updated accordingly.
+- [frontend/src/features/knowledge/components/__tests__/BuildGraphDialog.test.tsx](../../frontend/src/features/knowledge/components/__tests__/BuildGraphDialog.test.tsx) (NEW) — 16 tests: 9 integration (render, confirm gating, auto-estimate, start happy path, start error, max_spend invalid, Cancel, estimate inline fail, BE detail.message toast) + 4 pure unit tests for `readBackendError` + 1 `chapters` scope hidden + 1 benchmark-gating + 1 closed-when-open=false.
+- [frontend/src/features/knowledge/components/__tests__/ErrorViewerDialog.test.tsx](../../frontend/src/features/knowledge/components/__tests__/ErrorViewerDialog.test.tsx) (NEW) — 5 tests.
+- [frontend/src/features/knowledge/types/__tests__/projectState.test.ts](../../frontend/src/features/knowledge/types/__tests__/projectState.test.ts) — new `DIALOG_KEYS` runtime coverage iterator: 37 key paths × 4 locales = 148 extra assertions.
+- 4 × `frontend/src/i18n/locales/{en,ja,vi,zh-TW}/knowledge.json` — new `projects.buildDialog.*` (+25 keys) and `projects.errorViewer.*` (+11 keys) blocks, plus `scope.noBookHint` (F2).
+
+**Acceptance criteria (plan row `[ ] K19a.5 Build knowledge graph dialog`):**
+- ✅ Dialog validates inputs (decimal regex on max_spend; Confirm gated on llm+embedding+maxSpendValid+benchmarkOk).
+- ✅ Cost estimate updates when scope or model changes (debounced 300ms; react-query keyed by debounced tuple).
+- ✅ Confirm creates job and closes dialog (`startExtraction` → `onStarted()` → `onOpenChange(false)` → parent invalidates jobs query).
+- ✅ Error states handled gracefully (estimate errors inline; start errors via `readBackendError` extract BE `{detail:{message}}` into toast).
+- ⏸ Manual smoke test deferred (BE not running this session).
+
+**Review-impl findings and resolution (all 7 addressed):**
+
+| ID | Sev | Fix |
+|---|---|---|
+| F1 | MED | ✅ `readBackendError` helper extracts `body.detail.message` (and `detail` string fallback) for both toast path and estimate-error inline message. Without this, the BE benchmark-gate 409 surfaces only as "Conflict" (FastAPI wraps detail under `{detail:...}` but apiJson only reads top-level `.message`). 4 pure unit tests cover the extractor. |
+| F2 | MED | ✅ `chapters` scope radio hidden when `!project.book_id` (BE estimate returns 0 / BE start runs a no-op silently). `availableScopes` memo filters; `defaultScope` already picked `all` in that case. New `scope.noBookHint` i18n across 4 locales. |
+| F3 | LOW | ✅ Unused `afterEach` vitest import removed (leftover from the fake-timers approach that was swapped for real timers after WaitFor incompatibility). |
+| F4 | LOW | ✅ `actions` `useMemo` in `ProjectRow` now depends on `[baseActions, errorPayloadKey]` instead of `[baseActions, state]`. `errorPayloadKey` is a stable string `${jobId}|${error}` so poll-tick `items_processed` updates don't invalidate the memo. |
+| F5 | LOW | ✅ `onStarted: () => void` (dropped unused `job: ExtractionJobWire` param). Parent already ignored it; the new contract matches the real consumer. |
+| F6 | LOW→MED | ✅ Confirm button gated on `benchmarkQuery.data.has_run && passed` when the status is known. Same queryKey as `EmbeddingModelPicker` ensures a single request dedup'd by react-query. New test verifies Confirm stays disabled on `{has_run:false}`. |
+| F7 | COSMETIC | 📝 In-code comment in the chat-model `<option>` loop documents that identical `provider_model_name` across two providers collapses on `value` — matches the existing K19a.4 contract (BE `extraction_jobs.llm_model` stores bare name). Resolution of which credential runs is BE user-model lookup. Not new debt from this cycle. |
+
+**New deferrals logged below** — D-K19a.5-01..07 cover the scoped-out surfaces (K19a.6 model change / disable without delete; K19b.6 budget context; glossary_sync scope; run-benchmark CTA; chapter range picker; hook-level action tests). All have explicit target phases.
+
+**Evidence:**
+- FE: `tsc --noEmit` clean; `vitest run src/features/knowledge/` → **100/100 pass** (was 75; +25 new: 16 BuildGraph + 5 ErrorViewer + DIALOG_KEYS coverage); `vite build` 8.31s clean.
+- No BE changes; no chaos/integration runs this cycle.
+
+**Ready for K19a.6.** The change-embedding-model dialog and disable-without-delete path can now reuse the same lift-state-to-parent + merge-actions pattern established here. `useProjectState` ships with all 14 callbacks (real or placeholder-no-op) so K19a.6 only has to override the relevant two.
+
+---
 
 ### K19a.4 — useProjectState hook + GraphStats BE endpoint + ProjectsTab refactor ✅ (session 48, Track 3 cycle 5, FS)
 

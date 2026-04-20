@@ -169,6 +169,55 @@
           "body": "ナレッジグラフを削除中..."
         }
       }
+    },
+    "buildDialog": {
+      "title": "ナレッジグラフを構築",
+      "description": "このプロジェクトのコンテンツからエンティティ、事実、パッセージを抽出します。スコープとモデルを選択し、確定前にコストを確認してください。",
+      "scope": {
+        "label": "スコープ",
+        "chapters": "書籍の章",
+        "chat": "チャット履歴",
+        "all": "すべて",
+        "noBookHint": "このプロジェクトは書籍にリンクされていません — 章スコープは非表示です。"
+      },
+      "llmModel": {
+        "label": "LLM モデル",
+        "placeholder": "チャットモデルを選択…",
+        "loading": "モデルを読み込み中…",
+        "empty": "チャット対応モデルが登録されていません。AI モデル → 資格情報で追加してください。"
+      },
+      "maxSpend": {
+        "label": "上限金額 (USD、任意)",
+        "hint": "ハードキャップ — 累積コストがこの額に達するとジョブは一時停止します。無制限にするには空欄のまま。",
+        "invalid": "0 以上で小数点以下 2 桁までの金額を入力してください。"
+      },
+      "estimate": {
+        "heading": "コストプレビュー",
+        "pickLlmFirst": "LLM モデルを選択するとコスト見積もりが表示されます。",
+        "loading": "見積もり中…",
+        "failed": "見積もり失敗: {{error}}",
+        "cost": "推定コスト: ${{low}} – ${{high}}",
+        "items": "{{chapters}} 章 · {{turns}} チャットターン · 約 {{tokens}} トークン",
+        "duration": "約 {{seconds}} 秒"
+      },
+      "cancel": "キャンセル",
+      "confirm": "グラフを構築",
+      "starting": "開始中…",
+      "startFailed": "開始失敗: {{error}}"
+    },
+    "errorViewer": {
+      "title": "抽出エラー",
+      "description": "抽出ジョブで捕捉されたエラーメッセージ全文。バグ報告や原因分析にお使いください。",
+      "jobIdLabel": "ジョブ ID",
+      "startedLabel": "開始日時",
+      "scopeLabel": "スコープ",
+      "progressLabel": "進捗",
+      "progressValue": "{{processed}} / {{total}} 件",
+      "costLabel": "使用コスト",
+      "errorLabel": "エラー",
+      "copy": "コピー",
+      "copied": "コピー済み",
+      "close": "閉じる"
     }
   },
   "global": {

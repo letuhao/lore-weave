@@ -223,4 +223,62 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
       expect(kindBucket[leaf].length).toBeGreaterThan(0);
     }
   });
+
+  // K19a.5 — every dialog key lives under projects.buildDialog or
+  // projects.errorViewer. Keep this list in sync with BuildGraphDialog.tsx
+  // and ErrorViewerDialog.tsx — vitest's i18n mock returns keys verbatim,
+  // so a missing key in the real JSON would render as a raw path without
+  // this runtime check catching it.
+  const DIALOG_KEYS = [
+    'buildDialog.title',
+    'buildDialog.description',
+    'buildDialog.scope.label',
+    'buildDialog.scope.chapters',
+    'buildDialog.scope.chat',
+    'buildDialog.scope.all',
+    'buildDialog.scope.noBookHint',
+    'buildDialog.llmModel.label',
+    'buildDialog.llmModel.placeholder',
+    'buildDialog.llmModel.loading',
+    'buildDialog.llmModel.empty',
+    'buildDialog.maxSpend.label',
+    'buildDialog.maxSpend.hint',
+    'buildDialog.maxSpend.invalid',
+    'buildDialog.estimate.heading',
+    'buildDialog.estimate.pickLlmFirst',
+    'buildDialog.estimate.loading',
+    'buildDialog.estimate.failed',
+    'buildDialog.estimate.cost',
+    'buildDialog.estimate.items',
+    'buildDialog.estimate.duration',
+    'buildDialog.cancel',
+    'buildDialog.confirm',
+    'buildDialog.starting',
+    'buildDialog.startFailed',
+    'errorViewer.title',
+    'errorViewer.description',
+    'errorViewer.jobIdLabel',
+    'errorViewer.startedLabel',
+    'errorViewer.scopeLabel',
+    'errorViewer.progressLabel',
+    'errorViewer.progressValue',
+    'errorViewer.costLabel',
+    'errorViewer.errorLabel',
+    'errorViewer.copy',
+    'errorViewer.copied',
+    'errorViewer.close',
+  ] as const;
+
+  function resolveKey(bundle: any, path: string): unknown {
+    return path.split('.').reduce<any>((acc, seg) => (acc ? acc[seg] : undefined), bundle);
+  }
+
+  it.each(LOCALES)('%s has every K19a.5 dialog key populated', (_tag, bundle) => {
+    const root = (bundle as any).projects ?? {};
+    for (const path of DIALOG_KEYS) {
+      const value = resolveKey(root, path);
+      expect(typeof value, `locale missing projects.${path}`).toBe('string');
+      expect((value as string).length).toBeGreaterThan(0);
+    }
+  });
 });

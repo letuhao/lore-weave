@@ -62,6 +62,16 @@ export interface GraphStatsResponse {
 
 export type { CostEstimate } from './types/projectState';
 
+// K19a.5 — /extraction/estimate payload. Mirrors EstimateRequest in
+// services/knowledge-service/app/routers/public/extraction.py. BE does
+// NOT take embedding_model or max_spend_usd on estimate — keep the
+// contract narrow so a future `extra="forbid"` on BE wouldn't reject us.
+export interface EstimateExtractionPayload {
+  scope: ExtractionJobScopeWire;
+  scope_range?: { chapter_range: [number, number] };
+  llm_model: string;
+}
+
 // Mirrors StartJobRequest in
 // services/knowledge-service/app/routers/public/extraction.py — BOTH
 // llm_model and embedding_model are required by the BE; omitting either
@@ -330,7 +340,7 @@ export const knowledgeApi = {
 
   estimateExtraction(
     projectId: string,
-    payload: ExtractionStartPayload,
+    payload: EstimateExtractionPayload,
     token: string,
   ): Promise<CostEstimate> {
     return apiJson<CostEstimate>(

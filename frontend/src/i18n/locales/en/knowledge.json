@@ -169,6 +169,55 @@
           "body": "Removing the knowledge graph..."
         }
       }
+    },
+    "buildDialog": {
+      "title": "Build knowledge graph",
+      "description": "Extract entities, facts, and passages from this project's content. Pick a scope and models, then preview the cost before confirming.",
+      "scope": {
+        "label": "Scope",
+        "chapters": "Book chapters",
+        "chat": "Chat history",
+        "all": "Everything",
+        "noBookHint": "This project isn't linked to a book — the chapters scope is hidden."
+      },
+      "llmModel": {
+        "label": "LLM model",
+        "placeholder": "Pick a chat model…",
+        "loading": "Loading models…",
+        "empty": "No chat-capable models configured. Add one in AI Models → Credentials."
+      },
+      "maxSpend": {
+        "label": "Max spend (USD, optional)",
+        "hint": "Hard cap — the job pauses when cumulative cost reaches this. Leave blank for no cap.",
+        "invalid": "Enter a non-negative amount with up to 2 decimals."
+      },
+      "estimate": {
+        "heading": "Cost preview",
+        "pickLlmFirst": "Pick an LLM model to see a cost estimate.",
+        "loading": "Estimating…",
+        "failed": "Estimate failed: {{error}}",
+        "cost": "Estimated cost: ${{low}} – ${{high}}",
+        "items": "{{chapters}} chapters · {{turns}} chat turns · ~{{tokens}} tokens",
+        "duration": "~{{seconds}}s estimated"
+      },
+      "cancel": "Cancel",
+      "confirm": "Build graph",
+      "starting": "Starting…",
+      "startFailed": "Start failed: {{error}}"
+    },
+    "errorViewer": {
+      "title": "Extraction error",
+      "description": "Full error message captured from the extraction job. Use it for bug reports or root-cause analysis.",
+      "jobIdLabel": "Job ID",
+      "startedLabel": "Started",
+      "scopeLabel": "Scope",
+      "progressLabel": "Progress",
+      "progressValue": "{{processed}} / {{total}} items",
+      "costLabel": "Cost spent",
+      "errorLabel": "Error",
+      "copy": "Copy",
+      "copied": "Copied",
+      "close": "Close"
     }
   },
   "global": {

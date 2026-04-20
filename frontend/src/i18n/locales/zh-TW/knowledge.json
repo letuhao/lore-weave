@@ -169,6 +169,55 @@
           "body": "正在移除知識圖譜..."
         }
       }
+    },
+    "buildDialog": {
+      "title": "建立知識圖譜",
+      "description": "從此專案內容中擷取實體、事實與段落。選擇範圍與模型,確認前可先預覽成本。",
+      "scope": {
+        "label": "範圍",
+        "chapters": "書籍章節",
+        "chat": "聊天記錄",
+        "all": "全部",
+        "noBookHint": "此專案未連結書籍 — 章節範圍已隱藏。"
+      },
+      "llmModel": {
+        "label": "LLM 模型",
+        "placeholder": "選擇聊天模型…",
+        "loading": "正在載入模型…",
+        "empty": "未設定支援聊天的模型。請在 AI 模型 → 憑證 新增。"
+      },
+      "maxSpend": {
+        "label": "花費上限 (USD,選填)",
+        "hint": "硬上限 — 累積成本達到此金額時作業會暫停。留空表示不設限。",
+        "invalid": "請輸入非負數,最多 2 位小數。"
+      },
+      "estimate": {
+        "heading": "成本預覽",
+        "pickLlmFirst": "選擇 LLM 模型後即可看到成本估算。",
+        "loading": "估算中…",
+        "failed": "估算失敗: {{error}}",
+        "cost": "預估成本: ${{low}} – ${{high}}",
+        "items": "{{chapters}} 章 · {{turns}} 聊天輪 · 約 {{tokens}} tokens",
+        "duration": "約 {{seconds}} 秒"
+      },
+      "cancel": "取消",
+      "confirm": "建立圖譜",
+      "starting": "正在啟動…",
+      "startFailed": "啟動失敗: {{error}}"
+    },
+    "errorViewer": {
+      "title": "擷取錯誤",
+      "description": "從擷取作業中捕獲的完整錯誤訊息。用於錯誤回報或根因分析。",
+      "jobIdLabel": "作業 ID",
+      "startedLabel": "開始時間",
+      "scopeLabel": "範圍",
+      "progressLabel": "進度",
+      "progressValue": "{{processed}} / {{total}} 項",
+      "costLabel": "已花費",
+      "errorLabel": "錯誤",
+      "copy": "複製",
+      "copied": "已複製",
+      "close": "關閉"
     }
   },
   "global": {

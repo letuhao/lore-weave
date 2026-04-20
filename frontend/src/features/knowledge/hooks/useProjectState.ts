@@ -22,16 +22,18 @@ import type { ProjectStateCardActions } from '../components/ProjectStateCard';
 // graph stats). See KSA §8.4 for the state machine. The hook is per-project:
 // the caller (ProjectsTab) runs one per row.
 //
-// Scope of THIS cycle: derives every state that can be reached without the
-// BuildGraphDialog (K19a.5). That means `disabled`, `building_running`,
-// `building_paused_{user,budget,error}`, `complete`, `failed`. `cancelling`,
-// `deleting`, `model_change_pending`, `stale` are all deferred — signals
-// not yet plumbed. `estimating` / `ready_to_build` are produced by the
-// dialog itself when it lands.
+// Scope: derives every state reachable from BE signals — `disabled`,
+// `building_running`, `building_paused_{user,budget,error}`, `complete`,
+// `failed`. `cancelling`, `deleting`, `model_change_pending`, `stale` are
+// deferred (signals not yet plumbed). `estimating` / `ready_to_build` are
+// dialog-internal and never produced here.
 //
-// Callbacks: 11 real, 3 stubs. The stubs show a toast instead of firing an
-// API call. All real actions are wrapped in try/catch + toast.error so BE
-// failures surface visibly (review-impl F2).
+// Callbacks (14 total): 11 real actions fire BE APIs, 3 dialog-dependent
+// (`onBuildGraph`, `onStart`, `onViewError`) are silent no-ops that the
+// parent (ProjectRow) merges overrides on top of; 2 K19a.6-dependent
+// (`onChangeModel`, `onDisable`) remain toast-stubs. Real actions are
+// wrapped in try/catch + toast.error so BE failures surface visibly
+// (review-impl F2 from K19a.4).
 
 const POLL_INTERVAL_MS = 2000;
 
@@ -261,20 +263,20 @@ export function useProjectState(project: Project): UseProjectStateResult {
     };
 
     return {
-      onBuildGraph: () => {
-        toast.info('Build graph dialog lands in K19a.5.');
-      },
-      onViewError: () => {
-        toast.info('Error viewer lands in K19a.5.');
-      },
+      // K19a.5 — onBuildGraph / onStart / onViewError are dialog-dependent
+      // and owned by the parent (ProjectRow lifts dialog state and merges
+      // overrides on top of these no-ops). Left as silent no-ops so that
+      // ProjectRow can call useProjectState without duplicating the rest
+      // of the 14-action surface; if a future caller forgets to merge,
+      // the card will look dead (immediately noticeable in smoke test).
+      onBuildGraph: () => {},
+      onViewError: () => {},
+      onStart: () => {},
       onChangeModel: () => {
         toast.info('Change model dialog lands in K19a.6.');
       },
       onDisable: () => {
         toast.info('Disable-without-delete lands in K19a.6; use Delete graph for now.');
-      },
-      onStart: () => {
-        toast.info('Start requires the Build dialog (K19a.5) to pick LLM model.');
       },
       onIgnoreStale: () => {
         // Client-only no-op for MVP. A future version can set a

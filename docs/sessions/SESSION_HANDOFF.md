@@ -1,9 +1,62 @@
-# Session Handoff — Session 48 END (Track 3 K19a foundation done; K19a.5 dialog next)
+# Session Handoff — Session 49 (K19a.5 dialog cycle shipped; K19a.6 next)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-19 (session 48 END)
-> **HEAD:** `5a726be` (K19a.4)
-> **Branch:** `main` (ahead of origin by sessions 38–48 commits — user pushes manually)
+> **Date:** 2026-04-20 (session 49)
+> **HEAD:** TBD (to be set to the K19a.5 commit)
+> **Branch:** `main` (ahead of origin by sessions 38–49 commits — user pushes manually)
+
+## Session 49 — 1 Track 3 cycle shipped (K19a.5)
+
+```
+Track 3 K19a progress (session 49)
+
+Cycle 6  K19a.5  BuildGraphDialog + ErrorViewerDialog     TBD
+```
+
+**Test deltas at session 49 end:**
+- Frontend knowledge: **100 pass** (was 75 at session 48 end; +25: 16 BuildGraph + 5 ErrorViewer + DIALOG_KEYS coverage ×4 locales)
+- BE: unchanged from session 48 (no BE changes this cycle)
+- /review-impl caught **2 MED + 4 LOW + 1 COSMETIC** across one cycle; every code finding fixed in-cycle; 7 D-K19a.5-* deferrals logged for scoped-out surfaces
+
+**What shipped:**
+- `BuildGraphDialog.tsx` — scope selector (chapters/chat/all, `chapters` hidden when `!book_id`), chat-model dropdown, embedding picker (reuses K12.4), max_spend decimal-validated input, debounced auto-fetch estimate preview, benchmark pre-flight gate, BE-detail error extractor (`readBackendError` exported for unit test).
+- `ErrorViewerDialog.tsx` — shared viewer for `failed` + `building_paused_error`. Job metadata grid + pre-wrapped error text + Copy button.
+- Wired via `ProjectRow` dialog-state lifting + `useProjectState` stubs becoming silent no-ops. Merge deps narrowed to `errorPayloadKey` so actions don't re-create on poll tick.
+
+### What K19a.6 can now assume
+
+- `ProjectRow` is the merge point for dialog-dependent actions — lift dialog state, spread `baseActions`, override the relevant callbacks.
+- `useProjectState.actions.onChangeModel` and `.onDisable` are still toast-stubs pointing at K19a.6.
+- Pattern: new dialog files go under `frontend/src/features/knowledge/components/`; tests under `__tests__/`; i18n keys under `projects.*` in all 4 locales; runtime coverage via `projectState.test.ts` DIALOG_KEYS array.
+- BE endpoints exist for both K19a.6 surfaces:
+  - Change embedding model: `PUT /v1/knowledge/projects/{id}/embedding-model` (already in `knowledgeApi.updateEmbeddingModel`)
+  - Disable without delete: `PATCH /v1/knowledge/projects/{id}` with `{extraction_enabled: false}` (use `knowledgeApi.updateProject` + existing ETag dance)
+
+### Newly deferred from K19a.5 review-impl
+
+- **D-K19a.5-03** → K19b.6: Monthly budget remaining context beside max-spend field (requires BE endpoint not yet built).
+- **D-K19a.5-04** → paired with D-K16.2-02b: FE chapter_range picker (BE preview honours, runner doesn't — ship both together).
+- **D-K19a.5-05** → naturally-next: hook-level tests for 11 real-action callbacks in `useProjectState` (inherited from K19a.4 F8).
+- **D-K19a.5-06** → K19a.7: `glossary_sync` scope option.
+- **D-K19a.5-07** → Track 3 polish: "Run benchmark" CTA in dialog when `has_run=false`.
+
+### FS-cycle payload-audit lesson reinforced
+
+The F1 finding (BE `{detail: {message}}` reduced to "Conflict" in toast) is a new flavour of the K19a.4 HIGH F1 class: not missing fields on a payload, but missing field extraction on a response body. FastAPI wraps `HTTPException(detail=...)` responses as `{"detail": ...}` but `apiJson` only reads top-level `.message`. For any future dialog that surfaces 4xx errors, `readBackendError` (now exported from `BuildGraphDialog.tsx`) is the canonical extractor — reuse rather than reinventing, or consider moving it to `frontend/src/api.ts`.
+
+---
+
+## Session 48 — 5 Track 3 cycles shipped (archived for reference)
+
+> Previous session handoff content preserved below.
+
+---
+
+### Previous Session 48 Header
+
+**Date:** 2026-04-19 (session 48 END)
+**HEAD:** `5a726be` (K19a.4)
+**Branch:** `main` (ahead of origin by sessions 38–48 commits — user pushes manually)
 
 ## Session 48 — 5 Track 3 cycles shipped
 

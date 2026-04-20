@@ -169,6 +169,55 @@
           "body": "Đang xóa đồ thị tri thức..."
         }
       }
+    },
+    "buildDialog": {
+      "title": "Xây dựng đồ thị tri thức",
+      "description": "Trích xuất thực thể, sự kiện và đoạn văn từ nội dung của dự án này. Chọn phạm vi và mô hình, xem trước chi phí trước khi xác nhận.",
+      "scope": {
+        "label": "Phạm vi",
+        "chapters": "Chương sách",
+        "chat": "Lịch sử trò chuyện",
+        "all": "Tất cả",
+        "noBookHint": "Dự án này chưa liên kết với sách — phạm vi chương bị ẩn."
+      },
+      "llmModel": {
+        "label": "Mô hình LLM",
+        "placeholder": "Chọn mô hình chat…",
+        "loading": "Đang tải mô hình…",
+        "empty": "Chưa có mô hình hỗ trợ chat. Thêm tại Mô hình AI → Thông tin xác thực."
+      },
+      "maxSpend": {
+        "label": "Chi tiêu tối đa (USD, tùy chọn)",
+        "hint": "Giới hạn cứng — tác vụ tạm dừng khi chi phí tích lũy đạt mức này. Bỏ trống để không giới hạn.",
+        "invalid": "Nhập số không âm với tối đa 2 chữ số thập phân."
+      },
+      "estimate": {
+        "heading": "Xem trước chi phí",
+        "pickLlmFirst": "Chọn mô hình LLM để xem ước tính chi phí.",
+        "loading": "Đang ước tính…",
+        "failed": "Ước tính thất bại: {{error}}",
+        "cost": "Chi phí ước tính: ${{low}} – ${{high}}",
+        "items": "{{chapters}} chương · {{turns}} lượt chat · ~{{tokens}} token",
+        "duration": "~{{seconds}} giây"
+      },
+      "cancel": "Hủy",
+      "confirm": "Xây dựng đồ thị",
+      "starting": "Đang khởi động…",
+      "startFailed": "Khởi động thất bại: {{error}}"
+    },
+    "errorViewer": {
+      "title": "Lỗi trích xuất",
+      "description": "Thông báo lỗi đầy đủ thu được từ tác vụ trích xuất. Dùng để báo lỗi hoặc phân tích nguyên nhân.",
+      "jobIdLabel": "ID tác vụ",
+      "startedLabel": "Bắt đầu lúc",
+      "scopeLabel": "Phạm vi",
+      "progressLabel": "Tiến độ",
+      "progressValue": "{{processed}} / {{total}} mục",
+      "costLabel": "Chi phí đã dùng",
+      "errorLabel": "Lỗi",
+      "copy": "Sao chép",
+      "copied": "Đã sao chép",
+      "close": "Đóng"
     }
   },
   "global": {
