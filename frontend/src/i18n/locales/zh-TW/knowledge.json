@@ -218,6 +218,38 @@
       "copy": "複製",
       "copied": "已複製",
       "close": "關閉"
+    },
+    "changeModelDialog": {
+      "title": "變更嵌入模型",
+      "description": "切換嵌入模型需要刪除現有的知識圖譜。變更後您需要啟動新的擷取。",
+      "warningTitle": "破壞性變更",
+      "warningBody": "目前模型: {{currentModel}}。變更會刪除所有已擷取的實體、事實、事件與段落。在您啟動新建置前,擷取將被停用。",
+      "sameModel": "請選擇不同的模型以啟用確認。",
+      "cancel": "取消",
+      "confirm": "變更模型並刪除圖譜",
+      "submitting": "變更中…",
+      "failed": "變更失敗: {{error}}",
+      "alreadyAtModel": "模型已設為 {{model}} — 可能被其他裝置變更。"
+    },
+    "confirmDestructive": {
+      "cancel": "取消",
+      "deleteGraph": {
+        "title": "刪除知識圖譜?",
+        "description": "永久移除此專案所有已擷取的實體、事實、事件與段落。專案本身會保留,您之後可以重建。"
+      },
+      "rebuildStep1": {
+        "title": "從頭重建?",
+        "description": "重建會刪除現有圖譜並用相同模型與範圍啟動全新擷取。可能耗費金錢與時間。",
+        "confirmLabel": "繼續"
+      },
+      "rebuildStep2": {
+        "title": "最後確認 — 真的要重建?",
+        "description": "現在按下重建會開始刪除並重建。新作業啟動後無法復原。"
+      },
+      "disable": {
+        "title": "停用擷取?",
+        "description": "停止擷取新內容。現有知識圖譜會保留並可持續讀取。重新啟用需要啟動新擷取。"
+      }
     }
   },
   "global": {

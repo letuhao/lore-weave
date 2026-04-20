@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-20 **(session 49 — K19a.5 BuildGraphDialog + ErrorViewerDialog shipped)** — 1 commit, closes the dialog-dependent gap from K19a.4. The 3 toast-stubs (`onStart`, `onBuildGraph`, `onViewError`) are now wired: parent `ProjectRow` lifts dialog state and merges overrides on top of the hook's silent no-ops. /review-impl caught 7 findings (2 MED + 4 LOW + 1 COSMETIC); all fixed in-cycle. Final test counts: 100 FE (knowledge, +25 from 75 baseline). Track 2 still code-complete (T2-close-2 human Gate 13 loop remains). Next cycle: K19a.6 (change-embedding-model dialog + disable-without-delete).
-- Updated By: Assistant (session 49 — 1 commit K19a.5 (13 files: 2 new dialogs + 2 new test files + api.ts + hook + ProjectRow + projectState.test.ts + 4 i18n locales). review-impl follow-up was exhaustive: F1 (BE `{detail:{message}}` extractor as exported `readBackendError` + 4 pure unit tests), F2 (`chapters` scope hidden when !book_id + noBookHint × 4 locales), F3 (unused import), F4 (actions memo narrowed to stable errorPayloadKey), F5 (onStarted signature dropped unused job arg), F6 (Confirm gated by benchmark-status query sharing queryKey with picker), F7 (in-code FE→BE contract comment). Test deltas: +16 dialog tests, +5 error viewer, +37 DIALOG_KEYS × 4 locales runtime assertions. 7 new D-K19a.5-* deferred items logged below.)
+- Last Updated: 2026-04-20 **(session 49 continued — K19a.6 ProjectEditor extension shipped; Track 3 K19a dialog cycle closing)** — 3 commits total this session (K19a.5 @ 3148751 + K19a.5 HEAD backfill @ 1156193 + K19a.6 FS). K19a.6 closes the 2 remaining toast-stubs (`onChangeModel`, `onDisable`) AND wraps the existing 2 destructive callbacks (`onDeleteGraph`, `onRebuild`) with confirm dialogs. New BE endpoint `POST /extraction/disable` preserves the Neo4j graph while flipping `extraction_enabled=false`. /review-impl caught 7 findings (1 MED + 4 LOW + 2 COSMETIC); all fixed in-cycle. Final test counts: 5 BE new (disable endpoint) + 114 FE (knowledge + ConfirmDialog). Track 2 still code-complete (T2-close-2 human Gate 13 loop remains). Next cycle: K19a.7 polish (i18n audit + edge cases) or K19b (cost/jobs tabs).
+- Updated By: Assistant (session 49 — K19a.6 commit (16 files: BE handler + BE 5-test file + NEW ChangeModelDialog + NEW lib/readBackendError + NEW ChangeModelDialog.test + MOD api.ts/hook/ProjectRow/BuildGraphDialog/projectState.test + MOD 4 i18n + MOD components/shared/ConfirmDialog). FS cycle: added `POST /extraction/disable` BE endpoint + FE disableExtraction API wrapper + fixed updateEmbeddingModel signature (?confirm=true query param + discriminated-union return type). review-impl caught 7 findings, all fixed: F1 rebuild routed through runDestructive by reading latest job from react-query cache; F2 same-model no-op response detected via discriminated-union narrowing + toast.info path; F3 deleteGraph typed response; F4 ConfirmDialog Cancel/X disabled during loading (shared component fix); F5 invoke helpers useCallback'd; F6 redundant `?? null` removed; F7 readBackendError extracted to lib/. Test deltas: +5 BE + 8 ChangeModelDialog + 1 existing ConfirmDialog covered by new disabled styling + 20 DIALOG_KEYS × 4 locales. 2 K19a.5-deferrals cleared (D-K19a.5-01 change-model, D-K19a.5-02 disable-without-delete).)
 - Active Branch: `main` (ahead of origin by sessions 38–49 commits — user pushes manually)
-- HEAD: `3148751` (K19a.5) at session 49 end (was `5a726be` K19a.4 at session 48 end)
+- HEAD: TBD K19a.6 (was `1156193` K19a.5 HEAD backfill at mid-session 49, was `3148751` K19a.5 at start-of-session 49)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -136,8 +136,8 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 | ~~D-K18.3-01~~ | ~~K18.3 Path-C scope (session 46)~~ | **Cleared in session 46 Cycle 1a.** See "Recently cleared" below. | — |
 | ~~D-K18.3-02~~ | ~~K18.3 Path-C scope (session 46)~~ | **Cleared in session 47 Cycle 8a.** See "Recently cleared" below. | — |
 | ~~D-K18.9-01~~ | ~~K18.9 scope (session 47)~~ | **Cleared in session 47 T2-polish-3.** See "Recently cleared" below. | — |
-| D-K19a.5-01 | K19a.5 plan (session 49) | **Change-embedding-model dialog.** `useProjectState.actions.onChangeModel` still toasts `"lands in K19a.6"`. The K19a.6 cycle builds the model-switch confirm dialog that replaces it (shows old→new model + warning that switching embedding model requires graph rebuild). Depends on K19a.5 (shared patterns: `EmbeddingModelPicker` reuse, BE `PUT /projects/{id}/embedding-model` already live). | K19a.6 |
-| D-K19a.5-02 | K19a.5 plan (session 49) | **Disable-without-delete flow.** `useProjectState.actions.onDisable` still toasts `"use Delete graph for now"`. K19a.6 adds a path that flips `extraction_enabled=false` while preserving the existing graph (contrast with DeleteGraph which wipes Neo4j + Postgres). BE endpoint already exists (`PATCH /projects/{id}` with `extraction_enabled: false`). | K19a.6 |
+| ~~D-K19a.5-01~~ | ~~K19a.5 plan (session 49)~~ | **Cleared in session 49 K19a.6.** ChangeModelDialog shipped (form + destructive-warning banner + same-model gating + no-op response detection). See "Recently cleared" below. | — |
+| ~~D-K19a.5-02~~ | ~~K19a.5 plan (session 49)~~ | **Cleared in session 49 K19a.6** (FS — added new BE `POST /v1/knowledge/projects/{id}/extraction/disable` endpoint + FE disableExtraction wrapper + DisableConfirm dialog). See "Recently cleared" below. Note: the K19a.5 deferral row incorrectly assumed the BE PATCH route accepted `extraction_enabled` — it doesn't (ProjectUpdate Pydantic schema excludes that field), so K19a.6 shipped a dedicated non-destructive endpoint. | — |
 | D-K19a.5-03 | K19a.5 plan (session 49) | **Monthly budget remaining context in BuildGraphDialog.** The max_spend field shows only raw hint text; the plan calls for `"You have $X monthly remaining"` context beside it (K19b.6 `CostSummary` scope). Needs a `GET /v1/me/usage/monthly-remaining` endpoint that doesn't exist yet — Track 2 K16.12 billing service carries the data. | K19b.6 |
 | D-K19a.5-04 | K19a.5 plan (session 49) | **Chapter-range picker for chapters scope.** Dialog omits `scope_range.chapter_range` — BE preview honours it (D-K16.2-02 cleared in T2-close-6) but runner doesn't (D-K16.2-02b still open). Adding the picker now would be misleading until the runner catches up. Tied to D-K16.2-02b — when the runner honours range, ship both together. | Track 3 (paired with D-K16.2-02b) |
 | D-K19a.5-05 | K19a.4 F8 + K19a.5 plan | **Hook-level tests for 11 real-action callbacks in `useProjectState`.** Inherited from K19a.4 F8 deferral — K19a.5 did not advance coverage. `renderHook` + mocked `knowledgeApi` would cover pause/resume/cancel/retry/extractNew/delete/rebuild/confirmModelChange. Medium lift; value grows as more cycles depend on the hook. | Naturally-next (hook hardening before K19a.7 polish) |
@@ -256,6 +256,56 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 ---
 
 ## Current Active Work
+
+### K19a.6 — ProjectEditor extension (ChangeModelDialog + destructive confirms + BE disable endpoint) ✅ (session 49, Track 3 cycle 7, FS)
+
+Second FS cycle of Track 3. Closes the remaining 2 dialog-dependent toast-stubs (`onChangeModel`, `onDisable`) AND wraps the 2 destructive real-action callbacks (`onDeleteGraph`, `onRebuild`) with confirmation dialogs. Added a new BE endpoint `POST /v1/knowledge/projects/{id}/extraction/disable` because the existing `PATCH /projects/{id}` does NOT accept `extraction_enabled` (ProjectUpdate Pydantic schema excludes it) — the assumption in the D-K19a.5-02 deferral row was incorrect.
+
+**Shipped (16 files):**
+
+BE:
+- [services/knowledge-service/app/routers/public/extraction.py](../../services/knowledge-service/app/routers/public/extraction.py) — new `POST /extraction/disable` handler. Flips `extraction_enabled=false` + `extraction_status='disabled'` while preserving all Neo4j nodes. 404/409 gates mirror delete-graph / change-model. Idempotent short-circuit on already-disabled projects avoids unnecessary UPDATE.
+- [services/knowledge-service/tests/unit/test_extraction_disable.py](../../services/knowledge-service/tests/unit/test_extraction_disable.py) (NEW) — 5 tests: happy path, cross-user 404, active-job 409, paused-job 409, already-disabled idempotent no-op.
+
+FE:
+- [frontend/src/features/knowledge/components/ChangeModelDialog.tsx](../../frontend/src/features/knowledge/components/ChangeModelDialog.tsx) (NEW) — modal with destructive warning banner + EmbeddingModelPicker reuse (shows K17.9 benchmark badge) + same-model gating + no-op response detection (review-impl F2). Calls `updateEmbeddingModel(..., {confirm: true})`.
+- [frontend/src/features/knowledge/lib/readBackendError.ts](../../frontend/src/features/knowledge/lib/readBackendError.ts) (NEW) — shared util extracted from BuildGraphDialog (K19a.5 review-impl F7 follow-through). 3 call sites use it.
+- [frontend/src/features/knowledge/api.ts](../../frontend/src/features/knowledge/api.ts) — new `ChangeEmbeddingModelResponse` discriminated union (warning / noop / result), new `DisableExtractionResponse`, new `DeleteGraphResponse` (review-impl F3 — tightens the prior `Promise<void>`). Fixed `updateEmbeddingModel` signature: accepts `{confirm?: boolean}`, adds `?confirm=true` query param. New `disableExtraction` wrapper.
+- [frontend/src/features/knowledge/hooks/useProjectState.ts](../../frontend/src/features/knowledge/hooks/useProjectState.ts) — strip 2 remaining toast-stubs (onChangeModel/onDisable → silent no-ops). Header comment updated to reflect "5 dialog/confirm-dependent + 9 real" split.
+- [frontend/src/features/knowledge/components/ProjectRow.tsx](../../frontend/src/features/knowledge/components/ProjectRow.tsx) — lift 4 new dialog states (changeModel / deleteConfirm / rebuildConfirmStep1 / rebuildConfirmStep2 / disableConfirm). Shared `destructiveSubmitting` flag. `runDestructive` wrapper + `invokeDelete`/`invokeRebuild`/`invokeDisable` memoized with useCallback (F5). Rebuild reads latest job from react-query cache (`queryClient.getQueryData`) and calls `knowledgeApi.rebuildGraph` directly through `runDestructive` so the confirm dialog shows loading (F1).
+- [frontend/src/features/knowledge/components/BuildGraphDialog.tsx](../../frontend/src/features/knowledge/components/BuildGraphDialog.tsx) — re-exports `readBackendError` from new shared util for backwards compatibility (tests still import from here).
+- [frontend/src/components/shared/ConfirmDialog.tsx](../../frontend/src/components/shared/ConfirmDialog.tsx) — Cancel button + top-right X now take `disabled={loading}` (review-impl F4). Benefits all callers of the shared component, not just K19a.6.
+- [frontend/src/features/knowledge/components/__tests__/ChangeModelDialog.test.tsx](../../frontend/src/features/knowledge/components/__tests__/ChangeModelDialog.test.tsx) (NEW) — 8 tests: render, closed-state, same-model gating, calls updateEmbeddingModel with confirm=true, toast on BE error, Cancel closes, **F2 no-op response handled without onChanged**, different-model enables Confirm.
+- [frontend/src/features/knowledge/types/__tests__/projectState.test.ts](../../frontend/src/features/knowledge/types/__tests__/projectState.test.ts) — DIALOG_KEYS extended with 20 new K19a.6 paths (changeModelDialog.* + confirmDestructive.*); runtime iterator now asserts 80 new key paths × 4 locales (320 additional assertions).
+- 4 × [frontend/src/i18n/locales/*/knowledge.json](../../frontend/src/i18n/locales/en/knowledge.json) — `changeModelDialog.*` (including new `alreadyAtModel` for F2) + `confirmDestructive.deleteGraph.*` / `.rebuildStep1.*` / `.rebuildStep2.*` / `.disable.*` blocks.
+
+**Acceptance criteria (plan row `[ ] K19a.6 Project edit panel`):**
+- ⏸ Monthly budget field — deferred (D-K19a.5-03 → K19b.6; BE field doesn't exist)
+- ✅ Change embedding model (with warning dialog) — ChangeModelDialog with destructive banner + benchmark badge + same-model gating
+- ✅ Delete graph (with confirm) — ConfirmDialog variant=destructive wraps `onDeleteGraph`
+- ✅ Rebuild from scratch (with double confirm) — two sequential ConfirmDialogs; step1 "Continue" → step2 "Rebuild now"
+- ✅ (bonus) Disable without delete — new BE endpoint + ConfirmDialog variant=default
+
+**Review-impl findings and resolution (all 7 addressed):**
+
+| ID | Sev | Fix |
+|---|---|---|
+| F1 | MED | ✅ Rebuild routed through `runDestructive`. ProjectRow reads latest job via `queryClient.getQueryData(['knowledge-project-jobs', projectId])` (same queryKey the hook polls — free dedup) and calls `knowledgeApi.rebuildGraph` directly. Dialog now shows loading + surfaces BE errors in-dialog, matching delete/disable. |
+| F2 | LOW | ✅ `isNoopResponse` type-narrows the discriminated union `ChangeEmbeddingModelResponse`. Confirm with same-model (cross-device race) now fires `toast.info('Model already set to X')` + keeps dialog open instead of silently "succeeding". |
+| F3 | LOW | ✅ New `DeleteGraphResponse` type; `knowledgeApi.deleteGraph` returns `Promise<DeleteGraphResponse>` (body has project_id / nodes_deleted / extraction_status). |
+| F4 | LOW | ✅ Shared `ConfirmDialog` Cancel + X buttons take `disabled={loading}`. Pre-existing guard in ProjectRow (`if (!destructiveSubmitting)` on onOpenChange) stays as belt-and-braces. Visual feedback now matches behavior. |
+| F5 | LOW | ✅ `runDestructive` + `invokeDelete`/`invokeRebuild`/`invokeDisable` all memoized with `useCallback` + correct deps. |
+| F6 | COSMETIC | ✅ Redundant `?? null` removed from 3 spots in ChangeModelDialog (project.embedding_model is already `string | null`). |
+| F7 | COSMETIC | ✅ `readBackendError` moved to `frontend/src/features/knowledge/lib/readBackendError.ts`. BuildGraphDialog re-exports for backward compat (existing unit test imports it from the dialog module). ProjectRow + ChangeModelDialog import from the lib path. |
+
+**Evidence:**
+- BE: `python -m pytest tests/unit/test_extraction_disable.py` → **5/5 pass** (0.74s)
+- FE: `tsc --noEmit` clean; `vitest run src/features/knowledge src/components/shared/__tests__/ConfirmDialog` → **114/114 pass** (was 100 at K19a.5 end; +7 knowledge + +6 ConfirmDialog shared now covered, +1 new F2 test); `vite build` 5.20s clean.
+- No Playwright run this cycle (BE + auth still not up locally).
+
+**Ready for K19a.7 / K19b.** All 14 `ProjectStateCardActions` callbacks now wired: 9 real (pause/resume/cancel/retry/extractNew/delete/rebuild/confirmModelChange/ignoreStale) + 5 parent-merged (buildGraph/start/viewError/changeModel/disable). K19a.7 polish can now scan the 4-locale JSONs for any residual "TODO"-style placeholders; K19b starts the cost/jobs tabs.
+
+---
 
 ### K19a.5 — BuildGraphDialog + ErrorViewerDialog ✅ (session 49, Track 3 cycle 6)
 

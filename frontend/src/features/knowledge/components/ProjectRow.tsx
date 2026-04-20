@@ -1,13 +1,19 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Archive, ArchiveRestore, Pencil, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
+import { ConfirmDialog } from '@/components/shared';
+import { useAuth } from '@/auth';
 import { useProjectState } from '../hooks/useProjectState';
+import { knowledgeApi, type ExtractionJobWire } from '../api';
 import type { Project } from '../types';
 import type { ExtractionJobSummary } from '../types/projectState';
 import { ProjectStateCard, type ProjectStateCardActions } from './ProjectStateCard';
+import { readBackendError } from '../lib/readBackendError';
 import { BuildGraphDialog } from './BuildGraphDialog';
 import { ErrorViewerDialog } from './ErrorViewerDialog';
+import { ChangeModelDialog } from './ChangeModelDialog';
 
 // K19a.4 — replaces the Track 1 ProjectCard. One row per project:
 // header + CRUD toolbar (edit/archive/delete) above, state card
@@ -25,17 +31,35 @@ interface Props {
 
 export function ProjectRow({ project, onEdit, onArchive, onRestore, onDelete }: Props) {
   const { t } = useTranslation('knowledge');
+  const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   const { state, actions: baseActions } = useProjectState(project);
   const isArchived = project.is_archived;
   const typeLabel = t(`projects.form.typeOptions.${project.project_type}`);
 
-  // K19a.5 — dialog state lifted to the row. The hook returns silent no-ops
-  // for the 3 dialog-dependent actions; we merge real open-dispatchers on
-  // top. `errorViewer` splits {job,error} so the Failed state (no job
+  // K19a.5 + K19a.6 — dialog + confirm state lifted to the row. The
+  // hook returns silent no-ops for the 5 dialog/confirm-dependent
+  // actions; we merge real open-dispatchers on top. For destructive
+  // actions the hook still owns the raw BE call — we call it from the
+  // ConfirmDialog's onConfirm after the user has acknowledged.
+  //
+  // `errorViewer` splits {job,error} so the Failed state (no job
   // summary) still has an `error` to show.
   const [buildOpen, setBuildOpen] = useState(false);
   const [errorViewer, setErrorViewer] = useState<{ job: ExtractionJobSummary | null; error: string } | null>(null);
+  const [changeModelOpen, setChangeModelOpen] = useState(false);
+  // Rebuild is double-confirm: step1 explains the destruction, step2
+  // is the final "are you sure". Two booleans instead of a single
+  // enum keeps the JSX readable.
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [rebuildConfirmStep1, setRebuildConfirmStep1] = useState(false);
+  const [rebuildConfirmStep2, setRebuildConfirmStep2] = useState(false);
+  const [disableConfirmOpen, setDisableConfirmOpen] = useState(false);
+  // Single `submitting` flag shared across all destructive confirm
+  // dialogs. Only one can be open at a time so a shared flag is safe;
+  // ConfirmDialog's `loading` prop disables the confirm button while
+  // set.
+  const [destructiveSubmitting, setDestructiveSubmitting] = useState(false);
 
   // review-impl F4 — narrow the actions deps. `state` object reference
   // changes every poll tick (items_processed advances). Extract only
@@ -62,12 +86,102 @@ export function ProjectRow({ project, onEdit, onArchive, onRestore, onDelete }: 
       onViewError: () => {
         if (errorPayload) setErrorViewer(errorPayload);
       },
+      // K19a.6 — destructive actions open a confirm dialog; the raw
+      // BE call runs from the dialog's onConfirm (see invokeDelete /
+      // invokeRebuild / invokeDisable below). The change-model flow
+      // is a full form dialog, not a single confirm.
+      onChangeModel: () => setChangeModelOpen(true),
+      onDisable: () => setDisableConfirmOpen(true),
+      onDeleteGraph: () => setDeleteConfirmOpen(true),
+      onRebuild: () => setRebuildConfirmStep1(true),
     }),
     // errorPayloadKey captures job identity + error text — the only
     // fields the closure reads. See comment above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [baseActions, errorPayloadKey],
   );
+
+  // K19a.6 — destructive-action invokers called from the confirm
+  // dialogs. Each wraps the BE call in try/catch + toast.error +
+  // shared submitting flag, then closes the dialog + invalidates the
+  // jobs query so the state card flips on the next tick.
+  const invalidateJobs = () => {
+    void queryClient.invalidateQueries({
+      queryKey: ['knowledge-project-jobs', project.project_id],
+    });
+    void queryClient.invalidateQueries({
+      queryKey: ['knowledge-project-graph-stats', project.project_id],
+    });
+  };
+
+  const runDestructive = useCallback(
+    async (label: string, op: () => Promise<unknown>, close: () => void) => {
+      setDestructiveSubmitting(true);
+      try {
+        await op();
+        close();
+        invalidateJobs();
+      } catch (err) {
+        toast.error(`${label}: ${readBackendError(err)}`);
+      } finally {
+        setDestructiveSubmitting(false);
+      }
+    },
+    // `invalidateJobs` depends only on queryClient + project.project_id,
+    // both stable. Keep dep array narrow.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [queryClient, project.project_id],
+  );
+
+  const invokeDelete = useCallback(() => {
+    if (!accessToken) return;
+    void runDestructive(
+      t('projects.state.actions.deleteGraph'),
+      () => knowledgeApi.deleteGraph(project.project_id, accessToken),
+      () => setDeleteConfirmOpen(false),
+    );
+  }, [accessToken, project.project_id, runDestructive, t]);
+
+  // review-impl F1 — route rebuild through `runDestructive` so the
+  // confirm dialog shows loading + surfaces BE errors in-dialog. We
+  // read the latest job (model refs) from the same react-query cache
+  // the hook polls, so no duplicate fetch. If no latest job exists
+  // the rebuild can't be replayed — toast and abort.
+  const invokeRebuild = useCallback(() => {
+    if (!accessToken) return;
+    const jobs = queryClient.getQueryData<ExtractionJobWire[]>([
+      'knowledge-project-jobs',
+      project.project_id,
+    ]);
+    const latest = jobs?.[0];
+    if (!latest) {
+      toast.error(t('projects.state.actions.rebuild') + ': no prior job');
+      setRebuildConfirmStep2(false);
+      return;
+    }
+    void runDestructive(
+      t('projects.state.actions.rebuild'),
+      () =>
+        knowledgeApi.rebuildGraph(
+          project.project_id,
+          {
+            llm_model: latest.llm_model,
+            embedding_model: latest.embedding_model,
+          },
+          accessToken,
+        ),
+      () => setRebuildConfirmStep2(false),
+    );
+  }, [accessToken, project.project_id, queryClient, runDestructive, t]);
+
+  const invokeDisable = useCallback(() => {
+    if (!accessToken) return;
+    void runDestructive(
+      t('projects.state.actions.disable'),
+      () => knowledgeApi.disableExtraction(project.project_id, accessToken),
+      () => setDisableConfirmOpen(false),
+    );
+  }, [accessToken, project.project_id, runDestructive, t]);
 
   return (
     <div className="rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
@@ -149,6 +263,78 @@ export function ProjectRow({ project, onEdit, onArchive, onRestore, onDelete }: 
         }}
         job={errorViewer?.job ?? null}
         error={errorViewer?.error ?? ''}
+      />
+
+      <ChangeModelDialog
+        open={changeModelOpen}
+        onOpenChange={setChangeModelOpen}
+        project={project}
+        onChanged={() => {
+          invalidateJobs();
+          // Invalidate the Project list too so the card picks up the
+          // new embedding_model + refreshed extraction_enabled state.
+          void queryClient.invalidateQueries({
+            queryKey: ['knowledge-projects'],
+          });
+        }}
+      />
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={(o) => {
+          if (!destructiveSubmitting) setDeleteConfirmOpen(o);
+        }}
+        title={t('projects.confirmDestructive.deleteGraph.title')}
+        description={t('projects.confirmDestructive.deleteGraph.description')}
+        confirmLabel={t('projects.state.actions.deleteGraph')}
+        cancelLabel={t('projects.confirmDestructive.cancel')}
+        variant="destructive"
+        loading={destructiveSubmitting}
+        onConfirm={invokeDelete}
+      />
+
+      <ConfirmDialog
+        open={rebuildConfirmStep1}
+        onOpenChange={(o) => {
+          if (!destructiveSubmitting) setRebuildConfirmStep1(o);
+        }}
+        title={t('projects.confirmDestructive.rebuildStep1.title')}
+        description={t('projects.confirmDestructive.rebuildStep1.description')}
+        confirmLabel={t('projects.confirmDestructive.rebuildStep1.confirmLabel')}
+        cancelLabel={t('projects.confirmDestructive.cancel')}
+        variant="destructive"
+        onConfirm={() => {
+          setRebuildConfirmStep1(false);
+          setRebuildConfirmStep2(true);
+        }}
+      />
+
+      <ConfirmDialog
+        open={rebuildConfirmStep2}
+        onOpenChange={(o) => {
+          if (!destructiveSubmitting) setRebuildConfirmStep2(o);
+        }}
+        title={t('projects.confirmDestructive.rebuildStep2.title')}
+        description={t('projects.confirmDestructive.rebuildStep2.description')}
+        confirmLabel={t('projects.state.actions.rebuild')}
+        cancelLabel={t('projects.confirmDestructive.cancel')}
+        variant="destructive"
+        loading={destructiveSubmitting}
+        onConfirm={invokeRebuild}
+      />
+
+      <ConfirmDialog
+        open={disableConfirmOpen}
+        onOpenChange={(o) => {
+          if (!destructiveSubmitting) setDisableConfirmOpen(o);
+        }}
+        title={t('projects.confirmDestructive.disable.title')}
+        description={t('projects.confirmDestructive.disable.description')}
+        confirmLabel={t('projects.state.actions.disable')}
+        cancelLabel={t('projects.confirmDestructive.cancel')}
+        variant="default"
+        loading={destructiveSubmitting}
+        onConfirm={invokeDisable}
       />
     </div>
   );

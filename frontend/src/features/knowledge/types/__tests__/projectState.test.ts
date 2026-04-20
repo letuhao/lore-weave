@@ -267,6 +267,27 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     'errorViewer.copy',
     'errorViewer.copied',
     'errorViewer.close',
+    // K19a.6 — ChangeModelDialog + destructive confirm dialogs.
+    'changeModelDialog.title',
+    'changeModelDialog.description',
+    'changeModelDialog.warningTitle',
+    'changeModelDialog.warningBody',
+    'changeModelDialog.sameModel',
+    'changeModelDialog.cancel',
+    'changeModelDialog.confirm',
+    'changeModelDialog.submitting',
+    'changeModelDialog.failed',
+    'changeModelDialog.alreadyAtModel',
+    'confirmDestructive.cancel',
+    'confirmDestructive.deleteGraph.title',
+    'confirmDestructive.deleteGraph.description',
+    'confirmDestructive.rebuildStep1.title',
+    'confirmDestructive.rebuildStep1.description',
+    'confirmDestructive.rebuildStep1.confirmLabel',
+    'confirmDestructive.rebuildStep2.title',
+    'confirmDestructive.rebuildStep2.description',
+    'confirmDestructive.disable.title',
+    'confirmDestructive.disable.description',
   ] as const;
 
   function resolveKey(bundle: any, path: string): unknown {

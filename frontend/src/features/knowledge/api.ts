@@ -92,6 +92,54 @@ export interface RebuildPayload {
   max_spend_usd?: string;
 }
 
+// K19a.6 — discriminated return type for PUT /embedding-model.
+// Without `?confirm=true` the BE returns a warning preview; with it
+// the destructive change runs and the BE returns the result metadata.
+// The same-model path returns a third `{message, current_model}` shape
+// which we fold into the warning variant's unknown fields.
+export interface ChangeEmbeddingModelWarning {
+  warning: string;
+  current_model: string;
+  new_model: string;
+  action_required: 'confirm';
+}
+export interface ChangeEmbeddingModelNoop {
+  message: string;
+  current_model: string;
+}
+export interface ChangeEmbeddingModelResult {
+  project_id: string;
+  previous_model: string;
+  new_model: string;
+  nodes_deleted: number;
+  extraction_status: 'disabled';
+}
+export type ChangeEmbeddingModelResponse =
+  | ChangeEmbeddingModelWarning
+  | ChangeEmbeddingModelNoop
+  | ChangeEmbeddingModelResult;
+
+// K19a.6 — POST /extraction/disable response. Non-destructive flip
+// of extraction_enabled=false while preserving Neo4j graph data.
+export interface DisableExtractionResponse {
+  project_id: string;
+  extraction_status: string;
+  graph_preserved: boolean;
+  /** Set on the idempotent no-op path ("already disabled"). */
+  message?: string;
+}
+
+// K19a.6 review-impl F3 — DELETE /extraction/graph returns a 200 body
+// with the delete summary, not 204. Prior FE type was `Promise<void>`
+// which drops the body silently. No caller currently reads these
+// fields, but typing them keeps the FE↔BE contract honest and makes
+// "how many nodes did we delete?" one TS inference away.
+export interface DeleteGraphResponse {
+  project_id: string;
+  nodes_deleted: number;
+  extraction_status: 'disabled';
+}
+
 const BASE = '/v1/knowledge';
 
 // D-K8-03: weak ETag format used by the knowledge-service routes.
@@ -381,8 +429,8 @@ export const knowledgeApi = {
     );
   },
 
-  deleteGraph(projectId: string, token: string): Promise<void> {
-    return apiJson<void>(
+  deleteGraph(projectId: string, token: string): Promise<DeleteGraphResponse> {
+    return apiJson<DeleteGraphResponse>(
       `${BASE}/projects/${projectId}/extraction/graph`,
       { method: 'DELETE', token },
     );
@@ -399,18 +447,43 @@ export const knowledgeApi = {
     );
   },
 
+  // K19a.6 — PUT /embedding-model. The BE requires `?confirm=true` for
+  // the destructive path (deletes graph + switches model + disables).
+  // Without `confirm`, BE returns a warning preview with
+  // `action_required: 'confirm'`. Callers typically invoke twice: once
+  // to preview (or skip that and go straight to confirm), once to
+  // commit. Same-model requests return a third no-op shape.
+  //
+  // Prior signature returned Promise<Project> which was always wrong —
+  // BE never returns a Project from this endpoint. K19a.5 callers
+  // weren't calling this; K19a.6 dialog is the first real consumer.
   updateEmbeddingModel(
     projectId: string,
     embeddingModel: string,
     token: string,
-  ): Promise<Project> {
-    return apiJson<Project>(
-      `${BASE}/projects/${projectId}/embedding-model`,
+    opts?: { confirm?: boolean },
+  ): Promise<ChangeEmbeddingModelResponse> {
+    const qs = opts?.confirm ? '?confirm=true' : '';
+    return apiJson<ChangeEmbeddingModelResponse>(
+      `${BASE}/projects/${projectId}/embedding-model${qs}`,
       {
         method: 'PUT',
         body: JSON.stringify({ embedding_model: embeddingModel }),
         token,
       },
+    );
+  },
+
+  // K19a.6 — non-destructive POST /extraction/disable. Preserves the
+  // Neo4j graph; contrasts with deleteGraph (destructive) and
+  // updateEmbeddingModel (destructive).
+  disableExtraction(
+    projectId: string,
+    token: string,
+  ): Promise<DisableExtractionResponse> {
+    return apiJson<DisableExtractionResponse>(
+      `${BASE}/projects/${projectId}/extraction/disable`,
+      { method: 'POST', token },
     );
   },
 };

@@ -13,6 +13,7 @@ import {
 } from '../api';
 import type { BenchmarkStatus, Project } from '../types';
 import type { CostEstimate } from '../types/projectState';
+import { readBackendError } from '../lib/readBackendError';
 import { EmbeddingModelPicker } from './EmbeddingModelPicker';
 
 // K19a.5 — modal for starting an extraction job. Triggered from the
@@ -40,27 +41,10 @@ const ALL_SCOPES: ExtractionJobScopeWire[] = ['chapters', 'chat', 'all'];
 const DECIMAL_REGEX = /^\d+(\.\d{1,2})?$/;
 const ESTIMATE_DEBOUNCE_MS = 300;
 
-// review-impl F1 — BE wraps 409 bodies as `{detail: {error_code, message, ...}}`
-// (FastAPI default). apiJson only surfaces the top-level `.message`, which is
-// undefined for that shape, so the thrown Error carries res.statusText
-// ("Conflict") instead of the real explanation. Walk the attached `body`
-// ourselves to pull the structured message when present. Exported for the
-// unit test that proves the extraction logic works independent of i18n.
-export function readBackendError(err: unknown): string {
-  if (err instanceof Error) {
-    const body = (err as Error & { body?: unknown }).body;
-    if (body && typeof body === 'object') {
-      const detail = (body as { detail?: unknown }).detail;
-      if (typeof detail === 'string' && detail.length > 0) return detail;
-      if (detail && typeof detail === 'object' && 'message' in detail) {
-        const msg = (detail as { message?: unknown }).message;
-        if (typeof msg === 'string' && msg.length > 0) return msg;
-      }
-    }
-    if (err.message) return err.message;
-  }
-  return String(err);
-}
+// review-impl F7 (K19a.6) — `readBackendError` moved to a shared
+// `../lib/readBackendError.ts` since multiple dialogs use it. Re-export
+// here so existing call sites (unit tests) can keep their imports.
+export { readBackendError } from '../lib/readBackendError';
 
 export function BuildGraphDialog({ open, onOpenChange, project, onStarted }: Props) {
   const { t } = useTranslation('knowledge');

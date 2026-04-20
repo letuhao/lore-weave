@@ -692,6 +692,90 @@ async def delete_extraction_graph(
     }
 
 
+# ── K19a.6 — Disable extraction without deleting the graph ──────────
+
+
+@router.post(
+    "/{project_id}/extraction/disable",
+    status_code=status.HTTP_200_OK,
+)
+async def disable_extraction(
+    project_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+) -> dict:
+    """Disable extraction WITHOUT deleting the Neo4j graph.
+
+    Flips ``extraction_enabled=false`` and ``extraction_status='disabled'``
+    while preserving all :Entity/:Fact/:Event/:Passage/:ExtractionSource
+    nodes. Contrast with:
+
+    - ``DELETE /extraction/graph``: deletes graph + disables (K16.8)
+    - ``PUT /embedding-model?confirm=true``: deletes graph + disables +
+      switches model (K16.10)
+
+    The preserved graph is still queryable from chat context / wiki
+    flows — a disabled project is effectively a frozen-in-time knowledge
+    base that won't ingest new content. Re-enabling requires starting a
+    new extraction job (which will run against the chosen scope on top
+    of the existing graph, treating it as incremental).
+
+    Returns 404 if project doesn't exist or is owned by another user.
+    Returns 409 if an active extraction job is running (must cancel first).
+    Idempotent: re-calling on an already-disabled project returns the
+    current state without touching the DB.
+    """
+    project = await projects_repo.get(user_id, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="project not found",
+        )
+
+    # Block if an active job exists — mirrors delete-graph / change-model.
+    # Cancelling a running job leaves the project in 'disabled' already,
+    # so the user shouldn't hit this branch after a normal flow.
+    active = await jobs_repo.list_active(user_id)
+    for j in active:
+        if j.project_id == project_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"cannot disable extraction while job {j.job_id} is "
+                    f"active (status={j.status}); cancel it first"
+                ),
+            )
+
+    # Idempotent short-circuit — no-op for an already-disabled project
+    # avoids an unnecessary UPDATE and makes the endpoint safe to retry.
+    if not project.extraction_enabled:
+        return {
+            "project_id": str(project_id),
+            "extraction_status": project.extraction_status,
+            "graph_preserved": True,
+            "message": "already disabled",
+        }
+
+    await projects_repo.set_extraction_state(
+        user_id, project_id,
+        extraction_enabled=False,
+        extraction_status="disabled",
+    )
+
+    trace_id = trace_id_var.get()
+    logger.info(
+        "K19a.6: extraction disabled (graph preserved) project_id=%s trace_id=%s",
+        project_id, trace_id,
+    )
+
+    return {
+        "project_id": str(project_id),
+        "extraction_status": "disabled",
+        "graph_preserved": True,
+    }
+
+
 # ── K16.9 — Rebuild (delete graph + start new job) ──────────────────
 
 

@@ -47,8 +47,13 @@ export function ConfirmDialog({
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-background shadow-2xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
 
-          {/* Close button */}
-          <Dialog.Close className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground/50 transition-colors hover:bg-secondary hover:text-foreground">
+          {/* Close button — disabled while an async confirm is in flight
+              (K19a.6 F4) so users can't dismiss the dialog and leave the
+              parent holding a phantom submitting state. */}
+          <Dialog.Close
+            disabled={loading}
+            className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground/50 transition-colors hover:bg-secondary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+          >
             <X className="h-4 w-4" />
           </Dialog.Close>
 
@@ -93,10 +98,15 @@ export function ConfirmDialog({
               {confirmLabel}
             </button>
 
+            {/* K19a.6 review-impl F4 — Cancel is disabled (and hidden
+                from the pointer) while the confirm action is in flight.
+                Without this the button stays clickable but the parent's
+                open-change guard silently blocks it, confusing the user. */}
             <Dialog.Close asChild>
               <button
+                disabled={loading}
                 className={cn(
-                  'inline-flex items-center justify-center rounded-lg border px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground',
+                  'inline-flex items-center justify-center rounded-lg border px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50',
                   stacked ? 'w-full' : '',
                 )}
               >

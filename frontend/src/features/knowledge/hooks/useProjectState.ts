@@ -28,12 +28,12 @@ import type { ProjectStateCardActions } from '../components/ProjectStateCard';
 // deferred (signals not yet plumbed). `estimating` / `ready_to_build` are
 // dialog-internal and never produced here.
 //
-// Callbacks (14 total): 11 real actions fire BE APIs, 3 dialog-dependent
-// (`onBuildGraph`, `onStart`, `onViewError`) are silent no-ops that the
-// parent (ProjectRow) merges overrides on top of; 2 K19a.6-dependent
-// (`onChangeModel`, `onDisable`) remain toast-stubs. Real actions are
-// wrapped in try/catch + toast.error so BE failures surface visibly
-// (review-impl F2 from K19a.4).
+// Callbacks (14 total): 9 real actions fire BE APIs directly, 5
+// dialog/confirm-dependent (`onBuildGraph`/`onStart`/`onViewError`
+// from K19a.5 + `onChangeModel`/`onDisable` from K19a.6) are silent
+// no-ops that the parent (ProjectRow) merges overrides on top of.
+// Real actions are wrapped in try/catch + toast.error so BE failures
+// surface visibly (review-impl F2 from K19a.4).
 
 const POLL_INTERVAL_MS = 2000;
 
@@ -263,21 +263,21 @@ export function useProjectState(project: Project): UseProjectStateResult {
     };
 
     return {
-      // K19a.5 — onBuildGraph / onStart / onViewError are dialog-dependent
-      // and owned by the parent (ProjectRow lifts dialog state and merges
-      // overrides on top of these no-ops). Left as silent no-ops so that
-      // ProjectRow can call useProjectState without duplicating the rest
-      // of the 14-action surface; if a future caller forgets to merge,
-      // the card will look dead (immediately noticeable in smoke test).
+      // K19a.5 + K19a.6 — five dialog/confirm-dependent actions are
+      // owned by the parent. ProjectRow lifts dialog state and merges
+      // overrides on top of these no-ops. Left as silent no-ops so the
+      // hook can return a complete 14-action surface without forcing
+      // every caller to know the set; if a future caller forgets to
+      // merge, the affected card button will look dead — immediately
+      // noticeable in smoke test.
+      //
+      // K19a.5 owns: onBuildGraph, onStart, onViewError
+      // K19a.6 owns: onChangeModel, onDisable
       onBuildGraph: () => {},
       onViewError: () => {},
       onStart: () => {},
-      onChangeModel: () => {
-        toast.info('Change model dialog lands in K19a.6.');
-      },
-      onDisable: () => {
-        toast.info('Disable-without-delete lands in K19a.6; use Delete graph for now.');
-      },
+      onChangeModel: () => {},
+      onDisable: () => {},
       onIgnoreStale: () => {
         // Client-only no-op for MVP. A future version can set a
         // per-session dismissed flag that suppresses the stale UI

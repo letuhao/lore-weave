@@ -1,48 +1,55 @@
-# Session Handoff — Session 49 (K19a.5 dialog cycle shipped; K19a.6 next)
+# Session Handoff — Session 49 (K19a.5 + K19a.6 dialog cluster shipped; K19a.7 polish or K19b next)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-20 (session 49)
-> **HEAD:** `3148751` (K19a.5)
+> **HEAD:** TBD K19a.6 (K19a.5 shipped mid-session as `3148751` + handoff fixup `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–49 commits — user pushes manually)
 
-## Session 49 — 1 Track 3 cycle shipped (K19a.5)
+## Session 49 — 2 Track 3 cycles shipped (K19a.5 + K19a.6 FS)
 
 ```
 Track 3 K19a progress (session 49)
 
-Cycle 6  K19a.5  BuildGraphDialog + ErrorViewerDialog     TBD
+Cycle 6  K19a.5  BuildGraphDialog + ErrorViewerDialog          3148751
+         + session_handoff HEAD backfill                        1156193
+Cycle 7  K19a.6  ChangeModelDialog + destructive confirms +     TBD
+                 BE POST /extraction/disable (FS)
 ```
 
 **Test deltas at session 49 end:**
-- Frontend knowledge: **100 pass** (was 75 at session 48 end; +25: 16 BuildGraph + 5 ErrorViewer + DIALOG_KEYS coverage ×4 locales)
-- BE: unchanged from session 48 (no BE changes this cycle)
-- /review-impl caught **2 MED + 4 LOW + 1 COSMETIC** across one cycle; every code finding fixed in-cycle; 7 D-K19a.5-* deferrals logged for scoped-out surfaces
+- Frontend knowledge (+ shared ConfirmDialog): **114 pass** (was 75 at session 48 end; +39 across the two cycles: 16 BuildGraph + 5 ErrorViewer + 8 ChangeModelDialog + 6 ConfirmDialog shared + DIALOG_KEYS runtime coverage ×4 locales for every dialog key)
+- BE: +5 new tests (POST /extraction/disable — happy + 404 + 409 active + 409 paused + idempotent no-op)
+- /review-impl caught **3 MED + 8 LOW + 3 COSMETIC** across the two cycles; every code finding fixed in-cycle; 7 D-K19a.5-* deferrals logged in K19a.5 END, 2 cleared in K19a.6 (D-K19a.5-01 change-model, D-K19a.5-02 disable-without-delete)
 
 **What shipped:**
 - `BuildGraphDialog.tsx` — scope selector (chapters/chat/all, `chapters` hidden when `!book_id`), chat-model dropdown, embedding picker (reuses K12.4), max_spend decimal-validated input, debounced auto-fetch estimate preview, benchmark pre-flight gate, BE-detail error extractor (`readBackendError` exported for unit test).
 - `ErrorViewerDialog.tsx` — shared viewer for `failed` + `building_paused_error`. Job metadata grid + pre-wrapped error text + Copy button.
 - Wired via `ProjectRow` dialog-state lifting + `useProjectState` stubs becoming silent no-ops. Merge deps narrowed to `errorPayloadKey` so actions don't re-create on poll tick.
 
-### What K19a.6 can now assume
+### What K19a.7 or K19b can now assume
 
-- `ProjectRow` is the merge point for dialog-dependent actions — lift dialog state, spread `baseActions`, override the relevant callbacks.
-- `useProjectState.actions.onChangeModel` and `.onDisable` are still toast-stubs pointing at K19a.6.
-- Pattern: new dialog files go under `frontend/src/features/knowledge/components/`; tests under `__tests__/`; i18n keys under `projects.*` in all 4 locales; runtime coverage via `projectState.test.ts` DIALOG_KEYS array.
-- BE endpoints exist for both K19a.6 surfaces:
-  - Change embedding model: `PUT /v1/knowledge/projects/{id}/embedding-model` (already in `knowledgeApi.updateEmbeddingModel`)
-  - Disable without delete: `PATCH /v1/knowledge/projects/{id}` with `{extraction_enabled: false}` (use `knowledgeApi.updateProject` + existing ETag dance)
+- All 14 `ProjectStateCardActions` callbacks are wired: 9 fire BE APIs (pause/resume/cancel/retry/extractNew/delete/rebuild/confirmModelChange/ignoreStale), 5 open parent-lifted dialogs/confirms (buildGraph/start/viewError/changeModel/disable).
+- `ProjectRow` is the canonical merge point for dialog-dependent actions — lift dialog/confirm state, spread `baseActions`, override the relevant callbacks. For destructive actions, route through `runDestructive` so ConfirmDialog's `loading` prop shows in-dialog spinner.
+- `readBackendError` lives at `frontend/src/features/knowledge/lib/readBackendError.ts` (K19a.6 F7). Any new dialog surfacing 4xx errors should import from there — `apiJson` only reads top-level `.message` but FastAPI wraps as `{detail: ...}`.
+- `ChangeEmbeddingModelResponse` is a discriminated union (warning / noop / result); future callers must narrow before treating as success — K19a.6 F2 fixed the silent-success-on-no-op bug.
+- `ConfirmDialog` now disables Cancel + X buttons while `loading=true`. Pattern is consistent across all destructive flows.
+- BE endpoints now cover all Track 3 K19a surfaces:
+  - `DELETE /extraction/graph` — destructive delete
+  - `PUT /embedding-model?confirm=true` — destructive change-model (deletes graph + disables)
+  - `POST /extraction/disable` — **non-destructive** disable (preserves graph)
+  - `POST /extraction/rebuild` — destructive rebuild (delete + start fresh job)
 
-### Newly deferred from K19a.5 review-impl
+### Still deferred after K19a.6
 
-- **D-K19a.5-03** → K19b.6: Monthly budget remaining context beside max-spend field (requires BE endpoint not yet built).
+- **D-K19a.5-03** → K19b.6: Monthly budget remaining context in BuildGraphDialog max-spend field (needs BE `/v1/me/usage/monthly-remaining` endpoint).
 - **D-K19a.5-04** → paired with D-K16.2-02b: FE chapter_range picker (BE preview honours, runner doesn't — ship both together).
-- **D-K19a.5-05** → naturally-next: hook-level tests for 11 real-action callbacks in `useProjectState` (inherited from K19a.4 F8).
-- **D-K19a.5-06** → K19a.7: `glossary_sync` scope option.
-- **D-K19a.5-07** → Track 3 polish: "Run benchmark" CTA in dialog when `has_run=false`.
+- **D-K19a.5-05** → naturally-next: hook-level tests for 11 real-action callbacks in `useProjectState` (inherited from K19a.4 F8; has grown in importance as the hook's surface area is now stable).
+- **D-K19a.5-06** → K19a.7: `glossary_sync` scope option in BuildGraphDialog (BE accepts, FE doesn't expose).
+- **D-K19a.5-07** → Track 3 polish: "Run benchmark" CTA in BuildGraphDialog when `has_run=false` (needs POST endpoint for eval harness).
 
-### FS-cycle payload-audit lesson reinforced
+### FS-cycle payload-audit lesson — response-side variant
 
-The F1 finding (BE `{detail: {message}}` reduced to "Conflict" in toast) is a new flavour of the K19a.4 HIGH F1 class: not missing fields on a payload, but missing field extraction on a response body. FastAPI wraps `HTTPException(detail=...)` responses as `{"detail": ...}` but `apiJson` only reads top-level `.message`. For any future dialog that surfaces 4xx errors, `readBackendError` (now exported from `BuildGraphDialog.tsx`) is the canonical extractor — reuse rather than reinventing, or consider moving it to `frontend/src/api.ts`.
+K19a.5 F1 surfaced the BE `{detail: {message}}` body-extraction gap. K19a.6 F2 added another class: **response shape ambiguity under idempotent/no-op paths**. The BE `PUT /embedding-model?confirm=true` returns three different shapes — warning (confirm=false), no-op (same-model, either direction), result (confirm=true, different model). FE must narrow the discriminated union before treating as success; otherwise a cross-device race turns a silent no-op into a false "success" UX. For future FS cycles with idempotent BE endpoints: **list every BE response branch at CLARIFY time**, not just the happy path.
 
 ---
 

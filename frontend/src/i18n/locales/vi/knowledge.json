@@ -218,6 +218,38 @@
       "copy": "Sao chép",
       "copied": "Đã sao chép",
       "close": "Đóng"
+    },
+    "changeModelDialog": {
+      "title": "Đổi mô hình embedding",
+      "description": "Đổi mô hình embedding sẽ xóa đồ thị tri thức hiện có. Sau khi đổi, bạn cần khởi động một tác vụ trích xuất mới.",
+      "warningTitle": "Thay đổi phá hủy",
+      "warningBody": "Mô hình hiện tại: {{currentModel}}. Thay đổi sẽ xóa tất cả thực thể, sự kiện và đoạn văn đã trích xuất. Trích xuất sẽ bị vô hiệu hóa cho đến khi bạn khởi động một build mới.",
+      "sameModel": "Chọn một mô hình khác để có thể xác nhận.",
+      "cancel": "Hủy",
+      "confirm": "Đổi mô hình và xóa đồ thị",
+      "submitting": "Đang đổi…",
+      "failed": "Đổi thất bại: {{error}}",
+      "alreadyAtModel": "Mô hình đã được đặt thành {{model}} — có thể thiết bị khác đã đổi."
+    },
+    "confirmDestructive": {
+      "cancel": "Hủy",
+      "deleteGraph": {
+        "title": "Xóa đồ thị tri thức?",
+        "description": "Xóa vĩnh viễn toàn bộ thực thể, sự kiện và đoạn văn đã trích xuất cho dự án này. Dự án vẫn còn; bạn có thể xây lại sau."
+      },
+      "rebuildStep1": {
+        "title": "Xây lại từ đầu?",
+        "description": "Xây lại sẽ xóa đồ thị hiện có và bắt đầu trích xuất mới với cùng mô hình và phạm vi. Có thể tốn chi phí và mất thời gian.",
+        "confirmLabel": "Tiếp tục"
+      },
+      "rebuildStep2": {
+        "title": "Xác nhận lần cuối — thực sự xây lại?",
+        "description": "Nhấn Xây lại ngay bây giờ sẽ bắt đầu xóa và xây lại. Khi tác vụ mới chạy thì không thể hoàn tác."
+      },
+      "disable": {
+        "title": "Vô hiệu hóa trích xuất?",
+        "description": "Dừng trích xuất nội dung mới. Đồ thị tri thức hiện có vẫn được giữ và có thể đọc. Bật lại yêu cầu khởi động một trích xuất mới."
+      }
     }
   },
   "global": {

@@ -218,6 +218,38 @@
       "copy": "Copy",
       "copied": "Copied",
       "close": "Close"
+    },
+    "changeModelDialog": {
+      "title": "Change embedding model",
+      "description": "Switching the embedding model requires deleting the existing knowledge graph. You'll need to start a new extraction afterwards.",
+      "warningTitle": "Destructive change",
+      "warningBody": "Current model: {{currentModel}}. Changing it deletes all extracted entities, facts, events, and passages. Extraction will be disabled until you start a new build.",
+      "sameModel": "Pick a different model to enable Confirm.",
+      "cancel": "Cancel",
+      "confirm": "Change model and delete graph",
+      "submitting": "Changing…",
+      "failed": "Change failed: {{error}}",
+      "alreadyAtModel": "Model already set to {{model}} — another device may have changed it."
+    },
+    "confirmDestructive": {
+      "cancel": "Cancel",
+      "deleteGraph": {
+        "title": "Delete knowledge graph?",
+        "description": "This permanently removes all extracted entities, facts, events, and passages for this project. The project stays; you can rebuild later."
+      },
+      "rebuildStep1": {
+        "title": "Rebuild from scratch?",
+        "description": "Rebuild deletes the existing graph and starts a fresh extraction with the same models and scope. This can cost money and take a while.",
+        "confirmLabel": "Continue"
+      },
+      "rebuildStep2": {
+        "title": "Last chance — really rebuild?",
+        "description": "Clicking Rebuild now starts the destruction-and-rebuild. There's no undo once the new job is running."
+      },
+      "disable": {
+        "title": "Disable extraction?",
+        "description": "Stops new content from being extracted. The existing knowledge graph is preserved and still readable. Re-enabling requires starting a new extraction."
+      }
     }
   },
   "global": {
