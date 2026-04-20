@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-20 **(session 49 continued — K19a.7 i18n polish shipped; Track 3 K19a cluster closing)** — 4 Track 3 commits total this session (K19a.5 @ 3148751 + K19a.5 HEAD backfill @ 1156193 + K19a.6 @ 2226283 + K19a.6 HEAD backfill @ 7cf394f + K19a.7 TBD). K19a.7 converts every residual hardcoded toast/label/body string in the knowledge feature to i18n keys: `useProjectState.runAction` now takes `(t, labelKey)`, `ProjectRow.runDestructive` same, `PrivacyTab` fully converted (15 strings), new `projects.toast.*` block + `privacy.*` top-level namespace × 4 locales. `ACTION_KEYS` compile-time constant makes callsite typos a build error. /review-impl caught 5 findings (1 MED + 3 LOW + 1 COSMETIC); 4 fixed in-cycle, 1 accepted silently (F4 vitest stub churn). Final test counts unchanged at 112 FE (existing tests still green; runtime coverage iterators expanded). Next cycle: K19b (cost/jobs tabs) or K19a.8 Storybook (optional).
-- Updated By: Assistant (session 49 — K19a.7 commit (9 files: MOD useProjectState + ProjectRow + PrivacyTab + projectState.test + 4 i18n locales). No BE changes. review-impl caught 5 findings, all actioned: F1 ACTION_KEYS const map (11 callsites now typo-safe at compile time); F2 dedicated projects.state.actions.confirmModelChange label × 4 locales; F3 TFunction canonical tuple form; F4 accepted (vitest stub only); F5 PrivacyTab DELETE_CONFIRM_TOKEN explanatory comment. Test deltas: +4 DIALOG_KEYS + 15 PRIVACY_KEYS × 4 locales + 1 confirmModelChange action-key assertion (76 new runtime assertions). Grep confirms zero hardcoded toast strings remaining in knowledge feature.)
+- Last Updated: 2026-04-21 **(session 49 continued — K19a.8 Storybook shipped; Track 3 K19a cluster FULLY COMPLETE)** — 5 Track 3 cycles this session. K19a.8 installs Storybook 10 + @storybook/react-vite + addon-a11y/docs and writes 14 stories for the 13 ProjectMemoryState variants (Failed split into retryable + no-retry). Vite alias `@/auth` → MockAuthProvider wired via viteFinal so future dialog stories (D-K19a.8-01) get transparent auth mocking. /review-impl caught 5 findings (2 MED + 2 LOW + 1 COSMETIC); 4 fixed in-cycle, 1 documented in RETRO (Playwright binaries one-time cost). Next cycle: K19b (cost/jobs tabs).
+- Updated By: Assistant (session 49 — K19a.8 commit (7 files: NEW .storybook/{main.ts,preview.tsx,MockAuthProvider.tsx} + NEW ProjectStateCard.stories.tsx + MOD package.json/.gitignore + DELETED vitest.shims.d.ts). No BE or app-source changes. review-impl actioned: F1 Vite alias for @/auth so mock actually intercepts; F2 deleted dead shim file from init; F3 Playwright binaries doc in RETRO; F4 per-story makeActions() fresh fn() spies; F5 .gitignore header comment. `npm run build-storybook` → 10.7s clean build, 65 KB stories chunk. Existing 112 FE tests + tsc + vite main build all unchanged.)
 - Active Branch: `main` (ahead of origin by sessions 38–49 commits — user pushes manually)
-- HEAD: `2cbcc7c` (K19a.7) at session 49 end (was `7cf394f` K19a.6 HEAD backfill, `2226283` K19a.6, `1156193` K19a.5 HEAD backfill, `3148751` K19a.5)
+- HEAD: TBD K19a.8 (was `c6ee80a` K19a.7 HEAD backfill, `2cbcc7c` K19a.7, `7cf394f` K19a.6 HEAD backfill, `2226283` K19a.6, `1156193` K19a.5 HEAD backfill, `3148751` K19a.5)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -144,6 +144,7 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 | D-K19a.5-06 | K19a.5 plan (session 49) | **`glossary_sync` scope option in BuildGraphDialog.** Plan deliberately ships chapters/chat/all in MVP. BE accepts `glossary_sync` as a `JobScope` literal (extraction.py:119) but the sync flow isn't wired on the FE yet. Revisit when glossary sync surfaces land. | K19a.7 polish |
 | D-K19a.5-07 | K19a.5 review-impl F6 | **"Run benchmark" CTA in BuildGraphDialog when `has_run=false`.** Dialog currently disables Confirm when the picker's benchmark status is missing/failed and relies on the picker's badge to explain. A dedicated button that kicks off `eval/run_benchmark.py` for the selected model would close the loop inside the dialog. Requires a POST endpoint exposing the benchmark harness (currently CLI-only). | Track 3 polish |
 | D-K19a.7-01 | K19a.7 review-impl F1 (partial) | **Hook-level action smoke tests.** F1's `ACTION_KEYS` const map closes half of D-K19a.5-05 (compile-time typo prevention) but the other half — verifying each of the 11 real action callbacks fires the right `knowledgeApi` method + surfaces BE errors as toast — still needs `renderHook` + mocked API. Medium lift; growing in importance as hook surface stabilises. Supersedes D-K19a.5-05 for the action-fire-path half. | Naturally-next (hook hardening before K19b cost/jobs tabs ship) |
+| D-K19a.8-01 | K19a.8 plan (session 49) | **Dialog stories for `BuildGraphDialog` / `ChangeModelDialog` / `ErrorViewerDialog`.** K19a.8 shipped stories for the presentational `ProjectStateCard` (13 kinds) but not the 3 dialogs because they call `knowledgeApi` (estimateExtraction, startExtraction, updateEmbeddingModel, disableExtraction, benchmark-status). Needs MSW handlers at preview/story level. Mock auth already wired via K19a.8 F1 Vite alias, so this is pure MSW-addon setup: `npm i -D msw msw-storybook-addon` + fixtures. | Track 3 polish (when visual regression of dialog states becomes useful — not critical today) |
 
 ### Track 2 planning (document only, no Track 1 action)
 
@@ -257,6 +258,51 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 ---
 
 ## Current Active Work
+
+### K19a.8 — Storybook install + ProjectStateCard stories ✅ (session 49, Track 3 cycle 9, closes K19a cluster)
+
+Optional per plan — shipped because visual-state-machine catalog is useful now that all 13 kinds are feature-complete. Storybook 10 with `@storybook/react-vite` framework, lean addon set (a11y + docs only). Vite alias `@/auth` → MockAuthProvider via `viteFinal` so future dialog stories get transparent auth mocking without per-story wrap. Scoped out: dialog stories (deferred D-K19a.8-01 — needs MSW for `knowledgeApi` interception).
+
+**Shipped (7 file changes):**
+
+FE tooling:
+- [frontend/.storybook/main.ts](../../frontend/.storybook/main.ts) (NEW) — config: `stories: [../src/**/*.stories.@(ts|tsx)]`, addons: a11y + docs, framework: `@storybook/react-vite`, viteFinal aliases `@/auth` → MockAuthProvider + preserves `@/*` for other paths.
+- [frontend/.storybook/preview.tsx](../../frontend/.storybook/preview.tsx) (NEW) — global decorator wraps every story in `MockAuthProvider + QueryClientProvider + MemoryRouter`; imports `src/index.css` (Tailwind) + `src/i18n` (init side-effect).
+- [frontend/.storybook/MockAuthProvider.tsx](../../frontend/.storybook/MockAuthProvider.tsx) (NEW) — exports `AuthProvider`, `useAuth`, `RequireAuth` matching the canonical `@/auth` surface. Stable fake token + user; throw on `useAuth` outside provider.
+- [frontend/src/features/knowledge/components/ProjectStateCard.stories.tsx](../../frontend/src/features/knowledge/components/ProjectStateCard.stories.tsx) (NEW) — 14 stories covering all 13 `ProjectMemoryState` kinds. Each gets a fresh `makeActions()` so Actions addon doesn't accumulate clicks across navigation.
+- [frontend/package.json](../../frontend/package.json) — +2 scripts (`storybook`, `build-storybook`); +4 devDeps (`storybook@10.3.5`, `@storybook/react-vite@10.3.5`, `@storybook/addon-a11y@10.3.5`, `@storybook/addon-docs@10.3.5`). Deliberately did NOT install `@storybook/addon-vitest` (requires vitest 3+; we're on 2), `@chromatic-com/storybook` (no Chromatic), `addon-onboarding` (noise).
+- [frontend/.gitignore](../../frontend/.gitignore) — added `*storybook.log` + `storybook-static/` with header comment.
+- `frontend/vitest.shims.d.ts` (DELETED) — leftover from Storybook init referencing removed `@vitest/browser` types.
+
+**Install quirk:** Storybook init auto-modified `vite.config.ts` to inject vitest-addon plumbing + wanted `@vitest/browser`. Reverted via `git checkout HEAD -- frontend/vite.config.ts`. Also cleaned up the `src/stories/` example directory Storybook scaffolded (Button/Header/Page CSS files — not relevant to our codebase).
+
+**Acceptance criteria (plan `[ ] K19a.8 Visual regression / Storybook (optional)`):**
+- ✅ Each state has a Story (13 kinds × 1 story each; Failed has 2)
+- ✅ `npm run storybook` works (script wired; build-storybook static tested at 10.7s clean)
+
+**Review-impl findings and resolution (5 findings, 4 fixed + 1 documented):**
+
+| ID | Sev | Fix |
+|---|---|---|
+| F1 | MED | ✅ `.storybook/main.ts` viteFinal adds Vite alias `@/auth` → `MockAuthProvider.tsx`. MockAuthProvider now exports the full canonical surface (`AuthProvider`, `useAuth`, `RequireAuth`) so future dialog stories that import `useAuth` from `@/auth` transparently resolve to the stub. Without this the mock was dead — two disconnected React contexts. |
+| F2 | MED | ✅ `frontend/vitest.shims.d.ts` deleted. Was a one-line `/// <reference types="@vitest/browser/providers/playwright" />` leftover from init; the referenced dep was removed (vitest 2 vs 3 conflict). Outside tsconfig `include` so tsc didn't flag — but repo-visible dead code. |
+| F3 | LOW | 📝 Storybook init downloaded ~200 MB Playwright browser binaries to `~/.cache/ms-playwright/chromium-1217`. One-time cost; no repo/commit impact. Future Track 3 agents: when re-running `npx storybook init`, ctrl-C before the Playwright install prompt (comes AFTER addon configuration). |
+| F4 | LOW | ✅ `actions: makeActions()` is now a per-story arg instead of shared `meta.args.actions`. Prevents Actions addon from accumulating `fn()` spy calls across navigation within the same preview session. |
+| F5 | COSMETIC | ✅ `.gitignore` now has `# Storybook — K19a.8 (dev server log + static export build output)` header so future readers know why the entries are there. |
+
+**New deferral logged:**
+- **D-K19a.8-01** — Dialog stories for `BuildGraphDialog` / `ChangeModelDialog` / `ErrorViewerDialog`. Requires MSW handlers at preview/story level to intercept `knowledgeApi` calls (estimateExtraction, startExtraction, updateEmbeddingModel, disableExtraction, benchmark-status). Mock auth is already wired (F1), so this is purely an MSW-addon setup. Install `msw-storybook-addon` + write handler fixtures.
+
+**Evidence:**
+- `tsc --noEmit` clean
+- `npx storybook build` → 10.69s clean, all 13 variants compiled (65 KB `ProjectStateCard.stories-*.js`)
+- `npx vitest run src/features/knowledge` → **112/112 pass** (unchanged)
+- `npx vite build` → 8.33s clean
+- `grep` confirms no dead `@storybook/test`/`@storybook/addon-vitest`/`@chromatic-com/storybook` refs remain
+
+**Track 3 K19a cluster is now fully complete.** All 8 non-optional K19a tasks shipped (K19a.1 through K19a.7) plus the optional K19a.8 Storybook catalog. Next: K19b (jobs/cost tabs).
+
+---
 
 ### K19a.7 — i18n polish (Projects tab + state cards + dialogs + PrivacyTab) ✅ (session 49, Track 3 cycle 8)
 

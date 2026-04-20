@@ -3,3 +3,7 @@ dist
 .env*.local
 *.tsbuildinfo
 package-lock.json
+
+# Storybook — K19a.8 (dev server log + static export build output)
+*storybook.log
+storybook-static

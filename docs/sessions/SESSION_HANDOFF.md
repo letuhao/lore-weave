@@ -1,11 +1,11 @@
-# Session Handoff — Session 49 (K19a.5 + K19a.6 + K19a.7 shipped; Track 3 K19a cluster closed)
+# Session Handoff — Session 49 (K19a.5 → K19a.8 shipped; Track 3 K19a cluster FULLY CLOSED)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-20 (session 49)
-> **HEAD:** `2cbcc7c` (K19a.7; K19a.6 @ `2226283` + `7cf394f` HEAD backfill; K19a.5 @ `3148751` + `1156193` HEAD backfill)
+> **Date:** 2026-04-21 (session 49)
+> **HEAD:** TBD K19a.8 (K19a.7 @ `2cbcc7c` + `c6ee80a` HEAD backfill; K19a.6 @ `2226283` + `7cf394f` HEAD backfill; K19a.5 @ `3148751` + `1156193` HEAD backfill)
 > **Branch:** `main` (ahead of origin by sessions 38–49 commits — user pushes manually)
 
-## Session 49 — 3 Track 3 cycles shipped (K19a.5 + K19a.6 + K19a.7)
+## Session 49 — 4 Track 3 cycles shipped (K19a.5 + K19a.6 + K19a.7 + K19a.8)
 
 ```
 Track 3 K19a progress (session 49)
@@ -15,22 +15,27 @@ Cycle 6  K19a.5  BuildGraphDialog + ErrorViewerDialog          3148751
 Cycle 7  K19a.6  ChangeModelDialog + destructive confirms +     2226283
                  BE POST /extraction/disable (FS)
          + HEAD backfill                                        7cf394f
-Cycle 8  K19a.7  i18n polish (runAction + PrivacyTab + 4        TBD
-                 locales); Track 3 K19a cluster feature-
-                 complete pending optional K19a.8 Storybook
+Cycle 8  K19a.7  i18n polish (runAction + PrivacyTab + 4        2cbcc7c
+                 locales + ACTION_KEYS typo defence)
+         + HEAD backfill                                        c6ee80a
+Cycle 9  K19a.8  Storybook 10 install + 13 ProjectStateCard     TBD
+                 stories (Vite alias @/auth → MockAuth)
+
+Track 3 K19a cluster: 100% complete (8 non-optional + 1 optional)
 ```
 
 **Test deltas at session 49 end:**
-- Frontend knowledge (+ shared ConfirmDialog): **112 pass** (was 75 at session 48 end; +37 content: 16 BuildGraph + 5 ErrorViewer + 8 ChangeModelDialog + 6 ConfirmDialog shared + DIALOG_KEYS + PRIVACY_KEYS runtime coverage ×4 locales; K19a.7 added 76 new runtime assertions without adding test-file count)
+- Frontend knowledge (+ shared ConfirmDialog): **112 pass** (was 75 at session 48 end; +37 content across K19a.5/6/7)
+- Storybook: 14 stories build clean; `npm run build-storybook` 10.7s
 - BE: +5 new tests (POST /extraction/disable — happy + 404 + 409 active + 409 paused + idempotent no-op)
-- /review-impl across all 3 cycles caught **4 MED + 11 LOW + 4 COSMETIC**; every code finding fixed in-cycle except 1 accepted silently in K19a.7 (F4 vitest stub churn); 8 D-K19a.5-* / D-K19a.7-* deferrals logged, 2 cleared in K19a.6 (D-K19a.5-01 change-model, D-K19a.5-02 disable-without-delete)
+- /review-impl across all 4 cycles caught **6 MED + 13 LOW + 5 COSMETIC**; every code finding fixed in-cycle except 2 accepted silently (K19a.7 F4 vitest stub churn + K19a.8 F3 Playwright binaries one-time cost); 10 D-K19a.*-* deferrals logged, 2 cleared in K19a.6 (D-K19a.5-01 change-model, D-K19a.5-02 disable-without-delete)
 
 **What shipped:**
 - `BuildGraphDialog.tsx` — scope selector (chapters/chat/all, `chapters` hidden when `!book_id`), chat-model dropdown, embedding picker (reuses K12.4), max_spend decimal-validated input, debounced auto-fetch estimate preview, benchmark pre-flight gate, BE-detail error extractor (`readBackendError` exported for unit test).
 - `ErrorViewerDialog.tsx` — shared viewer for `failed` + `building_paused_error`. Job metadata grid + pre-wrapped error text + Copy button.
 - Wired via `ProjectRow` dialog-state lifting + `useProjectState` stubs becoming silent no-ops. Merge deps narrowed to `errorPayloadKey` so actions don't re-create on poll tick.
 
-### What K19b (or optional K19a.8) can now assume
+### What K19b can now assume
 
 - All 14 `ProjectStateCardActions` callbacks are wired: 9 fire BE APIs (pause/resume/cancel/retry/extractNew/delete/rebuild/confirmModelChange/ignoreStale), 5 open parent-lifted dialogs/confirms (buildGraph/start/viewError/changeModel/disable).
 - `ProjectRow` is the canonical merge point for dialog-dependent actions — lift dialog/confirm state, spread `baseActions`, override the relevant callbacks. For destructive actions, route through `runDestructive(PROJECT_ACTION_KEYS.xxx, op, close)` so ConfirmDialog's `loading` prop shows in-dialog spinner + toast carries the right translated label.
@@ -39,6 +44,7 @@ Cycle 8  K19a.7  i18n polish (runAction + PrivacyTab + 4        TBD
 - `ConfirmDialog` now disables Cancel + X buttons while `loading=true`. Pattern is consistent across all destructive flows.
 - `useProjectState` exports `PROJECT_ACTION_KEYS` (K19a.7 F1) — a compile-time map of action → i18n key. Consumers wanting to surface BE errors as localised toasts should import this rather than repeating string literals; typos become build errors.
 - Zero hardcoded toast/label/body strings remain in `frontend/src/features/knowledge/` — `grep -r "toast\.(error\|info\|success\|warning)\(['\"]"` confirms. New dialogs should use `useTranslation('knowledge')` from the start.
+- Storybook (K19a.8) is installed with 14 stories covering all 13 `ProjectMemoryState` kinds. `npm run storybook` dev-serves at port 6006; `npm run build-storybook` produces a static catalog. `.storybook/main.ts` aliases `@/auth` → `MockAuthProvider` so any future story can render real components that call `useAuth` without wiring it explicitly.
 - BE endpoints now cover all Track 3 K19a surfaces:
   - `DELETE /extraction/graph` — destructive delete
   - `PUT /embedding-model?confirm=true` — destructive change-model (deletes graph + disables)
@@ -53,6 +59,7 @@ Cycle 8  K19a.7  i18n polish (runAction + PrivacyTab + 4        TBD
 - **D-K19a.5-06** → K19a.7 (NOT done in this cycle): `glossary_sync` scope option in BuildGraphDialog (BE accepts, FE doesn't expose). The "K19a.7" polish cycle focused on string i18n, not scope-list expansion. Re-target to Track 3 polish or K19b as convenient.
 - **D-K19a.5-07** → Track 3 polish: "Run benchmark" CTA in BuildGraphDialog when `has_run=false` (needs POST endpoint for eval harness).
 - **D-K19a.7-01** → naturally-next: hook-level action smoke tests (inherits action-fire-path coverage from D-K19a.5-05).
+- **D-K19a.8-01** → Track 3 polish: dialog stories for BuildGraphDialog / ChangeModelDialog / ErrorViewerDialog. Needs MSW handlers for `knowledgeApi` interception. Mock auth already wired via K19a.8 Vite alias.
 
 ### FS-cycle payload-audit lesson — response-side variant
 
@@ -61,6 +68,16 @@ K19a.5 F1 surfaced the BE `{detail: {message}}` body-extraction gap. K19a.6 F2 a
 ### i18n silent-fallback lesson (K19a.7)
 
 i18next silently falls back to the raw key path when a key is missing, so a callsite typo like `t('projects.state.actions.pauze')` doesn't crash — it renders `"projects.state.actions.pauze: rate limit"` in the user-visible toast. Runtime JSON-resource iterators catch missing resources but NOT typos at the callsite. Defence: a compile-time constant map (`ACTION_KEYS` in `useProjectState.ts`) turns every callsite into a TypeScript literal lookup so typos become build errors. For any future i18n-heavy module, introduce the const map up front rather than threading string literals.
+
+### Storybook-init quirks (K19a.8)
+
+`npx storybook@latest init --type react` is aggressive: it modifies `vite.config.ts` to inject `@storybook/addon-vitest` plumbing AND downloads ~200 MB of Playwright browser binaries for that addon — even on a no-install run. For a minimal Storybook-only setup:
+1. Use `--skip-install` to avoid committing to deps before review.
+2. Edit `package.json` to REMOVE `@storybook/addon-vitest`, `@chromatic-com/storybook`, `addon-onboarding`, `@vitest/browser`, `playwright` before `npm install`.
+3. `git checkout HEAD -- vite.config.ts` to undo the vitest-addon workspace plumbing (it adds a `test: {workspace: [...]}` block that references the removed addon).
+4. Ctrl-C the prompt that asks to install Playwright browser binaries — it comes AFTER addon config, not at the start.
+5. Delete the `src/stories/` example directory (Button/Header/Page scaffold) and `vitest.shims.d.ts` shim file.
+6. `fn()` for action spies lives in `storybook/test`, not `@storybook/test` (Storybook 10 moved it).
 
 ---
 
