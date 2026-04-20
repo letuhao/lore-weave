@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-20 **(session 49 continued — K19a.6 ProjectEditor extension shipped; Track 3 K19a dialog cycle closing)** — 3 commits total this session (K19a.5 @ 3148751 + K19a.5 HEAD backfill @ 1156193 + K19a.6 FS). K19a.6 closes the 2 remaining toast-stubs (`onChangeModel`, `onDisable`) AND wraps the existing 2 destructive callbacks (`onDeleteGraph`, `onRebuild`) with confirm dialogs. New BE endpoint `POST /extraction/disable` preserves the Neo4j graph while flipping `extraction_enabled=false`. /review-impl caught 7 findings (1 MED + 4 LOW + 2 COSMETIC); all fixed in-cycle. Final test counts: 5 BE new (disable endpoint) + 114 FE (knowledge + ConfirmDialog). Track 2 still code-complete (T2-close-2 human Gate 13 loop remains). Next cycle: K19a.7 polish (i18n audit + edge cases) or K19b (cost/jobs tabs).
-- Updated By: Assistant (session 49 — K19a.6 commit (16 files: BE handler + BE 5-test file + NEW ChangeModelDialog + NEW lib/readBackendError + NEW ChangeModelDialog.test + MOD api.ts/hook/ProjectRow/BuildGraphDialog/projectState.test + MOD 4 i18n + MOD components/shared/ConfirmDialog). FS cycle: added `POST /extraction/disable` BE endpoint + FE disableExtraction API wrapper + fixed updateEmbeddingModel signature (?confirm=true query param + discriminated-union return type). review-impl caught 7 findings, all fixed: F1 rebuild routed through runDestructive by reading latest job from react-query cache; F2 same-model no-op response detected via discriminated-union narrowing + toast.info path; F3 deleteGraph typed response; F4 ConfirmDialog Cancel/X disabled during loading (shared component fix); F5 invoke helpers useCallback'd; F6 redundant `?? null` removed; F7 readBackendError extracted to lib/. Test deltas: +5 BE + 8 ChangeModelDialog + 1 existing ConfirmDialog covered by new disabled styling + 20 DIALOG_KEYS × 4 locales. 2 K19a.5-deferrals cleared (D-K19a.5-01 change-model, D-K19a.5-02 disable-without-delete).)
+- Last Updated: 2026-04-20 **(session 49 continued — K19a.7 i18n polish shipped; Track 3 K19a cluster closing)** — 4 Track 3 commits total this session (K19a.5 @ 3148751 + K19a.5 HEAD backfill @ 1156193 + K19a.6 @ 2226283 + K19a.6 HEAD backfill @ 7cf394f + K19a.7 TBD). K19a.7 converts every residual hardcoded toast/label/body string in the knowledge feature to i18n keys: `useProjectState.runAction` now takes `(t, labelKey)`, `ProjectRow.runDestructive` same, `PrivacyTab` fully converted (15 strings), new `projects.toast.*` block + `privacy.*` top-level namespace × 4 locales. `ACTION_KEYS` compile-time constant makes callsite typos a build error. /review-impl caught 5 findings (1 MED + 3 LOW + 1 COSMETIC); 4 fixed in-cycle, 1 accepted silently (F4 vitest stub churn). Final test counts unchanged at 112 FE (existing tests still green; runtime coverage iterators expanded). Next cycle: K19b (cost/jobs tabs) or K19a.8 Storybook (optional).
+- Updated By: Assistant (session 49 — K19a.7 commit (9 files: MOD useProjectState + ProjectRow + PrivacyTab + projectState.test + 4 i18n locales). No BE changes. review-impl caught 5 findings, all actioned: F1 ACTION_KEYS const map (11 callsites now typo-safe at compile time); F2 dedicated projects.state.actions.confirmModelChange label × 4 locales; F3 TFunction canonical tuple form; F4 accepted (vitest stub only); F5 PrivacyTab DELETE_CONFIRM_TOKEN explanatory comment. Test deltas: +4 DIALOG_KEYS + 15 PRIVACY_KEYS × 4 locales + 1 confirmModelChange action-key assertion (76 new runtime assertions). Grep confirms zero hardcoded toast strings remaining in knowledge feature.)
 - Active Branch: `main` (ahead of origin by sessions 38–49 commits — user pushes manually)
-- HEAD: `2226283` (K19a.6) at session 49 end (was `1156193` K19a.5 HEAD backfill, `3148751` K19a.5 @ mid-session)
+- HEAD: TBD K19a.7 (was `7cf394f` K19a.6 HEAD backfill, `2226283` K19a.6, `1156193` K19a.5 HEAD backfill, `3148751` K19a.5)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -143,6 +143,7 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 | D-K19a.5-05 | K19a.4 F8 + K19a.5 plan | **Hook-level tests for 11 real-action callbacks in `useProjectState`.** Inherited from K19a.4 F8 deferral — K19a.5 did not advance coverage. `renderHook` + mocked `knowledgeApi` would cover pause/resume/cancel/retry/extractNew/delete/rebuild/confirmModelChange. Medium lift; value grows as more cycles depend on the hook. | Naturally-next (hook hardening before K19a.7 polish) |
 | D-K19a.5-06 | K19a.5 plan (session 49) | **`glossary_sync` scope option in BuildGraphDialog.** Plan deliberately ships chapters/chat/all in MVP. BE accepts `glossary_sync` as a `JobScope` literal (extraction.py:119) but the sync flow isn't wired on the FE yet. Revisit when glossary sync surfaces land. | K19a.7 polish |
 | D-K19a.5-07 | K19a.5 review-impl F6 | **"Run benchmark" CTA in BuildGraphDialog when `has_run=false`.** Dialog currently disables Confirm when the picker's benchmark status is missing/failed and relies on the picker's badge to explain. A dedicated button that kicks off `eval/run_benchmark.py` for the selected model would close the loop inside the dialog. Requires a POST endpoint exposing the benchmark harness (currently CLI-only). | Track 3 polish |
+| D-K19a.7-01 | K19a.7 review-impl F1 (partial) | **Hook-level action smoke tests.** F1's `ACTION_KEYS` const map closes half of D-K19a.5-05 (compile-time typo prevention) but the other half — verifying each of the 11 real action callbacks fires the right `knowledgeApi` method + surfaces BE errors as toast — still needs `renderHook` + mocked API. Medium lift; growing in importance as hook surface stabilises. Supersedes D-K19a.5-05 for the action-fire-path half. | Naturally-next (hook hardening before K19b cost/jobs tabs ship) |
 
 ### Track 2 planning (document only, no Track 1 action)
 
@@ -256,6 +257,48 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 ---
 
 ## Current Active Work
+
+### K19a.7 — i18n polish (Projects tab + state cards + dialogs + PrivacyTab) ✅ (session 49, Track 3 cycle 8)
+
+Pure i18n polish pass. Converts every hardcoded toast/label/body string in the knowledge feature (K19a.4 through K19a.6 surfaces) to i18n keys. Previously `useProjectState.runAction` hardcoded English labels (`'Pause'`, `'Resume'`, ...) and template (`"failed:"`) — now takes `(t, labelKey)`. `PrivacyTab` was the only knowledge component without `useTranslation`; now fully localised. Adds `ACTION_KEYS` compile-time constant to prevent callsite typos (i18next's silent key-path fallback would otherwise leak raw paths into production toasts).
+
+**Shipped (9 files):**
+
+FE:
+- [frontend/src/features/knowledge/hooks/useProjectState.ts](../../frontend/src/features/knowledge/hooks/useProjectState.ts) — `useTranslation('knowledge')` added; `runAction` signature changed to `(t: TFunction<['knowledge']>, labelKey: string, op, invalidate)`; new `ACTION_KEYS` const + exported `PROJECT_ACTION_KEYS` for ProjectRow reuse; 8 runAction callsites + 4 replay-error toasts all translated; `t` added to actions useMemo deps.
+- [frontend/src/features/knowledge/components/ProjectRow.tsx](../../frontend/src/features/knowledge/components/ProjectRow.tsx) — `runDestructive` takes `labelKey` instead of a pre-translated label (translation happens inside catch block); 3 `invokeXxx` helpers now use `PROJECT_ACTION_KEYS.deleteGraph / rebuild / disable`; `rebuildNoPriorJob` toast translated.
+- [frontend/src/features/knowledge/components/PrivacyTab.tsx](../../frontend/src/features/knowledge/components/PrivacyTab.tsx) — `useTranslation('knowledge')` added; 15 hardcoded strings converted (section headers, bodies, button labels, toasts, FormDialog title/description/cancel). 5-line explanatory comment on why `DELETE_CONFIRM_TOKEN` bypasses i18n (review-impl F5).
+- [frontend/src/features/knowledge/types/__tests__/projectState.test.ts](../../frontend/src/features/knowledge/types/__tests__/projectState.test.ts) — `ACTIONS` extended with `confirmModelChange`; `DIALOG_KEYS` +4 `projects.toast.*` paths; new `PRIVACY_KEYS` iterator (15 paths × 4 locales = 60 assertions).
+- 4 × [frontend/src/i18n/locales/{en,ja,vi,zh-TW}/knowledge.json](../../frontend/src/i18n/locales/en/knowledge.json):
+  - `projects.toast.actionFailed` (template `{{label}}: {{error}}`) + `noPriorJob` / `noPriorRebuild` / `rebuildNoPriorJob`
+  - `projects.state.actions.confirmModelChange` — dedicated label so the model-change confirm path doesn't collapse to the generic "Confirm" label (F2)
+  - new top-level `privacy.*` namespace: `export.{title,description,button,preparing,success,failed}` + `delete.{title,description,button,deleting,success,failed}` + `dialog.{title,description,cancel}`
+
+**Acceptance criteria (plan `[ ] K19a.7 i18n strings`):**
+- ✅ No hardcoded strings — `grep -r "toast\.(error|info|success|warning)\(['\"]"` in `features/knowledge/` returns zero hits
+- ✅ 4 languages translated — runtime iterator covers every key path × en/ja/vi/zh-TW
+- ✅ Manual language switch path — not exercised (Playwright blocked by BE/auth), but compile-time + runtime iterator coverage closes the loop
+
+**Review-impl findings and resolution (5 findings, 4 fixed):**
+
+| ID | Sev | Fix |
+|---|---|---|
+| F1 | MED | ✅ `ACTION_KEYS` compile-time constant in hook; exported `PROJECT_ACTION_KEYS` for ProjectRow reuse. 11 callsites now fail at build time on typo instead of silently rendering the raw key path in a production toast. |
+| F2 | LOW | ✅ New `projects.state.actions.confirmModelChange` label × 4 locales. `onConfirmModelChange` toast now reads "Confirm model change: ..." instead of generic "Confirm: ...". Dead code today (state never derived) but semantic shift when the model-change-pending signal lands. |
+| F3 | LOW | ✅ `TFunction<['knowledge'], undefined>` canonical tuple form; inline comment documents. String form worked via widening but would break on a future i18next major that tightens `Namespace`. |
+| F4 | LOW | 📝 Accepted silently — `t` stub in `vi.mock('react-i18next')` creates a fresh function every render, causing useMemo churn in tests. Production react-i18next is stable across renders. No correctness impact; would need a smarter mock to fix. |
+| F5 | COSMETIC | ✅ PrivacyTab `DELETE_CONFIRM_TOKEN` now has a 5-line comment explaining intentional i18n bypass (users type "DELETE" in every locale; check is exact-equality). |
+
+**New deferral logged (1):**
+- **D-K19a.7-01** — Hook-level action smoke tests. F1's compile-time `ACTION_KEYS` constant closes half of D-K19a.5-05 (typo prevention); the other half (verifying each action fires the right knowledgeApi method + surfaces BE errors as toast) still needs `renderHook` + mocked API. Medium lift; growing in importance now that the hook surface is fully stable.
+
+**Evidence:**
+- FE: `tsc --noEmit` clean; `vitest run src/features/knowledge` → **112/112 pass** (unchanged count; test content grew — runtime iterators +76 assertions); `vite build` 8.15s clean.
+- Grep verification: `grep -r "toast\.(error|info|success|warning)\(['\"]"` in `features/knowledge/` returns **zero hits**.
+
+**Ready for K19b or K19a.8.** All K19a strings are now i18n; Track 3 K19a cluster is feature-complete pending the Storybook optional item. K19b (jobs/cost tabs) can proceed without string-drift cleanup. K19a.8 Storybook is optional per plan — skip unless state-machine bugs need visual debugging.
+
+---
 
 ### K19a.6 — ProjectEditor extension (ChangeModelDialog + destructive confirms + BE disable endpoint) ✅ (session 49, Track 3 cycle 7, FS)
 

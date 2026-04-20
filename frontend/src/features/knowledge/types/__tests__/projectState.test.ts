@@ -159,6 +159,8 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     'extractNew',
     'ignore',
     'confirm',
+    // K19a.7 F2 — dedicated label for onConfirmModelChange toast path.
+    'confirmModelChange',
   ] as const;
 
   // Every card body-text leaf path. Format: "{kind}.{leaf}" — flattened
@@ -288,6 +290,12 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     'confirmDestructive.rebuildStep2.description',
     'confirmDestructive.disable.title',
     'confirmDestructive.disable.description',
+    // K19a.7 polish — new projects.toast.* keys consumed by useProjectState
+    // runAction wrapper + ProjectRow runDestructive + replay-error paths.
+    'toast.actionFailed',
+    'toast.noPriorJob',
+    'toast.noPriorRebuild',
+    'toast.rebuildNoPriorJob',
   ] as const;
 
   function resolveKey(bundle: any, path: string): unknown {
@@ -299,6 +307,36 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     for (const path of DIALOG_KEYS) {
       const value = resolveKey(root, path);
       expect(typeof value, `locale missing projects.${path}`).toBe('string');
+      expect((value as string).length).toBeGreaterThan(0);
+    }
+  });
+
+  // K19a.7 polish — PrivacyTab i18n conversion. Separate top-level
+  // `privacy.*` namespace (sibling of `projects`), so iterator points
+  // at the bundle root, not projects.
+  const PRIVACY_KEYS = [
+    'export.title',
+    'export.description',
+    'export.button',
+    'export.preparing',
+    'export.success',
+    'export.failed',
+    'delete.title',
+    'delete.description',
+    'delete.button',
+    'delete.deleting',
+    'delete.success',
+    'delete.failed',
+    'dialog.title',
+    'dialog.description',
+    'dialog.cancel',
+  ] as const;
+
+  it.each(LOCALES)('%s has every K19a.7 privacy key populated', (_tag, bundle) => {
+    const root = (bundle as any).privacy ?? {};
+    for (const path of PRIVACY_KEYS) {
+      const value = resolveKey(root, path);
+      expect(typeof value, `locale missing privacy.${path}`).toBe('string');
       expect((value as string).length).toBeGreaterThan(0);
     }
   });

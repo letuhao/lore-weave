@@ -1,6 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useAuth } from '@/auth';
 import {
   knowledgeApi,
@@ -36,6 +38,30 @@ import type { ProjectStateCardActions } from '../components/ProjectStateCard';
 // surface visibly (review-impl F2 from K19a.4).
 
 const POLL_INTERVAL_MS = 2000;
+
+// K19a.7 review-impl F1 — centralise the action i18n keys so a typo in a
+// callsite fails at compile time rather than rendering a raw key path in
+// production (i18next silently falls back to the key when missing). The
+// runtime iterator in projectState.test.ts covers resource presence; this
+// map covers callsite spelling.
+const ACTION_KEYS = {
+  pause: 'projects.state.actions.pause',
+  resume: 'projects.state.actions.resume',
+  cancel: 'projects.state.actions.cancel',
+  retry: 'projects.state.actions.retry',
+  deleteGraph: 'projects.state.actions.deleteGraph',
+  extractNew: 'projects.state.actions.extractNew',
+  rebuild: 'projects.state.actions.rebuild',
+  disable: 'projects.state.actions.disable',
+  // F2 — dedicated label for the model-change confirm path so the BE
+  // error toast reads "Confirm model change: <error>" rather than the
+  // generic "Confirm: <error>" from the shared confirm button.
+  confirmModelChange: 'projects.state.actions.confirmModelChange',
+} as const;
+
+// Exported so ProjectRow can share the same keys for the destructive
+// confirm flows it lifts. One canonical source, two consumers.
+export const PROJECT_ACTION_KEYS = ACTION_KEYS;
 
 const EMPTY_STATS: GraphStats = {
   entity_count: 0,
@@ -176,9 +202,16 @@ export interface UseProjectStateResult {
 }
 
 // review-impl F2 — shared wrapper: await the action, surface BE errors as
-// toasts, and invalidate both queries on success.
+// toasts, and invalidate both queries on success. K19a.7 — `labelKey` is
+// an i18n key (under `projects.state.actions.*`) resolved through the
+// parent `t`; the hardcoded English "failed:" template was also moved
+// into a `projects.toast.actionFailed` key.
 async function runAction(
-  label: string,
+  // K19a.7 review-impl F3 — canonical i18next v26 tuple form. `useTranslation('knowledge')`
+  // returns `TFunction<['knowledge'], undefined>`; the string form widens but the
+  // tuple form is what react-i18next actually hands back.
+  t: TFunction<['knowledge'], undefined>,
+  labelKey: string,
   op: () => Promise<unknown>,
   invalidate: () => void,
 ): Promise<void> {
@@ -187,13 +220,15 @@ async function runAction(
     invalidate();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    toast.error(`${label} failed: ${msg}`);
+    const label = t(labelKey);
+    toast.error(t('projects.toast.actionFailed', { label, error: msg }));
   }
 }
 
 export function useProjectState(project: Project): UseProjectStateResult {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
+  const { t } = useTranslation('knowledge');
 
   const jobsQueryKey = ['knowledge-project-jobs', project.project_id] as const;
   const statsQueryKey = ['knowledge-project-graph-stats', project.project_id] as const;
@@ -286,47 +321,48 @@ export function useProjectState(project: Project): UseProjectStateResult {
 
       onPause: () => {
         if (!token) return;
-        void runAction('Pause', () => knowledgeApi.pauseExtraction(project.project_id, token), invalidate);
+        void runAction(t, ACTION_KEYS.pause, () => knowledgeApi.pauseExtraction(project.project_id, token), invalidate);
       },
       onResume: () => {
         if (!token) return;
-        void runAction('Resume', () => knowledgeApi.resumeExtraction(project.project_id, token), invalidate);
+        void runAction(t, ACTION_KEYS.resume, () => knowledgeApi.resumeExtraction(project.project_id, token), invalidate);
       },
       onCancel: () => {
         if (!token) return;
-        void runAction('Cancel', () => knowledgeApi.cancelExtraction(project.project_id, token), invalidate);
+        void runAction(t, ACTION_KEYS.cancel, () => knowledgeApi.cancelExtraction(project.project_id, token), invalidate);
       },
       onDeleteGraph: () => {
         if (!token) return;
-        void runAction('Delete graph', () => knowledgeApi.deleteGraph(project.project_id, token), invalidate);
+        void runAction(t, ACTION_KEYS.deleteGraph, () => knowledgeApi.deleteGraph(project.project_id, token), invalidate);
       },
 
       onRetry: () => {
         if (!token) return;
         const payload = replayPayload();
         if (!payload) {
-          toast.error('No previous job to replay — open the Build dialog.');
+          toast.error(t('projects.toast.noPriorJob'));
           return;
         }
-        void runAction('Retry', () => knowledgeApi.startExtraction(project.project_id, payload, token), invalidate);
+        void runAction(t, ACTION_KEYS.retry, () => knowledgeApi.startExtraction(project.project_id, payload, token), invalidate);
       },
       onExtractNew: () => {
         if (!token) return;
         const payload = replayPayload('chapters');
         if (!payload) {
-          toast.error('No previous job to replay — open the Build dialog.');
+          toast.error(t('projects.toast.noPriorJob'));
           return;
         }
-        void runAction('Extract new', () => knowledgeApi.startExtraction(project.project_id, payload, token), invalidate);
+        void runAction(t, ACTION_KEYS.extractNew, () => knowledgeApi.startExtraction(project.project_id, payload, token), invalidate);
       },
       onRebuild: () => {
         if (!token) return;
         if (!latestLlmModel || !latestEmbeddingModel) {
-          toast.error('No previous job to rebuild from.');
+          toast.error(t('projects.toast.noPriorRebuild'));
           return;
         }
         void runAction(
-          'Rebuild',
+          t,
+          ACTION_KEYS.rebuild,
           () =>
             knowledgeApi.rebuildGraph(
               project.project_id,
@@ -339,11 +375,12 @@ export function useProjectState(project: Project): UseProjectStateResult {
       onConfirmModelChange: () => {
         if (!token) return;
         if (!latestLlmModel || !latestEmbeddingModel) {
-          toast.error('No previous job to rebuild from.');
+          toast.error(t('projects.toast.noPriorRebuild'));
           return;
         }
         void runAction(
-          'Confirm model change',
+          t,
+          ACTION_KEYS.confirmModelChange,
           () =>
             knowledgeApi.rebuildGraph(
               project.project_id,
@@ -362,6 +399,10 @@ export function useProjectState(project: Project): UseProjectStateResult {
     latestLlmModel,
     latestEmbeddingModel,
     latestScope,
+    // `t` is stable across renders unless language changes; when the
+    // user switches language the toast templates should re-bind, so
+    // include it in the dep list.
+    t,
   ]);
 
   return {

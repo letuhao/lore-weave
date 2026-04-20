@@ -86,7 +86,11 @@
       "deleteFailed": "刪除失敗",
       "created": "已建立專案",
       "updated": "已更新專案",
-      "conflict": "另一個裝置已修改此專案。請先檢視最新內容再儲存。"
+      "conflict": "另一個裝置已修改此專案。請先檢視最新內容再儲存。",
+      "actionFailed": "{{label}}: {{error}}",
+      "noPriorJob": "沒有可重播的先前作業 — 請開啟建置對話框。",
+      "noPriorRebuild": "沒有可重建的先前作業。",
+      "rebuildNoPriorJob": "重建: 沒有先前作業"
     },
     "state": {
       "labels": {
@@ -118,7 +122,8 @@
         "changeModel": "變更嵌入模型",
         "extractNew": "抽取新章節",
         "ignore": "忽略",
-        "confirm": "確認"
+        "confirm": "確認",
+        "confirmModelChange": "確認變更模型"
       },
       "cards": {
         "disabled": {
@@ -313,5 +318,28 @@
     "noProject": "無專案 — 僅使用全域記憶",
     "archivedPlaceholder": "(已封存專案 — 請另選)",
     "hint": "將此對話連結到 knowledge-service 專案,讓 AI 在每次對話時都能看到該專案的摘要與術語表。"
+  },
+  "privacy": {
+    "export": {
+      "title": "匯出您的資料",
+      "description": "將 AI 為您儲存的所有專案與摘要下載為單一 JSON 檔案。符合 GDPR 第 20 條。",
+      "button": "下載匯出",
+      "preparing": "準備中…",
+      "success": "已下載匯出檔案",
+      "failed": "匯出失敗"
+    },
+    "delete": {
+      "title": "刪除所有知識資料",
+      "description": "永久清除所有專案與摘要。不會動到您的書籍、章節或帳號 — 只刪除記憶系統儲存的內容。無法復原。",
+      "button": "全部刪除",
+      "deleting": "刪除中…",
+      "success": "已刪除 {{projects}} 個專案與 {{summaries}} 個摘要項目",
+      "failed": "刪除失敗"
+    },
+    "dialog": {
+      "title": "刪除所有知識資料?",
+      "description": "這會永久刪除所有專案與摘要。請在下方輸入 {{token}} 以確認。",
+      "cancel": "取消"
+    }
   }
 }

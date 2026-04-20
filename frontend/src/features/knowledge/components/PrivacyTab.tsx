@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Download, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { FormDialog } from '@/components/shared';
 import { useAuth } from '@/auth';
@@ -13,9 +14,16 @@ import { knowledgeApi } from '../api';
 // whole knowledge graph. (ConfirmDialog doesn't accept children,
 // so FormDialog is the right primitive for the token input.)
 
+// K19a.7 review-impl F5 — DELETE is the literal string the user must
+// type, in EVERY locale. It intentionally bypasses i18n: the input
+// match below requires exact equality, and translating the token per
+// locale would either break the check or force users to know the
+// localised word for "DELETE" from memory. Surround text is localised
+// via projects.privacy.dialog.description interpolation ({{token}}).
 const DELETE_CONFIRM_TOKEN = 'DELETE';
 
 export function PrivacyTab() {
+  const { t } = useTranslation('knowledge');
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
 
@@ -39,9 +47,9 @@ export function PrivacyTab() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast.success('Export downloaded');
+      toast.success(t('privacy.export.success'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Export failed');
+      toast.error(err instanceof Error ? err.message : t('privacy.export.failed'));
     } finally {
       setExporting(false);
     }
@@ -60,12 +68,15 @@ export function PrivacyTab() {
           (q.queryKey[0] as string).startsWith('knowledge-'),
       });
       toast.success(
-        `Deleted ${res.deleted.projects} project(s) and ${res.deleted.summaries} summary item(s)`,
+        t('privacy.delete.success', {
+          projects: res.deleted.projects,
+          summaries: res.deleted.summaries,
+        }),
       );
       setDeleteOpen(false);
       setDeleteToken('');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Delete failed');
+      toast.error(err instanceof Error ? err.message : t('privacy.delete.failed'));
     } finally {
       setDeleting(false);
     }
@@ -85,10 +96,11 @@ export function PrivacyTab() {
   return (
     <div className="space-y-6">
       <section>
-        <h2 className="mb-1 font-serif text-sm font-semibold">Export your data</h2>
+        <h2 className="mb-1 font-serif text-sm font-semibold">
+          {t('privacy.export.title')}
+        </h2>
         <p className="mb-3 text-[12px] text-muted-foreground">
-          Download every project and summary the AI has stored for you, as a
-          single JSON file. GDPR Article 20.
+          {t('privacy.export.description')}
         </p>
         <button
           onClick={() => void handleExport()}
@@ -96,18 +108,16 @@ export function PrivacyTab() {
           className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary disabled:opacity-50"
         >
           <Download className="h-3.5 w-3.5" />
-          {exporting ? 'Preparing…' : 'Download export'}
+          {exporting ? t('privacy.export.preparing') : t('privacy.export.button')}
         </button>
       </section>
 
       <section className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
         <h2 className="mb-1 font-serif text-sm font-semibold text-destructive">
-          Delete all knowledge data
+          {t('privacy.delete.title')}
         </h2>
         <p className="mb-3 text-[12px] text-muted-foreground">
-          Permanently erase every project and summary. This does not touch
-          your books, chapters, or account — only what the memory system has
-          stored. This cannot be undone.
+          {t('privacy.delete.description')}
         </p>
         <button
           onClick={openDelete}
@@ -115,29 +125,29 @@ export function PrivacyTab() {
           className="flex items-center gap-1.5 rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
         >
           <Trash2 className="h-3.5 w-3.5" />
-          Delete everything
+          {t('privacy.delete.button')}
         </button>
       </section>
 
       <FormDialog
         open={deleteOpen}
         onOpenChange={closeDelete}
-        title="Delete all knowledge data?"
-        description={`This will permanently delete every project and summary. Type ${DELETE_CONFIRM_TOKEN} below to confirm.`}
+        title={t('privacy.dialog.title')}
+        description={t('privacy.dialog.description', { token: DELETE_CONFIRM_TOKEN })}
         footer={
           <>
             <button
               onClick={() => closeDelete(false)}
               className="rounded-md border px-3 py-1.5 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground"
             >
-              Cancel
+              {t('privacy.dialog.cancel')}
             </button>
             <button
               onClick={() => void handleDelete()}
               disabled={deleting || deleteToken !== DELETE_CONFIRM_TOKEN}
               className="rounded-md bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
             >
-              {deleting ? 'Deleting…' : 'Delete everything'}
+              {deleting ? t('privacy.delete.deleting') : t('privacy.delete.button')}
             </button>
           </>
         }

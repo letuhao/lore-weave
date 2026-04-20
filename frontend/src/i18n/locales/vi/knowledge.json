@@ -86,7 +86,11 @@
       "deleteFailed": "Xóa thất bại",
       "created": "Đã tạo dự án",
       "updated": "Đã cập nhật dự án",
-      "conflict": "Một thiết bị khác đã chỉnh sửa dự án này. Hãy xem bản mới nhất và lưu lại."
+      "conflict": "Một thiết bị khác đã chỉnh sửa dự án này. Hãy xem bản mới nhất và lưu lại.",
+      "actionFailed": "{{label}}: {{error}}",
+      "noPriorJob": "Không có tác vụ trước đó để chạy lại — hãy mở hộp thoại Xây dựng.",
+      "noPriorRebuild": "Không có tác vụ trước đó để xây lại.",
+      "rebuildNoPriorJob": "Xây lại: không có tác vụ trước"
     },
     "state": {
       "labels": {
@@ -118,7 +122,8 @@
         "changeModel": "Đổi mô hình nhúng",
         "extractNew": "Trích xuất chương mới",
         "ignore": "Bỏ qua",
-        "confirm": "Xác nhận"
+        "confirm": "Xác nhận",
+        "confirmModelChange": "Xác nhận đổi mô hình"
       },
       "cards": {
         "disabled": {
@@ -313,5 +318,28 @@
     "noProject": "Không có dự án — chỉ dùng bộ nhớ chung",
     "archivedPlaceholder": "(dự án đã lưu trữ — chọn mục khác)",
     "hint": "Liên kết cuộc trò chuyện này với một dự án knowledge-service để AI thấy bản tóm tắt và glossary của nó trong mọi lượt."
+  },
+  "privacy": {
+    "export": {
+      "title": "Xuất dữ liệu của bạn",
+      "description": "Tải về tất cả dự án và tóm tắt AI đã lưu cho bạn, trong một tập tin JSON duy nhất. GDPR Điều 20.",
+      "button": "Tải xuống bản xuất",
+      "preparing": "Đang chuẩn bị…",
+      "success": "Đã tải bản xuất",
+      "failed": "Xuất thất bại"
+    },
+    "delete": {
+      "title": "Xóa toàn bộ dữ liệu tri thức",
+      "description": "Xóa vĩnh viễn mọi dự án và tóm tắt. Không ảnh hưởng tới sách, chương hay tài khoản — chỉ xóa những gì hệ thống bộ nhớ đã lưu. Không thể hoàn tác.",
+      "button": "Xóa tất cả",
+      "deleting": "Đang xóa…",
+      "success": "Đã xóa {{projects}} dự án và {{summaries}} mục tóm tắt",
+      "failed": "Xóa thất bại"
+    },
+    "dialog": {
+      "title": "Xóa toàn bộ dữ liệu tri thức?",
+      "description": "Thao tác này xóa vĩnh viễn mọi dự án và tóm tắt. Nhập {{token}} để xác nhận.",
+      "cancel": "Hủy"
+    }
   }
 }

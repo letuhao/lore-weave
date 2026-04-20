@@ -86,7 +86,11 @@
       "deleteFailed": "Delete failed",
       "created": "Project created",
       "updated": "Project updated",
-      "conflict": "Another device modified this project. Review the latest and save again."
+      "conflict": "Another device modified this project. Review the latest and save again.",
+      "actionFailed": "{{label}}: {{error}}",
+      "noPriorJob": "No previous job to replay — open the Build dialog.",
+      "noPriorRebuild": "No previous job to rebuild from.",
+      "rebuildNoPriorJob": "Rebuild: no previous job"
     },
     "state": {
       "labels": {
@@ -118,7 +122,8 @@
         "changeModel": "Change embedding model",
         "extractNew": "Extract new chapters",
         "ignore": "Ignore",
-        "confirm": "Confirm"
+        "confirm": "Confirm",
+        "confirmModelChange": "Confirm model change"
       },
       "cards": {
         "disabled": {
@@ -313,5 +318,28 @@
     "noProject": "No project — global memory only",
     "archivedPlaceholder": "(archived project — pick another)",
     "hint": "Links this chat to a knowledge-service project so the AI sees its summary and glossary on every turn."
+  },
+  "privacy": {
+    "export": {
+      "title": "Export your data",
+      "description": "Download every project and summary the AI has stored for you, as a single JSON file. GDPR Article 20.",
+      "button": "Download export",
+      "preparing": "Preparing…",
+      "success": "Export downloaded",
+      "failed": "Export failed"
+    },
+    "delete": {
+      "title": "Delete all knowledge data",
+      "description": "Permanently erase every project and summary. This does not touch your books, chapters, or account — only what the memory system has stored. This cannot be undone.",
+      "button": "Delete everything",
+      "deleting": "Deleting…",
+      "success": "Deleted {{projects}} project(s) and {{summaries}} summary item(s)",
+      "failed": "Delete failed"
+    },
+    "dialog": {
+      "title": "Delete all knowledge data?",
+      "description": "This will permanently delete every project and summary. Type {{token}} below to confirm.",
+      "cancel": "Cancel"
+    }
   }
 }

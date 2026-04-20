@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { ConfirmDialog } from '@/components/shared';
 import { useAuth } from '@/auth';
-import { useProjectState } from '../hooks/useProjectState';
+import { useProjectState, PROJECT_ACTION_KEYS } from '../hooks/useProjectState';
 import { knowledgeApi, type ExtractionJobWire } from '../api';
 import type { Project } from '../types';
 import type { ExtractionJobSummary } from '../types/projectState';
@@ -114,33 +114,42 @@ export function ProjectRow({ project, onEdit, onArchive, onRestore, onDelete }: 
     });
   };
 
+  // K19a.7 — `labelKey` is the i18n key under `projects.state.actions.*`.
+  // Translation happens inside the catch block so language switches
+  // during the in-flight window are reflected in the toast (rare but
+  // free to get right).
   const runDestructive = useCallback(
-    async (label: string, op: () => Promise<unknown>, close: () => void) => {
+    async (labelKey: string, op: () => Promise<unknown>, close: () => void) => {
       setDestructiveSubmitting(true);
       try {
         await op();
         close();
         invalidateJobs();
       } catch (err) {
-        toast.error(`${label}: ${readBackendError(err)}`);
+        toast.error(
+          t('projects.toast.actionFailed', {
+            label: t(labelKey),
+            error: readBackendError(err),
+          }),
+        );
       } finally {
         setDestructiveSubmitting(false);
       }
     },
     // `invalidateJobs` depends only on queryClient + project.project_id,
-    // both stable. Keep dep array narrow.
+    // both stable. `t` is stable unless language changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [queryClient, project.project_id],
+    [queryClient, project.project_id, t],
   );
 
   const invokeDelete = useCallback(() => {
     if (!accessToken) return;
     void runDestructive(
-      t('projects.state.actions.deleteGraph'),
+      PROJECT_ACTION_KEYS.deleteGraph,
       () => knowledgeApi.deleteGraph(project.project_id, accessToken),
       () => setDeleteConfirmOpen(false),
     );
-  }, [accessToken, project.project_id, runDestructive, t]);
+  }, [accessToken, project.project_id, runDestructive]);
 
   // review-impl F1 — route rebuild through `runDestructive` so the
   // confirm dialog shows loading + surfaces BE errors in-dialog. We
@@ -155,12 +164,12 @@ export function ProjectRow({ project, onEdit, onArchive, onRestore, onDelete }: 
     ]);
     const latest = jobs?.[0];
     if (!latest) {
-      toast.error(t('projects.state.actions.rebuild') + ': no prior job');
+      toast.error(t('projects.toast.rebuildNoPriorJob'));
       setRebuildConfirmStep2(false);
       return;
     }
     void runDestructive(
-      t('projects.state.actions.rebuild'),
+      PROJECT_ACTION_KEYS.rebuild,
       () =>
         knowledgeApi.rebuildGraph(
           project.project_id,
@@ -177,11 +186,11 @@ export function ProjectRow({ project, onEdit, onArchive, onRestore, onDelete }: 
   const invokeDisable = useCallback(() => {
     if (!accessToken) return;
     void runDestructive(
-      t('projects.state.actions.disable'),
+      PROJECT_ACTION_KEYS.disable,
       () => knowledgeApi.disableExtraction(project.project_id, accessToken),
       () => setDisableConfirmOpen(false),
     );
-  }, [accessToken, project.project_id, runDestructive, t]);
+  }, [accessToken, project.project_id, runDestructive]);
 
   return (
     <div className="rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
