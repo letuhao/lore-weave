@@ -2,7 +2,7 @@
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-20 (session 49)
-> **HEAD:** TBD (to be set to the K19a.5 commit)
+> **HEAD:** `3148751` (K19a.5)
 > **Branch:** `main` (ahead of origin by sessions 38–49 commits — user pushes manually)
 
 ## Session 49 — 1 Track 3 cycle shipped (K19a.5)
