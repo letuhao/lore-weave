@@ -111,8 +111,62 @@ async def test_process_job_chapters_success():
 
     # Should have called extract_item once
     kc.extract_item.assert_called_once()
-    # Should have advanced cursor
-    assert pool.execute.call_count >= 2  # advance_cursor + complete_job
+    # Should have advanced cursor + recorded spending + completed job
+    assert pool.execute.call_count >= 3
+
+
+@pytest.mark.asyncio
+async def test_process_job_chapters_records_spending_on_success():
+    """D-K16.11-01: after each successful chapter, the worker bumps
+    knowledge_projects.current_month_spent_usd + actual_cost_usd so
+    the CostSummary card sees real production figures."""
+    chapters = [
+        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i)
+        for i in range(3)
+    ]
+    job = _job(scope="chapters")
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    bc = _mock_book_client(chapters=chapters)
+
+    await process_job(pool, kc, bc, job)
+
+    # Collect the SQL text of every execute call; count how many
+    # target knowledge_projects with the monthly-spend + all-time
+    # counter bumps. One per successful chapter.
+    spending_calls = [
+        c for c in pool.execute.call_args_list
+        if isinstance(c.args[0], str)
+        and "UPDATE knowledge_projects" in c.args[0]
+        and "current_month_spent_usd" in c.args[0]
+        and "actual_cost_usd" in c.args[0]
+    ]
+    assert len(spending_calls) == 3
+
+
+@pytest.mark.asyncio
+async def test_process_job_chat_records_spending_on_success():
+    """D-K16.11-01: chat-scope success path also records spending.
+    Mirrors the chapters test — same two-counter update per item."""
+    job = _job(scope="chat")
+    pool = _mock_pool()
+    # Seed 2 pending chat turns so the chat branch iterates twice.
+    pool.fetch = AsyncMock(return_value=[
+        {"pending_id": uuid4(), "aggregate_id": uuid4()},
+        {"pending_id": uuid4(), "aggregate_id": uuid4()},
+    ])
+    kc = _mock_knowledge_client()
+    bc = _mock_book_client()
+
+    await process_job(pool, kc, bc, job)
+
+    spending_calls = [
+        c for c in pool.execute.call_args_list
+        if isinstance(c.args[0], str)
+        and "UPDATE knowledge_projects" in c.args[0]
+        and "current_month_spent_usd" in c.args[0]
+    ]
+    assert len(spending_calls) == 2
 
 
 @pytest.mark.asyncio

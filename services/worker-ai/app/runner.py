@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import UUID
 
@@ -160,6 +161,40 @@ async def _advance_cursor(
           AND status IN ('running', 'paused')
         """,
         user_id, job_id, json.dumps(cursor), items_delta,
+    )
+
+
+async def _record_spending(
+    pool: asyncpg.Pool, user_id: UUID, project_id: UUID, cost: Decimal,
+) -> None:
+    """D-K16.11-01 — update the per-project monthly + all-time spend
+    counters after a successful extraction item.
+
+    Mirrors ``app.jobs.budget.record_spending`` in knowledge-service;
+    kept inline here for the same reason ``_try_spend`` is — the worker
+    owns the write path to the same DB and avoids an HTTP round-trip
+    per item. Handles month rollover atomically via CASE-on-key: if the
+    project's ``current_month_key`` doesn't match the current month,
+    the counter resets to this cost before adding.
+
+    Not guarded by an atomic budget check — that's ``_try_spend``'s job
+    on ``extraction_jobs.max_spend_usd``. This function is strictly
+    accounting + rollover.
+    """
+    month_key = datetime.now(timezone.utc).strftime("%Y-%m")
+    await pool.execute(
+        """
+        UPDATE knowledge_projects
+        SET current_month_spent_usd = CASE
+              WHEN current_month_key = $3 THEN current_month_spent_usd + $4
+              ELSE $4
+            END,
+            current_month_key = $3,
+            actual_cost_usd = actual_cost_usd + $4,
+            updated_at = now()
+        WHERE user_id = $1 AND project_id = $2
+        """,
+        user_id, project_id, month_key, cost,
     )
 
 
@@ -443,6 +478,11 @@ async def process_job(
                     pool, job.user_id, job.job_id,
                     {"last_chapter_id": ch.chapter_id, "scope": "chapters"},
                 )
+                # D-K16.11-01: bump per-project monthly + all-time spend
+                # counters so CostSummary's GET /costs reflects reality.
+                await _record_spending(
+                    pool, job.user_id, job.project_id, _DEFAULT_COST_PER_ITEM,
+                )
                 items_processed += 1
                 logger.info(
                     "Job %s: chapter %s done (entities=%d, relations=%d)",
@@ -493,6 +533,11 @@ async def process_job(
                 await _advance_cursor(
                     pool, job.user_id, job.job_id,
                     {"last_pending_id": str(turn["pending_id"]), "scope": "chat"},
+                )
+                # D-K16.11-01: same per-project accounting as the chapters
+                # branch, see above.
+                await _record_spending(
+                    pool, job.user_id, job.project_id, _DEFAULT_COST_PER_ITEM,
                 )
                 items_processed += 1
 

@@ -1,11 +1,11 @@
-# Session Handoff — Session 50 (K19b.1–.6 + K16.12 shipped; K19b plan complete except .8 log viewer)
+# Session Handoff — Session 50 (K19b plan complete; K16.11+K16.12 fully wired; CostSummary live end-to-end)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-22 (session 50)
-> **HEAD:** `32a9a18` (K19b.6 + D-K19a.5-03; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** (pending D-K16.11-01 commit) (K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 5 cycles shipped (4 Track 3 + 1 Track 2 close-out)
+## Session 50 — 6 cycles shipped (4 Track 3 + 2 Track 2 close-out)
 
 ```
 Track 3 K19b progress (session 50)
@@ -37,6 +37,18 @@ Cycle 3  K19b.3 + K19b.5 +   JobDetailPanel (slide-over) + Retry + ETA          
 Cycle 4  K16.12 completion   Track 2 close-out. User-wide budget API.            b313c1b
 
 Cycle 5  K19b.6 + D-K19a.5-03 CostSummary card + monthly-remaining hint           32a9a18
+
+Cycle 6  D-K16.11-01         Wire budget helpers into production                 (pending commit)
+         [BE M]               extraction.py step 2.6 calls can_start_job +
+                              check_user_monthly_budget with estimated_cost =
+                              max_spend_usd ?? 0; 409 structured detail
+                              (monthly_budget_exceeded / user_budget_exceeded).
+                              worker-ai runner.py +_record_spending inline
+                              helper (CASE-on-current_month_key rollover) +
+                              called after every successful chapters / chat
+                              extraction. Production current_month_spent_usd
+                              now populates as jobs run → CostSummary card
+                              finally shows real prod spending.
          [FE XL]              FE-only. NEW useUserCosts hook (staleTime 60s,
                               user_id-scoped queryKey). NEW CostSummary.tsx
                               with inline EditBudgetDialog (decimal regex
@@ -68,15 +80,17 @@ Remaining K19b tasks: K19b.7-rest (other tabs' strings — deferred until
                      K19b cluster is otherwise PLAN-COMPLETE.
 ```
 
-**Test deltas at session 50 end (after 5 cycles):**
+**Test deltas at session 50 end (after 6 cycles):**
 - Frontend knowledge: **168 pass** (was 112 at session 49 end; +56 over 4 FE cycles)
-- Backend unit: **1180 pass** (was 1154 at session 49 end; +26 = K19b.1 +6 router + K16.12 +9 new + ambient)
-- Backend integration repo: **30 pass** for extraction_jobs_repo + **5 pass** for user_knowledge_budgets
+- Backend unit knowledge-service: **1184 pass** (was 1154 at session 49 end; +30)
+- Backend unit worker-ai: **15 pass** (was 13 at K19b.6 end; +2)
+- Backend integration repo: **30 pass** extraction_jobs_repo + **5 pass** user_knowledge_budgets
 - Cycle 1 /review-impl: 5 LOW all fixed + 1 MED via review-code
 - Cycle 2 review-code: 1 LOW fixed; /review-impl: 4 LOW all fixed
 - Cycle 3 review-code: 2 LOW fixed; /review-impl skipped per human approval
 - Cycle 4 review-code: 3 LOW accepted; /review-impl: 3 LOW all fixed
-- Cycle 5 review-code: 1 LOW fixed; /review-impl: 1 LOW fixed (shared formatUSD + fix duplicated `$` in templates)
+- Cycle 5 review-code: 1 LOW fixed; /review-impl: 1 LOW fixed
+- Cycle 6 review-code: 10 LOW all accepted; /review-impl skipped per human approval
 
 **What shipped in Cycle 3 (10 files, FE-only):**
 - NEW `useJobProgressRate.ts` hook (EMA rate tracker, 6 tests)
@@ -107,7 +121,7 @@ All of K19b's user-facing surface shipped:
 - **K19b.7-partial** ✅ (all cycles) — jobs.* i18n keys for shipped surfaces
 - **K19b.8** ☐ — log viewer standalone cycle
 
-**Caveat for CostSummary in production:** `current_month_usd` is BE-derived from `knowledge_projects.current_month_spent_usd` which only gets populated when D-K16.11-01 wires `record_spending` into the extraction worker. Until that lands, the card renders correctly but always shows `$0 this month` in prod. The contract is correct; only the real-data plumb is missing.
+**CostSummary now end-to-end live in prod (Cycle 6):** D-K16.11-01 cleared; worker writes `current_month_spent_usd` after each successful extraction; start handler enforces both monthly caps as advisory pre-checks. No FE change was needed — the K19b.6 contract was already correct.
 
 **K19b.8 Log viewer** — new standalone cycle. BE schema:
 - `job_logs` table: `(log_id BIGSERIAL PK, job_id UUID FK, user_id UUID, level TEXT, message TEXT, context JSONB, created_at TIMESTAMPTZ)`
@@ -166,7 +180,7 @@ Option (a) won because K19b.2's layout sections (Running/Paused/Complete/Failed)
 - **D-K19b.3-02** → Track 3 polish: humanised ETA formatter for >60min jobs.
 - **K19b.8** → standalone Track 3 cycle: extraction-job log viewer.
 - ~~D-K19a.5-03~~ — **Cleared in K19b.6** (BuildGraphDialog monthly-remaining hint shipped).
-- **D-K16.11-01** → Track 2 close-out: wire `check_user_monthly_budget` + `record_spending` into start path + worker. Not financially risky since `try_spend` is the real money guard. Currently gates CostSummary from showing real production figures.
+- ~~D-K16.11-01~~ — **Cleared in Cycle 6.** Budget helpers wired into production; CostSummary will now populate real figures as jobs run.
 - **D-K19a.5-04 + D-K16.2-02b** → Track 3 (paired): chapter_range picker + runner-side enforcement.
 - **D-K19a.5-06** → Track 3 polish: `glossary_sync` scope option in BuildGraphDialog.
 - **D-K19a.5-07** → Track 3 polish: "Run benchmark" CTA in BuildGraphDialog.

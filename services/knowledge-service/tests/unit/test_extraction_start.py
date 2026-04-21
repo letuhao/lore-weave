@@ -117,6 +117,8 @@ def _make_client(
     insert_side_effect=None,
     job_after_create: ExtractionJob | None = None,
     benchmark=None,  # default: passing run; pass `_NO_BENCHMARK` for None
+    project_budget_check=None,  # D-K16.11-01: can_start_job override
+    user_budget_check=None,  # D-K16.11-01: check_user_monthly_budget override
 ) -> TestClient:
     """Build a TestClient with all deps overridden.
 
@@ -201,6 +203,24 @@ def _make_client(
         return_value=mock_pool,
     )
     client._pool_patch.start()
+
+    # D-K16.11-01: patch the budget helpers at the router module level.
+    # Default = both pass (allowed=True) so existing tests aren't forced
+    # to wire them. Tests that want to exercise the reject paths pass
+    # a custom BudgetCheck via `project_budget_check` / `user_budget_check`.
+    from app.jobs.budget import BudgetCheck
+
+    _allowed = BudgetCheck(allowed=True, reason="within budget")
+    client._project_budget_patch = patch(
+        "app.routers.public.extraction.can_start_job",
+        new=AsyncMock(return_value=project_budget_check or _allowed),
+    )
+    client._project_budget_patch.start()
+    client._user_budget_patch = patch(
+        "app.routers.public.extraction.check_user_monthly_budget",
+        new=AsyncMock(return_value=user_budget_check or _allowed),
+    )
+    client._user_budget_patch.start()
     return client
 
 
@@ -208,6 +228,12 @@ def _stop_patch(client: TestClient) -> None:
     if hasattr(client, "_pool_patch"):
         client._pool_patch.stop()
         del client._pool_patch
+    if hasattr(client, "_project_budget_patch"):
+        client._project_budget_patch.stop()
+        del client._project_budget_patch
+    if hasattr(client, "_user_budget_patch"):
+        client._user_budget_patch.stop()
+        del client._user_budget_patch
 
 
 def _post_start(client: TestClient, **overrides):
@@ -368,3 +394,72 @@ def test_start_job_passing_benchmark_succeeds():
     resp = _post_start(client)
     assert resp.status_code == 201
     assert resp.json()["status"] == "running"
+
+
+# ── D-K16.11-01: budget pre-check gates ──────────────────────────────
+
+
+def test_start_job_blocked_by_per_project_monthly_budget():
+    """D-K16.11-01: can_start_job returns allowed=False → 409 with
+    error_code=monthly_budget_exceeded and the reason bubbles through."""
+    from app.jobs.budget import BudgetCheck
+
+    block = BudgetCheck(
+        allowed=False,
+        reason="estimated $10 would exceed $50 cap (47 already spent)",
+        monthly_spent=Decimal("47"),
+        monthly_budget=Decimal("50"),
+    )
+    client = _make_client(project_budget_check=block)
+    resp = _post_start(client)
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert detail["error_code"] == "monthly_budget_exceeded"
+    assert "exceed" in detail["message"]
+    assert detail["monthly_spent"] == "47"
+    assert detail["monthly_budget"] == "50"
+
+
+def test_start_job_blocked_by_user_wide_budget():
+    """D-K16.11-01: check_user_monthly_budget returns allowed=False →
+    409 with error_code=user_budget_exceeded."""
+    from app.jobs.budget import BudgetCheck
+
+    block = BudgetCheck(
+        allowed=False,
+        reason="user monthly budget exceeded: $80 + $10 > $85",
+        monthly_spent=Decimal("80"),
+        monthly_budget=Decimal("85"),
+    )
+    client = _make_client(user_budget_check=block)
+    resp = _post_start(client)
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert detail["error_code"] == "user_budget_exceeded"
+    assert detail["monthly_spent"] == "80"
+    assert detail["monthly_budget"] == "85"
+
+
+def test_start_job_per_project_check_preferred_when_both_block():
+    """D-K16.11-01: when both caps block, the per-project check runs
+    first and its 409 is the one the caller sees. Confirms order so
+    a later flip to user-first isn't silent."""
+    from app.jobs.budget import BudgetCheck
+
+    proj_block = BudgetCheck(allowed=False, reason="project cap", monthly_spent=Decimal("0"))
+    user_block = BudgetCheck(allowed=False, reason="user cap", monthly_spent=Decimal("0"))
+    client = _make_client(
+        project_budget_check=proj_block, user_budget_check=user_block,
+    )
+    resp = _post_start(client)
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["error_code"] == "monthly_budget_exceeded"
+
+
+def test_start_job_null_max_spend_uses_zero_estimated_cost():
+    """D-K16.11-01: no max_spend_usd → estimated_cost=0 → both helpers
+    see zero → both return allowed=True → start succeeds. Confirms
+    null-path doesn't accidentally block."""
+    client = _make_client()
+    resp = _post_start(client, max_spend_usd=None)
+    assert resp.status_code == 201

@@ -43,6 +43,7 @@ from app.deps import (
     get_glossary_client,
     get_projects_repo,
 )
+from app.jobs.budget import can_start_job, check_user_monthly_budget
 from app.jobs.state_machine import JobStatus, PauseReason, StateTransitionError, validate_transition
 from app.logging_config import trace_id_var
 from app.middleware.jwt_auth import get_current_user
@@ -402,6 +403,48 @@ async def start_extraction_job(
                 "embedding_model": body.embedding_model,
                 "run_id": latest_benchmark.run_id,
                 "recall_at_3": latest_benchmark.recall_at_3,
+            },
+        )
+
+    # 2.6. D-K16.11-01: advisory monthly-budget pre-check. When the user
+    # set a per-job `max_spend_usd`, use it as the estimated-cost proxy
+    # — it's the ceiling they chose, and the check asks "would this job
+    # (at its self-imposed cap) push me over my monthly budget?". When
+    # `max_spend_usd` is None, both helpers see `estimated_cost=0` and
+    # return allowed=True — the per-job `try_spend` is still the atomic
+    # money guard regardless.
+    pool = get_knowledge_pool()
+    estimated_cost = body.max_spend_usd if body.max_spend_usd is not None else Decimal("0")
+
+    project_check = await can_start_job(pool, user_id, project_id, estimated_cost)
+    if not project_check.allowed:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error_code": "monthly_budget_exceeded",
+                "message": project_check.reason,
+                "monthly_spent": str(project_check.monthly_spent),
+                "monthly_budget": (
+                    str(project_check.monthly_budget)
+                    if project_check.monthly_budget is not None
+                    else None
+                ),
+            },
+        )
+
+    user_check = await check_user_monthly_budget(pool, user_id, estimated_cost)
+    if not user_check.allowed:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error_code": "user_budget_exceeded",
+                "message": user_check.reason,
+                "monthly_spent": str(user_check.monthly_spent),
+                "monthly_budget": (
+                    str(user_check.monthly_budget)
+                    if user_check.monthly_budget is not None
+                    else None
+                ),
             },
         )
 
