@@ -16,10 +16,39 @@
   "placeholder": {
     "title": "即將推出",
     "bodies": {
-      "jobs": "瀏覽進行中與歷史的抽取作業。",
       "entities": "瀏覽抽取到知識圖譜中的實體。",
       "timeline": "依時間順序檢視事實與事件。",
       "raw": "對抽取的知識抽屜進行向量搜尋。"
+    }
+  },
+  "jobs": {
+    "loading": "載入作業中…",
+    "error": {
+      "active": "無法載入執行中的作業。",
+      "history": "無法載入作業歷史記錄。"
+    },
+    "sections": {
+      "running": {
+        "title": "執行中",
+        "empty": "沒有作業正在執行。"
+      },
+      "paused": {
+        "title": "已暫停",
+        "empty": "沒有已暫停的作業。"
+      },
+      "complete": {
+        "title": "已完成",
+        "empty": "尚無已完成的作業。"
+      },
+      "failed": {
+        "title": "失敗",
+        "empty": "沒有失敗的作業。"
+      }
+    },
+    "row": {
+      "started": "開始:{{when}}",
+      "completed": "完成:{{when}}",
+      "unknownProject": "專案 {{id}}…"
     }
   },
   "projects": {

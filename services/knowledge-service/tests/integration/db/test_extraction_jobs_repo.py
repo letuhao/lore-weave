@@ -744,6 +744,68 @@ async def test_k19b_1_list_all_limit_is_clamped(pool):
 
 
 @pytest.mark.asyncio
+async def test_k19b_2_list_all_populates_project_name(pool):
+    """K19b.2 Q2(c): rows carry project_name via LEFT JOIN."""
+    repo = ExtractionJobsRepo(pool)
+    projects_repo = ProjectsRepo(pool)
+    user = uuid4()
+    proj_alpha = await projects_repo.create(
+        user, ProjectCreate(name="Alpha Book", project_type="book"),
+    )
+    proj_beta = await projects_repo.create(
+        user, ProjectCreate(name="Beta Translation", project_type="translation"),
+    )
+    await repo.create(user, _job_payload(proj_alpha.project_id))
+    await repo.create(user, _job_payload(proj_beta.project_id))
+
+    rows = await repo.list_all_for_user(user, status_group="active")
+    names = {j.project_id: j.project_name for j in rows}
+    assert names[proj_alpha.project_id] == "Alpha Book"
+    assert names[proj_beta.project_id] == "Beta Translation"
+
+
+@pytest.mark.asyncio
+async def test_k19b_2_list_all_project_name_null_when_join_misses(pool):
+    """Defence: if the FK cascade is ever bypassed (test fixtures,
+    partial migrations, etc.) the LEFT JOIN returns NULL rather than
+    dropping the row.
+
+    We can't trigger this through the repo API because `create`
+    requires a real project row, so we simulate it by (a) seeding
+    through the normal repo path, then (b) forcibly DELETING the
+    knowledge_projects row with replication-role replica so the FK
+    CASCADE doesn't also drop the extraction_jobs row. This keeps
+    the schema intact regardless of whether the assertions below
+    fail — unlike ALTER TABLE DROP/ADD, which can brick the DB if
+    the test is interrupted between the drop and the restore.
+    """
+    repo = ExtractionJobsRepo(pool)
+    projects_repo = ProjectsRepo(pool)
+    user = uuid4()
+    proj = await projects_repo.create(
+        user, ProjectCreate(name="Orphan-target", project_type="book"),
+    )
+    job = await repo.create(user, _job_payload(proj.project_id))
+
+    async with pool.acquire() as conn:
+        # `replication_role=replica` makes the session skip FK triggers
+        # (and other user triggers). Scoped to this single connection's
+        # transaction only; no schema change, no lasting side effects.
+        async with conn.transaction():
+            await conn.execute("SET LOCAL session_replication_role = 'replica'")
+            await conn.execute(
+                "DELETE FROM knowledge_projects WHERE project_id = $1",
+                proj.project_id,
+            )
+
+    rows = await repo.list_all_for_user(user, status_group="active")
+
+    assert len(rows) == 1
+    assert rows[0].job_id == job.job_id
+    assert rows[0].project_name is None
+
+
+@pytest.mark.asyncio
 async def test_k19b_1_list_all_history_orders_by_completed_at(pool):
     """History ordered by completed_at DESC NULLS LAST, then created_at DESC.
 

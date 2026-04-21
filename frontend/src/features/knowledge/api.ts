@@ -48,6 +48,15 @@ export interface ExtractionJobWire {
   created_at: string;
   updated_at: string;
   error_message: string | null;
+  /**
+   * K19b.2: populated only by `knowledgeApi.listAllJobs`. Per-project
+   * routes (`listExtractionJobs`) and the single-job detail route
+   * leave this `null`; those callers already have the project in
+   * scope, so the BE skips the LEFT JOIN. Consumers that need the
+   * name from a per-project context should read it from the Project
+   * object directly, not this field.
+   */
+  project_name: string | null;
 }
 
 export interface GraphStatsResponse {

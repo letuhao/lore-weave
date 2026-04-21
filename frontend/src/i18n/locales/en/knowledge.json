@@ -16,10 +16,39 @@
   "placeholder": {
     "title": "Coming soon",
     "bodies": {
-      "jobs": "Browse active and historical extraction jobs.",
       "entities": "Browse entities extracted into your knowledge graph.",
       "timeline": "View facts and events chronologically.",
       "raw": "Vector-search the full set of extracted knowledge drawers."
+    }
+  },
+  "jobs": {
+    "loading": "Loading jobs…",
+    "error": {
+      "active": "Couldn't load running jobs.",
+      "history": "Couldn't load job history."
+    },
+    "sections": {
+      "running": {
+        "title": "Running",
+        "empty": "No jobs are running."
+      },
+      "paused": {
+        "title": "Paused",
+        "empty": "No paused jobs."
+      },
+      "complete": {
+        "title": "Complete",
+        "empty": "No completed jobs yet."
+      },
+      "failed": {
+        "title": "Failed",
+        "empty": "No failed jobs."
+      }
+    },
+    "row": {
+      "started": "Started {{when}}",
+      "completed": "Finished {{when}}",
+      "unknownProject": "Project {{id}}…"
     }
   },
   "projects": {

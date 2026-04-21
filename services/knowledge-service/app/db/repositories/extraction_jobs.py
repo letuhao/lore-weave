@@ -111,6 +111,14 @@ class ExtractionJob(BaseModel):
     updated_at: datetime
     error_message: str | None = None
 
+    # K19b.2 (Q2 option c): populated ONLY by list_all_for_user via
+    # LEFT JOIN on knowledge_projects. Per-project readers leave this
+    # at None because the caller already has the project row in hand
+    # and the extra join would be wasted work. FE consumers that care
+    # about the name (JobsTab) go through listAllJobs; all other paths
+    # should ignore this field or resolve the name from ProjectsRepo.
+    project_name: str | None = None
+
 
 class ExtractionJobCreate(BaseModel):
     """Caller-facing payload for `create`. `user_id` is enforced at the
@@ -266,27 +274,47 @@ class ExtractionJobsRepo:
                   (finished-at is more meaningful than started-at here,
                   but some legacy rows may have NULL completed_at, so we
                   fall back to created_at to keep them orderable.)
+
+        K19b.2 (Q2 option c): LEFT JOIN knowledge_projects so each row
+        carries `project_name`, letting the Jobs tab render without a
+        second fanout fetch. LEFT (not INNER) so a test fixture that
+        bypasses the repo and inserts extraction_jobs with a dangling
+        project_id still returns the row with project_name=NULL instead
+        of dropping it silently — the FK constraint prevents this in
+        production but we don't want a join to be the first line of
+        defence.
         """
         effective_limit = max(1, min(limit, LIST_ALL_MAX_LIMIT))
         # job_id DESC tiebreaker: uuidv7 is time-ordered, so on a
         # microsecond-tied created_at the larger job_id is the one
         # inserted last — gives a deterministic order under bulk seeds.
+        common_select = """
+          j.job_id, j.user_id, j.project_id, j.scope, j.scope_range, j.status,
+          j.llm_model, j.embedding_model, j.max_spend_usd,
+          j.items_total, j.items_processed, j.current_cursor, j.cost_spent_usd,
+          j.started_at, j.paused_at, j.completed_at, j.created_at, j.updated_at,
+          j.error_message,
+          p.name AS project_name
+        """
+        common_from = """
+          FROM extraction_jobs j
+          LEFT JOIN knowledge_projects p ON p.project_id = j.project_id
+          WHERE j.user_id = $1
+        """
         if status_group == "active":
             query = f"""
-            SELECT {_SELECT_COLS}
-            FROM extraction_jobs
-            WHERE user_id = $1
-              AND status IN ('pending','running','paused')
-            ORDER BY created_at DESC, job_id DESC
+            SELECT {common_select}
+            {common_from}
+              AND j.status IN ('pending','running','paused')
+            ORDER BY j.created_at DESC, j.job_id DESC
             LIMIT {effective_limit}
             """
         else:
             query = f"""
-            SELECT {_SELECT_COLS}
-            FROM extraction_jobs
-            WHERE user_id = $1
-              AND status IN ('complete','failed','cancelled')
-            ORDER BY completed_at DESC NULLS LAST, created_at DESC, job_id DESC
+            SELECT {common_select}
+            {common_from}
+              AND j.status IN ('complete','failed','cancelled')
+            ORDER BY j.completed_at DESC NULLS LAST, j.created_at DESC, j.job_id DESC
             LIMIT {effective_limit}
             """
         async with self._pool.acquire() as conn:

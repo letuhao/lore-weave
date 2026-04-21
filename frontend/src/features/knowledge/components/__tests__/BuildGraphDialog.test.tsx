@@ -129,6 +129,7 @@ function sampleJob() {
     created_at: '2026-04-19T12:00:00Z',
     updated_at: '2026-04-19T12:00:00Z',
     error_message: null,
+    project_name: null,
   };
 }
 

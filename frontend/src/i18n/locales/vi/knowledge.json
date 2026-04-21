@@ -16,10 +16,39 @@
   "placeholder": {
     "title": "Sắp ra mắt",
     "bodies": {
-      "jobs": "Duyệt các tác vụ trích xuất đang chạy và đã hoàn tất.",
       "entities": "Duyệt các thực thể được trích xuất vào đồ thị tri thức.",
       "timeline": "Xem sự kiện và dữ kiện theo thứ tự thời gian.",
       "raw": "Tìm kiếm vectơ trên toàn bộ ngăn kéo tri thức đã trích xuất."
+    }
+  },
+  "jobs": {
+    "loading": "Đang tải tác vụ…",
+    "error": {
+      "active": "Không thể tải các tác vụ đang chạy.",
+      "history": "Không thể tải lịch sử tác vụ."
+    },
+    "sections": {
+      "running": {
+        "title": "Đang chạy",
+        "empty": "Không có tác vụ nào đang chạy."
+      },
+      "paused": {
+        "title": "Tạm dừng",
+        "empty": "Không có tác vụ nào bị tạm dừng."
+      },
+      "complete": {
+        "title": "Đã hoàn tất",
+        "empty": "Chưa có tác vụ nào hoàn tất."
+      },
+      "failed": {
+        "title": "Thất bại",
+        "empty": "Không có tác vụ nào thất bại."
+      }
+    },
+    "row": {
+      "started": "Bắt đầu {{when}}",
+      "completed": "Kết thúc {{when}}",
+      "unknownProject": "Dự án {{id}}…"
     }
   },
   "projects": {

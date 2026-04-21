@@ -340,4 +340,31 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
       expect((value as string).length).toBeGreaterThan(0);
     }
   });
+
+  // K19b.2 — Jobs tab strings (top-level `jobs.*` namespace).
+  const JOBS_KEYS = [
+    'loading',
+    'error.active',
+    'error.history',
+    'sections.running.title',
+    'sections.running.empty',
+    'sections.paused.title',
+    'sections.paused.empty',
+    'sections.complete.title',
+    'sections.complete.empty',
+    'sections.failed.title',
+    'sections.failed.empty',
+    'row.started',
+    'row.completed',
+    'row.unknownProject',
+  ] as const;
+
+  it.each(LOCALES)('%s has every K19b.2 jobs key populated', (_tag, bundle) => {
+    const root = (bundle as any).jobs ?? {};
+    for (const path of JOBS_KEYS) {
+      const value = resolveKey(root, path);
+      expect(typeof value, `locale missing jobs.${path}`).toBe('string');
+      expect((value as string).length).toBeGreaterThan(0);
+    }
+  });
 });

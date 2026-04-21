@@ -16,10 +16,39 @@
   "placeholder": {
     "title": "近日公開",
     "bodies": {
-      "jobs": "進行中および過去の抽出ジョブを閲覧できます。",
       "entities": "ナレッジグラフに抽出されたエンティティを閲覧できます。",
       "timeline": "事実とイベントを時系列で表示します。",
       "raw": "抽出されたナレッジドロワーをベクトル検索できます。"
+    }
+  },
+  "jobs": {
+    "loading": "ジョブを読み込んでいます…",
+    "error": {
+      "active": "実行中のジョブを読み込めませんでした。",
+      "history": "ジョブ履歴を読み込めませんでした。"
+    },
+    "sections": {
+      "running": {
+        "title": "実行中",
+        "empty": "実行中のジョブはありません。"
+      },
+      "paused": {
+        "title": "一時停止中",
+        "empty": "一時停止中のジョブはありません。"
+      },
+      "complete": {
+        "title": "完了",
+        "empty": "完了したジョブはまだありません。"
+      },
+      "failed": {
+        "title": "失敗",
+        "empty": "失敗したジョブはありません。"
+      }
+    },
+    "row": {
+      "started": "開始: {{when}}",
+      "completed": "終了: {{when}}",
+      "unknownProject": "プロジェクト {{id}}…"
     }
   },
   "projects": {

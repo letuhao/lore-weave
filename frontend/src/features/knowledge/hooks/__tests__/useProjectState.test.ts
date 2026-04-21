@@ -49,6 +49,7 @@ function job(overrides: Partial<ExtractionJobWire> = {}): ExtractionJobWire {
     updated_at: '2026-04-19T12:00:00Z',
     current_cursor: null,
     error_message: null,
+    project_name: null,
     // @ts-expect-error — BE ships scope as a bare string; wire overrides it below
     ...overrides,
   };
