@@ -364,6 +364,33 @@ CREATE INDEX IF NOT EXISTS idx_benchmark_runs_project_latest
     (project_id, embedding_model, created_at DESC);
 
 -- ═══════════════════════════════════════════════════════════════
+-- K19b.8 — Extraction job logs.
+-- User-surfaced job lifecycle events (chapter processed, skipped,
+-- retry exhausted, auto-pause, fail). Worker writes via an inline
+-- _append_log helper; public GET /v1/knowledge/extraction/jobs/{id}/logs
+-- reads with cursor pagination on log_id. ON DELETE CASCADE so
+-- removing a job cleans its logs transactionally.
+-- Level vocabulary is deliberately narrow (info/warning/error) —
+-- prevents stringly-typed drift.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS job_logs (
+  log_id      BIGSERIAL PRIMARY KEY,
+  job_id      UUID NOT NULL
+    REFERENCES extraction_jobs(job_id) ON DELETE CASCADE,
+  user_id     UUID NOT NULL,                   -- no FK (cross-DB)
+  level       TEXT NOT NULL
+    CHECK (level IN ('info','warning','error')),
+  message     TEXT NOT NULL,
+  context     JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Cursor-paginated list: WHERE user_id=$1 AND job_id=$2 AND log_id>$3
+-- ORDER BY log_id ASC LIMIT N.
+CREATE INDEX IF NOT EXISTS idx_job_logs_user_job_log
+  ON job_logs(user_id, job_id, log_id);
+
+-- ═══════════════════════════════════════════════════════════════
 -- K16.12 — User-wide monthly AI budget cap.
 -- Per-project budgets live on knowledge_projects (see above). This
 -- table tracks the aggregate cross-project cap; at most one row per

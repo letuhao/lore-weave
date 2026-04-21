@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { knowledgeApi, type ExtractionJobWire } from '../api';
 import { useJobProgressRate } from '../hooks/useJobProgressRate';
 import { JobProgressBar } from './JobProgressBar';
+import { JobLogsPanel } from './JobLogsPanel';
 
 // K19b.3 — slide-over panel for inspecting a single extraction job.
 // Opens when a row in ExtractionJobsTab is clicked. Pure read-only for
@@ -235,6 +236,9 @@ export function JobDetailPanel({ open, onOpenChange, job, onRetryClick }: Props)
                 </pre>
               </section>
             )}
+
+            {/* K19b.8 — job lifecycle logs. Collapsed by default. */}
+            <JobLogsPanel jobId={job.job_id} />
           </div>
 
           {/* Actions footer */}

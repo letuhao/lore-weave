@@ -25,6 +25,7 @@ from app.db.pool import get_knowledge_pool
 from app.db.repositories.benchmark_runs import BenchmarkRunsRepo
 from app.db.repositories.extraction_jobs import ExtractionJobsRepo
 from app.db.repositories.extraction_pending import ExtractionPendingRepo
+from app.db.repositories.job_logs import JobLogsRepo
 from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.summaries import SummariesRepo
 from app.db.repositories.user_budgets import UserBudgetsRepo
@@ -73,3 +74,7 @@ async def get_benchmark_runs_repo() -> BenchmarkRunsRepo:
 
 async def get_user_budgets_repo() -> UserBudgetsRepo:
     return UserBudgetsRepo(get_knowledge_pool())
+
+
+async def get_job_logs_repo() -> JobLogsRepo:
+    return JobLogsRepo(get_knowledge_pool())

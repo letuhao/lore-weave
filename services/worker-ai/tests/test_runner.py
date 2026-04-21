@@ -145,6 +145,54 @@ async def test_process_job_chapters_records_spending_on_success():
 
 
 @pytest.mark.asyncio
+async def test_process_job_appends_log_on_chapter_success():
+    """K19b.8: each successful chapter writes a job_logs row with
+    level=info and an event=chapter_processed context tag."""
+    chapters = [
+        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i)
+        for i in range(2)
+    ]
+    job = _job(scope="chapters")
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    bc = _mock_book_client(chapters=chapters)
+
+    await process_job(pool, kc, bc, job)
+
+    log_calls = [
+        c for c in pool.execute.call_args_list
+        if isinstance(c.args[0], str)
+        and "INSERT INTO job_logs" in c.args[0]
+    ]
+    # 2 chapters → 2 info logs for success; no other kinds.
+    assert len(log_calls) == 2
+    for call in log_calls:
+        # args: (sql, job_id, user_id, level, message, context_json)
+        assert call.args[3] == "info"
+        assert "processed" in call.args[4]
+
+
+@pytest.mark.asyncio
+async def test_process_job_appends_error_log_on_fatal_failure():
+    """K19b.8: non-retryable extraction error writes an error-level log
+    with event=failed before the job transitions to failed."""
+    job = _job(scope="chapters")
+    pool = _mock_pool()
+    kc = _mock_knowledge_client(result=_error_result(retryable=False))
+    bc = _mock_book_client()
+
+    await process_job(pool, kc, bc, job)
+
+    error_logs = [
+        c for c in pool.execute.call_args_list
+        if isinstance(c.args[0], str)
+        and "INSERT INTO job_logs" in c.args[0]
+        and c.args[3] == "error"
+    ]
+    assert len(error_logs) == 1
+
+
+@pytest.mark.asyncio
 async def test_process_job_chat_records_spending_on_success():
     """D-K16.11-01: chat-scope success path also records spending.
     Mirrors the chapters test — same two-counter update per item."""

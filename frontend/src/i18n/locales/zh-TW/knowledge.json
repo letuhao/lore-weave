@@ -68,6 +68,17 @@
         "pause": "暫停",
         "resume": "繼續",
         "cancel": "取消"
+      },
+      "logs": {
+        "title": "日誌",
+        "loading": "載入日誌中…",
+        "error": "無法載入日誌。",
+        "empty": "尚無日誌。",
+        "levels": {
+          "info": "INFO",
+          "warning": "WARN",
+          "error": "ERROR"
+        }
       }
     },
     "retry": {

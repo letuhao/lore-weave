@@ -68,6 +68,17 @@
         "pause": "一時停止",
         "resume": "再開",
         "cancel": "キャンセル"
+      },
+      "logs": {
+        "title": "ログ",
+        "loading": "ログを読み込み中…",
+        "error": "ログを読み込めませんでした。",
+        "empty": "ログはまだありません。",
+        "levels": {
+          "info": "INFO",
+          "warning": "WARN",
+          "error": "ERROR"
+        }
       }
     },
     "retry": {

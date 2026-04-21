@@ -68,6 +68,17 @@
         "pause": "Tạm dừng",
         "resume": "Tiếp tục",
         "cancel": "Hủy"
+      },
+      "logs": {
+        "title": "Nhật ký",
+        "loading": "Đang tải nhật ký…",
+        "error": "Không thể tải nhật ký.",
+        "empty": "Chưa có nhật ký.",
+        "levels": {
+          "info": "INFO",
+          "warning": "WARN",
+          "error": "ERROR"
+        }
       }
     },
     "retry": {

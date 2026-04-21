@@ -68,6 +68,17 @@
         "pause": "Pause",
         "resume": "Resume",
         "cancel": "Cancel"
+      },
+      "logs": {
+        "title": "Logs",
+        "loading": "Loading logs…",
+        "error": "Couldn't load logs.",
+        "empty": "No logs yet.",
+        "levels": {
+          "info": "INFO",
+          "warning": "WARN",
+          "error": "ERROR"
+        }
       }
     },
     "retry": {

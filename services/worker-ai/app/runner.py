@@ -164,6 +164,39 @@ async def _advance_cursor(
     )
 
 
+async def _append_log(
+    pool: asyncpg.Pool,
+    user_id: UUID,
+    job_id: UUID,
+    level: str,
+    message: str,
+    context: dict | None = None,
+) -> None:
+    """K19b.8 — mirror a key lifecycle event to job_logs so the FE's
+    JobLogsPanel can render it. Inlined SQL matches the worker's
+    existing `_try_spend` / `_record_spending` pattern (worker owns
+    the DB write path to the shared knowledge DB; avoids an HTTP
+    round-trip per event).
+
+    Vocabulary: level MUST be one of info/warning/error (enforced by
+    the table CHECK constraint). Caller passes an optional JSON
+    context (e.g. chapter_id, error text) that's serialised inline.
+    Fire-and-forget from the caller's point of view — we don't return
+    the log_id; callers don't chain on it.
+    """
+    await pool.execute(
+        """
+        INSERT INTO job_logs (job_id, user_id, level, message, context)
+        VALUES ($1, $2, $3, $4, $5::jsonb)
+        """,
+        job_id,
+        user_id,
+        level,
+        message,
+        json.dumps(context or {}),
+    )
+
+
 async def _record_spending(
     pool: asyncpg.Pool, user_id: UUID, project_id: UUID, cost: Decimal,
 ) -> None:
@@ -415,6 +448,11 @@ async def process_job(
                     return
                 if outcome == "auto_paused":
                     logger.info("Job %s auto-paused by budget cap", job.job_id)
+                    await _append_log(
+                        pool, job.user_id, job.job_id, "warning",
+                        "Job auto-paused: max_spend_usd reached",
+                        context={"event": "auto_paused", "scope": "chapters"},
+                    )
                     await _update_project_status(pool, job.user_id, job.project_id, "paused")
                     return
 
@@ -422,6 +460,15 @@ async def process_job(
                 text = await book_client.get_chapter_text(book_id, ch.chapter_id)
                 if text is None:
                     logger.warning("Skipping chapter %s — text unavailable", ch.chapter_id)
+                    await _append_log(
+                        pool, job.user_id, job.job_id, "warning",
+                        f"Skipped chapter {ch.chapter_id}: text unavailable",
+                        context={
+                            "event": "chapter_skipped",
+                            "chapter_id": str(ch.chapter_id),
+                            "reason": "text_unavailable",
+                        },
+                    )
                     await _advance_cursor(
                         pool, job.user_id, job.job_id,
                         {"last_chapter_id": ch.chapter_id, "scope": "chapters"},
@@ -443,6 +490,15 @@ async def process_job(
 
                 if result.error:
                     if not result.retryable:
+                        await _append_log(
+                            pool, job.user_id, job.job_id, "error",
+                            f"Job failed on chapter {ch.chapter_id}: {result.error}",
+                            context={
+                                "event": "failed",
+                                "chapter_id": str(ch.chapter_id),
+                                "error": result.error,
+                            },
+                        )
                         await _fail_job(pool, job.user_id, job.job_id, result.error)
                         await _update_project_status(pool, job.user_id, job.project_id, "failed")
                         return
@@ -454,6 +510,16 @@ async def process_job(
                         logger.warning(
                             "Skipping chapter %s after %d retries: %s",
                             ch.chapter_id, retries, result.error,
+                        )
+                        await _append_log(
+                            pool, job.user_id, job.job_id, "error",
+                            f"Chapter {ch.chapter_id} skipped after {retries} retries",
+                            context={
+                                "event": "retry_exhausted",
+                                "chapter_id": str(ch.chapter_id),
+                                "retries": retries,
+                                "error": result.error,
+                            },
                         )
                         await _advance_cursor(
                             pool, job.user_id, job.job_id,
@@ -482,6 +548,17 @@ async def process_job(
                 # counters so CostSummary's GET /costs reflects reality.
                 await _record_spending(
                     pool, job.user_id, job.project_id, _DEFAULT_COST_PER_ITEM,
+                )
+                # K19b.8: surface this success to the FE log panel.
+                await _append_log(
+                    pool, job.user_id, job.job_id, "info",
+                    f"Chapter {ch.chapter_id} processed",
+                    context={
+                        "event": "chapter_processed",
+                        "chapter_id": str(ch.chapter_id),
+                        "entities_merged": result.entities_merged,
+                        "relations_created": result.relations_created,
+                    },
                 )
                 items_processed += 1
                 logger.info(

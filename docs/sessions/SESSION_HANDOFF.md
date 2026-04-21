@@ -1,11 +1,11 @@
-# Session Handoff — Session 50 (K19b plan complete; K16.11+K16.12 fully wired; CostSummary live end-to-end)
+# Session Handoff — Session 50 (K19b cluster 100% plan-complete; all 8 tasks shipped)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-22 (session 50)
-> **HEAD:** `c9f7064` (D-K16.11-01; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** (pending K19b.8 commit) (D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 6 cycles shipped (4 Track 3 + 2 Track 2 close-out)
+## Session 50 — 7 cycles shipped (5 Track 3 + 2 Track 2 close-out) · K19b cluster PLAN-COMPLETE
 
 ```
 Track 3 K19b progress (session 50)
@@ -49,6 +49,21 @@ Cycle 6  D-K16.11-01         Wire budget helpers into production                
                               extraction. Production current_month_spent_usd
                               now populates as jobs run → CostSummary card
                               finally shows real prod spending.
+
+Cycle 7  K19b.8               Extraction-job log viewer MVP                       (pending commit)
+         [FS XL]               BE: NEW job_logs table (BIGSERIAL + CHECK level +
+                               FK CASCADE) + JobLogsRepo (append + cursor list)
+                               + GET /v1/knowledge/extraction/jobs/{id}/logs
+                               with since_log_id/limit pagination + 404 on
+                               cross-user. Worker: _append_log inline helper +
+                               5 lifecycle call sites (chapter_processed,
+                               chapter_skipped, retry_exhausted, auto_paused,
+                               failed). FE: listJobLogs API + useJobLogs hook
+                               (staleTime 10s single-page) + NEW JobLogsPanel
+                               collapsible inside JobDetailPanel. jobs.detail.
+                               logs.* × 4 locales. 3 follow-up deferrals:
+                               D-K19b.8-01 retention cron, D-K19b.8-02
+                               orchestrator-side logs, D-K19b.8-03 tail-follow.
          [FE XL]              FE-only. NEW useUserCosts hook (staleTime 60s,
                               user_id-scoped queryKey). NEW CostSummary.tsx
                               with inline EditBudgetDialog (decimal regex
@@ -74,23 +89,24 @@ Cycle 6  D-K16.11-01         Wire budget helpers into production                
                              context in BuildGraphDialog). K19b.6 now has
                              everything it needs on the BE side.
 
-Remaining K19b tasks: K19b.7-rest (other tabs' strings — deferred until
-                     those tabs ship in K19d/e),
-                     K19b.8 log viewer (new standalone cycle split out of K19b.3)
-                     K19b cluster is otherwise PLAN-COMPLETE.
+Remaining K19 residuals: K19b.7-rest (other tabs' strings — deferred
+                        until K19d/e tabs ship).
+                        K19b cluster is 100% PLAN-COMPLETE.
+                        Next: K19c / K19d / K19e (Entities / Timeline / Raw).
 ```
 
-**Test deltas at session 50 end (after 6 cycles):**
-- Frontend knowledge: **168 pass** (was 112 at session 49 end; +56 over 4 FE cycles)
-- Backend unit knowledge-service: **1184 pass** (was 1154 at session 49 end; +30)
-- Backend unit worker-ai: **15 pass** (was 13 at K19b.6 end; +2)
-- Backend integration repo: **30 pass** extraction_jobs_repo + **5 pass** user_knowledge_budgets
+**Test deltas at session 50 end (after 7 cycles):**
+- Frontend knowledge: **177 pass** (was 112 at session 49 end; +65 over 5 FE cycles)
+- Backend unit knowledge-service: **1190 pass** (was 1154 at session 49 end; +36)
+- Backend unit worker-ai: **17 pass** (was 13 at K19b.6 end; +4 across Cycles 6+7)
+- Backend integration repo: **30 pass** extraction_jobs_repo + **5 pass** user_knowledge_budgets + **5 pass** job_logs (new)
 - Cycle 1 /review-impl: 5 LOW all fixed + 1 MED via review-code
 - Cycle 2 review-code: 1 LOW fixed; /review-impl: 4 LOW all fixed
 - Cycle 3 review-code: 2 LOW fixed; /review-impl skipped per human approval
 - Cycle 4 review-code: 3 LOW accepted; /review-impl: 3 LOW all fixed
 - Cycle 5 review-code: 1 LOW fixed; /review-impl: 1 LOW fixed
 - Cycle 6 review-code: 10 LOW all accepted; /review-impl skipped per human approval
+- Cycle 7 review-code: 1 LOW fixed; /review-impl skipped per human approval
 
 **What shipped in Cycle 3 (10 files, FE-only):**
 - NEW `useJobProgressRate.ts` hook (EMA rate tracker, 6 tests)
@@ -109,32 +125,32 @@ Remaining K19b tasks: K19b.7-rest (other tabs' strings — deferred until
 - FE: `JobLogsPanel` inside `JobDetailPanel` (or new tab). Tail-follow with auto-scroll toggle. Virtual list for 1000+ lines.
 - Size estimate XL; doable as a single cycle or split into BE + FE halves.
 
-### K19b plan-complete status
+### K19b 100% plan-complete status
 
-All of K19b's user-facing surface shipped:
+All 8 K19b tasks shipped this session:
 - **K19b.1** ✅ (Cycle 1) — user-scoped jobs endpoint + hook
 - **K19b.2** ✅ (Cycle 2) — ExtractionJobsTab layout
 - **K19b.3** ✅ (Cycle 3) — JobDetailPanel slide-over
 - **K19b.4** ✅ (Cycle 1) — JobProgressBar
 - **K19b.5** ✅ (Cycle 3) — Retry with different settings
 - **K19b.6** ✅ (Cycle 5) — CostSummary card
-- **K19b.7-partial** ✅ (all cycles) — jobs.* i18n keys for shipped surfaces
-- **K19b.8** ☐ — log viewer standalone cycle
+- **K19b.7-partial** ✅ (all cycles) — jobs.* i18n keys × 4 locales
+- **K19b.8** ✅ (Cycle 7) — extraction-job log viewer MVP
 
-**CostSummary now end-to-end live in prod (Cycle 6):** D-K16.11-01 cleared; worker writes `current_month_spent_usd` after each successful extraction; start handler enforces both monthly caps as advisory pre-checks. No FE change was needed — the K19b.6 contract was already correct.
+**Integration state of the Jobs tab:**
+- CostSummary reads real production `current_month_spent_usd` (wired in Cycle 6 via worker `_record_spending`).
+- Budget-cap pre-check blocks jobs that would exceed per-project or user-wide monthly caps (Cycle 6).
+- JobDetailPanel surfaces 5 lifecycle events via JobLogsPanel (chapter_processed, chapter_skipped, retry_exhausted, auto_paused, failed) alongside progress bar, metadata grid, error block, actions, and conditional retry CTA.
+- ETA rendered via client-side EMA (Cycle 3).
 
-**K19b.8 Log viewer** — new standalone cycle. BE schema:
-- `job_logs` table: `(log_id BIGSERIAL PK, job_id UUID FK, user_id UUID, level TEXT, message TEXT, context JSONB, created_at TIMESTAMPTZ)`
-- Index `(user_id, job_id, log_id DESC)` for paginated reads
-- Retention policy (cron delete logs >N days)
-
-Extraction-worker instrumentation (`services/worker-ai/app/runner.py`):
-- Wrap each phase (chapter fetch, extract_item, try_spend, advance_cursor, pause/cancel/fail paths) in structured log calls keyed on `(user_id, job_id)`
-- Consider pulling the Python logger through a custom handler that writes to the table
-
-FE:
-- `GET /v1/knowledge/extraction/jobs/{id}/logs?since_log_id=...&limit=50`
-- `JobLogsTab` or `JobLogsPanel` inside `JobDetailPanel` — tail-follow with auto-scroll toggle, virtual-list for 1000+ lines
+**Follow-up polish deferrals** (none block shipping the Jobs tab):
+- D-K19b.1-01 cursor pagination when user has >200 historical jobs
+- D-K19b.2-01 "Show more" on Complete section
+- D-K19b.3-01 human-readable "current item" from cursor
+- D-K19b.3-02 humanised ETA formatter for >60min jobs
+- D-K19b.8-01 retention cron for job_logs
+- D-K19b.8-02 orchestrator-side pipeline logs (chunker/extractor stages)
+- D-K19b.8-03 tail-follow auto-polling + load-more in JobLogsPanel
 
 ### What K19b.3 (detail panel) already ships — for future cycles consuming it
 
@@ -178,7 +194,10 @@ Option (a) won because K19b.2's layout sections (Running/Paused/Complete/Failed)
 - ~~D-K19b.4-01~~ — **Cleared in K19b.3**.
 - **D-K19b.3-01** → Track 3 polish: human-readable "current item" from cursor. Needs BE cursor enrichment OR FE chapter-title lookup.
 - **D-K19b.3-02** → Track 3 polish: humanised ETA formatter for >60min jobs.
-- **K19b.8** → standalone Track 3 cycle: extraction-job log viewer.
+- ~~K19b.8~~ — **Cleared in Cycle 7** (MVP shipped). D-K19b.8-01/02/03 tracked below for polish.
+- **D-K19b.8-01** → Track 3 polish: retention cron for job_logs (no auto-cleanup today).
+- **D-K19b.8-02** → Track 3 polish: orchestrator-side pipeline logs in knowledge-service extract_item handler.
+- **D-K19b.8-03** → Track 3 polish: tail-follow auto-polling + load-more in JobLogsPanel.
 - ~~D-K19a.5-03~~ — **Cleared in K19b.6** (BuildGraphDialog monthly-remaining hint shipped).
 - ~~D-K16.11-01~~ — **Cleared in Cycle 6.** Budget helpers wired into production; CostSummary will now populate real figures as jobs run.
 - **D-K19a.5-04 + D-K16.2-02b** → Track 3 (paired): chapter_range picker + runner-side enforcement.

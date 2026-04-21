@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-22 **(session 50 continued — D-K16.11-01 BE [M]; budget helpers wired into production)** — Sixth cycle. Clears the last K16.12-adjacent gap: both `can_start_job` + `check_user_monthly_budget` helpers defined in `app/jobs/budget.py` but never imported by production code are now wired into `POST /extraction/start` as advisory pre-checks (step 2.6 after benchmark gate, before job creation). `estimated_cost` proxies through `body.max_spend_usd ?? Decimal("0")` so users who don't set a per-job cap get a no-op pre-check (per-job `try_spend` still atomic-guards). Worker's extraction-success branches (chapters + chat) now call a new inline `_record_spending` that bumps `knowledge_projects.current_month_spent_usd + actual_cost_usd` — mirrors the knowledge-service helper inline, same pattern as `_try_spend`. Means CostSummary's `GET /costs.current_month_usd` will now reflect real prod spend instead of staying at $0. 10 LOW accepted (no in-cycle fixes). K19b plan complete; K16.11/K16.12 Track 2 items now fully wired.
-- Updated By: Assistant (session 50 — D-K16.11-01 BE commit: 4 files MOD (extraction.py + budget helpers imported + step 2.6 pre-check block with 409 structured detail, worker runner.py + `_record_spending` inline helper + 2 call sites in chapters/chat success branches, tests/unit/test_extraction_start.py `_make_client` +project_budget_check/user_budget_check kwargs + AsyncMock patches on router-level helper refs + 4 new tests, worker tests/test_runner.py +2 tests inspecting pool.execute SQL text). `pytest` → BE unit 1184 pass (was 1180 at K19b.6 end; +4), worker unit 15 pass (was 13; +2), integration 35 pass. No FE changes.)
+- Last Updated: 2026-04-22 **(session 50 continued — K19b.8 log viewer MVP FS [XL]; K19b cluster plan-complete)** — Seventh cycle. Ships the extraction-job log viewer that was split out of K19b.3 during its CLARIFY audit. BE adds `job_logs` table (BIGSERIAL PK for cursor, FK CASCADE to extraction_jobs, CHECK level vocab) + `JobLogsRepo` + new `GET /v1/knowledge/extraction/jobs/{id}/logs?since_log_id=&limit=50` public endpoint. Worker-ai runner.py gets `_append_log` inline helper called at 5 lifecycle events (chapter_processed info, chapter_skipped warn, retry_exhausted error, auto_paused warn, failed error). FE adds `listJobLogs` wrapper, `useJobLogs` hook (staleTime 10s), and `JobLogsPanel` component rendered inside JobDetailPanel below the error block. Review-code L6 fixed in-cycle: semantic `nextCursor != null` replaces hardcoded `logs.length === 50` magic-number coupling with hook's DEFAULT_LIMIT. 6 LOW accepted. K19b cluster is now fully plan-complete (all 8 tasks shipped).
+- Updated By: Assistant (session 50 — K19b.8 log viewer MVP FS commit: 19 files. BE MOD 6 (migrate.py + job_logs DDL + idx_job_logs_user_job_log, deps.py + get_job_logs_repo factory, main.py + public_logs router registration, integration/db/conftest.py + TRUNCATE job_logs, worker runner.py + _append_log + 5 call sites, worker tests/test_runner.py + 2 tests inspecting INSERT INTO job_logs); BE NEW 3 (db/repositories/job_logs.py JobLogsRepo, routers/public/logs.py GET /jobs/{id}/logs with 404 + Query validation, tests/unit/test_logs_api.py 6 tests, tests/integration/db/test_job_logs_repo.py 5 tests); FE MOD 5 (api.ts + JobLog/JobLogLevel/JobLogsResponse + listJobLogs, components/JobDetailPanel.tsx + JobLogsPanel render, components/__tests__/JobDetailPanel.test.tsx + stub, 4 locale knowledge.json + jobs.detail.logs.* block, types/__tests__/projectState.test.ts + JOBS_KEYS +7); FE NEW 5 (hooks/useJobLogs.ts, hooks/__tests__/useJobLogs.test.tsx 3 tests, components/JobLogsPanel.tsx collapsible details + level pills, components/__tests__/JobLogsPanel.test.tsx 6 tests). `pytest` → BE unit 1190 (was 1184; +6 logs_api), worker 17 (was 15; +2 log emission), integration repo 5/5 (new job_logs). `vitest` → FE knowledge 177 (was 168; +9 = 3 hook + 6 component). `tsc --noEmit` clean.)
 - Active Branch: `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
-- HEAD: `c9f7064` (D-K16.11-01) at session 50 end (was `32a9a18` K19b.6 + D-K19a.5-03, `b313c1b` K16.12 completion, `5e00f7b` K19b.3+K19b.5+ETA, `4fb8b62` K19b.2+K19b.7-partial, `1c208ce` K19b.1+K19b.4, `2061b2d` K19a.8, `c6ee80a` K19a.7 HEAD backfill, `2cbcc7c` K19a.7, `7cf394f` K19a.6 HEAD backfill, `2226283` K19a.6, `1156193` K19a.5 HEAD backfill, `3148751` K19a.5) (was `b313c1b` K16.12 completion, `5e00f7b` K19b.3+K19b.5+ETA, `4fb8b62` K19b.2+K19b.7-partial, `1c208ce` K19b.1+K19b.4, `2061b2d` K19a.8, `c6ee80a` K19a.7 HEAD backfill, `2cbcc7c` K19a.7, `7cf394f` K19a.6 HEAD backfill, `2226283` K19a.6, `1156193` K19a.5 HEAD backfill, `3148751` K19a.5)
+- HEAD: (pending K19b.8 commit) at session 50 end (was `c9f7064` D-K16.11-01) (was `32a9a18` K19b.6 + D-K19a.5-03, `b313c1b` K16.12 completion, `5e00f7b` K19b.3+K19b.5+ETA, `4fb8b62` K19b.2+K19b.7-partial, `1c208ce` K19b.1+K19b.4, `2061b2d` K19a.8, `c6ee80a` K19a.7 HEAD backfill, `2cbcc7c` K19a.7, `7cf394f` K19a.6 HEAD backfill, `2226283` K19a.6, `1156193` K19a.5 HEAD backfill, `3148751` K19a.5) (was `b313c1b` K16.12 completion, `5e00f7b` K19b.3+K19b.5+ETA, `4fb8b62` K19b.2+K19b.7-partial, `1c208ce` K19b.1+K19b.4, `2061b2d` K19a.8, `c6ee80a` K19a.7 HEAD backfill, `2cbcc7c` K19a.7, `7cf394f` K19a.6 HEAD backfill, `2226283` K19a.6, `1156193` K19a.5 HEAD backfill, `3148751` K19a.5)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -152,7 +152,10 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 | ~~D-K19b.2-02~~ | ~~K19b.2 plan (session 50)~~ | **Cleared in session 50 K19b.3 cycle 3.** JobRow `role="button"` + `onClick` + `onKeyDown` + `tabIndex={0}` wired; ExtractionJobsTab owns `selectedJobId` state + JobDetailPanel rendering. | — |
 | D-K19b.3-01 | K19b.3 CLARIFY audit (session 50) | **Human-readable "current item being processed".** `current_cursor` ships as `{last_chapter_id: UUID, scope: "chapters"}` or `{last_pending_id: UUID, scope: "chat"}` from the extraction worker's `_advance_cursor` calls. Truncated UUID ("abcd1234…") is weaker UX than the already-shown `items_processed/items_total` counter in the progress bar. Two viable paths: (a) BE enriches cursor payload when writing (include chapter sort_order + title from BookClient), or (b) FE does a chapter-title lookup via book-service per panel open. Neither is a one-liner. | Track 3 polish (when "what chapter is it on?" becomes a common user question — not today) |
 | D-K19b.3-02 | K19b.3 review-code L7 (session 50) | **Humanised ETA formatter.** Current `useJobProgressRate` label = `"~{{minutes}} min remaining"` with `Math.max(1, Math.round(minutes))`. Works for <60min; reads awkwardly for long jobs ("~240 min"). Simple utility (`formatDuration(minutes) → "4h 0min"` / `"15min"` / `"<1min"`). Right home is JobDetailPanel but a shared lib would also help any future timeline view. | Track 3 polish |
-| K19b.8 | K19b.3 CLARIFY audit (session 50) | **Extraction job log viewer.** Originally batched into K19b.3 but audit showed it's an XL cycle on its own: `job_logs` Postgres table + migration, extraction-worker instrumentation (every chunker / extractor / selector / error path keyed on job_id), `GET /v1/knowledge/extraction/jobs/{id}/logs?since=...` with cursor pagination, FE tail-follow UI with auto-scroll, retention policy (cron cleanup of logs older than N days). Blocks on nothing but its own design doc. Promote to full K19b task (not a deferral) when scoping the next cycle after K19b.6. | Standalone cycle (K19b.8) |
+| ~~K19b.8~~ | ~~K19b.3 CLARIFY audit (session 50)~~ | **Shipped in session 50 K19b.8 MVP cycle.** `job_logs` table + `JobLogsRepo` + `GET /v1/knowledge/extraction/jobs/{id}/logs` + worker `_append_log` at 5 lifecycle events + `JobLogsPanel` inside JobDetailPanel. Retention cron, orchestrator-side pipeline logs, and tail-follow polling deferred as D-K19b.8-01/02/03. | — |
+| D-K19b.8-01 | K19b.8 plan (session 50) | **Retention cron for job_logs.** Table has no auto-cleanup today — rows accumulate indefinitely. Simple fix: cron delete `job_logs` older than N days (30? 90?). Non-urgent until prod log volume becomes real. | Track 3 polish |
+| D-K19b.8-02 | K19b.8 plan (session 50) | **Orchestrator-side pipeline logs.** Current worker-level lifecycle logging only covers 5 events (chapter_processed, skip, retry_exhausted, auto_paused, failed). Richer events (chunker stage time, candidate extractor token count, triple-extraction entities per stage, glossary selector hits) would live in the knowledge-service orchestrator. Use `JobLogsRepo.append` from there when that surface stabilises. | Track 3 polish |
+| D-K19b.8-03 | K19b.8 plan (session 50) | **Tail-follow auto-polling + load-more.** Hook is single-page today (fetches 50 then stops). Add `refetchInterval: 5000` while active job is running; add "Load more" button when `nextCursor != null`. Auto-scroll to bottom when user's scrolled to within 100px of bottom. | Track 3 polish |
 
 ### Track 2 planning (document only, no Track 1 action)
 
@@ -266,6 +269,69 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 ---
 
 ## Current Active Work
+
+### K19b.8 — extraction-job log viewer MVP ✅ (session 50, Track 3 K19b cycle 7, FS [XL])
+
+Seventh cycle. Closes K19b.8 — the standalone cycle that was split out of K19b.3 during CLARIFY audit (log-viewer scope proved XL on its own: BE schema + worker instrumentation + endpoint + FE panel). MVP ships all four legs; follow-up concerns (retention cron, orchestrator-side pipeline logs, tail-follow polling) explicitly deferred as new D-K19b.8-* rows.
+
+**Shipped (19 files):**
+
+BE:
+- [services/knowledge-service/app/db/migrate.py](../../services/knowledge-service/app/db/migrate.py) — NEW `job_logs(log_id BIGSERIAL PK, job_id UUID FK→extraction_jobs ON DELETE CASCADE, user_id UUID, level TEXT CHECK IN ('info','warning','error'), message TEXT, context JSONB DEFAULT '{}', created_at TIMESTAMPTZ)` + `idx_job_logs_user_job_log` covering index for cursor queries.
+- [services/knowledge-service/app/db/repositories/job_logs.py](../../services/knowledge-service/app/db/repositories/job_logs.py) (NEW) — `JobLogsRepo` with `append(user_id, job_id, level, message, context=None)` returning log_id + `list(user_id, job_id, since_log_id=0, limit=50)` ordered ASC clamped `[1, LOGS_MAX_LIMIT=200]`. Shared-constant pattern matches K19b.1's `LIST_ALL_MAX_LIMIT`.
+- [services/knowledge-service/app/deps.py](../../services/knowledge-service/app/deps.py) — `get_job_logs_repo` factory.
+- [services/knowledge-service/app/routers/public/logs.py](../../services/knowledge-service/app/routers/public/logs.py) (NEW) — `GET /v1/knowledge/extraction/jobs/{job_id}/logs?since_log_id=0&limit=50` on a fresh `/v1/knowledge/extraction` prefixed router. Returns `{logs: JobLog[], next_cursor: int | null}`. Cursor = max log_id from the page; `null` when page is not full (end-of-stream signal). 404 when job missing or cross-user (JWT + explicit `jobs_repo.get(user_id, job_id)` defence-in-depth).
+- [services/knowledge-service/app/main.py](../../services/knowledge-service/app/main.py) — import + `app.include_router(public_logs.router)`.
+- [services/knowledge-service/tests/integration/db/conftest.py](../../services/knowledge-service/tests/integration/db/conftest.py) — TRUNCATE list extended with `job_logs`.
+- [services/knowledge-service/tests/integration/db/test_job_logs_repo.py](../../services/knowledge-service/tests/integration/db/test_job_logs_repo.py) (NEW) — 5 tests: append returns id + list reads back, context persists as JSONB, cursor pagination via since_log_id, limit clamp (0→1, huge→data-size), cross-user isolation + FK CASCADE on project delete drops log rows.
+- [services/knowledge-service/tests/unit/test_logs_api.py](../../services/knowledge-service/tests/unit/test_logs_api.py) (NEW) — 6 tests: page-not-full → next_cursor null, full page → cursor=max log_id, since_log_id + limit forwarded to repo, job-missing → 404 (via `_NO_JOB` sentinel), limit out of range → 422, negative cursor → 422.
+
+Worker:
+- [services/worker-ai/app/runner.py](../../services/worker-ai/app/runner.py) — NEW `_append_log(pool, user_id, job_id, level, message, context=None)` inline SQL helper (mirrors JobLogsRepo.append; worker keeps writes inline per existing `_try_spend` / `_record_spending` pattern). Called at 5 lifecycle events in the chapters branch: chapter_processed (info, with entities_merged + relations_created), chapter_skipped (warning, reason=text_unavailable), retry_exhausted (error, with retries + error text), auto_paused (warning), failed (error, with chapter_id + error text). Chat branch could add analogous events when that scope stabilises — deferred.
+- [services/worker-ai/tests/test_runner.py](../../services/worker-ai/tests/test_runner.py) — +2 tests inspecting `pool.execute.call_args_list` for `INSERT INTO job_logs` and asserting level + message content (success path → 2 info logs for 2 chapters; fatal failure → 1 error log).
+
+FE:
+- [frontend/src/features/knowledge/api.ts](../../frontend/src/features/knowledge/api.ts) — `JobLog`, `JobLogLevel = 'info' | 'warning' | 'error'`, `JobLogsResponse { logs, next_cursor: number | null }` types + `knowledgeApi.listJobLogs(jobId, {sinceLogId?, limit?}, token)` wrapper.
+- [frontend/src/features/knowledge/hooks/useJobLogs.ts](../../frontend/src/features/knowledge/hooks/useJobLogs.ts) (NEW) — `useQuery` keyed `['knowledge-job-logs', jobId, 50]`, staleTime 10s, disabled when no jobId or accessToken. MVP single-page fetch (DEFAULT_LIMIT=50). Returns `{logs, nextCursor, isLoading, error}`.
+- [frontend/src/features/knowledge/hooks/__tests__/useJobLogs.test.tsx](../../frontend/src/features/knowledge/hooks/__tests__/useJobLogs.test.tsx) (NEW) — 3 tests.
+- [frontend/src/features/knowledge/components/JobLogsPanel.tsx](../../frontend/src/features/knowledge/components/JobLogsPanel.tsx) (NEW) — collapsible `<details>` section. Summary: title + `(count)` or `(count+)` when more exist (via `nextCursor != null` — semantic signal, not magic-number; review-code L6). Body: level pill with semantic colour (info=muted, warning=amber, error=destructive) + hh:mm:ss timestamp + message. Empty / loading / error states each rendered with `data-testid` hooks. Uses `Intl.DateTimeFormat` with hour/minute/second precision since logs are sub-minute granular.
+- [frontend/src/features/knowledge/components/__tests__/JobLogsPanel.test.tsx](../../frontend/src/features/knowledge/components/__tests__/JobLogsPanel.test.tsx) (NEW) — 6 tests: loading indicator, error message, empty state, rows by level (3 levels), `+` suffix when nextCursor set, no `+` when nextCursor null.
+- [frontend/src/features/knowledge/components/JobDetailPanel.tsx](../../frontend/src/features/knowledge/components/JobDetailPanel.tsx) — imports `JobLogsPanel` and renders it below the optional error block.
+- [frontend/src/features/knowledge/components/__tests__/JobDetailPanel.test.tsx](../../frontend/src/features/knowledge/components/__tests__/JobDetailPanel.test.tsx) — stubs `JobLogsPanel` to avoid dragging useJobLogs' API chain into unrelated panel tests.
+- 4 × [frontend/src/i18n/locales/{en,ja,vi,zh-TW}/knowledge.json](../../frontend/src/i18n/locales/en/knowledge.json) — `jobs.detail.logs.*` block: `title`, `loading`, `error`, `empty`, `levels.{info,warning,error}`. Level badge labels kept as `INFO` / `WARN` / `ERROR` (same text across locales — "INFO" is treated as a brand/glyph, not translated).
+- [frontend/src/features/knowledge/types/__tests__/projectState.test.ts](../../frontend/src/features/knowledge/types/__tests__/projectState.test.ts) — JOBS_KEYS +7 new paths.
+
+**Acceptance criteria (K19b.8 MVP scope):**
+- ✅ BE: new job_logs table + indexed for cursor pagination
+- ✅ BE: worker writes 5 lifecycle events (covers the primary "where did my job fail / what did it do" use case)
+- ✅ BE: GET endpoint with cursor (since_log_id → next_cursor) + 404 on cross-user
+- ✅ FE: collapsible logs panel inside JobDetailPanel with level badges + timestamps + empty/loading/error states
+- ✅ i18n × 4 locales
+
+**Review-code findings (7 total):**
+
+| ID | Sev | Fix |
+|---|---|---|
+| L6 | LOW | ✅ JobLogsPanel `'+' suffix` now keyed on `nextCursor != null` semantic signal instead of hardcoded `logs.length === 50` magic-number coupling with hook's DEFAULT_LIMIT. |
+| L1-L5, L7 | LOW | Accepted: repo returns log_id but worker's inline helper doesn't (asymmetric but matches `_try_spend` pattern); worker `_append_log` could crash job on DB failure (but DB unavailable = job already failing); JSON context values are string-coerced at call sites (UUIDs passed as `str()`); log order-of-writes after advance_cursor + record_spending is diagnostic not source-of-truth; empty panel renders `<details>` collapsed for discoverability; no auto-refetch / tail-follow (deferred MVP). |
+
+**Evidence:**
+- BE knowledge-service unit `pytest tests/unit/` → **1190 pass** (was 1184 at K16.11 end; +6 router tests)
+- BE integration `pytest tests/integration/db/test_job_logs_repo.py` → **5/5 pass** (new)
+- BE worker-ai unit `pytest tests/` → **17 pass** (was 15; +2 log emission)
+- FE knowledge `vitest run src/features/knowledge/` → **177 pass** (was 168 at K19b.6 end; +9 = 3 hook + 6 component)
+- `tsc --noEmit` clean
+
+**New deferrals logged:**
+- **D-K19b.8-01** → Track 3 polish: retention cron (delete logs older than N days). `job_logs` has no auto-cleanup today. Simple cron: `DELETE FROM job_logs WHERE created_at < now() - interval '30 days'`. Revisit when prod accumulates meaningful log volume.
+- **D-K19b.8-02** → Track 3 polish: orchestrator-side pipeline logs. Today `_append_log` only fires from worker runner.py (5 lifecycle events). Knowledge-service's `extract_item` handler (chunker → candidate extractor → triple extractor → glossary selector → cost tracker) has no logs in this cycle — that's where the rich "stage X took 4s, extracted N entities" events would go. Add via `JobLogsRepo.append` when that surface stabilises.
+- **D-K19b.8-03** → Track 3 polish: tail-follow auto-polling (`refetchInterval` on useJobLogs, stop when `nextCursor` null) + "Load more" button when `nextCursor != null`. Hook is single-page today.
+
+**K19b cluster status after this cycle:**
+- ✅ K19b.1, K19b.2, K19b.3, K19b.4, K19b.5, K19b.6, K19b.7-partial, **K19b.8**
+- **K19b cluster plan-complete.** All 8 tasks shipped.
+
+---
 
 ### D-K16.11-01 — budget helpers wired into production ✅ (session 50, Track 2 close-out, BE [M])
 

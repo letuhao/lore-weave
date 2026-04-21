@@ -27,6 +27,7 @@ from app.routers import (
 )
 from app.routers.public import costs as public_costs
 from app.routers.public import extraction as public_extraction
+from app.routers.public import logs as public_logs
 from app.routers.public import projects as public_projects
 from app.routers.public import summaries as public_summaries
 from app.routers.public import user_data as public_user_data
@@ -261,6 +262,7 @@ app.include_router(metrics.router)
 app.include_router(public_costs.router)
 app.include_router(public_extraction.router)
 app.include_router(public_extraction.jobs_router)
+app.include_router(public_logs.router)
 app.include_router(public_projects.router)
 app.include_router(public_summaries.router)
 app.include_router(public_user_data.router)

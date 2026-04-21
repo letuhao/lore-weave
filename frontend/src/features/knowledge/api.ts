@@ -128,6 +128,27 @@ export type ChangeEmbeddingModelResponse =
   | ChangeEmbeddingModelNoop
   | ChangeEmbeddingModelResult;
 
+// K19b.8 — job logs. Cursor = log_id; page is full when
+// len(logs) === limit, in which case next_cursor = max(log_id) and
+// callers refetch with since_log_id = next_cursor. `null` cursor
+// signals end-of-stream.
+export type JobLogLevel = 'info' | 'warning' | 'error';
+
+export interface JobLog {
+  log_id: number;
+  job_id: string;
+  user_id: string;
+  level: JobLogLevel;
+  message: string;
+  context: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface JobLogsResponse {
+  logs: JobLog[];
+  next_cursor: number | null;
+}
+
 // K19b.6 — GET /v1/knowledge/costs response shape. Decimal fields land
 // as JSON strings; callers cast via Number() for display arithmetic.
 // `monthly_budget_usd` and `monthly_remaining_usd` are null when the
@@ -515,6 +536,23 @@ export const knowledgeApi = {
         body: JSON.stringify({ embedding_model: embeddingModel }),
         token,
       },
+    );
+  },
+
+  // ── K19b.8 — extraction job logs ───────────────────────────────────────
+
+  listJobLogs(
+    jobId: string,
+    params: { sinceLogId?: number; limit?: number },
+    token: string,
+  ): Promise<JobLogsResponse> {
+    const qs = new URLSearchParams();
+    if (params.sinceLogId != null) qs.set('since_log_id', String(params.sinceLogId));
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    const q = qs.toString();
+    return apiJson<JobLogsResponse>(
+      `${BASE}/extraction/jobs/${jobId}/logs${q ? `?${q}` : ''}`,
+      { token },
     );
   },
 

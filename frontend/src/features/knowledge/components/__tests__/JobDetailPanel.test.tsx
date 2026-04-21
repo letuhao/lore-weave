@@ -37,6 +37,14 @@ vi.mock('../../hooks/useJobProgressRate', () => ({
   }),
 }));
 
+// K19b.8: stub JobLogsPanel so we don't drag in useJobLogs + its
+// API call chain. Panel-level tests cover the real component.
+vi.mock('../JobLogsPanel', () => ({
+  JobLogsPanel: ({ jobId }: { jobId: string }) => (
+    <div data-testid="job-logs-panel-stub" data-job-id={jobId} />
+  ),
+}));
+
 import { JobDetailPanel } from '../JobDetailPanel';
 
 function makeJob(

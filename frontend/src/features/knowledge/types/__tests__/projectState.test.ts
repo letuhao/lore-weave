@@ -376,6 +376,14 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     'detail.actions.pause',
     'detail.actions.resume',
     'detail.actions.cancel',
+    // K19b.8: JobLogsPanel
+    'detail.logs.title',
+    'detail.logs.loading',
+    'detail.logs.error',
+    'detail.logs.empty',
+    'detail.logs.levels.info',
+    'detail.logs.levels.warning',
+    'detail.logs.levels.error',
     // K19b.5: retry button in panel
     'retry.button',
     // K19b.6: CostSummary card
