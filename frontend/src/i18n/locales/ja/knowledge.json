@@ -72,6 +72,27 @@
     },
     "retry": {
       "button": "別の設定で再実行"
+    },
+    "costSummary": {
+      "title": "AI 支出",
+      "loading": "支出を読み込み中…",
+      "loadFailed": "コストサマリーを読み込めませんでした。",
+      "thisMonth": "今月",
+      "allTime": "累計",
+      "budget": "月次予算",
+      "editBudget": "予算を編集",
+      "remaining": "今月残り {{remaining}}",
+      "invalid": "0 以上の数値を入力するか、空欄にしてください。",
+      "saveFailed": "予算を保存できませんでした: {{error}}",
+      "dialog": {
+        "title": "月次 AI 予算を編集",
+        "description": "プロジェクト横断の上限です。空欄にすると上限を解除します。",
+        "label": "月次予算 (USD)",
+        "hint": "小数第 4 位まで。空欄で上限を解除。",
+        "cancel": "キャンセル",
+        "save": "保存",
+        "saving": "保存中…"
+      }
     }
   },
   "projects": {
@@ -246,7 +267,8 @@
       "maxSpend": {
         "label": "上限金額 (USD、任意)",
         "hint": "ハードキャップ — 累積コストがこの額に達するとジョブは一時停止します。無制限にするには空欄のまま。",
-        "invalid": "0 以上で小数点以下 2 桁までの金額を入力してください。"
+        "invalid": "0 以上で小数点以下 2 桁までの金額を入力してください。",
+        "monthlyRemaining": "今月のプロジェクト横断残高: {{amount}}"
       },
       "estimate": {
         "heading": "コストプレビュー",

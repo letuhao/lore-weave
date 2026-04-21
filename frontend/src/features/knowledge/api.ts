@@ -128,6 +128,26 @@ export type ChangeEmbeddingModelResponse =
   | ChangeEmbeddingModelNoop
   | ChangeEmbeddingModelResult;
 
+// K19b.6 — GET /v1/knowledge/costs response shape. Decimal fields land
+// as JSON strings; callers cast via Number() for display arithmetic.
+// `monthly_budget_usd` and `monthly_remaining_usd` are null when the
+// user hasn't set a user-wide cap via PUT /me/budget.
+export interface UserCostSummary {
+  all_time_usd: string;
+  current_month_usd: string;
+  monthly_budget_usd: string | null;
+  monthly_remaining_usd: string | null;
+}
+
+// K19b.6 — PUT /v1/knowledge/me/budget body + response.
+export interface SetUserBudgetPayload {
+  ai_monthly_budget_usd: string | null;
+}
+export interface SetUserBudgetResponse {
+  user_id: string;
+  ai_monthly_budget_usd: string | null;
+}
+
 // K19a.6 — POST /extraction/disable response. Non-destructive flip
 // of extraction_enabled=false while preserving Neo4j graph data.
 export interface DisableExtractionResponse {
@@ -496,6 +516,23 @@ export const knowledgeApi = {
         token,
       },
     );
+  },
+
+  // ── K19b.6 — user-wide costs & budget ──────────────────────────────────
+
+  getUserCosts(token: string): Promise<UserCostSummary> {
+    return apiJson<UserCostSummary>(`${BASE}/costs`, { token });
+  },
+
+  setUserBudget(
+    payload: SetUserBudgetPayload,
+    token: string,
+  ): Promise<SetUserBudgetResponse> {
+    return apiJson<SetUserBudgetResponse>(`${BASE}/me/budget`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+      token,
+    });
   },
 
   // K19a.6 — non-destructive POST /extraction/disable. Preserves the

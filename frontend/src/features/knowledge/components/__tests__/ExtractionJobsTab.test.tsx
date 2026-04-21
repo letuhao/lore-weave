@@ -49,6 +49,12 @@ vi.mock('../JobDetailPanel', () => ({
     ) : null,
 }));
 
+// Stub CostSummary — its own test file covers behaviour; tab test
+// focuses on layout + section wiring.
+vi.mock('../CostSummary', () => ({
+  CostSummary: () => <div data-testid="cost-summary-stub" />,
+}));
+
 vi.mock('../BuildGraphDialog', () => ({
   BuildGraphDialog: ({
     open,

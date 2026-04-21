@@ -246,6 +246,8 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     'buildDialog.maxSpend.label',
     'buildDialog.maxSpend.hint',
     'buildDialog.maxSpend.invalid',
+    // K19b.6 D-K19a.5-03: monthly-remaining hint near max_spend.
+    'buildDialog.maxSpend.monthlyRemaining',
     'buildDialog.estimate.heading',
     'buildDialog.estimate.pickLlmFirst',
     'buildDialog.estimate.loading',
@@ -376,6 +378,24 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     'detail.actions.cancel',
     // K19b.5: retry button in panel
     'retry.button',
+    // K19b.6: CostSummary card
+    'costSummary.title',
+    'costSummary.loading',
+    'costSummary.loadFailed',
+    'costSummary.thisMonth',
+    'costSummary.allTime',
+    'costSummary.budget',
+    'costSummary.editBudget',
+    'costSummary.remaining',
+    'costSummary.invalid',
+    'costSummary.saveFailed',
+    'costSummary.dialog.title',
+    'costSummary.dialog.description',
+    'costSummary.dialog.label',
+    'costSummary.dialog.hint',
+    'costSummary.dialog.cancel',
+    'costSummary.dialog.save',
+    'costSummary.dialog.saving',
   ] as const;
 
   it.each(LOCALES)('%s has every K19b.2 jobs key populated', (_tag, bundle) => {

@@ -12,6 +12,7 @@ import {
   BuildGraphDialog,
   type BuildGraphInitialValues,
 } from './BuildGraphDialog';
+import { CostSummary } from './CostSummary';
 
 // K19b.2 — cross-project Jobs tab. Consumes `useExtractionJobs` for
 // dual active/history polling and renders 4 sections matching the
@@ -282,6 +283,8 @@ export function ExtractionJobsTab() {
 
   return (
     <div className="space-y-3">
+      {/* K19b.6 — user-wide spend card at the top of the Jobs tab. */}
+      <CostSummary />
       {activeError && (
         <ErrorBanner messageKey="jobs.error.active" error={activeError} />
       )}

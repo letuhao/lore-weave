@@ -72,6 +72,27 @@
     },
     "retry": {
       "button": "Thử lại với cài đặt khác"
+    },
+    "costSummary": {
+      "title": "Chi tiêu AI",
+      "loading": "Đang tải chi tiêu…",
+      "loadFailed": "Không thể tải tóm tắt chi phí.",
+      "thisMonth": "Tháng này",
+      "allTime": "Tổng cộng",
+      "budget": "Ngân sách tháng",
+      "editBudget": "Chỉnh sửa ngân sách",
+      "remaining": "Còn lại {{remaining}} tháng này",
+      "invalid": "Nhập số không âm hoặc để trống.",
+      "saveFailed": "Không thể lưu ngân sách: {{error}}",
+      "dialog": {
+        "title": "Chỉnh sửa ngân sách AI hàng tháng",
+        "description": "Giới hạn chung cho tất cả dự án. Để trống để bỏ giới hạn.",
+        "label": "Ngân sách tháng (USD)",
+        "hint": "Tối đa 4 chữ số thập phân. Để trống để bỏ giới hạn.",
+        "cancel": "Huỷ",
+        "save": "Lưu",
+        "saving": "Đang lưu…"
+      }
     }
   },
   "projects": {
@@ -246,7 +267,8 @@
       "maxSpend": {
         "label": "Chi tiêu tối đa (USD, tùy chọn)",
         "hint": "Giới hạn cứng — tác vụ tạm dừng khi chi phí tích lũy đạt mức này. Bỏ trống để không giới hạn.",
-        "invalid": "Nhập số không âm với tối đa 2 chữ số thập phân."
+        "invalid": "Nhập số không âm với tối đa 2 chữ số thập phân.",
+        "monthlyRemaining": "Còn {{amount}} tháng này trên tất cả dự án."
       },
       "estimate": {
         "heading": "Xem trước chi phí",

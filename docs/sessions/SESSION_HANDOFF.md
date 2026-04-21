@@ -1,11 +1,11 @@
-# Session Handoff — Session 50 (K19b.1–.5 + K16.12 shipped; Jobs tab + retry live, K19b.6 unblocked)
+# Session Handoff — Session 50 (K19b.1–.6 + K16.12 shipped; K19b plan complete except .8 log viewer)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-21 (session 50)
-> **HEAD:** `b313c1b` (K16.12 completion; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **Date:** 2026-04-22 (session 50)
+> **HEAD:** (pending K19b.6 commit) (K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 4 cycles shipped (3 Track 3 + 1 Track 2 close-out)
+## Session 50 — 5 cycles shipped (4 Track 3 + 1 Track 2 close-out)
 
 ```
 Track 3 K19b progress (session 50)
@@ -35,6 +35,20 @@ Cycle 3  K19b.3 + K19b.5 +   JobDetailPanel (slide-over) + Retry + ETA          
                              × 4 locales. Clears D-K19b.4-01 (ETA).
 
 Cycle 4  K16.12 completion   Track 2 close-out. User-wide budget API.            b313c1b
+
+Cycle 5  K19b.6 + D-K19a.5-03 CostSummary card + monthly-remaining hint           (pending commit)
+         [FE XL]              FE-only. NEW useUserCosts hook (staleTime 60s,
+                              user_id-scoped queryKey). NEW CostSummary.tsx
+                              with inline EditBudgetDialog (decimal regex
+                              matches BE NUMERIC(10,4), progress bar colors
+                              at 80%/100% thresholds). NEW shared
+                              lib/formatUSD.ts after /review-impl caught
+                              inconsistent formatting between CostSummary +
+                              BuildGraphDialog. Wired into ExtractionJobsTab
+                              top. BuildGraphDialog renders monthly-remaining
+                              hint near max_spend via useUserCosts (clears
+                              D-K19a.5-03). +17 costSummary.* keys + 1
+                              maxSpend.monthlyRemaining × 4 locales.
          [BE L]              NEW user_knowledge_budgets table + UserBudgetsRepo
                              (get+upsert). Extended UserCostSummary response
                              with monthly_budget_usd + monthly_remaining_usd
@@ -48,20 +62,21 @@ Cycle 4  K16.12 completion   Track 2 close-out. User-wide budget API.           
                              context in BuildGraphDialog). K19b.6 now has
                              everything it needs on the BE side.
 
-Remaining K19b tasks: K19b.6 CostSummary (NOW UNBLOCKED — BE ready),
-                     K19b.7-rest (other tabs' strings — deferred until those
-                     tabs ship in K19d/e),
+Remaining K19b tasks: K19b.7-rest (other tabs' strings — deferred until
+                     those tabs ship in K19d/e),
                      K19b.8 log viewer (new standalone cycle split out of K19b.3)
+                     K19b cluster is otherwise PLAN-COMPLETE.
 ```
 
-**Test deltas at session 50 end (after 4 cycles):**
-- Frontend knowledge: **155 pass** (was 112 at session 49 end; +43 over 3 FE cycles)
+**Test deltas at session 50 end (after 5 cycles):**
+- Frontend knowledge: **168 pass** (was 112 at session 49 end; +56 over 4 FE cycles)
 - Backend unit: **1180 pass** (was 1154 at session 49 end; +26 = K19b.1 +6 router + K16.12 +9 new + ambient)
-- Backend integration repo: **30 pass** for extraction_jobs_repo + **5 pass** for user_knowledge_budgets (new)
-- Cycle 1 /review-impl: 5 LOW all fixed + 1 MED via review-code (`LIST_ALL_MAX_LIMIT`)
+- Backend integration repo: **30 pass** for extraction_jobs_repo + **5 pass** for user_knowledge_budgets
+- Cycle 1 /review-impl: 5 LOW all fixed + 1 MED via review-code
 - Cycle 2 review-code: 1 LOW fixed; /review-impl: 4 LOW all fixed
 - Cycle 3 review-code: 2 LOW fixed; /review-impl skipped per human approval
-- Cycle 4 review-code: 3 LOW accepted; /review-impl: 3 LOW all fixed (PUT user_id echo, covering index, dead `or` fallbacks)
+- Cycle 4 review-code: 3 LOW accepted; /review-impl: 3 LOW all fixed
+- Cycle 5 review-code: 1 LOW fixed; /review-impl: 1 LOW fixed (shared formatUSD + fix duplicated `$` in templates)
 
 **What shipped in Cycle 3 (10 files, FE-only):**
 - NEW `useJobProgressRate.ts` hook (EMA rate tracker, 6 tests)
@@ -71,21 +86,28 @@ Remaining K19b tasks: K19b.6 CostSummary (NOW UNBLOCKED — BE ready),
 - MOD 4 locales (+17 `jobs.detail.*` + `jobs.retry.button` keys each)
 - MOD `projectState.test.ts` (JOBS_KEYS +17 paths → 31 × 4 = 124 cross-locale assertions)
 
-### What K19b.6 / K19b.8 (next cycle candidates) can now assume
+### What K19b.8 (next cycle candidate) can assume
 
-**K19b.6 CostSummary — UNBLOCKED after Cycle 4.** BE contract frozen:
-- `GET /v1/knowledge/costs` → `{all_time_usd, current_month_usd, monthly_budget_usd: Decimal | null, monthly_remaining_usd: Decimal | null}` — one-fetch for the whole card. `monthly_remaining_usd` already clamped to `>= 0` server-side so UI doesn't have to double-check.
-- `PUT /v1/knowledge/me/budget` with body `{ai_monthly_budget_usd: Decimal | null}` (null clears). Returns `{user_id, ai_monthly_budget_usd}`.
+**K19b.8 Log viewer** — standalone cycle, not blocked. Scope:
+- BE schema: `job_logs(log_id BIGSERIAL PK, job_id UUID FK, user_id UUID, level TEXT, message TEXT, context JSONB, created_at TIMESTAMPTZ)` + index `(user_id, job_id, log_id DESC)` + retention cron (N days).
+- Extraction-worker instrumentation at every chunker/extractor/error-path in `services/worker-ai/app/runner.py` keyed by `(user_id, job_id)`. Likely easiest via a custom Python logging handler that writes to the table.
+- Public endpoint: `GET /v1/knowledge/extraction/jobs/{id}/logs?since_log_id=&limit=50` with cursor pagination.
+- FE: `JobLogsPanel` inside `JobDetailPanel` (or new tab). Tail-follow with auto-scroll toggle. Virtual list for 1000+ lines.
+- Size estimate XL; doable as a single cycle or split into BE + FE halves.
 
-FE shopping list for K19b.6:
-- `knowledgeApi.getUserCosts(token)` + `knowledgeApi.setUserBudget(body, token)` wrappers
-- `useUserCosts` hook — `useQuery` keyed on `['knowledge-costs', userId]`, staleTime ~30s
-- NEW `CostSummary.tsx` — 3-row card (this month / all time / budget progress bar if cap set) + "Edit monthly budget" button opens a FormDialog with a Decimal input (reuse BuildGraphDialog's decimal validation?)
-- Wire into `ExtractionJobsTab` top or KnowledgePage header
-- `jobs.costSummary.*` i18n keys × 4 locales (extend `JOBS_KEYS` iterator)
-- After PUT success, invalidate `['knowledge-costs', userId]` to refresh the card
+### K19b plan-complete status
 
-**Caveat for K19b.6:** the BE's `current_month_spent_usd` stays at 0 until D-K16.11-01 wires `record_spending` into the extraction worker. The CostSummary card will render correctly but show `$0 this month` in production. Ship K19b.6 UI now; figures will populate when K16.11 closure lands. Alternatively, close K16.11 before K19b.6.
+All of K19b's user-facing surface shipped:
+- **K19b.1** ✅ (Cycle 1) — user-scoped jobs endpoint + hook
+- **K19b.2** ✅ (Cycle 2) — ExtractionJobsTab layout
+- **K19b.3** ✅ (Cycle 3) — JobDetailPanel slide-over
+- **K19b.4** ✅ (Cycle 1) — JobProgressBar
+- **K19b.5** ✅ (Cycle 3) — Retry with different settings
+- **K19b.6** ✅ (Cycle 5) — CostSummary card
+- **K19b.7-partial** ✅ (all cycles) — jobs.* i18n keys for shipped surfaces
+- **K19b.8** ☐ — log viewer standalone cycle
+
+**Caveat for CostSummary in production:** `current_month_usd` is BE-derived from `knowledge_projects.current_month_spent_usd` which only gets populated when D-K16.11-01 wires `record_spending` into the extraction worker. Until that lands, the card renders correctly but always shows `$0 this month` in prod. The contract is correct; only the real-data plumb is missing.
 
 **K19b.8 Log viewer** — new standalone cycle. BE schema:
 - `job_logs` table: `(log_id BIGSERIAL PK, job_id UUID FK, user_id UUID, level TEXT, message TEXT, context JSONB, created_at TIMESTAMPTZ)`
@@ -143,8 +165,8 @@ Option (a) won because K19b.2's layout sections (Running/Paused/Complete/Failed)
 - **D-K19b.3-01** → Track 3 polish: human-readable "current item" from cursor. Needs BE cursor enrichment OR FE chapter-title lookup.
 - **D-K19b.3-02** → Track 3 polish: humanised ETA formatter for >60min jobs.
 - **K19b.8** → standalone Track 3 cycle: extraction-job log viewer.
-- **D-K19a.5-03** → K19b.6 (BE now ready after K16.12): monthly budget remaining in BuildGraphDialog.
-- **D-K16.11-01** (new, session 50 Cycle 4) → Track 2 close-out: wire `check_user_monthly_budget` + `record_spending` into start path + worker. Two-line fix but opens a surface for K16.11 test completion too. Not financially risky since `try_spend` is the real money guard.
+- ~~D-K19a.5-03~~ — **Cleared in K19b.6** (BuildGraphDialog monthly-remaining hint shipped).
+- **D-K16.11-01** → Track 2 close-out: wire `check_user_monthly_budget` + `record_spending` into start path + worker. Not financially risky since `try_spend` is the real money guard. Currently gates CostSummary from showing real production figures.
 - **D-K19a.5-04 + D-K16.2-02b** → Track 3 (paired): chapter_range picker + runner-side enforcement.
 - **D-K19a.5-06** → Track 3 polish: `glossary_sync` scope option in BuildGraphDialog.
 - **D-K19a.5-07** → Track 3 polish: "Run benchmark" CTA in BuildGraphDialog.

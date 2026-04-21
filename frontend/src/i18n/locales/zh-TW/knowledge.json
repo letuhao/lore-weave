@@ -72,6 +72,27 @@
     },
     "retry": {
       "button": "以不同設定重試"
+    },
+    "costSummary": {
+      "title": "AI 花費",
+      "loading": "載入花費中…",
+      "loadFailed": "無法載入花費摘要。",
+      "thisMonth": "本月",
+      "allTime": "累計",
+      "budget": "月度預算",
+      "editBudget": "編輯預算",
+      "remaining": "本月剩餘 {{remaining}}",
+      "invalid": "請輸入非負數或留空。",
+      "saveFailed": "無法儲存預算:{{error}}",
+      "dialog": {
+        "title": "編輯每月 AI 預算",
+        "description": "跨專案上限。留空以取消上限。",
+        "label": "月度預算 (USD)",
+        "hint": "最多 4 位小數。留空以取消上限。",
+        "cancel": "取消",
+        "save": "儲存",
+        "saving": "儲存中…"
+      }
     }
   },
   "projects": {
@@ -246,7 +267,8 @@
       "maxSpend": {
         "label": "花費上限 (USD,選填)",
         "hint": "硬上限 — 累積成本達到此金額時作業會暫停。留空表示不設限。",
-        "invalid": "請輸入非負數,最多 2 位小數。"
+        "invalid": "請輸入非負數,最多 2 位小數。",
+        "monthlyRemaining": "本月跨專案剩餘:{{amount}}"
       },
       "estimate": {
         "heading": "成本預覽",

@@ -72,6 +72,27 @@
     },
     "retry": {
       "button": "Retry with different settings"
+    },
+    "costSummary": {
+      "title": "AI spending",
+      "loading": "Loading spending…",
+      "loadFailed": "Couldn't load cost summary.",
+      "thisMonth": "This month",
+      "allTime": "All time",
+      "budget": "Monthly budget",
+      "editBudget": "Edit budget",
+      "remaining": "{{remaining}} remaining this month",
+      "invalid": "Enter a non-negative decimal or leave blank.",
+      "saveFailed": "Couldn't save budget: {{error}}",
+      "dialog": {
+        "title": "Edit monthly AI budget",
+        "description": "Cross-project cap. Leave empty to remove the cap.",
+        "label": "Monthly budget (USD)",
+        "hint": "Up to 4 fraction digits. Leave empty to clear the cap.",
+        "cancel": "Cancel",
+        "save": "Save",
+        "saving": "Saving…"
+      }
     }
   },
   "projects": {
@@ -246,7 +267,8 @@
       "maxSpend": {
         "label": "Max spend (USD, optional)",
         "hint": "Hard cap — the job pauses when cumulative cost reaches this. Leave blank for no cap.",
-        "invalid": "Enter a non-negative amount with up to 2 decimals."
+        "invalid": "Enter a non-negative amount with up to 2 decimals.",
+        "monthlyRemaining": "{{amount}} left this month across all projects."
       },
       "estimate": {
         "heading": "Cost preview",

@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-21 **(session 50 continued — K16.12 completion BE [L]; K19b.6 now unblocked)** — Fourth cycle. Completes K16.12 Track 2 cost-tracking API by filling the user-wide-budget gap: new `user_knowledge_budgets` table + `UserBudgetsRepo`, `UserCostSummary` response extended with `monthly_budget_usd` + `monthly_remaining_usd` (clamped >=0), new `PUT /v1/knowledge/me/budget` endpoint, new `check_user_monthly_budget` helper in budget.py. /review-impl caught 3 LOW all fixed in-cycle (L4 PUT echoes user_id for symmetry with per-project PUT, L5 new `idx_knowledge_projects_user_all` covering index for archived-inclusive scans, L6 removed redundant `or Decimal("0")` fallbacks since SQL COALESCE guards). Pre-existing K16.11 gap surfaced during QC: `record_spending` + `check_user_monthly_budget` aren't wired into the extraction worker/start path — logged as D-K16.11-01 (gates "figures match extraction_jobs.cost_spent_usd sum" plan acceptance). Next cycle: K19b.6 CostSummary (BE now ready) OR K19b.8 log viewer.
-- Updated By: Assistant (session 50 — K16.12 completion commit: 9 files. BE MOD 6 (migrate.py +user_knowledge_budgets DDL + idx_knowledge_projects_user_all covering index, deps.py +get_user_budgets_repo factory, costs.py +UserCostSummary budget fields + PUT /me/budget + user_id echo, jobs/budget.py +check_user_monthly_budget helper, integration/db/conftest.py TRUNCATE list, tests/unit/test_costs_api.py +5 tests, tests/unit/test_budget.py +4 tests); BE NEW 2 (db/repositories/user_budgets.py UserBudgetsRepo get+upsert, tests/integration/db/test_user_budgets_repo.py 5 tests). `pytest` → BE unit 1180 pass (was 1171; +9 = 5 API extensions + 4 check_user_monthly_budget), BE integration user_budgets_repo 5/5 pass. No FE changes.)
+- Last Updated: 2026-04-22 **(session 50 continued — K19b.6 + D-K19a.5-03 FE batched [XL]; K19b plan complete except K19b.8 log viewer)** — Fifth cycle. Ships K19b.6 CostSummary (3-row card: this month / all time / budget with progress bar and edit button; inline FormDialog for editing the user-wide cap; invalidates cache on save) consuming the K16.12 BE endpoints shipped last cycle. Clears D-K19a.5-03 by adding the user-wide monthly-remaining hint near BuildGraphDialog's max_spend input. New `useUserCosts` hook (staleTime 60s, dedups across CostSummary + BuildGraphDialog callers). Extracted `formatUSD` to shared `lib/formatUSD.ts` after /review-impl caught inconsistent formatting between the two call sites. Review-code L1 removed dead `__testonly_EditBudgetDialog` export. /review-impl L11 fixed: shared formatter + stripped redundant `$` prefix from `monthlyRemaining` templates in 4 locales. Only remaining K19b task: K19b.8 log viewer (new standalone cycle from Cycle 3 split).
+- Updated By: Assistant (session 50 — K19b.6 + D-K19a.5-03 FE commit: 13 files. NEW 4 (hooks/useUserCosts.ts, hooks/__tests__/useUserCosts.test.tsx 3 tests, components/CostSummary.tsx with inline EditBudgetDialog, components/__tests__/CostSummary.test.tsx 8 tests, lib/formatUSD.ts post-review-impl extract). MOD 9 (api.ts + UserCostSummary / SetUserBudgetPayload / SetUserBudgetResponse types + getUserCosts / setUserBudget wrappers, ExtractionJobsTab.tsx renders <CostSummary /> at top, ExtractionJobsTab.test.tsx stubs CostSummary, BuildGraphDialog.tsx consumes useUserCosts + monthly-remaining hint, BuildGraphDialog.test.tsx + useUserCostsMock + 2 D-K19a.5-03 tests, 4 locale knowledge.json +17 costSummary.* keys + maxSpend.monthlyRemaining, projectState.test.ts JOBS_KEYS +17 paths + DIALOG_KEYS +1). `vitest` → FE knowledge 168 pass (was 155 at K19b.3 end; +13 = 3 hook + 8 CostSummary + 2 BuildGraphDialog). `tsc --noEmit` clean. No BE changes.)
 - Active Branch: `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
-- HEAD: `b313c1b` (K16.12 completion) at session 50 end (was `5e00f7b` K19b.3+K19b.5+ETA, `4fb8b62` K19b.2+K19b.7-partial, `1c208ce` K19b.1+K19b.4, `2061b2d` K19a.8, `c6ee80a` K19a.7 HEAD backfill, `2cbcc7c` K19a.7, `7cf394f` K19a.6 HEAD backfill, `2226283` K19a.6, `1156193` K19a.5 HEAD backfill, `3148751` K19a.5)
+- HEAD: (pending K19b.6 commit) at session 50 end (was `b313c1b` K16.12 completion, `5e00f7b` K19b.3+K19b.5+ETA, `4fb8b62` K19b.2+K19b.7-partial, `1c208ce` K19b.1+K19b.4, `2061b2d` K19a.8, `c6ee80a` K19a.7 HEAD backfill, `2cbcc7c` K19a.7, `7cf394f` K19a.6 HEAD backfill, `2226283` K19a.6, `1156193` K19a.5 HEAD backfill, `3148751` K19a.5)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -138,7 +138,7 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 | ~~D-K18.9-01~~ | ~~K18.9 scope (session 47)~~ | **Cleared in session 47 T2-polish-3.** See "Recently cleared" below. | — |
 | ~~D-K19a.5-01~~ | ~~K19a.5 plan (session 49)~~ | **Cleared in session 49 K19a.6.** ChangeModelDialog shipped (form + destructive-warning banner + same-model gating + no-op response detection). See "Recently cleared" below. | — |
 | ~~D-K19a.5-02~~ | ~~K19a.5 plan (session 49)~~ | **Cleared in session 49 K19a.6** (FS — added new BE `POST /v1/knowledge/projects/{id}/extraction/disable` endpoint + FE disableExtraction wrapper + DisableConfirm dialog). See "Recently cleared" below. Note: the K19a.5 deferral row incorrectly assumed the BE PATCH route accepted `extraction_enabled` — it doesn't (ProjectUpdate Pydantic schema excludes that field), so K19a.6 shipped a dedicated non-destructive endpoint. | — |
-| D-K19a.5-03 | K19a.5 plan (session 49) | **Monthly budget remaining context in BuildGraphDialog.** The max_spend field shows only raw hint text; the plan calls for `"You have $X monthly remaining"` context beside it (K19b.6 `CostSummary` scope). **BE unblocked in session 50 K16.12 completion**: `GET /v1/knowledge/costs` now returns `monthly_remaining_usd` in the same response as all_time + current_month. FE work still deferred to K19b.6 CostSummary cycle. | K19b.6 |
+| ~~D-K19a.5-03~~ | ~~K19a.5 plan (session 49)~~ | **Cleared in session 50 K19b.6.** BuildGraphDialog now renders `{{amount}} left this month across all projects` near the max_spend input when `useUserCosts().costs.monthly_remaining_usd != null`. Formatted via shared `lib/formatUSD.ts`. | — |
 | D-K16.11-01 | K16.12 completion QC (session 50) | **Wire `check_user_monthly_budget` + `record_spending` into the extraction start path + worker success path.** Both helpers are defined in `services/knowledge-service/app/jobs/budget.py` but aren't imported or called by any runtime code. Consequences today: `knowledge_projects.current_month_spent_usd` stays at 0 in production, `user_knowledge_budgets.ai_monthly_budget_usd` has no enforcement effect, and the `GET /costs` / `PUT /me/budget` endpoints are correct-by-shape but trivial-in-figures. The `extraction_jobs.max_spend_usd` atomic `try_spend` is the real money guard regardless, so not a financial-risk gap. Two-line fix in `public/extraction.py` (call both helpers in `start_extraction_job`) + one-line `record_spending` call per worker LLM completion in `services/worker-ai/app/runner.py`. Pair with K16.11's "Monthly rollover resets counter" test + "Per-user aggregate cap blocks over-budget jobs across projects" test to close K16.11's `[ ]` status too. | Track 2 close-out (naturally-next) |
 | D-K19a.5-04 | K19a.5 plan (session 49) | **Chapter-range picker for chapters scope.** Dialog omits `scope_range.chapter_range` — BE preview honours it (D-K16.2-02 cleared in T2-close-6) but runner doesn't (D-K16.2-02b still open). Adding the picker now would be misleading until the runner catches up. Tied to D-K16.2-02b — when the runner honours range, ship both together. | Track 3 (paired with D-K16.2-02b) |
 | D-K19a.5-05 | K19a.4 F8 + K19a.5 plan | **Hook-level tests for 11 real-action callbacks in `useProjectState`.** Inherited from K19a.4 F8 deferral — K19a.5 did not advance coverage. `renderHook` + mocked `knowledgeApi` would cover pause/resume/cancel/retry/extractNew/delete/rebuild/confirmModelChange. Medium lift; value grows as more cycles depend on the hook. | Naturally-next (hook hardening before K19a.7 polish) |
@@ -266,6 +266,57 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 ---
 
 ## Current Active Work
+
+### K19b.6 + D-K19a.5-03 — CostSummary card + monthly-remaining hint ✅ (session 50, Track 3 K19b cycle 5, FE [XL])
+
+Fifth cycle. Plan-complete K19b.6 "Total cost widget" plus the D-K19a.5-03 BuildGraphDialog hint that's been tagged-for-K19b.6 since session 49. Both consume the K16.12 BE endpoints shipped in Cycle 4 — one-fetch contract via `GET /v1/knowledge/costs` which returns `{all_time_usd, current_month_usd, monthly_budget_usd, monthly_remaining_usd}`.
+
+**Shipped (13 files):**
+
+FE:
+- [frontend/src/features/knowledge/api.ts](../../frontend/src/features/knowledge/api.ts) — NEW types `UserCostSummary`, `SetUserBudgetPayload`, `SetUserBudgetResponse`; NEW wrappers `knowledgeApi.getUserCosts(token)` + `knowledgeApi.setUserBudget(payload, token)`.
+- [frontend/src/features/knowledge/hooks/useUserCosts.ts](../../frontend/src/features/knowledge/hooks/useUserCosts.ts) (NEW) — `useQuery` keyed `['knowledge-costs', userId]`, staleTime 60s. Matches queryKey-with-userId pattern from `useExtractionJobs` so logout→login on a shared QueryClient doesn't leak cache between users. Returns `{costs, isLoading, error}`.
+- [frontend/src/features/knowledge/hooks/__tests__/useUserCosts.test.tsx](../../frontend/src/features/knowledge/hooks/__tests__/useUserCosts.test.tsx) (NEW) — 3 tests: happy data, disabled-on-no-token (no API call fires), error passthrough.
+- [frontend/src/features/knowledge/components/CostSummary.tsx](../../frontend/src/features/knowledge/components/CostSummary.tsx) (NEW) — card with 3-row `<dl>` + progress bar. Progress-bar color thresholds mirror `budget.py`'s warning semantics: `<80%` = `bg-primary`, `80%–99%` = `bg-amber-500`, `>=100%` = `bg-destructive`. Inline `EditBudgetDialog` sub-component uses the shared `FormDialog` primitive + client-side decimal regex `/^\d+(\.\d{1,4})?$/` matching BE `NUMERIC(10,4)` precision. Empty input = PUT `null` (clears cap). `invalidateQueries(['knowledge-costs', userId])` on save success → React Query refetches; toast on error, dialog stays open.
+- [frontend/src/features/knowledge/components/__tests__/CostSummary.test.tsx](../../frontend/src/features/knowledge/components/__tests__/CostSummary.test.tsx) (NEW) — 8 tests: loading, error, no-budget-hides-bar, with-budget-shows-bar, 3 color thresholds (<80/80-99/>=100), edit opens dialog, save invalidates + closes, save failure toasts + keeps dialog open.
+- [frontend/src/features/knowledge/lib/formatUSD.ts](../../frontend/src/features/knowledge/lib/formatUSD.ts) (NEW, post-/review-impl) — hoisted `Intl.NumberFormat` USD formatter. Shared between `CostSummary` and `BuildGraphDialog.monthlyRemaining` so both render the same amount the same way. Matches the existing `lib/readBackendError.ts` shared-utility pattern.
+- [frontend/src/features/knowledge/components/BuildGraphDialog.tsx](../../frontend/src/features/knowledge/components/BuildGraphDialog.tsx) — imports `useUserCosts` + `formatUSD`; renders new `<span data-testid="build-dialog-monthly-remaining">` near the `max_spend` input when `userCosts?.monthly_remaining_usd != null`. Silently hides when no user-wide cap is set OR when the costs query errors (don't fail-closed the BuildDialog on a cost-summary fetch hiccup).
+- [frontend/src/features/knowledge/components/__tests__/BuildGraphDialog.test.tsx](../../frontend/src/features/knowledge/components/__tests__/BuildGraphDialog.test.tsx) — `useUserCostsMock` added with null default in `beforeEach`; +2 tests: hint renders when budget set, hint hidden when budget null.
+- [frontend/src/features/knowledge/components/ExtractionJobsTab.tsx](../../frontend/src/features/knowledge/components/ExtractionJobsTab.tsx) — renders `<CostSummary />` at top of the tab body above the active-error banner.
+- [frontend/src/features/knowledge/components/__tests__/ExtractionJobsTab.test.tsx](../../frontend/src/features/knowledge/components/__tests__/ExtractionJobsTab.test.tsx) — stubs `CostSummary` to `<div data-testid="cost-summary-stub" />` so tab-level tests stay focused on layout + section wiring rather than dragging in the cost hook.
+- 4 × [frontend/src/i18n/locales/{en,ja,vi,zh-TW}/knowledge.json](../../frontend/src/i18n/locales/en/knowledge.json) — +`jobs.costSummary.*` block (17 keys: title/loading/loadFailed/thisMonth/allTime/budget/editBudget/remaining/invalid/saveFailed/dialog.{title/description/label/hint/cancel/save/saving}) + `projects.buildDialog.maxSpend.monthlyRemaining` (D-K19a.5-03).
+- [frontend/src/features/knowledge/types/__tests__/projectState.test.ts](../../frontend/src/features/knowledge/types/__tests__/projectState.test.ts) — JOBS_KEYS +17 costSummary paths + DIALOG_KEYS +1 monthlyRemaining → total cross-locale assertion surface now 48 × 4 = 192 for jobs.* + dialog.* trees combined.
+
+**Acceptance criteria (K19b.6 plan):**
+- ✅ Displays total AI spending (this month + all time + budget + progress bar when cap set)
+- ✅ Numbers match backend (consumes `/v1/knowledge/costs` directly — no aggregation layer)
+- ✅ Budget edit updates in real time (`invalidateQueries` on save triggers React Query refetch)
+- ✅ D-K19a.5-03: monthly budget remaining context in BuildGraphDialog
+
+**Caveat carried over from K16.12:** production `current_month_usd` stays at $0 until D-K16.11-01 wires `record_spending` into the extraction worker. CostSummary renders correctly but figures lag reality until K16.11 closure. Acceptable — the card shape is correct; the only missing piece is the real data plumb. FE users will see an empty-state (`$0.00 this month`) in prod for the first few users.
+
+**Review-code:** 1 LOW fixed in-cycle (dead `__testonly_EditBudgetDialog` export removed); 9 LOW accepted (decimal regex matches BE precision, React Query dedup makes hook cheap, minor test-style items).
+
+**Review-impl findings (1 LOW, fixed in-cycle):**
+
+| ID | Sev | Fix |
+|---|---|---|
+| L11 | LOW | ✅ BuildGraphDialog was passing raw Decimal string to i18n template (`"1234.56"` → `"$1234.56 left"`) while CostSummary used `Intl.NumberFormat` (`"$1,234.56"`). Same amount, different render. Extracted `formatUSD` to `lib/formatUSD.ts` (shared with `lib/readBackendError.ts` convention). Both call sites now import the same helper. Dropped the redundant `$` prefix from the `monthlyRemaining` template in 4 locales since the formatter prefixes the currency symbol. Also tightened the CostSummary save-failure test to assert the exact i18n key fires (`toBe('jobs.costSummary.saveFailed')`) rather than `toHaveBeenCalled()`. |
+
+**Evidence:**
+- FE knowledge `vitest run src/features/knowledge/` → **168 pass** (was 155 at K19b.3 end; +13 = 3 hook + 8 CostSummary + 2 BuildGraphDialog D-K19a.5-03)
+- `tsc --noEmit` clean
+- No BE changes
+
+**Cleared deferrals:**
+- ✅ **D-K19a.5-03** — BuildGraphDialog now shows monthly-remaining hint near max_spend.
+
+**K19b cluster status:**
+- ✅ K19b.1, .2, .3, .4, .5, .6, .7-partial
+- ☐ K19b.8 log viewer (new standalone cycle, unblocked, needs BE schema + worker instrumentation)
+- ☐ K19b.7-rest (other tabs' strings — deferred until those tabs ship in K19d/e)
+
+---
 
 ### K16.12 completion — user-wide budget table + API + helper ✅ (session 50, Track 2 close-out, BE [L])
 

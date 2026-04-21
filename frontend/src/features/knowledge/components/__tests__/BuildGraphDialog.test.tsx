@@ -56,6 +56,18 @@ vi.mock('sonner', () => ({
   toast: { error: (...args: unknown[]) => toastErrorMock(...args) },
 }));
 
+// K19b.6 (D-K19a.5-03): the dialog now reads user-wide costs to show
+// "$X left this month" near max_spend. Default mock returns null costs
+// so existing tests see no hint; the dedicated test below overrides.
+const useUserCostsMock = vi.fn().mockReturnValue({
+  costs: null,
+  isLoading: false,
+  error: null,
+});
+vi.mock('../../hooks/useUserCosts', () => ({
+  useUserCosts: () => useUserCostsMock(),
+}));
+
 // Import AFTER the mocks so the component picks them up.
 import { BuildGraphDialog, readBackendError } from '../BuildGraphDialog';
 import type { Project } from '../../types';
@@ -140,6 +152,13 @@ describe('BuildGraphDialog', () => {
     startMock.mockReset();
     benchmarkMock.mockReset();
     toastErrorMock.mockReset();
+    // Default useUserCosts → null costs so existing tests see no hint.
+    useUserCostsMock.mockReset();
+    useUserCostsMock.mockReturnValue({
+      costs: null,
+      isLoading: false,
+      error: null,
+    });
     listUserModelsMock.mockResolvedValue({
       items: [
         {
@@ -471,5 +490,31 @@ describe('BuildGraphDialog', () => {
     // placeholder instead.
     const maxSpend = screen.getByPlaceholderText('0.00') as HTMLInputElement;
     expect(maxSpend.value).toBe('7.50');
+  });
+
+  // D-K19a.5-03 (cleared in K19b.6): monthly-remaining hint near max_spend.
+  it('shows "$X left this month" hint when user-wide budget is set', () => {
+    useUserCostsMock.mockReturnValue({
+      costs: {
+        all_time_usd: '40',
+        current_month_usd: '5',
+        monthly_budget_usd: '20',
+        monthly_remaining_usd: '15.00',
+      },
+      isLoading: false,
+      error: null,
+    });
+    renderDialog();
+    // vitest.setup.ts i18n mock returns the raw key verbatim when the
+    // key itself doesn't contain `{{placeholder}}` substrings (dotted
+    // paths don't). Assert the hint renders — its i18n template is
+    // covered by projectState.test.ts's DIALOG_KEYS iterator.
+    expect(screen.getByTestId('build-dialog-monthly-remaining')).toBeInTheDocument();
+  });
+
+  it('hides the monthly-remaining hint when no user-wide cap is set', () => {
+    // Default mock already returns costs=null, hint should not render.
+    renderDialog();
+    expect(screen.queryByTestId('build-dialog-monthly-remaining')).toBeNull();
   });
 });

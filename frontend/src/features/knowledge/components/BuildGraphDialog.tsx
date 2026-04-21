@@ -14,6 +14,8 @@ import {
 import type { BenchmarkStatus, Project } from '../types';
 import type { CostEstimate } from '../types/projectState';
 import { readBackendError } from '../lib/readBackendError';
+import { formatUSD } from '../lib/formatUSD';
+import { useUserCosts } from '../hooks/useUserCosts';
 import { EmbeddingModelPicker } from './EmbeddingModelPicker';
 
 // K19a.5 — modal for starting an extraction job. Triggered from the
@@ -91,6 +93,14 @@ export function BuildGraphDialog({
   const [embeddingModel, setEmbeddingModel] = useState<string | null>(openEmbedding);
   const [maxSpend, setMaxSpend] = useState<string>(openMaxSpend);
   const [starting, setStarting] = useState(false);
+
+  // D-K19a.5-03 (cleared in K19b.6): user-wide monthly remaining hint
+  // shown near the max_spend input so the user knows how much headroom
+  // they have under their aggregate cap before setting a per-job cap.
+  // Silently hides when no user-wide cap is set or when the costs
+  // query errors — we don't want to fail-closed the BuildDialog on a
+  // cost-summary fetch hiccup.
+  const { costs: userCosts } = useUserCosts();
   // 300 ms debounced copy of (scope, llmModel) — prevents a burst of
   // /estimate calls on rapid toggles. React-Query keyed by the debounced
   // tuple auto-cancels stale requests on key change.
@@ -336,6 +346,19 @@ export function BuildGraphDialog({
           <span className="text-[11px] text-muted-foreground">
             {t('projects.buildDialog.maxSpend.hint')}
           </span>
+          {/* D-K19a.5-03: surface user-wide monthly remaining so the
+              user can size this job's cap against their aggregate
+              budget. Hidden when no user-wide cap is set (null). */}
+          {userCosts?.monthly_remaining_usd != null && (
+            <span
+              className="text-[11px] text-muted-foreground"
+              data-testid="build-dialog-monthly-remaining"
+            >
+              {t('projects.buildDialog.maxSpend.monthlyRemaining', {
+                amount: formatUSD(userCosts.monthly_remaining_usd),
+              })}
+            </span>
+          )}
           {!maxSpendValid && (
             <span className="text-[11px] text-destructive">
               {t('projects.buildDialog.maxSpend.invalid')}
