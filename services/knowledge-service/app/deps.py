@@ -27,6 +27,7 @@ from app.db.repositories.extraction_jobs import ExtractionJobsRepo
 from app.db.repositories.extraction_pending import ExtractionPendingRepo
 from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.summaries import SummariesRepo
+from app.db.repositories.user_budgets import UserBudgetsRepo
 from app.db.repositories.user_data import UserDataRepo
 
 
@@ -68,3 +69,7 @@ async def get_provider_client() -> ProviderClient:
 
 async def get_benchmark_runs_repo() -> BenchmarkRunsRepo:
     return BenchmarkRunsRepo(get_knowledge_pool())
+
+
+async def get_user_budgets_repo() -> UserBudgetsRepo:
+    return UserBudgetsRepo(get_knowledge_pool())

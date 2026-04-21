@@ -44,6 +44,13 @@ CREATE TABLE IF NOT EXISTS knowledge_projects (
 CREATE INDEX IF NOT EXISTS idx_knowledge_projects_user
   ON knowledge_projects(user_id) WHERE NOT is_archived;
 
+-- K16.12: covering index for user-wide aggregate queries that INCLUDE
+-- archived projects (e.g. `check_user_monthly_budget`, GET /costs).
+-- An archived project's current-month spend still counts toward the
+-- user's aggregate cap, so we can't use the partial index above.
+CREATE INDEX IF NOT EXISTS idx_knowledge_projects_user_all
+  ON knowledge_projects(user_id);
+
 CREATE INDEX IF NOT EXISTS idx_knowledge_projects_extraction_status
   ON knowledge_projects(extraction_status) WHERE extraction_status != 'disabled';
 
@@ -355,6 +362,19 @@ CREATE TABLE IF NOT EXISTS project_embedding_benchmark_runs (
 CREATE INDEX IF NOT EXISTS idx_benchmark_runs_project_latest
   ON project_embedding_benchmark_runs
     (project_id, embedding_model, created_at DESC);
+
+-- ═══════════════════════════════════════════════════════════════
+-- K16.12 — User-wide monthly AI budget cap.
+-- Per-project budgets live on knowledge_projects (see above). This
+-- table tracks the aggregate cross-project cap; at most one row per
+-- user (PK on user_id). ai_monthly_budget_usd NULL = unlimited.
+-- No FK on user_id — users table lives in auth-service (cross-DB).
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS user_knowledge_budgets (
+  user_id                UUID PRIMARY KEY,
+  ai_monthly_budget_usd  NUMERIC(10,4),
+  updated_at             TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 """
 
 

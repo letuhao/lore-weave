@@ -22,7 +22,12 @@ from uuid import UUID
 
 import asyncpg
 
-__all__ = ["BudgetCheck", "can_start_job", "record_spending"]
+__all__ = [
+    "BudgetCheck",
+    "can_start_job",
+    "check_user_monthly_budget",
+    "record_spending",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +115,92 @@ async def can_start_job(
     return BudgetCheck(
         allowed=True,
         reason="within budget",
+        monthly_spent=spent,
+        monthly_budget=budget,
+        warning=warning,
+    )
+
+
+async def check_user_monthly_budget(
+    pool: asyncpg.Pool,
+    user_id: UUID,
+    estimated_cost: Decimal,
+) -> BudgetCheck:
+    """K16.12 — user-wide monthly budget pre-check across ALL projects.
+
+    Complements :func:`can_start_job` (per-project cap): sums this
+    month's spend across every one of the user's projects and compares
+    against ``user_knowledge_budgets.ai_monthly_budget_usd``. Returns
+    the same ``BudgetCheck`` shape so both checks are interchangeable
+    from the caller's point of view.
+
+    Stale-month rollover: projects whose ``current_month_key`` doesn't
+    match the current month contribute 0 to the sum — they'll reset to
+    the current month on their next ``record_spending`` call. No eager
+    UPDATE here: a pre-check is allowed to be advisory, and writing on
+    a read path would create multiple SQL round-trips for a decision
+    that the per-job ``try_spend`` ultimately enforces anyway.
+
+    Not yet wired into ``/extraction/start`` — tracked as D-K16.11-01.
+    """
+    month_key = _current_month_key()
+
+    budget_row = await pool.fetchrow(
+        """
+        SELECT ai_monthly_budget_usd
+        FROM user_knowledge_budgets
+        WHERE user_id = $1
+        """,
+        user_id,
+    )
+    budget = budget_row["ai_monthly_budget_usd"] if budget_row else None
+
+    spent_row = await pool.fetchrow(
+        """
+        SELECT COALESCE(SUM(
+          CASE WHEN current_month_key = $2
+               THEN current_month_spent_usd
+               ELSE 0 END
+        ), 0) AS total
+        FROM knowledge_projects
+        WHERE user_id = $1
+        """,
+        user_id,
+        month_key,
+    )
+    # SQL COALESCE(..., 0) guarantees a non-null Decimal; no Python
+    # fallback needed.
+    spent: Decimal = spent_row["total"]
+
+    if budget is None:
+        return BudgetCheck(
+            allowed=True,
+            reason="no user monthly budget set",
+            monthly_spent=spent,
+        )
+
+    projected = spent + estimated_cost
+    if projected > budget:
+        return BudgetCheck(
+            allowed=False,
+            reason=(
+                f"estimated cost ${estimated_cost} would exceed user monthly "
+                f"budget (${spent} spent of ${budget} across all projects)"
+            ),
+            monthly_spent=spent,
+            monthly_budget=budget,
+        )
+
+    warning = None
+    if budget > 0 and projected / budget >= Decimal("0.8"):
+        warning = (
+            f"projected user spending ${projected} is >= 80% of monthly "
+            f"budget ${budget}"
+        )
+
+    return BudgetCheck(
+        allowed=True,
+        reason="within user budget",
         monthly_spent=spent,
         monthly_budget=budget,
         warning=warning,

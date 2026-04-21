@@ -8,7 +8,11 @@ from uuid import uuid4
 
 import pytest
 
-from app.jobs.budget import can_start_job, record_spending
+from app.jobs.budget import (
+    can_start_job,
+    check_user_monthly_budget,
+    record_spending,
+)
 
 
 _TEST_USER = uuid4()
@@ -89,3 +93,74 @@ async def test_record_spending(mock_key):
     pool.execute = AsyncMock()
     await record_spending(pool, _TEST_USER, _TEST_PROJECT, Decimal("1.50"))
     pool.execute.assert_called_once()
+
+
+# ── K16.12: check_user_monthly_budget (user-wide aggregate) ──────────
+
+
+def _mock_user_pool(
+    user_budget: Decimal | None,
+    project_totals: Decimal,
+) -> AsyncMock:
+    """Two fetchrow calls in sequence: (1) the user_knowledge_budgets
+    SELECT, (2) the SUM-across-projects SELECT. Queue responses via
+    ``side_effect`` so they fire in order."""
+    pool = AsyncMock()
+    pool.fetchrow = AsyncMock(
+        side_effect=[
+            {"ai_monthly_budget_usd": user_budget},
+            {"total": project_totals},
+        ],
+    )
+    return pool
+
+
+@pytest.mark.asyncio
+@patch("app.jobs.budget._current_month_key", return_value="2026-04")
+async def test_check_user_budget_allowed_when_no_cap(mock_key):
+    pool = _mock_user_pool(user_budget=None, project_totals=Decimal("123.45"))
+    result = await check_user_monthly_budget(pool, _TEST_USER, Decimal("50"))
+    assert result.allowed is True
+    assert result.monthly_budget is None
+    assert "no user monthly budget" in result.reason
+
+
+@pytest.mark.asyncio
+@patch("app.jobs.budget._current_month_key", return_value="2026-04")
+async def test_check_user_budget_allowed_within_cap(mock_key):
+    pool = _mock_user_pool(
+        user_budget=Decimal("100"),
+        project_totals=Decimal("30"),
+    )
+    result = await check_user_monthly_budget(pool, _TEST_USER, Decimal("20"))
+    assert result.allowed is True
+    assert result.monthly_spent == Decimal("30")
+    assert result.monthly_budget == Decimal("100")
+    assert result.warning is None
+
+
+@pytest.mark.asyncio
+@patch("app.jobs.budget._current_month_key", return_value="2026-04")
+async def test_check_user_budget_blocks_over_cap(mock_key):
+    pool = _mock_user_pool(
+        user_budget=Decimal("50"),
+        project_totals=Decimal("45"),
+    )
+    result = await check_user_monthly_budget(pool, _TEST_USER, Decimal("10"))
+    assert result.allowed is False
+    assert "exceed" in result.reason
+    assert result.monthly_budget == Decimal("50")
+
+
+@pytest.mark.asyncio
+@patch("app.jobs.budget._current_month_key", return_value="2026-04")
+async def test_check_user_budget_warns_at_80_percent(mock_key):
+    # 70 spent + 20 estimate = 90 projected; 90/100 = 0.9 >= 0.8.
+    pool = _mock_user_pool(
+        user_budget=Decimal("100"),
+        project_totals=Decimal("70"),
+    )
+    result = await check_user_monthly_budget(pool, _TEST_USER, Decimal("20"))
+    assert result.allowed is True
+    assert result.warning is not None
+    assert "80%" in result.warning
