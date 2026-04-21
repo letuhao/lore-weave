@@ -641,3 +641,136 @@ def test_k10_4_i4_create_rejects_negative_items_total():
             embedding_model="ok",
             items_total=-1,
         )
+
+
+# ── K19b.1: list_all_for_user (user-scoped, grouped) ────────────────────
+
+
+@pytest.mark.asyncio
+async def test_k19b_1_list_all_active_filters_terminal_states(pool):
+    """active group = pending/running/paused, excludes terminal states."""
+    repo = ExtractionJobsRepo(pool)
+    user = uuid4()
+    p_pending = await _make_project(pool, user)
+    p_running = await _make_project(pool, user)
+    p_paused = await _make_project(pool, user)
+    p_complete = await _make_project(pool, user)
+    p_failed = await _make_project(pool, user)
+    p_cancelled = await _make_project(pool, user)
+
+    j_pending = await repo.create(user, _job_payload(p_pending))
+    j_running = await repo.create(user, _job_payload(p_running))
+    j_paused = await repo.create(user, _job_payload(p_paused))
+    j_complete = await repo.create(user, _job_payload(p_complete))
+    j_failed = await repo.create(user, _job_payload(p_failed))
+    j_cancelled = await repo.create(user, _job_payload(p_cancelled))
+
+    await repo.update_status(user, j_running.job_id, "running")
+    await repo.update_status(user, j_paused.job_id, "running")
+    await repo.update_status(user, j_paused.job_id, "paused")
+    await repo.update_status(user, j_complete.job_id, "complete")
+    await repo.update_status(user, j_failed.job_id, "failed")
+    await repo.update_status(user, j_cancelled.job_id, "cancelled")
+
+    rows = await repo.list_all_for_user(user, status_group="active")
+    ids = {j.job_id for j in rows}
+    assert ids == {j_pending.job_id, j_running.job_id, j_paused.job_id}
+
+
+@pytest.mark.asyncio
+async def test_k19b_1_list_all_history_filters_active_states(pool):
+    """history group = complete/failed/cancelled, excludes active states."""
+    repo = ExtractionJobsRepo(pool)
+    user = uuid4()
+    p_pending = await _make_project(pool, user)
+    p_running = await _make_project(pool, user)
+    p_complete = await _make_project(pool, user)
+    p_failed = await _make_project(pool, user)
+    p_cancelled = await _make_project(pool, user)
+
+    j_pending = await repo.create(user, _job_payload(p_pending))
+    j_running = await repo.create(user, _job_payload(p_running))
+    j_complete = await repo.create(user, _job_payload(p_complete))
+    j_failed = await repo.create(user, _job_payload(p_failed))
+    j_cancelled = await repo.create(user, _job_payload(p_cancelled))
+
+    await repo.update_status(user, j_running.job_id, "running")
+    await repo.update_status(user, j_complete.job_id, "complete")
+    await repo.update_status(user, j_failed.job_id, "failed")
+    await repo.update_status(user, j_cancelled.job_id, "cancelled")
+
+    rows = await repo.list_all_for_user(user, status_group="history")
+    ids = {j.job_id for j in rows}
+    assert ids == {j_complete.job_id, j_failed.job_id, j_cancelled.job_id}
+    assert j_pending.job_id not in ids
+    assert j_running.job_id not in ids
+
+
+@pytest.mark.asyncio
+async def test_k19b_1_list_all_is_user_isolated(pool):
+    """Cross-user leak probe: user A's jobs must not appear in user B's list."""
+    repo = ExtractionJobsRepo(pool)
+    user_a = uuid4()
+    user_b = uuid4()
+    p_a = await _make_project(pool, user_a)
+    p_b = await _make_project(pool, user_b)
+
+    j_a = await repo.create(user_a, _job_payload(p_a))
+    j_b = await repo.create(user_b, _job_payload(p_b))
+
+    a_rows = await repo.list_all_for_user(user_a, status_group="active")
+    b_rows = await repo.list_all_for_user(user_b, status_group="active")
+
+    assert {j.job_id for j in a_rows} == {j_a.job_id}
+    assert {j.job_id for j in b_rows} == {j_b.job_id}
+
+
+@pytest.mark.asyncio
+async def test_k19b_1_list_all_limit_is_clamped(pool):
+    """limit < 1 is clamped to 1; limit > 200 is clamped to 200."""
+    repo = ExtractionJobsRepo(pool)
+    user = uuid4()
+    # Seed 3 active jobs on 3 projects.
+    for _ in range(3):
+        p = await _make_project(pool, user)
+        await repo.create(user, _job_payload(p))
+
+    rows_zero = await repo.list_all_for_user(user, status_group="active", limit=0)
+    assert len(rows_zero) == 1  # clamped up to 1
+    rows_two = await repo.list_all_for_user(user, status_group="active", limit=2)
+    assert len(rows_two) == 2
+    rows_huge = await repo.list_all_for_user(user, status_group="active", limit=10_000)
+    assert len(rows_huge) == 3  # clamped down to 200 but only 3 rows exist
+
+
+@pytest.mark.asyncio
+async def test_k19b_1_list_all_history_orders_by_completed_at(pool):
+    """History ordered by completed_at DESC NULLS LAST, then created_at DESC.
+
+    Seed 3 jobs completing in a known order; expect list to come back
+    in reverse-completion order. A 4th job with NULL completed_at
+    (hypothetical legacy row: status set to 'failed' without the
+    update_status path clearing error / timestamp bookkeeping) falls
+    to the end via NULLS LAST. We can't create that shape through the
+    repo API cleanly, so the test asserts the happy path only; the
+    NULLS LAST guarantee is covered by the SQL itself.
+    """
+    repo = ExtractionJobsRepo(pool)
+    user = uuid4()
+    p1 = await _make_project(pool, user)
+    p2 = await _make_project(pool, user)
+    p3 = await _make_project(pool, user)
+    j1 = await repo.create(user, _job_payload(p1))
+    j2 = await repo.create(user, _job_payload(p2))
+    j3 = await repo.create(user, _job_payload(p3))
+
+    # Complete j1 first, then j3, then j2 — reverse order by completed_at
+    # should therefore be j2, j3, j1.
+    await repo.update_status(user, j1.job_id, "complete")
+    await asyncio.sleep(0.02)
+    await repo.update_status(user, j3.job_id, "complete")
+    await asyncio.sleep(0.02)
+    await repo.update_status(user, j2.job_id, "complete")
+
+    rows = await repo.list_all_for_user(user, status_group="history")
+    assert [j.job_id for j in rows] == [j2.job_id, j3.job_id, j1.job_id]

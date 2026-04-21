@@ -379,6 +379,21 @@ export const knowledgeApi = {
     );
   },
 
+  // K19b.1 — user-scoped cross-project list, grouped by status.
+  // Powers the Jobs tab (no per-project fanout). BE validates
+  // status_group (422 on missing/invalid) and clamps limit to [1, 200].
+  listAllJobs(
+    params: { statusGroup: 'active' | 'history'; limit?: number },
+    token: string,
+  ): Promise<ExtractionJobWire[]> {
+    const qs = new URLSearchParams({ status_group: params.statusGroup });
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    return apiJson<ExtractionJobWire[]>(
+      `${BASE}/extraction/jobs?${qs.toString()}`,
+      { token },
+    );
+  },
+
   getGraphStats(projectId: string, token: string): Promise<GraphStatsResponse> {
     return apiJson<GraphStatsResponse>(
       `${BASE}/projects/${projectId}/graph-stats`,

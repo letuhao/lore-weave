@@ -1,9 +1,68 @@
-# Session Handoff — Session 49 (K19a.5 → K19a.8 shipped; Track 3 K19a cluster FULLY CLOSED)
+# Session Handoff — Session 50 (K19b opened; K19b.1 + K19b.4 FS shipped)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-21 (session 49)
-> **HEAD:** `2061b2d` (K19a.8; K19a.7 @ `2cbcc7c` + `c6ee80a` HEAD backfill; K19a.6 @ `2226283` + `7cf394f` HEAD backfill; K19a.5 @ `3148751` + `1156193` HEAD backfill)
-> **Branch:** `main` (ahead of origin by sessions 38–49 commits — user pushes manually)
+> **Date:** 2026-04-21 (session 50)
+> **HEAD:** (pending K19b.1 commit) (K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
+
+## Session 50 — K19b cluster opened (K19b.1 + K19b.4 FS batched [L])
+
+```
+Track 3 K19b progress (session 50)
+
+Cycle 1  K19b.1 + K19b.4    User-scoped jobs endpoint + hook + JobProgressBar    (pending commit)
+                            BE: list_all_for_user repo + GET /v1/knowledge/extraction/jobs
+                            FE: listAllJobs, useExtractionJobs hook (2s/10s dual-poll),
+                                JobProgressBar (6 statuses, indeterminate, Intl USD format)
+
+Remaining K19b tasks: K19b.2 JobsTab, K19b.3 JobDetailPanel, K19b.5 retry, K19b.6 CostSummary, K19b.7 i18n
+```
+
+**Test deltas at session 50 end:**
+- Frontend knowledge: **125 pass** (was 112 at session 49 end; +13 — 9 new hook+component + 4 added during review-impl fixes)
+- Backend (new this session): +6 router unit tests (test_extraction_job_status.py 7→13) + 5 repo integration tests (test_extraction_jobs_repo.py 23→28)
+- BE unit full: 1171 pass (was 1154; +17 ambient)
+- /review-impl caught 5 LOW findings, all fixed in-cycle (L1 job_id tiebreaker, L2 per-group errors, L3 user_id queryKey, L4 Intl USD format, L5 rich aria-label)
+- Review-code caught 1 MED fixed pre-review-impl (`LIST_ALL_MAX_LIMIT` shared constant between router + repo)
+
+**What shipped (11 files):**
+- BE: `ExtractionJobsRepo.list_all_for_user(user_id, *, status_group, limit=50)` in `extraction_jobs.py` + new `GET /v1/knowledge/extraction/jobs?status_group=active|history&limit=50` on `jobs_router` in `extraction.py`. Shared `LIST_ALL_MAX_LIMIT = 200` module constant keeps router-level `Query(le=...)` and repo-level `min(limit, ...)` clamp in lock-step.
+- FE: `knowledgeApi.listAllJobs()` in `api.ts`; new `hooks/useExtractionJobs.ts` (dual `useQuery`, user_id-scoped queryKey, per-group error fields); new `components/JobProgressBar.tsx` (Intl.NumberFormat USD, status-coloured bar, indeterminate shimmer, progress-aware aria-label).
+- Tests: 5 new BE repo integration + 6 new BE router unit + 4 new FE hook + 9 new FE component.
+
+### What K19b.2 can now assume
+
+- `useExtractionJobs()` returns `{ active, history, isLoading, error, activeError, historyError }`. Consuming `ExtractionJobsTab` can:
+  1. Import from `@/features/knowledge/hooks/useExtractionJobs`.
+  2. Filter `active` into Running vs Paused sub-sections by `status === 'running' | 'paused' | 'pending'`.
+  3. Filter `history` into Complete vs Failed vs Cancelled by `status === 'complete' | 'failed' | 'cancelled'`.
+  4. Render `<JobProgressBar ... />` per row in each section (status-aware visuals built in).
+  5. Surface `activeError` as a banner above the Running/Paused sections; `historyError` above Complete/Failed/Cancelled — each section can keep rendering last-good rows while the error persists.
+- Polling cadence is handled inside the hook (2s active, 10s history, not-in-background via React Query default). Tab component has no timer logic to own.
+- Brief transition gap (≤10s) when a job flips `running → complete` between the 2s active poll and the 10s history poll — job temporarily absent from both lists. Acceptable per REVIEW-DESIGN; K19b.2 can choose to mask by invalidating the history queryKey from a `useProjectState`-style local action, but not required for correctness.
+- `JobProgressBar` has no i18n today (scope carve-out for K19b.7). The aria-label carries English `"Job {status}, N% complete"`. When K19b.7 lands, swap to a t() template passed via a new optional prop (don't let i18n leak into the pure component).
+
+### FS-cycle audit lesson (K19b.1)
+
+The CLARIFY-phase BE audit (per `feedback_fe_draft_html_be_check.md`) caught the user-scoped-list gap before any FE was drafted. Options presented were:
+- (a) Reclassify to FS, add new endpoint — chosen
+- (b) Expose `list_active` at HTTP layer only, defer history
+- (c) Pure-FE N-fanout across `listProjects` + per-project `listExtractionJobs`
+
+Option (a) won because K19b.2's layout sections (Running/Paused/Complete/Failed) map 1:1 to the `status_group` binary, so pushing the filter down to SQL is both cheaper (O(1) query per group) and less code-complex than any FE merging. The option-(c) N-fanout would have worked for a demo but broken at ~10 projects per account. This is exactly the class of call the `feedback_fe_draft_html_be_check.md` rule exists to force before CLARIFY is closed.
+
+### Still deferred after K19b.1
+
+- **D-K19b.1-01** → Track 3 polish: cursor pagination for history once users cross ~150 historical jobs. Current hard cap `limit ≤ 200`. ORDER BY is already deterministic thanks to review-impl L1 tiebreaker.
+- **D-K19b.4-01** → K19b.3 (detail panel is its natural home): ETA "time remaining". Either BE ships `progress_rate_items_per_sec` on `ExtractionJob` or FE computes client-side EMA in the hook keyed on job_id.
+- **D-K19a.5-03** → K19b.6: monthly budget remaining in BuildGraphDialog. Needs `/v1/me/usage/monthly-remaining`.
+- **D-K19a.5-04 + D-K16.2-02b** → Track 3 (paired): chapter_range picker + runner-side enforcement.
+- **D-K19a.5-06** → Track 3 polish: `glossary_sync` scope option in BuildGraphDialog.
+- **D-K19a.5-07** → Track 3 polish: "Run benchmark" CTA in BuildGraphDialog.
+- **D-K19a.7-01** → naturally-next: hook-level action smoke tests for `useProjectState` (supersedes D-K19a.5-05 for action-fire-path coverage).
+- **D-K19a.8-01** → Track 3 polish: MSW-backed dialog stories.
+
+---
 
 ## Session 49 — 4 Track 3 cycles shipped (K19a.5 + K19a.6 + K19a.7 + K19a.8)
 

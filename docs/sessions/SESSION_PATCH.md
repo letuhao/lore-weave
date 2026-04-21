@@ -7,10 +7,10 @@
 
 ## Document Metadata
 
-- Last Updated: 2026-04-21 **(session 49 continued — K19a.8 Storybook shipped; Track 3 K19a cluster FULLY COMPLETE)** — 5 Track 3 cycles this session. K19a.8 installs Storybook 10 + @storybook/react-vite + addon-a11y/docs and writes 14 stories for the 13 ProjectMemoryState variants (Failed split into retryable + no-retry). Vite alias `@/auth` → MockAuthProvider wired via viteFinal so future dialog stories (D-K19a.8-01) get transparent auth mocking. /review-impl caught 5 findings (2 MED + 2 LOW + 1 COSMETIC); 4 fixed in-cycle, 1 documented in RETRO (Playwright binaries one-time cost). Next cycle: K19b (cost/jobs tabs).
-- Updated By: Assistant (session 49 — K19a.8 commit (7 files: NEW .storybook/{main.ts,preview.tsx,MockAuthProvider.tsx} + NEW ProjectStateCard.stories.tsx + MOD package.json/.gitignore + DELETED vitest.shims.d.ts). No BE or app-source changes. review-impl actioned: F1 Vite alias for @/auth so mock actually intercepts; F2 deleted dead shim file from init; F3 Playwright binaries doc in RETRO; F4 per-story makeActions() fresh fn() spies; F5 .gitignore header comment. `npm run build-storybook` → 10.7s clean build, 65 KB stories chunk. Existing 112 FE tests + tsc + vite main build all unchanged.)
-- Active Branch: `main` (ahead of origin by sessions 38–49 commits — user pushes manually)
-- HEAD: `2061b2d` (K19a.8) at session 49 end (was `c6ee80a` K19a.7 HEAD backfill, `2cbcc7c` K19a.7, `7cf394f` K19a.6 HEAD backfill, `2226283` K19a.6, `1156193` K19a.5 HEAD backfill, `3148751` K19a.5)
+- Last Updated: 2026-04-21 **(session 50 — K19b.1 + K19b.4 FS batched [L]; K19b cluster opened)** — First cycle of Track 3 K19b (Extraction Jobs tab). BE audit at CLARIFY flagged gap: no user-scoped cross-project jobs endpoint, only per-project. Reclassified [FE] → [FS]. New `GET /v1/knowledge/extraction/jobs?status_group=active|history&limit=50` on existing jobs_router + `ExtractionJobsRepo.list_all_for_user` with `job_id DESC` tiebreaker (review-impl L1). FE: `knowledgeApi.listAllJobs` + new `useExtractionJobs` hook (dual useQuery 2s/10s polling, user_id-scoped queryKey, per-group error fields) + new `JobProgressBar` component (6 statuses, indeterminate on null total, Intl.NumberFormat USD, progress-aware aria-label). /review-impl caught 5 LOW findings, all fixed in-cycle (L1 tiebreaker, L2 per-group errors, L3 user_id queryKey, L4 Intl cost format, L5 rich aria-label). Next cycle: K19b.2 + K19b.7 (JobsTab layout + i18n).
+- Updated By: Assistant (session 50 — K19b.1 + K19b.4 FS commit: 7 files MOD (extraction_jobs.py repo +`LIST_ALL_MAX_LIMIT` const, extraction.py router +new list endpoint, test_extraction_jobs_repo.py +5 tests, test_extraction_job_status.py +6 tests +helper, api.ts +`listAllJobs`) and 4 files NEW (useExtractionJobs.ts, JobProgressBar.tsx, __tests__/useExtractionJobs.test.tsx, __tests__/JobProgressBar.test.tsx). `pytest` → BE unit 1171 pass + router 13 pass, integration repo 28 pass (+5 K19b.1). `vitest` → FE knowledge 125 pass (was 112 at session 49 end; +13 = 9 hook+component + 4 from review-impl fixes). `tsc --noEmit` clean.)
+- Active Branch: `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
+- HEAD: (pending K19b.1 commit) at session 50 end (was `2061b2d` K19a.8, `c6ee80a` K19a.7 HEAD backfill, `2cbcc7c` K19a.7, `7cf394f` K19a.6 HEAD backfill, `2226283` K19a.6, `1156193` K19a.5 HEAD backfill, `3148751` K19a.5)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (updated in place for session 44 — next session MUST update in place too, do NOT create `_V18.md`)
 - **Session 44 commit count:** 8 so far (K17.5-R2, workflow v2, K17.6, workflow v2.1, K17.6-PR, K17.7, K17.7-R2, K17.8)
 - **Session Handoff:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (single unversioned file — the previous `SESSION_HANDOFF_V2..V16.md` chain was removed at end of session 41 per user request; history lives in git.)
@@ -145,6 +145,8 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 | D-K19a.5-07 | K19a.5 review-impl F6 | **"Run benchmark" CTA in BuildGraphDialog when `has_run=false`.** Dialog currently disables Confirm when the picker's benchmark status is missing/failed and relies on the picker's badge to explain. A dedicated button that kicks off `eval/run_benchmark.py` for the selected model would close the loop inside the dialog. Requires a POST endpoint exposing the benchmark harness (currently CLI-only). | Track 3 polish |
 | D-K19a.7-01 | K19a.7 review-impl F1 (partial) | **Hook-level action smoke tests.** F1's `ACTION_KEYS` const map closes half of D-K19a.5-05 (compile-time typo prevention) but the other half — verifying each of the 11 real action callbacks fires the right `knowledgeApi` method + surfaces BE errors as toast — still needs `renderHook` + mocked API. Medium lift; growing in importance as hook surface stabilises. Supersedes D-K19a.5-05 for the action-fire-path half. | Naturally-next (hook hardening before K19b cost/jobs tabs ship) |
 | D-K19a.8-01 | K19a.8 plan (session 49) | **Dialog stories for `BuildGraphDialog` / `ChangeModelDialog` / `ErrorViewerDialog`.** K19a.8 shipped stories for the presentational `ProjectStateCard` (13 kinds) but not the 3 dialogs because they call `knowledgeApi` (estimateExtraction, startExtraction, updateEmbeddingModel, disableExtraction, benchmark-status). Needs MSW handlers at preview/story level. Mock auth already wired via K19a.8 F1 Vite alias, so this is pure MSW-addon setup: `npm i -D msw msw-storybook-addon` + fixtures. | Track 3 polish (when visual regression of dialog states becomes useful — not critical today) |
+| D-K19b.1-01 | K19b.1 plan (session 50, CLARIFY Q2) | **Cursor pagination for history list.** Current cap: `limit=50` default, `le=LIST_ALL_MAX_LIMIT=200` hard ceiling (shared between router Query validator and repo clamp). Not pressing until real-user history crosses 200 terminated jobs per account. When it does: add `cursor` (opaque base64 of `(completed_at, job_id)`) + `next_cursor` on response. Repo already has the covering ORDER BY with the job_id tiebreaker from review-impl L1. | Track 3 polish (when any user crosses ~150 historical jobs) |
+| D-K19b.4-01 | K19b.4 plan (session 50, CLARIFY Q4) | **Estimated time remaining in JobProgressBar.** Plan asked for ETA ("items_processed rate × remaining items") but wire shape doesn't ship a `progress_rate` and EMA over 2s polls would need hook-level state. Cheap shape: BE adds `progress_rate_items_per_sec` to `ExtractionJob` computed on each `advance_cursor`; FE computes `(items_total - items_processed) / rate` and renders as `~ N min remaining`. Alt: client-side EMA in `useExtractionJobs` keyed on `job_id` with resilience to polling gaps. | Track 3 polish / K19b.3 (when the detail panel ships — it's the right home for ETA anyway) |
 
 ### Track 2 planning (document only, no Track 1 action)
 
@@ -258,6 +260,61 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 ---
 
 ## Current Active Work
+
+### K19b.1 + K19b.4 — user-scoped jobs endpoint + hook + JobProgressBar ✅ (session 50, Track 3 K19b cycle 1, FS [L])
+
+First K19b cycle. Batched K19b.1 (job list hook + API) with K19b.4 (progress bar component) per `feedback_batch_small_tasks.md` since they share the wire shape and would otherwise be two full 12-phase cycles. BE audit at CLARIFY flagged gap: plan said "all jobs for the user, grouped by status" but only per-project `GET /projects/{id}/extraction/jobs` existed. Reclassified [FE] → [FS] per `feedback_fe_draft_html_be_check.md`. User chose Option A (new user-scoped endpoint) over N-fanout or defer-history.
+
+**Shipped (11 files):**
+
+BE:
+- [services/knowledge-service/app/db/repositories/extraction_jobs.py](../../services/knowledge-service/app/db/repositories/extraction_jobs.py) — NEW `LIST_ALL_MAX_LIMIT = 200` module constant shared with router Query validator (review-code M1 fix); NEW `list_all_for_user(user_id, *, status_group: Literal["active","history"], limit: int = 50)` method with 2 SQL paths (active = pending/running/paused ORDER BY created_at DESC, job_id DESC; history = complete/failed/cancelled ORDER BY completed_at DESC NULLS LAST, created_at DESC, job_id DESC per review-impl L1 tiebreaker). Reuses `_SELECT_COLS` for shape consistency with existing readers.
+- [services/knowledge-service/app/routers/public/extraction.py](../../services/knowledge-service/app/routers/public/extraction.py) — NEW `GET /v1/knowledge/extraction/jobs?status_group=active|history&limit=50` on existing `jobs_router` (sibling to the already-shipped `/jobs/{job_id}` detail route; declared first so FastAPI matches `/jobs` before `/jobs/{job_id}`). `Query` import added; `Literal["active","history"]` required (422 on missing/invalid); `limit: int = Query(50, ge=1, le=LIST_ALL_MAX_LIMIT)`; JWT via existing router-level `get_current_user`.
+- [services/knowledge-service/tests/integration/db/test_extraction_jobs_repo.py](../../services/knowledge-service/tests/integration/db/test_extraction_jobs_repo.py) — +5 K19b.1 tests: active-filter (excludes terminal), history-filter (excludes active), cross-user isolation probe, limit clamp (0→1, huge→data-size), completed_at-DESC ordering.
+- [services/knowledge-service/tests/unit/test_extraction_job_status.py](../../services/knowledge-service/tests/unit/test_extraction_job_status.py) — +6 router unit tests (active 200, history custom limit, missing status_group 422, invalid status_group 422, limit out-of-range 422 for both 0 and 500, empty array). NEW `_setup_list_all_overrides` helper returning `(client, jobs_repo_mock)` tuple so callers can inspect `list_all_for_user` kwargs.
+
+FE:
+- [frontend/src/features/knowledge/api.ts](../../frontend/src/features/knowledge/api.ts) — NEW `listAllJobs({ statusGroup, limit? }, token)` method next to existing per-project `listExtractionJobs`. URL `/v1/knowledge/extraction/jobs?status_group=...&limit=...` via URLSearchParams.
+- [frontend/src/features/knowledge/hooks/useExtractionJobs.ts](../../frontend/src/features/knowledge/hooks/useExtractionJobs.ts) (NEW) — dual `useQuery`: active @ 2s refetchInterval, history @ 10s with fixed `HISTORY_LIMIT = 50`. queryKey scoped to `['knowledge-jobs', userId, 'active'|'history']` (review-impl L3 multi-user cache-leak defence). Returns `{ active, history, isLoading, error, activeError, historyError }` — per-group error fields (review-impl L2) so consumers can warn per-section without masking either.
+- [frontend/src/features/knowledge/components/JobProgressBar.tsx](../../frontend/src/features/knowledge/components/JobProgressBar.tsx) (NEW) — pure presentational. Props: `{ status, itemsProcessed, itemsTotal, costSpentUsd, maxSpendUsd, className? }`. 6 statuses: pending (bg-primary/70), running (bg-primary), paused (bg-amber-500), complete (bg-emerald-500), failed (bg-destructive), cancelled (bg-muted-foreground/40). Bar width via `computePct()`: 100% when complete, 0 when total null or ≤0, clamped `Math.min(100, Math.max(0, round(p/t*100)))` otherwise. Indeterminate shimmer (animate-pulse + 1/3-width absolute div) when `itemsTotal == null && status ∈ {running, pending}`. Cost via `Intl.NumberFormat('USD', min 2 max 4 fraction digits)` (review-impl L4). aria-label `"Job {status}, N% complete"` / `"progress unknown"` (review-impl L5).
+- [frontend/src/features/knowledge/hooks/__tests__/useExtractionJobs.test.tsx](../../frontend/src/features/knowledge/hooks/__tests__/useExtractionJobs.test.tsx) (NEW) — 4 tests: grouped return, correct params per call, per-group error scoping (activeError-only + historyError-only variants). Uses QueryClient wrapper + mocked `knowledgeApi.listAllJobs`.
+- [frontend/src/features/knowledge/components/__tests__/JobProgressBar.test.tsx](../../frontend/src/features/knowledge/components/__tests__/JobProgressBar.test.tsx) (NEW) — 9 tests: percentage from items, 100% on complete, indeterminate on null+running, max-suffix omission on null budget, status data-attribute, clamp over-100, Intl grouping for large costs, aria-label determinate, aria-label indeterminate.
+
+**Acceptance criteria (K19b.1 + K19b.4 from TRACK3_IMPLEMENTATION.md):**
+- ✅ K19b.1 Returns grouped job list (server-side groupings via `status_group` param)
+- ✅ K19b.1 Adaptive polling (2s active / 10s history independent `refetchInterval`s)
+- ✅ K19b.1 React Query keys stable per user + group
+- ✅ K19b.4 Animates smoothly on updates (`transition-all` on determinate bar)
+- ✅ K19b.4 Shows paused vs running clearly (amber-500 vs primary + indeterminate shimmer when running without known total)
+
+**Review-impl findings (5 LOW, all fixed in-cycle):**
+
+| ID | Sev | Fix |
+|---|---|---|
+| L1 | LOW | ✅ Repo ordering now has `job_id DESC` tiebreaker on both active + history queries (uuidv7 is time-ordered, so tied `created_at` rows stay deterministic). |
+| L2 | LOW | ✅ Hook exposes `activeError` + `historyError` separately in addition to combined `error`, with JSDoc explaining stale-on-error semantics. Consumers that render per-section can now warn on the right section without hiding data from the other. |
+| L3 | LOW | ✅ queryKey now `['knowledge-jobs', userId, ...]` so a logout→login swap on a shared QueryClient doesn't leak cache between users. Matches team convention going forward; existing `['knowledge-project-jobs', projectId]` keys stay as-is for this cycle. |
+| L4 | LOW | ✅ `Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 4 })` replaces raw-string `$${s}` display. `$1,234.50 / $10,000.00` instead of `$1234.5 / $10000`. Currency-label localisation still belongs to K19b.7. |
+| L5 | LOW | ✅ aria-label now `"Job {status}, N% complete"` for determinate, `"Job {status}, progress unknown"` for indeterminate. English-only today; K19b.7 swaps to localised template. |
+
+**Review-code finding fixed pre-review-impl:**
+- **M1** — `le=200` magic number in router Query validator + `min(limit, 200)` clamp in repo were duplicated; extracted to `LIST_ALL_MAX_LIMIT` module constant exported from extraction_jobs.py repo and imported by router. If one layer ever raises the cap, the other moves in lock-step.
+
+**Evidence:**
+- BE unit `tests/unit/test_extraction_job_status.py` → **13/13 pass** (+6 K19b.1)
+- BE unit full `tests/unit/` → **1171/1171 pass** (was 1154 at session 49 end; +17 ambient delta = 6 K19b.1 router + other churn I don't own)
+- BE integration `tests/integration/db/test_extraction_jobs_repo.py` → **28/28 pass** (+5 K19b.1 repo tests)
+- FE knowledge feature → **125/125 pass** (was 112 at session 49 end; +13 = 9 new hook+component tests + 4 added during review-impl fixes)
+- `tsc --noEmit` → clean
+- Postgres started via `docker start infra-postgres-1` for repo integration tests (was stopped from idle session); Neo4j not needed this cycle.
+
+**New deferrals logged:**
+- **D-K19b.1-01** → Track 3 polish: cursor pagination for history list once projects accumulate 200+ complete jobs. `limit=50` default + hard `le=200` is the current cap. Not pressing until real users generate that volume.
+- **D-K19b.4-01** → Track 3 polish / K19b.3: "Estimated time remaining" in JobProgressBar. Plan asked for it but wire shape doesn't carry `started_at + items_processed rate` in a durable way — needs either a `progress_rate` BE field or client-side EMA over consecutive polls. Scoped out of this cycle per CLARIFY Q4.
+
+**Dependency follow-up for K19b.2 (next cycle):** `useExtractionJobs` is ready to consume. `ExtractionJobsTab` can import it, render `active` + `history` groups into the 4 section layout (Running / Paused from active; Complete / Failed / Cancelled from history), and use `JobProgressBar` for each running/paused job row. The per-group `activeError` / `historyError` fields let the tab render a per-section error banner rather than one global banner.
+
+---
 
 ### K19a.8 — Storybook install + ProjectStateCard stories ✅ (session 49, Track 3 cycle 9, closes K19a cluster)
 

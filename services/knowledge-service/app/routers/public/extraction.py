@@ -16,7 +16,7 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
 from app.clients.book_client import BookClient
@@ -28,6 +28,7 @@ from app.db.pool import get_knowledge_pool
 from app.db.repositories.benchmark_runs import BenchmarkRunsRepo
 from app.routers.internal_benchmark import BenchmarkStatusResponse
 from app.db.repositories.extraction_jobs import (
+    LIST_ALL_MAX_LIMIT,
     ExtractionJob,
     ExtractionJobCreate,
     ExtractionJobsRepo,
@@ -966,6 +967,36 @@ def _etag(job: ExtractionJob) -> str:
     update (advance_cursor bumps updated_at), so conditional GET
     correctly returns 304 when the frontend's cached state is current."""
     return f'W/"{int(job.updated_at.timestamp() * 1000)}"'
+
+
+@jobs_router.get(
+    "/jobs",
+    response_model=list[ExtractionJob],
+)
+async def list_all_user_jobs(
+    status_group: Literal["active", "history"] = Query(
+        ...,
+        description=(
+            "active = pending|running|paused (2s-poll surface); "
+            "history = complete|failed|cancelled (slower-poll surface)."
+        ),
+    ),
+    limit: int = Query(50, ge=1, le=LIST_ALL_MAX_LIMIT),
+    user_id: UUID = Depends(get_current_user),
+    jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+) -> list[ExtractionJob]:
+    """K19b.1 — user-scoped cross-project job list, grouped by status.
+
+    Separate from the per-project ``/projects/{id}/extraction/jobs``:
+    that one returns history for a single project, while this one
+    powers the Jobs tab's single-page view across all projects. The
+    binary `status_group` maps 1:1 to K19b.2's layout sections
+    (Running/Paused in active, Complete/Failed/Cancelled in history)
+    so the FE can render without client-side filtering.
+    """
+    return await jobs_repo.list_all_for_user(
+        user_id, status_group=status_group, limit=limit
+    )
 
 
 @jobs_router.get(

@@ -55,9 +55,16 @@ __all__ = [
     "ExtractionJobsRepo",
     "JobScope",
     "JobStatus",
+    "LIST_ALL_MAX_LIMIT",
     "TrySpendOutcome",
     "TrySpendResult",
 ]
+
+# K19b.1 — shared upper bound for list_all_for_user / router pagination.
+# Router's Query(le=LIST_ALL_MAX_LIMIT) and the repo's min(limit, ...)
+# clamp MUST stay in sync; exporting a single constant makes the
+# coupling explicit so a future raise in either layer can't drift.
+LIST_ALL_MAX_LIMIT = 200
 
 JobScope = Literal["chapters", "chat", "glossary_sync", "all"]
 JobStatus = Literal[
@@ -240,6 +247,48 @@ class ExtractionJobsRepo:
           AND status IN ('pending','running','paused')
         ORDER BY created_at DESC
         """
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(query, user_id)
+        return [_row_to_job(r) for r in rows]
+
+    async def list_all_for_user(
+        self,
+        user_id: UUID,
+        *,
+        status_group: Literal["active", "history"],
+        limit: int = 50,
+    ) -> list[ExtractionJob]:
+        """K19b.1 — user-scoped cross-project list split by status group.
+
+        active  → pending / running / paused   ORDER BY created_at DESC
+        history → complete / failed / cancelled
+                  ORDER BY completed_at DESC NULLS LAST, created_at DESC
+                  (finished-at is more meaningful than started-at here,
+                  but some legacy rows may have NULL completed_at, so we
+                  fall back to created_at to keep them orderable.)
+        """
+        effective_limit = max(1, min(limit, LIST_ALL_MAX_LIMIT))
+        # job_id DESC tiebreaker: uuidv7 is time-ordered, so on a
+        # microsecond-tied created_at the larger job_id is the one
+        # inserted last — gives a deterministic order under bulk seeds.
+        if status_group == "active":
+            query = f"""
+            SELECT {_SELECT_COLS}
+            FROM extraction_jobs
+            WHERE user_id = $1
+              AND status IN ('pending','running','paused')
+            ORDER BY created_at DESC, job_id DESC
+            LIMIT {effective_limit}
+            """
+        else:
+            query = f"""
+            SELECT {_SELECT_COLS}
+            FROM extraction_jobs
+            WHERE user_id = $1
+              AND status IN ('complete','failed','cancelled')
+            ORDER BY completed_at DESC NULLS LAST, created_at DESC, job_id DESC
+            LIMIT {effective_limit}
+            """
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(query, user_id)
         return [_row_to_job(r) for r in rows]

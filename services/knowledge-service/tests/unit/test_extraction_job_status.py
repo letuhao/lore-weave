@@ -97,6 +97,22 @@ def _setup_overrides(*, job=None, jobs_list=None, project=None):
     return TestClient(app, raise_server_exceptions=False)
 
 
+def _setup_list_all_overrides(*, all_jobs=None):
+    """K19b.1 helper — wires list_all_for_user and returns both the
+    client and the mock so the test can inspect call kwargs."""
+    from app.main import app
+    from app.deps import get_extraction_jobs_repo
+    from app.middleware.jwt_auth import get_current_user
+
+    jobs_repo = AsyncMock()
+    jobs_repo.list_all_for_user = AsyncMock(return_value=all_jobs or [])
+
+    app.dependency_overrides[get_current_user] = lambda: _TEST_USER
+    app.dependency_overrides[get_extraction_jobs_repo] = lambda: jobs_repo
+
+    return TestClient(app, raise_server_exceptions=False), jobs_repo
+
+
 # ── GET /v1/knowledge/extraction/jobs/{job_id} ──────────────────────
 
 
@@ -171,3 +187,62 @@ def test_list_jobs_project_not_found_returns_404():
         f"/v1/knowledge/projects/{_TEST_PROJECT}/extraction/jobs",
     )
     assert resp.status_code == 404
+
+
+# ── K19b.1: GET /v1/knowledge/extraction/jobs ─────────────────────────
+
+
+def test_list_all_jobs_active_returns_200():
+    jobs = [_job_stub(status="running"), _job_stub(status="pending")]
+    client, repo = _setup_list_all_overrides(all_jobs=jobs)
+    resp = client.get("/v1/knowledge/extraction/jobs?status_group=active")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 2
+    repo.list_all_for_user.assert_awaited_once_with(
+        _TEST_USER, status_group="active", limit=50
+    )
+
+
+def test_list_all_jobs_history_returns_200_with_custom_limit():
+    jobs = [_job_stub(status="complete")]
+    client, repo = _setup_list_all_overrides(all_jobs=jobs)
+    resp = client.get("/v1/knowledge/extraction/jobs?status_group=history&limit=25")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 1
+    repo.list_all_for_user.assert_awaited_once_with(
+        _TEST_USER, status_group="history", limit=25
+    )
+
+
+def test_list_all_jobs_missing_status_group_returns_422():
+    client, _repo = _setup_list_all_overrides()
+    resp = client.get("/v1/knowledge/extraction/jobs")
+    assert resp.status_code == 422
+
+
+def test_list_all_jobs_invalid_status_group_returns_422():
+    client, _repo = _setup_list_all_overrides()
+    resp = client.get("/v1/knowledge/extraction/jobs?status_group=bogus")
+    assert resp.status_code == 422
+
+
+def test_list_all_jobs_limit_out_of_range_returns_422():
+    client, _repo = _setup_list_all_overrides()
+    # le=200 on the Query validator
+    resp_too_big = client.get(
+        "/v1/knowledge/extraction/jobs?status_group=active&limit=500"
+    )
+    assert resp_too_big.status_code == 422
+    # ge=1 on the Query validator
+    resp_too_small = client.get(
+        "/v1/knowledge/extraction/jobs?status_group=active&limit=0"
+    )
+    assert resp_too_small.status_code == 422
+
+
+def test_list_all_jobs_empty_returns_empty_array():
+    client, _repo = _setup_list_all_overrides(all_jobs=[])
+    resp = client.get("/v1/knowledge/extraction/jobs?status_group=history")
+    assert resp.status_code == 200
+    assert resp.json() == []
