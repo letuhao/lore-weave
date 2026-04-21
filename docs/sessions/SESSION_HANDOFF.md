@@ -2,7 +2,7 @@
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-21 (session 50)
-> **HEAD:** (pending K16.12 commit) (K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** `b313c1b` (K16.12 completion; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
 ## Session 50 — 4 cycles shipped (3 Track 3 + 1 Track 2 close-out)
@@ -34,7 +34,7 @@ Cycle 3  K19b.3 + K19b.5 +   JobDetailPanel (slide-over) + Retry + ETA          
                              R3 retry only for status=failed). +17 i18n keys
                              × 4 locales. Clears D-K19b.4-01 (ETA).
 
-Cycle 4  K16.12 completion   Track 2 close-out. User-wide budget API.            (pending commit)
+Cycle 4  K16.12 completion   Track 2 close-out. User-wide budget API.            b313c1b
          [BE L]              NEW user_knowledge_budgets table + UserBudgetsRepo
                              (get+upsert). Extended UserCostSummary response
                              with monthly_budget_usd + monthly_remaining_usd
