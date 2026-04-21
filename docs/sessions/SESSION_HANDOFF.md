@@ -2,7 +2,7 @@
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-21 (session 50)
-> **HEAD:** (pending K19b.2 commit) (K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** `4fb8b62` (K19b.2 + K19b.7-partial; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
 ## Session 50 — 2 K19b cycles shipped (K19b.1+K19b.4 FS [L], K19b.2+K19b.7-partial FS [XL])
@@ -15,7 +15,7 @@ Cycle 1  K19b.1 + K19b.4    User-scoped jobs endpoint + hook + JobProgressBar   
                             FE: listAllJobs, useExtractionJobs hook (2s/10s dual-poll),
                                 JobProgressBar (6 statuses, indeterminate, Intl USD format)
 
-Cycle 2  K19b.2 + K19b.7-    ExtractionJobsTab + project_name + jobs.* i18n      (pending commit)
+Cycle 2  K19b.2 + K19b.7-    ExtractionJobsTab + project_name + jobs.* i18n      4fb8b62
          partial             BE: ExtractionJob +project_name + LEFT JOIN
                              FE: ExtractionJobsTab (4 sections, native <details>,
                                  per-group error banners, JobRow with fallback),
