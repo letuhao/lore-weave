@@ -1,7 +1,73 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ExtractionJobWire } from '../../api';
 import type { ExtractionJobStatus } from '../../types/projectState';
+
+// Mock auth + API for the retry flow's getProject fetch.
+vi.mock('@/auth', () => ({
+  useAuth: () => ({ accessToken: 'tok-test' }),
+}));
+
+const getProjectMock = vi.fn();
+vi.mock('../../api', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('../../api');
+  return {
+    ...actual,
+    knowledgeApi: {
+      ...(actual.knowledgeApi as Record<string, unknown>),
+      getProject: (...args: unknown[]) => getProjectMock(...args),
+    },
+  };
+});
+
+// Stub the JobDetailPanel + BuildGraphDialog so the tab test focuses on
+// wiring (click → panel open, retry → dialog open with initialValues)
+// rather than dragging their internals (hooks, Radix portals, Query).
+vi.mock('../JobDetailPanel', () => ({
+  JobDetailPanel: ({
+    open,
+    job,
+    onRetryClick,
+  }: {
+    open: boolean;
+    job: ExtractionJobWire | null;
+    onRetryClick?: (job: ExtractionJobWire) => void;
+  }) =>
+    open && job ? (
+      <div data-testid="detail-panel-stub" data-job-id={job.job_id}>
+        {job.project_name ?? '—'}
+        {job.status === 'failed' && onRetryClick && (
+          <button
+            data-testid="detail-panel-retry-stub"
+            onClick={() => onRetryClick(job)}
+          >
+            retry
+          </button>
+        )}
+      </div>
+    ) : null,
+}));
+
+vi.mock('../BuildGraphDialog', () => ({
+  BuildGraphDialog: ({
+    open,
+    initialValues,
+    project,
+  }: {
+    open: boolean;
+    initialValues?: { scope?: string; llmModel?: string };
+    project: { project_id: string };
+  }) =>
+    open ? (
+      <div
+        data-testid="build-graph-stub"
+        data-project-id={project.project_id}
+        data-scope={initialValues?.scope ?? ''}
+        data-llm={initialValues?.llmModel ?? ''}
+      />
+    ) : null,
+}));
 
 // Mock the hook so the component tests don't hit React Query or BE.
 const useExtractionJobsMock = vi.fn();
@@ -62,14 +128,27 @@ function setHookState(overrides: {
   });
 }
 
+// Each render() needs a fresh QueryClient because the retry flow uses
+// useQuery internally. Wrapping all render() calls through this helper
+// ensures the Provider is always present without cluttering each test.
+function renderTab() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <ExtractionJobsTab />
+    </QueryClientProvider>,
+  );
+}
+
 describe('ExtractionJobsTab', () => {
   beforeEach(() => {
     useExtractionJobsMock.mockReset();
+    getProjectMock.mockReset();
   });
 
   it('renders all 4 section titles even when empty', () => {
     setHookState({});
-    render(<ExtractionJobsTab />);
+    renderTab();
     expect(screen.getByText('jobs.sections.running.title')).toBeInTheDocument();
     expect(screen.getByText('jobs.sections.paused.title')).toBeInTheDocument();
     expect(screen.getByText('jobs.sections.complete.title')).toBeInTheDocument();
@@ -84,7 +163,7 @@ describe('ExtractionJobsTab', () => {
         makeJob({ status: 'paused', project_name: 'Gamma', job_id: 'a3' }),
       ],
     });
-    render(<ExtractionJobsTab />);
+    renderTab();
 
     const rows = screen.getAllByTestId('job-row');
     const rowIdsByName: Record<string, string> = {};
@@ -105,7 +184,7 @@ describe('ExtractionJobsTab', () => {
         makeJob({ status: 'cancelled', project_name: 'X-one', job_id: 'h3' }),
       ],
     });
-    render(<ExtractionJobsTab />);
+    renderTab();
     const rows = screen.getAllByTestId('job-row');
     expect(rows).toHaveLength(3);
   });
@@ -115,14 +194,14 @@ describe('ExtractionJobsTab', () => {
       makeJob({ status: 'complete', job_id: `h${i}` }),
     );
     setHookState({ history: complete });
-    render(<ExtractionJobsTab />);
+    renderTab();
     const rows = screen.getAllByTestId('job-row');
     expect(rows.length).toBeLessThanOrEqual(10);
   });
 
   it('renders loading placeholder when isLoading', () => {
     setHookState({ isLoading: true });
-    render(<ExtractionJobsTab />);
+    renderTab();
     expect(screen.getByTestId('jobs-loading')).toBeInTheDocument();
     // 4 section titles should NOT render during loading.
     expect(screen.queryByText('jobs.sections.running.title')).toBeNull();
@@ -132,7 +211,7 @@ describe('ExtractionJobsTab', () => {
     const activeErr = new Error('active boom');
     const historyErr = new Error('history boom');
     setHookState({ activeError: activeErr, historyError: historyErr });
-    render(<ExtractionJobsTab />);
+    renderTab();
     const banners = screen.getAllByTestId('jobs-error-banner');
     expect(banners).toHaveLength(2);
     expect(banners[0].textContent).toContain('active boom');
@@ -149,7 +228,7 @@ describe('ExtractionJobsTab', () => {
         }),
       ],
     });
-    render(<ExtractionJobsTab />);
+    renderTab();
     // vitest.setup.ts globally mocks useTranslation so t() returns the
     // dotted key verbatim; interpolation only fires for placeholders
     // literally in the KEY string, not the resolved template. Asserting
@@ -165,14 +244,14 @@ describe('ExtractionJobsTab', () => {
         makeJob({ status: 'running', project_name: 'My Book Project' }),
       ],
     });
-    render(<ExtractionJobsTab />);
+    renderTab();
     expect(screen.getByText('My Book Project')).toBeInTheDocument();
   });
 
   it('highlights Failed section only when non-empty', () => {
     // When empty, border should NOT carry destructive styling.
     setHookState({});
-    const { container: emptyContainer, unmount } = render(<ExtractionJobsTab />);
+    const { container: emptyContainer, unmount } = renderTab();
     const failedEmpty = [...emptyContainer.querySelectorAll('details')].find(
       (d) => d.textContent?.includes('jobs.sections.failed.title'),
     );
@@ -182,10 +261,93 @@ describe('ExtractionJobsTab', () => {
     setHookState({
       history: [makeJob({ status: 'failed', project_name: 'F' })],
     });
-    const { container: nonEmptyContainer } = render(<ExtractionJobsTab />);
+    const { container: nonEmptyContainer } = renderTab();
     const failedNonEmpty = [
       ...nonEmptyContainer.querySelectorAll('details'),
     ].find((d) => d.textContent?.includes('jobs.sections.failed.title'));
     expect(failedNonEmpty?.className).toMatch(/border-destructive/);
+  });
+
+  // K19b.3: click + keyboard open the detail panel.
+  it('opens JobDetailPanel on row click', () => {
+    setHookState({
+      active: [makeJob({ status: 'running', job_id: 'row-click', project_name: 'X' })],
+    });
+    renderTab();
+    expect(screen.queryByTestId('detail-panel-stub')).toBeNull();
+    fireEvent.click(screen.getByTestId('job-row'));
+    const panel = screen.getByTestId('detail-panel-stub');
+    expect(panel.getAttribute('data-job-id')).toBe('row-click');
+  });
+
+  it('opens JobDetailPanel on Enter key', () => {
+    setHookState({
+      active: [makeJob({ status: 'running', job_id: 'row-kb', project_name: 'Y' })],
+    });
+    renderTab();
+    const row = screen.getByTestId('job-row');
+    fireEvent.keyDown(row, { key: 'Enter' });
+    expect(screen.getByTestId('detail-panel-stub').getAttribute('data-job-id')).toBe(
+      'row-kb',
+    );
+  });
+
+  // K19b.5: retry flow closes panel (R2), fetches project, opens BuildGraphDialog.
+  it('retry click fetches project and opens BuildGraphDialog with initialValues', async () => {
+    getProjectMock.mockResolvedValue({
+      project_id: 'proj-retry',
+      user_id: 'user-42',
+      name: 'Retry Project',
+      description: '',
+      project_type: 'book',
+      book_id: 'book-1',
+      instructions: '',
+      extraction_enabled: false,
+      extraction_status: 'failed',
+      embedding_model: 'bge-m3',
+      extraction_config: {},
+      last_extracted_at: null,
+      estimated_cost_usd: '0',
+      actual_cost_usd: '0',
+      is_archived: false,
+      version: 1,
+      created_at: '2026-04-19T00:00:00Z',
+      updated_at: '2026-04-19T00:00:00Z',
+    });
+    setHookState({
+      history: [
+        makeJob({
+          status: 'failed',
+          job_id: 'failed-1',
+          project_id: 'proj-retry',
+          project_name: 'Retry Project',
+          scope: 'chat',
+          llm_model: 'claude-opus-4-7',
+          embedding_model: 'bge-m3',
+          max_spend_usd: '12.34',
+        }),
+      ],
+    });
+    renderTab();
+
+    // 1. click the failed row to open detail panel (our stubbed panel).
+    fireEvent.click(screen.getByTestId('job-row'));
+    expect(screen.getByTestId('detail-panel-stub')).toBeInTheDocument();
+
+    // 2. click the stubbed Retry button — invokes onRetryClick which
+    //    closes the panel + sets retryIntent.
+    fireEvent.click(screen.getByTestId('detail-panel-retry-stub'));
+    // R2: panel closes immediately.
+    expect(screen.queryByTestId('detail-panel-stub')).toBeNull();
+
+    // 3. wait for getProject → BuildGraphDialog stub to render with
+    //    the failed job's initialValues.
+    await waitFor(() => {
+      expect(getProjectMock).toHaveBeenCalledWith('proj-retry', 'tok-test');
+    });
+    const dlg = await screen.findByTestId('build-graph-stub');
+    expect(dlg.getAttribute('data-project-id')).toBe('proj-retry');
+    expect(dlg.getAttribute('data-scope')).toBe('chat');
+    expect(dlg.getAttribute('data-llm')).toBe('claude-opus-4-7');
   });
 });

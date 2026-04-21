@@ -1,11 +1,11 @@
-# Session Handoff — Session 50 (K19b.1 + K19b.4 + K19b.2 + K19b.7-partial; Jobs tab live)
+# Session Handoff — Session 50 (K19b.1+.2+.3+.4+.5+.7-partial shipped; Jobs tab + detail panel + retry live)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-21 (session 50)
-> **HEAD:** `4fb8b62` (K19b.2 + K19b.7-partial; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** (pending K19b.3 commit) (K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 2 K19b cycles shipped (K19b.1+K19b.4 FS [L], K19b.2+K19b.7-partial FS [XL])
+## Session 50 — 3 K19b cycles shipped (K19b.1+.4 FS [L], K19b.2+.7-partial FS [XL], K19b.3+.5+ETA FE [XL])
 
 ```
 Track 3 K19b progress (session 50)
@@ -21,23 +21,63 @@ Cycle 2  K19b.2 + K19b.7-    ExtractionJobsTab + project_name + jobs.* i18n     
                                  per-group error banners, JobRow with fallback),
                                  jobs.* keys × 4 locales, KnowledgePage wired
 
-Remaining K19b tasks: K19b.3 JobDetailPanel (slide-over), K19b.5 retry (depends K19b.3),
-                     K19b.6 CostSummary (depends Track 2 K16.12), K19b.7-rest (other tabs' strings)
+Cycle 3  K19b.3 + K19b.5 +   JobDetailPanel (slide-over) + Retry + ETA           (pending commit)
+         ETA                 FE-only. NEW useJobProgressRate (EMA hook, α=0.3,
+                             60s stale-reset, module-scoped Map<jobId> shared
+                             across hook instances). NEW JobDetailPanel (Radix
+                             slide-from-right, metadata grid, Pause/Resume/Cancel
+                             actions, error block, conditional Retry CTA). MOD
+                             BuildGraphDialog +initialValues prop for retry
+                             pre-fill. MOD ExtractionJobsTab wires row click
+                             (role=button + Enter/Space), panel + retry state
+                             (R1 single retryIntent, R2 close panel on retry,
+                             R3 retry only for status=failed). +17 i18n keys
+                             × 4 locales. Clears D-K19b.4-01 (ETA).
+
+Remaining K19b tasks: K19b.6 CostSummary (BLOCKED on Track 2 K16.12 /v1/me/usage
+                     endpoint), K19b.7-rest (other tabs' strings — deferred until
+                     those tabs ship in K19d/e),
+                     K19b.8 log viewer (new standalone cycle split out of K19b.3)
 ```
 
-**Test deltas at session 50 end (after 2 cycles):**
-- Frontend knowledge: **138 pass** (was 112 at session 49 end; +26 over 2 cycles — Cycle 1 added 13, Cycle 2 added 13)
+**Test deltas at session 50 end (after 3 cycles):**
+- Frontend knowledge: **155 pass** (was 112 at session 49 end; +43 over 3 cycles — Cycle 1 +13, Cycle 2 +13, Cycle 3 +17)
 - Backend: +6 router unit (test_extraction_job_status.py 7→13) + 7 repo integration (test_extraction_jobs_repo.py 23→30)
-- BE unit full: 1171 pass (was 1154; +17 ambient)
+- BE unit full: 1171 pass (was 1154; +17 ambient). No BE changes in Cycle 3.
 - Cycle 1 /review-impl: 5 LOW all fixed (job_id tiebreaker, per-group errors, user_id queryKey, Intl USD format, rich aria-label) + 1 MED via review-code (`LIST_ALL_MAX_LIMIT` shared constant)
 - Cycle 2 review-code: 1 LOW fixed (dead `countOverride` prop); /review-impl: 4 LOW all fixed (banner placement, i18n text scope, formatter hoist, redundant cast)
+- Cycle 3 review-code: 2 LOW fixed (dead useRef, retry-error toast); human approved skip of /review-impl.
 
-**What shipped in Cycle 2 (11 files):**
-- BE: `ExtractionJob` Pydantic model +`project_name: str | None = None`; `list_all_for_user` SQL rewritten with `j`/`p` aliases + `LEFT JOIN knowledge_projects p` + `p.name AS project_name`. Existing per-project paths untouched (keep returning NULL for project_name).
-- FE: `ExtractionJobWire` +`project_name`; new `ExtractionJobsTab.tsx` (4 sections via native `<details>`: Running+pending / Paused / Complete capped .slice(0,10) collapsed / Failed+cancelled highlighted when non-empty); `ErrorBanner` driven by hook's `activeError`/`historyError`; `JobRow` with `project_name ?? unknownProject(id.slice(0,8))` fallback; `SHORT_DATE_FORMATTER` hoisted to module scope. `KnowledgePage.tsx` wires tab (no more "Coming soon" for jobs). `jobs.*` block in all 4 locales. `projectState.test.ts` adds JOBS_KEYS iterator (14 paths × 4 bundles).
-- Tests: +2 BE repo integration + 9 FE component + 4 cross-locale iterator entries.
+**What shipped in Cycle 3 (10 files, FE-only):**
+- NEW `useJobProgressRate.ts` hook (EMA rate tracker, 6 tests)
+- NEW `JobDetailPanel.tsx` (Radix slide-over with metadata grid + Pause/Resume/Cancel + conditional Retry, 6 tests)
+- MOD `BuildGraphDialog.tsx` (+`initialValues` prop for retry pre-fill, +1 test)
+- MOD `ExtractionJobsTab.tsx` (selectedJobId + retryIntent state, JobRow role=button + Enter/Space, retry getProject useQuery with error toast, +3 tests)
+- MOD 4 locales (+17 `jobs.detail.*` + `jobs.retry.button` keys each)
+- MOD `projectState.test.ts` (JOBS_KEYS +17 paths → 31 × 4 = 124 cross-locale assertions)
 
-### What K19b.3 (detail panel) can now assume
+### What K19b.6 / K19b.8 (next cycle candidates) can now assume
+
+**K19b.6 CostSummary** — blocked on Track 2 K16.12. Needs a BE endpoint like `GET /v1/me/usage/monthly-remaining` that returns `{ total_usd, remaining_usd, monthly_cap_usd, period_start, period_end }`. Once K16.12 ships:
+- FE `knowledgeApi.getMonthlyUsage(token)` wrapper
+- New `CostSummary.tsx` component — 3-row card (this month / all time / budget) with progress bar if cap is set + "Edit monthly budget" button
+- Wire into `ExtractionJobsTab` top or `KnowledgePage` global header
+- `jobs.costSummary.*` i18n keys × 4 locales
+
+**K19b.8 Log viewer** — new standalone cycle. BE schema:
+- `job_logs` table: `(log_id BIGSERIAL PK, job_id UUID FK, user_id UUID, level TEXT, message TEXT, context JSONB, created_at TIMESTAMPTZ)`
+- Index `(user_id, job_id, log_id DESC)` for paginated reads
+- Retention policy (cron delete logs >N days)
+
+Extraction-worker instrumentation (`services/worker-ai/app/runner.py`):
+- Wrap each phase (chapter fetch, extract_item, try_spend, advance_cursor, pause/cancel/fail paths) in structured log calls keyed on `(user_id, job_id)`
+- Consider pulling the Python logger through a custom handler that writes to the table
+
+FE:
+- `GET /v1/knowledge/extraction/jobs/{id}/logs?since_log_id=...&limit=50`
+- `JobLogsTab` or `JobLogsPanel` inside `JobDetailPanel` — tail-follow with auto-scroll toggle, virtual-list for 1000+ lines
+
+### What K19b.3 (detail panel) already ships — for future cycles consuming it
 
 - `ExtractionJobsTab` rows are presentational, no click handler yet. Add `onClick` to `JobRow`, wire `role="button"` + `tabIndex={0}` + `onKeyDown` for Enter/Space.
 - Single-job BE endpoint exists: `GET /v1/knowledge/extraction/jobs/{job_id}` (K16.5, session 47). Supports If-None-Match for 304. Returns `ExtractionJobWire` shape (including `project_name` — **wait**, no: K19b.2's `project_name` only populates via `list_all_for_user`'s LEFT JOIN. The single-job route still returns NULL for it). K19b.3 either (a) passes project_name through from the parent row (simplest, already fetched), (b) enhances the single-job endpoint to JOIN too, or (c) fetches the Project separately. Option (a) is zero-BE.
@@ -71,13 +111,16 @@ The CLARIFY-phase BE audit (per `feedback_fe_draft_html_be_check.md`) caught the
 
 Option (a) won because K19b.2's layout sections (Running/Paused/Complete/Failed) map 1:1 to the `status_group` binary, so pushing the filter down to SQL is both cheaper (O(1) query per group) and less code-complex than any FE merging. The option-(c) N-fanout would have worked for a demo but broken at ~10 projects per account. This is exactly the class of call the `feedback_fe_draft_html_be_check.md` rule exists to force before CLARIFY is closed.
 
-### Still deferred after K19b.2
+### Still deferred after K19b.3
 
-- **D-K19b.1-01** → Track 3 polish: cursor pagination for history once users cross ~150 historical jobs. ORDER BY deterministic via job_id tiebreaker.
-- **D-K19b.2-01** → Track 3 polish: "Show more" CTA on Complete section (BE ships 50, FE slices 10). Pair with D-K19b.1-01.
-- **D-K19b.2-02** → K19b.3: row-level click handler + JobDetailPanel wiring.
-- **D-K19b.4-01** → K19b.3 (detail panel is its natural home): ETA "time remaining".
-- **D-K19a.5-03** → K19b.6: monthly budget remaining in BuildGraphDialog. Needs `/v1/me/usage/monthly-remaining` (Track 2 K16.12).
+- **D-K19b.1-01** → Track 3 polish: cursor pagination for history once users cross ~150 historical jobs.
+- **D-K19b.2-01** → Track 3 polish: "Show more" CTA on Complete section (BE ships 50, FE slices 10).
+- ~~D-K19b.2-02~~ — **Cleared in K19b.3** (row click + Enter/Space now wired).
+- ~~D-K19b.4-01~~ — **Cleared in K19b.3** (ETA via useJobProgressRate EMA hook).
+- **D-K19b.3-01** (new) → Track 3 polish: human-readable "current item" from cursor. Needs BE cursor enrichment OR FE chapter-title lookup.
+- **D-K19b.3-02** (new) → Track 3 polish: humanised ETA formatter (">60min jobs read awkwardly as "~240 min" today).
+- **K19b.8** (new, standalone cycle) → Track 3: extraction-job log viewer. Full BE schema + worker instrumentation + paginated endpoint + FE tail-follow UI.
+- **D-K19a.5-03** → K19b.6: monthly budget remaining. Needs Track 2 K16.12 `/v1/me/usage/monthly-remaining`.
 - **D-K19a.5-04 + D-K16.2-02b** → Track 3 (paired): chapter_range picker + runner-side enforcement.
 - **D-K19a.5-06** → Track 3 polish: `glossary_sync` scope option in BuildGraphDialog.
 - **D-K19a.5-07** → Track 3 polish: "Run benchmark" CTA in BuildGraphDialog.

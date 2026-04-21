@@ -49,6 +49,29 @@
       "started": "Started {{when}}",
       "completed": "Finished {{when}}",
       "unknownProject": "Project {{id}}…"
+    },
+    "detail": {
+      "title": "Job details",
+      "close": "Close",
+      "status": "Status",
+      "scope": "Scope",
+      "llmModel": "Chat model",
+      "embeddingModel": "Embedding model",
+      "maxSpend": "Budget cap",
+      "startedAt": "Started",
+      "completedAt": "Completed",
+      "errorTitle": "Error",
+      "eta": "~{{minutes}} min remaining",
+      "itemsProgress": "{{processed}} of {{total}} items processed",
+      "actionFailed": "Couldn't {{label}}: {{error}}",
+      "actions": {
+        "pause": "Pause",
+        "resume": "Resume",
+        "cancel": "Cancel"
+      }
+    },
+    "retry": {
+      "button": "Retry with different settings"
     }
   },
   "projects": {

@@ -49,6 +49,29 @@
       "started": "開始:{{when}}",
       "completed": "完成:{{when}}",
       "unknownProject": "專案 {{id}}…"
+    },
+    "detail": {
+      "title": "作業詳細資訊",
+      "close": "關閉",
+      "status": "狀態",
+      "scope": "範圍",
+      "llmModel": "聊天模型",
+      "embeddingModel": "嵌入模型",
+      "maxSpend": "預算上限",
+      "startedAt": "開始時間",
+      "completedAt": "完成時間",
+      "errorTitle": "錯誤",
+      "eta": "約剩 {{minutes}} 分鐘",
+      "itemsProgress": "已處理 {{processed}}/{{total}} 項",
+      "actionFailed": "無法{{label}}:{{error}}",
+      "actions": {
+        "pause": "暫停",
+        "resume": "繼續",
+        "cancel": "取消"
+      }
+    },
+    "retry": {
+      "button": "以不同設定重試"
     }
   },
   "projects": {

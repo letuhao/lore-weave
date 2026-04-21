@@ -341,7 +341,7 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     }
   });
 
-  // K19b.2 — Jobs tab strings (top-level `jobs.*` namespace).
+  // K19b.2 + K19b.3/5 — Jobs tab strings (top-level `jobs.*` namespace).
   const JOBS_KEYS = [
     'loading',
     'error.active',
@@ -357,6 +357,25 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     'row.started',
     'row.completed',
     'row.unknownProject',
+    // K19b.3: JobDetailPanel slide-over
+    'detail.title',
+    'detail.close',
+    'detail.status',
+    'detail.scope',
+    'detail.llmModel',
+    'detail.embeddingModel',
+    'detail.maxSpend',
+    'detail.startedAt',
+    'detail.completedAt',
+    'detail.errorTitle',
+    'detail.eta',
+    'detail.itemsProgress',
+    'detail.actionFailed',
+    'detail.actions.pause',
+    'detail.actions.resume',
+    'detail.actions.cancel',
+    // K19b.5: retry button in panel
+    'retry.button',
   ] as const;
 
   it.each(LOCALES)('%s has every K19b.2 jobs key populated', (_tag, bundle) => {

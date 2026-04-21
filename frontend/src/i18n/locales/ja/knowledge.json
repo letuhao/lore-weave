@@ -49,6 +49,29 @@
       "started": "開始: {{when}}",
       "completed": "終了: {{when}}",
       "unknownProject": "プロジェクト {{id}}…"
+    },
+    "detail": {
+      "title": "ジョブ詳細",
+      "close": "閉じる",
+      "status": "ステータス",
+      "scope": "スコープ",
+      "llmModel": "チャットモデル",
+      "embeddingModel": "埋め込みモデル",
+      "maxSpend": "予算上限",
+      "startedAt": "開始日時",
+      "completedAt": "終了日時",
+      "errorTitle": "エラー",
+      "eta": "残り約 {{minutes}} 分",
+      "itemsProgress": "{{processed}} / {{total}} 件処理済み",
+      "actionFailed": "{{label}}に失敗しました: {{error}}",
+      "actions": {
+        "pause": "一時停止",
+        "resume": "再開",
+        "cancel": "キャンセル"
+      }
+    },
+    "retry": {
+      "button": "別の設定で再実行"
     }
   },
   "projects": {

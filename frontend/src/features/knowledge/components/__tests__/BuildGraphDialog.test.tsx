@@ -421,4 +421,55 @@ describe('BuildGraphDialog', () => {
       expect(confirm.disabled).toBe(true);
     });
   });
+
+  // K19b.5: initialValues pre-fill for the retry flow.
+  it('pre-fills form state from initialValues when the dialog opens', async () => {
+    // beforeEach has already stubbed listUserModelsMock with a gpt-5
+    // model; use that so the <select>'s DOM value matches (a select
+    // with a value absent from its options silently falls back to empty,
+    // which would make this test unreliable).
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <BuildGraphDialog
+          open={true}
+          onOpenChange={vi.fn()}
+          project={sampleProject}
+          onStarted={vi.fn()}
+          initialValues={{
+            scope: 'all',
+            llmModel: 'gpt-5',
+            embeddingModel: 'bge-m3',
+            maxSpend: '7.50',
+          }}
+        />
+      </QueryClientProvider>,
+    );
+
+    // Scope is a radio group. Assert the 'all' radio is checked.
+    const scopeAll = screen.getByRole('radio', {
+      name: 'projects.buildDialog.scope.all',
+    }) as HTMLInputElement;
+    expect(scopeAll.checked).toBe(true);
+
+    // LLM model is a real <select>; wait for the listUserModels mock
+    // to resolve so gpt-5 option exists before asserting the value.
+    const llmSelect = screen.getByRole('combobox', {
+      name: 'projects.buildDialog.llmModel.label',
+    }) as HTMLSelectElement;
+    await waitFor(() => {
+      expect(llmSelect.value).toBe('gpt-5');
+    });
+
+    // Embedding picker stub renders a <select> with testid (see top-of-file mock).
+    const embedding = screen.getByTestId('embedding-picker') as HTMLSelectElement;
+    expect(embedding.value).toBe('bge-m3');
+
+    // max_spend is a plain <input type="text"> with a 0.00 placeholder.
+    // The wrapping <label> concatenates title + hint into the a11y name,
+    // so `getByRole('textbox', { name: ... })` is fragile; match the
+    // placeholder instead.
+    const maxSpend = screen.getByPlaceholderText('0.00') as HTMLInputElement;
+    expect(maxSpend.value).toBe('7.50');
+  });
 });

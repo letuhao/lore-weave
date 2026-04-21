@@ -49,6 +49,29 @@
       "started": "Bắt đầu {{when}}",
       "completed": "Kết thúc {{when}}",
       "unknownProject": "Dự án {{id}}…"
+    },
+    "detail": {
+      "title": "Chi tiết tác vụ",
+      "close": "Đóng",
+      "status": "Trạng thái",
+      "scope": "Phạm vi",
+      "llmModel": "Mô hình chat",
+      "embeddingModel": "Mô hình embedding",
+      "maxSpend": "Giới hạn ngân sách",
+      "startedAt": "Bắt đầu",
+      "completedAt": "Hoàn tất",
+      "errorTitle": "Lỗi",
+      "eta": "Còn lại ~{{minutes}} phút",
+      "itemsProgress": "Đã xử lý {{processed}}/{{total}} mục",
+      "actionFailed": "Không thể {{label}}: {{error}}",
+      "actions": {
+        "pause": "Tạm dừng",
+        "resume": "Tiếp tục",
+        "cancel": "Hủy"
+      }
+    },
+    "retry": {
+      "button": "Thử lại với cài đặt khác"
     }
   },
   "projects": {

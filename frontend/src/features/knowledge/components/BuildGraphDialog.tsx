@@ -27,6 +27,20 @@ import { EmbeddingModelPicker } from './EmbeddingModelPicker';
 // preview honours it but runner doesn't (D-K16.2-02b). Budget context
 // (monthly remaining) deferred to K19b.6.
 
+/**
+ * K19b.5 — optional pre-fill values for the retry flow. Any field
+ * that's omitted falls back to the normal per-open defaults (book
+ * project → scope="chapters", otherwise "all"; embedding_model from
+ * the Project; empty llm_model / max_spend). Parent clears this by
+ * passing `undefined` when reopening from a non-retry path.
+ */
+export interface BuildGraphInitialValues {
+  scope?: ExtractionJobScopeWire;
+  llmModel?: string;
+  embeddingModel?: string | null;
+  maxSpend?: string;
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -35,6 +49,9 @@ interface Props {
    * invalidates the jobs query — the new job payload is provided for
    * callers that need it (e.g. optimistic state). */
   onStarted: () => void;
+  /** K19b.5: pre-fill the form with a prior job's settings (retry
+   *  flow). When present, values override per-open defaults. */
+  initialValues?: BuildGraphInitialValues;
 }
 
 const ALL_SCOPES: ExtractionJobScopeWire[] = ['chapters', 'chat', 'all'];
@@ -46,40 +63,57 @@ const ESTIMATE_DEBOUNCE_MS = 300;
 // here so existing call sites (unit tests) can keep their imports.
 export { readBackendError } from '../lib/readBackendError';
 
-export function BuildGraphDialog({ open, onOpenChange, project, onStarted }: Props) {
+export function BuildGraphDialog({
+  open,
+  onOpenChange,
+  project,
+  onStarted,
+  initialValues,
+}: Props) {
   const { t } = useTranslation('knowledge');
   const { accessToken } = useAuth();
 
   // Default scope: `chapters` if the project is linked to a book, else
   // `all`. Users can still switch freely.
   const defaultScope: ExtractionJobScopeWire = project.book_id ? 'chapters' : 'all';
+  // K19b.5: initialValues overrides the per-open defaults so the
+  // retry flow can land the user on their prior settings.
+  const openScope = initialValues?.scope ?? defaultScope;
+  const openLlm = initialValues?.llmModel ?? '';
+  const openEmbedding =
+    initialValues?.embeddingModel !== undefined
+      ? initialValues.embeddingModel
+      : project.embedding_model ?? null;
+  const openMaxSpend = initialValues?.maxSpend ?? '';
 
-  const [scope, setScope] = useState<ExtractionJobScopeWire>(defaultScope);
-  const [llmModel, setLlmModel] = useState<string>('');
-  const [embeddingModel, setEmbeddingModel] = useState<string | null>(
-    project.embedding_model ?? null,
-  );
-  const [maxSpend, setMaxSpend] = useState<string>('');
+  const [scope, setScope] = useState<ExtractionJobScopeWire>(openScope);
+  const [llmModel, setLlmModel] = useState<string>(openLlm);
+  const [embeddingModel, setEmbeddingModel] = useState<string | null>(openEmbedding);
+  const [maxSpend, setMaxSpend] = useState<string>(openMaxSpend);
   const [starting, setStarting] = useState(false);
   // 300 ms debounced copy of (scope, llmModel) — prevents a burst of
   // /estimate calls on rapid toggles. React-Query keyed by the debounced
   // tuple auto-cancels stale requests on key change.
   const [debounced, setDebounced] = useState<{ scope: ExtractionJobScopeWire; llm: string }>({
-    scope: defaultScope,
-    llm: '',
+    scope: openScope,
+    llm: openLlm,
   });
 
   // Reset form every time the dialog opens. Keeps per-open defaults
   // clean even if the user leaves values behind from a prior attempt.
   useEffect(() => {
     if (!open) return;
-    setScope(defaultScope);
-    setLlmModel('');
-    setEmbeddingModel(project.embedding_model ?? null);
-    setMaxSpend('');
+    setScope(openScope);
+    setLlmModel(openLlm);
+    setEmbeddingModel(openEmbedding);
+    setMaxSpend(openMaxSpend);
     setStarting(false);
-    setDebounced({ scope: defaultScope, llm: '' });
-  }, [open, defaultScope, project.embedding_model]);
+    setDebounced({ scope: openScope, llm: openLlm });
+    // `openScope` / `openLlm` / `openEmbedding` / `openMaxSpend` already
+    // fold in both `project` + `initialValues` — listing them directly
+    // keeps the effect's dependency graph tight without introducing
+    // stale-closure risk on `initialValues` swaps mid-mount.
+  }, [open, openScope, openLlm, openEmbedding, openMaxSpend]);
 
   // Debounce scope/llm changes into `debounced`.
   useEffect(() => {
