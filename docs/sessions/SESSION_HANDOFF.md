@@ -2,7 +2,7 @@
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-22 (session 50)
-> **HEAD:** (pending K19b.6 commit) (K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** `32a9a18` (K19b.6 + D-K19a.5-03; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
 ## Session 50 — 5 cycles shipped (4 Track 3 + 1 Track 2 close-out)
@@ -36,7 +36,7 @@ Cycle 3  K19b.3 + K19b.5 +   JobDetailPanel (slide-over) + Retry + ETA          
 
 Cycle 4  K16.12 completion   Track 2 close-out. User-wide budget API.            b313c1b
 
-Cycle 5  K19b.6 + D-K19a.5-03 CostSummary card + monthly-remaining hint           (pending commit)
+Cycle 5  K19b.6 + D-K19a.5-03 CostSummary card + monthly-remaining hint           32a9a18
          [FE XL]              FE-only. NEW useUserCosts hook (staleTime 60s,
                               user_id-scoped queryKey). NEW CostSummary.tsx
                               with inline EditBudgetDialog (decimal regex
