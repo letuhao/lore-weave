@@ -145,6 +145,8 @@ class SummariesRepo:
         scope_id: UUID | None,
         content: str,
         expected_version: int | None = None,
+        *,
+        edit_source: str = "manual",
     ) -> Summary:
         """Insert or update a summary.
 
@@ -209,17 +211,24 @@ class SummariesRepo:
                     # D-K8-01: write the pre-update state as a
                     # history row. INSERT path (pre is None) skips
                     # this — there's nothing to archive.
+                    #
+                    # K20α: `edit_source` is now parameterised so the
+                    # regen helper can tag its writes as 'regen'
+                    # rather than 'manual' — without this, every
+                    # successful regen would silently re-arm the
+                    # 30-day user_edit_lock on the next attempt.
                     await conn.execute(
                         """
                         INSERT INTO knowledge_summary_versions
                           (summary_id, user_id, version, content, token_count, edit_source)
-                        VALUES ($1, $2, $3, $4, $5, 'manual')
+                        VALUES ($1, $2, $3, $4, $5, $6)
                         """,
                         pre["summary_id"],
                         user_id,
                         pre["version"],
                         pre["content"],
                         pre["token_count"],
+                        edit_source,
                     )
                 # If row is None while we hold a FOR UPDATE lock on
                 # `pre`, the only cause is a version-predicate miss
@@ -259,6 +268,8 @@ class SummariesRepo:
         project_id: UUID,
         content: str,
         expected_version: int | None = None,
+        *,
+        edit_source: str = "manual",
     ) -> Summary | None:
         """Upsert a project-scope summary atomically with an ownership check.
 
@@ -334,17 +345,20 @@ class SummariesRepo:
                 row = await conn.fetchrow(upsert_query, *params)
                 if pre is not None and row is not None:
                     # D-K8-01: write pre-update state as history.
+                    # K20α: see upsert() for why edit_source is
+                    # parameterised — same user_edit_lock concern.
                     await conn.execute(
                         """
                         INSERT INTO knowledge_summary_versions
                           (summary_id, user_id, version, content, token_count, edit_source)
-                        VALUES ($1, $2, $3, $4, $5, 'manual')
+                        VALUES ($1, $2, $3, $4, $5, $6)
                         """,
                         pre["summary_id"],
                         user_id,
                         pre["version"],
                         pre["content"],
                         pre["token_count"],
+                        edit_source,
                     )
 
         if row is not None:

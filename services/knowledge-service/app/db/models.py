@@ -102,7 +102,7 @@ class Summary(BaseModel):
 # successful summary update. `edit_source` is the rollback audit
 # trail — rollback operations write 'rollback' so the UI can
 # distinguish them from user-typed history entries.
-EditSource = Literal["manual", "rollback"]
+EditSource = Literal["manual", "rollback", "regen"]
 
 
 class SummaryVersion(BaseModel):

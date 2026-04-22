@@ -149,9 +149,33 @@ CREATE TABLE IF NOT EXISTS knowledge_summary_versions (
   token_count  INT,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   edit_source  TEXT NOT NULL DEFAULT 'manual'
-    CHECK (edit_source IN ('manual','rollback'))
-    -- 'llm_regen' will be added when K20 (Track 2 summary regen) lands
+    CHECK (edit_source IN ('manual','rollback','regen'))
+    -- K20α extended the allow list with 'regen' so the summary
+    -- regenerator can distinguish its writes from user manual edits
+    -- — without this, every regen would silently trigger the 30-day
+    -- user_edit_lock on the next attempt.
 );
+
+-- K20α (review-impl H1): expand the edit_source CHECK to include
+-- 'regen' on existing installs. New installs get the value from the
+-- table definition; this block only fires once, when a pre-K20α
+-- deployment upgrades.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint c
+    JOIN pg_class t ON c.conrelid = t.oid
+    WHERE t.relname = 'knowledge_summary_versions'
+      AND c.conname = 'knowledge_summary_versions_edit_source_check'
+      AND pg_get_constraintdef(c.oid) ILIKE '%regen%'
+  ) THEN
+    ALTER TABLE knowledge_summary_versions
+      DROP CONSTRAINT IF EXISTS knowledge_summary_versions_edit_source_check;
+    ALTER TABLE knowledge_summary_versions
+      ADD CONSTRAINT knowledge_summary_versions_edit_source_check
+      CHECK (edit_source IN ('manual','rollback','regen'));
+  END IF;
+END$$;
 
 -- Uniqueness: one row per (summary, version). Prevents accidental
 -- duplicates if a repo bug retries a history insert.

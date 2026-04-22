@@ -1,11 +1,11 @@
-# Session Handoff — Session 50 (K19b plan-complete + K19c plan-complete except .2 blocked on K20)
+# Session Handoff — Session 50 (K19b plan-complete + K19c plan-complete + K20α BE ships [K19c.2 unblocked])
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-22 (session 50)
-> **HEAD:** `8baa670` (K19c Cycle β; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** (pending K20-α commit) (K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 9 cycles shipped (7 Track 3 + 2 Track 2 close-out) · K19b+K19c plan-complete except K19c.2
+## Session 50 — 10 cycles shipped (8 Track 3 + 2 Track 2 close-out) · K19b+K19c plan-complete + K20α BE
 
 ```
 Track 3 K19b progress (session 50)
@@ -54,7 +54,35 @@ Cycle 7  K19b.8               Extraction-job log viewer MVP                     
 
 Cycle 8  K19c Cycle α          BE preload: user-scope entities endpoint           a619b5f
 
-Cycle 9  K19c Cycle β          FE K19c-partial: reset + diff + preferences        8baa670
+Cycle 10 K20 Cycle α           BE regen helpers + public edge [unblocks K19c.2]   (pending commit)
+         [BE L]                 NEW app/jobs/regenerate_summaries.py with 6-status
+                                RegenerationResult (regenerated / no_op_similarity
+                                / no_op_empty_source / no_op_guardrail /
+                                user_edit_lock / regen_concurrent_edit) per KSA
+                                §7.6. Drift rules: reads raw :Passage text not
+                                current summary; 30-day manual-edit lock;
+                                diversity check via word-set jaccard > 0.95; K20.6
+                                MVP guardrails (empty / token_overflow / K15.6
+                                injection) rejecting LLM output. NEW internal
+                                endpoint `POST /internal/summarize` +
+                                public edges `POST /v1/knowledge/me/summary/
+                                regenerate` + `POST /v1/knowledge/projects/{id}/
+                                summary/regenerate` (both JWT-scoped; 200/409/
+                                422/502 HTTP mapping). /review-impl caught:
+                                **H1** every regen wrote history as edit_source=
+                                'manual' which would trip the 30-day edit lock
+                                on the NEXT regen (fixed: EditSource Literal +
+                                migration CHECK + SummariesRepo.upsert kwarg all
+                                gain 'regen'; regen helper passes it); **M1** no
+                                upfront ownership check on project scope (fixed:
+                                `_owns_project` SELECT before LLM call).
+                                Deferred: K20.3 scheduler, K20.5 rollback
+                                endpoint, K20.7 metrics, D-K20α-01 cost
+                                tracking, D-K20α-02 per-scope cooldown.
+                                BE unit 1231 (was 1195; +36). Drift integration
+                                6/6 live against infra-postgres-1 + infra-neo4j-1.
+
+Cycle 9  K19c Cycle β          FE K19c-partial: reset + diff + preferences        8baa670 + 79503f2
          [FE XL]               Installed diff@^9 + @types/diff@^7. api.ts +Entity
                                type + list/archive wrappers. NEW useUserEntities
                                hook. NEW PreferencesSection (list + confirm +

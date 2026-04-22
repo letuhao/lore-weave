@@ -23,10 +23,20 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from typing import Literal
+
+from app.clients.provider_client import ProviderClient, ProviderError
 from app.db.models import Summary, SummaryContent, SummaryVersion
+from app.db.neo4j import neo4j_session
+from app.db.pool import get_knowledge_pool
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.summaries import SummariesRepo
-from app.deps import get_summaries_repo
+from app.deps import get_provider_client, get_summaries_repo
+from app.jobs.regenerate_summaries import (
+    RegenerationResult,
+    regenerate_global_summary,
+    regenerate_project_summary,
+)
 from app.middleware.jwt_auth import get_current_user
 from app.routers.public.projects import _etag, _parse_if_match
 
@@ -63,6 +73,25 @@ class SummaryVersionListResponse(BaseModel):
     # repo's VERSIONS_LIST_HARD_CAP so the panel can trust it will
     # never get overwhelmed.
     items: list[SummaryVersion] = Field(default_factory=list)
+
+
+class RegenerateRequest(BaseModel):
+    # K20.4 public edge body. user_id is NOT taken from the body —
+    # the JWT dep supplies it so a caller cannot spoof another user.
+    model_source: Literal["user_model", "platform_model"] = "user_model"
+    model_ref: str = Field(min_length=1, max_length=200)
+
+
+class RegenerateResponse(BaseModel):
+    """Envelope returned on 200 (regenerated / similarity no-op /
+    empty-source). FE inspects `status` to decide how to refresh the
+    bio field. Edit-lock and concurrent-edit map to 409; guardrail
+    failure maps to 422 — those paths use FastAPI's `HTTPException`
+    envelope instead."""
+
+    status: Literal["regenerated", "no_op_similarity", "no_op_empty_source"]
+    summary: Summary | None = None
+    skipped_reason: str | None = None
 
 
 # ── helpers ───────────────────────────────────────────────────────────────
@@ -282,3 +311,127 @@ async def rollback_global_summary(
         )
     response.headers["ETag"] = _etag(result.version)
     return result
+
+
+# ── K20α — regeneration endpoints ────────────────────────────────────────
+
+
+def _regen_http_envelope(result: RegenerationResult) -> RegenerateResponse:
+    """Map the regen business outcome onto the right HTTP envelope.
+
+    - ``regenerated`` / ``no_op_similarity`` / ``no_op_empty_source``
+      → 200 with ``RegenerateResponse`` payload (FE inspects ``status``).
+    - ``user_edit_lock`` / ``regen_concurrent_edit`` → 409.
+    - ``no_op_guardrail`` → 422.
+    """
+    if result.status == "user_edit_lock":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error_code": "user_edit_lock",
+                "message": result.skipped_reason
+                or "Summary is protected by a recent manual edit.",
+            },
+        )
+    if result.status == "regen_concurrent_edit":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error_code": "regen_concurrent_edit",
+                "message": result.skipped_reason
+                or "A concurrent manual edit raced this regeneration.",
+            },
+        )
+    if result.status == "no_op_guardrail":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "error_code": "regen_guardrail_failed",
+                "message": result.skipped_reason
+                or "Regenerated content failed a quality guardrail.",
+            },
+        )
+    # status ∈ {regenerated, no_op_similarity, no_op_empty_source}.
+    return RegenerateResponse(
+        status=result.status,
+        summary=result.summary,
+        skipped_reason=result.skipped_reason,
+    )
+
+
+@router.post(
+    "/me/summary/regenerate",
+    response_model=RegenerateResponse,
+)
+async def regenerate_global_bio(
+    body: RegenerateRequest,
+    user_id: UUID = Depends(get_current_user),
+    provider_client: ProviderClient = Depends(get_provider_client),
+    repo: SummariesRepo = Depends(get_summaries_repo),
+) -> RegenerateResponse:
+    """K20α — regenerate the caller's L0 global bio from raw chat turns.
+
+    JWT-scoped — the body never carries user_id. Response mapping:
+    see `_regen_http_envelope`.
+    """
+    try:
+        result = await regenerate_global_summary(
+            user_id=user_id,
+            model_source=body.model_source,
+            model_ref=body.model_ref,
+            pool=get_knowledge_pool(),
+            session_factory=neo4j_session,
+            provider_client=provider_client,
+            summaries_repo=repo,
+        )
+    except ProviderError as exc:
+        # Surface BYOK-layer errors as 502 so the FE can tell the user
+        # their own provider returned an error rather than a bug here.
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error_code": "provider_error",
+                "message": str(exc),
+            },
+        ) from exc
+    return _regen_http_envelope(result)
+
+
+@router.post(
+    "/projects/{project_id}/summary/regenerate",
+    response_model=RegenerateResponse,
+)
+async def regenerate_project_bio(
+    project_id: UUID,
+    body: RegenerateRequest,
+    user_id: UUID = Depends(get_current_user),
+    provider_client: ProviderClient = Depends(get_provider_client),
+    repo: SummariesRepo = Depends(get_summaries_repo),
+) -> RegenerateResponse:
+    """K20α — regenerate an L1 project summary.
+
+    Ownership is enforced inside `regenerate_project_summary` via the
+    `upsert_project_scoped` CTE — cross-user scope_id collapses to
+    `no_op_guardrail` (422) rather than leaking existence as 404, per
+    KSA §6.4 anti-leak rules.
+    """
+    try:
+        result = await regenerate_project_summary(
+            user_id=user_id,
+            project_id=project_id,
+            model_source=body.model_source,
+            model_ref=body.model_ref,
+            pool=get_knowledge_pool(),
+            session_factory=neo4j_session,
+            provider_client=provider_client,
+            summaries_repo=repo,
+        )
+    except ProviderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error_code": "provider_error",
+                "message": str(exc),
+            },
+        ) from exc
+    return _regen_http_envelope(result)
