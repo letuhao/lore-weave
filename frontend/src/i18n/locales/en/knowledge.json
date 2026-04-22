@@ -55,6 +55,8 @@
       "loading": "Loading entity…",
       "loadFailed": "Couldn't load entity: {{error}}",
       "close": "Close",
+      "edit": "Edit",
+      "merge": "Merge into another entity",
       "metadata": "Metadata",
       "aliases": "Aliases",
       "relations": "Relations ({{count}})",
@@ -70,6 +72,44 @@
         "mentions": "Mentions",
         "anchor": "Anchor score"
       }
+    },
+    "edit": {
+      "title": "Edit entity",
+      "description": "Rename or adjust this entity. Your edits lock future extractions from re-adding removed aliases.",
+      "field": {
+        "name": "Display name",
+        "kind": "Kind",
+        "aliases": "Aliases"
+      },
+      "aliasesPlaceholder": "One alias per line",
+      "aliasesHint": "One alias per line. Extraction won't silently re-add removed variants after you save.",
+      "userEditedHint": "Saving marks this entity as user-edited.",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "success": "Entity updated",
+      "failed": "Couldn't save: {{error}}"
+    },
+    "merge": {
+      "title": "Merge entity",
+      "description": "Merge {{name}} into another entity. {{name}} will be deleted; its relations and aliases move to the target.",
+      "targetLabel": "Target entity",
+      "searchPlaceholder": "Search by name (min 2 chars)…",
+      "searchMinHint": "Type at least 2 characters to search.",
+      "searching": "Searching…",
+      "noMatches": "No matching entities.",
+      "warning": "This cannot be undone. The source entity is deleted; its relations and aliases transfer to the target.",
+      "mentions": "mentions",
+      "clear": "Clear",
+      "confirm": "Merge",
+      "merging": "Merging…",
+      "cancel": "Cancel",
+      "success": "Merged {{source}} into {{target}}",
+      "errSameEntity": "Cannot merge an entity into itself.",
+      "errNotFound": "One of the entities could not be found.",
+      "errArchived": "Cannot merge archived entities. Restore them first.",
+      "errGlossaryConflict": "Both entities are anchored to different glossary entries. Resolve the glossary anchors before merging.",
+      "errUnknown": "Merge failed: {{reason}}"
     }
   },
   "jobs": {

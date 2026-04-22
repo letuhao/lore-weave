@@ -14,10 +14,12 @@ import pytest_asyncio
 
 from app.db.neo4j_repos.entities import (
     ENTITIES_DETAIL_REL_CAP,
+    MergeEntitiesError,
     archive_entity,
     get_entity,
     get_entity_with_relations,
     list_entities_filtered,
+    merge_entities,
     merge_entity,
     update_entity_fields,
 )
@@ -551,3 +553,331 @@ async def test_merge_entity_without_user_edited_still_appends_aliases(
     assert after.user_edited is False
     # Alias append ran because user_edited was false.
     assert "Master Phoenix" in after.aliases
+
+
+# ── K19d γ-b — merge_entities integration ───────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_merge_entities_rewires_outgoing_relation(
+    neo4j_driver, test_user
+):
+    """source → other gets rewired to target → other, with
+    source's relation_id replaced by the new target-pinned id."""
+    async with neo4j_driver.session() as session:
+        kai = await merge_entity(
+            session, user_id=test_user, project_id="p",
+            name="Kai", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        # Different name hitting different canonical_id so target
+        # is a separate entity we merge INTO.
+        captain = await merge_entity(
+            session, user_id=test_user, project_id="p",
+            name="Captain Brave", kind="character",
+            source_type="chat_turn", confidence=0.85,
+        )
+        other = await merge_entity(
+            session, user_id=test_user, project_id="p",
+            name="Phoenix", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        # Kai -[mentors]-> Phoenix (to be rewired to Captain).
+        await create_relation(
+            session,
+            user_id=test_user,
+            subject_id=kai.id,
+            object_id=other.id,
+            predicate="mentors",
+            confidence=0.8,
+        )
+        target = await merge_entities(
+            session,
+            user_id=test_user,
+            source_id=kai.id,
+            target_id=captain.id,
+        )
+    assert target.id == captain.id
+    assert target.user_edited is True
+    # Post-merge fetch to inspect the rewired relation.
+    async with neo4j_driver.session() as session:
+        detail = await get_entity_with_relations(
+            session, user_id=test_user, entity_id=captain.id,
+        )
+        # Source (Kai) is gone.
+        kai_after = await get_entity(
+            session, user_id=test_user, canonical_id=kai.id,
+        )
+    assert kai_after is None
+    assert detail is not None
+    assert detail.total_relations == 1
+    assert detail.relations[0].predicate == "mentors"
+    assert detail.relations[0].subject_id == captain.id
+    assert detail.relations[0].object_id == other.id
+
+
+@pytest.mark.asyncio
+async def test_merge_entities_unions_aliases_and_source_types(
+    neo4j_driver, test_user
+):
+    async with neo4j_driver.session() as session:
+        a = await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Alice", kind="character",
+            source_type="chat_turn", confidence=0.5,
+        )
+        # Extractor adds a variant so `a` has two aliases.
+        _ = await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Master Alice", kind="character",
+            source_type="chapter", confidence=0.7,
+        )
+        b = await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Captain Brave", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        target = await merge_entities(
+            session,
+            user_id=test_user,
+            source_id=a.id,
+            target_id=b.id,
+        )
+    # Union of aliases preserved, deduped.
+    assert set(target.aliases) >= {"Captain Brave", "Alice", "Master Alice"}
+    assert len(target.aliases) == len(set(target.aliases))
+    # Source types from both entities.
+    assert set(target.source_types) >= {"chat_turn", "chapter"}
+    # Max confidence (source had 0.7, target had 0.9).
+    assert target.confidence == pytest.approx(0.9)
+
+
+@pytest.mark.asyncio
+async def test_merge_entities_sums_counters(neo4j_driver, test_user):
+    async with neo4j_driver.session() as session:
+        a = await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Alpha", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        b = await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Captain Brave", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        # Hand-set mention_count + evidence_count on both entities
+        # to verify the sum.
+        await session.run(
+            "MATCH (e:Entity) WHERE e.user_id = $u AND e.id IN [$a, $b] "
+            "SET e.mention_count = 10, e.evidence_count = 4",
+            u=test_user, a=a.id, b=b.id,
+        )
+        target = await merge_entities(
+            session,
+            user_id=test_user,
+            source_id=a.id,
+            target_id=b.id,
+        )
+    assert target.mention_count == 20
+    assert target.evidence_count == 8
+
+
+@pytest.mark.asyncio
+async def test_merge_entities_same_id_raises(neo4j_driver, test_user):
+    async with neo4j_driver.session() as session:
+        a = await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Solo", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        with pytest.raises(MergeEntitiesError) as excinfo:
+            await merge_entities(
+                session,
+                user_id=test_user,
+                source_id=a.id,
+                target_id=a.id,
+            )
+    assert excinfo.value.error_code == "same_entity"
+
+
+@pytest.mark.asyncio
+async def test_merge_entities_cross_user_raises_not_found(
+    neo4j_driver, test_user
+):
+    other_user = f"u-other-{uuid.uuid4().hex[:8]}"
+    async with neo4j_driver.session() as session:
+        a = await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Mine", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        b = await merge_entity(
+            session, user_id=other_user, project_id=None,
+            name="Theirs", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        with pytest.raises(MergeEntitiesError) as excinfo:
+            await merge_entities(
+                session,
+                user_id=test_user,
+                source_id=a.id,
+                target_id=b.id,
+            )
+    assert excinfo.value.error_code == "entity_not_found"
+    # Cleanup
+    async with neo4j_driver.session() as session:
+        await session.run(
+            "MATCH (e:Entity {user_id: $uid}) DETACH DELETE e",
+            uid=other_user,
+        )
+
+
+@pytest.mark.asyncio
+async def test_merge_entities_archived_source_raises(
+    neo4j_driver, test_user
+):
+    async with neo4j_driver.session() as session:
+        a = await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Old", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        b = await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Captain New", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        await archive_entity(
+            session, user_id=test_user, canonical_id=a.id,
+            reason="user_archived",
+        )
+        with pytest.raises(MergeEntitiesError) as excinfo:
+            await merge_entities(
+                session,
+                user_id=test_user,
+                source_id=a.id,
+                target_id=b.id,
+            )
+    assert excinfo.value.error_code == "entity_archived"
+
+
+@pytest.mark.asyncio
+async def test_merge_entities_glossary_conflict_raises(
+    neo4j_driver, test_user
+):
+    async with neo4j_driver.session() as session:
+        a = await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Anchored A", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        b = await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Captain Anchored B", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        # Hand-set distinct glossary_entity_id values.
+        await session.run(
+            "MATCH (e:Entity {id: $aid, user_id: $u}) "
+            "SET e.glossary_entity_id = 'gloss-A'",
+            aid=a.id, u=test_user,
+        )
+        await session.run(
+            "MATCH (e:Entity {id: $bid, user_id: $u}) "
+            "SET e.glossary_entity_id = 'gloss-B'",
+            bid=b.id, u=test_user,
+        )
+        with pytest.raises(MergeEntitiesError) as excinfo:
+            await merge_entities(
+                session,
+                user_id=test_user,
+                source_id=a.id,
+                target_id=b.id,
+            )
+    assert excinfo.value.error_code == "glossary_conflict"
+
+
+@pytest.mark.asyncio
+async def test_merge_entities_drops_source_self_relation(
+    neo4j_driver, test_user
+):
+    """Review-impl H1 regression: source has a self-relation (rare
+    but the extractor can produce one). Previous logic would rewire
+    it to `(target)-[...]->(source)`, then DETACH DELETE source
+    would destroy the fresh edge — silent data loss. The fix skips
+    self-relations entirely during rewire so nothing is created to
+    be destroyed, and target ends up without a ghost edge."""
+    async with neo4j_driver.session() as session:
+        a = await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Clone", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        b = await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Captain Twin", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        # Hand-craft a self-relation on source.
+        await session.run(
+            """
+            MATCH (s:Entity {id: $sid, user_id: $u})
+            MERGE (s)-[r:RELATES_TO {id: 'self-rel-x'}]->(s)
+            ON CREATE SET r.user_id = $u, r.subject_id = $sid,
+                r.object_id = $sid, r.predicate = 'thinks-about',
+                r.confidence = 0.5, r.created_at = datetime(),
+                r.updated_at = datetime(), r.valid_until = NULL,
+                r.pending_validation = false
+            """,
+            sid=a.id, u=test_user,
+        )
+
+        target = await merge_entities(
+            session,
+            user_id=test_user,
+            source_id=a.id,
+            target_id=b.id,
+        )
+        # Target has NO self-relation — the source's self-relation
+        # was dropped, not re-homed onto target with a dangling
+        # object pointer.
+        self_rel_result = await session.run(
+            """
+            MATCH (t:Entity {id: $tid, user_id: $u})-[r:RELATES_TO]->(t)
+            RETURN count(r) AS n
+            """,
+            tid=target.id, u=test_user,
+        )
+        self_rel_row = await self_rel_result.single()
+    assert self_rel_row is not None
+    assert self_rel_row["n"] == 0
+
+
+@pytest.mark.asyncio
+async def test_merge_entities_inherits_glossary_anchor_when_target_lacks(
+    neo4j_driver, test_user
+):
+    """Source anchored, target un-anchored → target inherits."""
+    async with neo4j_driver.session() as session:
+        anchored = await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Mentor Kai", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        unanchored = await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Captain Phoenix", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        await session.run(
+            "MATCH (e:Entity {id: $aid, user_id: $u}) "
+            "SET e.glossary_entity_id = 'gloss-kai'",
+            aid=anchored.id, u=test_user,
+        )
+        target = await merge_entities(
+            session,
+            user_id=test_user,
+            source_id=anchored.id,
+            target_id=unanchored.id,
+        )
+    assert target.glossary_entity_id == "gloss-kai"

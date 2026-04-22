@@ -25,10 +25,12 @@ from app.db.neo4j_repos.entities import (
     ENTITIES_MAX_LIMIT,
     Entity,
     EntityDetail,
+    MergeEntitiesError,
     archive_entity,
     get_entity_with_relations,
     list_entities_filtered,
     list_user_entities,
+    merge_entities,
     update_entity_fields,
 )
 from app.middleware.jwt_auth import get_current_user
@@ -300,3 +302,71 @@ async def patch_entity(
         ],
     )
     return updated
+
+
+# ── K19d γ-b — POST /entities/{id}/merge-into/{other_id} ────────────
+
+
+class EntityMergeResponse(BaseModel):
+    target: Entity
+
+
+_MERGE_ERROR_HTTP_STATUS: dict[str, int] = {
+    "same_entity": status.HTTP_400_BAD_REQUEST,
+    "entity_not_found": status.HTTP_404_NOT_FOUND,
+    "entity_archived": status.HTTP_409_CONFLICT,
+    "glossary_conflict": status.HTTP_409_CONFLICT,
+}
+
+
+@entities_router.post(
+    "/entities/{entity_id}/merge-into/{other_id}",
+    response_model=EntityMergeResponse,
+)
+async def merge_entity_into(
+    entity_id: str = Path(min_length=1, max_length=200),
+    other_id: str = Path(min_length=1, max_length=200),
+    user_id: UUID = Depends(get_current_user),
+) -> EntityMergeResponse:
+    """K19d.6 — merge `entity_id` (source) into `other_id` (target).
+
+    Re-homes every RELATES_TO and EVIDENCED_BY edge from source to
+    target, combines aliases + source_types + mention_count +
+    evidence_count, then DETACH DELETEs source. Target is returned
+    with `user_edited=true` so extraction doesn't silently undo
+    the merge by re-adding removed alias variants.
+
+    Error envelope — structured `detail.error_code` lets the FE
+    switch on the failure class:
+      - 400 ``same_entity``        — source_id == other_id
+      - 404 ``entity_not_found``   — either missing / cross-user
+      - 409 ``entity_archived``    — either archived
+      - 409 ``glossary_conflict``  — anchored to different glossary
+                                      entries (merge would lose one
+                                      anchor — user must resolve
+                                      anchor conflict manually first)
+    """
+    async with neo4j_session() as session:
+        try:
+            target = await merge_entities(
+                session,
+                user_id=str(user_id),
+                source_id=entity_id,
+                target_id=other_id,
+            )
+        except MergeEntitiesError as exc:
+            http_status = _MERGE_ERROR_HTTP_STATUS.get(
+                exc.error_code, status.HTTP_400_BAD_REQUEST
+            )
+            raise HTTPException(
+                status_code=http_status,
+                detail={
+                    "error_code": exc.error_code,
+                    "message": str(exc),
+                },
+            )
+    logger.info(
+        "K19d.6: user merged entity user_id=%s source=%s target=%s",
+        user_id, entity_id, other_id,
+    )
+    return EntityMergeResponse(target=target)

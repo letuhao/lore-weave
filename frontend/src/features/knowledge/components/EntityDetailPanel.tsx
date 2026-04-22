@@ -1,10 +1,12 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { X, ArrowRight, ArrowLeft } from 'lucide-react';
+import { X, ArrowRight, ArrowLeft, Pencil, Merge } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useEntityDetail } from '../hooks/useEntityDetail';
 import type { EntityRelation } from '../api';
+import { EntityEditDialog } from './EntityEditDialog';
+import { EntityMergeDialog } from './EntityMergeDialog';
 
 // K19d.3 — slide-over entity detail panel (read-only MVP).
 // Opens when EntitiesTab sets `selectedEntityId`; closes via X,
@@ -78,6 +80,8 @@ export function EntityDetailPanel({
   const { detail, isLoading, error } = useEntityDetail(
     open ? entityId : null,
   );
+  const [showEdit, setShowEdit] = useState(false);
+  const [showMerge, setShowMerge] = useState(false);
 
   const { outgoing, incoming } = useMemo(() => {
     if (!detail || !entityId) {
@@ -109,14 +113,41 @@ export function EntityDetailPanel({
                 {detail?.entity.kind ?? ''}
               </Dialog.Description>
             </div>
-            <Dialog.Close asChild>
+            <div className="flex items-center gap-1">
+              {/* Edit / Merge CTAs — disabled until detail loads
+                  so we have a full Entity object to hand the
+                  dialogs. */}
               <button
-                className="rounded-sm p-1 text-muted-foreground transition-colors hover:text-foreground"
-                aria-label={t('entities.detail.close')}
+                type="button"
+                onClick={() => setShowEdit(true)}
+                disabled={!detail}
+                title={t('entities.detail.edit')}
+                aria-label={t('entities.detail.edit')}
+                className="rounded-sm p-1 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                data-testid="entity-detail-edit"
               >
-                <X className="h-4 w-4" />
+                <Pencil className="h-4 w-4" />
               </button>
-            </Dialog.Close>
+              <button
+                type="button"
+                onClick={() => setShowMerge(true)}
+                disabled={!detail}
+                title={t('entities.detail.merge')}
+                aria-label={t('entities.detail.merge')}
+                className="rounded-sm p-1 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                data-testid="entity-detail-merge"
+              >
+                <Merge className="h-4 w-4" />
+              </button>
+              <Dialog.Close asChild>
+                <button
+                  className="rounded-sm p-1 text-muted-foreground transition-colors hover:text-foreground"
+                  aria-label={t('entities.detail.close')}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </Dialog.Close>
+            </div>
           </div>
 
           <div className="flex-1 space-y-5 px-5 py-4">
@@ -242,6 +273,30 @@ export function EntityDetailPanel({
           </div>
         </Dialog.Content>
       </Dialog.Portal>
+
+      {/* Edit + Merge dialogs mounted as peers so they sit ABOVE
+          the detail slide-over's overlay. Radix portals each one
+          to document.body; z-index inherits from our Dialog.Content
+          shared `z-50`. */}
+      {detail && (
+        <>
+          <EntityEditDialog
+            open={showEdit}
+            onOpenChange={setShowEdit}
+            entity={detail.entity}
+          />
+          <EntityMergeDialog
+            open={showMerge}
+            onOpenChange={setShowMerge}
+            source={detail.entity}
+            onMerged={() => {
+              // Source was deleted — close the detail panel so
+              // the user isn't left looking at a 404-bound id.
+              onOpenChange(false);
+            }}
+          />
+        </>
+      )}
     </Dialog.Root>
   );
 }

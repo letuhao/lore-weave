@@ -69,7 +69,47 @@
         "confidence": "信頼度",
         "mentions": "言及回数",
         "anchor": "アンカースコア"
-      }
+      },
+      "edit": "編集",
+      "merge": "別のエンティティと結合"
+    },
+    "edit": {
+      "title": "エンティティを編集",
+      "description": "このエンティティの名前や詳細を変更します。保存すると、今後の抽出は削除されたエイリアスを自動で再追加しません。",
+      "field": {
+        "name": "表示名",
+        "kind": "種別",
+        "aliases": "エイリアス"
+      },
+      "aliasesPlaceholder": "1行に1つ",
+      "aliasesHint": "1行に1つ。保存後は抽出が削除した別名を勝手に戻しません。",
+      "userEditedHint": "保存すると、このエンティティはユーザー編集済みとマークされます。",
+      "save": "保存",
+      "saving": "保存中…",
+      "cancel": "キャンセル",
+      "success": "エンティティを更新しました",
+      "failed": "保存できませんでした：{{error}}"
+    },
+    "merge": {
+      "title": "エンティティを結合",
+      "description": "{{name}} を別のエンティティに結合します。{{name}} は削除され、関係とエイリアスは結合先に移ります。",
+      "targetLabel": "結合先エンティティ",
+      "searchPlaceholder": "名前で検索（2文字以上）…",
+      "searchMinHint": "2文字以上入力してください。",
+      "searching": "検索中…",
+      "noMatches": "一致するエンティティはありません。",
+      "warning": "この操作は取り消せません。元のエンティティは削除され、関係とエイリアスは結合先に移ります。",
+      "mentions": "言及回数",
+      "clear": "クリア",
+      "confirm": "結合",
+      "merging": "結合中…",
+      "cancel": "キャンセル",
+      "success": "{{source}} を {{target}} に結合しました",
+      "errSameEntity": "同じエンティティには結合できません。",
+      "errNotFound": "エンティティが見つかりませんでした。",
+      "errArchived": "アーカイブ済みのエンティティは結合できません。先に復元してください。",
+      "errGlossaryConflict": "両方が異なる用語集エントリにリンクしています。先に用語集アンカーを調整してください。",
+      "errUnknown": "結合に失敗しました：{{reason}}"
     }
   },
   "jobs": {

@@ -1,11 +1,11 @@
-# Session Handoff — Session 50 (K19b + K19c + K20 complete; K19d α+β+γ-a shipped [γ-b merge+FE only remaining])
+# Session Handoff — Session 50 (K19b + K19c + K20 + K19d all 100% plan-complete)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-22 (session 50)
-> **HEAD:** `5d42afd` (K19d Cycle γ-a; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** (pending K19d-γb commit) (K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 14 cycles shipped (12 Track 3 + 2 Track 2 close-out) · K19b + K19c + K20 complete; K19d α+β+γ-a shipped (γ-b only remaining)
+## Session 50 — 15 cycles shipped (13 Track 3 + 2 Track 2 close-out) · K19b + K19c + K20 + K19d all 100% plan-complete
 
 ```
 Track 3 K19b progress (session 50)
@@ -54,7 +54,49 @@ Cycle 7  K19b.8               Extraction-job log viewer MVP                     
 
 Cycle 8  K19c Cycle α          BE preload: user-scope entities endpoint           a619b5f
 
-Cycle 14 K19d Cycle γ-a        PATCH entity + user_edited lock [BE half of γ]    5d42afd
+Cycle 15 K19d Cycle γ-b        Merge endpoint + FE edit/merge dialogs             (pending commit)
+         [FS XL]                BE: merge_entities helper + MergeEntitiesError
+                                with 4 codes (same_entity/entity_not_found/
+                                entity_archived/glossary_conflict) + 6 Cypher
+                                blocks (load/validate, collect both-direction
+                                edges, UNWIND batch MERGE with Python-driven
+                                relation_id recomputation, EVIDENCED_BY
+                                rewire on job_id, target metadata update with
+                                glossary pre-clear to dodge UNIQUE constraint,
+                                DETACH DELETE source, Python post-dedupe).
+                                NEW POST /v1/knowledge/entities/{id}/
+                                merge-into/{other_id} with 400/404/409 error
+                                envelope. FE: NEW useUpdateEntity + useMerge
+                                Entity hooks with closed-union error codes +
+                                source detail cache eviction on merge. NEW
+                                EntityEditDialog (name/kind/aliases textarea
+                                with trim+dedupe + no-op skip). NEW
+                                EntityMergeDialog with search-to-select
+                                target picker (reuses useEntities, filters
+                                out source, FE min-2-char). EntityDetailPanel
+                                gets Edit/Merge icon buttons + mounted child
+                                dialogs. 37 i18n keys × 4 locales + ENTITIES
+                                _KEYS iterator +148 cross-locale assertions.
+                                /review-impl caught H1 (source self-relation
+                                silently dropped — rewired then cascade-
+                                deleted) fixed in-cycle with regression test.
+                                M1/M2/M3 deferred (D-K19d-γb-01 ON MATCH
+                                union gap, D-K19d-γb-02 non-atomic multi-
+                                write, D-K19d-γb-03 post-merge canonical_id
+                                mismatch — fundamental architectural).
+                                Build-time fix: UNIQUE(glossary_entity_id)
+                                violation when both source and target
+                                transiently held same anchor → clear source
+                                first in same SET statement. BE unit 1258
+                                (+5 merge routes). Integration 23/23 live
+                                (+9 merge scenarios). FE knowledge 232 (+14
+                                = 5 hook + 5 edit + 4 merge dialog). tsc
+                                clean; no unhandled rejections after wrapping
+                                mutation calls in try/catch. K19d cluster
+                                100% plan-complete. K19d.8 graph viz stays
+                                optional per plan.
+
+Cycle 14 K19d Cycle γ-a        PATCH entity + user_edited lock [BE half of γ]    5d42afd + db405f6
          [BE L]                 Entity.user_edited: bool = False + _MERGE_ENTITY_
                                 CYPHER ON CREATE user_edited=false + ON MATCH
                                 aliases CASE coalesce(user_edited,false)=true

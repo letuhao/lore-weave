@@ -32,7 +32,7 @@ from app.db.neo4j_repos.canonical import (
     canonicalize_entity_name,
     entity_canonical_id,
 )
-from app.db.neo4j_repos.relations import Relation
+from app.db.neo4j_repos.relations import Relation, relation_id
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,8 @@ __all__ = [
     "list_entities_filtered",
     "get_entity_with_relations",
     "update_entity_fields",
+    "merge_entities",
+    "MergeEntitiesError",
 ]
 
 
@@ -1501,3 +1503,411 @@ async def update_entity_fields(
     if record is None:
         return None
     return _node_to_entity(record["e"])
+
+
+# ── K19d γ-b — merge_entities ────────────────────────────────────────
+#
+# Combines two entities owned by the same user into one. Target
+# survives; source is DETACH DELETEd. Both RELATES_TO and
+# EVIDENCED_BY edge sets are re-homed onto the target BEFORE
+# source is deleted, so provenance is preserved.
+#
+# `:RELATES_TO` edges carry a deterministic `id` = sha256 of
+# `(user_id, subject_id, predicate, object_id)`. Since subject
+# (or object) changes from source→target, the id must change too —
+# we can't rewire in-place. Approach: read source's edges in
+# Python, compute new ids, batch-MERGE onto target via UNWIND.
+# Existing target edges with the new id get ON MATCH treatment
+# (max confidence + source_event_ids union).
+#
+# `:EVIDENCED_BY` edges key on `{job_id}` per K11.8 — MERGE on
+# that dedupes cleanly when target shares an ExtractionSource
+# with source.
+#
+# APOC is available in deployed Neo4j (NEO4J_PLUGINS=['apoc'])
+# but knowledge-service deliberately avoids it (events.py L193).
+# Keeping that discipline: all hashing in Python, Cypher APOC-free.
+
+
+class MergeEntitiesError(Exception):
+    """Raised by `merge_entities` on validation failure the router
+    must distinguish. `error_code` is the stable string mapped to
+    HTTP status + structured body."""
+
+    def __init__(self, error_code: str, message: str) -> None:
+        super().__init__(message)
+        self.error_code = error_code
+
+
+_MERGE_LOAD_ENTITIES_CYPHER = """
+OPTIONAL MATCH (s:Entity {id: $source_id})
+WHERE s.user_id = $user_id
+OPTIONAL MATCH (t:Entity {id: $target_id})
+WHERE t.user_id = $user_id
+RETURN s, t
+"""
+
+
+_MERGE_COLLECT_EDGES_CYPHER = """
+MATCH (s:Entity {id: $source_id})
+WHERE s.user_id = $user_id
+CALL {
+  WITH s
+  OPTIONAL MATCH (s)-[r:RELATES_TO]->(o:Entity)
+  WHERE r.user_id = $user_id AND o.user_id = $user_id
+  RETURN collect({
+    direction: 'out',
+    predicate: r.predicate,
+    other_id: o.id,
+    confidence: r.confidence,
+    source_event_ids: coalesce(r.source_event_ids, []),
+    source_chapter: r.source_chapter,
+    valid_from: r.valid_from,
+    valid_until: r.valid_until,
+    pending_validation: r.pending_validation
+  }) AS out_edges
+}
+CALL {
+  WITH s
+  OPTIONAL MATCH (sub:Entity)-[r:RELATES_TO]->(s)
+  WHERE r.user_id = $user_id AND sub.user_id = $user_id
+    AND sub <> s
+  RETURN collect({
+    direction: 'in',
+    predicate: r.predicate,
+    other_id: sub.id,
+    confidence: r.confidence,
+    source_event_ids: coalesce(r.source_event_ids, []),
+    source_chapter: r.source_chapter,
+    valid_from: r.valid_from,
+    valid_until: r.valid_until,
+    pending_validation: r.pending_validation
+  }) AS in_edges
+}
+RETURN out_edges, in_edges
+"""
+
+
+_MERGE_REWIRE_RELATES_TO_CYPHER = """
+UNWIND $edges AS edge
+MATCH (subj:Entity {id: edge.subject_id})
+WHERE subj.user_id = $user_id
+MATCH (obj:Entity {id: edge.object_id})
+WHERE obj.user_id = $user_id
+MERGE (subj)-[r:RELATES_TO {id: edge.new_id}]->(obj)
+ON CREATE SET
+  r.user_id = $user_id,
+  r.subject_id = edge.subject_id,
+  r.object_id = edge.object_id,
+  r.predicate = edge.predicate,
+  r.confidence = edge.confidence,
+  r.source_event_ids = edge.source_event_ids,
+  r.source_chapter = edge.source_chapter,
+  r.valid_from = edge.valid_from,
+  r.valid_until = edge.valid_until,
+  r.pending_validation = edge.pending_validation,
+  r.created_at = datetime(),
+  r.updated_at = datetime()
+ON MATCH SET
+  r.confidence = CASE
+    WHEN edge.confidence > r.confidence THEN edge.confidence
+    ELSE r.confidence
+  END,
+  r.source_event_ids = [
+    x IN coalesce(r.source_event_ids, []) + edge.source_event_ids
+    WHERE x IS NOT NULL
+    | x
+  ],
+  r.updated_at = datetime()
+RETURN count(r) AS rewired
+"""
+
+
+_MERGE_REWIRE_EVIDENCED_BY_CYPHER = """
+MATCH (s:Entity {id: $source_id})-[e:EVIDENCED_BY]->(ext:ExtractionSource)
+WHERE s.user_id = $user_id
+WITH e, ext, properties(e) AS props
+MATCH (t:Entity {id: $target_id})
+WHERE t.user_id = $user_id
+MERGE (t)-[e2:EVIDENCED_BY {job_id: props.job_id}]->(ext)
+ON CREATE SET e2 = props
+RETURN count(e2) AS rewired
+"""
+
+
+_MERGE_UPDATE_TARGET_CYPHER = """
+MATCH (s:Entity {id: $source_id})
+WHERE s.user_id = $user_id
+MATCH (t:Entity {id: $target_id})
+WHERE t.user_id = $user_id
+// Capture source's glossary anchor before nulling it — we need the
+// value to decide whether to inherit it onto target. Clearing first
+// avoids a transient state where both source and target carry the
+// same glossary_entity_id, which would trip the UNIQUE constraint
+// on :Entity(glossary_entity_id).
+WITH s, t, s.glossary_entity_id AS src_anchor
+SET s.glossary_entity_id = NULL
+WITH s, t, src_anchor
+SET
+  t.aliases = t.aliases + s.aliases + [s.name],
+  t.source_types = coalesce(t.source_types, []) + coalesce(s.source_types, []),
+  t.mention_count = coalesce(t.mention_count, 0)
+                    + coalesce(s.mention_count, 0),
+  t.evidence_count = coalesce(t.evidence_count, 0)
+                     + coalesce(s.evidence_count, 0),
+  t.confidence = CASE
+    WHEN coalesce(s.confidence, 0.0) > coalesce(t.confidence, 0.0)
+      THEN s.confidence
+    ELSE t.confidence
+  END,
+  t.glossary_entity_id = CASE
+    WHEN t.glossary_entity_id IS NULL THEN src_anchor
+    ELSE t.glossary_entity_id
+  END,
+  t.user_edited = true,
+  t.updated_at = datetime()
+RETURN t
+"""
+
+
+_MERGE_DELETE_SOURCE_CYPHER = """
+MATCH (s:Entity {id: $source_id})
+WHERE s.user_id = $user_id
+DETACH DELETE s
+"""
+
+
+_MERGE_DEDUPE_TARGET_CYPHER = """
+MATCH (t:Entity {id: $target_id})
+WHERE t.user_id = $user_id
+SET t.aliases = $aliases,
+    t.source_types = $source_types,
+    t.updated_at = datetime()
+RETURN t
+"""
+
+
+def _dedupe_preserving_order(items: list[Any]) -> list[Any]:
+    """Python dedupe that keeps first-occurrence order. Cypher's
+    list-comprehension dedupe is awkward; doing it in Python
+    after the merge writes target is simpler and deterministic."""
+    seen: set[Any] = set()
+    out: list[Any] = []
+    for item in items:
+        if item is None:
+            continue
+        if item not in seen:
+            seen.add(item)
+            out.append(item)
+    return out
+
+
+async def merge_entities(
+    session: CypherSession,
+    *,
+    user_id: str,
+    source_id: str,
+    target_id: str,
+) -> Entity:
+    """K19d.6 — merge source entity into target, deleting source.
+
+    Raises `MergeEntitiesError` with one of the stable codes:
+      - ``same_entity``       — source_id == target_id
+      - ``entity_not_found``  — either doesn't exist / cross-user
+      - ``entity_archived``   — either has archived_at set
+      - ``glossary_conflict`` — both glossary anchors set + distinct
+
+    Returns the updated target Entity on success. Target's
+    `user_edited` is set to true so future re-extractions don't
+    silently re-append variants the user considered duplicates.
+    """
+    if source_id == target_id:
+        raise MergeEntitiesError(
+            "same_entity",
+            "source and target must be distinct entities",
+        )
+
+    # 1. Load + validate.
+    load_result = await run_read(
+        session,
+        _MERGE_LOAD_ENTITIES_CYPHER,
+        user_id=user_id,
+        source_id=source_id,
+        target_id=target_id,
+    )
+    load_row = await load_result.single()
+    if load_row is None:
+        raise MergeEntitiesError("entity_not_found", "entity not found")
+    source_node = load_row["s"]
+    target_node = load_row["t"]
+    if source_node is None or target_node is None:
+        raise MergeEntitiesError("entity_not_found", "entity not found")
+
+    source = _node_to_entity(source_node)
+    target = _node_to_entity(target_node)
+
+    if source.archived_at is not None or target.archived_at is not None:
+        raise MergeEntitiesError(
+            "entity_archived",
+            "cannot merge archived entities",
+        )
+
+    if (
+        source.glossary_entity_id is not None
+        and target.glossary_entity_id is not None
+        and source.glossary_entity_id != target.glossary_entity_id
+    ):
+        raise MergeEntitiesError(
+            "glossary_conflict",
+            "source and target are anchored to different glossary entries",
+        )
+
+    # 2. Collect source's edges.
+    edges_result = await run_read(
+        session,
+        _MERGE_COLLECT_EDGES_CYPHER,
+        user_id=user_id,
+        source_id=source_id,
+    )
+    edges_row = await edges_result.single()
+    out_edges = edges_row["out_edges"] if edges_row else []
+    in_edges = edges_row["in_edges"] if edges_row else []
+
+    # 3. Compute new relation_ids pinned to target, build UNWIND payload.
+    #    Edges to skip:
+    #      - `other_id == target_id` — would become self-loop on
+    #        target after rewire.
+    #      - `other_id == source_id` — review-impl H1: source has
+    #        a self-relation (rare but extractor can produce one).
+    #        If we rewired it, the new edge would reference source
+    #        as object, and the step 7 DETACH DELETE would destroy
+    #        the freshly-created edge, silently losing the self-
+    #        relation. In practice self-relations on source are so
+    #        rare and semantically weird that dropping them is the
+    #        right call — we don't know which endpoint should win.
+    rewire_edges: list[dict[str, Any]] = []
+    for edge in out_edges:
+        other_id = edge.get("other_id")
+        if other_id is None or other_id == target_id or other_id == source_id:
+            continue
+        predicate = edge.get("predicate")
+        if not predicate:
+            continue
+        new_id = relation_id(
+            user_id=user_id,
+            subject_id=target_id,
+            predicate=predicate,
+            object_id=other_id,
+        )
+        rewire_edges.append({
+            "new_id": new_id,
+            "subject_id": target_id,
+            "object_id": other_id,
+            "predicate": predicate,
+            "confidence": float(edge.get("confidence") or 0.0),
+            "source_event_ids": list(edge.get("source_event_ids") or []),
+            "source_chapter": edge.get("source_chapter"),
+            "valid_from": edge.get("valid_from"),
+            "valid_until": edge.get("valid_until"),
+            "pending_validation": bool(edge.get("pending_validation") or False),
+        })
+    for edge in in_edges:
+        other_id = edge.get("other_id")
+        # in_edges Cypher already filters `sub <> s` so source
+        # self-relations never surface here, but skip defensively
+        # in case that filter is ever relaxed.
+        if other_id is None or other_id == target_id or other_id == source_id:
+            continue
+        predicate = edge.get("predicate")
+        if not predicate:
+            continue
+        new_id = relation_id(
+            user_id=user_id,
+            subject_id=other_id,
+            predicate=predicate,
+            object_id=target_id,
+        )
+        rewire_edges.append({
+            "new_id": new_id,
+            "subject_id": other_id,
+            "object_id": target_id,
+            "predicate": predicate,
+            "confidence": float(edge.get("confidence") or 0.0),
+            "source_event_ids": list(edge.get("source_event_ids") or []),
+            "source_chapter": edge.get("source_chapter"),
+            "valid_from": edge.get("valid_from"),
+            "valid_until": edge.get("valid_until"),
+            "pending_validation": bool(edge.get("pending_validation") or False),
+        })
+
+    # 4. Batch-MERGE rewired RELATES_TO edges onto target.
+    if rewire_edges:
+        await run_write(
+            session,
+            _MERGE_REWIRE_RELATES_TO_CYPHER,
+            user_id=user_id,
+            edges=rewire_edges,
+        )
+
+    # 5. Rewire EVIDENCED_BY edges.
+    await run_write(
+        session,
+        _MERGE_REWIRE_EVIDENCED_BY_CYPHER,
+        user_id=user_id,
+        source_id=source_id,
+        target_id=target_id,
+    )
+
+    # 6. Update target metadata — aliases / source_types concat
+    #    happens here; dedupe happens below after refetch.
+    update_result = await run_write(
+        session,
+        _MERGE_UPDATE_TARGET_CYPHER,
+        user_id=user_id,
+        source_id=source_id,
+        target_id=target_id,
+    )
+    update_row = await update_result.single()
+    if update_row is None:
+        raise MergeEntitiesError(
+            "entity_not_found",
+            "entity disappeared during merge",
+        )
+
+    # 7. DETACH DELETE source.
+    await run_write(
+        session,
+        _MERGE_DELETE_SOURCE_CYPHER,
+        user_id=user_id,
+        source_id=source_id,
+    )
+
+    # 8. Dedupe aliases + source_types in Python; write back iff
+    #    dedupe shrank either list.
+    post = await get_entity(session, user_id=user_id, canonical_id=target_id)
+    if post is None:
+        raise MergeEntitiesError(
+            "entity_not_found",
+            "target missing after merge",
+        )
+    deduped_aliases = _dedupe_preserving_order(post.aliases)
+    deduped_source_types = _dedupe_preserving_order(post.source_types)
+    if (
+        deduped_aliases != post.aliases
+        or deduped_source_types != post.source_types
+    ):
+        await run_write(
+            session,
+            _MERGE_DEDUPE_TARGET_CYPHER,
+            user_id=user_id,
+            target_id=target_id,
+            aliases=deduped_aliases,
+            source_types=deduped_source_types,
+        )
+        post = await get_entity(session, user_id=user_id, canonical_id=target_id)
+        if post is None:
+            raise MergeEntitiesError(
+                "entity_not_found",
+                "target missing after dedupe",
+            )
+    return post

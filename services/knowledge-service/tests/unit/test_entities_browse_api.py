@@ -15,7 +15,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.neo4j_repos.entities import Entity, EntityDetail
+from app.db.neo4j_repos.entities import Entity, EntityDetail, MergeEntitiesError
 from app.db.neo4j_repos.relations import Relation
 
 
@@ -336,3 +336,94 @@ def test_entity_detail_truncation_flag(mock_detail):
     assert body["relations_truncated"] is True
     assert body["total_relations"] == 457
     assert len(body["relations"]) == 200
+
+
+# ── K19d γ-b — POST /entities/{id}/merge-into/{other_id} ────────────
+
+
+@patch(
+    "app.routers.public.entities.merge_entities",
+    new_callable=AsyncMock,
+)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_merge_entity_happy(mock_merge):
+    mock_merge.return_value = _entity_stub(name="Kai (merged)")
+    client = _make_client()
+    resp = client.post(
+        f"/v1/knowledge/entities/{_ENTITY_ID}/merge-into/{_OTHER_ENTITY_ID}",
+    )
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+    assert body["target"]["name"] == "Kai (merged)"
+    kwargs = mock_merge.await_args.kwargs
+    assert kwargs["source_id"] == _ENTITY_ID
+    assert kwargs["target_id"] == _OTHER_ENTITY_ID
+    assert kwargs["user_id"] == str(_TEST_USER)
+
+
+@patch(
+    "app.routers.public.entities.merge_entities",
+    new_callable=AsyncMock,
+)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_merge_entity_same_entity_400(mock_merge):
+    mock_merge.side_effect = MergeEntitiesError(
+        "same_entity", "source and target must be distinct"
+    )
+    client = _make_client()
+    resp = client.post(
+        f"/v1/knowledge/entities/{_ENTITY_ID}/merge-into/{_ENTITY_ID}",
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["error_code"] == "same_entity"
+
+
+@patch(
+    "app.routers.public.entities.merge_entities",
+    new_callable=AsyncMock,
+)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_merge_entity_not_found_404(mock_merge):
+    mock_merge.side_effect = MergeEntitiesError(
+        "entity_not_found", "entity not found"
+    )
+    client = _make_client()
+    resp = client.post(
+        f"/v1/knowledge/entities/{_ENTITY_ID}/merge-into/{_OTHER_ENTITY_ID}",
+    )
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["error_code"] == "entity_not_found"
+
+
+@patch(
+    "app.routers.public.entities.merge_entities",
+    new_callable=AsyncMock,
+)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_merge_entity_archived_409(mock_merge):
+    mock_merge.side_effect = MergeEntitiesError(
+        "entity_archived", "cannot merge archived entities"
+    )
+    client = _make_client()
+    resp = client.post(
+        f"/v1/knowledge/entities/{_ENTITY_ID}/merge-into/{_OTHER_ENTITY_ID}",
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["error_code"] == "entity_archived"
+
+
+@patch(
+    "app.routers.public.entities.merge_entities",
+    new_callable=AsyncMock,
+)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_merge_entity_glossary_conflict_409(mock_merge):
+    mock_merge.side_effect = MergeEntitiesError(
+        "glossary_conflict", "distinct glossary anchors"
+    )
+    client = _make_client()
+    resp = client.post(
+        f"/v1/knowledge/entities/{_ENTITY_ID}/merge-into/{_OTHER_ENTITY_ID}",
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["error_code"] == "glossary_conflict"

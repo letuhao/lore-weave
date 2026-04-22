@@ -69,7 +69,47 @@
         "confidence": "Độ tin cậy",
         "mentions": "Số lần nhắc",
         "anchor": "Điểm neo"
-      }
+      },
+      "edit": "Chỉnh sửa",
+      "merge": "Hợp nhất vào thực thể khác"
+    },
+    "edit": {
+      "title": "Chỉnh sửa thực thể",
+      "description": "Đổi tên hoặc điều chỉnh thực thể này. Chỉnh sửa của bạn sẽ khóa các lần trích xuất tương lai để không tự thêm lại các bí danh đã xóa.",
+      "field": {
+        "name": "Tên hiển thị",
+        "kind": "Loại",
+        "aliases": "Bí danh"
+      },
+      "aliasesPlaceholder": "Mỗi dòng một bí danh",
+      "aliasesHint": "Mỗi dòng một bí danh. Sau khi lưu, trích xuất sẽ không tự thêm lại các biến thể đã xóa.",
+      "userEditedHint": "Việc lưu sẽ đánh dấu thực thể này là đã được người dùng chỉnh sửa.",
+      "save": "Lưu",
+      "saving": "Đang lưu…",
+      "cancel": "Hủy",
+      "success": "Đã cập nhật thực thể",
+      "failed": "Không thể lưu: {{error}}"
+    },
+    "merge": {
+      "title": "Hợp nhất thực thể",
+      "description": "Hợp nhất {{name}} vào một thực thể khác. {{name}} sẽ bị xóa; quan hệ và bí danh của nó chuyển sang thực thể đích.",
+      "targetLabel": "Thực thể đích",
+      "searchPlaceholder": "Tìm theo tên (tối thiểu 2 ký tự)…",
+      "searchMinHint": "Vui lòng nhập ít nhất 2 ký tự.",
+      "searching": "Đang tìm…",
+      "noMatches": "Không có thực thể nào khớp.",
+      "warning": "Không thể hoàn tác. Thực thể nguồn sẽ bị xóa; quan hệ và bí danh chuyển sang thực thể đích.",
+      "mentions": "lần nhắc",
+      "clear": "Xóa",
+      "confirm": "Hợp nhất",
+      "merging": "Đang hợp nhất…",
+      "cancel": "Hủy",
+      "success": "Đã hợp nhất {{source}} vào {{target}}",
+      "errSameEntity": "Không thể hợp nhất thực thể với chính nó.",
+      "errNotFound": "Không tìm thấy một trong các thực thể.",
+      "errArchived": "Không thể hợp nhất thực thể đã lưu trữ. Vui lòng khôi phục trước.",
+      "errGlossaryConflict": "Cả hai thực thể được neo vào các mục từ điển khác nhau. Hãy giải quyết xung đột trước khi hợp nhất.",
+      "errUnknown": "Hợp nhất thất bại: {{reason}}"
     }
   },
   "jobs": {

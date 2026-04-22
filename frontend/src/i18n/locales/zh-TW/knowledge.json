@@ -69,7 +69,47 @@
         "confidence": "信心度",
         "mentions": "提及次數",
         "anchor": "錨定分數"
-      }
+      },
+      "edit": "編輯",
+      "merge": "合併到其他實體"
+    },
+    "edit": {
+      "title": "編輯實體",
+      "description": "重新命名或調整此實體。儲存後，未來的抽取不會自動重新加入已移除的別名。",
+      "field": {
+        "name": "顯示名稱",
+        "kind": "類型",
+        "aliases": "別名"
+      },
+      "aliasesPlaceholder": "每行一個別名",
+      "aliasesHint": "每行一個別名。儲存後抽取不會靜悄悄地重新加入您移除的變體。",
+      "userEditedHint": "儲存後，此實體會被標記為使用者已編輯。",
+      "save": "儲存",
+      "saving": "儲存中…",
+      "cancel": "取消",
+      "success": "已更新實體",
+      "failed": "無法儲存：{{error}}"
+    },
+    "merge": {
+      "title": "合併實體",
+      "description": "將 {{name}} 合併到另一個實體。{{name}} 會被刪除，其關係與別名會移到目標實體。",
+      "targetLabel": "目標實體",
+      "searchPlaceholder": "依名稱搜尋（至少 2 個字元）…",
+      "searchMinHint": "請至少輸入 2 個字元。",
+      "searching": "搜尋中…",
+      "noMatches": "沒有符合的實體。",
+      "warning": "此動作無法復原。來源實體會被刪除，關係與別名會移到目標實體。",
+      "mentions": "提及次數",
+      "clear": "清除",
+      "confirm": "合併",
+      "merging": "合併中…",
+      "cancel": "取消",
+      "success": "已將 {{source}} 合併到 {{target}}",
+      "errSameEntity": "無法將實體與自身合併。",
+      "errNotFound": "找不到其中一個實體。",
+      "errArchived": "無法合併已封存的實體。請先還原。",
+      "errGlossaryConflict": "兩個實體分別錨定在不同的詞彙表條目。請先解決詞彙表錨點衝突。",
+      "errUnknown": "合併失敗：{{reason}}"
     }
   },
   "jobs": {

@@ -292,6 +292,28 @@ export interface EntityDetail {
   total_relations: number;
 }
 
+// ── K19d γ-a — PATCH /entities/{id} body ──────────────────────────────
+
+export interface EntityUpdatePayload {
+  name?: string;
+  kind?: string;
+  /** Replaces the full list; not an append. Pass [] to clear. */
+  aliases?: string[];
+}
+
+// ── K19d γ-b — POST /entities/{id}/merge-into/{other} ────────────────
+
+export interface EntityMergeResponse {
+  target: Entity;
+}
+
+export type EntityMergeErrorCode =
+  | 'same_entity'
+  | 'entity_not_found'
+  | 'entity_archived'
+  | 'glossary_conflict'
+  | 'unknown';
+
 const BASE = '/v1/knowledge';
 
 // D-K8-03: weak ETag format used by the knowledge-service routes.
@@ -747,6 +769,39 @@ export const knowledgeApi = {
     return apiJson<EntityDetail>(
       `${BASE}/entities/${encodeURIComponent(entityId)}`,
       { token },
+    );
+  },
+
+  // ── K19d γ-a — PATCH /entities/{id} ──────────────────────────────────
+
+  updateEntity(
+    entityId: string,
+    body: EntityUpdatePayload,
+    token: string,
+  ): Promise<Entity> {
+    return apiJson<Entity>(
+      `${BASE}/entities/${encodeURIComponent(entityId)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+        token,
+      },
+    );
+  },
+
+  // ── K19d γ-b — POST /entities/{id}/merge-into/{other} ────────────────
+
+  mergeEntityInto(
+    sourceId: string,
+    targetId: string,
+    token: string,
+  ): Promise<EntityMergeResponse> {
+    return apiJson<EntityMergeResponse>(
+      `${BASE}/entities/${encodeURIComponent(sourceId)}/merge-into/${encodeURIComponent(targetId)}`,
+      {
+        method: 'POST',
+        token,
+      },
     );
   },
 };
