@@ -414,4 +414,48 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
       expect((value as string).length).toBeGreaterThan(0);
     }
   });
+
+  // K19c Cycle β — GlobalBioTab deltas (reset + token estimate),
+  // VersionsPanel diff viewer, and PreferencesSection. All keys live
+  // under the existing top-level `global.*` namespace.
+  const GLOBAL_KEYS = [
+    // K19c.1-delta
+    'tokenEstimate',
+    'reset',
+    'resetting',
+    'resetConfirm',
+    'resetCancel',
+    'resetConfirmTitle',
+    'resetConfirmBody',
+    'resetConfirmNote',
+    'resetSuccess',
+    'resetFailed',
+    // K19c.3-delta
+    'versions.diffToggle',
+    'versions.diffEmpty',
+    // K19c.4 preferences
+    'preferences.title',
+    'preferences.description',
+    'preferences.loading',
+    'preferences.loadFailed',
+    'preferences.empty',
+    'preferences.delete',
+    'preferences.deleting',
+    'preferences.cancel',
+    'preferences.deleteAria',
+    'preferences.confirmTitle',
+    'preferences.confirmBody',
+    'preferences.confirmNote',
+    'preferences.deleteSuccess',
+    'preferences.deleteFailed',
+  ] as const;
+
+  it.each(LOCALES)('%s has every K19c global.* key populated', (_tag, bundle) => {
+    const root = (bundle as any).global ?? {};
+    for (const path of GLOBAL_KEYS) {
+      const value = resolveKey(root, path);
+      expect(typeof value, `locale missing global.${path}`).toBe('string');
+      expect((value as string).length).toBeGreaterThan(0);
+    }
+  });
 });

@@ -1,11 +1,11 @@
-# Session Handoff — Session 50 (K19b cluster done + K19c Cycle α BE preload)
+# Session Handoff — Session 50 (K19b plan-complete + K19c plan-complete except .2 blocked on K20)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-22 (session 50)
-> **HEAD:** `a619b5f` (K19c Cycle α; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** (pending K19c-β commit) (K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 8 cycles shipped (6 Track 3 + 2 Track 2 close-out) · K19b plan-complete, K19c started
+## Session 50 — 9 cycles shipped (7 Track 3 + 2 Track 2 close-out) · K19b+K19c plan-complete except K19c.2
 
 ```
 Track 3 K19b progress (session 50)
@@ -53,6 +53,26 @@ Cycle 6  D-K16.11-01         Wire budget helpers into production                
 Cycle 7  K19b.8               Extraction-job log viewer MVP                       526533d
 
 Cycle 8  K19c Cycle α          BE preload: user-scope entities endpoint           a619b5f
+
+Cycle 9  K19c Cycle β          FE K19c-partial: reset + diff + preferences        (pending commit)
+         [FE XL]               Installed diff@^9 + @types/diff@^7. api.ts +Entity
+                               type + list/archive wrappers. NEW useUserEntities
+                               hook. NEW PreferencesSection (list + confirm +
+                               archive + prefix-match invalidation with
+                               docstring per review-impl L7). GlobalBioTab:
+                               +token estimate (chars/4) + Reset button + confirm
+                               dialog + <PreferencesSection/> wire below editor.
+                               VersionsPanel preview modal: "Show diff vs current"
+                               toggle rendering diffLines() chunks with
+                               added/removed/context colour classes; useEffect
+                               resets toggle per preview. +global.* i18n (26 new
+                               keys × 4 locales). GLOBAL_KEYS iterator added
+                               (104 cross-locale assertions). Mid-verify fix:
+                               static vi.mock factory for useAuth tripped
+                               vitest-2 unhandled-rejection detection on one hook
+                               error test; switched to dynamic vi.fn() pattern
+                               (matches useUserCosts working pattern). Review-impl
+                               L7 fixed in-cycle (queryKey prefix-match docstring).
          [BE L]                 list_user_entities(scope='global') Neo4j helper +
                                 GET /v1/knowledge/me/entities?scope=global +
                                 DELETE /v1/knowledge/me/entities/{id} (reuses
@@ -110,9 +130,9 @@ Remaining K19 residuals: K19b.7-rest (other tabs' strings); K19c
                         K19c.2 Regenerate still BLOCKED on K20.x.
 ```
 
-**Test deltas at session 50 end (after 8 cycles):**
-- Frontend knowledge: **177 pass** (was 112 at session 49 end; +65 over 5 FE cycles — no FE in Cycle 8)
-- Backend unit knowledge-service: **1195 pass** (was 1154 at session 49 end; +41)
+**Test deltas at session 50 end (after 9 cycles):**
+- Frontend knowledge: **190 pass** (was 112 at session 49 end; +78 over 6 FE cycles)
+- Backend unit knowledge-service: **1195 pass** (was 1154 at session 49 end; +41 — no BE in Cycle 9)
 - Backend unit worker-ai: **17 pass** (was 13 at K19b.6 end; +4 across Cycles 6+7)
 - Backend integration: 30 extraction_jobs_repo + 5 user_knowledge_budgets + 5 job_logs + **6 list_user_entities** (new this cycle, against live Neo4j)
 - Cycle 1 /review-impl: 5 LOW all fixed + 1 MED via review-code
@@ -123,6 +143,7 @@ Remaining K19 residuals: K19b.7-rest (other tabs' strings); K19c
 - Cycle 6 review-code: 10 LOW all accepted; /review-impl skipped per human approval
 - Cycle 7 review-code: 1 LOW fixed; /review-impl skipped per human approval
 - Cycle 8 review-code: 4 LOW accepted; /review-impl: 1 MED-doc fixed (DELETE idempotent-docstring lie + integration lock-in)
+- Cycle 9 review-code: 6 LOW accepted; /review-impl: 1 LOW fixed (prefix-match queryKey invalidation docstring)
 
 **What shipped in Cycle 3 (10 files, FE-only):**
 - NEW `useJobProgressRate.ts` hook (EMA rate tracker, 6 tests)
@@ -141,7 +162,19 @@ Remaining K19 residuals: K19b.7-rest (other tabs' strings); K19c
 - FE: `JobLogsPanel` inside `JobDetailPanel` (or new tab). Tail-follow with auto-scroll toggle. Virtual list for 1000+ lines.
 - Size estimate XL; doable as a single cycle or split into BE + FE halves.
 
-### What K19c Cycle β (next) can now assume
+### What K19c Cycle β now ships (and what's still blocked)
+
+K19c cluster is plan-complete except K19c.2 (regenerate). GlobalBioTab now
+exposes token estimate + Reset button (server-side clear with confirm +
+If-Match conflict handling). VersionsPanel preview modal has a diff-vs-current
+toggle. New PreferencesSection component below the editor lists global
+entities with delete-via-archive flow. See [SESSION_PATCH.md §Current Active
+Work](SESSION_PATCH.md#current-active-work) for the detailed file list.
+
+**K19c.2 still blocked on K20.x** — regenerate dialog can't land until K20
+ships the `POST /internal/summarize` endpoint plus a public edge for it.
+
+### Historical note — What K19c Cycle β initially assumed (now shipped)
 
 Cycle α shipped the BE. Cycle β consumes:
 - **GET** `/v1/knowledge/me/entities?scope=global&limit=50` → `{entities: Entity[]}` (Pydantic from `app/db/neo4j_repos/entities.py::Entity` — fields include `id`, `user_id`, `project_id: null`, `name`, `canonical_name`, `kind`, `aliases`, `confidence`, `updated_at`).

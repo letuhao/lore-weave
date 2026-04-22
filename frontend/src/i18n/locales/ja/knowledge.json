@@ -354,6 +354,32 @@
     "saveFailed": "保存に失敗しました",
     "version": "v{{version}}",
     "conflict": "別のデバイスがこのプロフィールを更新しました。最新の内容を確認してから保存し直してください。",
+    "tokenEstimate": "~{{tokens}} トークン",
+    "reset": "リセット",
+    "resetting": "リセット中…",
+    "resetConfirm": "プロフィールをクリア",
+    "resetCancel": "キャンセル",
+    "resetConfirmTitle": "グローバルプロフィールをクリアしますか？",
+    "resetConfirmBody": "サーバー上のプロフィールを空にします。新しいバージョンが履歴に記録されるため、いつでもロールバックできます。",
+    "resetConfirmNote": "履歴パネルから以前のバージョンにロールバックすることもできます。",
+    "resetSuccess": "グローバルプロフィールをクリアしました",
+    "resetFailed": "リセットに失敗しました",
+    "preferences": {
+      "title": "学習した好み",
+      "description": "AI がチャットから抽出したプロジェクト横断の好みです。削除すると今後のコンテキストに表示されません。",
+      "loading": "好みを読み込み中…",
+      "loadFailed": "好みを読み込めませんでした。",
+      "empty": "まだ好みが学習されていません — 数回チャットするとここに表示されます。",
+      "delete": "削除",
+      "deleting": "削除中…",
+      "cancel": "キャンセル",
+      "deleteAria": "{{name}} を削除",
+      "confirmTitle": "この好みを削除しますか？",
+      "confirmBody": "{{name}} を今後のコンテキストから除外します。復元はできませんが、後続のチャットから AI が再学習する可能性があります。",
+      "confirmNote": "これはソフトアーカイブです。データは削除されません。",
+      "deleteSuccess": "{{name}} を好みから削除しました",
+      "deleteFailed": "好みの削除に失敗しました: {{error}}"
+    },
     "versions": {
       "toggle": "履歴",
       "title": "バージョン履歴",
@@ -376,7 +402,9 @@
       "source": {
         "manual": "手動",
         "rollback": "ロールバック"
-      }
+      },
+      "diffToggle": "現在との差分を表示",
+      "diffEmpty": "差分はありません。"
     }
   },
   "indicator": {

@@ -354,6 +354,32 @@
     "saveFailed": "Lưu thất bại",
     "version": "v{{version}}",
     "conflict": "Một thiết bị khác đã cập nhật tiểu sử này. Hãy xem bản mới nhất và lưu lại.",
+    "tokenEstimate": "~{{tokens}} token",
+    "reset": "Đặt lại",
+    "resetting": "Đang đặt lại…",
+    "resetConfirm": "Xoá tiểu sử",
+    "resetCancel": "Huỷ",
+    "resetConfirmTitle": "Xoá tiểu sử chung của bạn?",
+    "resetConfirmBody": "Thao tác này sẽ xoá tiểu sử trên máy chủ. Một phiên bản mới được ghi vào lịch sử để bạn có thể khôi phục bất cứ lúc nào.",
+    "resetConfirmNote": "Bạn cũng có thể khôi phục về phiên bản trước từ Lịch sử thay vì xoá.",
+    "resetSuccess": "Đã xoá tiểu sử chung",
+    "resetFailed": "Đặt lại thất bại",
+    "preferences": {
+      "title": "Sở thích đã học",
+      "description": "Các sở thích chung giữa các dự án do AI rút ra từ cuộc trò chuyện. Xoá để ẩn khỏi ngữ cảnh sau này.",
+      "loading": "Đang tải sở thích…",
+      "loadFailed": "Không tải được sở thích.",
+      "empty": "Chưa học được sở thích nào — sẽ hiển thị sau vài lượt chat.",
+      "delete": "Xoá",
+      "deleting": "Đang xoá…",
+      "cancel": "Huỷ",
+      "deleteAria": "Xoá {{name}}",
+      "confirmTitle": "Xoá sở thích này?",
+      "confirmBody": "Ẩn {{name}} khỏi ngữ cảnh sau này. Không thể khôi phục — AI có thể học lại từ các cuộc trò chuyện tiếp theo.",
+      "confirmNote": "Đây là lưu trữ nhẹ. Dữ liệu không bị xoá.",
+      "deleteSuccess": "Đã xoá {{name}} khỏi sở thích",
+      "deleteFailed": "Không xoá được sở thích: {{error}}"
+    },
     "versions": {
       "toggle": "Lịch sử",
       "title": "Lịch sử phiên bản",
@@ -376,7 +402,9 @@
       "source": {
         "manual": "Thủ công",
         "rollback": "Khôi phục"
-      }
+      },
+      "diffToggle": "Hiện khác biệt so với hiện tại",
+      "diffEmpty": "Không có khác biệt."
     }
   },
   "indicator": {

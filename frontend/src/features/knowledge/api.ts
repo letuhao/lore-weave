@@ -128,6 +128,34 @@ export type ChangeEmbeddingModelResponse =
   | ChangeEmbeddingModelNoop
   | ChangeEmbeddingModelResult;
 
+// K19c.4 — user-scope entity (from the Track 2 Neo4j graph, projected
+// into the shape returned by /v1/knowledge/me/entities). Mirrors
+// services/knowledge-service/app/db/neo4j_repos/entities.py::Entity.
+export interface Entity {
+  id: string;
+  user_id: string;
+  project_id: string | null;
+  name: string;
+  canonical_name: string;
+  kind: string;
+  aliases: string[];
+  canonical_version: number;
+  source_types: string[];
+  confidence: number;
+  glossary_entity_id: string | null;
+  anchor_score: number;
+  archived_at: string | null;
+  archive_reason: string | null;
+  evidence_count: number;
+  mention_count: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface UserEntitiesResponse {
+  entities: Entity[];
+}
+
 // K19b.8 — job logs. Cursor = log_id; page is full when
 // len(logs) === limit, in which case next_cursor = max(log_id) and
 // callers refetch with since_log_id = next_cursor. `null` cursor
@@ -537,6 +565,29 @@ export const knowledgeApi = {
         token,
       },
     );
+  },
+
+  // ── K19c.4 — user-scope entities ───────────────────────────────────────
+
+  listMyEntities(
+    params: { scope: 'global'; limit?: number },
+    token: string,
+  ): Promise<UserEntitiesResponse> {
+    const qs = new URLSearchParams({ scope: params.scope });
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    return apiJson<UserEntitiesResponse>(
+      `${BASE}/me/entities?${qs.toString()}`,
+      { token },
+    );
+  },
+
+  archiveMyEntity(entityId: string, token: string): Promise<void> {
+    // BE returns 204 No Content on success; apiJson handles empty-body
+    // responses by resolving with `undefined`.
+    return apiJson<void>(`${BASE}/me/entities/${entityId}`, {
+      method: 'DELETE',
+      token,
+    });
   },
 
   // ── K19b.8 — extraction job logs ───────────────────────────────────────

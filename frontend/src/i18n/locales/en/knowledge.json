@@ -354,6 +354,32 @@
     "saveFailed": "Save failed",
     "version": "v{{version}}",
     "conflict": "Another device updated this bio. Review the latest and save again.",
+    "tokenEstimate": "~{{tokens}} tokens",
+    "reset": "Reset",
+    "resetting": "Resetting…",
+    "resetConfirm": "Clear bio",
+    "resetCancel": "Cancel",
+    "resetConfirmTitle": "Clear your global bio?",
+    "resetConfirmBody": "This clears the bio on the server. A new version is recorded in history so you can roll back anytime.",
+    "resetConfirmNote": "You can also roll back to a previous version from the History panel instead.",
+    "resetSuccess": "Global bio cleared",
+    "resetFailed": "Reset failed",
+    "preferences": {
+      "title": "Learned preferences",
+      "description": "Cross-project preferences extracted by the AI from your chats. Delete one to hide it from future context.",
+      "loading": "Loading preferences…",
+      "loadFailed": "Couldn't load preferences.",
+      "empty": "No preferences learned yet — they appear here once you've had a few chat turns.",
+      "delete": "Delete",
+      "deleting": "Deleting…",
+      "cancel": "Cancel",
+      "deleteAria": "Delete {{name}}",
+      "confirmTitle": "Delete this preference?",
+      "confirmBody": "Hides {{name}} from future context assembly. You can't restore it — the AI may re-learn it from later chats.",
+      "confirmNote": "This is a soft archive. Your data isn't deleted.",
+      "deleteSuccess": "{{name}} removed from preferences",
+      "deleteFailed": "Couldn't delete preference: {{error}}"
+    },
     "versions": {
       "toggle": "History",
       "title": "Version history",
@@ -376,7 +402,9 @@
       "source": {
         "manual": "Manual",
         "rollback": "Rollback"
-      }
+      },
+      "diffToggle": "Show diff vs current",
+      "diffEmpty": "No differences."
     }
   },
   "indicator": {

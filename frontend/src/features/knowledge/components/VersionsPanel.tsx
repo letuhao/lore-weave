@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { diffLines, type Change } from 'diff';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { Eye, History, RotateCcw, X } from 'lucide-react';
@@ -31,6 +32,24 @@ export function VersionsPanel({ currentSummary, onClose }: Props) {
   );
   const [confirmRollback, setConfirmRollback] =
     useState<SummaryVersion | null>(null);
+  // K19c.3-delta: toggle between full-text preview and a line-level
+  // diff against the current live bio. Starts off (plain preview)
+  // because users usually want to see the old version verbatim first
+  // and toggle diff only when curious about "what changed".
+  const [showDiff, setShowDiff] = useState(false);
+
+  // Memoise so the diff only re-runs when the preview target changes.
+  const diffChanges = useMemo<Change[]>(() => {
+    if (!previewVersion) return [];
+    const base = currentSummary?.content ?? '';
+    return diffLines(base, previewVersion.content);
+  }, [previewVersion, currentSummary?.content]);
+
+  // Reset the diff toggle whenever the preview target changes so
+  // opening a new preview always starts in plain-text mode.
+  useEffect(() => {
+    setShowDiff(false);
+  }, [previewVersion?.version]);
 
   const formatTimestamp = (iso: string) =>
     new Date(iso).toLocaleString(i18n.language);
@@ -189,9 +208,56 @@ export function VersionsPanel({ currentSummary, onClose }: Props) {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <pre className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap px-4 py-3 font-mono text-xs leading-relaxed">
-              {previewVersion.content || t('global.versions.emptyContent')}
-            </pre>
+            {/* K19c.3-delta: Show-diff toggle. When off, render the
+                version's full text as before. When on, render a
+                line-level diff against the current live bio. */}
+            <div className="flex items-center justify-end gap-2 border-b bg-muted/10 px-4 py-2">
+              <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={showDiff}
+                  onChange={(e) => setShowDiff(e.target.checked)}
+                  data-testid="versions-diff-toggle"
+                />
+                {t('global.versions.diffToggle')}
+              </label>
+            </div>
+            {showDiff ? (
+              <div
+                className="max-h-[60vh] overflow-y-auto px-4 py-3 font-mono text-xs leading-relaxed"
+                data-testid="versions-diff-view"
+              >
+                {diffChanges.length === 0 ||
+                (diffChanges.length === 1 && !diffChanges[0].added && !diffChanges[0].removed) ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    {t('global.versions.diffEmpty')}
+                  </p>
+                ) : (
+                  diffChanges.map((change, idx) => (
+                    <pre
+                      key={idx}
+                      className={cn(
+                        'whitespace-pre-wrap',
+                        change.added &&
+                          'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+                        change.removed &&
+                          'bg-destructive/10 text-destructive line-through',
+                        !change.added && !change.removed && 'text-muted-foreground',
+                      )}
+                      data-diff-kind={
+                        change.added ? 'added' : change.removed ? 'removed' : 'context'
+                      }
+                    >
+                      {change.value}
+                    </pre>
+                  ))
+                )}
+              </div>
+            ) : (
+              <pre className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap px-4 py-3 font-mono text-xs leading-relaxed">
+                {previewVersion.content || t('global.versions.emptyContent')}
+              </pre>
+            )}
             <div className="flex items-center justify-end gap-2 border-t bg-muted/20 px-4 py-3">
               <button
                 onClick={() => setPreviewVersion(null)}

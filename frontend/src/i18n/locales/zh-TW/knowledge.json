@@ -354,6 +354,32 @@
     "saveFailed": "儲存失敗",
     "version": "v{{version}}",
     "conflict": "另一個裝置已更新此簡介。請先檢視最新內容再儲存。",
+    "tokenEstimate": "~{{tokens}} 個 token",
+    "reset": "重設",
+    "resetting": "重設中…",
+    "resetConfirm": "清空簡介",
+    "resetCancel": "取消",
+    "resetConfirmTitle": "要清空全域簡介嗎?",
+    "resetConfirmBody": "這會清空伺服器上的簡介。會在歷史中建立新版本,隨時可以還原。",
+    "resetConfirmNote": "您也可以從歷史面板還原到先前的版本。",
+    "resetSuccess": "已清空全域簡介",
+    "resetFailed": "重設失敗",
+    "preferences": {
+      "title": "已學到的偏好",
+      "description": "AI 從您的聊天中抽取的跨專案偏好。刪除後將不會出現在後續上下文中。",
+      "loading": "載入偏好中…",
+      "loadFailed": "無法載入偏好。",
+      "empty": "尚未學到偏好 — 聊天幾輪後會出現。",
+      "delete": "刪除",
+      "deleting": "刪除中…",
+      "cancel": "取消",
+      "deleteAria": "刪除 {{name}}",
+      "confirmTitle": "要刪除這個偏好嗎?",
+      "confirmBody": "將 {{name}} 從後續上下文中隱藏。無法復原,但 AI 可能從後續聊天中重新學到。",
+      "confirmNote": "這是軟封存,您的資料不會被真正刪除。",
+      "deleteSuccess": "已從偏好中移除 {{name}}",
+      "deleteFailed": "無法刪除偏好:{{error}}"
+    },
     "versions": {
       "toggle": "歷史",
       "title": "版本歷史",
@@ -376,7 +402,9 @@
       "source": {
         "manual": "手動",
         "rollback": "還原"
-      }
+      },
+      "diffToggle": "顯示與目前的差異",
+      "diffEmpty": "沒有差異。"
     }
   },
   "indicator": {

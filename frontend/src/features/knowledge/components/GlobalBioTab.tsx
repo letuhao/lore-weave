@@ -1,17 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { History } from 'lucide-react';
-import { Skeleton } from '@/components/shared';
+import { History, RotateCcw } from 'lucide-react';
+import { FormDialog, Skeleton } from '@/components/shared';
 import { isVersionConflict } from '../api';
 import { useSummaries } from '../hooks/useSummaries';
 import type { Summary } from '../types';
 import { VersionsPanel } from './VersionsPanel';
+import { PreferencesSection } from './PreferencesSection';
 
 // Mirrors SummaryContent = Annotated[str, StringConstraints(max_length=50000)]
 // in services/knowledge-service/app/db/models.py. Same pattern as
 // ProjectFormModal's caps — immediate feedback instead of a 422.
 const CONTENT_MAX = 50000;
+
+// K19c.1-delta: rough GPT token count. chars/4 is the documented
+// heuristic for English prose (OpenAI cookbook); close enough for
+// a live counter. A real tiktoken-port would be more accurate for
+// CJK-heavy content but adds ~200KB to the bundle.
+function estimateTokens(content: string): number {
+  return Math.ceil(content.length / 4);
+}
 
 export function GlobalBioTab() {
   const { t } = useTranslation('knowledge');
@@ -21,6 +30,10 @@ export function GlobalBioTab() {
   // Knowledge page load stays cheap — the versions query only fires
   // when `showVersions` flips to true.
   const [showVersions, setShowVersions] = useState(false);
+  // K19c.1-delta: Reset clears the bio to empty. Destructive enough
+  // to warrant a confirm before firing the save.
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const [content, setContent] = useState('');
   // Track the server-side content we last synced against so we can
@@ -73,6 +86,38 @@ export function GlobalBioTab() {
   // empty baseline don't enable a no-op Save request.
   const dirty = trimmed !== baseline.trim();
   const canSave = dirty && contentValid && !isUpdatingGlobal;
+  // K19c.1-delta: Reset is only useful when the SAVED bio has content.
+  // If the baseline is already empty there's nothing to clear.
+  const canReset =
+    baseline.trim() !== '' && !isUpdatingGlobal && !resetting;
+  const tokenEstimate = estimateTokens(content);
+
+  const handleReset = async () => {
+    // Server-side clear: PATCH /summaries/global with content="". Uses
+    // the same If-Match discipline + 412 handler as handleSave. After
+    // success, useEffect picks up the new baseline from the refetch.
+    if (!canReset) return;
+    setResetting(true);
+    try {
+      await updateGlobal({
+        payload: { content: '' },
+        expectedVersion: baselineVersion,
+      });
+      setContent('');
+      toast.success(t('global.resetSuccess'));
+      setConfirmReset(false);
+    } catch (err) {
+      if (isVersionConflict<Summary>(err)) {
+        setBaseline(err.current.content);
+        setBaselineVersion(err.current.version);
+        toast.error(t('global.conflict'));
+      } else {
+        toast.error(err instanceof Error ? err.message : t('global.resetFailed'));
+      }
+    } finally {
+      setResetting(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!canSave) return;
@@ -140,6 +185,14 @@ export function GlobalBioTab() {
           <div className="mt-2 flex items-center justify-between">
             <span className="text-[11px] text-muted-foreground">
               {content.length.toLocaleString()} / {CONTENT_MAX.toLocaleString()}
+              <span
+                className="ml-3"
+                data-testid="global-token-estimate"
+              >
+                {t('global.tokenEstimate', {
+                  tokens: tokenEstimate.toLocaleString(),
+                })}
+              </span>
               {global?.version != null && (
                 <span className="ml-3">{t('global.version', { version: global.version })}</span>
               )}
@@ -160,6 +213,18 @@ export function GlobalBioTab() {
                   {t('global.versions.toggle')}
                 </button>
               )}
+              {/* K19c.1-delta: Reset button. Only meaningful when the
+                  SAVED bio has content — disabled state hides it for
+                  fresh users who haven't saved anything yet. */}
+              <button
+                onClick={() => setConfirmReset(true)}
+                disabled={!canReset}
+                className="flex items-center gap-1 rounded-md border border-destructive/30 px-2 py-1.5 text-[11px] text-destructive transition-colors hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+                data-testid="global-reset"
+              >
+                <RotateCcw className="h-3 w-3" />
+                {t('global.reset')}
+              </button>
               <button
                 onClick={() => void handleSave()}
                 disabled={!canSave}
@@ -175,6 +240,44 @@ export function GlobalBioTab() {
               currentSummary={global}
               onClose={() => setShowVersions(false)}
             />
+          )}
+
+          {/* K19c.4: cross-project preferences extracted by Track 2. */}
+          <PreferencesSection />
+
+          {/* K19c.1-delta: Reset confirm dialog. */}
+          {confirmReset && (
+            <FormDialog
+              open={true}
+              onOpenChange={(o) => {
+                if (!o && !resetting) setConfirmReset(false);
+              }}
+              title={t('global.resetConfirmTitle')}
+              description={t('global.resetConfirmBody')}
+              footer={
+                <>
+                  <button
+                    onClick={() => setConfirmReset(false)}
+                    disabled={resetting}
+                    className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-secondary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {t('global.resetCancel')}
+                  </button>
+                  <button
+                    onClick={() => void handleReset()}
+                    disabled={resetting}
+                    className="rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-50"
+                    data-testid="global-reset-confirm"
+                  >
+                    {resetting ? t('global.resetting') : t('global.resetConfirm')}
+                  </button>
+                </>
+              }
+            >
+              <p className="text-[12px] text-muted-foreground">
+                {t('global.resetConfirmNote')}
+              </p>
+            </FormDialog>
           )}
         </>
       )}
