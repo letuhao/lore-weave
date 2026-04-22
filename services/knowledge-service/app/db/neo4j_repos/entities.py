@@ -57,6 +57,7 @@ __all__ = [
     "delete_entities_with_zero_evidence",
     "list_entities_filtered",
     "get_entity_with_relations",
+    "update_entity_fields",
 ]
 
 
@@ -105,6 +106,15 @@ class Entity(BaseModel):
     # anchor_score for discovered (non-anchored) entities.
     mention_count: int = 0
 
+    # K19d γ-a: set to True by `update_entity_fields` (backing the
+    # PATCH /entities/{id} route). Once true, `merge_entity`'s
+    # ON MATCH branch no longer re-adds extracted name variants to
+    # `aliases` — the extractor can't silently undo a user's edit.
+    # Existing nodes created before K19d γ-a lack this property and
+    # read-path `coalesce(user_edited, false) = false` treats them
+    # as un-edited, preserving the old behaviour on re-extraction.
+    user_edited: bool = False
+
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -136,6 +146,13 @@ def _node_to_entity(node: Any) -> Entity:
 # ── merge_entity ──────────────────────────────────────────────────────
 
 
+# K19d γ-a: the ON MATCH aliases CASE has three arms. The first
+# (`coalesce(e.user_edited, false) = true`) is the K19d γ-a lock —
+# once the user has edited aliases via PATCH, the extractor must
+# not silently re-add removed variants. The coalesce handles pre-
+# γ-a nodes lacking the property (null → false = un-edited) so
+# existing extraction behaviour is preserved until a user explicitly
+# touches the row. The remaining arms are the pre-γ-a append logic.
 _MERGE_ENTITY_CYPHER = """
 MERGE (e:Entity {id: $id})
 ON CREATE SET
@@ -153,10 +170,12 @@ ON CREATE SET
   e.archived_at = NULL,
   e.evidence_count = 0,
   e.mention_count = 0,
+  e.user_edited = false,
   e.created_at = datetime(),
   e.updated_at = datetime()
 ON MATCH SET
   e.aliases = CASE
+    WHEN coalesce(e.user_edited, false) = true THEN e.aliases
     WHEN $name IN e.aliases THEN e.aliases
     ELSE e.aliases + $name
   END,
@@ -1392,3 +1411,93 @@ async def get_entity_with_relations(
         relations_truncated=total > len(relations),
         total_relations=total,
     )
+
+
+# ── K19d γ-a — update_entity_fields (PATCH backend) ──────────────────
+#
+# Only fields the caller passes are written — None leaves the existing
+# value alone. `user_edited=true` is set unconditionally on any write
+# so future merge_entity calls gate alias re-append (see
+# `_MERGE_ENTITY_CYPHER`). Cross-user / missing returns None.
+#
+# The CASE-wrapped SET clauses are a Cypher quirk: Neo4j doesn't have
+# per-property conditional updates out of the box, so we use
+# `CASE WHEN $foo IS NULL THEN e.foo ELSE $foo END` per field. The
+# parameter list still names every field; unprovided ones are passed
+# as NULL from Python so the CASE short-circuits to e.field.
+#
+# `canonical_name` is derived from the new `name` when name changes —
+# otherwise the canonical_id hash and the actual node name would drift.
+# The canonical_id itself is immutable (merge_entity's deterministic
+# hash depends on it) so renaming an entity doesn't re-key it; only
+# the display property + canonical_name change.
+
+_UPDATE_ENTITY_FIELDS_CYPHER = """
+MATCH (e:Entity {id: $id})
+WHERE e.user_id = $user_id
+SET
+  e.name = CASE WHEN $name IS NULL THEN e.name ELSE $name END,
+  e.canonical_name = CASE
+    WHEN $canonical_name IS NULL THEN e.canonical_name
+    ELSE $canonical_name
+  END,
+  e.kind = CASE WHEN $kind IS NULL THEN e.kind ELSE $kind END,
+  e.aliases = CASE
+    WHEN $aliases IS NULL THEN e.aliases
+    ELSE $aliases
+  END,
+  e.user_edited = true,
+  e.updated_at = datetime()
+RETURN e
+"""
+
+
+async def update_entity_fields(
+    session: CypherSession,
+    *,
+    user_id: str,
+    entity_id: str,
+    name: str | None,
+    kind: str | None,
+    aliases: list[str] | None,
+) -> Entity | None:
+    """K19d.5 MVP — patch an entity's display fields.
+
+    Sets `user_edited=true` on any successful write so subsequent
+    `merge_entity` re-extractions don't silently re-append removed
+    alias variants. Returns the updated Entity or None when no row
+    matches (cross-user / missing id — router collapses to 404).
+
+    `aliases` replaces the full list when provided (not append — the
+    whole point of the user_edited lock is that the user's list is
+    authoritative). Pass the empty list to clear; pass None to leave
+    the existing aliases alone.
+
+    `name` / `kind` / `aliases` are all optional. At least one must
+    be non-None — the router-level Pydantic validator enforces that;
+    the repo trusts the caller not to send a no-op write that would
+    still bump `user_edited` + `updated_at`.
+
+    Derived value: when `name` changes, `canonical_name` is updated
+    to the new canonicalization. The entity's immutable canonical_id
+    hash does NOT change — future extractions with the old name will
+    still dedupe onto this node via the hash, so the rename has no
+    downstream consequence beyond display.
+    """
+    canonical_name = (
+        canonicalize_entity_name(name) if name is not None else None
+    )
+    result = await run_write(
+        session,
+        _UPDATE_ENTITY_FIELDS_CYPHER,
+        user_id=user_id,
+        id=entity_id,
+        name=name,
+        canonical_name=canonical_name,
+        kind=kind,
+        aliases=aliases,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    return _node_to_entity(record["e"])

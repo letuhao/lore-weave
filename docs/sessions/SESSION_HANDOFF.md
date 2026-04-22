@@ -1,11 +1,11 @@
-# Session Handoff — Session 50 (K19b + K19c + K20 complete; K19d α+β shipped [γ only remaining])
+# Session Handoff — Session 50 (K19b + K19c + K20 complete; K19d α+β+γ-a shipped [γ-b merge+FE only remaining])
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-22 (session 50)
-> **HEAD:** `aeb008b` (K19d Cycle β; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** (pending K19d-γa commit) (K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 13 cycles shipped (11 Track 3 + 2 Track 2 close-out) · K19b + K19c + K20 complete; K19d α+β shipped (γ only remaining)
+## Session 50 — 14 cycles shipped (12 Track 3 + 2 Track 2 close-out) · K19b + K19c + K20 complete; K19d α+β+γ-a shipped (γ-b only remaining)
 
 ```
 Track 3 K19b progress (session 50)
@@ -54,7 +54,40 @@ Cycle 7  K19b.8               Extraction-job log viewer MVP                     
 
 Cycle 8  K19c Cycle α          BE preload: user-scope entities endpoint           a619b5f
 
-Cycle 13 K19d Cycle β          Entities tab FE (table + detail panel)            aeb008b
+Cycle 14 K19d Cycle γ-a        PATCH entity + user_edited lock [BE half of γ]    (pending commit)
+         [BE L]                 Entity.user_edited: bool = False + _MERGE_ENTITY_
+                                CYPHER ON CREATE user_edited=false + ON MATCH
+                                aliases CASE coalesce(user_edited,false)=true
+                                gate (coalesce handles pre-γ-a nodes as
+                                un-edited so existing extraction preserved).
+                                NEW update_entity_fields helper + _UPDATE_ENTITY
+                                _FIELDS_CYPHER per-field CASE (null=leave,
+                                else overwrite) + canonical_name recomputed on
+                                name change. NEW PATCH /v1/knowledge/entities/
+                                {id} endpoint with EntityUpdate Pydantic:
+                                at-least-one model_validator + per-alias
+                                non-empty + ≤200 char + max 50. 404 on
+                                cross-user/missing. Merge (K19d.6) split to
+                                γ-b because RELATES_TO edges carry deterministic
+                                IDs derived from subject_id → per-edge MERGE-
+                                new+DELETE-old surgery is complex enough for
+                                its own cycle. /review-impl L1 fixed (inline
+                                // Cypher comments were first-in-codebase →
+                                moved to Python #); M1 (no If-Match optimistic
+                                concurrency, D-K19d-γa-01) + M2 (no unlock
+                                mechanism for user_edited, D-K19d-γa-02)
+                                deferred. Build-time catch: "The Phoenix" test
+                                variant didn't hit ON MATCH branch because
+                                "the" isn't in HONORIFICS strip list → switched
+                                to "Master Phoenix" (master is stripped →
+                                same canonical_id). BE unit 1253 (+4).
+                                Integration entities browse 14/14 live (+4
+                                γ-a scenarios incl user_edited-lock regression
+                                + pre-γ-a regression). K19d γ-b (merge + FE
+                                edit/merge dialogs + CTAs + i18n, ~12 files XL)
+                                is the only K19d work remaining.
+
+Cycle 13 K19d Cycle β          Entities tab FE (table + detail panel)            aeb008b + c920d95
          [FE XL]                NEW useEntities + useEntityDetail hooks (userId-
                                 scoped queryKeys per review-impl M1, 30s/10s
                                 staleTime). NEW EntitiesTable presentational

@@ -18,7 +18,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.entities import (
@@ -29,6 +29,7 @@ from app.db.neo4j_repos.entities import (
     get_entity_with_relations,
     list_entities_filtered,
     list_user_entities,
+    update_entity_fields,
 )
 from app.middleware.jwt_auth import get_current_user
 
@@ -228,3 +229,74 @@ async def get_entity_detail(
             detail="entity not found",
         )
     return detail
+
+
+# ── K19d γ-a — PATCH /entities/{id} ──────────────────────────────────
+
+
+class EntityUpdate(BaseModel):
+    """K19d.5 PATCH body. At least one field must be provided — a
+    no-op PATCH still bumps `user_edited` / `updated_at` at the repo
+    layer, so guarding here keeps the semantics honest."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    kind: str | None = Field(default=None, min_length=1, max_length=100)
+    aliases: list[str] | None = Field(default=None, max_length=50)
+
+    @model_validator(mode="after")
+    def _at_least_one(self) -> "EntityUpdate":
+        if self.name is None and self.kind is None and self.aliases is None:
+            raise ValueError(
+                "at least one of name / kind / aliases must be provided"
+            )
+        # Element-level validation on aliases: reject empty or
+        # whitespace-only entries, which would poison the CONTAINS
+        # search path in list_entities_filtered.
+        if self.aliases is not None:
+            for alias in self.aliases:
+                if not alias or not alias.strip():
+                    raise ValueError("aliases entries must be non-empty")
+                if len(alias) > 200:
+                    raise ValueError("each alias must be ≤200 chars")
+        return self
+
+
+@entities_router.patch(
+    "/entities/{entity_id}",
+    response_model=Entity,
+)
+async def patch_entity(
+    body: EntityUpdate,
+    entity_id: str = Path(min_length=1, max_length=200),
+    user_id: UUID = Depends(get_current_user),
+) -> Entity:
+    """K19d.5 — update an entity's display fields and lock future
+    extractions from overwriting user-edited aliases.
+
+    Cross-user / missing entity collapses to 404 per KSA §6.4.
+    """
+    async with neo4j_session() as session:
+        updated = await update_entity_fields(
+            session,
+            user_id=str(user_id),
+            entity_id=entity_id,
+            name=body.name,
+            kind=body.kind,
+            aliases=body.aliases,
+        )
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="entity not found",
+        )
+    logger.info(
+        "K19d.5: user updated entity user_id=%s entity_id=%s "
+        "fields=%s",
+        user_id,
+        entity_id,
+        [
+            f for f in ("name", "kind", "aliases")
+            if getattr(body, f) is not None
+        ],
+    )
+    return updated

@@ -15,9 +15,11 @@ import pytest_asyncio
 from app.db.neo4j_repos.entities import (
     ENTITIES_DETAIL_REL_CAP,
     archive_entity,
+    get_entity,
     get_entity_with_relations,
     list_entities_filtered,
     merge_entity,
+    update_entity_fields,
 )
 from app.db.neo4j_repos.relations import create_relation
 
@@ -377,3 +379,175 @@ async def test_entity_detail_truncates_at_rel_cap(neo4j_driver, test_user):
     assert detail.relations_truncated is True
     # Default cap is 200 — check the constant hasn't silently moved.
     assert ENTITIES_DETAIL_REL_CAP == 200
+
+
+# ── K19d γ-a — update_entity_fields + user_edited lock ──────────────
+
+
+@pytest.mark.asyncio
+async def test_update_entity_fields_sets_user_edited_and_renames(
+    neo4j_driver, test_user
+):
+    async with neo4j_driver.session() as session:
+        ent = await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Kai", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        # Baseline: user_edited defaults to false on CREATE.
+        baseline = await get_entity(session, user_id=test_user, canonical_id=ent.id)
+        assert baseline is not None
+        assert baseline.user_edited is False
+
+        updated = await update_entity_fields(
+            session,
+            user_id=test_user,
+            entity_id=ent.id,
+            name="Kai the Brave",
+            kind=None,
+            aliases=["Kai the Brave", "Sir Kai"],
+        )
+    assert updated is not None
+    assert updated.name == "Kai the Brave"
+    assert updated.canonical_name == "kai the brave"
+    assert updated.kind == "character"  # unchanged
+    assert set(updated.aliases) == {"Kai the Brave", "Sir Kai"}
+    assert updated.user_edited is True
+
+
+@pytest.mark.asyncio
+async def test_update_entity_fields_cross_user_returns_none(
+    neo4j_driver, test_user
+):
+    other_user = f"u-other-{uuid.uuid4().hex[:8]}"
+    async with neo4j_driver.session() as session:
+        other_ent = await merge_entity(
+            session, user_id=other_user, project_id=None,
+            name="Stranger", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        result = await update_entity_fields(
+            session,
+            user_id=test_user,
+            entity_id=other_ent.id,
+            name="Hijacked",
+            kind=None,
+            aliases=None,
+        )
+    assert result is None
+    # Confirm other user's entity is untouched.
+    async with neo4j_driver.session() as session:
+        still_there = await get_entity(
+            session, user_id=other_user, canonical_id=other_ent.id,
+        )
+    assert still_there is not None
+    assert still_there.name == "Stranger"
+    assert still_there.user_edited is False
+    # Cleanup
+    async with neo4j_driver.session() as session:
+        await session.run(
+            "MATCH (e:Entity {user_id: $uid}) DETACH DELETE e",
+            uid=other_user,
+        )
+
+
+@pytest.mark.asyncio
+async def test_merge_entity_respects_user_edited_aliases_lock(
+    neo4j_driver, test_user
+):
+    """The core contract of K19d γ-a: after the user edits aliases
+    via PATCH, future `merge_entity` calls with new name variants
+    must NOT re-append those variants — the user's list stays
+    authoritative until they unlock (future cycle: explicit unset)."""
+    async with neo4j_driver.session() as session:
+        ent = await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Kai", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        # Bare ent already has alias ['Kai']. Add a variant the
+        # extractor discovered naturally first.
+        _ = await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Master Kai", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        pre_edit = await get_entity(
+            session, user_id=test_user, canonical_id=ent.id,
+        )
+        assert pre_edit is not None
+        assert "Master Kai" in pre_edit.aliases
+
+        # User edits aliases — removes "Master Kai" and pins just
+        # "Kai" + "K.".
+        await update_entity_fields(
+            session,
+            user_id=test_user,
+            entity_id=ent.id,
+            name=None,
+            kind=None,
+            aliases=["Kai", "K."],
+        )
+        post_edit = await get_entity(
+            session, user_id=test_user, canonical_id=ent.id,
+        )
+        assert post_edit is not None
+        assert post_edit.user_edited is True
+        assert set(post_edit.aliases) == {"Kai", "K."}
+
+        # Extractor re-runs with the "Master Kai" variant. Before
+        # γ-a the merge_entity ON MATCH branch would have appended
+        # "Master Kai" back. After γ-a the `user_edited=true` gate
+        # short-circuits the CASE and aliases stay at [Kai, K.].
+        await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Master Kai", kind="character",
+            source_type="chat_turn", confidence=0.95,
+        )
+        post_reextract = await get_entity(
+            session, user_id=test_user, canonical_id=ent.id,
+        )
+    assert post_reextract is not None
+    # Aliases DID NOT re-add "Master Kai".
+    assert "Master Kai" not in post_reextract.aliases
+    assert set(post_reextract.aliases) == {"Kai", "K."}
+    # But confidence bump still applied — non-alias updates aren't
+    # gated on user_edited (the user's authority is over display
+    # fields, not scoring signals).
+    assert post_reextract.confidence >= 0.95
+
+
+@pytest.mark.asyncio
+async def test_merge_entity_without_user_edited_still_appends_aliases(
+    neo4j_driver, test_user
+):
+    """Regression guard: pre-γ-a behaviour is preserved for
+    un-edited nodes. Without this the coalesce fallback could
+    silently break existing extraction flows.
+
+    Uses "Master Phoenix" as a re-extraction variant because
+    canonicalize_entity_name strips "master " — the two display
+    names hash to the SAME canonical_id and hit `merge_entity`'s
+    ON MATCH branch. "The Phoenix" would NOT work here because
+    "the" isn't in the honorific strip list → different id →
+    different node → alias append never runs.
+    """
+    async with neo4j_driver.session() as session:
+        ent = await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Phoenix", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        assert ent.user_edited is False
+        await merge_entity(
+            session, user_id=test_user, project_id=None,
+            name="Master Phoenix", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        after = await get_entity(
+            session, user_id=test_user, canonical_id=ent.id,
+        )
+    assert after is not None
+    assert after.user_edited is False
+    # Alias append ran because user_edited was false.
+    assert "Master Phoenix" in after.aliases

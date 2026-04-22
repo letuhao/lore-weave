@@ -247,6 +247,76 @@ def test_entity_detail_rejects_oversized_id(mock_detail):
     mock_detail.assert_not_awaited()
 
 
+# ── K19d γ-a — PATCH /entities/{id} ─────────────────────────────────
+
+
+@patch(
+    "app.routers.public.entities.update_entity_fields",
+    new_callable=AsyncMock,
+)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_patch_entity_happy(mock_update):
+    stub = _entity_stub(name="Kai the Brave")
+    mock_update.return_value = stub
+    client = _make_client()
+    resp = client.patch(
+        f"/v1/knowledge/entities/{_ENTITY_ID}",
+        json={"name": "Kai the Brave"},
+    )
+    assert resp.status_code == 200, resp.json()
+    assert resp.json()["name"] == "Kai the Brave"
+    kwargs = mock_update.await_args.kwargs
+    assert kwargs["entity_id"] == _ENTITY_ID
+    assert kwargs["name"] == "Kai the Brave"
+    assert kwargs["kind"] is None
+    assert kwargs["aliases"] is None
+
+
+@patch(
+    "app.routers.public.entities.update_entity_fields",
+    new_callable=AsyncMock,
+)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_patch_entity_rejects_empty_body(mock_update):
+    mock_update.return_value = None
+    client = _make_client()
+    resp = client.patch(f"/v1/knowledge/entities/{_ENTITY_ID}", json={})
+    assert resp.status_code == 422
+    mock_update.assert_not_awaited()
+
+
+@patch(
+    "app.routers.public.entities.update_entity_fields",
+    new_callable=AsyncMock,
+)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_patch_entity_rejects_empty_alias(mock_update):
+    mock_update.return_value = None
+    client = _make_client()
+    resp = client.patch(
+        f"/v1/knowledge/entities/{_ENTITY_ID}",
+        json={"aliases": ["valid", "   "]},
+    )
+    assert resp.status_code == 422
+    mock_update.assert_not_awaited()
+
+
+@patch(
+    "app.routers.public.entities.update_entity_fields",
+    new_callable=AsyncMock,
+)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_patch_entity_not_found(mock_update):
+    mock_update.return_value = None
+    client = _make_client()
+    resp = client.patch(
+        f"/v1/knowledge/entities/{_ENTITY_ID}",
+        json={"name": "new name"},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "entity not found"
+
+
 @patch(
     "app.routers.public.entities.get_entity_with_relations",
     new_callable=AsyncMock,
