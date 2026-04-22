@@ -1,11 +1,11 @@
-# Session Handoff — Session 50 (K19b cluster 100% plan-complete; all 8 tasks shipped)
+# Session Handoff — Session 50 (K19b cluster done + K19c Cycle α BE preload)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-22 (session 50)
-> **HEAD:** `526533d` (K19b.8; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** (pending K19c-α commit) (K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 7 cycles shipped (5 Track 3 + 2 Track 2 close-out) · K19b cluster PLAN-COMPLETE
+## Session 50 — 8 cycles shipped (6 Track 3 + 2 Track 2 close-out) · K19b plan-complete, K19c started
 
 ```
 Track 3 K19b progress (session 50)
@@ -51,6 +51,19 @@ Cycle 6  D-K16.11-01         Wire budget helpers into production                
                               finally shows real prod spending.
 
 Cycle 7  K19b.8               Extraction-job log viewer MVP                       526533d
+
+Cycle 8  K19c Cycle α          BE preload: user-scope entities endpoint           (pending commit)
+         [BE L]                 list_user_entities(scope='global') Neo4j helper +
+                                GET /v1/knowledge/me/entities?scope=global +
+                                DELETE /v1/knowledge/me/entities/{id} (reuses
+                                archive_entity, idempotent per RFC 9110). Unblocks
+                                K19c.4 FE in Cycle β. Prior audit found:
+                                K19c.2 still BLOCKED on K20.x; K19c.1/.3 have
+                                partial Track 1 coverage (GlobalBioTab +
+                                VersionsPanel); this cycle strictly scopes to the
+                                missing BE surface. /review-impl L6 caught
+                                DELETE docstring lie about non-idempotent 404
+                                (fixed + integration test locks contract).
          [FS XL]               BE: NEW job_logs table (BIGSERIAL + CHECK level +
                                FK CASCADE) + JobLogsRepo (append + cursor list)
                                + GET /v1/knowledge/extraction/jobs/{id}/logs
@@ -89,17 +102,19 @@ Cycle 7  K19b.8               Extraction-job log viewer MVP                     
                              context in BuildGraphDialog). K19b.6 now has
                              everything it needs on the BE side.
 
-Remaining K19 residuals: K19b.7-rest (other tabs' strings — deferred
-                        until K19d/e tabs ship).
-                        K19b cluster is 100% PLAN-COMPLETE.
-                        Next: K19c / K19d / K19e (Entities / Timeline / Raw).
+Remaining K19 residuals: K19b.7-rest (other tabs' strings); K19c
+                        partial (Cycle α shipped BE; Cycle β ships FE
+                        deltas); K19d Entities tab (can reuse entities
+                        endpoint pattern from Cycle α); K19e Raw tab.
+                        K19b 100% PLAN-COMPLETE.
+                        K19c.2 Regenerate still BLOCKED on K20.x.
 ```
 
-**Test deltas at session 50 end (after 7 cycles):**
-- Frontend knowledge: **177 pass** (was 112 at session 49 end; +65 over 5 FE cycles)
-- Backend unit knowledge-service: **1190 pass** (was 1154 at session 49 end; +36)
+**Test deltas at session 50 end (after 8 cycles):**
+- Frontend knowledge: **177 pass** (was 112 at session 49 end; +65 over 5 FE cycles — no FE in Cycle 8)
+- Backend unit knowledge-service: **1195 pass** (was 1154 at session 49 end; +41)
 - Backend unit worker-ai: **17 pass** (was 13 at K19b.6 end; +4 across Cycles 6+7)
-- Backend integration repo: **30 pass** extraction_jobs_repo + **5 pass** user_knowledge_budgets + **5 pass** job_logs (new)
+- Backend integration: 30 extraction_jobs_repo + 5 user_knowledge_budgets + 5 job_logs + **6 list_user_entities** (new this cycle, against live Neo4j)
 - Cycle 1 /review-impl: 5 LOW all fixed + 1 MED via review-code
 - Cycle 2 review-code: 1 LOW fixed; /review-impl: 4 LOW all fixed
 - Cycle 3 review-code: 2 LOW fixed; /review-impl skipped per human approval
@@ -107,6 +122,7 @@ Remaining K19 residuals: K19b.7-rest (other tabs' strings — deferred
 - Cycle 5 review-code: 1 LOW fixed; /review-impl: 1 LOW fixed
 - Cycle 6 review-code: 10 LOW all accepted; /review-impl skipped per human approval
 - Cycle 7 review-code: 1 LOW fixed; /review-impl skipped per human approval
+- Cycle 8 review-code: 4 LOW accepted; /review-impl: 1 MED-doc fixed (DELETE idempotent-docstring lie + integration lock-in)
 
 **What shipped in Cycle 3 (10 files, FE-only):**
 - NEW `useJobProgressRate.ts` hook (EMA rate tracker, 6 tests)
@@ -124,6 +140,23 @@ Remaining K19 residuals: K19b.7-rest (other tabs' strings — deferred
 - Public endpoint: `GET /v1/knowledge/extraction/jobs/{id}/logs?since_log_id=&limit=50` with cursor pagination.
 - FE: `JobLogsPanel` inside `JobDetailPanel` (or new tab). Tail-follow with auto-scroll toggle. Virtual list for 1000+ lines.
 - Size estimate XL; doable as a single cycle or split into BE + FE halves.
+
+### What K19c Cycle β (next) can now assume
+
+Cycle α shipped the BE. Cycle β consumes:
+- **GET** `/v1/knowledge/me/entities?scope=global&limit=50` → `{entities: Entity[]}` (Pydantic from `app/db/neo4j_repos/entities.py::Entity` — fields include `id`, `user_id`, `project_id: null`, `name`, `canonical_name`, `kind`, `aliases`, `confidence`, `updated_at`).
+- **DELETE** `/v1/knowledge/me/entities/{entity_id}` → `204` on archive; `404` on cross-user / missing entity. **Idempotent** per RFC 9110 — second DELETE also returns 204.
+- Query params validated: `scope: Literal['global']` (422 on invalid), `limit: int` ge=1 le=`ENTITIES_MAX_LIMIT=200`.
+
+Cycle β scope (previously estimated XL, now trimmed by α):
+- FE `api.ts`: `Entity` type + `listMyEntities` + `archiveMyEntity` wrappers
+- NEW `hooks/useUserEntities.ts` with react-query staleTime pattern
+- `GlobalBioTab.tsx`: +Reset button (confirm → clear to empty) + token estimate under char count (simple `content.length / 4` heuristic)
+- `VersionsPanel.tsx`: diff viewer in preview modal (install `diff` npm ~4KB or inline line-diff)
+- NEW `components/PreferencesSection.tsx`: renders global entities with delete confirm; wires into GlobalBioTab
+- Tests + i18n × 4 locales
+
+Cycle β is still ~L-XL; splitting it further if needed.
 
 ### K19b 100% plan-complete status
 
@@ -198,6 +231,7 @@ Option (a) won because K19b.2's layout sections (Running/Paused/Complete/Failed)
 - **D-K19b.8-01** → Track 3 polish: retention cron for job_logs (no auto-cleanup today).
 - **D-K19b.8-02** → Track 3 polish: orchestrator-side pipeline logs in knowledge-service extract_item handler.
 - **D-K19b.8-03** → Track 3 polish: tail-follow auto-polling + load-more in JobLogsPanel.
+- **D-K19c.4-01** (new, Cycle 8) → K17/K18 entity-management surface: rename-aware `user_archive_entity` variant that preserves `glossary_entity_id` on archive. Current `archive_entity` clears the FK per its K11.5a scope; fine for user-MVP but imperfect for the "hide now, restore later" flow.
 - ~~D-K19a.5-03~~ — **Cleared in K19b.6** (BuildGraphDialog monthly-remaining hint shipped).
 - ~~D-K16.11-01~~ — **Cleared in Cycle 6.** Budget helpers wired into production; CostSummary will now populate real figures as jobs run.
 - **D-K19a.5-04 + D-K16.2-02b** → Track 3 (paired): chapter_range picker + runner-side enforcement.

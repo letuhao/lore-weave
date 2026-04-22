@@ -398,6 +398,54 @@ RETURN e
 ORDER BY e.anchor_score DESC, e.confidence DESC, e.name ASC
 """
 
+# K19c.4 — cap for list_user_entities. Shared between the Cypher
+# LIMIT clause and the router's Query(le=ENTITIES_MAX_LIMIT) so a
+# future raise on one layer can't drift from the other. Matches the
+# LIST_ALL_MAX_LIMIT / LOGS_MAX_LIMIT conventions elsewhere.
+ENTITIES_MAX_LIMIT = 200
+
+
+_LIST_USER_ENTITIES_GLOBAL_CYPHER = """
+MATCH (e:Entity)
+WHERE e.user_id = $user_id
+  AND e.project_id IS NULL
+  AND e.archived_at IS NULL
+RETURN e
+ORDER BY e.updated_at DESC, e.name ASC
+LIMIT $limit
+"""
+
+
+async def list_user_entities(
+    session: CypherSession,
+    *,
+    user_id: str,
+    scope: str = "global",
+    limit: int = 50,
+) -> list[Entity]:
+    """K19c.4 — list a user's active entities by scope.
+
+    `scope='global'` returns entities with no `project_id` — these
+    are the cross-project preferences that surface in the Global
+    tab's Preferences section. Project scope lands when K19d
+    ships its entity browser.
+
+    Excludes archived entities (`archived_at IS NULL`). Caller
+    that needs the archived list should use the existing
+    `find_entities_by_name` with `include_archived=True`.
+    """
+    if scope != "global":
+        raise ValueError(f"unsupported scope {scope!r}; only 'global' is supported")
+    effective_limit = max(1, min(limit, ENTITIES_MAX_LIMIT))
+    result = await run_read(
+        session,
+        _LIST_USER_ENTITIES_GLOBAL_CYPHER,
+        user_id=user_id,
+        limit=effective_limit,
+    )
+    return [_node_to_entity(record["e"]) async for record in result]
+
+
 _FIND_BY_NAME_CYPHER_ACTIVE = """
 CALL {
   WITH $user_id AS user_id, $project_id AS project_id,
