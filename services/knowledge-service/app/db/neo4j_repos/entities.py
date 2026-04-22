@@ -32,13 +32,16 @@ from app.db.neo4j_repos.canonical import (
     canonicalize_entity_name,
     entity_canonical_id,
 )
+from app.db.neo4j_repos.relations import Relation
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
     "Entity",
+    "EntityDetail",
     "VectorSearchHit",
     "SUPPORTED_VECTOR_DIMS",
+    "ENTITIES_DETAIL_REL_CAP",
     "merge_entity",
     "upsert_glossary_anchor",
     "get_entity",
@@ -52,6 +55,8 @@ __all__ = [
     "archive_entity",
     "restore_entity",
     "delete_entities_with_zero_evidence",
+    "list_entities_filtered",
+    "get_entity_with_relations",
 ]
 
 
@@ -414,6 +419,29 @@ RETURN e
 ORDER BY e.updated_at DESC, e.name ASC
 LIMIT $limit
 """
+
+
+# K19d — cap on the detail endpoint's relation payload. 200 active
+# relations on a single entity is already power-user territory
+# (e.g., a protagonist in a long series); the FE can fetch more
+# via a future /entities/{id}/relations paginated endpoint if
+# someone actually hits the cap.
+ENTITIES_DETAIL_REL_CAP = 200
+
+
+class EntityDetail(BaseModel):
+    """K19d.4 — `GET /v1/knowledge/entities/{id}` response payload.
+
+    Relations are projected with both endpoint node id/name/kind so
+    the FE can render `(subject)-[predicate]->(object)` without a
+    second round-trip per row. Direction is inferable by comparing
+    `relations[i].subject_id == entity.id`.
+    """
+
+    entity: Entity
+    relations: list[Relation]
+    relations_truncated: bool = False
+    total_relations: int = 0
 
 
 async def list_user_entities(
@@ -1147,3 +1175,220 @@ async def find_gap_candidates(
         limit=limit,
     )
     return [_node_to_entity(record["e"]) async for record in result]
+
+
+# ── K19d.2 — list_entities_filtered ──────────────────────────────────
+#
+# The filter dimensions are documented on the router side (Query()
+# params). Here we just build the WHERE clause defensively and page.
+# All filters compose with AND; nulls short-circuit their branch so
+# a caller that only wants `kind='character'` doesn't pay the search
+# CONTAINS cost.
+#
+# Cardinality note: Neo4j doesn't have a cost estimate like a Postgres
+# EXPLAIN, so we order by a stable composite key (mention_count DESC,
+# name ASC, id ASC) to guarantee page boundaries are consistent across
+# calls. The `id` tiebreaker matters when two entities share name AND
+# mention_count — without it, LIMIT/SKIP pagination could silently
+# duplicate or drop rows between pages.
+
+# Shared WHERE clause for both the count and paged-rows queries so a
+# future filter change only needs one edit. Kept as a string constant
+# (not interpolated) because every filter predicate references the
+# parameterized `$user_id` / `$project_id` / `$kind` / `$search` —
+# no user-supplied value enters the Cypher text. Review-impl M1:
+# pagination uses two separate queries (count + page) instead of a
+# collect-then-unwind pattern that materialized every matching row
+# into memory just to compute total.
+_LIST_ENTITIES_FILTER_WHERE = """
+MATCH (e:Entity)
+WHERE e.user_id = $user_id
+  AND e.archived_at IS NULL
+  AND ($project_id IS NULL OR e.project_id = $project_id)
+  AND ($kind IS NULL OR e.kind = $kind)
+  AND (
+    $search IS NULL
+    OR toLower(e.name) CONTAINS toLower($search)
+    OR any(alias IN e.aliases WHERE toLower(alias) CONTAINS toLower($search))
+  )
+"""
+
+_LIST_ENTITIES_COUNT_CYPHER = _LIST_ENTITIES_FILTER_WHERE + """
+RETURN count(e) AS total
+"""
+
+_LIST_ENTITIES_PAGE_CYPHER = _LIST_ENTITIES_FILTER_WHERE + """
+RETURN e
+ORDER BY e.mention_count DESC, e.name ASC, e.id ASC
+SKIP $offset LIMIT $limit
+"""
+
+
+async def list_entities_filtered(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    kind: str | None,
+    search: str | None,
+    limit: int,
+    offset: int,
+) -> tuple[list[Entity], int]:
+    """K19d.2 — paginated browse with optional project / kind / search.
+
+    Returns `(rows, total_count)`. `total_count` is the server-side
+    count matching the filters *before* `SKIP`/`LIMIT`, so the FE can
+    render "page 3 of N" without a second round-trip.
+
+    Ordering: `mention_count DESC, name ASC, id ASC`. The id tiebreaker
+    guarantees stable pagination even when name + mention collide.
+
+    Archived entities are excluded. Global-scope entities (no
+    `project_id`) are included when the `project_id` filter is None.
+
+    Matching `search`:
+      - case-insensitive `CONTAINS` on `name`
+      - case-insensitive `CONTAINS` on any alias
+      - no search → branch short-circuits so filter-free browse isn't
+        taxed by the CONTAINS scan.
+
+    Caller is responsible for validating `limit` / `offset` ranges;
+    the repo trusts them. Router enforces Query(ge=1, le=200) on
+    limit and Query(ge=0) on offset.
+
+    **Implementation: two sequential queries** (count + page) rather
+    than a single collect/UNWIND. The collect pattern materialized
+    every matching node into server memory just to compute total —
+    fine at hobby scale but a real OOM risk for a power-user with
+    50k+ entities. Two round-trips (~10ms overhead) buys O(limit)
+    memory instead of O(total).
+    """
+    count_result = await run_read(
+        session,
+        _LIST_ENTITIES_COUNT_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        kind=kind,
+        search=search,
+    )
+    count_record = await count_result.single()
+    total = int(count_record["total"]) if count_record else 0
+    if total == 0:
+        return ([], 0)
+    page_result = await run_read(
+        session,
+        _LIST_ENTITIES_PAGE_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        kind=kind,
+        search=search,
+        offset=offset,
+        limit=limit,
+    )
+    rows = [_node_to_entity(record["e"]) async for record in page_result]
+    return rows, total
+
+
+# ── K19d.4 — get_entity_with_relations ───────────────────────────────
+#
+# Fetches base entity + 1-hop :RELATES_TO edges in BOTH directions.
+# We cap at `ENTITIES_DETAIL_REL_CAP` (200) and surface truncation
+# via a flag so the FE can hide the detail panel's "all N relations"
+# row count when the real number is higher. Total count is computed
+# separately (cheap MATCH COUNT) so the FE doesn't have to infer.
+#
+# Filters `valid_until IS NULL` so superseded relations don't pollute
+# the detail view — same convention as the L2 context loader.
+
+_GET_ENTITY_WITH_RELATIONS_CYPHER = """
+MATCH (e:Entity {id: $id})
+WHERE e.user_id = $user_id
+// Two CALL subqueries. Each must `collect()` / `count()` internally
+// so the outer row isn't dropped when there are zero related edges
+// (Neo4j's CALL semantics are join-like; an inner 0-row result kills
+// the outer row). OPTIONAL MATCH + filter-null keeps the "no
+// relations" case returning entity-only.
+CALL {
+  WITH e
+  OPTIONAL MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)
+  WHERE (subj = e OR obj = e)
+    AND r.user_id = $user_id
+    AND r.valid_until IS NULL
+  WITH r, subj, obj
+  WHERE r IS NOT NULL
+  ORDER BY r.confidence DESC, r.created_at DESC
+  LIMIT $rel_cap
+  RETURN collect({r: r, subj: subj, obj: obj}) AS edges
+}
+CALL {
+  WITH e
+  OPTIONAL MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)
+  WHERE (subj = e OR obj = e)
+    AND r.user_id = $user_id
+    AND r.valid_until IS NULL
+  RETURN count(r) AS total
+}
+RETURN e, edges, total
+"""
+
+
+async def get_entity_with_relations(
+    session: CypherSession,
+    *,
+    user_id: str,
+    entity_id: str,
+    rel_cap: int = ENTITIES_DETAIL_REL_CAP,
+) -> EntityDetail | None:
+    """K19d.4 — entity detail with 1-hop active RELATES_TO edges.
+
+    Returns None when the entity doesn't exist OR is owned by another
+    user (cross-user collapses to 404 at the router per KSA §6.4).
+
+    Edges are projected with both endpoints so the FE can render
+    `(subj)-[predicate]->(obj)` without per-row re-fetching. The
+    `Relation` projection fields `subject_name` / `subject_kind` /
+    `object_name` / `object_kind` are populated from the endpoint
+    nodes here — the canonical Relation nodes don't carry them.
+
+    If `total > rel_cap`, `relations` contains the top-N by
+    `(confidence DESC, created_at DESC)` and `relations_truncated=True`.
+    """
+    result = await run_read(
+        session,
+        _GET_ENTITY_WITH_RELATIONS_CYPHER,
+        user_id=user_id,
+        id=entity_id,
+        rel_cap=rel_cap,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    entity = _node_to_entity(record["e"])
+    total = int(record["total"] or 0)
+
+    relations: list[Relation] = []
+    for edge in record["edges"]:
+        r = edge["r"]
+        subj = edge["subj"]
+        obj = edge["obj"]
+        r_data = dict(r.items() if hasattr(r, "items") else r)
+        # Bolt-driver temporal conversions — same pattern as
+        # _node_to_entity so Relation's datetime fields round-trip
+        # into stdlib types.
+        for k, v in list(r_data.items()):
+            if v is not None and hasattr(v, "to_native"):
+                r_data[k] = v.to_native()
+        subj_data = dict(subj.items() if hasattr(subj, "items") else subj)
+        obj_data = dict(obj.items() if hasattr(obj, "items") else obj)
+        r_data["subject_name"] = subj_data.get("name")
+        r_data["subject_kind"] = subj_data.get("kind")
+        r_data["object_name"] = obj_data.get("name")
+        r_data["object_kind"] = obj_data.get("kind")
+        relations.append(Relation.model_validate(r_data))
+
+    return EntityDetail(
+        entity=entity,
+        relations=relations,
+        relations_truncated=total > len(relations),
+        total_relations=total,
+    )
