@@ -16,9 +16,60 @@
   "placeholder": {
     "title": "Sắp ra mắt",
     "bodies": {
-      "entities": "Duyệt các thực thể được trích xuất vào đồ thị tri thức.",
       "timeline": "Xem sự kiện và dữ kiện theo thứ tự thời gian.",
       "raw": "Tìm kiếm vectơ trên toàn bộ ngăn kéo tri thức đã trích xuất."
+    }
+  },
+  "entities": {
+    "loading": "Đang tải thực thể…",
+    "loadFailed": "Không thể tải thực thể: {{error}}",
+    "empty": "Chưa có thực thể nào được trích xuất — chúng sẽ xuất hiện khi pipeline trích xuất chạy.",
+    "emptyForFilters": "Không có thực thể nào khớp với bộ lọc này.",
+    "filters": {
+      "project": "Dự án",
+      "kind": "Loại",
+      "search": "Tìm kiếm",
+      "searchPlaceholder": "Tên hoặc bí danh (tối thiểu 2 ký tự)",
+      "anyProject": "Mọi dự án",
+      "anyKind": "Mọi loại"
+    },
+    "table": {
+      "ariaLabel": "Thực thể",
+      "global": "Toàn cục",
+      "col": {
+        "name": "Tên",
+        "kind": "Loại",
+        "project": "Dự án",
+        "mentions": "Số lần nhắc",
+        "confidence": "Độ tin cậy",
+        "updated": "Cập nhật"
+      }
+    },
+    "pagination": {
+      "range": "{{from}}–{{to}} trên {{total}}",
+      "refreshing": "đang làm mới…",
+      "prev": "Trước",
+      "next": "Tiếp"
+    },
+    "detail": {
+      "loading": "Đang tải thực thể…",
+      "loadFailed": "Không thể tải thực thể: {{error}}",
+      "close": "Đóng",
+      "metadata": "Siêu dữ liệu",
+      "aliases": "Bí danh",
+      "relations": "Quan hệ ({{count}})",
+      "truncated": "Hiển thị {{shown}} trong tổng số {{total}} — hãy lọc hoặc tìm trong bảng",
+      "noRelations": "Chưa có quan hệ nào — sẽ xuất hiện khi trích xuất chạy.",
+      "relationArrow": "→",
+      "pendingBadge": "Đang chờ",
+      "pendingValidation": "Cách ly Pass-1 — đang chờ xác minh LLM",
+      "field": {
+        "project": "Dự án",
+        "global": "Toàn cục",
+        "confidence": "Độ tin cậy",
+        "mentions": "Số lần nhắc",
+        "anchor": "Điểm neo"
+      }
     }
   },
   "jobs": {

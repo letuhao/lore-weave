@@ -243,6 +243,55 @@ export interface RegenerateResponse {
   skipped_reason: string | null;
 }
 
+// ── K19d.2 / K19d.4 — entities browse + detail ────────────────────────
+
+export interface EntitiesListParams {
+  project_id?: string;
+  kind?: string;
+  /** FE enforces min length 2 (matches BE Query min_length=2) so
+   *  filter-free short keystrokes don't round-trip to a 422. */
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface EntitiesBrowseResponse {
+  entities: Entity[];
+  total: number;
+}
+
+/**
+ * K19d.4 EntityRelation wire shape. Mirrors the Relation Pydantic
+ * projection on the BE: a :RELATES_TO edge with the two endpoint
+ * names + kinds included so the detail panel can render
+ * `(subject)-[predicate]->(object)` without a second round-trip.
+ */
+export interface EntityRelation {
+  id: string;
+  subject_id: string;
+  object_id: string;
+  predicate: string;
+  confidence: number;
+  source_event_ids: string[];
+  source_chapter: string | null;
+  valid_from: string | null;
+  valid_until: string | null;
+  pending_validation: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+  subject_name: string | null;
+  subject_kind: string | null;
+  object_name: string | null;
+  object_kind: string | null;
+}
+
+export interface EntityDetail {
+  entity: Entity;
+  relations: EntityRelation[];
+  relations_truncated: boolean;
+  total_relations: number;
+}
+
 const BASE = '/v1/knowledge';
 
 // D-K8-03: weak ETag format used by the knowledge-service routes.
@@ -673,6 +722,32 @@ export const knowledgeApi = {
       body: JSON.stringify(body),
       token,
     });
+  },
+
+  // ── K19d — entities browse + detail ──────────────────────────────────
+
+  listEntities(
+    params: EntitiesListParams,
+    token: string,
+  ): Promise<EntitiesBrowseResponse> {
+    const qs = new URLSearchParams();
+    if (params.project_id != null) qs.set('project_id', params.project_id);
+    if (params.kind != null) qs.set('kind', params.kind);
+    if (params.search != null) qs.set('search', params.search);
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    if (params.offset != null) qs.set('offset', String(params.offset));
+    const q = qs.toString();
+    return apiJson<EntitiesBrowseResponse>(
+      `${BASE}/entities${q ? `?${q}` : ''}`,
+      { token },
+    );
+  },
+
+  getEntityDetail(entityId: string, token: string): Promise<EntityDetail> {
+    return apiJson<EntityDetail>(
+      `${BASE}/entities/${encodeURIComponent(entityId)}`,
+      { token },
+    );
   },
 };
 

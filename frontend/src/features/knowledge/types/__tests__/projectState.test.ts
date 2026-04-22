@@ -480,4 +480,55 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
       expect((value as string).length).toBeGreaterThan(0);
     }
   });
+
+  // K19d Cycle β — Entities tab. Keys live under top-level `entities.*`.
+  const ENTITIES_KEYS = [
+    'loading',
+    'loadFailed',
+    'empty',
+    'emptyForFilters',
+    'filters.project',
+    'filters.kind',
+    'filters.search',
+    'filters.searchPlaceholder',
+    'filters.anyProject',
+    'filters.anyKind',
+    'table.ariaLabel',
+    'table.global',
+    'table.col.name',
+    'table.col.kind',
+    'table.col.project',
+    'table.col.mentions',
+    'table.col.confidence',
+    'table.col.updated',
+    'pagination.range',
+    'pagination.refreshing',
+    'pagination.prev',
+    'pagination.next',
+    'detail.loading',
+    'detail.loadFailed',
+    'detail.close',
+    'detail.metadata',
+    'detail.aliases',
+    'detail.relations',
+    'detail.truncated',
+    'detail.noRelations',
+    'detail.relationArrow',
+    'detail.pendingBadge',
+    'detail.pendingValidation',
+    'detail.field.project',
+    'detail.field.global',
+    'detail.field.confidence',
+    'detail.field.mentions',
+    'detail.field.anchor',
+  ] as const;
+
+  it.each(LOCALES)('%s has every K19d entities.* key populated', (_tag, bundle) => {
+    const root = (bundle as any).entities ?? {};
+    for (const path of ENTITIES_KEYS) {
+      const value = resolveKey(root, path);
+      expect(typeof value, `locale missing entities.${path}`).toBe('string');
+      expect((value as string).length).toBeGreaterThan(0);
+    }
+  });
 });

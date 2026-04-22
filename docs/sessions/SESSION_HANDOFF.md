@@ -1,11 +1,11 @@
-# Session Handoff — Session 50 (K19b + K19c + K20 complete; K19d α BE shipped)
+# Session Handoff — Session 50 (K19b + K19c + K20 complete; K19d α+β shipped [γ only remaining])
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-22 (session 50)
-> **HEAD:** `96f9b6b` (K19d Cycle α; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** (pending K19d-β commit) (K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 12 cycles shipped (10 Track 3 + 2 Track 2 close-out) · K19b + K19c + K20 complete; K19d α BE shipped
+## Session 50 — 13 cycles shipped (11 Track 3 + 2 Track 2 close-out) · K19b + K19c + K20 complete; K19d α+β shipped (γ only remaining)
 
 ```
 Track 3 K19b progress (session 50)
@@ -54,7 +54,37 @@ Cycle 7  K19b.8               Extraction-job log viewer MVP                     
 
 Cycle 8  K19c Cycle α          BE preload: user-scope entities endpoint           a619b5f
 
-Cycle 12 K19d Cycle α          Entities browse + detail BE [α of β/γ split]      96f9b6b
+Cycle 13 K19d Cycle β          Entities tab FE (table + detail panel)            (pending commit)
+         [FE XL]                NEW useEntities + useEntityDetail hooks (userId-
+                                scoped queryKeys per review-impl M1, 30s/10s
+                                staleTime). NEW EntitiesTable presentational
+                                (a11y: role=row + tabIndex + onKeyDown for
+                                Enter/Space). NEW EntityDetailPanel Radix Dialog
+                                slide-from-right (metadata grid + aliases chips
+                                + relations partitioned outgoing/incoming with
+                                per-row ↗/↙ arrows + truncation banner +
+                                pending-validation badge). NEW EntitiesTab
+                                container with debounced search (300ms + FE
+                                min-2-chars matching BE 422) + prev/next
+                                pagination capped at maxOffset + offset-reset
+                                on filter change. KnowledgePage replaces
+                                PlaceholderTab with EntitiesTab. 38 i18n keys
+                                × 4 locales (placeholder.bodies.entities
+                                removed everywhere — same pattern as K19b.2
+                                jobs removal). ENTITIES_KEYS iterator +152
+                                cross-locale assertions. /review-impl caught
+                                M1 (cross-tenant cache flash — 30s window
+                                where logout→login swap shows prior user's
+                                cached entities before refetch); fixed with
+                                userId-prefixed queryKey + regression test.
+                                M2 (mobile grid breaks <800px) deferred as
+                                D-K19d-β-01 (K19f scope). Build-time fixes:
+                                useDebounced with useMemo (leak) → useEffect;
+                                useProjects.items not .projects. FE knowledge
+                                218 (+15). tsc clean. K19d γ (edit/merge)
+                                remains the only K19d work left.
+
+Cycle 12 K19d Cycle α          Entities browse + detail BE [α of β/γ split]      96f9b6b + e0fbd21
          [BE L]                 NEW entities_router at /v1/knowledge prefix +
                                 2 JWT-scoped endpoints: GET /entities (filters:
                                 project_id/kind/search min-2ch/limit/offset) +

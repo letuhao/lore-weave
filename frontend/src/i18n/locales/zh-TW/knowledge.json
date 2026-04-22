@@ -16,9 +16,60 @@
   "placeholder": {
     "title": "即將推出",
     "bodies": {
-      "entities": "瀏覽抽取到知識圖譜中的實體。",
       "timeline": "依時間順序檢視事實與事件。",
       "raw": "對抽取的知識抽屜進行向量搜尋。"
+    }
+  },
+  "entities": {
+    "loading": "正在載入實體…",
+    "loadFailed": "無法載入實體：{{error}}",
+    "empty": "尚未抽取任何實體——當抽取流程執行時，它們會顯示在此處。",
+    "emptyForFilters": "沒有實體符合目前的篩選條件。",
+    "filters": {
+      "project": "專案",
+      "kind": "類型",
+      "search": "搜尋",
+      "searchPlaceholder": "名稱或別名（至少 2 個字元）",
+      "anyProject": "任何專案",
+      "anyKind": "任何類型"
+    },
+    "table": {
+      "ariaLabel": "實體",
+      "global": "全域",
+      "col": {
+        "name": "名稱",
+        "kind": "類型",
+        "project": "專案",
+        "mentions": "提及次數",
+        "confidence": "信心度",
+        "updated": "更新時間"
+      }
+    },
+    "pagination": {
+      "range": "第 {{from}}–{{to}} 筆，共 {{total}} 筆",
+      "refreshing": "更新中…",
+      "prev": "上一頁",
+      "next": "下一頁"
+    },
+    "detail": {
+      "loading": "正在載入實體…",
+      "loadFailed": "無法載入實體：{{error}}",
+      "close": "關閉",
+      "metadata": "中繼資料",
+      "aliases": "別名",
+      "relations": "關係 ({{count}})",
+      "truncated": "顯示 {{shown}} / {{total}} 筆——請在表格中篩選或搜尋",
+      "noRelations": "尚無關係——當抽取流程執行時會逐漸出現。",
+      "relationArrow": "→",
+      "pendingBadge": "待處理",
+      "pendingValidation": "第一階段隔離——等待 LLM 驗證",
+      "field": {
+        "project": "專案",
+        "global": "全域",
+        "confidence": "信心度",
+        "mentions": "提及次數",
+        "anchor": "錨定分數"
+      }
     }
   },
   "jobs": {
