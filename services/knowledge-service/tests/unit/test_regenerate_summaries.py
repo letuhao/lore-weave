@@ -18,12 +18,13 @@ from uuid import uuid4
 
 import pytest
 
-from app.clients.provider_client import ChatCompletionResponse
-from app.db.models import Summary
+from app.clients.provider_client import ChatCompletionResponse, ChatCompletionUsage
+from app.db.models import Summary, SummaryVersion
 from app.db.repositories import VersionMismatchError
 from app.jobs.regenerate_summaries import (
     RegenerationResult,
     _build_messages,
+    _compute_llm_cost_usd,
     _guardrail_reject_reason,
     _jaccard_similarity,
     regenerate_global_summary,
@@ -54,8 +55,21 @@ def _summary_stub(
     )
 
 
-def _chat_response(text: str, tokens: int = 50) -> ChatCompletionResponse:
-    return ChatCompletionResponse(content=text, model="test-model")
+def _chat_response(
+    text: str,
+    *,
+    prompt_tokens: int = 100,
+    completion_tokens: int = 50,
+) -> ChatCompletionResponse:
+    return ChatCompletionResponse(
+        content=text,
+        model="test-model",
+        usage=ChatCompletionUsage(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
+        ),
+    )
 
 
 def _make_session_factory(passages: list[str]):
@@ -119,10 +133,34 @@ def _mock_pool(recent_manual_edit: bool, owns_project: bool = True) -> MagicMock
     return pool
 
 
-def _mock_provider_client(response_text: str) -> MagicMock:
+def _mock_provider_client(
+    response_text: str,
+    *,
+    prompt_tokens: int = 100,
+    completion_tokens: int = 50,
+) -> MagicMock:
     provider = MagicMock()
-    provider.chat_completion = AsyncMock(return_value=_chat_response(response_text))
+    provider.chat_completion = AsyncMock(
+        return_value=_chat_response(
+            response_text,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )
+    )
     return provider
+
+
+def _version_stub(content: str, version: int) -> SummaryVersion:
+    return SummaryVersion(
+        version_id=uuid4(),
+        summary_id=uuid4(),
+        user_id=_USER_ID,
+        version=version,
+        content=content,
+        token_count=len(content) // 4,
+        created_at=datetime.now(timezone.utc),
+        edit_source="regen",
+    )
 
 
 def _mock_summaries_repo(
@@ -132,9 +170,11 @@ def _mock_summaries_repo(
     upsert_raises: Exception | None = None,
     project_upsert_returns: Summary | None = None,
     project_upsert_raises: Exception | None = None,
+    past_versions: list[SummaryVersion] | None = None,
 ) -> MagicMock:
     repo = MagicMock()
     repo.get = AsyncMock(return_value=current)
+    repo.list_versions = AsyncMock(return_value=past_versions or [])
     if upsert_raises is not None:
         repo.upsert = AsyncMock(side_effect=upsert_raises)
     else:
@@ -434,6 +474,158 @@ async def test_regenerate_project_ownership_failure_returns_guardrail():
     # Regression assertion: the LLM was NOT called.
     provider.chat_completion.assert_not_awaited()
     repo.upsert_project_scoped.assert_not_awaited()
+
+
+# ── K20.6 past-version duplicate check ──────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_regenerate_rejects_duplicate_of_past_version():
+    """K20.6: if the LLM regenerates content nearly identical to a
+    row already in the history table, reject as no_op_guardrail so we
+    don't churn history with duplicates."""
+    current = _summary_stub(content="Current bio about user.", version=3)
+    # A past version that matches what the LLM will return → dup reject.
+    past = _version_stub("User writes modern sci-fi prose.", version=2)
+    repo = _mock_summaries_repo(
+        current=current, past_versions=[past],
+    )
+    result = await regenerate_global_summary(
+        user_id=_USER_ID,
+        model_source="user_model",
+        model_ref="gpt-4o-mini",
+        pool=_mock_pool(recent_manual_edit=False),
+        session_factory=_make_session_factory(["passage 1"]),
+        provider_client=_mock_provider_client("user writes modern sci-fi prose"),
+        summaries_repo=repo,
+    )
+    assert result.status == "no_op_guardrail"
+    assert "past version" in (result.skipped_reason or "").lower()
+    repo.upsert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_regenerate_accepts_when_no_past_version_matches():
+    """Dup check must not false-positive on unrelated past versions."""
+    current = _summary_stub(content="Stale bio about fantasy.", version=4)
+    past = _version_stub("Totally different historical content.", version=3)
+    new_summary = _summary_stub(
+        content="Brand new content about cyberpunk prose.", version=5,
+    )
+    repo = _mock_summaries_repo(
+        current=current,
+        past_versions=[past],
+        upsert_returns=new_summary,
+    )
+    result = await regenerate_global_summary(
+        user_id=_USER_ID,
+        model_source="user_model",
+        model_ref="gpt-4o-mini",
+        pool=_mock_pool(recent_manual_edit=False),
+        session_factory=_make_session_factory(["passage"]),
+        provider_client=_mock_provider_client(new_summary.content),
+        summaries_repo=repo,
+    )
+    assert result.status == "regenerated"
+    repo.upsert.assert_awaited_once()
+
+
+# ── K20.7 cost tracking helper ──────────────────────────────────────
+
+
+def test_compute_llm_cost_usd_uses_total_tokens():
+    resp = _chat_response("out", prompt_tokens=1000, completion_tokens=500)
+    # gpt-4o-mini is pinned in pricing.py at 0.00000030 per token.
+    cost = _compute_llm_cost_usd(resp, "gpt-4o-mini")
+    from decimal import Decimal
+    assert cost == Decimal(1500) * Decimal("0.00000030")
+
+
+def test_compute_llm_cost_usd_zero_for_zero_tokens():
+    resp = _chat_response("out", prompt_tokens=0, completion_tokens=0)
+    from decimal import Decimal
+    assert _compute_llm_cost_usd(resp, "gpt-4o-mini") == Decimal("0")
+
+
+def test_compute_llm_cost_usd_local_model_zero():
+    """Self-hosted prefixes in pricing.py return rate 0 → cost 0 even
+    for non-zero tokens."""
+    resp = _chat_response("out", prompt_tokens=1000, completion_tokens=500)
+    from decimal import Decimal
+    assert _compute_llm_cost_usd(resp, "ollama/llama-3-8b") == Decimal("0")
+
+
+# ── K20.7 metric increments ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_regenerate_increments_total_counter_on_happy_path():
+    from app.metrics import summary_regen_total
+    before = summary_regen_total.labels(
+        scope_type="global", status="regenerated",
+    )._value.get()
+    current = _summary_stub(content="Old bio", version=1)
+    new_summary = _summary_stub(content="A whole new bio text.", version=2)
+    repo = _mock_summaries_repo(current=current, upsert_returns=new_summary)
+    result = await regenerate_global_summary(
+        user_id=_USER_ID,
+        model_source="user_model",
+        model_ref="gpt-4o-mini",
+        pool=_mock_pool(recent_manual_edit=False),
+        session_factory=_make_session_factory(["p"]),
+        provider_client=_mock_provider_client(new_summary.content),
+        summaries_repo=repo,
+    )
+    assert result.status == "regenerated"
+    after = summary_regen_total.labels(
+        scope_type="global", status="regenerated",
+    )._value.get()
+    assert after == before + 1
+
+
+@pytest.mark.asyncio
+async def test_regenerate_increments_cost_counter_on_happy_path():
+    from app.metrics import summary_regen_cost_usd_total
+    before = summary_regen_cost_usd_total.labels(scope_type="global")._value.get()
+    current = _summary_stub(content="Old bio", version=1)
+    new_summary = _summary_stub(content="Fresh new bio contents.", version=2)
+    repo = _mock_summaries_repo(current=current, upsert_returns=new_summary)
+    result = await regenerate_global_summary(
+        user_id=_USER_ID,
+        model_source="user_model",
+        model_ref="gpt-4o-mini",
+        pool=_mock_pool(recent_manual_edit=False),
+        session_factory=_make_session_factory(["p"]),
+        provider_client=_mock_provider_client(
+            new_summary.content, prompt_tokens=1000, completion_tokens=500,
+        ),
+        summaries_repo=repo,
+    )
+    assert result.status == "regenerated"
+    after = summary_regen_cost_usd_total.labels(scope_type="global")._value.get()
+    # 1500 tokens × 3e-7 = 0.00045 USD
+    assert abs((after - before) - 0.00045) < 1e-9
+
+
+@pytest.mark.asyncio
+async def test_regenerate_increments_status_counter_on_edit_lock():
+    from app.metrics import summary_regen_total
+    before = summary_regen_total.labels(
+        scope_type="global", status="user_edit_lock",
+    )._value.get()
+    await regenerate_global_summary(
+        user_id=_USER_ID,
+        model_source="user_model",
+        model_ref="gpt-4o-mini",
+        pool=_mock_pool(recent_manual_edit=True),
+        session_factory=_make_session_factory([]),
+        provider_client=_mock_provider_client("unused"),
+        summaries_repo=_mock_summaries_repo(),
+    )
+    after = summary_regen_total.labels(
+        scope_type="global", status="user_edit_lock",
+    )._value.get()
+    assert after == before + 1
 
 
 @pytest.mark.asyncio

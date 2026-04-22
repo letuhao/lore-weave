@@ -1,11 +1,11 @@
-# Session Handoff — Session 50 (K19b plan-complete + K19c plan-complete + K20α BE ships [K19c.2 unblocked])
+# Session Handoff — Session 50 (K19b + K19c + K20 clusters effectively complete)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-22 (session 50)
-> **HEAD:** `71530a1` (K20 Cycle α; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** (pending K20-β+γ commit) (K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 10 cycles shipped (8 Track 3 + 2 Track 2 close-out) · K19b+K19c plan-complete + K20α BE
+## Session 50 — 11 cycles shipped (9 Track 3 + 2 Track 2 close-out) · K19b + K19c + K20 clusters effectively complete
 
 ```
 Track 3 K19b progress (session 50)
@@ -54,7 +54,44 @@ Cycle 7  K19b.8               Extraction-job log viewer MVP                     
 
 Cycle 8  K19c Cycle α          BE preload: user-scope entities endpoint           a619b5f
 
-Cycle 10 K20 Cycle α           BE regen helpers + public edge [unblocks K19c.2]   71530a1
+Cycle 11 K20 Cycle β+γ         FE consumer + metrics + dup check [K20 complete]   (pending commit)
+         [FS XL]                BE: metrics.py +4 series (regen_total{scope_type,
+                                status}×12 pre-seeded labels + duration histogram
+                                + cost_usd + tokens). regenerate_summaries.py
+                                split into outer metrics wrapper + inner logic
+                                (every status branch bumps counter once); +step
+                                6b past-version dup check via list_versions(
+                                limit=20) + same 0.95 jaccard threshold;
+                                +_compute_llm_cost_usd helper + happy-path
+                                cost/token recording. +8 unit tests. FE: NEW
+                                useRegenerateBio hook with parseRegenerateError
+                                closed-union errorCode from body.detail
+                                .error_code + invalidates [SUMMARIES_KEY +
+                                VERSIONS_KEY]; NEW RegenerateBioDialog reusing
+                                BuildGraphDialog's ['ai-models', 'chat']
+                                queryKey for cache share + inline banner for
+                                user_edit_lock + distinct toasts for
+                                concurrent/guardrail/provider/unknown + info
+                                toast for similarity/empty-source. api.ts
+                                +RegenerateRequest/Response + regenerateGlobalBio
+                                wrapper. GlobalBioTab +Regenerate button
+                                disabled={dirty} per review-impl H1 (without
+                                guard the existing dirty-protection useEffect
+                                would silently preserve local buffer over a
+                                successful server regen). 21 new i18n keys ×
+                                4 locales + GLOBAL_KEYS extension (+84 cross-
+                                locale assertions). /review-impl caught H1
+                                (dirty-textarea race), M1 (queryKey
+                                fragmentation with BuildGraphDialog), L1
+                                (dialog test coverage gap on 3 error paths);
+                                all fixed in-cycle. BE unit 1239 (+8). FE
+                                knowledge 203 (+13 = 5 hook + 8 dialog).
+                                Drift integration 6/6 still live. K20 cluster
+                                effectively complete — only K20.3 scheduler
+                                + D-K20α-01 budget-integration half +
+                                D-K20α-02 per-scope cooldown remain deferred.
+
+Cycle 10 K20 Cycle α           BE regen helpers + public edge [unblocks K19c.2]   71530a1 + 5faaf08
          [BE L]                 NEW app/jobs/regenerate_summaries.py with 6-status
                                 RegenerationResult (regenerated / no_op_similarity
                                 / no_op_empty_source / no_op_guardrail /

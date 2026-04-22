@@ -35,20 +35,29 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any, Literal
 from uuid import UUID
 
 import asyncpg
 from pydantic import BaseModel
 
-from app.clients.provider_client import ProviderClient
+from app.clients.provider_client import ChatCompletionResponse, ProviderClient
 from app.context.formatters.token_counter import estimate_tokens
 from app.db.models import Summary
 from app.db.neo4j_helpers import CypherSession, run_read
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.summaries import SummariesRepo
 from app.extraction.injection_defense import neutralize_injection
+from app.metrics import (
+    summary_regen_cost_usd_total,
+    summary_regen_duration_seconds,
+    summary_regen_tokens_total,
+    summary_regen_total,
+)
+from app.pricing import cost_per_token
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +75,16 @@ _RECENT_PASSAGE_LIMIT = 50
 _MAX_OUTPUT_TOKENS = 500
 _SIMILARITY_NO_OP_THRESHOLD = 0.95
 _USER_EDIT_LOCK_DAYS = 30
+
+# K20.6 past-version dup check: consult the last N archived versions
+# from `knowledge_summary_versions`. A match above the similarity
+# threshold against any of them means the LLM regenerated content
+# that's already been written-and-archived, so accepting would be
+# churn without drift. 20 is deliberately small — history list panels
+# show max 50 rows and a user experimenting with different prompts
+# typically produces <10 distinct versions; beyond that the dup check
+# is effectively a no-op either way.
+_PAST_VERSION_DUP_CHECK_LIMIT = 20
 
 # System prompts kept as module-level constants so tests can introspect
 # them; KSA §7.6 explicitly forbids referring to the *current* summary
@@ -246,6 +265,23 @@ def _build_messages(
     ]
 
 
+def _compute_llm_cost_usd(
+    response: ChatCompletionResponse, model_ref: str
+) -> Decimal:
+    """Decimal USD cost from the provider's usage report × pricing.py
+    rate. Returns ``Decimal("0")`` for self-hosted / unknown models
+    (the fallback rate in ``pricing.py`` is conservative, not zero;
+    we don't want to record a "$0 cost" that's actually a small real
+    cost — better to use the fallback rate so dashboards at least
+    approximate). The prompt+completion split is preserved so the
+    two-label token counter can be incremented separately.
+    """
+    total_tokens = int(response.usage.total_tokens or 0)
+    if total_tokens <= 0:
+        return Decimal("0")
+    return Decimal(total_tokens) * cost_per_token(model_ref)
+
+
 def _guardrail_reject_reason(text: str) -> str | None:
     """Return a short rejection reason if ``text`` fails a K20.6 MVP
     guardrail, else None.
@@ -304,7 +340,49 @@ async def _regenerate_core(
     model_ref: str,
     source_types: list[str],
 ) -> RegenerationResult:
-    """Shared regen flow for both L0 and L1."""
+    """Shared regen flow for both L0 and L1.
+
+    K20.7 instrumentation: every return path increments
+    ``summary_regen_total{scope_type, status}``, and the wall-time
+    histogram ``summary_regen_duration_seconds{scope_type}`` covers
+    the whole flow regardless of status. Successful regens also
+    increment token-count and USD-cost counters using the LLM usage
+    report + ``pricing.cost_per_token``.
+    """
+    started_at = time.perf_counter()
+    result = await _regenerate_core_inner(
+        ctx,
+        user_id=user_id,
+        scope_type=scope_type,
+        scope_id=scope_id,
+        model_source=model_source,
+        model_ref=model_ref,
+        source_types=source_types,
+    )
+    summary_regen_total.labels(
+        scope_type=scope_type, status=result.status
+    ).inc()
+    summary_regen_duration_seconds.labels(scope_type=scope_type).observe(
+        time.perf_counter() - started_at
+    )
+    return result
+
+
+async def _regenerate_core_inner(
+    ctx: _RegenContext,
+    *,
+    user_id: UUID,
+    scope_type: Literal["global", "project"],
+    scope_id: UUID | None,
+    model_source: Literal["user_model", "platform_model"],
+    model_ref: str,
+    source_types: list[str],
+) -> RegenerationResult:
+    """Inner flow. Split out from `_regenerate_core` so the metrics
+    wrapper can see every return path (including mid-flow
+    short-circuits) without repeating `summary_regen_total.inc()`
+    at every `return RegenerationResult(...)` site.
+    """
 
     # 0. Ownership pre-flight (project scope only). Review-impl M1:
     #    stop cross-user project_ids before they spend BYOK tokens.
@@ -393,6 +471,35 @@ async def _regenerate_core(
                 ),
             )
 
+    # 6b. Past-version dup check (K20.6). If the LLM just regenerated
+    #     content that matches any of the last N archived versions,
+    #     writing a new row would be churn without new information.
+    #     Only fire this check when `current` exists — the history
+    #     table is always empty before the first upsert. Same 0.95
+    #     threshold as the primary similarity gate to keep the
+    #     reject-surface consistent.
+    if current is not None:
+        past_versions = await ctx.summaries_repo.list_versions(
+            user_id, scope_type, scope_id, limit=_PAST_VERSION_DUP_CHECK_LIMIT,
+        )
+        for past in past_versions:
+            if (
+                _jaccard_similarity(llm_output, past.content)
+                > _SIMILARITY_NO_OP_THRESHOLD
+            ):
+                logger.info(
+                    "K20.6 regen rejected: matches past version %d "
+                    "(scope=%s:%s)",
+                    past.version, scope_type, scope_id,
+                )
+                return RegenerationResult(
+                    status="no_op_guardrail",
+                    skipped_reason=(
+                        f"Regenerated content duplicates past version "
+                        f"{past.version}; no new history row written."
+                    ),
+                )
+
     # 7. Persist with the version guard. `edit_source='regen'`
     #    distinguishes our history rows from user manual edits so the
     #    30-day user_edit_lock fires only on *manual* edits (H1 fix).
@@ -431,6 +538,27 @@ async def _regenerate_core(
         return RegenerationResult(
             status="no_op_guardrail",
             skipped_reason="Summary write rejected: project ownership check failed.",
+        )
+
+    # 8. K20.7 / D-K20α-01 — record cost + token usage. Metrics are
+    #    only incremented on the happy path because the LLM call
+    #    was the only reason we spent money; no-op branches reject
+    #    before step 4 or skip the write after. Token usage is a
+    #    reliable counter even for models where pricing.py falls
+    #    back to the default rate.
+    usage = response.usage
+    if usage.prompt_tokens:
+        summary_regen_tokens_total.labels(
+            scope_type=scope_type, token_kind="prompt",
+        ).inc(usage.prompt_tokens)
+    if usage.completion_tokens:
+        summary_regen_tokens_total.labels(
+            scope_type=scope_type, token_kind="completion",
+        ).inc(usage.completion_tokens)
+    cost_usd = _compute_llm_cost_usd(response, model_ref)
+    if cost_usd > 0:
+        summary_regen_cost_usd_total.labels(scope_type=scope_type).inc(
+            float(cost_usd)
         )
 
     return RegenerationResult(status="regenerated", summary=new_summary)

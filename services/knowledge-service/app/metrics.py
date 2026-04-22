@@ -28,6 +28,10 @@ __all__ = [
     "anchor_resolver_hits_total",
     "anchor_resolver_misses_total",
     "anchor_refresh_runs_total",
+    "summary_regen_total",
+    "summary_regen_duration_seconds",
+    "summary_regen_cost_usd_total",
+    "summary_regen_tokens_total",
 ]
 
 registry = CollectorRegistry()
@@ -291,3 +295,80 @@ anchor_refresh_runs_total = Counter(
 # Pre-seed labels so zeros appear in /metrics before the first run.
 for _outcome in ("ok", "lock_skipped", "error"):
     anchor_refresh_runs_total.labels(outcome=_outcome)
+
+
+# ── K20α / K20.7 — summary regeneration observability ──────────────
+
+# Status label enumerates every branch of RegenerationResult so the
+# counter doubles as the K20.7 `summary_regen_no_op` and
+# `summary_user_override_respected` rollups (just filter by status in
+# Grafana). Scope label is closed at 2 (global / project).
+_REGEN_STATUSES = (
+    "regenerated",
+    "no_op_similarity",
+    "no_op_empty_source",
+    "no_op_guardrail",
+    "user_edit_lock",
+    "regen_concurrent_edit",
+)
+_REGEN_SCOPES = ("global", "project")
+
+summary_regen_total = Counter(
+    "knowledge_summary_regen_total",
+    "K20α summary regeneration calls by outcome. Sum over "
+    "status='regenerated' → actual regens; status='user_edit_lock' "
+    "→ KSA §7.6 `summary_user_override_respected`; status starts "
+    "with 'no_op_' → `summary_regen_no_op`.",
+    ["scope_type", "status"],
+    registry=registry,
+)
+for _scope in _REGEN_SCOPES:
+    for _status in _REGEN_STATUSES:
+        summary_regen_total.labels(scope_type=_scope, status=_status)
+
+# Wall-time of the whole _regenerate_core flow, labelled by scope so
+# global vs project can be tracked separately. Buckets scaled for the
+# expected shape: LLM call dominates at 0.5-10s; edit-lock /
+# empty-source short-circuits at <50ms.
+summary_regen_duration_seconds = Histogram(
+    "knowledge_summary_regen_duration_seconds",
+    "K20α end-to-end regenerate_*_summary duration",
+    ["scope_type"],
+    buckets=(0.01, 0.05, 0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0),
+    registry=registry,
+)
+for _scope in _REGEN_SCOPES:
+    summary_regen_duration_seconds.labels(scope_type=_scope)
+
+# Monotonic USD cost tally per scope. Cost is computed from the LLM
+# response's token usage × `pricing.cost_per_token(model_ref)`. Only
+# incremented for status='regenerated' — no-op / edit-lock paths cost
+# $0 by definition. Cardinality is closed at 2 series.
+#
+# D-K20α-01 (partial): this is the ops-visibility half of cost
+# tracking. The budget-integration half (route regen cost into
+# `knowledge_projects.current_month_spent_usd` so user-wide caps
+# apply) is still deferred because global-scope regens have no
+# project_id to attribute against.
+summary_regen_cost_usd_total = Counter(
+    "knowledge_summary_regen_cost_usd_total",
+    "K20α monotonic USD sum of successful regen LLM costs by scope",
+    ["scope_type"],
+    registry=registry,
+)
+for _scope in _REGEN_SCOPES:
+    summary_regen_cost_usd_total.labels(scope_type=_scope)
+
+# Token usage split by kind so dashboards can show prompt vs
+# completion separately. Useful for sizing context-window pressure.
+summary_regen_tokens_total = Counter(
+    "knowledge_summary_regen_tokens_total",
+    "K20α tokens consumed by regen LLM calls, split by scope + kind",
+    ["scope_type", "token_kind"],
+    registry=registry,
+)
+for _scope in _REGEN_SCOPES:
+    for _kind in ("prompt", "completion"):
+        summary_regen_tokens_total.labels(
+            scope_type=_scope, token_kind=_kind
+        )

@@ -218,6 +218,31 @@ export interface DeleteGraphResponse {
   extraction_status: 'disabled';
 }
 
+// ── K20α — summary regeneration ────────────────────────────────────────
+
+export interface RegenerateRequest {
+  model_source: 'user_model' | 'platform_model';
+  model_ref: string;
+}
+
+/**
+ * K20α wire type for POST /v1/knowledge/me/summary/regenerate. Only
+ * the 200-status subset shows up here; 409 (`user_edit_lock` /
+ * `regen_concurrent_edit`) and 422 (`regen_guardrail_failed`) come
+ * through as structured `detail.error_code` bodies that the hook
+ * inspects — see `useRegenerateBio`.
+ */
+export type RegenerateStatus =
+  | 'regenerated'
+  | 'no_op_similarity'
+  | 'no_op_empty_source';
+
+export interface RegenerateResponse {
+  status: RegenerateStatus;
+  summary: Summary | null;
+  skipped_reason: string | null;
+}
+
 const BASE = '/v1/knowledge';
 
 // D-K8-03: weak ETag format used by the knowledge-service routes.
@@ -635,6 +660,19 @@ export const knowledgeApi = {
       `${BASE}/projects/${projectId}/extraction/disable`,
       { method: 'POST', token },
     );
+  },
+
+  // ── K20α — summary regeneration ───────────────────────────────────────
+
+  regenerateGlobalBio(
+    body: RegenerateRequest,
+    token: string,
+  ): Promise<RegenerateResponse> {
+    return apiJson<RegenerateResponse>(`${BASE}/me/summary/regenerate`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      token,
+    });
   },
 };
 

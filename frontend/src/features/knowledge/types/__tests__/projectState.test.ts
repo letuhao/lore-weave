@@ -448,6 +448,28 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     'preferences.confirmNote',
     'preferences.deleteSuccess',
     'preferences.deleteFailed',
+    // K20α regenerate (K19c.2 FE cycle)
+    'regenerate.button',
+    'regenerate.title',
+    'regenerate.description',
+    'regenerate.modelLabel',
+    'regenerate.modelLoading',
+    'regenerate.modelPlaceholder',
+    'regenerate.noModels',
+    'regenerate.costHint',
+    'regenerate.editLockHint',
+    'regenerate.editLockDefault',
+    'regenerate.disabledDirty',
+    'regenerate.confirm',
+    'regenerate.regenerating',
+    'regenerate.cancel',
+    'regenerate.success',
+    'regenerate.noOpSimilarity',
+    'regenerate.noOpEmptySource',
+    'regenerate.concurrentEdit',
+    'regenerate.guardrailFailed',
+    'regenerate.providerError',
+    'regenerate.unknownError',
   ] as const;
 
   it.each(LOCALES)('%s has every K19c global.* key populated', (_tag, bundle) => {

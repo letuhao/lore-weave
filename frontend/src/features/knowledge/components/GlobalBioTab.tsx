@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { History, RotateCcw } from 'lucide-react';
+import { History, RotateCcw, Sparkles } from 'lucide-react';
 import { FormDialog, Skeleton } from '@/components/shared';
 import { isVersionConflict } from '../api';
 import { useSummaries } from '../hooks/useSummaries';
 import type { Summary } from '../types';
 import { VersionsPanel } from './VersionsPanel';
 import { PreferencesSection } from './PreferencesSection';
+import { RegenerateBioDialog } from './RegenerateBioDialog';
 
 // Mirrors SummaryContent = Annotated[str, StringConstraints(max_length=50000)]
 // in services/knowledge-service/app/db/models.py. Same pattern as
@@ -34,6 +35,9 @@ export function GlobalBioTab() {
   // to warrant a confirm before firing the save.
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetting, setResetting] = useState(false);
+  // K20α Regenerate dialog visibility. Owning state lives here so
+  // the button click flips it atomically with the dialog lifecycle.
+  const [showRegenerate, setShowRegenerate] = useState(false);
 
   const [content, setContent] = useState('');
   // Track the server-side content we last synced against so we can
@@ -225,6 +229,24 @@ export function GlobalBioTab() {
                 <RotateCcw className="h-3 w-3" />
                 {t('global.reset')}
               </button>
+              {/* K20α Regenerate button. Disabled when the textarea
+                  has unsaved edits (review-impl H1): a successful
+                  server-side regen would otherwise not appear in the
+                  UI because the dirty-protection in the useEffect
+                  below preserves local buffer over server refetches
+                  — producing the confusing "I clicked Regenerate and
+                  nothing happened" symptom. Empty-source is still
+                  handled BE-side via `no_op_empty_source` (200) + toast. */}
+              <button
+                onClick={() => setShowRegenerate(true)}
+                disabled={dirty}
+                title={dirty ? t('global.regenerate.disabledDirty') : undefined}
+                className="flex items-center gap-1 rounded-md border border-primary/40 px-2 py-1.5 text-[11px] text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                data-testid="global-regenerate"
+              >
+                <Sparkles className="h-3 w-3" />
+                {t('global.regenerate.button')}
+              </button>
               <button
                 onClick={() => void handleSave()}
                 disabled={!canSave}
@@ -279,6 +301,13 @@ export function GlobalBioTab() {
               </p>
             </FormDialog>
           )}
+
+          {/* K20α Regenerate dialog. Mounted at this level so state
+              + toast handlers fire independently of the Bio form. */}
+          <RegenerateBioDialog
+            open={showRegenerate}
+            onOpenChange={setShowRegenerate}
+          />
         </>
       )}
     </div>
