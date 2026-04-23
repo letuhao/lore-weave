@@ -1,11 +1,49 @@
-# Session Handoff — Session 50 (28 cycles · Track 2/3 Gap Closure C2 closes P1 tier · plan file live)
+# Session Handoff — Session 50 (29 cycles · Track 2/3 Gap Closure P2 tier opened with C3 · plan file live)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-23 (session 50, closed)
-> **HEAD:** `2812aff` (C2 scheduler trigger label + regen cooldown; C1 @ `b447a9e` + `16c56e5`; K20.3-β @ `db7cf05` + `e367377`; K20.3-α @ `474a7d8` + `e7b1d18`; K19f-ε @ `03e7774` + `56047dd`; K19f-δ @ `3a2126c` + `ca8b5f7`; K19f-γ @ `84d5eec` + `8b18a12`; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** `052fe44` (C3 job_logs retention + producer + FE tail-follow; C2 @ `2812aff` + `ca6a939`; C1 @ `b447a9e` + `16c56e5`; K20.3-β @ `db7cf05` + `e367377`; K20.3-α @ `474a7d8` + `e7b1d18`; K19f-ε @ `03e7774` + `56047dd`; K19f-δ @ `3a2126c` + `ca8b5f7`; K19f-γ @ `84d5eec` + `8b18a12`; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 28 cycles shipped (24 Track 3 + 2 Track 2 close-out + 2 Gap Closure) · Track 2/3 Gap Closure P1 tier 2/2 ✅
+## Session 50 — 29 cycles shipped (24 Track 3 + 2 Track 2 close-out + 3 Gap Closure) · P1 tier done · P2 tier opened with C3
+
+### Cycle 29 — Track 2/3 Gap Closure C3 [FS XL] — job_logs retention + pass2 stage producer + FE tail-follow
+
+Third Gap Closure cycle, opens P2 tier. Three distinct deltas kept in one cycle at user request (explicit XL over C3a/C3b split).
+
+**Block A — BE retention (D-K19b.8-01)**. NEW `app/jobs/job_logs_retention.py` close-mirror of K20.3 scheduler shape. Key differences: lock key `20_310_003` (unique across K13.1 + K20.3 keys), daily 24h cadence with 20-min startup delay (offsets K20.3's 10/15-min), `make_interval(days => $1)` parameterized DELETE, asyncpg `"DELETE N"` command-tag parse via defensive `_parse_delete_count`, release in try/finally. `main.py` wires create_task + cancel+await+suppress teardown. `migrate.py` adds `idx_job_logs_created_at` BTREE for the DELETE range predicate.
+
+**Block B — Pass 2 stage producer (D-K19b.8-02)**. `pass2_orchestrator._run_pipeline` + 2 entry points accept optional `job_logs_repo: JobLogsRepo | None = None` kwarg (default None preserves ~20 existing test callers). 4 `info`-level events via `_emit_log` best-effort helper: `pass2_entities` (count + duration_ms), `pass2_entities_gate` (zero-entity early-exit marker), `pass2_gather` (R/E/F counts + gather-duration_ms), `pass2_write` (5 counters + write duration_ms added post /review-impl L2). Repo failures swallowed with WARNING log — extraction never dies for audit-write hiccups. `internal_extraction.py` constructs `JobLogsRepo(get_knowledge_pool())` inline, try/except for unit-test back-compat where pool isn't initialised.
+
+**Block C — FE tail-follow (D-K19b.8-03)**. `useJobLogs.ts` swapped `useQuery` → `useInfiniteQuery` with cursor pagination + optional `jobStatus` opt gating 5s `refetchInterval` on `running/paused/pending`. `JobLogsPanel.tsx` gains `jobStatus` prop + listRef/nearBottomRef auto-scroll (100px threshold) + `max-h-80 overflow-y-auto` scroll container + Load-newer button disabled-during-fetching. `JobDetailPanel` passes `jobStatus={job.status}`.
+
+**`/review-impl` caught 1 MED + 7 LOW + 1 COSMETIC; 6/7 fixed in-cycle + 2 accepted as Track 3 concerns**:
+- **MED M1** `<details>` re-open left user at scrollTop=0 even when they'd been at bottom before collapse → `onToggle` handler with rAF-wrapped `scrollTo({top: scrollHeight})` + 2 regression tests (toggle-open fires / toggle-closed doesn't)
+- **LOW L2** `pass2_write` event missing `duration_ms` (gather + entities had it) → wrapped `write_pass2_extraction` call in `time.perf_counter()` + context updated
+- **LOW L3** `test_sweep_zero_row_delete_is_not_error` didn't assert unlock fires on zero-row path → assertion added
+- **LOW L4** gather + write payload shapes untested at field-name level → 2 new parallel tests lock all counter/duration field names
+- **LOW L6** browser resize left `nearBottomRef` stale → `ResizeObserver` on listRef (SSR-guarded) recomputes on container resize
+- **COSMETIC C9** "Load more" ambiguous (cursor is ASC = newer) → i18n rename `loadMore`/`loadingMore` → `loadNewer`/`loadingNewer` across 4 locales
+- **LOW L7** (accepted) cross-tenant retention not per-tenant configurable → module docstring documents Track 3 uplift
+- **LOW L8** (accepted) log list not virtualized → component docstring documents `react-window` as Track 3 polish
+
+**Build-time fixes**:
+- `sinceLogId` camelCase vs `since_log_id` snake_case — tsc caught during build; hook + test assertions updated
+- `internal_extraction.py` unit tests don't init the pool — wrapped `JobLogsRepo(get_knowledge_pool())` in try/except matching `_emit_log` repo=None contract
+- `fireEvent.toggle` doesn't exist in react-testing-library — used `fireEvent(el, new Event('toggle', {bubbles: false}))`
+
+**Closes**: D-K19b.8-01 + D-K19b.8-02 + D-K19b.8-03.
+
+**Verify**:
+- BE unit **1354/1354** (+24 from 1330 C2 end: 16 retention + 8 pass2 producer)
+- BE integration retention 3/3 live + job_logs-adjacent 5/5 (8/8 against infra-postgres-1)
+- FE knowledge vitest **330/330** (+10 from 320: 5 useJobLogs infinite-query + 5 JobLogsPanel toggle+Load-newer+auto-scroll)
+- Worker-ai 17/17 (no regressions)
+- `tsc --noEmit` clean
+
+**Plan progress**: 7/33 item-closures · 3/20 cycles · **P1 done · P2 opened with C3** (14 items / 7 cycles remain in P2).
+
+---
 
 ### Cycle 28 — Track 2/3 Gap Closure C2 [BE L] — scheduler trigger label + regen cooldown
 
@@ -160,15 +198,17 @@ Closes the K19f cluster. Applied `TOUCH_TARGET_CLASS = 'min-h-[44px]'` to the 2 
 
 **What's next — Session 51 default path:**
 
-Resume the **[Track 2/3 Gap Closure Plan](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md)**. 18 cycles remain across P2→P5 tiers. P1 tier is **complete** (C1 ✅ + C2 ✅). Next default is C3 (P2 tier opens).
+Resume the **[Track 2/3 Gap Closure Plan](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md)**. 17 cycles remain across P2→P5 tiers. P1 tier done (C1 ✅ + C2 ✅); P2 tier opened with C3 ✅. Next default is C4.
 
-Next cycle — **C3 (P2, L)**: job_logs retention + richer lifecycle + tail-follow. Three items all in the `job_logs` surface (BE retention cron + orchestrator producer + FE tail-follow) — share a review pass. Detail in [plan §4 C3](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md#c3--job_logs-retention--richer-lifecycle--tail-follow-p2-l).
+Next cycle — **C4 (P2, M)**: `useProjectState` action-callback hook tests. FE-only coverage debt: K19a.7 shipped the compile-time `ACTION_KEYS` map but the 11 real action callbacks (pause/resume/cancel/retry/extractNew/delete/rebuild/archive/restore/confirmModelChange/disable) have no direct test asserting each fires the right `knowledgeApi` method + surfaces BE errors as toast. Single new test file `frontend/src/features/knowledge/hooks/__tests__/useProjectState.test.tsx`. Detail in [plan §4 C4](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md#c4--useprojectstate-action-callback-hook-tests-p2-m).
 
-**C2 aftermath — things to keep in mind for later cycles:**
-- `trigger` label threaded through 5 files; any new caller of `regenerate_global_summary` / `regenerate_project_summary` / `/internal/summarize` should decide `"manual"` vs `"scheduled"` intentionally (default back-compat is `"manual"`)
-- `_cooldown_client` is a module-level singleton in `app/routers/public/summaries.py` — if another endpoint needs a cooldown helper, refactor into `app/utils/redis_cooldown.py` first
-- FakeRedis/BoomRedis/HalfBoomRedis stubs live inline in `test_public_summarize.py` — if C9 (entity concurrency) needs similar cooldown tests, hoist them to a shared fixture file
-- Duration/cost/tokens counters intentionally stay 2-label (no `trigger` split) — revisit only if operator need emerges
+**C3 aftermath — things to keep in mind for later cycles:**
+- `_emit_log` pattern (optional repo + best-effort try/except + UUID parse) is now established for BE→job_logs producers — any new extraction-pipeline stage that wants to surface progress to the FE JobLogsPanel should reuse the same contract
+- Advisory lock key series `20_310_00{1,2,3}` is contiguous — next retention/scheduler loop should use `20_310_004`+ to stay in the K20.x/K19b.8 numbering family
+- `useInfiniteQuery` refetchInterval refetches ALL loaded pages with their original pageParams — tail-follow is automatic because the last page's response grows as the server appends; NEW pages only appear when the last page fills (50 rows) and `hasNextPage` flips back to true
+- `<details>` + `onToggle` + rAF scrollTo is the vetted pattern for "show latest on open" UX in collapsed panels — reusable in future collapsed-viewer components
+- FakeConn + FakePool convention lives in `test_job_logs_retention.py` and `test_summary_regen_scheduler.py` — if a 4th scheduler lands, consider hoisting to a shared `tests/unit/_fake_pool.py` fixture module
+- Two /review-impl cycles in a row caught `<details>`-style defensive branches that unit tests don't exercise (C2's MED-1 cooldown-on-5xx; C3's MED-1 toggle-open scroll). Pattern: **when a component has state that persists across visibility changes (collapsed/closed panels, route changes, tab switches), the first-open/first-visible path is a coverage hole** — any future component with similar lifecycle should get an explicit toggle/open regression test
 
 Remaining cycles after C2 (grouped by tier):
 - **P2 (C3–C9)** — 14 items / 7 cycles: job_logs observability trio · useProjectState hook tests · mobile polish · chapter-title resolution · ETA formatter · drawer-search UX · entity concurrency+unlock
@@ -183,13 +223,13 @@ Remaining cycles after C2 (grouped by tier):
 - Data re-engineering ([101_DATA_RE_ENGINEERING_PLAN](../03_planning/101_DATA_RE_ENGINEERING_PLAN.md))
 
 **Starting-session boilerplate:**
-1. Read [SESSION_PATCH.md](SESSION_PATCH.md) cycle-28 entry + the plan file's §3 cycle table
+1. Read [SESSION_PATCH.md](SESSION_PATCH.md) cycle-29 entry + the plan file's §3 cycle table
 2. `./scripts/workflow-gate.sh status` to confirm previous cycle closed
-3. Start C3 with `./scripts/workflow-gate.sh size L 8 5 1` then `phase clarify` (L because of retention cron + producer sites + FE tail-follow)
-4. Infra: `docker ps --filter name=infra-` — Postgres + Redis + glossary-service must be healthy for integration tests; Neo4j only needed for Track 2 paths
-5. For Postgres integration tests: `TEST_KNOWLEDGE_DB_URL=postgres://loreweave:loreweave_dev@localhost:5556/loreweave_knowledge` (NOT `postgres:*@knowledge`)
+3. Start C4 with `./scripts/workflow-gate.sh size M 2 11 0` then `phase clarify` (M — single new test file, 11 action callbacks exercised, pure FE coverage work)
+4. Infra: `docker ps --filter name=infra-` — C4 is FE-only unit tests + no integration path; services can stay up or down
+5. For Postgres integration tests (if needed in a subsequent cycle): `TEST_KNOWLEDGE_DB_URL=postgres://loreweave:loreweave_dev@localhost:5555/loreweave_knowledge` (port 5555 on host; container maps to 5432; DB name `loreweave_knowledge` NOT `knowledge`)
 6. For Neo4j integration tests: `TEST_NEO4J_URI=bolt://localhost:7688 TEST_NEO4J_PASSWORD=loreweave_dev_neo4j`
-7. For manual-curl verify, JWT gen one-liner: `python -c "import jwt,uuid,datetime; print(jwt.encode({'sub':str(uuid.uuid4()),'exp':datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(minutes=10)},'loreweave_local_dev_jwt_secret_change_me_32chars',algorithm='HS256'))"` → `curl -H "Authorization: Bearer $TOKEN" http://localhost:8216/...` (note: if Neo4j is down, regen paths will 500 — that's a known Track 1 limitation, unrelated to C2's cooldown behaviour)
+7. For manual-curl verify, JWT gen one-liner: `python -c "import jwt,uuid,datetime; print(jwt.encode({'sub':str(uuid.uuid4()),'exp':datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(minutes=10)},'loreweave_local_dev_jwt_secret_change_me_32chars',algorithm='HS256'))"` → `curl -H "Authorization: Bearer $TOKEN" http://localhost:8216/...` (if Neo4j is down, extraction-path tests will 500/503 — known Track 1 limitation)
 
 ---
 

@@ -43,7 +43,7 @@ Statuses: `[ ]` open · `[D]` DESIGN in flight · `[B]` BUILD in flight · `[V]`
 |---|---|---|---|---|---|
 | **C1** | **merge_entities atomicity + ON-MATCH union** | D-K19d-γb-01, D-K19d-γb-02 | M | `[x]` | — |
 | **C2** | Scheduler observability + regen cooldown | D-K20.3-α-02, D-K20α-02 | ~~S~~ **L** (reclassified) | `[x]` | — |
-| **C3** | job_logs retention + richer lifecycle + tail-follow | D-K19b.8-01, D-K19b.8-02, D-K19b.8-03 | L | `[ ]` | — |
+| **C3** | job_logs retention + richer lifecycle + tail-follow | D-K19b.8-01, D-K19b.8-02, D-K19b.8-03 | ~~L~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
 | **C4** | `useProjectState` action-callback hook tests | D-K19a.5-05 + D-K19a.7-01 (collapsed) | M | `[ ]` | — |
 | **C5** | Mobile polish: EntitiesTable + PrivacyTab tap targets | D-K19d-β-01, D-K19f-ε-01 | M | `[ ]` | — |
 | **C6** | Chapter-title resolution for Job + Timeline rows | D-K19b.3-01, D-K19e-β-01 (shared book-service edge) | L | `[ ]` | book-service `/chapters/{id}/title` edge (S add) |
@@ -316,7 +316,8 @@ Once text arrives:
 
 | ID | Origin cycle | Description | Target cycle |
 |---|---|---|---|
-| _(none yet)_ | | | |
+| D-C3-L7 | C3 | job_logs retention is platform-wide (90d for all users). Per-tenant retention (paid-tier 365d etc.) requires `retention_days` column + per-user loop. | Track 3 (commercial scale) |
+| D-C3-L8 | C3 | JobLogsPanel list isn't virtualized — 10k+ rows make DOM sluggish. Swap `<ul>` for react-window or react-virtual. | Track 3 UX polish |
 
 ---
 
@@ -325,13 +326,13 @@ Once text arrives:
 | Tier | Open | Done | Blocked |
 |---|---|---|---|
 | P1 (C1–C2) | 0 | **4 items / 2 cycles (C1 ✅ + C2 ✅)** | 0 |
-| P2 (C3–C9) | 14 items / 7 cycles | 0 | 0 |
+| P2 (C3–C9) | 11 items / 6 cycles | **3 items / 1 cycle (C3 ✅)** | 0 |
 | P3 (C10–C13) | 7 items / 4 cycles | 0 | 0 |
 | P4 (C14–C15) | 3 items / 2 cycles | 0 | 0 |
 | P5 (C16–C18) | 3 items / 3 cycles | 0 | 0 DESIGN |
 | User-gated (C19–C20) | 2 items / 2 cycles | 0 | 2 ⏸ |
 
-**Total plan: 33 item-closures across 20 cycles. Completed: 4 items / 2 cycles. P1 tier done.**
+**Total plan: 33 item-closures across 20 cycles. Completed: 7 items / 3 cycles. P1 tier done · P2 tier in progress.**
 (Some cycles close > 1 item; some items appear in >1 cycle. Check the cycle table for authoritative count.)
 
 ---
