@@ -1,11 +1,46 @@
-# Session Handoff — Session 50 (27 cycles · Track 2/3 Gap Closure opened with C1 · plan file live)
+# Session Handoff — Session 50 (28 cycles · Track 2/3 Gap Closure C2 closes P1 tier · plan file live)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-23 (session 50, closed)
-> **HEAD:** `b447a9e` (C1 merge_entities atomicity + ON MATCH union; K20.3-β @ `db7cf05` + `e367377`; K20.3-α @ `474a7d8` + `e7b1d18`; K19f-ε @ `03e7774` + `56047dd`; K19f-δ @ `3a2126c` + `ca8b5f7`; K19f-γ @ `84d5eec` + `8b18a12`; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** `2812aff` (C2 scheduler trigger label + regen cooldown; C1 @ `b447a9e` + `16c56e5`; K20.3-β @ `db7cf05` + `e367377`; K20.3-α @ `474a7d8` + `e7b1d18`; K19f-ε @ `03e7774` + `56047dd`; K19f-δ @ `3a2126c` + `ca8b5f7`; K19f-γ @ `84d5eec` + `8b18a12`; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 27 cycles shipped (24 Track 3 + 2 Track 2 close-out + 1 Gap Closure) · Track 2/3 Gap Closure Plan opened
+## Session 50 — 28 cycles shipped (24 Track 3 + 2 Track 2 close-out + 2 Gap Closure) · Track 2/3 Gap Closure P1 tier 2/2 ✅
+
+### Cycle 28 — Track 2/3 Gap Closure C2 [BE L] — scheduler trigger label + regen cooldown
+
+Second cycle of the [Gap Closure Plan](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md). Closes both remaining P1-tier observability items — **D-K20.3-α-02** (scheduler metrics) + **D-K20α-02** (regen cooldown). Reclassified S → L early in CLARIFY after audit (plan's "2 files" was optimistic; actual touch is 7 files + 3 test-file extensions).
+
+**Two substantive code changes:**
+
+1. **`summary_regen_total` gains `trigger` label** (`manual` | `scheduled`). Cardinality 12 → 24 pre-seeded series. `RegenTrigger = Literal["manual","scheduled"]` added to `regenerate_summaries.py`; threaded as `trigger` kwarg through `_regenerate_core`, `regenerate_global_summary`, `regenerate_project_summary` (default `"manual"` — back-compat). Scheduler passes `trigger="scheduled"`; public endpoints pass `trigger="manual"`. `/internal/summarize`'s `SummarizeRequest` gains a `trigger: RegenTrigger = "manual"` field (post /review-impl LOW#5). Duration/cost/tokens counters stay 2-label (MVP scope, documented).
+
+2. **Redis SETNX cooldown** on both public regen endpoints. Key `knowledge:regen:cooldown:{user}:{scope_type}:{scope_id or '-'}`, 60s TTL. Per-target (scope_id in key), not per-user. Module-level lazy `aioredis` singleton with `asyncio.Lock` double-checked init + `close_cooldown_client` wired into lifespan teardown (both failure-cleanup tuple AND normal post-yield block). On 429: `Retry-After` header from `client.ttl(key)` with TTL-exception fallback to full budget + defensive floor-to-1 for the `-2`-race (key expires between SETNX=False and TTL read). Graceful degrade when `settings.redis_url` empty OR Redis raises.
+
+**`/review-impl` caught 1 MED + 5 LOW + 1 COSMETIC; all 7 fixed in the same commit:**
+- **MED#1** cooldown armed on 500-class server-side failures — live-verified via docker curl (Neo4j-not-configured 500 still armed key for 60s, punishing users for our own bugs). Fixed with `_release_regen_cooldown` helper called from `except ProviderError` AND `except Exception` in both endpoints. Business outcomes (user_edit_lock / concurrent_edit / no_op_* / regenerated) KEEP the cooldown armed — `test_regenerate_cooldown_stays_armed_on_business_outcomes` locks that primary anti-spam contract.
+- **LOW#2** FakeRedis.ttl always returned the stored EX value so the defensive floor-to-1 branch never fired in tests → FakeRedis gains `expired_keys` mode returning `-2`; `test_regenerate_cooldown_retry_after_floor_when_ttl_expired_mid_race` asserts `Retry-After == 1`.
+- **LOW#3** `client.ttl()` exception path had no test coverage (BoomRedis short-circuits at SET) → `_HalfBoomRedis` (SET/DELETE succeed, TTL raises) + `test_regenerate_cooldown_ttl_exception_falls_back_to_full_budget`.
+- **LOW#4** `test_regenerate_project_cooldown_per_project_scope` missing `mock_regen.await_count == 2` → assertion added.
+- **LOW#5** `/internal/summarize` didn't accept `trigger` → added as `SummarizeRequest.trigger` + 3 tests (default-to-manual, explicit-scheduled-forwards, Literal-validator-rejects-typo).
+- **COSMETIC#7** `_check_regen_cooldown` + `_cooldown_key` used `scope_type: str` → tightened to `Literal["global", "project"]`.
+- Accepted **LOW#6**: duration/cost/tokens still 2-label — documented in `_regenerate_core` docstring.
+
+**Live manual-curl verify** (docker rebuild `infra-knowledge-service:latest` + hot-swap; Postgres/Redis/glossary healthy; Neo4j intentionally down = Track 1 mode):
+- Call 1 to `/me/summary/regenerate` → 500 (Neo4j not configured); Redis key ABSENT (MED#1 release path fired)
+- Call 2 → 500 not 429 (no stuck cooldown)
+- Manually `redis-cli SET project:11111… EX 60` → endpoint → **429** with `Retry-After: 60` (cooldown still works for armed state)
+- Endpoint to `project:22222…` → **422** guardrail (cross-user) NOT 429 (per-scope isolation holds)
+- Post-422: both project keys armed independently (TTL 45s + 46s)
+- `/metrics` scrape shows 24 pre-seeded series + `{scope_type="project",status="no_op_guardrail",trigger="manual"} 1.0` incremented by the 422 call
+
+**Closes**: D-K20.3-α-02 (scheduler metrics) + D-K20α-02 (regen cooldown).
+
+**Verify**: knowledge-service unit 1330/1330 (was 1322 at C1 end; **+8** = 5 cooldown regressions + 3 trigger-forwarding; existing-test updates: 3 metric assertions + 2 scheduler `await_args.kwargs["trigger"]` asserts + 1 `await_count == 2` assertion).
+
+**Plan progress**: 4/33 item-closures · 2/20 cycles · **P1 tier 2/2 done** (C1 ✅ + C2 ✅); P2 tier opens with C3 next.
+
+---
 
 ### Cycle 27 — Track 2/3 Gap Closure C1 [FS M] — merge_entities atomicity + ON MATCH union
 
@@ -125,9 +160,15 @@ Closes the K19f cluster. Applied `TOUCH_TARGET_CLASS = 'min-h-[44px]'` to the 2 
 
 **What's next — Session 51 default path:**
 
-Resume the **[Track 2/3 Gap Closure Plan](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md)**. 19 cycles remain across P1→P5 tiers. The user asked to "clear all gaps/defers before moving to Track 3"; C1 landed this session, C2 is the next default.
+Resume the **[Track 2/3 Gap Closure Plan](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md)**. 18 cycles remain across P2→P5 tiers. P1 tier is **complete** (C1 ✅ + C2 ✅). Next default is C3 (P2 tier opens).
 
-Next cycle — **C2 (P1, S)**: Scheduler observability + regen cooldown. Closes D-K20.3-α-02 (scheduler Prometheus metrics — one-liner inc() inside the sweep) + D-K20α-02 (per-user-per-scope regen cooldown — Redis SETNX guard on public `/summaries/{...}/regenerate` edges, 60s TTL, 429 Retry-After when set). ~2 files, ~S size, should ship in one commit. Detail in [plan §4 C2](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md#c2--scheduler-observability--regen-cooldown-p1-s).
+Next cycle — **C3 (P2, L)**: job_logs retention + richer lifecycle + tail-follow. Three items all in the `job_logs` surface (BE retention cron + orchestrator producer + FE tail-follow) — share a review pass. Detail in [plan §4 C3](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md#c3--job_logs-retention--richer-lifecycle--tail-follow-p2-l).
+
+**C2 aftermath — things to keep in mind for later cycles:**
+- `trigger` label threaded through 5 files; any new caller of `regenerate_global_summary` / `regenerate_project_summary` / `/internal/summarize` should decide `"manual"` vs `"scheduled"` intentionally (default back-compat is `"manual"`)
+- `_cooldown_client` is a module-level singleton in `app/routers/public/summaries.py` — if another endpoint needs a cooldown helper, refactor into `app/utils/redis_cooldown.py` first
+- FakeRedis/BoomRedis/HalfBoomRedis stubs live inline in `test_public_summarize.py` — if C9 (entity concurrency) needs similar cooldown tests, hoist them to a shared fixture file
+- Duration/cost/tokens counters intentionally stay 2-label (no `trigger` split) — revisit only if operator need emerges
 
 Remaining cycles after C2 (grouped by tier):
 - **P2 (C3–C9)** — 14 items / 7 cycles: job_logs observability trio · useProjectState hook tests · mobile polish · chapter-title resolution · ETA formatter · drawer-search UX · entity concurrency+unlock
@@ -142,12 +183,13 @@ Remaining cycles after C2 (grouped by tier):
 - Data re-engineering ([101_DATA_RE_ENGINEERING_PLAN](../03_planning/101_DATA_RE_ENGINEERING_PLAN.md))
 
 **Starting-session boilerplate:**
-1. Read [SESSION_PATCH.md](SESSION_PATCH.md) cycle-27 entry + the plan file's §3 cycle table
+1. Read [SESSION_PATCH.md](SESSION_PATCH.md) cycle-28 entry + the plan file's §3 cycle table
 2. `./scripts/workflow-gate.sh status` to confirm previous cycle closed
-3. Start C2 with `./scripts/workflow-gate.sh size S 2 2 0` then `phase clarify`
-4. Infra: `docker ps --filter name=infra-` — Postgres + Neo4j must be healthy for integration tests
+3. Start C3 with `./scripts/workflow-gate.sh size L 8 5 1` then `phase clarify` (L because of retention cron + producer sites + FE tail-follow)
+4. Infra: `docker ps --filter name=infra-` — Postgres + Redis + glossary-service must be healthy for integration tests; Neo4j only needed for Track 2 paths
 5. For Postgres integration tests: `TEST_KNOWLEDGE_DB_URL=postgres://loreweave:loreweave_dev@localhost:5556/loreweave_knowledge` (NOT `postgres:*@knowledge`)
 6. For Neo4j integration tests: `TEST_NEO4J_URI=bolt://localhost:7688 TEST_NEO4J_PASSWORD=loreweave_dev_neo4j`
+7. For manual-curl verify, JWT gen one-liner: `python -c "import jwt,uuid,datetime; print(jwt.encode({'sub':str(uuid.uuid4()),'exp':datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(minutes=10)},'loreweave_local_dev_jwt_secret_change_me_32chars',algorithm='HS256'))"` → `curl -H "Authorization: Bearer $TOKEN" http://localhost:8216/...` (note: if Neo4j is down, regen paths will 500 — that's a known Track 1 limitation, unrelated to C2's cooldown behaviour)
 
 ---
 

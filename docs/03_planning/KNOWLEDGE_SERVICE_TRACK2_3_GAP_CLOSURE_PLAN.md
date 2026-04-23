@@ -42,7 +42,7 @@ Statuses: `[ ]` open · `[D]` DESIGN in flight · `[B]` BUILD in flight · `[V]`
 | # | Cycle | Items closed | Size | Status | Depends on |
 |---|---|---|---|---|---|
 | **C1** | **merge_entities atomicity + ON-MATCH union** | D-K19d-γb-01, D-K19d-γb-02 | M | `[x]` | — |
-| **C2** | Scheduler observability + regen cooldown | D-K20.3-α-02, D-K20α-02 | S | `[ ]` | — |
+| **C2** | Scheduler observability + regen cooldown | D-K20.3-α-02, D-K20α-02 | ~~S~~ **L** (reclassified) | `[x]` | — |
 | **C3** | job_logs retention + richer lifecycle + tail-follow | D-K19b.8-01, D-K19b.8-02, D-K19b.8-03 | L | `[ ]` | — |
 | **C4** | `useProjectState` action-callback hook tests | D-K19a.5-05 + D-K19a.7-01 (collapsed) | M | `[ ]` | — |
 | **C5** | Mobile polish: EntitiesTable + PrivacyTab tap targets | D-K19d-β-01, D-K19f-ε-01 | M | `[ ]` | — |
@@ -324,14 +324,14 @@ Once text arrives:
 
 | Tier | Open | Done | Blocked |
 |---|---|---|---|
-| P1 (C1–C2) | 2 items / 1 cycle (C2) | 2 items / 1 cycle (C1 ✅) | 0 |
+| P1 (C1–C2) | 0 | **4 items / 2 cycles (C1 ✅ + C2 ✅)** | 0 |
 | P2 (C3–C9) | 14 items / 7 cycles | 0 | 0 |
 | P3 (C10–C13) | 7 items / 4 cycles | 0 | 0 |
 | P4 (C14–C15) | 3 items / 2 cycles | 0 | 0 |
 | P5 (C16–C18) | 3 items / 3 cycles | 0 | 0 DESIGN |
 | User-gated (C19–C20) | 2 items / 2 cycles | 0 | 2 ⏸ |
 
-**Total plan: 33 item-closures across 20 cycles. Completed: 2 items / 1 cycle.**
+**Total plan: 33 item-closures across 20 cycles. Completed: 4 items / 2 cycles. P1 tier done.**
 (Some cycles close > 1 item; some items appear in >1 cycle. Check the cycle table for authoritative count.)
 
 ---
