@@ -41,7 +41,7 @@ See [00_VISION.md](00_VISION.md) for the dream, [01_OPEN_PROBLEMS.md](01_OPEN_PR
 - **✅ Designed:** 92 (all core storage + multiverse + PC + R1–R13 layers)
 - **🟡 Partial:** 39 (broad strokes, detail pending)
 - **📦 Deferred:** 43 (DF1–DF13; DF12 withdrawn)
-- **❓ Open:** 2 — A4 (retrieval quality), CC-6 (a11y). *(NAR-8 L1/L2 propagation closed 2026-04-23 via M4 resolution.)*
+- **❓ Open:** 1 — A4 (retrieval quality, external V1 measurement). *(NAR-8 closed via M4; CC-6 closed 2026-04-23 via new `A11Y_POLICY.md`.)*
 - **🚫 Out of scope:** 2 — SOC-6 (parties), SOC-7 (global chat)
 
 ### Storage risk resolution (R1–R13 in [02 §13](02_STORAGE_ARCHITECTURE.md))

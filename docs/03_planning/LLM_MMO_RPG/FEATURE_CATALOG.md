@@ -318,7 +318,7 @@ When adding new features:
 | CC-3 | In-reality cross-language translation (user types Vietnamese, NPC replies English then auto-translates) | 📦 | V2 | CC-2 | Reuse translation-service |
 | CC-4 | Reality browser / map view | 📦 | V2 | PO-2 | UI detail TBD |
 | CC-5 | Observability — per-reality health dashboard, event lag metrics | 🟡 | INFRA | IF-3 | Standard ops |
-| CC-6 | Accessibility (screen reader, keyboard nav) | ❓ | V1 | — | Must not be afterthought |
+| CC-6 | Accessibility — WCAG 2.2 AA compliance, ARIA live batched streaming, multi-stream semantic markup + per-stream mute, color-independent signaling, 44×44 tap targets, a11y mode toggle, axe-core CI gate + SR walkthrough | ✅ | V1 | — | [A11Y_POLICY.md](../../02_governance/A11Y_POLICY.md), CC-6-D1..D7 |
 | CC-7 | Author dashboard (cross-reality view of their book's play) | 📦 | V3 | WA-6 | DF3 |
 | CC-8 | Macros / variables in prompts (`{{pc}}`, `{{scene}}`, `{{entity.alice}}`) | 🟡 | V1 | PL-4 | SillyTavern pattern |
 | CC-9 | User preferences / settings (per-device + per-account) | 🟡 | V1 | PO-1 | Reuse existing pattern |
