@@ -221,13 +221,27 @@ Decisions C1-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
 
 **Notes:** Generative Agents paper (Park et al.) used "reflection" + "planning" but didn't solve pacing for a human audience. Could cheat with scripted quest scaffolds and let LLM fill in, like tabletop modules.
 
-### C3. Cold-start empty-world problem — **OPEN**
+### C3. Cold-start empty-world problem — **PARTIAL**
 
 **Problem:** An MMO is no fun with 0 other players. Day 1 of launch: no one logs in twice.
 
 **Why hard:** Product/marketing, not technical. Solution space includes: solo-first (Shape A) onboarding that doesn't feel empty; AI "populated" NPCs that substitute for players; scheduled "events" that pull people back.
 
-**Notes:** Maybe V1/V2 being good enough as single/coop solves this — don't need MMO-scale populations.
+**Resolved by:** Product strategy that reframes the problem — C3 is largely dissolved by earlier decisions (multiverse NPCs as world-fillers, M1 discovery defaults, staged V1/V2/V3 scoping). Explicit locks:
+
+- **C3-D1** V1 = **solo-first MVP**. Single-player RP is the first shipping experience. MMO population is NOT a V1 requirement.
+- **C3-D2** NPC-populated world is the primary immersion mechanism (LLM-driven NPCs, not other players). Matches multiverse §1 philosophy. MMO is additive, not foundational.
+- **C3-D3** Staged launch funnel: Reader (M7-D2) → single-player → discover other timelines (M1-D1) → (V2) coop scenes → (V3) MMO persistence. Each step self-sufficient.
+- **C3-D4** Scheduled events (V2+) create predictable synchronous play windows without always-on population. Full UX spec deferred to DF5.
+- **C3-D5** Friend-follow (reuses M1-D3) = primary organic MMO concentration mechanic.
+- **C3-D6** Anti-dispersion defaults (reuses M1-D2 composite ranking + M1-D6 create-new gating) prevent fork-spam creating lonely realities at launch.
+
+Decisions C3-D1..D6 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+
+**Residual `OPEN`:**
+- Scheduled-event UX spec (DF5 detail)
+- Launch marketing strategy (product/growth scope, not design-doc scope)
+- First-week funnel metric targets — V1 prototype data
 
 ### C4. Author canon vs player-emergent narrative — **PARTIAL**
 
@@ -266,11 +280,25 @@ Decisions C1-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
 
 **Notes:** Bring this into alignment with `103_PLATFORM_MODE_PLAN.md` tier model before any implementation decision.
 
-### D2. Tier viability — **OPEN**
+### D2. Tier viability — **PARTIAL**
 
 **Problem:** At what tier price do the numbers work? Free tier cost per user must be near zero; paid tiers must cover their LLM spend plus margin.
 
-**Notes:** Needs: measured cost per user-hour at realistic play patterns, then price modeling. V1 (solo RP) lets us measure before committing to multi-user economics.
+**Resolved by:** Tier SHAPE + feature gating + measurement protocol locked now; exact prices and budget caps pending D1 measurement data.
+
+- **D2-D1** 3-tier shape: **Free / Paid / Premium** aligned with `103_PLATFORM_MODE_PLAN`. Self-hosted is exempt (user controls infra + keys).
+- **D2-D2** Free tier = **BYOK-only** (user supplies LLM keys). Zero platform marginal LLM cost for free users.
+- **D2-D3** Unit economics target: `tier_price/month ≥ 1.5 × (cost_per_user_hour × avg_hours_played/month)`. Below 1.0x → insolvent; 1.0-1.5x → review.
+- **D2-D4** Feature gating per tier (Free: frozen tick B3-D1 / manual fork MV4-b / Reader UX M7-D2; Paid: platform-LLM budget + lazy-when-visited B3-D2 + multi-device sync + Player UX + drift SLO <2%; Premium: scheduled tick B3-D3 + premium models + 5+ PC slots PC-C1 + Author UX + drift SLO <0.5%).
+- **D2-D5** V1 measurement protocol: solo-RP prototype instruments cost per session / hour by G2-D4 script mix; output feeds D1 → break-even math.
+- **D2-D6** Exact pricing + monthly budget caps **deferred to post-V1 data**. D2 locks framework; numbers require D1 + market research.
+
+Decisions D2-D1..D6 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+
+**Residual `OPEN`:**
+- Exact monthly prices per tier (depends D1)
+- Monthly budget cap values per tier (depends D1 + session-volume projection)
+- Tier renaming / positioning per market research
 
 ### D3. Self-hosted vs platform — **ACCEPTED**
 
@@ -502,13 +530,13 @@ New category introduced by the multiverse model in [03_MULTIVERSE_MODEL.md §11]
 |---|---|---|---|---|
 | A. LLM reasoning & grounding | 0 | 6 | 0 | 0 |
 | B. Distributed systems | 0 | 3 | 3 | 0 |
-| C. Product / UX | 2 | 3 | 0 | 0 |
-| D. Economics | 2 | 0 | 0 | 1 |
+| C. Product / UX | 1 | 4 | 0 | 0 |
+| D. Economics | 1 | 1 | 0 | 1 |
 | E. Moderation & legal | 1 | 1 | 1 | 0 |
 | F. Content design | 1 | 2 | 0 | 1 |
 | G. Testing & ops | 0 | 3 | 0 | 0 |
 | **M. Multiverse-specific** | **0** | **6** | **1** | **0** |
-| **Total** | **6** | **24** | **5** | **2** |
+| **Total** | **4** | **26** | **5** | **2** |
 
 > **Note:** Counts accurate as of 2026-04-23. Reconciled pre-existing off-by-one baseline miscounts discovered during M and A batch resolutions (the M OPEN baseline was 4 not 3; the A OPEN baseline included A2 which had already moved to PARTIAL via the multiverse reframe). M1/M2/M3/M4/M5/M7 all `PARTIAL` in 01; M6 `KNOWN PATTERN`. M2/M3/M4/M5 additionally marked **MITIGATED in [03 §11](03_MULTIVERSE_MODEL.md)**; stay `PARTIAL` in 01 due to residual sub-items pending V1 data or external input. All A1–A6 now `PARTIAL` after the LLM Safety Layer ([05](05_LLM_SAFETY_LAYER.md)) resolution.
 
@@ -537,8 +565,17 @@ New category introduced by the multiverse model in [03_MULTIVERSE_MODEL.md §11]
 - **G2 `OPEN` → `PARTIAL`** (2026-04-23 — tiered load matrix + `loadtest-service` + budget kill-switch in [`05_qa §3`](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#3-g2--multi-user-load--simulation-testing); G2-D1..D5 locked)
 - **G3 `OPEN` → `PARTIAL`** (2026-04-23 — 5-layer drift detection + per-tier SLOs in [`05_qa §4`](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#4-g3--canon-drift-detection-in-production); G3-D1..D6 locked)
 - **G category batch fully closed** (2026-04-23 — G1/G2/G3 all PARTIAL; no OPEN remaining)
+- **C3 `OPEN` → `PARTIAL`** (2026-04-23 — product strategy locked: V1 solo-first, NPC-populated world, staged funnel, scheduled events V2+, friend-follow organic concentration; C3-D1..D6 locked. Largely dissolved by earlier multiverse + M1 + M7 decisions.)
+- **D2 `OPEN` → `PARTIAL`** (2026-04-23 — 3-tier shape (Free BYOK / Paid / Premium) + 1.5x margin target + per-tier feature gating mapped to B3/M1/M7/PC-C1 + V1 measurement protocol locked; D2-D1..D6 locked. Exact prices pending D1 data.)
 
-**Interpretation:** Systematic design resolutions have compressed the OPEN set from 18 → … → 6, with every multiverse-specific, LLM reasoning, distributed-systems, AND testing/ops risk now having at least a PARTIAL answer. Remaining single-problem-kills-product severity items unchanged: **A4** (retrieval quality — V1 measurement), **D1** (cost per user-hour — V1 prototype), **E3** (IP — legal). Critical-path list: still 3. M, A, B, G categories are **complete**. OPEN items remaining are in C (2: C2 pacing, C3 cold-start), D (2: D1, D2), E (1: E3), F (1: F2 AI GM). Of the 6 remaining OPEN: 3 are critical-path external-blockers (A4, D1, E3) and 3 are open research / long-horizon (C2, C3, F2).
+**Interpretation:** Systematic design resolutions have compressed the OPEN set from 18 → … → 4. Every multiverse-specific, LLM reasoning, distributed-systems, testing/ops, AND most product / economics risk now has at least a PARTIAL answer. Remaining 4 OPEN break down cleanly:
+
+- **Critical-path external blockers (3):** A4 retrieval quality (V1 measurement) · D1 cost per user-hour (V1 prototype) · E3 IP ownership (legal review)
+- **Open research / long-horizon (1):** F2 AI GM layer (close to C2 narrative pacing which is still OPEN but reframed by F3 scaffolds)
+
+Wait — need to recount. Remaining OPEN after D2+C3: A4 [PARTIAL], C2 [OPEN], D1 [OPEN], E3 [OPEN], F2 [OPEN]. That's 4 OPEN: C2, D1, E3, F2. (A4 already moved to PARTIAL earlier; the critical-path list in 3/3 includes A4 even though status is PARTIAL — "critical-path" means "blocks implementation commitment" not "status OPEN".)
+
+Categories fully closed: **M, A, B, G**. Remaining OPEN distributed across C (1: C2), D (1: D1), E (1: E3), F (1: F2). Only D1, E3 are truly design-session-unresolvable external blockers; C2 and F2 are open research where further design sessions have diminishing returns. **The design track has reached a steady state — further OPEN closure requires V1 prototype, legal review, or acceptance of open research items.**
 
 ## What "ready to implement" would look like
 

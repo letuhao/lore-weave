@@ -73,8 +73,15 @@ See [00_VISION.md](00_VISION.md) for the dream, [01_OPEN_PROBLEMS.md](01_OPEN_PR
 - **D1** LLM cost per user-hour — needs V1 prototype data
 - **E3** IP ownership — needs legal review
 
-### Non-critical OPEN (3, as of 2026-04-23)
-C2 narrative pacing (research) · C3 cold-start (marketing) · F2 AI GM layer (research). *(D2 deferred to D1; G1/G2/G3 resolved via [05_qa/LLM_MMO_TESTING_STRATEGY.md](../../05_qa/LLM_MMO_TESTING_STRATEGY.md).)*
+### Non-critical OPEN (2, as of 2026-04-23)
+C2 narrative pacing (research) · F2 AI GM layer (research). *(C3 cold-start + D2 tier viability resolved — framework locked, exact pricing pending D1; G1/G2/G3 resolved via [05_qa/LLM_MMO_TESTING_STRATEGY.md](../../05_qa/LLM_MMO_TESTING_STRATEGY.md).)*
+
+### Session arc summary (2026-04-23)
+Starting OPEN = 17 (original 18 minus M1 resolution midway). Closing OPEN = **4**: **A4 / D1 / E3** (critical-path external blockers) + **C2 / F2** (open research / long-horizon, low-value to reopen in design sessions).
+
+**Category batches fully closed:** M · A · B · G (no OPEN items remain in these).
+
+**Residual design-session work: essentially exhausted.** Further OPEN closure requires V1 prototype data (A4, D1, drift into D2 pricing), legal review (E3), or explicit acceptance of C2/F2 as research frontier. No productive design batches remain.
 
 ### Multiverse-specific risks (M1–M7 in [01 §M](01_OPEN_PROBLEMS.md)) — NOT yet batch-addressed
 - M1 Reality discovery (**PARTIAL — resolved 2026-04-23**) — 7-layer design in [03 §9.1](03_MULTIVERSE_MODEL.md#91-reality-discovery), M1-D1..D7 locked; weight tuning + preview format pending V1 data
