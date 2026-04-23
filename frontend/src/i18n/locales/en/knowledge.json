@@ -13,6 +13,19 @@
       "privacy": "Privacy"
     }
   },
+  "mobile": {
+    "sections": {
+      "global": "Global bio",
+      "projects": "Projects",
+      "jobs": "Extraction jobs"
+    },
+    "desktopOnly": {
+      "title": "More on desktop",
+      "body": "Entities browsing, the narrative Timeline, and Raw drawer search all need a wider screen. Open Lore Weave on a laptop or tablet to use them."
+    },
+    "privacyLink": "Privacy & data controls",
+    "backToKnowledge": "Back to Knowledge"
+  },
   "drawers": {
     "loading": "Searching drawers…",
     "loadFailed": "Search failed: {{error}}",

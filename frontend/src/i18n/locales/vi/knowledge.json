@@ -13,6 +13,19 @@
       "privacy": "Quyền riêng tư"
     }
   },
+  "mobile": {
+    "sections": {
+      "global": "Tiểu sử tổng quát",
+      "projects": "Dự án",
+      "jobs": "Công việc trích xuất"
+    },
+    "desktopOnly": {
+      "title": "Thêm tính năng trên máy tính",
+      "body": "Duyệt thực thể, Dòng thời gian tường thuật và Tìm kiếm ngăn kéo thô cần màn hình rộng hơn. Mở Lore Weave trên laptop hoặc máy tính bảng để sử dụng."
+    },
+    "privacyLink": "Quyền riêng tư & kiểm soát dữ liệu",
+    "backToKnowledge": "Quay lại Tri thức"
+  },
   "drawers": {
     "loading": "Đang tìm kiếm ngăn kéo…",
     "loadFailed": "Tìm kiếm thất bại: {{error}}",

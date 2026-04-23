@@ -13,6 +13,19 @@
       "privacy": "プライバシー"
     }
   },
+  "mobile": {
+    "sections": {
+      "global": "グローバルプロフィール",
+      "projects": "プロジェクト",
+      "jobs": "抽出ジョブ"
+    },
+    "desktopOnly": {
+      "title": "デスクトップでさらに多くの機能",
+      "body": "エンティティ閲覧、物語タイムライン、生ドロワー検索はすべて広い画面が必要です。ノートパソコンやタブレットでLore Weaveを開いてご利用ください。"
+    },
+    "privacyLink": "プライバシーとデータ管理",
+    "backToKnowledge": "ナレッジに戻る"
+  },
   "drawers": {
     "loading": "ドロワーを検索中…",
     "loadFailed": "検索に失敗しました: {{error}}",

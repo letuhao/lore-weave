@@ -677,4 +677,27 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
       expect((bundle as any).placeholder).toBeUndefined();
     },
   );
+
+  // K19f Cycle α — Mobile shell keys. Lives under top-level `mobile.*`.
+  const MOBILE_KEYS = [
+    'sections.global',
+    'sections.projects',
+    'sections.jobs',
+    'desktopOnly.title',
+    'desktopOnly.body',
+    'privacyLink',
+    'backToKnowledge',
+  ] as const;
+
+  it.each(LOCALES)(
+    '%s has every K19f mobile.* key populated',
+    (_tag, bundle) => {
+      const root = (bundle as any).mobile ?? {};
+      for (const path of MOBILE_KEYS) {
+        const value = resolveKey(root, path);
+        expect(typeof value, `locale missing mobile.${path}`).toBe('string');
+        expect((value as string).length).toBeGreaterThan(0);
+      }
+    },
+  );
 });

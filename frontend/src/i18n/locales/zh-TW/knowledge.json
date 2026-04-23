@@ -13,6 +13,19 @@
       "privacy": "隱私"
     }
   },
+  "mobile": {
+    "sections": {
+      "global": "全域簡介",
+      "projects": "專案",
+      "jobs": "擷取工作"
+    },
+    "desktopOnly": {
+      "title": "更多桌面版功能",
+      "body": "實體瀏覽、敘事時間軸及原始抽屜搜尋都需要更寬的螢幕。請在筆電或平板上開啟 Lore Weave 使用這些功能。"
+    },
+    "privacyLink": "隱私與資料控制",
+    "backToKnowledge": "返回知識"
+  },
   "drawers": {
     "loading": "正在搜尋抽屜…",
     "loadFailed": "搜尋失敗: {{error}}",

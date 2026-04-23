@@ -1,11 +1,37 @@
-# Session Handoff — Session 50 (K19b + K19c + K20 + K19d + K19e all 100% plan-complete · ALL 7 knowledge tabs LIVE)
+# Session Handoff — Session 50 (K19b/K19c/K20/K19d/K19e complete · K19f α shipped · mobile shell LIVE)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-23 (session 50)
-> **HEAD:** `8289bf1` (K19e Cycle γ-b; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** `<pending-K19f-α>` (K19f Cycle α; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 19 cycles shipped (17 Track 3 + 2 Track 2 close-out) · K19b/K19c/K20/K19d/K19e ALL complete · ALL 7 knowledge tabs live
+## Session 50 — 20 cycles shipped (18 Track 3 + 2 Track 2 close-out) · K19b/K19c/K20/K19d/K19e complete · K19f α shipped
+
+### Cycle 20 — K19f Cycle α [FE L] — Mobile shell (K19f.1 MVP)
+
+Opens the K19f Mobile UI cluster. NEW `useIsMobile` hook via `window.matchMedia('(max-width: 767px)')` with synchronous first-render read (no FOUC) + live `change` listener + SSR-safe guards + listener cleanup. NEW `MobileKnowledgePage` single-column shell: 3 stacked sections (Global bio / Projects / Extraction jobs) **reusing existing desktop tab components inline** + "use desktop for Entities/Timeline/Raw" banner + Privacy footer link. NEW `MobilePrivacyShell` renders just PrivacyTab body + back link — avoids the 7-tab desktop nav overflowing on <768px. KnowledgePage guard: `if (isMobile) { if (privacy) <MobilePrivacyShell /> else <MobileKnowledgePage /> }`.
+
+`/review-impl` (user-invoked) caught **2 MED + 1 COSMETIC; both MEDs fixed in-cycle**:
+- **M1** mobile + /knowledge/privacy fell through to desktop render shipping the 7-item tab nav → added `MobilePrivacyShell` component + dedicated mobile-privacy branch + `mobile.backToKnowledge` i18n × 4 + regression test asserting `queryByRole('tablist') === null`
+- **M2** KnowledgePage had zero test coverage for the new mobile guard → created `pages/__tests__/KnowledgePage.test.tsx` with 4 branch tests (desktop / mobile-non-privacy / mobile-privacy / desktop-privacy) mocking `useIsMobile`
+- **C3** mid-effect `setIsMobile(mql.matches)` is defensive-only no-op in production → accepted as documented
+
+Scope-trim deferrals (from CLARIFY):
+- **K19f.2/.3/.4** separate `ProjectsMobile/JobsMobile/GlobalMobile` simplified variants — MVP reuses existing tabs inline; build variants when the cramp becomes a real UX problem
+- **K19f.5** tap-target audit (44px minimum) — do during Cycle β when mobile variants land
+- **D-K19d-β-01 + D-K19e-β-02** mobile-responsive EntitiesTable + Timeline grids — those tabs are **hidden** on mobile via the desktop-only banner, so fixing their grids waits for mobile variants for those tabs
+
+**What Cycle β (next) inherits:**
+- `useIsMobile` hook + `MobileKnowledgePage` / `MobilePrivacyShell` components exist and are stable
+- Embedded desktop tabs render inside sections — if ProjectRow / JobRow feel cramped at 375px, swap those for simpler mobile card variants
+- Dialog `max-w-md` (448px) overflows on 375px phones — Radix pads the viewport but content may be squished; candidate for dialog-level responsive tweaks
+- No automated tap-target coverage — K19f.5 audit is manual or via Playwright
+
+**Test deltas at K19f α end:**
+- FE knowledge vitest: **286 pass** (was 271 at K19e γ-b end; **+15** = 3 hook + 4 mobile-page [incl MobilePrivacyShell M1 regression] + 4 KnowledgePage + 4 iterator assertions)
+- `tsc --noEmit` clean
+
+---
 
 ### Cycle 19 — K19e Cycle γ-b [FE XL] — RawDrawersTab consuming γ-a endpoint
 

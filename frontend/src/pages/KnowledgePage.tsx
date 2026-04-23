@@ -9,6 +9,11 @@ import { ExtractionJobsTab } from '@/features/knowledge/components/ExtractionJob
 import { EntitiesTab } from '@/features/knowledge/components/EntitiesTab';
 import { TimelineTab } from '@/features/knowledge/components/TimelineTab';
 import { RawDrawersTab } from '@/features/knowledge/components/RawDrawersTab';
+import {
+  MobileKnowledgePage,
+  MobilePrivacyShell,
+} from '@/features/knowledge/components/MobileKnowledgePage';
+import { useIsMobile } from '@/features/knowledge/hooks/useIsMobile';
 
 type Tab = 'projects' | 'jobs' | 'global' | 'entities' | 'timeline' | 'raw' | 'privacy';
 
@@ -28,12 +33,25 @@ const TAB_DEFS: { id: Tab; icon: React.ComponentType<{ className?: string }> }[]
 export function KnowledgePage() {
   const { t } = useTranslation('knowledge');
   const { tab } = useParams<{ tab: string }>();
+  const isMobile = useIsMobile();
 
   if (!tab || !TAB_DEFS.some((td) => td.id === tab)) {
     return <Navigate to="/knowledge/projects" replace />;
   }
 
   const activeTab = tab as Tab;
+
+  // K19f.1 — at <768px we swap the 7-tab shell for a single-column
+  // scroll of the three primary sections (Global / Projects / Jobs).
+  // Privacy gets a dedicated mobile shell with a back link — fixed in
+  // post-/review-impl M1 because falling through to the desktop render
+  // on mobile+privacy left the 7-tab nav overflowing the viewport.
+  if (isMobile) {
+    if (activeTab === 'privacy') {
+      return <MobilePrivacyShell />;
+    }
+    return <MobileKnowledgePage />;
+  }
 
   return (
     <div className="mx-auto max-w-[1000px] px-6 py-6">
