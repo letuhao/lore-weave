@@ -20,21 +20,7 @@ When the user answers one, I:
 
 ## Pending decisions
 
-### From multiverse model (03) — remaining
-
-| # | Decision | Default applied | Status |
-|---|---|---|---|
-| MV5-pri | **Primitives that cannot be deferred** (even though travel feature is deferred) — schema items that must exist now to avoid painful retrofit | See §"MV5 primitives" | Applied (P1, P4, P5 added to schema); user can flag any missed primitive |
-
-All other multiverse decisions are **LOCKED**. See locked decisions table below.
-
-### Beyond multiverse — vision-level decisions (from 00_VISION.md discussion)
-
-| # | Decision | Default applied | Status |
-|---|---|---|---|
-| V1 | **Product shape priority** — A (solo RP), A+B (solo + co-author), or direct path to D (MMO)? | Staged: V1 solo RP → V2 coop scene → V3 persistent multiverse | Default — pending confirm |
-| V2 | **Service split** — `world-service` (Go) + `roleplay-service` (Python) as two separate services, or combined? | Two services as designed | Default — pending confirm |
-| V3 | **Business model** — self-hosted BYOK only, platform-hosted only, or both? | Both — but MMO only viable in platform mode | Default — pending confirm |
+*(All multiverse-model decisions + vision-level decisions + MV5 primitives are **LOCKED** as of 2026-04-23. See Locked decisions table below for V-1, V-2, V-3, MV5-pri entries.)*
 
 ---
 
@@ -321,6 +307,10 @@ As user confirms items, they move here with the answer and any rationale.
 | C2→accept | C2 accept as research frontier | 2026-04-23 | **C2 moves `OPEN` → `ACCEPTED`**. AI-driven narrative pacing is open research — no productive design can happen without prototype data. V1 pragmatic workaround: F3 quest scaffolds provide structural pacing at scene level; small-talk drift is tolerated. Revisit V2+ on prototype data or public research progress. | [01 §C2](01_OPEN_PROBLEMS.md#c2-narrative-pacing--accepted-research-frontier) |
 | F2→accept | F2 accept as research frontier | 2026-04-23 | **F2 moves `OPEN` → `ACCEPTED`**. Dedicated AI GM agent (tension tracker + complication injector) is open research — Generative Agents is partial, no validated human-paced narrative planner exists. V1-V2 ships without a GM agent; F3 scaffolds + NPCs + A6 canon-scoped retrieval cover the structural need. Revisit V3+ or on research delivery. Closely linked to C2. | [01 §F2](01_OPEN_PROBLEMS.md#f2-ai-gm-layer--accepted-research-frontier) |
 | session→closure | 2026-04-23 session close | 2026-04-23 | **Design track reaches steady state.** OPEN 18 → 2 (D1 external V1 data, E3 external legal). ACCEPTED 2 → 4 (+ C2, F2 research frontier). 4 categories fully closed: M · A · B · G. 83 design decisions locked across 9 commits + 3 new top-level docs (`UI_COPY_STYLEGUIDE.md`, `05_LLM_SAFETY_LAYER.md`, `LLM_MMO_TESTING_STRATEGY.md`). Further OPEN closure requires V1 prototype, legal counsel, or upstream research. See [SESSION_HANDOFF.md](SESSION_HANDOFF.md) §closure. | [SESSION_HANDOFF.md](SESSION_HANDOFF.md) |
+| V-1 | Product shape priority | 2026-04-23 | **Staged: V1 solo RP → V2 coop scene → V3 persistent multiverse**. De-risks economics before committing to multi-user concurrency. Matches staged V1/V2/V3 scope tiers referenced throughout the design. | [00_VISION.md](00_VISION.md) |
+| V-2 | Service split timing | 2026-04-23 | **Two services from V1** — `world-service` (Go) + `roleplay-service` (Python) split from the start. Do NOT build combined then refactor later. Rationale: service boundaries are also language boundaries (Go vs Python) and concurrency-model boundaries (R7-L1 single-writer for world vs LLM orchestration for roleplay); splitting post-hoc would churn both the event schema and the R7 write-path contracts. | [00_VISION.md](00_VISION.md), [CLAUDE.md service list](../../../CLAUDE.md) |
+| V-3 | Business model | 2026-04-23 | **Both**: self-hosted BYOK + platform-hosted. Self-hosted is the default shipping mode; platform-hosted unlocks MMO-scale (shared server required). Self-hosted MMO is a contradiction per D3 (already ACCEPTED). | [01 §D3](01_OPEN_PROBLEMS.md), [`103_PLATFORM_MODE_PLAN.md`](../103_PLATFORM_MODE_PLAN.md) |
+| MV5-pri | MV5 primitives (schema must exist now to avoid retrofit) | 2026-04-23 | **Confirmed in schema**: P1 `locale` on reality_registry · P2 UUID globally unique (already planned) · P3 `player_character_index(user_id, pc_id, reality_id)` in meta registry · P4 event metadata reserves `travel_origin_reality_id` + `travel_origin_event_id` (nullable, unused V1) · P5 items carry `origin_reality_id` nullable · P6/P7/P8 already planned. Unused in V1 but cannot be added later without cross-reality migration pain. | [03 §8.3](03_MULTIVERSE_MODEL.md), [OPEN_DECISIONS §"MV5 primitives"](#mv5-primitives--what-must-be-locked-now-to-avoid-painful-retrofit) |
 
 ---
 
