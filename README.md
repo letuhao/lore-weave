@@ -118,6 +118,15 @@ Track token usage, costs, and performance across all AI operations. Per-model an
 - Genre groups for entity categorization
 - Soft delete with full restore
 
+### Knowledge Graph & Wiki (Phase 2 — In Progress)
+- Two-layer model: glossary (authored SSOT) + knowledge-service (fuzzy/semantic layer) anchored via `glossary_entity_id`
+- Automated entity extraction from chapters into a structured knowledge graph
+- **Postgres SSOT + Neo4j** derived graph via outbox → publisher → projections pipeline
+- Scheduled multi-tier entity summary regeneration (L0 global / L1 project / L2 chapter)
+- Relation merge with conflict resolution (MAX confidence, UNION evidence, earliest `valid_from`)
+- Wiki articles + revisions + suggestions hosted inside glossary-service (not a separate service)
+- Pattern validated by Microsoft GraphRAG (arXiv:2404.16130) and HippoRAG (arXiv:2405.14831)
+
 ### Community
 - Public book catalog with search, genre, and language filters
 - Sharing — public, unlisted (link-only), private visibility
@@ -136,7 +145,7 @@ Track token usage, costs, and performance across all AI operations. Per-model an
 
 ## Architecture
 
-Self-hosted Docker Compose monorepo. 14 containers. Contract-first API design. Event-driven.
+Self-hosted Docker Compose monorepo. **17 application services + 7 infra containers + frontend.** Contract-first API design. Event-driven with the outbox pattern.
 
 ```
                     ┌─────────────────────────┐
@@ -148,17 +157,18 @@ Self-hosted Docker Compose monorepo. 14 containers. Contract-first API design. E
                     │   NestJS Gateway / BFF   │
                     └────────────┬────────────┘
                                  │
-        ┌────────────────────────┼──────────────────────────┐
-        │                        │                          │
-  ┌─────▼───────┐       ┌───────▼────────┐       ┌─────────▼─────────┐
-  │ Go Domain   │       │  Python AI/LLM │       │   Worker Infra    │
-  │ Services    │       │   Services     │       │  (outbox, jobs,   │
-  │ (7 svcs)    │       │  (3 svcs)      │       │   import, Pandoc) │
-  └─────┬───────┘       └───────┬────────┘       └─────────┬─────────┘
-        │                        │                          │
-  ┌─────▼────────────────────────▼──────────────────────────▼─────────┐
-  │  PostgreSQL  │  Redis  │  RabbitMQ  │  MinIO  │  LanguageTool     │
-  └───────────────────────────────────────────────────────────────────┘
+        ┌────────────────────────┼────────────────────────────┐
+        │                        │                            │
+  ┌─────▼──────┐        ┌────────▼──────────┐        ┌────────▼────────┐
+  │ Go Domain  │        │ Python AI / LLM   │        │ Async Workers   │
+  │ Services   │        │ Services          │        │ (Go + Python)   │
+  │ (9 svcs)   │        │ (4 svcs, incl.    │        │ outbox · jobs · │
+  │            │        │  knowledge-svc)   │        │ AI extraction   │
+  └─────┬──────┘        └────────┬──────────┘        └────────┬────────┘
+        │                        │                            │
+  ┌─────▼────────────────────────▼────────────────────────────▼────────┐
+  │ Postgres 18 │ Neo4j │ Redis │ RabbitMQ │ MinIO │ LanguageTool │ …  │
+  └────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Services
@@ -167,18 +177,21 @@ Self-hosted Docker Compose monorepo. 14 containers. Contract-first API design. E
 |---------|----------|---------|
 | **api-gateway-bff** | TypeScript / NestJS | Single entry point for all external traffic |
 | **auth-service** | Go / Chi | Identity, JWT, sessions, profiles, follows |
-| **book-service** | Go / Chi | Books, chapters, chunks, lifecycle management |
+| **book-service** | Go / Chi | Books, chapters, chunks, lifecycle |
 | **sharing-service** | Go / Chi | Visibility policies, share links |
 | **catalog-service** | Go / Chi | Public book discovery, filtering, search |
-| **provider-registry** | Go / Chi | BYOK credential storage, provider health, model registry |
-| **usage-billing** | Go / Chi | Token metering, quota enforcement, cost estimation |
-| **glossary-service** | Go / Chi | Glossary entities, dynamic attributes, evidence linking |
+| **provider-registry-service** | Go / Chi | BYOK credential storage, provider health, model registry |
+| **usage-billing-service** | Go / Chi | Token metering, quota enforcement, cost estimation |
+| **glossary-service** | Go / Chi | Glossary entities, dynamic attributes, evidence linking, wiki articles/revisions |
 | **statistics-service** | Go / Chi | Analytics, usage metrics, dashboard data |
 | **notification-service** | Go / Chi | Notifications, email delivery |
-| **translation-service** | Python / FastAPI | Batch translation pipeline with async workers |
+| **translation-service** | Python / FastAPI | Translation API + job orchestration |
+| **translation-worker** | Python | Async RabbitMQ batch translation worker |
 | **chat-service** | Python / FastAPI | Streaming AI chat, thinking mode, multi-provider SSE |
-| **video-gen-service** | Python / FastAPI | Text-to-video generation |
+| **knowledge-service** | Python / FastAPI | Knowledge graph (Postgres SSOT + Neo4j derived), entity extraction, summaries |
+| **video-gen-service** | Python / FastAPI | Text-to-video generation (skeleton) |
 | **worker-infra** | Go | Outbox relay, cleanup, import processing, Pandoc conversion |
+| **worker-ai** | Python | AI-driven async tasks (entity extraction, summary regen, embedding jobs) |
 
 ### Tech Stack
 
@@ -194,9 +207,10 @@ Self-hosted Docker Compose monorepo. 14 containers. Contract-first API design. E
 | **Gateway** | NestJS | Request routing, auth forwarding |
 | **Domain Services** | Go + Chi | High-throughput, low-latency domain logic |
 | **AI Services** | Python + FastAPI | LLM streaming, async translation workers |
-| **Database** | PostgreSQL 18 | Per-service schemas, JSONB flexible storage |
-| **Cache** | Redis 7 | Sessions, caching, rate limiting |
-| **Message Queue** | RabbitMQ 3.13 | Translation job distribution, async tasks |
+| **Database** | PostgreSQL 18 + pgvector | Per-service schemas, JSONB storage, vector embeddings (HNSW) |
+| **Knowledge Graph** | Neo4j | Derived graph for entity relations, memory, narrative queries |
+| **Cache / Streams** | Redis 7 | Sessions, caching, rate limiting, event streams (outbox fan-out) |
+| **Message Queue** | RabbitMQ 3.13 | Translation + heavy AI job distribution |
 | **Object Storage** | MinIO | S3-compatible — media, exports, uploads |
 | **Grammar** | LanguageTool | Spell check, grammar analysis |
 | **Doc Conversion** | Pandoc Server | HTML, Markdown, DOCX format conversion |
@@ -221,35 +235,78 @@ This is what makes LoreWeave different. Your worldbuilding feeds your AI:
   You write a chapter
         │
         ▼
-  ┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
-  │  Glossary    │────▶│  Evidence     │────▶│  Entity Graph    │
-  │  Extraction  │     │  Linking      │     │  (Knowledge DB)  │
-  └─────────────┘     └──────────────┘     └────────┬────────┘
+  ┌──────────────┐    ┌──────────────┐    ┌─────────────────────┐
+  │  Glossary    │───▶│  Evidence     │───▶│  Knowledge Graph     │
+  │  Extraction  │    │  Linking      │    │  (Postgres + Neo4j)  │
+  └──────────────┘    └──────────────┘    └─────────┬───────────┘
                                                      │
         ┌────────────────────────────────────────────┘
         ▼
-  ┌──────────────┐     ┌──────────────┐     ┌─────────────────┐
-  │  Vector Index │────▶│  RAG Context  │────▶│  AI Chat /       │
-  │  (HNSW)      │     │  Assembly     │     │  Continuation    │
-  └──────────────┘     └──────────────┘     └─────────────────┘
+  ┌──────────────┐    ┌──────────────┐    ┌─────────────────────┐
+  │  pgvector    │───▶│  RAG Context  │───▶│  AI Chat · Continu-  │
+  │  HNSW index  │    │  Assembly     │    │  ation · NPC Mind*   │
+  └──────────────┘    └──────────────┘    └─────────────────────┘
+                                                       *Phase 6+
 ```
 
 Every character trait, location detail, and plot event you define becomes context the AI can draw on. The more you worldbuild, the more canon-aware your AI collaborator becomes — catching contradictions, maintaining voice consistency, and suggesting plot developments grounded in *your* story's logic.
 
+**Today** the pipeline grounds chat answers, translation terminology, and canon-safe continuations. **Tomorrow** the same pipeline becomes the LLM's memory when your NPCs speak, the narrator's canon when a scene runs, and the continuity layer of a Living World.
+
 ---
 
-## Living Worlds — Design Track (Phase 6+)
+## 🎮 Living Worlds — The Future of LoreWeave
 
-The game extension has a full design dossier in [`docs/03_planning/LLM_MMO_RPG/`](docs/03_planning/LLM_MMO_RPG/):
+> *You wrote a novel where the hero betrayed the merchant guild in chapter 12. Two months later a reader joins as a new character — she finds the guild still fractured, still whispering about the traitor, still wary of outsiders. The NPCs **remember**.*
 
-- **Vision** — four shapes of role-play, why Shape D (shared persistent world) is the dream
-- **Multiverse model** — peer realities, 4-layer canon (Book / Reality / Session / PC), snapshot fork
-- **Storage architecture** — event sourcing + DB-per-reality, all 13 identified storage risks resolved
-- **PC design** — identity layering (User / PC / Session), lifecycle, creation, social mechanics
-- **179 features cataloged** across V1 (solo RP) → V2 (coop scene) → V3 (full MMO)
-- **Services planned** — `world-service`, `roleplay-service`, `publisher`, `meta-worker`, `event-handler`, `migration-orchestrator`, `admin-cli`
+**Living Worlds** is the moment your knowledge graph stops being a reference and starts being a world. The characters, locations, and rules that lived as glossary entries become LLM-driven inhabitants of a **shared persistent reality**. A narrator grounded in your canon runs the scene. Other players can step in.
 
-Implementation is gated on V1 novel-platform maturity and prototype-level cost/retrieval-quality data — not a calendar milestone. The novel platform ships first; the game builds on the same substrate (glossary, knowledge graph, book canon) without re-engineering.
+This is not a chatbot with a roleplay prompt. It is a text-based **LLM MMO RPG** built on the same substrate you used to write the book — designed from the ground up with the hard problems taken seriously.
+
+### The Experience
+
+- 🌌 **Every book is a reality.** One universe per book (or per canonical continuity), fork-able into alternative timelines for what-ifs and solo runs.
+- 🧠 **NPCs driven by LLMs, grounded in your lore.** They remember the scenes you wrote, the scenes players just played, and each other.
+- 📜 **The narrator respects canon.** World rules live in a per-reality rule engine; the narrator cannot overturn your book's physics without your say-so.
+- 🧙 **You are a player character, not just the author.** Create a PC, join a session, roleplay inside the lore you built — alone, with friends, or in a shared persistent world with strangers.
+- 🤝 **Readers become players.** Invite anyone who loved your book to step into it.
+
+### The Architecture
+
+| Layer | What it does |
+|---|---|
+| **Multiverse model** | Peer realities (no privileged root), snapshot fork, 4-layer canon: *Book → Reality → Session → PC* |
+| **Storage** | Full event sourcing, DB-per-reality, NPC memory split into core + per-pair aggregates for bounded cost |
+| **Player Characters** | Identity layering (*User / PC / Session*), lifecycle, social mechanics, PC → NPC conversion |
+| **Services (planned)** | `world-service` · `roleplay-service` · `publisher` · `meta-worker` · `event-handler` · `migration-orchestrator` · `admin-cli` |
+
+### Scope Tiers — Staged De-Risking
+
+| Version | Scope | Why this order |
+|---|---|---|
+| **V1** — Solo RP | One player, one reality, core loop | Prove retrieval quality + cost-per-user-hour without concurrency hazards |
+| **V2** — Coop Scene | Multiple PCs in the same session, shared NPCs | Prove turn arbitration + shared NPC memory |
+| **V3** — Full MMO | Shared persistent worlds, realities that live between sessions | Only attempted after V1/V2 data validates the economics |
+
+### The Design Dossier
+
+Not a sketch — a locked design track. The complete work lives in [`docs/03_planning/LLM_MMO_RPG/`](docs/03_planning/LLM_MMO_RPG/):
+
+- **179 features** cataloged across 12 categories — 92 Designed, 39 Partial, 43 Deferred, 3 Open (all gated on prototype data)
+- **13 storage risks** identified and resolved across §12A–§12L (event volume, projection rebuild, schema evolution, fleet ops, cross-instance isolation, publisher failure, NPC memory scaling, safe reality closure, and more)
+- **~150 individual decisions** locked in [`OPEN_DECISIONS.md`](docs/03_planning/LLM_MMO_RPG/OPEN_DECISIONS.md) with reasoning preserved
+- **12 deferred big features** (DF1–DF13) tracked in a registry — each promotes to its own implementation doc when work begins
+- **2 governance policies** (`CROSS_INSTANCE_DATA_ACCESS_POLICY`, `ADMIN_ACTION_POLICY`) already codified
+
+### Gated on Quality, Not Calendar
+
+Implementation is gated on **V1 novel-platform maturity** + prototype-level data on:
+
+1. **LLM cost per user-hour** — can a session be economically viable?
+2. **Retrieval quality on real books** — do the NPCs actually stay in character?
+3. **IP / canon ownership rules** — what belongs to the author vs. the platform vs. the players?
+
+No calendar milestone. When the data is there, the design is ready. **The novel platform ships first; the game builds on the same substrate — glossary, knowledge graph, book canon — without re-engineering.**
 
 ---
 
@@ -302,11 +359,11 @@ LoreWeave is model-agnostic. Connect any provider:
 | **Phase 5** | Hardening & Scale — Performance, multi-tenancy, cloud deployment | Planned |
 | **Phase 6+** | **Living Worlds (extension)** — LLM-driven NPCs, shared persistent realities, player characters, multiverse model ([design track](docs/03_planning/LLM_MMO_RPG/)) | Design track |
 
-**Planned services:** RAG Index (vector search), Story Wiki (auto-generated wikis), QA Extraction (grounded Q&A), Continuation (canon-aware drafting), Orchestrator (LangGraph multi-agent workflows).
+**In-flight services (Phase 2):** `knowledge-service` (live) — entity extraction, Postgres+Neo4j knowledge graph, scheduled L0/L1/L2 summary regen; wiki hosted inside `glossary-service` (articles/revisions/suggestions).
 
-**Planned infrastructure:** Neo4j for native vector search + knowledge graph, PostgreSQL 18 advanced features (JSON_TABLE, virtual columns, UUIDv7).
+**Planned services (Phase 3–5):** QA Extraction (grounded Q&A), Continuation (canon-aware drafting), Orchestrator (LangGraph multi-agent workflows).
 
-**Extension services (Phase 6+):** world-service, roleplay-service, publisher, meta-worker, event-handler, migration-orchestrator, admin-cli — see [LLM_MMO_RPG/](docs/03_planning/LLM_MMO_RPG/) for architecture.
+**Extension services (Phase 6+):** `world-service`, `roleplay-service`, `publisher`, `meta-worker`, `event-handler`, `migration-orchestrator`, `admin-cli` — see [LLM_MMO_RPG/](docs/03_planning/LLM_MMO_RPG/) for architecture.
 
 ---
 
