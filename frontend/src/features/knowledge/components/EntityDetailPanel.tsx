@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useEntityDetail } from '../hooks/useEntityDetail';
 import type { EntityRelation } from '../api';
+import { TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS } from '../lib/touchTarget';
 import { EntityEditDialog } from './EntityEditDialog';
 import { EntityMergeDialog } from './EntityMergeDialog';
 
@@ -101,7 +102,11 @@ export function EntityDetailPanel({
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
         <Dialog.Content
-          className="fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col overflow-y-auto border-l bg-background shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right"
+          // C5 (D-K19d-β-01) — drop the 448px cap on mobile so the
+          // slide-over fills the viewport on a 375px phone instead
+          // of cramping metadata + relation list into < half the
+          // screen width.
+          className="fixed right-0 top-0 z-50 flex h-full w-full flex-col overflow-y-auto border-l bg-background shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right md:max-w-md"
           data-testid="entity-detail-panel"
         >
           <div className="flex items-start justify-between border-b px-5 py-4">
@@ -141,8 +146,17 @@ export function EntityDetailPanel({
               </button>
               <Dialog.Close asChild>
                 <button
-                  className="rounded-sm p-1 text-muted-foreground transition-colors hover:text-foreground"
+                  // C5 /review-impl HIGH — mobile full-width panel
+                  // blocks the overlay-dismiss path, so this X
+                  // button is the sole dismiss on touch. Needs the
+                  // square tap target (44×44) on mobile; desktop
+                  // keeps the compact 24px hit area.
+                  className={cn(
+                    'inline-flex items-center justify-center rounded-sm p-1 text-muted-foreground transition-colors hover:text-foreground',
+                    TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS,
+                  )}
                   aria-label={t('entities.detail.close')}
+                  data-testid="entity-detail-close"
                 >
                   <X className="h-4 w-4" />
                 </button>

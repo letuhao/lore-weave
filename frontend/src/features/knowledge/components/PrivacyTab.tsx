@@ -5,7 +5,9 @@ import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { FormDialog } from '@/components/shared';
 import { useAuth } from '@/auth';
+import { cn } from '@/lib/utils';
 import { knowledgeApi } from '../api';
+import { TOUCH_TARGET_MOBILE_ONLY_CLASS } from '../lib/touchTarget';
 
 // GDPR tab — two irreversible actions against /v1/knowledge/user-data.
 // Export streams a file attachment (handled in knowledgeApi via raw
@@ -105,7 +107,10 @@ export function PrivacyTab() {
         <button
           onClick={() => void handleExport()}
           disabled={exporting || !accessToken}
-          className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary disabled:opacity-50"
+          className={cn(
+            'flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary disabled:opacity-50',
+            TOUCH_TARGET_MOBILE_ONLY_CLASS,
+          )}
         >
           <Download className="h-3.5 w-3.5" />
           {exporting ? t('privacy.export.preparing') : t('privacy.export.button')}
@@ -122,7 +127,10 @@ export function PrivacyTab() {
         <button
           onClick={openDelete}
           disabled={!accessToken}
-          className="flex items-center gap-1.5 rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+          className={cn(
+            'flex items-center gap-1.5 rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50',
+            TOUCH_TARGET_MOBILE_ONLY_CLASS,
+          )}
         >
           <Trash2 className="h-3.5 w-3.5" />
           {t('privacy.delete.button')}
@@ -138,14 +146,20 @@ export function PrivacyTab() {
           <>
             <button
               onClick={() => closeDelete(false)}
-              className="rounded-md border px-3 py-1.5 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground"
+              className={cn(
+                'rounded-md border px-3 py-1.5 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground',
+                TOUCH_TARGET_MOBILE_ONLY_CLASS,
+              )}
             >
               {t('privacy.dialog.cancel')}
             </button>
             <button
               onClick={() => void handleDelete()}
               disabled={deleting || deleteToken !== DELETE_CONFIRM_TOKEN}
-              className="rounded-md bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+              className={cn(
+                'rounded-md bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50',
+                TOUCH_TARGET_MOBILE_ONLY_CLASS,
+              )}
             >
               {deleting ? t('privacy.delete.deleting') : t('privacy.delete.button')}
             </button>
