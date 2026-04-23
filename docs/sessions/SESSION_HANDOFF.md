@@ -1,11 +1,51 @@
-# Session Handoff — Session 50 (29 cycles · Track 2/3 Gap Closure P2 tier opened with C3 · plan file live)
+# Session Handoff — Session 50 (30 cycles · Track 2/3 Gap Closure P2 tier 2/7 done · plan file live)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-23 (session 50, closed)
-> **HEAD:** `052fe44` (C3 job_logs retention + producer + FE tail-follow; C2 @ `2812aff` + `ca6a939`; C1 @ `b447a9e` + `16c56e5`; K20.3-β @ `db7cf05` + `e367377`; K20.3-α @ `474a7d8` + `e7b1d18`; K19f-ε @ `03e7774` + `56047dd`; K19f-δ @ `3a2126c` + `ca8b5f7`; K19f-γ @ `84d5eec` + `8b18a12`; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** `898869d` (C4 useProjectState action-callback hook tests; C3 @ `052fe44` + `82ab287`; C2 @ `2812aff` + `ca6a939`; C1 @ `b447a9e` + `16c56e5`; K20.3-β @ `db7cf05` + `e367377`; K20.3-α @ `474a7d8` + `e7b1d18`; K19f-ε @ `03e7774` + `56047dd`; K19f-δ @ `3a2126c` + `ca8b5f7`; K19f-γ @ `84d5eec` + `8b18a12`; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 29 cycles shipped (24 Track 3 + 2 Track 2 close-out + 3 Gap Closure) · P1 tier done · P2 tier opened with C3
+## Session 50 — 30 cycles shipped (24 Track 3 + 2 Track 2 close-out + 4 Gap Closure) · P1 done · P2 2/7 done
+
+### Cycle 30 — Track 2/3 Gap Closure C4 [FE M] — useProjectState action-callback hook tests
+
+Fourth Gap Closure cycle. Pure FE coverage debt closure: 1 new test file locks the runtime action-callback contract that K19a.7's compile-time `ACTION_KEYS` map couldn't reach.
+
+**What the tests lock.** The hook exposes 14 callbacks: 8 BE-firing (`onPause` / `onResume` / `onCancel` / `onDeleteGraph` / `onRetry` / `onExtractNew` / `onRebuild` / `onConfirmModelChange`) + 6 no-op placeholders (K19a.5/K19a.6 dialog-owned). Before C4, a regression swapping `pauseExtraction` for `cancelExtraction` in `onPause` would have shipped undetected. After C4:
+
+- Every BE-firing action asserts the correct `knowledgeApi` method + `(project_id, token)` arg shape
+- `runAction` error path is locked: `toast.error` is called with `{label, error}` opts AND `invalidateQueries` does NOT fire (critical — else FE re-polls on bad state)
+- `replayPayload`'s 4-branch `||` guard is fully covered: jobId / llm_model / embedding_model / scope null each trigger `noPriorJob` toast + no API call
+- `onRebuild`/`onConfirmModelChange` guard's 2×2 matrix (action × missing-field) is fully covered
+- `onExtractNew` forces `scope='chapters'` even when prior job was `chat`
+- `accessToken=null` short-circuits all 8 actions
+- 6 no-op placeholders are callable without throwing + leak to no API
+
+**Plan divergence at CLARIFY.** Plan listed "11 actions" including `archive` / `restore` / `disable`. Audit showed archive/restore live at ProjectsTab/ProjectRow level (not the hook) and `disable` is one of the 6 no-op placeholders. Actual surface: 8 real + 6 placeholders = 14 callbacks.
+
+**`/review-impl` caught 4 LOW + 2 COSMETIC; all 6 addressed in-cycle:**
+- **L1** `beforeEach` per-mock reset → `Object.values(apiMocks)` loop (future API additions auto-reset)
+- **L2** rebuild-guard 2×2 matrix was 2 of 4 cells → 4 tests fill the matrix
+- **L3** `replayPayload`'s 4-branch null guard was 1 of 4 → 3 new tests for llm_model / embedding_model / scope null
+- **L4** toast-opt-drop uncatchable with global raw-key i18n mock → **local** `react-i18next` mock encodes opts as `"<key>|<json>"`; error-path now asserts both outer template key AND `{label, error}` opts passed through
+- **C5** batch no-token test doesn't isolate which action leaks → docstring explains density/isolation tradeoff
+- **C6** error-path length-equality delta → explicit `calls.slice(before)` negative-slice
+
+5 existing toast assertions tightened from `expect.stringContaining('<key>')` to `toHaveBeenCalledWith('<exact-key>')` since non-opt'd calls return bare key strings.
+
+**Build-time fix:** unused `GraphStatsResponse` type import caught by tsc during VERIFY.
+
+**Closes:** D-K19a.5-05 (action-callback runtime contract) + D-K19a.7-01 (partial super of D-K19a.5-05).
+
+**Verify:**
+- 20/20 `useProjectState.actions.test.tsx` (15 initial + 5 post-/review-impl)
+- 350/350 full FE knowledge vitest (+20 from 330 C3 baseline, zero regressions)
+- `tsc --noEmit` clean
+- No BE changes
+
+**Plan progress:** 9/33 item-closures · 4/20 cycles · **P1 done · P2 2/7 done** (C3 ✅ + C4 ✅). Remaining P2 cycles: C5 (mobile EntitiesTable + PrivacyTab tap audit) · C6 (chapter-title resolution) · C7 (ETA formatter) · C8 (drawer-search UX) · C9 (entity concurrency+unlock).
+
+---
 
 ### Cycle 29 — Track 2/3 Gap Closure C3 [FS XL] — job_logs retention + pass2 stage producer + FE tail-follow
 
@@ -198,9 +238,15 @@ Closes the K19f cluster. Applied `TOUCH_TARGET_CLASS = 'min-h-[44px]'` to the 2 
 
 **What's next — Session 51 default path:**
 
-Resume the **[Track 2/3 Gap Closure Plan](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md)**. 17 cycles remain across P2→P5 tiers. P1 tier done (C1 ✅ + C2 ✅); P2 tier opened with C3 ✅. Next default is C4.
+Resume the **[Track 2/3 Gap Closure Plan](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md)**. 16 cycles remain across P2→P5 tiers. P1 tier done (C1 ✅ + C2 ✅); P2 tier: C3 ✅ + C4 ✅ (2/7 done). Next default is C5.
 
-Next cycle — **C4 (P2, M)**: `useProjectState` action-callback hook tests. FE-only coverage debt: K19a.7 shipped the compile-time `ACTION_KEYS` map but the 11 real action callbacks (pause/resume/cancel/retry/extractNew/delete/rebuild/archive/restore/confirmModelChange/disable) have no direct test asserting each fires the right `knowledgeApi` method + surfaces BE errors as toast. Single new test file `frontend/src/features/knowledge/hooks/__tests__/useProjectState.test.tsx`. Detail in [plan §4 C4](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md#c4--useprojectstate-action-callback-hook-tests-p2-m).
+Next cycle — **C5 (P2, M)**: Mobile polish for EntitiesTable + PrivacyTab tap targets. FE-only: K19d-β shipped desktop-first EntitiesTable; K19f shipped mobile shells for other tabs but PrivacyTab audit gap left 4 buttons at 26-30px. Both touch the same mobile responsive strategy — pair in one cycle. Files: `components/entities/EntitiesTable.tsx` (responsive grid split), `components/entities/EntityDetailPanel.tsx` (drop `max-w-md` on mobile), `components/PrivacyTab.tsx` (conditional `TOUCH_TARGET_CLASS` via `useIsMobile()`). Closes D-K19d-β-01 + D-K19f-ε-01. Detail in [plan §4 C5](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md#c5--mobile-polish-entitiestable--privacytab-p2-m).
+
+**C4 aftermath — things to keep in mind for later cycles:**
+- **`vi.hoisted()` is the canonical hoist-beater** for mock vars in vitest — memory `feedback_vitest_hoisted_mock_vars.md` confirmed. First-attempt BUILD always hits the ReferenceError; always reach for `vi.hoisted()` from the start
+- **Global `react-i18next` mock returns raw keys** — this MUTES toast-opt-drop regressions. For tests that need to verify `{label, error}` opts are passed through, write a **local** `react-i18next` mock override that encodes opts as `"<key>|<json>"`. Pattern now established in `useProjectState.actions.test.tsx`
+- **Plan "N action" counts are often vibes** — C4's plan said "11 actions" but audit showed 8 BE-firing + 6 placeholders (archive/restore/disable not in the hook). Always audit the actual callback surface before committing to a test count
+- **`Object.values(apiMocks)` loop** for `beforeEach` mock reset — future API additions auto-reset. Generalize this pattern for all future hook-test files with multiple API mocks
 
 **C3 aftermath — things to keep in mind for later cycles:**
 - `_emit_log` pattern (optional repo + best-effort try/except + UUID parse) is now established for BE→job_logs producers — any new extraction-pipeline stage that wants to surface progress to the FE JobLogsPanel should reuse the same contract
@@ -223,9 +269,9 @@ Remaining cycles after C2 (grouped by tier):
 - Data re-engineering ([101_DATA_RE_ENGINEERING_PLAN](../03_planning/101_DATA_RE_ENGINEERING_PLAN.md))
 
 **Starting-session boilerplate:**
-1. Read [SESSION_PATCH.md](SESSION_PATCH.md) cycle-29 entry + the plan file's §3 cycle table
+1. Read [SESSION_PATCH.md](SESSION_PATCH.md) cycle-30 entry + the plan file's §3 cycle table
 2. `./scripts/workflow-gate.sh status` to confirm previous cycle closed
-3. Start C4 with `./scripts/workflow-gate.sh size M 2 11 0` then `phase clarify` (M — single new test file, 11 action callbacks exercised, pure FE coverage work)
+3. Start C5 with `./scripts/workflow-gate.sh size M 3 5 0` then `phase clarify` (M — 3 FE components touched: EntitiesTable + EntityDetailPanel + PrivacyTab; pure responsive+tap-target work)
 4. Infra: `docker ps --filter name=infra-` — C4 is FE-only unit tests + no integration path; services can stay up or down
 5. For Postgres integration tests (if needed in a subsequent cycle): `TEST_KNOWLEDGE_DB_URL=postgres://loreweave:loreweave_dev@localhost:5555/loreweave_knowledge` (port 5555 on host; container maps to 5432; DB name `loreweave_knowledge` NOT `knowledge`)
 6. For Neo4j integration tests: `TEST_NEO4J_URI=bolt://localhost:7688 TEST_NEO4J_PASSWORD=loreweave_dev_neo4j`
