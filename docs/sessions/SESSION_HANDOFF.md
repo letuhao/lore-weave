@@ -1,11 +1,39 @@
-# Session Handoff — Session 50 (K19 series + K20.3 α shipped · scheduled auto-regen live)
+# Session Handoff — Session 50 (K19 series + K20.3 ALL 100% plan-complete · scheduled auto-regen live)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-23 (session 50)
-> **HEAD:** `474a7d8` (K20.3 Cycle α; K19f-ε @ `03e7774` + `56047dd`; K19f-δ @ `3a2126c` + `ca8b5f7`; K19f-γ @ `84d5eec` + `8b18a12`; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** `<pending-K20.3-β>` (K20.3 Cycle β; K20.3-α @ `474a7d8` + `e7b1d18`; K19f-ε @ `03e7774` + `56047dd`; K19f-δ @ `3a2126c` + `ca8b5f7`; K19f-γ @ `84d5eec` + `8b18a12`; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 25 cycles shipped (23 Track 3 + 2 Track 2 close-out) · K19 series complete · K20.3 α shipped
+## Session 50 — 26 cycles shipped (24 Track 3 + 2 Track 2 close-out) · K19 + K20.3 ALL 100% plan-complete
+
+### Cycle 26 — K20.3 Cycle β [BE L] — Scheduled global L0 regen loop
+
+Closes K20.3 by shipping the global-scope sweep that Cycle α deferred. Close-mirror of α with 3 substantive differences:
+
+1. **UNION eligibility**: users with either an existing global summary OR any non-archived project — catches "keep my bio fresh" AND "will create on first successful regen once I have enough content". Locked by integration test against live Postgres.
+2. **User-wide model resolution**: `SELECT llm_model FROM extraction_jobs WHERE user_id=$1 AND status='complete' ORDER BY completed_at DESC LIMIT 1` — picks the most-recent model used anywhere. Users who've never extracted get `no_model` skip.
+3. **Distinct advisory lock** `_GLOBAL_REGEN_LOCK_KEY = 20_310_002` so project + global loops can run concurrently on different scopes.
+
+Cadence: **weekly** (7d = 604800s) with 15-min startup delay (offset from project loop's 10-min).
+
+`/review-impl` caught **2 LOW + 1 COSMETIC; all 3 addressed in-cycle**:
+- **L1** UNION eligibility SQL untested at integration layer → NEW `test_summary_regen_scheduler_sql.py` with 2 tests hitting live Postgres: 5-user scenario matrix (summary-only / project-only / summary+archived / archived-only / dual-source) locks UNION dedup AND `is_archived=false` filter. Separate ordering test locks crash-resume determinism.
+- **L2** no audit log showing which model was resolved per sweep → INFO log `K20.3: regen project|global user=... model=...` on both sweeps. Operators can now grep logs to trace "why did this user's regen fail?" back to the BYOK model choice (especially useful after provider model deprecations).
+- **C3** FakeConn arg-count routing was fragile → SQL-text matching (`"project_id = $2" in sql`) ties the fake to the exact production code paths.
+
+**Build-time catch**: initial integration test skipped with Postgres auth failure — container uses `loreweave:loreweave_dev@loreweave_knowledge` not `postgres:*@knowledge`. Corrected `TEST_KNOWLEDGE_DB_URL`.
+
+**Cleared**: D-K20.3-α-01 (scheduled global L0 regen loop).
+
+**Still deferred**: D-K20.3-α-02 (Prometheus metrics beyond logged outcome counters).
+
+**Test deltas at K20.3 β end:**
+- BE unit: **32/32 scheduler tests pass** (was 18; +14 global-sweep coverage)
+- BE integration: **2/2 new SQL tests** against live `infra-postgres-1`
+- BE regen-adjacent: **76/76** (no regressions)
+
+---
 
 ### Cycle 25 — K20.3 Cycle α [BE L] — Scheduled project summary regen
 

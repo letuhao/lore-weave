@@ -51,24 +51,44 @@ import asyncpg
 
 from app.clients.provider_client import ProviderClient
 from app.db.repositories.summaries import SummariesRepo
-from app.jobs.regenerate_summaries import regenerate_project_summary
+from app.jobs.regenerate_summaries import (
+    regenerate_global_summary,
+    regenerate_project_summary,
+)
 
 __all__ = [
     "SweepResult",
     "sweep_projects_once",
+    "sweep_global_once",
     "run_project_regen_loop",
+    "run_global_regen_loop",
     "DEFAULT_INTERVAL_S",
     "DEFAULT_STARTUP_DELAY_S",
+    "DEFAULT_GLOBAL_INTERVAL_S",
+    "DEFAULT_GLOBAL_STARTUP_DELAY_S",
 ]
 
 logger = logging.getLogger(__name__)
 
-# Distinct from K13.1 anchor-refresh's `_REFRESH_LOCK_KEY` so the two
-# schedulers don't block each other.
+# Distinct keys so the project loop and the global loop can run
+# concurrently without blocking each other. Gap from K13.1
+# anchor-refresh's `_REFRESH_LOCK_KEY` so none of the three
+# schedulers conflict.
 _PROJECT_REGEN_LOCK_KEY = 20_310_001
+_GLOBAL_REGEN_LOCK_KEY = 20_310_002
 
-DEFAULT_INTERVAL_S = 24 * 60 * 60  # daily
-DEFAULT_STARTUP_DELAY_S = 600  # 10 min — warm-up buffer past K13.1's 5
+DEFAULT_INTERVAL_S = 24 * 60 * 60  # project loop: daily
+DEFAULT_STARTUP_DELAY_S = 600  # project loop: 10 min warm-up
+
+# Global L0 regen runs weekly per plan — user identity doesn't drift
+# fast enough for daily refresh, and the prompt is prone to pulling
+# conversation artifacts into the bio, so fewer regens reduces drift.
+DEFAULT_GLOBAL_INTERVAL_S = 7 * 24 * 60 * 60  # 7 days
+# Offset from the project loop's 10 min so the two loops don't
+# kick off simultaneously during the 24h window where they overlap
+# (week 1 day 1). Shares the pg_advisory_lock semantics anyway — the
+# stagger just reduces provider-registry burst load at startup.
+DEFAULT_GLOBAL_STARTUP_DELAY_S = 900  # 15 min
 
 
 _LIST_PROJECTS_SQL = """
@@ -173,6 +193,15 @@ async def sweep_projects_once(
                     )
                     result.no_model += 1
                     continue
+                # Review-impl L2: audit which model was resolved so
+                # operators grepping logs can trace "why did this
+                # user's regen fail?" back to the BYOK model choice
+                # — especially useful when a provider deprecates a
+                # model and the scheduler keeps picking it up.
+                logger.info(
+                    "K20.3: regen project user=%s project=%s model=%s",
+                    user_id, project_id, llm_model,
+                )
                 try:
                     regen = await regenerate_project_summary(
                         user_id=UUID(user_id),
@@ -284,3 +313,195 @@ async def run_project_regen_loop(
 # Type hint re-export for callers that want to spell out the full
 # lifespan-task signature.
 LoopCallable = Callable[..., Awaitable[None]]
+
+
+# ═══════════════════════════════════════════════════════════════
+# K20.3 Cycle β — global L0 summary regen
+# ═══════════════════════════════════════════════════════════════
+
+
+# Eligibility = UNION of users with an existing global summary
+# (keep it fresh) + users with any non-archived project (can create
+# a global bio once they accumulate chat turns). Dedup via UNION;
+# ordering keeps the sweep deterministic so a crash-and-restart
+# doesn't re-process from a random point.
+_LIST_GLOBAL_ELIGIBLE_USERS_SQL = """
+SELECT user_id::text AS user_id FROM (
+  SELECT user_id FROM knowledge_summaries
+  WHERE scope_type = 'global' AND scope_id IS NULL
+  UNION
+  SELECT user_id FROM knowledge_projects
+  WHERE is_archived = false
+) t
+ORDER BY user_id
+"""
+
+# Model resolution for global scope: the user has no single project
+# to borrow from, so we take the most-recent completed extraction
+# job across ALL their projects. "Something they've used recently"
+# is a safer default than picking randomly. Users who've never run
+# extraction anywhere get counted as ``no_model`` and skipped.
+_LATEST_USER_LLM_MODEL_SQL = """
+SELECT llm_model
+FROM extraction_jobs
+WHERE user_id = $1 AND status = 'complete'
+ORDER BY completed_at DESC NULLS LAST, created_at DESC
+LIMIT 1
+"""
+
+
+async def sweep_global_once(
+    pool: asyncpg.Pool,
+    session_factory: SessionFactory,
+    provider_client: ProviderClient,
+    summaries_repo: SummariesRepo,
+) -> SweepResult:
+    """Iterate eligible users and fire ``regenerate_global_summary``
+    per-user. Structure + error isolation mirror
+    ``sweep_projects_once`` one-for-one; the only substantive
+    differences are the eligibility SQL, the model-resolution query
+    (user-wide instead of project-scoped), and the regen-helper
+    target.
+
+    Clears D-K20.3-α-01 (Cycle α deferral — needs cross-project
+    model-resolution story).
+    """
+    result = SweepResult()
+
+    async with pool.acquire() as conn:
+        locked = await conn.fetchval(
+            "SELECT pg_try_advisory_lock($1)", _GLOBAL_REGEN_LOCK_KEY,
+        )
+        if not locked:
+            logger.info(
+                "K20.3: global regen sweep already running on another "
+                "worker — skipping this cycle"
+            )
+            result.lock_skipped = True
+            return result
+
+        try:
+            rows = await conn.fetch(_LIST_GLOBAL_ELIGIBLE_USERS_SQL)
+            result.projects_considered = len(rows)
+            for row in rows:
+                user_id = row["user_id"]
+                try:
+                    llm_model = await conn.fetchval(
+                        _LATEST_USER_LLM_MODEL_SQL, UUID(user_id),
+                    )
+                except Exception:
+                    logger.exception(
+                        "K20.3: global model lookup failed user=%s",
+                        user_id,
+                    )
+                    result.errored += 1
+                    continue
+                if llm_model is None:
+                    logger.info(
+                        "K20.3: skip global regen user=%s — no prior "
+                        "extraction job anywhere to borrow a model from",
+                        user_id,
+                    )
+                    result.no_model += 1
+                    continue
+                # Review-impl L2: see project sweep above. Same audit
+                # rationale — which model did we pick for this user's
+                # global bio regen?
+                logger.info(
+                    "K20.3: regen global user=%s model=%s",
+                    user_id, llm_model,
+                )
+                try:
+                    regen = await regenerate_global_summary(
+                        user_id=UUID(user_id),
+                        model_source="user_model",
+                        model_ref=llm_model,
+                        pool=pool,
+                        session_factory=session_factory,
+                        provider_client=provider_client,
+                        summaries_repo=summaries_repo,
+                    )
+                except Exception:
+                    logger.exception(
+                        "K20.3: regenerate_global_summary raised user=%s",
+                        user_id,
+                    )
+                    result.errored += 1
+                    continue
+
+                status = regen.status
+                if status == "regenerated":
+                    result.regenerated += 1
+                elif status in {
+                    "no_op_similarity",
+                    "no_op_empty_source",
+                    "no_op_guardrail",
+                }:
+                    result.no_op += 1
+                elif status in {"user_edit_lock", "regen_concurrent_edit"}:
+                    result.skipped += 1
+                else:
+                    logger.warning(
+                        "K20.3: unrecognized regen status=%s user=%s (global)",
+                        status, user_id,
+                    )
+                    result.errored += 1
+            logger.info(
+                "K20.3: global regen sweep complete — "
+                "considered=%d regenerated=%d no_op=%d skipped=%d "
+                "no_model=%d errored=%d",
+                result.projects_considered,
+                result.regenerated,
+                result.no_op,
+                result.skipped,
+                result.no_model,
+                result.errored,
+            )
+            return result
+        finally:
+            await conn.execute(
+                "SELECT pg_advisory_unlock($1)", _GLOBAL_REGEN_LOCK_KEY,
+            )
+
+
+async def run_global_regen_loop(
+    pool: asyncpg.Pool,
+    session_factory: SessionFactory,
+    provider_client: ProviderClient,
+    summaries_repo: SummariesRepo,
+    *,
+    interval_s: int = DEFAULT_GLOBAL_INTERVAL_S,
+    startup_delay_s: int = DEFAULT_GLOBAL_STARTUP_DELAY_S,
+) -> None:
+    """Weekly loop for global L0 regen. Same cancellation + error
+    contract as ``run_project_regen_loop``."""
+    if startup_delay_s > 0:
+        logger.info(
+            "K20.3: global regen loop scheduled in %ds, then every %ds",
+            startup_delay_s, interval_s,
+        )
+        try:
+            await asyncio.sleep(startup_delay_s)
+        except asyncio.CancelledError:
+            logger.info("K20.3: global regen loop cancelled during startup delay")
+            raise
+
+    while True:
+        try:
+            await sweep_global_once(
+                pool, session_factory, provider_client, summaries_repo,
+            )
+        except asyncio.CancelledError:
+            logger.info("K20.3: global regen loop cancelled during sweep")
+            raise
+        except Exception:
+            logger.exception(
+                "K20.3: global regen sweep errored (non-fatal) — "
+                "continuing loop"
+            )
+
+        try:
+            await asyncio.sleep(interval_s)
+        except asyncio.CancelledError:
+            logger.info("K20.3: global regen loop cancelled during sleep")
+            raise

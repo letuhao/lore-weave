@@ -169,15 +169,20 @@ async def lifespan(app: FastAPI):
     # pass-through. Consistency with the neighbor scheduler wins
     # over consistency with router DI.
     summary_regen_task = None
+    global_regen_task = None
     if settings.neo4j_uri:
         try:
             from app.db.neo4j import neo4j_session
             from app.db.repositories.summaries import SummariesRepo
-            from app.jobs.summary_regen_scheduler import run_project_regen_loop
+            from app.jobs.summary_regen_scheduler import (
+                run_global_regen_loop,
+                run_project_regen_loop,
+            )
 
             def _summary_session_factory():
                 return neo4j_session()
 
+            # K20.3 α — project-scope (L1) regen, daily cadence.
             summary_regen_task = asyncio.create_task(
                 run_project_regen_loop(
                     get_knowledge_pool(),
@@ -189,9 +194,24 @@ async def lifespan(app: FastAPI):
             logger.info(
                 "K20.3: project summary regen loop started as background task"
             )
+
+            # K20.3 β — global-scope (L0) regen, weekly cadence with
+            # 15-min offset so it doesn't start simultaneously with
+            # the project loop on first boot.
+            global_regen_task = asyncio.create_task(
+                run_global_regen_loop(
+                    get_knowledge_pool(),
+                    _summary_session_factory,
+                    get_provider_client(),
+                    SummariesRepo(get_knowledge_pool()),
+                )
+            )
+            logger.info(
+                "K20.3: global summary regen loop started as background task"
+            )
         except Exception:
             logger.warning(
-                "K20.3: project summary regen loop failed to start (non-fatal)",
+                "K20.3: summary regen loops failed to start (non-fatal)",
                 exc_info=True,
             )
 
@@ -243,7 +263,7 @@ async def lifespan(app: FastAPI):
             except Exception:
                 logger.warning("Error stopping anchor-refresh loop", exc_info=True)
 
-        # K20.3: stop summary regen loop.
+        # K20.3: stop summary regen loops (project first, then global).
         if summary_regen_task is not None:
             summary_regen_task.cancel()
             try:
@@ -252,7 +272,18 @@ async def lifespan(app: FastAPI):
                 pass
             except Exception:
                 logger.warning(
-                    "K20.3: error stopping summary regen loop",
+                    "K20.3: error stopping project regen loop",
+                    exc_info=True,
+                )
+        if global_regen_task is not None:
+            global_regen_task.cancel()
+            try:
+                await global_regen_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.warning(
+                    "K20.3: error stopping global regen loop",
                     exc_info=True,
                 )
 

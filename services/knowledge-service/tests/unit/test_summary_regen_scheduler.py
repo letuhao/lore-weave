@@ -24,9 +24,13 @@ import pytest
 
 from app.jobs.regenerate_summaries import RegenerationResult
 from app.jobs.summary_regen_scheduler import (
+    DEFAULT_GLOBAL_INTERVAL_S,
+    DEFAULT_GLOBAL_STARTUP_DELAY_S,
     DEFAULT_INTERVAL_S,
     DEFAULT_STARTUP_DELAY_S,
+    run_global_regen_loop,
     run_project_regen_loop,
+    sweep_global_once,
     sweep_projects_once,
 )
 
@@ -36,20 +40,33 @@ from app.jobs.summary_regen_scheduler import (
 
 class FakeConn:
     """Minimal async-pool-connection stand-in. Records executed SQL +
-    returns canned results from a scripted sequence."""
+    returns canned results from a scripted sequence.
+
+    Supports BOTH schedulers:
+      - Project loop: ``projects`` list + project-scoped model_lookup
+        keyed on ``(user_id, project_id)``
+      - Global loop: ``users`` list + user-wide user_model_lookup
+        keyed on ``user_id`` alone
+    """
 
     def __init__(
         self,
         *,
         try_lock: bool = True,
         projects: list[dict] | None = None,
+        users: list[dict] | None = None,
         model_lookup: dict[tuple[str, str], str | None] | None = None,
+        user_model_lookup: dict[str, str | None] | None = None,
         model_lookup_raises: set[tuple[str, str]] | None = None,
+        user_model_lookup_raises: set[str] | None = None,
     ):
         self._try_lock = try_lock
         self._projects = projects or []
+        self._users = users or []
         self._model_lookup = model_lookup or {}
+        self._user_model_lookup = user_model_lookup or {}
         self._model_lookup_raises = model_lookup_raises or set()
+        self._user_model_lookup_raises = user_model_lookup_raises or set()
         self.executed: list[str] = []
 
     async def fetchval(self, sql: str, *args):
@@ -57,14 +74,32 @@ class FakeConn:
         if "pg_try_advisory_lock" in sql:
             return self._try_lock
         if "FROM extraction_jobs" in sql:
-            key = (str(args[0]), str(args[1]))
-            if key in self._model_lookup_raises:
-                raise RuntimeError("boom from fetchval")
-            return self._model_lookup.get(key)
+            # Review-impl C3: route by SQL WHERE-clause text rather
+            # than ``len(args)``. A future test that accidentally
+            # passes 1 arg to the project-scoped lookup (or 2 to the
+            # user-wide one) would silently hit the wrong branch under
+            # arg-count routing. SQL-text matching ties the fake to
+            # the exact production code paths.
+            if "project_id = $2" in sql:
+                # _LATEST_LLM_MODEL_SQL — project-scoped lookup.
+                key = (str(args[0]), str(args[1]))
+                if key in self._model_lookup_raises:
+                    raise RuntimeError("boom from fetchval")
+                return self._model_lookup.get(key)
+            # _LATEST_USER_LLM_MODEL_SQL — user-wide lookup (no
+            # project_id predicate).
+            key_user = str(args[0])
+            if key_user in self._user_model_lookup_raises:
+                raise RuntimeError("boom from fetchval (user-wide)")
+            return self._user_model_lookup.get(key_user)
         return None
 
     async def fetch(self, sql: str):
         self.executed.append(sql.strip()[:40])
+        # Global eligibility query returns one-column rows keyed
+        # ``user_id`` — distinguish from project-list by SQL text.
+        if "FROM knowledge_summaries" in sql:
+            return [dict(r) for r in self._users]
         return [dict(r) for r in self._projects]
 
     async def execute(self, sql: str, *args):
@@ -472,6 +507,251 @@ def test_defaults_are_24h_and_10min():
     author to update the assertion deliberately."""
     assert DEFAULT_INTERVAL_S == 24 * 60 * 60
     assert DEFAULT_STARTUP_DELAY_S == 600
+
+
+# ═══════════════════════════════════════════════════════════════
+# K20.3 Cycle β — sweep_global_once
+# ═══════════════════════════════════════════════════════════════
+
+
+def _user(user_id: str) -> dict:
+    """Global eligibility returns rows with just ``user_id``."""
+    return {"user_id": user_id}
+
+
+@pytest.mark.asyncio
+async def test_sweep_global_lock_skipped_returns_zeroed():
+    conn = FakeConn(try_lock=False)
+    pool = FakePool(conn)
+    result = await sweep_global_once(
+        pool=pool,  # type: ignore[arg-type]
+        session_factory=lambda: MagicMock(),
+        provider_client=MagicMock(),
+        summaries_repo=MagicMock(),
+    )
+    assert result.lock_skipped is True
+    assert result.projects_considered == 0
+    # Lock unlock NOT called when lock wasn't acquired.
+    assert not any("pg_advisory_unlock" in sql for sql in conn.executed)
+
+
+@pytest.mark.asyncio
+async def test_sweep_global_empty_eligibility_releases_lock():
+    conn = FakeConn(try_lock=True, users=[])
+    pool = FakePool(conn)
+    result = await sweep_global_once(
+        pool=pool,  # type: ignore[arg-type]
+        session_factory=lambda: MagicMock(),
+        provider_client=MagicMock(),
+        summaries_repo=MagicMock(),
+    )
+    assert result.lock_skipped is False
+    assert result.projects_considered == 0
+    assert any("pg_advisory_unlock" in sql for sql in conn.executed)
+
+
+@pytest.mark.asyncio
+async def test_sweep_global_no_extraction_anywhere_skips_as_no_model(
+    monkeypatch,
+):
+    """User with an eligibility entry but NO prior extraction job in
+    any of their projects has no llm_model to borrow — counted as
+    ``no_model`` and skipped without touching the regen helper."""
+    user_id = str(uuid4())
+    conn = FakeConn(
+        try_lock=True,
+        users=[_user(user_id)],
+        user_model_lookup={user_id: None},
+    )
+    pool = FakePool(conn)
+    regen_mock = AsyncMock()
+    monkeypatch.setattr(
+        "app.jobs.summary_regen_scheduler.regenerate_global_summary",
+        regen_mock,
+    )
+    result = await sweep_global_once(
+        pool=pool,  # type: ignore[arg-type]
+        session_factory=lambda: MagicMock(),
+        provider_client=MagicMock(),
+        summaries_repo=MagicMock(),
+    )
+    assert result.projects_considered == 1
+    assert result.no_model == 1
+    assert result.regenerated == 0
+    regen_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status,expected_counter",
+    [
+        ("regenerated", "regenerated"),
+        ("no_op_similarity", "no_op"),
+        ("no_op_empty_source", "no_op"),
+        ("no_op_guardrail", "no_op"),
+        ("user_edit_lock", "skipped"),
+        ("regen_concurrent_edit", "skipped"),
+    ],
+)
+async def test_sweep_global_maps_regen_status_to_counter(
+    monkeypatch, status, expected_counter,
+):
+    """Mirror the project sweep's status-mapping test for the global
+    loop — same 6-to-4 collapse."""
+    user_id = str(uuid4())
+    conn = FakeConn(
+        try_lock=True,
+        users=[_user(user_id)],
+        user_model_lookup={user_id: "gpt-4o-mini"},
+    )
+    pool = FakePool(conn)
+    regen_mock = AsyncMock(return_value=_regen_result(status))
+    monkeypatch.setattr(
+        "app.jobs.summary_regen_scheduler.regenerate_global_summary",
+        regen_mock,
+    )
+    result = await sweep_global_once(
+        pool=pool,  # type: ignore[arg-type]
+        session_factory=lambda: MagicMock(),
+        provider_client=MagicMock(),
+        summaries_repo=MagicMock(),
+    )
+    assert result.projects_considered == 1
+    assert getattr(result, expected_counter) == 1
+    regen_mock.assert_awaited_once()
+    kwargs = regen_mock.await_args.kwargs
+    assert kwargs["model_source"] == "user_model"
+    assert kwargs["model_ref"] == "gpt-4o-mini"
+    assert kwargs["user_id"] == UUID(user_id)
+    # No project_id on global regen — it's an L0 scope.
+    assert "project_id" not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_sweep_global_per_user_regen_exception_isolated(monkeypatch):
+    good = str(uuid4())
+    bad = str(uuid4())
+    conn = FakeConn(
+        try_lock=True,
+        users=[_user(bad), _user(good)],
+        user_model_lookup={bad: "gpt-4o-mini", good: "gpt-4o-mini"},
+    )
+    pool = FakePool(conn)
+
+    async def regen_impl(**kwargs):
+        if str(kwargs["user_id"]) == bad:
+            raise RuntimeError("user regen exploded")
+        return _regen_result("regenerated")
+
+    regen_mock = AsyncMock(side_effect=regen_impl)
+    monkeypatch.setattr(
+        "app.jobs.summary_regen_scheduler.regenerate_global_summary",
+        regen_mock,
+    )
+    result = await sweep_global_once(
+        pool=pool,  # type: ignore[arg-type]
+        session_factory=lambda: MagicMock(),
+        provider_client=MagicMock(),
+        summaries_repo=MagicMock(),
+    )
+    assert result.projects_considered == 2
+    assert result.regenerated == 1
+    assert result.errored == 1
+    # Both users were attempted.
+    assert regen_mock.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_sweep_global_user_model_lookup_error_counts_as_errored(
+    monkeypatch,
+):
+    bad = str(uuid4())
+    good = str(uuid4())
+    conn = FakeConn(
+        try_lock=True,
+        users=[_user(bad), _user(good)],
+        user_model_lookup={good: "gpt-4o-mini"},
+        user_model_lookup_raises={bad},
+    )
+    pool = FakePool(conn)
+    regen_mock = AsyncMock(return_value=_regen_result("regenerated"))
+    monkeypatch.setattr(
+        "app.jobs.summary_regen_scheduler.regenerate_global_summary",
+        regen_mock,
+    )
+    result = await sweep_global_once(
+        pool=pool,  # type: ignore[arg-type]
+        session_factory=lambda: MagicMock(),
+        provider_client=MagicMock(),
+        summaries_repo=MagicMock(),
+    )
+    assert result.projects_considered == 2
+    assert result.errored == 1
+    assert result.regenerated == 1
+    # Regen only called for good user; bad user exited at model lookup.
+    assert regen_mock.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_sweep_global_emits_completion_log_with_counter_breakdown(
+    monkeypatch, caplog,
+):
+    """Mirror α's C3 regression lock on the global sweep as well.
+    Log format must contain all 6 counter names so operator dashboards
+    can scrape counts without parsing each line by hand."""
+    import logging
+    user_id = str(uuid4())
+    conn = FakeConn(
+        try_lock=True,
+        users=[_user(user_id)],
+        user_model_lookup={user_id: "gpt-4o-mini"},
+    )
+    pool = FakePool(conn)
+    monkeypatch.setattr(
+        "app.jobs.summary_regen_scheduler.regenerate_global_summary",
+        AsyncMock(return_value=_regen_result("regenerated")),
+    )
+    with caplog.at_level(logging.INFO):
+        await sweep_global_once(
+            pool=pool,  # type: ignore[arg-type]
+            session_factory=lambda: MagicMock(),
+            provider_client=MagicMock(),
+            summaries_repo=MagicMock(),
+        )
+    completion_logs = [
+        r for r in caplog.records
+        if r.levelno == logging.INFO
+        and "global regen sweep complete" in r.message
+    ]
+    assert len(completion_logs) == 1
+    msg = completion_logs[0].getMessage()
+    for counter_name in (
+        "considered=", "regenerated=", "no_op=",
+        "skipped=", "no_model=", "errored=",
+    ):
+        assert counter_name in msg
+
+
+@pytest.mark.asyncio
+async def test_global_loop_cancellation_during_startup_delay(monkeypatch):
+    async def fake_sleep(_seconds):
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    with pytest.raises(asyncio.CancelledError):
+        await run_global_regen_loop(
+            pool=MagicMock(),
+            session_factory=lambda: MagicMock(),
+            provider_client=MagicMock(),
+            summaries_repo=MagicMock(),
+            startup_delay_s=1,
+        )
+
+
+def test_global_defaults_are_7d_and_15min():
+    """Lock the weekly cadence + 15-min startup delay per plan."""
+    assert DEFAULT_GLOBAL_INTERVAL_S == 7 * 24 * 60 * 60
+    assert DEFAULT_GLOBAL_STARTUP_DELAY_S == 900
 
 
 @pytest.mark.asyncio
