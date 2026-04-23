@@ -1,11 +1,43 @@
-# Session Handoff — Session 50 (K19 series + K20.3 ALL 100% plan-complete · scheduled auto-regen live)
+# Session Handoff — Session 50 (27 cycles · Track 2/3 Gap Closure opened with C1 · plan file live)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-23 (session 50)
-> **HEAD:** `db7cf05` (K20.3 Cycle β; K20.3-α @ `474a7d8` + `e7b1d18`; K19f-ε @ `03e7774` + `56047dd`; K19f-δ @ `3a2126c` + `ca8b5f7`; K19f-γ @ `84d5eec` + `8b18a12`; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **Date:** 2026-04-23 (session 50, closed)
+> **HEAD:** `b447a9e` (C1 merge_entities atomicity + ON MATCH union; K20.3-β @ `db7cf05` + `e367377`; K20.3-α @ `474a7d8` + `e7b1d18`; K19f-ε @ `03e7774` + `56047dd`; K19f-δ @ `3a2126c` + `ca8b5f7`; K19f-γ @ `84d5eec` + `8b18a12`; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 26 cycles shipped (24 Track 3 + 2 Track 2 close-out) · K19 + K20.3 ALL 100% plan-complete
+## Session 50 — 27 cycles shipped (24 Track 3 + 2 Track 2 close-out + 1 Gap Closure) · Track 2/3 Gap Closure Plan opened
+
+### Cycle 27 — Track 2/3 Gap Closure C1 [FS M] — merge_entities atomicity + ON MATCH union
+
+**First cycle of the new [Track 2/3 Gap Closure Plan](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md)** — a 20-cycle debt-drain (~32 open deferrals from Track 2 + K19/K20) the user asked for before opening further Track 3 feature work. C1 is P1 tier — the only backlog item with actual data-loss risk.
+
+**Two changes to [`app/db/neo4j_repos/entities.py`](../../services/knowledge-service/app/db/neo4j_repos/entities.py):**
+
+1. **Atomicity.** `merge_entities` steps 4–7 (rewire RELATES_TO / rewire EVIDENCED_BY / update target w/ glossary pre-clear / DETACH DELETE source) wrapped in `async with await session.begin_transaction() as tx:`. A Neo4j crash between glossary pre-clear and DETACH DELETE can no longer leave source orphaned with `glossary_entity_id=NULL`. Docstring added the contract: "session must be a fresh AsyncSession with no open transaction" — Neo4j async sessions don't nest tx.
+
+2. **ON MATCH union.** `_MERGE_REWIRE_RELATES_TO_CYPHER` gained 4 CASE branches beyond the pre-existing `confidence`-MAX + `source_event_ids`-UNION: `pending_validation` via `coalesce(..., false) AND ...` (matches `relations.py`'s 8-site NULL=validated convention), `valid_from` earliest-non-null, `valid_until` NULL-wins (NULL = still-active sentinel per relations.py:13), `source_chapter` concat-when-distinct. Pass-2-validated source edge merging into quarantined target duplicate now correctly promotes to validated.
+
+**+3 integration tests (live Neo4j):**
+- `test_merge_entities_promotes_validated_edge_over_quarantined` — all 4 union branches incl. `valid_until` NULL-wins via raw-Cypher seed (`create_relation` doesn't accept the kwarg)
+- `test_merge_entities_on_match_preserves_quarantine_and_validated` — both mirror AND cases a hardcoded `= false` regression would pass without
+- `test_merge_entities_is_atomic_on_mid_flight_failure` — `monkeypatch`es `_MERGE_DELETE_SOURCE_CYPHER` → bad Cypher and asserts **3 rollback axes** (glossary + no rewired RELATES_TO + target aliases unchanged). Multi-axis defense against a regression moving ANY single step out of tx, not just the step the failure-injection point targets.
+
+`/review-impl` caught **2 MED + 3 LOW + 1 COSMETIC; all 6 folded into same commit**:
+- **M1** coalesce-to-true diverged from codebase NULL=false convention → switched both sides to `coalesce(..., false)`
+- **M2** atomicity test proved only glossary-axis rollback → extended to 3 axes
+- **L3** `valid_until` CASE never exercised → raw-Cypher seed on target
+- **L4** AND-combine only tested promotion direction → new mirror test
+- **L5** Python `bool(x or False)` NULL coercion — subsumed by M1 aligned defaults
+- **L6** nested-tx contract undocumented → docstring updated
+- Accepted #7: `source_chapter` concat bloat on repeated merges — hobby scale, in-code comment
+
+**Closes**: D-K19d-γb-01 (ON MATCH union) + D-K19d-γb-02 (merge atomicity).
+
+**Verify**: 26/26 `test_entities_browse_repo.py` (+3 new) + 105/105 adjacent integration + 86/86 entity unit.
+
+**Plan progress**: 2/33 item-closures · 1/20 cycles · P1 tier: 1/2 done (C1 ✅, C2 next).
+
+---
 
 ### Cycle 26 — K20.3 Cycle β [BE L] — Scheduled global L0 regen loop
 
@@ -91,21 +123,31 @@ Closes the K19f cluster. Applied `TOUCH_TARGET_CLASS = 'min-h-[44px]'` to the 2 
 - Front-end test coverage: **320 pass** at session 50 end (vs ~88 at session 47 end)
 - Back-end test coverage: **1282 pass** at K19e γ-a (vs 1154 at session 47 end)
 
-**What's next — Session 51 options:**
-- **Track 3 polish deferrals** — 18+ D-* items tracked across sessions 46-50, notably:
-  - K19f.5 residual: D-K19f-ε-01 PrivacyTab mobile audit
-  - K20.3 scheduler
-  - K19d-γb follow-ups (M1/M2/M3 Neo4j ON-MATCH union + atomicity + canonical_id fundamental)
-  - D-K19e-α-01 entity_id filter on Timeline
-  - D-K19e-γa-01 source_type filter on drawer search
-  - D-K19e-β-01 chapter title resolution
-  - D-K19e-γb-01 in-card term highlighting
-  - D-K19b.8-01/02/03 log viewer polish trio
-  - D-K19b.1-01 cursor pagination
-  - D-K16.11-02 budget tracking on drawer-search embeds
-- **Gate 13** — T2-close-2 human-interactive walkthrough remains open
-- **K20 scheduler** — K20.3 cron for automated summary regeneration
-- **New cluster** — K21 tool calling integration, K22 privacy page, or data re-engineering (101_DATA_RE_ENGINEERING)
+**What's next — Session 51 default path:**
+
+Resume the **[Track 2/3 Gap Closure Plan](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md)**. 19 cycles remain across P1→P5 tiers. The user asked to "clear all gaps/defers before moving to Track 3"; C1 landed this session, C2 is the next default.
+
+Next cycle — **C2 (P1, S)**: Scheduler observability + regen cooldown. Closes D-K20.3-α-02 (scheduler Prometheus metrics — one-liner inc() inside the sweep) + D-K20α-02 (per-user-per-scope regen cooldown — Redis SETNX guard on public `/summaries/{...}/regenerate` edges, 60s TTL, 429 Retry-After when set). ~2 files, ~S size, should ship in one commit. Detail in [plan §4 C2](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md#c2--scheduler-observability--regen-cooldown-p1-s).
+
+Remaining cycles after C2 (grouped by tier):
+- **P2 (C3–C9)** — 14 items / 7 cycles: job_logs observability trio · useProjectState hook tests · mobile polish · chapter-title resolution · ETA formatter · drawer-search UX · entity concurrency+unlock
+- **P3 (C10–C13)** — 7 items / 4 cycles: timeline gaps · cursor pagination · scope+benchmark dialog · Storybook dialogs via MSW
+- **P4 (C14–C15)** — 3 items / 2 cycles: resumable scheduler cursor state · Neo4j fulltext index (fire only at >10k entities)
+- **P5 🏗 (C16–C18)** — 3 items / 3 cycles, all DESIGN-first: budget attribution · entity-merge canonical-alias mapping · event wall-clock date
+- **User-gated ⏸ (C19–C20)** — multilingual fixtures (user provides text) + Gate-13 human walkthrough
+
+**NOT the default path but possible if user redirects:**
+- Continue Track 3 feature cycles (K19g-h, K21 tool calling, K22 privacy page)
+- Gate-13 T2-close-2 walkthrough (user-attested BYOK run)
+- Data re-engineering ([101_DATA_RE_ENGINEERING_PLAN](../03_planning/101_DATA_RE_ENGINEERING_PLAN.md))
+
+**Starting-session boilerplate:**
+1. Read [SESSION_PATCH.md](SESSION_PATCH.md) cycle-27 entry + the plan file's §3 cycle table
+2. `./scripts/workflow-gate.sh status` to confirm previous cycle closed
+3. Start C2 with `./scripts/workflow-gate.sh size S 2 2 0` then `phase clarify`
+4. Infra: `docker ps --filter name=infra-` — Postgres + Neo4j must be healthy for integration tests
+5. For Postgres integration tests: `TEST_KNOWLEDGE_DB_URL=postgres://loreweave:loreweave_dev@localhost:5556/loreweave_knowledge` (NOT `postgres:*@knowledge`)
+6. For Neo4j integration tests: `TEST_NEO4J_URI=bolt://localhost:7688 TEST_NEO4J_PASSWORD=loreweave_dev_neo4j`
 
 ---
 
