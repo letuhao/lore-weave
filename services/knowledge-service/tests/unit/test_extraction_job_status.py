@@ -74,9 +74,19 @@ def _job_stub(**overrides) -> ExtractionJob:
     return ExtractionJob(**defaults)
 
 
-def _setup_overrides(*, job=None, jobs_list=None, project=None):
+def _stub_book_client(chapter_titles: dict | None = None):
+    """C6 /review-impl L3 — BookClient override for router tests. By
+    default returns {} (matches "book-service unreachable" degrade
+    path the enricher handles cleanly). Tests that exercise the
+    happy-path enrichment pass a dict mapping UUID → title."""
+    stub = AsyncMock()
+    stub.get_chapter_titles = AsyncMock(return_value=chapter_titles or {})
+    return stub
+
+
+def _setup_overrides(*, job=None, jobs_list=None, project=None, book_client=None):
     from app.main import app
-    from app.deps import get_extraction_jobs_repo, get_projects_repo
+    from app.deps import get_book_client, get_extraction_jobs_repo, get_projects_repo
     from app.middleware.jwt_auth import get_current_user
 
     jobs_repo = AsyncMock()
@@ -93,15 +103,21 @@ def _setup_overrides(*, job=None, jobs_list=None, project=None):
     app.dependency_overrides[get_current_user] = lambda: _TEST_USER
     app.dependency_overrides[get_extraction_jobs_repo] = lambda: jobs_repo
     app.dependency_overrides[get_projects_repo] = lambda: projects_repo
+    # /review-impl L3 — default override so the enricher short-circuits
+    # instead of attempting a real HTTP call to book-service during
+    # unit tests. Happy-path enrichment tests pass a real stub.
+    app.dependency_overrides[get_book_client] = (
+        lambda: book_client if book_client is not None else _stub_book_client()
+    )
 
     return TestClient(app, raise_server_exceptions=False)
 
 
-def _setup_list_all_overrides(*, all_jobs=None):
+def _setup_list_all_overrides(*, all_jobs=None, book_client=None):
     """K19b.1 helper — wires list_all_for_user and returns both the
     client and the mock so the test can inspect call kwargs."""
     from app.main import app
-    from app.deps import get_extraction_jobs_repo
+    from app.deps import get_book_client, get_extraction_jobs_repo
     from app.middleware.jwt_auth import get_current_user
 
     jobs_repo = AsyncMock()
@@ -109,6 +125,10 @@ def _setup_list_all_overrides(*, all_jobs=None):
 
     app.dependency_overrides[get_current_user] = lambda: _TEST_USER
     app.dependency_overrides[get_extraction_jobs_repo] = lambda: jobs_repo
+    # /review-impl L3 — same book_client override discipline.
+    app.dependency_overrides[get_book_client] = (
+        lambda: book_client if book_client is not None else _stub_book_client()
+    )
 
     return TestClient(app, raise_server_exceptions=False), jobs_repo
 
@@ -246,3 +266,105 @@ def test_list_all_jobs_empty_returns_empty_array():
     resp = client.get("/v1/knowledge/extraction/jobs?status_group=history")
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+# ── C6 /review-impl L3 — router-level enricher integration ────────
+
+
+def test_get_job_response_contains_enriched_current_chapter_title():
+    """Lock the cross-service contract end-to-end: job with
+    chapter-scope cursor → router calls enricher → enricher calls
+    BookClient → response payload has ``current_chapter_title``
+    populated. A regression dropping the enricher call in the
+    router would leave the field null despite the mock providing
+    a title."""
+    chapter_uuid = uuid4()
+    job = _job_stub(
+        current_cursor={"scope": "chapters", "last_chapter_id": str(chapter_uuid)},
+    )
+    book_client = _stub_book_client(
+        chapter_titles={chapter_uuid: "Chapter 12 — The Bridge Duel"},
+    )
+    client = _setup_overrides(job=job, book_client=book_client)
+    resp = client.get(f"/v1/knowledge/extraction/jobs/{_TEST_JOB_ID}")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["current_chapter_title"] == "Chapter 12 — The Bridge Duel"
+    # Enricher was called exactly once with the job's chapter_id.
+    book_client.get_chapter_titles.assert_awaited_once()
+    call_ids = book_client.get_chapter_titles.await_args.args[0]
+    assert call_ids == [chapter_uuid]
+
+
+def test_list_all_jobs_response_has_enriched_current_chapter_title():
+    """Same contract lock for the cross-project list endpoint.
+    Multiple jobs → enricher batches chapter_ids → each job's
+    payload carries its resolved title. A regression dropping the
+    enricher would leave current_chapter_title=null silently."""
+    cid_a = uuid4()
+    cid_b = uuid4()
+    jobs = [
+        _job_stub(
+            job_id=uuid4(),
+            current_cursor={"last_chapter_id": str(cid_a)},
+        ),
+        _job_stub(
+            job_id=uuid4(),
+            current_cursor={"last_chapter_id": str(cid_b)},
+        ),
+    ]
+    book_client = _stub_book_client(
+        chapter_titles={
+            cid_a: "Chapter 1 — Opening",
+            cid_b: "Chapter 5 — Rising Action",
+        },
+    )
+    client, _repo = _setup_list_all_overrides(
+        all_jobs=jobs, book_client=book_client,
+    )
+    resp = client.get("/v1/knowledge/extraction/jobs?status_group=active")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert len(body) == 2
+    assert body[0]["current_chapter_title"] == "Chapter 1 — Opening"
+    assert body[1]["current_chapter_title"] == "Chapter 5 — Rising Action"
+
+
+def test_etag_includes_current_chapter_title_so_title_change_bumps():
+    """/review-impl M1 fix lock — two jobs with identical
+    ``updated_at`` but different ``current_chapter_title`` must
+    produce DIFFERENT etags. Before the fix, etag was derived from
+    updated_at alone and a chapter rename on book-side would serve
+    304 with stale title until staleTime expired."""
+    chapter_uuid = uuid4()
+    job_a = _job_stub(
+        current_cursor={"last_chapter_id": str(chapter_uuid)},
+    )
+    job_b = _job_stub(
+        current_cursor={"last_chapter_id": str(chapter_uuid)},
+    )
+
+    client_a = _setup_overrides(
+        job=job_a,
+        book_client=_stub_book_client(
+            chapter_titles={chapter_uuid: "Chapter 12 — The Bridge Duel"},
+        ),
+    )
+    resp_a = client_a.get(f"/v1/knowledge/extraction/jobs/{_TEST_JOB_ID}")
+    etag_a = resp_a.headers["ETag"]
+
+    client_b = _setup_overrides(
+        job=job_b,
+        book_client=_stub_book_client(
+            chapter_titles={chapter_uuid: "Chapter 12 — The Renamed Duel"},
+        ),
+    )
+    resp_b = client_b.get(f"/v1/knowledge/extraction/jobs/{_TEST_JOB_ID}")
+    etag_b = resp_b.headers["ETag"]
+
+    # Same updated_at + different title → different etag. If this
+    # fails, FE would cache stale title forever.
+    assert etag_a != etag_b
+    # Both are still W/"..." weak etags.
+    assert etag_a.startswith('W/"')
+    assert etag_b.startswith('W/"')

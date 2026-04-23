@@ -138,6 +138,7 @@
       "orderLabel": "敘事順序",
       "noOrder": "—",
       "chapterLabel": "章",
+      "chapterUnresolved": "章 ID {{id}} — 標題未解析",
       "participantsMore": "+{{count}} 位",
       "confidenceLabel": "信心度"
     },
@@ -280,6 +281,7 @@
       "title": "作業詳細資訊",
       "close": "關閉",
       "status": "狀態",
+      "currentChapter": "目前章節",
       "scope": "範圍",
       "llmModel": "聊天模型",
       "embeddingModel": "嵌入模型",

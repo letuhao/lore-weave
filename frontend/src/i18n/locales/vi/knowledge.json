@@ -138,6 +138,7 @@
       "orderLabel": "Thứ tự kể chuyện",
       "noOrder": "—",
       "chapterLabel": "Chương",
+      "chapterUnresolved": "Chương với id {{id}} — không giải được tiêu đề",
       "participantsMore": "+{{count}} người nữa",
       "confidenceLabel": "Độ tin cậy"
     },
@@ -280,6 +281,7 @@
       "title": "Chi tiết tác vụ",
       "close": "Đóng",
       "status": "Trạng thái",
+      "currentChapter": "Chương hiện tại",
       "scope": "Phạm vi",
       "llmModel": "Mô hình chat",
       "embeddingModel": "Mô hình embedding",

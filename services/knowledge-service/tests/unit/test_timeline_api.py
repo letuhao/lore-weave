@@ -59,11 +59,27 @@ def _clear_overrides():
     app.dependency_overrides.clear()
 
 
-def _make_client():
+def _stub_book_client(chapter_titles: dict | None = None):
+    """C6 /review-impl L3 — BookClient override for timeline router
+    tests. Default {} matches the "book-service unreachable"
+    degrade path; happy-path tests pass a real UUID→title dict."""
+    stub = AsyncMock()
+    stub.get_chapter_titles = AsyncMock(return_value=chapter_titles or {})
+    return stub
+
+
+def _make_client(book_client=None):
     from app.main import app
+    from app.deps import get_book_client
     from app.middleware.jwt_auth import get_current_user
 
     app.dependency_overrides[get_current_user] = lambda: _TEST_USER
+    # /review-impl L3 — default override so the enricher never
+    # attempts a real book-service call during unit tests. Prevents
+    # latent network-dependent test behavior.
+    app.dependency_overrides[get_book_client] = (
+        lambda: book_client if book_client is not None else _stub_book_client()
+    )
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -296,3 +312,36 @@ async def test_list_events_filtered_passes_limit_below_cap(mock_run_read):
     )
     page_call = mock_run_read.await_args_list[1]
     assert page_call.kwargs["limit"] == 25
+
+
+# ── C6 /review-impl L3 — router-level enricher integration ────────
+
+
+@patch(
+    "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
+)
+@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+def test_timeline_response_contains_enriched_chapter_title(mock_list):
+    """C6 lock: valid-UUID chapter_id on an event → router calls
+    enricher → enricher calls BookClient → response contains the
+    resolved chapter_title. Previous tests used ``chapter_id="ch-12"``
+    (invalid UUID) which silently bypassed the enricher path."""
+    cid = uuid4()
+    event = _event_stub("Kai duels Zhao", 10)
+    # Override the stub's default chapter_id with a real UUID so the
+    # enricher resolves it.
+    event.chapter_id = str(cid)
+    mock_list.return_value = ([event], 1)
+
+    book_client = _stub_book_client(
+        chapter_titles={cid: "Chapter 12 — The Bridge Duel"},
+    )
+    client = _make_client(book_client=book_client)
+    resp = client.get("/v1/knowledge/timeline")
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+    assert body["events"][0]["chapter_title"] == "Chapter 12 — The Bridge Duel"
+    # Enricher batched exactly one call with the single id.
+    book_client.get_chapter_titles.assert_awaited_once()
+    call_ids = book_client.get_chapter_titles.await_args.args[0]
+    assert call_ids == [cid]

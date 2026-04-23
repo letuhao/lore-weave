@@ -75,6 +75,10 @@ function makeJob(
     updated_at: '2026-04-19T12:30:00Z',
     error_message: overrides.status === 'failed' ? 'boom' : null,
     project_name: 'Alpha Book',
+    // C6: fixture default = no chapter title. Tests opt in by
+    // overriding when they want to exercise the "Current chapter"
+    // section.
+    current_chapter_title: null,
     ...overrides,
   };
 }
@@ -196,5 +200,35 @@ describe('JobDetailPanel', () => {
     });
     // Parent was NOT asked to close on failure.
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  // ── C6 (D-K19b.3-01) — Current chapter section ──────────────────
+
+  it('renders Current chapter section when current_chapter_title is set', () => {
+    renderPanel(
+      makeJob({
+        status: 'running',
+        current_cursor: { scope: 'chapters', last_chapter_id: 'some-uuid' },
+        current_chapter_title: 'Chapter 12 — The Bridge Duel',
+      }),
+    );
+    const section = screen.getByTestId('job-detail-current-chapter');
+    expect(section).toBeInTheDocument();
+    expect(section.textContent).toContain('Chapter 12 — The Bridge Duel');
+  });
+
+  it('hides Current chapter section when current_chapter_title is null', () => {
+    // Happens for: chat-scope jobs, completed/failed (cursor cleared
+    // or no last_chapter_id), and all book-service unavailable paths.
+    renderPanel(
+      makeJob({
+        status: 'running',
+        current_cursor: { scope: 'chat', last_pending_id: 'some-uuid' },
+        current_chapter_title: null,
+      }),
+    );
+    expect(
+      screen.queryByTestId('job-detail-current-chapter'),
+    ).not.toBeInTheDocument();
   });
 });

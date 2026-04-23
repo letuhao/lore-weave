@@ -19,12 +19,15 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
+from app.clients.book_client import BookClient
+from app.clients.chapter_title_enricher import enrich_events_with_chapter_titles
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.events import (
     EVENTS_MAX_LIMIT,
     Event,
     list_events_filtered,
 )
+from app.deps import get_book_client
 from app.middleware.jwt_auth import get_current_user
 
 timeline_router = APIRouter(
@@ -68,6 +71,7 @@ async def list_timeline_events(
     limit: int = Query(50, ge=1, le=EVENTS_MAX_LIMIT),
     offset: int = Query(0, ge=0),
     user_id: UUID = Depends(get_current_user),
+    book_client: BookClient = Depends(get_book_client),
 ) -> TimelineResponse:
     """K19e.2 — timeline list for the caller.
 
@@ -101,4 +105,10 @@ async def list_timeline_events(
             limit=limit,
             offset=offset,
         )
+    # C6 (D-K19e-β-01) — batch-resolve chapter titles before serving
+    # so the FE renders "Chapter 12 — The Bridge Duel" instead of
+    # ``…last8chars``. In-place mutation; on any book-service failure
+    # events keep ``chapter_title=None`` and the FE falls back to
+    # the UUID short.
+    await enrich_events_with_chapter_titles(rows, book_client)
     return TimelineResponse(events=rows, total=total)

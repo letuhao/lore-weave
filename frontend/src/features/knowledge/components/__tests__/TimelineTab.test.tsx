@@ -43,6 +43,10 @@ const EVENT_DUEL = {
   canonical_title: 'kai duels zhao',
   summary: 'A clash at the bridge.',
   chapter_id: 'ch-aaaa-bbbb-cccc-dddd',
+  // C6: TimelineEvent now carries the BE-resolved title. Default
+  // fixtures leave it null so existing tests exercise the UUID-
+  // short fallback path; a dedicated test below opts in.
+  chapter_title: null,
   event_order: 10,
   chronological_order: null,
   participants: ['Kai', 'Zhao', 'Phoenix', 'Master'],
@@ -226,5 +230,37 @@ describe('TimelineTab', () => {
     fireEvent.click(reset);
     // offset back to 0 means the initial cached page reappears.
     await screen.findByTestId('timeline-list');
+  });
+
+  // ── C6 (D-K19e-β-01) — chapter title rendering ────────────────
+
+  it('renders chapter_title when BE provides it (no UUID fallback)', async () => {
+    listTimelineMock.mockResolvedValue({
+      events: [
+        {
+          ...EVENT_DUEL,
+          chapter_title: 'Chapter 12 — The Bridge Duel',
+        },
+      ],
+      total: 1,
+    });
+    render(<TimelineTab />, { wrapper: Wrapper });
+    const row = await screen.findByTestId('timeline-event-row');
+    expect(row.textContent).toContain('Chapter 12 — The Bridge Duel');
+    // UUID short NOT rendered when title is present.
+    // chapterShort('ch-aaaa-bbbb-cccc-dddd') takes the last 8 chars
+    // = 'ccc-dddd' (8 chars, leading dash dropped by slice).
+    expect(row.textContent).not.toContain('ccc-dddd');
+  });
+
+  it('falls back to UUID short when chapter_title is null (graceful degrade)', async () => {
+    listTimelineMock.mockResolvedValue({
+      events: [{ ...EVENT_DUEL, chapter_title: null }],
+      total: 1,
+    });
+    render(<TimelineTab />, { wrapper: Wrapper });
+    const row = await screen.findByTestId('timeline-event-row');
+    // Last 8 chars of the fixture's chapter_id.
+    expect(row.textContent).toContain('ccc-dddd');
   });
 });

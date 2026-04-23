@@ -138,6 +138,7 @@
       "orderLabel": "物語順",
       "noOrder": "—",
       "chapterLabel": "章",
+      "chapterUnresolved": "章ID {{id}} — タイトル未解決",
       "participantsMore": "+{{count}}名",
       "confidenceLabel": "信頼度"
     },
@@ -280,6 +281,7 @@
       "title": "ジョブ詳細",
       "close": "閉じる",
       "status": "ステータス",
+      "currentChapter": "現在の章",
       "scope": "スコープ",
       "llmModel": "チャットモデル",
       "embeddingModel": "埋め込みモデル",

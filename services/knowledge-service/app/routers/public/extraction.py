@@ -20,6 +20,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, 
 from pydantic import BaseModel, Field
 
 from app.clients.book_client import BookClient
+from app.clients.chapter_title_enricher import (
+    enrich_jobs_with_current_chapter_titles,
+)
 from app.clients.glossary_client import GlossaryClient
 from app.config import settings as app_settings
 from app.pricing import cost_per_token
@@ -1006,10 +1009,34 @@ jobs_router = APIRouter(
 
 
 def _etag(job: ExtractionJob) -> str:
-    """Weak ETag from updated_at timestamp. Changes on every progress
-    update (advance_cursor bumps updated_at), so conditional GET
-    correctly returns 304 when the frontend's cached state is current."""
-    return f'W/"{int(job.updated_at.timestamp() * 1000)}"'
+    """Weak ETag from updated_at timestamp + denormalized fields
+    that can drift independently of the job row itself.
+
+    ``updated_at`` bumps on every progress update (advance_cursor), so
+    the FE gets 304 during polling when the job hasn't moved. But C6
+    (D-K19b.3-01) denormalizes ``current_chapter_title`` in from
+    book-service at serve-time — a chapter rename in book-service
+    would NOT bump ``extraction_jobs.updated_at``. Hashing the title
+    into the etag means FE revalidates when the title changes too.
+
+    /review-impl M1 fix — prior version used only ``updated_at`` and
+    would serve 304 with stale chapter title for up to staleTime.
+    Uses md5 (not Python's built-in ``hash()``) because PYTHONHASHSEED
+    defaults to random per-process → two workers would generate
+    different etags for the same state and break the contract.
+    md5 here is a non-cryptographic fingerprint, not security-load-
+    bearing — 8 hex chars (32 bits) is plenty of collision resistance
+    for an etag component.
+    """
+    import hashlib
+
+    title_component = job.current_chapter_title or ""
+    title_hash = hashlib.md5(
+        title_component.encode("utf-8"), usedforsecurity=False,
+    ).hexdigest()[:8]
+    return (
+        f'W/"{int(job.updated_at.timestamp() * 1000)}-{title_hash}"'
+    )
 
 
 @jobs_router.get(
@@ -1027,6 +1054,7 @@ async def list_all_user_jobs(
     limit: int = Query(50, ge=1, le=LIST_ALL_MAX_LIMIT),
     user_id: UUID = Depends(get_current_user),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+    book_client: BookClient = Depends(get_book_client),
 ) -> list[ExtractionJob]:
     """K19b.1 — user-scoped cross-project job list, grouped by status.
 
@@ -1037,9 +1065,12 @@ async def list_all_user_jobs(
     (Running/Paused in active, Complete/Failed/Cancelled in history)
     so the FE can render without client-side filtering.
     """
-    return await jobs_repo.list_all_for_user(
+    jobs = await jobs_repo.list_all_for_user(
         user_id, status_group=status_group, limit=limit
     )
+    # C6 (D-K19b.3-01) — resolve current_cursor.last_chapter_id titles.
+    await enrich_jobs_with_current_chapter_titles(jobs, book_client)
+    return jobs
 
 
 @jobs_router.get(
@@ -1050,6 +1081,7 @@ async def get_extraction_job(
     job_id: UUID,
     user_id: UUID = Depends(get_current_user),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+    book_client: BookClient = Depends(get_book_client),
     if_none_match: str | None = Header(default=None, alias="If-None-Match"),
 ) -> Response:
     """Get detailed status of a specific extraction job.
@@ -1064,6 +1096,12 @@ async def get_extraction_job(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="job not found",
         )
+    # C6 (D-K19b.3-01) — resolve current_cursor.last_chapter_id title
+    # BEFORE computing the etag. Keeping the enrichment inside the
+    # etag window means the ETag reflects the FULL wire shape: a
+    # chapter title change on the BOOK side bumps the ETag and the
+    # FE's If-None-Match revalidates.
+    await enrich_jobs_with_current_chapter_titles([job], book_client)
     etag = _etag(job)
     if if_none_match and if_none_match.strip() == etag:
         raise HTTPException(status_code=status.HTTP_304_NOT_MODIFIED)
@@ -1083,6 +1121,7 @@ async def list_extraction_jobs(
     user_id: UUID = Depends(get_current_user),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+    book_client: BookClient = Depends(get_book_client),
 ) -> list[ExtractionJob]:
     """List all extraction jobs for a project (history), newest first."""
     project = await projects_repo.get(user_id, project_id)
@@ -1091,7 +1130,10 @@ async def list_extraction_jobs(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="project not found",
         )
-    return await jobs_repo.list_for_project(user_id, project_id)
+    jobs = await jobs_repo.list_for_project(user_id, project_id)
+    # C6 (D-K19b.3-01) — resolve current_cursor.last_chapter_id titles.
+    await enrich_jobs_with_current_chapter_titles(jobs, book_client)
+    return jobs
 
 
 # ── T2-close-1b-FE — Public benchmark-status ────────────────────────

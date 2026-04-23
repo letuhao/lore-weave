@@ -105,6 +105,12 @@ class Event(BaseModel):
     canonical_title: str
     summary: str | None = None
     chapter_id: str | None = None
+    # C6 (D-K19e-β-01) — resolved chapter title denormalized in from
+    # book-service at response time via BookClient.get_chapter_titles.
+    # ``None`` on both pre-resolution and book-service unavailable
+    # paths; the FE falls back to a UUID-suffix short via the
+    # existing ``chapterShort()`` helper.
+    chapter_title: str | None = None
     event_order: int | None = None
     chronological_order: int | None = None
     participants: list[str] = Field(default_factory=list)

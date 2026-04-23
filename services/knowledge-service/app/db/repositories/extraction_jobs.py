@@ -102,6 +102,13 @@ class ExtractionJob(BaseModel):
     items_total: int | None = None
     items_processed: int = 0
     current_cursor: dict[str, Any] | None = None
+    # C6 (D-K19b.3-01) — when ``current_cursor.last_chapter_id`` is
+    # present, knowledge-service resolves the chapter title via
+    # BookClient before serving. ``None`` on pre-resolution, for jobs
+    # where the cursor has no last_chapter_id, or on book-service
+    # unavailable. FE's JobDetailPanel renders the "Current chapter"
+    # section only when this field is populated.
+    current_chapter_title: str | None = None
     cost_spent_usd: Decimal = Decimal("0")
 
     started_at: datetime | None = None

@@ -95,6 +95,11 @@ func (s *Server) Router() http.Handler {
 		r.Get("/books/{book_id}/projection", s.getBookProjection)
 		r.Get("/books/{book_id}/chapters", s.getInternalBookChapters)
 		r.Get("/books/{book_id}/chapters/{chapter_id}", s.getInternalBookChapter)
+		// C6 (D-K19b.3-01 + D-K19e-β-01) — batch chapter-title resolver.
+		// Cross-book query (caller passes a set of chapter_ids from any
+		// books they own); sits under /internal/chapters rather than
+		// /internal/books/... because it's not scoped to a single book.
+		r.Post("/chapters/titles", s.postInternalChapterTitles)
 		r.Patch("/imports/{import_id}", s.updateImportJobStatus)
 	})
 
@@ -1847,6 +1852,117 @@ FROM chapter_blocks WHERE chapter_id=$1
 		"body_format":       "json",
 		"text_content":      textContent,
 	})
+}
+
+// postInternalChapterTitles — C6 (D-K19b.3-01 + D-K19e-β-01).
+//
+// Batch resolver used by knowledge-service to denormalize chapter
+// titles into Timeline events + ExtractionJob current-cursor rows
+// before serving them to the FE. One HTTP round-trip per knowledge-
+// service response instead of per-row.
+//
+// /review-impl M2 test gap: the Go tests for this handler (in
+// ``server_test.go``) exercise only the pre-DB paths (empty list /
+// oversized / invalid JSON) via ``s := &Server{}`` with a nil pool.
+// The happy-path SQL (column names, ``ANY($1::uuid[])`` array codec,
+// ``lifecycle_state='active'`` filter) follows the conventions from
+// ``getInternalBookChapters`` / ``getInternalBookChapter`` which ARE
+// exercised by knowledge-service integration tests hitting
+// ``/internal/books/{book_id}/chapters`` live. A manual-curl smoke
+// in docker before prod promotion is the current safety net for this
+// specific handler — if the pattern proves fragile across cycles,
+// add a testcontainer-backed Go integration test.
+//
+// Request:  { "chapter_ids": [uuid, uuid, ...] }
+// Response: { "titles": { "<uuid>": "Chapter N — Title" } }
+//
+// Contract notes:
+//   - Empty list → 200 with empty titles map.
+//   - Cap at 200 ids per call; oversized → 422.
+//   - chapter_ids not in DB OR with lifecycle_state != 'active' are
+//     silently dropped from the response map. The caller renders a
+//     UUID-suffix fallback for any key it asked for but didn't get.
+//   - Whitespace-only titles fall back to "Chapter N" (sort_order
+//     only) so the FE never shows a dash with empty text.
+//   - No book-scope filter: a caller can ask for any chapter ids
+//     across any books. Authorization is "you have the internal
+//     token"; knowledge-service only passes ids derived from its own
+//     Neo4j rows (which already carry the caller's user_id).
+func (s *Server) postInternalChapterTitles(w http.ResponseWriter, r *http.Request) {
+	const maxIDs = 200
+	var body struct {
+		ChapterIDs []uuid.UUID `json:"chapter_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid JSON body")
+		return
+	}
+	if len(body.ChapterIDs) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"titles": map[string]string{}})
+		return
+	}
+	if len(body.ChapterIDs) > maxIDs {
+		writeError(
+			w, http.StatusUnprocessableEntity, "BOOK_VALIDATION_ERROR",
+			fmt.Sprintf("too many chapter_ids (max %d)", maxIDs),
+		)
+		return
+	}
+	rows, err := s.pool.Query(r.Context(), `
+SELECT id, sort_order, title
+FROM chapters
+WHERE id = ANY($1::uuid[]) AND lifecycle_state = 'active'
+`, body.ChapterIDs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to query chapter titles")
+		return
+	}
+	defer rows.Close()
+	titles := make(map[string]string)
+	var scanErrors int
+	for rows.Next() {
+		var id uuid.UUID
+		var sortOrder int
+		var title string
+		if err := rows.Scan(&id, &sortOrder, &title); err != nil {
+			// /review-impl L5 — surface scan errors rather than silent
+			// drop. A schema drift (title column type change) would
+			// otherwise produce an empty map forever with no signal.
+			// Log via stdlib so the ops dashboard sees a spike + keep
+			// serving whatever rows DID parse cleanly.
+			scanErrors++
+			continue
+		}
+		if strings.TrimSpace(title) == "" {
+			titles[id.String()] = fmt.Sprintf("Chapter %d", sortOrder)
+		} else {
+			titles[id.String()] = fmt.Sprintf("Chapter %d — %s", sortOrder, title)
+		}
+	}
+	// /review-impl L5 — rows.Err() catches iterator-level errors
+	// (connection loss mid-stream, late server-side error) that
+	// rows.Next()'s final `false` would otherwise obscure as "end of
+	// result set". Fail the request so the caller retries — partial
+	// results here are worse than no results because the FE would
+	// cache the partial map.
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "chapter titles iterator errored")
+		return
+	}
+	if scanErrors > 0 {
+		// Best-effort log — don't want this path to fail the request
+		// since SOME rows may have parsed. The count gives ops enough
+		// to correlate with a schema drift.
+		writeJSON(
+			w, http.StatusOK,
+			map[string]any{
+				"titles":          titles,
+				"scan_error_count": scanErrors,
+			},
+		)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"titles": titles})
 }
 
 func excerpt(s string, n int) string {

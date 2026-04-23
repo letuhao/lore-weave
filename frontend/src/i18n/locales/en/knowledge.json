@@ -138,6 +138,7 @@
       "orderLabel": "Narrative order",
       "noOrder": "—",
       "chapterLabel": "Chapter",
+      "chapterUnresolved": "Chapter id {{id}} — title unresolved",
       "participantsMore": "+{{count}} more",
       "confidenceLabel": "Confidence"
     },
@@ -280,6 +281,7 @@
       "title": "Job details",
       "close": "Close",
       "status": "Status",
+      "currentChapter": "Current chapter",
       "scope": "Scope",
       "llmModel": "Chat model",
       "embeddingModel": "Embedding model",

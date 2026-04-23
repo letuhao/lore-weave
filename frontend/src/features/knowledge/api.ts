@@ -57,6 +57,26 @@ export interface ExtractionJobWire {
    * object directly, not this field.
    */
   project_name: string | null;
+  /**
+   * C6 (D-K19b.3-01) — human-readable chapter title for the job's
+   * current cursor position. Present when `current_cursor.last_chapter_id`
+   * is set AND book-service resolved it successfully. `null` for:
+   *   - jobs without a cursor (newly-queued, completed, failed)
+   *   - cursors without `last_chapter_id` (chat-scope uses `last_pending_id`)
+   *   - any book-service failure (graceful degrade)
+   * JobDetailPanel renders the "Current chapter" section only when
+   * this field is populated.
+   *
+   * /review-impl L6: during BE→FE rollout, pre-C6 knowledge-service
+   * responses lack this field entirely. At runtime the property is
+   * `undefined`, not `null` — nullish coalescing (`??`) handles both
+   * identically, so consumers SHOULD use `job.current_chapter_title
+   * ?? fallback` rather than direct access. The type is kept as
+   * `string | null` (not `?: string | null`) to force tsc to flag
+   * fixtures that forget the field; runtime consumers still tolerate
+   * undefined via the `??` pattern.
+   */
+  current_chapter_title: string | null;
 }
 
 export interface GraphStatsResponse {
@@ -332,6 +352,20 @@ export interface TimelineEvent {
   canonical_title: string;
   summary: string | null;
   chapter_id: string | null;
+  /**
+   * C6 (D-K19e-β-01) — resolved chapter title denormalized in by
+   * knowledge-service at response time via BookClient. Format:
+   * `"Chapter N — Title"` (or `"Chapter N"` when the chapter has no
+   * title set). `null` when the chapter isn't in book-service's
+   * active set OR when book-service was unavailable — TimelineEventRow
+   * falls back to the UUID-suffix short via `chapterShort()`.
+   *
+   * /review-impl L6: see `ExtractionJobWire.current_chapter_title`
+   * for the rollout-window undefined-vs-null nuance. Same pattern
+   * applies here — always consume via `event.chapter_title ??
+   * fallback`.
+   */
+  chapter_title: string | null;
   event_order: number | null;
   chronological_order: number | null;
   participants: string[];

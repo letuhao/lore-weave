@@ -1,10 +1,12 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -275,6 +277,81 @@ func TestFetchSharingVisibilityFallsBackToPrivate(t *testing.T) {
 	got := srv.fetchSharingVisibility(context.Background(), bookID)
 	if got != "private" {
 		t.Fatalf("expected private fallback on upstream error, got %q", got)
+	}
+}
+
+// C6 — non-DB paths of the batch chapter-title handler. DB-backed
+// happy path is covered by knowledge-service integration tests (the
+// book-service server_test.go convention is helper-level + HTTP
+// parsing, NOT pool-backed integration). The handler returns early
+// before touching the pool for empty list / oversized / invalid
+// JSON, so a zero-value Server{} suffices here.
+func TestPostInternalChapterTitles_EmptyList(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/internal/chapters/titles",
+		strings.NewReader(`{"chapter_ids": []}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	s.postInternalChapterTitles(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("empty list: want 200, got %d body=%s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Titles map[string]string `json:"titles"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if len(body.Titles) != 0 {
+		t.Fatalf("empty list: want empty titles map, got %v", body.Titles)
+	}
+}
+
+func TestPostInternalChapterTitles_OversizedRejected(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	// 201 fake UUIDs = just above the 200 cap.
+	ids := make([]string, 201)
+	for i := range ids {
+		ids[i] = uuid.New().String()
+	}
+	body, _ := json.Marshal(map[string]any{"chapter_ids": ids})
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/internal/chapters/titles",
+		bytes.NewReader(body),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	s.postInternalChapterTitles(w, req)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("oversized: want 422, got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestPostInternalChapterTitles_InvalidJSON(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/internal/chapters/titles",
+		strings.NewReader(`{not json`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	s.postInternalChapterTitles(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("invalid JSON: want 400, got %d body=%s", w.Code, w.Body.String())
 	}
 }
 

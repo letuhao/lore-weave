@@ -220,3 +220,132 @@ async def test_internal_token_header_sent(bc: BookClient):
         await bc.get_chapter_text(book_id, chapter_id)
 
     assert captured == ["unit-test-token"]
+
+
+# ── C6 (D-K19b.3-01 + D-K19e-β-01) — get_chapter_titles ───────────
+
+
+def _chapter_titles_url() -> str:
+    return "http://book-service:8082/internal/chapters/titles"
+
+
+@pytest.mark.asyncio
+async def test_get_chapter_titles_empty_input_skips_network(bc: BookClient):
+    """Early-return on empty input — no HTTP call, no respx match."""
+    with respx.mock() as mock:
+        titles = await bc.get_chapter_titles([])
+    assert titles == {}
+    # No routes registered → if a call fired, respx would complain.
+    # Explicit assertion: no calls landed.
+    assert not mock.calls.called
+
+
+@pytest.mark.asyncio
+async def test_get_chapter_titles_happy_path(bc: BookClient):
+    cid1 = uuid4()
+    cid2 = uuid4()
+    with respx.mock() as mock:
+        mock.post(_chapter_titles_url()).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "titles": {
+                        str(cid1): "Chapter 1 — Opening Scene",
+                        str(cid2): "Chapter 2 — The Duel",
+                    },
+                },
+            ),
+        )
+        titles = await bc.get_chapter_titles([cid1, cid2])
+    assert titles == {
+        cid1: "Chapter 1 — Opening Scene",
+        cid2: "Chapter 2 — The Duel",
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_chapter_titles_partial_response(bc: BookClient):
+    """BE drops unknown/inactive chapter_ids from the response map.
+    Client must return whatever it got, NOT fabricate entries for the
+    missing ones — caller's FE falls back to UUID short for those."""
+    cid1 = uuid4()
+    cid2 = uuid4()
+    with respx.mock() as mock:
+        mock.post(_chapter_titles_url()).mock(
+            return_value=httpx.Response(
+                200,
+                # cid2 missing — inactive or nonexistent chapter
+                json={"titles": {str(cid1): "Chapter 1 — Opening"}},
+            ),
+        )
+        titles = await bc.get_chapter_titles([cid1, cid2])
+    assert titles == {cid1: "Chapter 1 — Opening"}
+    assert cid2 not in titles
+
+
+@pytest.mark.asyncio
+async def test_get_chapter_titles_5xx_returns_empty_dict(bc: BookClient):
+    """Graceful degrade: any non-200 → {} (not None, not exception).
+    Enricher semantics depend on this — it iterates the empty dict."""
+    cid = uuid4()
+    with respx.mock() as mock:
+        mock.post(_chapter_titles_url()).mock(
+            return_value=httpx.Response(503),
+        )
+        titles = await bc.get_chapter_titles([cid])
+    assert titles == {}
+
+
+@pytest.mark.asyncio
+async def test_get_chapter_titles_timeout_returns_empty_dict(bc: BookClient):
+    cid = uuid4()
+    with respx.mock() as mock:
+        mock.post(_chapter_titles_url()).mock(
+            side_effect=httpx.TimeoutException("simulated"),
+        )
+        titles = await bc.get_chapter_titles([cid])
+    assert titles == {}
+
+
+@pytest.mark.asyncio
+async def test_get_chapter_titles_malformed_uuid_in_response_skipped(bc: BookClient):
+    """Defensive: if BE drifts and returns a non-UUID key, that entry
+    is skipped. Valid entries in the same response still land."""
+    cid = uuid4()
+    with respx.mock() as mock:
+        mock.post(_chapter_titles_url()).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "titles": {
+                        str(cid): "Chapter 3 — Valid",
+                        "not-a-uuid": "Garbage — Should Skip",
+                    },
+                },
+            ),
+        )
+        titles = await bc.get_chapter_titles([cid])
+    assert titles == {cid: "Chapter 3 — Valid"}
+
+
+@pytest.mark.asyncio
+async def test_get_chapter_titles_body_shape(bc: BookClient):
+    """Lock the request body: POST with JSON {chapter_ids: [str, ...]}.
+    A regression sending query params or renaming the field would
+    silently make the handler see an empty list."""
+    cid1 = uuid4()
+    cid2 = uuid4()
+    captured: dict = {}
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        import json as _json
+        captured["body"] = _json.loads(request.content)
+        captured["method"] = request.method
+        return httpx.Response(200, json={"titles": {}})
+
+    with respx.mock() as mock:
+        mock.post(_chapter_titles_url()).mock(side_effect=capture)
+        await bc.get_chapter_titles([cid1, cid2])
+
+    assert captured["method"] == "POST"
+    assert captured["body"] == {"chapter_ids": [str(cid1), str(cid2)]}

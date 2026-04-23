@@ -32,8 +32,10 @@ function formatConfidence(c: number): string {
 function chapterShort(chapterId: string | null): string {
   if (!chapterId) return '';
   // Short suffix of the chapter UUID so the user has *something* to
-  // distinguish chapters with. Real chapter titles need a book-service
-  // lookup (tracked as D-K19e-β-01).
+  // distinguish chapters with. C6 (D-K19e-β-01) now denormalizes the
+  // real title in via `event.chapter_title`; this fallback stays for
+  // the graceful-degrade path when book-service was unavailable OR
+  // the chapter was trashed after the event was written.
   return chapterId.length > 8 ? `…${chapterId.slice(-8)}` : chapterId;
 }
 
@@ -49,7 +51,10 @@ export function TimelineEventRow({
     0,
     event.participants.length - VISIBLE_PARTICIPANTS,
   );
-  const short = chapterShort(event.chapter_id);
+  // C6 (D-K19e-β-01) — prefer the BE-resolved chapter title over the
+  // UUID-suffix fallback. Either both are empty (no chapter on this
+  // event) or we render exactly one.
+  const chapterLabel = event.chapter_title ?? chapterShort(event.chapter_id);
 
   return (
     <li>
@@ -83,10 +88,31 @@ export function TimelineEventRow({
             {event.title}
           </span>
           <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-            {short && (
+            {chapterLabel && (
               <span className="inline-flex items-center">
                 {t('timeline.row.chapterLabel')}:{' '}
-                <code className="ml-1">{short}</code>
+                {event.chapter_title ? (
+                  // Real title — render as plain text so it reads as
+                  // prose. The UUID short keeps its monospace <code>
+                  // styling below as a fallback visual signal that
+                  // the title was unavailable.
+                  <span className="ml-1">{chapterLabel}</span>
+                ) : (
+                  // /review-impl L4: screen readers announce <code>
+                  // content character-by-character ("c-c-c dash
+                  // d-d-d-d"). aria-label overrides that with prose
+                  // indicating the UUID is a fallback reference,
+                  // not a real title. Visual monospace is preserved
+                  // for sighted users as the "fallback" signal.
+                  <code
+                    className="ml-1"
+                    aria-label={t('timeline.row.chapterUnresolved', {
+                      id: chapterLabel,
+                    })}
+                  >
+                    {chapterLabel}
+                  </code>
+                )}
               </span>
             )}
             {visibleParticipants.map((p) => (

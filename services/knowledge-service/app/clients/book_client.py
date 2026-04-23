@@ -87,6 +87,57 @@ class BookClient:
             )
             return None
 
+    async def get_chapter_titles(
+        self, chapter_ids: list[UUID],
+    ) -> dict[UUID, str]:
+        """C6 (D-K19b.3-01 + D-K19e-β-01) — batch-resolve chapter titles.
+
+        Fires one POST to ``/internal/chapters/titles`` and returns a
+        dict mapping ``UUID → "Chapter N — Title"``. Used by the
+        knowledge-service Timeline + Jobs responses to denormalize
+        chapter titles inline so the FE can render
+        "Chapter 12 — The Bridge Duel" instead of ``…last8chars``.
+
+        Graceful on every failure path: returns ``{}`` so callers
+        render the UUID-suffix fallback via the existing
+        ``chapterShort()`` helper. Empty input short-circuits without
+        a network call.
+        """
+        if not chapter_ids:
+            return {}
+        url = f"{self._base_url}/internal/chapters/titles"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.post(
+                url,
+                json={"chapter_ids": [str(cid) for cid in chapter_ids]},
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning(
+                    "book-service %s returned %d, trace_id=%s",
+                    url, resp.status_code, tid,
+                )
+                return {}
+            data = resp.json()
+            titles = data.get("titles") or {}
+            result: dict[UUID, str] = {}
+            for k, v in titles.items():
+                try:
+                    result[UUID(k)] = str(v)
+                except (ValueError, TypeError):
+                    # Skip any key that isn't a valid UUID — defensive
+                    # against a future BE drift. The caller falls back
+                    # to the UUID short for that event.
+                    continue
+            return result
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning(
+                "book-service unavailable fetching chapter titles: %s trace_id=%s",
+                exc, tid,
+            )
+            return {}
+
     async def get_chapter_text(
         self, book_id: UUID, chapter_id: UUID,
     ) -> str | None:

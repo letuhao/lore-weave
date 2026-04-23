@@ -182,6 +182,25 @@ export function JobDetailPanel({ open, onOpenChange, job, onRetryClick }: Props)
               )}
             </section>
 
+            {/* C6 (D-K19b.3-01) — Current chapter, when book-service
+                resolved the job's cursor last_chapter_id. Only shown
+                for active jobs with a chapter-scope cursor; hidden
+                for completed/failed/chat-scope jobs where the title
+                would be stale or irrelevant. */}
+            {job.current_chapter_title && (
+              <section
+                className="rounded-md border bg-muted/30 px-3 py-2"
+                data-testid="job-detail-current-chapter"
+              >
+                <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {t('jobs.detail.currentChapter')}
+                </dt>
+                <dd className="mt-0.5 text-[13px]">
+                  {job.current_chapter_title}
+                </dd>
+              </section>
+            )}
+
             {/* Metadata */}
             <section>
               <dl className="space-y-1.5">
