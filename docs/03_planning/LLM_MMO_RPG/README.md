@@ -36,7 +36,8 @@ This folder exists to:
 | `02_STORAGE_ARCHITECTURE.md` | Storage engineering — full event sourcing + DB-per-reality. Schema, concurrency, capacity, archive. |
 | `03_MULTIVERSE_MODEL.md` | Conceptual foundation — peer realities (no privileged root), snapshot fork, four-layer canon model. Sits above 02 and reframes several 01 problems. |
 | `04_PLAYER_CHARACTER_DESIGN.md` | PC semantics — identity layering (User/PC/Session), PC vs NPC rules, creation/lifecycle/social/canon decisions. Registers DF1–DF8 deferred big features. |
-| `FEATURE_CATALOG.md` | **Bird's-eye catalogue of all 120 features** across 12 categories with stable IDs. Cross-references every numbered design doc. V1/V2/V3/V4 scope rollup. |
+| `05_LLM_SAFETY_LAYER.md` | Cross-cutting LLM I/O discipline — 3-intent classifier, command dispatch, World Oracle (determinism), 5-layer injection defense. Resolves A3/A5/A6 from 01. Implementation contract for `roleplay-service` + `world-service`. |
+| `FEATURE_CATALOG.md` | **Bird's-eye catalogue of features** across 12 categories with stable IDs. Cross-references every numbered design doc. V1/V2/V3/V4 scope rollup. |
 | `OPEN_DECISIONS.md` | Tracking file for all pending user decisions + registry of DF1–DF13 deferred big features (DF12 withdrawn). Defaults applied where noted; user can confirm or override at any time. |
 | `SESSION_HANDOFF.md` | **Resumption doc** — current state summary, decision history, natural next steps. Read this first when resuming. Does not conflict with main `docs/sessions/SESSION_PATCH.md`. |
 
@@ -65,7 +66,8 @@ This folder exists to:
 6. `03_MULTIVERSE_MODEL.md` — conceptual foundation (read before 02)
 7. `02_STORAGE_ARCHITECTURE.md` — engineering detail (§12A–§12L cover all R1–R13)
 8. `04_PLAYER_CHARACTER_DESIGN.md` — PC semantics + deferred big features registry
-9. `OPEN_DECISIONS.md` — every decision locked or pending + DF1–DF13 registry
+9. `05_LLM_SAFETY_LAYER.md` — cross-cutting LLM I/O discipline (A3/A5/A6 resolution)
+10. `OPEN_DECISIONS.md` — every decision locked or pending + DF1–DF13 registry
 
 ## Status checkpoint
 

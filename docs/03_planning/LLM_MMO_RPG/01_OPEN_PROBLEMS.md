@@ -67,18 +67,19 @@ These are harder only within the scope of one reality, which bounds the populati
 
 **Notes:** The multiverse model reframes "same character, different contexts" from a consistency bug into a product feature. The residual within-reality problem is tractable because reality population is bounded.
 
-### A3. Determinism & reproducibility — **OPEN**
+### A3. Determinism & reproducibility — **PARTIAL**
 
 **Problem:** Same question, different answer. World state requires stable facts. If a player asks an NPC "where is the treasure?" and gets "in the cave" today, "under the bridge" tomorrow, the world is not a world.
 
 **Why hard:** LLMs are non-deterministic by default. Temperature=0 helps but doesn't eliminate drift across model versions/providers.
 
-**Known partial approaches:**
-- **Pre-compute canonical answers** on instance creation, cache them, NPC is just a voice for a lookup.
-- **Oracle pattern** — a shared "world oracle" resolves fact questions deterministically; NPCs delegate to it.
-- **Facts in tool-calls, not free-text** — when player asks about a fact, LLM emits a `query_world(key)` tool call, gets the fixed answer, then narrates it.
+**Resolved by:** **World Oracle pattern** in [05 §4](05_LLM_SAFETY_LAYER.md) — `world-service` exposes deterministic `oracle.query(reality_id, pc_id, key, context_cutoff)` API; pre-computed fact categories (entity_location, entity_relation, L1_axiom, book_content, world_state_kv); cache invalidated on L3 events touching key; fact-question classifier routes to Oracle, miss → LLM fallback with audit flag; `context_cutoff` filters visibility per PC to prevent spoilers AND cross-PC leaks structurally. Decisions A3-D1..D4 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
 
-**Notes:** Combines with A4 and A5 to solve together.
+**Residual `OPEN` (blocks SOLVED):**
+- Classifier accuracy (V1 prototype data on real sessions)
+- Oracle key coverage — what fraction of fact questions hit pre-computed? (V1 measurement; missed keys added iteratively)
+- Oracle cache hit rate (V1 metric feeds pre-warm strategy)
+- Overlaps with [A4 retrieval quality](#a4-retrieval-quality-from-knowledge-service--partial) and [G3 canon-drift detection](#g3-canon-drift-detection-in-production--open)
 
 ### A4. Retrieval quality from knowledge-service — **PARTIAL**
 
@@ -99,10 +100,12 @@ These are harder only within the scope of one reality, which bounds the populati
 
 **Why hard:** Tool-call reliability varies by model. Claude and GPT-4 are good; local/small models are not. Partial tool-call failures (half-updated state) corrupt world state.
 
-**Notes:**
-- For critical state changes, **bypass the LLM** — the client sends a structured action (`/take map`), world-service validates and applies deterministically, then the LLM narrates the result.
-- LLM-driven tool calls only for discretionary/flavor actions.
-- This is standard pattern but requires UX discipline (structured commands vs free-form text).
+**Resolved by:** **Structured-command dispatch** in [05 §3](05_LLM_SAFETY_LAYER.md) — 3-intent classifier (command / fact question / free narrative); `/verb target [args]` syntax handled deterministically by `world-service` (validates, writes L3 event, updates projection) BEFORE LLM narrates; LLM tool-calls restricted to non-mutating flavor actions (whisper, gesture, reveal emotion) — state-changing actions (take/drop/attack/heal/move) architecturally forbidden from LLM output; tool-call failure policy (revert + audit + narrator acknowledges distraction, no partial state). Decisions A5-D1..D4 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+
+**Residual `OPEN` (blocks SOLVED):**
+- Tool-call reliability per LLM provider (Claude, GPT-4, Qwen, Ollama) — V1 per-model benchmark
+- Command UX polish (tab-complete, autosuggest, verb discovery) — DF5 Session implementation
+- Classifier false-negative rate on command-like free-text
 
 ### A6. Prompt injection & jailbreak resistance — **PARTIAL**
 
@@ -110,13 +113,14 @@ These are harder only within the scope of one reality, which bounds the populati
 
 **Why hard:** No robust defense against prompt injection exists. Mitigations are layered and leaky.
 
-**Known approaches:**
-- Separate "persona prompt" and "user input" with strong delimiters
-- Output filter that checks for persona-break (NPC referring to itself as "the AI", revealing system instructions)
-- Canon-scoped retrieval: NPC literally doesn't see facts outside its timeline window, so it can't spoil them
-- Output moderation pass (cheaper model) to catch obvious breaks
+**Resolved by:** **5-layer defense** in [05 §5](05_LLM_SAFETY_LAYER.md) — L1 input sanitization (normalize + pattern flagging + audit), L2 hard server-side delimiters never user-controlled, **L3 canon-scoped retrieval at DB layer** (the critical layer — forbidden facts structurally absent from LLM context; jailbreak cannot leak what isn't there), L4 output filter (persona-break / cross-PC leak / spoiler / NSFW checks with soft retry + hard block), L5 per-PC retrieval isolation enforced at DB layer (RLS or service-layer filter, not prompt discipline). Decisions A6-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
 
-**Notes:** Acceptable failure mode = occasional persona break, user-reportable. Catastrophic failure mode = private context leak between players. Design must ensure the second is structurally impossible (per-PC isolation at retrieval layer, not just prompt layer).
+**Residual `OPEN` (blocks SOLVED + ongoing):**
+- Output filter calibration (false positive vs miss rate) — V1 adversarial red-team
+- Novel jailbreak classes — ongoing ops, no framework can claim "solved"
+- L1 input sanitization pattern list maintenance — ongoing
+
+**Catastrophic failure mode addressed:** Private context leak between players is architecturally prevented via L3 + L5 (retrieval filtering BEFORE LLM + per-PC DB isolation). Persona breaks (L4 soft fail) remain acceptable-and-reportable.
 
 ---
 
@@ -436,7 +440,7 @@ New category introduced by the multiverse model in [03_MULTIVERSE_MODEL.md §11]
 
 | Category | OPEN | PARTIAL | KNOWN PATTERN | ACCEPTED |
 |---|---|---|---|---|
-| A. LLM reasoning & grounding | 2 | 5 | 0 | 0 |
+| A. LLM reasoning & grounding | 0 | 6 | 0 | 0 |
 | B. Distributed systems | 1 | 2 | 3 | 0 |
 | C. Product / UX | 3 | 2 | 0 | 0 |
 | D. Economics | 2 | 0 | 0 | 1 |
@@ -444,9 +448,9 @@ New category introduced by the multiverse model in [03_MULTIVERSE_MODEL.md §11]
 | F. Content design | 2 | 1 | 0 | 1 |
 | G. Testing & ops | 3 | 0 | 0 | 0 |
 | **M. Multiverse-specific** | **0** | **6** | **1** | **0** |
-| **Total** | **14** | **17** | **5** | **2** |
+| **Total** | **12** | **18** | **5** | **2** |
 
-> **Note:** M batch fully closed 2026-04-23. M3 resolution reconciled a pre-existing off-by-one in the M baseline count (originally documented as 3 OPEN but actual was 4 before M1 resolution). Current counts accurately reflect: M1/M2/M3/M4/M5/M7 all `PARTIAL`, M6 `KNOWN PATTERN`. M2/M3/M4/M5 additionally marked **MITIGATED in [03 §11](03_MULTIVERSE_MODEL.md)**; they remain `PARTIAL` in 01 due to residual sub-items pending V1 data or external input.
+> **Note:** Counts accurate as of 2026-04-23. Reconciled pre-existing off-by-one baseline miscounts discovered during M and A batch resolutions (the M OPEN baseline was 4 not 3; the A OPEN baseline included A2 which had already moved to PARTIAL via the multiverse reframe). M1/M2/M3/M4/M5/M7 all `PARTIAL` in 01; M6 `KNOWN PATTERN`. M2/M3/M4/M5 additionally marked **MITIGATED in [03 §11](03_MULTIVERSE_MODEL.md)**; stay `PARTIAL` in 01 due to residual sub-items pending V1 data or external input. All A1–A6 now `PARTIAL` after the LLM Safety Layer ([05](05_LLM_SAFETY_LAYER.md)) resolution.
 
 **Deltas across design rounds:**
 - A1 `OPEN` → `PARTIAL` (R8 [§12H](02_STORAGE_ARCHITECTURE.md) resolves infrastructure; semantic layer still open)
@@ -462,8 +466,11 @@ New category introduced by the multiverse model in [03_MULTIVERSE_MODEL.md §11]
 - **M2 `PARTIAL` → `MITIGATED`** in 03 only (2026-04-23 — all mitigation layers locked: MV10/MV11/R9-L6/MV4-b/M1-D5 cohesive)
 - **M5 `PARTIAL` → `MITIGATED`** in 03 only (2026-04-23 — MV9 auto-rebase + projection flattening + ops metrics cohesive)
 - **M category batch fully closed** (2026-04-23 — M1/M7/M3/M4 all moved to `PARTIAL`; M2/M5 confirmed MITIGATED in 03; M6 KNOWN PATTERN unchanged)
+- **A3 `OPEN` → `PARTIAL`** (2026-04-23 — World Oracle pattern in [05 §4](05_LLM_SAFETY_LAYER.md); A3-D1..D4 locked. Deterministic fact-question routing via `oracle.query()` with pre-computed categories + PC timeline-cutoff; miss → LLM fallback + audit flag)
+- **A5 + A6 framework formalized** (2026-04-23 — A5 / A6 remain `PARTIAL` status-wise but their architecture is now locked via [05 §3 command dispatch + §5 5-layer injection defense](05_LLM_SAFETY_LAYER.md); A5-D1..D4 + A6-D1..D5 locked)
+- **A category batch fully closed** (2026-04-23 — A1/A2/A3/A4/A5/A6 all `PARTIAL`; no fully OPEN items remain in A)
 
-**Interpretation:** Systematic design resolutions have compressed the OPEN set from 18 → 17 → 16 → 15 → 14, with every multiverse-specific risk now having at least a PARTIAL answer. Remaining single-problem-kills-product severity items: **A4** (retrieval quality — needs measurement), **D1** (cost per user-hour — needs prototype), **E3** (IP — needs legal). Critical-path list: still 3. M-category batch is **complete** — no fully OPEN items remain in M.
+**Interpretation:** Systematic design resolutions have compressed the OPEN set from 18 → … → 12, with every multiverse-specific risk AND every LLM reasoning/grounding risk now having at least a PARTIAL answer. Remaining single-problem-kills-product severity items: **A4** (retrieval quality — needs measurement), **D1** (cost per user-hour — needs prototype), **E3** (IP — needs legal). Critical-path list: still 3. Both M and A categories are **complete** — no fully OPEN items remain in either. OPEN items remaining are in categories B (1), C (3), D (2), E (1), F (2), G (3).
 
 ## What "ready to implement" would look like
 

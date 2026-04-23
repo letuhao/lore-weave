@@ -158,11 +158,18 @@ When adding new features:
 | ID | Feature | Status | Tier | Dep | Design ref |
 |---|---|---|---|---|---|
 | PL-1 | Session lifecycle (create, join, leave, dissolve) | 📦 | V1 | IF-1, IF-5 | **DF5 — Session feature** |
-| PL-2 | Player command grammar (`/say`, `/do`, `/take`, `/look`, ...) | 🟡 | V1 | PL-1 | Inspired by SillyTavern slash-commands |
+| PL-2 | Player command grammar (`/verb target [args]` MUD pattern) — deterministic dispatch, LLM narrates post-commit | ✅ | V1 | PL-1, PL-15 | [05 §3](05_LLM_SAFETY_LAYER.md#3-command-dispatch-a5), A5-D2 |
 | PL-3 | Turn submission + validation | 🟡 | V1 | PL-1 | Depends on DF5 |
-| PL-4 | Prompt assembly (system + canon + retrieval + persona + history + user input) | 🟡 | V1 | NPC-2, NPC-4 | SillyTavern PromptManager inspired |
+| PL-4 | Prompt assembly (system + canon-scoped retrieval + persona + history + sanitized user input with hard delimiters) | ✅ | V1 | NPC-2, NPC-4, PL-18, PL-19 | [05 §5.2](05_LLM_SAFETY_LAYER.md#52-layer-2--hard-delimiters-in-prompt-a6-d2), A6-D2 |
 | PL-5 | LLM streaming inference | ✅ | V1 | IF-15 | Reuse [98 §6](../98_CHAT_SERVICE_DESIGN.md) |
-| PL-6 | Tool calling (player action → world state change via LLM-emitted tool call) | 🟡 | V1 | PL-5 | See A5 in [01](01_OPEN_PROBLEMS.md) |
+| PL-6 | LLM tool-call allowlist (flavor-only; state mutations forbidden from LLM output) | ✅ | V1 | PL-5 | [05 §3.3](05_LLM_SAFETY_LAYER.md#33-llm-tool-calls--allowed-vs-forbidden-a5-d3), A5-D3/D4 |
+| PL-15 | 3-intent classifier (command / fact question / free narrative) | ✅ | V1 | — | [05 §2](05_LLM_SAFETY_LAYER.md#2-three-intent-classifier-a5-d1), A5-D1 |
+| PL-16 | World Oracle API (`oracle.query()` deterministic fact lookup) | ✅ | V1 | IF-1 | [05 §4](05_LLM_SAFETY_LAYER.md#4-world-oracle-a3), A3-D1..D4 |
+| PL-17 | Oracle fact pre-computation (entity_location, entity_relation, L1_axiom, book_content, world_state_kv) + cache invalidation | ✅ | V1 | PL-16 | [05 §4.2](05_LLM_SAFETY_LAYER.md#42-pre-computed-fact-categories-a3-d2), A3-D2 |
+| PL-18 | Canon-scoped retrieval (primary structural injection defense) — filter by pc_id + timeline_cutoff + reality_id BEFORE LLM | ✅ | V1 | IF-1, knowledge-service | [05 §5.3](05_LLM_SAFETY_LAYER.md#53-layer-3--canon-scoped-retrieval-a6-d3--critical), A6-D3 |
+| PL-19 | Input sanitization + jailbreak-pattern detection | ✅ | V1 | — | [05 §5.1](05_LLM_SAFETY_LAYER.md#51-layer-1--input-sanitization-a6-d1), A6-D1 |
+| PL-20 | Output filter (persona-break / cross-PC leak / spoiler / NSFW with soft-retry + hard-block) | ✅ | V1 | PL-5 | [05 §5.4](05_LLM_SAFETY_LAYER.md#54-layer-4--output-filter-a6-d4), A6-D4 |
+| PL-21 | Per-PC retrieval isolation at DB layer (service-layer filter V1; RLS V2+) | ✅ | V1 | IF-1, knowledge-service | [05 §5.5](05_LLM_SAFETY_LAYER.md#55-layer-5--per-pc-retrieval-isolation-at-db-layer-a6-d5), A6-D5 |
 | PL-7 | Event emission + outbox publish | ✅ | V1 | IF-1, IF-6 | [02 §4.4](02_STORAGE_ARCHITECTURE.md) |
 | PL-8 | Projection update (in-transaction sync) | ✅ | V1 | IF-1 | [02 §4.6](02_STORAGE_ARCHITECTURE.md) |
 | PL-9 | Realtime broadcast (region subscribers see event) | 🟡 | V1 | IF-5, PL-7 | [02 §9](02_STORAGE_ARCHITECTURE.md) |
