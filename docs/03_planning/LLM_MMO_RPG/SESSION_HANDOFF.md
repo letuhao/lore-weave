@@ -76,14 +76,61 @@ See [00_VISION.md](00_VISION.md) for the dream, [01_OPEN_PROBLEMS.md](01_OPEN_PR
 ### Non-critical OPEN (0)
 *(C2 + F2 formally ACCEPTED as research frontier on 2026-04-23. Non-critical bucket is empty.)*
 
+### ⚠️ V1 implementation design NOT complete
+The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 deferred big features (DF4/DF5/DF7) to have their own design docs** — they are V1-blocking. Plus 2 small inline gaps (WA-4 heuristics, session invite/share). See [Next session agenda](#next-session-agenda--v1-implementation-design-gaps) below.
+
 ---
 
-## Closure brief (2026-04-23)
+## Session 2026-04-23 — progress summary
 
 ### Session arc
-Starting OPEN = **18**. Closing OPEN = **2**. ACCEPTED = **4**. PARTIAL = **26**.
+Starting OPEN = **18**. Current OPEN = **2** (external-only: D1, E3). ACCEPTED = **4**. PARTIAL = **26**.
 
-Design track reached **steady state**. 9 commits, 83 design decisions locked, 3 new top-level docs (`UI_COPY_STYLEGUIDE.md`, `05_LLM_SAFETY_LAYER.md`, `LLM_MMO_TESTING_STRATEGY.md`). Category batches **M · A · B · G** fully closed (0 OPEN in each).
+**12 commits** this session, **90+ design decisions** locked, **4 new top-level docs** (`UI_COPY_STYLEGUIDE.md`, `A11Y_POLICY.md`, `05_LLM_SAFETY_LAYER.md`, `LLM_MMO_TESTING_STRATEGY.md`). Category batches **M · A · B · G** fully closed (0 OPEN in each).
+
+Design-session work on the OPEN track has reached steady state for items that can be resolved without external data. **However, V1 implementation is not design-complete** — see next section.
+
+### Next session agenda — V1 implementation design gaps
+
+The following items are V1-required and must be designed before V1 implementation can commit. Listed in priority order for the next session:
+
+**🔴 V1-blocking deferred big features (need their own design docs)**
+
+| # | Item | Scope | Effort |
+|---|---|---|---|
+| 1 | **DF4 World Rules** | Per-reality rule engine — death behavior, paradox tolerance, PvP consent, canon strictness, voice-mode lock (C1-D3), quest-eligibility category gating (M3-D3), `accept_player_quests` toggle (F3-D6); covers PC-B1 / D2 / E3 + F1 runtime enforcement | Full design doc, ~300-400 lines |
+| 2 | **DF5 Session / Group Chat** | Multi-character scene, turn arbitration (B4 PARTIAL), PvP consent flow, message routing, **session invite + share-link**, player-voice override inline commands (C1-D2); covers PC-D1 / D2 / D3 + PL-1 / PL-3 | Full design doc, ~400-500 lines |
+| 3 | **DF7 PC Stats & Capabilities** | Concrete schema for PCS-4 "simple state-based" — inventory, relationships, optional simple stats per F4 ACCEPTED scope (no D&D mechanics); death outcomes per DF4 | Small design doc, ~150-200 lines |
+
+**🟡 Small gaps — close inline (OPEN_DECISIONS + doc updates)**
+
+| # | Item | Scope | Effort |
+|---|---|---|---|
+| 4 | **WA-4 L1 auto-assignment heuristics** | Category → L1 default rules (magic-system, species, gods, physics laws, currency, language/race?) — full category table; MV1 locked but specifics TBD | ~5 decisions, inline |
+| 5 | **Session invite / share-link framework** | Link shape + visibility inheritance from `sharing-service`; can fold into DF5 or lock framework first | ~3 decisions, inline or within DF5 |
+
+**🟢 Synthesis doc (no new design — aggregation only)**
+
+| # | Item | Scope |
+|---|---|---|
+| 6 | **V1 MVP scope doc** (`06_V1_MVP_SCOPE.md`) | Filter FEATURE_CATALOG by V1 tier, organize by implementation order, cross-ref Phase 6+ breakdown from root [README](../../../README.md) |
+
+**🔵 Later (scheduled per existing impl order — not next-session)**
+
+- **DF9 Admin Ops** — V1+30d per R2/R6/R8/R9 impl order
+- **DF1 Daily Life** — V2 (NPC routines, PC → NPC conversion)
+- **DF10 Event Schema Tooling** — V1+30d → V3
+- **DF3 Canonization** — V3
+- **DF6 World Travel** · **DF8 NPC persona from PC history** · **DF11 DB Fleet** · **DF13 Cross-session event handler** — each per their schedule
+
+### Suggested next-session order
+
+1. **WA-4** first (5-decision warmup, builds momentum)
+2. **DF5 Session / Group Chat** second (biggest V1 unknown; DF4 + DF7 hang off its session boundaries)
+3. **DF4 World Rules** third (many features reference World Rules; clearer scope after DF5)
+4. **DF7 PC Stats** fourth (smallest, mostly schema work)
+5. Optional: fold **session invite/share** into DF5 during that batch
+6. Finish with **V1 MVP scope doc** synthesis once DF4/5/7 land
 
 ### Remaining 2 OPEN — external dependencies only
 
@@ -125,21 +172,26 @@ Plus **A4 retrieval quality** — status PARTIAL in 01 but still a critical-path
 - Commercial AI GM products (if any land with validated UX)
 
 ### When to reopen design session
-The track is essentially **paused until external data lands**. Reopen conditions:
+
+**The OPEN/PARTIAL problem track** is paused until external data lands — see external-dependency action list above. But **V1 implementation design is NOT paused** — the next session continues with the agenda above (DF4/DF5/DF7 + WA-4 + session invite/share + V1 MVP scope doc).
+
+Reopen conditions for the OPEN/PARTIAL track specifically:
 
 - V1 prototype delivers D1 / A4 measurements → reopen D2 for exact pricing; A4 moves toward SOLVED
 - Legal counsel returns E3 brief → E3 moves toward SOLVED; canonization launch gate cleared
 - Public research delivers narrative-pacing primitive → C2 / F2 reopen from ACCEPTED
 - A new problem surfaces (`N1+` open item) during V1 build → standard OPEN resolution cycle
 
-**Do not reopen the design track for**: minor UX tuning, residual items already marked `pending V1 data`, or research frontier items without concrete new input. Those belong to implementation sprints, not design sessions.
+**Do not reopen the OPEN track for**: minor UX tuning, residual items already marked `pending V1 data`, or research frontier items without concrete new input. Those belong to implementation sprints or future design sessions with concrete triggers.
 
 ### Handoff checklist for next session
+- [ ] **Read "Next session agenda" above** — it is the top priority: V1-blocking DF docs + inline gaps + synthesis doc, in priority order
 - [ ] Read [01_OPEN_PROBLEMS.md](01_OPEN_PROBLEMS.md) status summary — confirm 2 OPEN / 26 PARTIAL / 5 KNOWN / 4 ACCEPTED still accurate
-- [ ] Read [OPEN_DECISIONS.md](OPEN_DECISIONS.md) tail 20 rows for most recent locks
-- [ ] Read [05_LLM_SAFETY_LAYER.md](05_LLM_SAFETY_LAYER.md) + [`../../05_qa/LLM_MMO_TESTING_STRATEGY.md`](../../05_qa/LLM_MMO_TESTING_STRATEGY.md) if touching roleplay-service implementation
-- [ ] Check if external triggers (V1 prototype, legal brief, research progress) have landed — those are the only reasons to reopen
-- [ ] If reopening, start with a specific OPEN item + concrete external input; don't batch
+- [ ] Read [OPEN_DECISIONS.md](OPEN_DECISIONS.md) tail ~25 rows for most recent locks (M/A/B/C/D/F/G batches + V-1/V-2/V-3/MV5-pri + CC-6)
+- [ ] Read [05_LLM_SAFETY_LAYER.md](05_LLM_SAFETY_LAYER.md) + [`../../05_qa/LLM_MMO_TESTING_STRATEGY.md`](../../05_qa/LLM_MMO_TESTING_STRATEGY.md) + [`../../02_governance/A11Y_POLICY.md`](../../02_governance/A11Y_POLICY.md) + [`../../02_governance/UI_COPY_STYLEGUIDE.md`](../../02_governance/UI_COPY_STYLEGUIDE.md) for cross-cutting constraints on DF4/DF5/DF7 design
+- [ ] Pick from "Next session agenda" priority order (WA-4 → DF5 → DF4 → DF7 → session-invite → V1 MVP scope) or user can reorder. Each DF gets its own design doc (`docs/03_planning/LLM_MMO_RPG/DF_X_<NAME>.md` or similar, pattern TBD)
+- [ ] For external triggers (V1 prototype data, legal brief, research progress): still the primary reopen condition for the remaining 2 OPEN (D1, E3) — see "When to reopen design session" below
+- [ ] When starting a DF design, scan OPEN_DECISIONS for all `D...` references pointing to that DF (they list scope requirements from prior locked decisions)
 
 ---
 
