@@ -359,6 +359,83 @@ export interface TimelineResponse {
   total: number;
 }
 
+// ── K19e.5 — Drawer (passage) search ──────────────────────────────────
+
+/**
+ * K19e.5 — drawer search hit. Mirrors
+ * services/knowledge-service/app/routers/public/drawers.py::DrawerSearchHit
+ * (which drops ``user_id`` and the stored embedding from the public
+ * wire). ``raw_score`` is cosine similarity in the [0, 1] practical
+ * range — the card clamps to [0, 100]% for display.
+ */
+export interface DrawerSearchHit {
+  id: string;
+  project_id: string | null;
+  source_type: string;
+  source_id: string;
+  chunk_index: number;
+  text: string;
+  is_hub: boolean;
+  chapter_index: number | null;
+  created_at: string | null;
+  raw_score: number;
+}
+
+export interface DrawerSearchParams {
+  project_id: string;
+  query: string;
+  limit?: number;
+}
+
+export interface DrawerSearchResponse {
+  hits: DrawerSearchHit[];
+  /** ``null`` when the project has no embedding model configured
+   *  (not-indexed-yet branch). ``string`` on any other outcome,
+   *  including zero-hit live searches. */
+  embedding_model: string | null;
+}
+
+export type DrawerSearchErrorCode =
+  | 'provider_error'
+  | 'embedding_dim_mismatch'
+  | 'unknown';
+
+export interface DrawerSearchError extends Error {
+  status?: number;
+  errorCode: DrawerSearchErrorCode;
+  /** BE forwards the provider's retryable hint on EmbeddingError so
+   *  the FE can choose "Retry" vs "Fix config" messaging. Defaults
+   *  to false when missing. */
+  retryable: boolean;
+  /** Server-supplied human-readable message if present. */
+  detailMessage?: string;
+}
+
+/** Extract ``{error_code, message, retryable}`` from FastAPI's
+ *  ``detail: {...}`` envelope. Consumers should ``switch`` on
+ *  ``errorCode`` against the closed ``DrawerSearchErrorCode`` union. */
+export function parseDrawersError(err: unknown): DrawerSearchError {
+  const e = err as {
+    message?: string;
+    status?: number;
+    body?: {
+      detail?: {
+        error_code?: string;
+        message?: string;
+        retryable?: boolean;
+      };
+    };
+  };
+  const detail = e.body?.detail;
+  const code = (detail?.error_code ?? 'unknown') as DrawerSearchErrorCode;
+  return Object.assign(new Error(e.message || 'drawer search failed'), {
+    status: e.status,
+    errorCode: code,
+    retryable: Boolean(detail?.retryable ?? false),
+    detailMessage: detail?.message,
+  });
+}
+
 const BASE = '/v1/knowledge';
 
 // D-K8-03: weak ETag format used by the knowledge-service routes.
@@ -867,6 +944,22 @@ export const knowledgeApi = {
     const q = qs.toString();
     return apiJson<TimelineResponse>(
       `${BASE}/timeline${q ? `?${q}` : ''}`,
+      { token },
+    );
+  },
+
+  // ── K19e.5 — GET /v1/knowledge/drawers/search ────────────────────────
+
+  searchDrawers(
+    params: DrawerSearchParams,
+    token: string,
+  ): Promise<DrawerSearchResponse> {
+    const qs = new URLSearchParams();
+    qs.set('project_id', params.project_id);
+    qs.set('query', params.query);
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    return apiJson<DrawerSearchResponse>(
+      `${BASE}/drawers/search?${qs.toString()}`,
       { token },
     );
   },

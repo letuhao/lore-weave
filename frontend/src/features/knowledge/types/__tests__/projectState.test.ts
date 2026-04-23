@@ -614,4 +614,67 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
       expect(bodies.timeline).toBeUndefined();
     },
   );
+
+  // K19e Cycle γ-b — Raw drawers tab. Keys live under top-level
+  // `drawers.*`.
+  const DRAWERS_KEYS = [
+    'loading',
+    'loadFailed',
+    'empty',
+    'noProject',
+    'noQuery',
+    'minQueryHint',
+    'notIndexed',
+    'notIndexedHint',
+    'refreshing',
+    'retry',
+    'fixConfig',
+    'unknownError',
+    'filters.project',
+    'filters.selectProject',
+    'searchInput.label',
+    'searchInput.placeholder',
+    'card.sourcePrefix',
+    'card.chapterLabel',
+    'card.chunkLabel',
+    'card.matchLabel',
+    'card.openLabel',
+    'card.hubBadge',
+    'card.hubHint',
+    'detail.title',
+    'detail.close',
+    'detail.text',
+    'detail.sourceType',
+    'detail.sourceId',
+    'detail.chunkIndex',
+    'detail.chapterIndex',
+    'detail.matchScore',
+    'detail.createdAt',
+    'detail.hubLabel',
+    'detail.hubValue',
+  ] as const;
+
+  it.each(LOCALES)(
+    '%s has every K19e drawers.* key populated',
+    (_tag, bundle) => {
+      const root = (bundle as any).drawers ?? {};
+      for (const path of DRAWERS_KEYS) {
+        const value = resolveKey(root, path);
+        expect(typeof value, `locale missing drawers.${path}`).toBe('string');
+        expect((value as string).length).toBeGreaterThan(0);
+      }
+    },
+  );
+
+  // K19e Cycle γ-b also removed the entire `placeholder` block —
+  // every tab is live. The Timeline β test above just checked the
+  // removed leaf; this one locks the whole block being gone so a
+  // future regression that re-adds `placeholder.title` (thinking it
+  // might be needed for a new "coming soon" tab) gets caught.
+  it.each(LOCALES)(
+    '%s no longer ships the placeholder block (all tabs live)',
+    (_tag, bundle) => {
+      expect((bundle as any).placeholder).toBeUndefined();
+    },
+  );
 });

@@ -8,13 +8,12 @@ import { PrivacyTab } from '@/features/knowledge/components/PrivacyTab';
 import { ExtractionJobsTab } from '@/features/knowledge/components/ExtractionJobsTab';
 import { EntitiesTab } from '@/features/knowledge/components/EntitiesTab';
 import { TimelineTab } from '@/features/knowledge/components/TimelineTab';
+import { RawDrawersTab } from '@/features/knowledge/components/RawDrawersTab';
 
 type Tab = 'projects' | 'jobs' | 'global' | 'entities' | 'timeline' | 'raw' | 'privacy';
 
-// The only placeholder left is "raw" — K19e Cycle β shipped the
-// Timeline tab proper. (jobs live as of K19b.2; entities as of K19d β;
-// timeline as of K19e β.)
-type PlaceholderName = 'raw';
+// All 7 tabs are live as of K19e Cycle γ-b.
+// K19b.2 jobs · K19d β entities · K19e β timeline · K19e γ-b raw.
 
 const TAB_DEFS: { id: Tab; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'projects', icon: FolderOpen },
@@ -71,18 +70,8 @@ export function KnowledgePage() {
       {activeTab === 'global' && <GlobalBioTab />}
       {activeTab === 'entities' && <EntitiesTab />}
       {activeTab === 'timeline' && <TimelineTab />}
-      {activeTab === 'raw' && <PlaceholderTab name="raw" />}
+      {activeTab === 'raw' && <RawDrawersTab />}
       {activeTab === 'privacy' && <PrivacyTab />}
-    </div>
-  );
-}
-
-function PlaceholderTab({ name }: { name: PlaceholderName }) {
-  const { t } = useTranslation('knowledge');
-  return (
-    <div className="rounded-lg border bg-card px-6 py-10 text-center">
-      <p className="mb-1.5 font-serif text-sm font-semibold">{t('placeholder.title')}</p>
-      <p className="text-xs text-muted-foreground">{t(`placeholder.bodies.${name}`)}</p>
     </div>
   );
 }

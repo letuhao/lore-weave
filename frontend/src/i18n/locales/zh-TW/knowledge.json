@@ -13,10 +13,48 @@
       "privacy": "隱私"
     }
   },
-  "placeholder": {
-    "title": "即將推出",
-    "bodies": {
-      "raw": "對抽取的知識抽屜進行向量搜尋。"
+  "drawers": {
+    "loading": "正在搜尋抽屜…",
+    "loadFailed": "搜尋失敗: {{error}}",
+    "empty": "沒有符合此查詢的抽屜。",
+    "noProject": "選擇要搜尋的專案。",
+    "noQuery": "輸入查詢以搜尋抽屜。",
+    "minQueryHint": "輸入至少{{min}}個字元以執行語意搜尋。",
+    "notIndexed": "此專案尚未為語意搜尋建立索引。",
+    "notIndexedHint": "使用嵌入模型執行擷取以啟用抽屜搜尋。",
+    "refreshing": "重新整理中…",
+    "retry": "重試",
+    "fixConfig": "在設定中檢查專案的嵌入模型設定。",
+    "unknownError": "未知錯誤。請再試一次。",
+    "filters": {
+      "project": "專案",
+      "selectProject": "選擇專案"
+    },
+    "searchInput": {
+      "label": "搜尋",
+      "placeholder": "例如：橋上的決鬥"
+    },
+    "card": {
+      "sourcePrefix": "來源",
+      "chapterLabel": "第{{index}}章",
+      "chunkLabel": "區塊 {{index}}",
+      "matchLabel": "匹配度",
+      "openLabel": "以{{score}}匹配度開啟{{sourceType}}抽屜",
+      "hubBadge": "摘要",
+      "hubHint": "此區塊是摘要或長篇簡介摘錄；排序時會降權但仍可能顯示。"
+    },
+    "detail": {
+      "title": "抽屜",
+      "close": "關閉",
+      "text": "全文",
+      "sourceType": "來源類型",
+      "sourceId": "來源ID",
+      "chunkIndex": "區塊編號",
+      "chapterIndex": "章節編號",
+      "matchScore": "匹配度",
+      "createdAt": "建立時間",
+      "hubLabel": "區塊類型",
+      "hubValue": "摘要 / 集線區塊"
     }
   },
   "timeline": {

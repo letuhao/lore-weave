@@ -13,10 +13,48 @@
       "privacy": "Privacy"
     }
   },
-  "placeholder": {
-    "title": "Coming soon",
-    "bodies": {
-      "raw": "Vector-search the full set of extracted knowledge drawers."
+  "drawers": {
+    "loading": "Searching drawers…",
+    "loadFailed": "Search failed: {{error}}",
+    "empty": "No matching drawers for this query.",
+    "noProject": "Select a project to search its drawers.",
+    "noQuery": "Enter a search query to find drawers.",
+    "minQueryHint": "Type at least {{min}} characters to run a semantic search.",
+    "notIndexed": "This project isn't indexed for semantic search yet.",
+    "notIndexedHint": "Run extraction with an embedding model to enable drawer search.",
+    "refreshing": "Refreshing…",
+    "retry": "Retry",
+    "fixConfig": "Check your project's embedding model configuration in Settings.",
+    "unknownError": "Unknown error. Please try again.",
+    "filters": {
+      "project": "Project",
+      "selectProject": "Select a project"
+    },
+    "searchInput": {
+      "label": "Search",
+      "placeholder": "e.g. the duel at the bridge"
+    },
+    "card": {
+      "sourcePrefix": "Source",
+      "chapterLabel": "Chapter {{index}}",
+      "chunkLabel": "Chunk {{index}}",
+      "matchLabel": "Match score",
+      "openLabel": "Open {{sourceType}} drawer with {{score}} match",
+      "hubBadge": "Summary",
+      "hubHint": "This chunk is a summary or long-bio excerpt; it's penalized in ranking but may still surface."
+    },
+    "detail": {
+      "title": "Drawer",
+      "close": "Close",
+      "text": "Full text",
+      "sourceType": "Source type",
+      "sourceId": "Source id",
+      "chunkIndex": "Chunk index",
+      "chapterIndex": "Chapter index",
+      "matchScore": "Match score",
+      "createdAt": "Created at",
+      "hubLabel": "Chunk kind",
+      "hubValue": "Summary / hub chunk"
     }
   },
   "timeline": {

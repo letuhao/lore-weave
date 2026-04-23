@@ -13,10 +13,48 @@
       "privacy": "Quyền riêng tư"
     }
   },
-  "placeholder": {
-    "title": "Sắp ra mắt",
-    "bodies": {
-      "raw": "Tìm kiếm vectơ trên toàn bộ ngăn kéo tri thức đã trích xuất."
+  "drawers": {
+    "loading": "Đang tìm kiếm ngăn kéo…",
+    "loadFailed": "Tìm kiếm thất bại: {{error}}",
+    "empty": "Không có ngăn kéo nào khớp với truy vấn này.",
+    "noProject": "Chọn một dự án để tìm kiếm trong ngăn kéo của nó.",
+    "noQuery": "Nhập truy vấn để tìm kiếm ngăn kéo.",
+    "minQueryHint": "Gõ ít nhất {{min}} ký tự để chạy tìm kiếm ngữ nghĩa.",
+    "notIndexed": "Dự án này chưa được lập chỉ mục để tìm kiếm ngữ nghĩa.",
+    "notIndexedHint": "Chạy trích xuất với mô hình embedding để bật tìm kiếm ngăn kéo.",
+    "refreshing": "Đang làm mới…",
+    "retry": "Thử lại",
+    "fixConfig": "Kiểm tra cấu hình mô hình embedding của dự án trong Cài đặt.",
+    "unknownError": "Lỗi không xác định. Vui lòng thử lại.",
+    "filters": {
+      "project": "Dự án",
+      "selectProject": "Chọn một dự án"
+    },
+    "searchInput": {
+      "label": "Tìm kiếm",
+      "placeholder": "ví dụ: trận đấu trên cây cầu"
+    },
+    "card": {
+      "sourcePrefix": "Nguồn",
+      "chapterLabel": "Chương {{index}}",
+      "chunkLabel": "Đoạn {{index}}",
+      "matchLabel": "Độ khớp",
+      "openLabel": "Mở ngăn kéo {{sourceType}} với độ khớp {{score}}",
+      "hubBadge": "Tóm tắt",
+      "hubHint": "Đoạn này là phần tóm tắt hoặc trích đoạn tiểu sử dài; bị giảm thứ hạng nhưng vẫn có thể xuất hiện."
+    },
+    "detail": {
+      "title": "Ngăn kéo",
+      "close": "Đóng",
+      "text": "Toàn văn",
+      "sourceType": "Loại nguồn",
+      "sourceId": "ID nguồn",
+      "chunkIndex": "Chỉ số đoạn",
+      "chapterIndex": "Chỉ số chương",
+      "matchScore": "Độ khớp",
+      "createdAt": "Tạo lúc",
+      "hubLabel": "Loại đoạn",
+      "hubValue": "Đoạn tóm tắt / hub"
     }
   },
   "timeline": {

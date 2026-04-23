@@ -1,11 +1,39 @@
-# Session Handoff — Session 50 (K19b + K19c + K20 + K19d complete · K19e α+β+γ-a shipped · Raw drawers cluster OPENED)
+# Session Handoff — Session 50 (K19b + K19c + K20 + K19d + K19e all 100% plan-complete · ALL 7 knowledge tabs LIVE)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-23 (session 50)
-> **HEAD:** `cd7aae1` (K19e Cycle γ-a; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** `<pending-K19e-γb>` (K19e Cycle γ-b; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 18 cycles shipped (16 Track 3 + 2 Track 2 close-out) · K19b/K19c/K20/K19d complete · K19e α+β+γ-a shipped · Raw drawers cluster OPENED
+## Session 50 — 19 cycles shipped (17 Track 3 + 2 Track 2 close-out) · K19b/K19c/K20/K19d/K19e ALL complete · ALL 7 knowledge tabs live
+
+### Cycle 19 — K19e Cycle γ-b [FE XL] — RawDrawersTab consuming γ-a endpoint
+
+Ships the user-facing Raw drawers tab on top of γ-a's BE. NEW `useDrawerSearch` hook (userId-scoped queryKey per K19d β M1, disabled-gate via `project_id + query.length >= 3`, retry:false). NEW `DrawerResultCard` presentational with colored source-type badge (chapter/chat/glossary) + amber hub badge + Intl-clamped match-% + full a11y. NEW `DrawerDetailPanel` Radix slide-from-right mirroring K19d β EntityDetailPanel pattern with full text + metadata grid + `Intl.DateTimeFormat` on `created_at`. NEW `RawDrawersTab` container with **8 render branches** (no-project / no-query / short-query / loading / retryable-error+Retry / non-retryable-error+fix-config / not-indexed / empty / results) + 300ms debounce + retry-invalidates-prefix + `disabled={isFetching}` anti-double-fire.
+
+**KnowledgePage swaps** `<PlaceholderTab name="raw" />` for `<RawDrawersTab />` **and removes PlaceholderTab + PlaceholderName entirely** — **every knowledge tab is now live**. The whole `placeholder.*` i18n block is deleted from all 4 locales, with a regression test asserting `bundle.placeholder === undefined`.
+
+`/review-impl` (user-invoked) caught **3 LOW + 2 COSMETIC; ALL 5 fixed in-cycle**:
+- **L1** no test proved 300ms debounce actually debounced rapid keystrokes (a regression to 0ms would have passed all 6 initial tests) → new test fires 5 rapid onChange events, asserts calls=1 with final query="bridge"
+- **L2** `is_hub` field came over the wire but was never rendered → amber "Summary" badge on card + hub metadata row on detail panel + 4 new i18n keys × 4 locales
+- **L3** raw ISO string in `created_at` → `formatCreatedAt` using `Intl.DateTimeFormat`
+- **C4** redundant `&& queryActive` guard on `isLoading` (react-query's `enabled:false` already keeps it false) → removed
+- **C5** error-banner could render empty string on oddly-shaped payloads → `?? t('drawers.unknownError')` fallback + new i18n key × 4 locales
+
+Build-time catches: `jsx-a11y/button-name` lint on `<Dialog.Close asChild><button><X/></button></Dialog.Close>` (Radix merges props but lint doesn't see it) → moved `aria-label` + added `title` directly on the inner `<button>`; **fake-timers** for debounce test broke react-query's internal `setTimeout` causing cross-test cascade timeouts → switched to real timers + `waitFor`; initial project-dropdown tests fired `fireEvent.change` before `useProjects` options rendered (silent no-op) → added `selectProject` helper awaiting `findByRole('option')` first.
+
+**What K19e Cycle γ-c / δ would inherit (if ever built):**
+- Source-type filter UI on search — blocked on D-K19e-γa-01 BE fix
+- Term highlighting in preview — D-K19e-γb-01
+- Delete drawer (K19e.6), facts list + edit (K19e.7/.8) — separate BE work
+
+**Test deltas at γ-b end:**
+- FE knowledge vitest: **271 pass** (was 253 at K19e β end; **+18** = 3 hook + 7 tab incl debounce + 8 iterator assertions)
+- `tsc --noEmit` clean
+
+**K19e cluster 100% plan-complete** (K19e.1/.2/.3/.4/.5 shipped; K19e.6/.7/.8 deferred; K19e.9 i18n covered per-cycle; K19e.10 empty/loading states shipped).
+
+---
 
 ### Cycle 18 — K19e Cycle γ-a [BE L] — Drawer search endpoint (K19e.5)
 

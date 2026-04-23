@@ -13,10 +13,48 @@
       "privacy": "プライバシー"
     }
   },
-  "placeholder": {
-    "title": "近日公開",
-    "bodies": {
-      "raw": "抽出されたナレッジドロワーをベクトル検索できます。"
+  "drawers": {
+    "loading": "ドロワーを検索中…",
+    "loadFailed": "検索に失敗しました: {{error}}",
+    "empty": "このクエリに一致するドロワーはありません。",
+    "noProject": "検索するプロジェクトを選択してください。",
+    "noQuery": "クエリを入力してドロワーを検索してください。",
+    "minQueryHint": "意味的検索を実行するには少なくとも{{min}}文字入力してください。",
+    "notIndexed": "このプロジェクトはまだ意味的検索用にインデックス化されていません。",
+    "notIndexedHint": "ドロワー検索を有効にするには、埋め込みモデルで抽出を実行してください。",
+    "refreshing": "更新中…",
+    "retry": "再試行",
+    "fixConfig": "設定でプロジェクトの埋め込みモデル構成を確認してください。",
+    "unknownError": "不明なエラー。もう一度お試しください。",
+    "filters": {
+      "project": "プロジェクト",
+      "selectProject": "プロジェクトを選択"
+    },
+    "searchInput": {
+      "label": "検索",
+      "placeholder": "例: 橋での決闘"
+    },
+    "card": {
+      "sourcePrefix": "ソース",
+      "chapterLabel": "第{{index}}章",
+      "chunkLabel": "チャンク {{index}}",
+      "matchLabel": "一致度",
+      "openLabel": "{{sourceType}}ドロワーを一致度{{score}}で開く",
+      "hubBadge": "要約",
+      "hubHint": "このチャンクは要約または長文プロフィールの抜粋です。ランキングでペナルティが適用されますが、表示される場合があります。"
+    },
+    "detail": {
+      "title": "ドロワー",
+      "close": "閉じる",
+      "text": "全文",
+      "sourceType": "ソースタイプ",
+      "sourceId": "ソースID",
+      "chunkIndex": "チャンク番号",
+      "chapterIndex": "章番号",
+      "matchScore": "一致度",
+      "createdAt": "作成日時",
+      "hubLabel": "チャンク種別",
+      "hubValue": "要約 / ハブチャンク"
     }
   },
   "timeline": {
