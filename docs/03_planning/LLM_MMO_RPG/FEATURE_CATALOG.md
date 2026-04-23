@@ -209,7 +209,7 @@ When adding new features:
 | NPC-3h | LLM summary rewrite prompt quality | 🟡 | V1 | NPC-3b | Needs V1 prototype measurement |
 | NPC-4 | Retrieval from knowledge-service (timeline-scoped, canon-faithful) | ❓ | V1 | — | [01 A4](01_OPEN_PROBLEMS.md#a4-retrieval-quality-from-knowledge-service--partial) — needs measurement |
 | NPC-5 | NPC mood / flexible_state drift (LLM output updates per-reality) | 🟡 | V1 | NPC-2 | [02 §5.2](02_STORAGE_ARCHITECTURE.md) |
-| NPC-6 | Canon-drift linter (post-response check vs L1/L2) | 🟡 | V1 | NPC-4, WA-3 | [01 G3](01_OPEN_PROBLEMS.md#g3-canon-drift-detection-in-production--open) |
+| NPC-6 | Canon-drift linter — async post-response check against knowledge-service oracle, logs to `canon_drift_log` | ✅ | V1 | NPC-4, WA-3, IF-1 | [05_qa §4.1](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#41-layer-1--async-post-response-lint-g3-d1), G3-D1 |
 | NPC-7 | Multi-NPC conversation turn arbitration | 🟡 | V2 | PL-1 | [01 B4](01_OPEN_PROBLEMS.md#b4-multi-user-turn-arbitration--partial), DF5 |
 | NPC-8 | NPC daily routines when no player around | 📦 | V3 | NPC-1 | **DF1 — Daily Life** |
 | NPC-9 | NPC memory decay / summarization (prevent unbounded growth) | 🟡 | V1 | NPC-3 | Part of A1 solution |
@@ -319,6 +319,18 @@ When adding new features:
 | CC-7 | Author dashboard (cross-reality view of their book's play) | 📦 | V3 | WA-6 | DF3 |
 | CC-8 | Macros / variables in prompts (`{{pc}}`, `{{scene}}`, `{{entity.alice}}`) | 🟡 | V1 | PL-4 | SillyTavern pattern |
 | CC-9 | User preferences / settings (per-device + per-account) | 🟡 | V1 | PO-1 | Reuse existing pattern |
+| CC-10 | Tier 1 — unit tests with frozen mock LLM (prompt-hash keyed fixtures, <1s, per-PR) | ✅ | V1 | — | [05_qa §2.1](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#21-tier-1--unit-tests-with-frozen-mock-llm-g1-d1), G1-D1 |
+| CC-11 | Tier 2 — nightly integration on cheap real LLM (~30 scenarios, 85% pass-rate threshold) | ✅ | V1 | CC-10 | [05_qa §2.2](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#22-tier-2--nightly-integration-on-real-llm-g1-d2), G1-D2 |
+| CC-12 | Tier 3 — weekly LLM-as-judge scorecard (Sonnet/GPT-4.1 rubric) | ✅ | V1 | CC-10, CC-11 | [05_qa §2.3](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#23-tier-3--weekly-llm-as-judge-evaluation-g1-d3), G1-D3 |
+| CC-13 | `admin-cli regen-fixtures` + scenario library at `docs/05_qa/LLM_TEST_SCENARIOS.md` | ✅ | V1 | admin-cli, CC-10 | [05_qa §2.4–2.5](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#24-fixture-maintenance-g1-d4), G1-D4/D5 |
+| CC-14 | `loadtest-service` — synthetic user simulator with script library (casual/combat/fact/jailbreak) | 📦 | V1 | — | [05_qa §3.4](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#34-synthetic-user-simulator--loadtest-service-g2-d4), G2-D4 |
+| CC-15 | Tiered load-test matrix — mocked high-conc V1 / real low-conc staging / full-stack pre-prod (V1 50/$50 → V3 1000/$1000) | ✅ | V1 | CC-14 | [05_qa §3.1–3.3](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#31-tier-1--mocked-llm-high-concurrency-g2-d1), G2-D1/D2/D3 |
+| CC-16 | Load-test authorization + hard budget kill-switch (admin `loadtest.execute` token, 2h max, 80% alert, 100% stop) | ✅ | V1 | admin-cli, R13 | [05_qa §3.5](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#35-authorization--kill-switch-g2-d5), G2-D5 |
+| CC-17 | User "that's not right" report button on NPC responses (4 categories + free text, creates review ticket) | ✅ | V1 | NPC-6 | [05_qa §4.2](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#42-layer-2--user-thats-not-right-button-g3-d2), G3-D2 |
+| CC-18 | Per-reality drift metrics dashboard (DF9 surface) with alert thresholds | 📦 | V2 | NPC-6, DF9 | [05_qa §4.3](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#43-layer-3--drift-metrics-dashboard-g3-d3), G3-D3 |
+| CC-19 | Auto-remediation on drift (memory regen, persona rotation, NPC suspension on severe drift) | 📦 | V2 | NPC-6, R8-L2 | [05_qa §4.4](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#44-layer-4--auto-remediation-g3-d4), G3-D4 |
+| CC-20 | Production drift → G1 fixtures feedback loop (`admin-cli promote-drift-to-fixture`) | ✅ | V1 | NPC-6, CC-13 | [05_qa §4.5](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#45-layer-5--feedback-loop-to-test-fixtures-g3-d5), G3-D5 |
+| CC-21 | Canon-drift SLOs per platform tier (free <5%, paid <2%, premium <0.5%) | 📦 | PLT | CC-18, 103_PLATFORM_MODE_PLAN | [05_qa §4.6](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#46-canon-drift-slos-per-platform-tier-g3-d6), G3-D6 |
 
 ## DL — Daily Life (DF1 umbrella)
 

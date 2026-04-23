@@ -73,8 +73,8 @@ See [00_VISION.md](00_VISION.md) for the dream, [01_OPEN_PROBLEMS.md](01_OPEN_PR
 - **D1** LLM cost per user-hour — needs V1 prototype data
 - **E3** IP ownership — needs legal review
 
-### Non-critical OPEN (6, as of 2026-04-23)
-C2 narrative pacing (research) · C3 cold-start (marketing) · D2 tier viability (depends D1) · F2 AI GM layer (research) · G1/G2/G3 testing & ops strategy
+### Non-critical OPEN (3, as of 2026-04-23)
+C2 narrative pacing (research) · C3 cold-start (marketing) · F2 AI GM layer (research). *(D2 deferred to D1; G1/G2/G3 resolved via [05_qa/LLM_MMO_TESTING_STRATEGY.md](../../05_qa/LLM_MMO_TESTING_STRATEGY.md).)*
 
 ### Multiverse-specific risks (M1–M7 in [01 §M](01_OPEN_PROBLEMS.md)) — NOT yet batch-addressed
 - M1 Reality discovery (**PARTIAL — resolved 2026-04-23**) — 7-layer design in [03 §9.1](03_MULTIVERSE_MODEL.md#91-reality-discovery), M1-D1..D7 locked; weight tuning + preview format pending V1 data

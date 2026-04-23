@@ -366,31 +366,54 @@ Decisions F3-D1..D6 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
 
 ## G. Testing & operations
 
-### G1. CI for non-deterministic LLM flows — **OPEN**
+### G1. CI for non-deterministic LLM flows — **PARTIAL**
 
 **Problem:** Unit tests assume determinism. LLM output varies. Regression test suites become flaky or meaningless.
 
-**Known approaches:**
-- Frozen mock LLM responses for unit tests (tests the wiring, not the prompting).
-- Separate "prompt regression" suite that runs against real LLM at lower cadence, flags statistical drift.
-- Rubric-based LLM-as-judge evaluations of output quality over test scenarios.
+**Resolved by:** 3-tier testing framework in [`05_qa/LLM_MMO_TESTING_STRATEGY.md §2`](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#2-g1--ci-for-non-deterministic-llm-flows):
 
-**Notes:** Industry is still figuring this out. Acceptable to start pragmatic.
+- Tier 1 (G1-D1) — unit tests with frozen mock LLM (prompt-hash keyed fixtures; <1s; per-PR)
+- Tier 2 (G1-D2) — nightly integration on cheap real LLM (~30 scenarios, 85% pass-rate threshold)
+- Tier 3 (G1-D3) — weekly LLM-as-judge scorecard (Sonnet/GPT-4.1 grading rubric dimensions vs baseline)
+- Fixture maintenance via `admin-cli regen-fixtures` with mandatory human review (G1-D4)
+- Canonical scenario library at `docs/05_qa/LLM_TEST_SCENARIOS.md` (G1-D5)
 
-### G2. Multi-user load/simulation testing — **OPEN**
+Decisions G1-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+
+**Residual `OPEN`:** rubric dimension weights, judge-model bias calibration — V1 tuning.
+
+### G2. Multi-user load/simulation testing — **PARTIAL**
 
 **Problem:** How to load-test an MMO with LLM in the loop? Real LLM costs real money; mocked LLM doesn't exercise real latency/failure modes.
 
-**Notes:** Tiered approach — low-concurrency integration tests on real LLM (cheap), high-concurrency tests with mocked LLM (fast), periodic full-stack pre-production run at target scale.
+**Resolved by:** Tiered load matrix in [`05_qa/LLM_MMO_TESTING_STRATEGY.md §3`](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#3-g2--multi-user-load--simulation-testing):
 
-### G3. Canon-drift detection in production — **OPEN**
+- Tier 1 (G2-D1) — mocked LLM at 1000 concurrency for pipeline stress, hourly
+- Tier 2 (G2-D2) — real LLM at 10-20 concurrency for latency/throughput, daily on staging
+- Tier 3 (G2-D3) — full-stack pre-production (V1 50/$50, V2 200/$200, V3 1000/$1000), weekly
+- New service `loadtest-service` with script library (casual / combat / fact / jailbreak) (G2-D4)
+- Admin auth + hard budget kill-switch for real LLM runs (G2-D5)
+
+Decisions G2-D1..D5 locked 2026-04-23.
+
+**Residual `OPEN`:** script library coverage breadth, target-scale rebalancing — V1 playtest.
+
+### G3. Canon-drift detection in production — **PARTIAL**
 
 **Problem:** In live play, NPC may say things that contradict canon. How to detect and alert?
 
-**Known approaches:**
-- Post-response lint pass using knowledge-service as oracle (adds latency and LLM cost)
-- Async lint (non-blocking, logs drift for review, doesn't fix in-session)
-- User-reportable "that's not right" button + human review
+**Resolved by:** 5-layer detection + feedback loop in [`05_qa/LLM_MMO_TESTING_STRATEGY.md §4`](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#4-g3--canon-drift-detection-in-production):
+
+- Layer 1 (G3-D1) — async post-response lint against knowledge-service oracle, logs to `canon_drift_log`
+- Layer 2 (G3-D2) — user "that's not right" button with categorized reports + per-NPC aggregation
+- Layer 3 (G3-D3) — per-reality drift dashboard in DF9 with alert thresholds
+- Layer 4 (G3-D4) — auto-remediation (memory regen, persona rotation, temporary NPC suspension on severe drift)
+- Layer 5 (G3-D5) — feedback loop: production drifts → G1 adversarial fixtures (human-curated promotion)
+- Per-tier SLOs (G3-D6): free <5%, paid <2%, premium <0.5%
+
+Decisions G3-D1..D6 locked 2026-04-23.
+
+**Residual `OPEN`:** drift-detection LLM overhead cost per session, adversarial fixture auto-generation quality — V1 measurement.
 
 ---
 
@@ -483,9 +506,9 @@ New category introduced by the multiverse model in [03_MULTIVERSE_MODEL.md §11]
 | D. Economics | 2 | 0 | 0 | 1 |
 | E. Moderation & legal | 1 | 1 | 1 | 0 |
 | F. Content design | 1 | 2 | 0 | 1 |
-| G. Testing & ops | 3 | 0 | 0 | 0 |
+| G. Testing & ops | 0 | 3 | 0 | 0 |
 | **M. Multiverse-specific** | **0** | **6** | **1** | **0** |
-| **Total** | **9** | **21** | **5** | **2** |
+| **Total** | **6** | **24** | **5** | **2** |
 
 > **Note:** Counts accurate as of 2026-04-23. Reconciled pre-existing off-by-one baseline miscounts discovered during M and A batch resolutions (the M OPEN baseline was 4 not 3; the A OPEN baseline included A2 which had already moved to PARTIAL via the multiverse reframe). M1/M2/M3/M4/M5/M7 all `PARTIAL` in 01; M6 `KNOWN PATTERN`. M2/M3/M4/M5 additionally marked **MITIGATED in [03 §11](03_MULTIVERSE_MODEL.md)**; stay `PARTIAL` in 01 due to residual sub-items pending V1 data or external input. All A1–A6 now `PARTIAL` after the LLM Safety Layer ([05](05_LLM_SAFETY_LAYER.md)) resolution.
 
@@ -510,8 +533,12 @@ New category introduced by the multiverse model in [03_MULTIVERSE_MODEL.md §11]
 - **C1 `OPEN` → `PARTIAL`** (2026-04-23 — 3-voice modes (terse / novel / mixed) with inline override + world-rule override + persistence; V1 default = mixed; C1-D1..D5 locked)
 - **F3 `OPEN` → `PARTIAL`** (2026-04-23 — hybrid scaffold + LLM fill-in; emergent deferred to V3+ with author review; F3-D1..D6 locked)
 - **B category batch fully closed** (2026-04-23 — B3 moves to PARTIAL; no fully OPEN items remain in B)
+- **G1 `OPEN` → `PARTIAL`** (2026-04-23 — 3-tier CI framework in new [`05_qa/LLM_MMO_TESTING_STRATEGY.md §2`](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#2-g1--ci-for-non-deterministic-llm-flows); G1-D1..D5 locked)
+- **G2 `OPEN` → `PARTIAL`** (2026-04-23 — tiered load matrix + `loadtest-service` + budget kill-switch in [`05_qa §3`](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#3-g2--multi-user-load--simulation-testing); G2-D1..D5 locked)
+- **G3 `OPEN` → `PARTIAL`** (2026-04-23 — 5-layer drift detection + per-tier SLOs in [`05_qa §4`](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#4-g3--canon-drift-detection-in-production); G3-D1..D6 locked)
+- **G category batch fully closed** (2026-04-23 — G1/G2/G3 all PARTIAL; no OPEN remaining)
 
-**Interpretation:** Systematic design resolutions have compressed the OPEN set from 18 → … → 9, with every multiverse-specific risk AND every LLM reasoning/grounding risk AND every distributed-systems risk now having at least a PARTIAL answer. Remaining single-problem-kills-product severity items: **A4** (retrieval quality — needs measurement), **D1** (cost per user-hour — needs prototype), **E3** (IP — needs legal). Critical-path list: still 3. M, A, and B categories are **complete** — no fully OPEN items remain in any of them. OPEN items remaining are in C (2: C2 pacing, C3 cold-start), D (2: D1, D2), E (1: E3), F (1: F2 AI GM), G (3: all testing/ops).
+**Interpretation:** Systematic design resolutions have compressed the OPEN set from 18 → … → 6, with every multiverse-specific, LLM reasoning, distributed-systems, AND testing/ops risk now having at least a PARTIAL answer. Remaining single-problem-kills-product severity items unchanged: **A4** (retrieval quality — V1 measurement), **D1** (cost per user-hour — V1 prototype), **E3** (IP — legal). Critical-path list: still 3. M, A, B, G categories are **complete**. OPEN items remaining are in C (2: C2 pacing, C3 cold-start), D (2: D1, D2), E (1: E3), F (1: F2 AI GM). Of the 6 remaining OPEN: 3 are critical-path external-blockers (A4, D1, E3) and 3 are open research / long-horizon (C2, C3, F2).
 
 ## What "ready to implement" would look like
 
