@@ -34,6 +34,24 @@
       "saveFailed": "Lưu thất bại. Vui lòng thử lại.",
       "conflict": "Một thiết bị khác đã cập nhật tiểu sử này. Vui lòng xem nội dung mới nhất và lưu lại.",
       "loadFailed": "Không tải được tiểu sử: {{error}}"
+    },
+    "projects": {
+      "empty": "Chưa có dự án nào. Hãy tạo trên máy tính.",
+      "loadFailed": "Không tải được dự án: {{error}}",
+      "noDescription": "Chưa có mô tả.",
+      "build": "Xây dựng đồ thị",
+      "status": {
+        "disabled": "Tắt",
+        "building": "Đang xây",
+        "paused": "Tạm dừng",
+        "ready": "Sẵn sàng",
+        "failed": "Thất bại"
+      },
+      "detail": {
+        "lastExtracted": "Trích xuất gần nhất",
+        "embeddingModel": "Mô hình embedding",
+        "noEmbedding": "Chưa cấu hình"
+      }
     }
   },
   "drawers": {

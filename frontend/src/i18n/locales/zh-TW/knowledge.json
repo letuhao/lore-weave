@@ -34,6 +34,24 @@
       "saveFailed": "儲存失敗。請再試一次。",
       "conflict": "其他裝置已更新此簡介。請檢視最新內容後再儲存。",
       "loadFailed": "無法載入全域簡介: {{error}}"
+    },
+    "projects": {
+      "empty": "尚無專案。請在桌面版建立。",
+      "loadFailed": "無法載入專案: {{error}}",
+      "noDescription": "無描述。",
+      "build": "建立圖譜",
+      "status": {
+        "disabled": "已停用",
+        "building": "建立中",
+        "paused": "已暫停",
+        "ready": "就緒",
+        "failed": "失敗"
+      },
+      "detail": {
+        "lastExtracted": "最後擷取",
+        "embeddingModel": "嵌入模型",
+        "noEmbedding": "未設定"
+      }
     }
   },
   "drawers": {

@@ -696,6 +696,19 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     'global.saveFailed',
     'global.conflict',
     'global.loadFailed',
+    // K19f γ — Projects mobile variant keys.
+    'projects.empty',
+    'projects.loadFailed',
+    'projects.noDescription',
+    'projects.build',
+    'projects.status.disabled',
+    'projects.status.building',
+    'projects.status.paused',
+    'projects.status.ready',
+    'projects.status.failed',
+    'projects.detail.lastExtracted',
+    'projects.detail.embeddingModel',
+    'projects.detail.noEmbedding',
   ] as const;
 
   it.each(LOCALES)(

@@ -34,6 +34,24 @@
       "saveFailed": "保存に失敗しました。もう一度お試しください。",
       "conflict": "別のデバイスがこのプロフィールを更新しました。最新の内容を確認してから再度保存してください。",
       "loadFailed": "グローバルプロフィールを読み込めませんでした: {{error}}"
+    },
+    "projects": {
+      "empty": "プロジェクトがありません。デスクトップで作成してください。",
+      "loadFailed": "プロジェクトを読み込めませんでした: {{error}}",
+      "noDescription": "説明なし。",
+      "build": "グラフを構築",
+      "status": {
+        "disabled": "無効",
+        "building": "構築中",
+        "paused": "一時停止",
+        "ready": "準備完了",
+        "failed": "失敗"
+      },
+      "detail": {
+        "lastExtracted": "最終抽出",
+        "embeddingModel": "埋め込みモデル",
+        "noEmbedding": "未設定"
+      }
     }
   },
   "drawers": {

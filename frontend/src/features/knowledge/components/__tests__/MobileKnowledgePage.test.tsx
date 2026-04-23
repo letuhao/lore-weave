@@ -9,9 +9,6 @@ import type { PropsWithChildren } from 'react';
 // mobile shell renders them as sections. Stub each tab to a
 // minimal marker so we can assert the shell's section layout
 // without pulling in every hook + provider the desktop tabs expect.
-vi.mock('../ProjectsTab', () => ({
-  ProjectsTab: () => <div data-testid="stub-projects-tab" />,
-}));
 vi.mock('../ExtractionJobsTab', () => ({
   ExtractionJobsTab: () => <div data-testid="stub-extraction-jobs-tab" />,
 }));
@@ -21,6 +18,10 @@ vi.mock('../PrivacyTab', () => ({
 // K19f β — GlobalMobile replaces the embedded GlobalBioTab.
 vi.mock('../mobile/GlobalMobile', () => ({
   GlobalMobile: () => <div data-testid="stub-global-mobile" />,
+}));
+// K19f γ — ProjectsMobile replaces the embedded ProjectsTab.
+vi.mock('../mobile/ProjectsMobile', () => ({
+  ProjectsMobile: () => <div data-testid="stub-projects-mobile" />,
 }));
 
 import { MobileKnowledgePage, MobilePrivacyShell } from '../MobileKnowledgePage';
@@ -44,7 +45,7 @@ describe('MobileKnowledgePage', () => {
     expect(screen.getByTestId('mobile-section-jobs')).toBeTruthy();
     // Mobile variants mount inside their sections.
     expect(screen.getByTestId('stub-global-mobile')).toBeTruthy();
-    expect(screen.getByTestId('stub-projects-tab')).toBeTruthy();
+    expect(screen.getByTestId('stub-projects-mobile')).toBeTruthy();
     expect(screen.getByTestId('stub-extraction-jobs-tab')).toBeTruthy();
   });
 

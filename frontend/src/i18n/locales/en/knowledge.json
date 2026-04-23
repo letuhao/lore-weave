@@ -34,6 +34,24 @@
       "saveFailed": "Save failed. Try again.",
       "conflict": "Another device updated this bio. Review the latest and save again.",
       "loadFailed": "Couldn't load global bio: {{error}}"
+    },
+    "projects": {
+      "empty": "No projects yet. Create one on desktop.",
+      "loadFailed": "Couldn't load projects: {{error}}",
+      "noDescription": "No description.",
+      "build": "Build graph",
+      "status": {
+        "disabled": "Disabled",
+        "building": "Building",
+        "paused": "Paused",
+        "ready": "Ready",
+        "failed": "Failed"
+      },
+      "detail": {
+        "lastExtracted": "Last extracted",
+        "embeddingModel": "Embedding model",
+        "noEmbedding": "Not configured"
+      }
     }
   },
   "drawers": {

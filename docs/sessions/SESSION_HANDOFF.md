@@ -1,11 +1,37 @@
-# Session Handoff — Session 50 (K19b/K19c/K20/K19d/K19e complete · K19f α+β shipped · GlobalMobile live)
+# Session Handoff — Session 50 (K19b/K19c/K20/K19d/K19e complete · K19f α+β+γ shipped · Global + Projects mobile variants live)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-23 (session 50)
-> **HEAD:** `b059a6b` (K19f Cycle β; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** `<pending-K19f-γ>` (K19f Cycle γ; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 21 cycles shipped (19 Track 3 + 2 Track 2 close-out) · K19b/K19c/K20/K19d/K19e complete · K19f α+β shipped
+## Session 50 — 22 cycles shipped (20 Track 3 + 2 Track 2 close-out) · K19b/K19c/K20/K19d/K19e complete · K19f α+β+γ shipped
+
+### Cycle 22 — K19f Cycle γ [FE L] — ProjectsMobile (K19f.2)
+
+Ships the second simplified mobile variant. Stacked card list reusing `useProjects(false)`: name + project_type badge + extraction_status badge (5-value raw status, NOT the 13-state machine) + description preview. Tap card toggles inline expand showing full description + Intl-formatted last_extracted_at + embedding_model + Build button (reuses existing BuildGraphDialog with `stopPropagation` keeping the card expanded). Dropped per plan: Create/Edit/Archive/Delete dialogs + all 13-state-machine action buttons.
+
+`/review-impl` caught **1 MED + 4 LOW; all 5 fixed in-cycle**:
+- **M1** `onStarted` → `refetch()` contract completely untested — initial BuildGraphDialog stub didn't expose the callback. Fixed by expanding stub with `simulate-build-started` button + regression test asserting `refetch` called.
+- **L2** raw ISO `last_extracted_at` (same pattern K19e γ-b fixed for drawer created_at) → `Intl.DateTimeFormat` helper.
+- **L3** empty-description fallback branch untested → test with `description: ''` asserts `noDescription` renders.
+- **L4** truncate long-path untested → 200-char description test asserts `…` present + full 200-A's not present.
+- **L5** `onOpenChange(false)` dialog-close path untested → stub exposes `simulate-close` button + regression test asserts dialog unmounts.
+
+**Retro — 4th cycle in a row where /review-impl caught a stub-test coverage pattern.** The pattern is now clearly documented: test stubs for complex children should expose the callback props the parent contracts with, not just the render shape. A "happy div" stub that swallows callbacks hides the contract.
+
+**What Cycle δ (JobsMobile) inherits:**
+- `components/mobile/` convention established
+- `lib/touchTarget.ts` with `TOUCH_TARGET_CLASS` constant applied to all interactive elements
+- Stub pattern: expose callback props via `data-testid` buttons inside the stub so tests can drive them
+- Keep desktop dialogs as-is (cramped but functional) unless mobile UX becomes painful
+- i18n pattern: `mobile.<variantName>.*` sub-block + MOBILE_KEYS iterator extension per cycle
+
+**Test deltas at γ end:**
+- FE knowledge+pages vitest: **303 pass** (was 291 at K19f β end; **+12** = 8 core + 4 /review-impl regression)
+- `tsc --noEmit` clean
+
+---
 
 ### Cycle 21 — K19f Cycle β [FE L] — GlobalMobile (K19f.4) + tap-target utility
 
