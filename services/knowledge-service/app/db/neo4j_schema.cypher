@@ -108,6 +108,15 @@ FOR (e:Event) ON (e.user_id, e.event_order);
 CREATE INDEX event_user_chapter IF NOT EXISTS
 FOR (e:Event) ON (e.user_id, e.chapter_id);
 
+// K19e.2 — "List events for a project owned by a user." Mirrors
+// the entity_user_project index. Without it, the Timeline tab's
+// project-scoped browse (POST-review LOW finding P-K19e-α-01) does
+// a post-index scan on event_user_order matches for project_id.
+// Bounded project-scoped browse keeps O(events-in-project) instead
+// of O(events-for-user) when no date range is supplied.
+CREATE INDEX event_user_project IF NOT EXISTS
+FOR (e:Event) ON (e.user_id, e.project_id);
+
 // ─────────────────────────────────────────────────────────────────
 // EVIDENCE-COUNT INDEXES — partial-extraction cascade cleanup
 //

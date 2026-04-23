@@ -32,6 +32,7 @@ from app.routers.public import extraction as public_extraction
 from app.routers.public import logs as public_logs
 from app.routers.public import projects as public_projects
 from app.routers.public import summaries as public_summaries
+from app.routers.public import timeline as public_timeline
 from app.routers.public import user_data as public_user_data
 
 logger = logging.getLogger(__name__)
@@ -270,4 +271,5 @@ app.include_router(public_extraction.jobs_router)
 app.include_router(public_logs.router)
 app.include_router(public_projects.router)
 app.include_router(public_summaries.router)
+app.include_router(public_timeline.timeline_router)
 app.include_router(public_user_data.router)

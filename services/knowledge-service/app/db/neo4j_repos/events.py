@@ -39,13 +39,23 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "Event",
+    "EVENTS_MAX_LIMIT",
     "event_id",
     "merge_event",
     "get_event",
     "list_events_for_chapter",
     "list_events_in_order",
+    "list_events_filtered",
     "delete_events_with_zero_evidence",
 ]
+
+
+# K19e.2 — shared cap between the router's `Query(le=EVENTS_MAX_LIMIT)`
+# and the repo's defensive clamp. Matches the `ENTITIES_MAX_LIMIT=200`
+# convention in entities.py so an operator reads both services the same
+# way. Cypher doesn't parameterize LIMIT above a literal, so the cap
+# belongs in the API layer — the repo enforces it on the caller too.
+EVENTS_MAX_LIMIT = 200
 
 
 def event_id(
@@ -425,3 +435,133 @@ async def delete_events_with_zero_evidence(
     if record is None:
         return 0
     return int(record["deleted"])
+
+
+# ── K19e.2 — list_events_filtered ─────────────────────────────────────
+#
+# Paginated browse for the Timeline tab. Mirrors the K19d.2
+# `list_entities_filtered` shape: 2-query count+page split so a
+# power user with tens of thousands of events doesn't materialise
+# the whole matching set in memory just to compute `total`.
+#
+# Scope trim vs the K19e.2 plan row:
+#   - `entity_id` filter is NOT implemented here (deferred as
+#     D-K19e-α-01). Events' `participants` array stores display
+#     names, not ids, so "filter by entity_id" needs an entity-name
+#     + aliases lookup on top — enough extra mechanism to warrant
+#     its own cycle.
+#   - Wall-clock date range (`from=&to=` ISO) is NOT implemented —
+#     :Event nodes have no date field; only narrative `event_order`
+#     and optional `chronological_order` are in the K11.3 schema.
+#     Deferred as D-K19e-α-02.
+#   - `chronological_order` range is NOT exposed — Cycle β (FE)
+#     decides whether the two-axis UI is worth the toggle. Deferred
+#     as D-K19e-α-03.
+#
+# Null `event_order` handling:
+#   - ORDER BY `coalesce(event_order, 2147483647)` sinks null-order
+#     events to the end.
+#   - The filter predicates `event_order > $after_order` and
+#     `event_order < $before_order` evaluate to NULL (not TRUE) when
+#     `event_order` is NULL, so a null-order event is INCLUDED only
+#     when both bounds are None. This matches the existing
+#     `list_events_in_order` semantics and is locked by an
+#     integration test.
+
+# Shared WHERE body. Every filter predicate is parameterised; no
+# user-supplied string enters the Cypher text. Keeping the WHERE
+# as a single string means a future filter change only edits one
+# place (same pattern as K19d.2 `_LIST_ENTITIES_FILTER_WHERE`).
+_LIST_EVENTS_FILTER_WHERE = """
+MATCH (e:Event)
+WHERE e.user_id = $user_id
+  AND e.archived_at IS NULL
+  AND ($project_id IS NULL OR e.project_id = $project_id)
+  AND ($after_order IS NULL OR e.event_order > $after_order)
+  AND ($before_order IS NULL OR e.event_order < $before_order)
+"""
+
+_LIST_EVENTS_COUNT_CYPHER = _LIST_EVENTS_FILTER_WHERE + """
+RETURN count(e) AS total
+"""
+
+_LIST_EVENTS_PAGE_CYPHER = _LIST_EVENTS_FILTER_WHERE + """
+RETURN e
+ORDER BY coalesce(e.event_order, 2147483647) ASC, e.title ASC, e.id ASC
+SKIP $offset LIMIT $limit
+"""
+
+
+async def list_events_filtered(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    after_order: int | None,
+    before_order: int | None,
+    limit: int,
+    offset: int,
+) -> tuple[list[Event], int]:
+    """K19e.2 — paginated timeline browse.
+
+    Returns ``(rows, total_count)``. ``total_count`` is the server-side
+    count matching the filters *before* ``SKIP``/``LIMIT`` so the FE
+    can render "page 3 of N" without a second round-trip.
+
+    Ordering: ``coalesce(event_order, 2147483647) ASC, title ASC,
+    id ASC`` — the id tiebreaker guarantees stable pagination even
+    when title and event_order collide.
+
+    Filter semantics:
+      - ``project_id=None``  → events across every project + global.
+      - ``after_order``      → strict ``event_order > after_order``.
+      - ``before_order``     → strict ``event_order < before_order``.
+      - Events with NULL ``event_order`` are included only when both
+        bounds are None; otherwise the NULL comparison excludes them.
+      - Archived events (``archived_at IS NOT NULL``) are always
+        excluded — the timeline tab is a user-facing view, not an
+        audit log.
+
+    **Implementation:** two sequential queries (count + page), same
+    pattern as K19d.2 ``list_entities_filtered``. A single
+    ``collect()/UNWIND`` would materialise every matching node just
+    to compute total — fine at hobby scale but real OOM risk for a
+    power user with 10k+ events.
+    """
+    if limit <= 0:
+        raise ValueError(f"limit must be positive, got {limit}")
+    if offset < 0:
+        raise ValueError(f"offset must be >= 0, got {offset}")
+    if (
+        after_order is not None
+        and before_order is not None
+        and after_order >= before_order
+    ):
+        raise ValueError(
+            f"after_order ({after_order}) must be < before_order ({before_order})"
+        )
+    effective_limit = min(limit, EVENTS_MAX_LIMIT)
+    count_result = await run_read(
+        session,
+        _LIST_EVENTS_COUNT_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        after_order=after_order,
+        before_order=before_order,
+    )
+    count_record = await count_result.single()
+    total = int(count_record["total"]) if count_record else 0
+    if total == 0:
+        return ([], 0)
+    page_result = await run_read(
+        session,
+        _LIST_EVENTS_PAGE_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        after_order=after_order,
+        before_order=before_order,
+        offset=offset,
+        limit=effective_limit,
+    )
+    rows = [_node_to_event(record["e"]) async for record in page_result]
+    return rows, total

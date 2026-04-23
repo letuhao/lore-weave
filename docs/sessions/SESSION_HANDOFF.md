@@ -1,9 +1,41 @@
-# Session Handoff — Session 50 (K19b + K19c + K20 + K19d all 100% plan-complete)
+# Session Handoff — Session 50 (K19b + K19c + K20 + K19d complete · K19e OPENED)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-22 (session 50)
-> **HEAD:** `c9aaf95` (K19d Cycle γ-b; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **Date:** 2026-04-23 (session 50)
+> **HEAD:** `<pending-K19e-α>` (K19e Cycle α; K19d-γb @ `c9aaf95`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
+
+## Session 50 — 16 cycles shipped (14 Track 3 + 2 Track 2 close-out) · K19b/K19c/K20/K19d complete · K19e OPENED
+
+### Cycle 16 — K19e Cycle α [BE L] — Timeline list endpoint (K19e.2)
+
+Opens the K19e Timeline + Raw-drawers cluster. BE foundation only; β ships the FE TimelineTab consuming this endpoint. CLARIFY-time scope trim:
+
+- Shipped: `GET /v1/knowledge/timeline?project_id=&after_order=&before_order=&limit=&offset=` → `{events, total}`. JWT user-scoped, archived excluded, 2-query count+page split (O(limit) memory), stable pagination via `title ASC, id ASC` tiebreaker, 422 on reversed range.
+- **D-K19e-α-01** `entity_id` filter deferred — `:Event.participants` stores display names; needs entity lookup. Natural fit for Cycle β/γ when FE drill-down lands.
+- **D-K19e-α-02** ISO wall-clock `from`/`to` deferred — :Event has no date field; narrative `event_order` is the MVP axis.
+- **D-K19e-α-03** `chronological_order` range deferred — let Cycle β FE decide if two-axis toggle is worth the UX.
+
+`/review-impl` (user-invoked before COMMIT) caught **3 LOW** findings, all fixed in-cycle:
+- **L1** integration test `_limit_clamped_to_max` seeded only 5 events so a removed clamp would still pass — replaced with 2 unit tests patching `run_read` to assert the exact `$limit` kwarg forwarded to Cypher (both clamp-fires and pass-through branches).
+- **L2** no `event_user_project (user_id, project_id)` composite index on :Event even though `entity_user_project` exists — added to `neo4j_schema.cypher`, cleared **P-K19e-α-01**.
+- **L3** unused `logger = logging.getLogger(__name__)` in `timeline.py` (read-only endpoint) — removed.
+
+**What Cycle β (FE) now inherits:**
+- `knowledgeApi.listTimeline({ projectId, afterOrder, beforeOrder, limit, offset })` wrapper to write.
+- `{events: Event[], total: number}` response shape.
+- `Event` type mirrors the BE Pydantic — re-use the K19d `Entity` pattern (fields: id, title, chapter_id, event_order, participants, summary, confidence, evidence_count, mention_count).
+- 422 on reversed range → surface as toast + clear range input.
+- No entity drill-down on BE yet — FE table can list entity names but can't filter by them.
+- Schema index exists; project-scoped browse is cheap.
+
+**Test deltas at K19e Cycle α end:**
+- BE unit knowledge-service: **1268 pass** (was 1258 at K19d γ-b end; +10 net = 11 timeline - 1 weak integration test deleted)
+- BE integration timeline: **11/11 live** against `infra-neo4j-1`
+- 23/23 K11.7 events adjacent no regressions
+- 49/49 router-adjacent no regressions from `main.py` change
+
+---
 
 ## Session 50 — 15 cycles shipped (13 Track 3 + 2 Track 2 close-out) · K19b + K19c + K20 + K19d all 100% plan-complete
 
