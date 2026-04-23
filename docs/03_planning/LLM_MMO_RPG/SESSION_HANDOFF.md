@@ -74,7 +74,7 @@ See [00_VISION.md](00_VISION.md) for the dream, [01_OPEN_PROBLEMS.md](01_OPEN_PR
 - **E3** IP ownership — needs legal review
 
 ### Multiverse-specific risks (M1–M7 in [01 §M](01_OPEN_PROBLEMS.md)) — NOT yet batch-addressed
-- M1 Reality discovery (OPEN) — product/UX
+- M1 Reality discovery (**PARTIAL — resolved 2026-04-23**) — 7-layer design in [03 §9.1](03_MULTIVERSE_MODEL.md#91-reality-discovery), M1-D1..D7 locked; weight tuning + preview format pending V1 data
 - M2 Storage cost inactive realities (PARTIAL)
 - M3 Canonization contamination (OPEN, gated by DF3)
 - M4 L1/L2 update propagation (OPEN — **could bump to PARTIAL** after R5-L2 event propagation)

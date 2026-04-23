@@ -359,8 +359,17 @@ Players "bending" Elena happens naturally in a divergent reality; canon-faithful
 
 New category introduced by the multiverse model in [03_MULTIVERSE_MODEL.md §11](03_MULTIVERSE_MODEL.md). These are trade-offs created by adopting peer realities + snapshot fork; they are the price of the benefits elsewhere.
 
-### M1. Reality discovery problem — **OPEN**
-Many realities per book → which does a new player join? Poor discovery = every reality is lonely. Needs default landing, interest-matching, friend-follow. Related to C3 cold-start.
+### M1. Reality discovery problem — **PARTIAL**
+
+**Problem:** Many realities per book → which does a new player join? Poor discovery = every reality is lonely. Related to C3 cold-start.
+
+**Resolved by:** 7-layer design in [03 §9.1](03_MULTIVERSE_MODEL.md#91-reality-discovery) — smart-funnel entry flow, composite ranking (friend presence / density / locale / canonicality / recency / near-cap penalty), friend-follow via auth-service, creator-declared canonicality hint, flat browse UI with filters, create-new gated behind "Advanced" tab, metrics feedback loop for weight tuning. Decisions M1-D1..D7 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+
+**Residual `OPEN` (blocks SOLVED):**
+- Actual weight values — V1 defaults are starting guesses; tune from real data
+- Notable-event preview format (raw L3 headline vs AI 1-line summary) — needs engagement measurement
+- First-week cold-start interaction with C3 (seeded AI populations?)
+- Preview-content caching freshness policy
 
 ### M2. Storage cost of inactive realities — **PARTIAL**
 Users fork freely, abandon 30 minutes later → DB rows accumulate. Auto-freeze policy + compression + fork quotas mitigate. Default policy in [03 §12](03_MULTIVERSE_MODEL.md) pending confirmation.
@@ -393,8 +402,8 @@ Multiverse is sophisticated. Default behavior must hide it; advanced features pr
 | E. Moderation & legal | 1 | 1 | 1 | 0 |
 | F. Content design | 2 | 1 | 0 | 1 |
 | G. Testing & ops | 3 | 0 | 0 | 0 |
-| **M. Multiverse-specific** | **3** | **2** | **1** | **0** |
-| **Total** | **17** | **13** | **5** | **2** |
+| **M. Multiverse-specific** | **2** | **3** | **1** | **0** |
+| **Total** | **16** | **14** | **5** | **2** |
 
 **Deltas across design rounds:**
 - A1 `OPEN` → `PARTIAL` (R8 [§12H](02_STORAGE_ARCHITECTURE.md) resolves infrastructure; semantic layer still open)
@@ -403,8 +412,9 @@ Multiverse is sophisticated. Default behavior must hide it; advanced features pr
 - C4 `OPEN` → `PARTIAL` (four-layer canon resolves the tension)
 - F1 `OPEN` → `PARTIAL` (canon_lock_level per attribute)
 - New category M added with 7 multiverse-specific risks
+- **M1 `OPEN` → `PARTIAL`** (2026-04-23 — 7-layer discovery design in [03 §9.1](03_MULTIVERSE_MODEL.md#91-reality-discovery); weight tuning + preview format pending V1 data; M1-D1..D7 locked in [OPEN_DECISIONS.md](OPEN_DECISIONS.md))
 
-**Interpretation:** Systematic design resolutions have compressed the OPEN set from 18 → 17, and more importantly, moved critical-path items to PARTIAL. Remaining single-problem-kills-product severity items: **A4** (retrieval quality — needs measurement), **D1** (cost per user-hour — needs prototype), **E3** (IP — needs legal). Critical-path list shortened from 4 → 3.
+**Interpretation:** Systematic design resolutions have compressed the OPEN set from 18 → 17 → 16, and more importantly, moved critical-path items to PARTIAL. Remaining single-problem-kills-product severity items: **A4** (retrieval quality — needs measurement), **D1** (cost per user-hour — needs prototype), **E3** (IP — needs legal). Critical-path list shortened from 4 → 3.
 
 ## What "ready to implement" would look like
 

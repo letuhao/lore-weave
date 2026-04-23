@@ -60,7 +60,7 @@ User indicated they have ideas for risks R1–R13 in [02_STORAGE_ARCHITECTURE.md
 | R11 | pgvector per-instance footprint | 02 §13 | Depends on S2 |
 | R12 | Redis stream ephemerality | 02 §13 | Depends on S3 |
 | R13 | Admin tooling complexity | 02 §13 | |
-| M1 | Reality discovery problem | 01 §M | |
+| ~~M1~~ | ~~Reality discovery problem~~ | 01 §M | **LOCKED 2026-04-23** — M1-D1..D7 below; [03 §9.1](03_MULTIVERSE_MODEL.md#91-reality-discovery) |
 | M3 | Canonization contamination | 01 §M | Depends on MV2 |
 | M4 | Inconsistent L1/L2 updates across reality lifetimes | 01 §M | |
 | M7 | Concept complexity for users | 01 §M | |
@@ -222,6 +222,14 @@ As user confirms items, they move here with the answer and any rationale.
 | R13-L6 | Rollback via compensating events | 2026-04-23 | **Reversible commands** document `--undo`; one-way explicitly documented; structural via normal ops flow | [02 §12L.6](02_STORAGE_ARCHITECTURE.md) |
 | R13-governance | ADMIN_ACTION_POLICY governance doc | 2026-04-23 | **New doc at `docs/02_governance/ADMIN_ACTION_POLICY.md`** codifies L1–L6 as requirements | [02 §12L.7](02_STORAGE_ARCHITECTURE.md) |
 | R13-impl-order | V1 implementation ordering | 2026-04-23 | V1: L1 (~10 commands) + L2 + L3 + L4 + governance doc. V1+30d: L5 UI guardrails. V1+60d: L6 rollback. | [02 §12L.9](02_STORAGE_ARCHITECTURE.md) |
+| M1-D1 | Entry flow design | 2026-04-23 | **Smart funnel** — resume-PC → friend-match → canon_attempt top-ranked → "be the first". Never dump raw list on first click. | [03 §9.1.1](03_MULTIVERSE_MODEL.md#911-entry-flow--smart-funnel-m1-d1) |
+| M1-D2 | Composite ranking signals + weights | 2026-04-23 | **7 signals, config-driven** (`multiverse.discovery.weight.*`). V1 defaults: friend=100, density=40, locale=30, canon_attempt=20, divergent=10, pure_what_if=5, recency=15, near-cap penalty=-20. Tune from metrics. | [03 §9.1.2](03_MULTIVERSE_MODEL.md#912-composite-ranking-m1-d2) |
+| M1-D3 | Friend-follow source + PC presence | 2026-04-23 | **Reuse auth-service follow graph**. New PC field `presence_visibility TEXT NOT NULL DEFAULT 'friends'` (values: `friends \| mutuals \| nobody`). | [03 §9.1.3](03_MULTIVERSE_MODEL.md#913-friend-follow-layer-m1-d3) |
+| M1-D4 | Canonicality hint governance | 2026-04-23 | **V1 self-declared by creator**, no audit. V2+: source-book author can override hint on derived realities (platform-mode). Reaffirms MV3: UI hint only, no gameplay effect. | [03 §9.1.4](03_MULTIVERSE_MODEL.md#914-canonicality-hint-governance-m1-d4) |
+| M1-D5 | Browse UI pattern | 2026-04-23 | **Flat paginated list** (20/page). Filters: language, canonicality, has_friends, population_range, recent_activity. Hibernated/frozen hidden behind toggle. | [03 §9.1.5](03_MULTIVERSE_MODEL.md#915-browse-ui-m1-d5) |
+| M1-D6 | Create-new gating | 2026-04-23 | **Advanced tab only** (not peer to Browse). Confirmation modal if ≥1 existing reality <50% cap. No hard block — preserves MV4-b (user remains world creator). | [03 §9.1.6](03_MULTIVERSE_MODEL.md#916-create-new-gating-m1-d6) |
+| M1-D7 | Metrics for weight feedback | 2026-04-23 | **5 metrics logged**: default_landing_accept_rate, friend_match_rate, lonely_reality_ratio, reality_creation_rate_per_user, browse_filter_usage. Threshold: lonely_reality_ratio > 30% over 1 month → tighten density/gating. | [03 §9.1.7](03_MULTIVERSE_MODEL.md#917-metrics-feedback-loop-m1-d7) |
+| M1→status | M1 status change | 2026-04-23 | **M1 moves `OPEN` → `PARTIAL`** (01) and `MITIGATED` (03 §11). Framework locked; weight values, preview format, cold-start interaction with C3, preview caching — all pending V1 data. | [01 §M1](01_OPEN_PROBLEMS.md#m1-reality-discovery-problem--partial) · [03 §9.1.8](03_MULTIVERSE_MODEL.md#918-residual-open-requires-v1-data) |
 
 ---
 

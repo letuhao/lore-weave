@@ -137,7 +137,10 @@ When adding new features:
 | ID | Feature | Status | Tier | Dep | Design ref |
 |---|---|---|---|---|---|
 | PO-1 | User account (reuse existing auth-service + JWT) | ✅ | V1 | — | Existing M01 identity |
-| PO-2 | Reality discovery UI (flat list, metadata: locale, population, canonicality) | 🟡 | V1 | IF-3 | [03 §9.1](03_MULTIVERSE_MODEL.md) |
+| PO-2 | Reality discovery UI — 7-layer: smart-funnel entry, composite ranking (friend/density/locale/canon/recency), friend-follow, flat browse with filters, create-new gating, metrics feedback | ✅ | V1 | IF-3, PO-2a, PO-2b, PO-2c | [03 §9.1](03_MULTIVERSE_MODEL.md#91-reality-discovery), M1-D1..D7 |
+| PO-2a | Smart-funnel entry flow (resume-PC → friend-match → canon_attempt top → "be the first") | ✅ | V1 | PO-1 | [03 §9.1.1](03_MULTIVERSE_MODEL.md#911-entry-flow--smart-funnel-m1-d1), M1-D1 |
+| PO-2b | Composite ranking engine (7 signals, config-driven weights) + metrics loop | ✅ | V1 | auth friend graph | [03 §9.1.2](03_MULTIVERSE_MODEL.md#912-composite-ranking-m1-d2), M1-D2/D7 |
+| PO-2c | PC `presence_visibility` field + friend avatars on browse cards | ✅ | V1 | auth-service follow | [03 §9.1.3](03_MULTIVERSE_MODEL.md#913-friend-follow-layer-m1-d3), M1-D3 |
 | PO-3 | Canonicality hint badges (canon_attempt / divergent / pure_what_if) | ✅ | V1 | PO-2 | MV3 locked |
 | PO-4 | PC creation — fully custom | ✅ | V1 | IF-3 | [04 §3.1](04_PLAYER_CHARACTER_DESIGN.md), PC-A1 locked |
 | PO-5 | PC creation — template-assisted | ✅ | V1 | PO-4 | [04 §3.1](04_PLAYER_CHARACTER_DESIGN.md) |
