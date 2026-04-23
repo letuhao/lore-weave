@@ -1,10 +1,12 @@
 import { Link } from 'react-router-dom';
 import { Lock, ArrowLeft } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { cn } from '@/lib/utils';
 import { PrivacyTab } from './PrivacyTab';
 import { GlobalMobile } from './mobile/GlobalMobile';
 import { ProjectsMobile } from './mobile/ProjectsMobile';
 import { JobsMobile } from './mobile/JobsMobile';
+import { TOUCH_TARGET_CLASS } from '../lib/touchTarget';
 
 // K19f.1 — single-column mobile shell. Replaces the 7-tab desktop
 // navigation at viewports <768px. Only the three "primary" sections
@@ -85,7 +87,10 @@ export function MobileKnowledgePage() {
 
       <Link
         to="/knowledge/privacy"
-        className="mt-4 inline-flex items-center gap-1.5 text-[12px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+        className={cn(
+          TOUCH_TARGET_CLASS,
+          'mt-4 inline-flex items-center gap-1.5 px-2 text-[12px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline',
+        )}
         data-testid="mobile-privacy-link"
       >
         <Lock className="h-3.5 w-3.5" />
@@ -110,7 +115,10 @@ export function MobilePrivacyShell() {
     >
       <Link
         to="/knowledge/projects"
-        className="mb-4 inline-flex items-center gap-1.5 text-[12px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+        className={cn(
+          TOUCH_TARGET_CLASS,
+          'mb-4 inline-flex items-center gap-1.5 px-2 text-[12px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline',
+        )}
         data-testid="mobile-privacy-back"
       >
         <ArrowLeft className="h-3.5 w-3.5" />

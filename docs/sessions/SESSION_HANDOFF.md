@@ -1,11 +1,48 @@
-# Session Handoff — Session 50 (K19b/K19c/K20/K19d/K19e complete · K19f α+β+γ+δ shipped · all 3 mobile variants live)
+# Session Handoff — Session 50 (K19b/K19c/K20/K19d/K19e/K19f ALL 100% plan-complete)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-23 (session 50)
-> **HEAD:** `3a2126c` (K19f Cycle δ; K19f-γ @ `84d5eec` + `8b18a12`; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** `<pending-K19f-ε>` (K19f Cycle ε; K19f-δ @ `3a2126c` + `ca8b5f7`; K19f-γ @ `84d5eec` + `8b18a12`; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 23 cycles shipped (21 Track 3 + 2 Track 2 close-out) · K19b/K19c/K20/K19d/K19e complete · K19f α+β+γ+δ shipped
+## Session 50 — 24 cycles shipped (22 Track 3 + 2 Track 2 close-out) · K19b/K19c/K20/K19d/K19e/K19f ALL 100% plan-complete
+
+### Cycle 24 — K19f Cycle ε [FE S] — Tap-target audit (K19f.5)
+
+Closes the K19f cluster. Applied `TOUCH_TARGET_CLASS = 'min-h-[44px]'` to the 2 remaining mobile-shell links (MobileKnowledgePage privacy footer link + MobilePrivacyShell back link). Test assertions strengthened to import the constant and assert `className.toContain(TOUCH_TARGET_CLASS)` so a future refactor of the constant value (e.g. to Tailwind's `min-h-11` shorthand) stays lockable.
+
+**Full tap-target inventory at K19f end**: GlobalMobile save (β) · ProjectsMobile toggle + Build (γ) · JobsMobile toggle + Pause/Resume/Cancel (δ) · MobileKnowledgePage privacy link (ε) · MobilePrivacyShell back link (ε). All interactive elements in mobile-rendered mobile-variant code ≥44px. Card spacing via `space-y-2` (8px), section spacing via `mb-8` (32px).
+
+`/review-impl` caught **1 LOW + 2 COSMETIC; 1 COSMETIC fixed + 1 LOW deferred + 1 COSMETIC accepted**:
+- **L1 → D-K19f-ε-01** PrivacyTab mobile audit gap. Renders on mobile via MobilePrivacyShell but its 4 buttons (Export, Delete, dialog Cancel, dialog Confirm) are ~26-30px tall. Deferred because PrivacyTab is desktop-shared — applying TOUCH_TARGET_CLASS unconditionally widens desktop buttons too. Future cycle picks between conditional (useIsMobile guard) or blanket (accept desktop cosmetic change).
+- **C2** raw-string assertion in tests → import constant instead.
+- **C3** no click-navigation test on Links → accepted as existing convention.
+
+**K19f cluster 100% plan-complete** (α shell + β GlobalMobile + γ ProjectsMobile + δ JobsMobile + ε tap audit).
+
+**Session 50 stats**:
+- **24 cycles shipped** (22 Track 3 + 2 Track 2 close-out)
+- All Track 3 K19-series clusters (K19a through K19f) now 100% plan-complete
+- Front-end test coverage: **320 pass** at session 50 end (vs ~88 at session 47 end)
+- Back-end test coverage: **1282 pass** at K19e γ-a (vs 1154 at session 47 end)
+
+**What's next — Session 51 options:**
+- **Track 3 polish deferrals** — 18+ D-* items tracked across sessions 46-50, notably:
+  - K19f.5 residual: D-K19f-ε-01 PrivacyTab mobile audit
+  - K20.3 scheduler
+  - K19d-γb follow-ups (M1/M2/M3 Neo4j ON-MATCH union + atomicity + canonical_id fundamental)
+  - D-K19e-α-01 entity_id filter on Timeline
+  - D-K19e-γa-01 source_type filter on drawer search
+  - D-K19e-β-01 chapter title resolution
+  - D-K19e-γb-01 in-card term highlighting
+  - D-K19b.8-01/02/03 log viewer polish trio
+  - D-K19b.1-01 cursor pagination
+  - D-K16.11-02 budget tracking on drawer-search embeds
+- **Gate 13** — T2-close-2 human-interactive walkthrough remains open
+- **K20 scheduler** — K20.3 cron for automated summary regeneration
+- **New cluster** — K21 tool calling integration, K22 privacy page, or data re-engineering (101_DATA_RE_ENGINEERING)
+
+---
 
 ### Cycle 23 — K19f Cycle δ [FE L] — JobsMobile (K19f.3)
 

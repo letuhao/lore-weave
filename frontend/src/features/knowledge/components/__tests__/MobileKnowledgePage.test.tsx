@@ -26,6 +26,7 @@ vi.mock('../mobile/JobsMobile', () => ({
 }));
 
 import { MobileKnowledgePage, MobilePrivacyShell } from '../MobileKnowledgePage';
+import { TOUCH_TARGET_CLASS } from '../../lib/touchTarget';
 
 function Wrapper({ children }: PropsWithChildren) {
   const qc = new QueryClient({
@@ -58,10 +59,17 @@ describe('MobileKnowledgePage', () => {
     expect(banner.textContent?.length ?? 0).toBeGreaterThan(0);
   });
 
-  it('renders a privacy link routed to /knowledge/privacy', () => {
+  it('renders a privacy link routed to /knowledge/privacy + applies TOUCH_TARGET_CLASS (K19f.5)', () => {
     render(<MobileKnowledgePage />, { wrapper: Wrapper });
     const link = screen.getByTestId('mobile-privacy-link') as HTMLAnchorElement;
     expect(link.getAttribute('href')).toBe('/knowledge/privacy');
+    // K19f.5 audit: the footer link must meet the 44px minimum tap
+    // target. A regression removing TOUCH_TARGET_CLASS would ship a
+    // ~18-20px tall link that thumbs miss on a phone. Import the
+    // constant so the invariant (not the raw string) is what's
+    // asserted — if the constant value changes (e.g. to Tailwind's
+    // `min-h-11` shorthand), the test stays valid.
+    expect(link.className).toContain(TOUCH_TARGET_CLASS);
   });
 });
 
@@ -76,6 +84,8 @@ describe('MobilePrivacyShell', () => {
     expect(screen.getByTestId('stub-privacy-tab')).toBeTruthy();
     const back = screen.getByTestId('mobile-privacy-back') as HTMLAnchorElement;
     expect(back.getAttribute('href')).toBe('/knowledge/projects');
+    // K19f.5 audit: back link must meet the 44px minimum tap target.
+    expect(back.className).toContain(TOUCH_TARGET_CLASS);
     // No desktop tabs nav rendered — no role="tablist" anywhere in
     // the shell. This is the bug the review-impl caught.
     expect(screen.queryByRole('tablist')).toBeNull();
