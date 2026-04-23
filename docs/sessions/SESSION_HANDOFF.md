@@ -1,11 +1,45 @@
-# Session Handoff — Session 50 (31 cycles · Track 2/3 Gap Closure P2 tier 3/7 done · plan file live)
+# Session Handoff — Session 50 (32 cycles · Track 2/3 Gap Closure P2 tier 4/7 done · session closed)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-23 (session 50, closed)
-> **HEAD:** `6a2d8ee` (C5 mobile polish EntitiesTable+EntityDetailPanel+PrivacyTab; C4 @ `898869d` + `bf1a94f`; C3 @ `052fe44` + `82ab287`; C2 @ `2812aff` + `ca6a939`; C1 @ `b447a9e` + `16c56e5`; K20.3-β @ `db7cf05` + `e367377`; K20.3-α @ `474a7d8` + `e7b1d18`; K19f-ε @ `03e7774` + `56047dd`; K19f-δ @ `3a2126c` + `ca8b5f7`; K19f-γ @ `84d5eec` + `8b18a12`; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **Date:** 2026-04-23 (session 50, closed at cycle 32 / C6)
+> **HEAD:** `eb26e83` (C6 chapter-title resolution FS; C5 @ `6a2d8ee` + `29f4b14`; C4 @ `898869d` + `bf1a94f`; C3 @ `052fe44` + `82ab287`; C2 @ `2812aff` + `ca6a939`; C1 @ `b447a9e` + `16c56e5`; K20.3-β @ `db7cf05` + `e367377`; K20.3-α @ `474a7d8` + `e7b1d18`; K19f-ε @ `03e7774` + `56047dd`; K19f-δ @ `3a2126c` + `ca8b5f7`; K19f-γ @ `84d5eec` + `8b18a12`; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 31 cycles shipped (24 Track 3 + 2 Track 2 close-out + 5 Gap Closure) · P1 done · P2 3/7 done
+## Session 50 — 32 cycles shipped (24 Track 3 + 2 Track 2 close-out + 6 Gap Closure) · P1 done · P2 4/7 done · **session closed**
+
+### Cycle 32 — Track 2/3 Gap Closure C6 [FS XL] — chapter-title resolution for Job + Timeline rows
+
+Sixth Gap Closure cycle. Cross-service BE+FE via denormalization: book-service batched chapter-title endpoint + knowledge-service shared enricher + 4 enrichment sites + 2 FE consumer surfaces.
+
+**Three blocks.**
+
+1. **book-service** — new `POST /internal/chapters/titles` handler (inline in server.go per convention). SQL: `SELECT id, sort_order, title FROM chapters WHERE id = ANY($1::uuid[]) AND lifecycle_state='active'`. Format: `"Chapter N — Title"` (fallback `"Chapter N"` for whitespace-only titles). 200-id cap; missing/inactive chapters silently dropped. Path refined from plan's `/internal/books/chapters/titles` → `/internal/chapters/titles` since chapter_ids are cross-book.
+
+2. **knowledge-service** — `BookClient.get_chapter_titles` + NEW `app/clients/chapter_title_enricher.py` with 2 in-place mutation helpers (events + jobs-cursor). `Event.chapter_title` + `ExtractionJob.current_chapter_title` additive optional fields. 4 enrichment sites: `/v1/knowledge/timeline`, `/jobs` list, `/jobs/{id}` single, `/{project_id}/extraction/jobs` per-project list. All 4 share the module-level BookClient singleton via `Depends(get_book_client)`.
+
+3. **FE** — TimelineEventRow prefers `event.chapter_title ?? chapterShort(event.chapter_id)`; JobDetailPanel new "Current chapter" section gated on title presence. 2 new i18n keys × 4 locales.
+
+**`/review-impl` caught 2 MED + 4 LOW; all 6 addressed in-cycle:**
+
+- **M1** (critical): `_etag(job)` was `updated_at`-only → chapter title rename on book-side wouldn't bump etag, FE served 304 with stale title for up to staleTime. Fix folds `current_chapter_title` into etag via stable md5 (NOT Python's `hash()` which is PYTHONHASHSEED-randomized per-process). Regression test locks "same updated_at + different title → different etag".
+- **M2**: happy-path SQL untested at Go level (s := &Server{}, pool=nil tests). Docstring documents the gap + recommends manual-curl smoke for future cycles. L5 partial-mitigation: `rows.Err()` turns silent empty-map SQL failures into 500s.
+- **L3**: router tests silently skipped the enricher network path (cursor=None / invalid-UUID fixtures). Added 3 router-level enricher tests + `_setup_overrides` / `_make_client` now auto-override `get_book_client` so unit tests never touch real network.
+- **L4**: UUID fallback wrapped in `<code>` → SRs announce character-by-character. Fix: `aria-label={t('timeline.row.chapterUnresolved', {id})}` + new i18n key × 4 locales.
+- **L5**: handler silently skipped scan errors → schema drift would return empty map with no signal. Fix: `rows.Err()` check + scan_error_count in partial responses.
+- **L6**: FE required type `chapter_title: string | null` doesn't match runtime `undefined` during rollout window. Kept required (matches codebase pattern) + added JSDoc noting the nuance + recommending `??` consumption pattern.
+
+**Closes**: D-K19b.3-01 (JobDetailPanel current chapter) + D-K19e-β-01 (TimelineEventRow chapter title).
+
+**Verify**:
+- book-service Go tests 3/3 (non-DB only — M2 gap documented)
+- knowledge-service BE unit **1379/1379** (+27 from 1352 C5 baseline: 6 book_client + 17 enricher + 3 router + 1 etag-bump)
+- FE knowledge vitest **363/363** (+4 tests from C6 initial; L4/L6 additions didn't add new tests)
+- `tsc --noEmit` clean
+- No BE integration tests run; respx-mocked unit + the explicit Go-gap note are the safety nets
+
+**Plan progress**: 11 items / 6 cycles · **P1 done · P2 4/7 done** (C3 ✅ + C4 ✅ + C5 ✅ + C6 ✅). Remaining P2: C7 (ETA formatter) · C8 (drawer-search UX) · C9 (entity concurrency+unlock).
+
+---
 
 ### Cycle 31 — Track 2/3 Gap Closure C5 [FE M] — mobile polish: EntitiesTable + EntityDetailPanel + PrivacyTab
 
@@ -262,17 +296,25 @@ Closes the K19f cluster. Applied `TOUCH_TARGET_CLASS = 'min-h-[44px]'` to the 2 
 
 **K19f cluster 100% plan-complete** (α shell + β GlobalMobile + γ ProjectsMobile + δ JobsMobile + ε tap audit).
 
-**Session 50 stats**:
-- **24 cycles shipped** (22 Track 3 + 2 Track 2 close-out)
-- All Track 3 K19-series clusters (K19a through K19f) now 100% plan-complete
-- Front-end test coverage: **320 pass** at session 50 end (vs ~88 at session 47 end)
-- Back-end test coverage: **1282 pass** at K19e γ-a (vs 1154 at session 47 end)
+**Session 50 stats (final, session-closed state)**:
+- **32 cycles shipped** (24 Track 3 + 2 Track 2 close-out + 6 Gap Closure: C1..C6)
+- All Track 3 K19-series clusters (K19a through K19f) 100% plan-complete
+- Track 2/3 Gap Closure Plan: P1 done · **P2 4/7 done** · 14 cycles remaining
+- Front-end test coverage: **363 pass** at session 50 end (vs ~88 at session 47 end · +43 this session over C1–C6)
+- Back-end test coverage: **1379 pass** at session 50 end (vs 1154 at session 47 end · +97 this session over C1–C6)
 
 **What's next — Session 51 default path:**
 
-Resume the **[Track 2/3 Gap Closure Plan](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md)**. 15 cycles remain across P2→P5 tiers. P1 done (C1+C2); P2 3/7 done (C3+C4+C5). Next default is C6.
+Resume the **[Track 2/3 Gap Closure Plan](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md)**. 14 cycles remain across P2→P5 tiers. P1 done (C1+C2); P2 4/7 done (C3+C4+C5+C6). Next default is **C7**.
 
-Next cycle — **C6 (P2, L)**: Chapter-title resolution for Job + Timeline rows. BE + FE work: new `POST /internal/books/chapters/titles` batch endpoint in `book-service` + `BookClient.get_chapter_titles()` in `knowledge-service` + FE `useChapterTitles(chapter_ids)` hook + consumers in `JobDetailPanel` + `TimelineEventRow` to render `"Ch. 12 — The Bridge Duel"` instead of truncated UUIDs. Two UUID-truncation symptoms share one root cause — pair in one cycle. Closes D-K19b.3-01 + D-K19e-β-01. Detail in [plan §4 C6](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md#c6--chapter-title-resolution-for-job--timeline-rows-p2-l). This is C3-style L-size (BE migration + client + hook + 2 FE consumers) — expect ~8 files, not a pure-FE M cycle.
+Next cycle — **C7 (P2, S)**: Humanised ETA formatter + stale-offset self-heal. Pure FE polish: wrap existing `estimated_completion_at` rendering in a human-readable formatter (`"in ~3 minutes"` / `"in ~2 hours"`) + self-heal stale offsets when the raw timestamp drifts past now (no server round-trip — client re-computes). Closes D-K19b.3-02 + D-K19e-β-02. Detail in [plan §4 C7](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md#c7--humanised-eta-formatter--stale-offset-self-heal-p2-s). Expect S-size (~3-4 files, pure-FE utility + 2 consumers + tests). Much smaller than C6 (XL cross-service).
+
+**C6 aftermath — things to keep in mind for later cycles:**
+- **BE denormalization > FE hook** when the data is cheap to look up at list-materialization time and both consumer surfaces share the root cause. Singleton `get_book_client` Depends + shared enricher helper (mutating in-place on Pydantic models) + 4 router wire sites was cleaner than a FE `useChapterTitles` hook would have been
+- **Etag must include every field that feeds the response body** — the L6-pattern to watch for: if `_etag(x)` computes over `updated_at` only, any new `x.<field>` that flows into response JSON via enricher won't bump the etag, FE serves stale via 304. `hashlib.md5(...usedforsecurity=False)` for the stable hash (NOT Python's `hash()`, which is PYTHONHASHSEED-randomized per-process → different etag per worker)
+- **Graceful-degrade chain has 4 layers, each needs its own test** — BE drops inactive/missing chapters → BookClient returns `{}` on HTTP failure → enricher short-circuits on empty dict → FE falls back via `chapter_title ?? chapterShort(chapter_id)`. Layer 1 Go test, layer 2 respx test, layer 3 enricher unit test, layer 4 vitest. Skipping any layer leaves a silent-degradation hole
+- **Cross-service internal handlers with `requireInternalToken`** trust any service holding the shared token to query any IDs. knowledge-service only queries chapter_ids it already holds (from its own tenant-scoped Neo4j), so the leak surface is zero today. If a future service shares the token, this becomes a tenant-isolation concern — worth flagging in the internal-route review checklist
+- **`rows.Err()` after pgx `for rows.Next()` loop** — without it, scan errors from schema drift (wrong column type, column dropped) silently return empty maps. With it, they surface as 500s. Cheap defense, high dividend
 
 **C5 aftermath — things to keep in mind for later cycles:**
 - **`TOUCH_TARGET_MOBILE_ONLY_CLASS` (`min-h-[44px] md:min-h-0`)** for padding-driven buttons on desktop-shared components; **`TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS` (`min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0`)** for icon-only buttons (X close, settings, kebab). Always pair the SQUARE variant with `inline-flex items-center justify-center` so the icon re-centers inside the expanded 44px box — otherwise sticks to top-left
@@ -308,10 +350,10 @@ Remaining cycles after C2 (grouped by tier):
 - Data re-engineering ([101_DATA_RE_ENGINEERING_PLAN](../03_planning/101_DATA_RE_ENGINEERING_PLAN.md))
 
 **Starting-session boilerplate:**
-1. Read [SESSION_PATCH.md](SESSION_PATCH.md) cycle-31 entry + the plan file's §3 cycle table
+1. Read [SESSION_PATCH.md](SESSION_PATCH.md) cycle-32 entry + the plan file's §3 cycle table
 2. `./scripts/workflow-gate.sh status` to confirm previous cycle closed
-3. Start C6 with `./scripts/workflow-gate.sh size L 8 5 1` then `phase clarify` (L — BE endpoint + migration audit + knowledge-service client + FE hook + 2 FE consumers + tests; follows C3 shape. Side effects = yes, new book-service endpoint is a cross-service contract change)
-4. Infra: `docker ps --filter name=infra-` — C4 is FE-only unit tests + no integration path; services can stay up or down
+3. Start C7 with `./scripts/workflow-gate.sh size S 3 2 0` then `phase clarify` (S — pure-FE ETA formatter utility + ~2 consumer surfaces + tests; no BE change, no cross-service contract. Side effects = 0)
+4. Infra: `docker ps --filter name=infra-` — C7 is FE-only unit tests + no integration path; services can stay up or down
 5. For Postgres integration tests (if needed in a subsequent cycle): `TEST_KNOWLEDGE_DB_URL=postgres://loreweave:loreweave_dev@localhost:5555/loreweave_knowledge` (port 5555 on host; container maps to 5432; DB name `loreweave_knowledge` NOT `knowledge`)
 6. For Neo4j integration tests: `TEST_NEO4J_URI=bolt://localhost:7688 TEST_NEO4J_PASSWORD=loreweave_dev_neo4j`
 7. For manual-curl verify, JWT gen one-liner: `python -c "import jwt,uuid,datetime; print(jwt.encode({'sub':str(uuid.uuid4()),'exp':datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(minutes=10)},'loreweave_local_dev_jwt_secret_change_me_32chars',algorithm='HS256'))"` → `curl -H "Authorization: Bearer $TOKEN" http://localhost:8216/...` (if Neo4j is down, extraction-path tests will 500/503 — known Track 1 limitation)
