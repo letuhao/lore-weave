@@ -1,12 +1,16 @@
 # LoreWeave
 
-**AI-native novel writing platform. You bring the imagination — AI handles the craft.**
+**Write novels. Play inside them. An AI-native platform where your lore becomes a living, LLM-driven world.**
 
-LoreWeave is a self-hosted platform where AI and humans co-author multilingual novels. It's not a writing tool with AI bolted on — it's an **AI-first, human-in-the-loop** system where translation, worldbuilding, continuity tracking, and style coaching are foundational, not features.
+LoreWeave is a self-hosted AI-native platform with two connected ambitions — write the books, then step inside them:
 
-Built for **anyone with a story to tell** — not just professional writers. The richer your worldbuilding, the smarter your AI collaborator becomes. Your glossary entities, chapter chunks, and world facts feed the RAG pipeline, so when you ask *"what would Kael do here?"*, the AI knows Kael's personality, backstory, and last scene appearance.
+🎮 **Living Worlds** — *The headline long-term vision.* A text-based LLM MMO RPG where each book you write becomes a shared persistent reality: NPCs driven by LLMs and grounded in your lore, a narrator that respects your canon, scenes other players can join. You (or readers you invite) step in as a player character. *Phase 6+ — [design locked](docs/03_planning/LLM_MMO_RPG/), implementation gated on MVP maturity.*
 
-BYOK (Bring Your Own Key) — works with OpenAI, Anthropic, LM Studio, Ollama, and any OpenAI-compatible provider. Self-hosted. Your keys, your data, your stories.
+✍️ **AI-native novel writing** — *The MVP, shipping today.* Co-author multilingual novels with an AI-first, human-in-the-loop system where translation, worldbuilding, continuity tracking, and style coaching are foundational, not features. The richer your worldbuilding, the smarter your AI collaborator — ask *"what would Kael do here?"* and the AI knows Kael's personality, backstory, and last scene appearance.
+
+Both pillars share **one foundation: your knowledge graph, your glossary, your book canon.** Write once, play twice — the same lore that grounds your novel will animate your world.
+
+Built for **anyone with a story to tell — or a world to step into.** BYOK (Bring Your Own Key) — works with OpenAI, Anthropic, LM Studio, Ollama, and any OpenAI-compatible provider. Self-hosted. Your keys, your data, your stories, your worlds.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Open Source](https://img.shields.io/badge/Open%20Source-Community-blue.svg)](https://github.com/)
@@ -15,15 +19,16 @@ BYOK (Bring Your Own Key) — works with OpenAI, Anthropic, LM Studio, Ollama, a
 
 ## Why LoreWeave?
 
-Most writing platforms treat AI as a sidebar autocomplete. LoreWeave flips the model:
+Most platforms treat AI as a sidebar autocomplete, and treat "writing" and "play" as separate products. LoreWeave flips both:
 
 - **AI-first architecture** — every feature assumes an AI collaborator is in the room
 - **Human-in-the-loop** — AI drafts, suggests, translates, and checks continuity; you decide what stays
-- **RAG-powered worldbuilding** — your lore database *is* the AI's context. Characters, locations, relationships, and plot events ground every AI response in your canon
+- **RAG-powered worldbuilding** — your lore database *is* the AI's context today, and tomorrow it will be the LLM's mind when your NPCs speak
+- **One canon, two products** — the same knowledge graph that grounds your novel will animate your world. Write, then play — no re-engineering
 - **Multilingual from day one** — write in one language, translate to many, keep glossary terms consistent across all of them
 - **No vendor lock-in** — bring keys from any provider, run local models, switch anytime
 
-This isn't a tool for writers who already know the craft. It's for **the dreamer who has a world in their head and needs a partner to get it on paper**.
+This isn't a tool for writers who already know the craft. It's for **the dreamer who has a world in their head — and wants to get it on paper, then step inside it.**
 
 ---
 
@@ -233,15 +238,18 @@ Every character trait, location detail, and plot event you define becomes contex
 
 ---
 
-## Beyond Novels: Living Worlds
+## Living Worlds — Design Track (Phase 6+)
 
-LoreWeave's long-term direction extends from *writing novels* to *playing inside them*. Once a book's canon lives in the knowledge graph, the characters, locations, and world rules can be animated — NPCs driven by LLMs and grounded in your lore, a narrator that respects your canon, scenes that other players can join.
+The game extension has a full design dossier in [`docs/03_planning/LLM_MMO_RPG/`](docs/03_planning/LLM_MMO_RPG/):
 
-This is a **text-based LLM MMO RPG** layered on top of the novel platform — same knowledge graph, same glossary, same canon. Each book becomes a reality you (or readers you invite) can step into as a player character.
+- **Vision** — four shapes of role-play, why Shape D (shared persistent world) is the dream
+- **Multiverse model** — peer realities, 4-layer canon (Book / Reality / Session / PC), snapshot fork
+- **Storage architecture** — event sourcing + DB-per-reality, all 13 identified storage risks resolved
+- **PC design** — identity layering (User / PC / Session), lifecycle, creation, social mechanics
+- **179 features cataloged** across V1 (solo RP) → V2 (coop scene) → V3 (full MMO)
+- **Services planned** — `world-service`, `roleplay-service`, `publisher`, `meta-worker`, `event-handler`, `migration-orchestrator`, `admin-cli`
 
-The novel platform remains the MVP; the game is an extension that reuses its substrate, not a replacement.
-
-**Design track:** [`docs/03_planning/LLM_MMO_RPG/`](docs/03_planning/LLM_MMO_RPG/) — vision, storage architecture (event sourcing + DB-per-reality), multiverse model (peer realities, 4-layer canon), PC design, and 179 features cataloged across V1 (solo RP) → V2 (coop scene) → V3 (full MMO). Implementation is gated on V1 novel-platform maturity and prototype-level cost/retrieval-quality data.
+Implementation is gated on V1 novel-platform maturity and prototype-level cost/retrieval-quality data — not a calendar milestone. The novel platform ships first; the game builds on the same substrate (glossary, knowledge graph, book canon) without re-engineering.
 
 ---
 
@@ -321,4 +329,4 @@ LoreWeave is for everyone. Developers, artists, translators, and authors welcome
 
 ---
 
-*Built for the dreamer who has a world in their head and just needs a partner to get it on paper.*
+*Built for the dreamer who has a world in their head — and wants to get it on paper, then step inside.*
