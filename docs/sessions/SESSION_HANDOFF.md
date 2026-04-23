@@ -1,11 +1,43 @@
-# Session Handoff — Session 50 (30 cycles · Track 2/3 Gap Closure P2 tier 2/7 done · plan file live)
+# Session Handoff — Session 50 (31 cycles · Track 2/3 Gap Closure P2 tier 3/7 done · plan file live)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-23 (session 50, closed)
-> **HEAD:** `898869d` (C4 useProjectState action-callback hook tests; C3 @ `052fe44` + `82ab287`; C2 @ `2812aff` + `ca6a939`; C1 @ `b447a9e` + `16c56e5`; K20.3-β @ `db7cf05` + `e367377`; K20.3-α @ `474a7d8` + `e7b1d18`; K19f-ε @ `03e7774` + `56047dd`; K19f-δ @ `3a2126c` + `ca8b5f7`; K19f-γ @ `84d5eec` + `8b18a12`; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** `6a2d8ee` (C5 mobile polish EntitiesTable+EntityDetailPanel+PrivacyTab; C4 @ `898869d` + `bf1a94f`; C3 @ `052fe44` + `82ab287`; C2 @ `2812aff` + `ca6a939`; C1 @ `b447a9e` + `16c56e5`; K20.3-β @ `db7cf05` + `e367377`; K20.3-α @ `474a7d8` + `e7b1d18`; K19f-ε @ `03e7774` + `56047dd`; K19f-δ @ `3a2126c` + `ca8b5f7`; K19f-γ @ `84d5eec` + `8b18a12`; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 30 cycles shipped (24 Track 3 + 2 Track 2 close-out + 4 Gap Closure) · P1 done · P2 2/7 done
+## Session 50 — 31 cycles shipped (24 Track 3 + 2 Track 2 close-out + 5 Gap Closure) · P1 done · P2 3/7 done
+
+### Cycle 31 — Track 2/3 Gap Closure C5 [FE M] — mobile polish: EntitiesTable + EntityDetailPanel + PrivacyTab
+
+Fifth Gap Closure cycle. Pure FE responsive + a11y polish across 3 desktop-shared components.
+
+**Three substantive deltas.**
+
+1. **EntitiesTable dual render-tree**. Desktop 6-col grid table (~620px summed fixed cols) was overflowing 375px phones horizontally. Split into `hidden md:block` desktop tree (existing grid, preserved) + `md:hidden` mobile tree (card-per-row: Name + Kind primary line, flex-wrap secondary line with mentions/confidence/date/project). Shared `rowKeyHandler` helper dedup'd from the inline `onKeyDown`. Selected-state visual (`bg-primary/5 ring-1 ring-primary/30`) applied to BOTH trees via `cn()`. New testids `entities-table-desktop` / `entities-table-mobile` / `entities-row-mobile`; existing `entities-row` preserved on desktop (backward-compat with `EntitiesTab.test.tsx`'s 3 usages).
+
+2. **EntityDetailPanel full-width on mobile**. One-word change `max-w-md` → `md:max-w-md`. Mobile: fills viewport. Desktop: 448px capped.
+
+3. **PrivacyTab 4 buttons get `TOUCH_TARGET_MOBILE_ONLY_CLASS`**. Export / Delete / Dialog Cancel / Dialog Confirm wrapped in `cn(base, TOUCH_TARGET_MOBILE_ONLY_CLASS)`.
+
+**`/review-impl` caught 1 HIGH + 3 LOW + 1 COSMETIC; all 5 addressed in-cycle:**
+
+- **HIGH**: EntityDetailPanel's full-width mobile panel BLOCKS the overlay-dismiss path (overlay is covered by the panel), making the X close button the SOLE dismiss on touch. But X was `p-1 + h-4 w-4` ≈ 24×24px — well under the 44×44 iOS/Material minimum → fat-finger UX failure directly introduced by C5's width change. **Fix**: new `TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS = 'min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0'` export in `lib/touchTarget.ts` for icon-only buttons (needs BOTH axes because content doesn't fill width via padding); X button wrapped with `inline-flex items-center justify-center` to re-center the icon inside the expanded 44px box. Regression test locks all 4 class tokens + the flex-centering triple.
+- **LOW2**: Mobile cards dropped `role="row"` — no columnheader context on mobile made SR announcement confused. Native `<button>` + `aria-label={e.name}` conveys the "activatable item" semantics cleanly. Desktop keeps `role="row"` for consistency with its columnheader row.
+- **LOW3**: Added disabled-state PrivacyTab test — mocks `useAuth` with `accessToken: null`, asserts Export + Delete are `.toBeDisabled()` AND still carry `min-h-[44px]` + `md:min-h-0`. Guards against a regression like `className={cn(base, !disabled && TOUCH_TARGET_...)}` which default-enabled tests wouldn't catch.
+- **LOW4**: Added inline comment on `entities-row` testid pointing at the `entities-row-mobile` sibling for future tests wanting cross-tree row counts via `findAllByTestId(/^entities-row/)`.
+- **COSMETIC5**: Dialog cancel+confirm test rewrote `getAllByRole(...)[last]` DOM-order heuristic to `within(screen.getByRole('dialog'))` scoped query — no reliance on portal ordering.
+
+**Closes**: D-K19d-β-01 (EntitiesTable mobile responsive + EntityDetailPanel full-width) + D-K19f-ε-01 (PrivacyTab sub-44px buttons).
+
+**Verify**:
+- 9/9 `mobilePolish.test.tsx` (7 initial + 2 post-/review-impl)
+- 359/359 full FE knowledge vitest (+9 from 350 C4 baseline, zero regressions)
+- `tsc --noEmit` clean
+- No BE changes
+
+**Plan progress**: 9 items / 5 cycles · **P1 done · P2 3/7 done** (C3 ✅ + C4 ✅ + C5 ✅). Remaining P2: C6 (chapter-title resolution) · C7 (ETA formatter) · C8 (drawer-search UX) · C9 (entity concurrency+unlock).
+
+---
 
 ### Cycle 30 — Track 2/3 Gap Closure C4 [FE M] — useProjectState action-callback hook tests
 
@@ -238,9 +270,16 @@ Closes the K19f cluster. Applied `TOUCH_TARGET_CLASS = 'min-h-[44px]'` to the 2 
 
 **What's next — Session 51 default path:**
 
-Resume the **[Track 2/3 Gap Closure Plan](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md)**. 16 cycles remain across P2→P5 tiers. P1 tier done (C1 ✅ + C2 ✅); P2 tier: C3 ✅ + C4 ✅ (2/7 done). Next default is C5.
+Resume the **[Track 2/3 Gap Closure Plan](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md)**. 15 cycles remain across P2→P5 tiers. P1 done (C1+C2); P2 3/7 done (C3+C4+C5). Next default is C6.
 
-Next cycle — **C5 (P2, M)**: Mobile polish for EntitiesTable + PrivacyTab tap targets. FE-only: K19d-β shipped desktop-first EntitiesTable; K19f shipped mobile shells for other tabs but PrivacyTab audit gap left 4 buttons at 26-30px. Both touch the same mobile responsive strategy — pair in one cycle. Files: `components/entities/EntitiesTable.tsx` (responsive grid split), `components/entities/EntityDetailPanel.tsx` (drop `max-w-md` on mobile), `components/PrivacyTab.tsx` (conditional `TOUCH_TARGET_CLASS` via `useIsMobile()`). Closes D-K19d-β-01 + D-K19f-ε-01. Detail in [plan §4 C5](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md#c5--mobile-polish-entitiestable--privacytab-p2-m).
+Next cycle — **C6 (P2, L)**: Chapter-title resolution for Job + Timeline rows. BE + FE work: new `POST /internal/books/chapters/titles` batch endpoint in `book-service` + `BookClient.get_chapter_titles()` in `knowledge-service` + FE `useChapterTitles(chapter_ids)` hook + consumers in `JobDetailPanel` + `TimelineEventRow` to render `"Ch. 12 — The Bridge Duel"` instead of truncated UUIDs. Two UUID-truncation symptoms share one root cause — pair in one cycle. Closes D-K19b.3-01 + D-K19e-β-01. Detail in [plan §4 C6](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md#c6--chapter-title-resolution-for-job--timeline-rows-p2-l). This is C3-style L-size (BE migration + client + hook + 2 FE consumers) — expect ~8 files, not a pure-FE M cycle.
+
+**C5 aftermath — things to keep in mind for later cycles:**
+- **`TOUCH_TARGET_MOBILE_ONLY_CLASS` (`min-h-[44px] md:min-h-0`)** for padding-driven buttons on desktop-shared components; **`TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS` (`min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0`)** for icon-only buttons (X close, settings, kebab). Always pair the SQUARE variant with `inline-flex items-center justify-center` so the icon re-centers inside the expanded 44px box — otherwise sticks to top-left
+- **Pure Tailwind `md:` class swaps** preferred over `useIsMobile()` for simple responsive CSS changes — no re-render, SSR-safe, class names are testable
+- **Dual render-tree pattern** (`hidden md:block` desktop + `md:hidden` mobile) for components where the mobile layout is structurally different from desktop — cleaner than one tree with many `hidden md:inline` spans. `display: none` removes the other tree from the a11y tree in real browsers; jsdom sees both but className assertions catch class-drop regressions
+- **Mobile cards that replicate desktop table structure** should drop `role="row"` for native `<button>` + `aria-label` — there's no columnheader context on mobile and SRs get confused. Desktop keeps `role="row"` for its columnheader context
+- **Full-width mobile panels BREAK overlay-click-dismiss** — the panel covers the overlay entirely. Icon-only close buttons then become the sole dismiss and NEED the square tap-target treatment. Always audit mobile dismiss paths when moving from `max-w-*` to full-width
 
 **C4 aftermath — things to keep in mind for later cycles:**
 - **`vi.hoisted()` is the canonical hoist-beater** for mock vars in vitest — memory `feedback_vitest_hoisted_mock_vars.md` confirmed. First-attempt BUILD always hits the ReferenceError; always reach for `vi.hoisted()` from the start
@@ -269,9 +308,9 @@ Remaining cycles after C2 (grouped by tier):
 - Data re-engineering ([101_DATA_RE_ENGINEERING_PLAN](../03_planning/101_DATA_RE_ENGINEERING_PLAN.md))
 
 **Starting-session boilerplate:**
-1. Read [SESSION_PATCH.md](SESSION_PATCH.md) cycle-30 entry + the plan file's §3 cycle table
+1. Read [SESSION_PATCH.md](SESSION_PATCH.md) cycle-31 entry + the plan file's §3 cycle table
 2. `./scripts/workflow-gate.sh status` to confirm previous cycle closed
-3. Start C5 with `./scripts/workflow-gate.sh size M 3 5 0` then `phase clarify` (M — 3 FE components touched: EntitiesTable + EntityDetailPanel + PrivacyTab; pure responsive+tap-target work)
+3. Start C6 with `./scripts/workflow-gate.sh size L 8 5 1` then `phase clarify` (L — BE endpoint + migration audit + knowledge-service client + FE hook + 2 FE consumers + tests; follows C3 shape. Side effects = yes, new book-service endpoint is a cross-service contract change)
 4. Infra: `docker ps --filter name=infra-` — C4 is FE-only unit tests + no integration path; services can stay up or down
 5. For Postgres integration tests (if needed in a subsequent cycle): `TEST_KNOWLEDGE_DB_URL=postgres://loreweave:loreweave_dev@localhost:5555/loreweave_knowledge` (port 5555 on host; container maps to 5432; DB name `loreweave_knowledge` NOT `knowledge`)
 6. For Neo4j integration tests: `TEST_NEO4J_URI=bolt://localhost:7688 TEST_NEO4J_PASSWORD=loreweave_dev_neo4j`
