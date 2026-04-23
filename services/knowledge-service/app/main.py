@@ -155,6 +155,46 @@ async def lifespan(app: FastAPI):
                 exc_info=True,
             )
 
+    # K20.3 — scheduled project summary regeneration. Skipped in
+    # Track 1 / no-Neo4j mode since the regen helper reads raw
+    # :Passage nodes from the graph — with no graph there's nothing
+    # to regenerate from.
+    #
+    # Construction pattern matches K13.1's anchor_refresh_loop wire
+    # just above: pool + session factory passed positionally,
+    # downstream collaborators constructed inline here rather than
+    # via the async `get_*_repo()` factories in deps.py. Those
+    # factories exist for FastAPI `Depends()` integration; calling
+    # them here would create a throwaway coroutine for a pure
+    # pass-through. Consistency with the neighbor scheduler wins
+    # over consistency with router DI.
+    summary_regen_task = None
+    if settings.neo4j_uri:
+        try:
+            from app.db.neo4j import neo4j_session
+            from app.db.repositories.summaries import SummariesRepo
+            from app.jobs.summary_regen_scheduler import run_project_regen_loop
+
+            def _summary_session_factory():
+                return neo4j_session()
+
+            summary_regen_task = asyncio.create_task(
+                run_project_regen_loop(
+                    get_knowledge_pool(),
+                    _summary_session_factory,
+                    get_provider_client(),
+                    SummariesRepo(get_knowledge_pool()),
+                )
+            )
+            logger.info(
+                "K20.3: project summary regen loop started as background task"
+            )
+        except Exception:
+            logger.warning(
+                "K20.3: project summary regen loop failed to start (non-fatal)",
+                exc_info=True,
+            )
+
     # D-T2-04 — cross-process cache invalidator via Redis pub/sub.
     # Only installed when redis_url is configured; Track 1 single-
     # worker deploys stay local-only.
@@ -202,6 +242,19 @@ async def lifespan(app: FastAPI):
                 pass
             except Exception:
                 logger.warning("Error stopping anchor-refresh loop", exc_info=True)
+
+        # K20.3: stop summary regen loop.
+        if summary_regen_task is not None:
+            summary_regen_task.cancel()
+            try:
+                await summary_regen_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.warning(
+                    "K20.3: error stopping summary regen loop",
+                    exc_info=True,
+                )
 
         # Stop event consumer next.
         if consumer_task is not None:

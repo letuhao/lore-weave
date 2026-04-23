@@ -1,11 +1,48 @@
-# Session Handoff — Session 50 (K19b/K19c/K20/K19d/K19e/K19f ALL 100% plan-complete)
+# Session Handoff — Session 50 (K19 series + K20.3 α shipped · scheduled auto-regen live)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-23 (session 50)
-> **HEAD:** `03e7774` (K19f Cycle ε; K19f-δ @ `3a2126c` + `ca8b5f7`; K19f-γ @ `84d5eec` + `8b18a12`; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** `<pending-K20.3-α>` (K20.3 Cycle α; K19f-ε @ `03e7774` + `56047dd`; K19f-δ @ `3a2126c` + `ca8b5f7`; K19f-γ @ `84d5eec` + `8b18a12`; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 24 cycles shipped (22 Track 3 + 2 Track 2 close-out) · K19b/K19c/K20/K19d/K19e/K19f ALL 100% plan-complete
+## Session 50 — 25 cycles shipped (23 Track 3 + 2 Track 2 close-out) · K19 series complete · K20.3 α shipped
+
+### Cycle 25 — K20.3 Cycle α [BE L] — Scheduled project summary regen
+
+Ships the scheduled auto-regen that K20α/β/γ intentionally deferred. Mirrors the K13.1 `anchor_refresh_loop` template: `sweep_projects_once` is the pure sweep function (pg_try_advisory_lock + iterate non-archived extraction-enabled projects + per-project call to `regenerate_project_summary`), `run_project_regen_loop` wraps it in an asyncio loop with 10-min startup delay + 24h interval.
+
+**Model resolution**: scheduled regen has no caller to supply `model_ref`, so it subqueries `extraction_jobs` for the most-recent completed job per project and reuses its `llm_model`. Projects that never ran extraction are counted as `no_model` and skipped.
+
+**Status mapping**: 6 `RegenerationStatus` Literal values collapse into 4 counter buckets on `SweepResult`:
+- `regenerated` → `regenerated`
+- `no_op_similarity`, `no_op_empty_source`, `no_op_guardrail` → `no_op`
+- `user_edit_lock`, `regen_concurrent_edit` → `skipped`
+- Unknown future status → `errored` + WARNING log (defensive branch)
+
+**Advisory lock** via `try/finally: pg_advisory_unlock` guarantees release even on mid-sweep exception. Lock released before connection returns to pool — no orphaned state on recycled connections.
+
+**Lifespan wire** in `main.py` matches K13.1: conditional on `settings.neo4j_uri` (Track 1 mode skips), teardown via `cancel+await+suppress CancelledError`.
+
+`/review-impl` caught **1 LOW + 2 COSMETIC; all 3 addressed in-cycle**:
+- **L1** inline `SummariesRepo(get_knowledge_pool())` vs async `get_summaries_repo()` factory → documented decision (matches K13.1 precedent; factory would make scheduler the odd one out in lifespan wire)
+- **C2** `model_construct` test fixture bypass → 11-line docstring explaining forward-compat tradeoff
+- **C3** sweep-complete INFO log untested → new test asserts exactly-one completion log + all 6 counter names present in message
+
+**Build-time catches:**
+- Pydantic Literal rejection on unknown status → `model_construct` bypass for the defensive-branch test
+- Mock signature `**_kwargs` couldn't absorb positional args from real `sweep_projects_once(pool, session_factory, provider_client, summaries_repo)` → `*_args, **_kwargs`
+- `startup_delay_s=0` guard skipped the first `asyncio.sleep` call, throwing off count expectations → tests use `startup_delay_s=1`
+
+**Deferred to Cycle β**:
+- D-K20.3-α-01 global L0 regen loop (needs cross-project model resolution)
+- D-K20.3-α-02 scheduler run metrics (Prometheus counters beyond logged outcome)
+
+**Test deltas at K20.3 α end:**
+- BE unit: **18/18 scheduler tests pass** (new file)
+- BE regen-adjacent: **62/62** (61 previous + 1 completion-log test)
+- No regressions across all regen paths
+
+---
 
 ### Cycle 24 — K19f Cycle ε [FE S] — Tap-target audit (K19f.5)
 
