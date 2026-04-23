@@ -1618,6 +1618,36 @@ ON MATCH SET
     WHERE x IS NOT NULL
     | x
   ],
+  // C1 / D-K19d-γb-01: AND-combine so a validated edge (false)
+  // absorbs a quarantined duplicate (true). NULL default = false
+  // to match the codebase-wide convention (relations.py filter
+  // helpers all use `coalesce(r.pending_validation, false)`).
+  // Consistent NULL semantics across read + merge paths.
+  r.pending_validation = coalesce(r.pending_validation, false)
+    AND coalesce(edge.pending_validation, false),
+  // Earliest non-null valid_from wins; NULL loses to concrete.
+  r.valid_from = CASE
+    WHEN r.valid_from IS NULL THEN edge.valid_from
+    WHEN edge.valid_from IS NULL THEN r.valid_from
+    WHEN edge.valid_from < r.valid_from THEN edge.valid_from
+    ELSE r.valid_from
+  END,
+  // valid_until IS NULL means "still active" (relations.py:13) —
+  // so NULL wins here. Only when BOTH are concrete do we take MAX.
+  r.valid_until = CASE
+    WHEN r.valid_until IS NULL OR edge.valid_until IS NULL THEN NULL
+    WHEN edge.valid_until > r.valid_until THEN edge.valid_until
+    ELSE r.valid_until
+  END,
+  // Concat distinct source_chapter values so merge history survives.
+  // At hobby scale the unbounded string is fine; if it ever grows,
+  // swap to a list property.
+  r.source_chapter = CASE
+    WHEN r.source_chapter IS NULL THEN edge.source_chapter
+    WHEN edge.source_chapter IS NULL THEN r.source_chapter
+    WHEN r.source_chapter = edge.source_chapter THEN r.source_chapter
+    ELSE r.source_chapter + ',' + edge.source_chapter
+  END,
   r.updated_at = datetime()
 RETURN count(r) AS rewired
 """
@@ -1720,6 +1750,12 @@ async def merge_entities(
     Returns the updated target Entity on success. Target's
     `user_edited` is set to true so future re-extractions don't
     silently re-append variants the user considered duplicates.
+
+    Contract: `session` must be a fresh AsyncSession with no open
+    transaction. C1 wraps steps 4–7 in an explicit transaction and
+    Neo4j async sessions do not support nested transactions — a
+    caller that wraps `merge_entities` in its own tx would fail at
+    the inner `session.begin_transaction()` call.
     """
     if source_id == target_id:
         raise MergeEntitiesError(
@@ -1840,47 +1876,55 @@ async def merge_entities(
             "pending_validation": bool(edge.get("pending_validation") or False),
         })
 
-    # 4. Batch-MERGE rewired RELATES_TO edges onto target.
-    if rewire_edges:
+    # C1 / D-K19d-γb-02: steps 4–7 run inside a single explicit
+    # transaction so a Neo4j crash or network drop after the
+    # glossary pre-clear in step 6 cannot leave source orphaned
+    # with glossary_entity_id=NULL. `AsyncTransaction` satisfies
+    # the `CypherSession` Protocol structurally (it exposes the
+    # same async `run(cypher, **params)` method), so the K11.4
+    # helpers work unchanged on it.
+    async with await session.begin_transaction() as tx:
+        # 4. Batch-MERGE rewired RELATES_TO edges onto target.
+        if rewire_edges:
+            await run_write(
+                tx,
+                _MERGE_REWIRE_RELATES_TO_CYPHER,
+                user_id=user_id,
+                edges=rewire_edges,
+            )
+
+        # 5. Rewire EVIDENCED_BY edges.
         await run_write(
-            session,
-            _MERGE_REWIRE_RELATES_TO_CYPHER,
+            tx,
+            _MERGE_REWIRE_EVIDENCED_BY_CYPHER,
             user_id=user_id,
-            edges=rewire_edges,
+            source_id=source_id,
+            target_id=target_id,
         )
 
-    # 5. Rewire EVIDENCED_BY edges.
-    await run_write(
-        session,
-        _MERGE_REWIRE_EVIDENCED_BY_CYPHER,
-        user_id=user_id,
-        source_id=source_id,
-        target_id=target_id,
-    )
-
-    # 6. Update target metadata — aliases / source_types concat
-    #    happens here; dedupe happens below after refetch.
-    update_result = await run_write(
-        session,
-        _MERGE_UPDATE_TARGET_CYPHER,
-        user_id=user_id,
-        source_id=source_id,
-        target_id=target_id,
-    )
-    update_row = await update_result.single()
-    if update_row is None:
-        raise MergeEntitiesError(
-            "entity_not_found",
-            "entity disappeared during merge",
+        # 6. Update target metadata — aliases / source_types concat
+        #    happens here; dedupe happens below after refetch.
+        update_result = await run_write(
+            tx,
+            _MERGE_UPDATE_TARGET_CYPHER,
+            user_id=user_id,
+            source_id=source_id,
+            target_id=target_id,
         )
+        update_row = await update_result.single()
+        if update_row is None:
+            raise MergeEntitiesError(
+                "entity_not_found",
+                "entity disappeared during merge",
+            )
 
-    # 7. DETACH DELETE source.
-    await run_write(
-        session,
-        _MERGE_DELETE_SOURCE_CYPHER,
-        user_id=user_id,
-        source_id=source_id,
-    )
+        # 7. DETACH DELETE source.
+        await run_write(
+            tx,
+            _MERGE_DELETE_SOURCE_CYPHER,
+            user_id=user_id,
+            source_id=source_id,
+        )
 
     # 8. Dedupe aliases + source_types in Python; write back iff
     #    dedupe shrank either list.

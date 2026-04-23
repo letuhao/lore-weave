@@ -881,3 +881,328 @@ async def test_merge_entities_inherits_glossary_anchor_when_target_lacks(
             target_id=unanchored.id,
         )
     assert target.glossary_entity_id == "gloss-kai"
+
+
+# ── C1 / D-K19d-γb-01 + γb-02 — ON MATCH union + atomicity ──────────
+
+
+@pytest.mark.asyncio
+async def test_merge_entities_promotes_validated_edge_over_quarantined(
+    neo4j_driver, test_user
+):
+    """D-K19d-γb-01: when the rewired edge collides with an existing
+    target edge of the same (subject, predicate, object), ON MATCH
+    must union `pending_validation` (AND), `valid_from` (earliest
+    non-null), `valid_until` (NULL-wins), and `source_chapter`
+    (concat if distinct). Prior to the fix, only `confidence` was
+    merged, so a Pass-2-validated source edge merging into a
+    quarantined target duplicate silently stayed quarantined.
+    """
+    from datetime import datetime, timezone
+
+    async with neo4j_driver.session() as session:
+        # Two distinct entities we will merge.
+        source_ent = await merge_entity(
+            session, user_id=test_user, project_id="p",
+            name="Alpha", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        target_ent = await merge_entity(
+            session, user_id=test_user, project_id="p",
+            name="Captain Brave", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        other = await merge_entity(
+            session, user_id=test_user, project_id="p",
+            name="Phoenix", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        # Target already has a QUARANTINED edge: Captain → Phoenix.
+        # Seed valid_until explicitly via raw Cypher (create_relation
+        # doesn't accept it as a kwarg) so the ON MATCH valid_until
+        # CASE actually exercises its NULL-wins branch.
+        await create_relation(
+            session,
+            user_id=test_user,
+            subject_id=target_ent.id,
+            object_id=other.id,
+            predicate="mentors",
+            confidence=0.70,
+            source_chapter="ch02",
+            valid_from=datetime(2030, 6, 1, tzinfo=timezone.utc),
+            pending_validation=True,
+        )
+        await session.run(
+            """
+            MATCH (subj:Entity {id: $subj})-[r:RELATES_TO]->(obj:Entity {id: $obj})
+            WHERE r.user_id = $u AND r.predicate = 'mentors'
+            SET r.valid_until = datetime('2030-12-31T00:00:00Z')
+            """,
+            subj=target_ent.id, obj=other.id, u=test_user,
+        )
+        # Source has a VALIDATED edge: Alpha → Phoenix (same predicate,
+        # same object — after rewire its subject becomes Captain and
+        # the new id collides with target's existing edge, triggering
+        # ON MATCH). Source edge leaves valid_until=NULL (the canonical
+        # "still-active" sentinel per relations.py:13).
+        await create_relation(
+            session,
+            user_id=test_user,
+            subject_id=source_ent.id,
+            object_id=other.id,
+            predicate="mentors",
+            confidence=0.95,
+            source_chapter="ch01",
+            valid_from=datetime(2030, 1, 1, tzinfo=timezone.utc),
+            pending_validation=False,
+        )
+        await merge_entities(
+            session,
+            user_id=test_user,
+            source_id=source_ent.id,
+            target_id=target_ent.id,
+        )
+        # Inspect the merged edge by reading its raw properties.
+        rec = await session.run(
+            """
+            MATCH (subj:Entity {id: $subj})-[r:RELATES_TO]->(obj:Entity {id: $obj})
+            WHERE r.user_id = $u AND r.predicate = 'mentors'
+            RETURN properties(r) AS props, count(r) AS n
+            """,
+            subj=target_ent.id, obj=other.id, u=test_user,
+        )
+        row = await rec.single()
+    assert row is not None
+    assert row["n"] == 1, "ON MATCH should keep exactly one edge, not duplicate"
+    props = dict(row["props"])
+    # AND-combine: validated (false) wins over quarantined (true).
+    assert props["pending_validation"] is False
+    # Earliest non-null valid_from wins (2030-01-01 < 2030-06-01).
+    assert props["valid_from"].year == 2030
+    assert props["valid_from"].month == 1
+    # valid_until NULL-wins: target had 2030-12-31, source had NULL.
+    # The "still-active" sentinel (NULL) must win over a concrete
+    # end-date so the merged edge is not spuriously expired.
+    assert props.get("valid_until") is None, (
+        "valid_until NULL-wins regression: concrete end-date leaked "
+        "from target when the validated source edge was still active"
+    )
+    # Confidence max (0.95 > 0.70) — regression guard on existing behaviour.
+    assert props["confidence"] == pytest.approx(0.95)
+    # source_chapter concat when distinct (order: target's value first
+    # because ON MATCH sees `r` = existing row + `edge` = new payload).
+    assert set(props["source_chapter"].split(",")) == {"ch01", "ch02"}
+
+
+@pytest.mark.asyncio
+async def test_merge_entities_on_match_preserves_quarantine_and_validated(
+    neo4j_driver, test_user
+):
+    """Mirror cases for the `pending_validation` AND-combine — catches
+    regressions where the ON MATCH hardcodes `false` or `true` and
+    passes the promotion test by accident.
+
+    Two scenarios in one test (both use the same seeding pattern):
+      - both edges quarantined → merged stays quarantined (true)
+      - both edges validated   → merged stays validated (false)
+    """
+    # Scenario 1: both quarantined.
+    async with neo4j_driver.session() as session:
+        src_q = await merge_entity(
+            session, user_id=test_user, project_id="p",
+            name="QuarantinedAlpha", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        tgt_q = await merge_entity(
+            session, user_id=test_user, project_id="p",
+            name="QuarantinedBravo", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        obj_q = await merge_entity(
+            session, user_id=test_user, project_id="p",
+            name="QuarantinedOther", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        await create_relation(
+            session, user_id=test_user,
+            subject_id=tgt_q.id, object_id=obj_q.id,
+            predicate="knows", confidence=0.5,
+            pending_validation=True,
+        )
+        await create_relation(
+            session, user_id=test_user,
+            subject_id=src_q.id, object_id=obj_q.id,
+            predicate="knows", confidence=0.6,
+            pending_validation=True,
+        )
+        await merge_entities(
+            session, user_id=test_user,
+            source_id=src_q.id, target_id=tgt_q.id,
+        )
+        rec = await session.run(
+            """
+            MATCH (subj:Entity {id: $s})-[r:RELATES_TO]->(obj:Entity {id: $o})
+            WHERE r.user_id = $u AND r.predicate = 'knows'
+            RETURN r.pending_validation AS pv
+            """,
+            s=tgt_q.id, o=obj_q.id, u=test_user,
+        )
+        row_q = await rec.single()
+    assert row_q is not None and row_q["pv"] is True, (
+        "both-quarantined: AND-combine must preserve the quarantine bit"
+    )
+
+    # Scenario 2: both validated.
+    async with neo4j_driver.session() as session:
+        src_v = await merge_entity(
+            session, user_id=test_user, project_id="p",
+            name="ValidatedAlpha", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        tgt_v = await merge_entity(
+            session, user_id=test_user, project_id="p",
+            name="ValidatedBravo", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        obj_v = await merge_entity(
+            session, user_id=test_user, project_id="p",
+            name="ValidatedOther", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        await create_relation(
+            session, user_id=test_user,
+            subject_id=tgt_v.id, object_id=obj_v.id,
+            predicate="allies_with", confidence=0.9,
+            pending_validation=False,
+        )
+        await create_relation(
+            session, user_id=test_user,
+            subject_id=src_v.id, object_id=obj_v.id,
+            predicate="allies_with", confidence=0.95,
+            pending_validation=False,
+        )
+        await merge_entities(
+            session, user_id=test_user,
+            source_id=src_v.id, target_id=tgt_v.id,
+        )
+        rec = await session.run(
+            """
+            MATCH (subj:Entity {id: $s})-[r:RELATES_TO]->(obj:Entity {id: $o})
+            WHERE r.user_id = $u AND r.predicate = 'allies_with'
+            RETURN r.pending_validation AS pv
+            """,
+            s=tgt_v.id, o=obj_v.id, u=test_user,
+        )
+        row_v = await rec.single()
+    assert row_v is not None and row_v["pv"] is False, (
+        "both-validated: AND-combine must keep the validated status"
+    )
+
+
+@pytest.mark.asyncio
+async def test_merge_entities_is_atomic_on_mid_flight_failure(
+    neo4j_driver, test_user, monkeypatch
+):
+    """D-K19d-γb-02: the entire rewire + update + delete sequence
+    runs in a single transaction. A failure at the DETACH DELETE
+    step rolls back (a) the glossary pre-clear, (b) the rewired
+    RELATES_TO edges from step 4, and (c) the target aliases/
+    source_types concat from step 6. Before the fix the merge was
+    4 auto-commit writes and a crash here left partial state.
+
+    Assertion axes (3) — so a regression that moves ANY single step
+    out of the tx is caught, not just step 6.
+    """
+    from app.db.neo4j_repos import entities as _entities_mod
+
+    async with neo4j_driver.session() as session:
+        source_ent = await merge_entity(
+            session, user_id=test_user, project_id="p",
+            name="Mentor Kai", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        target_ent = await merge_entity(
+            session, user_id=test_user, project_id="p",
+            name="Captain Phoenix", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        other_ent = await merge_entity(
+            session, user_id=test_user, project_id="p",
+            name="Sidekick Echo", kind="character",
+            source_type="chat_turn", confidence=0.9,
+        )
+        # Seed an edge source → other so step 4 of merge would rewire
+        # it to target → other. If step 4 escapes the tx, the edge
+        # survives the rollback and we will see it on target.
+        await create_relation(
+            session, user_id=test_user,
+            subject_id=source_ent.id, object_id=other_ent.id,
+            predicate="trusts", confidence=0.9,
+            pending_validation=False,
+        )
+        # Seed source with a glossary anchor so we can assert the
+        # pre-clear (step 6) was rolled back.
+        await session.run(
+            "MATCH (e:Entity {id: $aid, user_id: $u}) "
+            "SET e.glossary_entity_id = 'gloss-kai-atomic'",
+            aid=source_ent.id, u=test_user,
+        )
+        # Snapshot target's aliases so we can assert the step-6
+        # aliases concat was rolled back.
+        aliases_before = list(target_ent.aliases)
+        # Sabotage the delete step. Cypher must still reference
+        # $user_id to pass the multi-tenant safety helper, and must
+        # be invalid Cypher so Neo4j raises and the tx rolls back.
+        monkeypatch.setattr(
+            _entities_mod,
+            "_MERGE_DELETE_SOURCE_CYPHER",
+            "NOT_VALID_CYPHER $user_id $source_id",
+        )
+        with pytest.raises(Exception):
+            await merge_entities(
+                session,
+                user_id=test_user,
+                source_id=source_ent.id,
+                target_id=target_ent.id,
+            )
+        # Axis 1 — step 6 rolled back: source still exists with its
+        # original glossary anchor.
+        rec = await session.run(
+            "MATCH (e:Entity {id: $id, user_id: $u}) "
+            "RETURN e.glossary_entity_id AS gid",
+            id=source_ent.id, u=test_user,
+        )
+        row_source = await rec.single()
+        # Axis 2 — step 4 rolled back: no RELATES_TO edge from target
+        # → other. The original source → other edge still exists
+        # because source is intact.
+        rec = await session.run(
+            """
+            MATCH (t:Entity {id: $t})-[r:RELATES_TO]->(o:Entity {id: $o})
+            WHERE r.user_id = $u
+            RETURN count(r) AS n
+            """,
+            t=target_ent.id, o=other_ent.id, u=test_user,
+        )
+        row_rel = await rec.single()
+        # Axis 3 — step 6 target-side rolled back: target.aliases
+        # unchanged (source's name + aliases NOT concatenated in).
+        rec = await session.run(
+            "MATCH (t:Entity {id: $id, user_id: $u}) "
+            "RETURN t.aliases AS aliases",
+            id=target_ent.id, u=test_user,
+        )
+        row_tgt = await rec.single()
+    assert row_source is not None, "source must still exist after rolled-back merge"
+    assert row_source["gid"] == "gloss-kai-atomic", (
+        "axis 1 failed: glossary pre-clear (step 6) was not rolled "
+        "back — step 6 escaped the transaction"
+    )
+    assert row_rel is not None and row_rel["n"] == 0, (
+        "axis 2 failed: rewired RELATES_TO edge survived the rollback "
+        "— step 4 escaped the transaction"
+    )
+    assert row_tgt is not None and list(row_tgt["aliases"]) == aliases_before, (
+        "axis 3 failed: target aliases mutated — step 6 target-side "
+        "writes escaped the transaction"
+    )
