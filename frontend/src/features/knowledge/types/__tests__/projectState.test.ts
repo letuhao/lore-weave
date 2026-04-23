@@ -678,7 +678,8 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     },
   );
 
-  // K19f Cycle α — Mobile shell keys. Lives under top-level `mobile.*`.
+  // K19f Cycle α + β — Mobile shell keys. Lives under top-level `mobile.*`.
+  // The `global.*` sub-block was added in Cycle β for GlobalMobile.
   const MOBILE_KEYS = [
     'sections.global',
     'sections.projects',
@@ -687,6 +688,14 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     'desktopOnly.body',
     'privacyLink',
     'backToKnowledge',
+    'global.placeholder',
+    'global.save',
+    'global.saving',
+    'global.saved',
+    'global.unsaved',
+    'global.saveFailed',
+    'global.conflict',
+    'global.loadFailed',
   ] as const;
 
   it.each(LOCALES)(

@@ -24,7 +24,17 @@
       "body": "Duyệt thực thể, Dòng thời gian tường thuật và Tìm kiếm ngăn kéo thô cần màn hình rộng hơn. Mở Lore Weave trên laptop hoặc máy tính bảng để sử dụng."
     },
     "privacyLink": "Quyền riêng tư & kiểm soát dữ liệu",
-    "backToKnowledge": "Quay lại Tri thức"
+    "backToKnowledge": "Quay lại Tri thức",
+    "global": {
+      "placeholder": "Mọi cuộc trò chuyện cần nhớ điều gì về bạn?",
+      "save": "Lưu",
+      "saving": "Đang lưu…",
+      "saved": "Đã lưu.",
+      "unsaved": "Chưa lưu",
+      "saveFailed": "Lưu thất bại. Vui lòng thử lại.",
+      "conflict": "Một thiết bị khác đã cập nhật tiểu sử này. Vui lòng xem nội dung mới nhất và lưu lại.",
+      "loadFailed": "Không tải được tiểu sử: {{error}}"
+    }
   },
   "drawers": {
     "loading": "Đang tìm kiếm ngăn kéo…",

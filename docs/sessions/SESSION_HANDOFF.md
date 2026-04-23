@@ -1,11 +1,35 @@
-# Session Handoff — Session 50 (K19b/K19c/K20/K19d/K19e complete · K19f α shipped · mobile shell LIVE)
+# Session Handoff — Session 50 (K19b/K19c/K20/K19d/K19e complete · K19f α+β shipped · GlobalMobile live)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-23 (session 50)
-> **HEAD:** `8aeb0bc` (K19f Cycle α; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** `<pending-K19f-β>` (K19f Cycle β; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 20 cycles shipped (18 Track 3 + 2 Track 2 close-out) · K19b/K19c/K20/K19d/K19e complete · K19f α shipped
+## Session 50 — 21 cycles shipped (19 Track 3 + 2 Track 2 close-out) · K19b/K19c/K20/K19d/K19e complete · K19f α+β shipped
+
+### Cycle 21 — K19f Cycle β [FE L] — GlobalMobile (K19f.4) + tap-target utility
+
+Ships the first simplified mobile variant. 150-line `GlobalMobile` keeps textarea + save + char count + unsaved badge; drops per plan: Reset, Regenerate, Versions, PreferencesSection, token estimate, version counter. **Keeps If-Match conflict handling** — dropping would let a mobile save silently stomp a desktop edit. NEW `lib/touchTarget.ts` exports `TOUCH_TARGET_CLASS = 'min-h-[44px]'` constant as K19f.5 audit groundwork; save button is first consumer. NEW `components/mobile/` directory (future home for ProjectsMobile + JobsMobile). MobileKnowledgePage swaps `<GlobalBioTab />` → `<GlobalMobile />`. 8 i18n keys × 4 locales.
+
+`/review-impl` caught **1 HIGH + 2 LOW + 1 COSMETIC; all 4 fixed in-cycle**:
+- **H1** 412 "regression test" used a plain-object mock error that failed `isVersionConflict`'s `err instanceof Error` type guard → took generic-error else branch, passed for wrong reason. Fixed via `makeConflictError` helper building a proper `Error` with `.status=412` and `.body={content,version}`, plus 2-click pattern asserting `expectedVersion` advances 3→4 on retry (STRONG signal the baseline absorbed).
+- **L2** no assertion that `TOUCH_TARGET_CLASS` is applied to save → regression could ship 32px button; fixed with `expect(save.className).toContain('min-h-[44px]')`.
+- **L3** whitespace-only save branch untested → added test verifying `"   "` → `{content: ''}` payload.
+- **C4** `UseSummariesReturn = ReturnType<typeof useSummariesMock>` resolved to `undefined` → replaced with explicit `HookReturn` interface.
+
+**Retro — third cycle in a row where /review-impl caught a test that passed for the wrong reason.** Pattern is now clear: any regression test that claims to lock a defensive branch must PROVE the branch ran (via observable downstream state change), not just that "the error path didn't crash."
+
+**What Cycle γ (next) inherits:**
+- `lib/touchTarget.ts` available — apply `TOUCH_TARGET_CLASS` to every interactive element in ProjectsMobile
+- `components/mobile/` directory convention established
+- i18n pattern: `mobile.<variantName>.*` sub-blocks + MOBILE_KEYS iterator extensions per-cycle
+- MobileKnowledgePage swap pattern: replace desktop tab import with mobile variant, update test stub
+
+**Test deltas at β end:**
+- FE knowledge+pages vitest: **291 pass** (was 286 at K19f α end; **+5** = 4 GlobalMobile tests + 1 whitespace test; HIGH fix strengthened existing test without adding one)
+- `tsc --noEmit` clean
+
+---
 
 ### Cycle 20 — K19f Cycle α [FE L] — Mobile shell (K19f.1 MVP)
 

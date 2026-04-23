@@ -24,7 +24,17 @@
       "body": "Entities browsing, the narrative Timeline, and Raw drawer search all need a wider screen. Open Lore Weave on a laptop or tablet to use them."
     },
     "privacyLink": "Privacy & data controls",
-    "backToKnowledge": "Back to Knowledge"
+    "backToKnowledge": "Back to Knowledge",
+    "global": {
+      "placeholder": "What should every conversation remember about you?",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved.",
+      "unsaved": "Unsaved",
+      "saveFailed": "Save failed. Try again.",
+      "conflict": "Another device updated this bio. Review the latest and save again.",
+      "loadFailed": "Couldn't load global bio: {{error}}"
+    }
   },
   "drawers": {
     "loading": "Searching drawers…",

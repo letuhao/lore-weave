@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom';
 import { Lock, ArrowLeft } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { GlobalBioTab } from './GlobalBioTab';
 import { ProjectsTab } from './ProjectsTab';
 import { ExtractionJobsTab } from './ExtractionJobsTab';
 import { PrivacyTab } from './PrivacyTab';
+import { GlobalMobile } from './mobile/GlobalMobile';
 
 // K19f.1 — single-column mobile shell. Replaces the 7-tab desktop
 // navigation at viewports <768px. Only the three "primary" sections
@@ -56,7 +56,7 @@ export function MobileKnowledgePage() {
         heading={t('mobile.sections.global')}
         testId="mobile-section-global"
       >
-        <GlobalBioTab />
+        <GlobalMobile />
       </Section>
 
       <Section

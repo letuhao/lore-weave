@@ -24,7 +24,17 @@
       "body": "實體瀏覽、敘事時間軸及原始抽屜搜尋都需要更寬的螢幕。請在筆電或平板上開啟 Lore Weave 使用這些功能。"
     },
     "privacyLink": "隱私與資料控制",
-    "backToKnowledge": "返回知識"
+    "backToKnowledge": "返回知識",
+    "global": {
+      "placeholder": "每次對話都該記住你的哪些資訊?",
+      "save": "儲存",
+      "saving": "儲存中…",
+      "saved": "已儲存。",
+      "unsaved": "未儲存",
+      "saveFailed": "儲存失敗。請再試一次。",
+      "conflict": "其他裝置已更新此簡介。請檢視最新內容後再儲存。",
+      "loadFailed": "無法載入全域簡介: {{error}}"
+    }
   },
   "drawers": {
     "loading": "正在搜尋抽屜…",
