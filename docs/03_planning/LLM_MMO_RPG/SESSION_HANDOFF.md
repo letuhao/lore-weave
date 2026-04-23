@@ -73,15 +73,75 @@ See [00_VISION.md](00_VISION.md) for the dream, [01_OPEN_PROBLEMS.md](01_OPEN_PR
 - **D1** LLM cost per user-hour — needs V1 prototype data
 - **E3** IP ownership — needs legal review
 
-### Non-critical OPEN (2, as of 2026-04-23)
-C2 narrative pacing (research) · F2 AI GM layer (research). *(C3 cold-start + D2 tier viability resolved — framework locked, exact pricing pending D1; G1/G2/G3 resolved via [05_qa/LLM_MMO_TESTING_STRATEGY.md](../../05_qa/LLM_MMO_TESTING_STRATEGY.md).)*
+### Non-critical OPEN (0)
+*(C2 + F2 formally ACCEPTED as research frontier on 2026-04-23. Non-critical bucket is empty.)*
 
-### Session arc summary (2026-04-23)
-Starting OPEN = 17 (original 18 minus M1 resolution midway). Closing OPEN = **4**: **A4 / D1 / E3** (critical-path external blockers) + **C2 / F2** (open research / long-horizon, low-value to reopen in design sessions).
+---
 
-**Category batches fully closed:** M · A · B · G (no OPEN items remain in these).
+## Closure brief (2026-04-23)
 
-**Residual design-session work: essentially exhausted.** Further OPEN closure requires V1 prototype data (A4, D1, drift into D2 pricing), legal review (E3), or explicit acceptance of C2/F2 as research frontier. No productive design batches remain.
+### Session arc
+Starting OPEN = **18**. Closing OPEN = **2**. ACCEPTED = **4**. PARTIAL = **26**.
+
+Design track reached **steady state**. 9 commits, 83 design decisions locked, 3 new top-level docs (`UI_COPY_STYLEGUIDE.md`, `05_LLM_SAFETY_LAYER.md`, `LLM_MMO_TESTING_STRATEGY.md`). Category batches **M · A · B · G** fully closed (0 OPEN in each).
+
+### Remaining 2 OPEN — external dependencies only
+
+| # | Dependency | What unblocks it |
+|---|---|---|
+| **D1** cost per user-hour | V1 prototype with instrumented cost measurement across session script mix (G2-D4) | Build solo-RP prototype + run synthetic load with `loadtest-service` scripts for 1-2 weeks to land real cost numbers |
+| **E3** IP ownership | External legal review of canonization flow + ToS language | Engage legal counsel; scope: IP transfer semantics, player-contributed canon ownership, jurisdiction coverage (fanfic precedent — AO3, Wattpad) |
+
+Plus **A4 retrieval quality** — status PARTIAL in 01 but still a critical-path external blocker: needs V1 benchmark dataset from actual LoreWeave books + human-graded canon-faithfulness measurements.
+
+### 4 ACCEPTED items (scope discipline)
+
+| # | Stance | Revisit trigger |
+|---|---|---|
+| D3 self-hosted vs platform | Both modes supported | — (permanent) |
+| F4 progression system | Minimal RPG mechanics; game = conversation | — (permanent) |
+| **C2 narrative pacing** *(new)* | Research frontier; V1 uses F3 scaffolds for structural pacing | V2+ prototype data OR public research progress |
+| **F2 AI GM layer** *(new)* | Research frontier; V1-V2 ships without GM agent; F3 + NPCs + A6 cover structural need | V3+ roadmap review OR validated multi-agent narrative planner research |
+
+### External-dependency action list (for whoever picks up the baton)
+
+**When V1 prototype work begins:**
+1. Instrument `loadtest-service` (G2-D4) with cost telemetry before first real-LLM run
+2. Build A4 retrieval benchmark dataset from ≥1 complete LoreWeave book with human canon-faithfulness ratings
+3. Run 1–2 weeks of synthetic sessions across G2-D4 script mix (casual / combat / fact / jailbreak)
+4. Feed D1 results back → compute D2 exact prices using D2-D3 formula (1.5x margin target)
+5. Feed A4 retrieval scores back → tune G1-D3 judge rubric weights
+
+**When legal review begins (for E3 / platform-mode launch):**
+1. Brief counsel on canonization flow mechanics ([03 §9.7](03_MULTIVERSE_MODEL.md#97-canonization-safeguards--m3-resolution) + M3-D1..D8)
+2. Scope questions: ownership of canonized content, player consent (M3-D3), author veto, jurisdiction
+3. Precedent review: AO3, Wattpad, fanfic platform ToS patterns
+4. Output: ToS language + canonization attribution policy (feeds M3-D6 export UI)
+5. Platform-mode launch GATED on E3 signoff; self-hosted mode is exempt
+
+**Research triggers to watch (C2 / F2):**
+- Generative Agents successors (watch arXiv CS.AI for multi-agent narrative planners)
+- Tabletop RPG × LLM research (tension tracking, beat detection)
+- Commercial AI GM products (if any land with validated UX)
+
+### When to reopen design session
+The track is essentially **paused until external data lands**. Reopen conditions:
+
+- V1 prototype delivers D1 / A4 measurements → reopen D2 for exact pricing; A4 moves toward SOLVED
+- Legal counsel returns E3 brief → E3 moves toward SOLVED; canonization launch gate cleared
+- Public research delivers narrative-pacing primitive → C2 / F2 reopen from ACCEPTED
+- A new problem surfaces (`N1+` open item) during V1 build → standard OPEN resolution cycle
+
+**Do not reopen the design track for**: minor UX tuning, residual items already marked `pending V1 data`, or research frontier items without concrete new input. Those belong to implementation sprints, not design sessions.
+
+### Handoff checklist for next session
+- [ ] Read [01_OPEN_PROBLEMS.md](01_OPEN_PROBLEMS.md) status summary — confirm 2 OPEN / 26 PARTIAL / 5 KNOWN / 4 ACCEPTED still accurate
+- [ ] Read [OPEN_DECISIONS.md](OPEN_DECISIONS.md) tail 20 rows for most recent locks
+- [ ] Read [05_LLM_SAFETY_LAYER.md](05_LLM_SAFETY_LAYER.md) + [`../../05_qa/LLM_MMO_TESTING_STRATEGY.md`](../../05_qa/LLM_MMO_TESTING_STRATEGY.md) if touching roleplay-service implementation
+- [ ] Check if external triggers (V1 prototype, legal brief, research progress) have landed — those are the only reasons to reopen
+- [ ] If reopening, start with a specific OPEN item + concrete external input; don't batch
+
+---
 
 ### Multiverse-specific risks (M1–M7 in [01 §M](01_OPEN_PROBLEMS.md)) — NOT yet batch-addressed
 - M1 Reality discovery (**PARTIAL — resolved 2026-04-23**) — 7-layer design in [03 §9.1](03_MULTIVERSE_MODEL.md#91-reality-discovery), M1-D1..D7 locked; weight tuning + preview format pending V1 data

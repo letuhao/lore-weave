@@ -213,11 +213,17 @@ Decisions C1-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
 - Which mode users prefer at scale — V1/V2 analytics
 - Mode-specific prompt template quality — V1 copy refinement per `UI_COPY_STYLEGUIDE.md`
 
-### C2. Narrative pacing — **OPEN**
+### C2. Narrative pacing — **ACCEPTED (research frontier)**
 
 **Problem:** Unstructured LLM small-talk devolves into infinite low-stakes conversation. Real stories have beats, rising tension, payoff. LLMs alone don't do this.
 
-**Why hard:** Requires an "AI GM" layer above NPCs that tracks narrative tension and injects events/complications. This is close to open research.
+**Why hard:** Requires an "AI GM" layer above NPCs that tracks narrative tension and injects events/complications. Open research (closely linked to F2).
+
+**Accepted stance (2026-04-23):** A proper AI-driven narrative pacing layer is open research. **V1 pragmatic workaround**: author-authored quest scaffolds (F3-D1/D2) provide structural pacing — beats, rising action, outcomes — at scene level. Narrator fills in prose within those beats but does NOT drive tension at story level. Small-talk is allowed to drift; players self-regulate or close session.
+
+**Revisit trigger:** V2+ prototype data on session-length drift rates + public research progress (Generative Agents successors, multi-agent narrative planners). If small-talk sessions empirically feel "dead" and F3 scaffolds can't be authored fast enough to cover it, reopen with concrete V1 data.
+
+**Residual — no longer blocks design:** pacing is a product-quality concern, not a structural blocker. V1 can ship without it.
 
 **Notes:** Generative Agents paper (Park et al.) used "reflection" + "planning" but didn't solve pacing for a human audience. Could cheat with scripted quest scaffolds and let LLM fill in, like tabletop modules.
 
@@ -354,13 +360,17 @@ Players "bending" Elena happens naturally in a divergent reality; canon-faithful
 
 **Residual `OPEN`:** runtime enforcement mechanism for L1 (prompt discipline + output filter), UI for authors to set lock levels per attribute, combat against prompt injection that tries to bend L1 facts (see A6).
 
-### F2. AI GM layer — **OPEN**
+### F2. AI GM layer — **ACCEPTED (research frontier)**
 
 **Problem:** A good tabletop GM tracks tension, throws complications, calls for skill checks, rewards clever play. LLM NPCs alone don't do this — they just respond.
 
-**Why hard:** Open research area. Generative Agents came closest with "reflection + planning" but for simulation, not for human-paced narrative.
+**Why hard:** Open research area. Generative Agents (Park et al., arXiv:2304.03442) came closest with "reflection + planning" but for simulation, not for human-paced narrative.
 
-**Notes:** Possibly a separate "GM agent" above the NPCs, watching the story and nudging. Unvalidated.
+**Accepted stance (2026-04-23):** A dedicated "GM agent" that watches the story and nudges pacing + complications is open research. No productive design can happen without prototype data. **V1 pragmatic workaround**: F3 quest scaffolds (author-authored beats) + NPC-driven scenes + canon-scoped retrieval (A6-D3) cover the "game needs structure" need at the scaffold layer; there is no dedicated GM agent in V1-V2.
+
+**Revisit trigger:** V3+ roadmap review, OR if public research delivers a validated multi-agent narrative planner. Track: Generative Agents successors, tabletop-RPG-LLM research, agent orchestration frameworks.
+
+**Residual — no longer blocks design:** GM agent is an "aspirational feature layer"; V1-V2 will ship without it, using scaffolds (F3) for structure. Closely linked to C2 narrative pacing; they'll likely be solved together if at all.
 
 ### F3. Quest design — emergent or scripted — **PARTIAL**
 
@@ -530,13 +540,13 @@ New category introduced by the multiverse model in [03_MULTIVERSE_MODEL.md §11]
 |---|---|---|---|---|
 | A. LLM reasoning & grounding | 0 | 6 | 0 | 0 |
 | B. Distributed systems | 0 | 3 | 3 | 0 |
-| C. Product / UX | 1 | 4 | 0 | 0 |
+| C. Product / UX | 0 | 4 | 0 | 1 |
 | D. Economics | 1 | 1 | 0 | 1 |
 | E. Moderation & legal | 1 | 1 | 1 | 0 |
-| F. Content design | 1 | 2 | 0 | 1 |
+| F. Content design | 0 | 2 | 0 | 2 |
 | G. Testing & ops | 0 | 3 | 0 | 0 |
 | **M. Multiverse-specific** | **0** | **6** | **1** | **0** |
-| **Total** | **4** | **26** | **5** | **2** |
+| **Total** | **2** | **26** | **5** | **4** |
 
 > **Note:** Counts accurate as of 2026-04-23. Reconciled pre-existing off-by-one baseline miscounts discovered during M and A batch resolutions (the M OPEN baseline was 4 not 3; the A OPEN baseline included A2 which had already moved to PARTIAL via the multiverse reframe). M1/M2/M3/M4/M5/M7 all `PARTIAL` in 01; M6 `KNOWN PATTERN`. M2/M3/M4/M5 additionally marked **MITIGATED in [03 §11](03_MULTIVERSE_MODEL.md)**; stay `PARTIAL` in 01 due to residual sub-items pending V1 data or external input. All A1–A6 now `PARTIAL` after the LLM Safety Layer ([05](05_LLM_SAFETY_LAYER.md)) resolution.
 
@@ -567,15 +577,18 @@ New category introduced by the multiverse model in [03_MULTIVERSE_MODEL.md §11]
 - **G category batch fully closed** (2026-04-23 — G1/G2/G3 all PARTIAL; no OPEN remaining)
 - **C3 `OPEN` → `PARTIAL`** (2026-04-23 — product strategy locked: V1 solo-first, NPC-populated world, staged funnel, scheduled events V2+, friend-follow organic concentration; C3-D1..D6 locked. Largely dissolved by earlier multiverse + M1 + M7 decisions.)
 - **D2 `OPEN` → `PARTIAL`** (2026-04-23 — 3-tier shape (Free BYOK / Paid / Premium) + 1.5x margin target + per-tier feature gating mapped to B3/M1/M7/PC-C1 + V1 measurement protocol locked; D2-D1..D6 locked. Exact prices pending D1 data.)
+- **C2 `OPEN` → `ACCEPTED` (research frontier)** (2026-04-23 — AI-driven narrative pacing is open research. V1 pragmatic workaround via F3 quest scaffolds for structural pacing at scene level; small-talk allowed to drift. Revisit V2+ with prototype data or public research progress.)
+- **F2 `OPEN` → `ACCEPTED` (research frontier)** (2026-04-23 — dedicated AI GM agent is open research (Generative Agents partial). V1-V2 ships without GM agent; F3 scaffolds + NPCs + A6 retrieval cover the structural need. Revisit V3+ or on research delivery.)
 
-**Interpretation:** Systematic design resolutions have compressed the OPEN set from 18 → … → 4. Every multiverse-specific, LLM reasoning, distributed-systems, testing/ops, AND most product / economics risk now has at least a PARTIAL answer. Remaining 4 OPEN break down cleanly:
+**Final interpretation (2026-04-23 session close):** Systematic design resolutions have compressed the OPEN set from 18 → **2**. Every multiverse-specific, LLM reasoning, distributed-systems, testing/ops, and most product / economics / content-design risk now has either a PARTIAL answer or an explicit ACCEPTED stance. The design track has reached **steady state**:
 
-- **Critical-path external blockers (3):** A4 retrieval quality (V1 measurement) · D1 cost per user-hour (V1 prototype) · E3 IP ownership (legal review)
-- **Open research / long-horizon (1):** F2 AI GM layer (close to C2 narrative pacing which is still OPEN but reframed by F3 scaffolds)
+- **Remaining 2 OPEN** (critical-path external blockers):
+  - **D1** cost per user-hour — V1 prototype measurement
+  - **E3** IP ownership — legal review (platform-mode launch gate; self-hosted exempt)
+- **Also critical-path but already PARTIAL:** A4 retrieval quality — V1 measurement on real LoreWeave books
+- **ACCEPTED research frontier (2):** C2 narrative pacing, F2 AI GM layer — V1-V2 ship without these; revisit on research or prototype trigger
 
-Wait — need to recount. Remaining OPEN after D2+C3: A4 [PARTIAL], C2 [OPEN], D1 [OPEN], E3 [OPEN], F2 [OPEN]. That's 4 OPEN: C2, D1, E3, F2. (A4 already moved to PARTIAL earlier; the critical-path list in 3/3 includes A4 even though status is PARTIAL — "critical-path" means "blocks implementation commitment" not "status OPEN".)
-
-Categories fully closed: **M, A, B, G**. Remaining OPEN distributed across C (1: C2), D (1: D1), E (1: E3), F (1: F2). Only D1, E3 are truly design-session-unresolvable external blockers; C2 and F2 are open research where further design sessions have diminishing returns. **The design track has reached a steady state — further OPEN closure requires V1 prototype, legal review, or acceptance of open research items.**
+Categories fully closed: **M · A · B · G**. **No productive design batches remain.** Next meaningful movement requires: (a) V1 prototype build + instrumented measurement (for A4 / D1 and tier pricing fill-in), (b) legal counsel engagement (for E3 and canonization launch gate), or (c) upstream research results (for C2 / F2 revisit). See [SESSION_HANDOFF.md](SESSION_HANDOFF.md) for the detailed closure brief and external-dependency action list.
 
 ## What "ready to implement" would look like
 
