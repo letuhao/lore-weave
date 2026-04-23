@@ -414,6 +414,16 @@ CREATE TABLE IF NOT EXISTS job_logs (
 CREATE INDEX IF NOT EXISTS idx_job_logs_user_job_log
   ON job_logs(user_id, job_id, log_id);
 
+-- C3 (D-K19b.8-01) — retention sweep uses
+--   DELETE ... WHERE created_at < now() - make_interval(days => $1)
+-- Without this index the DELETE degenerates to a seq scan once logs
+-- grow past a few thousand rows. Range predicate benefits from a
+-- straight BTREE on created_at; no need to widen with (user_id, ...)
+-- because the retention cron is cross-tenant and never filters by
+-- user_id.
+CREATE INDEX IF NOT EXISTS idx_job_logs_created_at
+  ON job_logs(created_at);
+
 -- ═══════════════════════════════════════════════════════════════
 -- K16.12 — User-wide monthly AI budget cap.
 -- Per-project budgets live on knowledge_projects (see above). This

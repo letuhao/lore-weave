@@ -237,8 +237,11 @@ export function JobDetailPanel({ open, onOpenChange, job, onRetryClick }: Props)
               </section>
             )}
 
-            {/* K19b.8 — job lifecycle logs. Collapsed by default. */}
-            <JobLogsPanel jobId={job.job_id} />
+            {/* K19b.8 — job lifecycle logs. Collapsed by default.
+                C3: pass jobStatus so the hook can enable 5s
+                refetchInterval while the job is still running and
+                stop polling on terminal states. */}
+            <JobLogsPanel jobId={job.job_id} jobStatus={job.status} />
           </div>
 
           {/* Actions footer */}

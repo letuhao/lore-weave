@@ -217,6 +217,26 @@ async def lifespan(app: FastAPI):
                 exc_info=True,
             )
 
+    # C3 (D-K19b.8-01) — job_logs retention cron. Not gated on
+    # neo4j_uri because retention only needs the knowledge-service
+    # Postgres pool. 20-min startup offset from the K20.3 loops'
+    # 10/15-min windows so the three schedulers don't converge at boot.
+    job_logs_retention_task = None
+    try:
+        from app.jobs.job_logs_retention import run_job_logs_retention_loop
+
+        job_logs_retention_task = asyncio.create_task(
+            run_job_logs_retention_loop(get_knowledge_pool())
+        )
+        logger.info(
+            "C3: job_logs retention loop started as background task"
+        )
+    except Exception:
+        logger.warning(
+            "C3: job_logs retention loop failed to start (non-fatal)",
+            exc_info=True,
+        )
+
     # D-T2-04 — cross-process cache invalidator via Redis pub/sub.
     # Only installed when redis_url is configured; Track 1 single-
     # worker deploys stay local-only.
@@ -286,6 +306,19 @@ async def lifespan(app: FastAPI):
             except Exception:
                 logger.warning(
                     "K20.3: error stopping global regen loop",
+                    exc_info=True,
+                )
+
+        # C3: stop job_logs retention loop.
+        if job_logs_retention_task is not None:
+            job_logs_retention_task.cancel()
+            try:
+                await job_logs_retention_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.warning(
+                    "C3: error stopping job_logs retention loop",
                     exc_info=True,
                 )
 

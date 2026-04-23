@@ -36,6 +36,7 @@ from app.clients.provider_client import (
 from app.config import settings
 from app.db.neo4j import neo4j_session
 from app.db.pool import get_knowledge_pool
+from app.db.repositories.job_logs import JobLogsRepo
 from app.extraction.anchor_loader import Anchor, load_glossary_anchors
 from app.extraction.pass2_orchestrator import (
     extract_pass2_chapter,
@@ -216,6 +217,24 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
     started = time.perf_counter()
     provider_client = get_provider_client()
 
+    # C3 (D-K19b.8-02) — stage producer for the FE JobLogsPanel.
+    # Inlined like `_try_spend` elsewhere rather than Depends() since
+    # the rest of this router already resolves collaborators inline
+    # (module-level neo4j_session, get_provider_client, etc.). Matches
+    # the "internal router, no DI" convention. Best-effort: if the
+    # pool isn't initialised (unit tests that only mock the extractor
+    # helpers, or a pre-migration boot), the producer is silently
+    # disabled — extraction still runs, JobLogsPanel just won't show
+    # the stage events for this call.
+    try:
+        job_logs_repo: JobLogsRepo | None = JobLogsRepo(get_knowledge_pool())
+    except Exception:
+        logger.debug(
+            "C3: knowledge pool unavailable — pass2 stage producer disabled",
+            exc_info=True,
+        )
+        job_logs_repo = None
+
     # K13.0 — pre-load glossary anchors. Degrades to [] on any failure
     # so extraction still runs (without duplicate-reduction benefit).
     anchors = await _load_anchors_for_extraction(
@@ -243,6 +262,7 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
                     model_ref=body.model_ref,
                     client=provider_client,
                     anchors=anchors,
+                    job_logs_repo=job_logs_repo,
                 )
             else:  # "chat_turn" — Pydantic Literal rejects other values at 422
                 if not body.user_message and not body.assistant_message:
@@ -264,6 +284,7 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
                     model_ref=body.model_ref,
                     client=provider_client,
                     anchors=anchors,
+                    job_logs_repo=job_logs_repo,
                 )
     except HTTPException:
         raise  # re-raise validation errors (422)

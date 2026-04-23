@@ -31,10 +31,12 @@ import asyncio
 import logging
 import time
 from collections.abc import Iterable
-from typing import Literal
+from typing import Any, Literal
+from uuid import UUID
 
 from app.clients.provider_client import ProviderClient
 from app.db.neo4j_helpers import CypherSession
+from app.db.repositories.job_logs import JobLogsRepo
 from app.extraction.anchor_loader import Anchor
 from app.extraction.llm_entity_extractor import extract_entities
 from app.extraction.llm_event_extractor import extract_events
@@ -48,6 +50,40 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+
+async def _emit_log(
+    repo: JobLogsRepo | None,
+    user_id: str,
+    job_id: str,
+    message: str,
+    context: dict[str, Any],
+) -> None:
+    """C3 (D-K19b.8-02) — best-effort stage logger for Pass 2 pipeline.
+
+    Writes to ``job_logs`` so the FE's JobLogsPanel can render
+    extraction-pipeline progress alongside worker-ai's lifecycle events
+    (chapter_processed / skipped / failed). Always ``info`` level;
+    extraction failures surface from worker-ai at job level via the
+    existing ``_append_log`` call sites.
+
+    When ``repo`` is None the call is a no-op — lets existing
+    ``extract_pass2_*`` test callers (≈20 of them) remain untouched
+    while production paths pass a real repo. A Postgres write error
+    during log emission is NOT fatal to extraction: we log a warning
+    and continue.
+    """
+    if repo is None:
+        return
+    try:
+        await repo.append(
+            UUID(user_id), UUID(job_id), "info", message, context,
+        )
+    except Exception:
+        logger.warning(
+            "C3: pass2 stage log emit failed (non-fatal) message=%r",
+            message, exc_info=True,
+        )
 
 
 async def _run_pipeline(
@@ -64,8 +100,17 @@ async def _run_pipeline(
     model_ref: str,
     client: ProviderClient | None = None,
     anchors: list[Anchor] | None = None,
+    job_logs_repo: JobLogsRepo | None = None,
 ) -> Pass2WriteResult:
-    """Core pipeline shared by chat_turn and chapter entry points."""
+    """Core pipeline shared by chat_turn and chapter entry points.
+
+    C3 (D-K19b.8-02): ``job_logs_repo`` is optional — when supplied,
+    stage progress is mirrored into ``job_logs`` so the FE's log panel
+    can show Pass 2 extraction timings alongside worker-ai's lifecycle
+    events. All emitted events are ``info`` level; extraction failures
+    are surfaced from worker-ai at job level via its own
+    ``_append_log`` call sites.
+    """
     # Empty text → write empty source for idempotency, return zeros.
     if not text or not text.strip():
         return await write_pass2_extraction(
@@ -92,14 +137,37 @@ async def _run_pipeline(
         client=client,
     )
 
+    entities_elapsed = time.perf_counter() - started
     logger.info(
         "Pass 2 entity extraction: %d candidates in %.1fs",
-        len(entities), time.perf_counter() - started,
+        len(entities), entities_elapsed,
+    )
+    await _emit_log(
+        job_logs_repo, user_id, job_id,
+        f"Pass 2 entity extraction: {len(entities)} candidates in "
+        f"{entities_elapsed:.2f}s",
+        context={
+            "event": "pass2_entities",
+            "source_type": source_type,
+            "source_id": source_id,
+            "count": len(entities),
+            "duration_ms": int(entities_elapsed * 1000),
+        },
     )
 
     # Gate: if no entities, nothing to anchor relations/events/facts.
     # Write entities only (empty list) and return.
     if not entities:
+        await _emit_log(
+            job_logs_repo, user_id, job_id,
+            "Pass 2 gate: no entity candidates — skipping "
+            "relation/event/fact extractors",
+            context={
+                "event": "pass2_entities_gate",
+                "source_type": source_type,
+                "source_id": source_id,
+            },
+        )
         return await write_pass2_extraction(
             session,
             user_id=user_id,
@@ -126,11 +194,13 @@ async def _run_pipeline(
         client=client,
     )
 
+    gather_started = time.perf_counter()
     relation_cands, event_cands, fact_cands = await asyncio.gather(
         extract_relations(**extractor_kwargs),
         extract_events(**extractor_kwargs),
         extract_facts(**extractor_kwargs),
     )
+    gather_elapsed = time.perf_counter() - gather_started
 
     elapsed = time.perf_counter() - started
     logger.info(
@@ -139,9 +209,26 @@ async def _run_pipeline(
         len(entities), len(relation_cands),
         len(event_cands), len(fact_cands), elapsed,
     )
+    await _emit_log(
+        job_logs_repo, user_id, job_id,
+        f"Pass 2 R/E/F extraction: "
+        f"{len(relation_cands)}/"
+        f"{len(event_cands)}/"
+        f"{len(fact_cands)} candidates in {gather_elapsed:.2f}s",
+        context={
+            "event": "pass2_gather",
+            "source_type": source_type,
+            "source_id": source_id,
+            "relations": len(relation_cands),
+            "events": len(event_cands),
+            "facts": len(fact_cands),
+            "duration_ms": int(gather_elapsed * 1000),
+        },
+    )
 
     # Step 5 — write everything to Neo4j.
-    return await write_pass2_extraction(
+    write_started = time.perf_counter()
+    write_result = await write_pass2_extraction(
         session,
         user_id=user_id,
         project_id=project_id,
@@ -155,6 +242,32 @@ async def _run_pipeline(
         extraction_model=model_ref,
         anchors=anchors,
     )
+    write_elapsed = time.perf_counter() - write_started
+    await _emit_log(
+        job_logs_repo, user_id, job_id,
+        f"Pass 2 write complete: "
+        f"entities={write_result.entities_merged}, "
+        f"relations={write_result.relations_created}, "
+        f"events={write_result.events_merged}, "
+        f"facts={write_result.facts_merged} "
+        f"in {write_elapsed:.2f}s",
+        # /review-impl L2: duration_ms on write event for symmetry
+        # with the entities + gather events. Writes can be the slow
+        # step on large batches (50+ relations + evidence edges);
+        # operators benefit from seeing its share of the total.
+        context={
+            "event": "pass2_write",
+            "source_type": source_type,
+            "source_id": source_id,
+            "entities_merged": write_result.entities_merged,
+            "relations_created": write_result.relations_created,
+            "events_merged": write_result.events_merged,
+            "facts_merged": write_result.facts_merged,
+            "evidence_edges": write_result.evidence_edges,
+            "duration_ms": int(write_elapsed * 1000),
+        },
+    )
+    return write_result
 
 
 async def extract_pass2_chat_turn(
@@ -172,6 +285,7 @@ async def extract_pass2_chat_turn(
     model_ref: str,
     client: ProviderClient | None = None,
     anchors: list[Anchor] | None = None,
+    job_logs_repo: JobLogsRepo | None = None,
 ) -> Pass2WriteResult:
     """Run the Pass 2 LLM pipeline on a chat turn.
 
@@ -204,6 +318,7 @@ async def extract_pass2_chat_turn(
         model_ref=model_ref,
         client=client,
         anchors=anchors,
+        job_logs_repo=job_logs_repo,
     )
 
 
@@ -221,6 +336,7 @@ async def extract_pass2_chapter(
     model_ref: str,
     client: ProviderClient | None = None,
     anchors: list[Anchor] | None = None,
+    job_logs_repo: JobLogsRepo | None = None,
 ) -> Pass2WriteResult:
     """Run the Pass 2 LLM pipeline on a chapter.
 
@@ -243,4 +359,5 @@ async def extract_pass2_chapter(
         model_ref=model_ref,
         client=client,
         anchors=anchors,
+        job_logs_repo=job_logs_repo,
     )

@@ -298,8 +298,10 @@
       "logs": {
         "title": "Logs",
         "loading": "Loading logs…",
+        "loadingNewer": "Loading newer…",
         "error": "Couldn't load logs.",
         "empty": "No logs yet.",
+        "loadNewer": "Load newer",
         "levels": {
           "info": "INFO",
           "warning": "WARN",

@@ -298,8 +298,10 @@
       "logs": {
         "title": "Nhật ký",
         "loading": "Đang tải nhật ký…",
+        "loadingNewer": "Đang tải mục mới hơn…",
         "error": "Không thể tải nhật ký.",
         "empty": "Chưa có nhật ký.",
+        "loadNewer": "Tải mục mới hơn",
         "levels": {
           "info": "INFO",
           "warning": "WARN",

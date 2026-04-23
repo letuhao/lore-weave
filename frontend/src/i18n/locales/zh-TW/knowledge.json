@@ -298,8 +298,10 @@
       "logs": {
         "title": "日誌",
         "loading": "載入日誌中…",
+        "loadingNewer": "載入較新日誌…",
         "error": "無法載入日誌。",
         "empty": "尚無日誌。",
+        "loadNewer": "載入較新日誌",
         "levels": {
           "info": "INFO",
           "warning": "WARN",
