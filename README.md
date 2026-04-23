@@ -257,25 +257,64 @@ Every character trait, location detail, and plot event you define becomes contex
 
 ## 🎮 Living Worlds — The Future of LoreWeave
 
-> *You wrote a novel where the hero betrayed the merchant guild in chapter 12. Two months later a reader joins as a new character — she finds the guild still fractured, still whispering about the traitor, still wary of outsiders. The NPCs **remember**.*
+> *Your book is not a reality — it is the origin of many.*
+>
+> *You wrote a novel where the hero betrayed the merchant guild in chapter 12. A month later, one reader joins **R_α** and finds the guild fractured, still whispering about the traitor. Another joins **R_β** — a reality where the betrayal never happened, and the guild captain invites her to dinner. A third player forks a new reality at event 49 to explore "what if the hero had killed the guildmaster instead?" All three are real. All three persist. The NPCs remember only what happened in their own timeline.*
 
-**Living Worlds** is the moment your knowledge graph stops being a reference and starts being a world. The characters, locations, and rules that lived as glossary entries become LLM-driven inhabitants of a **shared persistent reality**. A narrator grounded in your canon runs the scene. Other players can step in.
+**Living Worlds** is the moment your knowledge graph stops being a reference and starts being a **multiverse**. The characters, locations, and rules that lived as glossary entries become LLM-driven inhabitants of **shared persistent realities**. A narrator grounded in your canon runs the scene. Other players can step in — or fork off and build their own.
 
-This is not a chatbot with a roleplay prompt. It is a text-based **LLM MMO RPG** built on the same substrate you used to write the book — designed from the ground up with the hard problems taken seriously.
+This is not a chatbot with a roleplay prompt. It is a text-based **LLM MMO RPG** with a full multiverse model inspired by SCP Foundation canon structure — designed from the ground up with the hard problems taken seriously.
 
-### The Experience
+### 🌌 The Multiverse — One Book, Infinite Realities
 
-- 🌌 **Every book is a reality.** One universe per book (or per canonical continuity), fork-able into alternative timelines for what-ifs and solo runs.
-- 🧠 **NPCs driven by LLMs, grounded in your lore.** They remember the scenes you wrote, the scenes players just played, and each other.
-- 📜 **The narrator respects canon.** World rules live in a per-reality rule engine; the narrator cannot overturn your book's physics without your say-so.
-- 🧙 **You are a player character, not just the author.** Create a PC, join a session, roleplay inside the lore you built — alone, with friends, or in a shared persistent world with strangers.
-- 🤝 **Readers become players.** Invite anyone who loved your book to step into it.
+The defining design decision of Living Worlds:
+
+- **A book is NOT a reality.** It is canon source material — characters, axioms, the lore's physics. The *origin point* (khởi nguyên), not a universe.
+- **A book has MANY realities.** Each one is a complete, independent timeline. **None is "main."** They are peer universes that happen to share an origin — like SCP's alternate canons, not like a canonical server and its copies.
+- **Realities can fork from other realities.** A reality's history can be **inherited** (snapshot fork at a specific event) — so a reality can be a child of another, a grandchild, and so on. Forking is a first-class gameplay mechanic: capacity overflow, narrative what-ifs, private sessions.
+- **Logic can diverge between peers.** Alice alive in R_α, dead in R_β, a pirate queen in R_γ — all valid. The book defines what is *possible*; each reality defines what *happened*.
+
+```
+                    📖 BOOK  (canon source — axioms + seeded facts)
+                              │
+                              │ seeds each reality's initial state
+      ┌───────────┬───────────┼───────────┬───────────┐
+      ▼           ▼           ▼           ▼           ▼
+    R_α          R_β          R_γ         R_δ         R_ε
+  (alive)    (dead@T50)     (queen)    (pirate)  (librarian)
+                 │                        │
+                 ▼                        ▼
+              R_β.1                    R_δ.1
+         (snapshot fork              (what-if fork
+          @event 48)                  @event 120)
+```
+
+### 📜 Four-Layer Canon — What Drifts, What Doesn't
+
+Not every fact drifts the same way. The model distinguishes four layers:
+
+| Layer | Where it lives | Drifts? | Example |
+|---|---|---|---|
+| **L1 — Axiomatic** | Author-locked in book | **Never, any reality** | "Magic exists" · "Elves are a species" |
+| **L2 — Seeded canon** | Book's initial state | Per-reality (overridable) | "Alice is a princess" — may become "blacksmith" in R_γ |
+| **L3 — Reality-local** | Events that happened *here* | Immutable within reality | "In R_β, Alice died at T=50" |
+| **L4 — Flexible state** | Runtime / LLM drift | Freely within reality | NPC's current mood |
+
+**Canonization — the reverse direction.** An exciting L3 event from a player's reality can be promoted back to L2 seeded canon, under author review. *A reader's emergent narrative can become part of the book.* That is the real long-term vision: your audience contributes back to your canon, and you decide what sticks.
+
+### 🧠 The Experience
+
+- **NPCs driven by LLMs, grounded in your lore.** They remember the scenes you wrote, the scenes players just played, and each other — per-reality, not globally.
+- **The narrator respects canon.** World rules live in a per-reality rule engine; the narrator cannot overturn your book's physics without your say-so.
+- **You are a player character, not just the author.** Create a PC, join a session, roleplay inside the lore you built — alone, with friends, or in a shared persistent world with strangers.
+- **Readers become players.** Invite anyone who loved your book to step into it — into whichever reality they prefer, or fork their own.
+- **Fork anywhere, anytime.** "What if Alice never died?" → fork R_β at event 49, diverge into R_β.1, play out your version. No re-engineering. No permission needed (V1 default).
 
 ### The Architecture
 
 | Layer | What it does |
 |---|---|
-| **Multiverse model** | Peer realities (no privileged root), snapshot fork, 4-layer canon: *Book → Reality → Session → PC* |
+| **Multiverse model** | Peer realities (no privileged root), book-as-origin seeding, parent→child snapshot fork with inherited event chain, 4-layer canon (L1 axiomatic → L4 runtime) |
 | **Storage** | Full event sourcing, DB-per-reality, NPC memory split into core + per-pair aggregates for bounded cost |
 | **Player Characters** | Identity layering (*User / PC / Session*), lifecycle, social mechanics, PC → NPC conversion |
 | **Services (planned)** | `world-service` · `roleplay-service` · `publisher` · `meta-worker` · `event-handler` · `migration-orchestrator` · `admin-cli` |
