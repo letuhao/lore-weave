@@ -313,18 +313,29 @@ _REGEN_STATUSES = (
 )
 _REGEN_SCOPES = ("global", "project")
 
+# C2 — trigger label distinguishes human-initiated regens (public
+# edge in summaries.py) from loop-initiated ones (K20.3 scheduler).
+# Cardinality stays bounded: 2 scopes × 6 statuses × 2 triggers = 24
+# pre-seeded series. Grafana queries that don't group by `trigger`
+# continue to aggregate over both values — the label is additive.
+_REGEN_TRIGGERS = ("manual", "scheduled")
+
 summary_regen_total = Counter(
     "knowledge_summary_regen_total",
     "K20α summary regeneration calls by outcome. Sum over "
     "status='regenerated' → actual regens; status='user_edit_lock' "
     "→ KSA §7.6 `summary_user_override_respected`; status starts "
-    "with 'no_op_' → `summary_regen_no_op`.",
-    ["scope_type", "status"],
+    "with 'no_op_' → `summary_regen_no_op`. `trigger` splits "
+    "public-edge (manual) vs K20.3 scheduler (scheduled).",
+    ["scope_type", "status", "trigger"],
     registry=registry,
 )
 for _scope in _REGEN_SCOPES:
     for _status in _REGEN_STATUSES:
-        summary_regen_total.labels(scope_type=_scope, status=_status)
+        for _trigger in _REGEN_TRIGGERS:
+            summary_regen_total.labels(
+                scope_type=_scope, status=_status, trigger=_trigger
+            )
 
 # Wall-time of the whole _regenerate_core flow, labelled by scope so
 # global vs project can be tracked separately. Buckets scaled for the

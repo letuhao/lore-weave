@@ -16,9 +16,12 @@ otherwise an attacker could plant orphan summary rows under a
 project_id they don't own.
 """
 
+import asyncio
+import logging
 from uuid import UUID
 
 import asyncpg
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -26,6 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
 
 from app.clients.provider_client import ProviderClient, ProviderError
+from app.config import settings
 from app.db.models import Summary, SummaryContent, SummaryVersion
 from app.db.neo4j import neo4j_session
 from app.db.pool import get_knowledge_pool
@@ -40,7 +44,173 @@ from app.jobs.regenerate_summaries import (
 from app.middleware.jwt_auth import get_current_user
 from app.routers.public.projects import _etag, _parse_if_match
 
-__all__ = ["router"]
+__all__ = ["router", "close_cooldown_client", "get_cooldown_client"]
+
+logger = logging.getLogger(__name__)
+
+
+# ── C2 — regen cooldown (D-K20α-02) ──────────────────────────────────────
+#
+# Redis SETNX guard on the two public regen endpoints. Prevents a
+# user from firing regen back-to-back and burning BYOK tokens or
+# hammering the LLM provider. Key includes `scope_id` so the cooldown
+# is per-target (a user on cooldown for project A can still regen
+# project B), matching the "rate-limit the expensive operation, not
+# the user" heuristic.
+#
+# The cooldown is armed at CHECK time (pre-regen). If the regen
+# itself fails (ProviderError, guardrail reject, concurrent-edit),
+# the cooldown STAYS ARMED — rate-limit spam regardless of outcome.
+# This is intentional: a mis-configured BYOK model would otherwise
+# let a user retry every 100ms and still log "regen_cooldown"
+# never-fires.
+#
+# Fallback: if `settings.redis_url` is empty OR the Redis call
+# raises, the check is skipped (availability > abuse protection for
+# a hobby-scale Track 1 deploy). Log + continue.
+
+_REGEN_COOLDOWN_TTL_S = 60
+_cooldown_client: aioredis.Redis | None = None
+_cooldown_client_lock = asyncio.Lock()
+
+
+async def _get_cooldown_client_singleton() -> aioredis.Redis | None:
+    """Lazy, process-global Redis client for the cooldown SETNX guard.
+
+    Returns None when Redis isn't configured so callers degrade to
+    no-cooldown rather than 503. Double-checked locking keeps
+    concurrent first-requests from racing to open two connections.
+    """
+    global _cooldown_client
+    if not settings.redis_url:
+        return None
+    if _cooldown_client is None:
+        async with _cooldown_client_lock:
+            if _cooldown_client is None:
+                _cooldown_client = aioredis.from_url(
+                    settings.redis_url, decode_responses=True
+                )
+    return _cooldown_client
+
+
+async def get_cooldown_client() -> aioredis.Redis | None:
+    """FastAPI ``Depends`` factory. Tests override via
+    ``app.dependency_overrides[get_cooldown_client] = lambda: fake``.
+    """
+    return await _get_cooldown_client_singleton()
+
+
+async def close_cooldown_client() -> None:
+    """Lifespan teardown hook. Idempotent — safe to call when the
+    singleton was never initialised (redis_url empty or the module
+    was imported but no regen ever ran)."""
+    global _cooldown_client
+    client = _cooldown_client
+    _cooldown_client = None
+    if client is not None:
+        try:
+            await client.aclose()
+        except Exception:
+            logger.warning(
+                "regen cooldown: error closing Redis client (non-fatal)",
+                exc_info=True,
+            )
+
+
+def _cooldown_key(
+    user_id: UUID,
+    scope_type: Literal["global", "project"],
+    scope_id: UUID | None,
+) -> str:
+    # "-" suffix for global keeps a stable separator when scope_id is
+    # absent so the key parser can always split on ":" and get 4
+    # segments — avoids the ambiguity of "{user}:global" (3 segments)
+    # vs "{user}:project:{id}" (4 segments).
+    return f"knowledge:regen:cooldown:{user_id}:{scope_type}:{scope_id or '-'}"
+
+
+async def _release_regen_cooldown(
+    client: aioredis.Redis | None,
+    user_id: UUID,
+    scope_type: Literal["global", "project"],
+    scope_id: UUID | None,
+) -> None:
+    """Best-effort cooldown release. Called when regen raises an
+    exception (ProviderError, Neo4j down, pool exhausted, any unhandled
+    error) so a user isn't rate-limited for a SERVER-side fault or a
+    BYOK config they need to fix + retry.
+
+    **Not called** on business outcomes that reach ``_regen_http_envelope``
+    (``regenerated``, ``no_op_similarity``, ``no_op_empty_source``,
+    ``user_edit_lock``, ``regen_concurrent_edit``, ``no_op_guardrail``)
+    — those represent a completed regen attempt and the cooldown should
+    stay armed to rate-limit further attempts.
+
+    Redis errors swallowed: the cooldown is best-effort; a failure to
+    release just means the user waits 60s instead of being able to
+    retry immediately. Preferable to raising over a release error.
+    """
+    if client is None:
+        return
+    key = _cooldown_key(user_id, scope_type, scope_id)
+    try:
+        await client.delete(key)
+    except Exception:
+        logger.warning(
+            "regen cooldown: Redis DELETE errored on release — user "
+            "will wait the full %ds window instead",
+            _REGEN_COOLDOWN_TTL_S,
+            exc_info=True,
+        )
+
+
+async def _check_regen_cooldown(
+    client: aioredis.Redis | None,
+    user_id: UUID,
+    scope_type: Literal["global", "project"],
+    scope_id: UUID | None,
+) -> None:
+    """Raise 429 + Retry-After if this (user, scope) regen'd in the
+    last ``_REGEN_COOLDOWN_TTL_S`` seconds. No-op when Redis is
+    unavailable or the SET command raises.
+    """
+    if client is None:
+        return
+    key = _cooldown_key(user_id, scope_type, scope_id)
+    try:
+        set_ok = await client.set(key, "1", nx=True, ex=_REGEN_COOLDOWN_TTL_S)
+    except Exception:
+        logger.warning(
+            "regen cooldown: Redis SET errored — degrading to no-cooldown",
+            exc_info=True,
+        )
+        return
+    if set_ok:
+        return  # first regen in the window — cooldown now armed
+    try:
+        remaining = await client.ttl(key)
+    except Exception:
+        # Best-effort Retry-After. A rare Redis hiccup on TTL read
+        # shouldn't block the 429 — the caller just sees the full
+        # budget instead of the exact remainder.
+        remaining = _REGEN_COOLDOWN_TTL_S
+    # Redis TTL semantics: -2 = key missing, -1 = no expiry, >=0 = secs.
+    # The key was just observed present via SETNX=False, so -2 is a
+    # race (expired between SET and TTL); -1 can't happen since our
+    # SET always carries EX. Defensive floor at 1 so Retry-After is
+    # never 0 (RFC 7231 §7.1.3 says non-negative integer).
+    retry_after = max(int(remaining) if remaining and remaining > 0 else 1, 1)
+    raise HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail={
+            "error_code": "regen_cooldown",
+            "message": (
+                "Regeneration is on cooldown. Retry after the "
+                "window elapses."
+            ),
+        },
+        headers={"Retry-After": str(retry_after)},
+    )
 
 router = APIRouter(
     prefix="/v1/knowledge",
@@ -368,12 +538,15 @@ async def regenerate_global_bio(
     user_id: UUID = Depends(get_current_user),
     provider_client: ProviderClient = Depends(get_provider_client),
     repo: SummariesRepo = Depends(get_summaries_repo),
+    cooldown: aioredis.Redis | None = Depends(get_cooldown_client),
 ) -> RegenerateResponse:
     """K20α — regenerate the caller's L0 global bio from raw chat turns.
 
     JWT-scoped — the body never carries user_id. Response mapping:
-    see `_regen_http_envelope`.
+    see `_regen_http_envelope`. C2 cooldown: 60s SETNX guard armed at
+    check time; subsequent calls within the window → 429.
     """
+    await _check_regen_cooldown(cooldown, user_id, "global", None)
     try:
         result = await regenerate_global_summary(
             user_id=user_id,
@@ -383,10 +556,14 @@ async def regenerate_global_bio(
             session_factory=neo4j_session,
             provider_client=provider_client,
             summaries_repo=repo,
+            trigger="manual",
         )
     except ProviderError as exc:
-        # Surface BYOK-layer errors as 502 so the FE can tell the user
-        # their own provider returned an error rather than a bug here.
+        # BYOK-layer error — user needs to fix config + retry. Release
+        # cooldown so they don't wait 60s on top of having a broken
+        # provider. Surface as 502 so the FE can tell the user their
+        # own provider returned an error rather than a bug here.
+        await _release_regen_cooldown(cooldown, user_id, "global", None)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail={
@@ -394,6 +571,13 @@ async def regenerate_global_bio(
                 "message": str(exc),
             },
         ) from exc
+    except Exception:
+        # Server-side fault (Neo4j down, pool exhausted, etc.). Let
+        # FastAPI's default 500 handler surface the error, but release
+        # the cooldown first so a legit retry after ops restores
+        # service isn't blocked by the 60s window.
+        await _release_regen_cooldown(cooldown, user_id, "global", None)
+        raise
     return _regen_http_envelope(result)
 
 
@@ -407,14 +591,17 @@ async def regenerate_project_bio(
     user_id: UUID = Depends(get_current_user),
     provider_client: ProviderClient = Depends(get_provider_client),
     repo: SummariesRepo = Depends(get_summaries_repo),
+    cooldown: aioredis.Redis | None = Depends(get_cooldown_client),
 ) -> RegenerateResponse:
     """K20α — regenerate an L1 project summary.
 
     Ownership is enforced inside `regenerate_project_summary` via the
     `upsert_project_scoped` CTE — cross-user scope_id collapses to
     `no_op_guardrail` (422) rather than leaking existence as 404, per
-    KSA §6.4 anti-leak rules.
+    KSA §6.4 anti-leak rules. C2 cooldown: keyed on project_id so a
+    user on cooldown for one project can still regen a sibling.
     """
+    await _check_regen_cooldown(cooldown, user_id, "project", project_id)
     try:
         result = await regenerate_project_summary(
             user_id=user_id,
@@ -425,8 +612,10 @@ async def regenerate_project_bio(
             session_factory=neo4j_session,
             provider_client=provider_client,
             summaries_repo=repo,
+            trigger="manual",
         )
     except ProviderError as exc:
+        await _release_regen_cooldown(cooldown, user_id, "project", project_id)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail={
@@ -434,4 +623,7 @@ async def regenerate_project_bio(
                 "message": str(exc),
             },
         ) from exc
+    except Exception:
+        await _release_regen_cooldown(cooldown, user_id, "project", project_id)
+        raise
     return _regen_http_envelope(result)

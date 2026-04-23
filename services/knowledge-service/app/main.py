@@ -33,6 +33,7 @@ from app.routers.public import extraction as public_extraction
 from app.routers.public import logs as public_logs
 from app.routers.public import projects as public_projects
 from app.routers.public import summaries as public_summaries
+from app.routers.public.summaries import close_cooldown_client
 from app.routers.public import timeline as public_timeline
 from app.routers.public import user_data as public_user_data
 
@@ -50,6 +51,7 @@ async def _close_all_startup_resources() -> None:
     Teardown order mirrors the post-yield block (reverse dependency).
     """
     for close_fn_name, close_fn in (
+        ("cooldown_client", close_cooldown_client),
         ("provider_client", close_provider_client),
         ("embedding_client", close_embedding_client),
         ("book_client", close_book_client),
@@ -300,6 +302,9 @@ async def lifespan(app: FastAPI):
                 logger.warning("Error stopping event consumer", exc_info=True)
 
         # Phase 3 review issue 8: close in reverse dependency order.
+        # C2: close the cooldown Redis client ahead of other resources
+        # since it's self-contained (no inbound dependencies).
+        await close_cooldown_client()
         await close_provider_client()
         await close_embedding_client()
         await close_book_client()

@@ -147,3 +147,81 @@ def test_summarize_project_dispatches_helper(mock_regen):
     assert resp.status_code == 200, resp.json()
     assert resp.json()["status"] == "user_edit_lock"
     assert mock_regen.await_args.kwargs["project_id"] == _PROJECT_ID
+
+
+# ── /review-impl LOW-5 — trigger field forwarding ─────────────────
+
+
+@patch(
+    "app.routers.internal_summarize.get_knowledge_pool",
+    new=MagicMock(return_value=MagicMock()),
+)
+@patch("app.routers.internal_summarize.regenerate_global_summary", new_callable=AsyncMock)
+def test_summarize_defaults_trigger_to_manual(mock_regen):
+    """C2 /review-impl LOW-5: callers that don't supply `trigger`
+    default to 'manual' so the metric counter defaults don't silently
+    conflate scheduled regens into the manual series.
+    """
+    mock_regen.return_value = RegenerationResult(
+        status="no_op_empty_source", skipped_reason="no source"
+    )
+    client = _make_client()
+    resp = client.post(
+        "/internal/summarize",
+        headers=_auth_headers(),
+        json={
+            "user_id": str(_USER_ID),
+            "scope_type": "global",
+            "model_ref": "gpt-4o-mini",
+        },
+    )
+    assert resp.status_code == 200, resp.json()
+    assert mock_regen.await_args.kwargs["trigger"] == "manual"
+
+
+@patch(
+    "app.routers.internal_summarize.get_knowledge_pool",
+    new=MagicMock(return_value=MagicMock()),
+)
+@patch("app.routers.internal_summarize.regenerate_project_summary", new_callable=AsyncMock)
+def test_summarize_forwards_explicit_trigger_scheduled(mock_regen):
+    """C2 /review-impl LOW-5: a future scheduler routing through this
+    endpoint can pass `trigger='scheduled'` and have it reach the
+    metric counter unmodified. Locks the forwarding contract so a
+    regression dropping the kwarg doesn't silently collapse the label.
+    """
+    mock_regen.return_value = RegenerationResult(
+        status="regenerated", summary=None
+    )
+    client = _make_client()
+    resp = client.post(
+        "/internal/summarize",
+        headers=_auth_headers(),
+        json={
+            "user_id": str(_USER_ID),
+            "scope_type": "project",
+            "scope_id": str(_PROJECT_ID),
+            "model_ref": "gpt-4o-mini",
+            "trigger": "scheduled",
+        },
+    )
+    assert resp.status_code == 200, resp.json()
+    assert mock_regen.await_args.kwargs["trigger"] == "scheduled"
+
+
+def test_summarize_rejects_invalid_trigger():
+    """C2 /review-impl LOW-5: Literal validation rejects unknown trigger
+    values so an operator typo doesn't silently land in an unplanned
+    metric series."""
+    client = _make_client()
+    resp = client.post(
+        "/internal/summarize",
+        headers=_auth_headers(),
+        json={
+            "user_id": str(_USER_ID),
+            "scope_type": "global",
+            "model_ref": "gpt-4o-mini",
+            "trigger": "cron",  # not in {manual, scheduled}
+        },
+    )
+    assert resp.status_code == 422

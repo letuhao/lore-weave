@@ -259,6 +259,11 @@ async def test_sweep_maps_regen_status_to_counter(
     assert kwargs["model_ref"] == "gpt-4o-mini"
     assert kwargs["user_id"] == UUID(user_id)
     assert kwargs["project_id"] == UUID(project_id)
+    # C2: scheduler forwards trigger='scheduled' so the metric series
+    # can split scheduled from manual regens. A regression dropping
+    # the kwarg (or flipping it to 'manual') would silently conflate
+    # the two in the counter output — lock it here.
+    assert kwargs["trigger"] == "scheduled"
 
 
 @pytest.mark.asyncio
@@ -625,6 +630,8 @@ async def test_sweep_global_maps_regen_status_to_counter(
     assert kwargs["user_id"] == UUID(user_id)
     # No project_id on global regen — it's an L0 scope.
     assert "project_id" not in kwargs
+    # C2: same trigger='scheduled' contract as the project sweep.
+    assert kwargs["trigger"] == "scheduled"
 
 
 @pytest.mark.asyncio

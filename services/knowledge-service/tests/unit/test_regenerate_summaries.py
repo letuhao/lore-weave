@@ -562,7 +562,7 @@ def test_compute_llm_cost_usd_local_model_zero():
 async def test_regenerate_increments_total_counter_on_happy_path():
     from app.metrics import summary_regen_total
     before = summary_regen_total.labels(
-        scope_type="global", status="regenerated",
+        scope_type="global", status="regenerated", trigger="manual",
     )._value.get()
     current = _summary_stub(content="Old bio", version=1)
     new_summary = _summary_stub(content="A whole new bio text.", version=2)
@@ -578,7 +578,7 @@ async def test_regenerate_increments_total_counter_on_happy_path():
     )
     assert result.status == "regenerated"
     after = summary_regen_total.labels(
-        scope_type="global", status="regenerated",
+        scope_type="global", status="regenerated", trigger="manual",
     )._value.get()
     assert after == before + 1
 
@@ -611,7 +611,7 @@ async def test_regenerate_increments_cost_counter_on_happy_path():
 async def test_regenerate_increments_status_counter_on_edit_lock():
     from app.metrics import summary_regen_total
     before = summary_regen_total.labels(
-        scope_type="global", status="user_edit_lock",
+        scope_type="global", status="user_edit_lock", trigger="manual",
     )._value.get()
     await regenerate_global_summary(
         user_id=_USER_ID,
@@ -623,9 +623,93 @@ async def test_regenerate_increments_status_counter_on_edit_lock():
         summaries_repo=_mock_summaries_repo(),
     )
     after = summary_regen_total.labels(
-        scope_type="global", status="user_edit_lock",
+        scope_type="global", status="user_edit_lock", trigger="manual",
     )._value.get()
     assert after == before + 1
+
+
+# ── C2 — trigger label on summary_regen_total ───────────────────────
+
+
+@pytest.mark.asyncio
+async def test_regenerate_counter_trigger_defaults_to_manual():
+    """C2: public-edge callers that don't pass `trigger` must land in
+    the `trigger='manual'` series so dashboards can split manual vs
+    scheduled regens without requiring every caller to opt-in."""
+    from app.metrics import summary_regen_total
+    before_manual = summary_regen_total.labels(
+        scope_type="global", status="regenerated", trigger="manual",
+    )._value.get()
+    before_scheduled = summary_regen_total.labels(
+        scope_type="global", status="regenerated", trigger="scheduled",
+    )._value.get()
+    current = _summary_stub(content="Old bio", version=1)
+    new_summary = _summary_stub(content="A fresh bio.", version=2)
+    repo = _mock_summaries_repo(current=current, upsert_returns=new_summary)
+    await regenerate_global_summary(
+        user_id=_USER_ID,
+        model_source="user_model",
+        model_ref="gpt-4o-mini",
+        pool=_mock_pool(recent_manual_edit=False),
+        session_factory=_make_session_factory(["p"]),
+        provider_client=_mock_provider_client(new_summary.content),
+        summaries_repo=repo,
+        # trigger omitted — default
+    )
+    after_manual = summary_regen_total.labels(
+        scope_type="global", status="regenerated", trigger="manual",
+    )._value.get()
+    after_scheduled = summary_regen_total.labels(
+        scope_type="global", status="regenerated", trigger="scheduled",
+    )._value.get()
+    assert after_manual == before_manual + 1
+    assert after_scheduled == before_scheduled  # untouched
+
+
+@pytest.mark.asyncio
+async def test_regenerate_counter_trigger_scheduled_routes_to_scheduled_series():
+    """C2: K20.3 scheduler passes `trigger='scheduled'` → lands in the
+    scheduled series, not manual. Locks the contract so a wiring bug
+    dropping the kwarg won't silently conflate the two."""
+    from app.metrics import summary_regen_total
+    before_manual = summary_regen_total.labels(
+        scope_type="project", status="regenerated", trigger="manual",
+    )._value.get()
+    before_scheduled = summary_regen_total.labels(
+        scope_type="project", status="regenerated", trigger="scheduled",
+    )._value.get()
+    current = _summary_stub(
+        content="Old project bio",
+        version=1,
+        scope_type="project",
+        scope_id=str(_PROJECT_ID),
+    )
+    new_summary = _summary_stub(
+        content="Fresh project content.",
+        version=2,
+        scope_type="project",
+        scope_id=str(_PROJECT_ID),
+    )
+    repo = _mock_summaries_repo(current=current, project_upsert_returns=new_summary)
+    await regenerate_project_summary(
+        user_id=_USER_ID,
+        project_id=_PROJECT_ID,
+        model_source="user_model",
+        model_ref="gpt-4o-mini",
+        pool=_mock_pool(recent_manual_edit=False, owns_project=True),
+        session_factory=_make_session_factory(["passage"]),
+        provider_client=_mock_provider_client(new_summary.content),
+        summaries_repo=repo,
+        trigger="scheduled",
+    )
+    after_manual = summary_regen_total.labels(
+        scope_type="project", status="regenerated", trigger="manual",
+    )._value.get()
+    after_scheduled = summary_regen_total.labels(
+        scope_type="project", status="regenerated", trigger="scheduled",
+    )._value.get()
+    assert after_scheduled == before_scheduled + 1
+    assert after_manual == before_manual  # untouched
 
 
 @pytest.mark.asyncio

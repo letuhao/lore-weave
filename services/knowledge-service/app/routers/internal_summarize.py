@@ -40,6 +40,7 @@ from app.db.pool import get_knowledge_pool
 from app.db.repositories.summaries import SummariesRepo
 from app.deps import get_provider_client, get_summaries_repo
 from app.jobs.regenerate_summaries import (
+    RegenTrigger,
     RegenerationResult,
     regenerate_global_summary,
     regenerate_project_summary,
@@ -61,6 +62,13 @@ class SummarizeRequest(BaseModel):
     scope_id: UUID | None = None
     model_source: Literal["user_model", "platform_model"] = "user_model"
     model_ref: str = Field(min_length=1, max_length=200)
+    # C2 — callers that drive a scheduled regen (e.g. the K20.3
+    # scheduler, if/when it routes through this endpoint instead of
+    # calling the helpers directly) pass ``trigger="scheduled"`` so
+    # the metric counter splits scheduled vs manual cleanly. Defaults
+    # to ``"manual"`` to preserve back-compat for human-triggered
+    # callers that pre-dated the label.
+    trigger: RegenTrigger = "manual"
 
     @model_validator(mode="after")
     def _require_scope_id_for_project(self) -> "SummarizeRequest":
@@ -103,6 +111,7 @@ async def summarize(
             session_factory=neo4j_session,
             provider_client=provider_client,
             summaries_repo=summaries_repo,
+            trigger=req.trigger,
         )
     assert req.scope_id is not None  # validator ensures this
     return await regenerate_project_summary(
@@ -114,4 +123,5 @@ async def summarize(
         session_factory=neo4j_session,
         provider_client=provider_client,
         summaries_repo=summaries_repo,
+        trigger=req.trigger,
     )

@@ -64,9 +64,16 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "RegenerationResult",
     "RegenerationStatus",
+    "RegenTrigger",
     "regenerate_global_summary",
     "regenerate_project_summary",
 ]
+
+
+# C2 — distinguishes human-initiated regens (public edge) from the
+# K20.3 scheduler loop so operators can alert on "scheduler silent"
+# or "manual regen spike" independently.
+RegenTrigger = Literal["manual", "scheduled"]
 
 
 # ── Tunables (KSA §7.6 reference values) ─────────────────────────────
@@ -339,15 +346,19 @@ async def _regenerate_core(
     model_source: Literal["user_model", "platform_model"],
     model_ref: str,
     source_types: list[str],
+    trigger: RegenTrigger = "manual",
 ) -> RegenerationResult:
     """Shared regen flow for both L0 and L1.
 
-    K20.7 instrumentation: every return path increments
-    ``summary_regen_total{scope_type, status}``, and the wall-time
-    histogram ``summary_regen_duration_seconds{scope_type}`` covers
-    the whole flow regardless of status. Successful regens also
-    increment token-count and USD-cost counters using the LLM usage
-    report + ``pricing.cost_per_token``.
+    K20.7 + C2 instrumentation: every return path increments
+    ``summary_regen_total{scope_type, status, trigger}``, and the
+    wall-time histogram ``summary_regen_duration_seconds{scope_type}``
+    covers the whole flow regardless of status. Successful regens
+    also increment token-count and USD-cost counters using the LLM
+    usage report + ``pricing.cost_per_token``. Duration/cost/tokens
+    are NOT split by trigger — per-scope granularity is enough for
+    capacity planning and splitting further would quadruple series
+    count without matching operator need.
     """
     started_at = time.perf_counter()
     result = await _regenerate_core_inner(
@@ -360,7 +371,7 @@ async def _regenerate_core(
         source_types=source_types,
     )
     summary_regen_total.labels(
-        scope_type=scope_type, status=result.status
+        scope_type=scope_type, status=result.status, trigger=trigger
     ).inc()
     summary_regen_duration_seconds.labels(scope_type=scope_type).observe(
         time.perf_counter() - started_at
@@ -573,6 +584,7 @@ async def regenerate_global_summary(
     session_factory: Any,
     provider_client: ProviderClient,
     summaries_repo: SummariesRepo,
+    trigger: RegenTrigger = "manual",
 ) -> RegenerationResult:
     """K20.2 — regenerate the user's L0 global bio.
 
@@ -595,6 +607,7 @@ async def regenerate_global_summary(
         model_source=model_source,
         model_ref=model_ref,
         source_types=["chat_turn"],
+        trigger=trigger,
     )
 
 
@@ -608,6 +621,7 @@ async def regenerate_project_summary(
     session_factory: Any,
     provider_client: ProviderClient,
     summaries_repo: SummariesRepo,
+    trigger: RegenTrigger = "manual",
 ) -> RegenerationResult:
     """K20.1 — regenerate a project's L1 summary.
 
@@ -630,4 +644,5 @@ async def regenerate_project_summary(
         model_source=model_source,
         model_ref=model_ref,
         source_types=["chat_turn", "chapter"],
+        trigger=trigger,
     )

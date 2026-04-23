@@ -212,6 +212,7 @@ async def sweep_projects_once(
                         session_factory=session_factory,
                         provider_client=provider_client,
                         summaries_repo=summaries_repo,
+                        trigger="scheduled",
                     )
                 except Exception:
                     logger.exception(
@@ -420,6 +421,7 @@ async def sweep_global_once(
                         session_factory=session_factory,
                         provider_client=provider_client,
                         summaries_repo=summaries_repo,
+                        trigger="scheduled",
                     )
                 except Exception:
                     logger.exception(
