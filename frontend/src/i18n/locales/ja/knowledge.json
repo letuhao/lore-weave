@@ -16,8 +16,37 @@
   "placeholder": {
     "title": "近日公開",
     "bodies": {
-      "timeline": "事実とイベントを時系列で表示します。",
       "raw": "抽出されたナレッジドロワーをベクトル検索できます。"
+    }
+  },
+  "timeline": {
+    "loading": "タイムラインを読み込み中…",
+    "loadFailed": "タイムラインを読み込めませんでした: {{error}}",
+    "empty": "まだイベントは抽出されていません。抽出パイプラインが実行されるとここに表示されます。",
+    "emptyForFilters": "条件に一致するイベントがありません。",
+    "filters": {
+      "project": "プロジェクト",
+      "anyProject": "すべてのプロジェクト"
+    },
+    "row": {
+      "orderLabel": "物語順",
+      "noOrder": "—",
+      "chapterLabel": "章",
+      "participantsMore": "+{{count}}名",
+      "confidenceLabel": "信頼度"
+    },
+    "detail": {
+      "summary": "要約",
+      "noSummary": "要約は抽出されていません。",
+      "participants": "参加者",
+      "sources": "ソース"
+    },
+    "pagination": {
+      "range": "{{total}} 件中 {{from}}–{{to}}",
+      "refreshing": "更新中…",
+      "prev": "前へ",
+      "next": "次へ",
+      "backToFirst": "最初のページへ"
     }
   },
   "entities": {

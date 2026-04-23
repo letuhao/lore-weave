@@ -16,8 +16,37 @@
   "placeholder": {
     "title": "Coming soon",
     "bodies": {
-      "timeline": "View facts and events chronologically.",
       "raw": "Vector-search the full set of extracted knowledge drawers."
+    }
+  },
+  "timeline": {
+    "loading": "Loading timeline…",
+    "loadFailed": "Couldn't load timeline: {{error}}",
+    "empty": "No events extracted yet — they appear here as the extraction pipeline runs.",
+    "emptyForFilters": "No events match these filters.",
+    "filters": {
+      "project": "Project",
+      "anyProject": "Any project"
+    },
+    "row": {
+      "orderLabel": "Narrative order",
+      "noOrder": "—",
+      "chapterLabel": "Chapter",
+      "participantsMore": "+{{count}} more",
+      "confidenceLabel": "Confidence"
+    },
+    "detail": {
+      "summary": "Summary",
+      "noSummary": "No summary extracted.",
+      "participants": "Participants",
+      "sources": "Sources"
+    },
+    "pagination": {
+      "range": "{{from}}–{{to}} of {{total}}",
+      "refreshing": "refreshing…",
+      "prev": "Previous",
+      "next": "Next",
+      "backToFirst": "Back to first page"
     }
   },
   "entities": {

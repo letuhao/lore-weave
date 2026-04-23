@@ -16,8 +16,37 @@
   "placeholder": {
     "title": "Sắp ra mắt",
     "bodies": {
-      "timeline": "Xem sự kiện và dữ kiện theo thứ tự thời gian.",
       "raw": "Tìm kiếm vectơ trên toàn bộ ngăn kéo tri thức đã trích xuất."
+    }
+  },
+  "timeline": {
+    "loading": "Đang tải dòng thời gian…",
+    "loadFailed": "Không tải được dòng thời gian: {{error}}",
+    "empty": "Chưa có sự kiện nào được trích xuất — chúng sẽ xuất hiện ở đây khi quy trình trích xuất chạy.",
+    "emptyForFilters": "Không có sự kiện nào khớp với bộ lọc.",
+    "filters": {
+      "project": "Dự án",
+      "anyProject": "Tất cả dự án"
+    },
+    "row": {
+      "orderLabel": "Thứ tự kể chuyện",
+      "noOrder": "—",
+      "chapterLabel": "Chương",
+      "participantsMore": "+{{count}} người nữa",
+      "confidenceLabel": "Độ tin cậy"
+    },
+    "detail": {
+      "summary": "Tóm tắt",
+      "noSummary": "Chưa có tóm tắt được trích xuất.",
+      "participants": "Người tham gia",
+      "sources": "Nguồn"
+    },
+    "pagination": {
+      "range": "{{from}}–{{to}} trên {{total}}",
+      "refreshing": "đang làm mới…",
+      "prev": "Trang trước",
+      "next": "Trang sau",
+      "backToFirst": "Về trang đầu"
     }
   },
   "entities": {

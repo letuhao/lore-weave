@@ -314,6 +314,51 @@ export type EntityMergeErrorCode =
   | 'glossary_conflict'
   | 'unknown';
 
+// ── K19e.2 — Timeline list ────────────────────────────────────────────
+
+/**
+ * K19e.2 — timeline event. Mirrors
+ * services/knowledge-service/app/db/neo4j_repos/events.py::Event
+ * one-to-one so a future BE field addition surfaces here without
+ * breaking the union. Fields not yet rendered by the FE (chronological
+ * _order, archived_at) are retained in the type so downstream cycles
+ * can start using them without a fresh api.ts PR.
+ */
+export interface TimelineEvent {
+  id: string;
+  user_id: string;
+  project_id: string | null;
+  title: string;
+  canonical_title: string;
+  summary: string | null;
+  chapter_id: string | null;
+  event_order: number | null;
+  chronological_order: number | null;
+  participants: string[];
+  confidence: number;
+  source_types: string[];
+  evidence_count: number;
+  mention_count: number;
+  archived_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface TimelineListParams {
+  project_id?: string;
+  /** Strict `event_order > after_order`. BE defers wall-clock date
+   *  range (D-K19e-α-02) so narrative order is the only axis for MVP. */
+  after_order?: number;
+  before_order?: number;
+  limit?: number;
+  offset?: number;
+}
+
+export interface TimelineResponse {
+  events: TimelineEvent[];
+  total: number;
+}
+
 const BASE = '/v1/knowledge';
 
 // D-K8-03: weak ETag format used by the knowledge-service routes.
@@ -802,6 +847,27 @@ export const knowledgeApi = {
         method: 'POST',
         token,
       },
+    );
+  },
+
+  // ── K19e.2 — GET /v1/knowledge/timeline ──────────────────────────────
+
+  listTimeline(
+    params: TimelineListParams,
+    token: string,
+  ): Promise<TimelineResponse> {
+    const qs = new URLSearchParams();
+    if (params.project_id != null) qs.set('project_id', params.project_id);
+    if (params.after_order != null)
+      qs.set('after_order', String(params.after_order));
+    if (params.before_order != null)
+      qs.set('before_order', String(params.before_order));
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    if (params.offset != null) qs.set('offset', String(params.offset));
+    const q = qs.toString();
+    return apiJson<TimelineResponse>(
+      `${BASE}/timeline${q ? `?${q}` : ''}`,
+      { token },
     );
   },
 };

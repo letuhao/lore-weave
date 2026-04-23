@@ -1,11 +1,37 @@
-# Session Handoff — Session 50 (K19b + K19c + K20 + K19d complete · K19e OPENED)
+# Session Handoff — Session 50 (K19b + K19c + K20 + K19d complete · K19e α+β shipped)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-23 (session 50)
-> **HEAD:** `10d8e95` (K19e Cycle α; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** `<pending-K19e-β>` (K19e Cycle β; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 16 cycles shipped (14 Track 3 + 2 Track 2 close-out) · K19b/K19c/K20/K19d complete · K19e OPENED
+## Session 50 — 17 cycles shipped (15 Track 3 + 2 Track 2 close-out) · K19b/K19c/K20/K19d complete · K19e α+β shipped
+
+### Cycle 17 — K19e Cycle β [FE XL] — TimelineTab consuming α endpoint
+
+FE consumer on top of Cycle α's BE. Ships the user-facing Timeline tab. New hook `useTimeline` (userId-scoped queryKey per K19d β M1, 30s staleTime, `enabled: !!accessToken`). New presentational `TimelineEventRow` with inline expand — event_order / title / chapter-short / up-to-3 participants chips + `+N more` overflow / confidence clamped to [0,100]. New container `TimelineTab` with project filter + prev/next pagination + loading/error/empty states + past-end escape hatch ("Back to first page" button when `total>0 && events=[] && offset>0`). KnowledgePage swaps PlaceholderTab for TimelineTab and narrows PlaceholderName to `'raw'` only. 20 i18n keys × 4 locales + `placeholder.bodies.timeline` removed from all 4 locales + TIMELINE_KEYS iterator locks both additions AND removal.
+
+`/review-impl` caught **1 MED + 3 LOW + 2 COSMETIC, all fixed in-cycle:**
+- **MED** pagination prev/next were untested — added 3 tests: Next advances offset, Prev re-disables at offset=0, Prev/Next both disabled when total fits one page.
+- **L2** no `enabled: !!accessToken` regression test — added `renderHook` with `accessToken: null` asserting mock never called.
+- **L3** `formatConfidence` didn't clamp to [0,100] — `Math.max(0, Math.min(100, pct))` defense vs data drift.
+- **L6** stale-offset race when total shrinks below offset — added escape-hatch button + new `timeline.pagination.backToFirst` i18n key × 4 locales.
+- **COSMETIC #4** duplicate `data-testid="timeline-event"` on outer `<li>` — removed.
+- **COSMETIC #5** `_eventStub` underscore prefix misleading — renamed `EVENT_STUB`.
+
+Build-time catches: `aria-expanded={boolean}` lint → switched to explicit `'true'|'false'` string; pagination tests initially used `mockClear()` + call-count assertions that raced with react-query's in-flight resolution → rewrote to assert DOM state transitions (Prev button disabled/enabled) which tests the actual user-visible contract.
+
+**What Cycle γ (the next K19e piece) now inherits:**
+- Range inputs for `after_order` / `before_order` can drop straight into TimelineTab — the hook already accepts them.
+- Entity-scope drill-down requires BE work first (D-K19e-α-01 deferral).
+- Chapter title resolution still shows raw UUID short form (D-K19e-β-01).
+- Raw drawers tab is the next FE-only big piece (K19e.4+).
+
+**Test deltas at K19e Cycle β end:**
+- FE knowledge vitest: **253 pass** (was 232 at K19d γ-b end; **+21** = 4 hook + 9 tab + 8 iterator/placeholder-removal)
+- `tsc --noEmit` clean
+
+---
 
 ### Cycle 16 — K19e Cycle α [BE L] — Timeline list endpoint (K19e.2)
 

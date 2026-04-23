@@ -566,4 +566,52 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
       expect((value as string).length).toBeGreaterThan(0);
     }
   });
+
+  // K19e Cycle β — Timeline tab. Keys live under top-level `timeline.*`.
+  const TIMELINE_KEYS = [
+    'loading',
+    'loadFailed',
+    'empty',
+    'emptyForFilters',
+    'filters.project',
+    'filters.anyProject',
+    'row.orderLabel',
+    'row.noOrder',
+    'row.chapterLabel',
+    'row.participantsMore',
+    'row.confidenceLabel',
+    'detail.summary',
+    'detail.noSummary',
+    'detail.participants',
+    'detail.sources',
+    'pagination.range',
+    'pagination.refreshing',
+    'pagination.prev',
+    'pagination.next',
+    'pagination.backToFirst',
+  ] as const;
+
+  it.each(LOCALES)(
+    '%s has every K19e timeline.* key populated',
+    (_tag, bundle) => {
+      const root = (bundle as any).timeline ?? {};
+      for (const path of TIMELINE_KEYS) {
+        const value = resolveKey(root, path);
+        expect(typeof value, `locale missing timeline.${path}`).toBe('string');
+        expect((value as string).length).toBeGreaterThan(0);
+      }
+    },
+  );
+
+  // K19e Cycle β also removed `placeholder.bodies.timeline` from every
+  // locale. Lock the removal so a future regression doesn't sneak the
+  // stale "coming soon" string back into a build — the Timeline tab is
+  // live and will never route through PlaceholderTab again.
+  it.each(LOCALES)(
+    '%s no longer ships the stale placeholder.bodies.timeline string',
+    (_tag, bundle) => {
+      const bodies = (bundle as any).placeholder?.bodies ?? {};
+      expect(bodies.timeline).toBeUndefined();
+    },
+  );
 });

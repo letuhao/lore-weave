@@ -7,13 +7,14 @@ import { GlobalBioTab } from '@/features/knowledge/components/GlobalBioTab';
 import { PrivacyTab } from '@/features/knowledge/components/PrivacyTab';
 import { ExtractionJobsTab } from '@/features/knowledge/components/ExtractionJobsTab';
 import { EntitiesTab } from '@/features/knowledge/components/EntitiesTab';
+import { TimelineTab } from '@/features/knowledge/components/TimelineTab';
 
 type Tab = 'projects' | 'jobs' | 'global' | 'entities' | 'timeline' | 'raw' | 'privacy';
 
-// Placeholders for Timeline/Raw land in K19e. Until then those tabs
-// render "Coming soon" so the K19a-shipped navigation is complete.
-// (jobs live as of K19b.2; entities live as of K19d β.)
-type PlaceholderName = 'timeline' | 'raw';
+// The only placeholder left is "raw" — K19e Cycle β shipped the
+// Timeline tab proper. (jobs live as of K19b.2; entities as of K19d β;
+// timeline as of K19e β.)
+type PlaceholderName = 'raw';
 
 const TAB_DEFS: { id: Tab; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'projects', icon: FolderOpen },
@@ -69,7 +70,7 @@ export function KnowledgePage() {
       {activeTab === 'jobs' && <ExtractionJobsTab />}
       {activeTab === 'global' && <GlobalBioTab />}
       {activeTab === 'entities' && <EntitiesTab />}
-      {activeTab === 'timeline' && <PlaceholderTab name="timeline" />}
+      {activeTab === 'timeline' && <TimelineTab />}
       {activeTab === 'raw' && <PlaceholderTab name="raw" />}
       {activeTab === 'privacy' && <PrivacyTab />}
     </div>
