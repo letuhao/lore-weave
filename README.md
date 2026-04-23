@@ -233,6 +233,18 @@ Every character trait, location detail, and plot event you define becomes contex
 
 ---
 
+## Beyond Novels: Living Worlds
+
+LoreWeave's long-term direction extends from *writing novels* to *playing inside them*. Once a book's canon lives in the knowledge graph, the characters, locations, and world rules can be animated — NPCs driven by LLMs and grounded in your lore, a narrator that respects your canon, scenes that other players can join.
+
+This is a **text-based LLM MMO RPG** layered on top of the novel platform — same knowledge graph, same glossary, same canon. Each book becomes a reality you (or readers you invite) can step into as a player character.
+
+The novel platform remains the MVP; the game is an extension that reuses its substrate, not a replacement.
+
+**Design track:** [`docs/03_planning/LLM_MMO_RPG/`](docs/03_planning/LLM_MMO_RPG/) — vision, storage architecture (event sourcing + DB-per-reality), multiverse model (peer realities, 4-layer canon), PC design, and 179 features cataloged across V1 (solo RP) → V2 (coop scene) → V3 (full MMO). Implementation is gated on V1 novel-platform maturity and prototype-level cost/retrieval-quality data.
+
+---
+
 ## Quick Start
 
 ### Docker (recommended)
@@ -280,10 +292,13 @@ LoreWeave is model-agnostic. Connect any provider:
 | **Phase 3** | Knowledge Services — Wiki builder, Q&A extraction, timeline | Planned |
 | **Phase 4** | Continuation & Canon Safety — AI story continuation grounded in canon | Planned |
 | **Phase 5** | Hardening & Scale — Performance, multi-tenancy, cloud deployment | Planned |
+| **Phase 6+** | **Living Worlds (extension)** — LLM-driven NPCs, shared persistent realities, player characters, multiverse model ([design track](docs/03_planning/LLM_MMO_RPG/)) | Design track |
 
 **Planned services:** RAG Index (vector search), Story Wiki (auto-generated wikis), QA Extraction (grounded Q&A), Continuation (canon-aware drafting), Orchestrator (LangGraph multi-agent workflows).
 
 **Planned infrastructure:** Neo4j for native vector search + knowledge graph, PostgreSQL 18 advanced features (JSON_TABLE, virtual columns, UUIDv7).
+
+**Extension services (Phase 6+):** world-service, roleplay-service, publisher, meta-worker, event-handler, migration-orchestrator, admin-cli — see [LLM_MMO_RPG/](docs/03_planning/LLM_MMO_RPG/) for architecture.
 
 ---
 

@@ -1,29 +1,31 @@
-# LLM MMO RPG — Exploratory Planning Folder
+# LLM MMO RPG — Extension Design Track (Phase 6+)
 
-> **Status:** Exploratory — **NOT approved for implementation**
+> **Status:** Extension design track — **core long-term direction** (Phase 6+ on root roadmap)
 > **Created:** 2026-04-23
-> **Blocks:** Nothing. Phase 1–5 work continues unaffected.
-> **Gated on:** Resolving the problems listed in `01_OPEN_PROBLEMS.md`.
+> **Blocks:** Nothing. Phase 1–5 novel-platform work continues unaffected.
+> **Gated on:** V1 novel-platform maturity + remaining `OPEN` problems in `01_OPEN_PROBLEMS.md` (A4 retrieval quality, D1 cost/user-hour, E3 IP ownership).
 
 ---
 
 ## Why this folder exists
 
-LoreWeave has a long-term product direction worth preserving but not worth acting on yet: a **text-based MMO RPG** where NPCs, narrator, and world events are driven by LLMs and grounded in the LoreWeave knowledge graph + glossary + book canon.
+LoreWeave's long-term direction extends from **writing novels** to **playing inside the worlds you write**: a text-based MMO RPG where NPCs, narrator, and world events are driven by LLMs and grounded in the LoreWeave knowledge graph + glossary + book canon. This is the extension referenced as **Phase 6+** in the root [README](../../../README.md).
+
+The novel platform remains the MVP; this track is a committed extension that reuses the same substrate (glossary, knowledge graph, book canon), not a replacement.
 
 This folder exists to:
 
-1. **Preserve the vision** in a way that stays honest about how hard it is
-2. **Track the open problems** that must be solved (or consciously accepted as unsolved) before any code is written
-3. **Prevent premature commitment** — the ideas don't become tickets until the problems are addressed
+1. **Hold the extension design** — vision, architecture, multiverse model, PC semantics, storage engineering, open problems, decisions
+2. **Track the open problems** that must be solved (or consciously accepted) before implementation begins
+3. **Stage the commitment** — the design is locked; implementation is gated on V1 novel-platform maturity and prototype-level cost/retrieval data
 4. **Keep the conversation resumable** — any future session can pick up here
 
 ## What this folder is NOT
 
-- Not a design doc to implement from
-- Not on the roadmap (`09_ROADMAP_OVERVIEW.md`)
+- Not an implementation-ready design doc — each deferred big feature (DF1–DF13) graduates to its own `10X_*.md` when work begins
+- Not part of active Phase 1–5 implementation — status on root roadmap is **Design track**, not In Progress
 - Not a dependency for any in-flight module
-- Not a commitment to build anything
+- Not a scheduled milestone — "Phase 6+" means "after V1 novel platform is stable", not a calendar date
 
 ## Contents
 
