@@ -75,10 +75,10 @@ See [00_VISION.md](00_VISION.md) for the dream, [01_OPEN_PROBLEMS.md](01_OPEN_PR
 
 ### Multiverse-specific risks (M1–M7 in [01 §M](01_OPEN_PROBLEMS.md)) — NOT yet batch-addressed
 - M1 Reality discovery (**PARTIAL — resolved 2026-04-23**) — 7-layer design in [03 §9.1](03_MULTIVERSE_MODEL.md#91-reality-discovery), M1-D1..D7 locked; weight tuning + preview format pending V1 data
-- M2 Storage cost inactive realities (PARTIAL)
+- M2 Storage cost inactive realities (**PARTIAL — confirmed MITIGATED in 03 §11 on 2026-04-23**) — all layers locked (MV10/MV11/R9-L6/MV4-b/M1-D5); residual platform-mode tier quota deferred to `103_PLATFORM_MODE_PLAN.md`
 - M3 Canonization contamination (**PARTIAL — resolved 2026-04-23**) — 8-layer safeguards in [03 §9.7](03_MULTIVERSE_MODEL.md#97-canonization-safeguards--m3-resolution), M3-D1..D8 locked; DF3 implementation + E3 legal remain independent (platform-mode launch gate; self-hosted exempt)
-- M4 L1/L2 update propagation (OPEN — **could bump to PARTIAL** after R5-L2 event propagation)
-- M5 Fork depth explosion (PARTIAL — R9-L3 auto-rebase helps)
+- M4 L1/L2 update propagation (**PARTIAL — resolved 2026-04-23**) — 6-layer author-safety UX in [03 §9.8](03_MULTIVERSE_MODEL.md#98-canon-update-propagation--m4-resolution) reusing R5-L2 xreality infrastructure; M4-D1..D6 locked
+- M5 Fork depth explosion (**PARTIAL — confirmed MITIGATED in 03 §11 on 2026-04-23**) — MV9 auto-rebase at N=5 + projection flattening + R4-L5 ops metrics; threshold tuning pending V1 data
 - M6 Cross-reality analytics (KNOWN pattern)
 - M7 Concept complexity for users (**PARTIAL — resolved 2026-04-23**) — 5-layer progressive disclosure in [03 §9.6](03_MULTIVERSE_MODEL.md#96-progressive-disclosure--m7-resolution), M7-D1..D5 locked + new governance doc [`UI_COPY_STYLEGUIDE.md`](../../02_governance/UI_COPY_STYLEGUIDE.md); tutorial A/B + tier thresholds pending V1 data
 

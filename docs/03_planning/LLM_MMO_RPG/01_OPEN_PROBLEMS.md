@@ -372,7 +372,14 @@ New category introduced by the multiverse model in [03_MULTIVERSE_MODEL.md §11]
 - Preview-content caching freshness policy
 
 ### M2. Storage cost of inactive realities — **PARTIAL**
-Users fork freely, abandon 30 minutes later → DB rows accumulate. Auto-freeze policy + compression + fork quotas mitigate. Default policy in [03 §12](03_MULTIVERSE_MODEL.md) pending confirmation.
+
+**Problem:** Users fork freely, abandon 30 minutes later → DB rows accumulate across thousands of inactive realities.
+
+**Resolved by:** All mitigation layers locked — MV10 (30d auto-freeze), MV11 (90d auto-archive), R9-L6 (soft-delete via rename with 90d hold), MV4-b (V1 no fork quota; platform-mode tier quota deferred), M1-D5 (hibernated/frozen hidden from discovery). Status **MITIGATED in [03 §11.M2](03_MULTIVERSE_MODEL.md#m2-storage-cost-of-many-inactive-realities--mitigated)**; kept `PARTIAL` in 01 for residual platform-mode tier detail.
+
+**Residual `OPEN`:**
+- Platform-mode fork-quota tier specifics — deferred to `103_PLATFORM_MODE_PLAN.md`
+- Compression thresholds for long-term archived events — V3+ tuning
 
 ### M3. Canonization contamination — **PARTIAL**
 
@@ -387,11 +394,26 @@ Users fork freely, abandon 30 minutes later → DB rows accumulate. Auto-freeze 
 - Edge cases: deleted PC / banned user / retroactive opt-out — DF3 policy
 - **E3 (IP ownership)** — independent legal blocker for platform-mode launch; self-hosted mode exempt
 
-### M4. Inconsistent L1/L2 updates across reality lifetimes — **OPEN**
-Author edits L2 after realities exist. Cascade rule says L3 overrides win → author's change doesn't apply in overriding realities. Could confuse authors. Needs UI surfacing ("N realities have overridden this").
+### M4. Inconsistent L1/L2 updates across reality lifetimes — **PARTIAL**
+
+**Problem:** Author edits L2 after realities exist. Cascade rule says overriding realities' L3 events win → author's change doesn't apply there. Confuses authors expecting "my change applies everywhere."
+
+**Resolved by:** 6-layer author-safety UX in [03 §9.8](03_MULTIVERSE_MODEL.md#98-canon-update-propagation--m4-resolution) — cascade-impact preview before edit, default passive read-through, optional force-propagate with 3-gate consent (opt-in + owner consent + R13 audit), louder L1 warnings with conflict listing, reuse of locked R5-L2 xreality channels, glossary entity change timeline. Decisions M4-D1..D6 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+
+**Residual `OPEN` (blocks SOLVED):**
+- Compensating L3 event schema specifics — DF3-adjacent
+- Notification copy per M7 `UI_COPY_STYLEGUIDE.md`
+- Consent mechanism for ownerless / abandoned realities — governance policy
+- Runtime canon-guardrail prompt discipline for L1 enforcement — A6-adjacent
 
 ### M5. Fork depth explosion — **PARTIAL**
-Forks of forks of forks → deep ancestry chains. Mitigated by depth limit (default 5) + projection flattening. Watch in practice.
+
+**Problem:** Snapshot fork allows forks of forks of forks → deep ancestry chains → cascading read across N reality_ids at load time.
+
+**Resolved by:** MV9 auto-rebase at depth N=5 (flatten ancestor chain into fresh-seeded reality with inherited snapshot), projection-table cascade flattening at read ([03 §7](03_MULTIVERSE_MODEL.md)), ops metrics per shard including ancestry depth (R4-L5). Status **MITIGATED in [03 §11.M5](03_MULTIVERSE_MODEL.md#m5-fork-explosion-depth--mitigated)**; kept `PARTIAL` in 01 for threshold tuning.
+
+**Residual `OPEN`:**
+- N=5 depth threshold — V1 starting value, tune from ops data on real chain behavior
 
 ### M6. Cross-reality analytics — **KNOWN PATTERN**
 "Alice is alive in how many realities?" requires scan across reality_registry + projection rows. ETL to ClickHouse for analytics. Pattern is standard; cost is real but predictable.
@@ -421,10 +443,10 @@ Forks of forks of forks → deep ancestry chains. Mitigated by depth limit (defa
 | E. Moderation & legal | 1 | 1 | 1 | 0 |
 | F. Content design | 2 | 1 | 0 | 1 |
 | G. Testing & ops | 3 | 0 | 0 | 0 |
-| **M. Multiverse-specific** | **1** | **5** | **1** | **0** |
-| **Total** | **15** | **16** | **5** | **2** |
+| **M. Multiverse-specific** | **0** | **6** | **1** | **0** |
+| **Total** | **14** | **17** | **5** | **2** |
 
-> **Note:** M3 resolution both moved M3 `OPEN`→`PARTIAL` AND reconciled a pre-existing off-by-one in the M baseline count (originally documented as 3 but actual OPEN items were 4 before M1). OPEN count visible here stays at 1 because the reconcile absorbs the M3 transition; M4 is the sole remaining M-category OPEN item.
+> **Note:** M batch fully closed 2026-04-23. M3 resolution reconciled a pre-existing off-by-one in the M baseline count (originally documented as 3 OPEN but actual was 4 before M1 resolution). Current counts accurately reflect: M1/M2/M3/M4/M5/M7 all `PARTIAL`, M6 `KNOWN PATTERN`. M2/M3/M4/M5 additionally marked **MITIGATED in [03 §11](03_MULTIVERSE_MODEL.md)**; they remain `PARTIAL` in 01 due to residual sub-items pending V1 data or external input.
 
 **Deltas across design rounds:**
 - A1 `OPEN` → `PARTIAL` (R8 [§12H](02_STORAGE_ARCHITECTURE.md) resolves infrastructure; semantic layer still open)
@@ -436,8 +458,12 @@ Forks of forks of forks → deep ancestry chains. Mitigated by depth limit (defa
 - **M1 `OPEN` → `PARTIAL`** (2026-04-23 — 7-layer discovery design in [03 §9.1](03_MULTIVERSE_MODEL.md#91-reality-discovery); weight tuning + preview format pending V1 data; M1-D1..D7 locked in [OPEN_DECISIONS.md](OPEN_DECISIONS.md))
 - **M7 `OPEN` → `PARTIAL`** (2026-04-23 — 5-layer progressive disclosure in [03 §9.6](03_MULTIVERSE_MODEL.md#96-progressive-disclosure--m7-resolution); tutorial A/B + tier thresholds pending V1 data; M7-D1..D5 locked + new governance doc `UI_COPY_STYLEGUIDE.md`)
 - **M3 `OPEN` → `PARTIAL`** (2026-04-23 — 8-layer canonization safeguards in [03 §9.7](03_MULTIVERSE_MODEL.md#97-canonization-safeguards--m3-resolution); M3-D1..D8 locked. Framework-level TECHNICAL + UX safeguards; DF3 implements; E3 legal review remains an independent platform-mode launch gate — self-hosted exempt)
+- **M4 `OPEN` → `PARTIAL`** (2026-04-23 — 6-layer author-safety UX in [03 §9.8](03_MULTIVERSE_MODEL.md#98-canon-update-propagation--m4-resolution) reusing locked R5-L2 xreality infrastructure; M4-D1..D6 locked)
+- **M2 `PARTIAL` → `MITIGATED`** in 03 only (2026-04-23 — all mitigation layers locked: MV10/MV11/R9-L6/MV4-b/M1-D5 cohesive)
+- **M5 `PARTIAL` → `MITIGATED`** in 03 only (2026-04-23 — MV9 auto-rebase + projection flattening + ops metrics cohesive)
+- **M category batch fully closed** (2026-04-23 — M1/M7/M3/M4 all moved to `PARTIAL`; M2/M5 confirmed MITIGATED in 03; M6 KNOWN PATTERN unchanged)
 
-**Interpretation:** Systematic design resolutions have compressed the OPEN set from 18 → 17 → 16 → 15, and moved critical-path items to PARTIAL. Remaining single-problem-kills-product severity items: **A4** (retrieval quality — needs measurement), **D1** (cost per user-hour — needs prototype), **E3** (IP — needs legal). Critical-path list: still 3. M-category batch progress: M1 ✓ · M2 🟡 · M3 ✓ · M4 ❓ · M5 🟡 · M6 (known) · M7 ✓ — only M4 remains fully open.
+**Interpretation:** Systematic design resolutions have compressed the OPEN set from 18 → 17 → 16 → 15 → 14, with every multiverse-specific risk now having at least a PARTIAL answer. Remaining single-problem-kills-product severity items: **A4** (retrieval quality — needs measurement), **D1** (cost per user-hour — needs prototype), **E3** (IP — needs legal). Critical-path list: still 3. M-category batch is **complete** — no fully OPEN items remain in M.
 
 ## What "ready to implement" would look like
 

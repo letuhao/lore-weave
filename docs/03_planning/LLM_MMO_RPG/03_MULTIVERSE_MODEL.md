@@ -632,6 +632,72 @@ Canonized content is visually distinguishable from author-original:
 - Edge cases: canonized event from deleted PC / banned user / retroactive opt-out — DF3 policy
 - **E3 (IP ownership)** — independent legal review, platform-mode launch gate
 
+### 9.8 Canon update propagation — M4 resolution
+
+This section resolves **M4 (Inconsistent L1/L2 updates across reality lifetimes)** — see [01 §M4](01_OPEN_PROBLEMS.md#m4-inconsistent-l1l2-updates-across-reality-lifetimes--partial). Infrastructure (xreality.* event channels + meta-worker service) is **already locked via R5-L2**; this section adds the **author-safety UX layer**. Decisions M4-D1..D6 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+
+#### 9.8.1 Preview before L1/L2 edit (M4-D1)
+
+Before author commits any L1/L2 edit in glossary / book editor, a modal shows:
+
+- `N realities will see this change` (read-through per cascade §6)
+- `M realities have overridden this attribute locally` (won't see — their L3 wins per cascade §3)
+- Breakdown by reality status: active / frozen / archived
+- Per-reality drill-down on demand: reality name, override event_id, override timestamp, current L3 value
+
+#### 9.8.2 Default = passive read-through (M4-D2)
+
+By default, L1/L2 edits don't force anything. Cascade rule (§3 + §6) handles it automatically:
+
+- Realities that haven't overridden: see new L1/L2 on next read
+- Realities that overrode: their L3 wins (correct by multiverse design — divergence is a feature, not a bug)
+
+Safe, non-destructive default. Author cannot accidentally corrupt active realities.
+
+#### 9.8.3 Optional force-propagate (M4-D3)
+
+For cases where author needs the change to apply EVERYWHERE (canon corrections, typos, continuity errors):
+
+- Writes compensating L3 event in each overriding reality
+- Requires **3 gates**: (a) explicit force-propagate opt-in at edit time, (b) reality-owner consent (for realities with active creators), (c) R13 admin action audit — logged as `admin_override` event per R13-L2
+- Scope-limited — author must classify: `canon_correction` / `typo_fix` / `continuity_error`
+- Affected-reality players notified: *"The author updated {attribute} globally; your reality's local version has been overridden."*
+- Reality-owner veto — if any owner rejects, propagation skips that reality (stays with L3 override)
+
+#### 9.8.4 L1 axiomatic — louder warnings (M4-D4)
+
+L1 changes apply globally via cascade §3 (no override possible). Before committing an L1 edit:
+
+- WARNING: `N realities have L3 events that conflict with this new L1 axiom`
+- List conflicting events per reality with event IDs
+- Author must acknowledge before proceeding
+- After commit: runtime canon-guardrail flags / rejects conflicting future L3 writes; existing conflicting L3 events remain historical but canonically void
+
+#### 9.8.5 xreality event channel reuse (M4-D5)
+
+Reuse R5-L2 infrastructure — no new plumbing:
+
+- `xreality.canon.updated` event published on author L1/L2 edit
+- Payload: `{book_id, attribute_path, old_value, new_value, canon_layer, propagation_mode}` where `propagation_mode ∈ {read_through, force_propagated}`
+- meta-worker consumes, updates per-reality `last_canon_sync_at` in `reality_registry`
+- For `force_propagated`: meta-worker orchestrates per-reality consent request + compensating-event writes (reuses R7 event-handler patterns)
+
+#### 9.8.6 Glossary entity change timeline (M4-D6)
+
+Author-facing history on any glossary entity attribute:
+
+- Timeline entries: *"Author changed {attr} from X to Y at {timestamp}"*
+- Propagation status: *"Applied to N realities (read-through); M realities overridden"*
+- Per-reality drill-down: override event_id, current L3 value, `last_canon_sync_at`
+- Reuses M3-D6 attribution surfacing pattern for consistency
+
+#### 9.8.7 Residual OPEN (requires DF3 / governance detail)
+
+- Compensating L3 event schema specifics (DF3-adjacent)
+- Notification copy for affected-reality players (M7 `UI_COPY_STYLEGUIDE.md` applies)
+- Consent mechanism for ownerless / abandoned realities (governance policy — fallback to admin auth?)
+- Runtime canon-guardrail prompt discipline for L1 enforcement (A6-adjacent)
+
 ## 10. What this resolves from 01_OPEN_PROBLEMS
 
 | Problem | Status after multiverse model | Reason |
@@ -650,30 +716,21 @@ Canonized content is visually distinguishable from author-original:
 
 Resolved by 7-layer design in [§9.1](#91-reality-discovery): smart-funnel entry flow, composite ranking (friend presence / density / locale / canonicality / recency / near-cap penalty), friend-follow via auth-service, creator-declared canonicality hint, flat browse UI with filters, create-new gated behind "Advanced" tab, metrics feedback loop for weight tuning. Decisions M1-D1..D7 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md). Residual sub-items (weight values, preview format, cold-start interaction with C3, preview caching) need V1 prototype data before SOLVED.
 
-### M2. Storage cost of many inactive realities
+### M2. Storage cost of many inactive realities — **MITIGATED**
 
-Users fork to try a what-if, abandon after 30 minutes. DB rows accumulate. Mitigations:
-- Auto-freeze realities with no player activity for N days
-- Compress frozen realities (detach event partitions, compress)
-- Auto-archive frozen + unflagged realities after M days
-- Fork quota per user (platform-mode tier)
+All mitigation layers locked: auto-freeze at 30 days no activity (MV10), auto-archive at 90 days frozen (MV11), soft-delete via `ALTER DATABASE RENAME` with 90-day hold (R9-L6), V1 no fork quota (MV4-b; platform-mode tier quota deferred to `103_PLATFORM_MODE_PLAN.md`), hibernated / frozen realities hidden from discovery by default (M1-D5). Storage cost per active reality is bounded by R8 (NPC memory budget) + R1 (event retention layers); inactive realities compound toward archive under automatic policies. Residual platform-mode tier-quota detail remains a `103_PLATFORM_MODE_PLAN.md` concern.
 
 ### M3. Canonization contamination — **MITIGATED**
 
 Resolved by 8-layer safeguard framework in [§9.7](#97-canonization-safeguards--m3-resolution): author-only trigger (no player request queue, no voting, no public metrics), mandatory diff view with cascade impact analysis, event eligibility + per-PC consent gates, harder L2 → L1 promotion gate (R9-style with 7-day cooldown + typed confirm + double approval), 90-day undo window with compensating-write for later reverts, attribution + IP metadata schema, distinguishability in book content (label + icon + export options), explicit scope fence with DF3 (implementation) and E3 (legal launch-gate). Decisions M3-D1..D8 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md). Residual sub-items are DF3 implementation details + E3 legal review (independent launch gate for platform mode; self-hosted exempt).
 
-### M4. Inconsistent L1/L2 updates across reality lifetimes
+### M4. Inconsistent L1/L2 updates across reality lifetimes — **MITIGATED**
 
-Author updates L2 attribute after many realities already exist. Some realities' L3 events conflict with new L2. By cascade rule, their L3 wins — but this could confuse authors who expect "my change applies everywhere." Mitigations:
-- UI shows "realities where this L2 change will not apply (overridden locally): N"
-- Option to force-propagate: would write compensating L3 events in overriding realities (destructive, rare, requires reality owner consent)
+Resolved by 6-layer author-safety UX in [§9.8](#98-canon-update-propagation--m4-resolution): cascade-impact preview before edit, default passive read-through (safe default — cascade rule handles it), optional force-propagate with 3-gate consent (opt-in + owner consent + R13 admin audit), louder L1 warnings with conflict listing, reuse of locked R5-L2 `xreality.canon.updated` channels, glossary entity change timeline with per-reality drill-down. Decisions M4-D1..D6 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md). Residual sub-items are DF3 implementation details + governance policy for ownerless / abandoned realities.
 
-### M5. Fork explosion (depth)
+### M5. Fork explosion (depth) — **MITIGATED**
 
-Snapshot fork allows forks of forks of forks. 10-level-deep chain has cascading read across 10 reality_ids. Mitigations:
-- Fork depth limit (e.g., 5 levels)
-- Projection tables collapse cascade — depth invisible at read time (only at rebuild)
-- Monitor deep chains and offer "rebase": rewrite a deep reality as a single top-level reality seeded from a snapshot (breaks ancestor chain for that reality)
+All mitigation layers locked: auto-rebase at depth N=5 (MV9 — flatten ancestor chain into fresh-seeded reality with inherited snapshot, breaking the lineage cleanly), projection-table cascade flattening at read (§7 — depth invisible at read time, only matters at rebuild), ops metrics per shard including ancestry depth (R4-L5). Residual: the N=5 threshold is a V1 starting value; tune up or down from ops data if real-world chains behave differently.
 
 ### M6. Cross-reality queries (analytics)
 

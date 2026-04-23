@@ -237,7 +237,12 @@ When adding new features:
 | NAR-5 | Canon-worthy action detection (eligibility flag + World-Rule defaults by category) | 📦 | V3 | NAR-2, NAR-9 | DF3; [03 §9.7.3](03_MULTIVERSE_MODEL.md#973-eligibility--consent-gates-m3-d3), M3-D3 |
 | NAR-6 | Canon-diff UI for author review (5 mandatory sections + 5s delay + typed confirm) | 📦 | V3 | NAR-4 | DF3; [03 §9.7.2](03_MULTIVERSE_MODEL.md#972-diff-view-mandatory-m3-d2), M3-D2 |
 | NAR-7 | IP attribution metadata for canonized content + author-controlled export | 📦 | V3 | NAR-4 | DF3 + [01 E3](01_OPEN_PROBLEMS.md); [03 §9.7.6](03_MULTIVERSE_MODEL.md#976-attribution--ip-metadata-m3-d6), M3-D6 |
-| NAR-8 | L1/L2 author edit propagation (when book updates mid-lifetime) | ❓ | V3 | NAR-1 | [01 M4](01_OPEN_PROBLEMS.md#m4-inconsistent-l1l2-updates-across-reality-lifetimes--open) |
+| NAR-8 | L1/L2 author edit propagation — 6-layer author-safety UX (cascade preview, passive read-through default, optional force-propagate with 3-gate consent, L1 warnings, xreality channel reuse, change timeline) | ✅ | V1 | NAR-1, NAR-13..16 | [03 §9.8](03_MULTIVERSE_MODEL.md#98-canon-update-propagation--m4-resolution), M4-D1..D6 |
+| NAR-13 | Cascade-impact preview modal before L1/L2 edit | ✅ | V1 | WA-3, NAR-8 | [03 §9.8.1](03_MULTIVERSE_MODEL.md#981-preview-before-l1l2-edit-m4-d1), M4-D1 |
+| NAR-14 | Force-propagate L1/L2 change with 3-gate consent (edit opt-in + reality-owner consent + R13 audit) | 📦 | V3 | NAR-8, R13-L2 | [03 §9.8.3](03_MULTIVERSE_MODEL.md#983-optional-force-propagate-m4-d3), M4-D3; DF3-adjacent |
+| NAR-15 | L1 axiomatic edit warnings (conflict listing + runtime canon-guardrail) | ✅ | V1 | NAR-3, NAR-8 | [03 §9.8.4](03_MULTIVERSE_MODEL.md#984-l1-axiomatic--louder-warnings-m4-d4), M4-D4 |
+| NAR-16 | `xreality.canon.updated` event channel + meta-worker consumption | ✅ | V1 | R5-L2 meta-worker | [03 §9.8.5](03_MULTIVERSE_MODEL.md#985-xreality-event-channel-reuse-m4-d5), M4-D5 |
+| NAR-17 | Glossary entity change timeline view with per-reality drill-down | ✅ | V1 | NAR-8, NAR-7 | [03 §9.8.6](03_MULTIVERSE_MODEL.md#986-glossary-entity-change-timeline-m4-d6), M4-D6 |
 | NAR-9 | Per-PC canonization consent opt-in (default ON, sticky per PC) | ✅ | V1 | PO-4 | [03 §9.7.3](03_MULTIVERSE_MODEL.md#973-eligibility--consent-gates-m3-d3), M3-D3 |
 | NAR-10 | 90-day canonization undo window + compensating-write for later reverts | 📦 | V3 | NAR-4 | DF3; [03 §9.7.5](03_MULTIVERSE_MODEL.md#975-reversibility--90-day-undo-window-m3-d5), M3-D5 |
 | NAR-11 | L2 → L1 axiomatic promotion gate (R9 pattern: 7d cool + typed confirm + double approval) | 📦 | V3 | NAR-4 | DF3; [03 §9.7.4](03_MULTIVERSE_MODEL.md#974-l2--l1-promotion--harder-gate-m3-d4), M3-D4 |
