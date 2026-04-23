@@ -52,6 +52,33 @@
         "embeddingModel": "Embedding model",
         "noEmbedding": "Not configured"
       }
+    },
+    "jobs": {
+      "empty": "No extraction jobs yet.",
+      "loadFailed": "Couldn't load jobs: {{error}}",
+      "unknownProject": "Project {{id}}",
+      "actionFailed": "{{action}} failed: {{error}}",
+      "status": {
+        "pending": "Pending",
+        "running": "Running",
+        "paused": "Paused",
+        "complete": "Complete",
+        "failed": "Failed",
+        "cancelled": "Cancelled"
+      },
+      "actions": {
+        "pause": "Pause",
+        "pausing": "Pausing…",
+        "resume": "Resume",
+        "resuming": "Resuming…",
+        "cancel": "Cancel",
+        "cancelling": "Cancelling…"
+      },
+      "detail": {
+        "items": "Items",
+        "created": "Created",
+        "completed": "Completed"
+      }
     }
   },
   "drawers": {

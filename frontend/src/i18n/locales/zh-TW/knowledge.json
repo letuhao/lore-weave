@@ -52,6 +52,33 @@
         "embeddingModel": "嵌入模型",
         "noEmbedding": "未設定"
       }
+    },
+    "jobs": {
+      "empty": "尚無擷取工作。",
+      "loadFailed": "無法載入工作: {{error}}",
+      "unknownProject": "專案 {{id}}",
+      "actionFailed": "{{action}} 失敗: {{error}}",
+      "status": {
+        "pending": "等待中",
+        "running": "執行中",
+        "paused": "已暫停",
+        "complete": "已完成",
+        "failed": "失敗",
+        "cancelled": "已取消"
+      },
+      "actions": {
+        "pause": "暫停",
+        "pausing": "暫停中…",
+        "resume": "繼續",
+        "resuming": "繼續中…",
+        "cancel": "取消",
+        "cancelling": "取消中…"
+      },
+      "detail": {
+        "items": "項目",
+        "created": "建立時間",
+        "completed": "完成時間"
+      }
     }
   },
   "drawers": {

@@ -52,6 +52,33 @@
         "embeddingModel": "Mô hình embedding",
         "noEmbedding": "Chưa cấu hình"
       }
+    },
+    "jobs": {
+      "empty": "Chưa có công việc trích xuất nào.",
+      "loadFailed": "Không tải được công việc: {{error}}",
+      "unknownProject": "Dự án {{id}}",
+      "actionFailed": "{{action}} thất bại: {{error}}",
+      "status": {
+        "pending": "Chờ xử lý",
+        "running": "Đang chạy",
+        "paused": "Tạm dừng",
+        "complete": "Hoàn tất",
+        "failed": "Thất bại",
+        "cancelled": "Đã hủy"
+      },
+      "actions": {
+        "pause": "Tạm dừng",
+        "pausing": "Đang tạm dừng…",
+        "resume": "Tiếp tục",
+        "resuming": "Đang tiếp tục…",
+        "cancel": "Hủy",
+        "cancelling": "Đang hủy…"
+      },
+      "detail": {
+        "items": "Mục",
+        "created": "Tạo lúc",
+        "completed": "Hoàn tất lúc"
+      }
     }
   },
   "drawers": {

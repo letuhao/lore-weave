@@ -1,11 +1,40 @@
-# Session Handoff — Session 50 (K19b/K19c/K20/K19d/K19e complete · K19f α+β+γ shipped · Global + Projects mobile variants live)
+# Session Handoff — Session 50 (K19b/K19c/K20/K19d/K19e complete · K19f α+β+γ+δ shipped · all 3 mobile variants live)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-23 (session 50)
-> **HEAD:** `84d5eec` (K19f Cycle γ; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** `<pending-K19f-δ>` (K19f Cycle δ; K19f-γ @ `84d5eec` + `8b18a12`; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 22 cycles shipped (20 Track 3 + 2 Track 2 close-out) · K19b/K19c/K20/K19d/K19e complete · K19f α+β+γ shipped
+## Session 50 — 23 cycles shipped (21 Track 3 + 2 Track 2 close-out) · K19b/K19c/K20/K19d/K19e complete · K19f α+β+γ+δ shipped
+
+### Cycle 23 — K19f Cycle δ [FE L] — JobsMobile (K19f.3)
+
+Ships the third simplified mobile variant. Merged active+history sorted list (`STATUS_SORT_ORDER: running → paused → pending → failed → cancelled → complete`, within-status newer-first) with **Map-based dedup by job_id** (active wins on conflict — handles the 2s/10s poll transition race). Per card: project_name + colored status badge + progress bar (running/paused only) + Intl-formatted started_at. Tap → inline expand with items counters, timestamps, error message (failed only), action buttons per status. Actions: `pauseExtraction / resumeExtraction / cancelExtraction` with `stopPropagation` + `invalidateQueries(['knowledge-jobs'])` on success. **Dropped** per plan: CostSummary, per-status sections, JobDetailPanel, JobLogsPanel, retry-with-new-settings.
+
+`/review-impl` caught **3 MED + 6 LOW + 1 COSMETIC; 3 MED + 5 LOW fixed in-cycle**:
+- **M1** duplicate `key` React warning when same job_id appears in both active (2s poll, stale) + history (10s poll, fresh) during running→complete transition → Map dedup with active-wins-on-conflict + regression test.
+- **M2** Resume + Cancel API paths completely untested — only Pause was exercised, so runAction's if/else-if/else branch swap would pass → 2 new tests clicking each + asserting correct mock called.
+- **M3** `queryClient.invalidateQueries` contract untested (same gap class as ProjectsMobile refetch) → `vi.spyOn(QueryClient.prototype, 'invalidateQueries')` + assertions on all 3 actions + NOT-called on failure.
+- **L4** stopPropagation batch coverage on Resume + Cancel · **L5** action-failure toast · **L6** project_name null fallback · **L7** same-status sort tiebreaker · **L9** historyError branch — all added.
+- Accepted: **L8** progress-bar edge cases (BE data-error territory) · **C10** memoization `?? []` dep instability (minor perf).
+
+**5th cycle in a row** `/review-impl` paid meaningful dividends. **M1 is notable** — it's a real production bug (React key collision + potential render drop), not just a coverage gap. The pattern of active+history merging should carry a dedup step any time the caller flattens them.
+
+**What Cycle ε / final cycle inherits:**
+- All 3 mobile variants (Global / Projects / Jobs) live
+- `lib/touchTarget.ts` with `TOUCH_TARGET_CLASS` applied across mobile variants
+- `components/mobile/` convention stable
+- Stub pattern proven: data-testid buttons inside stubs expose swallowed callbacks
+- `vi.spyOn(QueryClient.prototype, 'invalidateQueries')` pattern for verifying react-query contract
+
+**Remaining K19f work:**
+- **K19f.5** full tap-target audit across existing desktop components — sweep `grep -r 'py-1\|py-1.5\|h-6\|h-7'` for sub-44px interactive elements. Deferrals D-K19d-β-01 (EntitiesTable mobile grid) + D-K19e-β-02 (Timeline responsive) remain open but are hidden behind the desktop-only banner on mobile, so fixing them is not a K19f gate.
+
+**Test deltas at δ end:**
+- FE knowledge+pages vitest: **320 pass** (was 303 at K19f γ end; **+17** = 10 initial + 7 /review-impl regression)
+- `tsc --noEmit` clean
+
+---
 
 ### Cycle 22 — K19f Cycle γ [FE L] — ProjectsMobile (K19f.2)
 

@@ -52,6 +52,33 @@
         "embeddingModel": "埋め込みモデル",
         "noEmbedding": "未設定"
       }
+    },
+    "jobs": {
+      "empty": "抽出ジョブはまだありません。",
+      "loadFailed": "ジョブを読み込めませんでした: {{error}}",
+      "unknownProject": "プロジェクト {{id}}",
+      "actionFailed": "{{action}} に失敗: {{error}}",
+      "status": {
+        "pending": "保留中",
+        "running": "実行中",
+        "paused": "一時停止",
+        "complete": "完了",
+        "failed": "失敗",
+        "cancelled": "キャンセル済み"
+      },
+      "actions": {
+        "pause": "一時停止",
+        "pausing": "一時停止中…",
+        "resume": "再開",
+        "resuming": "再開中…",
+        "cancel": "キャンセル",
+        "cancelling": "キャンセル中…"
+      },
+      "detail": {
+        "items": "項目",
+        "created": "作成日時",
+        "completed": "完了日時"
+      }
     }
   },
   "drawers": {

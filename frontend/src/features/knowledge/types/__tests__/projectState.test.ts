@@ -709,6 +709,26 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     'projects.detail.lastExtracted',
     'projects.detail.embeddingModel',
     'projects.detail.noEmbedding',
+    // K19f δ — JobsMobile variant keys.
+    'jobs.empty',
+    'jobs.loadFailed',
+    'jobs.unknownProject',
+    'jobs.actionFailed',
+    'jobs.status.pending',
+    'jobs.status.running',
+    'jobs.status.paused',
+    'jobs.status.complete',
+    'jobs.status.failed',
+    'jobs.status.cancelled',
+    'jobs.actions.pause',
+    'jobs.actions.pausing',
+    'jobs.actions.resume',
+    'jobs.actions.resuming',
+    'jobs.actions.cancel',
+    'jobs.actions.cancelling',
+    'jobs.detail.items',
+    'jobs.detail.created',
+    'jobs.detail.completed',
   ] as const;
 
   it.each(LOCALES)(
