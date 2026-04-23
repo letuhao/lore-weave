@@ -27,6 +27,7 @@ from app.routers import (
     ping,
 )
 from app.routers.public import costs as public_costs
+from app.routers.public import drawers as public_drawers
 from app.routers.public import entities as public_entities
 from app.routers.public import extraction as public_extraction
 from app.routers.public import logs as public_logs
@@ -264,6 +265,7 @@ app.include_router(internal_extraction.router)
 app.include_router(internal_summarize.router)
 app.include_router(metrics.router)
 app.include_router(public_costs.router)
+app.include_router(public_drawers.router)
 app.include_router(public_entities.router)
 app.include_router(public_entities.entities_router)
 app.include_router(public_extraction.router)

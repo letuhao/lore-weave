@@ -1,11 +1,49 @@
-# Session Handoff — Session 50 (K19b + K19c + K20 + K19d complete · K19e α+β shipped)
+# Session Handoff — Session 50 (K19b + K19c + K20 + K19d complete · K19e α+β+γ-a shipped · Raw drawers cluster OPENED)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
 > **Date:** 2026-04-23 (session 50)
-> **HEAD:** `36937d1` (K19e Cycle β; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
+> **HEAD:** `<pending-K19e-γa>` (K19e Cycle γ-a; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
 > **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
 
-## Session 50 — 17 cycles shipped (15 Track 3 + 2 Track 2 close-out) · K19b/K19c/K20/K19d complete · K19e α+β shipped
+## Session 50 — 18 cycles shipped (16 Track 3 + 2 Track 2 close-out) · K19b/K19c/K20/K19d complete · K19e α+β+γ-a shipped · Raw drawers cluster OPENED
+
+### Cycle 18 — K19e Cycle γ-a [BE L] — Drawer search endpoint (K19e.5)
+
+Opens the Raw-drawers sub-cluster. Ships the public `GET /v1/knowledge/drawers/search?project_id=&query=&limit=` endpoint — semantic search over `:Passage` nodes reusing proven K18.3 machinery 1-to-1 (no new Cypher). Server-side flow:
+
+1. `ProjectsRepo.get(user_id, project_id)` → 404 on cross-user/missing
+2. If project has no `embedding_model` → 200 `{hits:[], embedding_model:null}`
+3. If `embedding_dimension` not in `SUPPORTED_PASSAGE_DIMS` → 200 empty
+4. `embedding_client.embed(model_source="user_model", model_ref=project.embedding_model)` → 502 `{error_code:"provider_error", retryable:bool}` on `EmbeddingError`
+5. Empty provider response (outer OR inner empty) → 200 empty
+6. `find_passages_by_vector(include_vectors=False)` → `DrawerSearchHit[]`
+7. 502 `{error_code:"embedding_dim_mismatch"}` if live-vs-stored dim disagree
+
+CLARIFY-time scope trim:
+- **D-K19e-γa-01** source_type filter (chapter/chat/glossary) — plan K19e.4 mentioned for FE tab layout; needs K18.3 `find_passages_by_vector` extended with new WHERE branch.
+- **D-K19e-γa-02** drawer-search embed cost not tracked toward K16.11 monthly budget — hobby-scale $0.00002/search, real at scale.
+
+`/review-impl` (user-invoked) caught **4 LOW + 1 COSMETIC; 3 fixed in-cycle + 1 deferred + 1 accepted**:
+- **L1** mutable default arg in test helper (`_project_stub()` called at module load shared instance) → sentinel-guarded conditional assignment
+- **L3** `retryable` flag on `EmbeddingError` was discarded → propagated onto 502 detail + paired regression tests for both True/False paths
+- **L4** empty inner vector (`embeddings=[[]]`) fell through to `find_passages_by_vector` ValueError surfacing misleading `dim_mismatch` 502 → extended empty-short-circuit guard to `not result.embeddings or not result.embeddings[0]` + regression test
+- **C5** no explicit test for `include_vectors=False` forwarding → added kwargs assertion
+- **L2** deferred as D-K19e-γa-02
+
+Build-time catches (all collection-error on first pytest run): `EmbedResult → EmbeddingResult` (wrong class name), `ProjectType.original → "book"` Literal (not enum), `ExtractionStatus.idle → "disabled"` Literal.
+
+**What K19e Cycle γ-b (next) inherits:**
+- `GET /v1/knowledge/drawers/search?project_id=&query=&limit=` → `{hits: DrawerSearchHit[], embedding_model: string | null}` (`hits` carries `id / project_id / source_type / source_id / chunk_index / text / is_hub / chapter_index / created_at / raw_score`)
+- FE can render "not indexed yet" banner when `embedding_model === null`
+- 502 `retryable: true` means show retry button; `false` means show "fix config" messaging
+- `source_type` filter is UI-only today (client-side filter the returned `hits[].source_type`) OR pair with D-K19e-γa-01 BE fix
+- Cycle γ-b scope: `useDrawerSearch` hook + `RawDrawersTab` container + `DrawerResultCard` (text preview + full-text slide-over click) + i18n + KnowledgePage swap for PlaceholderName='raw'
+
+**Test deltas at γ-a end:**
+- BE unit knowledge-service: **1282 pass** (was 1268 at K19e-α end; **+14** drawers)
+- 63/63 router-adjacent unit pass (no regressions)
+
+---
 
 ### Cycle 17 — K19e Cycle β [FE XL] — TimelineTab consuming α endpoint
 
