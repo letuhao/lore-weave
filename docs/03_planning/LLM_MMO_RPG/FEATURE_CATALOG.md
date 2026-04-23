@@ -148,6 +148,10 @@ When adding new features:
 | PO-7 | PC slot quota (5 per user, configurable) | ✅ | V1 | PO-1 | [04 §5.1](04_PLAYER_CHARACTER_DESIGN.md), PC-C1 locked |
 | PO-8 | PC slot purchase (buy more than 5) | 📦 | PLT | PO-7 | **DF2 — Monetization** |
 | PO-9 | Reality switcher UI (one user navigates across their PCs in different realities) | 🟡 | V3 | PO-2 | Related to IF-4 |
+| PO-10 | 3-tier user complexity model (Reader / Player / Author) + soft upgrade triggers | ✅ | V1 | PO-1 | [03 §9.6.2](03_MULTIVERSE_MODEL.md#962-three-tier-complexity-model-m7-d2), M7-D2 |
+| PO-11 | 4-step onboarding tutorial (book page → overlay → postcard → tier-upgrade prompt); i18n EN+VI V1 | ✅ | V1 | PO-10 | [03 §9.6.3](03_MULTIVERSE_MODEL.md#963-onboarding-tutorial-m7-d3), M7-D3 |
+| PO-12 | Contextual tooltips on multiverse UI elements (canonicality badges, fork CTA, friend avatar, hibernated, forked-from) | ✅ | V1 | PO-2, PO-10 | [03 §9.6.5](03_MULTIVERSE_MODEL.md#965-contextual-helpers-m7-d5), M7-D5 |
+| PO-13 | User-facing terminology enforcement via copy style guide governance | ✅ | V1 | — | [UI_COPY_STYLEGUIDE.md](../../02_governance/UI_COPY_STYLEGUIDE.md), M7-D1/D4 |
 
 ## PL — Play Loop (core runtime)
 

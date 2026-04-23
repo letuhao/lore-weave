@@ -329,7 +329,7 @@ Users pick which reality to play in. This section resolves **M1 (Reality discove
 
 #### Structure overview
 
-Flat list. No "main server." No nested tree. User-facing term is **"timeline"** or **"server"**, not "reality" (MV11).
+Flat list. No "main server." No nested tree. User-facing term is **"timeline"** or **"server"**, not "reality" (see [§9.6 Progressive disclosure](#96-progressive-disclosure--m7-resolution), M7-D1).
 
 Card content per reality:
 - Name + description
@@ -450,6 +450,87 @@ Post-V3: "dimensional rift" mechanic may allow rare cross-reality travel under n
 
 A reality is a natural unit for multilingual variants. Same book, different realities, each in a different language. Seeded from book → translation pipeline produces reality's initial state in target language. Players choose reality partially by language preference.
 
+### 9.6 Progressive disclosure — M7 resolution
+
+This section resolves **M7 (Concept complexity for users)** — see [01 §M7](01_OPEN_PROBLEMS.md#m7-concept-complexity-for-users--partial). The multiverse model is sophisticated; casual users don't need to learn it. Decisions M7-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+
+#### 9.6.1 User-facing terminology map (M7-D1)
+
+Internal terms (design docs, admin tools, code) vs user-facing terms (default UI):
+
+| Internal | User-facing (default UI) | Power-user label (optional) |
+|---|---|---|
+| reality | **timeline** (default) / **server** (gaming context) | reality |
+| book | **world** (immersive) / **book** (literary) | book |
+| fork | "explore another version" / "branch" | snapshot fork |
+| canonicality_hint | "follows the book" / "alternate take" / "what-if" | canon_attempt / divergent / pure_what_if |
+| L1 axiomatic | "world law" (unchangeable) | L1 axiomatic canon |
+| L2 seeded | "starting facts" | L2 seeded canon |
+| L3 reality-local | "story event" / "what happened" | L3 reality-local canon |
+| L4 flexible | *(not user-visible)* | L4 runtime state |
+| NPC | **character** | NPC |
+| PC | **your character** | PC |
+| event sourcing | "the world remembers" | event sourcing |
+| aggregate / projection | *(never surfaced)* | aggregate / projection |
+
+Default UI uses user-facing terms everywhere. Power-user labels appear only in author tooling, admin ops, and developer docs. Enforced via copy style guide (M7-D4).
+
+#### 9.6.2 Three-tier complexity model (M7-D2)
+
+| Tier | Default UI | Advanced features visible |
+|---|---|---|
+| 🧍 **Reader / Casual** | Auto-routed to top-ranked timeline (M1-D1). No fork UI. No canonicality badges inline (tooltip only). Just "Step inside" CTA. | None surfaced by default. |
+| 🧙 **Player** | Browse UI (PO-2) fully visible. Canonicality badges shown. Filters available. Friend avatars. Can join any timeline. | "Create new timeline" behind Advanced tab (M1-D6). Power-user labels on hover. |
+| ✍️ **Author / Creator** | Full multiverse controls. canonicality_hint setter. World Rules (DF4). Canonization flow (DF3). Ancestry tree viewer. | All power-user labels visible by default (toggleable). |
+
+**Soft upgrade triggers** (not gated — user can click "Advanced" anywhere to reveal full UI):
+
+- Reader → Player: user clicks "Explore other timelines" **OR** after N sessions (config `tier.reader.sessions_to_prompt`, default `3`)
+- Player → Author: user creates their first book **OR** explicit "I'm an author" toggle in settings
+
+Tier is a default-complexity signal, not a permission gate.
+
+#### 9.6.3 Onboarding tutorial (M7-D3)
+
+Four-step first-time entry for new users:
+
+1. **Book detail page** — shows book as "world" with **"Step inside"** CTA (never "Join reality")
+2. **First "Step inside" click** — full-screen overlay:
+   > *"You're about to step into Alice's world. There may be several timelines of it — like parallel versions of the same story. We'll pick the most welcoming one for you. You can explore others anytime."*
+3. **After first session** — postcard summary modal:
+   > *"You played in **The Traitor's Redemption** (this timeline follows the book closely). 47 other readers are here. Come back anytime, or peek at other versions of this world."*
+4. **Tier-upgrade prompt** — at N sessions (M7-D2 threshold):
+   > *"You've played a lot. Want to see other timelines of this world?"* → unlocks Player tier UI.
+
+Tutorial is skippable (X top-right) and re-runnable (help menu → "Show me around again"). Locale-aware via `i18next` from novel platform; V1 ships English + Vietnamese minimum.
+
+#### 9.6.4 Copy style guide (M7-D4)
+
+See [`docs/02_governance/UI_COPY_STYLEGUIDE.md`](../../02_governance/UI_COPY_STYLEGUIDE.md) — new governance doc codifying the M7-D1 terminology map + phrasing patterns + PR review gate ("copy reviewed against styleguide" checkbox on user-facing UI PRs).
+
+#### 9.6.5 Contextual helpers (M7-D5)
+
+Inline tooltips on concepts that must surface but may confuse:
+
+| Element | Tooltip |
+|---|---|
+| `canon_attempt` badge | "This timeline follows the book closely" |
+| `divergent` badge | "This timeline diverges from the book" |
+| `pure_what_if` badge | "What-if scenario — a hypothetical version" |
+| "Create new timeline" CTA | "Start a fresh version of this world. You can begin from the book or from a specific moment in an existing timeline." |
+| Friend avatar on card | "Your friend Alice is currently playing in this timeline" |
+| "Hibernated" badge | "No players for 30 days. Read-only; start a new session to wake it up." |
+| "Forked from R_α at event 48" | "Branched off from another timeline at a specific story moment. They share history up to that point." |
+
+All tooltips i18n (reuse `i18next`), short (<100 chars default).
+
+#### 9.6.6 Residual OPEN (requires V1 data)
+
+- Tutorial copy A/B testing (which phrasing reduces bounce rate?)
+- Tier-upgrade trigger thresholds (3 sessions? 5? different by intent signal?)
+- Word choice: "world" vs "book" vs "story" for source material at Reader tier
+- Tooltip wording refinement per locale
+
 ## 10. What this resolves from 01_OPEN_PROBLEMS
 
 | Problem | Status after multiverse model | Reason |
@@ -502,12 +583,9 @@ Snapshot fork allows forks of forks of forks. 10-level-deep chain has cascading 
 - Analytics ETL pipeline (ClickHouse) denormalizes across realities for aggregate queries
 - Runtime answer via aggregation over reality_registry + projection rows (bounded by book, manageable)
 
-### M7. Concept complexity for users
+### M7. Concept complexity for users — **MITIGATED**
 
-The model is sophisticated. New users may not understand "realities." Mitigations:
-- Default behavior hides complexity: auto-routed to a populated reality, fork only surfaces as "create your own server"
-- Tutorial: "you are playing in Alice's world. There are other versions of this world. You can visit them, or start your own."
-- Reality = "timeline" or "server" in user-facing copy; "reality" is an admin/author term
+Resolved by 5-layer progressive disclosure in [§9.6](#96-progressive-disclosure--m7-resolution): user-facing terminology map (reality → timeline, NPC → character, L1 → "world law", etc.), 3-tier user model (Reader / Player / Author) with soft upgrade triggers, 4-step onboarding tutorial, copy style guide governance doc, and contextual tooltips on must-appear concepts. Decisions M7-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md). Residual sub-items (tutorial A/B copy, tier-upgrade thresholds, tooltip wording per locale) need V1 prototype data before SOLVED.
 
 ## 12. Configuration & decisions status
 

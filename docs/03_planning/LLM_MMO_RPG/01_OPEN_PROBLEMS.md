@@ -386,8 +386,17 @@ Forks of forks of forks → deep ancestry chains. Mitigated by depth limit (defa
 ### M6. Cross-reality analytics — **KNOWN PATTERN**
 "Alice is alive in how many realities?" requires scan across reality_registry + projection rows. ETL to ClickHouse for analytics. Pattern is standard; cost is real but predictable.
 
-### M7. Concept complexity for users — **OPEN**
-Multiverse is sophisticated. Default behavior must hide it; advanced features progressively disclosed. User-facing term: "timeline" or "server," not "reality."
+### M7. Concept complexity for users — **PARTIAL**
+
+**Problem:** Multiverse is sophisticated. New users may not understand "realities" on first contact → churn.
+
+**Resolved by:** 5-layer progressive disclosure in [03 §9.6](03_MULTIVERSE_MODEL.md#96-progressive-disclosure--m7-resolution) — user-facing terminology map (reality → timeline, NPC → character, L1 → "world law", etc.), 3-tier user model (Reader / Player / Author) with soft upgrade triggers, 4-step onboarding tutorial, copy style guide at [`docs/02_governance/UI_COPY_STYLEGUIDE.md`](../../02_governance/UI_COPY_STYLEGUIDE.md), contextual tooltips on canonicality/fork/hibernated/friend/forked-from. Decisions M7-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+
+**Residual `OPEN` (blocks SOLVED):**
+- Tutorial copy A/B testing — which phrasing reduces bounce rate on real users
+- Tier-upgrade trigger thresholds (3 sessions default, may tune per intent signal)
+- Word choice at Reader tier: "world" vs "book" vs "story" for source material
+- Tooltip wording refinement per locale
 
 ---
 
@@ -402,8 +411,8 @@ Multiverse is sophisticated. Default behavior must hide it; advanced features pr
 | E. Moderation & legal | 1 | 1 | 1 | 0 |
 | F. Content design | 2 | 1 | 0 | 1 |
 | G. Testing & ops | 3 | 0 | 0 | 0 |
-| **M. Multiverse-specific** | **2** | **3** | **1** | **0** |
-| **Total** | **16** | **14** | **5** | **2** |
+| **M. Multiverse-specific** | **1** | **4** | **1** | **0** |
+| **Total** | **15** | **15** | **5** | **2** |
 
 **Deltas across design rounds:**
 - A1 `OPEN` → `PARTIAL` (R8 [§12H](02_STORAGE_ARCHITECTURE.md) resolves infrastructure; semantic layer still open)
@@ -413,8 +422,9 @@ Multiverse is sophisticated. Default behavior must hide it; advanced features pr
 - F1 `OPEN` → `PARTIAL` (canon_lock_level per attribute)
 - New category M added with 7 multiverse-specific risks
 - **M1 `OPEN` → `PARTIAL`** (2026-04-23 — 7-layer discovery design in [03 §9.1](03_MULTIVERSE_MODEL.md#91-reality-discovery); weight tuning + preview format pending V1 data; M1-D1..D7 locked in [OPEN_DECISIONS.md](OPEN_DECISIONS.md))
+- **M7 `OPEN` → `PARTIAL`** (2026-04-23 — 5-layer progressive disclosure in [03 §9.6](03_MULTIVERSE_MODEL.md#96-progressive-disclosure--m7-resolution); tutorial A/B + tier thresholds pending V1 data; M7-D1..D5 locked + new governance doc `UI_COPY_STYLEGUIDE.md`)
 
-**Interpretation:** Systematic design resolutions have compressed the OPEN set from 18 → 17 → 16, and more importantly, moved critical-path items to PARTIAL. Remaining single-problem-kills-product severity items: **A4** (retrieval quality — needs measurement), **D1** (cost per user-hour — needs prototype), **E3** (IP — needs legal). Critical-path list shortened from 4 → 3.
+**Interpretation:** Systematic design resolutions have compressed the OPEN set from 18 → 17 → 16 → 15, and more importantly, moved critical-path items to PARTIAL. Remaining single-problem-kills-product severity items: **A4** (retrieval quality — needs measurement), **D1** (cost per user-hour — needs prototype), **E3** (IP — needs legal). Critical-path list shortened from 4 → 3.
 
 ## What "ready to implement" would look like
 

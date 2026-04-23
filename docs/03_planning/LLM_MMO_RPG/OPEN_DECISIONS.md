@@ -63,7 +63,7 @@ User indicated they have ideas for risks R1–R13 in [02_STORAGE_ARCHITECTURE.md
 | ~~M1~~ | ~~Reality discovery problem~~ | 01 §M | **LOCKED 2026-04-23** — M1-D1..D7 below; [03 §9.1](03_MULTIVERSE_MODEL.md#91-reality-discovery) |
 | M3 | Canonization contamination | 01 §M | Depends on MV2 |
 | M4 | Inconsistent L1/L2 updates across reality lifetimes | 01 §M | |
-| M7 | Concept complexity for users | 01 §M | |
+| ~~M7~~ | ~~Concept complexity for users~~ | 01 §M | **LOCKED 2026-04-23** — M7-D1..D5 below; [03 §9.6](03_MULTIVERSE_MODEL.md#96-progressive-disclosure--m7-resolution) |
 
 ### Q-A1 — NPC memory at scale
 Critical-path `OPEN` problem. Multiverse bounds the scope (per-reality) but storage strategy still unsolved. Needs:
@@ -230,6 +230,12 @@ As user confirms items, they move here with the answer and any rationale.
 | M1-D6 | Create-new gating | 2026-04-23 | **Advanced tab only** (not peer to Browse). Confirmation modal if ≥1 existing reality <50% cap. No hard block — preserves MV4-b (user remains world creator). | [03 §9.1.6](03_MULTIVERSE_MODEL.md#916-create-new-gating-m1-d6) |
 | M1-D7 | Metrics for weight feedback | 2026-04-23 | **5 metrics logged**: default_landing_accept_rate, friend_match_rate, lonely_reality_ratio, reality_creation_rate_per_user, browse_filter_usage. Threshold: lonely_reality_ratio > 30% over 1 month → tighten density/gating. | [03 §9.1.7](03_MULTIVERSE_MODEL.md#917-metrics-feedback-loop-m1-d7) |
 | M1→status | M1 status change | 2026-04-23 | **M1 moves `OPEN` → `PARTIAL`** (01) and `MITIGATED` (03 §11). Framework locked; weight values, preview format, cold-start interaction with C3, preview caching — all pending V1 data. | [01 §M1](01_OPEN_PROBLEMS.md#m1-reality-discovery-problem--partial) · [03 §9.1.8](03_MULTIVERSE_MODEL.md#918-residual-open-requires-v1-data) |
+| M7-D1 | User-facing terminology map | 2026-04-23 | **12-row translation table** — reality→timeline, book→world, NPC→character, PC→"your character", L1→"world law", L2→"starting facts", L3→"story event", fork→"explore another version", event sourcing→"the world remembers", aggregate/projection never surfaced, canonicality_hint→"follows the book"/"alternate take"/"what-if". Power-user labels only in author tooling/admin/dev docs. | [03 §9.6.1](03_MULTIVERSE_MODEL.md#961-user-facing-terminology-map-m7-d1) |
+| M7-D2 | Three-tier complexity model | 2026-04-23 | **Reader / Player / Author** tiers. Reader default auto-routed, no fork UI. Player sees browse + filters + badges. Author sees full multiverse controls. Soft upgrade triggers (not gates): Reader→Player at `tier.reader.sessions_to_prompt` (default 3) or explicit "Explore"; Player→Author on first book creation or settings toggle. User can always click "Advanced" to override tier default. | [03 §9.6.2](03_MULTIVERSE_MODEL.md#962-three-tier-complexity-model-m7-d2) |
+| M7-D3 | Onboarding tutorial flow | 2026-04-23 | **4 steps** — (1) book detail = "Step inside" CTA, (2) first click = overlay "you're stepping into Alice's world, several timelines exist", (3) post-session = postcard summary, (4) tier-upgrade prompt at N sessions. Skippable, re-runnable via help menu. i18n via i18next; V1 ships EN + VI. | [03 §9.6.3](03_MULTIVERSE_MODEL.md#963-onboarding-tutorial-m7-d3) |
+| M7-D4 | Copy style guide governance | 2026-04-23 | **New doc at `docs/02_governance/UI_COPY_STYLEGUIDE.md`** codifies M7-D1 map + phrasing patterns + PR review gate ("copy reviewed against styleguide" checkbox on user-facing UI PRs). | [docs/02_governance/UI_COPY_STYLEGUIDE.md](../../02_governance/UI_COPY_STYLEGUIDE.md) |
+| M7-D5 | Contextual tooltips | 2026-04-23 | **7 tooltips locked** on: canon_attempt / divergent / pure_what_if badges, "Create new timeline" CTA, friend avatar, hibernated badge, "forked from R_α at event X" label. i18n, <100 char default. | [03 §9.6.5](03_MULTIVERSE_MODEL.md#965-contextual-helpers-m7-d5) |
+| M7→status | M7 status change | 2026-04-23 | **M7 moves `OPEN` → `PARTIAL`** (01) and `MITIGATED` (03 §11). Framework locked; tutorial A/B copy, tier-upgrade thresholds, per-locale tooltip wording — all pending V1 data. | [01 §M7](01_OPEN_PROBLEMS.md#m7-concept-complexity-for-users--partial) · [03 §9.6.6](03_MULTIVERSE_MODEL.md#966-residual-open-requires-v1-data) |
 
 ---
 

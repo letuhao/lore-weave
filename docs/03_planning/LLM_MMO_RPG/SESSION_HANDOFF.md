@@ -80,7 +80,7 @@ See [00_VISION.md](00_VISION.md) for the dream, [01_OPEN_PROBLEMS.md](01_OPEN_PR
 - M4 L1/L2 update propagation (OPEN — **could bump to PARTIAL** after R5-L2 event propagation)
 - M5 Fork depth explosion (PARTIAL — R9-L3 auto-rebase helps)
 - M6 Cross-reality analytics (KNOWN pattern)
-- M7 Concept complexity for users (OPEN)
+- M7 Concept complexity for users (**PARTIAL — resolved 2026-04-23**) — 5-layer progressive disclosure in [03 §9.6](03_MULTIVERSE_MODEL.md#96-progressive-disclosure--m7-resolution), M7-D1..D5 locked + new governance doc [`UI_COPY_STYLEGUIDE.md`](../../02_governance/UI_COPY_STYLEGUIDE.md); tutorial A/B + tier thresholds pending V1 data
 
 ### Deferred big features (DF1–DF13)
 12 active, 1 withdrawn (DF12). Each gets its own design doc when implementation commits.
