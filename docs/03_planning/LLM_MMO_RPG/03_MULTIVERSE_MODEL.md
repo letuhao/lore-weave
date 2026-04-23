@@ -531,6 +531,107 @@ All tooltips i18n (reuse `i18next`), short (<100 chars default).
 - Word choice: "world" vs "book" vs "story" for source material at Reader tier
 - Tooltip wording refinement per locale
 
+### 9.7 Canonization safeguards — M3 resolution
+
+This section resolves **M3 (Canonization contamination)** — see [01 §M3](01_OPEN_PROBLEMS.md#m3-canonization-contamination--partial). Framework-level **TECHNICAL + UX safeguards** that DF3 (Canonization / Author Review Flow implementation) MUST honor. Does NOT close **E3 (IP ownership — legal review)**, which remains an independent launch gate for platform mode. Decisions M3-D1..D8 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+
+#### 9.7.1 Author-only trigger (M3-D1)
+
+- Only the book author can initiate canonization — no player request queue, no voting, no "suggest for canon" button
+- No public metrics on canonization rate (prevents gaming-the-meter dynamics)
+- No auto-surfacing of candidates — author must actively enter the Canonization workbench (DF3)
+- Opt-in sidebar per book: "show L3 events marked canonization-eligible"
+
+#### 9.7.2 Diff view mandatory (M3-D2)
+
+Before confirmation, DF3 MUST render 5 sections:
+
+| Section | Content |
+|---|---|
+| **Current state** | Glossary / book entity attribute pre-change |
+| **Proposed change** | Proposed L2 value after canonization |
+| **Prose preview** | How the change reads in book context (not the raw dialogue line) |
+| **Cascade impact** | Realities that will see the change vs realities already overriding (cross-links to M4 L1/L2 propagation mechanics) |
+| **Source attribution** | Reality origin, contributing PCs, event chain |
+
+No single-button canonize. **5-second delay** + typed confirmation `CANONIZE {attribute_name}` + explicit confirm modal.
+
+#### 9.7.3 Eligibility + consent gates (M3-D3)
+
+**Event eligibility:**
+
+- L3 events default `canonization_eligible = false`
+- World Rules (DF4) per-reality can enable defaults for event categories: `death`, `major_decision`, `world_state_change`, `relationship_milestone`
+- Flavor / mood / combat / small-talk events are never eligible regardless of setting
+
+**Player consent:**
+
+- PC creation checkbox: "My character's actions may be considered for canonization by the book author" — default ON, can be turned off per PC
+- If **any** contributing PC is opt-out → event is INELIGIBLE regardless of quality or category
+- Consent is sticky per PC — cannot retroactively flip for already-played events
+
+#### 9.7.4 L2 → L1 promotion — harder gate (M3-D4)
+
+L2 → L1 is rarer and higher-risk than L3 → L2. Reuse R9 destructive-op pattern:
+
+- 7-day cooling period after confirmation (cancel window)
+- Typed book-name confirmation (same pattern as R9 reality closure)
+- Double approval required in platform mode (author + admin reviewer)
+- **No direct L3 → L1 path ever** — must pass through L2 first, then wait ≥30 days before L1 consideration
+- L1 promotions carry permanent audit-log entry
+
+#### 9.7.5 Reversibility — 90-day undo window (M3-D5)
+
+Canonized entry metadata: `canonized_from = (reality_id, event_id, source_author_id, canonized_at)`.
+
+- **Within 90 days:** single-click revert restores the pre-canonization value silently
+- **After 90 days:** revert requires a compensating write (new L2 event with new value; original canonization preserved in history)
+- All reversions audit-logged
+- L1 reversions use the harder R9-style double-approval flow, independent of this window
+
+#### 9.7.6 Attribution + IP metadata (M3-D6)
+
+Canonized L3 event carries:
+
+- Contributing PC IDs + user IDs
+- Narrator turn count
+- Source reality + source event chain
+- Canonization timestamp + book author ID
+
+Surfaces:
+
+- Glossary entity history view: *"canonized from reality R_β, chapter 12, contributors: Kael (user_id), Lyra (user_id)"*
+- Export formats (PDF / EPUB) — author-controlled: strip attribution / inline footnote / appendix credits
+
+**Does NOT close E3.** Legal ToS language (who owns the prose of a canonized event) remains the IP resolution. E3 is an independent launch gate for platform mode.
+
+#### 9.7.7 Distinguishability in book content (M3-D7)
+
+Canonized content is visually distinguishable from author-original:
+
+- Subtle label in glossary / book UI: *"Canonized from R_β, 2026-05-12"* (toggleable in reading view)
+- Icon delta — e.g., quill icon for original, compass icon for canonized
+- Export options (M3-D6)
+- Author edit of canonized content → becomes derivative (both contributors + author attribution tracked)
+
+#### 9.7.8 Scope fence with E3 + DF3 (M3-D8)
+
+| Concern | Scope | Status |
+|---|---|---|
+| TECHNICAL + UX safeguards | **M3 (this section)** | MITIGATED via M3-D1..D7 |
+| Full implementation (workbench UI, pipelines, audit schemas) | **DF3 — Canonization / Author Review Flow** | Deferred big feature |
+| IP ownership / ToS / licensing | **E3** | `OPEN` — independent legal review |
+
+**Design can lock now** (M3 framework + DF3 spec). **Canonization cannot LAUNCH in platform mode** until E3 resolved. **Self-hosted mode is exempt** — user owns their instance and data; IP transfer is not a platform concern.
+
+#### 9.7.9 Residual OPEN (requires DF3 detail or external input)
+
+- Exact "significant event" categorization per World Rule — DF4 + V1 prototype data
+- >90-day compensating-write mechanism — DF3 implementation detail
+- Export attribution UI (footnote vs appendix vs strip) — DF3 detail
+- Edge cases: canonized event from deleted PC / banned user / retroactive opt-out — DF3 policy
+- **E3 (IP ownership)** — independent legal review, platform-mode launch gate
+
 ## 10. What this resolves from 01_OPEN_PROBLEMS
 
 | Problem | Status after multiverse model | Reason |
@@ -557,12 +658,9 @@ Users fork to try a what-if, abandon after 30 minutes. DB rows accumulate. Mitig
 - Auto-archive frozen + unflagged realities after M days
 - Fork quota per user (platform-mode tier)
 
-### M3. Canonization contamination
+### M3. Canonization contamination — **MITIGATED**
 
-If canonization (L3 → L2) is allowed, emergent stories might pollute book canon. Author reviews must be genuine. Mitigations:
-- Canonization requires author action, not player vote
-- Diff view: "what would change in your book if you accept this reality's events"
-- Canonized events become read-only references in the book, distinguishable from authored content
+Resolved by 8-layer safeguard framework in [§9.7](#97-canonization-safeguards--m3-resolution): author-only trigger (no player request queue, no voting, no public metrics), mandatory diff view with cascade impact analysis, event eligibility + per-PC consent gates, harder L2 → L1 promotion gate (R9-style with 7-day cooldown + typed confirm + double approval), 90-day undo window with compensating-write for later reverts, attribution + IP metadata schema, distinguishability in book content (label + icon + export options), explicit scope fence with DF3 (implementation) and E3 (legal launch-gate). Decisions M3-D1..D8 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md). Residual sub-items are DF3 implementation details + E3 legal review (independent launch gate for platform mode; self-hosted exempt).
 
 ### M4. Inconsistent L1/L2 updates across reality lifetimes
 

@@ -374,8 +374,18 @@ New category introduced by the multiverse model in [03_MULTIVERSE_MODEL.md §11]
 ### M2. Storage cost of inactive realities — **PARTIAL**
 Users fork freely, abandon 30 minutes later → DB rows accumulate. Auto-freeze policy + compression + fork quotas mitigate. Default policy in [03 §12](03_MULTIVERSE_MODEL.md) pending confirmation.
 
-### M3. Canonization contamination — **OPEN**
-If L3 → L2 promotion is allowed, emergent stories could pollute canon. Author review must be genuine; diff UI needed. Related to E3 IP ownership.
+### M3. Canonization contamination — **PARTIAL**
+
+**Problem:** Canonization (L3 → L2, author-gated per MV2) opens a path for emergent player narrative to influence canon. Risks: pollution, social pressure on author, accidental breaks, IP uncertainty, low-quality promotions, player consent, system gaming. Related to E3 IP ownership and gated by DF3 for full implementation.
+
+**Resolved by:** 8-layer safeguard framework in [03 §9.7](03_MULTIVERSE_MODEL.md#97-canonization-safeguards--m3-resolution) — author-only trigger, mandatory diff view with cascade impact, event eligibility + per-PC consent gates, harder L2 → L1 promotion gate (R9 pattern), 90-day undo window, attribution metadata, distinguishability in book content, explicit scope fence with DF3 and E3. Decisions M3-D1..D8 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+
+**Residual `OPEN` (blocks SOLVED):**
+- "Significant event" category definitions per World Rule (DF4 + V1 data)
+- >90-day compensating-write mechanism (DF3 implementation detail)
+- Export attribution UI format (strip / footnote / appendix) — DF3 detail
+- Edge cases: deleted PC / banned user / retroactive opt-out — DF3 policy
+- **E3 (IP ownership)** — independent legal blocker for platform-mode launch; self-hosted mode exempt
 
 ### M4. Inconsistent L1/L2 updates across reality lifetimes — **OPEN**
 Author edits L2 after realities exist. Cascade rule says L3 overrides win → author's change doesn't apply in overriding realities. Could confuse authors. Needs UI surfacing ("N realities have overridden this").
@@ -411,8 +421,10 @@ Forks of forks of forks → deep ancestry chains. Mitigated by depth limit (defa
 | E. Moderation & legal | 1 | 1 | 1 | 0 |
 | F. Content design | 2 | 1 | 0 | 1 |
 | G. Testing & ops | 3 | 0 | 0 | 0 |
-| **M. Multiverse-specific** | **1** | **4** | **1** | **0** |
-| **Total** | **15** | **15** | **5** | **2** |
+| **M. Multiverse-specific** | **1** | **5** | **1** | **0** |
+| **Total** | **15** | **16** | **5** | **2** |
+
+> **Note:** M3 resolution both moved M3 `OPEN`→`PARTIAL` AND reconciled a pre-existing off-by-one in the M baseline count (originally documented as 3 but actual OPEN items were 4 before M1). OPEN count visible here stays at 1 because the reconcile absorbs the M3 transition; M4 is the sole remaining M-category OPEN item.
 
 **Deltas across design rounds:**
 - A1 `OPEN` → `PARTIAL` (R8 [§12H](02_STORAGE_ARCHITECTURE.md) resolves infrastructure; semantic layer still open)
@@ -423,8 +435,9 @@ Forks of forks of forks → deep ancestry chains. Mitigated by depth limit (defa
 - New category M added with 7 multiverse-specific risks
 - **M1 `OPEN` → `PARTIAL`** (2026-04-23 — 7-layer discovery design in [03 §9.1](03_MULTIVERSE_MODEL.md#91-reality-discovery); weight tuning + preview format pending V1 data; M1-D1..D7 locked in [OPEN_DECISIONS.md](OPEN_DECISIONS.md))
 - **M7 `OPEN` → `PARTIAL`** (2026-04-23 — 5-layer progressive disclosure in [03 §9.6](03_MULTIVERSE_MODEL.md#96-progressive-disclosure--m7-resolution); tutorial A/B + tier thresholds pending V1 data; M7-D1..D5 locked + new governance doc `UI_COPY_STYLEGUIDE.md`)
+- **M3 `OPEN` → `PARTIAL`** (2026-04-23 — 8-layer canonization safeguards in [03 §9.7](03_MULTIVERSE_MODEL.md#97-canonization-safeguards--m3-resolution); M3-D1..D8 locked. Framework-level TECHNICAL + UX safeguards; DF3 implements; E3 legal review remains an independent platform-mode launch gate — self-hosted exempt)
 
-**Interpretation:** Systematic design resolutions have compressed the OPEN set from 18 → 17 → 16 → 15, and more importantly, moved critical-path items to PARTIAL. Remaining single-problem-kills-product severity items: **A4** (retrieval quality — needs measurement), **D1** (cost per user-hour — needs prototype), **E3** (IP — needs legal). Critical-path list shortened from 4 → 3.
+**Interpretation:** Systematic design resolutions have compressed the OPEN set from 18 → 17 → 16 → 15, and moved critical-path items to PARTIAL. Remaining single-problem-kills-product severity items: **A4** (retrieval quality — needs measurement), **D1** (cost per user-hour — needs prototype), **E3** (IP — needs legal). Critical-path list: still 3. M-category batch progress: M1 ✓ · M2 🟡 · M3 ✓ · M4 ❓ · M5 🟡 · M6 (known) · M7 ✓ — only M4 remains fully open.
 
 ## What "ready to implement" would look like
 

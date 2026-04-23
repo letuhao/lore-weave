@@ -233,11 +233,15 @@ When adding new features:
 | NAR-1 | Four-layer canon model (L1 axiomatic / L2 seeded / L3 local / L4 flexible) | ✅ | V1 | WA-3 | [03 §3](03_MULTIVERSE_MODEL.md) |
 | NAR-2 | L3 event logging (every play emits durable events) | ✅ | V1 | IF-1 | [02 §4](02_STORAGE_ARCHITECTURE.md) |
 | NAR-3 | L1 runtime enforcement (reject or lint output violating axiomatic canon) | 🟡 | V1 | NPC-6 | Part of NPC-6; may need DF4 integration |
-| NAR-4 | L3 → L2 canonization flow (author-gated) | 📦 | V3 | NAR-2, WA-6 | **DF3 — Canonization** |
-| NAR-5 | Canon-worthy action detection (flag interesting L3 events) | 📦 | V3 | NAR-2 | DF3 |
-| NAR-6 | Canon-diff UI for author review | 📦 | V3 | NAR-4 | DF3 |
-| NAR-7 | IP attribution for canonized content | 📦 | V3 | NAR-4 | DF3 + [01 E3](01_OPEN_PROBLEMS.md) |
+| NAR-4 | L3 → L2 canonization flow (author-gated, author-only trigger, no player request queue) | 📦 | V3 | NAR-2, WA-6 | **DF3 — Canonization**; [03 §9.7.1](03_MULTIVERSE_MODEL.md#971-author-only-trigger-m3-d1), M3-D1 |
+| NAR-5 | Canon-worthy action detection (eligibility flag + World-Rule defaults by category) | 📦 | V3 | NAR-2, NAR-9 | DF3; [03 §9.7.3](03_MULTIVERSE_MODEL.md#973-eligibility--consent-gates-m3-d3), M3-D3 |
+| NAR-6 | Canon-diff UI for author review (5 mandatory sections + 5s delay + typed confirm) | 📦 | V3 | NAR-4 | DF3; [03 §9.7.2](03_MULTIVERSE_MODEL.md#972-diff-view-mandatory-m3-d2), M3-D2 |
+| NAR-7 | IP attribution metadata for canonized content + author-controlled export | 📦 | V3 | NAR-4 | DF3 + [01 E3](01_OPEN_PROBLEMS.md); [03 §9.7.6](03_MULTIVERSE_MODEL.md#976-attribution--ip-metadata-m3-d6), M3-D6 |
 | NAR-8 | L1/L2 author edit propagation (when book updates mid-lifetime) | ❓ | V3 | NAR-1 | [01 M4](01_OPEN_PROBLEMS.md#m4-inconsistent-l1l2-updates-across-reality-lifetimes--open) |
+| NAR-9 | Per-PC canonization consent opt-in (default ON, sticky per PC) | ✅ | V1 | PO-4 | [03 §9.7.3](03_MULTIVERSE_MODEL.md#973-eligibility--consent-gates-m3-d3), M3-D3 |
+| NAR-10 | 90-day canonization undo window + compensating-write for later reverts | 📦 | V3 | NAR-4 | DF3; [03 §9.7.5](03_MULTIVERSE_MODEL.md#975-reversibility--90-day-undo-window-m3-d5), M3-D5 |
+| NAR-11 | L2 → L1 axiomatic promotion gate (R9 pattern: 7d cool + typed confirm + double approval) | 📦 | V3 | NAR-4 | DF3; [03 §9.7.4](03_MULTIVERSE_MODEL.md#974-l2--l1-promotion--harder-gate-m3-d4), M3-D4 |
+| NAR-12 | Canonized content distinguishability (label + icon + export strip/footnote/appendix) | 📦 | V3 | NAR-4 | DF3; [03 §9.7.7](03_MULTIVERSE_MODEL.md#977-distinguishability-in-book-content-m3-d7), M3-D7 |
 
 ## EM — Emergent / Advanced (fork, travel, reality lifecycle)
 
