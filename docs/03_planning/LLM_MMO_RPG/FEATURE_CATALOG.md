@@ -170,6 +170,19 @@ When adding new features:
 | PL-19 | Input sanitization + jailbreak-pattern detection | ✅ | V1 | — | [05 §5.1](05_LLM_SAFETY_LAYER.md#51-layer-1--input-sanitization-a6-d1), A6-D1 |
 | PL-20 | Output filter (persona-break / cross-PC leak / spoiler / NSFW with soft-retry + hard-block) | ✅ | V1 | PL-5 | [05 §5.4](05_LLM_SAFETY_LAYER.md#54-layer-4--output-filter-a6-d4), A6-D4 |
 | PL-21 | Per-PC retrieval isolation at DB layer (service-layer filter V1; RLS V2+) | ✅ | V1 | IF-1, knowledge-service | [05 §5.5](05_LLM_SAFETY_LAYER.md#55-layer-5--per-pc-retrieval-isolation-at-db-layer-a6-d5), A6-D5 |
+| PL-22 | Player voice mode — 3 modes (terse / novel / mixed), V1 default = mixed, persisted per-book in user prefs | ✅ | V1 | PL-4, auth prefs | [01 C1](01_OPEN_PROBLEMS.md#c1-player-voice-vs-narrative-voice--partial), C1-D1/D4 |
+| PL-23 | Inline voice override (`/verbatim`, `/prose`) for single turn | ✅ | V1 | PL-15, PL-22 | C1-D2 |
+| PL-24 | World-Rule voice mode lock (per-reality override by author via DF4) | 📦 | V2 | PL-22, DF4 | C1-D3 |
+| PL-25 | Voice mode consistency check in output filter (soft retry if terse→prose mismatch) | ✅ | V1 | PL-20, PL-22 | C1-D5; [05 §5.4](05_LLM_SAFETY_LAYER.md#54-layer-4--output-filter-a6-d4) |
+| Q-1 | Quest scaffold schema (trigger / beats typed list / outcomes with rewards + world_effect) | ✅ | V1 | IF-1 | [01 F3](01_OPEN_PROBLEMS.md#f3-quest-design--emergent-or-scripted--partial), F3-D1 |
+| Q-2 | Author-authored quest scaffolds via world-service admin UI | ✅ | V1 | Q-1, WA-3 | F3-D1 |
+| Q-3 | LLM fill-in at runtime (scene, NPC dialogue, choice text; deterministic combat per R7/A5) | ✅ | V1 | Q-1, PL-4, PL-5 | F3-D2 |
+| Q-4 | Book-canon quest seed extraction (knowledge-service surfaces tensions as candidates) | 📦 | V2 | Q-1, knowledge-service | F3-D3 |
+| Q-5 | Emergent quest generation (LLM drafts from timeline) with author-review gate | 📦 | V3 | Q-1, Q-4, DF4 | F3-D4 |
+| Q-6 | Quest discovery — proximity trigger (NPC in player region) | ✅ | V1 | Q-1, NPC-1 | F3-D5 |
+| Q-7 | Quest discovery — rumor propagation (NPC gossip) | 📦 | V2 | Q-6, NPC-3 | F3-D5 |
+| Q-8 | Quest discovery — explicit quest board (V2+ MMO) | 📦 | V2 | Q-1 | F3-D5 |
+| Q-9 | Player-created quest scaffolds with canon-lock constraints (author opt-in per book) | 📦 | V3 | Q-1, DF4 | F3-D6 |
 | PL-7 | Event emission + outbox publish | ✅ | V1 | IF-1, IF-6 | [02 §4.4](02_STORAGE_ARCHITECTURE.md) |
 | PL-8 | Projection update (in-transaction sync) | ✅ | V1 | IF-1 | [02 §4.6](02_STORAGE_ARCHITECTURE.md) |
 | PL-9 | Realtime broadcast (region subscribers see event) | 🟡 | V1 | IF-5, PL-7 | [02 §9](02_STORAGE_ARCHITECTURE.md) |
@@ -317,7 +330,10 @@ Scoped for clarity. Everything here is `📦 Deferred` under DF1.
 | DL-2 | Converted PC behavior (when PC becomes NPC) | 📦 | V2 | PCS-7 | DF1 |
 | DL-3 | NPC memory decay / periodic summarization | 📦 | V1/V2 | NPC-3 | Partially required for V1 (bounded memory) — design in DF1 |
 | DL-4 | PC reclaim UX | 📦 | V2 | PCS-7 | DF1 |
-| DL-5 | World simulation tick strategy (lazy-on-entry vs scheduled vs frozen) | ❓ | V3 | — | [01 B3](01_OPEN_PROBLEMS.md#b3-world-simulation-tick--open), DF1 |
+| DL-5 | World simulation tick — 3-mode framework (frozen V1 default / lazy-when-visited V2 / scheduled V3), per-reality World Rule configurable, daily budget cap, platform-tier aware | ✅ | V1 (frozen) · V2 (lazy) · V3 (scheduled) | DF4 World Rules | [01 B3](01_OPEN_PROBLEMS.md#b3-world-simulation-tick--partial), B3-D1..D5 |
+| DL-5a | Reality clock (`reality_registry.reality_time`, 1:5 real-to-in-world ratio default) | ✅ | V1 | IF-3 | B3-D4 |
+| DL-5b | Lazy-when-visited summary (LLM 1-call per region visit after gap threshold) | 📦 | V2 | DL-5, roleplay-service | B3-D2 |
+| DL-5c | Scheduled-tick cron with daily budget cap + idle-skip | 📦 | V3 | DL-5, meta-worker | B3-D3 |
 | DL-6 | NPC persona generation from PC history | 📦 | V2 | PCS-10 | DF8, part of DF1 |
 
 ---

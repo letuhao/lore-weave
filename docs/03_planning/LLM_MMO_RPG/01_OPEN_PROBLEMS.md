@@ -138,18 +138,26 @@ These are harder only within the scope of one reality, which bounds the populati
 
 **Why tractable:** Standard pattern. LoreWeave already has a plan (`70_ASYNC_JOB_WEBSOCKET_ARCHITECTURE_PLAN.md`). Reuse.
 
-### B3. World simulation tick — **OPEN**
+### B3. World simulation tick — **PARTIAL**
 
 **Problem:** Does the world do anything when no one is playing? If yes: NPCs age, events happen, rumors spread — compute cost grows unboundedly. If no: world is frozen in time between sessions, breaks immersion.
 
 **Why hard:** Genuine product trade-off with cost implications. No universally right answer.
 
-**Known compromises:**
-- **Lazy simulation** — when a player enters a region, compute "what happened since last visit" on-demand (bounded by a cheap LLM summarization).
-- **Scheduled tick** — nightly cron that ages NPC relationships, advances plotlines, costs predictable.
-- **Frozen** — between sessions, time stops. Cheapest. Least immersive.
+**Resolved by:** 3-mode tiered framework, per-reality configurable via World Rules (DF4):
 
-**Notes:** This is a product decision masquerading as a technical one. Decide the desired feel first.
+- **V1 default = frozen** (B3-D1) — no between-session activity; NPCs resume where last session ended. Cheapest; matches V1 solo RP scope.
+- **V2+ opt-in lazy-when-visited** (B3-D2) — cheap LLM summary on first player entering region after gap > 24h (default). 1 LLM call per region visit = bounded cost.
+- **V3+ opt-in scheduled tick** (B3-D3) — nightly/weekly cron per reality with daily cost budget cap (`multiverse.simulation.daily_budget_usd`). Advances: NPC relationship drift (within R8-L4 decay), plotline beats, rumor propagation. Skip if idle > N days.
+- **Reality clock** (B3-D4) — `reality_registry.reality_time` advances during active sessions; between-session advancement depends on mode.
+- **Platform-mode tier-aware budget** (B3-D5) — free tier = frozen only; paid tiers opt-in to tick.
+
+Decisions B3-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+
+**Residual `OPEN`:**
+- Tick pacing (NPC drift rate, rumor frequency) — V2+ playtest
+- Real-sec → in-world-sec ratio default — V1 UX feedback
+- Generative plotline beat quality — V3 prototype
 
 ### B4. Multi-user turn arbitration — **PARTIAL**
 
@@ -184,13 +192,26 @@ These are harder only within the scope of one reality, which bounds the populati
 
 ## C. Product / UX
 
-### C1. Player voice vs narrative voice — **OPEN**
+### C1. Player voice vs narrative voice — **PARTIAL**
 
 **Problem:** User types `/say I hate the king`. Does the AI narrator rewrite this as "You stand and declare, voice trembling with rage, that you despise the king"? Or keep it raw?
 
 **Why hard:** Rewrite = novelistic feel but player loses their voice; raw = chat-bot feel, breaks immersion.
 
-**Notes:** Per-player preference toggle is an easy cop-out but might be the right answer. Alternatively: "terse mode" vs "novel mode" per session.
+**Resolved by:** 3-mode voice framework with inline override:
+
+- **C1-D1** — 3 modes: **terse** (literal, minimal wrap), **novel** (full prose rewrite), **mixed** (auto-adapt: pivotal=novel, casual=terse). **V1 default = mixed.**
+- **C1-D2** — inline per-turn override: `/verbatim` forces terse, `/prose` forces novel for current turn only.
+- **C1-D3** — World-Rule override (DF4): author can force a mode per reality (e.g., literary canon → novel locked).
+- **C1-D4** — persistence: user voice preference per book stored in auth-service user-preferences.
+- **C1-D5** — LLM Safety Layer integration: voice mode is a prompt-template variable; output filter (A6-D4) enforces mode-consistency (terse must not produce 3-paragraph rewrite).
+
+Decisions C1-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+
+**Residual `OPEN`:**
+- "Mixed" auto-adapt classifier (pivotal vs casual) — V1 tuning
+- Which mode users prefer at scale — V1/V2 analytics
+- Mode-specific prompt template quality — V1 copy refinement per `UI_COPY_STYLEGUIDE.md`
 
 ### C2. Narrative pacing — **OPEN**
 
@@ -313,11 +334,27 @@ Players "bending" Elena happens naturally in a divergent reality; canon-faithful
 
 **Notes:** Possibly a separate "GM agent" above the NPCs, watching the story and nudging. Unvalidated.
 
-### F3. Quest design — emergent or scripted — **OPEN**
+### F3. Quest design — emergent or scripted — **PARTIAL**
 
 **Problem:** Quests can be (a) scripted (author writes them, LLM colors them in), (b) emergent (LLM invents quests from world state), or (c) hybrid.
 
 **Why hard:** Scripted = consistent but not novel; emergent = novel but often nonsensical. Hybrid is the goal but the seam is subtle.
+
+**Resolved by:** Hybrid scaffold + LLM fill-in framework, with emergent deferred to V3+ for quality control:
+
+- **F3-D1** — quest scaffold schema (V1-V2): structured `trigger` + `beats` (typed: player_choice / location_visit / skill_check / dialogue / combat) + `outcomes` (success/failure branches with rewards + world_effect). Author-authored via `world-service` admin UI.
+- **F3-D2** — LLM fill-in at runtime: scene descriptions, NPC dialogue (persona-constrained), player-choice text reflecting world state. Combat mechanics deterministic (R7 + world-service); LLM narrates outcome.
+- **F3-D3** — quest sources V1/V2: (a) author-authored scaffolds, (b) book-canon extraction (V2 — knowledge-service surfaces unresolved tensions as candidates for author review).
+- **F3-D4** — emergent quest generation = **V3+ opt-in**. LLM drafts scaffold from timeline tensions; **author/admin review before surfacing to players** (anti-quality-drift). Feeds DF1 Daily Life.
+- **F3-D5** — discovery mechanisms: proximity (NPC triggers in player region), rumor propagation, explicit quest board (V2+ MMO). All 3 opt-in per World Rule.
+- **F3-D6** — player-created quests = **V3+** with canon-lock constraints (L1 axioms unchangeable); author opts-in per book.
+
+Decisions F3-D1..D6 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+
+**Residual `OPEN`:**
+- Scaffold schema evolution — beat types (do we need more? are some unused?) — V1-V2 playtest
+- Emergent quest generation prompt quality — V3 prototype
+- Author review tooling for emergent quests — DF4-adjacent detail
 
 ### F4. Progression system — **ACCEPTED SCOPE**
 
@@ -441,14 +478,14 @@ New category introduced by the multiverse model in [03_MULTIVERSE_MODEL.md §11]
 | Category | OPEN | PARTIAL | KNOWN PATTERN | ACCEPTED |
 |---|---|---|---|---|
 | A. LLM reasoning & grounding | 0 | 6 | 0 | 0 |
-| B. Distributed systems | 1 | 2 | 3 | 0 |
-| C. Product / UX | 3 | 2 | 0 | 0 |
+| B. Distributed systems | 0 | 3 | 3 | 0 |
+| C. Product / UX | 2 | 3 | 0 | 0 |
 | D. Economics | 2 | 0 | 0 | 1 |
 | E. Moderation & legal | 1 | 1 | 1 | 0 |
-| F. Content design | 2 | 1 | 0 | 1 |
+| F. Content design | 1 | 2 | 0 | 1 |
 | G. Testing & ops | 3 | 0 | 0 | 0 |
 | **M. Multiverse-specific** | **0** | **6** | **1** | **0** |
-| **Total** | **12** | **18** | **5** | **2** |
+| **Total** | **9** | **21** | **5** | **2** |
 
 > **Note:** Counts accurate as of 2026-04-23. Reconciled pre-existing off-by-one baseline miscounts discovered during M and A batch resolutions (the M OPEN baseline was 4 not 3; the A OPEN baseline included A2 which had already moved to PARTIAL via the multiverse reframe). M1/M2/M3/M4/M5/M7 all `PARTIAL` in 01; M6 `KNOWN PATTERN`. M2/M3/M4/M5 additionally marked **MITIGATED in [03 §11](03_MULTIVERSE_MODEL.md)**; stay `PARTIAL` in 01 due to residual sub-items pending V1 data or external input. All A1–A6 now `PARTIAL` after the LLM Safety Layer ([05](05_LLM_SAFETY_LAYER.md)) resolution.
 
@@ -469,8 +506,12 @@ New category introduced by the multiverse model in [03_MULTIVERSE_MODEL.md §11]
 - **A3 `OPEN` → `PARTIAL`** (2026-04-23 — World Oracle pattern in [05 §4](05_LLM_SAFETY_LAYER.md); A3-D1..D4 locked. Deterministic fact-question routing via `oracle.query()` with pre-computed categories + PC timeline-cutoff; miss → LLM fallback + audit flag)
 - **A5 + A6 framework formalized** (2026-04-23 — A5 / A6 remain `PARTIAL` status-wise but their architecture is now locked via [05 §3 command dispatch + §5 5-layer injection defense](05_LLM_SAFETY_LAYER.md); A5-D1..D4 + A6-D1..D5 locked)
 - **A category batch fully closed** (2026-04-23 — A1/A2/A3/A4/A5/A6 all `PARTIAL`; no fully OPEN items remain in A)
+- **B3 `OPEN` → `PARTIAL`** (2026-04-23 — 3-mode tick framework (frozen V1 / lazy-when-visited V2 / scheduled V3), per-reality configurable, budget-capped; B3-D1..D5 locked)
+- **C1 `OPEN` → `PARTIAL`** (2026-04-23 — 3-voice modes (terse / novel / mixed) with inline override + world-rule override + persistence; V1 default = mixed; C1-D1..D5 locked)
+- **F3 `OPEN` → `PARTIAL`** (2026-04-23 — hybrid scaffold + LLM fill-in; emergent deferred to V3+ with author review; F3-D1..D6 locked)
+- **B category batch fully closed** (2026-04-23 — B3 moves to PARTIAL; no fully OPEN items remain in B)
 
-**Interpretation:** Systematic design resolutions have compressed the OPEN set from 18 → … → 12, with every multiverse-specific risk AND every LLM reasoning/grounding risk now having at least a PARTIAL answer. Remaining single-problem-kills-product severity items: **A4** (retrieval quality — needs measurement), **D1** (cost per user-hour — needs prototype), **E3** (IP — needs legal). Critical-path list: still 3. Both M and A categories are **complete** — no fully OPEN items remain in either. OPEN items remaining are in categories B (1), C (3), D (2), E (1), F (2), G (3).
+**Interpretation:** Systematic design resolutions have compressed the OPEN set from 18 → … → 9, with every multiverse-specific risk AND every LLM reasoning/grounding risk AND every distributed-systems risk now having at least a PARTIAL answer. Remaining single-problem-kills-product severity items: **A4** (retrieval quality — needs measurement), **D1** (cost per user-hour — needs prototype), **E3** (IP — needs legal). Critical-path list: still 3. M, A, and B categories are **complete** — no fully OPEN items remain in any of them. OPEN items remaining are in C (2: C2 pacing, C3 cold-start), D (2: D1, D2), E (1: E3), F (1: F2 AI GM), G (3: all testing/ops).
 
 ## What "ready to implement" would look like
 
