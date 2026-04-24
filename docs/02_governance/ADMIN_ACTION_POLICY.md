@@ -86,10 +86,32 @@ Truly dangerous commands (bypass safety gates, manual DROP, bulk purges) MUST re
 **Dangerous command list** (maintained in policy, updated as tooling evolves):
 - `admin/force-close-reality` (bypasses cooling period)
 - `admin/manual-drop-database` (bypasses soft-delete)
-- `admin/purge-user-data` (GDPR hard delete)
+- `admin/purge-user-data` (GDPR hard delete — legacy; superseded by `admin/user-erasure`)
+- `admin/user-erasure` (GDPR/CCPA right-to-erasure via crypto-shred; Tier 1 destructive; 30-day full-erasure SLA — see [02_STORAGE_ARCHITECTURE.md §12X.6](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md#12x6-layer-5--right-to-erasure-runbook-adminuser-erasure))
+- `admin/unarchive-reality` (S5 Griefing Tier 2; within soft-delete window; user notification per R8 — see [02_STORAGE_ARCHITECTURE.md §12Z.7](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md))
+- `admin/restore-from-backup` (S5 Destructive Tier 1, dual-actor; time-bounded by R4 retention 7/14/30d; post-backup events permanently lost — see [02_STORAGE_ARCHITECTURE.md §12Z.7](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md))
+- `admin/relink-ancestor` (V2+; severance reconnection; Tier 1 destructive, dual-actor; ancestor DB must exist — see [02_STORAGE_ARCHITECTURE.md §12Z.7](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md))
+- `admin/break-glass` (incident-response emergency admin access; Tier 1 dual-actor + 100+ char reason + incident ticket; 24h TTL admin JWT with `break_glass=true` claim; every RPC double-audited + SLACK/PAGE on-call; mandatory post-use credential rotation + 7d postmortem — see [02_STORAGE_ARCHITECTURE.md §12AA.11](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md))
+- `author/canonize-fact` (L3→L2 canon promotion affecting all descendant realities; Tier 1 Destructive, dual-actor author + second reviewer, 100+ char reason, 24h author cooldown, platform-editor mandatory for book's first 90d — see [02_STORAGE_ARCHITECTURE.md §12AC.3](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md))
+- `author/decanonize-fact` (L2→L3 demotion; symmetric Tier 1 Destructive; enumerated reasons; content preserved in audit — see [02_STORAGE_ARCHITECTURE.md §12AC.9](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md))
+- `admin/canonize-fact` (platform-initiated emergency canonization; Tier 1 Destructive dual-actor)
+- `admin/decanonize-fact` (platform-initiated; DMCA takedown / security issue / platform governance; Tier 1 Destructive dual-actor)
+- `admin/update-incident-severity` (S5 Tier 2 Griefing — affects user-visible comms via status page; reason + notification required — see [02_STORAGE_ARCHITECTURE.md §12AE.11](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md))
+- `status-page-admin` (S5 Tier 2 Griefing — manual maintenance/incident notices to public status page — see [02_STORAGE_ARCHITECTURE.md §12AD.8](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md))
+- `admin/deploy-freeze` (S5 Tier 2 Griefing — blocks deploys in specified scope; affects deploy velocity — see [02_STORAGE_ARCHITECTURE.md §12AH.3](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md))
+- `admin/deploy-override-freeze` (S5 Tier 1 Destructive — dual-actor; bypasses SLO-burn / incident / security freeze for emergency deploy)
+- `admin/deploy-rollback` (S5 Tier 2 Griefing — reverts code/config; user-visible behavior change)
+- `flag/enable` / `flag/disable` / `flag/set-scope` (S5 Tier 2 Griefing — runtime feature flag toggles; user-visible behavior change — see [02_STORAGE_ARCHITECTURE.md §12AH.5](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md))
 - `admin/bypass-archive-verification`
 - `admin/manual-partition-drop`
 - Others added as needed
+
+### Tier 3 Informational commands (rapid response, low gating)
+
+The following commands are **not** in the dangerous list but ARE Tier 3 Informational per S5-D1 (standard single-actor auth + standard audit); documented here for operational awareness:
+
+- `admin/declare-incident` (creates `incidents` row with severity; standard auth — rapid response matters more than gating per SR2-D1)
+- `admin/close-incident` (Tier 3; terminal state transition)
 
 ### R5 — Admin UI guardrails
 
@@ -109,6 +131,51 @@ Every command MUST document its reversibility:
 
 Rollback NEVER uses direct DB mutation. Always compensating events.
 
+### R7 — Command Impact Classification (added 2026-04-24, S5)
+
+Every admin command MUST declare `ImpactClass` at registration. Three tiers:
+
+- **`destructive`** — irreversible data/service loss (DROP DATABASE, purge-user-data, bypass-archive-verification). **Requires dual-actor** (different users, 24h cooldown) + typed confirmation + 100+ char reason.
+- **`griefing`** — material user impact, reversible via compensating events (reset-npc-mood, freeze-reality, force-npc-leave-session, compaction-trigger). **Requires 50+ char reason** + affected-user notification + periodic review + enhanced audit.
+- **`informational`** — read-only or self-scoped (query-stats, view-memory, help, export-session). Standard single-actor auth + standard audit.
+
+Classification miscategorization is PR rejection. Security team audits quarterly for correctness.
+
+Missing `ImpactClass` declaration fails CI lint.
+
+Source design: [§12U](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md#12u-admin-command-classification--s5-resolution-2026-04-24).
+
+### R8 — User Notification for Griefing Tier (added 2026-04-24, S5)
+
+Tier 2 (Griefing) commands that touch user data MUST notify affected users via the standard platform notification channel (same as R9 closure notifications). Notification includes:
+- Admin action performed (redacted admin ID OK)
+- Affected resource (NPC, session, PC, etc.)
+- Reason provided by admin
+- Timestamp
+
+Users access `/me/admin-activity` for full personal audit trail.
+
+Suppression of notification requires an ADR documenting why (e.g., maintenance ops during scheduled window with advance notice).
+
+### R9 — Periodic Review of Griefing Actions (added 2026-04-24, S5)
+
+Griefing-tier entries MUST be reviewed weekly by admin-ops manager:
+- Mark `reviewed = true` with `review_notes`
+- Flag abnormal patterns for investigation
+- Unreviewed entries > 2 weeks old trigger alert
+
+Review queue surfaced in DF9/DF11 admin dashboards.
+
+### R10 — Privacy Level Access Control (added 2026-04-24, S3 + S5)
+
+Reads of events with `privacy_level != 'normal'` enforce minimum impact class:
+- `sensitive` events require Griefing or Destructive command (Tier 2+)
+- `confidential` events require Destructive command (Tier 1, dual-actor)
+
+Enforced via SQL filter at query construction — commands of insufficient tier cannot see higher-privacy events even if DB access is present.
+
+Source design: [§12S.3.2 Privacy tier](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md) + [§12U.7 Interaction](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md#12u7-interaction-with-s3-privacy-access).
+
 ## 4. Code review enforcement
 
 PR reviewers MUST reject:
@@ -118,6 +185,13 @@ PR reviewers MUST reject:
 - Free-form SQL editor in production-facing admin UI
 - Missing destructive confirmation on destructive commands
 - New "dangerous command" without double-approval integration
+- New/altered table migration missing PII classification tags (`@pii_sensitivity` / `@retention_class` / `@erasure_method` / `@legal_basis`) — see [02_STORAGE_ARCHITECTURE.md §12X.3](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md#12x3-layer-2--pii-classification-contract)
+- Direct LLM provider SDK call outside `contracts/prompt/` library (bypasses prompt assembly governance) — see [02_STORAGE_ARCHITECTURE.md §12Y.2](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md)
+- User-authored data populating non-`[INPUT]` section of a prompt template — see [02_STORAGE_ARCHITECTURE.md §12Y.4](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md)
+- Prompt template version change without corresponding fixture update — see [02_STORAGE_ARCHITECTURE.md §12Y.10](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md)
+- New inter-service RPC call not registered in [`contracts/service_acl/matrix.yaml`](../../contracts/service_acl/matrix.yaml) (bypasses S11 ACL enforcement) — see [02_STORAGE_ARCHITECTURE.md §12AA.4](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md)
+- Hardcoded service credentials in env vars, source code, or config files (must fetch from vault via SVID per S11-D6) — see [02_STORAGE_ARCHITECTURE.md §12AA.7](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md)
+- RPC contract missing `x-principal-mode` declaration (`requires_user` / `system_only` / `either`) — confused-deputy risk — see [02_STORAGE_ARCHITECTURE.md §12AA.5](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md)
 
 Architects MUST reject ADRs proposing ad-hoc DB connections, direct projection mutation, or bypassing the command library pattern.
 
