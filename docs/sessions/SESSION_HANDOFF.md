@@ -1,20 +1,42 @@
-# Session Handoff — Session 51 (12 cycles shipped · Track 2/3 Gap Closure P2 DONE + **P3 DONE 12/12** + **P4 1/2 done** · session closed)
+# Session Handoff — Session 51 (13 cycles shipped · Track 2/3 Gap Closure P2 DONE + **P3 DONE 12/12** + **P4 C14 DONE** · session closed)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-28 (session 51, closed at cycle 44 / C14a)
-> **HEAD:** `c2acf18` (C14a reconciler + quarantine scheduler loops BE; C12c-b @ `7f31931`; C12c-a @ `5fd8a54`; C13 @ `5fabf87`; C12b-b @ `ff2363b`; C12b-a @ `5c36dfd`; C12a @ `2ea7481`; C11 @ `abb84ef`; C10 @ `ae5649b`; C9 @ `06b2063`; C8 @ `287e853`; C7 @ `a15a04b`; session 50 HEAD `eb26e83` — see session 50 block for earlier refs)
+> **Date:** 2026-04-29 (session 51, closed at cycle 45 / C14b)
+> **HEAD:** `b2ccc0f` (C14b resumable cursor state BE; C14a @ `c2acf18`; C12c-b @ `7f31931`; C12c-a @ `5fd8a54`; C13 @ `5fabf87`; C12b-b @ `ff2363b`; C12b-a @ `5c36dfd`; C12a @ `2ea7481`; C11 @ `abb84ef`; C10 @ `ae5649b`; C9 @ `06b2063`; C8 @ `287e853`; C7 @ `a15a04b`; session 50 HEAD `eb26e83` — see session 50 block for earlier refs)
 > **Branch:** `main` (ahead of origin by sessions 38–51 commits — user pushes manually)
 
-## Session 51 — 12 cycles shipped (all Track 2/3 Gap Closure: C7..C14a) · **P2 DONE (7/7)** · **P3 DONE (12/12)** · **P4 1/2 done** · session closed
+## Session 51 — 13 cycles shipped (all Track 2/3 Gap Closure: C7..C14b) · **P2 DONE (7/7)** · **P3 DONE (12/12)** · **P4 C14 DONE** · session closed
 
 **Highlights:**
 - **P2 tier closed at C9** (entity optimistic concurrency + unlock). All 7 P2 cycles shipped across sessions 50+51 (C3..C9).
 - **🎉 P3 tier DONE 12/12** — opened at C10, fully closed at C12c-b. All Track 2/3 Gap Closure Priority 3 work shipped across 8 cycles (C10 + C11 + C12a + C12b-a + C12b-b + C13 + C12c-a + C12c-b).
-- **🚀 P4 tier opened** with C14a. Plan row C14 split at user request into C14a (create missing schedulers, shipped this cycle) + C14b (cursor hardening, deferred per "fire when profiling shows pain" trigger). First session 51 cycle where "honest audit caught the plan understating scope" was applied BEFORE committing to size — saved a potential XL overrun.
+- **🚀 P4 C14 fully shipped** in two cycles (C14a schedulers + C14b cursor state). User override of the P4 trigger criterion at C14b CLARIFY — plan-completion mindset. First session 51 cycle where "honest audit caught the plan understating scope" was applied BEFORE committing to size — saved a potential XL overrun.
 - **C12 split saga** — C12a (paired FS) + C12b-a/b-b (BE/FE split) + C12c-a/c-b (BE/FE split). Plan's single "C12 L" row bloomed into 5 honest-sized cycles. Memory `feedback_scope_audit_before_batching` applied each time.
 - **C12c-a size reclassified** from plan-said-"S FE-only blocked" to workflow-gate-required FS L after audit caught: (a) no glossary-service list endpoint, (b) no worker branch handling scope='glossary_sync' (explicit TODO at runner.py:621 silently no-op'd), (c) scope='all' ALSO excluded glossary — user-approved flip makes the name honest.
 - Back-end test coverage: **1466/1466 knowledge-service** (+61 over session 50's 1405) + **23/23 worker-ai** (+6 from C13's 17) + **12/12 glossary-service Go** at session 51 end.
 - Front-end test coverage: **474/474** at session 51 end (unchanged since C12b-b — C13 stories are tsc-only, C12c-a is pure BE).
+
+### Cycle 45 — Track 2/3 Gap Closure C14b [BE L] — resumable scheduler cursor state
+
+Closes **C14 fully** (C14a schedulers + C14b cursor). Second P4 cycle. User override of P4 trigger criterion at CLARIFY — plan-completion mindset.
+
+**Three blocks:**
+- **migrate.py** — NEW `sweeper_state` table (sweeper_name PK + last_user_id UUID + last_scope JSONB + updated_at). Per-sweeper resumable cursor, `last_scope` as escape hatch for future per-user-sub-scope sweepers. No FK on last_user_id (cross-DB forbidden).
+- **NEW `SweeperStateRepo`** (4 methods: read_cursor / read_cursor_full / upsert_cursor with partial-UPDATE semantic / clear_cursor). Module docstring explains crash semantics.
+- **Reconciler integration**: `SWEEPER_NAME` grep anchor; `_LIST_USERS_SQL` seek predicate `$1::uuid IS NULL OR user_id > $1::uuid` with ORDER BY user_id for deterministic resume; sweep_reconcile_once gains optional sweeper_state_repo (back-compat: None = C14a behavior); flow is read_cursor → fetch users with seek → per-user reconcile + upsert_cursor (BEFORE counter increment per /review-impl LOW#2) + counters → natural-completion clear; per-user raise leaves cursor at last successful user. Quarantine scheduler: docstring-only note (self-advancing filter, no natural per-user key).
+
+**/review-impl caught 1 MED + 3 LOW + 1 COSMETIC; fixed MED + 1 LOW in-cycle, 1 LOW retracted (false finding), 2 accepted:**
+- **MED#1** DDL regression test (3 new tests: table_present + schema_shape + no-cross-db-FK)
+- **LOW#2** swapped upsert+counter order — cleaner semantics, both are safe (reconcile idempotent)
+- **LOW#3 RETRACTED** — `idx_knowledge_projects_user_all ON knowledge_projects(user_id)` already exists from K16.12; my audit missed it
+
+**Size reclassified** M→L at CLARIFY (7 files trips 6+ threshold). Honest-sizing memory applied — sixth reclassification this session.
+
+**Closes D-K11.9-01 cursor-state + P-K15.10-01 cursor-state.** **C14 fully shipped.** Only C15 remains in P4 (trigger-gated).
+
+**Files: 10** (6 code/test + 2 NEW — sweeper_state.py + test_sweeper_state_repo.py; 2 docs SESSION_PATCH/plan). **Verify:** pytest **1501/1501** (+17 from C14a baseline 1484: 10 repo + 4 scheduler integration + 3 DDL regression).
+
+---
 
 ### Cycle 44 — Track 2/3 Gap Closure C14a [BE L] — reconciler + quarantine scheduler loops
 
@@ -199,18 +221,17 @@ Util pre-rounds to integer before branching so `59.6 → "1h"` (not naive `"0h 6
 
 **What's next — Session 52 default path:**
 
-🎉 **P1+P2+P3 all DONE + P4 1/2 done** (C14a shipped; C14b deferred per P4 trigger). Remaining actionable: **P5 × 3 DESIGN-first** + **C15 (P4 S, trigger-gated)** + **User-gated × 2**. Next actionable default is **P5 🏗 C16** (first DESIGN-first ADR).
+🎉 **P1+P2+P3 all DONE + P4 C14 fully shipped (C14a + C14b)**. Remaining actionable: **P5 × 3 DESIGN-first** + **C15 (P4 S, trigger-gated)** + **User-gated × 2**. Next actionable default is **P5 🏗 C16** (first DESIGN-first ADR).
 
 Next cycle — **C16 🏗 (P5, XL DESIGN-first)**: Budget attribution for global-scope regen. D-K20α-01 partial. Produces `docs/03_planning/KNOWLEDGE_SERVICE_BUDGET_GLOBAL_SCOPE_ADR.md` choosing between Option A (phantom project row for per-user AI spend not tied to a real project) vs Option B (new `knowledge_summary_spending` table keyed on user_id + scope_type + month). Trade-offs: A reuses existing code paths + budget-helper; B is cleaner schema + needs new helper. **Not in scope of BUILD until ADR signed off.** Detail in [plan §4 C16](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md). Expect DESIGN-only cycle (no code, no tests — just ADR doc + user review).
 
 **Alternative next-cycle candidates:**
 - **C17 🏗 (P5, XL DESIGN-first)** — Entity-merge canonical-alias mapping. KSA §3.4.E amendment + backfill story.
 - **C18 🏗 (P5, XL DESIGN-first)** — Event wall-clock date. KSA §3.4 amendment + LLM prompt change + migration.
-- **C14b (P4, M DEFERRED)** — Cursor hardening for schedulers. Fire when profiling shows pain — hobby-scale sweepers complete in seconds.
 - **C15 (P4, S TRIGGER-GATED)** — Neo4j fulltext index. Fire ONLY when any user crosses ~10k entities.
 - **User-gated ⏸** — C19 multilingual fixtures + C20 Gate-13 walkthrough.
 
-**Session-51 stats**: 12 cycles shipped (C7→C14a). Plan progress: 35 items / 23 cycles total; 32 items / 18 cycles done. **P1+P2+P3 tiers fully closed; P4 half-done.** First session in LoreWeave history to close three plan tiers + open a fourth in one continuous session.
+**Session-51 stats**: 13 cycles shipped (C7→C14b). Plan progress: 35 items / 23 cycles total; 33 items / 19 cycles done. **P1+P2+P3 tiers fully closed; P4 C14 DONE.** First session in LoreWeave history to close three plan tiers + fully ship a fourth's primary cycle in one continuous session.
 
 **Session 51 aftermath — things to keep in mind:**
 
@@ -222,7 +243,7 @@ Next cycle — **C16 🏗 (P5, XL DESIGN-first)**: Budget attribution for global
 - **CLARIFY honesty > plan commitment**. C7 plan-said-S shipped as XL; C12 plan-bundled-L shipped as 3 cycles (C12a + C12b-a + C12b-b + C12c-blocked). Honest sizing at CLARIFY is worth more than hitting an initial classification — the workflow-gate tolerates reclassification.
 
 **Starting-session boilerplate:**
-1. Read [SESSION_PATCH.md](SESSION_PATCH.md) session-51 entries (cycles 33–44) + the plan file's §3 cycle table
+1. Read [SESSION_PATCH.md](SESSION_PATCH.md) session-51 entries (cycles 33–45) + the plan file's §3 cycle table
 2. `./scripts/workflow-gate.sh status` to confirm previous cycle closed
 3. Start C16 🏗 with `./scripts/workflow-gate.sh size XL 1 0 0` then `phase clarify` (XL DESIGN-first — single ADR doc, 0 code changes, 0 tests this cycle. BUILD is blocked until user signs off on the ADR). C16's CLARIFY should canvass the budget-attribution trade-offs with the user early since this is decision-driven, not code-driven.
 4. Infra: no services needed — ADR is pure documentation work
