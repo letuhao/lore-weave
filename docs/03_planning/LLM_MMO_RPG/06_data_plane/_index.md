@@ -39,9 +39,13 @@ Phase 3 (landed 2026-04-25):
 
 11. [07_failure_and_recovery.md](07_failure_and_recovery.md) — **DP-F1..F10** failure modes, CP outage degraded mode, node handoff, split-brain, invalidation reconciliation, backpressure token buckets, schema migration rollback, chaos drill cadence (resolves Q6, Q12; closes Q5 residual)
 
-**Phase 4 — Channel-model follow-ups (backlog, 2026-04-25):**
+**Phase 4 — Channel-model follow-ups (in progress, 2026-04-25):**
 
-User clarified on 2026-04-25 that the game uses a **hierarchical channel** model (cell session → tavern → town → district → country → continent) with event bubble-up. Phase 1-3 contracts remain LOCKED as baseline; channel concept requires extension. Full backlog recorded in [99_open_questions.md](99_open_questions.md) as Q15..Q34. Expected new file: `12_channel_primitives.md` (DP-Ch1..Chn + likely DP-A13, DP-A14 new axioms). Resolution will be incremental — one mini-session per Q cluster.
+User clarified on 2026-04-25 that the game uses a **hierarchical channel** model (cell session → tavern → town → district → country → continent) with event bubble-up. Phase 1-3 contracts remain LOCKED as baseline; channel concept extends them. Backlog recorded in [99_open_questions.md](99_open_questions.md) as Q15..Q34. Resolved so far:
+
+12. [12_channel_primitives.md](12_channel_primitives.md) — **DP-Ch1..Ch10** channel identity, tree registry, CP cache + delta stream, scope marker traits, cache-key format, SessionContext extension, CRUD primitives (resolves Q26; unblocks Q15/Q16/Q17/Q27/Q30/Q34 + others)
+
+Phase 4 blockers remaining: Q15 (turn boundary), Q16 (durable subscribe), Q27 (bubble-up primitive). Next cluster: Q17 + Q30 + Q34 (per-channel ordering + writer binding).
 
 ---
 
@@ -51,7 +55,7 @@ User clarified on 2026-04-25 that the game uses a **hierarchical channel** model
 |---:|---|---|---|---|
 | 00 | [00_preamble.md](00_preamble.md) | LOCKED | — | 2026-04-24 |
 | 01 | [01_scope_and_boundary.md](01_scope_and_boundary.md) | LOCKED | — | 2026-04-24 |
-| 02 | [02_invariants.md](02_invariants.md) | LOCKED | DP-A1..A12 | 2026-04-24 |
+| 02 | [02_invariants.md](02_invariants.md) | LOCKED | DP-A1..A14 | 2026-04-25 |
 | 03 | [03_tier_taxonomy.md](03_tier_taxonomy.md) | LOCKED | DP-T0, DP-T1, DP-T2, DP-T3 | 2026-04-24 |
 | 04 | [04_kernel_api_contract.md](04_kernel_api_contract.md) | LOCKED | DP-K1..K12 | 2026-04-25 |
 | 05 | [05_control_plane_spec.md](05_control_plane_spec.md) | LOCKED | DP-C1..C10 | 2026-04-25 |
@@ -59,7 +63,8 @@ User clarified on 2026-04-25 that the game uses a **hierarchical channel** model
 | 07 | [07_failure_and_recovery.md](07_failure_and_recovery.md) | LOCKED | DP-F1..F10 | 2026-04-25 |
 | 08 | [08_scale_and_slos.md](08_scale_and_slos.md) | LOCKED | DP-S1..S8 | 2026-04-24 |
 | 11 | [11_access_pattern_rules.md](11_access_pattern_rules.md) | LOCKED | DP-R1..R8 | 2026-04-24 |
-| 99 | [99_open_questions.md](99_open_questions.md) | OPEN + **Phase 4 backlog** | Q2/Q3/Q7/Q10/Q11/Q13 (Phase 1-3 residuals) + **Q15..Q34** (Phase 4 channel-model follow-ups) | 2026-04-25 |
+| 12 | [12_channel_primitives.md](12_channel_primitives.md) | LOCKED | DP-Ch1..Ch10 | 2026-04-25 |
+| 99 | [99_open_questions.md](99_open_questions.md) | OPEN + **Phase 4 in progress** | Phase 1-3 residuals (Q2/Q3/Q7/Q10/Q11/Q13) + **Phase 4 Q15..Q34** (Q26 ✅ resolved 2026-04-25) | 2026-04-25 |
 
 ---
 
@@ -69,7 +74,7 @@ Outside docs may cross-link unambiguously to:
 
 | Prefix | Scope | Owned by |
 |---|---|---|
-| `DP-A*` | Axioms / invariants (DP-A1..A12) | [02_invariants.md](02_invariants.md) |
+| `DP-A*` | Axioms / invariants (DP-A1..A14) | [02_invariants.md](02_invariants.md) |
 | `DP-T0..T3` | Tier taxonomy | [03_tier_taxonomy.md](03_tier_taxonomy.md) |
 | `DP-R*` | Access Pattern Rulebook rules (DP-R1..R8) | [11_access_pattern_rules.md](11_access_pattern_rules.md) |
 | `DP-S*` | Scale and SLO items (DP-S1..S8) | [08_scale_and_slos.md](08_scale_and_slos.md) |
@@ -77,6 +82,7 @@ Outside docs may cross-link unambiguously to:
 | `DP-C*` | Control plane spec items (DP-C1..C10) | [05_control_plane_spec.md](05_control_plane_spec.md) |
 | `DP-X*` | Cache coherency / consistency items (DP-X1..X10) | [06_cache_coherency.md](06_cache_coherency.md) |
 | `DP-F*` | Failure and recovery items (DP-F1..F10) | [07_failure_and_recovery.md](07_failure_and_recovery.md) |
+| `DP-Ch*` | Channel primitives (DP-Ch1..Ch10) | [12_channel_primitives.md](12_channel_primitives.md) |
 
 Retired IDs: (none yet). Retired IDs use `_withdrawn` suffix, never reused.
 

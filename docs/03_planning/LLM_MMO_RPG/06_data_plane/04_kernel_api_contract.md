@@ -62,6 +62,34 @@ pub trait T3Aggregate: Aggregate {}
 
 A feature declares exactly one of these per aggregate type. Writing to a `T2Aggregate` via a `t1_write` call fails to compile (trait bound reject).
 
+### Scope marker traits (Phase 4, DP-A14)
+
+Orthogonal to tier markers, every aggregate declares its **scope** (see [DP-A14](02_invariants.md#dp-a14--aggregate-scope-reality-scoped-vs-channel-scoped-design-time-choice-phase-4-2026-04-25) and [12_channel_primitives.md](12_channel_primitives.md)):
+
+```rust
+pub trait RealityScoped: Aggregate {}
+pub trait ChannelScoped: Aggregate {}
+```
+
+Enforced exactly-one-scope via `#[derive(Aggregate)]` macro's `#[dp(scope = "reality" | "channel", tier = "...")]` attribute. Scope determines cache-key shape (DP-K7) and API signature (DP-K4/K5).
+
+### ChannelId
+
+```rust
+/// Channel identifier. Newtype with module-private constructor, parallel to
+/// RealityId — cannot be forged by feature code. Produced by SDK during
+/// channel-tree resolution (at bind_session or on delta stream updates).
+/// Full details in [12_channel_primitives.md DP-Ch1](12_channel_primitives.md#dp-ch1--channelid-and-tree-structure).
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct ChannelId(pub(crate) Uuid);
+
+impl ChannelId {
+    pub fn reality_root(reality_id: &RealityId) -> Self { /* deterministic derivation */ }
+    pub fn as_str(&self) -> String { self.0.to_string() }
+    pub(crate) fn new_verified(uuid: Uuid) -> Self { Self(uuid) }
+}
+```
+
 ### Tier enum (runtime)
 
 ```rust
@@ -85,6 +113,10 @@ pub struct SessionContext {
     node_id: NodeId,           // local node, for session-sticky checks
     capability: CapabilityToken,
     bound_at: Instant,
+
+    // Phase 4 (DP-Ch6): channel hierarchy
+    current_channel_id: ChannelId,       // session's active channel (typically a cell)
+    ancestor_channels: Vec<ChannelId>,   // [current, parent, ..., root]; ≤16 entries
 }
 
 impl SessionContext {
@@ -95,8 +127,17 @@ impl SessionContext {
     /// Returns `Err(DpError::CapabilityExpired)` if the token has expired.
     /// Feature code does not call this directly — SDK does, on every entry.
     pub(crate) fn check_live(&self) -> Result<(), DpError> { /* ... */ }
+
+    // Phase 4 (DP-Ch6): channel accessors
+    pub fn current_channel(&self) -> &ChannelId { &self.current_channel_id }
+    pub fn ancestor_chain(&self) -> &[ChannelId] { &self.ancestor_channels }
+    pub fn is_ancestor(&self, target: &ChannelId) -> bool {
+        self.ancestor_channels.contains(target)
+    }
 }
 ```
+
+**Mutation:** SessionContext is effectively immutable. Channel changes happen via `DpClient::move_session_to_channel` which returns a **new** SessionContext (details in [12_channel_primitives.md DP-Ch9](12_channel_primitives.md#dp-ch9--moving-a-session-to-a-different-channel)).
 
 ---
 
@@ -148,14 +189,22 @@ pub enum DpError {
 
 ## DP-K4 — Read primitives
 
+Read primitives dispatch on aggregate scope ([DP-A14](02_invariants.md#dp-a14--aggregate-scope-reality-scoped-vs-channel-scoped-design-time-choice-phase-4-2026-04-25)). Two forms per primitive: one for `RealityScoped`, one for `ChannelScoped`.
+
 ### Single-aggregate read
 
 ```rust
-/// Read the current projected state of one aggregate. Cache-first; on miss,
-/// hits the durable tier (T2/T3) or in-memory state (T1) depending on the
-/// aggregate's tier trait.
-pub async fn read_projection<A: Aggregate>(
+/// Read a reality-scoped aggregate. Cache-first; on miss, hits projection.
+pub async fn read_projection_reality<A: RealityScoped>(
     ctx: &SessionContext,
+    id: A::Id,
+) -> Result<A::Projection, DpError>;
+
+/// Read a channel-scoped aggregate. Requires explicit channel_id.
+/// Fails with `DpError::CapabilityDenied` if session lacks visibility on the channel.
+pub async fn read_projection_channel<A: ChannelScoped>(
+    ctx: &SessionContext,
+    channel: &ChannelId,
     id: A::Id,
 ) -> Result<A::Projection, DpError>;
 ```
@@ -163,11 +212,17 @@ pub async fn read_projection<A: Aggregate>(
 ### Scoped query
 
 ```rust
-/// Query aggregates of type `A` matching a typed predicate. Predicate is a
-/// DP-provided builder (not raw SQL) so the query can be routed to
-/// cache-first, projection-fallback without exposing backend details.
-pub async fn query_scoped<A: Aggregate>(
+/// Query reality-scoped aggregates matching a typed predicate.
+pub async fn query_scoped_reality<A: RealityScoped>(
     ctx: &SessionContext,
+    predicate: Predicate<A>,
+    limit: usize,
+) -> Result<Vec<A::Projection>, DpError>;
+
+/// Query channel-scoped aggregates within a specific channel.
+pub async fn query_scoped_channel<A: ChannelScoped>(
+    ctx: &SessionContext,
+    channel: &ChannelId,
     predicate: Predicate<A>,
     limit: usize,
 ) -> Result<Vec<A::Projection>, DpError>;
@@ -325,35 +380,56 @@ pub struct BroadcastStream<A: T1Aggregate> { /* ... */ }
 
 ## DP-K7 — `dp::cache_key!` macro
 
-Compile-time cache key constructor. Implements [DP-R4](11_access_pattern_rules.md#dp-r4--cache-keys-via-dp-macro-never-hand-built).
+Compile-time cache key constructor. Implements [DP-R4](11_access_pattern_rules.md#dp-r4--cache-keys-via-dp-macro-never-hand-built). Dispatches on scope trait ([DP-A14](02_invariants.md#dp-a14--aggregate-scope-reality-scoped-vs-channel-scoped-design-time-choice-phase-4-2026-04-25)).
 
 **Shape:**
 
 ```rust
+// Reality-scoped (no channel arg)
 dp::cache_key!($ctx:expr, $tier:ident, $aggregate:ident, $id:expr [, $subkey:expr]*)
+
+// Channel-scoped (channel arg required after `;`)
+dp::cache_key!($ctx:expr, $tier:ident, $aggregate:ident, $id:expr ; channel = $channel:expr [, $subkey:expr]*)
 ```
 
 **Expansion (conceptual):**
 
 ```rust
+// Reality-scoped:
 // dp::cache_key!(ctx, T2, PlayerInventory, player_id)
 // ->
 format!(
-    "dp:{reality}:{tier}:{typ}:{id}",
+    "dp:{reality}:r:{tier}:{typ}:{id}",
     reality = ctx.reality_id().as_str(),
-    tier = Tier::T2.as_key(),                    // "t2"
-    typ = <PlayerInventory as Aggregate>::TYPE_NAME, // "player_inventory"
+    tier = Tier::T2.as_key(),
+    typ = <PlayerInventory as Aggregate>::TYPE_NAME,
     id = dp::KeyId::from(player_id).as_str(),
+)
+
+// Channel-scoped:
+// dp::cache_key!(ctx, T2, ChatMessage, msg_id; channel = tavern_id)
+// ->
+format!(
+    "dp:{reality}:c:{channel}:{tier}:{typ}:{id}",
+    reality = ctx.reality_id().as_str(),
+    channel = tavern_id.as_str(),
+    tier = Tier::T2.as_key(),
+    typ = <ChatMessage as Aggregate>::TYPE_NAME,
+    id = dp::KeyId::from(msg_id).as_str(),
 )
 ```
 
 **Compile-time checks:**
 
 - `$tier` must match the tier trait of `$aggregate` — else type-check failure.
-- `$aggregate` must implement `Aggregate`.
-- `$id` must implement `Into<KeyId>` (the newtype guarding id string conversion).
+- `$aggregate` must implement `Aggregate` + exactly one scope marker (`RealityScoped` or `ChannelScoped`).
+- **Passing `channel = ...` for a `RealityScoped` aggregate fails to compile.**
+- **Omitting `channel = ...` for a `ChannelScoped` aggregate fails to compile.**
+- `$id` must implement `Into<KeyId>`.
 
 **Lint rule `dp::forbid_manual_cache_key`:** detects string concatenation or `format!` that produces a `dp:*` prefix outside the macro's expansion. CI-breaking.
+
+**Cross-ref:** [12_channel_primitives.md DP-Ch5](12_channel_primitives.md#dp-ch5--cache-key-format-with-scope-marker) for full scope-marker rationale.
 
 ---
 
@@ -484,6 +560,36 @@ impl DpClient {
 }
 ```
 
+### Channel primitives (Phase 4, cross-ref [DP-Ch8](12_channel_primitives.md#dp-ch8--channel-crud-primitives) / [DP-Ch9](12_channel_primitives.md#dp-ch9--moving-a-session-to-a-different-channel))
+
+```rust
+impl DpClient {
+    /// Move session to a different channel. Returns a new SessionContext with
+    /// refreshed ancestor chain + capability. Caller swaps in.
+    pub async fn move_session_to_channel(
+        &self,
+        ctx: &SessionContext,
+        target: ChannelId,
+    ) -> Result<SessionContext, DpError>;
+
+    /// Create a new channel as child of parent. Returns new ChannelId.
+    pub async fn create_channel(
+        &self,
+        ctx: &SessionContext,
+        parent: ChannelId,
+        level_name: String,
+        metadata: serde_json::Value,
+    ) -> Result<ChannelId, DpError>;
+
+    /// Dissolve a channel (descendants must already be dissolved).
+    pub async fn dissolve_channel(
+        &self,
+        ctx: &SessionContext,
+        channel: ChannelId,
+    ) -> Result<(), DpError>;
+}
+```
+
 ---
 
 ## DP-K11 — Clippy lint skeletons
@@ -536,17 +642,18 @@ const FORBIDDEN_IMPORTS_IN_FEATURE_CRATES: &[&str] = &[
 
 | Category | Count | Items |
 |---|---:|---|
-| Core types | 7 | `RealityId`, `SessionId`, `NodeId`, `Tier`, `Aggregate`, `T0/T1/T2/T3Aggregate` traits, `Predicate` |
+| Core types | 9 | `RealityId`, `ChannelId`, `SessionId`, `NodeId`, `Tier`, `Aggregate`, `T0/T1/T2/T3Aggregate` traits, `RealityScoped`/`ChannelScoped` traits, `Predicate` |
 | Session | 3 | `SessionContext`, `bind_session`, `refresh_capability` |
-| Error | 1 | `DpError` (12 variants) |
-| Read | 2 | `read_projection`, `query_scoped` |
+| Error | 1 | `DpError` (12+ variants incl. channel-related) |
+| Read | 4 | `read_projection_reality`, `read_projection_channel`, `query_scoped_reality`, `query_scoped_channel` |
 | Write | 5 | `t0_write`, `t1_write`, `t2_write`, `t3_write`, `t3_write_multi` |
 | Subscription | 2 | `subscribe_invalidation`, `subscribe_broadcast` |
-| Macros | 2 | `cache_key!`, `instrumented!` |
+| Macros | 2 | `cache_key!` (scope-dispatched), `instrumented!` |
 | Client | 2 | `DpClient::connect`, `DpClient::verify_reality` |
-| **Total SDK primitives** | **~24** | Feature repos compose these into domain APIs. |
+| Channel | 3 | `DpClient::move_session_to_channel`, `create_channel`, `dissolve_channel` |
+| **Total SDK primitives** | **~31** | Feature repos compose these into domain APIs. Channel primitives (Phase 4) are additive; earlier scope APIs subsumed into the scope-typed reads. |
 
-~24 primitives vs. a god-interface of hundreds — the Federated Repo pattern ([DP-A10](02_invariants.md#dp-a10--federated-feature-repos-dp-owns-primitives-not-domain-queries)) keeps DP small by design.
+~31 primitives vs. a god-interface of hundreds — the Federated Repo pattern ([DP-A10](02_invariants.md#dp-a10--federated-feature-repos-dp-owns-primitives-not-domain-queries)) keeps DP small by design, even with channel support added in Phase 4.
 
 ---
 

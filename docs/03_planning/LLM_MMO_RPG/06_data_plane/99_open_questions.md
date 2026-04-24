@@ -213,9 +213,11 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ## Phase 4 severity summary
 
-- **🔴 Blockers (4):** Q15 page/turn per-channel · Q16 durable subscribe per channel · Q26 channel as first-class concept · Q27 event bubble-up primitive
+- **🔴 Blockers (3 remaining, 1 resolved):** Q15 page/turn per-channel · Q16 durable subscribe per channel · Q27 event bubble-up primitive · ~~Q26 channel as first-class concept~~ ✅ resolved 2026-04-25
 - **🟡 Significant gaps (12):** Q17–Q22, Q28–Q32, Q34
 - **🟢 Nits / operational (4):** Q23–Q25, Q29, Q33
+
+**Resolved (1):** Q26 ✅
 
 ---
 
@@ -323,17 +325,18 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ---
 
-## Q26 — Channel hierarchy as first-class DP concept (NEW-1, blocker)
+## Q26 — Channel hierarchy as first-class DP concept (NEW-1) ✅ RESOLVED (Phase 4, 2026-04-25)
 
-**What:** DP currently scopes everything to `reality_id`. Channel model requires `channel_id` as a nested scope within reality, with hierarchy (parent → children). Cache key format, `SessionContext`, capability claims, telemetry labels, event-log schema — all need the channel dimension.
+**What:** DP needed `channel_id` as a nested scope within reality; cache key, `SessionContext`, capability claims, event-log schema all needed the channel dimension.
 
-**Why blocker:** Without this, every other Phase 4 item has nowhere to plug into.
+**Resolution:**
+- **[DP-A13](02_invariants.md#dp-a13--channel-hierarchy-as-first-class-scope-phase-4-2026-04-25)** Channel hierarchy as first-class scope — tree structure per reality, free-form `level_name` tag, DP agnostic to semantics.
+- **[DP-A14](02_invariants.md#dp-a14--aggregate-scope-reality-scoped-vs-channel-scoped-design-time-choice-phase-4-2026-04-25)** Aggregate scope = design-time marker trait choice (`RealityScoped` vs `ChannelScoped`).
+- **[12_channel_primitives.md](12_channel_primitives.md)** DP-Ch1..Ch10 — `ChannelId` newtype, per-reality-DB registry schema, CP cache + Redis Stream delta, scope marker traits, cache-key format with `r`/`c` marker, SessionContext extension, ancestor lookup, CRUD primitives, `move_session_to_channel`, tree-change invalidation.
+- **[DP-K1/K2/K4/K7/K10/K12 updated](04_kernel_api_contract.md)** with `ChannelId`, scope markers, scope-typed reads, scope-dispatched `cache_key!`, `move_session_to_channel` + `create_channel` + `dissolve_channel` primitives.
+- **[DP-C1/C3 updated](05_control_plane_spec.md)** — channel tree cache added to CP responsibilities; 3 new gRPC methods (`GetChannelTree`, `StreamChannelTreeUpdates`, `ResolveAncestorChain`).
 
-**Candidate resolution path:** New file `12_channel_primitives.md` in this folder (DP-Ch1..Chn). New axioms:
-- **DP-A13** Per-channel total event ordering (Q17)
-- **DP-A14** Channel hierarchy as first-class scope
-- Updates: `SessionContext` adds `current_channel_id: ChannelId` + `subscribed_channels: Vec<ChannelId>`. Cache key format becomes `dp:{reality_id}:{channel_id}:{tier}:{aggregate}:{id}`.
-- CP own channel registry (channel_id → parent_id, channel_id → members). New CP gRPC methods.
+**Unblocked Phase 4 items:** Q17, Q30, Q34 (per-channel ordering + writer binding — next cluster), Q15, Q16, Q27 (blockers), Q18, Q19, Q28, Q31, Q32 (semantics).
 
 ---
 

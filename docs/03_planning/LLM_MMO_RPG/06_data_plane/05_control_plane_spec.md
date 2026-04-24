@@ -18,6 +18,7 @@ The control plane (CP) owns exactly these concerns. Anything not listed is expli
 | **Cold-start coordination** | When a reality transitions frozen → active, CP warms the tier policy cache, signals subscribed services to prepare, and logs the transition. |
 | **Session stickiness routing table** | NPC-to-node binding (DP-A11) and session-to-node lookup. Low-QPS, cache-friendly. |
 | **Reality registry** | Maps `reality_id` → per-reality Postgres/Redis endpoints. Consumed at `DpClient::connect` and on reality open/freeze transitions. |
+| **Channel tree cache (Phase 4)** | Per-reality in-memory cache of the channel tree + ancestor-chain lookups. Consumed by SDKs at `bind_session` and updated via Redis Stream consumption. Authoritative source is per-reality DB, not CP. See [DP-Ch3](12_channel_primitives.md#dp-ch3--cp-channel-tree-cache--delta-stream). |
 | **Degraded-mode signaling** | On CP outage or partition, signal data plane to enter degraded mode (DP-C9). |
 
 **NOT CP responsibilities:**
@@ -68,6 +69,11 @@ service DpControlPlane {
   // Reality registry
   rpc ResolveReality (ResolveRealityRequest) returns (RealityEndpoints);
   rpc StreamRealityTransitions (StreamRealityTransitionsRequest) returns (stream RealityTransition);
+
+  // Channel tree (Phase 4)
+  rpc GetChannelTree (GetChannelTreeRequest) returns (ChannelTreeSnapshot);
+  rpc StreamChannelTreeUpdates (StreamChannelTreeRequest) returns (stream ChannelTreeDelta);
+  rpc ResolveAncestorChain (ResolveAncestorChainRequest) returns (AncestorChain);
 
   // Session stickiness + NPC binding
   rpc GetSessionNode (GetSessionNodeRequest) returns (NodeAssignment);
@@ -286,7 +292,7 @@ Monthly failover drill triggered via admin CLI:
 |---|---|
 | DP-C1 | CP responsibilities enumerated; non-responsibilities explicit |
 | DP-C2 | 2-node active-passive, own Postgres, ≤60s failover |
-| DP-C3 | gRPC surface — 13 methods, low-QPS |
+| DP-C3 | gRPC surface — 16 methods (13 Phase 2 + 3 Phase 4 channel-tree), low-QPS |
 | DP-C4 | Tier policy registry schema + registration flow |
 | DP-C5 | Expand / Migrate / Contract schema migration protocol |
 | DP-C6 | Invalidation broadcast through Redis pub/sub, CP off hot path |

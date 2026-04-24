@@ -81,6 +81,67 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q26 RESOLVED (channel first-class)
+
+### Session arc
+
+First Phase 4 mini-session. Picked Q26 (channel hierarchy as first-class DP concept) as the foundation blocker — resolving it unblocks Q17, Q30, Q34, and most remaining Q items because channels define the scope every other follow-up operates within.
+
+CLARIFY phase: user approved 6 design decisions (D1c tree structure with free-form level_name · D2a UUID identity with cached ancestor chain · D3b `RealityScoped`/`ChannelScoped` marker traits · D4b `r`/`c` scope prefix in cache keys · D5 SessionContext extension with current + ancestors · D6b per-reality-DB registry ownership, CP caches tree only).
+
+BUILD phase: 2 new axioms + 1 new file + updates to 4 existing files. No re-design of Phase 1-3; all channel support is additive.
+
+### Files landed
+
+| File | Change | Lines |
+|---|---|---:|
+| **NEW** [`12_channel_primitives.md`](06_data_plane/12_channel_primitives.md) | LOCKED, DP-Ch1..Ch10 | 447 |
+| [`02_invariants.md`](06_data_plane/02_invariants.md) | +DP-A13 + DP-A14, summary table rows, header stable-IDs range | 209 → 252 |
+| [`04_kernel_api_contract.md`](06_data_plane/04_kernel_api_contract.md) | `ChannelId` type, scope marker traits, SessionContext extension, scope-typed read primitives, scope-dispatched `cache_key!` macro, channel CRUD primitives, updated surface summary | 570 → **677** (over soft cap; API-reference monolith intentional) |
+| [`05_control_plane_spec.md`](06_data_plane/05_control_plane_spec.md) | CP channel-tree cache responsibility + 3 new gRPC methods (`GetChannelTree`, `StreamChannelTreeUpdates`, `ResolveAncestorChain`) | 318 → 324 |
+| [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q26 ✅ marked resolved with full cross-ref; Phase 4 severity summary updated (3/4 blockers remaining) | 417 → 420 |
+| [`_index.md`](06_data_plane/_index.md) | File 12 row + DP-Ch registry, DP-A range → A14, Phase 4 section updated with "in progress" + file 12 | 101 → 107 |
+
+**Folder total after Q26:** 3687 lines across 13 files. **88 stable IDs** (+2 axioms, +10 channel primitives, +3 CP methods in existing DP-C3 slot; DP-K surface count grew from ~24 to ~31 primitives).
+
+### Q26 decisions locked
+
+| Axiom / Primitive | What it locks |
+|---|---|
+| **DP-A13** | Channel tree per reality; free-form `level_name` tag (DP agnostic); per-reality DB registry, CP cache only; root is derived `ChannelId::reality_root(reality_id)`; max depth ≤16 |
+| **DP-A14** | Marker traits `RealityScoped` vs `ChannelScoped` are exclusive (derive-macro enforced); orthogonal to tier markers; scope determines cache-key shape + API signature |
+| **DP-Ch1** | `ChannelId` newtype, module-private constructor |
+| **DP-Ch2** | `channels` table in per-reality Postgres DB; SDK only writer; structural invariants (no cycles, depth cap, dissolved-terminal) enforced by DB constraints |
+| **DP-Ch3** | CP caches per-reality channel tree; Redis Stream `dp:channel_changes:{reality_id}` delta sync; SDK `StreamChannelTreeUpdates` subscription; degraded-mode: existing SessionContexts remain valid, new binds to unseen channels rejected |
+| **DP-Ch4** | Scope marker traits + `#[derive(Aggregate)]` macro with `#[dp(scope = "reality" | "channel", ...)]` attribute |
+| **DP-Ch5** | Cache key format: `dp:{reality}:r:{tier}:{type}:{id}` (RealityScoped) vs `dp:{reality}:c:{channel}:{tier}:{type}:{id}` (ChannelScoped) |
+| **DP-Ch6** | `SessionContext` adds `current_channel_id` + `ancestor_channels: Vec<ChannelId>` (≤16 entries); immutable, swapped on `move_session_to_channel` |
+| **DP-Ch7** | Ancestor walk helpers: `find_ancestor`, `ancestor_at_depth`; complex queries go through Channel aggregate read |
+| **DP-Ch8** | Channel CRUD primitives: `create_channel`, `update_channel_metadata`, `dissolve_channel`; DP enforces structural invariants, feature enforces business rules; re-parenting forbidden |
+| **DP-Ch9** | `move_session_to_channel` returns new SessionContext; caller swaps in; feature-level leave/enter events emitted separately |
+| **DP-Ch10** | Tree-change invalidation via Redis Stream; SessionContext ancestor chain is snapshot (valid for lifetime); dissolution during active session returns `DpError::ChannelDissolved` on next op |
+
+### Phase 4 progress after Q26
+
+| Status | Count | Items |
+|---|---:|---|
+| ✅ Resolved | 1 | Q26 (2026-04-25) |
+| 🔴 Blockers remaining | 3 | Q15 turn boundary · Q16 durable subscribe · Q27 bubble-up primitive |
+| 🟡 Significant gaps | 12 | Q17, Q18, Q19, Q20, Q21, Q22, Q28, Q30, Q31, Q32, Q34 (Q20 deferred V1 data) |
+| 🟢 Nits / ops | 4 | Q23, Q24, Q25, Q29, Q33 |
+
+Next cluster (per resolution plan): **Q17 + Q30 + Q34** (per-channel total event ordering + ordering mechanism + channel writer-node binding). These three form a tight conceptual cluster — Q30 is the concrete mechanism for Q17's invariant, Q34 determines who executes it.
+
+### Handoff notes for next agent
+
+- `Active:` header cleared on [`06_data_plane/_index.md`](06_data_plane/_index.md).
+- Phase 1-3 files + new file 12 are LOCKED baseline. Changes via supersession in [../decisions/](decisions/).
+- 04_kernel_api_contract.md at 677 lines is over soft cap (user-approved as API-reference exception for now). Monitor — if Phase 4 continues adding primitives and it approaches 1500 hard cap, plan a split (likely into `04a_core_types.md` + `04b_read_write.md` + `04c_macros_client.md`).
+- Next mini-session (Q17+Q30+Q34) likely extends 02_invariants with **DP-A15** (per-channel total ordering) and creates/extends a file for event-log schema + writer binding. Writer binding may require extending [DP-A11](06_data_plane/02_invariants.md) semantics — check for supersession before adding new axiom.
+- Don't rewrite 04/05; extend via new files or small targeted edits.
+
+---
+
 ## Session 2026-04-25 (continued) — 06_data_plane Phase 4 backlog recorded (not resolved)
 
 ### Session arc
@@ -538,6 +599,7 @@ Reopen conditions for the OPEN/PARTIAL track specifically:
 | 2026-04-25 | **06_data_plane Phase 2 locked — concrete SDK + CP + cache coherency contracts.** 3 new files (2457 total lines in folder): `04_kernel_api_contract.md` (DP-K1..K12, Rust SDK ~24 primitives, `RealityId` newtype, `SessionContext`, `DpError` 12 variants, `dp::cache_key!` + `dp::instrumented!` macros, JWT capability tokens, clippy lint skeletons); `05_control_plane_spec.md` (DP-C1..C10, gRPC over mTLS via Tonic, 2-node active-passive HA via etcd, Expand/Migrate/Contract schema migration, quarterly signing key rotation, ≤15 min degraded-mode ceiling); `06_cache_coherency.md` (DP-X1..X10, per-tier coherency matrix, Redis pub/sub invalidation per-reality channel with MessagePack payload, singleflight + stale-while-revalidate 20s + jittered repopulation storm mitigation, optional opt-in in-proc 2nd layer with 1s TTL). Resolves Q1/Q4/Q9/Q14 fully; Q5/Q6/Q8/Q10 partial. Phase 3 scope narrowed to `07_failure_and_recovery.md`. |
 | 2026-04-25 | **06_data_plane Phase 3 locked — design track COMPLETE.** `07_failure_and_recovery.md` (DP-F1..F10, 385 lines) closes Q6/Q12 and Q5 residual. Key locks: **consistency over availability** on split-brain (DP-F5, reject T3 writes rather than reconcile); **3 token-bucket backpressure** (per-reality-per-tier + per-service + per-session, DP-F7); schema migration rollback ≤5 min with dual-read pause + new-schema quarantine (DP-F8); CP-down cold-start fallback = 503 Retry-After rather than risk double-wake (DP-F8); chaos cadence weekly CP + node / bi-weekly Redis + inval drop / monthly freeze + partition + backpressure / quarterly migration rollback (DP-F10). Folder total: 2851 lines across 12 files, **74 stable IDs**. 7 Q-items fully resolved, 2 partial (ops residuals), 2 out of scope, 1 future implementation. Parallel tracks now unblocked: feature design (DF4/DF5/DF7) consuming DP contract, main SRE track continuation (SR6-SR12), SDK implementation, ops doc. |
 | 2026-04-25 | **06_data_plane Phase 4 backlog recorded (NOT resolved).** User clarified actual game model is turn-based event-linear with **hierarchical channels** (cell → tavern → town → district → country → continent) + probabilistic event bubble-up. Adversarial review identified **Phase 1-3 contracts remain valid baseline but need extension**. 20 open questions (Q15..Q34) appended to `99_open_questions.md`: **4 blockers** (Q15 per-channel turn primitive, Q16 durable subscribe with resume, Q26 channel as first-class concept, Q27 bubble-up primitive), **12 significant gaps**, **4 nits/ops**. 7 items are REAL-* issues from hot-path review reframed to channel scope; 9 are NEW issues surfaced by channel model; 4 carry forward as ops/security follow-ups. Resolution plan: foundation (Q26/Q17/Q30/Q34) → blockers → semantics → gaps → ops. One mini-session per Q cluster. Phase 1-3 files remain LOCKED as baseline; new file `12_channel_primitives.md` planned once foundation resolved. |
+| 2026-04-25 | **06_data_plane Phase 4 Q26 ✅ RESOLVED — channel hierarchy now first-class DP concept.** First Phase 4 mini-session. 6 design decisions approved (D1c tree + free-form level_name · D2a UUID + cached ancestor · D3b `RealityScoped`/`ChannelScoped` marker traits · D4b `r`/`c` scope prefix · D5 SessionContext extension · D6b per-reality-DB registry + CP cache). 2 new axioms **DP-A13** (channel tree first-class) + **DP-A14** (aggregate scope design-time marker). New file **12_channel_primitives.md** (447 lines, DP-Ch1..Ch10). Updates to 04 (`ChannelId`, scope traits, extended SessionContext, scope-typed reads, scope-dispatched `cache_key!`, channel CRUD primitives; file now 677 lines — over soft cap, user-approved as API-reference exception), 05 (CP channel tree cache + 3 new gRPC methods), 99 (Q26 marked resolved + severity updated). Folder: 3687 lines across 13 files, ~88 stable IDs. Phase 4 progress: 1/4 blockers resolved; Q17 + Q30 + Q34 next cluster (per-channel ordering + writer binding). |
 | 2026-04-24 | **H/M/P tier concerns batch-locked — all 21 SA+DE adversarial concerns resolved.** §12R added as consolidated follow-up. **H3 reversed from original batch** per user directive: doppelganger pattern REJECTED, NPC single-session becomes PERMANENT (not V2+ deferred), session caps + queue UX first-class (§12R.1). H5 adds new `seeding` lifecycle state + bootstrap worker + locale translation (§12R.2). H4 adds upcaster requirement for deprecated event types (§12C.5 amended). Plus observability metrics for H1/H2/H6/M-REV-6, HNSW pre-warm on thaw (§12R.5), projection rebuild determinism rule (§12R.7), admin command discoverability (§12R.9), and various polish. 25 decisions locked (H1-H6-D1/H3-NEW-D1..D6, M-REV-1..6-D1, P1-P4-D1). Storage + multiverse design **fully locked** pending V1 prototype data. |
 | 2026-04-24 | **Security Review S1+S2+S3 locked — §12H per-pair memory model SUPERSEDED by session-scoped capability-based design.** §12S added (7 subsections). S1: reality creation rate limit (5/hour + 50 active per user). **S2 architectural shift**: events carry session_id + visibility (5 values) + whisper_target; session_participants capability table; NPC memory split into `npc_session_memory` (knowledge, per-session, replaces per-pair) + `npc_pc_relationship` (derived stance, per-pair). Cross-PC leak becomes **structurally impossible** via capability-based prompt assembly contract. **S3 full tier privacy** (Option A): cascade_policy + privacy_level (normal/sensitive/confidential) with per-tier retention (30d/7d), force-propagate block, cascade auto-constrain, tiered whisper UX + fork inheritance warning. 14 decisions locked (S1-D1, S2-NEW-D1..D5, S3-NEW-D1..D8). §4.2 events schema + §5.2 projections + §12H.2 updated accordingly. Per-event encryption + admin-tier gating deferred V2+. Remaining Security (S4-S13) + SRE review queued. |
 | 2026-04-24 | **Security Review S4 locked — Meta Integrity & Access Control (§12T, 12 subsections).** Closes meta-write audit gap left by C5 (which covered only lifecycle status transitions). **Canonical `MetaWrite()` helper** in `contracts/meta/` generalizes §12Q — ALL meta-table writes go through it. §12Q `AttemptStateTransition()` refactored as specialization (adds transition-graph + mutual-exclusion on top). Append-only audit via Postgres REVOKE UPDATE/DELETE on audit tables + dedicated `audit_retention_role`. Schema CHECK constraints encode business invariants (db_host pattern, status enum, locale, session caps). Per-service Postgres roles (8 roles: world-service, roleplay-service, publisher, meta-worker, event-handler, migration-orchestrator, admin-cli, audit_retention_cron) — credential blast radius bounded. `meta_write_audit` table (retention 5y) + `meta_read_audit` for enumerated sensitive paths (retention 2y). Anomaly monitoring: routing-change PAGE alerts, audit-divergence, bulk-read spikes, out-of-scope writes. 10 decisions locked (S4-D1..D8 + C5→S4 + S4-governance). V2+: WORM cold archive + hash-chain tamper detection + ML anomaly. ADMIN_ACTION_POLICY amendment for MetaWrite governance. Remaining Security (S5-S13) + SRE review queued. |

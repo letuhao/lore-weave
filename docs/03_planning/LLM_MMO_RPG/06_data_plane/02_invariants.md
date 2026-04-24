@@ -1,7 +1,7 @@
 # 02 — Invariants (Axioms)
 
 > **Status:** LOCKED. Every axiom here was decided in a user conversation and may not be changed without a superseding decision recorded in [../decisions/](../decisions/) and a cross-reference entry in [99_open_questions.md](99_open_questions.md).
-> **Stable IDs:** DP-A1..DP-A12. These IDs are referenceable from any other doc in this project. Never renumber.
+> **Stable IDs:** DP-A1..DP-A14. These IDs are referenceable from any other doc in this project. Never renumber.
 
 ---
 
@@ -189,6 +189,47 @@ No new tiers, no "between T1 and T2", no per-feature special cases. See [03_tier
 
 ---
 
+## DP-A13 — Channel hierarchy as first-class scope (Phase 4, 2026-04-25)
+
+**Rule:** Every reality has a **tree of channels** rooted at the reality itself. Each channel has a unique `ChannelId` (UUID newtype, constructor DP-module-private), a `parent_id` (except the root), and a free-form `level_name: String` tag. The tree shape is **per-reality** (book-specific) — a reality declares its own levels via a book schema. DP is **agnostic** to `level_name` semantics; feature/book layer interprets level names (e.g., `"tavern"`, `"town"`, `"continent"`).
+
+**Why:** The game model groups players into nested channels (cell → tavern → town → district → country → continent) with probabilistic event bubble-up across levels. Making channel a first-class DP concept prevents every feature from inventing its own hierarchy, and gives Q27 bubble-up + Q17 per-channel ordering + Q34 writer binding a shared foundation.
+
+**Enforcement:**
+- **(a)** Channel registry lives in **per-reality Postgres DB** (same DB as reality's event log); cell creation/dissolution writes don't cross into CP hot path.
+- **(b)** CP caches channel tree per-reality (small, ≤hundreds of channels per reality typical) and serves it at `bind_session` + streams deltas via `StreamChannelTreeUpdates`.
+- **(c)** `SessionContext` carries `current_channel_id` + `ancestor_channels: Vec<ChannelId>` (derived from tree); changes via `move_session_to_channel` SDK primitive.
+- **(d)** DP does NOT validate `level_name` values — feature code asserts its own level semantics. If a book declares `"tavern"` as a level but feature code treats it as `"town"`, that is a feature-level bug, not a DP violation.
+
+**Consequence:**
+- Not every reality has all 6 conventional levels. A book set in a single city might use `reality → city → district → building → room`. DP handles any depth.
+- Channel tree is mutable during reality lifetime (create new cells, dissolve old ones). Mutations propagate via the delta stream; SDKs invalidate cached ancestor chains on change.
+- Root channel is implicit and identified as `ChannelId::reality_root(reality_id)`. All reality-scoped aggregates (see DP-A14) live at the root conceptually.
+
+**Cross-ref:** [12_channel_primitives.md](12_channel_primitives.md) for concrete `ChannelId` type, tree schema, and SDK primitives (DP-Ch1..Ch10). Resolves [99_open_questions.md Q26](99_open_questions.md).
+
+---
+
+## DP-A14 — Aggregate scope: reality-scoped vs channel-scoped, design-time choice (Phase 4, 2026-04-25)
+
+**Rule:** Every `Aggregate` declares exactly one **scope** via a marker trait: `RealityScoped` (follows the reality, identified by `(reality_id, aggregate_id)`) or `ChannelScoped` (lives in a specific channel, identified by `(reality_id, channel_id, aggregate_id)`). The scope is chosen at design time per aggregate, cannot be switched at runtime, and determines the shape of cache keys, read/write API, and event-log partitioning.
+
+**Why:** Not every aggregate belongs to a channel. A player's PC / inventory / currency / quest state follows the player across channels — those are **reality-scoped**. A chat message / tavern furniture state / cell-scoped quest state exists in a specific channel — those are **channel-scoped**. Conflating both into one scope model forces awkward tradeoffs (nullable channel_id, or root-channel hack); separating them at the type level makes the choice explicit at every call site.
+
+**Enforcement:**
+- **(a) Compile-time** — marker traits `RealityScoped: Aggregate {}` and `ChannelScoped: Aggregate {}` on the aggregate type; tier marker (T0..T3) is orthogonal to scope marker. `#[derive(Aggregate)]` macro enforces exactly one scope via the `#[dp(scope = "reality" | "channel", ...)]` attribute.
+- **(b) API surface** — read/write primitives come in scope-typed forms: `read_projection_reality<A: RealityScoped>(ctx, id)` and `read_projection_channel<A: ChannelScoped>(ctx, channel_id, id)`. Calling the wrong form fails compile (trait bound).
+- **(c) Cache key** — macro `dp::cache_key!` generates `dp:{reality}:r:{tier}:{type}:{id}` for reality-scoped, `dp:{reality}:c:{channel}:{tier}:{type}:{id}` for channel-scoped. Scope marker `r`/`c` at position 2 makes key self-describing.
+
+**Consequence:**
+- Scope migration (a T2 aggregate moves from reality-scoped to channel-scoped) is a **design change** requiring a new aggregate type + dual-write + migration — analogous to tier migration per DP-C5 Expand/Migrate/Contract.
+- Channel-scoped reads require an explicit channel_id argument; they do not default to `ctx.current_channel_id`. This forces call-site clarity: reading tavern furniture from a cell session must explicitly pass the tavern's channel_id.
+- `t3_write_multi` accepts a mix of reality-scoped and channel-scoped aggregates in one atomic transaction, as long as the channel-scoped aggregates all sit in the same per-reality DB (which they do — see DP-A13).
+
+**Cross-ref:** [12_channel_primitives.md DP-Ch4..Ch5](12_channel_primitives.md) for trait definitions and cache key specifics. Updates [04_kernel_api_contract.md DP-K4/K5/K7](04_kernel_api_contract.md) with scope-typed primitives.
+
+---
+
 ## Locked-decision summary (for cross-reference)
 
 | ID | Short name | One-line |
@@ -205,5 +246,7 @@ No new tiers, no "between T1 and T2", no per-feature special cases. See [03_tier
 | DP-A10 | Federated feature repos | DP owns primitives + rulebook; feature repos own domain query logic. |
 | DP-A11 | Session-node T1 writer | Sticky-routed session node is authoritative T1 writer; failover reloads ≤30 s snapshot. |
 | DP-A12 | RealityId newtype | `SessionContext`-gated access; `RealityId` constructor is DP-module-private; cross-reality violations fail type-check or runtime-check. |
+| DP-A13 | Channel hierarchy first-class | Per-reality tree of channels with `ChannelId` newtype + free-form `level_name`; DP agnostic to level semantics; registry in per-reality DB, cache in CP. |
+| DP-A14 | Aggregate scope is design-time | Aggregates declare `RealityScoped` or `ChannelScoped` via marker trait; scope determines cache key shape + API signature; compile-time enforced. |
 
 Any change to an axiom is logged in [../decisions/](../decisions/) with a new locked-decision entry and the superseded axiom gets a `_withdrawn` suffix rather than being deleted.
