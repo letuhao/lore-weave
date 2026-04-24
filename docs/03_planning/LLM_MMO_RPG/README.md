@@ -32,6 +32,7 @@ This folder exists to:
 | File | Purpose |
 |---|---|
 | [`00_foundation/`](00_foundation/) | **Start here for parallel feature-design work.** Compressed contract layer — 7 files (~30 KB) distilling invariants, service boundaries, kernel APIs, vocabulary, and the ID catalog so agents don't have to load the full kernel. Storage + multiverse are the kernel; foundation is the cheat sheet. |
+| [`features/`](features/) | **Active feature-design workspace** (started 2026-04-25 after kernel-design phase closed at SR12). 12 category subfolders (02_world_authoring..12_daily_life) + `DF/` for big deferred features + `_spikes/` for cross-category exploration. Feature docs ~150-250 lines each; kernel extensions on-demand only. |
 | `00_VISION.md` | The vision — four shapes of role-play, why Shape D (shared persistent world) is the dream, what LoreWeave uniquely brings, and a staged path that de-risks it |
 | [`01_problems/`](01_problems/) | Honest list of problems that must be solved before implementation is credible. Categorized A..G + M (multiverse risks). **Split into 10 chunks on 2026-04-24**; start at [`01_problems/_index.md`](01_problems/_index.md). Monolith archived at `01_OPEN_PROBLEMS.ARCHIVED.md`. |
 | [`02_storage/`](02_storage/) | Storage engineering — full event sourcing + DB-per-reality. **Split into 36 chunks on 2026-04-24**; start at [`02_storage/_index.md`](02_storage/_index.md). Monolith archived at `02_STORAGE_ARCHITECTURE.ARCHIVED.md` until external refs migrated. |

@@ -20,7 +20,7 @@
 | `SR*-D*` | Per-SR decision numbers | same | next free per SR | SR12-D1..D11 |
 | `M1..M7` | Multiverse risks | [`01_problems/M_multiverse_specific.md`](../01_problems/M_multiverse_specific.md) + [`03_multiverse/08_multiverse_risks.md`](../03_multiverse/08_multiverse_risks.md) | none (M8 if new) | M7 = Concept complexity |
 | `M*-D*` | M-resolution decision numbers | [`03_multiverse/06_M_C_resolutions.md`](../03_multiverse/06_M_C_resolutions.md) | next free per M | M7-D1..D5 |
-| `MV1..MV11` | Multiverse primitives | [`03_multiverse/`](../03_multiverse/_index.md) (across chunks) + [`decisions/locked_decisions.md`](../decisions/locked_decisions.md) | none (MV12 if new) | MV8 = DB subtree split threshold |
+| `MV1..MV12` | Multiverse primitives | [`03_multiverse/`](../03_multiverse/_index.md) (across chunks) + [`decisions/locked_decisions.md`](../decisions/locked_decisions.md) | MV13+ | MV8 = DB subtree split threshold · MV12 = reality time model (page-turn fiction-time, 2026-04-25) |
 | `WA-1..WA-4` · `WA4-D1..D5` | World Authoring features + heuristics | [`catalog/cat_02_WA_world_authoring.md`](../catalog/cat_02_WA_world_authoring.md) + [`03_multiverse/01_four_layer_canon.md`](../03_multiverse/01_four_layer_canon.md) | next free | WA-4 = L1/L2 category heuristic |
 | `DF1..DF15` | Deferred Big Features (DF12 withdrawn) | [`decisions/deferred_DF01_DF15.md`](../decisions/deferred_DF01_DF15.md) | DF16+ if new | DF4 = World Rules · DF5 = Session/Group Chat |
 | `PC-A1..A3` · `PC-B1..B3` · `PC-C1..C3` · `PC-D1..D3` · `PC-E1..E3` | Player Character semantics | [`04_player_character/`](../04_player_character/_index.md) (per-letter chunk) | next free per letter | PC-D1 = No parties; sessions replace |

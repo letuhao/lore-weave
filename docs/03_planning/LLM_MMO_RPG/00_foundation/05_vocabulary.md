@@ -209,6 +209,31 @@ User-authored text ONLY in `[INPUT]`. PR reject condition in ADMIN_ACTION_POLICY
 
 ---
 
+## Fiction-time model — MV12 "page-turn time" (2026-04-25)
+
+From [`../features/_spikes/SPIKE_01_two_sessions_reality_time.md`](../features/_spikes/SPIKE_01_two_sessions_reality_time.md) + [`../decisions/locked_decisions.md`](../decisions/locked_decisions.md) MV12-D1..D7 — architect-approved.
+
+**Core concepts:**
+
+| Concept | Meaning |
+|---|---|
+| **`fiction_ts_start`** | Monotonic per-reality fiction-time (bigint millis) when an event begins. Derived from cumulative fiction_durations starting from the reality's `book_anchor_fiction_ts`. NOT wall-clock ratio. |
+| **`fiction_duration`** | How long an event takes in fiction (bigint millis). Declared by player (`/wait 3 days`), overridden by LLM with reason, or system default per action category (dialogue=instant, move=1min, sleep=8h, etc.). |
+| **`current_fiction_ts`** | Reality's current fiction-time cursor. Maintained by session-processor (R7). New events append at this point, extend it by their duration. |
+| **`book_anchor_fiction_ts`** | Reality's starting fiction-time. Pegged to a specific moment in the source book when reality is created (e.g., "Thần Điêu Đại Hiệp, 1256 thu, giờ Thân"). |
+| **Calibration event** | Auto-fired scene-context event when cumulative duration crosses threshold (`day_passes` / `month_passes` / `year_passes`) OR LLM-declared ("time skip: 3 days pass"). |
+| **Page-turn metaphor** | Fiction-time only advances when someone "turns a page" — i.e., an event happens. No players = no turning = reality paused (V1). V1+30d adds scheduled canon events as autonomous page-turners. V2+ adds per-tier autonomous ticking. |
+
+**Key distinction from wall-clock `occurred_at`:**
+- `occurred_at` / `wall_clock_ts` = when the event was recorded in the system (audit/replay purposes; R10-accepted no-global-ordering)
+- `fiction_ts_start` = when the event happens in the story (game-design purposes; linear per-reality; drives NPC routines, scheduled canon events, session state)
+
+Both fields exist on every event per MV12-D7 additive schema.
+
+**V1 scope** — paused-when-0-players; single-author time advancement via player turns; system defaults for fiction_duration except explicit player declaration.
+
+---
+
 ## Intent / template / intent IDs
 
 7 enumerated prompt intents (S9-D1): `session_turn` · `npc_reply` · `canon_check` · `canon_extraction` · `admin_triggered` · `world_seed` · `summary`. Each has its own template dir at `contracts/prompt/templates/<intent>/v<N>.tmpl` + `.meta.yaml` + fixtures.
