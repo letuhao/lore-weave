@@ -29,12 +29,15 @@ If this layer is wrong, every feature built on top of it has to be reworked. Tha
 6. [08_scale_and_slos.md](08_scale_and_slos.md) — **DP-S1..S8** V1/V2/V3 scale anchors and latency budgets
 7. [99_open_questions.md](99_open_questions.md) — deferred items (Q1..Q14) including Python handshake, Redis topology, concrete Rust types
 
-Phase 2 (next session, derives from Phase 1):
+Phase 2 (landed 2026-04-25):
 
-8. `04_kernel_api_contract.md` — **DP-K1..Kn** Rust SDK primitive API surface + types + macros (resolves Q1, Q14)
-9. `05_control_plane_spec.md` — **DP-C1..Cn** control plane service responsibilities
-10. `06_cache_coherency.md` — **DP-X1..Xn** invalidation and consistency protocol
-11. `07_failure_and_recovery.md` — **DP-F1..Fn** cold start, node failure, split-brain (Phase 3)
+8. [04_kernel_api_contract.md](04_kernel_api_contract.md) — **DP-K1..K12** Rust SDK primitive API surface + types + macros (resolves Q1, Q14)
+9. [05_control_plane_spec.md](05_control_plane_spec.md) — **DP-C1..C10** control plane service responsibilities (partial Q5, Q6, Q9)
+10. [06_cache_coherency.md](06_cache_coherency.md) — **DP-X1..X10** invalidation and consistency protocol (resolves Q4; partial Q10)
+
+Phase 3 (pending):
+
+11. `07_failure_and_recovery.md` — **DP-F1..Fn** cold start, node failure, split-brain, backpressure (resolves Q12; closes Q6)
 
 ---
 
@@ -46,13 +49,13 @@ Phase 2 (next session, derives from Phase 1):
 | 01 | [01_scope_and_boundary.md](01_scope_and_boundary.md) | LOCKED | — | 2026-04-24 |
 | 02 | [02_invariants.md](02_invariants.md) | LOCKED | DP-A1..A12 | 2026-04-24 |
 | 03 | [03_tier_taxonomy.md](03_tier_taxonomy.md) | LOCKED | DP-T0, DP-T1, DP-T2, DP-T3 | 2026-04-24 |
-| 04 | `04_kernel_api_contract.md` | PENDING (Phase 2) | DP-K* | — |
-| 05 | `05_control_plane_spec.md` | PENDING (Phase 2) | DP-C* | — |
-| 06 | `06_cache_coherency.md` | PENDING (Phase 2) | DP-X* | — |
+| 04 | [04_kernel_api_contract.md](04_kernel_api_contract.md) | LOCKED | DP-K1..K12 | 2026-04-25 |
+| 05 | [05_control_plane_spec.md](05_control_plane_spec.md) | LOCKED | DP-C1..C10 | 2026-04-25 |
+| 06 | [06_cache_coherency.md](06_cache_coherency.md) | LOCKED | DP-X1..X10 | 2026-04-25 |
 | 07 | `07_failure_and_recovery.md` | PENDING (Phase 3) | DP-F* | — |
 | 08 | [08_scale_and_slos.md](08_scale_and_slos.md) | LOCKED | DP-S1..S8 | 2026-04-24 |
 | 11 | [11_access_pattern_rules.md](11_access_pattern_rules.md) | LOCKED | DP-R1..R8 | 2026-04-24 |
-| 99 | [99_open_questions.md](99_open_questions.md) | OPEN | Q1..Q14 | 2026-04-24 |
+| 99 | [99_open_questions.md](99_open_questions.md) | OPEN | Q2/Q3/Q6/Q7/Q10/Q11/Q12/Q13 (Q1/Q4/Q5/Q8/Q9/Q14 resolved in Phase 2) | 2026-04-25 |
 
 ---
 
@@ -66,9 +69,9 @@ Outside docs may cross-link unambiguously to:
 | `DP-T0..T3` | Tier taxonomy | [03_tier_taxonomy.md](03_tier_taxonomy.md) |
 | `DP-R*` | Access Pattern Rulebook rules (DP-R1..R8) | [11_access_pattern_rules.md](11_access_pattern_rules.md) |
 | `DP-S*` | Scale and SLO items (DP-S1..S8) | [08_scale_and_slos.md](08_scale_and_slos.md) |
-| `DP-K*` | Kernel API primitive surface | `04_kernel_api_contract.md` (Phase 2) |
-| `DP-C*` | Control plane spec items | `05_control_plane_spec.md` (Phase 2) |
-| `DP-X*` | Cache coherency / consistency items | `06_cache_coherency.md` (Phase 2) |
+| `DP-K*` | Kernel API primitive surface (DP-K1..K12) | [04_kernel_api_contract.md](04_kernel_api_contract.md) |
+| `DP-C*` | Control plane spec items (DP-C1..C10) | [05_control_plane_spec.md](05_control_plane_spec.md) |
+| `DP-X*` | Cache coherency / consistency items (DP-X1..X10) | [06_cache_coherency.md](06_cache_coherency.md) |
 | `DP-F*` | Failure and recovery items | `07_failure_and_recovery.md` (Phase 3) |
 
 Retired IDs: (none yet). Retired IDs use `_withdrawn` suffix, never reused.

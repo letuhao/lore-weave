@@ -5,15 +5,13 @@
 
 ---
 
-## Q1 — Exact Rust SDK API shape
+## Q1 — Exact Rust SDK API shape ✅ RESOLVED (Phase 2, 2026-04-25)
 
 **What:** The precise Rust trait definitions, method signatures, and module layout for the SDK (`t0_*`, `t1_*`, `t2_*`, `t3_*` + multi-aggregate transactions + subscription APIs).
 
-**Why deferred:** Phase 2 owns this. Phase 1 locks the contract (tiers, axioms, SLOs) at the conceptual level so that Phase 2 has firm inputs. Writing Rust type signatures before the conceptual model is locked invites rework.
+**Resolution:** Locked in [04_kernel_api_contract.md](04_kernel_api_contract.md) — DP-K1..K12 specify all core types, tier traits, predicate builder, read/write primitives, subscription APIs, macros, capability tokens, and SDK init/bind flow. ~24 primitives total.
 
-**Resolves in:** `04_kernel_api_contract.md` (Phase 2).
-
-**Dependencies:** None — Phase 1 foundation is sufficient.
+**Residual:** `#[derive(Aggregate)]` proc-macro implementation details deferred to Phase 2b (`dp-derive` crate).
 
 ---
 
@@ -43,35 +41,37 @@
 
 ---
 
-## Q4 — Cache invalidation storm mitigation
+## Q4 — Cache invalidation storm mitigation ✅ RESOLVED (Phase 2, 2026-04-25)
 
-**What:** When a T3 write invalidates a hot aggregate, every SDK instance subscribed to that invalidation will drop its local copy. Next read from each instance re-populates from Postgres — this is a thundering herd. Needs a mitigation (singleflight deduplication, stale-while-revalidate, or scheduled re-population).
+**What:** When a T3 write invalidates a hot aggregate, every SDK instance subscribed to that invalidation will drop its local copy. Next read from each instance re-populates from Postgres — this is a thundering herd.
 
-**Why deferred:** Specific mitigation depends on the cache coherency protocol, which is Phase 2. Phase 1 flags the concern; Phase 2 resolves it.
+**Resolution:** [DP-X4](06_cache_coherency.md#dp-x4--invalidation-storm-mitigation) specifies a three-layer mitigation: singleflight deduplication per SDK instance + stale-while-revalidate with 20-second grace window + jittered repopulation for hotset-flagged aggregates. Worst case = N reads per invalidated key per 20s window, regardless of read QPS.
 
-**Resolves in:** `06_cache_coherency.md` (Phase 2).
-
----
-
-## Q5 — Control plane schema migration protocol
-
-**What:** How does the control plane coordinate schema changes (adding a field to an aggregate, changing a tier assignment) across N running SDK instances without a maintenance window? Options: rolling SDK restart with old+new read-compat (Expand/Migrate/Contract), online migration with dual-write, full drain per reality.
-
-**Why deferred:** Phase 2 / Phase 3 territory. Needs CP spec first.
-
-**Resolves in:** `05_control_plane_spec.md` or `07_failure_and_recovery.md`.
-
-**Cross-ref:** [02_storage/R03_schema_evolution.md](../02_storage/R03_schema_evolution.md) solved schema evolution for the durable tier with upcasters. DP cache schema evolution is a separate question — cache may be invalidated wholesale rather than migrated.
+**Residual:** Cold-cache genuine thundering herd at reality-warm transition partially mitigated by hotset pre-warm; V2 benchmark target <2× sustained QPS spike.
 
 ---
 
-## Q6 — Cold-start latency for a reality
+## Q5 — Control plane schema migration protocol 🟡 PARTIAL (Phase 2, 2026-04-25)
 
-**What:** When a reality transitions from frozen (no active players) to active (first player joins), the cache is cold. First reads hit Postgres projection. Target is ≤10 seconds for full readiness ([DP-S2](08_scale_and_slos.md)). Open: should the control plane pre-warm cache on transition, or accept the first-minute tax and let cache populate naturally?
+**What:** How does the control plane coordinate schema changes (adding a field to an aggregate, changing a tier assignment) across N running SDK instances without a maintenance window?
 
-**Why deferred:** Phase 3 `07_failure_and_recovery.md` owns cold-start semantics.
+**Partial resolution:** [DP-C5](05_control_plane_spec.md#dp-c5--schema-migration-coordination) locks the **Expand / Migrate / Contract** protocol at the CP level. Expand: dual-read/write support in SDK N+1; Migrate: async projection rebuild via [02_storage R02](../02_storage/R02_projection_rebuild.md); Contract: drop old-shape support after drain. Catastrophic migrations require reality-freeze via the 02_storage R9 lifecycle machinery.
 
-**Dependencies:** Control plane spec (Q5's home), telemetry to measure actual cold-start latency on V2 prototype.
+**Residual:** Exact rebuild performance bounds per aggregate size, monitoring signals, and rollback procedures land in Phase 3 `07_failure_and_recovery.md`.
+
+**Cross-ref:** [02_storage/R03](../02_storage/R03_schema_evolution.md) solved durable-tier schema evolution. Phase 2 resolved the CP-coordination wrapper around it.
+
+---
+
+## Q6 — Cold-start latency for a reality 🟡 PARTIAL (Phase 2, 2026-04-25)
+
+**What:** When a reality transitions from frozen to active, the cache is cold. Target ≤10s per [DP-S2](08_scale_and_slos.md). Pre-warm vs lazy-populate tradeoff.
+
+**Partial resolution:** [DP-C7](05_control_plane_spec.md#dp-c7--cold-start-coordination) locks the protocol: CP orchestrates the `frozen → warming → active` transition, signals game service to pre-populate cache for aggregates in the reality-specific hotset; first-session bind runs in parallel with hotset pre-warm. V1/V2 uses a static default hotset; learning-based hotset is V3.
+
+**Residual:** Full Phase 3 coverage in `07_failure_and_recovery.md` adds observability, fallback when CP is down, retry protocol, and actual V2 prototype latency measurements to validate the ≤10s target.
+
+**Dependencies:** V2 telemetry data before tuning hotset membership.
 
 ---
 
@@ -85,33 +85,35 @@
 
 ---
 
-## Q8 — SDK telemetry surface
+## Q8 — SDK telemetry surface 🟡 PARTIAL (Phase 2, 2026-04-25)
 
-**What:** What metrics the SDK emits (per-tier latency histograms, cache hit rate, invalidation rate, backpressure events). How those metrics flow to the observability stack. Required for SLO measurement ([DP-S4](08_scale_and_slos.md)).
+**What:** What metrics the SDK emits (per-tier latency histograms, cache hit rate, invalidation rate, backpressure events).
 
-**Why deferred:** Phase 2 SDK design owns this.
+**Partial resolution:** [DP-K8](04_kernel_api_contract.md#dp-k8--dpinstrumented-telemetry-macro) locks the `dp::instrumented!` macro which emits `dp.{op}.{tier}.{aggregate}` latency histograms, counters, and `tracing` spans. Per-scenario metric names listed in DP-X6 (in-proc cache) and DP-C9 (CP reachability). Clippy lint `dp::missing_instrumentation` enforces coverage.
 
-**Resolves in:** `04_kernel_api_contract.md` (Phase 2) or a sibling `04b_telemetry.md`.
-
----
-
-## Q9 — Authorization model inside the SDK
-
-**What:** Beyond "the SDK is the only door," does the SDK itself enforce per-service write authorization (e.g., combat-service cannot write currency, only trade-service can)? Locked or open policy per aggregate type / tier combo?
-
-**Why deferred:** Scope of access control inside the SDK is a design call for Phase 2. Default expectation is "yes, the SDK has a per-service capability model" but not yet specified.
-
-**Resolves in:** `05_control_plane_spec.md` (control plane issues capabilities) + `04_kernel_api_contract.md` (SDK enforces them).
+**Residual:** Dashboard layout, alerting thresholds, and observability-stack integration (Prometheus / OTEL / Grafana dashboards) are operational concerns, not this folder's scope. Alert thresholds and SLO burn-rate rules land in an operator-facing doc.
 
 ---
 
-## Q10 — In-process second cache layer
+## Q9 — Authorization model inside the SDK ✅ RESOLVED (Phase 2, 2026-04-25)
 
-**What:** [DP-A4](02_invariants.md#dp-a4--redis-is-the-cache-technology) permits an optional in-process cache layer on top of Redis. Whether to enable it by default, what TTL, invalidation latency budget, and what eviction policy.
+**What:** Does the SDK enforce per-service authorization (e.g., combat-service cannot write currency)?
 
-**Why deferred:** Optimization, not correctness. V2 can run without it; enable if Redis-round-trip latency is dominant on T1 broadcast fan-out.
+**Resolution:** Yes, via JWT capability tokens.
+- [DP-K9](04_kernel_api_contract.md#dp-k9--capability-tokens) defines token format (JWT with short 5-minute expiry), refresh protocol, and per-aggregate + per-tier capability claims.
+- [DP-C8](05_control_plane_spec.md#dp-c8--capability-issuance--rotation) defines CP-side issuance, signing key rotation (quarterly), and revocation model.
+- [DP-C4](05_control_plane_spec.md#dp-c4--tier-policy-registry) tier_capability table is the source of truth for which service can do what.
+- SDK rejects ops with `DpError::CapabilityDenied { aggregate, tier }` on mismatch.
 
-**Resolves in:** Phase 2 `06_cache_coherency.md` or later performance-tuning doc.
+---
+
+## Q10 — In-process second cache layer 🟡 PARTIAL (Phase 2, 2026-04-25)
+
+**What:** Permit optional in-process cache on top of Redis.
+
+**Partial resolution:** [DP-X6](06_cache_coherency.md#dp-x6--in-process-second-cache-layer-opt-in) locks the policy: off by default; opt-in per aggregate type via CP admin; 1s TTL cap; same-channel invalidation subscription; LRU-bounded.
+
+**Residual:** Which specific aggregate types to enable it for at V2 is data-driven — not decided in Phase 2. Dashboard alarm on staleness discrepancy is an operator doc concern.
 
 ---
 
@@ -145,42 +147,42 @@
 
 ---
 
-## Q14 — Concrete Rust definitions for newtype, macro, and error enum
+## Q14 — Concrete Rust definitions for newtype, macro, and error enum ✅ RESOLVED (Phase 2, 2026-04-25)
 
-**What:** Exact Rust code for:
-- `RealityId` newtype definition + module privacy configuration (`pub(crate)` vs `pub(super)` vs dedicated auth-module) — implementation of [DP-R1](11_access_pattern_rules.md#dp-r1--reality-scoping) and [DP-A12](02_invariants.md#dp-a12--session-context-gated-access-via-realityid-newtype).
-- `dp::cache_key!` macro shape + proc-macro vs macro-rules choice + compile-error patterns for malformed input — implementation of [DP-R4](11_access_pattern_rules.md#dp-r4--cache-keys-via-dp-macro-never-hand-built).
-- `DpError` enum variants (at minimum: `RealityMismatch`, `RateLimited`, `CircuitOpen`, `WrongWriterNode`, `TierViolation`) and their `thiserror` derivation.
-- `SessionContext` structure, bind protocol, capability token format, expiry/refresh lifecycle.
-- Clippy custom-lint skeleton for rules DP-R3, DP-R4, DP-R6, DP-R8.
+**What:** Exact Rust contract shapes for newtype, macro, error enum, session bind.
 
-**Why deferred:** Concrete code belongs in Phase 2 `04_kernel_api_contract.md`. Phase 1 locks the semantics; Phase 2 writes the types.
+**Resolution:** [04_kernel_api_contract.md](04_kernel_api_contract.md) contains contract sketches for all of:
+- `RealityId` + `SessionId` + `NodeId` newtypes ([DP-K1](04_kernel_api_contract.md#dp-k1--core-types))
+- `SessionContext` ([DP-K2](04_kernel_api_contract.md#dp-k2--sessioncontext))
+- `DpError` with 12 variants incl. `RealityMismatch`, `RateLimited`, `CircuitOpen`, `WrongWriterNode`, `TierViolation`, `CapabilityExpired`, `CapabilityDenied`, `AggregateNotFound`, `SchemaVersionMismatch`, `ControlPlaneUnavailable`, `BackendIo` ([DP-K3](04_kernel_api_contract.md#dp-k3--dperror-enum))
+- `dp::cache_key!` + `dp::instrumented!` macros ([DP-K7](04_kernel_api_contract.md#dp-k7--dpcache_key-macro), [DP-K8](04_kernel_api_contract.md#dp-k8--dpinstrumented-telemetry-macro))
+- Capability tokens ([DP-K9](04_kernel_api_contract.md#dp-k9--capability-tokens))
+- Clippy lint skeletons for R-3, R-4, R-6, R-8 ([DP-K11](04_kernel_api_contract.md#dp-k11--clippy-lint-skeletons))
 
-**Resolves in:** Phase 2 `04_kernel_api_contract.md`.
-
-**Dependencies:** None — Phase 1 foundation is complete. Phase 2 is unblocked once user approves Phase 1.
+**Residual:** `#[derive(Aggregate)]` proc-macro crate (`dp-derive`) is its own implementation task — Phase 2b.
 
 ---
 
 ## Summary — what blocks what
 
-| Open Q | Blocks Phase 2? | Blocks Phase 3? | Blocks feature design? |
-|---|:---:|:---:|:---:|
-| Q1 SDK API shape | — | yes | yes (features need API to design against) |
-| Q2 Python bus | no | no | no (Python is outside DP) |
-| Q3 Redis topology | no | minor | no |
-| Q4 Invalidation storm | yes | yes | no (features can assume "handled") |
-| Q5 Schema migration | yes (CP spec) | yes | no |
-| Q6 Cold start | no | yes | no |
-| Q7 Redis ops cost | no | no | no |
-| Q8 SDK telemetry | yes (minor) | no | no |
-| Q9 SDK authZ | yes | no | yes (features need to know what they can write) |
-| Q10 In-proc cache | no | no | no |
-| Q11 Cross-reality txn | no | minor | minor (multiverse features) |
-| Q12 Backpressure | no | yes | minor (features should know failure modes) |
-| Q13 Tier testing | no | no | no (but needed for QC gate later) |
-| Q14 Rust types + macros | yes | yes | yes (features call these directly) |
+| Open Q | Status after Phase 2 | Phase 2? | Phase 3? | Blocks feature design? |
+|---|---|:---:|:---:|:---:|
+| Q1 SDK API shape | ✅ resolved | done | — | no (Phase 2 delivered) |
+| Q2 Python bus | open | — | — | no (Python outside DP) |
+| Q3 Redis topology | open | — | minor | no |
+| Q4 Invalidation storm | ✅ resolved (DP-X4) | done | — | no |
+| Q5 Schema migration | 🟡 partial (DP-C5) | done (protocol) | observability/rollback | no |
+| Q6 Cold start | 🟡 partial (DP-C7) | done (protocol) | fallback + telemetry | no |
+| Q7 Redis ops cost | open | — | — | no |
+| Q8 SDK telemetry | 🟡 partial (DP-K8) | done (macro+metrics) | dashboards = ops doc | no |
+| Q9 SDK authZ | ✅ resolved | done | — | no (capabilities defined) |
+| Q10 In-proc cache | 🟡 partial (DP-X6) | done (policy) | enable per aggregate = ops/V2 data | no |
+| Q11 Cross-reality txn | open (out-of-SDK) | — | — | minor (multiverse features) |
+| Q12 Backpressure | open | — | yes | minor |
+| Q13 Tier testing | open | — | — | no (but QC gate later) |
+| Q14 Rust types + macros | ✅ resolved | done | — | no |
 
-**Phase 2 must resolve:** Q1, Q4 (via cache coherency design), Q5 (CP side), Q8, Q9, Q14.
-**Phase 3 must resolve:** Q5 (migration protocol), Q6, Q12.
-**Out of scope for this folder:** Q2, Q7.
+**Phase 2 delivered:** Q1 ✅ · Q4 ✅ · Q5 🟡 · Q6 🟡 · Q8 🟡 · Q9 ✅ · Q10 🟡 · Q14 ✅
+**Phase 3 must resolve:** Q5 residual (observability/rollback) · Q6 residual (fallback/telemetry) · Q12 (backpressure).
+**Operational doc (not this folder):** Q3 · Q7 · Q8 dashboards · Q10 per-aggregate enable list.
+**Out of scope for this folder:** Q2 (Python bus) · Q11 (cross-reality txn).
