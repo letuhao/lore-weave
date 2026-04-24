@@ -403,7 +403,18 @@
       "bookIdError": "必須是有效的 UUID。",
       "cancel": "取消",
       "create": "建立",
-      "save": "儲存"
+      "save": "儲存",
+      "benchmark": {
+        "run": "執行基準測試",
+        "running": "正在執行基準測試…",
+        "success": "{{model}} 的基準測試完成 (recall@3 {{recall}})。",
+        "errorNoModel": "執行基準測試前請先選擇一個嵌入模型。",
+        "errorUnknownModel": "這個嵌入模型不受基準測試工具支援。",
+        "errorNotBenchmarkProject": "基準測試必須在專用專案上執行。請先建立新專案再執行。",
+        "errorAlreadyRunning": "此專案已有基準測試正在執行。請稍候再試。",
+        "errorProviderFlake": "嵌入服務提供者在執行期間失敗。請重試。",
+        "errorGeneric": "基準測試失敗: {{message}}"
+      }
     },
     "archiveDialog": {
       "title": "封存專案?",

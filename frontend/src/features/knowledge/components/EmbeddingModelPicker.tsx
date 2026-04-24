@@ -1,9 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
+import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { aiModelsApi, type UserModel } from '../../ai-models/api';
 import { knowledgeApi } from '../api';
+import {
+  useRunBenchmark,
+  type RunBenchmarkErrorCode,
+} from '../hooks/useRunBenchmark';
 import type { BenchmarkStatus } from '../types';
 
 /**
@@ -162,7 +168,15 @@ export function EmbeddingModelPicker({ value, onChange, disabled, projectId }: P
         })}
       </span>
       {projectId && value && benchmarkQuery.data && (
-        <BenchmarkBadge status={benchmarkQuery.data} />
+        <>
+          <BenchmarkBadge status={benchmarkQuery.data} />
+          {/* C12b-b — Run-benchmark CTA. Hidden when `passed=true`
+              (no reason to re-run); visible when has_run=false OR
+              passed=false (either "Run" or "Re-run"). */}
+          {!benchmarkQuery.data.passed && (
+            <RunBenchmarkButton projectId={projectId} />
+          )}
+        </>
       )}
     </label>
   );
@@ -204,4 +218,117 @@ function BenchmarkBadge({ status }: { status: BenchmarkStatus }) {
       })}
     </span>
   );
+}
+
+
+/**
+ * C12b-b — Run-benchmark CTA. Inline button under the badge that
+ * fires POST /benchmark-run synchronously (15-60s). Disabled with a
+ * "Running benchmark…" label while pending; on success, invalidates
+ * the benchmark-status query so the sibling badge flips to the fresh
+ * pass/fail result.
+ *
+ * The parent picker hides this when `projectId` / `value` are unset,
+ * and when the current badge is already `passed=true`. We still guard
+ * with an explicit `projectId` check because the hook defensively
+ * throws on undefined.
+ *
+ * /review-impl notes (accepted findings):
+ *   - LOW #5: button lives inside the outer `<label>` that wraps the
+ *     picker. Browsers don't forward label clicks to the sibling
+ *     `<select>` when the direct event target is a `<button>`, so
+ *     this is safe in practice. Matches the placement of
+ *     `BenchmarkBadge` immediately above.
+ *   - COSMETIC #6: rapid double-click race is blocked by the
+ *     `disabled={mutation.isPending}` attribute being updated
+ *     synchronously within React's event tick. Backend sentinel
+ *     (`benchmark_already_running` 409) is the belt-and-suspenders
+ *     catch for any accidental second submit.
+ */
+function RunBenchmarkButton({ projectId }: { projectId: string }) {
+  const { t } = useTranslation('knowledge');
+  const mutation = useRunBenchmark(projectId, {
+    onSuccess: (resp) => {
+      // review-impl MED #1: the user can change the picker's <select>
+      // value mid-run (15-60s wait). The toast resolves for the model
+      // the BE scored against (resp.embedding_model), which may no
+      // longer match the currently-displayed selection. Naming the
+      // model in the toast self-discloses scope; without it the user
+      // could read "recall 0.82" as describing their current pick
+      // rather than the one they had selected at POST time.
+      toast.success(
+        t('projects.form.benchmark.success', {
+          defaultValue:
+            'Benchmark complete for {{model}} (recall@3 {{recall}}).',
+          model: resp.embedding_model,
+          recall: resp.recall_at_3.toFixed(2),
+        }),
+      );
+    },
+    onError: (err) => {
+      toast.error(runBenchmarkErrorMessage(t, err.errorCode, err.detailMessage));
+    },
+  });
+
+  return (
+    <button
+      type="button"
+      onClick={() => mutation.mutate({ runs: 3 })}
+      disabled={mutation.isPending}
+      className="self-start rounded-md border border-primary/40 bg-primary/5 px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/10 disabled:opacity-60 disabled:cursor-not-allowed"
+    >
+      {mutation.isPending
+        ? t('projects.form.benchmark.running', {
+            defaultValue: 'Running benchmark…',
+          })
+        : t('projects.form.benchmark.run', {
+            defaultValue: 'Run benchmark',
+          })}
+    </button>
+  );
+}
+
+/**
+ * Map a typed error_code from the C12b-a BE into a localised toast
+ * message. Keeps the switch here (not in the hook) so the hook stays
+ * UI-free and the translation closure is rebuilt per-render with the
+ * current locale.
+ */
+function runBenchmarkErrorMessage(
+  t: TFunction<'knowledge'>,
+  code: RunBenchmarkErrorCode,
+  detailMessage: string | undefined,
+): string {
+  switch (code) {
+    case 'no_embedding_model':
+      return t('projects.form.benchmark.errorNoModel', {
+        defaultValue:
+          'Pick an embedding model before running the benchmark.',
+      });
+    case 'unknown_embedding_model':
+      return t('projects.form.benchmark.errorUnknownModel', {
+        defaultValue:
+          'This embedding model isn’t supported by the benchmark harness.',
+      });
+    case 'not_benchmark_project':
+      return t('projects.form.benchmark.errorNotBenchmarkProject', {
+        defaultValue:
+          'Benchmarks must run on a dedicated project. Create a new project before running.',
+      });
+    case 'benchmark_already_running':
+      return t('projects.form.benchmark.errorAlreadyRunning', {
+        defaultValue:
+          'A benchmark is already running for this project. Wait and retry.',
+      });
+    case 'embedding_provider_flake':
+      return t('projects.form.benchmark.errorProviderFlake', {
+        defaultValue:
+          'Embedding provider failed mid-run. Please retry.',
+      });
+    default:
+      return t('projects.form.benchmark.errorGeneric', {
+        defaultValue: 'Benchmark failed: {{message}}',
+        message: detailMessage ?? 'unknown error',
+      });
+  }
 }

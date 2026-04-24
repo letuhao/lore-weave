@@ -151,3 +151,23 @@ export interface BenchmarkStatus {
   mrr: number | null;
   created_at: string | null;
 }
+
+// ── C12b-b — K17.9 on-demand benchmark run ─────────────────────────────
+// Mirrors services/knowledge-service/app/routers/public/extraction.py
+// BenchmarkRunResponse (C12b-a BE shape). Returned by the synchronous
+// POST /v1/knowledge/projects/{id}/benchmark-run endpoint. Full
+// `raw_report` lives in `project_embedding_benchmark_runs` and is
+// reachable via GET /benchmark-status; the FE keeps the wire shape
+// lean for the Run-benchmark button flow.
+export interface BenchmarkRunResponse {
+  run_id: string;
+  embedding_model: string;
+  passed: boolean;
+  recall_at_3: number;
+  mrr: number;
+  avg_score_positive: number;
+  negative_control_max_score: number;
+  stddev_recall: number;
+  stddev_mrr: number;
+  runs: number;
+}

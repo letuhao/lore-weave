@@ -304,6 +304,17 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     'toast.noPriorJob',
     'toast.noPriorRebuild',
     'toast.rebuildNoPriorJob',
+    // C12b-b — Run-benchmark button + toast copy inside
+    // EmbeddingModelPicker's BenchmarkBadge. 9 new keys × 4 locales.
+    'form.benchmark.run',
+    'form.benchmark.running',
+    'form.benchmark.success',
+    'form.benchmark.errorNoModel',
+    'form.benchmark.errorUnknownModel',
+    'form.benchmark.errorNotBenchmarkProject',
+    'form.benchmark.errorAlreadyRunning',
+    'form.benchmark.errorProviderFlake',
+    'form.benchmark.errorGeneric',
   ] as const;
 
   function resolveKey(bundle: any, path: string): unknown {
@@ -433,6 +444,34 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     const value = resolveKey((bundle as any).jobs ?? {}, 'detail.eta');
     expect(value).toMatch(/\{\{duration\}\}/);
   });
+
+  // C12b-b (/review-impl LOW #2) — the benchmark success + generic
+  // error copy interpolate {{model}}, {{recall}}, and {{message}}.
+  // A translator who forgets any placeholder would render the literal
+  // `{{recall}}` text in a sonner toast. The shape-test above only
+  // proves the key exists; these tests prove the placeholders survive.
+  it.each(LOCALES)(
+    '%s projects.form.benchmark.success contains {{model}} and {{recall}}',
+    (_tag, bundle) => {
+      const value = resolveKey(
+        (bundle as any).projects?.form?.benchmark ?? {},
+        'success',
+      );
+      expect(value).toMatch(/\{\{model\}\}/);
+      expect(value).toMatch(/\{\{recall\}\}/);
+    },
+  );
+
+  it.each(LOCALES)(
+    '%s projects.form.benchmark.errorGeneric contains {{message}}',
+    (_tag, bundle) => {
+      const value = resolveKey(
+        (bundle as any).projects?.form?.benchmark ?? {},
+        'errorGeneric',
+      );
+      expect(value).toMatch(/\{\{message\}\}/);
+    },
+  );
 
   // K19c Cycle β — GlobalBioTab deltas (reset + token estimate),
   // VersionsPanel diff viewer, and PreferencesSection. All keys live

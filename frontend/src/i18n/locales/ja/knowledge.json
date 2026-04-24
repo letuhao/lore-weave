@@ -403,7 +403,18 @@
       "bookIdError": "有効な UUID を入力してください。",
       "cancel": "キャンセル",
       "create": "作成",
-      "save": "保存"
+      "save": "保存",
+      "benchmark": {
+        "run": "ベンチマーク実行",
+        "running": "ベンチマークを実行中…",
+        "success": "{{model}} のベンチマーク完了 (recall@3 {{recall}})。",
+        "errorNoModel": "ベンチマークを実行する前に、埋め込みモデルを選択してください。",
+        "errorUnknownModel": "この埋め込みモデルはベンチマークハーネスでサポートされていません。",
+        "errorNotBenchmarkProject": "ベンチマークは専用プロジェクトで実行する必要があります。実行前に新しいプロジェクトを作成してください。",
+        "errorAlreadyRunning": "このプロジェクトでは既にベンチマークが実行中です。少し待ってから再試行してください。",
+        "errorProviderFlake": "埋め込みプロバイダーが実行中に失敗しました。再試行してください。",
+        "errorGeneric": "ベンチマーク失敗: {{message}}"
+      }
     },
     "archiveDialog": {
       "title": "プロジェクトをアーカイブしますか？",

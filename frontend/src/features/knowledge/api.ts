@@ -1,5 +1,6 @@
 import { apiJson } from '../../api';
 import type {
+  BenchmarkRunResponse,
   BenchmarkStatus,
   Project,
   ProjectCreatePayload,
@@ -741,6 +742,36 @@ export const knowledgeApi = {
     return apiJson<BenchmarkStatus>(
       `${BASE}/projects/${projectId}/benchmark-status${q ? `?${q}` : ''}`,
       { token },
+    );
+  },
+
+  // ── C12b-b — K17.9 on-demand benchmark run (sync) ────────────────────
+  /**
+   * POST /v1/knowledge/projects/{id}/benchmark-run — runs the K17.9
+   * golden-set harness synchronously (typical 15-60s). `runs` is
+   * optional; BE defaults to 3 and clamps to [1..5].
+   *
+   * Throws on non-2xx via apiJson. Caller should parse `err.body.detail`
+   * for `error_code`. Error codes from C12b-a BE:
+   *   - 404 project not found (cross-user / missing)
+   *   - 409 `no_embedding_model` / `unknown_embedding_model` /
+   *         `not_benchmark_project` / `benchmark_already_running`
+   *   - 502 `embedding_provider_flake` (fixture load incomplete —
+   *         provider embedded fewer entities than the golden set;
+   *         BE refuses to persist a false-negative row)
+   */
+  runBenchmark(
+    projectId: string,
+    runs: number | undefined,
+    token: string,
+  ): Promise<BenchmarkRunResponse> {
+    return apiJson<BenchmarkRunResponse>(
+      `${BASE}/projects/${projectId}/benchmark-run`,
+      {
+        method: 'POST',
+        body: JSON.stringify(runs !== undefined ? { runs } : {}),
+        token,
+      },
     );
   },
 

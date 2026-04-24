@@ -54,7 +54,7 @@ Statuses: `[ ]` open · `[D]` DESIGN in flight · `[B]` BUILD in flight · `[V]`
 | **C11** | Cursor pagination (jobs history + Complete list) | D-K19b.1-01, D-K19b.2-01 | ~~M~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
 | **C12a** | Scope + runner-side chapter range (paired) | D-K19a.5-04 + D-K16.2-02b | ~~L~~ **XL** (reclassified; split from C12) | `[x]` | — |
 | **C12b-a** | Run benchmark CTA — BE half (POST /benchmark-run + orchestrator) | D-K19a.5-07 (BE half) | L | `[x]` | split from C12b per user call; empty-project guard (Option A) + sentinel-set concurrency + FixtureLoadIncompleteError→502; 28 tests |
-| **C12b-b** | Run benchmark CTA — FE half (button + loading UX + error toasts) | D-K19a.5-07 (FE half) | M | `[ ]` | consume BE POST from C12b-a; 404/409/502 error mapping |
+| **C12b-b** | Run benchmark CTA — FE half (button + loading UX + error toasts) | D-K19a.5-07 (FE half) | ~~M~~ **L** (reclassified at CLARIFY) | `[x]` | inline button in EmbeddingModelPicker blast-radius 3 dialogs; 9-key i18n × 4 + placeholder drift-lock; 21 tests |
 | **C12c** | `glossary_sync` scope option | D-K19a.5-06 | S (FE only) | `[⏸]` | **BLOCKED** on glossary-service BE sync surface |
 | **C13** | Storybook dialogs via MSW | D-K19a.8-01 | M | `[ ]` | — |
 | **C14** | Resumable scheduler cursor state (Perf) | D-K11.9-01 partial, P-K15.10-01 partial | L | `[ ]` | needs `job_state` table design |
@@ -410,17 +410,31 @@ Cycles whose single-line description is unclear: the full text lives under the i
 
 ---
 
-### C12b-b — Run benchmark CTA (FE half)
+### C12b-b — Run benchmark CTA (FE half) ✅
 
-**Why.** BE POST `/v1/knowledge/projects/{id}/benchmark-run` now exists (C12b-a). FE needs Run benchmark button + loading UX + error mapping.
+**What shipped.** Cycle 40. Inline button in EmbeddingModelPicker + new mutation hook + typed error-code → toast map.
+- [`hooks/useRunBenchmark.ts`](../../frontend/src/features/knowledge/hooks/useRunBenchmark.ts) (NEW, 143 LOC) — mirrors useRegenerateBio pattern; prefix-invalidate `['knowledge', 'benchmark-status', projectId]` on success so the badge refreshes across every model variant for this project.
+- [`api.ts`](../../frontend/src/features/knowledge/api.ts) `runBenchmark(projectId, runs?, token)` POST helper.
+- [`types.ts`](../../frontend/src/features/knowledge/types.ts) `BenchmarkRunResponse` wire type mirroring C12b-a BE.
+- [`components/EmbeddingModelPicker.tsx`](../../frontend/src/features/knowledge/components/EmbeddingModelPicker.tsx) — NEW `<RunBenchmarkButton>` inline after the badge, visible when `!data.passed`. Click fires `mutation.mutate({runs: 3})` (hardcoded per CLI + L-CH-09 methodology). **Blast radius**: BuildGraphDialog, ChangeModelDialog, and ProjectFormModal all compose the picker → they all get the CTA for free.
+- i18n × 4 locales (`en`/`ja`/`vi`/`zh-TW`) — 9 new keys under `projects.form.benchmark.*`: `run`, `running`, `success` (interpolates `{{model}}` + `{{recall}}`), 5 error codes, `errorGeneric` (interpolates `{{message}}`).
+- Tests: [`useRunBenchmark.test.tsx`](../../frontend/src/features/knowledge/hooks/__tests__/useRunBenchmark.test.tsx) 11 tests + [`EmbeddingModelPicker.test.tsx`](../../frontend/src/features/knowledge/components/__tests__/EmbeddingModelPicker.test.tsx) 10 tests = 21 new. Drift-lock in `projectState.test.ts` adds 9 new benchmark paths + 2 placeholder-presence locks.
 
-**Files (plan).**
-- `frontend/src/features/knowledge/components/BenchmarkPanel.tsx` — "Run benchmark" button, disabled while in-flight, spinner during request.
-- `frontend/src/features/knowledge/hooks/useRunBenchmark.ts` — mutation; invalidates `['knowledge-benchmark-status', projectId]` on success.
-- Error toast mapping: 404 generic, 409 error_codes → 4 localized messages, 502 `embedding_provider_flake` → "Embedding provider unavailable, retry".
-- i18n × 4 locales: benchmark.run.* keys.
+**Design decisions locked at CLARIFY (4 user-approved defaults).**
+1. Button lives **inside EmbeddingModelPicker** (not a standalone BenchmarkPanel) — minimal FE footprint; CTA appears wherever the picker does.
+2. **Direct-run, no confirm dialog** — picker sits adjacent to the model select so intent is clear; 15-60s spinner signals work-in-progress.
+3. **Inline button spinner** (not modal overlay) — user can tab away; react-query keeps mutation alive.
+4. **`runs=3` hardcoded**, not exposed — tuning runs is an operator concern.
 
-**Close:** D-K19a.5-07 (FE half).
+**/review-impl 4 fixes in-cycle (MED + 3 LOWs); 2 accepted-with-docstring.**
+- **MED#1** (fixed): success toast now interpolates `{{model}}` so mid-run model-swap can't mis-attribute the recall to the newly-selected model.
+- **LOW#2** (fixed): `it.each(LOCALES)` placeholder-presence tests for `{{model}}`/`{{recall}}`/`{{message}}` — translator drift lock.
+- **LOW#3** (fixed): hook test pins `runs=null` → BE 422 pass-through so a future coercion regression can't silently mask validation.
+- LOW#4 (accept+doc): unmount-during-mutation drops the toast — BE still persists + queryClient still invalidates; documented in hook docblock.
+- LOW#5 (accept+doc): `<button>` inside `<label>` is a structural smell but label-click forwarding doesn't trigger on button targets; documented + matches existing badge placement.
+- COSMETIC#6 (accept+doc): double-click race — React's `disabled={isPending}` updates synchronously; BE sentinel belt-and-suspenders; documented.
+
+**Close:** D-K19a.5-07 (FE half). **C12b pair complete.**
 
 ---
 
@@ -529,12 +543,12 @@ Once text arrives:
 |---|---|---|---|
 | P1 (C1–C2) | 0 | **4 items / 2 cycles (C1 ✅ + C2 ✅)** | 0 |
 | P2 (C3–C9) | 0 items | **15 items / 7 cycles (C3 ✅ + C4 ✅ + C5 ✅ + C6 ✅ + C7 ✅ + C8 ✅ + C9 ✅)** | 0 |
-| P3 (C10–C13) | 1 item (C13) + 2 deferred/blocked (C12b-b M, C12c ⏸) | **7 items / 4 cycles (C10 ✅ + C11 ✅ + C12a ✅ + C12b-a ✅)** | 1 ⏸ (C12c) |
+| P3 (C10–C13) | 1 item (C13) + 1 blocked (C12c ⏸) | **8 items / 5 cycles (C10 ✅ + C11 ✅ + C12a ✅ + C12b-a ✅ + C12b-b ✅)** | 1 ⏸ (C12c) |
 | P4 (C14–C15) | 3 items / 2 cycles | 0 | 0 |
 | P5 (C16–C18) | 3 items / 3 cycles | 0 | 0 DESIGN |
 | User-gated (C19–C20) | 2 items / 2 cycles | 0 | 2 ⏸ |
 
-**Total plan: 33 item-closures across 21 cycles (C12 split into C12a/b-a/b-b/c adds two cycle slots but same closure count). Completed: 26 items / 13 cycles. P1 tier done · P2 tier DONE (7/7) · P3 tier 7/9 done (C10 ✅ + C11 ✅ + C12a ✅ + C12b-a ✅). Remaining: C12b-b (Run benchmark CTA FE, M), C12c (glossary_sync, blocked), C13 (Storybook dialogs, M), plus P4/P5/user-gated.**
+**Total plan: 33 item-closures across 21 cycles (C12 split into C12a/b-a/b-b/c). Completed: 27 items / 14 cycles. P1 tier done · P2 tier DONE (7/7) · P3 tier 8/9 done (C10 ✅ + C11 ✅ + C12a ✅ + C12b-a ✅ + C12b-b ✅). Remaining: C12c (glossary_sync, blocked), C13 (Storybook dialogs, M), plus P4/P5/user-gated.**
 (Some cycles close > 1 item; some items appear in >1 cycle. Check the cycle table for authoritative count.)
 
 ---
