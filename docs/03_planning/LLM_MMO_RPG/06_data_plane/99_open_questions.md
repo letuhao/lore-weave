@@ -194,4 +194,224 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 **Out of scope for this folder (2):** Q2 (Python bus) · Q11 (cross-reality txn)
 **Future implementation doc (1):** Q13 (test plan, when SDK implementation starts)
 
-**06_data_plane design phase is functionally complete.** Remaining work is implementation (Phase 2b proc-macro crate + clippy lints + SDK + CP service), ops integration (dashboards, per-aggregate tuning), and future scope items that explicitly belong elsewhere.
+**06_data_plane design phase for Phase 1-3 scope is complete.** However — see Phase 4 section below.
+
+---
+
+# Phase 4 — Channel-model follow-ups (2026-04-25)
+
+> **Context:** Phase 1-3 locked the kernel contract against a model we understood as "turn-based event-linear reality". On 2026-04-25 the user clarified the actual game model adds a **hierarchical channel** concept:
+>
+> - Each reality is an instance of a book; time inside is a sequence of events, not wall-clock.
+> - Players grouped into nested channels: **cell session → tavern → town → district → country → continent**. A player is in exactly one cell at a time but is a "resident" of every ancestor channel.
+> - Event rate decays ~10× per level up. Probabilistic **bubble-up** aggregates lower-level events and may trigger higher-level events.
+> - "Everyone sees the same page" is scoped to channel level: cell members share cell events + ancestor events.
+>
+> A multi-perspective adversarial review under the new model found that Phase 1-3 contracts remain valid but must be extended. **7/7 of the REAL-* issues from the previous review still stand** (6 reframed to per-channel scope). **9 NEW-* issues** surface from the channel model itself.
+>
+> This section records the backlog. Items will be resolved one at a time in Phase 4 mini-sessions. Phase 1-3 axioms, tiers, rulebook, SLO anchors, kernel API, control plane spec, coherency protocol, and failure modes remain **LOCKED** as a baseline — changes must go through standard supersession procedure in [../decisions/](../decisions/).
+
+## Phase 4 severity summary
+
+- **🔴 Blockers (4):** Q15 page/turn per-channel · Q16 durable subscribe per channel · Q26 channel as first-class concept · Q27 event bubble-up primitive
+- **🟡 Significant gaps (12):** Q17–Q22, Q28–Q32, Q34
+- **🟢 Nits / operational (4):** Q23–Q25, Q29, Q33
+
+---
+
+## Q15 — Per-channel page/turn boundary primitive (REAL-1 reframed)
+
+**What:** Each channel (cell, tavern, town, ...) has its own turn/page boundary — a canonical sync event that "advances" the channel and all members must see before the next channel-scoped event. DP contract currently has no first-class primitive for this; features would have to encode it via convention (ad-hoc T3 write of a `page_flip` aggregate).
+
+**Why blocker:** Page-flip / turn-boundary is the central sync mechanism of the game. If not a first-class DP concept, every feature invents its own; consistency across features breaks.
+
+**Candidate resolution path:** Add **DP-K13** `advance_channel_turn(ctx, channel_id, boundary_event)` primitive + **DP-R9** rule "writes to a channel require subscribe-completion of the last turn_boundary". Supersede [DP-K5](04_kernel_api_contract.md#dp-k5--write-primitives-tier-typed)-scoped scopes to include channel dimension.
+
+**Blocks:** All feature design (they need turn semantics).
+
+---
+
+## Q16 — Durable per-channel event-stream subscribe with resume token (REAL-2 reframed)
+
+**What:** [DP-K6](04_kernel_api_contract.md#dp-k6--subscription-primitives) `subscribe_broadcast` and `subscribe_invalidation` use Redis pub/sub (fire-and-forget per [DP-X2](06_cache_coherency.md#dp-x2--invalidation-message-protocol)). Player disconnect 30s → reconnect → events in gap are lost. In an event-linear game where the event log IS the story, this is semantic data loss. Under channel model the gap multiplies: player subscribes to multiple channel levels simultaneously and must resume each on reconnect.
+
+**Why blocker:** No feature that depends on "seeing the full story" can rely on the current subscribe APIs. Reconnect is a common operation, not an edge case.
+
+**Candidate resolution path:** Add **DP-K14** `subscribe_channel_events_durable(ctx, channel_id, from_event_id) -> DurableStream` backed by Postgres LISTEN + catch-up query (or Redis Streams). Keep pub/sub for invalidation (idempotent, drop-safe). Split coherency protocol accordingly.
+
+**Blocks:** Feature design that handles player disconnect-reconnect correctly.
+
+---
+
+## Q17 — Per-channel total event ordering invariant (REAL-3 reframed)
+
+**What:** Game intent: everyone in a channel sees events in the same order. Currently [02_storage R7](../02_storage/R07_concurrency_cross_session.md) gives per-session ordering via single-writer command processor; reality-wide is not required; **per-channel** ordering is implicit but not guaranteed.
+
+**Why significant:** Without per-channel total order, two cell members could see events in different order — breaks "same story" invariant.
+
+**Candidate resolution path:** **DP-A13** new axiom "Per-channel total event ordering". Mechanical: per-channel `channel_event_id` BIGSERIAL column. Enforced at write time by channel's single-writer (see Q34).
+
+---
+
+## Q18 — T1 tier reframed for channel presence (REAL-4 reframed)
+
+**What:** [DP-T1](03_tier_taxonomy.md#dp-t1--volatile) Volatile was designed around 30Hz position updates in an MMO. Turn-based has no use case for that. In channel model, T1 has a natural home: **channel presence state** ("who is currently in this tavern", "who is typing in this cell"). Lower QPS than MMO-T1.
+
+**Why significant (not blocker):** Current T1 eligibility rule says "write rate ≥ 1 per second sustained per aggregate" — channel presence doesn't meet that. Features will be pushed toward T2 unnecessarily; or the T1 eligibility rule needs updating.
+
+**Candidate resolution path:** Reframe [DP-T1](03_tier_taxonomy.md#dp-t1--volatile) examples and eligibility — option (c) from the review: keep 4 tiers but redefine T1 as "channel presence, typing, hover — low QPS transient state".
+
+---
+
+## Q19 — Per-channel pause / reality-pause semantics (REAL-5 reframed)
+
+**What:** When an NPC LLM is "thinking" in a cell, is the cell paused (no writes accepted)? Do other cells in the same tavern continue? Does a tavern-level pause (narration pause) freeze all child cells?
+
+**Why significant:** LLM turn coordination + channel freeze are central game mechanics. DP contract has no primitive; features will invent inconsistent approaches.
+
+**Candidate resolution path:** **DP-K15** `channel_pause(ctx, channel_id, reason, expected_resume_at)` + `channel_resume` + `SessionContext.paused_channels` flag set. Writes to paused channel return `DpError::ChannelPaused`.
+
+---
+
+## Q20 — LLM turn latency is the real hot-path bottleneck (REAL-6 unchanged)
+
+**What:** LLM calls 1–10 s dominate any DP latency. [DP-S*](08_scale_and_slos.md) numbers (50 ms T3 ack, 500 CCU per reality throughput targets) are over-specced relative to what the game actually needs. Real perf concern is LLM throughput per reality and queue depth per player.
+
+**Why significant:** May indicate DP-S numbers should be rescaled downward (less over-engineering) — but premature to rescale without V1 data.
+
+**Candidate resolution path:** Defer quantitative rescale to V1 prototype data. In parallel, design **LLM turn slot** primitive: reservation + cancellation + priority queue per channel. Out of DP SDK scope; feature-level (roleplay-service), but DP may need to expose channel-pause + event cancellation hooks.
+
+---
+
+## Q21 — T2 read-your-writes across service boundary within session (D3 from prior review)
+
+**What:** Service A does `t2_write`, acks on cache + outbox. Service A calls Service B within the same session. B does `read_projection` — projection hasn't caught up (async ≤1 s). B sees stale. Read-your-writes is broken across service boundaries within the same session.
+
+**Candidate resolution path:** Intra-session causality token. `T2Ack` returns a token; subsequent `read_projection` with `wait_for_token` waits until projection reflects it. Added to [DP-K4](04_kernel_api_contract.md#dp-k4--read-primitives) / [DP-K5](04_kernel_api_contract.md#dp-k5--write-primitives-tier-typed).
+
+---
+
+## Q22 — WrongWriterNode retry + routing protocol (D4 from prior review)
+
+**What:** SDK returns `DpError::WrongWriterNode` when a request reaches the wrong node (LB glitch, sticky cookie expired, session re-pinned). What is the retry protocol? How does the gateway learn the correct node?
+
+**Candidate resolution path:** SDK response includes `correct_node` hint (from CP lookup cache); gateway uses hint to re-route. Or feature-level retry with bounded attempts. Spec in Phase 4.
+
+---
+
+## Q23 — Histogram bucket granularity (O1 from prior review)
+
+**What:** `dp.{op}.latency_ms{...}` default Prometheus buckets (5, 10, 25, 50, 75, 100, ...) have poor resolution in the 0–10 ms range where hot-path p99 targets live. Need exponential buckets around the SLO targets.
+
+**Candidate resolution path:** Operational doc — specify bucket layout per metric. Not a design-doc change.
+
+---
+
+## Q24 — Telemetry cardinality blow-up (O2 from prior review)
+
+**What:** 10 k realities × 50 aggregate types × 3 ops × several tags → millions of unique Prometheus series. Under channel model, add `channel_id` tag → orders of magnitude worse.
+
+**Candidate resolution path:** SDK-side roll-up; don't emit per-reality per-aggregate series; aggregate in-process and emit rate-per-service. Or sampling. Ops doc + DP-K8 update.
+
+---
+
+## Q25 — Capability signing key rotation window (S1 from prior review)
+
+**What:** Quarterly rotation leaves a 90-day window where a stolen signing key is valid. For a hobby project this is a tradeoff; for a platform product at V3 this window is large.
+
+**Candidate resolution path:** Monthly rotation + passport-style revocation signal broadcast on hot path. Or accept 90-day as project-appropriate. Decision deferred to platform-mode launch (separate track).
+
+---
+
+## Q26 — Channel hierarchy as first-class DP concept (NEW-1, blocker)
+
+**What:** DP currently scopes everything to `reality_id`. Channel model requires `channel_id` as a nested scope within reality, with hierarchy (parent → children). Cache key format, `SessionContext`, capability claims, telemetry labels, event-log schema — all need the channel dimension.
+
+**Why blocker:** Without this, every other Phase 4 item has nowhere to plug into.
+
+**Candidate resolution path:** New file `12_channel_primitives.md` in this folder (DP-Ch1..Chn). New axioms:
+- **DP-A13** Per-channel total event ordering (Q17)
+- **DP-A14** Channel hierarchy as first-class scope
+- Updates: `SessionContext` adds `current_channel_id: ChannelId` + `subscribed_channels: Vec<ChannelId>`. Cache key format becomes `dp:{reality_id}:{channel_id}:{tier}:{aggregate}:{id}`.
+- CP own channel registry (channel_id → parent_id, channel_id → members). New CP gRPC methods.
+
+---
+
+## Q27 — Event bubble-up primitive (NEW-2, blocker)
+
+**What:** Aggregator reads events at channel level L, probabilistically emits event at level L+1 (with random threshold). Who runs the aggregator? Per-channel actor? CP-owned? Feature-level? Random seed must be deterministic for event-log replay consistency.
+
+**Why blocker:** Bubble-up is a central canonical mechanic. Without a DP primitive, features can't express it consistently.
+
+**Candidate resolution path:** **DP-K16** `register_bubble_up_aggregator(ctx, source_channel_id, target_channel_id, config) -> AggregatorHandle` + **DP-K17** `deterministic_rng_for_channel(ctx, channel_id, event_id) -> Rng` (seed = event_id for replay). Aggregator = SDK-owned actor running on the writer node of the target channel.
+
+---
+
+## Q28 — Channel membership ops (NEW-3)
+
+**What:** Player joins cell / leaves tavern / NPC migrates between cells. Frequency: medium. Membership change tier? Validation ownership (feature vs DP)? Privacy (who can see "player X entered tavern Y")?
+
+**Candidate resolution path:** Membership ops are T3 writes (canonical: "player X entered tavern Y at channel_event_id N"). DP exposes `join_channel(ctx, channel_id)` / `leave_channel(ctx, channel_id)` primitives. Validation rules (capacity, prerequisites) are feature-level.
+
+---
+
+## Q29 — Fan-out width at higher channels (NEW-4)
+
+**What:** Country event → all 500 players in country see it. Wide but infrequent fan-out. Memory cost of per-player subscription to 6 channel levels × multiple realities (for spectators).
+
+**Candidate resolution path:** Subscription batching by node — one subscriber per channel per game-node, fan-out to local session clients. Reduces Redis subscribers from O(players) to O(nodes). Ops-doc scope mostly.
+
+---
+
+## Q30 — Per-channel total ordering mechanism (NEW-5)
+
+**What:** Implementation of Q17's invariant. Postgres SERIAL / BIGSERIAL per channel? Single shared sequence with channel predicate? Separate sequences?
+
+**Candidate resolution path:** Per-channel `channel_event_id BIGSERIAL` column in event log, scoped by `(reality_id, channel_id)`. Single writer per channel (see Q34) ensures gapless monotonic allocation.
+
+---
+
+## Q31 — Channel lifecycle (NEW-6)
+
+**What:** Cell sessions are created when a conversation starts, dissolved when members leave. Tavern/town/country: persist for reality lifetime? Can a channel freeze and reactivate independently of its reality's freeze?
+
+**Candidate resolution path:** Channel lifecycle state machine: `active → dormant → dissolved`. Plug into [02_storage R9](../02_storage/R09_safe_reality_closure.md) lifecycle. Events in dissolved channels archived but searchable.
+
+---
+
+## Q32 — Privacy bubble-up (NEW-7)
+
+**What:** A private cell (secret meeting) emits events. Aggregator reads them for bubble-up. Does bubble-up leak the private cell's existence into tavern events?
+
+**Candidate resolution path:** Channels have visibility flag; aggregator respects visibility — skips private-channel events OR emits tavern event with redacted source. Feature-level design refinement; DP primitive exposes the visibility flag.
+
+---
+
+## Q33 — Retention per channel level (NEW-8)
+
+**What:** Cell events: high volume, short retention feasible (30 days). Country events: low volume, long retention (canon-level importance). Current [02_storage R1](../02_storage/R01_event_volume.md) retention is per-reality, flat.
+
+**Candidate resolution path:** Per-channel-level retention config in CP tier_policy. Ops + 02_storage coordination.
+
+---
+
+## Q34 — Channel writer node binding (NEW-9)
+
+**What:** [DP-A11](02_invariants.md#dp-a11--session-node-owns-t1-writes) binds T1 writes to session's node. For channel events (not session-scoped): which node is the writer? Options: (a) originating session's node writes; (b) dedicated channel writer node; (c) no binding, rely on per-channel DB SERIAL for ordering.
+
+**Candidate resolution path:** Channel has a designated writer node (option b) — single writer ensures gapless per-channel ordering (Q30). Cell's writer node = one of its member sessions' nodes; tavern+ writer node assigned by CP on activation. Handoff protocol on member departure.
+
+---
+
+## Phase 4 resolution plan
+
+Work through the list in dependency order:
+
+1. **First:** Q26 (channel first-class) + Q17/Q30 (per-channel ordering + writer binding) — these unblock everything else.
+2. **Then:** Q16 (durable subscribe), Q15 (turn boundary), Q27 (bubble-up primitive) — blockers that depend on channel being defined.
+3. **Then:** Q19 (pause), Q28 (membership), Q31 (lifecycle), Q18 (T1 reframe) — channel semantics refinements.
+4. **Then:** Q21 (T2 RYW), Q22 (WrongWriterNode UX), Q29 (fan-out), Q32 (privacy), Q34 if not already resolved — remaining gaps.
+5. **Ops doc:** Q23, Q24, Q25, Q33 — not design-doc work.
+6. **Defer:** Q20 (LLM turn latency) — V1 prototype data needed.
+
+Each Phase 4 mini-session picks one Q (or a tight cluster), resolves it, locks new axioms / rules / primitives, adds a new file or extends existing ones. Status tracked here.

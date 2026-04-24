@@ -39,6 +39,10 @@ Phase 3 (landed 2026-04-25):
 
 11. [07_failure_and_recovery.md](07_failure_and_recovery.md) — **DP-F1..F10** failure modes, CP outage degraded mode, node handoff, split-brain, invalidation reconciliation, backpressure token buckets, schema migration rollback, chaos drill cadence (resolves Q6, Q12; closes Q5 residual)
 
+**Phase 4 — Channel-model follow-ups (backlog, 2026-04-25):**
+
+User clarified on 2026-04-25 that the game uses a **hierarchical channel** model (cell session → tavern → town → district → country → continent) with event bubble-up. Phase 1-3 contracts remain LOCKED as baseline; channel concept requires extension. Full backlog recorded in [99_open_questions.md](99_open_questions.md) as Q15..Q34. Expected new file: `12_channel_primitives.md` (DP-Ch1..Chn + likely DP-A13, DP-A14 new axioms). Resolution will be incremental — one mini-session per Q cluster.
+
 ---
 
 ## Status table
@@ -55,7 +59,7 @@ Phase 3 (landed 2026-04-25):
 | 07 | [07_failure_and_recovery.md](07_failure_and_recovery.md) | LOCKED | DP-F1..F10 | 2026-04-25 |
 | 08 | [08_scale_and_slos.md](08_scale_and_slos.md) | LOCKED | DP-S1..S8 | 2026-04-24 |
 | 11 | [11_access_pattern_rules.md](11_access_pattern_rules.md) | LOCKED | DP-R1..R8 | 2026-04-24 |
-| 99 | [99_open_questions.md](99_open_questions.md) | OPEN | Q2/Q3/Q6/Q7/Q10/Q11/Q12/Q13 (Q1/Q4/Q5/Q8/Q9/Q14 resolved in Phase 2) | 2026-04-25 |
+| 99 | [99_open_questions.md](99_open_questions.md) | OPEN + **Phase 4 backlog** | Q2/Q3/Q7/Q10/Q11/Q13 (Phase 1-3 residuals) + **Q15..Q34** (Phase 4 channel-model follow-ups) | 2026-04-25 |
 
 ---
 
