@@ -228,6 +228,7 @@ async def lifespan(app: FastAPI):
     if settings.neo4j_uri:
         try:
             from app.db.neo4j import neo4j_session
+            from app.db.repositories.sweeper_state import SweeperStateRepo
             from app.jobs.reconcile_evidence_count_scheduler import (
                 run_reconcile_loop,
             )
@@ -238,10 +239,15 @@ async def lifespan(app: FastAPI):
             def _scheduler_session_factory():
                 return neo4j_session()
 
+            # C14b — pass the sweeper_state repo so reconciler's
+            # per-user cursor resumes mid-sweep on restart.
+            _sweeper_state_repo = SweeperStateRepo(get_knowledge_pool())
+
             reconcile_sweep_task = asyncio.create_task(
                 run_reconcile_loop(
                     get_knowledge_pool(),
                     _scheduler_session_factory,
+                    sweeper_state_repo=_sweeper_state_repo,
                 )
             )
             logger.info(

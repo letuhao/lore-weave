@@ -54,9 +54,11 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Any, Callable
+from uuid import UUID
 
 import asyncpg
 
+from app.db.repositories.sweeper_state import SweeperStateRepo
 from app.jobs.reconcile_evidence_count import (
     ReconcileResult,
     reconcile_evidence_count,
@@ -69,7 +71,12 @@ __all__ = [
     "run_reconcile_loop",
     "DEFAULT_INTERVAL_S",
     "DEFAULT_STARTUP_DELAY_S",
+    "SWEEPER_NAME",
 ]
+
+# C14b — sweeper_state.sweeper_name PK value. Kept module-top so a
+# grep for the string surfaces all callsites (repo writes + reads + tests).
+SWEEPER_NAME = "reconcile_evidence_count"
 
 logger = logging.getLogger(__name__)
 
@@ -87,9 +94,16 @@ DEFAULT_STARTUP_DELAY_S = 25 * 60
 # counter drift (no LLM, no $ cost); archived projects still have
 # drift-prone :Entity/:Event/:Fact nodes that silently corrupt if
 # un-archived later. Cover every user who ever had a project.
+#
+# C14b — cursor resumability. `$1::uuid` is the read_cursor return
+# value; NULL (fresh sweep or post-clear) matches all users.
+# Non-NULL seeks past the last-processed user for mid-sweep restart
+# recovery. ORDER BY user_id ensures deterministic iteration order so
+# the seek predicate correctly resumes.
 _LIST_USERS_SQL = """
 SELECT DISTINCT user_id::text AS user_id
 FROM knowledge_projects
+WHERE $1::uuid IS NULL OR user_id > $1::uuid
 ORDER BY user_id
 """
 
@@ -115,8 +129,9 @@ SessionFactory = Callable[[], Any]
 async def sweep_reconcile_once(
     pool: asyncpg.Pool,
     session_factory: SessionFactory,
+    sweeper_state_repo: SweeperStateRepo | None = None,
 ) -> ReconcileSweepResult:
-    """Iterate every non-archived user and fire a reconcile for each.
+    """Iterate every user and fire a reconcile for each.
     Returns aggregate counts for logging + metrics.
 
     Concurrent-run safety via ``pg_try_advisory_lock``. A second
@@ -125,6 +140,15 @@ async def sweep_reconcile_once(
 
     Per-user errors are logged + counted (``errored``) + skipped — one
     bad user doesn't poison the whole sweep.
+
+    **C14b — resumable cursor.** When ``sweeper_state_repo`` is
+    provided, ``read_cursor`` at start seeks past last-processed user,
+    ``upsert_cursor`` after each successful reconcile persists
+    progress, and ``clear_cursor`` fires on natural completion so the
+    next sweep starts fresh. A sweep that raises mid-iteration leaves
+    the cursor at the last successful user — next sweep resumes from
+    the next unprocessed user. ``sweeper_state_repo=None`` disables
+    the cursor entirely (back-compat path; C14a behaviour).
     """
     result = ReconcileSweepResult()
 
@@ -142,7 +166,20 @@ async def sweep_reconcile_once(
             return result
 
         try:
-            rows = await conn.fetch(_LIST_USERS_SQL)
+            # C14b — read cursor before the user-list fetch so the
+            # seek predicate applies at SQL level.
+            cursor_last_user_id = None
+            if sweeper_state_repo is not None:
+                cursor_last_user_id = await sweeper_state_repo.read_cursor(
+                    SWEEPER_NAME,
+                )
+                if cursor_last_user_id is not None:
+                    logger.info(
+                        "C14b: reconcile sweep resuming from cursor user=%s",
+                        cursor_last_user_id,
+                    )
+
+            rows = await conn.fetch(_LIST_USERS_SQL, cursor_last_user_id)
             result.users_considered = len(rows)
 
             for row in rows:
@@ -156,6 +193,28 @@ async def sweep_reconcile_once(
                                 project_id=None,
                                 limit_per_label=None,
                             )
+                        )
+                    # C14b — persist cursor FIRST (before counter
+                    # increment) so the only way to advance counters
+                    # is via a fully-committed cursor. /review-impl
+                    # LOW#2: reversing the original order eliminates
+                    # the double-count window where a failing upsert
+                    # after a successful reconcile would leave counters
+                    # pointing at work we're about to redo.
+                    #
+                    # Risk profile of each order:
+                    #   - upsert-then-increment (this): failure before
+                    #     increment means we re-reconcile the user but
+                    #     counters reflect reality (no double-count).
+                    #   - increment-then-upsert: failure between steps
+                    #     has counters reflecting work that was already
+                    #     persisted to Neo4j but cursor-blind, so next
+                    #     sweep double-counts in logs/metrics.
+                    # Both are safe (reconcile is idempotent); this is
+                    # just the cleaner-semantics ordering.
+                    if sweeper_state_repo is not None:
+                        await sweeper_state_repo.upsert_cursor(
+                            SWEEPER_NAME, UUID(user_id),
                         )
                     # Direct attribute access — if K11.9's ReconcileResult
                     # Pydantic model renames a field, this crashes loudly
@@ -171,6 +230,12 @@ async def sweep_reconcile_once(
                     )
                     result.errored += 1
                     continue
+
+            # C14b — natural completion: the for-loop exited normally
+            # (no early return from lock_skipped or pool exception).
+            # Clear the cursor so the next sweep starts fresh.
+            if sweeper_state_repo is not None:
+                await sweeper_state_repo.clear_cursor(SWEEPER_NAME)
 
             logger.info(
                 "C14a: reconcile sweep complete — users=%d "
@@ -196,6 +261,7 @@ async def run_reconcile_loop(
     pool: asyncpg.Pool,
     session_factory: SessionFactory,
     *,
+    sweeper_state_repo: SweeperStateRepo | None = None,
     interval_s: int = DEFAULT_INTERVAL_S,
     startup_delay_s: int = DEFAULT_STARTUP_DELAY_S,
 ) -> None:
@@ -207,16 +273,24 @@ async def run_reconcile_loop(
     Cancellation: re-raise ``asyncio.CancelledError`` at each sleep /
     await boundary so FastAPI lifespan teardown sees the cancellation
     and exits cleanly without a dangling background task.
+
+    **C14b**: ``sweeper_state_repo`` threads the resumable cursor all
+    the way to ``sweep_reconcile_once``. ``None`` keeps the C14a
+    no-cursor behaviour (tests + back-compat).
     """
     logger.info(
-        "C14a: reconcile loop starting (startup_delay=%ds interval=%ds)",
+        "C14a: reconcile loop starting (startup_delay=%ds interval=%ds "
+        "cursor=%s)",
         startup_delay_s, interval_s,
+        "on" if sweeper_state_repo is not None else "off",
     )
     try:
         await asyncio.sleep(startup_delay_s)
         while True:
             try:
-                await sweep_reconcile_once(pool, session_factory)
+                await sweep_reconcile_once(
+                    pool, session_factory, sweeper_state_repo,
+                )
             except asyncio.CancelledError:
                 raise
             except Exception:

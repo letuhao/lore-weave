@@ -20,6 +20,7 @@ import pytest
 from app.jobs.reconcile_evidence_count_scheduler import (
     DEFAULT_INTERVAL_S,
     DEFAULT_STARTUP_DELAY_S,
+    SWEEPER_NAME,
     ReconcileSweepResult,
     run_reconcile_loop,
     sweep_reconcile_once,
@@ -52,7 +53,17 @@ class FakeConn:
     async def fetch(self, sql: str, *args) -> list[dict]:
         self.executed.append(sql.strip()[:40])
         if "FROM knowledge_projects" in sql:
-            return [{"user_id": uid} for uid in self._users]
+            # C14b — _LIST_USERS_SQL now takes a cursor arg ($1::uuid).
+            # When cursor is not None, return only users > cursor to
+            # simulate the seek predicate.
+            cursor = args[0] if args else None
+            if cursor is None:
+                return [{"user_id": uid} for uid in self._users]
+            cursor_str = str(cursor)
+            return [
+                {"user_id": uid}
+                for uid in self._users if uid > cursor_str
+            ]
         raise AssertionError(f"unexpected fetch: {sql}")
 
     async def execute(self, sql: str, *args) -> str:
@@ -76,6 +87,30 @@ def _session_factory(session=None):
     async def _factory():
         yield session or AsyncMock()
     return _factory
+
+
+class FakeSweeperStateRepo:
+    """In-memory stand-in for SweeperStateRepo. Records the sequence
+    of read/upsert/clear calls so tests can assert ordering."""
+
+    def __init__(self, initial_cursor=None):
+        self._cursor = initial_cursor  # str UUID or None
+        self.calls: list[tuple[str, object]] = []
+
+    async def read_cursor(self, sweeper_name: str):
+        self.calls.append(("read", sweeper_name))
+        if self._cursor is None:
+            return None
+        from uuid import UUID
+        return UUID(self._cursor)
+
+    async def upsert_cursor(self, sweeper_name: str, last_user_id, last_scope=None):
+        self.calls.append(("upsert", str(last_user_id)))
+        self._cursor = str(last_user_id)
+
+    async def clear_cursor(self, sweeper_name: str):
+        self.calls.append(("clear", sweeper_name))
+        self._cursor = None
 
 
 class FakeReconcileResult:
@@ -258,6 +293,134 @@ async def test_loop_cancellation_at_startup_delay():
     assert not any("pg_try_advisory_lock" in s for s in conn.executed)
 
 
+# ── C14b — sweeper_state cursor integration ────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_fresh_sweep_no_cursor_reads_none_and_processes_all_users(monkeypatch):
+    """C14b — first sweep (no prior cursor) iterates all users from
+    the start. read_cursor returns None → full user list fetched →
+    natural completion clears (no-op on already-absent row)."""
+    users = [
+        "00000000-0000-0000-0000-000000000001",
+        "00000000-0000-0000-0000-000000000002",
+        "00000000-0000-0000-0000-000000000003",
+    ]
+    conn = FakeConn(try_lock=True, users=users)
+    pool = FakePool(conn)
+    repo = FakeSweeperStateRepo(initial_cursor=None)
+
+    from app.jobs import reconcile_evidence_count_scheduler as sched
+
+    async def fake_reconcile(session, **kwargs):
+        return FakeReconcileResult()
+
+    monkeypatch.setattr(sched, "reconcile_evidence_count", fake_reconcile)
+
+    result = await sweep_reconcile_once(pool, _session_factory(), repo)  # type: ignore[arg-type]
+
+    assert result.users_considered == 3
+    # Call order: read (empty) → upsert(u1) → upsert(u2) → upsert(u3) → clear
+    call_types = [c[0] for c in repo.calls]
+    assert call_types == ["read", "upsert", "upsert", "upsert", "clear"]
+    # Upserts were in user-id order.
+    upserts = [c[1] for c in repo.calls if c[0] == "upsert"]
+    assert upserts == users
+
+
+@pytest.mark.asyncio
+async def test_sweep_resumes_from_cursor_after_mid_sweep_crash(monkeypatch):
+    """C14b critical regression — prior sweep crashed after processing
+    user 1 (cursor persisted). Next sweep must SKIP user 1 (already
+    processed) and start from user 2."""
+    users = [
+        "00000000-0000-0000-0000-000000000001",
+        "00000000-0000-0000-0000-000000000002",
+        "00000000-0000-0000-0000-000000000003",
+    ]
+    conn = FakeConn(try_lock=True, users=users)
+    pool = FakePool(conn)
+    # Simulate prior crash: cursor left at user 1.
+    repo = FakeSweeperStateRepo(initial_cursor=users[0])
+
+    from app.jobs import reconcile_evidence_count_scheduler as sched
+    processed = []
+
+    async def fake_reconcile(session, *, user_id, project_id, limit_per_label):
+        processed.append(user_id)
+        return FakeReconcileResult()
+
+    monkeypatch.setattr(sched, "reconcile_evidence_count", fake_reconcile)
+
+    result = await sweep_reconcile_once(pool, _session_factory(), repo)  # type: ignore[arg-type]
+
+    # Only users 2 and 3 should have been processed — user 1 skipped.
+    assert processed == [users[1], users[2]]
+    assert result.users_considered == 2
+    # Natural completion → cursor cleared at the end.
+    assert repo.calls[-1] == ("clear", SWEEPER_NAME)
+
+
+@pytest.mark.asyncio
+async def test_cursor_NOT_cleared_when_user_raises_mid_sweep(monkeypatch):
+    """C14b — if a user raises mid-iteration, the cursor must stay at
+    the last successful user (NOT cleared) so the next sweep can
+    resume. The per-user upsert fires only after success; the natural
+    completion clear fires only after the for-loop completes."""
+    users = [
+        "00000000-0000-0000-0000-000000000001",
+        "00000000-0000-0000-0000-000000000002",
+        "00000000-0000-0000-0000-000000000003",
+    ]
+    conn = FakeConn(try_lock=True, users=users)
+    pool = FakePool(conn)
+    repo = FakeSweeperStateRepo(initial_cursor=None)
+
+    from app.jobs import reconcile_evidence_count_scheduler as sched
+
+    async def fake_reconcile(session, *, user_id, project_id, limit_per_label):
+        if user_id == users[1]:
+            raise RuntimeError("u2 bad neo4j")
+        return FakeReconcileResult()
+
+    monkeypatch.setattr(sched, "reconcile_evidence_count", fake_reconcile)
+
+    result = await sweep_reconcile_once(pool, _session_factory(), repo)  # type: ignore[arg-type]
+
+    # User 1 succeeded → cursor upserted to u1. User 2 raised → no
+    # upsert. User 3 then succeeded → cursor upserted to u3. Loop
+    # completed (per-user error isolation) → clear fires. Final state:
+    # cursor cleared but upsert-sequence shows u1 and u3, not u2.
+    upserts = [c[1] for c in repo.calls if c[0] == "upsert"]
+    assert upserts == [users[0], users[2]]
+    assert users[1] not in upserts
+    assert result.errored == 1
+    # Natural completion still fires clear (per-user isolation doesn't
+    # count as sweep-level failure).
+    assert repo.calls[-1] == ("clear", SWEEPER_NAME)
+
+
+@pytest.mark.asyncio
+async def test_sweep_without_repo_skips_cursor_calls(monkeypatch):
+    """C14b back-compat — repo=None means no cursor operations.
+    Existing C14a tests (calling sweep_reconcile_once without repo)
+    must continue to work unchanged."""
+    users = ["u1", "u2"]
+    conn = FakeConn(try_lock=True, users=users)
+    pool = FakePool(conn)
+
+    from app.jobs import reconcile_evidence_count_scheduler as sched
+
+    async def fake_reconcile(session, **kwargs):
+        return FakeReconcileResult()
+
+    monkeypatch.setattr(sched, "reconcile_evidence_count", fake_reconcile)
+
+    # No repo passed → sweep runs the C14a path.
+    result = await sweep_reconcile_once(pool, _session_factory(), None)  # type: ignore[arg-type]
+    assert result.users_considered == 2
+
+
 @pytest.mark.asyncio
 async def test_loop_continues_after_sweep_error(monkeypatch):
     """A failed sweep must not kill the loop — error logged + sleep +
@@ -269,7 +432,7 @@ async def test_loop_continues_after_sweep_error(monkeypatch):
     from app.jobs import reconcile_evidence_count_scheduler as sched
     sweep_calls = 0
 
-    async def fake_sweep(p, sf):
+    async def fake_sweep(p, sf, repo=None):
         nonlocal sweep_calls
         sweep_calls += 1
         if sweep_calls == 1:

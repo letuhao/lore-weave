@@ -22,12 +22,27 @@ Cadence: 12h (twice-daily) — quarantine TTL is 24h per K15.10, so a
 ageing past 48h. Could be daily but 12h gives reviewers a faster
 signal when auto-invalidation fires on their curation backlog.
 
-Scope (C14a):
-  - Functional scheduler — create, execute, sleep, repeat
-  - Cursor-state (resumable-from-mid-backlog) deferred to **C14b**
-  - The natural filter ``pending_validation=true`` advances the state
-    on its own (invalidated facts drop out of the filter on the next
-    run), so cursor state is nice-to-have not required.
+Scope (C14a + C14b):
+  - Functional scheduler — create, execute, sleep, repeat (C14a)
+  - Inner-loop drain across ``max_drain_iterations`` calls (C14a
+    /review-impl MED#1)
+
+**Cursor state intentionally absent** (C14b decision). Reconciler's
+C14b ships a resumable ``sweeper_state`` table so a mid-user crash
+resumes from the last successful user. Quarantine does NOT use that
+mechanism because:
+  - The Cypher filter ``pending_validation=true`` is self-advancing —
+    invalidated facts drop out of the filter on the next sweep, so
+    "resume from last-call" == "re-run with same filter" == exactly
+    the same work subset. Persisting cursor state would add complexity
+    for zero semantic value.
+  - Global sweep (user_id=None) has no natural per-user cursor to
+    persist anyway; unlike reconciler's DISTINCT-user iteration,
+    quarantine is one Cypher call per drain iteration.
+If a future design swaps quarantine to per-user iteration (e.g. for
+fairness across tenants under contention), this decision should be
+revisited — the ``sweeper_state`` table and ``SweeperStateRepo``
+already support another sweeper_name PK entry.
 """
 
 from __future__ import annotations

@@ -436,6 +436,34 @@ CREATE TABLE IF NOT EXISTS user_knowledge_budgets (
   ai_monthly_budget_usd  NUMERIC(10,4),
   updated_at             TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ═══════════════════════════════════════════════════════════════
+-- C14b — sweeper_state: per-sweeper resumable cursor.
+-- Wraps any tenant-wide offline sweeper that iterates users so a
+-- mid-sweep crash resumes from the last-processed user on restart.
+-- One row per sweeper (sweeper_name PK). Row absent = sweep runs
+-- from scratch (fresh start or post-completion clear).
+--
+-- Currently used by:
+--   - reconcile_evidence_count_scheduler (C14a) — sweeper_name =
+--     'reconcile_evidence_count'. last_user_id advances per-user;
+--     natural-completion path deletes the row.
+--
+-- Not used by the C14a quarantine-cleanup sweeper: its Cypher filter
+-- (pending_validation=true) is self-advancing — invalidated facts drop
+-- out on the next call, so cursor state would be redundant.
+--
+-- `last_scope JSONB` is the escape hatch for future sweepers that
+-- need cursor state beyond user_id (e.g. per-user-per-project
+-- pagination). Default empty {} keeps existing callers simple.
+-- No FK on user_id — users table lives in auth-service (cross-DB).
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS sweeper_state (
+  sweeper_name  TEXT PRIMARY KEY,
+  last_user_id  UUID,
+  last_scope    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 """
 
 

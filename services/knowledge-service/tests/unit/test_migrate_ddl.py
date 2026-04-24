@@ -194,3 +194,50 @@ def test_benchmark_runs_raw_report_jsonb_with_default():
     """raw_report is NOT NULL with an empty-object default so queries
     don't need to guard against NULL when digging into the payload."""
     assert "raw_report             JSONB NOT NULL DEFAULT '{}'::jsonb" in DDL
+
+
+# ── C14b — sweeper_state resumable-cursor table ────────────────────
+
+
+def test_sweeper_state_table_present():
+    """C14b — `sweeper_state` wraps a resumable per-user cursor for
+    tenant-wide offline sweepers (reconcile_evidence_count_scheduler
+    today; future sweepers keyed on their own sweeper_name PK).
+    Regression-lock against a migration that drops the table."""
+    assert "CREATE TABLE IF NOT EXISTS sweeper_state" in DDL
+
+
+def test_sweeper_state_schema_shape():
+    """C14b — scoped columns: sweeper_name TEXT PK, last_user_id UUID
+    (nullable for 'cursor cleared' state), last_scope JSONB NOT NULL
+    DEFAULT '{}' (escape hatch for per-user-per-sub-scope iteration),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()."""
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS sweeper_state\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None, "sweeper_state table body not found"
+    body = m.group(1)
+    assert "sweeper_name  TEXT PRIMARY KEY" in body
+    assert "last_user_id  UUID" in body
+    assert "last_scope    JSONB NOT NULL DEFAULT '{}'::jsonb" in body
+    assert "updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()" in body
+
+
+def test_sweeper_state_no_cross_db_fk():
+    """C14b — `last_user_id` has no FK on users (users table lives in
+    auth-service; cross-DB FKs forbidden). Repo tests exercise the
+    upsert without a FK-violation path."""
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS sweeper_state\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None
+    body = m.group(1)
+    # No `REFERENCES` clause anywhere in the body.
+    assert "REFERENCES" not in body, (
+        "sweeper_state must not declare an FK to users "
+        "(cross-DB forbidden)"
+    )
