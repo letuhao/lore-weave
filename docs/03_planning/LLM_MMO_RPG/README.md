@@ -38,7 +38,7 @@ This folder exists to:
 | `04_PLAYER_CHARACTER_DESIGN.md` | PC semantics — identity layering (User/PC/Session), PC vs NPC rules, creation/lifecycle/social/canon decisions. Registers DF1–DF8 deferred big features. |
 | `05_LLM_SAFETY_LAYER.md` | Cross-cutting LLM I/O discipline — 3-intent classifier, command dispatch, World Oracle (determinism), 5-layer injection defense. Resolves A3/A5/A6 from 01. Implementation contract for `roleplay-service` + `world-service`. |
 | `FEATURE_CATALOG.md` | **Bird's-eye catalogue of features** across 12 categories with stable IDs. Cross-references every numbered design doc. V1/V2/V3/V4 scope rollup. |
-| `OPEN_DECISIONS.md` | Tracking file for all pending user decisions + registry of DF1–DF13 deferred big features (DF12 withdrawn). Defaults applied where noted; user can confirm or override at any time. |
+| [`decisions/`](decisions/) | Tracking for all pending user decisions + registry of DF1–DF15 deferred big features (DF12 withdrawn). **Split into 6 chunks on 2026-04-24**; start at [`decisions/_index.md`](decisions/_index.md). Monolith archived at `OPEN_DECISIONS.ARCHIVED.md` until external refs migrated. |
 | `SESSION_HANDOFF.md` | **Resumption doc** — current state summary, decision history, natural next steps. Read this first when resuming. Does not conflict with main `docs/sessions/SESSION_PATCH.md`. |
 
 ## Related planning
@@ -67,7 +67,7 @@ This folder exists to:
 7. [`02_storage/`](02_storage/) — engineering detail. Start at [`_index.md`](02_storage/_index.md); R1–R13 are in `R01_*.md`..`R13_*.md`.
 8. `04_PLAYER_CHARACTER_DESIGN.md` — PC semantics + deferred big features registry
 9. `05_LLM_SAFETY_LAYER.md` — cross-cutting LLM I/O discipline (A3/A5/A6 resolution)
-10. `OPEN_DECISIONS.md` — every decision locked or pending + DF1–DF13 registry
+10. [`decisions/`](decisions/) — every decision locked or pending + DF1–DF15 registry. Start at [`_index.md`](decisions/_index.md).
 
 ## Status checkpoint
 

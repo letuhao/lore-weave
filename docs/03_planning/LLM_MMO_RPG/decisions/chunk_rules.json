@@ -1,0 +1,13 @@
+{
+  "source": "../OPEN_DECISIONS.ARCHIVED.md",
+  "output_dir": ".",
+  "preamble": "00_preamble.md",
+  "with_meta": true,
+  "boundaries": [
+    ["^## Questions without defaults",  "pending_questions.md"],
+    ["^## Locked decisions",             "locked_decisions.md"],
+    ["^## MV5 primitives",               "mv5_primitives.md"],
+    ["^## Deferred big features",        "deferred_DF01_DF15.md"],
+    ["^## How to answer",                "99_how_to_answer.md"]
+  ]
+}
