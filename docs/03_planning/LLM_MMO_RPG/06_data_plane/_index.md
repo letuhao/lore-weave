@@ -35,9 +35,9 @@ Phase 2 (landed 2026-04-25):
 9. [05_control_plane_spec.md](05_control_plane_spec.md) — **DP-C1..C10** control plane service responsibilities (partial Q5, Q6, Q9)
 10. [06_cache_coherency.md](06_cache_coherency.md) — **DP-X1..X10** invalidation and consistency protocol (resolves Q4; partial Q10)
 
-Phase 3 (pending):
+Phase 3 (landed 2026-04-25):
 
-11. `07_failure_and_recovery.md` — **DP-F1..Fn** cold start, node failure, split-brain, backpressure (resolves Q12; closes Q6)
+11. [07_failure_and_recovery.md](07_failure_and_recovery.md) — **DP-F1..F10** failure modes, CP outage degraded mode, node handoff, split-brain, invalidation reconciliation, backpressure token buckets, schema migration rollback, chaos drill cadence (resolves Q6, Q12; closes Q5 residual)
 
 ---
 
@@ -52,7 +52,7 @@ Phase 3 (pending):
 | 04 | [04_kernel_api_contract.md](04_kernel_api_contract.md) | LOCKED | DP-K1..K12 | 2026-04-25 |
 | 05 | [05_control_plane_spec.md](05_control_plane_spec.md) | LOCKED | DP-C1..C10 | 2026-04-25 |
 | 06 | [06_cache_coherency.md](06_cache_coherency.md) | LOCKED | DP-X1..X10 | 2026-04-25 |
-| 07 | `07_failure_and_recovery.md` | PENDING (Phase 3) | DP-F* | — |
+| 07 | [07_failure_and_recovery.md](07_failure_and_recovery.md) | LOCKED | DP-F1..F10 | 2026-04-25 |
 | 08 | [08_scale_and_slos.md](08_scale_and_slos.md) | LOCKED | DP-S1..S8 | 2026-04-24 |
 | 11 | [11_access_pattern_rules.md](11_access_pattern_rules.md) | LOCKED | DP-R1..R8 | 2026-04-24 |
 | 99 | [99_open_questions.md](99_open_questions.md) | OPEN | Q2/Q3/Q6/Q7/Q10/Q11/Q12/Q13 (Q1/Q4/Q5/Q8/Q9/Q14 resolved in Phase 2) | 2026-04-25 |
@@ -72,7 +72,7 @@ Outside docs may cross-link unambiguously to:
 | `DP-K*` | Kernel API primitive surface (DP-K1..K12) | [04_kernel_api_contract.md](04_kernel_api_contract.md) |
 | `DP-C*` | Control plane spec items (DP-C1..C10) | [05_control_plane_spec.md](05_control_plane_spec.md) |
 | `DP-X*` | Cache coherency / consistency items (DP-X1..X10) | [06_cache_coherency.md](06_cache_coherency.md) |
-| `DP-F*` | Failure and recovery items | `07_failure_and_recovery.md` (Phase 3) |
+| `DP-F*` | Failure and recovery items (DP-F1..F10) | [07_failure_and_recovery.md](07_failure_and_recovery.md) |
 
 Retired IDs: (none yet). Retired IDs use `_withdrawn` suffix, never reused.
 

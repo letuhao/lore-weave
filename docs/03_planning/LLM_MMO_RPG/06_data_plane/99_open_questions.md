@@ -51,27 +51,28 @@
 
 ---
 
-## Q5 — Control plane schema migration protocol 🟡 PARTIAL (Phase 2, 2026-04-25)
+## Q5 — Control plane schema migration protocol ✅ RESOLVED (Phase 3, 2026-04-25)
 
-**What:** How does the control plane coordinate schema changes (adding a field to an aggregate, changing a tier assignment) across N running SDK instances without a maintenance window?
+**What:** How does the control plane coordinate schema changes across N running SDK instances without a maintenance window?
 
-**Partial resolution:** [DP-C5](05_control_plane_spec.md#dp-c5--schema-migration-coordination) locks the **Expand / Migrate / Contract** protocol at the CP level. Expand: dual-read/write support in SDK N+1; Migrate: async projection rebuild via [02_storage R02](../02_storage/R02_projection_rebuild.md); Contract: drop old-shape support after drain. Catastrophic migrations require reality-freeze via the 02_storage R9 lifecycle machinery.
+**Resolution:**
+- **Phase 2 ([DP-C5](05_control_plane_spec.md#dp-c5--schema-migration-coordination)):** Expand / Migrate / Contract protocol at the CP level.
+- **Phase 3 ([DP-F8](07_failure_and_recovery.md#dp-f8--cold-start-fallback--schema-migration-rollback)):** rollback procedure on integrity-check failure — dual-read pause, quarantine new-schema projection, resume on old schema, ≤5 min rollback budget. Quarantined new-schema data preserved for forensic recovery.
+- Catastrophic migrations (breaking change, no dual-read feasible) require reality-freeze via [02_storage R9](../02_storage/R09_safe_reality_closure.md).
 
-**Residual:** Exact rebuild performance bounds per aggregate size, monitoring signals, and rollback procedures land in Phase 3 `07_failure_and_recovery.md`.
-
-**Cross-ref:** [02_storage/R03](../02_storage/R03_schema_evolution.md) solved durable-tier schema evolution. Phase 2 resolved the CP-coordination wrapper around it.
+**Cross-ref:** [02_storage/R03](../02_storage/R03_schema_evolution.md) durable-tier schema evolution + [R02](../02_storage/R02_projection_rebuild.md) rebuild machinery.
 
 ---
 
-## Q6 — Cold-start latency for a reality 🟡 PARTIAL (Phase 2, 2026-04-25)
+## Q6 — Cold-start latency for a reality ✅ RESOLVED (Phase 3, 2026-04-25)
 
-**What:** When a reality transitions from frozen to active, the cache is cold. Target ≤10s per [DP-S2](08_scale_and_slos.md). Pre-warm vs lazy-populate tradeoff.
+**What:** When a reality transitions from frozen to active, the cache is cold. Target ≤10s per [DP-S2](08_scale_and_slos.md). Pre-warm vs lazy-populate tradeoff, and behavior when CP is unavailable.
 
-**Partial resolution:** [DP-C7](05_control_plane_spec.md#dp-c7--cold-start-coordination) locks the protocol: CP orchestrates the `frozen → warming → active` transition, signals game service to pre-populate cache for aggregates in the reality-specific hotset; first-session bind runs in parallel with hotset pre-warm. V1/V2 uses a static default hotset; learning-based hotset is V3.
+**Resolution:**
+- **Phase 2 ([DP-C7](05_control_plane_spec.md#dp-c7--cold-start-coordination)):** CP orchestrates `frozen → warming → active` with reality hotset pre-warm in parallel with first-session bind.
+- **Phase 3 ([DP-F8](07_failure_and_recovery.md#dp-f8--cold-start-fallback--schema-migration-rollback)):** CP-unavailable fallback — gateway queues connect ≤30s then returns 503 `Retry-After: 60`; reality stays frozen rather than risk double-wake violating single-writer (DP-A11).
 
-**Residual:** Full Phase 3 coverage in `07_failure_and_recovery.md` adds observability, fallback when CP is down, retry protocol, and actual V2 prototype latency measurements to validate the ≤10s target.
-
-**Dependencies:** V2 telemetry data before tuning hotset membership.
+**Residual (not an OPEN Q, operational work):** V2 telemetry to validate the ≤10s target in prototype; hotset learning algorithm for V3 stays a future operational tuning.
 
 ---
 
@@ -127,13 +128,18 @@
 
 ---
 
-## Q12 — Backpressure semantics
+## Q12 — Backpressure semantics ✅ RESOLVED (Phase 3, 2026-04-25)
 
-**What:** When a reality breaches DP-S8 ceilings (event log write rate, cache memory, pub/sub fan-out), what does the SDK return? Synchronous `RATE_LIMITED` error per write? Token bucket with wait? Drop-with-metric for T1? Per-tier behavior likely differs.
+**What:** Precise behavior when reality breaches [DP-S8](08_scale_and_slos.md) ceilings.
 
-**Why deferred:** Phase 3 failure/recovery owns this. Phase 1 only asserts that backpressure exists ([DP-S8](08_scale_and_slos.md)).
+**Resolution:** [DP-F7](07_failure_and_recovery.md#dp-f7--backpressure-token-bucket) locks three independently-sized token buckets:
+- **Per-reality-per-tier** — matches DP-S5 sustained + 4s burst (T1=5k/s, T2=500/s, T3=50/s, reads=10k/s)
+- **Per-service** — fairness; prevents rogue feature monopolizing (default equal shares, dynamic rebalance 5-min intervals)
+- **Per-session** — abuse prevention (T1=100/s, T2/T3 write=10/s, read=200/s)
 
-**Resolves in:** `07_failure_and_recovery.md` (Phase 3).
+Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature code MUST propagate per [DP-R6](11_access_pattern_rules.md#dp-r6--backpressure-propagation-not-swallow-and-retry); silent retry loops caught by clippy lint.
+
+**Residual (V2 tuning, not OPEN):** exact per-service dynamic rebalancing algorithm; V1/V2 ships with equal shares.
 
 ---
 
@@ -165,24 +171,27 @@
 
 ## Summary — what blocks what
 
-| Open Q | Status after Phase 2 | Phase 2? | Phase 3? | Blocks feature design? |
-|---|---|:---:|:---:|:---:|
-| Q1 SDK API shape | ✅ resolved | done | — | no (Phase 2 delivered) |
-| Q2 Python bus | open | — | — | no (Python outside DP) |
-| Q3 Redis topology | open | — | minor | no |
-| Q4 Invalidation storm | ✅ resolved (DP-X4) | done | — | no |
-| Q5 Schema migration | 🟡 partial (DP-C5) | done (protocol) | observability/rollback | no |
-| Q6 Cold start | 🟡 partial (DP-C7) | done (protocol) | fallback + telemetry | no |
-| Q7 Redis ops cost | open | — | — | no |
-| Q8 SDK telemetry | 🟡 partial (DP-K8) | done (macro+metrics) | dashboards = ops doc | no |
-| Q9 SDK authZ | ✅ resolved | done | — | no (capabilities defined) |
-| Q10 In-proc cache | 🟡 partial (DP-X6) | done (policy) | enable per aggregate = ops/V2 data | no |
-| Q11 Cross-reality txn | open (out-of-SDK) | — | — | minor (multiverse features) |
-| Q12 Backpressure | open | — | yes | minor |
-| Q13 Tier testing | open | — | — | no (but QC gate later) |
-| Q14 Rust types + macros | ✅ resolved | done | — | no |
+| Open Q | Status after Phase 3 | Resolved in | Blocks feature design? |
+|---|---|---|:---:|
+| Q1 SDK API shape | ✅ resolved | Phase 2 (DP-K*) | no |
+| Q2 Python bus | open | out of DP scope | no |
+| Q3 Redis topology | open | ops doc / V2 data | no |
+| Q4 Invalidation storm | ✅ resolved | Phase 2 (DP-X4) | no |
+| Q5 Schema migration | ✅ resolved | Phase 2 (DP-C5) + Phase 3 (DP-F8 rollback) | no |
+| Q6 Cold start | ✅ resolved | Phase 2 (DP-C7) + Phase 3 (DP-F8 fallback) | no |
+| Q7 Redis ops cost | open | ops doc | no |
+| Q8 SDK telemetry | 🟡 partial | Phase 2 (macro); dashboards = ops | no |
+| Q9 SDK authZ | ✅ resolved | Phase 2 (DP-K9, DP-C8) | no |
+| Q10 In-proc cache | 🟡 partial | Phase 2 (policy); per-aggregate enable = ops | no |
+| Q11 Cross-reality txn | open | out-of-SDK scope | minor |
+| Q12 Backpressure | ✅ resolved | Phase 3 (DP-F7) | no |
+| Q13 Tier testing | open | Phase 2b test plan | no (QC gate later) |
+| Q14 Rust types + macros | ✅ resolved | Phase 2 (DP-K1..K12) | no |
 
-**Phase 2 delivered:** Q1 ✅ · Q4 ✅ · Q5 🟡 · Q6 🟡 · Q8 🟡 · Q9 ✅ · Q10 🟡 · Q14 ✅
-**Phase 3 must resolve:** Q5 residual (observability/rollback) · Q6 residual (fallback/telemetry) · Q12 (backpressure).
-**Operational doc (not this folder):** Q3 · Q7 · Q8 dashboards · Q10 per-aggregate enable list.
-**Out of scope for this folder:** Q2 (Python bus) · Q11 (cross-reality txn).
+**Design-phase resolved (7):** Q1 · Q4 · Q5 · Q6 · Q9 · Q12 · Q14
+**Design-phase partial (2):** Q8 (macro locked, dashboards = ops) · Q10 (policy locked, per-aggregate enable = ops)
+**Operational doc (not this folder, 3):** Q3 · Q7 · Q8 dashboards · Q10 per-aggregate enable list
+**Out of scope for this folder (2):** Q2 (Python bus) · Q11 (cross-reality txn)
+**Future implementation doc (1):** Q13 (test plan, when SDK implementation starts)
+
+**06_data_plane design phase is functionally complete.** Remaining work is implementation (Phase 2b proc-macro crate + clippy lints + SDK + CP service), ops integration (dashboards, per-aggregate tuning), and future scope items that explicitly belong elsewhere.
