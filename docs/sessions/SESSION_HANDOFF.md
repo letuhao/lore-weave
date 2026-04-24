@@ -1,9 +1,162 @@
-# Session Handoff — Session 50 (32 cycles · Track 2/3 Gap Closure P2 tier 4/7 done · session closed)
+# Session Handoff — Session 51 (9 cycles shipped · Track 2/3 Gap Closure P2 DONE 7/7 + P3 9/9 done · session closed)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-23 (session 50, closed at cycle 32 / C6)
-> **HEAD:** `eb26e83` (C6 chapter-title resolution FS; C5 @ `6a2d8ee` + `29f4b14`; C4 @ `898869d` + `bf1a94f`; C3 @ `052fe44` + `82ab287`; C2 @ `2812aff` + `ca6a939`; C1 @ `b447a9e` + `16c56e5`; K20.3-β @ `db7cf05` + `e367377`; K20.3-α @ `474a7d8` + `e7b1d18`; K19f-ε @ `03e7774` + `56047dd`; K19f-δ @ `3a2126c` + `ca8b5f7`; K19f-γ @ `84d5eec` + `8b18a12`; K19f-β @ `b059a6b` + `2412e57`; K19f-α @ `8aeb0bc` + `bd3a81b`; K19e-γb @ `8289bf1` + `35f4a16`; K19e-γa @ `cd7aae1` + `63b639b`; K19e-β @ `36937d1` + `9311705`; K19e-α @ `10d8e95` + `e6b1eaa`; K19d-γb @ `c9aaf95` + `b7b5b3c`; K19d-γa @ `5d42afd` + `db405f6`; K19d-β @ `aeb008b` + `c920d95`; K19d-α @ `96f9b6b` + `e0fbd21`; K20-β+γ @ `9289ded` + `166c9e1`; K20-α @ `71530a1` + `5faaf08`; K19c-β @ `8baa670` + `79503f2`; K19c-α @ `a619b5f` + `f7aabae`; K19b.8 @ `526533d` + `5c6c63f`; D-K16.11-01 @ `c9f7064` + `5e9decc`; K19b.6+D-K19a.5-03 @ `32a9a18` + `e232486`; K16.12 completion @ `b313c1b` + `87c50be`; K19b.3+K19b.5+ETA @ `5e00f7b` + `0e65f17`; K19b.2+K19b.7-partial @ `4fb8b62` + `958d8da`; K19b.1+K19b.4 @ `1c208ce` + `c79ea90`; K19a.8 @ `2061b2d`; K19a.7 @ `2cbcc7c` + `c6ee80a`; K19a.6 @ `2226283` + `7cf394f`; K19a.5 @ `3148751` + `1156193`)
-> **Branch:** `main` (ahead of origin by sessions 38–50 commits — user pushes manually)
+> **Date:** 2026-04-25 (session 51, closed at cycle 41 / C13)
+> **HEAD:** `5fabf87` (C13 Storybook dialogs via MSW FE; C12b-b @ `ff2363b`; C12b-a @ `5c36dfd`; C12a @ `2ea7481`; C11 @ `abb84ef`; C10 @ `ae5649b`; C9 @ `06b2063`; C8 @ `287e853`; C7 @ `a15a04b`; session 50 HEAD `eb26e83` — see session 50 block for earlier refs)
+> **Branch:** `main` (ahead of origin by sessions 38–51 commits — user pushes manually)
+
+## Session 51 — 9 cycles shipped (all Track 2/3 Gap Closure: C7..C13) · **P2 DONE (7/7)** · **P3 9/9 done** · session closed
+
+**Highlights:**
+- **P2 tier closed at C9** (entity optimistic concurrency + unlock). All 7 P2 cycles shipped across sessions 50+51 (C3..C9).
+- **P3 tier DONE 9/9** — opened at C10, closed at C13. Only **C12c** remains in P3 backlog (blocked on glossary-service BE sync surface — not actionable).
+- **C12 split at CLARIFY** into C12a (picker+gate paired FS) + C12b (Run benchmark, further split BE/FE into C12b-a + C12b-b) + C12c (blocked). Honest sizing replaced plan's L bundle.
+- **C13 size reclassified** at CLARIFY from plan-said-M to workflow-gate-required-L (6 files / 4 logic / 1 side-effect). Real final file count: 13 + 1 gitignored lock.
+- Front-end test coverage: **474 pass** at session 51 end (unchanged over C12b-b — C13 stories are tsc-only, not in vitest scope).
+- Back-end test coverage: **1405 pass** at C12b-a adjacent baseline (unchanged — C13 is pure FE).
+
+### Cycle 41 — Track 2/3 Gap Closure C13 [FE L] — Storybook dialog stories via MSW
+
+Pure FE infra. `msw@^2` + `msw-storybook-addon@^2` devDeps wired into `.storybook/preview.tsx` via `initialize({onUnhandledRequest:'warn'}) + loaders:[mswLoader]`. Service worker committed at `frontend/public/mockServiceWorker.js` (9KB, `msw init` output). 3 new infra modules under `.storybook/`: `fixtures/knowledge.ts` (14 typed factories), `msw-handlers.ts` (7 endpoint factories + `HandlerOptions`), `story-helpers.ts` (`findConfirmButton` / `findRunBenchmarkButton` / `waitForSelects` option-value-aware). 3 new story files × 19 stories (BuildGraph 11 + ChangeModel 5 + ErrorViewer 3). `@sb/*` Vite alias + tsconfig path collapses 4-level relative imports. MockAuthProvider.user reshaped from pre-existing `{id}` to production `{user_id, display_name: string|null, email}`.
+
+**/review-impl caught 0 HIGH + 1 MED + 4 LOW + 2 COSMETIC; all 7 fixed in-cycle:**
+- **MED#1** VERIFY was static-bundle-only — live-smoked via Chrome DevTools MCP (`npm run storybook`), confirmed MSW intercepts fire for all POSTed endpoints (estimate, start, benchmark-run, update-model) + play() interactions drive React state through the DOM. **DISCOVERED DURING SMOKE**: Radix Dialog portals to `document.body` so `canvasElement.querySelector*` misses dialog subtree entirely → extracted `story-helpers.ts` that queries `document`. Second-order: native `<select>` renders with placeholder-only while models useQuery pends → `waitForSelects` must gate on target-option-value or `selectOptions` throws "value not found in options".
+- **LOW#2** `userModelsHandler` blind to `?capability=` query → split fixtures + query-param branch.
+- **LOW#3** MockAuthProvider user shape mismatch (pre-existing K19a.8 latent) → renamed to match production `UserProfile`.
+- **LOW#4** `benchmarkRunHandler` dead-on-arrival → NEW 11th BuildGraph story `BenchmarkRunFromCTA` consumes it via `findRunBenchmarkButton`.
+- **LOW#5** `ambientHandlers` estimate-opt structural discriminator → explicit `{mode:'happy'|'loading'|'error'}` tagged union.
+- **COSMETIC#6** `'../../../../.storybook/...'` imports → `@sb/*` Vite alias + tsconfig paths.
+- **COSMETIC#7** `errorOr` blind cast to `JsonBodyType` → `isJsonSafe` recursive runtime narrow with fallback envelope.
+
+**Closes** D-K19a.8-01. **P3 tier 9/9 DONE** after C13. **Files: 13** (6 MOD + 7 NEW). **Verify:** tsc clean + vitest 474/474 + `storybook build --test` success + live smoke Chrome DevTools MCP 4 story variants end-to-end.
+
+### Cycle 40 — Track 2/3 Gap Closure C12b-b [FE L] — Run-benchmark CTA + error-code toast map
+
+Pure FE. NEW `useRunBenchmark` mutation hook + inline `RunBenchmarkButton` rendered inside `EmbeddingModelPicker` — blast-radius = BuildGraphDialog + ChangeModelDialog + ProjectFormModal all inherit the CTA automatically. `runs=3` hardcoded (matches CLI + L-CH-09 methodology; BE validates 1..5). Gated on `projectId && value && !data.passed` so button shows for no-run AND failed, hides once passed. `runBenchmarkErrorMessage(t, code, detailMessage)` helper maps 6 codes (5 BE error codes + `'unknown'`) to localised toast copy. Success toast interpolates `{{model}}` from `resp.embedding_model` so model-swap mid-mutation can't render stale scope. 9-key i18n × 4 locales + placeholder drift lock.
+
+**/review-impl** caught 0 HIGH + 1 MED + 3 LOW + 1 COSMETIC; fixed MED + 3 LOWs in-cycle, 2 accepted-with-doc:
+- **MED#1**: toast didn't disclose which model the result belongs to — fixed by interpolating `{{model}}` from the response body (not the dropdown value, which may have changed).
+- **LOW#2**: no placeholder-presence drift lock on new keys → 2 `it.each(LOCALES)` assertions mirroring C7's `jobs.detail.eta` pattern.
+- **LOW#3**: `runs=null` explicit path untested → hook test pinning null pass-through so a future null→undefined coerce can't mask a BE 422 regression.
+- **LOW#4 accept**: unmount-during-mutation drops toast (BE still completes + invalidates queryClient cache) — documented in hook docblock, matches `useRegenerateBio`.
+- **LOW#5 accept**: button inside outer `<label>` is a structural smell (label-click forwarding no-ops on direct `<button>` target) — documented, matches BenchmarkBadge placement.
+- **COSMETIC#6 accept**: rapid double-click race — `disabled={isPending}` updates synchronously within React's event tick; BE sentinel catches the edge.
+
+**Closes** D-K19a.5-07 (FE half). **Files: 9**. **Verify:** FE knowledge+lib **474/474** GREEN (+9 from C12b-a baseline 465). `tsc --noEmit` clean.
+
+### Cycle 39 — Track 2/3 Gap Closure C12b-a [BE L] — on-demand POST benchmark endpoint
+
+NEW `app/benchmark/` module (230 LOC runner) + `POST /v1/knowledge/projects/{id}/benchmark-run`. Reuses K17.9 harness (AsyncBenchmarkRunner + fixture_loader + persist) so request-path is a thin sibling of the CLI's `_run_cli`. Typed exception hierarchy → 6 distinct error codes mapped to {404, 4×409, 1×502, 422}. Validation ladder: 404 cross-user/missing → 409 `no_embedding_model` → 409 `unknown_embedding_model` (dim-mismatched like `nomic-embed-text`) → 409 `not_benchmark_project` (empty-project guard via `KNOWN_SOURCE_TYPES` filter) → 409 `benchmark_already_running` (sentinel check-and-add) → 502 `embedding_provider_flake` (partial fixture load refuses to persist false-negative). Sync 120s default — background-task pattern rejected at CLARIFY (orphaned-failure UX worse than long request).
+
+**/review-impl** caught 0 HIGH + 2 MED + 3 LOW + 1 COSMETIC; fixed all 5 non-cosmetic:
+- **MED#1 source-scan drift lock**: `KNOWN_SOURCE_TYPES` correct today but silent risk if future PR adds a new producer. Fixed: regression test greps `passage_ingester.py` at test time for `source_type="..."` literals, asserts each is in the set.
+- **MED#2**: initial `asyncio.Lock` + pre-check was atomic-only-in-single-threaded-asyncio + fragile to refactor (any future await-insert between check and acquire silently breaks serialization). Swapped to pure-sync `set[tuple[str,str]]` sentinel — check-and-add atomic-by-construction.
+- **LOW#3**: no test pinned "benchmark_entity NOT in KNOWN_SOURCE_TYPES" invariant → added.
+- **LOW#4**: partial fixture load silently persisted false-negative `passed=False` row (indistinguishable from real regression in FE badge) → NEW `FixtureLoadIncompleteError` → 502, refuses to persist. 2 tests: critical-contract + router.
+- **LOW#5**: `_has_real_passages` Cypher literal had no direct assertion (all unit tests mocked it) → string-literal check for 3 safety clauses (`user_id`, `project_id`, `IN $real_types`).
+
+**Closes** C12b (BE half). **Defers** C12b-b (FE) + C12c (glossary_sync, blocked). **Files: 5**. **Verify:** 28/28 new tests (15 runner + 13 router); 1405/1405 BE adjacent.
+
+### Cycle 38 — Track 2/3 Gap Closure C12a [FS XL] — chapter-range picker + runner-side scope_range gate
+
+Cross-service FS: NEW book-service `POST /internal/chapters/sort-orders` (mirrors `postInternalChapterTitles` shape verbatim — 200-cap, scan_error_count best-effort, rows.Err() fatal) + knowledge-service `BookClient.get_chapter_sort_orders` + NEW `ExtractionJobsRepo.list_active_for_project(user_id, project_id)` + event-handler runner gate in `handle_chapter_saved` + FE chapter-range inputs (From/To) in BuildGraphDialog gated on `scope='chapters'`.
+
+**Disjoint union semantic** on the runner gate: ≥1 unbounded chapter-scope job → full ingest wins; otherwise `[10,20] ∪ [40,50]` excludes 30, includes 45. Graceful degrade on sort_order fetch failure → over-ingest (safer than silent skip). FE `chapterRange` useMemo declared BEFORE `estimateQuery` (TDZ fix during BUILD).
+
+**/review-impl** caught 0 HIGH + 1 MED + 4 LOW + 0 COSMETIC; fixed MED + 1 LOW:
+- **MED#1**: BE `_extract_chapter_range` accepted reversed `[50, 10]` — validator rejected wrong-length/non-int/negative but not `from > to`. Persisted, then runner gate `lo ≤ sort_order ≤ hi` vacuously false → silent skip with no error signal. Fixed: 3-line check raising 422; existing `test_estimate_scope_range_malformed_rejected` gains reversed-range case.
+- **LOW#2**: `list_active_for_project` had no unit/integration test → 2 new integration tests (status filter + cross-user isolation) gated on `TEST_DATABASE_URL`.
+
+**Closes** D-K19a.5-04 + D-K16.2-02b. **Defers** D-K19a.5-07 → C12b + D-K19a.5-06 → C12c (blocked). **Files: 16** (Go 2 + Python 5 + FE 4 + i18n 4 + docs 2). **Verify:** Go `TestPostInternalChapterSortOrders_*` 3/3; Python `test_event_handlers.py` 16/16 (+6 C12a); 247/247 BE adjacent. FE 444/444.
+
+### Cycle 37 — Track 2/3 Gap Closure C11 [FS XL] — cursor pagination for extraction jobs history
+
+Cross-service FS: NEW cursor codec + SQL row-value/NULLS-LAST predicate + response envelope + FE infinite query + Load more button. `_encode_cursor(c, r, j)` / `_decode_cursor(raw)` base64-urlsafe JSON, defensive against binascii/Unicode/JSON/field-shape errors. `list_all_for_user` signature returns `(list[ExtractionJob], str | None)` tuple + `cursor: str | None = None` kwarg. History path: 4-branch NULLS-LAST OR covering (cursor non-null + row non-null lower completed_at), (equal completed_at + lower tiebreak), (cursor non-null + row null — null always after), (both null + lower tiebreak). NEW `ExtractionJobsPage { items, next_cursor }` envelope; 422 on malformed cursor.
+
+FE: `useInfiniteQuery` with `initialPageParam: ''` + `getNextPageParam: (last) => last.next_cursor ?? undefined`. `refetchInterval` conditional (function-form) gated on `pages.length ≤ 1` — single-page users keep 10s freshness, power users who Load more get a frozen view (explicit opt-in → explicit refresh). `ExtractionJobsTab` drops obsolete `COMPLETE_VISIBLE_LIMIT=10` slice.
+
+**/review-impl** caught 0 HIGH (blocked early) + 1 HIGH + 1 MED + 3 LOW + 1 COSMETIC; fixed HIGH + MED + 1 LOW:
+- **HIGH#1**: 9 integration-test call sites in `test_extraction_jobs_repo.py` treated return as list but the new tuple return `(rows, next_cursor)` silently broke them — would fail the moment the suite ran against live Postgres. Fixed: unpacked all 9 sites.
+- **MED#2**: history polling was initially removed to avoid N-page refetch storm but created a UX regression → restored as function-form conditional gated on page count.
+- **LOW#3**: no integration test exercised the novel 4-branch NULLS-LAST OR predicate → 2 new tests (walk-7-through-pages-of-3 + tied-completed_at-tiebreak).
+
+**Closes** D-K19b.1-01 + D-K19b.2-01. **Files: 17**. **Verify:** BE unit 19/19 + cursor codec 7/7 = 26/26; FE 440/440.
+
+### Cycle 36 — Track 2/3 Gap Closure C10 [FS XL] — timeline entity_id + chronological range filters
+
+**First P3 cycle.** Cross-service FS: 3 new Cypher WHERE predicates (`participant_candidates`, `after_chronological`, `before_chronological`) + router entity_id resolution + FE TimelineFilters component (entity search dropdown + chronological range inputs).
+
+Router resolution: `get_entity(user_id=str(jwt_user_id), canonical_id=entity_id)` with JWT-threaded user_id for cross-user safety. Missing entity → `participant_candidates=[]` (NOT `None`) so Cypher's `ANY(c IN [] WHERE ...)` = false → zero rows; collapses 404 path to empty timeline per KSA §6.4 anti-existence-leak. Reversed chronological range → 422.
+
+FE TimelineFilters reuses `useEntities` (min-2-char + 250ms debounce matching EntityMergeDialog). **/review-impl MED#1**: chronological inputs fired BE call per keystroke → fixed by internal `afterInput`/`beforeInput` state + 400ms debounced commit effect + parent-reset sync effects. 2 regression tests (4-keystroke-coalesce + parent-reset-no-re-fire).
+
+**Closes** D-K19e-α-01 + D-K19e-α-03. **Files: 16**. **Verify:** BE `test_timeline_api.py` 18/18 (+6 C10); 213/213 BE adjacent. FE 432/432.
+
+### Cycle 35 — Track 2/3 Gap Closure C9 [FS XL] — entity optimistic concurrency + unlock endpoint — **P2 DONE 7/7**
+
+Cross-service FS: `Entity.version: int = 1` field + coalesce backfill + atomic FOREACH Cypher + `POST /entities/{id}/unlock` + FE ifMatch threading + `useUnlockEntity` hook + Unlock CTA in detail panel. Atomic single-round-trip: `WITH e, coalesce(e.version, 1) AS current_version` + `FOREACH (_ IN CASE WHEN current_version = $expected_version THEN [1] ELSE [] END | SET ...)` + `RETURN e, current_version = $expected_version AS applied`. Version bumps at 4 user-facing sites (update / unlock / merge ON CREATE + ON MATCH / merge-update-target). System-internal writes (anchor recompute / archive / promote / unlink_glossary) deliberately NOT bumped to avoid spurious 412s.
+
+**/review-impl** caught 1 HIGH + 0 MED + 4 LOW + 1 COSMETIC:
+- **HIGH**: pre-C9 entities PERMANENTLY UNEDITABLE — `_node_to_entity` coalesced missing version to 1 but all 4 Cypher `coalesce(e.version, 0)` defaulted to 0, so FE's `If-Match: W/"1"` always 412'd against `current_version=0`. Unit tests mocked `run_write` and never hit this path. **Fixed** by aligning all 4 Cypher coalesce defaults to 1. **LOW#2**: added source-scan regression lock `test_cypher_version_coalesce_default_matches_read_path` that reads the 4 Cypher string literals at import time and asserts absence of `coalesce(.version, 0)`.
+
+PATCH contract: 428 Precondition Required on missing If-Match, 412 Precondition Failed with `current.model_dump(mode="json")` body + fresh ETag header on mismatch. Unlock is idempotent (no If-Match) — `user_edited=true` entities become permanently alias-append-gated until user explicitly unlocks.
+
+**Closes** D-K19d-γa-01 + D-K19d-γa-02. **P2 tier 7/7 — DONE.** **Files: 16**. **Verify:** BE entity 34/34 (+14 C9 + 2 regression locks); 163/163 BE adjacent. FE 422/422.
+
+### Cycle 34 — Track 2/3 Gap Closure C8 [FS XL] — drawer-search source_type filter + in-card highlight + BE facet counts
+
+Cross-service FS: NEW `count_passages_by_source_type` + Literal enum router param + response facet counts (user addendum) + NEW FE `highlightTokens` util + NEW `DrawerSearchFilters` component. Native `<input type="radio">` inside `<fieldset role="radiogroup">` for free WAI-ARIA keyboard semantics.
+
+**/review-impl** caught 0 HIGH + 3 MED + 4 LOW + 2 COSMETIC; fixed 7 in-cycle:
+- **MED#1**: cross-locale `sourceType.*` key presence test added.
+- **MED#2**: `DRAWER_SOURCE_TYPES` tuple in api.ts as single source of truth — `EMPTY_COUNTS` + `OPTIONS` derive from it via `Object.fromEntries` / `.map`. BE adding a 4th type = ONE edit in api.ts, not 3.
+- **MED#3**: filter reset on project change in `RawDrawersTab` — holding "Chapter" across projects hid hits in chat-only projects.
+
+**Closes** D-K19e-γa-01 + D-K19e-γb-01. **Files: 16**. **Verify:** BE `test_drawers_api.py` 20/20 + new `test_passages_count.py` 4/4 = 24/24. FE 414/414.
+
+### Cycle 33 — Track 2/3 Gap Closure C7 [FE XL] — humanised ETA formatter + stale-offset self-heal
+
+**Reclassified from S to XL at CLARIFY** due to honest file count (10 files including locales). Pure FE: NEW `formatMinutes(minutes) → "<1min" | "{n}min" | "{h}h" | "{h}h {mm}min"` util + `useTimeline` optional `onStaleOffset` callback + consumer wiring.
+
+Util pre-rounds to integer before branching so `59.6 → "1h"` (not naive `"0h 60min"`). Defensive NaN/Infinity/≤0 → `"<1min"` (dead code today, cheap future-safety). Hook fires callback when `total>0 && offset>0 && events.length===0 && !isLoading && !isFetching && !error` — all 6 guards. `events.length` dep (not identity) avoids re-fire on fresh-array fallback. After fire, parent sets offset=0 → guard `offset>0` fails → no loop.
+
+**/review-impl** MED: collision with 5 existing local `formatDuration` helpers (ms/seconds semantics) → renamed `formatMinutes` for unambiguous unit. L4: inline `onStaleOffset` arrow churns effect deps → wrapped in `useCallback([])` in TimelineTab.
+
+**Closes** D-K19b.3-02 + D-K19e-β-02. **Files: 12**. **Verify:** FE knowledge+lib 390/390 (+27 from 363 C6 baseline).
+
+---
+
+**What's next — Session 52 default path:**
+
+Resume the **[Track 2/3 Gap Closure Plan](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md)**. P2 DONE (7/7); **P3 DONE 9/9** (C12c remains blocked, not actionable). Remaining actionable cycles: **P4 × 2** + **P5 × 3 DESIGN-first** + **User-gated × 2**. Next actionable default is **C14**.
+
+Next cycle — **C14 (P4, L)**: Resumable scheduler cursor state. Pair with D-K11.9-01 partial + P-K15.10-01 partial. Needs a new `sweeper_state` table (sweeper_name PK, last_user_id UUID, last_scope JSONB, updated_at) + cursor read/write + clear-on-complete threaded into `reconciler.py` + `quarantine_cleanup.py`. 2 integration tests (restart-resumes, completion-clears). Detail in [plan §4 C14](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md#c14--resumable-scheduler-cursor-state-p4-l). Expect L-size (migration + 2 scheduler modules + tests).
+
+**If C14 isn't the right next step:**
+- **C12c** (glossary_sync) — UNBLOCK when glossary-service grows a BE sync surface. Currently: `JobScope` literal accepts `glossary_sync` (extraction.py:119) but no sync flow wired.
+- **C15 (P4, S)** — Neo4j fulltext index for entity search. Fire ONLY when any user crosses ~10k entities. Until then CONTAINS scan is acceptable. Not pressing.
+- **P5 🏗 (C16–C18)** — 3 cycles, all DESIGN-first: budget attribution for global-scope regen (D-K20α-01 partial) · entity-merge canonical-alias mapping (D-K19d-γb-03 architectural) · event wall-clock date (D-K19e-α-02 needs KSA amendment + LLM prompt change). Produce signed-off ADR docs before any BUILD.
+- **User-gated ⏸** — multilingual fixtures (user provides text) + Gate-13 human walkthrough.
+
+**Session 51 aftermath — things to keep in mind:**
+
+- **C9 HIGH (pre-C9 entities uneditable)** is a class lesson: when adding optimistic-concurrency to an existing model, audit EVERY coalesce/default-value site in read + write paths together. A read that defaults to 1 paired with a write that defaults to 0 creates a silent "permanently-stale" bug invisible to unit tests that mock `run_write`. Consider saving a feedback memory for coalesce-default symmetry if another cycle trips over this.
+- **C11 HIGH (9 test sites tuple-breaks)** is a class lesson: when changing a repo method's return signature from `list[X]` to `(list[X], cursor)`, grep EVERY caller AND every test call site before VERIFY. The integration tests didn't run in CI (live-Postgres-gated) so the breakage would have surfaced only after the next stash baseline.
+- **Source-scan regression locks** (C12b-a + C9 + C8) are now an established pattern for invariants that cross module boundaries and have no natural unit-test anchor: grep the source at test time + assert a predicate over the literal string. Cheap, zero Neo4j needed. Reuse whenever a new invariant spans 2+ files.
+- **Pure-sync set-sentinel > asyncio.Lock** for check-and-add atomicity (C12b-a MED#2). Lock's pre-check-then-acquire is atomic only because no await sits between the two lines today — fragile to refactor. `set.add` returning True-if-new is atomic-by-construction and immune to future await-insertion.
+- **Etag must fold every field in the response body** (C6 lesson reinforced via C9 ETag-in-412-mismatch behaviour). Adding a new field to a Pydantic response model without folding it into `_etag` lets stale data serve via 304. `hashlib.md5(..., usedforsecurity=False)` for the stable hash (NOT Python `hash()` which is PYTHONHASHSEED-randomized).
+- **CLARIFY honesty > plan commitment**. C7 plan-said-S shipped as XL; C12 plan-bundled-L shipped as 3 cycles (C12a + C12b-a + C12b-b + C12c-blocked). Honest sizing at CLARIFY is worth more than hitting an initial classification — the workflow-gate tolerates reclassification.
+
+**Starting-session boilerplate:**
+1. Read [SESSION_PATCH.md](SESSION_PATCH.md) session-51 entries (cycles 33–41) + the plan file's §3 cycle table
+2. `./scripts/workflow-gate.sh status` to confirm previous cycle closed
+3. Start C14 with `./scripts/workflow-gate.sh size L 6 3 1` then `phase clarify` (L — new `sweeper_state` table migration + 2 scheduler module wiring + integration tests. 1 side-effect: new DB table)
+4. Infra: `docker ps --filter name=infra-` — C14 is BE + wants live Postgres for integration tests; bring up infra-postgres at minimum
+5. For future BE integration tests: `TEST_KNOWLEDGE_DB_URL=postgres://loreweave:loreweave_dev@localhost:5555/loreweave_knowledge` (port 5555 on host; DB name `loreweave_knowledge` NOT `knowledge`)
+6. For Neo4j integration tests: `TEST_NEO4J_URI=bolt://localhost:7688 TEST_NEO4J_PASSWORD=loreweave_dev_neo4j`
+7. Test account: `claude-test@loreweave.dev / Claude@Test2026` (Playwright smoke tests)
+
+---
 
 ## Session 50 — 32 cycles shipped (24 Track 3 + 2 Track 2 close-out + 6 Gap Closure) · P1 done · P2 4/7 done · **session closed**
 
@@ -303,11 +456,7 @@ Closes the K19f cluster. Applied `TOUCH_TARGET_CLASS = 'min-h-[44px]'` to the 2 
 - Front-end test coverage: **363 pass** at session 50 end (vs ~88 at session 47 end · +43 this session over C1–C6)
 - Back-end test coverage: **1379 pass** at session 50 end (vs 1154 at session 47 end · +97 this session over C1–C6)
 
-**What's next — Session 51 default path:**
-
-Resume the **[Track 2/3 Gap Closure Plan](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md)**. 14 cycles remain across P2→P5 tiers. P1 done (C1+C2); P2 4/7 done (C3+C4+C5+C6). Next default is **C7**.
-
-Next cycle — **C7 (P2, S)**: Humanised ETA formatter + stale-offset self-heal. Pure FE polish: wrap existing `estimated_completion_at` rendering in a human-readable formatter (`"in ~3 minutes"` / `"in ~2 hours"`) + self-heal stale offsets when the raw timestamp drifts past now (no server round-trip — client re-computes). Closes D-K19b.3-02 + D-K19e-β-02. Detail in [plan §4 C7](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md#c7--humanised-eta-formatter--stale-offset-self-heal-p2-s). Expect S-size (~3-4 files, pure-FE utility + 2 consumers + tests). Much smaller than C6 (XL cross-service).
+**What's next — Session 51 default path:** ✅ **Superseded.** Session 51 shipped C7 (as XL, not S — see aftermath note above for honest-sizing lesson) through C12b-b. See **Session 51** block at the top of this file for current status and the "What's next — Session 52 default path" pointing at **C13**.
 
 **C6 aftermath — things to keep in mind for later cycles:**
 - **BE denormalization > FE hook** when the data is cheap to look up at list-materialization time and both consumer surfaces share the root cause. Singleton `get_book_client` Depends + shared enricher helper (mutating in-place on Pydantic models) + 4 router wire sites was cleaner than a FE `useChapterTitles` hook would have been
