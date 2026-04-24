@@ -336,6 +336,38 @@ class ExtractionJobsRepo:
             rows = await conn.fetch(query, user_id)
         return [_row_to_job(r) for r in rows]
 
+    async def list_active_for_project(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+    ) -> list[ExtractionJob]:
+        """C12a (D-K16.2-02b) — all pending/running/paused jobs on a
+        project. Used by the chapter.saved event handler to honour
+        the union of ``scope_range.chapter_range`` filters before
+        ingesting passages.
+
+        No pagination; an active job set is expected to be small
+        (usually ≤ 1 per project). Returns rows without the LEFT JOIN
+        on knowledge_projects since the handler already has the
+        project context it needs from the event payload.
+        """
+        query = """
+        SELECT
+          job_id, user_id, project_id, scope, scope_range, status,
+          llm_model, embedding_model, max_spend_usd,
+          items_total, items_processed, current_cursor, cost_spent_usd,
+          started_at, paused_at, completed_at, created_at, updated_at,
+          error_message,
+          NULL::text AS project_name
+        FROM extraction_jobs
+        WHERE user_id = $1
+          AND project_id = $2
+          AND status IN ('pending','running','paused')
+        """
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(query, user_id, project_id)
+        return [_row_to_job(r) for r in rows]
+
     async def list_all_for_user(
         self,
         user_id: UUID,

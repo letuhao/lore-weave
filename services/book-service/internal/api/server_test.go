@@ -355,6 +355,76 @@ func TestPostInternalChapterTitles_InvalidJSON(t *testing.T) {
 	}
 }
 
+// ── C12a (D-K16.2-02b) — postInternalChapterSortOrders ──────────────
+
+func TestPostInternalChapterSortOrders_EmptyList(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/internal/chapters/sort-orders",
+		strings.NewReader(`{"chapter_ids": []}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	s.postInternalChapterSortOrders(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("empty list: want 200, got %d body=%s", w.Code, w.Body.String())
+	}
+	var body struct {
+		SortOrders map[string]int `json:"sort_orders"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if len(body.SortOrders) != 0 {
+		t.Fatalf("empty list: want empty sort_orders map, got %v", body.SortOrders)
+	}
+}
+
+func TestPostInternalChapterSortOrders_OversizedRejected(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	ids := make([]string, 201)
+	for i := range ids {
+		ids[i] = uuid.New().String()
+	}
+	body, _ := json.Marshal(map[string]any{"chapter_ids": ids})
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/internal/chapters/sort-orders",
+		bytes.NewReader(body),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	s.postInternalChapterSortOrders(w, req)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("oversized: want 422, got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestPostInternalChapterSortOrders_InvalidJSON(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/internal/chapters/sort-orders",
+		strings.NewReader(`{not json`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	s.postInternalChapterSortOrders(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("invalid JSON: want 400, got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
 func TestPlainTextToTiptapJSON(t *testing.T) {
 	t.Parallel()
 

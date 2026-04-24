@@ -92,6 +92,11 @@ export function BuildGraphDialog({
   const [llmModel, setLlmModel] = useState<string>(openLlm);
   const [embeddingModel, setEmbeddingModel] = useState<string | null>(openEmbedding);
   const [maxSpend, setMaxSpend] = useState<string>(openMaxSpend);
+  // C12a (D-K19a.5-04) — chapter-range picker. Shown only when
+  // scope=='chapters'. Both inputs required together; BE 422s on
+  // partial range. Empty inputs → no range filter (full scope).
+  const [chapterRangeFrom, setChapterRangeFrom] = useState<string>('');
+  const [chapterRangeTo, setChapterRangeTo] = useState<string>('');
   const [starting, setStarting] = useState(false);
 
   // D-K19a.5-03 (cleared in K19b.6): user-wide monthly remaining hint
@@ -117,6 +122,8 @@ export function BuildGraphDialog({
     setLlmModel(openLlm);
     setEmbeddingModel(openEmbedding);
     setMaxSpend(openMaxSpend);
+    setChapterRangeFrom('');
+    setChapterRangeTo('');
     setStarting(false);
     setDebounced({ scope: openScope, llm: openLlm });
     // `openScope` / `openLlm` / `openEmbedding` / `openMaxSpend` already
@@ -144,7 +151,38 @@ export function BuildGraphDialog({
     staleTime: 60_000,
   });
 
+  // C12a — parse chapter-range inputs. Must be declared BEFORE the
+  // estimate useQuery that references it. Both-empty = full scope
+  // (no filter sent). Both-set + from ≤ to = valid bounded range.
+  // Any other state is invalid (partial, non-integer, negative,
+  // reversed).
+  const chapterRange = useMemo<
+    { valid: boolean; range: [number, number] | null }
+  >(() => {
+    const fromTrim = chapterRangeFrom.trim();
+    const toTrim = chapterRangeTo.trim();
+    if (!fromTrim && !toTrim) return { valid: true, range: null };
+    if (!fromTrim || !toTrim) return { valid: false, range: null };
+    const f = Number(fromTrim);
+    const t = Number(toTrim);
+    if (
+      !Number.isInteger(f) || !Number.isInteger(t) || f < 0 || t < 0 || f > t
+    ) {
+      return { valid: false, range: null };
+    }
+    return { valid: true, range: [f, t] };
+  }, [chapterRangeFrom, chapterRangeTo]);
+  const chapterRangeValid = scope !== 'chapters' || chapterRange.valid;
+
   // Auto-estimate when we have a debounced llm_model + scope.
+  // C12a: queryKey also captures the resolved chapter_range so the
+  // estimate refreshes as the user adjusts the range (preview honours
+  // it via the T2-close-6 scope_range branch). Non-chapters scope
+  // omits the range from the payload entirely.
+  const estimateRangeKey =
+    debounced.scope === 'chapters' && chapterRange.range
+      ? chapterRange.range.join('-')
+      : 'none';
   const estimateQuery = useQuery<CostEstimate>({
     queryKey: [
       'knowledge',
@@ -152,15 +190,23 @@ export function BuildGraphDialog({
       project.project_id,
       debounced.scope,
       debounced.llm,
+      estimateRangeKey,
     ],
     queryFn: () => {
       const payload: EstimateExtractionPayload = {
         scope: debounced.scope,
         llm_model: debounced.llm,
+        ...(debounced.scope === 'chapters' && chapterRange.range
+          ? { scope_range: { chapter_range: chapterRange.range } }
+          : {}),
       };
       return knowledgeApi.estimateExtraction(project.project_id, payload, accessToken!);
     },
-    enabled: open && !!accessToken && debounced.llm !== '',
+    enabled:
+      open
+      && !!accessToken
+      && debounced.llm !== ''
+      && chapterRangeValid,
     staleTime: 30_000,
     retry: false,
   });
@@ -185,17 +231,20 @@ export function BuildGraphDialog({
   const benchmarkOk =
     !benchmarkQuery.data ||
     (benchmarkQuery.data.has_run && benchmarkQuery.data.passed);
+
   const canConfirm =
     !starting &&
     llmModel !== '' &&
     embeddingModel !== null &&
     embeddingModel !== '' &&
     maxSpendValid &&
+    chapterRangeValid &&
     benchmarkOk;
 
   const handleConfirm = async () => {
     if (!accessToken || !embeddingModel) return;
     if (!maxSpendValid) return;
+    if (!chapterRangeValid) return;
     setStarting(true);
     try {
       const payload: ExtractionStartPayload = {
@@ -203,6 +252,12 @@ export function BuildGraphDialog({
         llm_model: llmModel,
         embedding_model: embeddingModel,
         ...(maxSpend !== '' ? { max_spend_usd: maxSpend } : {}),
+        // C12a: include chapter_range only on chapters scope + when
+        // both inputs are set. Matches BE `EstimateRequest.scope_range`
+        // shape — runner honours the range via D-K16.2-02b gating.
+        ...(scope === 'chapters' && chapterRange.range
+          ? { scope_range: { chapter_range: chapterRange.range } }
+          : {}),
       };
       await knowledgeApi.startExtraction(project.project_id, payload, accessToken);
       onStarted();
@@ -281,6 +336,58 @@ export function BuildGraphDialog({
             </span>
           )}
         </fieldset>
+
+        {/* C12a (D-K19a.5-04) — Chapter range picker. Only rendered
+            for scope=chapters. Empty inputs = full scope (no filter
+            sent). Both-set + from ≤ to = valid bounded range. BE
+            runner now honours this via D-K16.2-02b handler gating. */}
+        {scope === 'chapters' && (
+          <fieldset
+            className="flex flex-col gap-1"
+            data-testid="build-graph-chapter-range"
+          >
+            <legend className="text-xs font-medium text-muted-foreground">
+              {t('projects.buildDialog.chapterRange.label')}
+            </legend>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                inputMode="numeric"
+                value={chapterRangeFrom}
+                onChange={(ev) => setChapterRangeFrom(ev.target.value)}
+                placeholder={t('projects.buildDialog.chapterRange.from')}
+                aria-label={t('projects.buildDialog.chapterRange.from')}
+                className="w-24 rounded-md border bg-input px-2 py-1.5 text-sm outline-none focus:border-ring"
+                data-testid="build-graph-chapter-range-from"
+              />
+              <span className="text-xs text-muted-foreground">—</span>
+              <input
+                type="number"
+                min={0}
+                inputMode="numeric"
+                value={chapterRangeTo}
+                onChange={(ev) => setChapterRangeTo(ev.target.value)}
+                placeholder={t('projects.buildDialog.chapterRange.to')}
+                aria-label={t('projects.buildDialog.chapterRange.to')}
+                className="w-24 rounded-md border bg-input px-2 py-1.5 text-sm outline-none focus:border-ring"
+                data-testid="build-graph-chapter-range-to"
+              />
+            </div>
+            {!chapterRangeValid && (
+              <span
+                role="alert"
+                className="text-[11px] text-destructive"
+                data-testid="build-graph-chapter-range-invalid"
+              >
+                {t('projects.buildDialog.chapterRange.invalid')}
+              </span>
+            )}
+            <span className="text-[11px] text-muted-foreground">
+              {t('projects.buildDialog.chapterRange.hint')}
+            </span>
+          </fieldset>
+        )}
 
         {/* LLM model */}
         <label className="flex flex-col gap-1">

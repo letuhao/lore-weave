@@ -308,6 +308,10 @@ def test_estimate_scope_range_malformed_rejected():
         {"chapter_range": [-1, 5]},         # negative
         {"chapter_range": "10-20"},         # not a list
         {"chapter_range": [True, False]},   # bool is int-ish but rejected
+        # C12a /review-impl MED#1 — reversed range. Previously passed
+        # router validation, persisted to DB, then silently skipped
+        # every chapter at the runner gate. Now 422s at ingress.
+        {"chapter_range": [50, 10]},
     ):
         resp = _post_estimate(client, "chapters", scope_range=bad)
         assert resp.status_code == 422, f"expected 422 for {bad}, got {resp.status_code}"

@@ -381,6 +381,111 @@ describe('BuildGraphDialog', () => {
     expect(screen.getByText('projects.buildDialog.scope.noBookHint')).toBeDefined();
   });
 
+  // ── C12a (D-K19a.5-04) — chapter-range picker ─────────────────
+
+  it('renders chapter-range picker only when scope=chapters', () => {
+    renderDialog();
+    // Default scope is 'chapters' for book-linked project.
+    expect(
+      screen.getByTestId('build-graph-chapter-range'),
+    ).toBeInTheDocument();
+    // Switch to 'chat' — picker hides.
+    fireEvent.click(
+      screen.getByRole('radio', { name: 'projects.buildDialog.scope.chat' }),
+    );
+    expect(
+      screen.queryByTestId('build-graph-chapter-range'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('start payload carries scope_range.chapter_range when both inputs are set', async () => {
+    estimateMock.mockResolvedValue(sampleEstimate());
+    startMock.mockResolvedValue(sampleJob());
+    renderDialog();
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
+    });
+    fireEvent.change(
+      screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }),
+      { target: { value: 'gpt-5' } },
+    );
+    fireEvent.change(screen.getByTestId('embedding-picker'), {
+      target: { value: 'bge-m3' },
+    });
+    fireEvent.change(screen.getByTestId('build-graph-chapter-range-from'), {
+      target: { value: '10' },
+    });
+    fireEvent.change(screen.getByTestId('build-graph-chapter-range-to'), {
+      target: { value: '20' },
+    });
+    await new Promise((r) => setTimeout(r, 350));
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'projects.buildDialog.confirm' }),
+      );
+    });
+    await waitFor(() => {
+      expect(startMock).toHaveBeenCalledTimes(1);
+    });
+    const call = startMock.mock.calls[0];
+    expect(call[1]).toMatchObject({
+      scope: 'chapters',
+      scope_range: { chapter_range: [10, 20] },
+    });
+  });
+
+  it('Confirm disabled + invalid hint shown on reversed chapter range', async () => {
+    estimateMock.mockResolvedValue(sampleEstimate());
+    renderDialog();
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
+    });
+    fireEvent.change(
+      screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }),
+      { target: { value: 'gpt-5' } },
+    );
+    fireEvent.change(screen.getByTestId('build-graph-chapter-range-from'), {
+      target: { value: '50' },
+    });
+    fireEvent.change(screen.getByTestId('build-graph-chapter-range-to'), {
+      target: { value: '10' },
+    });
+    expect(
+      screen.getByTestId('build-graph-chapter-range-invalid'),
+    ).toBeInTheDocument();
+    const confirm = screen.getByRole('button', {
+      name: 'projects.buildDialog.confirm',
+    }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+  });
+
+  it('start payload omits scope_range when chapter range inputs are empty', async () => {
+    estimateMock.mockResolvedValue(sampleEstimate());
+    startMock.mockResolvedValue(sampleJob());
+    renderDialog();
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
+    });
+    fireEvent.change(
+      screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }),
+      { target: { value: 'gpt-5' } },
+    );
+    fireEvent.change(screen.getByTestId('embedding-picker'), {
+      target: { value: 'bge-m3' },
+    });
+    // Leave chapter range inputs empty — default state.
+    await new Promise((r) => setTimeout(r, 350));
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'projects.buildDialog.confirm' }),
+      );
+    });
+    await waitFor(() => expect(startMock).toHaveBeenCalledTimes(1));
+    const payload = startMock.mock.calls[0][1];
+    expect(payload.scope).toBe('chapters');
+    expect(payload.scope_range).toBeUndefined();
+  });
+
   // review-impl F1 — pure-function coverage for the backend-error
   // extractor. The component integration test proves toast fires; this
   // proves the string ends up correct regardless of i18n stubbing.

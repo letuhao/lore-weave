@@ -239,6 +239,12 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     'buildDialog.scope.chat',
     'buildDialog.scope.all',
     'buildDialog.scope.noBookHint',
+    // C12a — chapter range picker
+    'buildDialog.chapterRange.label',
+    'buildDialog.chapterRange.from',
+    'buildDialog.chapterRange.to',
+    'buildDialog.chapterRange.hint',
+    'buildDialog.chapterRange.invalid',
     'buildDialog.llmModel.label',
     'buildDialog.llmModel.placeholder',
     'buildDialog.llmModel.loading',

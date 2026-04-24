@@ -523,6 +523,13 @@
         "all": "全部",
         "noBookHint": "此專案未連結書籍 — 章節範圍已隱藏。"
       },
+      "chapterRange": {
+        "label": "章節範圍(選填)",
+        "from": "從",
+        "to": "到",
+        "hint": "以 sort_order 範圍過濾。兩者皆留空則包含所有章節。",
+        "invalid": "範圍必須是非負整數且「從」≤「到」。"
+      },
       "llmModel": {
         "label": "LLM 模型",
         "placeholder": "選擇聊天模型…",

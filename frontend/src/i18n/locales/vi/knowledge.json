@@ -523,6 +523,13 @@
         "all": "Tất cả",
         "noBookHint": "Dự án này chưa liên kết với sách — phạm vi chương bị ẩn."
       },
+      "chapterRange": {
+        "label": "Khoảng chương (tuỳ chọn)",
+        "from": "Từ",
+        "to": "Đến",
+        "hint": "Lọc theo khoảng sort_order. Để trống cả hai để áp dụng toàn bộ chương.",
+        "invalid": "Khoảng phải là số nguyên không âm với Từ ≤ Đến."
+      },
       "llmModel": {
         "label": "Mô hình LLM",
         "placeholder": "Chọn mô hình chat…",

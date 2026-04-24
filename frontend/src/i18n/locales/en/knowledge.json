@@ -523,6 +523,13 @@
         "all": "Everything",
         "noBookHint": "This project isn't linked to a book — the chapters scope is hidden."
       },
+      "chapterRange": {
+        "label": "Chapter range (optional)",
+        "from": "From",
+        "to": "To",
+        "hint": "Filter to a sort-order range. Leave both empty for all chapters.",
+        "invalid": "Range must be non-negative integers with From ≤ To."
+      },
       "llmModel": {
         "label": "LLM model",
         "placeholder": "Pick a chat model…",

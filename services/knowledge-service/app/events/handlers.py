@@ -163,11 +163,64 @@ async def handle_chapter_saved(event: EventData, *, pool: asyncpg.Pool) -> None:
     from app.clients.book_client import get_book_client
     from app.clients.embedding_client import get_embedding_client
     from app.db.neo4j import neo4j_session
+    from app.db.repositories.extraction_jobs import ExtractionJobsRepo
     from app.extraction.passage_ingester import ingest_chapter_passages
 
     chapter_uuid = _uuid(chapter_id)
     if chapter_uuid is None:
         return
+
+    # C12a (D-K16.2-02b) — honour running chapter-scope jobs'
+    # ``scope_range.chapter_range``. Only skip when there's at least
+    # one active ``scope='chapters'`` job with a bounded range AND
+    # this chapter's sort_order falls outside ALL such ranges (disjoint
+    # union check). Graceful degrade: if we can't fetch sort_order,
+    # over-ingest rather than risk missing a valid chapter.
+    jobs_repo = ExtractionJobsRepo(pool)
+    active_jobs = await jobs_repo.list_active_for_project(user_id, project_id)
+    chapter_scope_ranges: list[tuple[int, int]] = []
+    has_unbounded_chapter_job = False
+    for job in active_jobs:
+        if job.scope != "chapters":
+            continue
+        rng = (job.scope_range or {}).get("chapter_range")
+        if (
+            isinstance(rng, (list, tuple))
+            and len(rng) == 2
+            and all(isinstance(v, int) and not isinstance(v, bool) for v in rng)
+        ):
+            chapter_scope_ranges.append((int(rng[0]), int(rng[1])))
+        else:
+            has_unbounded_chapter_job = True
+            break
+
+    if chapter_scope_ranges and not has_unbounded_chapter_job:
+        # All chapter-scope active jobs are bounded; check if this
+        # chapter's sort_order falls in ANY of them (disjoint union).
+        bc = get_book_client()
+        sort_orders = await bc.get_chapter_sort_orders([chapter_uuid])
+        chapter_sort_order = sort_orders.get(chapter_uuid)
+        if chapter_sort_order is None:
+            # Book-service unavailable or chapter not found — over-
+            # ingest defensively. Skipping on uncertainty risks silent
+            # data loss.
+            logger.debug(
+                "D-K16.2-02b: could not resolve sort_order for chapter=%s; "
+                "proceeding with ingest",
+                chapter_uuid,
+            )
+        else:
+            in_any_range = any(
+                lo <= chapter_sort_order <= hi
+                for lo, hi in chapter_scope_ranges
+            )
+            if not in_any_range:
+                logger.debug(
+                    "D-K16.2-02b: skipping ingest — chapter %s sort_order=%d "
+                    "outside all active chapter_ranges %s",
+                    chapter_uuid, chapter_sort_order, chapter_scope_ranges,
+                )
+                return
 
     try:
         async with neo4j_session() as session:

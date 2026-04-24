@@ -52,7 +52,9 @@ Statuses: `[ ]` open · `[D]` DESIGN in flight · `[B]` BUILD in flight · `[V]`
 | **C9** | Entity concurrency + unlock | D-K19d-γa-01 (If-Match), D-K19d-γa-02 (unlock endpoint) | ~~M~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
 | **C10** | Timeline feature gaps | D-K19e-α-01 (entity_id), D-K19e-α-03 (chronological range) | ~~M~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
 | **C11** | Cursor pagination (jobs history + Complete list) | D-K19b.1-01, D-K19b.2-01 | ~~M~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
-| **C12** | Scope + benchmark dialog UX | D-K19a.5-04 + D-K16.2-02b (paired), D-K19a.5-06, D-K19a.5-07 | L | `[ ]` | book-service `from_sort`/`to_sort` already shipped ✓ |
+| **C12a** | Scope + runner-side chapter range (paired) | D-K19a.5-04 + D-K16.2-02b | ~~L~~ **XL** (reclassified; split from C12) | `[x]` | — |
+| **C12b** | Run benchmark CTA | D-K19a.5-07 | L | `[ ]` | needs POST benchmark-runs endpoint + AsyncBenchmarkRunner orchestration |
+| **C12c** | `glossary_sync` scope option | D-K19a.5-06 | S (FE only) | `[⏸]` | **BLOCKED** on glossary-service BE sync surface |
 | **C13** | Storybook dialogs via MSW | D-K19a.8-01 | M | `[ ]` | — |
 | **C14** | Resumable scheduler cursor state (Perf) | D-K11.9-01 partial, P-K15.10-01 partial | L | `[ ]` | needs `job_state` table design |
 | **C15** | Neo4j fulltext index for entity search (Perf) | P-K19d-01 | S | `[ ]` | fire only when user >10k entities — defer trigger |
@@ -341,17 +343,39 @@ Cycles whose single-line description is unclear: the full text lives under the i
 
 ---
 
-### C12 — Scope + benchmark dialog UX (P3, L)
-**Why.** D-K19a.5-04 (chapter-range picker) and D-K16.2-02b (runner-side range) are paired per the item row. Ship together or runner silently over-processes. D-K19a.5-06/07 are small additions in the same dialog — fold in.
+### C12a — Scope + runner-side chapter range (paired) (P3, XL) ✅
+**Shipped.** Session 51 cycle 38. Split from original C12 (which bundled 4 items at L); honest scope at CLARIFY showed item 3 blocked + item 4 is its own cycle, so C12a covers the paired items.
 
-**Files (BE runner).**
-- `services/knowledge-service/app/extraction/chapter_runner.py` — gate `handle_chapter_saved` on the running job's `scope_range`. (Option A from D-K16.2-02b item text.)
-- `services/knowledge-service/app/routers/public/extraction.py` — extend benchmark endpoint surface for "Run benchmark" CTA.
+**Files touched.**
+- book-service Go [`server.go`](../../services/book-service/internal/api/server.go) + test: NEW `POST /internal/chapters/sort-orders` endpoint mirrors the titles endpoint shape + 200-cap + scan-error pattern. Returns `{sort_orders: {uuid: int}}`. Keeps existing titles endpoint untouched — no breaking change to C6 callers.
+- knowledge-service [`book_client.py`](../../services/knowledge-service/app/clients/book_client.py): NEW `get_chapter_sort_orders(ids) → dict[UUID, int]` with graceful-degrade on any failure (returns `{}`).
+- knowledge-service [`extraction_jobs.py`](../../services/knowledge-service/app/db/repositories/extraction_jobs.py): NEW `list_active_for_project(user_id, project_id)` — returns pending/running/paused jobs on a project. Indexed on existing `(project_id)` + status partial index.
+- knowledge-service [`events/handlers.py`](../../services/knowledge-service/app/events/handlers.py) `handle_chapter_saved`: C12a runner gate. After project + embedding + Neo4j checks, fetch active jobs; for each `scope='chapters'` job, collect `scope_range.chapter_range`. Disjoint union semantic: if any chapter-scope job has no range, full ingest proceeds (unbounded wins). Otherwise fetch this chapter's sort_order via `get_chapter_sort_orders` and skip (DEBUG log) when sort_order isn't in ANY range. **Graceful degrade**: sort_order fetch failure → over-ingest (safer than silent skip).
+- knowledge-service [`extraction.py` router](../../services/knowledge-service/app/routers/public/extraction.py) `_extract_chapter_range`: **/review-impl MED#1 fix** — reject reversed range `from > to` with 422. Before the fix, reversed range passed validation, persisted to DB, and the runner gate then silently skipped every chapter (membership test `lo ≤ sort_order ≤ hi` always false with lo > hi). Matches FE-side `chapterRangeValid` check.
+- BE tests: 3 Go (empty/oversized/invalid JSON) + 6 Python event handler (no active chapter jobs → ingest, no-range → ingest, in-range → ingest, out-of-range → skip, disjoint union across 2 jobs with gap, graceful-degrade on fetch failure) + updated estimate test with reversed-range case + **/review-impl LOW#2 fix**: 2 new integration tests for `list_active_for_project` (status filter pending+running+paused only; cross-user isolation).
+- FE [`BuildGraphDialog.tsx`](../../frontend/src/features/knowledge/components/BuildGraphDialog.tsx): NEW chapter-range inputs (from/to number inputs) visible only on `scope='chapters'`. Validation: both empty = full scope; both set + from ≤ to = valid bounded range; anything else (partial, reversed, negative, non-int) = inline invalid hint + Confirm disabled. Inputs wired to both estimate and start payloads as `scope_range: {chapter_range: [from, to]}`. Estimate queryKey extended with range so preview refreshes on change. Form reset on dialog reopen.
+- FE test [`BuildGraphDialog.test.tsx`](../../frontend/src/features/knowledge/components/__tests__/BuildGraphDialog.test.tsx): +4 C12a tests (picker visibility gated on scope, scope_range threaded on confirm, invalid-hint + disabled Confirm on reversed range, scope_range omitted when inputs empty).
+- FE locale drift lock [`projectState.test.ts`](../../frontend/src/features/knowledge/types/__tests__/projectState.test.ts): BUILD_DIALOG_KEYS +5 paths.
+- i18n × 4 locales: 5 new keys under `buildDialog.chapterRange.*`.
 
-**Files (FE).**
-- `frontend/src/features/knowledge/components/BuildGraphDialog.tsx` — chapter-range picker (from_sort / to_sort input); glossary_sync scope option; "Run benchmark" CTA button calling POST endpoint.
+**Design decisions locked at CLARIFY (6 user-approved defaults).**
+1. Split per user call: C12a = items 1+2; C12b = item 4 (Run benchmark CTA, next cycle); C12c = item 3 (glossary_sync, blocked on BE sync surface).
+2. NEW book-service endpoint rather than extending titles endpoint — avoids breaking C6 callers.
+3. Gate only fires when ≥1 active scope=chapters job has bounded range.
+4. Disjoint union check (ingest if sort_order ∈ ANY range) — not outer envelope.
+5. Graceful degrade on sort_order fetch failure — over-ingest.
+6. FE range inputs empty = full scope; partial/reversed = Confirm disabled + inline hint.
 
-**Close:** D-K19a.5-04, D-K16.2-02b, D-K19a.5-06, D-K19a.5-07.
+**/review-impl 2 fixes + 3 LOW accepted.**
+- **MED#1** (fixed): BE `_extract_chapter_range` accepts reversed range silently. Added `from > to` → 422. Matches FE-side check. Updated existing `test_estimate_scope_range_malformed_rejected` with reversed-range case.
+- **LOW#2** (fixed): `list_active_for_project` lacked any integration test. Added 2 integration tests (status filter, cross-user isolation) mirroring existing `list_all_for_user` patterns.
+- LOW#3 (accept): retry flow doesn't prefill `chapter_range` into `initialValues` — user retrying a failed ranged job re-enters range. Polish follow-up.
+- LOW#4 (accept): per-event `list_active_for_project` query cost — indexed; profile first.
+- LOW#5 auto-closed by MED#1 — FE ≤ BE validation symmetry restored.
+
+**Close:** D-K19a.5-04, D-K16.2-02b. **Deferred:**
+- D-K19a.5-07 → **C12b** next cycle (NEW POST /benchmark-runs endpoint + AsyncBenchmarkRunner orchestration).
+- D-K19a.5-06 → **C12c** blocked on glossary-service BE sync surface.
 
 ---
 
@@ -460,12 +484,12 @@ Once text arrives:
 |---|---|---|---|
 | P1 (C1–C2) | 0 | **4 items / 2 cycles (C1 ✅ + C2 ✅)** | 0 |
 | P2 (C3–C9) | 0 items | **15 items / 7 cycles (C3 ✅ + C4 ✅ + C5 ✅ + C6 ✅ + C7 ✅ + C8 ✅ + C9 ✅)** | 0 |
-| P3 (C10–C13) | 3 items / 2 cycles | **4 items / 2 cycles (C10 ✅ + C11 ✅)** | 0 |
+| P3 (C10–C13) | 1 item (C13) + 2 blocked/deferred (C12b L, C12c ⏸) | **6 items / 3 cycles (C10 ✅ + C11 ✅ + C12a ✅)** | 1 ⏸ (C12c) |
 | P4 (C14–C15) | 3 items / 2 cycles | 0 | 0 |
 | P5 (C16–C18) | 3 items / 3 cycles | 0 | 0 DESIGN |
 | User-gated (C19–C20) | 2 items / 2 cycles | 0 | 2 ⏸ |
 
-**Total plan: 33 item-closures across 20 cycles. Completed: 23 items / 11 cycles. P1 tier done · P2 tier DONE (7/7) · P3 tier 4/7 done (C10 ✅ + C11 ✅). Remaining: C12 (dialog UX, L), C13 (Storybook dialogs, M), plus P4/P5/user-gated.**
+**Total plan: 33 item-closures across 20 cycles (C12 split into C12a/b/c adds one cycle slot but same closure count). Completed: 25 items / 12 cycles. P1 tier done · P2 tier DONE (7/7) · P3 tier 6/8 done (C10 ✅ + C11 ✅ + C12a ✅). Remaining: C12b (Run benchmark CTA, L), C12c (glossary_sync, blocked), C13 (Storybook dialogs, M), plus P4/P5/user-gated.**
 (Some cycles close > 1 item; some items appear in >1 cycle. Check the cycle table for authoritative count.)
 
 ---

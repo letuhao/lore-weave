@@ -138,6 +138,57 @@ class BookClient:
             )
             return {}
 
+    async def get_chapter_sort_orders(
+        self, chapter_ids: list[UUID],
+    ) -> dict[UUID, int]:
+        """C12a (D-K16.2-02b) — batch-resolve chapter sort_orders.
+
+        Fires one POST to ``/internal/chapters/sort-orders`` and returns
+        a dict mapping ``UUID → sort_order``. Used by the knowledge-
+        service chapter.saved event handler to honour running jobs'
+        ``scope_range.chapter_range`` filter — if the chapter's
+        sort_order is outside every active job's range, the handler
+        skips ingestion.
+
+        Graceful on every failure path: returns ``{}`` so the caller
+        over-ingests defensively (we don't want to silently skip valid
+        chapters because book-service was briefly unavailable).
+        Empty input short-circuits without a network call.
+        """
+        if not chapter_ids:
+            return {}
+        url = f"{self._base_url}/internal/chapters/sort-orders"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.post(
+                url,
+                json={"chapter_ids": [str(cid) for cid in chapter_ids]},
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning(
+                    "book-service %s returned %d, trace_id=%s",
+                    url, resp.status_code, tid,
+                )
+                return {}
+            data = resp.json()
+            sort_orders = data.get("sort_orders") or {}
+            result: dict[UUID, int] = {}
+            for k, v in sort_orders.items():
+                try:
+                    result[UUID(k)] = int(v)
+                except (ValueError, TypeError):
+                    # Skip any non-UUID key or non-int value — defensive
+                    # against BE drift; caller over-ingests for missing.
+                    continue
+            return result
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning(
+                "book-service unavailable fetching chapter sort orders: %s trace_id=%s",
+                exc, tid,
+            )
+            return {}
+
     async def get_chapter_text(
         self, book_id: UUID, chapter_id: UUID,
     ) -> str | None:

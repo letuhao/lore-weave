@@ -117,6 +117,19 @@ def _extract_chapter_range(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="scope_range.chapter_range must be [int, int] with non-negative values",
         )
+    # C12a /review-impl MED#1 — reject reversed range (from > to). The
+    # C12a runner gate uses `lo <= sort_order <= hi` as a membership
+    # test; with lo > hi it's vacuously false → silently skips every
+    # chapter. Match the FE-side ``from ≤ to`` invariant so a direct-
+    # API caller gets an explicit error instead of a no-op job.
+    if int(raw[0]) > int(raw[1]):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                f"scope_range.chapter_range from ({raw[0]}) must be "
+                f"<= to ({raw[1]})"
+            ),
+        )
     return int(raw[0]), int(raw[1])
 
 

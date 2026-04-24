@@ -100,6 +100,7 @@ func (s *Server) Router() http.Handler {
 		// books they own); sits under /internal/chapters rather than
 		// /internal/books/... because it's not scoped to a single book.
 		r.Post("/chapters/titles", s.postInternalChapterTitles)
+		r.Post("/chapters/sort-orders", s.postInternalChapterSortOrders)
 		r.Patch("/imports/{import_id}", s.updateImportJobStatus)
 	})
 
@@ -1963,6 +1964,90 @@ WHERE id = ANY($1::uuid[]) AND lifecycle_state = 'active'
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"titles": titles})
+}
+
+// postInternalChapterSortOrders — C12a (D-K16.2-02b).
+//
+// Batch resolver used by knowledge-service's chapter.saved handler
+// to honour running jobs' scope_range.chapter_range filters. Mirrors
+// postInternalChapterTitles in shape + caps + error envelopes — but
+// returns only the raw sort_order int so the handler-gate path
+// doesn't have to parse "Chapter N — Title" strings.
+//
+// Request:  { "chapter_ids": [uuid, uuid, ...] }
+// Response: { "sort_orders": { "<uuid>": <int> } }
+//
+// Contract (same as postInternalChapterTitles):
+//   - Empty list → 200 with empty sort_orders map.
+//   - Cap at 200 ids per call; oversized → 422.
+//   - chapter_ids not in DB OR with lifecycle_state != 'active' are
+//     silently dropped from the response. The caller treats missing
+//     keys as "unknown sort_order" and over-ingests defensively.
+//   - Scan errors surface via scan_error_count (best-effort partial
+//     response); iterator-level errors (connection loss) return 500.
+//   - No book-scope filter: authorization is the internal token. The
+//     knowledge-service handler only passes ids from events it owns.
+//
+// Same /review-impl M2 test gap as postInternalChapterTitles: the Go
+// unit tests exercise only the pre-DB paths. Happy-path SQL follows
+// the already-exercised postInternalChapterTitles pattern byte-for-
+// byte; testcontainer integration would lock both.
+func (s *Server) postInternalChapterSortOrders(w http.ResponseWriter, r *http.Request) {
+	const maxIDs = 200
+	var body struct {
+		ChapterIDs []uuid.UUID `json:"chapter_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid JSON body")
+		return
+	}
+	if len(body.ChapterIDs) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"sort_orders": map[string]int{}})
+		return
+	}
+	if len(body.ChapterIDs) > maxIDs {
+		writeError(
+			w, http.StatusUnprocessableEntity, "BOOK_VALIDATION_ERROR",
+			fmt.Sprintf("too many chapter_ids (max %d)", maxIDs),
+		)
+		return
+	}
+	rows, err := s.pool.Query(r.Context(), `
+SELECT id, sort_order
+FROM chapters
+WHERE id = ANY($1::uuid[]) AND lifecycle_state = 'active'
+`, body.ChapterIDs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to query chapter sort orders")
+		return
+	}
+	defer rows.Close()
+	sortOrders := make(map[string]int)
+	var scanErrors int
+	for rows.Next() {
+		var id uuid.UUID
+		var sortOrder int
+		if err := rows.Scan(&id, &sortOrder); err != nil {
+			scanErrors++
+			continue
+		}
+		sortOrders[id.String()] = sortOrder
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "chapter sort orders iterator errored")
+		return
+	}
+	if scanErrors > 0 {
+		writeJSON(
+			w, http.StatusOK,
+			map[string]any{
+				"sort_orders":      sortOrders,
+				"scan_error_count": scanErrors,
+			},
+		)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sort_orders": sortOrders})
 }
 
 func excerpt(s string, n int) string {

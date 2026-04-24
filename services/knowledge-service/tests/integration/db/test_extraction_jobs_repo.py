@@ -926,3 +926,72 @@ async def test_c11_cursor_pagination_stable_across_tied_completed_at(pool):
 
     assert len(seen) == 3
     assert len(set(seen)) == 3  # no duplicates
+
+
+# ── C12a — list_active_for_project ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_c12a_list_active_for_project_filters_to_active_statuses(pool):
+    """C12a (D-K16.2-02b) — ``list_active_for_project`` must return
+    pending/running/paused jobs and drop complete/failed/cancelled.
+
+    The handler gate depends on this filter being correct; a silent
+    regression that expanded the filter to include completed jobs
+    would keep stale jobs' ``scope_range`` influencing live event
+    ingestion.
+    """
+    repo = ExtractionJobsRepo(pool)
+    user = uuid4()
+    project = await _make_project(pool, user)
+
+    j_pending = await repo.create(user, _job_payload(project))
+    j_running = await repo.create(user, _job_payload(project))
+    j_paused = await repo.create(user, _job_payload(project))
+    j_complete = await repo.create(user, _job_payload(project))
+    j_failed = await repo.create(user, _job_payload(project))
+    j_cancelled = await repo.create(user, _job_payload(project))
+
+    await repo.update_status(user, j_running.job_id, "running")
+    await repo.update_status(user, j_paused.job_id, "paused")
+    await repo.update_status(user, j_complete.job_id, "complete")
+    await repo.update_status(user, j_failed.job_id, "failed")
+    await repo.update_status(user, j_cancelled.job_id, "cancelled")
+    # j_pending stays in 'pending'
+
+    active = await repo.list_active_for_project(user, project)
+    ids = {j.job_id for j in active}
+    assert ids == {j_pending.job_id, j_running.job_id, j_paused.job_id}
+    # Terminal statuses excluded.
+    assert j_complete.job_id not in ids
+    assert j_failed.job_id not in ids
+    assert j_cancelled.job_id not in ids
+
+
+@pytest.mark.asyncio
+async def test_c12a_list_active_for_project_is_user_isolated(pool):
+    """C12a — cross-user isolation. User A's active job on their own
+    project must not appear in a call scoped to user B, even when
+    querying the SAME project_id (unlikely in practice because
+    project_id is user-scoped, but the repo doesn't rely on that —
+    it filters on user_id AND project_id)."""
+    repo = ExtractionJobsRepo(pool)
+    user_a = uuid4()
+    user_b = uuid4()
+    project_a = await _make_project(pool, user_a)
+    project_b = await _make_project(pool, user_b)
+
+    j_a = await repo.create(user_a, _job_payload(project_a))
+    await repo.update_status(user_a, j_a.job_id, "running")
+    j_b = await repo.create(user_b, _job_payload(project_b))
+    await repo.update_status(user_b, j_b.job_id, "running")
+
+    # User A sees their job on their project.
+    a_active = await repo.list_active_for_project(user_a, project_a)
+    assert {j.job_id for j in a_active} == {j_a.job_id}
+    # User A sees NOTHING on user B's project (user_id filter rejects).
+    a_on_b = await repo.list_active_for_project(user_a, project_b)
+    assert a_on_b == []
+    # User B mirror.
+    b_active = await repo.list_active_for_project(user_b, project_b)
+    assert {j.job_id for j in b_active} == {j_b.job_id}
