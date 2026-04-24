@@ -1,0 +1,18 @@
+{
+  "source": "../04_PLAYER_CHARACTER_DESIGN.ARCHIVED.md",
+  "output_dir": ".",
+  "preamble": "00_preamble.md",
+  "with_meta": true,
+  "boundaries": [
+    ["^## 1\\. ",  "01_identity_model.md"],
+    ["^## 2\\. ",  "02_pc_vs_npc.md"],
+    ["^## 3\\. ",  "03_creation.md"],
+    ["^## 4\\. ",  "04_lifecycle.md"],
+    ["^## 5\\. ",  "05_identity_and_agency.md"],
+    ["^## 6\\. ",  "06_social_sessions.md"],
+    ["^## 7\\. ",  "07_canon_interaction.md"],
+    ["^## 8\\. ",  "08_data_model.md"],
+    ["^## 9\\. ",  "09_deferred_big_features.md"],
+    ["^## 10\\. ", "10_decisions_and_refs.md"]
+  ]
+}

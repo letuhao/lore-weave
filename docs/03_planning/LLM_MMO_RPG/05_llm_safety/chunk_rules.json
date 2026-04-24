@@ -1,0 +1,13 @@
+{
+  "source": "../05_LLM_SAFETY_LAYER.ARCHIVED.md",
+  "output_dir": ".",
+  "preamble": "00_principle.md",
+  "with_meta": true,
+  "boundaries": [
+    ["^## 2\\. ", "01_intent_classifier.md"],
+    ["^## 3\\. ", "02_command_dispatch.md"],
+    ["^## 4\\. ", "03_world_oracle.md"],
+    ["^## 5\\. ", "04_injection_defense.md"],
+    ["^## 6\\. ", "99_integration_and_refs.md"]
+  ]
+}

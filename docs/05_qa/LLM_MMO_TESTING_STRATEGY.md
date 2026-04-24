@@ -298,7 +298,7 @@ See [decisions/locked_decisions.md](../03_planning/LLM_MMO_RPG/decisions/locked_
 ## 9. References
 
 - [01_problems/G_testing_ops.md](../03_planning/LLM_MMO_RPG/01_problems/G_testing_ops.md) — §G1/G2/G3 problem statements
-- [05_LLM_SAFETY_LAYER.md](../03_planning/LLM_MMO_RPG/05_LLM_SAFETY_LAYER.md) — A3/A5/A6 resolutions that the testing strategy validates
+- [05_llm_safety/](../03_planning/LLM_MMO_RPG/05_llm_safety/) — A3/A5/A6 resolutions that the testing strategy validates (start at `_index.md`)
 - [02_storage/R13_admin_discipline.md](../03_planning/LLM_MMO_RPG/02_storage/R13_admin_discipline.md) — §12L R13 admin policy; audit/auth patterns reused in G2-D5
 - [ADMIN_ACTION_POLICY.md](../02_governance/ADMIN_ACTION_POLICY.md) — admin-cli conventions
 - [UI_COPY_STYLEGUIDE.md](../02_governance/UI_COPY_STYLEGUIDE.md) — user-facing copy (G3-D2 report categories use user-facing terms)

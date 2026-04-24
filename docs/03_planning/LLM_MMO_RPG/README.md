@@ -35,8 +35,8 @@ This folder exists to:
 | [`01_problems/`](01_problems/) | Honest list of problems that must be solved before implementation is credible. Categorized A..G + M (multiverse risks). **Split into 10 chunks on 2026-04-24**; start at [`01_problems/_index.md`](01_problems/_index.md). Monolith archived at `01_OPEN_PROBLEMS.ARCHIVED.md`. |
 | [`02_storage/`](02_storage/) | Storage engineering — full event sourcing + DB-per-reality. **Split into 36 chunks on 2026-04-24**; start at [`02_storage/_index.md`](02_storage/_index.md). Monolith archived at `02_STORAGE_ARCHITECTURE.ARCHIVED.md` until external refs migrated. |
 | [`03_multiverse/`](03_multiverse/) | Conceptual foundation — peer realities (no privileged root), snapshot fork, four-layer canon model. Sits above 02 and reframes several 01 problems. **Split into 10 chunks on 2026-04-24**; start at [`03_multiverse/_index.md`](03_multiverse/_index.md). Monolith archived at `03_MULTIVERSE_MODEL.ARCHIVED.md`. |
-| `04_PLAYER_CHARACTER_DESIGN.md` | PC semantics — identity layering (User/PC/Session), PC vs NPC rules, creation/lifecycle/social/canon decisions. Registers DF1–DF8 deferred big features. |
-| `05_LLM_SAFETY_LAYER.md` | Cross-cutting LLM I/O discipline — 3-intent classifier, command dispatch, World Oracle (determinism), 5-layer injection defense. Resolves A3/A5/A6 from 01. Implementation contract for `roleplay-service` + `world-service`. |
+| [`04_player_character/`](04_player_character/) | PC semantics — identity layering (User/PC/Session), PC vs NPC rules, creation/lifecycle/social/canon decisions. Registers DF1–DF8 deferred big features. **Split into 11 chunks on 2026-04-24**; start at [`04_player_character/_index.md`](04_player_character/_index.md). Monolith archived at `04_PLAYER_CHARACTER_DESIGN.ARCHIVED.md`. |
+| [`05_llm_safety/`](05_llm_safety/) | Cross-cutting LLM I/O discipline — 3-intent classifier, command dispatch, World Oracle (determinism), 5-layer injection defense. Resolves A3/A5/A6 from 01. Implementation contract for `roleplay-service` + `world-service`. **Split into 6 chunks on 2026-04-24**; start at [`05_llm_safety/_index.md`](05_llm_safety/_index.md). Monolith archived at `05_LLM_SAFETY_LAYER.ARCHIVED.md`. |
 | [`catalog/`](catalog/) | **Bird's-eye catalogue of features** across 12 categories with stable IDs. Cross-references every numbered design doc. V1/V2/V3/V4 scope rollup. **Split into 14 chunks on 2026-04-24**; start at [`catalog/_index.md`](catalog/_index.md). Monolith archived at `FEATURE_CATALOG.ARCHIVED.md` until external refs migrated. |
 | [`decisions/`](decisions/) | Tracking for all pending user decisions + registry of DF1–DF15 deferred big features (DF12 withdrawn). **Split into 6 chunks on 2026-04-24**; start at [`decisions/_index.md`](decisions/_index.md). Monolith archived at `OPEN_DECISIONS.ARCHIVED.md` until external refs migrated. |
 | `SESSION_HANDOFF.md` | **Resumption doc** — current state summary, decision history, natural next steps. Read this first when resuming. Does not conflict with main `docs/sessions/SESSION_PATCH.md`. |
@@ -65,8 +65,8 @@ This folder exists to:
 5. [`01_problems/`](01_problems/) — why it is hard. Start at [`_index.md`](01_problems/_index.md) then the category files you care about (A..G + M).
 6. [`03_multiverse/`](03_multiverse/) — conceptual foundation (read before 02). Start at [`_index.md`](03_multiverse/_index.md) then `00_overview_philosophy.md` → `01_four_layer_canon.md` → `06_M_C_resolutions.md`.
 7. [`02_storage/`](02_storage/) — engineering detail. Start at [`_index.md`](02_storage/_index.md); R1–R13 are in `R01_*.md`..`R13_*.md`.
-8. `04_PLAYER_CHARACTER_DESIGN.md` — PC semantics + deferred big features registry
-9. `05_LLM_SAFETY_LAYER.md` — cross-cutting LLM I/O discipline (A3/A5/A6 resolution)
+8. [`04_player_character/`](04_player_character/) — PC semantics + deferred big features registry. Start at [`_index.md`](04_player_character/_index.md).
+9. [`05_llm_safety/`](05_llm_safety/) — cross-cutting LLM I/O discipline (A3/A5/A6 resolution). Start at [`_index.md`](05_llm_safety/_index.md).
 10. [`decisions/`](decisions/) — every decision locked or pending + DF1–DF15 registry. Start at [`_index.md`](decisions/_index.md).
 
 ## Status checkpoint

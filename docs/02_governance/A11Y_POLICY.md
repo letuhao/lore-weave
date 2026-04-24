@@ -166,7 +166,7 @@ Settings panel exposes an "Accessibility" section with:
 | [`UI_COPY_STYLEGUIDE.md`](UI_COPY_STYLEGUIDE.md) | Screen reader reads user-facing terms (M7-D1 map). Power-user labels hidden from SR unless explicitly enabled (verbose mode). Copy clarity = cognitive a11y. |
 | [`ADMIN_ACTION_POLICY.md`](ADMIN_ACTION_POLICY.md) | Admin tools are user-facing for authors/ops; WCAG AA applies. Destructive-action confirmation dialogs must be keyboard-accessible. |
 | [`CROSS_INSTANCE_DATA_ACCESS_POLICY.md`](CROSS_INSTANCE_DATA_ACCESS_POLICY.md) | No direct a11y interaction. |
-| [`05_LLM_SAFETY_LAYER.md`](../03_planning/LLM_MMO_RPG/05_LLM_SAFETY_LAYER.md) | Output filter (A6-D4) must not strip aria attributes. 3-intent classifier (A5-D1) preserves keyboard-native command path. |
+| [`05_llm_safety/`](../03_planning/LLM_MMO_RPG/05_llm_safety/) | Output filter (A6-D4) must not strip aria attributes — see [`04_injection_defense.md`](../03_planning/LLM_MMO_RPG/05_llm_safety/04_injection_defense.md). 3-intent classifier (A5-D1) preserves keyboard-native command path — see [`01_intent_classifier.md`](../03_planning/LLM_MMO_RPG/05_llm_safety/01_intent_classifier.md). |
 | [`LLM_MMO_TESTING_STRATEGY.md`](../05_qa/LLM_MMO_TESTING_STRATEGY.md) | G1 unit test scenarios include a11y assertions where applicable; G3 user reports include "accessibility issue" category. |
 
 ## 11. Update process
