@@ -1,19 +1,36 @@
-# Session Handoff — Session 51 (10 cycles shipped · Track 2/3 Gap Closure P2 DONE 7/7 + P3 11/12 done · session closed)
+# Session Handoff — Session 51 (11 cycles shipped · Track 2/3 Gap Closure P2 DONE 7/7 + **P3 DONE 12/12** · session closed)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-26 (session 51, closed at cycle 42 / C12c-a)
-> **HEAD:** `5fd8a54` (C12c-a glossary_sync BE unblock FS; C13 @ `5fabf87`; C12b-b @ `ff2363b`; C12b-a @ `5c36dfd`; C12a @ `2ea7481`; C11 @ `abb84ef`; C10 @ `ae5649b`; C9 @ `06b2063`; C8 @ `287e853`; C7 @ `a15a04b`; session 50 HEAD `eb26e83` — see session 50 block for earlier refs)
+> **Date:** 2026-04-27 (session 51, closed at cycle 43 / C12c-b)
+> **HEAD:** `7f31931` (C12c-b glossary_sync scope radio + retry fallback FE; C12c-a @ `5fd8a54`; C13 @ `5fabf87`; C12b-b @ `ff2363b`; C12b-a @ `5c36dfd`; C12a @ `2ea7481`; C11 @ `abb84ef`; C10 @ `ae5649b`; C9 @ `06b2063`; C8 @ `287e853`; C7 @ `a15a04b`; session 50 HEAD `eb26e83` — see session 50 block for earlier refs)
 > **Branch:** `main` (ahead of origin by sessions 38–51 commits — user pushes manually)
 
-## Session 51 — 10 cycles shipped (all Track 2/3 Gap Closure: C7..C12c-a) · **P2 DONE (7/7)** · **P3 11/12 done** · session closed
+## Session 51 — 11 cycles shipped (all Track 2/3 Gap Closure: C7..C12c-b) · **P2 DONE (7/7)** · **P3 DONE (12/12)** · session closed
 
 **Highlights:**
 - **P2 tier closed at C9** (entity optimistic concurrency + unlock). All 7 P2 cycles shipped across sessions 50+51 (C3..C9).
-- **P3 tier 11/12 done** — opened at C10, nearly closed after C12c-a. Only **C12c-b** (FE scope radio, S) remains in P3 backlog — strictly FE.
+- **🎉 P3 tier DONE 12/12** — opened at C10, fully closed at C12c-b. All Track 2/3 Gap Closure Priority 3 work shipped across 8 cycles (C10 + C11 + C12a + C12b-a + C12b-b + C13 + C12c-a + C12c-b).
 - **C12 split saga** — C12a (paired FS) + C12b-a/b-b (BE/FE split) + C12c-a/c-b (BE/FE split). Plan's single "C12 L" row bloomed into 5 honest-sized cycles. Memory `feedback_scope_audit_before_batching` applied each time.
 - **C12c-a size reclassified** from plan-said-"S FE-only blocked" to workflow-gate-required FS L after audit caught: (a) no glossary-service list endpoint, (b) no worker branch handling scope='glossary_sync' (explicit TODO at runner.py:621 silently no-op'd), (c) scope='all' ALSO excluded glossary — user-approved flip makes the name honest.
 - Back-end test coverage: **1466/1466 knowledge-service** (+61 over session 50's 1405) + **23/23 worker-ai** (+6 from C13's 17) + **12/12 glossary-service Go** at session 51 end.
 - Front-end test coverage: **474/474** at session 51 end (unchanged since C12b-b — C13 stories are tsc-only, C12c-a is pure BE).
+
+### Cycle 43 — Track 2/3 Gap Closure C12c-b [FE L] — glossary_sync scope radio + retry fallback
+
+Closes **D-K19a.5-06** completely (FE half paired with C12c-a BE). **P3 tier DONE 12/12.**
+
+Pure FE additive on BuildGraphDialog: `ALL_SCOPES += 'glossary_sync'` (between chat and all); `availableScopes` memo extends book_id gate to cover both `chapters` AND `glossary_sync`; `openScope` falls back to `defaultScope` when `initialValues.scope` is a book-required scope but `project.book_id` is null — prevents orphaned state-but-not-rendered after book-unlink between job creation and retry (fixes pre-existing chapters bug for free). 4 locale JSON files + `BUILD_DIALOG_KEYS` drift-lock extended. 5 new tests (2 scope-radio + 3 /review-impl regression).
+
+**/review-impl caught 3 LOW + 2 COSMETIC; all 3 LOWs fixed in-cycle:**
+- **LOW#1** retry-fallback for book-unlinked projects (fixes chapters too) + 2 regression tests
+- **LOW#2** retry pre-fill test for scope='glossary_sync'
+- **LOW#3** Vietnamese `noBookHint` refined to "book-based scopes" grouping with examples
+
+**Size reclassified** S→L at CLARIFY per workflow-gate (7 files trips 6+ threshold). Honest-sizing memory applied again — fifth reclassification in session 51.
+
+**Files: 9** (7 code/test + 2 docs SESSION_PATCH + plan update). **Verify:** tsc clean; vitest 479/479 (+5 from C13 baseline 474). No BE touched — C12c-a's 422 guard is authoritative.
+
+---
 
 ### Cycle 42 — Track 2/3 Gap Closure C12c-a [FS L] — glossary_sync BE unblock
 
@@ -155,15 +172,16 @@ Util pre-rounds to integer before branching so `59.6 → "1h"` (not naive `"0h 6
 
 **What's next — Session 52 default path:**
 
-Resume the **[Track 2/3 Gap Closure Plan](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md)**. P2 DONE (7/7); **P3 11/12 done** (only C12c-b FE scope radio remains — strictly FE-only). Remaining actionable: **C12c-b (S)** + **P4 × 2** + **P5 × 3 DESIGN-first** + **User-gated × 2**. Next actionable default is **C12c-b** to finally close P3 completely.
+🎉 **Track 2/3 Gap Closure P1+P2+P3 all DONE.** Remaining actionable: **P4 × 2** + **P5 × 3 DESIGN-first** + **User-gated × 2**. Next actionable default is **C14**.
 
-Next cycle — **C12c-b (P3, S)**: add `glossary_sync` to `ALL_SCOPES` in `BuildGraphDialog.tsx`; gate on `!!project.book_id` in the existing `availableScopes` memo (mirroring the BE 422 guard shipped in C12c-a); 4 new i18n keys (`projects.buildDialog.scope.glossary_sync`) × 4 locales; drift-lock test. Optional Storybook peer for the new radio state. Closes D-K19a.5-06 completely. Expect S-size (~5 files: BuildGraphDialog + test + 4 locales + drift-lock).
+Next cycle — **C14 (P4, L)**: Resumable scheduler cursor state. Pair with D-K11.9-01 partial + P-K15.10-01 partial. Both tenant-wide offline sweepers (reconciler + quarantine_cleanup) need a shared `sweeper_state` table (sweeper_name PK, last_user_id UUID, last_scope JSONB, updated_at) + cursor read/write at progress checkpoint + clear-on-completion. Threads into `reconciler.py` + `quarantine_cleanup.py`. 2 integration tests (restart-resumes, completion-clears). Detail in [plan §4 C14](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md#c14--resumable-scheduler-cursor-state-p4-l). Expect L-size (migration + 2 scheduler modules + tests).
 
-**If C12c-b is deferred, next candidates:**
-- **C14 (P4, L)** — Resumable scheduler cursor state. Pair with D-K11.9-01 partial + P-K15.10-01 partial. Needs `sweeper_state` table + cursor read/write + threaded into `reconciler.py` + `quarantine_cleanup.py`. 2 integration tests.
-- **C15 (P4, S)** — Neo4j fulltext index for entity search. Fire ONLY when any user crosses ~10k entities. Not pressing.
-- **P5 🏗 (C16–C18)** — 3 cycles, all DESIGN-first: budget attribution for global-scope regen (D-K20α-01 partial) · entity-merge canonical-alias mapping (D-K19d-γb-03 architectural) · event wall-clock date (D-K19e-α-02 needs KSA amendment + LLM prompt change). Produce signed-off ADR docs before any BUILD.
-- **User-gated ⏸** — multilingual fixtures (user provides text) + Gate-13 human walkthrough.
+**After C14, order-of-priority:**
+- **C15 (P4, S)** — Neo4j fulltext index for entity search (`entity_name_fts`). Fire ONLY when any user crosses ~10k entities. Small migration + one WHERE-branch swap in `list_entities_filtered`. Defer trigger — not pressing.
+- **P5 🏗 (C16–C18)** — 3 DESIGN-first cycles producing signed-off ADR docs BEFORE any BUILD: C16 budget attribution for global-scope regen (D-K20α-01 partial; phantom project vs new `knowledge_summary_spending` table) · C17 entity-merge canonical-alias mapping (D-K19d-γb-03; KSA §3.4.E amendment) · C18 event wall-clock date (D-K19e-α-02; KSA §3.4 amendment + LLM prompt change + migration).
+- **User-gated ⏸** — C19 multilingual golden-set v2 (needs user-provided xianxia + VN chapter text) · C20 Gate-13 human walkthrough (user-attested live BYOK run).
+
+Session-51 stats: 11 cycles shipped (C7→C12c-b). 34 plan items / 22 cycles total; 31 items / 17 cycles done. Entire P1+P2+P3 done. First session in LoreWeave history to close three plan tiers in one continuous session.
 
 **Session 51 aftermath — things to keep in mind:**
 
@@ -175,10 +193,10 @@ Next cycle — **C12c-b (P3, S)**: add `glossary_sync` to `ALL_SCOPES` in `Build
 - **CLARIFY honesty > plan commitment**. C7 plan-said-S shipped as XL; C12 plan-bundled-L shipped as 3 cycles (C12a + C12b-a + C12b-b + C12c-blocked). Honest sizing at CLARIFY is worth more than hitting an initial classification — the workflow-gate tolerates reclassification.
 
 **Starting-session boilerplate:**
-1. Read [SESSION_PATCH.md](SESSION_PATCH.md) session-51 entries (cycles 33–42) + the plan file's §3 cycle table
+1. Read [SESSION_PATCH.md](SESSION_PATCH.md) session-51 entries (cycles 33–43) + the plan file's §3 cycle table
 2. `./scripts/workflow-gate.sh status` to confirm previous cycle closed
-3. Start C12c-b with `./scripts/workflow-gate.sh size S 5 2 0` then `phase clarify` (S — pure FE: BuildGraphDialog scope radio + test + 4 locales + drift-lock; no BE, no side effects)
-4. Infra: `docker ps --filter name=infra-` — C12c-b is FE-only; services stay down
+3. Start C14 with `./scripts/workflow-gate.sh size L 6 3 1` then `phase clarify` (L — new `sweeper_state` table migration + 2 scheduler module wiring + integration tests. 1 side-effect: new DB table)
+4. Infra: `docker ps --filter name=infra-` — C14 is BE + wants live Postgres for integration tests; bring up infra-postgres at minimum
 5. For future BE integration tests: `TEST_KNOWLEDGE_DB_URL=postgres://loreweave:loreweave_dev@localhost:5555/loreweave_knowledge` (port 5555 on host; DB name `loreweave_knowledge` NOT `knowledge`)
 6. For Neo4j integration tests: `TEST_NEO4J_URI=bolt://localhost:7688 TEST_NEO4J_PASSWORD=loreweave_dev_neo4j`
 7. Test account: `claude-test@loreweave.dev / Claude@Test2026` (Playwright smoke tests)
