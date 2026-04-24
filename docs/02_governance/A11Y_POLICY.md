@@ -2,7 +2,7 @@
 
 > **Status:** Policy — enforced at code review + automated CI gate
 > **Applies to:** All user-facing frontends in LoreWeave (novel platform UI + LLM MMO RPG roleplay UI + admin tools user-visible surfaces)
-> **Source:** Derived from CC-6 resolution ([LLM_MMO_RPG FEATURE_CATALOG CC-6](../03_planning/LLM_MMO_RPG/FEATURE_CATALOG.md) + CC-6-D1..D7 in [decisions/locked_decisions.md](../03_planning/LLM_MMO_RPG/decisions/locked_decisions.md))
+> **Source:** Derived from CC-6 resolution ([CC-6 in catalog/cat_11_CC_cross_cutting.md](../03_planning/LLM_MMO_RPG/catalog/cat_11_CC_cross_cutting.md) + CC-6-D1..D7 in [decisions/locked_decisions.md](../03_planning/LLM_MMO_RPG/decisions/locked_decisions.md))
 > **Created:** 2026-04-23
 > **Owner:** Tech Lead + Design Lead
 
@@ -176,7 +176,7 @@ Changes to this policy require:
 1. PR with justification (new WCAG version, user feedback data, legal requirement change)
 2. Design Lead + Tech Lead signoff
 3. Migration plan for any frontend affected (e.g., if we raise tap target from 44 × 44 to 48 × 48)
-4. Update CC-6 row in [FEATURE_CATALOG.md](../03_planning/LLM_MMO_RPG/FEATURE_CATALOG.md) and CC-6-D* rows in OPEN_DECISIONS if decisions change
+4. Update CC-6 row in [catalog/cat_11_CC_cross_cutting.md](../03_planning/LLM_MMO_RPG/catalog/cat_11_CC_cross_cutting.md) and CC-6-D* rows in [decisions/locked_decisions.md](../03_planning/LLM_MMO_RPG/decisions/locked_decisions.md) if decisions change
 
 Never lower the bar without explicit sign-off + documented rationale.
 
@@ -195,5 +195,5 @@ These do not block V1; they are continuous-improvement items.
 - [axe-core documentation](https://github.com/dequelabs/axe-core)
 - [Mozilla MDN ARIA reference](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA)
 - Internal: [`UI_COPY_STYLEGUIDE.md`](UI_COPY_STYLEGUIDE.md) (terminology consistency)
-- Internal: CC-6 row in [`FEATURE_CATALOG.md`](../03_planning/LLM_MMO_RPG/FEATURE_CATALOG.md)
+- Internal: CC-6 row in [`catalog/cat_11_CC_cross_cutting.md`](../03_planning/LLM_MMO_RPG/catalog/cat_11_CC_cross_cutting.md)
 - Internal: CC-6-D1..D7 in [`decisions/locked_decisions.md`](../03_planning/LLM_MMO_RPG/decisions/locked_decisions.md)

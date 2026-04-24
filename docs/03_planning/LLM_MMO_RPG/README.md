@@ -37,7 +37,7 @@ This folder exists to:
 | `03_MULTIVERSE_MODEL.md` | Conceptual foundation — peer realities (no privileged root), snapshot fork, four-layer canon model. Sits above 02 and reframes several 01 problems. |
 | `04_PLAYER_CHARACTER_DESIGN.md` | PC semantics — identity layering (User/PC/Session), PC vs NPC rules, creation/lifecycle/social/canon decisions. Registers DF1–DF8 deferred big features. |
 | `05_LLM_SAFETY_LAYER.md` | Cross-cutting LLM I/O discipline — 3-intent classifier, command dispatch, World Oracle (determinism), 5-layer injection defense. Resolves A3/A5/A6 from 01. Implementation contract for `roleplay-service` + `world-service`. |
-| `FEATURE_CATALOG.md` | **Bird's-eye catalogue of features** across 12 categories with stable IDs. Cross-references every numbered design doc. V1/V2/V3/V4 scope rollup. |
+| [`catalog/`](catalog/) | **Bird's-eye catalogue of features** across 12 categories with stable IDs. Cross-references every numbered design doc. V1/V2/V3/V4 scope rollup. **Split into 14 chunks on 2026-04-24**; start at [`catalog/_index.md`](catalog/_index.md). Monolith archived at `FEATURE_CATALOG.ARCHIVED.md` until external refs migrated. |
 | [`decisions/`](decisions/) | Tracking for all pending user decisions + registry of DF1–DF15 deferred big features (DF12 withdrawn). **Split into 6 chunks on 2026-04-24**; start at [`decisions/_index.md`](decisions/_index.md). Monolith archived at `OPEN_DECISIONS.ARCHIVED.md` until external refs migrated. |
 | `SESSION_HANDOFF.md` | **Resumption doc** — current state summary, decision history, natural next steps. Read this first when resuming. Does not conflict with main `docs/sessions/SESSION_PATCH.md`. |
 
@@ -61,7 +61,7 @@ This folder exists to:
 1. `README.md` (this file)
 2. **`SESSION_HANDOFF.md`** — current state, decision history, next steps (read FIRST when resuming)
 3. `00_VISION.md` — what is being dreamed about
-4. `FEATURE_CATALOG.md` — **menu of what the product includes** (skim the status summary first)
+4. [`catalog/`](catalog/) — **menu of what the product includes**. Start at [`_index.md`](catalog/_index.md) then the "Status summary" in [`99_scope_and_refs.md`](catalog/99_scope_and_refs.md).
 5. `01_OPEN_PROBLEMS.md` — why it is hard
 6. `03_MULTIVERSE_MODEL.md` — conceptual foundation (read before 02)
 7. [`02_storage/`](02_storage/) — engineering detail. Start at [`_index.md`](02_storage/_index.md); R1–R13 are in `R01_*.md`..`R13_*.md`.

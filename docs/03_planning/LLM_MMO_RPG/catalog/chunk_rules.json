@@ -1,0 +1,21 @@
+{
+  "source": "../FEATURE_CATALOG.ARCHIVED.md",
+  "output_dir": ".",
+  "preamble": "00_preamble.md",
+  "with_meta": true,
+  "boundaries": [
+    ["^## IF\\b",              "cat_01_IF_infrastructure.md"],
+    ["^## WA\\b",              "cat_02_WA_world_authoring.md"],
+    ["^## PO\\b",              "cat_03_PO_player_onboarding.md"],
+    ["^## PL\\b",              "cat_04_PL_play_loop.md"],
+    ["^## NPC\\b",             "cat_05_NPC_systems.md"],
+    ["^## PCS\\b",             "cat_06_PCS_pc_systems.md"],
+    ["^## SOC\\b",             "cat_07_SOC_social.md"],
+    ["^## NAR\\b",             "cat_08_NAR_narrative_canon.md"],
+    ["^## EM\\b",              "cat_09_EM_emergent.md"],
+    ["^## PLT\\b",             "cat_10_PLT_platform_business.md"],
+    ["^## CC\\b",              "cat_11_CC_cross_cutting.md"],
+    ["^## DL\\b",              "cat_12_DL_daily_life.md"],
+    ["^## Status summary\\b",  "99_scope_and_refs.md"]
+  ]
+}
