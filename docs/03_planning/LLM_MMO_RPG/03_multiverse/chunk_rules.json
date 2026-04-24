@@ -1,0 +1,17 @@
+{
+  "source": "../03_MULTIVERSE_MODEL.ARCHIVED.md",
+  "output_dir": ".",
+  "preamble": "00_overview_philosophy.md",
+  "with_meta": true,
+  "boundaries": [
+    ["^## 3\\. ",      "01_four_layer_canon.md"],
+    ["^## 4\\. ",      "02_lifecycle_and_seeding.md"],
+    ["^## 6\\. ",      "03_fork_and_cascading.md"],
+    ["^## 8\\. ",      "04_schema_additions.md"],
+    ["^## 9\\. ",      "05_product_ux_basics.md"],
+    ["^### 9\\.6 ",    "06_M_C_resolutions.md"],
+    ["^## 10\\. ",     "07_resolves_from_01.md"],
+    ["^## 11\\. ",     "08_multiverse_risks.md"],
+    ["^## 12\\. ",     "09_config_and_refs.md"]
+  ]
+}

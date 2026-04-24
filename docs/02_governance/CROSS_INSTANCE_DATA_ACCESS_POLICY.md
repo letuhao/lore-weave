@@ -137,6 +137,6 @@ No exceptions are currently active.
 ## 7. References
 
 - [02_storage/R05_cross_instance.md](../03_planning/LLM_MMO_RPG/02_storage/R05_cross_instance.md) — §12E full R5 mitigation
-- [03_MULTIVERSE_MODEL.md](../03_planning/LLM_MMO_RPG/03_MULTIVERSE_MODEL.md) — reality isolation invariants
+- [03_multiverse/_index.md](../03_planning/LLM_MMO_RPG/03_multiverse/_index.md) — reality isolation invariants
 - [decisions/locked_decisions.md](../03_planning/LLM_MMO_RPG/decisions/locked_decisions.md) — R5-* decision log
 - World travel design (DF6, future) — the only sanctioned cross-reality feature

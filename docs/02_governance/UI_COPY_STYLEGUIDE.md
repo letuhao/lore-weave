@@ -2,7 +2,7 @@
 
 > **Status:** Policy — enforced at code review on user-facing UI changes
 > **Applies to:** All user-facing strings in the frontend (Reader, Player, Author tiers) — component labels, tooltips, modals, error messages, emails
-> **Source:** Derived from [docs/03_planning/LLM_MMO_RPG/03_MULTIVERSE_MODEL.md §9.6](../03_planning/LLM_MMO_RPG/03_MULTIVERSE_MODEL.md#96-progressive-disclosure--m7-resolution)
+> **Source:** Derived from [§9.6 in 03_multiverse/06_M_C_resolutions.md](../03_planning/LLM_MMO_RPG/03_multiverse/06_M_C_resolutions.md)
 > **Created:** 2026-04-23
 > **Owner:** Tech Lead + Design Lead
 
@@ -65,7 +65,7 @@ Default UI uses user-facing terms. Power-user labels appear only in author tooli
 
 ## 5. Tier-aware defaults
 
-The 3-tier user model (see [03 §9.6.2](../03_planning/LLM_MMO_RPG/03_MULTIVERSE_MODEL.md#962-three-tier-complexity-model-m7-d2)) sets default copy complexity:
+The 3-tier user model (see [§9.6.2 in 03_multiverse/06_M_C_resolutions.md](../03_planning/LLM_MMO_RPG/03_multiverse/06_M_C_resolutions.md)) sets default copy complexity:
 
 | Tier | Copy default |
 |---|---|
@@ -104,7 +104,7 @@ Exceptions (internal terminology permitted without review):
 
 ## 8. Contextual tooltip library
 
-Seven tooltips locked in [03 §9.6.5](../03_planning/LLM_MMO_RPG/03_MULTIVERSE_MODEL.md#965-contextual-helpers-m7-d5) (M7-D5):
+Seven tooltips locked in [§9.6.5 in 03_multiverse/06_M_C_resolutions.md](../03_planning/LLM_MMO_RPG/03_multiverse/06_M_C_resolutions.md) (M7-D5):
 
 | Element | Tooltip (EN) |
 |---|---|
@@ -124,12 +124,12 @@ Changes to the terminology map (§3) or phrasing patterns (§4) require:
 
 1. PR with justification (user research data, UX feedback, locale issue)
 2. Design Lead + Tech Lead sign-off
-3. Update corresponding §9.6 in [03_MULTIVERSE_MODEL.md](../03_planning/LLM_MMO_RPG/03_MULTIVERSE_MODEL.md) + [decisions/locked_decisions.md](../03_planning/LLM_MMO_RPG/decisions/locked_decisions.md) M7-D1/D4 rows
+3. Update corresponding §9.6 in [03_multiverse/06_M_C_resolutions.md](../03_planning/LLM_MMO_RPG/03_multiverse/06_M_C_resolutions.md) + [decisions/locked_decisions.md](../03_planning/LLM_MMO_RPG/decisions/locked_decisions.md) M7-D1/D4 rows
 4. Migration plan for any affected live strings (i18n key rename, deprecation schedule)
 
 ## 10. References
 
-- [03_MULTIVERSE_MODEL.md §9.6 — Progressive disclosure](../03_planning/LLM_MMO_RPG/03_MULTIVERSE_MODEL.md#96-progressive-disclosure--m7-resolution)
+- [03_multiverse/06_M_C_resolutions.md — §9.6 Progressive disclosure](../03_planning/LLM_MMO_RPG/03_multiverse/06_M_C_resolutions.md)
 - [01_OPEN_PROBLEMS.md §M7 — Concept complexity](../03_planning/LLM_MMO_RPG/01_OPEN_PROBLEMS.md#m7-concept-complexity-for-users--partial)
 - [decisions/locked_decisions.md — M7-D1 through M7-D5](../03_planning/LLM_MMO_RPG/decisions/locked_decisions.md)
 - [ADMIN_ACTION_POLICY.md](ADMIN_ACTION_POLICY.md) — sibling governance doc pattern
