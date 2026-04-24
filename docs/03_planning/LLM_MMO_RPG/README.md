@@ -31,6 +31,7 @@ This folder exists to:
 
 | File | Purpose |
 |---|---|
+| [`00_foundation/`](00_foundation/) | **Start here for parallel feature-design work.** Compressed contract layer — 7 files (~30 KB) distilling invariants, service boundaries, kernel APIs, vocabulary, and the ID catalog so agents don't have to load the full kernel. Storage + multiverse are the kernel; foundation is the cheat sheet. |
 | `00_VISION.md` | The vision — four shapes of role-play, why Shape D (shared persistent world) is the dream, what LoreWeave uniquely brings, and a staged path that de-risks it |
 | [`01_problems/`](01_problems/) | Honest list of problems that must be solved before implementation is credible. Categorized A..G + M (multiverse risks). **Split into 10 chunks on 2026-04-24**; start at [`01_problems/_index.md`](01_problems/_index.md). Monolith archived at `01_OPEN_PROBLEMS.ARCHIVED.md`. |
 | [`02_storage/`](02_storage/) | Storage engineering — full event sourcing + DB-per-reality. **Split into 36 chunks on 2026-04-24**; start at [`02_storage/_index.md`](02_storage/_index.md). Monolith archived at `02_STORAGE_ARCHITECTURE.ARCHIVED.md` until external refs migrated. |
@@ -60,14 +61,15 @@ This folder exists to:
 
 1. `README.md` (this file)
 2. **`SESSION_HANDOFF.md`** — current state, decision history, next steps (read FIRST when resuming)
-3. `00_VISION.md` — what is being dreamed about
-4. [`catalog/`](catalog/) — **menu of what the product includes**. Start at [`_index.md`](catalog/_index.md) then the "Status summary" in [`99_scope_and_refs.md`](catalog/99_scope_and_refs.md).
-5. [`01_problems/`](01_problems/) — why it is hard. Start at [`_index.md`](01_problems/_index.md) then the category files you care about (A..G + M).
-6. [`03_multiverse/`](03_multiverse/) — conceptual foundation (read before 02). Start at [`_index.md`](03_multiverse/_index.md) then `00_overview_philosophy.md` → `01_four_layer_canon.md` → `06_M_C_resolutions.md`.
-7. [`02_storage/`](02_storage/) — engineering detail. Start at [`_index.md`](02_storage/_index.md); R1–R13 are in `R01_*.md`..`R13_*.md`.
-8. [`04_player_character/`](04_player_character/) — PC semantics + deferred big features registry. Start at [`_index.md`](04_player_character/_index.md).
-9. [`05_llm_safety/`](05_llm_safety/) — cross-cutting LLM I/O discipline (A3/A5/A6 resolution). Start at [`_index.md`](05_llm_safety/_index.md).
-10. [`decisions/`](decisions/) — every decision locked or pending + DF1–DF15 registry. Start at [`_index.md`](decisions/_index.md).
+3. **[`00_foundation/`](00_foundation/)** — if you're designing a feature: read all 7 files. If you're orienting generally: read at least `01_READ_THIS_FIRST.md` + `02_invariants.md`.
+4. `00_VISION.md` — what is being dreamed about
+5. [`catalog/`](catalog/) — **menu of what the product includes**. Start at [`_index.md`](catalog/_index.md) then the "Status summary" in [`99_scope_and_refs.md`](catalog/99_scope_and_refs.md).
+6. [`01_problems/`](01_problems/) — why it is hard. Start at [`_index.md`](01_problems/_index.md) then the category files you care about (A..G + M).
+7. [`03_multiverse/`](03_multiverse/) — conceptual foundation (read before 02). Start at [`_index.md`](03_multiverse/_index.md) then `00_overview_philosophy.md` → `01_four_layer_canon.md` → `06_M_C_resolutions.md`.
+8. [`02_storage/`](02_storage/) — engineering detail. Start at [`_index.md`](02_storage/_index.md); R1–R13 are in `R01_*.md`..`R13_*.md`.
+9. [`04_player_character/`](04_player_character/) — PC semantics + deferred big features registry. Start at [`_index.md`](04_player_character/_index.md).
+10. [`05_llm_safety/`](05_llm_safety/) — cross-cutting LLM I/O discipline (A3/A5/A6 resolution). Start at [`_index.md`](05_llm_safety/_index.md).
+11. [`decisions/`](decisions/) — every decision locked or pending + DF1–DF15 registry. Start at [`_index.md`](decisions/_index.md).
 
 ## Status checkpoint
 
