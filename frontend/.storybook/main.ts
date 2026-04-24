@@ -28,9 +28,15 @@ const config: StorybookConfig = {
     const existingAlias = cfg.resolve.alias;
     const authShim = path.resolve(here, './MockAuthProvider.tsx');
     const srcRoot = path.resolve(here, '../src');
+    const sbRoot = here; // .storybook/
     cfg.resolve.alias = [
       { find: /^@\/auth$/, replacement: authShim },
       { find: /^@\//, replacement: `${srcRoot}/` },
+      // /review-impl COSMETIC #6 — `@sb/` alias for story imports of
+      // `.storybook/fixtures/*` + `.storybook/msw-handlers`. Without
+      // it, stories in `src/features/knowledge/components/` used
+      // `../../../../.storybook/fixtures/knowledge` (4 levels up).
+      { find: /^@sb\//, replacement: `${sbRoot}/` },
       // Keep anything the host vite.config.ts already set (array/object).
       ...(Array.isArray(existingAlias)
         ? existingAlias
