@@ -106,7 +106,7 @@ The following items are V1-required and must be designed before V1 implementatio
 
 | # | Item | Scope | Effort |
 |---|---|---|---|
-| 4 | **WA-4 L1 auto-assignment heuristics** | Category → L1 default rules (magic-system, species, gods, physics laws, currency, language/race?) — full category table; MV1 locked but specifics TBD | ~5 decisions, inline |
+| ~~4~~ | ~~**WA-4 L1 auto-assignment heuristics**~~ | ✅ **DONE 2026-04-24** — 5 decisions locked (WA4-D1..D5). Strong L1/L2 category lists + ambiguous recommendation UX + asymmetric override policy. See [03 §3 "Category heuristics"](03_MULTIVERSE_MODEL.md) and OPEN_DECISIONS tail. | Closed |
 | 5 | **Session invite / share-link framework** | Link shape + visibility inheritance from `sharing-service`; can fold into DF5 or lock framework first | ~3 decisions, inline or within DF5 |
 
 **🟢 Synthesis doc (no new design — aggregation only)**
@@ -125,12 +125,14 @@ The following items are V1-required and must be designed before V1 implementatio
 
 ### Suggested next-session order
 
-1. **WA-4** first (5-decision warmup, builds momentum)
-2. **DF5 Session / Group Chat** second (biggest V1 unknown; DF4 + DF7 hang off its session boundaries)
-3. **DF4 World Rules** third (many features reference World Rules; clearer scope after DF5)
-4. **DF7 PC Stats** fourth (smallest, mostly schema work)
+1. ~~**WA-4** first (5-decision warmup, builds momentum)~~ ✅ **DONE 2026-04-24**
+2. **DF5 Session / Group Chat** (biggest V1 unknown; DF4 + DF7 hang off its session boundaries)
+3. **DF4 World Rules** (many features reference World Rules; clearer scope after DF5)
+4. **DF7 PC Stats** (smallest, mostly schema work)
 5. Optional: fold **session invite/share** into DF5 during that batch
 6. Finish with **V1 MVP scope doc** synthesis once DF4/5/7 land
+
+**Storage + multiverse scope status (2026-04-24):** WA-4 completion closes the last design-resolvable gap in storage/multiverse. All residual items in those categories are external-data-dependent (A4 retrieval benchmark, D1 cost measurement, E3 legal) and cannot advance without V1 prototype / legal counsel / research progress. Future storage/multiverse work comes from: (a) M1/M5/M7 threshold tuning post-V1 data; (b) DFs that span storage (DF9/DF10/DF11/DF13 admin UX); (c) A1 semantic layer post-prototype.
 
 ### Remaining 2 OPEN — external dependencies only
 
@@ -255,6 +257,7 @@ Reopen conditions for the OPEN/PARTIAL track specifically:
 | 2026-04-23 | R9 safe reality closure (8-layer 6-state machine, 120d floor) |
 | 2026-04-23 | R10 ACCEPTED, R11 pgvector managed, R13 admin discipline + governance policy |
 | 2026-04-23 | **Session end** — all R1–R13 resolved, handoff created |
+| 2026-04-24 | WA-4 category heuristics locked (5 decisions) — storage + multiverse design-complete; residual items all external-dependent |
 
 ## 4. How to resume (for next session)
 

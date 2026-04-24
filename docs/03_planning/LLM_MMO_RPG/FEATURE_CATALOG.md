@@ -127,7 +127,7 @@ When adding new features:
 | WA-1 | Book → glossary entity derivation (NPC pool, item pool, location pool) | 🟡 | V1 | — | Relies on glossary-service / knowledge-service (in progress) |
 | WA-2 | Reality creation by author (first-reality-of-book = fresh seed) | 🟡 | V1 | IF-3 | [03 §5](03_MULTIVERSE_MODEL.md) |
 | WA-3 | Canon lock level per attribute (L1 axiomatic vs L2 seeded) | ✅ | V1 | — | [03 §3](03_MULTIVERSE_MODEL.md), MV1 locked |
-| WA-4 | Category-based L1 auto-assignment (magic-system, species → L1) | 🟡 | V1 | WA-3 | MV1 locked, heuristic details TBD |
+| WA-4 | Category-based L1 auto-assignment (magic-system, species → L1) | ✅ | V1 | WA-3 | [03 §3 "Category heuristics"](03_MULTIVERSE_MODEL.md); WA4-D1..D5 locked 2026-04-24 |
 | WA-5 | Per-reality world rules (death behavior, paradox tolerance, PvP) | 📦 | V2+ | IF-1 | **DF4 — World Rule feature** |
 | WA-6 | Author dashboard — canonization nominations, reality overview | 📦 | V3+ | WA-2 | Related to DF3 |
 | WA-7 | Import/export books (portable format) | 📦 | V4+ | — | Marker: [100_FUTURE_FEATURE_STRUCTURED_IMPORT_EXPORT_MEDIA](../100_FUTURE_FEATURE_STRUCTURED_IMPORT_EXPORT_MEDIA.md) |
@@ -358,7 +358,7 @@ Scoped for clarity. Everything here is `📦 Deferred` under DF1.
 | Category | ✅ Designed | 🟡 Partial | 📦 Deferred | ❓ Open | 🚫 OOS | Total |
 |---|---|---|---|---|---|---|
 | IF | 56 | 4 | 2 | 0 | 0 | 62 |
-| WA | 1 | 3 | 3 | 0 | 0 | 7 |
+| WA | 2 | 2 | 3 | 0 | 0 | 7 |
 | PO | 6 | 2 | 1 | 0 | 0 | 9 |
 | PL | 4 | 7 | 3 | 0 | 0 | 14 |
 | NPC | 6 | 10 | 2 | 0 | 0 | 18 |
@@ -369,14 +369,14 @@ Scoped for clarity. Everything here is `📦 Deferred` under DF1.
 | PLT | 1 | 2 | 4 | 1 | 0 | 8 |
 | CC | 0 | 5 | 3 | 1 | 0 | 9 |
 | DL | 0 | 0 | 5 | 1 | 0 | 6 |
-| **Total** | **92** | **39** | **43** | **3** | **2** | **179** |
+| **Total** | **93** | **38** | **43** | **3** | **2** | **179** |
 
 ### Interpretation
 
-- **92 Designed** (green): concrete decisions in locked docs — storage, fork, canon model, PC mechanics, R1 volume (6 layers), R2 rebuild (5 layers), R3 schema evolution (6 layers), R4 fleet ops (7 layers), R5 cross-instance (3 layers + anti-pattern), R6 publisher reliability (7 layers, resolves R12), R7 session concurrency + event handler (7 layers, reframed), R8 NPC memory aggregate split (7 layers, A1 foundation), R9 safe reality closure (8 layers, 6-state machine + 120d floor), R10 global ordering (ACCEPTED), R11 pgvector footprint (4 layers), R13 admin discipline (6 layers + governance policy).
+- **93 Designed** (green): concrete decisions in locked docs — storage, fork, canon model, PC mechanics, R1 volume (6 layers), R2 rebuild (5 layers), R3 schema evolution (6 layers), R4 fleet ops (7 layers), R5 cross-instance (3 layers + anti-pattern), R6 publisher reliability (7 layers, resolves R12), R7 session concurrency + event handler (7 layers, reframed), R8 NPC memory aggregate split (7 layers, A1 foundation), R9 safe reality closure (8 layers, 6-state machine + 120d floor), R10 global ordering (ACCEPTED), R11 pgvector footprint (4 layers), R13 admin discipline (6 layers + governance policy), **WA-4 category heuristics (5 decisions, 2026-04-24)**.
 
-**All 13 storage risks (R1–R13) resolved.**
-- **40 Partial** (yellow): broad strokes designed, concrete detail pending (prompt assembly, retrieval quality, realtime).
+**All 13 storage risks (R1–R13) resolved. Storage + multiverse design design-complete** (residual items external-data-dependent: A4 benchmark, D1 cost, E3 legal).
+- **38 Partial** (yellow): broad strokes designed, concrete detail pending (prompt assembly, retrieval quality, realtime).
 - **43 Deferred** (blue): explicitly pushed to DF1–DF13 (DF12 withdrawn) future design docs or platform mode. Known but not gating V1.
 - **3 Open** (red): identified but no approach — NPC-4 (retrieval quality), NAR-8 (L1/L2 propagation), CC-6 (a11y). A1 moved to PARTIAL with R8 infrastructure resolution.
 - **2 Out of scope**: no parties (SOC-6), no global chat (SOC-7) — deliberate anti-MMO choices.
