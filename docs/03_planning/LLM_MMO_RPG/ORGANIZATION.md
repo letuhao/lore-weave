@@ -183,3 +183,14 @@ Indexes are updated **in the same commit** as the topic files they reference.
    7. `04_*` / `05_*` → their subfolders
 4. After each migration: update `README.md` + append a SESSION_HANDOFF row. Old monolith kept as `*.ARCHIVED.md` for one session, then deleted.
 5. External refs in `docs/02_governance/*` and `docs/sessions/SESSION_PATCH.md` are updated in the same commit as the split.
+
+## Archive retention
+
+**Status (2026-04-24):** All 7 `*.ARCHIVED.md` files have been removed from the working tree. They remain in git history — recover any archive with:
+
+```bash
+git log --follow -- docs/03_planning/LLM_MMO_RPG/<FILE>.ARCHIVED.md
+git show <commit>:docs/03_planning/LLM_MMO_RPG/<FILE>.ARCHIVED.md > /tmp/archive.md
+```
+
+Per-chunk tamper-evidence is preserved independently of the archive: every chunk's `<!-- CHUNK-META -->` header carries the sha256 of its original byte range. A regenerate-from-chunks helper could be added to `scripts/chunk_doc.py` if re-verification without git access becomes a need; for now, `chunk_doc.py verify` against a regenerated archive from git is the recovery path.
