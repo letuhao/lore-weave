@@ -290,8 +290,19 @@ generated_by: scripts/chunk_doc.py
 | IF-39d | Multi-provider LLM failover (extends `provider_registry`) | ✅ | V1 | IF-14, IF-15 | [02_storage/SR06_dependency_failure.md §12AI.7](../02_storage/SR06_dependency_failure.md) (SR6-D6) |
 | IF-39e | Degraded-mode framework (`contracts/lifecycle/modes.go`; 5-mode) | ✅ | V1 | IF-39 | [02_storage/SR06_dependency_failure.md §12AI.6](../02_storage/SR06_dependency_failure.md) (SR6-D5) |
 | IF-39f | `dependency_events` audit table (1y retention) | ✅ | V1 | IF-39 | [02_storage/SR06_dependency_failure.md §12AI.9](../02_storage/SR06_dependency_failure.md) (SR6-D8) |
-| IF-39g | Chaos drill hooks (placeholder; SR7 activates) | 📦 | V1+30d | IF-39a, IF-39f | [02_storage/SR06_dependency_failure.md §12AI.12](../02_storage/SR06_dependency_failure.md) (SR6 → SR7 bridge) |
+| IF-39g | Chaos drill hooks (**activated by SR7**) | ✅ | V1 | IF-39a, IF-39f, IF-40 | [02_storage/SR07_chaos_drills.md §12AJ.12](../02_storage/SR07_chaos_drills.md) (SR7-governance) — was V1+30d placeholder until SR7 resolution |
 | IF-39h | Dependency runbook template (SR3 integration) | ✅ | V1 | IF-36, IF-39 | [02_storage/SR06_dependency_failure.md §12AI.2](../02_storage/SR06_dependency_failure.md) (SR6-D1; matrix `runbook:` field) |
 | IF-39i | Bulkhead resource pool manager | ✅ | V1 | IF-39, IF-39a | [02_storage/SR06_dependency_failure.md §12AI.10](../02_storage/SR06_dependency_failure.md) (SR6-D9) |
 | IF-39j | Timeout discipline CI lint (`timeout-discipline-lint.sh`) | ✅ | V1 | IF-39 | [02_storage/SR06_dependency_failure.md §12AI.3](../02_storage/SR06_dependency_failure.md) (SR6-D2; enforces invariant I16) |
+| IF-40 | Chaos experiment registry (`contracts/chaos/experiments.yaml`) | ✅ | V1 | — | [02_storage/SR07_chaos_drills.md §12AJ.2](../02_storage/SR07_chaos_drills.md) (SR7-D1) |
+| IF-40a | `chaos-cli` admin tool (list/describe/run/abort/kill-switch/status) | ✅ | V1 | IF-40, IF-20 | [02_storage/SR07_chaos_drills.md §12AJ.8](../02_storage/SR07_chaos_drills.md) (SR7-D7) |
+| IF-40b | `chaos_drills` audit table (3y retention) | ✅ | V1 | IF-40 | [02_storage/SR07_chaos_drills.md §12AJ.9](../02_storage/SR07_chaos_drills.md) (SR7-D8) |
+| IF-40c | Chaos harness framework (method adapters: http_blackhole / db_slow_query / pod_kill / network_latency / ...) | ✅ | V1 | IF-40, IF-39a | [02_storage/SR07_chaos_drills.md §12AJ.8](../02_storage/SR07_chaos_drills.md) (SR7-D7) |
+| IF-40d | Per-experiment abort-criteria checker (10s SLI polling; auto-abort) | ✅ | V1 | IF-40, IF-34 | [02_storage/SR07_chaos_drills.md §12AJ.7](../02_storage/SR07_chaos_drills.md) (SR7-D6) |
+| IF-40e | Global chaos kill-switch (S5 Tier 1) | ✅ | V1 | IF-40a | [02_storage/SR07_chaos_drills.md §12AJ.7](../02_storage/SR07_chaos_drills.md) (SR7-D6, SR7-D7) |
+| IF-40f | Dry-run mode for chaos experiments | ✅ | V1 | IF-40c | [02_storage/SR07_chaos_drills.md §12AJ.7](../02_storage/SR07_chaos_drills.md) (SR7-D6) |
+| IF-40g | Post-drill review template + automated metric snapshot | ✅ | V1 | IF-40b, IF-34 | [02_storage/SR07_chaos_drills.md §12AJ.10](../02_storage/SR07_chaos_drills.md) (SR7-D9) |
+| IF-40h | V1 launch gate CI check (`v1-launch-check.sh`) | ✅ | V1 | IF-40b | [02_storage/SR07_chaos_drills.md §12AJ.11](../02_storage/SR07_chaos_drills.md) (SR7-D10) |
+| IF-40i | SR3 runbook `last_verified` method = `chaos_drill` | ✅ | V1 | IF-36, IF-40b | [02_storage/SR07_chaos_drills.md §12AJ.10](../02_storage/SR07_chaos_drills.md) (SR7-D9, extends SR3-D4) |
+| IF-40j | Chaos-scheduler cron (V1 via admin-cli; dedicated service V2+) | ✅ | V1 | IF-40a | [02_storage/SR07_chaos_drills.md §12AJ.5](../02_storage/SR07_chaos_drills.md) (SR7-D4) |
 

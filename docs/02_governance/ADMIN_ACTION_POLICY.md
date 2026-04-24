@@ -105,6 +105,9 @@ Truly dangerous commands (bypass safety gates, manual DROP, bulk purges) MUST re
 - `admin/degraded-mode-force` (S5 Tier 1 Destructive — forces platform or service into a degraded mode bypassing automatic circuit-breaker-driven activation; user-visible; dual-actor + 100+ char reason + 24h cooldown — see [02_storage/SR06_dependency_failure.md](../03_planning/LLM_MMO_RPG/02_storage/SR06_dependency_failure.md) §12AI.6)
 - `admin/circuit-breaker-reset` (S5 Tier 2 Griefing — force-closes a circuit breaker bypassing cooldown; can re-expose users to upstream failure; reason + SRE notification required — see [02_storage/SR06_dependency_failure.md](../03_planning/LLM_MMO_RPG/02_storage/SR06_dependency_failure.md) §12AI.4)
 - `admin/failover-budget-override` (S5 Tier 2 Griefing — raises per-user S6 budget cap during LLM failover; bounded multiplier; billing/cost impact — see [02_storage/SR06_dependency_failure.md](../03_planning/LLM_MMO_RPG/02_storage/SR06_dependency_failure.md) §12AI.7)
+- `chaos/start` (S5 Tier 2 Griefing — initiates a registered chaos experiment; reason + user-notification + abort-criteria enforcement; prod requires co-approver SVID — see [02_storage/SR07_chaos_drills.md](../03_planning/LLM_MMO_RPG/02_storage/SR07_chaos_drills.md) §12AJ.8)
+- `chaos/abort` (S5 Tier 3 Informational — stops a running drill; recovery action with no additional risk — see [02_storage/SR07_chaos_drills.md](../03_planning/LLM_MMO_RPG/02_storage/SR07_chaos_drills.md) §12AJ.8)
+- `chaos/kill-switch` (S5 Tier 1 Destructive — aborts ALL active experiments platform-wide + disables harness; dual-actor + 100+ char reason + 24h cooldown before tech-lead re-enable — see [02_storage/SR07_chaos_drills.md](../03_planning/LLM_MMO_RPG/02_storage/SR07_chaos_drills.md) §12AJ.7)
 - `admin/bypass-archive-verification`
 - `admin/manual-partition-drop`
 - Others added as needed
