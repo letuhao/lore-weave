@@ -50,8 +50,9 @@
 | 37 | [SR07_chaos_drills.md](SR07_chaos_drills.md) | §12AJ (new, direct-authored 2026-04-24) | 323 | SR7-D1..D10 · `chaos_drills` · `contracts/chaos/experiments.yaml` · IF-40 · activates IF-39g | LOCKED |
 | 38 | [SR08_capacity_scaling.md](SR08_capacity_scaling.md) | §12AK (new, direct-authored 2026-04-24) | 383 | SR8-D1..D11 · `shard_utilization` · `scaling_events` · `contracts/capacity/` · IF-41 · **invariant I17** (capacity budget discipline, approved 2026-04-24) | LOCKED |
 | 39 | [SR09_alert_tuning.md](SR09_alert_tuning.md) | §12AL (new, direct-authored 2026-04-24) | 362 | SR9-D1..D10 · `alert_outcomes` · `alert_silences` · `contracts/alerts/rules.yaml` · IF-42 · 4-severity × 4-action-class taxonomy | LOCKED |
+| 40 | [SR10_supply_chain.md](SR10_supply_chain.md) | §12AM (new, direct-authored 2026-04-24) | 373 | SR10-D1..D11 · `supply_chain_events` · `contracts/supply_chain/` · IF-43 · **invariant I18** (dep pinning discipline, approved 2026-04-24) | LOCKED |
 
-**Totals:** 40 chunks (36 split-origin + 4 direct-authored) · 11 249 content lines. SR06 + SR07 + SR08 + SR09 are authored new content extending the SR series; they are not covered by `chunk_doc.py verify` against the archived monolith (the monolith predates them).
+**Totals:** 41 chunks (36 split-origin + 5 direct-authored) · 11 622 content lines. SR06 + SR07 + SR08 + SR09 + SR10 are authored new content extending the SR series; they are not covered by `chunk_doc.py verify` against the archived monolith (the monolith predates them).
 
 ---
 
@@ -61,9 +62,9 @@
 - **SA+DE Critical:** C1..C5 (plus C1-OW-1..5 orphan-worlds extension)
 - **Adversarial follow-ups:** H1..H6, M-REV-1..6, P1..P4
 - **Security:** S1..S13 (pre-spec for DF3 lives in S13)
-- **SRE:** SR1..SR9 (SR10..SR12 not yet designed — will extend this subfolder)
+- **SRE:** SR1..SR10 (SR11..SR12 not yet designed — will extend this subfolder)
 - **Schema tables:** all tables defined in §12 sections — see individual files
-- **Go packages:** `contracts/meta/`, `contracts/prompt/`, `contracts/pii/`, `contracts/ws/`, `contracts/service_acl/`, `contracts/entity_status/`, `contracts/resilience/` (SR6), `contracts/lifecycle/` (SR6), `contracts/dependencies/` (SR6), `contracts/chaos/` (SR7), `contracts/capacity/` (SR8), `contracts/alerts/` (SR9)
+- **Go packages:** `contracts/meta/`, `contracts/prompt/`, `contracts/pii/`, `contracts/ws/`, `contracts/service_acl/`, `contracts/entity_status/`, `contracts/resilience/` (SR6), `contracts/lifecycle/` (SR6), `contracts/dependencies/` (SR6), `contracts/chaos/` (SR7), `contracts/capacity/` (SR8), `contracts/alerts/` (SR9), `contracts/supply_chain/` (SR10)
 
 External docs link to these IDs, not to specific file paths.
 

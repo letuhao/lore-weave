@@ -122,6 +122,12 @@ Every service declares its capacity budget in `contracts/capacity/budgets.yaml` 
 - **Enforced by:** CI lint `scripts/capacity-budget-lint.sh` blocks services missing from `budgets.yaml`; class declaration ↔ deployment kind validated (HPA for web/llm-gateway, KEDA for worker, vertical-only for data-plane); `admin/capacity-override` is the only bypass and is S5-audited with 24h auto-expire.
 - **Source:** [02_storage/SR08_capacity_scaling.md](../02_storage/SR08_capacity_scaling.md) §12AK.3 — decision SR8-D2 + SR8-D11 (architect-approved 2026-04-24 via POST-REVIEW per `00_foundation/02_invariants.md` "How invariants get added" process).
 
+### I18. Every dependency declaration includes a cryptographic hash
+Every dependency declaration committed to the repo includes a cryptographic hash. No floating versions. No SemVer ranges without hash pin. All Docker base images referenced by digest (`FROM image@sha256:...`) not tag. Per-language enforcement: Go (`go.sum` SHA-256 native) · Python (`--require-hashes` mode; `uv.lock` / `poetry.lock` / `requirements.txt` with per-dep hashes) · TypeScript (`package-lock.json integrity` field SHA-512; `npm ci` strict lockfile) · Dockerfiles (digest pinning).
+- **Why:** floating versions + mutable tags = silent supply chain attack vector. An upstream maintainer account takeover publishes a compromised version under the same SemVer range; services pulling the range silently ingest it. Hash pinning eliminates this by anchoring to cryptographic content identity.
+- **Enforced by:** CI lint `scripts/dep-pinning-lint.sh` blocks PRs with unhashed declarations + `go mod verify` + `pip install --require-hashes` + `npm ci` + `dockerfile-digest-lint.sh`. Dependabot / Renovate automated PRs must regenerate lockfile + SBOM in same PR per SR10-D2.
+- **Source:** [02_storage/SR10_supply_chain.md](../02_storage/SR10_supply_chain.md) §12AM.3 — decision SR10-D2 + SR10-D11 (architect-approved 2026-04-24 via POST-REVIEW per `00_foundation/02_invariants.md` "How invariants get added" process).
+
 ---
 
 ## How invariants get added

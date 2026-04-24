@@ -327,4 +327,15 @@ generated_by: scripts/chunk_doc.py
 | IF-42h | Alert-to-runbook CI lint trio (sync / dead-ref / coverage-check) | ✅ | V1 | IF-42, IF-36 | [02_storage/SR09_alert_tuning.md §12AL.7](../02_storage/SR09_alert_tuning.md) (SR9-D6; extends SR3-D5) |
 | IF-42i | False-positive / false-negative classifier + auto-downgrade trigger | 📦 | V1+30d | IF-42b, IF-42g | [02_storage/SR09_alert_tuning.md §12AL.4](../02_storage/SR09_alert_tuning.md) (SR9-D3; needs 30 days of data) |
 | IF-42j | `admin/alert-threshold-update` + `admin/pager-rotation-swap` CLI | ✅ | V1 | IF-42, IF-20 | [02_storage/SR09_alert_tuning.md §12AL.12](../02_storage/SR09_alert_tuning.md) (SR9-governance) |
+| IF-43 | Supply chain registry (`contracts/supply_chain/`: dep_allowlist + secret-scan-baseline + cve-policy) | ✅ | V1 | — | [02_storage/SR10_supply_chain.md §12AM.6](../02_storage/SR10_supply_chain.md) (SR10-D5) |
+| IF-43a | SBOM generator (syft; CycloneDX 1.5) | ✅ | V1 | IF-43 | [02_storage/SR10_supply_chain.md §12AM.2](../02_storage/SR10_supply_chain.md) (SR10-D1) |
+| IF-43b | Dep pinning enforcer (`dep-pinning-lint.sh`) | ✅ | V1 | IF-43 | [02_storage/SR10_supply_chain.md §12AM.3](../02_storage/SR10_supply_chain.md) (SR10-D2; enforces I18 if approved) |
+| IF-43c | Container image signing + verification (cosign + K8s admission policy) | ✅ | V1 | IF-43, IF-31 | [02_storage/SR10_supply_chain.md §12AM.4](../02_storage/SR10_supply_chain.md) (SR10-D3) |
+| IF-43d | CVE scanner + severity gate (trivy; critical/high blocks) | ✅ | V1 | IF-43, IF-42 | [02_storage/SR10_supply_chain.md §12AM.5](../02_storage/SR10_supply_chain.md) (SR10-D4) |
+| IF-43e | 3rd-party vetting workflow (checklist + allowlist CI lint + `admin/dep-vet-approve`) | ✅ | V1 | IF-43 | [02_storage/SR10_supply_chain.md §12AM.6](../02_storage/SR10_supply_chain.md) (SR10-D5) |
+| IF-43f | SLSA Level 2 provenance (slsa-github-generator + cosign attest) | ✅ | V1 | IF-43c | [02_storage/SR10_supply_chain.md §12AM.7](../02_storage/SR10_supply_chain.md) (SR10-D6) |
+| IF-43g | 3-scan-point secret scanning (gitleaks pre-commit + CI + monthly history cron) | ✅ | V1 | IF-43 | [02_storage/SR10_supply_chain.md §12AM.8](../02_storage/SR10_supply_chain.md) (SR10-D7; extends I12) |
+| IF-43h | Supply chain runbook library — 6 runbooks | ✅ | V1 | IF-36, IF-43 | [02_storage/SR10_supply_chain.md §12AM.9](../02_storage/SR10_supply_chain.md) (SR10-D8; SR3 27-gate → 39) |
+| IF-43i | Build reproducibility check (V1+30d 10% sample; V2+ blocks merge) | 📦 | V1+30d | IF-43 | [02_storage/SR10_supply_chain.md §12AM.10](../02_storage/SR10_supply_chain.md) (SR10-D9) |
+| IF-43j | `supply_chain_events` audit + `admin/cve-override` + `admin/supply-chain-freeze` CLI | ✅ | V1 | IF-43, IF-20 | [02_storage/SR10_supply_chain.md §12AM.10, §12AM.12](../02_storage/SR10_supply_chain.md) (SR10-D9, SR10-governance) |
 
