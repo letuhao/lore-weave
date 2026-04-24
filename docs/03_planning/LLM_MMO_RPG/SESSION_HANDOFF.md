@@ -81,6 +81,73 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-04-24 (continued) — 06_data_plane kernel contract layer
+
+### Session arc
+
+Design session for a new kernel contract layer sitting above existing `02_storage/` event-sourcing. User raised two gameplay data problems: (1) event-sourcing reads are expensive; (2) gameplay interactions have extreme read/write frequency that cannot round-trip through event log every tick. Gap analysis via Explore agent confirmed:
+
+- Read-path snapshot/projection layer is **fully designed** (00_overview, R02, R07, S09)
+- Session-state memory is **partially designed** (S01_03) — covers NPC relationships, not transient gameplay state
+- **Genuinely missing:** in-memory cache for hot gameplay state, cache invalidation policy, cold-start mitigation, event-ack SLO pattern, tier classification framework
+
+Decision chain user locked through CLARIFY phase:
+
+1. **Option C scope** — new subfolder owns the kernel access contract; `02_storage/` becomes implementation detail beneath it
+2. **Model B architecture** — Control Plane / Data Plane split (rejected single-gateway model on hot-path latency grounds)
+3. **Rust for game layer** — initial Go recommendation revised after user clarified AI (not human) is the coder, which invalidates human-learning-curve arguments and makes compile-time enforcement high-value
+4. **Redis for cache** — already in LoreWeave stack, adequate pub/sub for invalidation
+5. **V3 scale anchor** — 200–500 CCU per reality, 10k total; 50 ms p99 own-client ack, 200 ms broadcast
+6. **Four tiers** (T0 ephemeral / T1 volatile / T2 durable-async / T3 durable-sync), closed set
+
+Phase 1 foundation built (7 files), multi-perspective adversarial review identified 4 blockers + 9 gaps. Blockers resolved in-session by adding 3 new axioms (DP-A10/A11/A12) + a new file `11_access_pattern_rules.md` (DP-R1..R8). DP-A1 rewritten with honest threat model.
+
+### Files landed (`06_data_plane/`)
+
+| File | Status | Owned IDs | Lines |
+|---|---|---|---:|
+| [`_index.md`](06_data_plane/_index.md) | LOCKED | — | 94 |
+| [`00_preamble.md`](06_data_plane/00_preamble.md) | LOCKED | — | 71 |
+| [`01_scope_and_boundary.md`](06_data_plane/01_scope_and_boundary.md) | LOCKED | — | 143 |
+| [`02_invariants.md`](06_data_plane/02_invariants.md) | LOCKED | DP-A1..A12 | 209 |
+| [`03_tier_taxonomy.md`](06_data_plane/03_tier_taxonomy.md) | LOCKED | DP-T0..T3 | 251 |
+| [`08_scale_and_slos.md`](06_data_plane/08_scale_and_slos.md) | LOCKED | DP-S1..S8 | 147 |
+| [`11_access_pattern_rules.md`](06_data_plane/11_access_pattern_rules.md) | LOCKED | DP-R1..R8 | 192 |
+| [`99_open_questions.md`](06_data_plane/99_open_questions.md) | OPEN | Q1..Q14 | 186 |
+
+**Total:** 1293 lines across 8 files, all under the 500-line soft cap.
+
+**Stable IDs landed:** 32 total — 12 axioms (DP-A1..A12), 4 tiers (DP-T0..T3), 8 SLO items (DP-S1..S8), 8 rulebook rules (DP-R1..R8) + 14 open questions (Q1..Q14).
+
+### Blocker resolution (from multi-perspective review)
+
+| Blocker | Perspective | Resolution |
+|---|---|---|
+| **A1** SDK god-interface risk | Architect | DP-A10: Federated feature repos. DP owns primitives + Rulebook; feature query logic lives in feature-owned repo modules. |
+| **B1** T1 single-writer undefined cross-node | Lead / Tech | DP-A11: Session node = single writer; sticky routing required; NPC binding in control plane. |
+| **C1** Reality-ID enforcement missing | QA | DP-A12: `RealityId` newtype with module-private constructor + `SessionContext`-gated access. Implements DP-R1. |
+| **F1** "No bypass" overclaim | Security | DP-A1 rewritten with honest threat model: IN scope (accidental bypass — compile/lint/review), OUT of scope (RCE — infra + security defense-in-depth), Future (sidecar proxy, roadmap). |
+
+### Gaps flagged (review-surfaced, deferred to Q-items or Phase 2/3)
+
+B2 (T3 ack realism at V3 burst), B3 (event bus / event log naming collision), C2 (T1/T2 hybrid — combat state tier), C3 (LLM-output validation framework), D1 (T1 Redis snapshot torn-write), D2 (embedding storage tier), E1 (SDK version skew), F2 (T1 broadcast visibility filter), G1 (worked feature example missing). These do not block Phase 2; flagged in `99_open_questions.md` / future Phase 2-3 design docs.
+
+### Next-session entry points (Phase 2 for 06_data_plane)
+
+1. **`04_kernel_api_contract.md`** — concrete Rust SDK primitive API (DP-K*): `RealityId` newtype, `SessionContext`, `dp::cache_key!` macro, `DpError` enum, per-tier write/read methods. Resolves Q1 + Q14.
+2. **`05_control_plane_spec.md`** — service responsibilities (DP-C*): tier registry, schema coordination, invalidation broadcast protocol, cold-start handshake.
+3. **`06_cache_coherency.md`** — invalidation pattern (DP-X*): per-tier coherency model, invalidation storm mitigation (Q4), cross-node propagation.
+4. **Phase 3** — `07_failure_and_recovery.md` (DP-F*): cold start (Q6), node failure, split-brain, backpressure semantics (Q12).
+
+### Handoff notes for next agent on this subfolder
+
+- `Active:` header in [`06_data_plane/_index.md`](06_data_plane/_index.md) cleared at session end. Next agent free to claim.
+- Do NOT renumber DP-A1..A12, DP-T0..T3, DP-R1..R8, DP-S1..S8. Retired IDs use `_withdrawn` suffix.
+- Phase 2 work is greenfield in this subfolder. Should not touch `02_storage/` unless a gap is found; gaps become new R* items there.
+- Respect [AGENT_GUIDE.md](AGENT_GUIDE.md) rules: one agent per subfolder, announce in SESSION_HANDOFF before editing, 500-line soft cap.
+
+---
+
 ## Session 2026-04-24 — progress summary
 
 ### Session arc (Security + SRE reviews)
@@ -293,6 +360,7 @@ Reopen conditions for the OPEN/PARTIAL track specifically:
 | 2026-04-24 | C2 DB subtree split runbook locked — concrete 15-step playbook for V1/V2 freeze-copy-cutover + V3+ logical replication. 5 decisions (C2-D1..D5) + new `migrating` lifecycle state + `reality_migration_audit` table. §12N added. DF11 scope expands to "Fleet + Lifecycle + Migration Management". |
 | 2026-04-24 | C3 Meta registry HA locked — 7-layer strategy (Patroni streaming replication + 1 sync + 1 async replica + Redis cache + degraded mode + PITR). 6 decisions (C3-D1..D6). V1/V2: single-region HA only; V3+ adds cross-region DR, 2nd sync replica, per-shard HA for reality DBs, and audit DB evaluation. §12O added. Meta access is shared Go library (`contracts/meta/`), not standalone service. |
 | 2026-04-24 | **C4 + C5 locked in batch — all 5 SA+DE Critical concerns resolved.** C4: L3 override reverse index in meta (§12P, 4 decisions) makes §9.8.1 preview + §9.8.3 force-propagate queries O(1) at V3 scale. C5: lifecycle transition CAS discipline (§12Q, 6 decisions) — mandatory `AttemptStateTransition()` helper in `contracts/meta/`, `lifecycle_transition_audit` table, lint rule enforcement, governance policy addendum. Storage + multiverse design survives full SA+DE adversarial review. |
+| 2026-04-24 | **06_data_plane Phase 1 foundation locked — new kernel contract layer above 02_storage.** Option C scope: DP owns kernel access contract; 02_storage becomes implementation detail. 12 axioms (DP-A1..A12), 4-tier taxonomy (DP-T0..T3), 8-rule Rulebook (DP-R1..R8), 8 SLO anchors (DP-S1..S8), 14 open questions. 4 blockers resolved in-session: DP-A10 federated feature repos + DP-A11 session-node T1 writer + DP-A12 `RealityId` newtype + DP-A1 honest threat model. Rust for game layer locked. Phase 2 entry points: `04_kernel_api_contract`, `05_control_plane_spec`, `06_cache_coherency`. Rationale captured in [06_data_plane/](06_data_plane/). |
 | 2026-04-24 | **H/M/P tier concerns batch-locked — all 21 SA+DE adversarial concerns resolved.** §12R added as consolidated follow-up. **H3 reversed from original batch** per user directive: doppelganger pattern REJECTED, NPC single-session becomes PERMANENT (not V2+ deferred), session caps + queue UX first-class (§12R.1). H5 adds new `seeding` lifecycle state + bootstrap worker + locale translation (§12R.2). H4 adds upcaster requirement for deprecated event types (§12C.5 amended). Plus observability metrics for H1/H2/H6/M-REV-6, HNSW pre-warm on thaw (§12R.5), projection rebuild determinism rule (§12R.7), admin command discoverability (§12R.9), and various polish. 25 decisions locked (H1-H6-D1/H3-NEW-D1..D6, M-REV-1..6-D1, P1-P4-D1). Storage + multiverse design **fully locked** pending V1 prototype data. |
 | 2026-04-24 | **Security Review S1+S2+S3 locked — §12H per-pair memory model SUPERSEDED by session-scoped capability-based design.** §12S added (7 subsections). S1: reality creation rate limit (5/hour + 50 active per user). **S2 architectural shift**: events carry session_id + visibility (5 values) + whisper_target; session_participants capability table; NPC memory split into `npc_session_memory` (knowledge, per-session, replaces per-pair) + `npc_pc_relationship` (derived stance, per-pair). Cross-PC leak becomes **structurally impossible** via capability-based prompt assembly contract. **S3 full tier privacy** (Option A): cascade_policy + privacy_level (normal/sensitive/confidential) with per-tier retention (30d/7d), force-propagate block, cascade auto-constrain, tiered whisper UX + fork inheritance warning. 14 decisions locked (S1-D1, S2-NEW-D1..D5, S3-NEW-D1..D8). §4.2 events schema + §5.2 projections + §12H.2 updated accordingly. Per-event encryption + admin-tier gating deferred V2+. Remaining Security (S4-S13) + SRE review queued. |
 | 2026-04-24 | **Security Review S4 locked — Meta Integrity & Access Control (§12T, 12 subsections).** Closes meta-write audit gap left by C5 (which covered only lifecycle status transitions). **Canonical `MetaWrite()` helper** in `contracts/meta/` generalizes §12Q — ALL meta-table writes go through it. §12Q `AttemptStateTransition()` refactored as specialization (adds transition-graph + mutual-exclusion on top). Append-only audit via Postgres REVOKE UPDATE/DELETE on audit tables + dedicated `audit_retention_role`. Schema CHECK constraints encode business invariants (db_host pattern, status enum, locale, session caps). Per-service Postgres roles (8 roles: world-service, roleplay-service, publisher, meta-worker, event-handler, migration-orchestrator, admin-cli, audit_retention_cron) — credential blast radius bounded. `meta_write_audit` table (retention 5y) + `meta_read_audit` for enumerated sensitive paths (retention 2y). Anomaly monitoring: routing-change PAGE alerts, audit-divergence, bulk-read spikes, out-of-scope writes. 10 decisions locked (S4-D1..D8 + C5→S4 + S4-governance). V2+: WORM cold archive + hash-chain tamper detection + ML anomaly. ADMIN_ACTION_POLICY amendment for MetaWrite governance. Remaining Security (S5-S13) + SRE review queued. |
