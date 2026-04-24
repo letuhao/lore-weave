@@ -46,8 +46,9 @@
 | 33 | [SR04_postmortem_process.md](SR04_postmortem_process.md) | §12AG | 339 | SR4-D1..D10 · root-cause 12-enum | LOCKED |
 | 34 | [SR05_deploy_safety.md](SR05_deploy_safety.md) | §12AH | 348 | SR5-D1..D10 · `deploy_audit` · `feature_flags` | LOCKED |
 | 35 | [99_known_risks_and_close.md](99_known_risks_and_close.md) | §13–§16 | 129 | Known risks · TBC decisions · references | LOCKED |
+| 36 | [SR06_dependency_failure.md](SR06_dependency_failure.md) | §12AI (new, direct-authored 2026-04-24) | 338 | SR6-D1..D10 · `dependency_events` · `contracts/resilience/` · `contracts/lifecycle/` · invariant I16 | LOCKED |
 
-**Totals:** 36 chunks · 476 561 bytes · 9 843 content lines (source had 10 010 inc. trailing blank lines absorbed in chunk seams).
+**Totals:** 37 chunks (36 split-origin + 1 direct-authored) · 10 181 content lines. SR06 is authored new content extending the SR series; it is not covered by `chunk_doc.py verify` against the archived monolith (the monolith predates it).
 
 ---
 
@@ -57,9 +58,9 @@
 - **SA+DE Critical:** C1..C5 (plus C1-OW-1..5 orphan-worlds extension)
 - **Adversarial follow-ups:** H1..H6, M-REV-1..6, P1..P4
 - **Security:** S1..S13 (pre-spec for DF3 lives in S13)
-- **SRE:** SR1..SR5 (SR6..SR12 not yet designed — will extend this subfolder)
+- **SRE:** SR1..SR6 (SR7..SR12 not yet designed — will extend this subfolder)
 - **Schema tables:** all tables defined in §12 sections — see individual files
-- **Go packages:** `contracts/meta/`, `contracts/prompt/`, `contracts/pii/`, `contracts/ws/`, `contracts/service_acl/`, `contracts/entity_status/`
+- **Go packages:** `contracts/meta/`, `contracts/prompt/`, `contracts/pii/`, `contracts/ws/`, `contracts/service_acl/`, `contracts/entity_status/`, `contracts/resilience/` (SR6), `contracts/lifecycle/` (SR6), `contracts/dependencies/` (SR6)
 
 External docs link to these IDs, not to specific file paths.
 

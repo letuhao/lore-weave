@@ -283,4 +283,15 @@ generated_by: scripts/chunk_doc.py
 | IF-24 | Admin UI guardrails (no raw DROP/UPDATE buttons, no free-form SQL in prod) | ✅ | V1 | — | [02 §12L.5](02_STORAGE_ARCHITECTURE.md) (R13-L5) |
 | IF-27 | Admin rollback via compensating events | ✅ | V2 | IF-21 | [02 §12L.6](02_STORAGE_ARCHITECTURE.md) (R13-L6) |
 | IF-28 | Admin Action Policy governance doc | ✅ | INFRA | — | [docs/02_governance/ADMIN_ACTION_POLICY.md](../../02_governance/ADMIN_ACTION_POLICY.md) (R13-governance) |
+| IF-39 | Dependency registry (`contracts/dependencies/matrix.yaml`) | ✅ | V1 | — | [02_storage/SR06_dependency_failure.md §12AI.2](../02_storage/SR06_dependency_failure.md) (SR6-D1) |
+| IF-39a | Circuit breaker library (`contracts/resilience/`; 3-state) | ✅ | V1 | IF-39 | [02_storage/SR06_dependency_failure.md §12AI.4](../02_storage/SR06_dependency_failure.md) (SR6-D3) |
+| IF-39b | Dependency health dashboard (DF11 panel) | ✅ | V1 | IF-39, IF-34 | [02_storage/SR06_dependency_failure.md §12AI.8](../02_storage/SR06_dependency_failure.md) (SR6-D7) |
+| IF-39c | Graceful shutdown / drain handler (`contracts/lifecycle/Drain`) | ✅ | V1 | — | [02_storage/SR06_dependency_failure.md §12AI.11](../02_storage/SR06_dependency_failure.md) (SR6-D10) |
+| IF-39d | Multi-provider LLM failover (extends `provider_registry`) | ✅ | V1 | IF-14, IF-15 | [02_storage/SR06_dependency_failure.md §12AI.7](../02_storage/SR06_dependency_failure.md) (SR6-D6) |
+| IF-39e | Degraded-mode framework (`contracts/lifecycle/modes.go`; 5-mode) | ✅ | V1 | IF-39 | [02_storage/SR06_dependency_failure.md §12AI.6](../02_storage/SR06_dependency_failure.md) (SR6-D5) |
+| IF-39f | `dependency_events` audit table (1y retention) | ✅ | V1 | IF-39 | [02_storage/SR06_dependency_failure.md §12AI.9](../02_storage/SR06_dependency_failure.md) (SR6-D8) |
+| IF-39g | Chaos drill hooks (placeholder; SR7 activates) | 📦 | V1+30d | IF-39a, IF-39f | [02_storage/SR06_dependency_failure.md §12AI.12](../02_storage/SR06_dependency_failure.md) (SR6 → SR7 bridge) |
+| IF-39h | Dependency runbook template (SR3 integration) | ✅ | V1 | IF-36, IF-39 | [02_storage/SR06_dependency_failure.md §12AI.2](../02_storage/SR06_dependency_failure.md) (SR6-D1; matrix `runbook:` field) |
+| IF-39i | Bulkhead resource pool manager | ✅ | V1 | IF-39, IF-39a | [02_storage/SR06_dependency_failure.md §12AI.10](../02_storage/SR06_dependency_failure.md) (SR6-D9) |
+| IF-39j | Timeout discipline CI lint (`timeout-discipline-lint.sh`) | ✅ | V1 | IF-39 | [02_storage/SR06_dependency_failure.md §12AI.3](../02_storage/SR06_dependency_failure.md) (SR6-D2; enforces invariant I16) |
 

@@ -102,6 +102,9 @@ Truly dangerous commands (bypass safety gates, manual DROP, bulk purges) MUST re
 - `admin/deploy-override-freeze` (S5 Tier 1 Destructive — dual-actor; bypasses SLO-burn / incident / security freeze for emergency deploy)
 - `admin/deploy-rollback` (S5 Tier 2 Griefing — reverts code/config; user-visible behavior change)
 - `flag/enable` / `flag/disable` / `flag/set-scope` (S5 Tier 2 Griefing — runtime feature flag toggles; user-visible behavior change — see [02_storage/SR05_deploy_safety.md](../03_planning/LLM_MMO_RPG/02_storage/SR05_deploy_safety.md) §12AH.5)
+- `admin/degraded-mode-force` (S5 Tier 1 Destructive — forces platform or service into a degraded mode bypassing automatic circuit-breaker-driven activation; user-visible; dual-actor + 100+ char reason + 24h cooldown — see [02_storage/SR06_dependency_failure.md](../03_planning/LLM_MMO_RPG/02_storage/SR06_dependency_failure.md) §12AI.6)
+- `admin/circuit-breaker-reset` (S5 Tier 2 Griefing — force-closes a circuit breaker bypassing cooldown; can re-expose users to upstream failure; reason + SRE notification required — see [02_storage/SR06_dependency_failure.md](../03_planning/LLM_MMO_RPG/02_storage/SR06_dependency_failure.md) §12AI.4)
+- `admin/failover-budget-override` (S5 Tier 2 Griefing — raises per-user S6 budget cap during LLM failover; bounded multiplier; billing/cost impact — see [02_storage/SR06_dependency_failure.md](../03_planning/LLM_MMO_RPG/02_storage/SR06_dependency_failure.md) §12AI.7)
 - `admin/bypass-archive-verification`
 - `admin/manual-partition-drop`
 - Others added as needed

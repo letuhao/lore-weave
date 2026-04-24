@@ -108,6 +108,16 @@ New fields are nullable and additive. Breaking changes require a new `event_type
 
 ---
 
+## Resilience invariants (SR6)
+
+### I16. Every outbound call declares a timeout
+No `context.Background()` for network calls. Sum of timeouts along a call chain must fit the user-visible SLO. Timeouts declared per dependency class in `contracts/dependencies/matrix.yaml`; canonical wrapper `contracts/resilience/WithTimeout(ctx, dep, fn)` reads the default.
+- **Why:** unbounded calls cascade into pool exhaustion → cascading failure. Without a call-chain budget, SLO targets (SR1) are unverifiable.
+- **Enforced by:** CI lint `scripts/timeout-discipline-lint.sh` (flags `http.NewRequest` / `sql.Query` / `redis.Cmd` / `context.Background()` in call paths to registered deps) + dependency-registry-lint blocking new clients outside matrix.
+- **Source:** [02_storage/SR06_dependency_failure.md](../02_storage/SR06_dependency_failure.md) §12AI.3 — decision SR6-D2.
+
+---
+
 ## How invariants get added
 
 New invariants require:

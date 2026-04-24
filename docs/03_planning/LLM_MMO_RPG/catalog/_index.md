@@ -11,7 +11,7 @@
 | # | File | Category / Section | Lines | Owned stable IDs | Feature count |
 |---:|---|---|---:|---|---:|
 | 00 | [00_preamble.md](00_preamble.md) | H1 + "How to use" + Category map | 54 | — | — |
-| 01 | [cat_01_IF_infrastructure.md](cat_01_IF_infrastructure.md) | IF — Infrastructure | 278 | IF-1..IF-38 (+ IF-*-sub) | 122 |
+| 01 | [cat_01_IF_infrastructure.md](cat_01_IF_infrastructure.md) | IF — Infrastructure | 289 | IF-1..IF-39 (+ IF-*-sub; IF-39..IF-39j added 2026-04-24 per SR6) | 133 |
 | 02 | [cat_02_WA_world_authoring.md](cat_02_WA_world_authoring.md) | WA — World Authoring | 12 | WA-1..WA-4 + WA4-D1..D5 | ~10 |
 | 03 | [cat_03_PO_player_onboarding.md](cat_03_PO_player_onboarding.md) | PO — Player Onboarding | 21 | PO-1..PO-N | ~15 |
 | 04 | [cat_04_PL_play_loop.md](cat_04_PL_play_loop.md) | PL — Play Loop (core runtime) | 39 | PL-1..PL-N | ~30 |
@@ -25,7 +25,7 @@
 | 12 | [cat_12_DL_daily_life.md](cat_12_DL_daily_life.md) | DL — Daily Life (DF1 umbrella) | 18 | DL-1..DL-N | ~10 |
 | 99 | [99_scope_and_refs.md](99_scope_and_refs.md) | Status summary · V1/V2/V3/V4 scopes · Relationships · References | 97 | — | — |
 
-**Totals:** 14 chunks · 77 227 bytes · 669 lines · 397 features across 12 categories (291 Designed · 38 Partial · 63 Deferred · 3 Open · 2 out-of-scope).
+**Totals:** 14 chunks · 669 lines from original split + IF-39..IF-39j appended 2026-04-24 (SR6 resolution) · **408 features** across 12 categories (**301 Designed** · 38 Partial · **64 Deferred** · 3 Open · 2 out-of-scope).
 
 ---
 
