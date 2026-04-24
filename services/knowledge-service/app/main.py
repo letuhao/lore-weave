@@ -217,6 +217,52 @@ async def lifespan(app: FastAPI):
                 exc_info=True,
             )
 
+    # C14a — reconcile-evidence-count + quarantine-cleanup schedulers.
+    # Both wrap existing per-user/global Neo4j functions (K11.9 + K15.10)
+    # in periodic sweeps. Gated on neo4j_uri same as summary regen
+    # loops (both need working Cypher sessions). Advisory-lock keys
+    # 20_310_004 (reconcile) + 20_310_005 (quarantine) distinct from
+    # 001-003 so all schedulers can run concurrently without blocking.
+    reconcile_sweep_task = None
+    quarantine_sweep_task = None
+    if settings.neo4j_uri:
+        try:
+            from app.db.neo4j import neo4j_session
+            from app.jobs.reconcile_evidence_count_scheduler import (
+                run_reconcile_loop,
+            )
+            from app.jobs.quarantine_cleanup_scheduler import (
+                run_quarantine_loop,
+            )
+
+            def _scheduler_session_factory():
+                return neo4j_session()
+
+            reconcile_sweep_task = asyncio.create_task(
+                run_reconcile_loop(
+                    get_knowledge_pool(),
+                    _scheduler_session_factory,
+                )
+            )
+            logger.info(
+                "C14a: reconcile-evidence-count loop started as background task"
+            )
+
+            quarantine_sweep_task = asyncio.create_task(
+                run_quarantine_loop(
+                    get_knowledge_pool(),
+                    _scheduler_session_factory,
+                )
+            )
+            logger.info(
+                "C14a: quarantine-cleanup loop started as background task"
+            )
+        except Exception:
+            logger.warning(
+                "C14a: reconcile/quarantine loops failed to start (non-fatal)",
+                exc_info=True,
+            )
+
     # C3 (D-K19b.8-01) — job_logs retention cron. Not gated on
     # neo4j_uri because retention only needs the knowledge-service
     # Postgres pool. 20-min startup offset from the K20.3 loops'
@@ -319,6 +365,30 @@ async def lifespan(app: FastAPI):
             except Exception:
                 logger.warning(
                     "C3: error stopping job_logs retention loop",
+                    exc_info=True,
+                )
+
+        # C14a: stop reconcile + quarantine sweepers.
+        if reconcile_sweep_task is not None:
+            reconcile_sweep_task.cancel()
+            try:
+                await reconcile_sweep_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.warning(
+                    "C14a: error stopping reconcile sweep loop",
+                    exc_info=True,
+                )
+        if quarantine_sweep_task is not None:
+            quarantine_sweep_task.cancel()
+            try:
+                await quarantine_sweep_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.warning(
+                    "C14a: error stopping quarantine sweep loop",
                     exc_info=True,
                 )
 
