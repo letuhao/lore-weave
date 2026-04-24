@@ -120,6 +120,9 @@ Truly dangerous commands (bypass safety gates, manual DROP, bulk purges) MUST re
 - `admin/session-unfreeze` (S5 Tier 2 Griefing — force-clear a session stuck in an impossible state; may lose in-flight turn; reason required; audit-logged — see [02_storage/SR11_turn_ux_reliability.md](../03_planning/LLM_MMO_RPG/02_storage/SR11_turn_ux_reliability.md) §12AN.12)
 - `admin/turn-abandon` (S5 Tier 3 Informational — marks a specific turn as abandoned with reason; audit-only recovery tool — see [02_storage/SR11_turn_ux_reliability.md](../03_planning/LLM_MMO_RPG/02_storage/SR11_turn_ux_reliability.md) §12AN.9)
 - `admin/presence-reset` (S5 Tier 3 Informational — resets all user presence states in a session for recovery after WS infrastructure issues — see [02_storage/SR11_turn_ux_reliability.md](../03_planning/LLM_MMO_RPG/02_storage/SR11_turn_ux_reliability.md) §12AN.4)
+- `admin/metric-label-audit` (S5 Tier 3 Informational — runs cardinality audit report against `contracts/observability/inventory.yaml`; read-only analysis — see [02_storage/SR12_observability_cost.md](../03_planning/LLM_MMO_RPG/02_storage/SR12_observability_cost.md) §12AO.12)
+- `admin/retention-override` (S5 Tier 2 Griefing — temporary override of retention tier for specific audit table; reason + max 30-day auto-expire required; writes audit record via MetaWrite — see [02_storage/SR12_observability_cost.md](../03_planning/LLM_MMO_RPG/02_storage/SR12_observability_cost.md) §12AO.4)
+- `admin/log-sampling-update` (S5 Tier 2 Griefing — changes runtime log sampling rate per service; reason + 7-day auto-expire required — see [02_storage/SR12_observability_cost.md](../03_planning/LLM_MMO_RPG/02_storage/SR12_observability_cost.md) §12AO.5)
 - `admin/bypass-archive-verification`
 - `admin/manual-partition-drop`
 - Others added as needed

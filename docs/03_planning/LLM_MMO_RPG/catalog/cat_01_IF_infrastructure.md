@@ -349,4 +349,15 @@ generated_by: scripts/chunk_doc.py
 | IF-44h | Registered error code library (`contracts/errors/user_errors.yaml`) with i18n + CI lint | ✅ | V1 | IF-44, IF-16 | [02_storage/SR11_turn_ux_reliability.md §12AN.10](../02_storage/SR11_turn_ux_reliability.md) (SR11-D9) |
 | IF-44i | V1 12-scenario launch gate (`v1-turn-ux-check.sh`) | ✅ | V1 | IF-44, IF-40b | [02_storage/SR11_turn_ux_reliability.md §12AN.11](../02_storage/SR11_turn_ux_reliability.md) (SR11-D10) |
 | IF-44j | `admin/session-unfreeze` + `admin/turn-abandon` + `admin/presence-reset` CLI | ✅ | V1 | IF-44, IF-20 | [02_storage/SR11_turn_ux_reliability.md §12AN.12](../02_storage/SR11_turn_ux_reliability.md) (SR11-governance) |
+| IF-45 | Observability inventory registry (`contracts/observability/inventory.yaml`) | ✅ | V1 | — | [02_storage/SR12_observability_cost.md §12AO.2](../02_storage/SR12_observability_cost.md) (SR12-D1) |
+| IF-45a | `observability-inventory-lint.sh` CI lint (metric + audit-table declaration enforcement) | ✅ | V1 | IF-45 | [02_storage/SR12_observability_cost.md §12AO.2](../02_storage/SR12_observability_cost.md) (SR12-D1; enforces I19 if approved) |
+| IF-45b | Per-service cardinality + log + audit budgets (`budgets.yaml`) | ✅ | V1 | IF-45, IF-41 | [02_storage/SR12_observability_cost.md §12AO.3](../02_storage/SR12_observability_cost.md) (SR12-D2) |
+| IF-45c | `observability_budget_breaches` audit table (1y retention) | ✅ | V1 | IF-45 | [02_storage/SR12_observability_cost.md §12AO.3](../02_storage/SR12_observability_cost.md) (SR12-D2) |
+| IF-45d | Retention tier audit cron + `user_queue_metrics` 1y formalization | ✅ | V1 | IF-45 | [02_storage/SR12_observability_cost.md §12AO.4](../02_storage/SR12_observability_cost.md) (SR12-D3; S8-D3 Operational tier extension) |
+| IF-45e | Log sampling configuration + per-service overrides + `admin/log-sampling-update` | ✅ | V1 | IF-45, IF-20 | [02_storage/SR12_observability_cost.md §12AO.5](../02_storage/SR12_observability_cost.md) (SR12-D4) |
+| IF-45f | Audit rollup crons (alert_outcomes weekly agg + prompt_audit cold archive; others V1+30d) | 🟡 | V1 + V1+30d | IF-45 | [02_storage/SR12_observability_cost.md §12AO.6](../02_storage/SR12_observability_cost.md) (SR12-D5) |
+| IF-45g | Meta-observability metrics + DF11 panel + 4 alerts | ✅ | V1 | IF-45, IF-34 | [02_storage/SR12_observability_cost.md §12AO.7](../02_storage/SR12_observability_cost.md) (SR12-D6) |
+| IF-45h | Cardinality admission control in `pkg/metrics/` (V1 warn-and-drop → V1+30d hard-reject → V2+ pre-commit) | ✅ | V1 | IF-45 | [02_storage/SR12_observability_cost.md §12AO.8](../02_storage/SR12_observability_cost.md) (SR12-D7) |
+| IF-45i | Weekly rebaseline cadence template + V1 solo-dev pattern | ✅ | V1 | IF-45 | [02_storage/SR12_observability_cost.md §12AO.10](../02_storage/SR12_observability_cost.md) (SR12-D9) |
+| IF-45j | `admin/metric-label-audit` + `admin/retention-override` CLI | ✅ | V1 | IF-45, IF-20 | [02_storage/SR12_observability_cost.md §12AO.12](../02_storage/SR12_observability_cost.md) (SR12-governance) |
 

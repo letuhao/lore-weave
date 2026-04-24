@@ -128,6 +128,12 @@ Every dependency declaration committed to the repo includes a cryptographic hash
 - **Enforced by:** CI lint `scripts/dep-pinning-lint.sh` blocks PRs with unhashed declarations + `go mod verify` + `pip install --require-hashes` + `npm ci` + `dockerfile-digest-lint.sh`. Dependabot / Renovate automated PRs must regenerate lockfile + SBOM in same PR per SR10-D2.
 - **Source:** [02_storage/SR10_supply_chain.md](../02_storage/SR10_supply_chain.md) §12AM.3 — decision SR10-D2 + SR10-D11 (architect-approved 2026-04-24 via POST-REVIEW per `00_foundation/02_invariants.md` "How invariants get added" process).
 
+### I19. Every metric + audit table declared in observability inventory
+Every `lw_*` metric emitted from code and every audit table (`*_audit`, `*_events`, and similar high-volume or long-retention tables in the meta DB) is declared in `contracts/observability/inventory.yaml` with owner_service + labels (with max_cardinality per label) + cardinality_estimate + retention tier + source SR. Missing declarations block PR merge.
+- **Why:** without an inventory, label-explosion bugs and audit-growth drift leak into production and compound. Cardinality admission control (SR12-D7) needs this registry as its source-of-truth — without it, the admission library has nothing to validate against. Retention tier reconciliation (S8-D3) needs this registry to audit against — without it, retention drift is undetectable.
+- **Enforced by:** CI lint `scripts/observability-inventory-lint.sh` scans every `lw_*` metric declaration in Go/TS/Python source + every `CREATE TABLE` migration with `audit`/`events` suffix; missing inventory entry = lint fail. Label mismatches between declaration + code = lint fail. Runtime: metric library (`pkg/metrics/`) looks up declarations at emission time and rejects unauthorized labels (V1 warn-and-drop; V1+30d hard-reject).
+- **Source:** [02_storage/SR12_observability_cost.md](../02_storage/SR12_observability_cost.md) §12AO.2 — decision SR12-D1 + SR12-D11 (architect-approved 2026-04-24 via POST-REVIEW per `00_foundation/02_invariants.md` "How invariants get added" process).
+
 ---
 
 ## How invariants get added
