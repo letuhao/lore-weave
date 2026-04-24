@@ -316,4 +316,15 @@ generated_by: scripts/chunk_doc.py
 | IF-41h | Load-test capacity gate (`capacity-gate-check.sh`) | 📦 | V1+30d | IF-41, G2-D4 | [02_storage/SR08_capacity_scaling.md §12AK.9](../02_storage/SR08_capacity_scaling.md) (SR8-D8; V1+30d automation) |
 | IF-41i | Pre-warmed replica pool manager | 📦 | V1+30d | IF-41e | [02_storage/SR08_capacity_scaling.md §12AK.7](../02_storage/SR08_capacity_scaling.md) (SR8-D6; V1+30d) |
 | IF-41j | `admin/capacity-override` + `admin/scaling-policy-update` + `admin/drain-shard` | ✅ | V1 | IF-41, IF-20 | [02_storage/SR08_capacity_scaling.md §12AK.10, §12AK.6](../02_storage/SR08_capacity_scaling.md) (SR8-D9, SR8-D5) |
+| IF-42 | Alert rule registry (`contracts/alerts/rules.yaml`) | ✅ | V1 | — | [02_storage/SR09_alert_tuning.md §12AL.3](../02_storage/SR09_alert_tuning.md) (SR9-D2) |
+| IF-42a | `alert-rule-lint.sh` CI lint (fields / dead-ref / severity-match / replay-validation) | ✅ | V1 | IF-42 | [02_storage/SR09_alert_tuning.md §12AL.3](../02_storage/SR09_alert_tuning.md) (SR9-D2) |
+| IF-42b | `alert_outcomes` audit (90d hot + 2y cold aggregate) | ✅ | V1 | IF-42 | [02_storage/SR09_alert_tuning.md §12AL.5](../02_storage/SR09_alert_tuning.md) (SR9-D4) |
+| IF-42c | `alert_silences` table + `admin/alert-silence` CLI | ✅ | V1 | IF-42, IF-20 | [02_storage/SR09_alert_tuning.md §12AL.6](../02_storage/SR09_alert_tuning.md) (SR9-D5) |
+| IF-42d | Pager-load metrics + rotation-rebalance dashboard (DF11) | ✅ | V1 | IF-42b, IF-34 | [02_storage/SR09_alert_tuning.md §12AL.8](../02_storage/SR09_alert_tuning.md) (SR9-D7) |
+| IF-42e | Alert storm detection + batched digest delivery | ✅ | V1 | IF-42, IF-32 | [02_storage/SR09_alert_tuning.md §12AL.10](../02_storage/SR09_alert_tuning.md) (SR9-D9) |
+| IF-42f | Weekly alert-review template + generator script | ✅ | V1 | IF-42b | [02_storage/SR09_alert_tuning.md §12AL.9](../02_storage/SR09_alert_tuning.md) (SR9-D8) |
+| IF-42g | Threshold tuning workflow (4-stage promotion + auto-downgrade/escalate) | ✅ | V1 | IF-42b | [02_storage/SR09_alert_tuning.md §12AL.4](../02_storage/SR09_alert_tuning.md) (SR9-D3) |
+| IF-42h | Alert-to-runbook CI lint trio (sync / dead-ref / coverage-check) | ✅ | V1 | IF-42, IF-36 | [02_storage/SR09_alert_tuning.md §12AL.7](../02_storage/SR09_alert_tuning.md) (SR9-D6; extends SR3-D5) |
+| IF-42i | False-positive / false-negative classifier + auto-downgrade trigger | 📦 | V1+30d | IF-42b, IF-42g | [02_storage/SR09_alert_tuning.md §12AL.4](../02_storage/SR09_alert_tuning.md) (SR9-D3; needs 30 days of data) |
+| IF-42j | `admin/alert-threshold-update` + `admin/pager-rotation-swap` CLI | ✅ | V1 | IF-42, IF-20 | [02_storage/SR09_alert_tuning.md §12AL.12](../02_storage/SR09_alert_tuning.md) (SR9-governance) |
 
