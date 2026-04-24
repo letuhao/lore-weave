@@ -162,4 +162,73 @@ describe('useTimeline', () => {
     // Distinct userIds → distinct cache keys → two BE calls.
     expect(listTimelineMock).toHaveBeenCalledTimes(2);
   });
+
+  // C7 (D-K19e-β-02) — stale-offset self-heal. When BE returns 0 events
+  // for a non-zero offset but total > 0 (another client's delete shrank
+  // the dataset past our page), fire the optional onStaleOffset callback
+  // so the parent can reset offset to 0 without manual button click.
+  it('fires onStaleOffset when server returns empty for non-zero offset but total > 0', async () => {
+    listTimelineMock.mockResolvedValue({ events: [], total: 42 });
+    const onStaleOffset = vi.fn();
+    renderHook(() => useTimeline({ offset: 100 }, { onStaleOffset }), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => {
+      expect(onStaleOffset).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('does NOT fire onStaleOffset while isLoading is true (first fetch)', async () => {
+    // Never resolve — isLoading stays true.
+    listTimelineMock.mockReturnValue(new Promise(() => {}));
+    const onStaleOffset = vi.fn();
+    renderHook(() => useTimeline({ offset: 100 }, { onStaleOffset }), {
+      wrapper: wrapper(),
+    });
+    // Give react-query a tick.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(onStaleOffset).not.toHaveBeenCalled();
+  });
+
+  it('does NOT fire onStaleOffset when offset is already 0 (empty dataset, not stale page)', async () => {
+    listTimelineMock.mockResolvedValue({ events: [], total: 0 });
+    const onStaleOffset = vi.fn();
+    const { result } = renderHook(
+      () => useTimeline({ offset: 0 }, { onStaleOffset }),
+      { wrapper: wrapper() },
+    );
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+    expect(onStaleOffset).not.toHaveBeenCalled();
+  });
+
+  it('does NOT fire onStaleOffset when error is present', async () => {
+    listTimelineMock.mockRejectedValue(new Error('boom'));
+    const onStaleOffset = vi.fn();
+    const { result } = renderHook(
+      () => useTimeline({ offset: 100 }, { onStaleOffset }),
+      { wrapper: wrapper() },
+    );
+    await waitFor(() => {
+      expect(result.current.error).toBeTruthy();
+    });
+    expect(onStaleOffset).not.toHaveBeenCalled();
+  });
+
+  it('does not crash when options arg is omitted under stale-offset conditions (backward-compat)', async () => {
+    // C7 /review-impl [L5]: single-arg call site must survive the
+    // guard `if (onStaleOffset && ...)`. Before this test, no lock on
+    // the options-omitted happy path — a future refactor that removed
+    // the `onStaleOffset &&` check would throw undefined().
+    listTimelineMock.mockResolvedValue({ events: [], total: 42 });
+    const { result } = renderHook(() => useTimeline({ offset: 100 }), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+    expect(result.current.total).toBe(42);
+    expect(result.current.events).toEqual([]);
+  });
 });

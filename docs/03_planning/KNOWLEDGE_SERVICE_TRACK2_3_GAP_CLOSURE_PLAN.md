@@ -47,7 +47,7 @@ Statuses: `[ ]` open · `[D]` DESIGN in flight · `[B]` BUILD in flight · `[V]`
 | **C4** | `useProjectState` action-callback hook tests | D-K19a.5-05 + D-K19a.7-01 (collapsed) | M | `[x]` | — |
 | **C5** | Mobile polish: EntitiesTable + PrivacyTab tap targets | D-K19d-β-01, D-K19f-ε-01 | M | `[x]` | — |
 | **C6** | Chapter-title resolution for Job + Timeline rows | D-K19b.3-01, D-K19e-β-01 (shared book-service edge) | L | `[x]` | — |
-| **C7** | Humanised ETA formatter + stale-offset self-heal | D-K19b.3-02, D-K19e-β-02 | S | `[ ]` | — |
+| **C7** | Humanised ETA formatter + stale-offset self-heal | D-K19b.3-02, D-K19e-β-02 | ~~S~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
 | **C8** | Drawer-search UX: source_type filter + in-card highlighting | D-K19e-γa-01, D-K19e-γb-01 | M | `[ ]` | — |
 | **C9** | Entity concurrency + unlock | D-K19d-γa-01 (If-Match), D-K19d-γa-02 (unlock endpoint) | M | `[ ]` | — |
 | **C10** | Timeline feature gaps | D-K19e-α-01 (entity_id), D-K19e-α-03 (chronological range) | M | `[ ]` | — |
@@ -152,12 +152,28 @@ Cycles whose single-line description is unclear: the full text lives under the i
 
 ---
 
-### C7 — Humanised ETA formatter + stale-offset self-heal (P2, S)
-**Why.** Two quick UX wins. ETA formatter is pure util. Stale-offset needs one `useEffect` (flagged in CLAUDE.md as smell, so encapsulate inside hook per item's own note).
+### C7 — Humanised ETA formatter + stale-offset self-heal (P2, XL) ✅
+**Shipped.** Session 51 cycle 33. Reclassified S→XL at CLARIFY (10 files with locales counted).
 
-**Files.**
-- `frontend/src/lib/formatDuration.ts` — new `formatDuration(minutes) → "4h 0min"` / `"15min"` / `"<1min"`.
-- `frontend/src/features/knowledge/hooks/useJobProgressRate.ts` + `useTimeline.ts` — consume formatter; inside useTimeline add self-heal (offset=0 when total>0 && offset>0 && events.length===0).
+**Files touched.**
+- NEW `frontend/src/lib/formatMinutes.ts` + test — pure util, `formatMinutes(minutes) → "4h"` / `"2h 5min"` / `"15min"` / `"<1min"`. **Named `formatMinutes` not `formatDuration`** per /review-impl MED: 5 local `formatDuration` helpers exist with ms/seconds semantics; explicit unit in name prevents silent misuse.
+- MOD `frontend/src/features/knowledge/hooks/useTimeline.ts` — new `UseTimelineOptions.onStaleOffset?: () => void` callback + useEffect fires when `total>0 && offset>0 && events.length===0 && !isLoading && !isFetching && !error`. Backward-compat: options is optional.
+- MOD `frontend/src/features/knowledge/components/TimelineTab.tsx` — passes `useCallback([])`-stable `handleStaleOffset: () => setOffset(0)` (/review-impl L4 — stable ref so effect deps don't churn on parent renders). Keeps existing "Back to first" button as defense-in-depth.
+- MOD `frontend/src/features/knowledge/components/JobDetailPanel.tsx` — `formatMinutes(minutesRemaining)` at render site line 180; i18n placeholder rename `{{minutes}}` → `{{duration}}`.
+- MOD 4 × `frontend/src/i18n/locales/*/knowledge.json` — `jobs.detail.eta` placeholder rename.
+
+**Tests added.**
+- `formatMinutes.test.ts` — 7 cases including regression lock for the 59.6min pre-round bug (would have produced `"0h 60min"` without `Math.round` first).
+- `useTimeline.test.tsx` — 5 new: self-heal fires under stale conditions, does NOT fire during isLoading/isFetching/error/offset=0, backward-compat options-undefined path.
+- `JobDetailPanel.test.tsx` — mutable mock refactor + 2 new: ETA render+spy on formatMinutes(125), paused-job-hides-ETA.
+- `projectState.test.ts` — placeholder presence regex across all 4 locales (guards against locale drift).
+
+**/review-impl fixes folded in (5):** (1) formatDuration→formatMinutes rename, (2) {{duration}} placeholder presence test, (3) mutable useJobProgressRateMock + ETA render+spy test, (4) useCallback stability, (5) options-undefined backward-compat test.
+
+**Design decisions.**
+- Exact hours drop "0min": `formatMinutes(240) === "4h"` (user preference overrode plan's `"4h 0min"`).
+- Self-heal inside hook uses callback pattern (Option B), not hook-owned state (Option A). Rationale: minimal signature change, hook stays self-contained (owns the effect, parent provides callback — analogous to onClick).
+- "Back to first" button kept as defense-in-depth against race where callback fires faster than guards.
 
 **Close:** D-K19b.3-02, D-K19e-β-02.
 
@@ -326,13 +342,13 @@ Once text arrives:
 | Tier | Open | Done | Blocked |
 |---|---|---|---|
 | P1 (C1–C2) | 0 | **4 items / 2 cycles (C1 ✅ + C2 ✅)** | 0 |
-| P2 (C3–C9) | 7 items / 4 cycles | **9 items / 4 cycles (C3 ✅ + C4 ✅ + C5 ✅ + C6 ✅)** | 0 |
+| P2 (C3–C9) | 5 items / 3 cycles | **11 items / 5 cycles (C3 ✅ + C4 ✅ + C5 ✅ + C6 ✅ + C7 ✅)** | 0 |
 | P3 (C10–C13) | 7 items / 4 cycles | 0 | 0 |
 | P4 (C14–C15) | 3 items / 2 cycles | 0 | 0 |
 | P5 (C16–C18) | 3 items / 3 cycles | 0 | 0 DESIGN |
 | User-gated (C19–C20) | 2 items / 2 cycles | 0 | 2 ⏸ |
 
-**Total plan: 33 item-closures across 20 cycles. Completed: 13 items / 6 cycles. P1 tier done · P2 tier 4/7 done.**
+**Total plan: 33 item-closures across 20 cycles. Completed: 15 items / 7 cycles. P1 tier done · P2 tier 5/7 done.**
 (Some cycles close > 1 item; some items appear in >1 cycle. Check the cycle table for authoritative count.)
 
 ---

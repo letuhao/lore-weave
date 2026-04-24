@@ -289,7 +289,7 @@
       "startedAt": "Bắt đầu",
       "completedAt": "Hoàn tất",
       "errorTitle": "Lỗi",
-      "eta": "Còn lại ~{{minutes}} phút",
+      "eta": "Còn lại ~{{duration}}",
       "itemsProgress": "Đã xử lý {{processed}}/{{total}} mục",
       "actionFailed": "Không thể {{label}}: {{error}}",
       "actions": {

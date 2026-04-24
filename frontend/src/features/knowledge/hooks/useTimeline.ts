@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
 import {
@@ -12,6 +13,16 @@ import {
 // the 30s staleTime window. 30s matches the Entities tab — fresh enough
 // for active curation, cache-hit-friendly for tab re-visits.
 
+export interface UseTimelineOptions {
+  /** C7 (D-K19e-β-02) — stale-offset self-heal. Fires when the server
+   *  returns empty events for a non-zero offset but total>0 (another
+   *  client's delete shrank the dataset past the current page). Parent
+   *  is expected to reset its offset state to 0 so the next query
+   *  lands on a valid page. The "Back to first" button in TimelineTab
+   *  stays as a defense-in-depth fallback. */
+  onStaleOffset?: () => void;
+}
+
 export interface UseTimelineResult {
   events: TimelineResponse['events'];
   total: number;
@@ -20,7 +31,10 @@ export interface UseTimelineResult {
   error: Error | null;
 }
 
-export function useTimeline(params: TimelineListParams): UseTimelineResult {
+export function useTimeline(
+  params: TimelineListParams,
+  options?: UseTimelineOptions,
+): UseTimelineResult {
   const { accessToken, user } = useAuth();
   const userId = user?.user_id ?? 'anon';
 
@@ -39,11 +53,27 @@ export function useTimeline(params: TimelineListParams): UseTimelineResult {
     staleTime: 30_000,
   });
 
-  return {
-    events: query.data?.events ?? [],
-    total: query.data?.total ?? 0,
-    isLoading: query.isLoading,
-    isFetching: query.isFetching,
-    error: (query.error as Error | null) ?? null,
-  };
+  const events = query.data?.events ?? [];
+  const total = query.data?.total ?? 0;
+  const offset = params.offset ?? 0;
+  const isLoading = query.isLoading;
+  const isFetching = query.isFetching;
+  const error = (query.error as Error | null) ?? null;
+
+  const onStaleOffset = options?.onStaleOffset;
+  useEffect(() => {
+    if (
+      onStaleOffset &&
+      total > 0 &&
+      offset > 0 &&
+      events.length === 0 &&
+      !isLoading &&
+      !isFetching &&
+      !error
+    ) {
+      onStaleOffset();
+    }
+  }, [onStaleOffset, total, offset, events.length, isLoading, isFetching, error]);
+
+  return { events, total, isLoading, isFetching, error };
 }

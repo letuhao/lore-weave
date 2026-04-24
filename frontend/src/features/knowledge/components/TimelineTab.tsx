@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTimeline } from '../hooks/useTimeline';
@@ -24,11 +24,25 @@ export function TimelineTab() {
 
   const projectsQuery = useProjects(false);
 
-  const { events, total, isLoading, error, isFetching } = useTimeline({
-    project_id: projectFilter || undefined,
-    limit: PAGE_SIZE,
-    offset,
-  });
+  // C7 /review-impl [L4]: stable callback ref so useTimeline's effect
+  // deps don't churn on every TimelineTab render. setOffset's identity
+  // is React-guaranteed stable, so [] deps are safe.
+  const handleStaleOffset = useCallback(() => setOffset(0), []);
+
+  const { events, total, isLoading, error, isFetching } = useTimeline(
+    {
+      project_id: projectFilter || undefined,
+      limit: PAGE_SIZE,
+      offset,
+    },
+    {
+      // C7 (D-K19e-β-02) — auto self-heal past-end offset. Keeps the
+      // "Back to first" button below as a defense-in-depth fallback
+      // for edge cases where the guards (isFetching etc.) gate a click
+      // faster than the effect fires.
+      onStaleOffset: handleStaleOffset,
+    },
+  );
 
   const maxOffset = Math.max(0, Math.floor((total - 1) / PAGE_SIZE) * PAGE_SIZE);
   const canPrev = offset > 0;

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ExtractionJobWire } from '../../api';
+import * as formatMinutesModule from '@/lib/formatMinutes';
 
 // Mock knowledgeApi + auth before component import.
 vi.mock('@/auth', () => ({
@@ -29,12 +30,14 @@ vi.mock('sonner', () => ({
 }));
 
 // useJobProgressRate is mocked to a deterministic shape so the panel
-// test doesn't depend on EMA timing.
+// test doesn't depend on EMA timing. Mutable via `useJobProgressRateMock`
+// so individual tests can assert the ETA render path (C7).
+const useJobProgressRateMock = vi.fn(() => ({
+  minutesRemaining: null as number | null,
+  itemsPerSecond: null as number | null,
+}));
 vi.mock('../../hooks/useJobProgressRate', () => ({
-  useJobProgressRate: () => ({
-    minutesRemaining: null,
-    itemsPerSecond: null,
-  }),
+  useJobProgressRate: () => useJobProgressRateMock(),
 }));
 
 // K19b.8: stub JobLogsPanel so we don't drag in useJobLogs + its
@@ -108,6 +111,12 @@ describe('JobDetailPanel', () => {
     resumeMock.mockReset();
     cancelMock.mockReset();
     toastErrorMock.mockReset();
+    // Reset hook mock to the default "hide ETA" shape. Individual tests
+    // opt in to numeric values to exercise the ETA render path.
+    useJobProgressRateMock.mockReturnValue({
+      minutesRemaining: null,
+      itemsPerSecond: null,
+    });
   });
 
   it('renders project_name and status', () => {
@@ -230,5 +239,34 @@ describe('JobDetailPanel', () => {
     expect(
       screen.queryByTestId('job-detail-current-chapter'),
     ).not.toBeInTheDocument();
+  });
+
+  // ── C7 (D-K19b.3-02) — humanised ETA render path ─────────────────
+
+  it('renders ETA line and passes minutesRemaining through formatMinutes (C7 wire)', () => {
+    // Locks the wire: useJobProgressRate → JobDetailPanel line 173
+    // null-gate → formatMinutes called with the number → result fed as
+    // `duration` to t('jobs.detail.eta', ...). i18n interpolation is
+    // covered by the locale-placeholder test in projectState.test.ts;
+    // formatMinutes output is covered by formatMinutes.test.ts. This
+    // test only proves the render path + call site, which nothing
+    // guarded before C7 /review-impl.
+    const spy = vi.spyOn(formatMinutesModule, 'formatMinutes');
+    useJobProgressRateMock.mockReturnValue({
+      minutesRemaining: 125,
+      itemsPerSecond: 0.5,
+    });
+    renderPanel(makeJob({ status: 'running' }));
+    expect(screen.getByTestId('job-detail-eta')).toBeInTheDocument();
+    expect(spy).toHaveBeenCalledWith(125);
+    spy.mockRestore();
+  });
+
+  it('hides ETA line when minutesRemaining is null', () => {
+    // Default mock returns null — ensures consumer null-gate (line 173)
+    // stays in place so paused / completed / non-running jobs don't
+    // render a phantom ETA.
+    renderPanel(makeJob({ status: 'paused' }));
+    expect(screen.queryByTestId('job-detail-eta')).not.toBeInTheDocument();
   });
 });

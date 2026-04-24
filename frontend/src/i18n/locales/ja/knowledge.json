@@ -289,7 +289,7 @@
       "startedAt": "開始日時",
       "completedAt": "終了日時",
       "errorTitle": "エラー",
-      "eta": "残り約 {{minutes}} 分",
+      "eta": "残り約 {{duration}}",
       "itemsProgress": "{{processed}} / {{total}} 件処理済み",
       "actionFailed": "{{label}}に失敗しました: {{error}}",
       "actions": {

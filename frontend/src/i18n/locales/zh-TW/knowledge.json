@@ -289,7 +289,7 @@
       "startedAt": "開始時間",
       "completedAt": "完成時間",
       "errorTitle": "錯誤",
-      "eta": "約剩 {{minutes}} 分鐘",
+      "eta": "約剩 {{duration}}",
       "itemsProgress": "已處理 {{processed}}/{{total}} 項",
       "actionFailed": "無法{{label}}:{{error}}",
       "actions": {

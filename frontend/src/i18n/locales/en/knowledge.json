@@ -289,7 +289,7 @@
       "startedAt": "Started",
       "completedAt": "Completed",
       "errorTitle": "Error",
-      "eta": "~{{minutes}} min remaining",
+      "eta": "~{{duration}} remaining",
       "itemsProgress": "{{processed}} of {{total}} items processed",
       "actionFailed": "Couldn't {{label}}: {{error}}",
       "actions": {

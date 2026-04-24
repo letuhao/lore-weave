@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
 import { cn } from '@/lib/utils';
+import { formatMinutes } from '@/lib/formatMinutes';
 import { knowledgeApi, type ExtractionJobWire } from '../api';
 import { useJobProgressRate } from '../hooks/useJobProgressRate';
 import { JobProgressBar } from './JobProgressBar';
@@ -176,7 +177,7 @@ export function JobDetailPanel({ open, onOpenChange, job, onRetryClick }: Props)
                   data-testid="job-detail-eta"
                 >
                   {t('jobs.detail.eta', {
-                    minutes: Math.max(1, Math.round(minutesRemaining)),
+                    duration: formatMinutes(minutesRemaining),
                   })}
                 </p>
               )}

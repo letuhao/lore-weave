@@ -415,6 +415,16 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     }
   });
 
+  // C7 (D-K19b.3-02) — jobs.detail.eta must carry the new {{duration}}
+  // placeholder. JobDetailPanel now passes `duration:` (formatted by
+  // formatMinutes) instead of the legacy `minutes:`. A future dev
+  // reverting one locale would render the literal `{{minutes}}` in UI
+  // while the shape-test above stays silent.
+  it.each(LOCALES)('%s jobs.detail.eta contains {{duration}} placeholder', (_tag, bundle) => {
+    const value = resolveKey((bundle as any).jobs ?? {}, 'detail.eta');
+    expect(value).toMatch(/\{\{duration\}\}/);
+  });
+
   // K19c Cycle β — GlobalBioTab deltas (reset + token estimate),
   // VersionsPanel diff viewer, and PreferencesSection. All keys live
   // under the existing top-level `global.*` namespace.
