@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { X, ArrowRight, ArrowLeft, Pencil, Merge } from 'lucide-react';
+import { X, ArrowRight, ArrowLeft, Pencil, Merge, Unlock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useEntityDetail } from '../hooks/useEntityDetail';
+import { useUnlockEntity } from '../hooks/useEntityMutations';
 import type { EntityRelation } from '../api';
 import { TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS } from '../lib/touchTarget';
 import { EntityEditDialog } from './EntityEditDialog';
@@ -83,6 +85,28 @@ export function EntityDetailPanel({
   );
   const [showEdit, setShowEdit] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
+
+  // C9 (D-K19d-γa-02) — unlock user_edited so extractions can
+  // contribute aliases again. No confirm dialog state — a single
+  // `window.confirm` is lightweight enough; the action is non-
+  // destructive (flips a flag) and idempotent.
+  const unlockMutation = useUnlockEntity({
+    onSuccess: () => toast.success(t('entities.detail.unlockSuccess')),
+    onError: (err) =>
+      toast.error(
+        t('entities.detail.unlockFailed', { error: err.message }),
+      ),
+  });
+  const handleUnlock = async () => {
+    if (!detail) return;
+    if (!window.confirm(t('entities.detail.unlockConfirm'))) return;
+    try {
+      await unlockMutation.unlock({ entityId: detail.entity.id });
+    } catch {
+      // Error toast owned by onError; swallow to keep the rejected
+      // promise from triggering vitest's unhandled-rejection guard.
+    }
+  };
 
   const { outgoing, incoming } = useMemo(() => {
     if (!detail || !entityId) {
@@ -234,6 +258,30 @@ export function EntityDetailPanel({
                         </span>
                       ))}
                     </div>
+                  </section>
+                )}
+
+                {/* C9 (D-K19d-γa-02) — Unlock CTA visible only when
+                    the entity is user_edited. Allows the user to
+                    let future extractions contribute aliases again. */}
+                {detail.entity.user_edited && (
+                  <section
+                    className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2"
+                    data-testid="entity-detail-unlock-section"
+                  >
+                    <p className="text-[11px] text-muted-foreground">
+                      {t('entities.detail.unlockHint')}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleUnlock}
+                      disabled={unlockMutation.isPending}
+                      className="mt-2 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                      data-testid="entity-detail-unlock"
+                    >
+                      <Unlock className="h-3 w-3" />
+                      {t('entities.detail.unlock')}
+                    </button>
                   </section>
                 )}
 

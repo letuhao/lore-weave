@@ -208,6 +208,11 @@
       "relationArrow": "→",
       "pendingBadge": "Pending",
       "pendingValidation": "Pass-1 quarantine — awaiting LLM validation",
+      "unlock": "Unlock (re-enable extractions)",
+      "unlockHint": "This entity is user-edited. Extractions won't re-append removed aliases until you unlock.",
+      "unlockConfirm": "Unlock this entity? Future extractions will be able to add aliases again.",
+      "unlockSuccess": "Unlocked.",
+      "unlockFailed": "Couldn't unlock: {{error}}",
       "field": {
         "project": "Project",
         "global": "Global",
@@ -219,6 +224,7 @@
     "edit": {
       "title": "Edit entity",
       "description": "Rename or adjust this entity. Your edits lock future extractions from re-adding removed aliases.",
+      "conflict": "Another device updated this entity. Review the latest and try again.",
       "field": {
         "name": "Display name",
         "kind": "Kind",

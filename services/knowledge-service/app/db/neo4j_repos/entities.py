@@ -28,6 +28,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
+from app.db.repositories import VersionMismatchError
 from app.db.neo4j_repos.canonical import (
     canonicalize_entity_name,
     entity_canonical_id,
@@ -58,6 +59,7 @@ __all__ = [
     "list_entities_filtered",
     "get_entity_with_relations",
     "update_entity_fields",
+    "unlock_entity_user_edited",
     "merge_entities",
     "MergeEntitiesError",
 ]
@@ -117,6 +119,14 @@ class Entity(BaseModel):
     # as un-edited, preserving the old behaviour on re-extraction.
     user_edited: bool = False
 
+    # C9 (D-K19d-γa-01): optimistic-concurrency counter. Bumped by
+    # every user-facing write (PATCH, unlock, user-merge, extraction
+    # merge_entity). Pre-C9 nodes without the property read as 1 via
+    # `_node_to_entity`'s coalesce — the first write after C9 will
+    # mint the value. Router hands out weak ETags of the form
+    # `W/"<version>"` and requires If-Match on PATCH.
+    version: int = 1
+
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -142,6 +152,19 @@ def _node_to_entity(node: Any) -> Entity:
     for key, val in list(data.items()):
         if val is not None and hasattr(val, "to_native"):
             data[key] = val.to_native()
+    # C9 (D-K19d-γa-01): pre-C9 entities lack the `version` property.
+    # Coalesce to 1 so reads succeed without a batch backfill; the
+    # first post-C9 write will mint a real value. Matches the
+    # `coalesce(user_edited, false)` backfill idiom already in use.
+    #
+    # /review-impl HIGH lock: this default MUST match every Cypher
+    # `coalesce(e.version, N)` / `coalesce(t.version, N)` in this
+    # module. If they drift, pre-C9 entities become permanently
+    # uneditable — FE reads version=1, sends If-Match=1, but Cypher
+    # compares against current_version=0 → 412 forever. Verified by
+    # `test_cypher_version_coalesce_default_matches_read_path`.
+    if data.get("version") is None:
+        data["version"] = 1
     return Entity.model_validate(data)
 
 
@@ -173,6 +196,7 @@ ON CREATE SET
   e.evidence_count = 0,
   e.mention_count = 0,
   e.user_edited = false,
+  e.version = 1,
   e.created_at = datetime(),
   e.updated_at = datetime()
 ON MATCH SET
@@ -189,6 +213,7 @@ ON MATCH SET
     WHEN $confidence > e.confidence THEN $confidence
     ELSE e.confidence
   END,
+  e.version = coalesce(e.version, 1) + 1,
   e.updated_at = datetime()
 WITH e
 WHERE e.user_id = $user_id
@@ -1434,23 +1459,36 @@ async def get_entity_with_relations(
 # hash depends on it) so renaming an entity doesn't re-key it; only
 # the display property + canonical_name change.
 
+# C9 (D-K19d-γa-01): atomic optimistic-concurrency via FOREACH. The
+# Cypher MATCHes the row; FOREACH conditionally mutates only when the
+# caller's expected_version matches `coalesce(e.version, 1)`. Returns
+# the node + an `applied` flag:
+#   - applied=True  → post-write state; helper returns Entity
+#   - applied=False → pre-check state (unchanged); helper raises
+#                     VersionMismatchError carrying the current Entity
+#   - MATCH produces no row → helper returns None (router 404s)
+# Single round-trip, atomic under `run_write`'s transaction.
 _UPDATE_ENTITY_FIELDS_CYPHER = """
 MATCH (e:Entity {id: $id})
 WHERE e.user_id = $user_id
-SET
-  e.name = CASE WHEN $name IS NULL THEN e.name ELSE $name END,
-  e.canonical_name = CASE
-    WHEN $canonical_name IS NULL THEN e.canonical_name
-    ELSE $canonical_name
-  END,
-  e.kind = CASE WHEN $kind IS NULL THEN e.kind ELSE $kind END,
-  e.aliases = CASE
-    WHEN $aliases IS NULL THEN e.aliases
-    ELSE $aliases
-  END,
-  e.user_edited = true,
-  e.updated_at = datetime()
-RETURN e
+WITH e, coalesce(e.version, 1) AS current_version
+FOREACH (_ IN CASE WHEN current_version = $expected_version THEN [1] ELSE [] END |
+  SET
+    e.name = CASE WHEN $name IS NULL THEN e.name ELSE $name END,
+    e.canonical_name = CASE
+      WHEN $canonical_name IS NULL THEN e.canonical_name
+      ELSE $canonical_name
+    END,
+    e.kind = CASE WHEN $kind IS NULL THEN e.kind ELSE $kind END,
+    e.aliases = CASE
+      WHEN $aliases IS NULL THEN e.aliases
+      ELSE $aliases
+    END,
+    e.user_edited = true,
+    e.version = current_version + 1,
+    e.updated_at = datetime()
+)
+RETURN e, current_version = $expected_version AS applied
 """
 
 
@@ -1462,23 +1500,27 @@ async def update_entity_fields(
     name: str | None,
     kind: str | None,
     aliases: list[str] | None,
+    expected_version: int,
 ) -> Entity | None:
-    """K19d.5 MVP — patch an entity's display fields.
+    """K19d.5 + C9 — patch an entity's display fields with optimistic
+    concurrency.
 
-    Sets `user_edited=true` on any successful write so subsequent
-    `merge_entity` re-extractions don't silently re-append removed
-    alias variants. Returns the updated Entity or None when no row
-    matches (cross-user / missing id — router collapses to 404).
+    Sets `user_edited=true` + bumps `version` on any successful write.
+    `expected_version` must match the row's current version (coalesced
+    to 0 for pre-C9 nodes lacking the property). Mismatch raises
+    ``VersionMismatchError`` carrying the current Entity so the router
+    can emit a 412 with the refreshed baseline body.
+
+    Returns the updated Entity on success, or None when no row matches
+    (cross-user / missing id — router collapses to 404).
 
     `aliases` replaces the full list when provided (not append — the
     whole point of the user_edited lock is that the user's list is
     authoritative). Pass the empty list to clear; pass None to leave
     the existing aliases alone.
 
-    `name` / `kind` / `aliases` are all optional. At least one must
-    be non-None — the router-level Pydantic validator enforces that;
-    the repo trusts the caller not to send a no-op write that would
-    still bump `user_edited` + `updated_at`.
+    At least one of name / kind / aliases must be non-None; the
+    router-level Pydantic validator enforces that contract.
 
     Derived value: when `name` changes, `canonical_name` is updated
     to the new canonicalization. The entity's immutable canonical_id
@@ -1498,6 +1540,47 @@ async def update_entity_fields(
         canonical_name=canonical_name,
         kind=kind,
         aliases=aliases,
+        expected_version=expected_version,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    entity = _node_to_entity(record["e"])
+    if not record["applied"]:
+        raise VersionMismatchError(entity)
+    return entity
+
+
+# C9 (D-K19d-γa-02) — unlock user_edited so extractions can contribute
+# aliases again. Idempotent: a second unlock on an already-unlocked
+# entity succeeds (still bumps version — cheap and keeps the "any
+# user-facing write bumps" invariant honest). No If-Match — matches
+# the /archive pattern; a one-way flag flip has no concurrency hazard
+# worth a baseline-refresh dance.
+_UNLOCK_ENTITY_CYPHER = """
+MATCH (e:Entity {id: $id})
+WHERE e.user_id = $user_id
+SET
+  e.user_edited = false,
+  e.version = coalesce(e.version, 1) + 1,
+  e.updated_at = datetime()
+RETURN e
+"""
+
+
+async def unlock_entity_user_edited(
+    session: CypherSession,
+    *,
+    user_id: str,
+    entity_id: str,
+) -> Entity | None:
+    """C9 — clear the user_edited lock on an entity. Returns the
+    updated Entity or None when no row matches (router 404s)."""
+    result = await run_write(
+        session,
+        _UNLOCK_ENTITY_CYPHER,
+        user_id=user_id,
+        id=entity_id,
     )
     record = await result.single()
     if record is None:
@@ -1695,6 +1778,7 @@ SET
     ELSE t.glossary_entity_id
   END,
   t.user_edited = true,
+  t.version = coalesce(t.version, 1) + 1,
   t.updated_at = datetime()
 RETURN t
 """

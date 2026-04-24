@@ -534,6 +534,13 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     // K19d γ-b edit + merge CTAs + dialogs
     'detail.edit',
     'detail.merge',
+    // C9 — unlock CTA + conflict toast
+    'detail.unlock',
+    'detail.unlockHint',
+    'detail.unlockConfirm',
+    'detail.unlockSuccess',
+    'detail.unlockFailed',
+    'edit.conflict',
     'edit.title',
     'edit.description',
     'edit.field.name',

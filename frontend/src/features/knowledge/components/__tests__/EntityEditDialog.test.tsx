@@ -46,10 +46,14 @@ const ENTITY = {
   canonical_version: 1,
   source_types: ['chat_turn'],
   confidence: 0.9,
+  glossary_entity_id: null,
+  anchor_score: 0,
   archived_at: null,
   archive_reason: null,
   evidence_count: 0,
   mention_count: 0,
+  user_edited: false,
+  version: 7,
   created_at: null,
   updated_at: null,
 };
@@ -87,9 +91,11 @@ describe('EntityEditDialog', () => {
     });
     fireEvent.click(screen.getByTestId('entity-edit-confirm'));
     await waitFor(() => {
+      // C9: ifMatchVersion (entity.version=7) threaded as 3rd arg.
       expect(updateEntityMock).toHaveBeenCalledWith(
         'ent-1',
         { name: 'Kai the Brave', kind: undefined, aliases: undefined },
+        7,
         'tok',
       );
     });
@@ -114,6 +120,28 @@ describe('EntityEditDialog', () => {
     });
     const [, payload] = updateEntityMock.mock.calls[0];
     expect(payload.aliases).toEqual(['Kai', 'K.']);
+  });
+
+  it('C9: shows conflict toast and closes dialog on 412', async () => {
+    updateEntityMock.mockRejectedValue(
+      Object.assign(new Error('version mismatch'), { status: 412 }),
+    );
+    const onOpenChange = vi.fn();
+    render(
+      <EntityEditDialog open={true} onOpenChange={onOpenChange} entity={ENTITY} />,
+      { wrapper: Wrapper },
+    );
+    fireEvent.change(screen.getByTestId('entity-edit-name'), {
+      target: { value: 'Changed' },
+    });
+    fireEvent.click(screen.getByTestId('entity-edit-confirm'));
+    await waitFor(() => {
+      expect(toastMocks.error).toHaveBeenCalledTimes(1);
+    });
+    // The conflict toast key is 'entities.edit.conflict' — the vitest
+    // i18n mock passthroughs the key, so we check the call arg.
+    expect(toastMocks.error).toHaveBeenCalledWith('entities.edit.conflict');
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it('closes without calling API when nothing changed', async () => {

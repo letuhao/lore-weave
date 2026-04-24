@@ -206,6 +206,11 @@
       "relationArrow": "→",
       "pendingBadge": "Đang chờ",
       "pendingValidation": "Cách ly Pass-1 — đang chờ xác minh LLM",
+      "unlock": "Mở khoá (cho phép trích xuất lại)",
+      "unlockHint": "Thực thể này do người dùng chỉnh sửa. Trích xuất sẽ không thêm lại các bí danh đã xoá cho đến khi bạn mở khoá.",
+      "unlockConfirm": "Mở khoá thực thể này? Các lần trích xuất sau có thể thêm bí danh trở lại.",
+      "unlockSuccess": "Đã mở khoá.",
+      "unlockFailed": "Không thể mở khoá: {{error}}",
       "field": {
         "project": "Dự án",
         "global": "Toàn cục",
@@ -219,6 +224,7 @@
     "edit": {
       "title": "Chỉnh sửa thực thể",
       "description": "Đổi tên hoặc điều chỉnh thực thể này. Chỉnh sửa của bạn sẽ khóa các lần trích xuất tương lai để không tự thêm lại các bí danh đã xóa.",
+      "conflict": "Một thiết bị khác đã cập nhật thực thể này. Vui lòng xem nội dung mới nhất và thử lại.",
       "field": {
         "name": "Tên hiển thị",
         "kind": "Loại",

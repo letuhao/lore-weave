@@ -10,6 +10,7 @@ vi.mock('@/auth', () => ({
 
 const updateEntityMock = vi.fn();
 const mergeEntityIntoMock = vi.fn();
+const unlockEntityMock = vi.fn();
 vi.mock('../../api', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../api');
   return {
@@ -17,11 +18,16 @@ vi.mock('../../api', async () => {
     knowledgeApi: {
       updateEntity: (...args: unknown[]) => updateEntityMock(...args),
       mergeEntityInto: (...args: unknown[]) => mergeEntityIntoMock(...args),
+      unlockEntity: (...args: unknown[]) => unlockEntityMock(...args),
     },
   };
 });
 
-import { useUpdateEntity, useMergeEntity } from '../useEntityMutations';
+import {
+  useMergeEntity,
+  useUnlockEntity,
+  useUpdateEntity,
+} from '../useEntityMutations';
 
 function makeWrapper() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -61,7 +67,7 @@ describe('useUpdateEntity', () => {
     });
   });
 
-  it('calls onSuccess + invalidates list and detail', async () => {
+  it('calls onSuccess + invalidates list and detail + forwards If-Match version', async () => {
     updateEntityMock.mockResolvedValue(ENTITY);
     const onSuccess = vi.fn();
     const { Wrapper, invalidateSpy } = makeWrapper();
@@ -72,9 +78,13 @@ describe('useUpdateEntity', () => {
       await result.current.update({
         entityId: 'ent-1',
         payload: { name: 'Kai' },
+        ifMatchVersion: 3,
       });
     });
-    expect(updateEntityMock).toHaveBeenCalledWith('ent-1', { name: 'Kai' }, 'tok');
+    // C9: ifMatchVersion threaded as 3rd positional arg before token.
+    expect(updateEntityMock).toHaveBeenCalledWith(
+      'ent-1', { name: 'Kai' }, 3, 'tok',
+    );
     expect(onSuccess).toHaveBeenCalledWith(ENTITY);
     const invalidated = invalidateSpy.mock.calls.map((c) => c[0]?.queryKey);
     expect(invalidated).toContainEqual(['knowledge-entities', 'u1']);
@@ -93,9 +103,40 @@ describe('useUpdateEntity', () => {
       wrapper: Wrapper,
     });
     await expect(
-      result.current.update({ entityId: 'ent-1', payload: { name: 'X' } }),
+      result.current.update({
+        entityId: 'ent-1',
+        payload: { name: 'X' },
+        ifMatchVersion: 1,
+      }),
     ).rejects.toThrow('boom');
     expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it('C9: on 412 conflict, invalidates detail cache so baseline refreshes', async () => {
+    updateEntityMock.mockRejectedValue(
+      Object.assign(new Error('version mismatch'), { status: 412 }),
+    );
+    const onError = vi.fn();
+    const { Wrapper, invalidateSpy } = makeWrapper();
+    const { result } = renderHook(() => useUpdateEntity({ onError }), {
+      wrapper: Wrapper,
+    });
+    await expect(
+      result.current.update({
+        entityId: 'ent-1',
+        payload: { name: 'X' },
+        ifMatchVersion: 1,
+      }),
+    ).rejects.toThrow();
+    // onError fires with the 412 error (consumer toast owns it).
+    expect(onError).toHaveBeenCalledTimes(1);
+    // Detail cache invalidated so next open sees fresh baseline.
+    const invalidated = invalidateSpy.mock.calls.map((c) => c[0]?.queryKey);
+    expect(invalidated).toContainEqual([
+      'knowledge-entity-detail',
+      'u1',
+      'ent-1',
+    ]);
   });
 });
 
@@ -168,5 +209,50 @@ describe('useMergeEntity', () => {
     await expect(
       result.current.merge({ sourceId: 'a', targetId: 'b' }),
     ).rejects.toMatchObject({ errorCode: 'unknown' });
+  });
+});
+
+
+// ── C9 — useUnlockEntity ─────────────────────────────────────────────
+
+describe('useUnlockEntity', () => {
+  beforeEach(() => {
+    unlockEntityMock.mockReset();
+    useAuthMock.mockReturnValue({
+      accessToken: 'tok',
+      user: { user_id: 'u1', email: 'a@b', display_name: null, avatar_url: null },
+    });
+  });
+
+  it('calls the API and invalidates list + detail on success', async () => {
+    unlockEntityMock.mockResolvedValue(ENTITY);
+    const onSuccess = vi.fn();
+    const { Wrapper, invalidateSpy } = makeWrapper();
+    const { result } = renderHook(() => useUnlockEntity({ onSuccess }), {
+      wrapper: Wrapper,
+    });
+    await act(async () => {
+      await result.current.unlock({ entityId: 'ent-1' });
+    });
+    expect(unlockEntityMock).toHaveBeenCalledWith('ent-1', 'tok');
+    expect(onSuccess).toHaveBeenCalledWith(ENTITY);
+    const invalidated = invalidateSpy.mock.calls.map((c) => c[0]?.queryKey);
+    expect(invalidated).toContainEqual(['knowledge-entities', 'u1']);
+    expect(invalidated).toContainEqual([
+      'knowledge-entity-detail', 'u1', 'ent-1',
+    ]);
+  });
+
+  it('surfaces errors via onError', async () => {
+    unlockEntityMock.mockRejectedValue(new Error('boom'));
+    const onError = vi.fn();
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useUnlockEntity({ onError }), {
+      wrapper: Wrapper,
+    });
+    await expect(
+      result.current.unlock({ entityId: 'ent-1' }),
+    ).rejects.toThrow('boom');
+    expect(onError).toHaveBeenCalledTimes(1);
   });
 });

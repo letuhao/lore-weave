@@ -54,6 +54,15 @@ export function EntityEditDialog({
       onOpenChange(false);
     },
     onError: (err) => {
+      // C9 (D-K19d-γa-01): 412 conflict surfaces a dedicated message +
+      // closes the dialog so the user re-opens from the refreshed
+      // detail (the hook already invalidated the detail query).
+      const status = (err as Error & { status?: number }).status;
+      if (status === 412) {
+        toast.error(t('entities.edit.conflict'));
+        onOpenChange(false);
+        return;
+      }
       toast.error(t('entities.edit.failed', { error: err.message }));
     },
   });
@@ -78,7 +87,12 @@ export function EntityEditDialog({
       return;
     }
     try {
-      await mutation.update({ entityId: entity.id, payload });
+      await mutation.update({
+        entityId: entity.id,
+        payload,
+        // C9: send the entity's current version as If-Match.
+        ifMatchVersion: entity.version,
+      });
     } catch {
       // Errors are surfaced via useMutation's onError (toast); swallow
       // the rejected promise to keep vitest's unhandled-rejection

@@ -206,6 +206,11 @@
       "relationArrow": "→",
       "pendingBadge": "待處理",
       "pendingValidation": "第一階段隔離——等待 LLM 驗證",
+      "unlock": "解除鎖定(重新啟用抽取)",
+      "unlockHint": "此實體已由使用者編輯。在您解除鎖定之前，抽取不會重新加入已移除的別名。",
+      "unlockConfirm": "解除此實體的鎖定？未來的抽取將能重新加入別名。",
+      "unlockSuccess": "已解除鎖定。",
+      "unlockFailed": "無法解除鎖定：{{error}}",
       "field": {
         "project": "專案",
         "global": "全域",
@@ -219,6 +224,7 @@
     "edit": {
       "title": "編輯實體",
       "description": "重新命名或調整此實體。儲存後，未來的抽取不會自動重新加入已移除的別名。",
+      "conflict": "其他裝置已更新此實體。請檢視最新內容後再試一次。",
       "field": {
         "name": "顯示名稱",
         "kind": "類型",

@@ -17,7 +17,8 @@ import logging
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, Response, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 
 from app.db.neo4j import neo4j_session
@@ -31,9 +32,45 @@ from app.db.neo4j_repos.entities import (
     list_entities_filtered,
     list_user_entities,
     merge_entities,
+    unlock_entity_user_edited,
     update_entity_fields,
 )
+from app.db.repositories import VersionMismatchError
 from app.middleware.jwt_auth import get_current_user
+
+
+# C9 (D-K19d-γa-01) — local If-Match / ETag helpers. Duplicated from
+# ``projects.py`` + ``summaries.py`` on purpose: keeping these inline
+# avoids a new shared module + import ripple and matches the existing
+# codebase convention for router-level concerns that don't warrant a
+# cross-cutting dependency.
+def _parse_if_match(header_value: str | None) -> int | None:
+    """Return the integer version from an If-Match header, or None
+    when no header was sent. Raises 422 on malformed syntax."""
+    if header_value is None:
+        return None
+    s = header_value.strip()
+    # Accept both strong ("N") and weak (W/"N") ETag forms.
+    if s.startswith('W/'):
+        s = s[2:].strip()
+    if len(s) >= 2 and s.startswith('"') and s.endswith('"'):
+        inner = s[1:-1]
+        try:
+            return int(inner)
+        except ValueError:
+            pass
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        detail="If-Match header must be a weak ETag with an integer version",
+    )
+
+
+def _etag(version: int) -> str:
+    """Weak ETag for a versioned Entity. Weak because the node carries
+    more state than just the version counter (updated_at, denormalized
+    stats, etc.) — two serializations of the same version are
+    *semantically* equivalent but not byte-identical."""
+    return f'W/"{version}"'
 
 logger = logging.getLogger(__name__)
 
@@ -199,6 +236,7 @@ async def list_entities(
     response_model=EntityDetail,
 )
 async def get_entity_detail(
+    response: Response,
     # Review-impl L1: hard cap on entity_id length. Canonical ids in
     # `entity_canonical_id` are deterministic hex hashes well under
     # 100 chars; 200 is generous headroom. Without the cap, a caller
@@ -218,6 +256,9 @@ async def get_entity_detail(
     verbatim passages, and full per-source provenance are slated
     for a follow-up cycle — the FE can lazy-load them on demand
     via future `/entities/{id}/{facts|passages|provenance}` routes.
+
+    C9: ETag header handed back so the FE can send `If-Match: W/"N"`
+    on the next PATCH.
     """
     async with neo4j_session() as session:
         detail = await get_entity_with_relations(
@@ -230,6 +271,7 @@ async def get_entity_detail(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="entity not found",
         )
+    response.headers["ETag"] = _etag(detail.entity.version)
     return detail
 
 
@@ -269,23 +311,49 @@ class EntityUpdate(BaseModel):
 )
 async def patch_entity(
     body: EntityUpdate,
+    response: Response,
     entity_id: str = Path(min_length=1, max_length=200),
+    if_match: str | None = Header(default=None, alias="If-Match"),
     user_id: UUID = Depends(get_current_user),
 ) -> Entity:
-    """K19d.5 — update an entity's display fields and lock future
-    extractions from overwriting user-edited aliases.
+    """K19d.5 + C9 — update an entity's display fields with optimistic
+    concurrency. Lock future extractions from overwriting user-edited
+    aliases.
 
     Cross-user / missing entity collapses to 404 per KSA §6.4.
+
+    C9 (D-K19d-γa-01): strict If-Match contract mirrors projects +
+    summaries (D-K8-03). A PATCH without If-Match is almost certainly
+    a stale client and is rejected with 428. A version mismatch
+    returns 412 with the CURRENT entity as body + refreshed ETag so
+    the FE can reset its baseline without a second GET.
     """
-    async with neo4j_session() as session:
-        updated = await update_entity_fields(
-            session,
-            user_id=str(user_id),
-            entity_id=entity_id,
-            name=body.name,
-            kind=body.kind,
-            aliases=body.aliases,
+    expected_version = _parse_if_match(if_match)
+    if expected_version is None:
+        raise HTTPException(
+            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+            detail="If-Match header required — GET the entity first to obtain an ETag",
         )
+
+    async with neo4j_session() as session:
+        try:
+            updated = await update_entity_fields(
+                session,
+                user_id=str(user_id),
+                entity_id=entity_id,
+                name=body.name,
+                kind=body.kind,
+                aliases=body.aliases,
+                expected_version=expected_version,
+            )
+        except VersionMismatchError as exc:
+            # exc.current is the Entity this route put in — cast safely.
+            current: Entity = exc.current
+            return JSONResponse(
+                status_code=status.HTTP_412_PRECONDITION_FAILED,
+                content=current.model_dump(mode="json"),
+                headers={"ETag": _etag(current.version)},
+            )
     if updated is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -293,14 +361,54 @@ async def patch_entity(
         )
     logger.info(
         "K19d.5: user updated entity user_id=%s entity_id=%s "
-        "fields=%s",
+        "fields=%s version=%d",
         user_id,
         entity_id,
         [
             f for f in ("name", "kind", "aliases")
             if getattr(body, f) is not None
         ],
+        updated.version,
     )
+    response.headers["ETag"] = _etag(updated.version)
+    return updated
+
+
+# ── C9 — POST /entities/{id}/unlock ─────────────────────────────────
+
+
+@entities_router.post(
+    "/entities/{entity_id}/unlock",
+    response_model=Entity,
+)
+async def unlock_entity(
+    response: Response,
+    entity_id: str = Path(min_length=1, max_length=200),
+    user_id: UUID = Depends(get_current_user),
+) -> Entity:
+    """C9 (D-K19d-γa-02) — clear the user_edited lock so extractions
+    can contribute aliases again. No If-Match: matches the /archive
+    pattern — a one-way idempotent flag flip has no concurrency hazard
+    that a baseline-refresh dance would solve.
+
+    Cross-user / missing id collapses to 404 per KSA §6.4.
+    """
+    async with neo4j_session() as session:
+        updated = await unlock_entity_user_edited(
+            session,
+            user_id=str(user_id),
+            entity_id=entity_id,
+        )
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="entity not found",
+        )
+    logger.info(
+        "C9: user unlocked entity user_id=%s entity_id=%s version=%d",
+        user_id, entity_id, updated.version,
+    )
+    response.headers["ETag"] = _etag(updated.version)
     return updated
 
 

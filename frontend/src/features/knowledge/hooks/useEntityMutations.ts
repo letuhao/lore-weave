@@ -19,7 +19,13 @@ import {
 // permutation the user may have open in the list.
 
 export interface UseUpdateEntityResult {
-  update: (args: { entityId: string; payload: EntityUpdatePayload }) => Promise<Entity>;
+  update: (args: {
+    entityId: string;
+    payload: EntityUpdatePayload;
+    /** C9 (D-K19d-γa-01): version from the entity detail the user is
+     *  editing. Sent as ``If-Match: W/"N"``. BE 428s without it. */
+    ifMatchVersion: number;
+  }) => Promise<Entity>;
   isPending: boolean;
   error: Error | null;
 }
@@ -33,10 +39,72 @@ export function useUpdateEntity(options?: {
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: async (args: { entityId: string; payload: EntityUpdatePayload }) => {
-      return knowledgeApi.updateEntity(args.entityId, args.payload, accessToken!);
+    mutationFn: async (args: {
+      entityId: string;
+      payload: EntityUpdatePayload;
+      ifMatchVersion: number;
+    }) => {
+      return knowledgeApi.updateEntity(
+        args.entityId,
+        args.payload,
+        args.ifMatchVersion,
+        accessToken!,
+      );
     },
     onSuccess: async (entity) => {
+      await queryClient.invalidateQueries({
+        queryKey: ['knowledge-entities', userId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['knowledge-entity-detail', userId, entity.id],
+      });
+      options?.onSuccess?.(entity);
+    },
+    onError: async (err, variables) => {
+      // C9: on 412 conflict, refresh the detail cache so a re-open of
+      // the edit dialog sees the fresh baseline. The toast is owned
+      // by the consumer via onError.
+      const status = (err as Error & { status?: number }).status;
+      if (status === 412) {
+        await queryClient.invalidateQueries({
+          queryKey: ['knowledge-entity-detail', userId, variables.entityId],
+        });
+      }
+      options?.onError?.(err as Error);
+    },
+  });
+
+  return {
+    update: mutation.mutateAsync,
+    isPending: mutation.isPending,
+    error: (mutation.error as Error | null) ?? null,
+  };
+}
+
+
+// ── C9 (D-K19d-γa-02) — unlock user_edited ─────────────────────────
+
+export interface UseUnlockEntityResult {
+  unlock: (args: { entityId: string }) => Promise<Entity>;
+  isPending: boolean;
+  error: Error | null;
+}
+
+export function useUnlockEntity(options?: {
+  onSuccess?: (entity: Entity) => void;
+  onError?: (err: Error) => void;
+}): UseUnlockEntityResult {
+  const { accessToken, user } = useAuth();
+  const userId = user?.user_id ?? 'anon';
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: async (args: { entityId: string }) => {
+      return knowledgeApi.unlockEntity(args.entityId, accessToken!);
+    },
+    onSuccess: async (entity) => {
+      // Same invalidation as update: list + detail, so the open panel
+      // reflects user_edited=false immediately.
       await queryClient.invalidateQueries({
         queryKey: ['knowledge-entities', userId],
       });
@@ -51,7 +119,7 @@ export function useUpdateEntity(options?: {
   });
 
   return {
-    update: mutation.mutateAsync,
+    unlock: mutation.mutateAsync,
     isPending: mutation.isPending,
     error: (mutation.error as Error | null) ?? null,
   };

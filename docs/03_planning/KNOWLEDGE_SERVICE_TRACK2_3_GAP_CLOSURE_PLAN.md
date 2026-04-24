@@ -49,7 +49,7 @@ Statuses: `[ ]` open · `[D]` DESIGN in flight · `[B]` BUILD in flight · `[V]`
 | **C6** | Chapter-title resolution for Job + Timeline rows | D-K19b.3-01, D-K19e-β-01 (shared book-service edge) | L | `[x]` | — |
 | **C7** | Humanised ETA formatter + stale-offset self-heal | D-K19b.3-02, D-K19e-β-02 | ~~S~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
 | **C8** | Drawer-search UX: source_type filter + in-card highlighting (+BE facet counts per user addendum) | D-K19e-γa-01, D-K19e-γb-01 | ~~M~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
-| **C9** | Entity concurrency + unlock | D-K19d-γa-01 (If-Match), D-K19d-γa-02 (unlock endpoint) | M | `[ ]` | — |
+| **C9** | Entity concurrency + unlock | D-K19d-γa-01 (If-Match), D-K19d-γa-02 (unlock endpoint) | ~~M~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
 | **C10** | Timeline feature gaps | D-K19e-α-01 (entity_id), D-K19e-α-03 (chronological range) | M | `[ ]` | — |
 | **C11** | Cursor pagination (jobs history + Complete list) | D-K19b.1-01, D-K19b.2-01 | M | `[ ]` | — |
 | **C12** | Scope + benchmark dialog UX | D-K19a.5-04 + D-K16.2-02b (paired), D-K19a.5-06, D-K19a.5-07 | L | `[ ]` | book-service `from_sort`/`to_sort` already shipped ✓ |
@@ -217,7 +217,44 @@ Cycles whose single-line description is unclear: the full text lives under the i
 
 ---
 
-### C9 — Entity concurrency + unlock (P2, M)
+### C9 — Entity concurrency + unlock (P2, XL) ✅
+**Shipped.** Session 51 cycle 35. Reclassified M→XL at CLARIFY (15 files with tests + i18n + /review-impl HIGH regression lock).
+
+**Files touched.**
+- BE repo [`entities.py`](../../services/knowledge-service/app/db/neo4j_repos/entities.py): NEW `Entity.version: int = 1` Pydantic field. `_node_to_entity` coalesces missing → 1 (pre-C9 backfill). Atomic FOREACH `_UPDATE_ENTITY_FIELDS_CYPHER` with `applied` flag — one round-trip version check + SET. NEW `unlock_entity_user_edited` helper + `_UNLOCK_ENTITY_CYPHER` (idempotent, no If-Match). Version bumps added at 4 user-facing write sites: update, unlock, `_MERGE_ENTITY_CYPHER` (ON CREATE=1, ON MATCH `coalesce(.version, 1) + 1`), `_MERGE_UPDATE_TARGET_CYPHER`.
+- BE shared [`repositories/__init__.py`](../../services/knowledge-service/app/db/repositories/__init__.py): `VersionMismatchError.current` widened (duck-typed) to accept Entity alongside Project/Summary without pulling Entity across the Postgres↔Neo4j repo-module boundary.
+- BE router [`entities.py`](../../services/knowledge-service/app/routers/public/entities.py): local `_parse_if_match` + `_etag` helpers (duplicated per codebase convention — matches projects.py + summaries.py). PATCH gains strict If-Match contract: 428 on missing, 412 with current body + fresh ETag on mismatch, ETag header on success. GET detail sets ETag. NEW `POST /entities/{id}/unlock` endpoint — no If-Match (matches /archive pattern).
+- BE test [`test_entities_browse_api.py`](../../services/knowledge-service/tests/unit/test_entities_browse_api.py): updated 4 existing PATCH tests (send `If-Match: W/"1"`) + 8 new C9 tests (If-Match missing → 428, bad If-Match → 422, version mismatch → 412 with body + ETag, ETag on GET detail success, unlock happy/404/no-If-Match-needed).
+- BE test NEW [`test_entities_mutations.py`](../../services/knowledge-service/tests/unit/test_entities_mutations.py): 8 unit tests mocking `run_write` directly — version flow (applies / mismatch raises / returns None on missing), unlock flip + version bump, unlock 404, pre-C9 coalesce backfill, /review-impl HIGH regression locks (source-scan of 4 Cypher strings + pre-C9 round-trip at expected_version=1).
+- FE api [`api.ts`](../../frontend/src/features/knowledge/api.ts): `Entity` wire gains required `version: number` + `user_edited: boolean`. `updateEntity(entityId, body, ifMatchVersion, token)` sends `If-Match: W/"N"` via existing `ifMatch()` helper. NEW `unlockEntity(entityId, token)` POST.
+- FE hook [`useEntityMutations.ts`](../../frontend/src/features/knowledge/hooks/useEntityMutations.ts): `useUpdateEntity` threads `ifMatchVersion` + invalidates detail query on 412 (so FE next-open sees fresh baseline). NEW `useUnlockEntity`.
+- FE hook test [`useEntityMutations.test.tsx`](../../frontend/src/features/knowledge/hooks/__tests__/useEntityMutations.test.tsx): updated updateEntity happy-path (+ifMatch arg) + 1 C9 conflict invalidation test + 2 C9 useUnlockEntity tests.
+- FE component [`EntityEditDialog.tsx`](../../frontend/src/features/knowledge/components/EntityEditDialog.tsx): passes `entity.version` as ifMatchVersion on submit; 412 → `entities.edit.conflict` toast + close dialog (hook has already invalidated detail cache).
+- FE component test [`EntityEditDialog.test.tsx`](../../frontend/src/features/knowledge/components/__tests__/EntityEditDialog.test.tsx): ENTITY stub gains version + user_edited; happy-path asserts `ifMatchVersion=7` threaded; +1 conflict-toast test.
+- FE component [`EntityDetailPanel.tsx`](../../frontend/src/features/knowledge/components/EntityDetailPanel.tsx): NEW Unlock section + CTA, gated on `entity.user_edited=true`. Uses `window.confirm` for lightweight flag-flip recovery (non-destructive, idempotent).
+- FE component test NEW [`EntityDetailPanel.test.tsx`](../../frontend/src/features/knowledge/components/__tests__/EntityDetailPanel.test.tsx): 4 tests — hidden when user_edited=false, shown when true, click fires mutation + toasts success, cancel-confirm skips mutation.
+- FE test [`projectState.test.ts`](../../frontend/src/features/knowledge/types/__tests__/projectState.test.ts): ENTITIES_KEYS +6 paths (5 unlock + 1 conflict) — cross-locale drift lock.
+- i18n 4 locales: 6 new keys (`entities.detail.{unlock,unlockHint,unlockConfirm,unlockSuccess,unlockFailed}` + `entities.edit.conflict`).
+
+**Design decisions locked at CLARIFY (user approved 6 defaults).**
+1. /unlock does NOT require If-Match — matches /archive pattern; idempotent flag flip.
+2. /unlock flips user_edited=false only; no alias reset (no pre-edit snapshot stored).
+3. Schema migration via COALESCE — existing :Entity nodes without version → coalesce to 1 on read, matched in all Cypher writes. No DDL needed.
+4. `Entity.version` on response wire + FE sends on next PATCH.
+5. 412 response body = current Entity (FE refreshes baseline without second GET) + fresh ETag.
+6. 428 Precondition Required on missing If-Match — strict anti-stale-client mode.
+
+**Design refinements at REVIEW-DESIGN (13 questions).**
+- Atomic FOREACH pattern replaces two-query approach (one Cypher round-trip).
+- Extended scope to bump version at 4 user-facing write sites (update, unlock, merge_entity ON CREATE/MATCH, merge_update_target) — system-internal writes (anchor/archive/promote) deliberately don't bump.
+- `_node_to_entity` coalesce=1 matches read-path + Pydantic default.
+
+**/review-impl HIGH + 1 LOW folded in + 3 LOW accepted + 1 COSMETIC skipped.**
+- **HIGH**: pre-C9 entities permanently uneditable — read path coalesced missing version to 1 but 4 Cypher `coalesce` used 0, so FE's `If-Match: W/"1"` always 412'd against `current_version=0`. Fixed: aligned all 4 Cypher to `coalesce(.., 1)`. Regression lock via source-scan test.
+- **LOW#2**: NEW `test_cypher_version_coalesce_default_matches_read_path` scans the 4 Cypher string literals at import time + NEW `test_update_entity_pre_c9_node_with_expected_version_1_applies` unit round-trip.
+- LOW#3 (live-Neo4j test), LOW#4 (untyped fixtures), LOW#5 (no-op unlock bump), COSMETIC#6 (param ordering) — documented/accepted.
+
+**Close:** D-K19d-γa-01, D-K19d-γa-02. **P2 tier 7/7 — DONE.**
 **Why.** If-Match on PATCH entity matches the `D-K8-03 If-Match` contract already in effect for projects + summaries — consistency win. Unlock endpoint gives users a recovery path from accidental edits.
 
 **Files.**
@@ -369,13 +406,13 @@ Once text arrives:
 | Tier | Open | Done | Blocked |
 |---|---|---|---|
 | P1 (C1–C2) | 0 | **4 items / 2 cycles (C1 ✅ + C2 ✅)** | 0 |
-| P2 (C3–C9) | 3 items / 2 cycles | **13 items / 6 cycles (C3 ✅ + C4 ✅ + C5 ✅ + C6 ✅ + C7 ✅ + C8 ✅)** | 0 |
+| P2 (C3–C9) | 0 items | **15 items / 7 cycles (C3 ✅ + C4 ✅ + C5 ✅ + C6 ✅ + C7 ✅ + C8 ✅ + C9 ✅)** | 0 |
 | P3 (C10–C13) | 7 items / 4 cycles | 0 | 0 |
 | P4 (C14–C15) | 3 items / 2 cycles | 0 | 0 |
 | P5 (C16–C18) | 3 items / 3 cycles | 0 | 0 DESIGN |
 | User-gated (C19–C20) | 2 items / 2 cycles | 0 | 2 ⏸ |
 
-**Total plan: 33 item-closures across 20 cycles. Completed: 17 items / 8 cycles. P1 tier done · P2 tier 6/7 done.**
+**Total plan: 33 item-closures across 20 cycles. Completed: 19 items / 9 cycles. P1 tier done · P2 tier DONE (7/7). Next: P3 (C10+).**
 (Some cycles close > 1 item; some items appear in >1 cycle. Check the cycle table for authoritative count.)
 
 ---

@@ -168,6 +168,14 @@ export interface Entity {
   archive_reason: string | null;
   evidence_count: number;
   mention_count: number;
+  /** K19d γ-a: set to true by PATCH /entities/{id}; gates the Unlock
+   *  CTA in the detail panel. Extractions no longer re-append removed
+   *  aliases until the user explicitly unlocks. */
+  user_edited: boolean;
+  /** C9 (D-K19d-γa-01): optimistic-concurrency counter. The FE sends
+   *  this back via ``If-Match: W/"<version>"`` on PATCH. Bumped by
+   *  every user-facing write on the BE. */
+  version: number;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -949,6 +957,7 @@ export const knowledgeApi = {
   updateEntity(
     entityId: string,
     body: EntityUpdatePayload,
+    ifMatchVersion: number,
     token: string,
   ): Promise<Entity> {
     return apiJson<Entity>(
@@ -956,6 +965,19 @@ export const knowledgeApi = {
       {
         method: 'PATCH',
         body: JSON.stringify(body),
+        token,
+        // C9 (D-K19d-γa-01): strict If-Match — BE 428s without it.
+        headers: ifMatch(ifMatchVersion),
+      },
+    );
+  },
+
+  // C9 (D-K19d-γa-02) — POST /entities/{id}/unlock
+  unlockEntity(entityId: string, token: string): Promise<Entity> {
+    return apiJson<Entity>(
+      `${BASE}/entities/${encodeURIComponent(entityId)}/unlock`,
+      {
+        method: 'POST',
         token,
       },
     );

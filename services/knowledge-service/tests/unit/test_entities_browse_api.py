@@ -262,14 +262,20 @@ def test_patch_entity_happy(mock_update):
     resp = client.patch(
         f"/v1/knowledge/entities/{_ENTITY_ID}",
         json={"name": "Kai the Brave"},
+        headers={"If-Match": 'W/"1"'},
     )
     assert resp.status_code == 200, resp.json()
     assert resp.json()["name"] == "Kai the Brave"
+    # C9: ETag header handed back so the client can PATCH again
+    # without a second GET.
+    assert resp.headers["ETag"] == f'W/"{stub.version}"'
     kwargs = mock_update.await_args.kwargs
     assert kwargs["entity_id"] == _ENTITY_ID
     assert kwargs["name"] == "Kai the Brave"
     assert kwargs["kind"] is None
     assert kwargs["aliases"] is None
+    # C9: expected_version parsed from the If-Match header.
+    assert kwargs["expected_version"] == 1
 
 
 @patch(
@@ -280,7 +286,11 @@ def test_patch_entity_happy(mock_update):
 def test_patch_entity_rejects_empty_body(mock_update):
     mock_update.return_value = None
     client = _make_client()
-    resp = client.patch(f"/v1/knowledge/entities/{_ENTITY_ID}", json={})
+    resp = client.patch(
+        f"/v1/knowledge/entities/{_ENTITY_ID}",
+        json={},
+        headers={"If-Match": 'W/"1"'},
+    )
     assert resp.status_code == 422
     mock_update.assert_not_awaited()
 
@@ -296,6 +306,7 @@ def test_patch_entity_rejects_empty_alias(mock_update):
     resp = client.patch(
         f"/v1/knowledge/entities/{_ENTITY_ID}",
         json={"aliases": ["valid", "   "]},
+        headers={"If-Match": 'W/"1"'},
     )
     assert resp.status_code == 422
     mock_update.assert_not_awaited()
@@ -312,9 +323,145 @@ def test_patch_entity_not_found(mock_update):
     resp = client.patch(
         f"/v1/knowledge/entities/{_ENTITY_ID}",
         json={"name": "new name"},
+        headers={"If-Match": 'W/"1"'},
     )
     assert resp.status_code == 404
     assert resp.json()["detail"] == "entity not found"
+
+
+# ── C9 — If-Match contract + /unlock endpoint ─────────────────────
+
+
+@patch(
+    "app.routers.public.entities.update_entity_fields",
+    new_callable=AsyncMock,
+)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_patch_entity_missing_if_match_428(mock_update):
+    """D-K19d-γa-01: any PATCH without If-Match is almost certainly a
+    stale client. Strict: 428 Precondition Required."""
+    client = _make_client()
+    resp = client.patch(
+        f"/v1/knowledge/entities/{_ENTITY_ID}",
+        json={"name": "new"},
+    )
+    assert resp.status_code == 428
+    mock_update.assert_not_awaited()
+
+
+@patch(
+    "app.routers.public.entities.update_entity_fields",
+    new_callable=AsyncMock,
+)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_patch_entity_bad_if_match_422(mock_update):
+    """Malformed If-Match (not a weak ETag with integer version)
+    returns 422. Matches projects.py/_parse_if_match contract."""
+    client = _make_client()
+    resp = client.patch(
+        f"/v1/knowledge/entities/{_ENTITY_ID}",
+        json={"name": "new"},
+        headers={"If-Match": "not-an-etag"},
+    )
+    assert resp.status_code == 422
+    mock_update.assert_not_awaited()
+
+
+@patch(
+    "app.routers.public.entities.update_entity_fields",
+    new_callable=AsyncMock,
+)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_patch_entity_version_mismatch_412_with_current_body(mock_update):
+    """D-K19d-γa-01: mismatch returns 412 with the CURRENT entity as
+    body + refreshed ETag header, so the FE can reset its baseline
+    without a second GET."""
+    from app.db.repositories import VersionMismatchError
+    current = _entity_stub(name="Other Edit Won")
+    # Simulate newer version at the DB.
+    current = current.model_copy(update={"version": 5})
+    mock_update.side_effect = VersionMismatchError(current)
+    client = _make_client()
+    resp = client.patch(
+        f"/v1/knowledge/entities/{_ENTITY_ID}",
+        json={"name": "my stale edit"},
+        headers={"If-Match": 'W/"3"'},
+    )
+    assert resp.status_code == 412
+    body = resp.json()
+    assert body["name"] == "Other Edit Won"
+    assert body["version"] == 5
+    assert resp.headers["ETag"] == 'W/"5"'
+
+
+@patch(
+    "app.routers.public.entities.get_entity_with_relations",
+    new_callable=AsyncMock,
+)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_get_entity_detail_sets_etag_header(mock_detail):
+    """D-K19d-γa-01: GET detail hands out an ETag the FE can send back
+    on the next PATCH."""
+    stub = _entity_stub()
+    stub = stub.model_copy(update={"version": 7})
+    mock_detail.return_value = EntityDetail(
+        entity=stub,
+        relations=[],
+        relations_truncated=False,
+        total_relations=0,
+    )
+    client = _make_client()
+    resp = client.get(f"/v1/knowledge/entities/{_ENTITY_ID}")
+    assert resp.status_code == 200
+    assert resp.headers["ETag"] == 'W/"7"'
+
+
+@patch(
+    "app.routers.public.entities.unlock_entity_user_edited",
+    new_callable=AsyncMock,
+)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_unlock_entity_happy(mock_unlock):
+    """D-K19d-γa-02: POST /unlock flips user_edited=false, bumps
+    version, returns 200 with fresh ETag."""
+    unlocked = _entity_stub().model_copy(update={"version": 4})
+    mock_unlock.return_value = unlocked
+    client = _make_client()
+    resp = client.post(f"/v1/knowledge/entities/{_ENTITY_ID}/unlock")
+    assert resp.status_code == 200, resp.json()
+    assert resp.json()["version"] == 4
+    assert resp.headers["ETag"] == 'W/"4"'
+    kwargs = mock_unlock.await_args.kwargs
+    assert kwargs["entity_id"] == _ENTITY_ID
+
+
+@patch(
+    "app.routers.public.entities.unlock_entity_user_edited",
+    new_callable=AsyncMock,
+)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_unlock_entity_not_found(mock_unlock):
+    """Cross-user / missing id — 404 via None return from repo."""
+    mock_unlock.return_value = None
+    client = _make_client()
+    resp = client.post(f"/v1/knowledge/entities/{_ENTITY_ID}/unlock")
+    assert resp.status_code == 404
+
+
+@patch(
+    "app.routers.public.entities.unlock_entity_user_edited",
+    new_callable=AsyncMock,
+)
+@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+def test_unlock_entity_does_not_require_if_match(mock_unlock):
+    """/unlock matches /archive pattern — idempotent flag flip, no
+    baseline-refresh dance required. A request without If-Match must
+    not 428."""
+    unlocked = _entity_stub()
+    mock_unlock.return_value = unlocked
+    client = _make_client()
+    resp = client.post(f"/v1/knowledge/entities/{_ENTITY_ID}/unlock")
+    assert resp.status_code == 200
 
 
 @patch(
