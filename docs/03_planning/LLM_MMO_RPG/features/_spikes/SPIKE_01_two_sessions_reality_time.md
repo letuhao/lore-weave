@@ -370,32 +370,267 @@ Plot hooks seeded (L2 canon-worthy):
 
 ---
 
-## 7. Next Step: Session 2
+## 7. Session 2 Draft (6 turns)
 
-To be drafted after Session 1 review. Session 2 will test:
+**Wall-clock real**: 2026-04-25 15:30 UTC (Alice logs back in ~1.5h real-time after Session 1)
+**Reality state at Session 2 start**: V1-paused (0 players since Session 1 logout); `current_fiction_ts = 1256/09/15 giờ Thân trung + 3min` (end of Turn 10).
 
-1. **MV12-D4 V1 pause semantics** — PC logs back in; fiction_ts still at Turn 10 end; LLM resumes with "Anh mở mắt" narration
-2. **Player-declared time advancement** — Player declares `/sleep 8 hours`; LLM advances fiction_ts by 8h (calibration event MV12-D5 "morning arrives" fires); new scene state (different light, perhaps different ambient)
-3. **NPC state persistence across session boundary** — Lão Ngũ's opinion + Tiểu Thúy's curiosity should still be there. Du sĩ may have left.
-4. **Plot-hook continuity** — Dương Quá rumor still exists; PC can pursue or ignore
-5. **New events trigger** — post-dawn scene (different NPCs present; different weather; maybe Lão Ngũ not at quầy)
-6. **Observations on cross-session state recovery** — what does the SDK need to do on session resume?
+### Turn 11 — Resume + declare sleep-until-dawn
+
+**Client-side resume UX** (design assumption, not tested here yet):
+```
+Your character was sleeping.
+Options: [Continue from this moment] [Sleep until dawn] [Sleep X hours] [Wake now]
+```
+
+**Player selects**: `Sleep until dawn`
+
+**System translates**: `/sleep until=dawn` → LLM resolves target fiction_ts to 1256/09/16 giờ Mão trung (~6am) → fiction_duration ≈ 13h 50min
+
+**LLM (narration of compressed fiction-time)**:
+> Anh chìm sâu vào giấc ngủ ngay sau khi đặt lưng xuống. Mơ chập chờn — mảnh ký ức Sài Gòn 2026 trộn với đường đi mờ mịt trong sương mù. Có lúc anh tỉnh nửa chừng bởi tiếng mưa đổi nhịp lúc nửa đêm, rồi lại chìm đi.
+>
+> Cho đến khi một tia sáng xám nhạt lọt qua khe cửa sổ gỗ — bình minh cuối thu. Tiếng mưa đã tạnh từ lúc nào. Ngoài kia, tiếng gà xa vẳng lại, tiếng gỗ kẽo kẹt của ai đó đang mở cửa ở tầng dưới.
+>
+> Anh mở mắt. Cổ hơi mỏi, lưng ê ẩm vì giường tre, nhưng đầu đã tỉnh táo hơn nhiều so với chiều qua.
+
+| Annotation | Value |
+|---|---|
+| `event_type` | `turn.time_advancement` (distinct from `turn.player_action`) |
+| `fiction_ts_start` | 1256/09/15 giờ Thân trung +3min (Session 1 end point) |
+| `fiction_duration` | ~13h 50min (player-declared via `/sleep until dawn`) |
+| `fiction_ts_end` | 1256/09/16 giờ Mão trung (~6am) |
+| **Calibration event fired** | `day_passes` — date boundary 9/15 → 9/16 crossed during this event |
+| MV12-D3 resolution | Player declared intent ("until dawn") + LLM resolved to concrete duration (14h); system defaults didn't apply |
+| MV12-D4 V1 pause check | Correct — during the 14h advancement, no autonomous NPC events fired (V1 paused mode = no autonomous, only player-driven) |
+| **Design surprise** | LLM narrated the sleep period ("mơ chập chờn", "tỉnh nửa chừng") — is that persistent event? Just flavor? **Decision needed**: narration-during-time-skip is flavor-only (not an event); PC doesn't "really" dream. |
+| Open question | Does the "tiếng gỗ kẽo kẹt của ai đó đang mở cửa" refer to a specific NPC (Lão Ngũ)? If so, that's LLM inferring from NPC routine (even in V1 paused). If it's flavor, not canonical. → surfaces the "paused + narrative fill" design tension |
+
+### Turn 12 — PC wakes + observes room
+
+**Player**: `Ngồi dậy. Đi đến cửa sổ, mở ra.`
+
+**LLM**:
+> Anh ngồi dậy, chân chạm sàn gỗ lạnh. Đi ba bước đến cửa sổ nhỏ phía sau, đẩy cánh gỗ mở.
+>
+> Vườn trúc phía sau quán — tre ướt đẫm sương, vài giọt nước còn rớt từ lá xuống mặt đất. Không khí mát, có mùi đất ẩm và khói bếp từ đâu đó trong hẻm. Bầu trời xám nhạt, có vẻ sẽ nắng nhẹ sau mây.
+>
+> Ở dưới sân, một con mèo vàng đang liếm chân trên bực đá.
+
+| Annotation | Value |
+|---|---|
+| `fiction_duration` | ~30 sec (sit up + walk + open window) |
+| Scene state post-advancement | Different ambient from Session 1 Turn 1-10 (autumn dawn vs afternoon rain) — LLM derives from fiction_ts hour + reality L3 weather state |
+| Design question | Does L3 "weather" transition automatically (rain → stopped) via calibration events? Or LLM-improvised from hour-of-day? → **Weather-state as first-class data** or LLM-derived? |
+| Data-model need | `scene.ambient_state` jsonb with `weather / light_level / temperature / sounds` slots; may update on calibration event or explicit LLM emit |
+
+### Turn 13 — Go downstairs
+
+**Player**: `Rửa mặt bằng khăn Tiểu Thúy để lại tối qua. Mặc áo. Đi xuống tầng dưới.`
+
+**LLM**:
+> Nước trong thau gỗ lạnh hơn anh tưởng. Anh vốc lên mặt — tỉnh táo thêm một phần. Khăn thô, nhưng sạch. Anh mặc áo ngoài vào, vẫn là cùng một bộ đồ ngày hôm qua nhưng đã khô.
+>
+> Đi xuống cầu thang gỗ. Tiếng bước chân vang hơn trong yên lặng buổi sáng.
+>
+> Tầng trệt có khác ngày hôm qua. Lão Ngũ đang ngồi sau quầy nhưng không chấm sổ — đang đọc một tờ giấy gì đó, chắc là hóa đơn. Tiểu Thúy đang quét sàn gần chân cầu thang, thấy anh xuống thì dừng lại.
+>
+> Bàn mà du sĩ ngồi tối qua — trống. Không còn thanh kiếm, không còn cuốn sách. Người đã đi.
+
+| Annotation | Value |
+|---|---|
+| `fiction_duration` | ~5 min (wash + dress + walk down) |
+| **NPC state persistence check** | Lão Ngũ + Tiểu Thúy PRESENT (persisted); du sĩ GONE — design question: how? |
+| Du sĩ departure resolution | Options: (a) LLM narrates "he left overnight" as flavor (not an event; if player asks "when?", LLM improvises); (b) Scheduled NPC action "du sĩ leaves at 5am" was pre-existing but didn't fire in V1 paused → fires when PC advances time past the scheduled moment; (c) Author of reality had explicitly set "du sĩ leaves when PC sleeps" as narrative beat |
+| **Design decision for spike** | V1 interpretation: (a) — pure LLM flavor. Du sĩ exit isn't a canonical event; if another PC arrives tomorrow and asks "where's the scholar?", LLM answers differently each time. **Consequence**: non-persistent state changes during time-skips. V1+30d may upgrade to (b) scheduled routines. |
+| NPC opinion persistence | Lão Ngũ opinion from Session 1 (`cautious_accepting`) — should carry into Session 2 naturally. Tested next turn. |
+
+### Turn 14 — Talk with Lão Ngũ (NPC memory test)
+
+**Player**: `Tiến đến quầy. "Lão tiên sinh sớm nay."`
+
+**LLM**:
+> Lão Ngũ ngẩng lên. Đôi mắt lão — hôm qua sắc và nghi ngờ — sáng nay vẫn vậy, nhưng có thêm một chút gì đó... không hẳn là ấm áp, nhưng đã qua vòng thử thách đầu.
+>
+> "Dậy sớm." Lão gấp tờ giấy, để xuống. "Mưa tạnh rồi. Đi đường đỡ khổ."
+>
+> Rồi lão thêm: "Vị du sĩ tối qua... rời đi lúc trời sắp sáng. Không ăn sáng, trả tiền trọ rồi đi thẳng ra cổng Bắc. Đi có vẻ vội."
+
+| Annotation | Value |
+|---|---|
+| `fiction_duration` | ~45 sec |
+| **NPC opinion persistence VALIDATED** | Lão Ngũ's response acknowledges prior encounter ("qua vòng thử thách đầu") — uses his Session-1 opinion state, not starting fresh. This is where session-scoped NPC-PC relationship memory (R8 `npc_pc_relationship`) is tested. |
+| LLM improvised detail | Du sĩ "đi ra cổng Bắc, vội" = new L3 detail not canonical pre-this-turn; now it IS canonical (Lão Ngũ said so; NPC utterance = observable event). Future turns should respect this. → **Design implication**: NPC-emitted info via dialogue is first-class L3 canon. |
+| Data-model need | On session resume, NPC-PC relationship state is loaded from `npc_pc_relationship` table; LLM prompt includes this in `[ACTOR_CONTEXT]` section (S9 prompt assembly) so LLM can tone responses accordingly |
+
+### Turn 15 — Pursue Dương Quá plot hook
+
+**Player**: `"Chuyện tiên bối nói tối qua... về tay kiếm trẻ ở Tương Dương. Tại hạ có nên đi xem thử không?"`
+
+**LLM**:
+> Lão Ngũ nhìn anh một lúc, như đang cân nhắc.
+>
+> "Cậu không có công phu gì — đi Tương Dương bây giờ chỉ chuốc khổ. Đường xa, trên đường có trộm cướp nhỏ. Nhưng..." lão ngừng, chép miệng, "nếu đã muốn đi thì đi. Tương Dương lúc này đông, dễ sống. Kiếm việc làm không khó, nếu cậu đọc được chữ. Về cái tay kiếm trẻ — đó là lời đồn. Đừng tin hết. Nhưng đúng là Tương Dương có chuyện."
+>
+> Rồi lão nhìn xuống hộp tiền của anh, chớp mắt. "Mà... cậu có đủ tiền đi đường không?"
+
+| Annotation | Value |
+|---|---|
+| `fiction_duration` | ~1 min |
+| **Plot-hook continuity VALIDATED** | Lão Ngũ remembers what he said Session 1 Turn 7 ("tay kiếm trẻ ở Tương Dương") without needing the player to re-cite it. This is NPC memory of own prior utterances. |
+| Design implication | NPC state includes memory of its own statements to each PC. Either stored explicitly (`npc_pc_relationship.things_i_told_them jsonb`) or derivable from event log replay filtered by `actor=lao_ngu AND target_pc=ly_minh`. For V1, event-log replay is cheaper. |
+| PC resource concern | Lão Ngũ notes PC's money situation — real constraint (PC has 15 đồng). Travel would need more. |
+| Player decision point | Player can (a) still go anyway, (b) work for a few days to save money, (c) pursue different hook. Narrative branching. |
+
+### Turn 16 — Declare long-duration travel (MV12 big jump test)
+
+**Player**: `"Tại hạ quyết đi. Cảm ơn tiên bối đã chỉ đường."` Then: `/travel to Tương Dương by foot`
+
+**System resolves**: Gia Hưng → Tương Dương by foot, autumn 1256. LLM estimates distance ~600km through Jiangnan terrain, realistic fiction-duration: 20-25 days. Player confirmation prompt (not shown) accepts.
+
+**LLM (narration of compressed travel)**:
+> Anh gật đầu với Lão Ngũ. Trả tiền bữa sáng ngắn Tiểu Thúy vừa mang ra — bánh bao và cháo loãng. Xong, anh đi ra cổng.
+>
+> *Hai mươi ba ngày đường sau.*
+>
+> Tương Dương hiện ra phía trước — một thành lớn giữa Jianghan bình nguyên. Tường thành đá xám, cao hơn anh tưởng. Chợ ngoài cổng Nam đông đúc — người buôn, phu khuân vác, lính gác, ăn mày. Gió cuối thu đã lạnh hơn Gia Hưng; áo ngoài của anh đã bạc thêm sau chuyến đi, giày cũng mòn gần hết.
+>
+> Trên đường, anh đã: ngủ ba đêm ở quán trọ nhỏ (tổng 18 đồng), hai đêm trong đình làng (miễn phí nhưng không yên), bị một đám đầu trâu mặt ngựa dọa dẫm ở huyện Vô Tích (may không có xảy ra gì — anh chạy nhanh), gặp một đoàn thương nhân đi chung một đoạn đường từ Nam Kinh xuống (trả công 10 đồng làm người ghi chép tạm).
+>
+> Trong túi còn khoảng 7 đồng. Người gầy hơn. Mắt quen với đường. Body-memory Hàng Châu mơ hồ đã phai dần; soul Sài Gòn 2026 tỉnh táo hơn, nhưng vẫn không biết tại sao mình ở đây.
+>
+> Mặt trời cao trên đầu. Cổng thành Nam — anh bước vào dòng người.
+
+| Annotation | Value |
+|---|---|
+| `event_type` | `turn.time_advancement` (large duration) |
+| `fiction_ts_start` | 1256/09/16 giờ Mão trung (~6am, after breakfast) |
+| `fiction_duration` | ~23 days = 23 × 24h (resolved by LLM + player confirmation) |
+| `fiction_ts_end` | 1256/10/09 giờ Ngọ sơ (~11am, autumn late) |
+| **Calibration events fired** | `day_passes` × 23 + `month_passes` × 0 (9/16 → 10/9 spans month boundary) = actually should fire `month_passes` once at 9/30 → 10/1 boundary. Let me recount: 9/16 through 10/9 = 23 days + crosses month boundary once. So 23× `day_passes` + 1× `month_passes`. |
+| **Design decision surfaced** | Calibration events fire on fiction-date-boundary crossings, not pure cumulative hours. (23 days of fiction = 23 `day_passes`, not 23×24/24=23 from cumulative — same math here but concept matters.) Refines MV12-D5. |
+| LLM compressed narration | "Hai mươi ba ngày đường sau" — single narrative beat covers 23 days of intermediate events. Intermediate events NOT emitted as canonical (they're flavor). PC's narrative-declared outcome (money spent, body rustic, safe arrival) IS canonical. |
+| Design implication | Large time-skips have **flavor narration** (non-canonical) + **structural deltas** (PC money −8, PC body-memory fade slightly, PC location=Tương Dương-cổng-Nam). Structural deltas are canonical events. |
+| Cost state delta | Money 15 → ~7 (breakfast 3 + travel 8 net) — must be a canonical PCS event |
+| Location state delta | PC location: Gia Hưng Yên Vũ Lâu → Tương Dương cổng Nam outskirts — reality state update |
+| Scene transition | New scene entirely; old NPCs (Lão Ngũ, Tiểu Thúy) stay in reality at Yên Vũ Lâu but PC no longer in their scene |
+
+### Turn 17 — Session 2 end / safe pause at Tương Dương
+
+**Player**: `Tìm một quán trọ rẻ nhất gần cổng. Nghỉ ngơi, định hướng.`
+
+**LLM**:
+> Anh theo mùi thức ăn vào một con hẻm nhỏ phía Tây cổng Nam. Một cái biển gỗ nghiêng: "Lâm Khách Điếm" (林客店). Nhỏ hơn Yên Vũ Lâu, dơ hơn, rẻ hơn — chỉ có ba đồng một đêm cho một chỗ ngủ chung trong sảnh lớn, năm đồng cho phòng nhỏ.
+>
+> Anh chọn sảnh lớn ba đồng. Trả tiền cho một lão chủ quán béo mập, người này thậm chí không hỏi tên. Lão gật, đưa cho anh một manh chiếu rơm mỏng.
+>
+> Sảnh có khoảng bảy-tám khách hỗn tạp đang ngủ hoặc ngồi ngâm rượu. Mùi rơm ẩm, mùi người không tắm, mùi canh đậu. Anh tìm một góc gần tường, trải chiếu, ngồi xuống.
+>
+> Từ cửa sổ nhỏ, có thể thấy bức tường thành đá xám của Tương Dương in bóng trong nắng chiều. *Ở đây là nơi bắt đầu chuyện gì đó — nhưng anh chưa biết chuyện đó là gì.*
+
+| Annotation | Value |
+|---|---|
+| `fiction_duration` | ~1h (find inn + transact + settle) |
+| Money state delta | 7 → 4 đồng (3 đồng for dorm bed) |
+| Scene boundary | Safe pause (PC in commoner dorm, anonymous, low-threat); good logout point |
+| Session 2 ending fiction_ts | 1256/10/09 giờ Vị sơ (~1pm) |
+| `current_fiction_ts` cumulative since reality start | Book anchor 1256/09/15 15:00 → 1256/10/09 13:00 = ~24 days total fiction-time elapsed in reality |
+| Reality state at end | Gia Hưng Yên Vũ Lâu (Lão Ngũ + Tiểu Thúy still there in their fiction-time, unchanged since PC left) · PC now at Tương Dương Lâm Khách Điếm · du sĩ location unknown (left Yên Vũ Lâu pre-dawn; current location unspecified canonical) |
 
 ---
 
-## 8. Graduation Path
+## 8. Session 2 Accumulated State
+
+```
+fiction_ts_start (session 2):  1256/09/15 giờ Thân trung +3min (Session 1 resume point)
+fiction_ts_end (session 2):    1256/10/09 giờ Vị sơ (~1pm)
+fiction_duration_total:        ~24 days fiction-time elapsed in this session
+calibration_events_fired:      day_passes × 24, month_passes × 1 (9/30 → 10/1)
+
+PC state at end of session 2:
+  - Location: Tương Dương cổng Nam → Lâm Khách Điếm dorm
+  - Money: 4 đồng (down from 15 at end of Session 1)
+  - Soul state: more lucid than Session 1; xuyên-không shock receding
+  - Body memory: Hàng Châu ancestry now "vague" (faded during travel); PC is increasingly his soul-self
+  - Gear: áo bạc further worn, giày mòn, one chiếu rơm
+  - Plot position: arrived at Dương Quá rumor city; no direct contact yet
+
+NPC state persistence across sessions:
+  - Yên Vũ Lâu NPCs (Lão Ngũ, Tiểu Thúy): UNCHANGED in reality state; if player returns
+    to Yên Vũ Lâu at future fiction_ts > 1256/10/09, LLM will show "passed time" via
+    new narration; their opinion of PC persists
+  - Du sĩ: canonical exit "before dawn through cổng Bắc, heading Tương Dương direction";
+    may re-encounter in later turns
+  - (New NPCs in Tương Dương not yet introduced explicitly)
+
+Plot hooks active:
+  - Dương Quá Tương Dương rumor — PC has arrived at the place, has not pursued contact
+  - Du sĩ mysterious destination — possibly overlapping with Dương Quá thread
+```
+
+---
+
+## 9. Observations — What Session 2 Surfaced (beyond Session 1's 12)
+
+| # | Surface | Design implication |
+|---|---|---|
+| 13 | Session-resume UX needs choice: continue vs /sleep X vs /travel X | Client UI at login shows "your PC is in state X — options ABC"; not auto-resume. Needs design in `features/04_play_loop/PL_004_session_boundary.md` |
+| 14 | `turn.time_advancement` distinct from `turn.player_action` | Event taxonomy: time-advancement events don't emit narrative as canonical (flavor only); only structural deltas (money, location, state) are canonical. Design for `contracts/events/turn.*` schema |
+| 15 | Calibration events fire on **fiction-date-boundary crossings**, not pure cumulative | Refines MV12-D5: `day_passes` fires when fiction_ts crosses midnight in reality's calendar; `month_passes` on month boundary; `year_passes` on year. Pure cumulative still possible if narrative events alone span 24h (rare). |
+| 16 | Long time-skip narration = flavor + structural delta split | Flavor (LLM dreams, travel encounters) = non-canonical, re-generatable each retell. Structural (money -8, location change) = canonical events emitted. Need clear contract: "LLM narration during /travel or /sleep is flavor unless explicitly marked `emit=true`". |
+| 17 | NPC opinion state persists across sessions (not just in-session) | `npc_pc_relationship` table (R8) is the persistence layer; session resume loads it. Prompt assembly (S9) reads it into `[ACTOR_CONTEXT]` so LLM responds contextually. |
+| 18 | NPC memory of own utterances to specific PC | Either (a) `npc_pc_relationship.said_to_them[]` jsonb array of recent statements, OR (b) event-log replay filtered by `actor_id=X AND target_pc=Y AND event_type=npc_speech`. V1 pick (b) — cheaper, no new schema; LLM reads recent relevant events from event log in prompt context |
+| 19 | Weather/ambient state transitions during time-skip | Weather is either (a) L3 reality-state field that updates on calibration events (rain → sunny via morning-calibration), OR (b) LLM-improvised per turn. V1 pick (b) for simplicity; LLM derives from fiction_ts hour + reality's climate axioms. |
+| 20 | Reality state has "away" scenes that pause when PC not there | When PC leaves Yên Vũ Lâu, Lão Ngũ's scene frame "pauses" from PC's perspective but real fiction_ts advances globally. If another PC was at Yên Vũ Lâu, they'd continue interacting with Lão Ngũ during this time. For V1 solo-RP: no issue (one PC). Design for V2 coop: "scene" is scoped to active-session in that place; cross-scene fiction-ts is always global per-reality. |
+| 21 | LLM inference of paused-mode routines (e.g., "Lão Ngũ would open shutters at dawn") | V1 decision: LLM can narrate these as flavor during time-advancement resolution. NOT events, NOT canonical. If consistency matters ("did Lão Ngũ sweep the floor this morning?"), LLM answers from best-guess each retell. V1+30d adds scheduled NPC routines for canonical behavior. |
+| 22 | Player "intent" vs "PC plausibility" — PC just had body-transfer yesterday, would PC decide to travel? | Design tension: player-agency vs PC-coherence. V1 resolution: player decides what PC does; LLM narrates with some PC-psychology flavor ("anh quyết" — anh decided, not "anh miễn cưỡng bị lôi đi"). Not a solved tension, but acknowledged. |
+
+**Combined Session 1 + Session 2 observation total: 22.**
+
+---
+
+## 10. MV12 Validation Summary
+
+After Session 1 + Session 2, MV12 decisions validated with concrete tests:
+
+| MV12 Decision | Validated by | Status |
+|---|---|---|
+| **D1** Page-turn time, cumulative from events | T1-T10 small events + T11 14h jump + T16 23-day jump all advance `current_fiction_ts` additively; no wall-clock ratio applied | ✅ Validated |
+| **D2** Event sources (player + NPC autonomous + scheduled canon) | T1-T15 player turns drove; T11 sleep duration was player-declared; no NPC autonomous events (V1 paused); no scheduled canon events (none configured for this reality) | ✅ V1 scope validated; autonomous/scheduled deferred |
+| **D3** Fiction-duration hybrid | System defaults used (T1 = 3s look, T4 = 2min sit-observe); player declared (T11 `/sleep until dawn`, T16 `/travel to Tương Dương`); LLM resolved (T11 ≈ 14h, T16 ≈ 23 days) | ✅ Validated across all 3 sources |
+| **D4** V1 paused when 0 players | Between Session 1 logout and Session 2 login (~1.5h wall-clock), fiction_ts did NOT advance. Session 2 resumed at exact Session 1 end point. | ✅ Validated |
+| **D5** Calibration events (cumulative + LLM-jump) | Refined to **date-boundary crossings** (see obs 15). `day_passes` × 24 + `month_passes` × 1 fired during Session 2. LLM-jump form used at T11 + T16. | ✅ Validated + refined |
+| **D6** V1/V1+30d/V2+ split | Session 2 tested V1-only behavior (pause-when-solo). V1+30d (scheduled canon events) + V2+ (per-tier autonomous) not tested — future work. | ✅ V1 validated |
+| **D7** Event schema additive per R3 | Every annotated turn's event carries `fiction_ts_start` + `fiction_duration`; `reality.current_fiction_ts` cumulative; `reality.book_anchor_fiction_ts` fixed to 1256/09/15 15:00. Schema form works in practice. | ✅ Validated |
+
+**No MV12 re-opens needed.** D5 gets refinement note (fire on date-boundary, not cumulative hours).
+
+---
+
+## 11. Graduation Path (updated from Session 1 list)
 
 Post Session 1 + Session 2 review, observations feed into:
 
 | Observation area | Target feature subfolder |
 |---|---|
-| NPC state structure (obs 1, 6, 9) | `features/05_npc_systems/NPC_001_npc_state_model.md` (new) |
-| PC sheet persona-layering (obs 2, 12) | `features/06_pc_systems/PCS_001_persona_and_body_memory.md` (new) |
-| Fiction-duration defaults table (obs 3, 7) | `features/04_play_loop/PL_001_turn_duration_defaults.md` (new) |
-| Scene model + ambient events (obs 4, 10) | `features/04_play_loop/PL_002_scene_model.md` (new) |
-| L1 enforcement in prompt assembly (obs 5, 11) | Kernel extension on-demand: extend `02_storage/S09_prompt_assembly.md` with L1-axiom injection rule |
-| Multi-NPC batched response (obs 6) | `features/04_play_loop/PL_003_multi_npc_turn.md` (new) |
-| Safe-pause detection (obs 8) | `features/04_play_loop/PL_004_session_boundary.md` (new) |
-| Session 2 resume mechanics | `features/DF/DF05_session_group_chat/` (when designed) |
+| NPC state structure (obs 1, 6, 9, 17, 18) | `features/05_npc_systems/NPC_001_npc_state_model.md` (new) — session-scoped memory + NPC own-utterance recall + per-PC opinion state |
+| PC sheet persona-layering (obs 2, 12, 22) | `features/06_pc_systems/PCS_001_persona_and_body_memory.md` (new) — soul/body-memory split + player-intent-vs-PC-plausibility guidance |
+| Fiction-duration defaults + event taxonomy (obs 3, 7, 14, 16) | `features/04_play_loop/PL_001_turn_duration_defaults.md` (new) — default table + `turn.time_advancement` vs `turn.player_action` event-type split + flavor-vs-structural narration rule |
+| Scene model + ambient events + weather (obs 4, 10, 19, 20) | `features/04_play_loop/PL_002_scene_model.md` (new) — scene_id + ambient_events jsonb + weather-derivation rule + per-scene vs per-reality fiction_ts scope (V2 coop concern) |
+| L1 enforcement in prompt assembly (obs 5, 11) | Kernel extension on-demand: extend `02_storage/S09_prompt_assembly.md` with L1-axiom injection rule in `[WORLD_CANON]` section |
+| Multi-NPC batched response (obs 6) | `features/04_play_loop/PL_003_multi_npc_turn.md` (new) — single-LLM-call multi-NPC reaction pattern |
+| Safe-pause detection + session-resume UX (obs 8, 13) | `features/04_play_loop/PL_004_session_boundary.md` (new) — `safe_pause=true` emission + login-time option UX (continue / sleep X / travel X / wake now) |
+| Paused-mode routine flavor narration (obs 21) | `features/12_daily_life/DL_001_npc_routine_foundations.md` (V1+30d new) — canonical vs flavor distinction for NPC routines |
+| Session 2 resume mechanics (obs 13) | `features/DF/DF05_session_group_chat/` (when designed) — part of session lifecycle |
 
-MV12 D1-D7 remain locked. Session 2 may surface D8 (miss-out severity) or D9 (book-anchor drift policy) as new decisions.
+**MV12 status post-spike:**
+
+- **D1..D4, D6, D7 validated as-is** — Session 2 concrete tests matched decisions.
+- **D5 refined** (not re-opened, just clarified): calibration events fire on fiction-**date-boundary** crossings, not pure cumulative hours. Add note to MV12-D5 row in `decisions/locked_decisions.md` during next kernel cascade.
+
+**Candidate new MV12 decisions surfaced** (not yet locked; defer to feature-design that consumes them):
+
+- **MV12-D8** Time-skip narration taxonomy — flavor (LLM-regenerable, non-canonical) vs structural delta (money / location / PC state — canonical event emit). Natural home: locked when `PL_001_turn_duration_defaults.md` formalizes event taxonomy.
+- **MV12-D9** Scene-scope vs reality-scope fiction_ts — per-reality global fiction_ts is canonical (V1 solo-RP trivial). Per-scene concept needed V2 coop (multiple PCs in different scenes within same reality). Natural home: locked when `PL_002_scene_model.md` designs scene concept.
+- **MV12-D10** Paused-mode narrative fill — LLM can narrate "what would naturally happen during time-skip" as flavor during V1 paused mode; not canonical. V1+30d may upgrade to scheduled NPC routines for canonical behavior. Natural home: locked when `DL_001_npc_routine_foundations.md` designs NPC routines.
+- **MV12-D11** Book-anchor drift policy — after N days of fiction-time past anchor, does the reality become "not-really-that-book" anymore? No test surfaced this need in Session 1+2 (still only 24 days in); deferred until play-time data shows real drift. Likely V2+ concern.
