@@ -1231,6 +1231,152 @@ async def get_project_benchmark_status(
     )
 
 
+# ── C12b-a — Public benchmark-run (on-demand POST) ──────────────────
+
+
+class BenchmarkRunRequest(BaseModel):
+    """Body for ``POST /{project_id}/benchmark-run``.
+
+    ``runs`` controls how many passes the harness averages over.
+    Default 3 matches the CLI default (L-CH-09 methodology). Upper
+    bound 5 caps the sync request duration; higher run counts are a
+    CLI-only operator concern.
+    """
+
+    runs: int = Field(
+        default=3, ge=1, le=5,
+        description="Number of benchmark passes to average over.",
+    )
+
+
+class BenchmarkRunResponse(BaseModel):
+    """Returned on successful POST. Mirrors the projection of
+    ``BenchmarkReport`` that the FE needs to render a result card; the
+    full ``raw_report`` (per-query breakdown) stays in
+    ``project_embedding_benchmark_runs`` and is reachable via
+    ``GET /benchmark-status`` → ``benchmark_repo.get_latest`` on the
+    internal surface."""
+
+    run_id: str
+    embedding_model: str
+    passed: bool
+    recall_at_3: float
+    mrr: float
+    avg_score_positive: float
+    negative_control_max_score: float
+    stddev_recall: float
+    stddev_mrr: float
+    runs: int
+
+
+@router.post(
+    "/{project_id}/benchmark-run",
+    response_model=BenchmarkRunResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def run_project_benchmark_endpoint(
+    project_id: UUID,
+    body: BenchmarkRunRequest | None = None,
+    user_id: UUID = Depends(get_current_user),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+) -> BenchmarkRunResponse:
+    """C12b-a — run the K17.9 benchmark against a dedicated project.
+
+    Pre-flight (409 with ``error_code``):
+      - ``no_embedding_model`` — project has no ``embedding_model`` set
+      - ``unknown_embedding_model`` — model not in the dim map
+      - ``not_benchmark_project`` — project already has real
+        (chapter/chat/glossary) passages. K17.9 assumes a dedicated
+        benchmark project per ``eval/fixture_loader.py``.
+      - ``benchmark_already_running`` — per-project sentinel is held
+
+    Runtime failure (502 with ``error_code``):
+      - ``embedding_provider_flake`` — fixture load embedded fewer
+        entities than the golden set (usually a flaky BYOK provider).
+        We refuse to persist a run against an incomplete fixture —
+        the low recall would look like a retrieval regression.
+
+    Cross-user / missing project → 404 (no existence-leak, KSA §6.4).
+    ``runs`` is capped to 1..5 by the request body Pydantic validation.
+
+    The endpoint is synchronous (typical runtime 15-60s). The FE
+    should disable the button while in-flight; we don't background
+    the work because a benchmark that fails mid-run without an obvious
+    owning task is worse UX than a long-running request.
+    """
+    # Local imports keep the module-load surface of extraction.py
+    # minimal — the benchmark runner pulls in the eval harness, which
+    # we don't want to import unless this endpoint is actually called.
+    from app.benchmark.runner import (
+        BenchmarkAlreadyRunningError,
+        FixtureLoadIncompleteError,
+        NoEmbeddingModelError,
+        NotBenchmarkProjectError,
+        UnknownEmbeddingModelError,
+        run_project_benchmark,
+    )
+    from app.clients.embedding_client import get_embedding_client
+
+    project = await projects_repo.get(user_id, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="project not found",
+        )
+
+    req = body or BenchmarkRunRequest()
+    pool = get_knowledge_pool()
+    embedding_client = get_embedding_client()
+
+    try:
+        result = await run_project_benchmark(
+            user_id=user_id,
+            project_id=project_id,
+            runs=req.runs,
+            pool=pool,
+            projects_repo=projects_repo,
+            embedding_client=embedding_client,
+        )
+    except NoEmbeddingModelError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error_code": "no_embedding_model"},
+        )
+    except UnknownEmbeddingModelError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error_code": "unknown_embedding_model"},
+        )
+    except NotBenchmarkProjectError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error_code": "not_benchmark_project"},
+        )
+    except BenchmarkAlreadyRunningError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error_code": "benchmark_already_running"},
+        )
+    except FixtureLoadIncompleteError:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"error_code": "embedding_provider_flake"},
+        )
+
+    return BenchmarkRunResponse(
+        run_id=result.run_id,
+        embedding_model=result.embedding_model,
+        passed=result.passed,
+        recall_at_3=result.recall_at_3,
+        mrr=result.mrr,
+        avg_score_positive=result.avg_score_positive,
+        negative_control_max_score=result.negative_control_max_score,
+        stddev_recall=result.stddev_recall,
+        stddev_mrr=result.stddev_mrr,
+        runs=result.runs,
+    )
+
+
 # ── K19a.4 — Graph stats (supports the FE ProjectStateCard) ──────────
 
 

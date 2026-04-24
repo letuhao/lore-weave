@@ -53,7 +53,8 @@ Statuses: `[ ]` open · `[D]` DESIGN in flight · `[B]` BUILD in flight · `[V]`
 | **C10** | Timeline feature gaps | D-K19e-α-01 (entity_id), D-K19e-α-03 (chronological range) | ~~M~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
 | **C11** | Cursor pagination (jobs history + Complete list) | D-K19b.1-01, D-K19b.2-01 | ~~M~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
 | **C12a** | Scope + runner-side chapter range (paired) | D-K19a.5-04 + D-K16.2-02b | ~~L~~ **XL** (reclassified; split from C12) | `[x]` | — |
-| **C12b** | Run benchmark CTA | D-K19a.5-07 | L | `[ ]` | needs POST benchmark-runs endpoint + AsyncBenchmarkRunner orchestration |
+| **C12b-a** | Run benchmark CTA — BE half (POST /benchmark-run + orchestrator) | D-K19a.5-07 (BE half) | L | `[x]` | split from C12b per user call; empty-project guard (Option A) + sentinel-set concurrency + FixtureLoadIncompleteError→502; 28 tests |
+| **C12b-b** | Run benchmark CTA — FE half (button + loading UX + error toasts) | D-K19a.5-07 (FE half) | M | `[ ]` | consume BE POST from C12b-a; 404/409/502 error mapping |
 | **C12c** | `glossary_sync` scope option | D-K19a.5-06 | S (FE only) | `[⏸]` | **BLOCKED** on glossary-service BE sync surface |
 | **C13** | Storybook dialogs via MSW | D-K19a.8-01 | M | `[ ]` | — |
 | **C14** | Resumable scheduler cursor state (Perf) | D-K11.9-01 partial, P-K15.10-01 partial | L | `[ ]` | needs `job_state` table design |
@@ -374,8 +375,52 @@ Cycles whose single-line description is unclear: the full text lives under the i
 - LOW#5 auto-closed by MED#1 — FE ≤ BE validation symmetry restored.
 
 **Close:** D-K19a.5-04, D-K16.2-02b. **Deferred:**
-- D-K19a.5-07 → **C12b** next cycle (NEW POST /benchmark-runs endpoint + AsyncBenchmarkRunner orchestration).
+- D-K19a.5-07 (BE half) → **C12b-a** ✅ below.
+- D-K19a.5-07 (FE half) → **C12b-b** deferred.
 - D-K19a.5-06 → **C12c** blocked on glossary-service BE sync surface.
+
+---
+
+### C12b-a — Run benchmark CTA (BE half) ✅
+
+**What shipped.** Cycle 39. NEW `app/benchmark/` module + POST endpoint.
+- [`app/benchmark/__init__.py`](../../services/knowledge-service/app/benchmark/__init__.py) + [`app/benchmark/runner.py`](../../services/knowledge-service/app/benchmark/runner.py) (NEW) — `run_project_benchmark(...)` orchestrator wrapping K17.9 harness. Typed exception hierarchy (`BenchmarkRunError` + 5 subclasses). `BenchmarkRunResult` frozen dataclass wire projection.
+- [`app/routers/public/extraction.py`](../../services/knowledge-service/app/routers/public/extraction.py) — new `POST /{project_id}/benchmark-run` handler + `BenchmarkRunRequest` (runs 1..5, default 3) + `BenchmarkRunResponse`.
+- Empty-project guard (**Option A** per CLARIFY): `_has_real_passages` Cypher filters `source_type IN KNOWN_SOURCE_TYPES`; refuses to run on projects that already hold chapter/chat/glossary passages. Matches `eval/fixture_loader.py:54` dedicated-project assumption.
+- Concurrency: pure-sync `set[tuple[user,project]]` sentinel via `_try_mark_running` / `_mark_done` (replaces initial `asyncio.Lock` draft after /review-impl MED#2 flagged pre-check + acquire as fragile to refactor).
+- `SUPPORTED_PASSAGE_DIMS` pre-flight catches `nomic-embed-text` (dim 768) upfront → 409 `unknown_embedding_model`.
+- Partial fixture load (embedder flake) raises `FixtureLoadIncompleteError` → 502 `embedding_provider_flake`, does NOT persist a false-negative row.
+- Tests: [`test_benchmark_runner_service.py`](../../services/knowledge-service/tests/unit/test_benchmark_runner_service.py) 15 tests + [`test_public_benchmark_run.py`](../../services/knowledge-service/tests/unit/test_public_benchmark_run.py) 13 tests = 28 green, incl. 3 regression locks (source-scan passage_ingester literals, invariant `benchmark_entity ∉ KNOWN_SOURCE_TYPES`, cypher safety-clause assertion).
+
+**Design decisions locked at CLARIFY (4 user-approved defaults).**
+1. Option A empty-project guard (rejected Option B auto-provisioned project, Option C `is_benchmark` flag + migration).
+2. 120s sync default — no background-task (ownership clarity > long request).
+3. `runs` tunable 1..5, default 3 matches CLI + L-CH-09.
+4. Golden-set source hardcoded to `eval/golden_set.yaml` (multi-golden-set would be its own cycle).
+
+**/review-impl 5 non-cosmetic fixes in-cycle (all 5).**
+- **MED#1**: regression-lock test scans `passage_ingester.py` source for `source_type=<literal>` and asserts membership in `KNOWN_SOURCE_TYPES`.
+- **MED#2**: `asyncio.Lock` → sentinel set (atomic-by-construction, immune to await insertion).
+- **LOW#3**: `benchmark_entity ∉ KNOWN_SOURCE_TYPES` invariant test.
+- **LOW#4**: `FixtureLoadIncompleteError` + 502 + no-persist contract.
+- **LOW#5**: Cypher string-literal safety-clause assertion.
+- COSMETIC#6 (skip): `passes_thresholds()` 3× calls — pure comparisons, no I/O.
+
+**Close:** D-K19a.5-07 (BE half). **Deferred:** D-K19a.5-07 (FE half) → **C12b-b**.
+
+---
+
+### C12b-b — Run benchmark CTA (FE half)
+
+**Why.** BE POST `/v1/knowledge/projects/{id}/benchmark-run` now exists (C12b-a). FE needs Run benchmark button + loading UX + error mapping.
+
+**Files (plan).**
+- `frontend/src/features/knowledge/components/BenchmarkPanel.tsx` — "Run benchmark" button, disabled while in-flight, spinner during request.
+- `frontend/src/features/knowledge/hooks/useRunBenchmark.ts` — mutation; invalidates `['knowledge-benchmark-status', projectId]` on success.
+- Error toast mapping: 404 generic, 409 error_codes → 4 localized messages, 502 `embedding_provider_flake` → "Embedding provider unavailable, retry".
+- i18n × 4 locales: benchmark.run.* keys.
+
+**Close:** D-K19a.5-07 (FE half).
 
 ---
 
@@ -484,12 +529,12 @@ Once text arrives:
 |---|---|---|---|
 | P1 (C1–C2) | 0 | **4 items / 2 cycles (C1 ✅ + C2 ✅)** | 0 |
 | P2 (C3–C9) | 0 items | **15 items / 7 cycles (C3 ✅ + C4 ✅ + C5 ✅ + C6 ✅ + C7 ✅ + C8 ✅ + C9 ✅)** | 0 |
-| P3 (C10–C13) | 1 item (C13) + 2 blocked/deferred (C12b L, C12c ⏸) | **6 items / 3 cycles (C10 ✅ + C11 ✅ + C12a ✅)** | 1 ⏸ (C12c) |
+| P3 (C10–C13) | 1 item (C13) + 2 deferred/blocked (C12b-b M, C12c ⏸) | **7 items / 4 cycles (C10 ✅ + C11 ✅ + C12a ✅ + C12b-a ✅)** | 1 ⏸ (C12c) |
 | P4 (C14–C15) | 3 items / 2 cycles | 0 | 0 |
 | P5 (C16–C18) | 3 items / 3 cycles | 0 | 0 DESIGN |
 | User-gated (C19–C20) | 2 items / 2 cycles | 0 | 2 ⏸ |
 
-**Total plan: 33 item-closures across 20 cycles (C12 split into C12a/b/c adds one cycle slot but same closure count). Completed: 25 items / 12 cycles. P1 tier done · P2 tier DONE (7/7) · P3 tier 6/8 done (C10 ✅ + C11 ✅ + C12a ✅). Remaining: C12b (Run benchmark CTA, L), C12c (glossary_sync, blocked), C13 (Storybook dialogs, M), plus P4/P5/user-gated.**
+**Total plan: 33 item-closures across 21 cycles (C12 split into C12a/b-a/b-b/c adds two cycle slots but same closure count). Completed: 26 items / 13 cycles. P1 tier done · P2 tier DONE (7/7) · P3 tier 7/9 done (C10 ✅ + C11 ✅ + C12a ✅ + C12b-a ✅). Remaining: C12b-b (Run benchmark CTA FE, M), C12c (glossary_sync, blocked), C13 (Storybook dialogs, M), plus P4/P5/user-gated.**
 (Some cycles close > 1 item; some items appear in >1 cycle. Check the cycle table for authoritative count.)
 
 ---
