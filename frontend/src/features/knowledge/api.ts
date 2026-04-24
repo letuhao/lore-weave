@@ -392,6 +392,16 @@ export interface TimelineListParams {
    *  range (D-K19e-α-02) so narrative order is the only axis for MVP. */
   after_order?: number;
   before_order?: number;
+  /** C10 (D-K19e-α-03): strict `chronological_order > after_chronological`.
+   *  NULL-chrono events are excluded when either bound is set. */
+  after_chronological?: number;
+  before_chronological?: number;
+  /** C10 (D-K19e-α-01): filter to events whose `participants` array
+   *  contains the entity's display name, canonical_name, or any
+   *  alias. BE resolves the id → participant-candidate list; cross-
+   *  user / missing entity collapses to an empty timeline (no 404
+   *  existence leak per KSA §6.4). */
+  entity_id?: string;
   limit?: number;
   offset?: number;
 }
@@ -1011,6 +1021,11 @@ export const knowledgeApi = {
       qs.set('after_order', String(params.after_order));
     if (params.before_order != null)
       qs.set('before_order', String(params.before_order));
+    if (params.after_chronological != null)
+      qs.set('after_chronological', String(params.after_chronological));
+    if (params.before_chronological != null)
+      qs.set('before_chronological', String(params.before_chronological));
+    if (params.entity_id != null) qs.set('entity_id', params.entity_id);
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.offset != null) qs.set('offset', String(params.offset));
     const q = qs.toString();

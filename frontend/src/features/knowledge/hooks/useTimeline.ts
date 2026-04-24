@@ -45,6 +45,11 @@ export function useTimeline(
       params.project_id ?? null,
       params.after_order ?? null,
       params.before_order ?? null,
+      // C10 (D-K19e-α-01 + D-K19e-α-03): new filters become part of
+      // the cache key so changing them triggers a refetch.
+      params.after_chronological ?? null,
+      params.before_chronological ?? null,
+      params.entity_id ?? null,
       params.limit ?? 50,
       params.offset ?? 0,
     ] as const,

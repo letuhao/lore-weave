@@ -345,3 +345,142 @@ def test_timeline_response_contains_enriched_chapter_title(mock_list):
     book_client.get_chapter_titles.assert_awaited_once()
     call_ids = book_client.get_chapter_titles.await_args.args[0]
     assert call_ids == [cid]
+
+
+# ── C10 — entity_id filter + chronological range ──────────────────
+
+
+def _entity_stub(name: str = "Kai", aliases: list[str] | None = None):
+    from app.db.neo4j_repos.entities import Entity
+    from decimal import Decimal  # noqa: F401 (match original import style)
+
+    return Entity(
+        id="ent-kai",
+        user_id=str(_TEST_USER),
+        project_id=None,
+        name=name,
+        canonical_name=name.lower(),
+        kind="character",
+        aliases=aliases or ["Master Kai"],
+        canonical_version=1,
+        source_types=["chapter"],
+        confidence=0.9,
+        archived_at=None,
+        archive_reason=None,
+        evidence_count=0,
+        mention_count=0,
+        user_edited=False,
+        version=1,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+
+
+@patch(
+    "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
+)
+@patch("app.routers.public.timeline.get_entity", new_callable=AsyncMock)
+@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+def test_timeline_entity_id_resolves_to_participant_candidates(
+    mock_get_entity, mock_list,
+):
+    """C10 (D-K19e-α-01) happy: router looks up the entity, passes
+    [name, canonical_name, *aliases] deduped to the repo."""
+    mock_get_entity.return_value = _entity_stub(
+        name="Kai", aliases=["Master Kai", "The Bridge-Breaker"],
+    )
+    mock_list.return_value = ([], 0)
+    client = _make_client()
+    resp = client.get("/v1/knowledge/timeline?entity_id=ent-kai")
+    assert resp.status_code == 200
+    mock_get_entity.assert_awaited_once()
+    get_kwargs = mock_get_entity.await_args.kwargs
+    assert get_kwargs["user_id"] == str(_TEST_USER)
+    assert get_kwargs["canonical_id"] == "ent-kai"
+    # list_events_filtered received the deduped candidate set.
+    call = mock_list.await_args.kwargs
+    candidates = set(call["participant_candidates"])
+    assert candidates == {"Kai", "kai", "Master Kai", "The Bridge-Breaker"}
+
+
+@patch(
+    "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
+)
+@patch("app.routers.public.timeline.get_entity", new_callable=AsyncMock)
+@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+def test_timeline_entity_id_not_found_collapses_to_empty_list(
+    mock_get_entity, mock_list,
+):
+    """C10: missing / cross-user entity → participant_candidates=[]
+    so the Cypher IN predicate matches nothing. No 404 leak — the
+    response looks identical to 'valid entity with zero events'."""
+    mock_get_entity.return_value = None
+    mock_list.return_value = ([], 0)
+    client = _make_client()
+    resp = client.get(f"/v1/knowledge/timeline?entity_id={'x' * 40}")
+    assert resp.status_code == 200
+    assert resp.json() == {"events": [], "total": 0}
+    call = mock_list.await_args.kwargs
+    assert call["participant_candidates"] == []
+
+
+@patch(
+    "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
+)
+@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+def test_timeline_chronological_range_threaded(mock_list):
+    """C10 (D-K19e-α-03): after_chronological / before_chronological
+    are passed through to the repo."""
+    mock_list.return_value = ([], 0)
+    client = _make_client()
+    resp = client.get(
+        "/v1/knowledge/timeline?after_chronological=5&before_chronological=50"
+    )
+    assert resp.status_code == 200
+    call = mock_list.await_args.kwargs
+    assert call["after_chronological"] == 5
+    assert call["before_chronological"] == 50
+
+
+def test_timeline_reversed_chronological_range_422():
+    """C10: reversed chronological range → 422, mirroring the
+    existing after_order/before_order validation."""
+    client = _make_client()
+    resp = client.get(
+        "/v1/knowledge/timeline?after_chronological=50&before_chronological=10"
+    )
+    assert resp.status_code == 422
+    assert "chronological" in resp.json()["detail"]
+
+
+def test_timeline_entity_id_rejected_when_empty_string():
+    """min_length=1 — empty entity_id param is a malformed filter,
+    better to 422 than silently ignore."""
+    client = _make_client()
+    resp = client.get("/v1/knowledge/timeline?entity_id=")
+    assert resp.status_code == 422
+
+
+@patch(
+    "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
+)
+@patch("app.routers.public.timeline.get_entity", new_callable=AsyncMock)
+@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+def test_timeline_all_three_filters_combined(mock_get_entity, mock_list):
+    """C10: entity_id + chronological range + project_id all apply
+    together — each gets forwarded to the repo."""
+    mock_get_entity.return_value = _entity_stub()
+    mock_list.return_value = ([], 0)
+    client = _make_client()
+    resp = client.get(
+        f"/v1/knowledge/timeline?project_id={_PROJECT_ID}"
+        f"&entity_id=ent-kai"
+        f"&after_chronological=1&before_chronological=100"
+    )
+    assert resp.status_code == 200
+    call = mock_list.await_args.kwargs
+    assert call["project_id"] == str(_PROJECT_ID)
+    assert call["after_chronological"] == 1
+    assert call["before_chronological"] == 100
+    assert call["participant_candidates"] is not None
+    assert len(call["participant_candidates"]) >= 2  # name + canonical_name at minimum

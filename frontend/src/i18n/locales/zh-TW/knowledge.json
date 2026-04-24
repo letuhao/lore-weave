@@ -139,7 +139,16 @@
     "emptyForFilters": "沒有符合篩選條件的事件。",
     "filters": {
       "project": "專案",
-      "anyProject": "任何專案"
+      "anyProject": "任何專案",
+      "entity": "實體",
+      "entityPlaceholder": "依名稱搜尋…",
+      "entitySearchMinHint": "請至少輸入 2 個字元。",
+      "entityNoMatches": "沒有相符的實體。",
+      "clearEntity": "清除實體篩選",
+      "chronologicalRange": "時序範圍",
+      "after": "之後",
+      "before": "之前",
+      "chronoReversed": "「之前」必須大於「之後」。"
     },
     "row": {
       "orderLabel": "敘事順序",

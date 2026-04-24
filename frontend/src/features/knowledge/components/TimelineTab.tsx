@@ -3,7 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTimeline } from '../hooks/useTimeline';
 import { useProjects } from '../hooks/useProjects';
+import type { Entity } from '../api';
 import { TimelineEventRow } from './TimelineEventRow';
+import { TimelineFilters } from './TimelineFilters';
 
 // K19e.1 — Timeline tab container. Owns:
 //   - projectFilter state
@@ -21,6 +23,16 @@ export function TimelineTab() {
   const [projectFilter, setProjectFilter] = useState<string>('');
   const [offset, setOffset] = useState(0);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  // C10 (D-K19e-α-01 + D-K19e-α-03) — secondary filters. Entity is
+  // stored as the whole Entity object so the chip can show its name
+  // without a second lookup; only entity.id is threaded to the BE.
+  const [entityFilter, setEntityFilter] = useState<Entity | null>(null);
+  const [afterChronological, setAfterChronological] = useState<number | null>(
+    null,
+  );
+  const [beforeChronological, setBeforeChronological] = useState<number | null>(
+    null,
+  );
 
   const projectsQuery = useProjects(false);
 
@@ -32,6 +44,9 @@ export function TimelineTab() {
   const { events, total, isLoading, error, isFetching } = useTimeline(
     {
       project_id: projectFilter || undefined,
+      entity_id: entityFilter?.id,
+      after_chronological: afterChronological ?? undefined,
+      before_chronological: beforeChronological ?? undefined,
       limit: PAGE_SIZE,
       offset,
     },
@@ -63,7 +78,17 @@ export function TimelineTab() {
           <select
             value={projectFilter}
             onChange={(e) =>
-              handleFilterChange(() => setProjectFilter(e.target.value))
+              handleFilterChange(() => {
+                setProjectFilter(e.target.value);
+                // C10 — reset secondary filters when project changes.
+                // An entity from project A wouldn't return anything
+                // under project B; chrono bounds tuned to one project
+                // are rarely meaningful in another. Mirrors the C8
+                // drawer-search pattern.
+                setEntityFilter(null);
+                setAfterChronological(null);
+                setBeforeChronological(null);
+              })
             }
             className="rounded-md border bg-input px-2 py-1.5 text-xs outline-none focus:border-ring"
             data-testid="timeline-filter-project"
@@ -76,6 +101,27 @@ export function TimelineTab() {
             ))}
           </select>
         </label>
+      </div>
+
+      {/* C10 — secondary filters (entity + chronological range). Row
+          separate from the project select so the entity dropdown has
+          enough horizontal room. */}
+      <div className="mb-4">
+        <TimelineFilters
+          projectId={projectFilter || undefined}
+          entity={entityFilter}
+          onEntityChange={(ent) =>
+            handleFilterChange(() => setEntityFilter(ent))
+          }
+          afterChronological={afterChronological}
+          beforeChronological={beforeChronological}
+          onChronologicalRangeChange={(after, before) =>
+            handleFilterChange(() => {
+              setAfterChronological(after);
+              setBeforeChronological(before);
+            })
+          }
+        />
       </div>
 
       {isLoading && (

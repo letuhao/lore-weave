@@ -231,4 +231,61 @@ describe('useTimeline', () => {
     expect(result.current.total).toBe(42);
     expect(result.current.events).toEqual([]);
   });
+
+  // ── C10 — entity_id + chronological range params ─────────────────
+
+  it('passes entity_id + chronological range through to the API', async () => {
+    listTimelineMock.mockResolvedValue({ events: [], total: 0 });
+    renderHook(
+      () =>
+        useTimeline({
+          entity_id: 'ent-kai',
+          after_chronological: 5,
+          before_chronological: 50,
+        }),
+      { wrapper: wrapper() },
+    );
+    await waitFor(() => {
+      expect(listTimelineMock).toHaveBeenCalledWith(
+        {
+          entity_id: 'ent-kai',
+          after_chronological: 5,
+          before_chronological: 50,
+        },
+        'tok-test',
+      );
+    });
+  });
+
+  it('changing entity_id fires a new BE call (queryKey includes it)', async () => {
+    listTimelineMock.mockResolvedValue({ events: [], total: 0 });
+    const { rerender } = renderHook(
+      ({ entity_id }: { entity_id?: string }) =>
+        useTimeline({ entity_id }),
+      { wrapper: wrapper(), initialProps: { entity_id: undefined } },
+    );
+    await waitFor(() => {
+      expect(listTimelineMock).toHaveBeenCalledTimes(1);
+    });
+    rerender({ entity_id: 'ent-kai' });
+    await waitFor(() => {
+      expect(listTimelineMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('changing chronological range fires a new BE call (queryKey includes it)', async () => {
+    listTimelineMock.mockResolvedValue({ events: [], total: 0 });
+    const { rerender } = renderHook(
+      ({ after }: { after?: number }) =>
+        useTimeline({ after_chronological: after }),
+      { wrapper: wrapper(), initialProps: { after: undefined } },
+    );
+    await waitFor(() => {
+      expect(listTimelineMock).toHaveBeenCalledTimes(1);
+    });
+    rerender({ after: 10 });
+    await waitFor(() => {
+      expect(listTimelineMock).toHaveBeenCalledTimes(2);
+    });
+  });
 });

@@ -139,7 +139,16 @@
     "emptyForFilters": "条件に一致するイベントがありません。",
     "filters": {
       "project": "プロジェクト",
-      "anyProject": "すべてのプロジェクト"
+      "anyProject": "すべてのプロジェクト",
+      "entity": "エンティティ",
+      "entityPlaceholder": "名前で検索…",
+      "entitySearchMinHint": "2文字以上入力してください。",
+      "entityNoMatches": "一致するエンティティはありません。",
+      "clearEntity": "エンティティフィルターをクリア",
+      "chronologicalRange": "時系列範囲",
+      "after": "以降",
+      "before": "以前",
+      "chronoReversed": "「以前」は「以降」より大きい値である必要があります。"
     },
     "row": {
       "orderLabel": "物語順",

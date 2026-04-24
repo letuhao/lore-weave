@@ -139,7 +139,16 @@
     "emptyForFilters": "No events match these filters.",
     "filters": {
       "project": "Project",
-      "anyProject": "Any project"
+      "anyProject": "Any project",
+      "entity": "Entity",
+      "entityPlaceholder": "Search by name…",
+      "entitySearchMinHint": "Type at least 2 characters.",
+      "entityNoMatches": "No matching entities.",
+      "clearEntity": "Clear entity filter",
+      "chronologicalRange": "Chronological range",
+      "after": "After",
+      "before": "Before",
+      "chronoReversed": "Before must be greater than After."
     },
     "row": {
       "orderLabel": "Narrative order",

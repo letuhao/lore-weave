@@ -50,7 +50,7 @@ Statuses: `[ ]` open · `[D]` DESIGN in flight · `[B]` BUILD in flight · `[V]`
 | **C7** | Humanised ETA formatter + stale-offset self-heal | D-K19b.3-02, D-K19e-β-02 | ~~S~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
 | **C8** | Drawer-search UX: source_type filter + in-card highlighting (+BE facet counts per user addendum) | D-K19e-γa-01, D-K19e-γb-01 | ~~M~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
 | **C9** | Entity concurrency + unlock | D-K19d-γa-01 (If-Match), D-K19d-γa-02 (unlock endpoint) | ~~M~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
-| **C10** | Timeline feature gaps | D-K19e-α-01 (entity_id), D-K19e-α-03 (chronological range) | M | `[ ]` | — |
+| **C10** | Timeline feature gaps | D-K19e-α-01 (entity_id), D-K19e-α-03 (chronological range) | ~~M~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
 | **C11** | Cursor pagination (jobs history + Complete list) | D-K19b.1-01, D-K19b.2-01 | M | `[ ]` | — |
 | **C12** | Scope + benchmark dialog UX | D-K19a.5-04 + D-K16.2-02b (paired), D-K19a.5-06, D-K19a.5-07 | L | `[ ]` | book-service `from_sort`/`to_sort` already shipped ✓ |
 | **C13** | Storybook dialogs via MSW | D-K19a.8-01 | M | `[ ]` | — |
@@ -266,15 +266,41 @@ Cycles whose single-line description is unclear: the full text lives under the i
 
 ---
 
-### C10 — Timeline feature gaps (P3, M)
-**Why.** Two filters already documented in K19e.2 plan row but scoped-out of Cycle α. Extend Cypher + router; FE already has hooks for new filters.
+### C10 — Timeline feature gaps (P3, XL) ✅
+**Shipped.** Session 51 cycle 36. Reclassified M→XL at CLARIFY (15 files with tests + i18n + /review-impl debounce fix).
 
-**Files.**
-- `services/knowledge-service/app/db/neo4j_repos/events.py` — `list_events_filtered` gains `entity_id` (resolves to participant candidates) + `after_chronological` / `before_chronological` kwargs.
-- `services/knowledge-service/app/routers/public/timeline.py` — 3 new Query params.
-- `frontend/src/features/knowledge/components/timeline/TimelineFilters.tsx` — entity picker (reuse EntitiesTable row click) + two-axis toggle.
+**Files touched.**
+- BE repo [`events.py`](../../services/knowledge-service/app/db/neo4j_repos/events.py): `_LIST_EVENTS_FILTER_WHERE` gains 3 new parameterised predicates — `after_chronological`/`before_chronological` (mirror narrative `event_order` range semantics: strict, NULL excluded when bounded) + `participant_candidates` via `ANY(c IN $participant_candidates WHERE c IN e.participants)`. `list_events_filtered` signature expanded with 3 kwargs + reversed-chrono `ValueError` validation.
+- BE router [`timeline.py`](../../services/knowledge-service/app/routers/public/timeline.py): 3 new Query params (`entity_id: str | None` min/max len 1/200, `after_chronological`/`before_chronological` ≥ 0). Resolves `entity_id` via `get_entity(user_id=jwt, canonical_id=entity_id)` → deduped `{ent.name, ent.canonical_name, *ent.aliases}` set (empty strings dropped) → list. Cross-user/missing entity collapses to `[]` (Cypher `ANY(c IN [] WHERE ...)` = false → 0 rows; no 404 existence leak per KSA §6.4). Chronological reversed-range → 422 mirroring existing narrative validation.
+- BE test [`test_timeline_api.py`](../../services/knowledge-service/tests/unit/test_timeline_api.py): +6 C10 tests — entity_id resolution happy, entity not found → empty (no leak), chronological range threaded, reversed chrono → 422, empty-string entity_id → 422, all 3 filters combined pass-through.
+- FE api [`api.ts`](../../frontend/src/features/knowledge/api.ts): `TimelineListParams` +3 optional fields; `listTimeline` URL param threading additive.
+- FE hook [`useTimeline.ts`](../../frontend/src/features/knowledge/hooks/useTimeline.ts): queryKey +3 filter entries (null sentinels).
+- FE hook test [`useTimeline.test.tsx`](../../frontend/src/features/knowledge/hooks/__tests__/useTimeline.test.tsx): +3 C10 tests (entity_id + chrono threading, queryKey invalidation on filter change).
+- FE component **NEW** [`TimelineFilters.tsx`](../../frontend/src/features/knowledge/components/TimelineFilters.tsx): entity search dropdown reusing `useEntities` (min-2-chars debounce matching `EntityMergeDialog`, project-scoped when `projectId` set) + chronological range number inputs. Selected entity renders as a chip with X-clear. Reversed-range hint shows inline while still letting BE be the authority. **/review-impl MED#1 fix**: chronological inputs gained internal state + 400ms debounced commit so rapid keystrokes (e.g. typing "1500") coalesce to ONE parent `onChronologicalRangeChange` call instead of four. Parent-reset sync effects propagate prop changes to inputs without re-firing the commit.
+- FE component test **NEW** [`TimelineFilters.test.tsx`](../../frontend/src/features/knowledge/components/__tests__/TimelineFilters.test.tsx): 7 tests — renders entity + chrono inputs, entity search dropdown (project-scoped), entity chip + clear, chronological debounce regression (4 keystrokes → 1 commit), parent-reset no-re-fire, reversed-range hint.
+- FE component [`TimelineTab.tsx`](../../frontend/src/features/knowledge/components/TimelineTab.tsx): 3 new state hooks (entityFilter/afterChronological/beforeChronological) + renders `<TimelineFilters>` between project select and list. **Project-change reset** (C8 pattern) clears entity + chronological filters; filter changes pipe through `handleFilterChange` which also resets pagination offset.
+- FE locale drift lock [`projectState.test.ts`](../../frontend/src/features/knowledge/types/__tests__/projectState.test.ts): `TIMELINE_KEYS` +9 paths.
+- i18n × 4 locales: 9 new keys under `timeline.filters.{entity, entityPlaceholder, entitySearchMinHint, entityNoMatches, clearEntity, chronologicalRange, after, before, chronoReversed}`.
 
-**Close:** D-K19e-α-01, D-K19e-α-03.
+**Design decisions locked at CLARIFY (6 user-approved defaults).**
+1. Resolve `entity_id` server-side → participant candidate list; missing collapses to `[]` (no 404 leak).
+2. Ordering stays `event_order ASC`; `sort_by` deferred.
+3. Chronological range mirrors event_order semantics.
+4. Entity picker UX reuses `useEntities` search pattern.
+5. Cross-user safety via JWT-threaded `user_id`.
+6. Entity picker project-scoped when `project_id` filter is set.
+
+**Design refinements at REVIEW-DESIGN (15 questions).**
+- Reset entity + chrono filters on project change (mirror C8 pattern).
+- Router passes `[]` (not `None`) when entity_id specified-but-not-found.
+- Narrative ordering retained under chrono filter; `sort_by` follow-up if needed.
+- No perf index on chronological_order deferred until profiling.
+
+**/review-impl 1 MED fix + 7 LOW accepted + 1 COSMETIC accepted.**
+- **MED#1** (fixed): chronological inputs fired BE call per keystroke — added 400ms debounce + 2 regression tests.
+- LOW#2-8 + COSMETIC#9 accepted with documentation (useEntities wasted call pre-existing pattern, whitespace entity_id silent empty, no live-Neo4j test, keyboard a11y gaps, case-sensitive participant match pre-existing, no perf index, reversed-range double-guard harmless, whitespace alias through `if c` truthy check).
+
+**Close:** D-K19e-α-01, D-K19e-α-03. **P3 tier opened: 2/5 items / 1 cycle done.**
 
 ---
 
@@ -407,12 +433,12 @@ Once text arrives:
 |---|---|---|---|
 | P1 (C1–C2) | 0 | **4 items / 2 cycles (C1 ✅ + C2 ✅)** | 0 |
 | P2 (C3–C9) | 0 items | **15 items / 7 cycles (C3 ✅ + C4 ✅ + C5 ✅ + C6 ✅ + C7 ✅ + C8 ✅ + C9 ✅)** | 0 |
-| P3 (C10–C13) | 7 items / 4 cycles | 0 | 0 |
+| P3 (C10–C13) | 5 items / 3 cycles | **2 items / 1 cycle (C10 ✅)** | 0 |
 | P4 (C14–C15) | 3 items / 2 cycles | 0 | 0 |
 | P5 (C16–C18) | 3 items / 3 cycles | 0 | 0 DESIGN |
 | User-gated (C19–C20) | 2 items / 2 cycles | 0 | 2 ⏸ |
 
-**Total plan: 33 item-closures across 20 cycles. Completed: 19 items / 9 cycles. P1 tier done · P2 tier DONE (7/7). Next: P3 (C10+).**
+**Total plan: 33 item-closures across 20 cycles. Completed: 21 items / 10 cycles. P1 tier done · P2 tier DONE (7/7) · P3 tier 2/7 opened (C10). Next: C11 (cursor pagination) or C12 (dialog UX).**
 (Some cycles close > 1 item; some items appear in >1 cycle. Check the cycle table for authoritative count.)
 
 ---

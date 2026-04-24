@@ -478,6 +478,18 @@ async def delete_events_with_zero_evidence(
 # user-supplied string enters the Cypher text. Keeping the WHERE
 # as a single string means a future filter change only edits one
 # place (same pattern as K19d.2 `_LIST_ENTITIES_FILTER_WHERE`).
+#
+# C10 — 3 new predicates:
+#   - `$after_chronological` / `$before_chronological` — mirror the
+#     narrative `event_order` range semantics (strict, NULL excluded
+#     when bounded, reversed-range is caller-validated to ValueError
+#     before we even get here).
+#   - `$participant_candidates` — list of display names the caller
+#     wants to match. Router resolves `entity_id` to
+#     `[name, canonical_name, *aliases]` and passes the deduped list
+#     here. NULL = no filter (all events); [] = match nothing (used
+#     when the entity_id was specified but not found, to avoid a
+#     404 existence leak per KSA §6.4 — collapses to empty timeline).
 _LIST_EVENTS_FILTER_WHERE = """
 MATCH (e:Event)
 WHERE e.user_id = $user_id
@@ -485,6 +497,9 @@ WHERE e.user_id = $user_id
   AND ($project_id IS NULL OR e.project_id = $project_id)
   AND ($after_order IS NULL OR e.event_order > $after_order)
   AND ($before_order IS NULL OR e.event_order < $before_order)
+  AND ($after_chronological IS NULL OR e.chronological_order > $after_chronological)
+  AND ($before_chronological IS NULL OR e.chronological_order < $before_chronological)
+  AND ($participant_candidates IS NULL OR ANY(c IN $participant_candidates WHERE c IN e.participants))
 """
 
 _LIST_EVENTS_COUNT_CYPHER = _LIST_EVENTS_FILTER_WHERE + """
@@ -505,10 +520,13 @@ async def list_events_filtered(
     project_id: str | None,
     after_order: int | None,
     before_order: int | None,
+    after_chronological: int | None = None,
+    before_chronological: int | None = None,
+    participant_candidates: list[str] | None = None,
     limit: int,
     offset: int,
 ) -> tuple[list[Event], int]:
-    """K19e.2 — paginated timeline browse.
+    """K19e.2 + C10 — paginated timeline browse.
 
     Returns ``(rows, total_count)``. ``total_count`` is the server-side
     count matching the filters *before* ``SKIP``/``LIMIT`` so the FE
@@ -516,17 +534,28 @@ async def list_events_filtered(
 
     Ordering: ``coalesce(event_order, 2147483647) ASC, title ASC,
     id ASC`` — the id tiebreaker guarantees stable pagination even
-    when title and event_order collide.
+    when title and event_order collide. C10 deliberately keeps
+    narrative ordering even under a chronological filter; a future
+    ``sort_by`` kwarg could surface chronological sort but is
+    out of C10 scope.
 
     Filter semantics:
-      - ``project_id=None``  → events across every project + global.
-      - ``after_order``      → strict ``event_order > after_order``.
-      - ``before_order``     → strict ``event_order < before_order``.
-      - Events with NULL ``event_order`` are included only when both
-        bounds are None; otherwise the NULL comparison excludes them.
+      - ``project_id=None``      → events across every project + global.
+      - ``after_order``          → strict ``event_order > after_order``.
+      - ``before_order``         → strict ``event_order < before_order``.
+      - ``after_chronological``  → strict ``chronological_order >`` …
+      - ``before_chronological`` → strict ``chronological_order <`` …
+      - Events with NULL ``event_order`` / ``chronological_order`` are
+        included only when the respective bound pair is None; the NULL
+        comparison excludes them otherwise.
+      - ``participant_candidates=None`` → no entity filter applied.
+        ``participant_candidates=[]`` → zero rows (router sets this
+        when ``entity_id`` was specified but not found — avoids 404
+        existence leak).
+        ``participant_candidates=[...]`` → event matches if ANY
+        candidate name is in ``e.participants``.
       - Archived events (``archived_at IS NOT NULL``) are always
-        excluded — the timeline tab is a user-facing view, not an
-        audit log.
+        excluded.
 
     **Implementation:** two sequential queries (count + page), same
     pattern as K19d.2 ``list_entities_filtered``. A single
@@ -546,6 +575,15 @@ async def list_events_filtered(
         raise ValueError(
             f"after_order ({after_order}) must be < before_order ({before_order})"
         )
+    if (
+        after_chronological is not None
+        and before_chronological is not None
+        and after_chronological >= before_chronological
+    ):
+        raise ValueError(
+            f"after_chronological ({after_chronological}) must be "
+            f"< before_chronological ({before_chronological})"
+        )
     effective_limit = min(limit, EVENTS_MAX_LIMIT)
     count_result = await run_read(
         session,
@@ -554,6 +592,9 @@ async def list_events_filtered(
         project_id=project_id,
         after_order=after_order,
         before_order=before_order,
+        after_chronological=after_chronological,
+        before_chronological=before_chronological,
+        participant_candidates=participant_candidates,
     )
     count_record = await count_result.single()
     total = int(count_record["total"]) if count_record else 0
@@ -566,6 +607,9 @@ async def list_events_filtered(
         project_id=project_id,
         after_order=after_order,
         before_order=before_order,
+        after_chronological=after_chronological,
+        before_chronological=before_chronological,
+        participant_candidates=participant_candidates,
         offset=offset,
         limit=effective_limit,
     )

@@ -139,7 +139,16 @@
     "emptyForFilters": "Không có sự kiện nào khớp với bộ lọc.",
     "filters": {
       "project": "Dự án",
-      "anyProject": "Tất cả dự án"
+      "anyProject": "Tất cả dự án",
+      "entity": "Thực thể",
+      "entityPlaceholder": "Tìm theo tên…",
+      "entitySearchMinHint": "Nhập ít nhất 2 ký tự.",
+      "entityNoMatches": "Không có thực thể khớp.",
+      "clearEntity": "Xoá lọc thực thể",
+      "chronologicalRange": "Khoảng thời gian cốt truyện",
+      "after": "Sau",
+      "before": "Trước",
+      "chronoReversed": "\"Trước\" phải lớn hơn \"Sau\"."
     },
     "row": {
       "orderLabel": "Thứ tự kể chuyện",
