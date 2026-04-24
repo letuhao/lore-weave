@@ -15,10 +15,16 @@ class Settings(BaseSettings):
     # Service URLs for HTTP calls.
     knowledge_service_url: str = "http://knowledge-service:8092"
     book_service_url: str = "http://book-service:8082"
+    # C12c-a: glossary-service URL for the paginated entity list the
+    # scope='glossary_sync' worker branch iterates.
+    glossary_service_url: str = "http://glossary-service:8082"
 
     # Timeouts (seconds).
     extract_item_timeout_s: float = 120.0  # LLM calls are slow
     book_client_timeout_s: float = 10.0
+    # C12c-a: glossary list is cheap pagination (no LLM) — shorter
+    # timeout than the book client's chapter fetch.
+    glossary_client_timeout_s: float = 10.0
 
     # Poll interval (seconds) — how often to check for running jobs.
     poll_interval_s: float = 5.0

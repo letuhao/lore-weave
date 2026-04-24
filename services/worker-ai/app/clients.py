@@ -17,7 +17,16 @@ from uuid import UUID
 
 import httpx
 
-__all__ = ["BookClient", "KnowledgeClient", "ExtractionResult", "ChapterInfo"]
+__all__ = [
+    "BookClient",
+    "KnowledgeClient",
+    "ExtractionResult",
+    "ChapterInfo",
+    "GlossaryClient",
+    "GlossaryEntity",
+    "GlossaryPage",
+    "GlossarySyncResult",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +52,35 @@ class ChapterInfo:
     chapter_id: str
     title: str
     sort_order: int
+
+
+@dataclass(frozen=True)
+class GlossaryEntity:
+    """C12c-a — single entity from glossary-service's paginated listing.
+    Shape mirrors the Go handler's `entitiesListItem`."""
+    entity_id: str
+    name: str
+    kind_code: str
+    aliases: tuple[str, ...]
+    short_description: str | None
+
+
+@dataclass(frozen=True)
+class GlossaryPage:
+    """C12c-a — one page of glossary entities + cursor for the next."""
+    items: tuple[GlossaryEntity, ...]
+    next_cursor: str | None
+
+
+@dataclass(frozen=True)
+class GlossarySyncResult:
+    """C12c-a — parsed response from knowledge-service's
+    POST /internal/extraction/glossary-sync-entity endpoint."""
+    glossary_entity_id: str
+    action: str  # "created" | "updated"
+    canonical_name: str
+    retryable: bool = False
+    error: str | None = None
 
 
 # ── KnowledgeClient ──────────────────────────────────────────────────
@@ -138,6 +176,62 @@ class KnowledgeClient:
             error=f"HTTP {resp.status_code}: {resp.text[:200]}",
         )
 
+    async def glossary_sync_entity(
+        self,
+        *,
+        user_id: UUID,
+        project_id: UUID | None,
+        glossary_entity_id: str,
+        name: str,
+        kind: str,
+        aliases: list[str] | tuple[str, ...],
+        short_description: str | None,
+    ) -> GlossarySyncResult:
+        """C12c-a — POST /internal/extraction/glossary-sync-entity.
+
+        Wraps knowledge-service's thin handler around the K15.11
+        `sync_glossary_entity_to_neo4j` helper. Returns a result with
+        `action='created'|'updated'` on success; on HTTP error returns
+        a result with `error` populated and `retryable` set on
+        transient upstream failures (502/503/429, timeouts).
+        """
+        url = f"{self._base_url}/internal/extraction/glossary-sync-entity"
+        body = {
+            "user_id": str(user_id),
+            "project_id": str(project_id) if project_id else None,
+            "glossary_entity_id": glossary_entity_id,
+            "name": name,
+            "kind": kind,
+            "aliases": list(aliases),
+            "short_description": short_description,
+        }
+        try:
+            resp = await self._http.post(url, json=body)
+        except httpx.HTTPError as exc:
+            logger.warning("glossary-sync-entity HTTP error: %s", exc)
+            return GlossarySyncResult(
+                glossary_entity_id=glossary_entity_id,
+                action="",
+                canonical_name="",
+                retryable=True,
+                error=f"HTTP error: {exc}",
+            )
+
+        if resp.status_code == 200:
+            data = resp.json()
+            return GlossarySyncResult(
+                glossary_entity_id=data.get("glossary_entity_id", glossary_entity_id),
+                action=data.get("action", ""),
+                canonical_name=data.get("canonical_name", ""),
+            )
+        return GlossarySyncResult(
+            glossary_entity_id=glossary_entity_id,
+            action="",
+            canonical_name="",
+            retryable=resp.status_code in (502, 503, 429),
+            error=f"HTTP {resp.status_code}: {resp.text[:200]}",
+        )
+
 
 # ── BookClient ───────────────────────────────────────────────────────
 
@@ -196,4 +290,73 @@ class BookClient:
             return data.get("text_content") or None
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             logger.warning("book-service chapter text failed: %s", exc)
+            return None
+
+
+# ── GlossaryClient ───────────────────────────────────────────────────
+
+
+class GlossaryClient:
+    """C12c-a — calls glossary-service's internal API to paginate
+    through a book's glossary entities. Used by worker-ai's
+    `scope='glossary_sync'` job branch (and the tail of `scope='all'`).
+    Mirrors BookClient's graceful-degrade pattern: returns None on any
+    failure, letting the runner treat it as "no entities to sync".
+    """
+
+    def __init__(self, base_url: str, internal_token: str, timeout_s: float) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._http = httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout_s),
+            headers={"X-Internal-Token": internal_token},
+        )
+
+    async def aclose(self) -> None:
+        await self._http.aclose()
+
+    async def list_book_entities(
+        self,
+        book_id: UUID,
+        *,
+        cursor: str | None = None,
+        limit: int = 100,
+    ) -> GlossaryPage | None:
+        """GET /internal/books/{book_id}/entities — one page of entities.
+
+        Returns a `GlossaryPage` on success (possibly empty).
+        Returns `None` on HTTP error, decode failure, or shape drift —
+        caller should treat this as "stop iteration; rely on what's
+        been synced so far".
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/entities"
+        params: dict[str, str] = {"limit": str(limit)}
+        if cursor:
+            params["cursor"] = cursor
+        try:
+            resp = await self._http.get(url, params=params)
+            if resp.status_code != 200:
+                logger.warning(
+                    "glossary-service entities %d for %s (cursor=%s)",
+                    resp.status_code, book_id, cursor,
+                )
+                return None
+            data = resp.json()
+            raw_items = data.get("items", [])
+            items = tuple(
+                GlossaryEntity(
+                    entity_id=item["entity_id"],
+                    name=item.get("name") or "",
+                    kind_code=item.get("kind_code") or "",
+                    aliases=tuple(item.get("aliases") or []),
+                    short_description=item.get("short_description"),
+                )
+                for item in raw_items
+                if item.get("entity_id")
+            )
+            return GlossaryPage(
+                items=items,
+                next_cursor=data.get("next_cursor"),
+            )
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning("glossary-service entities failed: %s", exc)
             return None

@@ -24,7 +24,13 @@ from uuid import UUID
 
 import asyncpg
 
-from app.clients import BookClient, ChapterInfo, KnowledgeClient
+from app.clients import (
+    BookClient,
+    ChapterInfo,
+    GlossaryClient,
+    GlossaryEntity,
+    KnowledgeClient,
+)
 
 __all__ = ["process_job", "poll_and_run"]
 
@@ -34,6 +40,11 @@ logger = logging.getLogger(__name__)
 # is reconciled after the LLM call via the extraction result, but
 # try_spend needs an upfront estimate to enforce the budget cap.
 _DEFAULT_COST_PER_ITEM = Decimal("0.004")  # ~2000 tokens × $2/M
+
+# C12c-a: glossary_sync items have no LLM call (pure Neo4j MERGE via
+# the K15.11 helper). Cost is 0 but we still run them through
+# _try_spend so the pause/cancel-detection flow stays uniform.
+_GLOSSARY_SYNC_COST_PER_ITEM = Decimal("0.0")
 
 # Max retries per item before skipping. Prevents infinite retry loops
 # when a specific item consistently triggers a retryable LLM error.
@@ -340,6 +351,86 @@ async def _enumerate_chapters(
     return chapters
 
 
+async def _enumerate_glossary_entities(
+    glossary_client: GlossaryClient,
+    book_id: UUID | None,
+    cursor: dict | None,
+) -> tuple[list[GlossaryEntity], bool]:
+    """C12c-a — page through a book's glossary entities.
+
+    Aggregates all pages into a single list (books are user-curated,
+    hundreds at most — not millions). On resume, skips entities with
+    ``entity_id <= cursor.last_glossary_entity_id`` since the
+    glossary-service endpoint orders by UUID ASC (total ordering).
+
+    Returns ``(entities, complete)`` where ``complete`` is ``False``
+    when glossary-service returned ``None`` mid-enumeration OR the
+    HARD_CAP truncation kicked in. The caller uses ``complete`` to
+    decide whether to set items_total — an incomplete enumeration
+    would underestimate and freeze the progress bar at the wrong
+    total (/review-impl LOW#5).
+
+    Graceful-degrade: on ANY glossary-service failure the partial
+    list so far is returned; the next job run re-enumerates from
+    scratch (resume_after skips what we already synced).
+
+    Hard cap: 5000 entities per job. Books with more are rare and
+    the cap prevents a runaway enumeration from blocking the worker
+    if the BE endpoint's `next_cursor` logic regresses.
+    """
+    if book_id is None:
+        return [], True
+    resume_after: str | None = None
+    if cursor and cursor.get("last_glossary_entity_id"):
+        resume_after = str(cursor["last_glossary_entity_id"])
+
+    out: list[GlossaryEntity] = []
+    page_cursor: str | None = None
+    pages_fetched = 0
+    HARD_CAP = 5000
+    while True:
+        page = await glossary_client.list_book_entities(
+            book_id, cursor=page_cursor, limit=100,
+        )
+        if page is None:
+            # Graceful-degrade: stop enumerating. Any entities already
+            # collected in this pass are kept (the caller will still
+            # process them; a future resume retries the failed page).
+            logger.warning(
+                "Job glossary enumeration partial for book %s "
+                "(glossary-service returned None); %d entities collected "
+                "so far will process but items_total will not be set",
+                book_id, len(out),
+            )
+            return out, False
+        pages_fetched += 1
+        for ent in page.items:
+            # Resume filter: skip entities we've already synced in a
+            # prior worker run. UUID ordering is total, so string
+            # compare against the cursor id works.
+            if resume_after and ent.entity_id <= resume_after:
+                continue
+            out.append(ent)
+            if len(out) >= HARD_CAP:
+                logger.warning(
+                    "Job glossary enumeration hit HARD_CAP=%d for book %s "
+                    "— truncating this run's sync",
+                    HARD_CAP, book_id,
+                )
+                return out, False
+        if not page.next_cursor:
+            return out, True
+        page_cursor = page.next_cursor
+        # Defensive: protect against a pathological loop if BE returns
+        # the same cursor repeatedly.
+        if pages_fetched > 200:
+            logger.warning(
+                "Job glossary enumeration hit 200-page ceiling for book %s",
+                book_id,
+            )
+            return out, False
+
+
 async def _enumerate_pending_chat_turns(
     pool: asyncpg.Pool, user_id: UUID, project_id: UUID,
 ) -> list[dict]:
@@ -385,15 +476,21 @@ async def process_job(
     pool: asyncpg.Pool,
     knowledge_client: KnowledgeClient,
     book_client: BookClient,
+    glossary_client: GlossaryClient,
     job: JobRow,
 ) -> None:
     """Process all items for a single extraction job.
 
     Handles:
-      - Item enumeration by scope (chapters, chat, all)
+      - Item enumeration by scope (chapters, chat, glossary_sync, all)
       - Per-item: try_spend → extract → advance_cursor
       - Pause/cancel detection between items
       - Job completion / failure
+
+    C12c-a: scope='glossary_sync' iterates a book's glossary entities
+    via glossary-service pagination, calling knowledge-service's
+    glossary-sync-entity endpoint per entity. scope='all' runs this
+    tail after chapters+chat.
     """
     logger.info(
         "Processing job %s (scope=%s, project=%s, processed=%d/%s)",
@@ -411,6 +508,8 @@ async def process_job(
         # avoiding a second HTTP call to book-service.
         pre_chapters: list[ChapterInfo] | None = None
         pre_pending: list[dict] | None = None
+        pre_glossary: list[GlossaryEntity] | None = None
+        glossary_enumeration_complete: bool = True
 
         if job.scope in ("chapters", "all"):
             pre_chapters = await _enumerate_chapters(
@@ -420,11 +519,28 @@ async def process_job(
             pre_pending = await _enumerate_pending_chat_turns(
                 pool, job.user_id, job.project_id,
             )
+        # C12c-a: pre-enumerate glossary entities for glossary_sync OR
+        # all-scope (if the project has a book). Empty / None book_id
+        # → skip silently, matching the book-service enumerator.
+        if job.scope in ("glossary_sync", "all") and book_id is not None:
+            pre_glossary, glossary_enumeration_complete = (
+                await _enumerate_glossary_entities(
+                    glossary_client, book_id, job.current_cursor,
+                )
+            )
 
         # K16.7: if items_total wasn't set by the caller (backfill case),
         # count items now so the UI can show progress percentage.
-        if job.items_total is None:
-            total = len(pre_chapters or []) + len(pre_pending or [])
+        # C12c-a /review-impl LOW#5: skip items_total when the glossary
+        # enumeration came back partial (glossary-service flake
+        # mid-pagination, or HARD_CAP hit) — using the partial count
+        # would freeze the progress bar at a wrong total.
+        if job.items_total is None and glossary_enumeration_complete:
+            total = (
+                len(pre_chapters or [])
+                + len(pre_pending or [])
+                + len(pre_glossary or [])
+            )
             await _set_items_total(pool, job.user_id, job.job_id, total)
             logger.info("Job %s: items_total set to %d (chapters=%d, chat=%d)",
                         job.job_id, total,
@@ -618,10 +734,119 @@ async def process_job(
                 )
                 items_processed += 1
 
-        # TODO: glossary_sync scope — needs glossary-service entity
-        # enumeration + knowledge-service sync endpoint. For now, jobs
-        # with scope="glossary_sync" skip silently. scope="all" covers
-        # chapters + chat but not glossary until this is implemented.
+        # C12c-a: glossary_sync branch. Fires for scope='glossary_sync'
+        # (primary) AND the tail of scope='all'. No LLM call — each
+        # entity is MERGEd into Neo4j via knowledge-service's
+        # /internal/extraction/glossary-sync-entity handler (which
+        # wraps the K15.11 `sync_glossary_entity_to_neo4j` helper).
+        # Cost per item = 0 (see _GLOSSARY_SYNC_COST_PER_ITEM) but we
+        # still run through _try_spend so pause/cancel detection stays
+        # uniform across branches.
+        if pre_glossary:
+            for ent in pre_glossary:
+                status = await _refresh_job_status(pool, job.job_id)
+                if status != "running":
+                    logger.info(
+                        "Job %s no longer running (status=%s), stopping glossary loop",
+                        job.job_id, status,
+                    )
+                    return
+
+                outcome = await _try_spend(
+                    pool, job.user_id, job.job_id, _GLOSSARY_SYNC_COST_PER_ITEM,
+                )
+                if outcome == "not_running":
+                    return
+                if outcome == "auto_paused":
+                    # Shouldn't fire for glossary (cost=0 never crosses
+                    # max_spend) but log + return defensively so the
+                    # branching story stays uniform with chapters/chat.
+                    logger.info("Job %s auto-paused during glossary loop", job.job_id)
+                    await _append_log(
+                        pool, job.user_id, job.job_id, "warning",
+                        "Job auto-paused: max_spend_usd reached",
+                        context={"event": "auto_paused", "scope": "glossary_sync"},
+                    )
+                    return
+
+                result = await knowledge_client.glossary_sync_entity(
+                    user_id=job.user_id,
+                    project_id=job.project_id,
+                    glossary_entity_id=ent.entity_id,
+                    name=ent.name,
+                    kind=ent.kind_code,
+                    aliases=ent.aliases,
+                    short_description=ent.short_description,
+                )
+
+                if result.error and not result.retryable:
+                    await _fail_job(pool, job.user_id, job.job_id, result.error)
+                    await _update_project_status(
+                        pool, job.user_id, job.project_id, "failed",
+                    )
+                    return
+                # /review-impl MED#3 — bounded retry mirroring the
+                # chapters branch. Track retry count per entity in
+                # the cursor; on retry_key >= _MAX_RETRIES_PER_ITEM
+                # skip the entity (advance cursor past it) so a
+                # flapping glossary-service can't loop indefinitely.
+                if result.error and result.retryable:
+                    retry_key = f"retry_glossary_{ent.entity_id}"
+                    cur = job.current_cursor or {}
+                    retries = cur.get(retry_key, 0) + 1
+                    if retries >= _MAX_RETRIES_PER_ITEM:
+                        logger.warning(
+                            "Skipping glossary entity %s after %d retries: %s",
+                            ent.entity_id, retries, result.error,
+                        )
+                        await _append_log(
+                            pool, job.user_id, job.job_id, "error",
+                            f"Glossary entity {ent.entity_id} skipped after {retries} retries",
+                            context={
+                                "event": "retry_exhausted",
+                                "glossary_entity_id": ent.entity_id,
+                                "retries": retries,
+                                "error": result.error,
+                                "scope": "glossary_sync",
+                            },
+                        )
+                        await _advance_cursor(
+                            pool, job.user_id, job.job_id,
+                            {
+                                "last_glossary_entity_id": ent.entity_id,
+                                "scope": "glossary_sync",
+                            },
+                        )
+                        items_processed += 1
+                        continue
+                    logger.warning(
+                        "Retryable error on glossary entity %s (attempt %d/%d): %s",
+                        ent.entity_id, retries, _MAX_RETRIES_PER_ITEM, result.error,
+                    )
+                    # Persist retry count; don't advance past this item;
+                    # stop this run so next poll retries.
+                    await _advance_cursor(
+                        pool, job.user_id, job.job_id,
+                        {**cur, retry_key: retries, "scope": "glossary_sync"},
+                        items_delta=0,
+                    )
+                    return
+
+                await _advance_cursor(
+                    pool, job.user_id, job.job_id,
+                    {
+                        "last_glossary_entity_id": ent.entity_id,
+                        "scope": "glossary_sync",
+                    },
+                )
+                # Record zero spend — keeps the per-project ledger
+                # consistent (every item advances it, glossary items
+                # advance it by 0).
+                await _record_spending(
+                    pool, job.user_id, job.project_id,
+                    _GLOSSARY_SYNC_COST_PER_ITEM,
+                )
+                items_processed += 1
 
         # All items processed — complete the job
         await _complete_job(pool, job.user_id, job.job_id)
@@ -644,6 +869,7 @@ async def poll_and_run(
     pool: asyncpg.Pool,
     knowledge_client: KnowledgeClient,
     book_client: BookClient,
+    glossary_client: GlossaryClient,
 ) -> int:
     """One poll cycle: find running jobs and process them.
 
@@ -655,6 +881,8 @@ async def poll_and_run(
         return 0
 
     for job in jobs:
-        await process_job(pool, knowledge_client, book_client, job)
+        await process_job(
+            pool, knowledge_client, book_client, glossary_client, job,
+        )
 
     return len(jobs)

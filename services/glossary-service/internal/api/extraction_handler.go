@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -934,5 +936,260 @@ func (s *Server) internalEntityCount(w http.ResponseWriter, r *http.Request) {
 	}
 	EntityCountTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{"count": count})
+}
+
+// ── C12c-a: glossary entities listing for knowledge-service sync ──────────
+
+// entitiesListItem is a single entity in the listInternalEntities response.
+// Matches the wire contract documented in C12c-a DESIGN: fields the
+// knowledge-service sync helper (sync_glossary_entity_to_neo4j) consumes.
+type entitiesListItem struct {
+	EntityID         string   `json:"entity_id"`
+	Name             string   `json:"name"`
+	KindCode         string   `json:"kind_code"`
+	Aliases          []string `json:"aliases"`
+	ShortDescription *string  `json:"short_description"`
+}
+
+type entitiesListResp struct {
+	Items      []entitiesListItem `json:"items"`
+	NextCursor *string            `json:"next_cursor"`
+}
+
+// entitiesCursor is the decoded payload of the ?cursor=... query param.
+// We encode/decode a single entity_id (UUID has total ordering, so
+// (entity_id > $cursor) is a correct seek predicate). Wrapped in a
+// struct so future additions (e.g. per-kind cursors) don't break
+// forward compatibility of the opaque cursor.
+type entitiesCursor struct {
+	EntityID string `json:"entity_id"`
+}
+
+func encodeEntitiesCursor(entityID uuid.UUID) string {
+	raw, _ := json.Marshal(entitiesCursor{EntityID: entityID.String()})
+	return base64.RawURLEncoding.EncodeToString(raw)
+}
+
+func decodeEntitiesCursor(s string) (uuid.UUID, error) {
+	if s == "" {
+		return uuid.Nil, errEmptyCursor
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("invalid base64: %w", err)
+	}
+	var c entitiesCursor
+	if err := json.Unmarshal(raw, &c); err != nil {
+		return uuid.Nil, fmt.Errorf("invalid json: %w", err)
+	}
+	if c.EntityID == "" {
+		return uuid.Nil, fmt.Errorf("missing entity_id")
+	}
+	id, err := uuid.Parse(c.EntityID)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("invalid entity_id: %w", err)
+	}
+	return id, nil
+}
+
+var errEmptyCursor = fmt.Errorf("empty cursor")
+
+// internalListEntities returns paginated, alive glossary entities for a
+// book. Used by knowledge-service's extraction worker to drive the
+// `scope='glossary_sync'` job branch (C12c-a).
+//
+// Query params:
+//   - cursor: opaque base64 (b64-JSON{entity_id}) — null/missing starts
+//     from the first entity (entity_id ASC).
+//   - limit: page size, default 100, clamped to [1, 200].
+//
+// Response shape (matches entitiesListResp):
+//
+//	{"items": [{entity_id, name, kind_code, aliases, short_description}],
+//	 "next_cursor": "<b64>" | null}
+//
+// Filters: alive = true AND deleted_at IS NULL (both checks; alive is
+// the soft-delete flag from K15.x, deleted_at is the hard-delete
+// tombstone — dropping either would leak tombstoned entities).
+//
+// Route: GET /internal/books/{book_id}/entities
+func (s *Server) internalListEntities(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		EntitiesListTotal.WithLabelValues(OutcomeValidationError).Inc()
+		return
+	}
+	q := r.URL.Query()
+
+	limit := queryInt(q.Get("limit"), 100)
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > 200 {
+		limit = 200
+	}
+
+	var afterID uuid.UUID
+	hasAfter := false
+	if raw := q.Get("cursor"); raw != "" {
+		id, err := decodeEntitiesCursor(raw)
+		if err != nil {
+			EntitiesListTotal.WithLabelValues(OutcomeValidationError).Inc()
+			writeError(w, http.StatusBadRequest, "GLOSS_BAD_CURSOR",
+				"invalid cursor: "+err.Error())
+			return
+		}
+		afterID = id
+		hasAfter = true
+	}
+
+	// Peek-ahead pattern: fetch limit+1; if we get that many back, the
+	// (limit+1)-th row's entity_id becomes the next_cursor, and we
+	// trim to `limit`.
+	query := `
+		SELECT
+			e.entity_id,
+			k.code AS kind_code,
+			COALESCE(name_av.original_value, '') AS name,
+			COALESCE(alias_av.original_value, '') AS aliases_raw,
+			short_av.original_value AS short_description
+		FROM glossary_entities e
+		JOIN entity_kinds k ON k.kind_id = e.kind_id
+		LEFT JOIN entity_attribute_values name_av
+			ON name_av.entity_id = e.entity_id
+			AND name_av.attr_def_id = (
+				SELECT attr_def_id FROM attribute_definitions
+				WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1
+			)
+		LEFT JOIN entity_attribute_values alias_av
+			ON alias_av.entity_id = e.entity_id
+			AND alias_av.attr_def_id = (
+				SELECT attr_def_id FROM attribute_definitions
+				WHERE kind_id = e.kind_id AND code = 'aliases' LIMIT 1
+			)
+		LEFT JOIN entity_attribute_values short_av
+			ON short_av.entity_id = e.entity_id
+			AND short_av.attr_def_id = (
+				SELECT attr_def_id FROM attribute_definitions
+				WHERE kind_id = e.kind_id AND code = 'short_description' LIMIT 1
+			)
+		WHERE e.book_id = $1
+		  AND e.alive = true
+		  AND e.deleted_at IS NULL
+		  AND ($2::uuid IS NULL OR e.entity_id > $2::uuid)
+		ORDER BY e.entity_id ASC
+		LIMIT $3
+	`
+	var afterArg any
+	if hasAfter {
+		afterArg = afterID
+	} else {
+		afterArg = nil
+	}
+
+	rows, err := s.pool.Query(r.Context(), query, bookID, afterArg, limit+1)
+	if err != nil {
+		EntitiesListTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL",
+			"failed to query glossary entities")
+		return
+	}
+	defer rows.Close()
+
+	// /review-impl MED#1 — track rowsScanned separately from the
+	// items-filtered count. If the DB returned `limit+1` rows but
+	// one was dropped by the empty-name filter, `len(items)` would
+	// be exactly `limit` and the naive `len(items) > limit`
+	// cursor-set check would silently terminate pagination,
+	// dropping entities beyond the page. We detect the peek-ahead
+	// via rowsScanned, and separately carry forward the last
+	// entity_id we SAW (valid or filtered) as the cursor boundary.
+	items := make([]entitiesListItem, 0, limit)
+	var lastSeenID uuid.UUID
+	rowsScanned := 0
+	scanErrorCount := 0
+	for rows.Next() {
+		var (
+			entityID   uuid.UUID
+			kindCode   string
+			name       string
+			aliasesRaw string
+			shortDesc  sql.NullString
+		)
+		if err := rows.Scan(&entityID, &kindCode, &name, &aliasesRaw, &shortDesc); err != nil {
+			scanErrorCount++
+			continue
+		}
+		rowsScanned++
+		lastSeenID = entityID
+		// Once we have `limit` items AND we've seen one additional
+		// row (the peek-ahead), the (limit+1)-th row confirms there's
+		// more data and we should emit a cursor.
+		if rowsScanned > limit {
+			// Don't push the peek-ahead row into items; it just signals
+			// pagination should continue. The cursor uses the LAST
+			// pushed item's id (set below).
+			break
+		}
+		var aliases []string
+		if aliasesRaw != "" {
+			_ = json.Unmarshal([]byte(aliasesRaw), &aliases)
+		}
+		if aliases == nil {
+			aliases = []string{}
+		}
+		if name == "" {
+			// Skip nameless entities — sync_glossary_entity_to_neo4j
+			// requires a non-empty name for canonicalization. The row
+			// still counts toward rowsScanned so pagination advances
+			// past it (otherwise a name-less row at the page boundary
+			// would make us re-fetch it forever).
+			continue
+		}
+		var shortPtr *string
+		if shortDesc.Valid && shortDesc.String != "" {
+			s := shortDesc.String
+			shortPtr = &s
+		}
+		items = append(items, entitiesListItem{
+			EntityID:         entityID.String(),
+			Name:             name,
+			KindCode:         kindCode,
+			Aliases:          aliases,
+			ShortDescription: shortPtr,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		EntitiesListTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL",
+			"failed to iterate glossary entities")
+		return
+	}
+
+	// Emit next_cursor when we observed a peek-ahead row (rowsScanned
+	// > limit). Cursor = last entity_id we saw at-or-before position
+	// `limit` — that's the LAST row in `items` if non-empty, OR the
+	// last seen id if every visible row was name-filtered out (rare
+	// but possible).
+	var nextCursor *string
+	if rowsScanned > limit {
+		var boundaryID uuid.UUID
+		if len(items) > 0 {
+			boundaryID, err = uuid.Parse(items[len(items)-1].EntityID)
+			if err != nil {
+				boundaryID = lastSeenID
+			}
+		} else {
+			boundaryID = lastSeenID
+		}
+		c := encodeEntitiesCursor(boundaryID)
+		nextCursor = &c
+	}
+
+	EntitiesListTotal.WithLabelValues(OutcomeOK).Inc()
+	writeJSON(w, http.StatusOK, entitiesListResp{
+		Items:      items,
+		NextCursor: nextCursor,
+	})
 }
 

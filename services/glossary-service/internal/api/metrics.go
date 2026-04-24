@@ -11,6 +11,7 @@ package api
 //   - /internal/books/{book_id}/extract-entities    (extraction bulk write)
 //   - /internal/books/{book_id}/known-entities      (K13.0 anchor preload)
 //   - /internal/books/{book_id}/entity-count        (K16.2 cost estimate)
+//   - /internal/books/{book_id}/entities            (C12c-a glossary-sync pagination)
 //
 // Operator use: `rate(glossary_service_*_total[5m])` for throughput,
 // `sum by (outcome) (...)` for failure mode breakdown. Dashboards
@@ -103,11 +104,24 @@ var EntityCountTotal = prometheus.NewCounterVec(
 	[]string{"outcome"},
 )
 
+// EntitiesListTotal counts outcomes on /internal/books/{id}/entities —
+// the C12c-a cursor-paginated list endpoint driving knowledge-service's
+// glossary_sync extraction job branch. High-volume during an active
+// glossary_sync job (one scrape per page × pages).
+var EntitiesListTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "glossary_service_entities_list_total",
+		Help: "Outcomes for /internal/books/{id}/entities requests (C12c-a glossary-sync pagination).",
+	},
+	[]string{"outcome"},
+)
+
 func init() {
 	metricsRegistry.MustRegister(SelectForContextTotal)
 	metricsRegistry.MustRegister(BulkExtractTotal)
 	metricsRegistry.MustRegister(KnownEntitiesTotal)
 	metricsRegistry.MustRegister(EntityCountTotal)
+	metricsRegistry.MustRegister(EntitiesListTotal)
 
 	// Pre-seed every (counter × outcome) pair so the series appears
 	// at zero on the first scrape. rate() queries against new series
@@ -115,7 +129,7 @@ func init() {
 	// seeding removes that false "no data" window from dashboards.
 	for _, cv := range []*prometheus.CounterVec{
 		SelectForContextTotal, BulkExtractTotal,
-		KnownEntitiesTotal, EntityCountTotal,
+		KnownEntitiesTotal, EntityCountTotal, EntitiesListTotal,
 	} {
 		for _, oc := range []string{
 			OutcomeOK, OutcomeValidationError,

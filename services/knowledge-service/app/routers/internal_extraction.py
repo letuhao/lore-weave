@@ -335,3 +335,91 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
         evidence_edges=result.evidence_edges,
         duration_seconds=round(elapsed, 2),
     )
+
+
+# ── C12c-a: glossary-sync-entity endpoint ────────────────────────────
+
+# Thin wrapper around the K15.11 `sync_glossary_entity_to_neo4j`
+# helper. Worker-ai calls this per-entity while iterating through a
+# book's glossary during `scope='glossary_sync'` (or the glossary tail
+# of `scope='all'`) extraction jobs. Kept separate from /extract-item
+# because:
+#   - no LLM call → no provider client, no model_ref
+#   - no anchor pre-load → bypasses the 60s TTL cache
+#   - writes a fully-trusted :Entity (confidence=1.0, source='glossary')
+#     rather than running the quarantine pipeline
+
+from app.extraction.glossary_sync import sync_glossary_entity_to_neo4j
+
+
+class GlossarySyncEntityRequest(BaseModel):
+    user_id: UUID
+    project_id: UUID | None = None
+    glossary_entity_id: UUID
+    name: str = Field(min_length=1, max_length=200)
+    kind: str = Field(min_length=1, max_length=100)
+    aliases: list[str] = Field(default_factory=list)
+    short_description: str | None = None
+
+
+class GlossarySyncEntityResponse(BaseModel):
+    glossary_entity_id: str
+    action: Literal["created", "updated"]
+    canonical_name: str
+
+
+@router.post(
+    "/glossary-sync-entity",
+    response_model=GlossarySyncEntityResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def glossary_sync_entity(
+    body: GlossarySyncEntityRequest,
+) -> GlossarySyncEntityResponse:
+    """C12c-a — MERGE a glossary entity into Neo4j as a high-confidence
+    :Entity node. Idempotent: repeat calls update the node in place.
+
+    Returns the helper's native shape (glossary_entity_id / action /
+    canonical_name) plus a 500 fallback on unexpected Neo4j errors
+    (the helper itself doesn't catch them).
+    """
+    try:
+        async with neo4j_session() as session:
+            result = await sync_glossary_entity_to_neo4j(
+                session,
+                user_id=str(body.user_id),
+                project_id=str(body.project_id) if body.project_id else None,
+                glossary_entity_id=str(body.glossary_entity_id),
+                name=body.name,
+                kind=body.kind,
+                aliases=list(body.aliases),
+                short_description=body.short_description,
+            )
+    except Exception as exc:  # noqa: BLE001 — boundary handler
+        # /review-impl LOW#4 — don't echo raw exception text across
+        # the service boundary. logger.exception captures the full
+        # traceback + message locally; the wire response stays opaque
+        # so Neo4j internals (node ids, statement fragments) don't
+        # land in worker-ai logs.
+        logger.exception(
+            "C12c-a: glossary_sync_entity failed for %s: %s",
+            body.glossary_entity_id, exc,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error_code": "neo4j_error",
+                "message": "failed to merge glossary entity",
+            },
+        ) from exc
+
+    action = result.get("action", "updated")
+    if action not in ("created", "updated"):
+        # Defensive: helper returns one of these two strings today.
+        action = "updated"
+
+    return GlossarySyncEntityResponse(
+        glossary_entity_id=result["glossary_entity_id"],
+        action=action,  # type: ignore[arg-type]
+        canonical_name=result["canonical_name"],
+    )
