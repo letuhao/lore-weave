@@ -56,7 +56,7 @@ Statuses: `[ ]` open · `[D]` DESIGN in flight · `[B]` BUILD in flight · `[V]`
 | **C12b-a** | Run benchmark CTA — BE half (POST /benchmark-run + orchestrator) | D-K19a.5-07 (BE half) | L | `[x]` | split from C12b per user call; empty-project guard (Option A) + sentinel-set concurrency + FixtureLoadIncompleteError→502; 28 tests |
 | **C12b-b** | Run benchmark CTA — FE half (button + loading UX + error toasts) | D-K19a.5-07 (FE half) | ~~M~~ **L** (reclassified at CLARIFY) | `[x]` | inline button in EmbeddingModelPicker blast-radius 3 dialogs; 9-key i18n × 4 + placeholder drift-lock; 21 tests |
 | **C12c-a** | `glossary_sync` BE — new entity list endpoint + worker-ai branch + knowledge-service sync endpoint + scope='all' flip | D-K19a.5-06 (BE half) | ~~S FE-only~~ **FS L** (reclassified at CLARIFY per scope-audit feedback memory) | `[x]` | 3-service split: glossary-service Go paginated endpoint + worker-ai GlossaryClient + runner glossary branch + knowledge-service /glossary-sync-entity endpoint; scope='all' now includes glossary (previously silently excluded per TODO at worker runner.py:621); K15.11 helper ON MATCH project_id fix; 3 MED + 3 LOW /review-impl findings all fixed in-cycle |
-| **C12c-b** | `glossary_sync` FE — scope radio in BuildGraphDialog | D-K19a.5-06 (FE half) | S (FE only) | `[ ]` | strictly FE: add to ALL_SCOPES + gate on project.book_id + 4 locales + drift-lock |
+| **C12c-b** | `glossary_sync` FE — scope radio in BuildGraphDialog + retry-fallback hardening | D-K19a.5-06 (FE half) | ~~S~~ **L** (reclassified at CLARIFY: 7 files trips 6+ threshold) | `[x]` | ALL_SCOPES += glossary_sync; availableScopes gates both chapters AND glossary_sync on book_id; openScope falls back to defaultScope when initialValues.scope is book-required but project lacks book (LOW#1 also fixes pre-existing chapters retry bug); 4 locales + drift-lock; 5 new tests |
 | **C13** | Storybook dialogs via MSW | D-K19a.8-01 | M | `[x]` | — |
 | **C14** | Resumable scheduler cursor state (Perf) | D-K11.9-01 partial, P-K15.10-01 partial | L | `[ ]` | needs `job_state` table design |
 | **C15** | Neo4j fulltext index for entity search (Perf) | P-K19d-01 | S | `[ ]` | fire only when user >10k entities — defer trigger |
@@ -544,12 +544,12 @@ Once text arrives:
 |---|---|---|---|
 | P1 (C1–C2) | 0 | **4 items / 2 cycles (C1 ✅ + C2 ✅)** | 0 |
 | P2 (C3–C9) | 0 items | **15 items / 7 cycles (C3 ✅ + C4 ✅ + C5 ✅ + C6 ✅ + C7 ✅ + C8 ✅ + C9 ✅)** | 0 |
-| P3 (C10–C13) | 1 item (C12c-b FE S) | **11 items / 7 cycles (C10 ✅ + C11 ✅ + C12a ✅ + C12b-a ✅ + C12b-b ✅ + C13 ✅ + C12c-a ✅)** | 0 |
+| P3 (C10–C13) | 0 | **✅ 12 items / 8 cycles DONE (C10 ✅ + C11 ✅ + C12a ✅ + C12b-a ✅ + C12b-b ✅ + C13 ✅ + C12c-a ✅ + C12c-b ✅)** | 0 |
 | P4 (C14–C15) | 3 items / 2 cycles | 0 | 0 |
 | P5 (C16–C18) | 3 items / 3 cycles | 0 | 0 DESIGN |
 | User-gated (C19–C20) | 2 items / 2 cycles | 0 | 2 ⏸ |
 
-**Total plan: 34 item-closures across 22 cycles (C12 split into C12a/b-a/b-b/c-a/c-b). Completed: 30 items / 16 cycles. P1 tier done · P2 tier DONE (7/7) · P3 tier 11/12 done (C10 ✅ + C11 ✅ + C12a ✅ + C12b-a ✅ + C12b-b ✅ + C13 ✅ + C12c-a ✅). Remaining: C12c-b (FE radio, S), plus P4/P5/user-gated.**
+**Total plan: 34 item-closures across 22 cycles. Completed: 31 items / 17 cycles. P1 tier done · P2 tier DONE (7/7) · **P3 tier DONE (12/12)** (C10..C13 + C12a..C12c-b all shipped). Remaining: P4 × 2 + P5 🏗 × 3 DESIGN-first + user-gated × 2.**
 (Some cycles close > 1 item; some items appear in >1 cycle. Check the cycle table for authoritative count.)
 
 ---

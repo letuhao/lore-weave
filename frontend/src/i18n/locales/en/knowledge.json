@@ -531,8 +531,9 @@
         "label": "Scope",
         "chapters": "Book chapters",
         "chat": "Chat history",
+        "glossary_sync": "Glossary sync",
         "all": "Everything",
-        "noBookHint": "This project isn't linked to a book — the chapters scope is hidden."
+        "noBookHint": "This project isn't linked to a book — the chapters and glossary sync scopes are hidden."
       },
       "chapterRange": {
         "label": "Chapter range (optional)",

@@ -237,6 +237,8 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     'buildDialog.scope.label',
     'buildDialog.scope.chapters',
     'buildDialog.scope.chat',
+    // C12c-b — glossary_sync scope option (BE shipped via C12c-a)
+    'buildDialog.scope.glossary_sync',
     'buildDialog.scope.all',
     'buildDialog.scope.noBookHint',
     // C12a — chapter range picker

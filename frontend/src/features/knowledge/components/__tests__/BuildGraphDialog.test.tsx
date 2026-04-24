@@ -379,6 +379,59 @@ describe('BuildGraphDialog', () => {
     expect(screen.getByRole('radio', { name: 'projects.buildDialog.scope.chat' })).toBeDefined();
     expect(screen.getByRole('radio', { name: 'projects.buildDialog.scope.all' })).toBeDefined();
     expect(screen.getByText('projects.buildDialog.scope.noBookHint')).toBeDefined();
+    // C12c-b — glossary_sync also depends on a linked book; must be
+    // hidden when book_id=null, same as chapters. BE 422s on start
+    // with this combo (C12c-a MED#1), so the UI must not offer it.
+    expect(
+      screen.queryByRole('radio', { name: 'projects.buildDialog.scope.glossary_sync' }),
+    ).toBeNull();
+  });
+
+  // ── C12c-b — glossary_sync scope option ───────────────────────
+
+  it('renders glossary_sync radio when project has a linked book', () => {
+    renderDialog();
+    // sampleProject has book_id set → glossary_sync should appear.
+    expect(
+      screen.getByRole('radio', { name: 'projects.buildDialog.scope.glossary_sync' }),
+    ).toBeDefined();
+  });
+
+  it('start payload carries scope=glossary_sync when the radio is selected', async () => {
+    estimateMock.mockResolvedValue(sampleEstimate());
+    startMock.mockResolvedValue(sampleJob());
+    renderDialog();
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
+    });
+
+    // Switch to glossary_sync, pick LLM + embedding.
+    fireEvent.click(
+      screen.getByRole('radio', { name: 'projects.buildDialog.scope.glossary_sync' }),
+    );
+    fireEvent.change(
+      screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }),
+      { target: { value: 'gpt-5' } },
+    );
+    fireEvent.change(screen.getByTestId('embedding-picker'), {
+      target: { value: 'bge-m3' },
+    });
+    await new Promise((r) => setTimeout(r, 350));
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'projects.buildDialog.confirm' }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(startMock).toHaveBeenCalledTimes(1);
+    });
+    const payload = startMock.mock.calls[0][1];
+    expect(payload.scope).toBe('glossary_sync');
+    // scope_range MUST be omitted — glossary_sync has no chapter_range.
+    expect(payload.scope_range).toBeUndefined();
   });
 
   // ── C12a (D-K19a.5-04) — chapter-range picker ─────────────────
@@ -595,6 +648,79 @@ describe('BuildGraphDialog', () => {
     // placeholder instead.
     const maxSpend = screen.getByPlaceholderText('0.00') as HTMLInputElement;
     expect(maxSpend.value).toBe('7.50');
+  });
+
+  // C12c-b /review-impl LOW#2 — retry pre-fill for glossary_sync
+  it('pre-fills scope=glossary_sync from initialValues on book-linked project', () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <BuildGraphDialog
+          open={true}
+          onOpenChange={vi.fn()}
+          project={sampleProject}
+          onStarted={vi.fn()}
+          initialValues={{ scope: 'glossary_sync' }}
+        />
+      </QueryClientProvider>,
+    );
+    const radio = screen.getByRole('radio', {
+      name: 'projects.buildDialog.scope.glossary_sync',
+    }) as HTMLInputElement;
+    expect(radio.checked).toBe(true);
+  });
+
+  // C12c-b /review-impl LOW#1 — if the prior job's scope is now
+  // unavailable (book_id unlinked between job creation and retry),
+  // fall back to defaultScope so no radio is orphaned in state-but-
+  // not-rendered. Mirrors the availableScopes filter.
+  it('falls back to defaultScope when initialValues.scope is no longer available', () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <BuildGraphDialog
+          open={true}
+          onOpenChange={vi.fn()}
+          project={{ ...sampleProject, book_id: null }}
+          onStarted={vi.fn()}
+          initialValues={{ scope: 'glossary_sync' }}
+        />
+      </QueryClientProvider>,
+    );
+    // glossary_sync radio must NOT be rendered (filter excludes it).
+    expect(
+      screen.queryByRole('radio', { name: 'projects.buildDialog.scope.glossary_sync' }),
+    ).toBeNull();
+    // defaultScope ('all' for no-book project) should be checked
+    // instead — scope state snapped back rather than left orphaned.
+    const allRadio = screen.getByRole('radio', {
+      name: 'projects.buildDialog.scope.all',
+    }) as HTMLInputElement;
+    expect(allRadio.checked).toBe(true);
+  });
+
+  // C12c-b /review-impl LOW#1 — symmetric test for chapters
+  // (pre-existing pattern C12c-b's fallback also covers).
+  it('falls back to defaultScope when initialValues.scope=chapters on unlinked project', () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <BuildGraphDialog
+          open={true}
+          onOpenChange={vi.fn()}
+          project={{ ...sampleProject, book_id: null }}
+          onStarted={vi.fn()}
+          initialValues={{ scope: 'chapters' }}
+        />
+      </QueryClientProvider>,
+    );
+    expect(
+      screen.queryByRole('radio', { name: 'projects.buildDialog.scope.chapters' }),
+    ).toBeNull();
+    const allRadio = screen.getByRole('radio', {
+      name: 'projects.buildDialog.scope.all',
+    }) as HTMLInputElement;
+    expect(allRadio.checked).toBe(true);
   });
 
   // D-K19a.5-03 (cleared in K19b.6): monthly-remaining hint near max_spend.

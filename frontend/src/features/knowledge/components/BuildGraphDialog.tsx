@@ -56,7 +56,15 @@ interface Props {
   initialValues?: BuildGraphInitialValues;
 }
 
-const ALL_SCOPES: ExtractionJobScopeWire[] = ['chapters', 'chat', 'all'];
+// C12c-b — `glossary_sync` joins the radio set now that C12c-a shipped
+// BE support (new glossary-service paginated endpoint + worker-ai
+// branch + knowledge-service sync endpoint). Same book_id gate as
+// chapters: both rely on the project's linked book, so `availableScopes`
+// below filters both when `project.book_id` is null. The BE's 422
+// guard at start_extraction_job (C12c-a MED#1) is the authoritative
+// check; this filter is UX so the user never offers an option the BE
+// would reject.
+const ALL_SCOPES: ExtractionJobScopeWire[] = ['chapters', 'chat', 'glossary_sync', 'all'];
 const DECIMAL_REGEX = /^\d+(\.\d{1,2})?$/;
 const ESTIMATE_DEBOUNCE_MS = 300;
 
@@ -80,7 +88,15 @@ export function BuildGraphDialog({
   const defaultScope: ExtractionJobScopeWire = project.book_id ? 'chapters' : 'all';
   // K19b.5: initialValues overrides the per-open defaults so the
   // retry flow can land the user on their prior settings.
-  const openScope = initialValues?.scope ?? defaultScope;
+  // C12c-b /review-impl LOW#1: if the prior job's scope is no longer
+  // available (book was unlinked between job creation and retry),
+  // fall back to defaultScope so the radios always have one checked.
+  // Mirrors the `availableScopes` filter condition below.
+  const rawOpenScope = initialValues?.scope ?? defaultScope;
+  const openScope: ExtractionJobScopeWire =
+    (rawOpenScope === 'chapters' || rawOpenScope === 'glossary_sync') && !project.book_id
+      ? defaultScope
+      : rawOpenScope;
   const openLlm = initialValues?.llmModel ?? '';
   const openEmbedding =
     initialValues?.embeddingModel !== undefined
@@ -276,8 +292,15 @@ export function BuildGraphDialog({
   // book-only code path; a project with `book_id=null` would run a
   // no-op job. Hide the radio option in that case so the UI can't
   // select it.
+  // C12c-b: extends the filter to also hide `glossary_sync` when the
+  // project has no linked book. Both scopes require book_id — BE 422s
+  // on `glossary_sync + null book_id` (C12c-a MED#1), and `chapters`
+  // has always required one. The single `noBookHint` below covers
+  // both.
   const availableScopes = useMemo(
-    () => ALL_SCOPES.filter((s) => s !== 'chapters' || !!project.book_id),
+    () => ALL_SCOPES.filter(
+      (s) => (s !== 'chapters' && s !== 'glossary_sync') || !!project.book_id,
+    ),
     [project.book_id],
   );
 
