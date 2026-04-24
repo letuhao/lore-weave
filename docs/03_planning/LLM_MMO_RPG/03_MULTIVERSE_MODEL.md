@@ -779,6 +779,55 @@ Author-facing history on any glossary entity attribute:
 - Consent mechanism for ownerless / abandoned realities (governance policy — fallback to admin auth?)
 - Runtime canon-guardrail prompt discipline for L1 enforcement (A6-adjacent)
 
+### 9.9 Reality ancestry severance — Orphan Worlds (C1 resolution)
+
+**Origin:** SA+DE adversarial review 2026-04-24 surfaced C1 (cascade read broken when ancestor closes). User reframed as gameplay feature rather than bug: realities whose ancestry has **faded from memory** are a multiverse fiction trope.
+
+**Philosophical alignment:** §1 already states "Alice being alive in one reality and dead in another is normal." Orphan worlds extend this: "History can fade. Knowledge of events before the forgetting is lost, but the present endures."
+
+Full engineering design is in [02 §12M](02_STORAGE_ARCHITECTURE.md#12m-reality-ancestry-severance--orphan-worlds-c1-resolution). Conceptual summary here:
+
+#### 9.9.1 What severance means in the multiverse
+
+When an ancestor reality closes per R9 lifecycle, its descendants **auto-snapshot** their current state and mark ancestry as `severed`. Cascade read stops at the severance point; events from before are no longer reachable except as **lore fragments** in `ancestry_fragment_trail`.
+
+#### 9.9.2 The severance event
+
+Narrative event `reality.ancestry_severed` fires in-world with scope='reality' — broadcast to all active sessions in the severing reality. Narrator copy (localized, configurable):
+
+- **Short**: "The Old Age has passed beyond memory."
+- **Poetic** (default): "A profound quiet settles over the world. Ancient memories, once whispered among the oldest, fade into myth. What came before... is no longer known."
+
+Players experience severance as an **in-world event**, not a system notification.
+
+#### 9.9.3 Gameplay implications
+
+- **NPCs react**: "something feels different... like a dream I can't recall"
+- **Historian NPCs lose references**: they can no longer speak of specific pre-severance events
+- **Artifacts become mysterious**: items/regions that trace to ancestor events now have unknown origin
+- **New scholarly themes**: "why did the Old Age fade? What truly happened?"
+- **Reality identity persists**: same `reality_id`, same players, same current state — only event history is gone
+- **Ancestry fragment trail**: reality's lore page lists severed ancestors by `narrative_name` with dates
+
+#### 9.9.4 Reversibility
+
+- Pre-freeze (during ancestor R9 30-day cooling): ancestor cancel prevents severance
+- Post-severance: **one-way**. Narrative event already broadcast; reversing creates continuity mess.
+
+#### 9.9.5 Relationship to MV9 auto-rebase
+
+MV9 auto-rebase (triggered at fork depth > 5) and §9.9 severance (triggered at ancestor close) produce technically similar states. Key differences:
+- MV9: silent ops mechanism, new `reality_id` for rebased reality
+- §9.9: narrative product mechanism, preserves `reality_id`, adds in-world event
+
+Both coexist. MV9 writes `severance_reason='auto_rebase'` into fragment trail when it fires.
+
+#### 9.9.6 Future mystery layer — DF14
+
+Before severance fires, author/system can optionally **seed breadcrumbs** — mysterious artifacts, prophecies, lore fragments, ruins — in descendant realities. After severance, these become player-discoverable mysteries pointing at the lost past. Players can reconstruct (in-game lore) what might have been.
+
+This is a **separate deferred big feature: DF14 — Vanish Reality Mystery System**. §9.9 (severance) is the substrate; DF14 (mysteries) is the narrative superstructure. §9.9 ships without DF14; DF14 builds on §9.9 later.
+
 ## 10. What this resolves from 01_OPEN_PROBLEMS
 
 | Problem | Status after multiverse model | Reason |

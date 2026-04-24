@@ -106,6 +106,32 @@ When adding new features:
 | IF-13e | Metrics aggregation with reality_id labels | ✅ | INFRA | IF-3 | [02 §12D.5](02_STORAGE_ARCHITECTURE.md) (R4-L5) |
 | IF-13f | Shared Postgres server sharding (many DBs per server) | ✅ | V2 | IF-3 | [02 §12D.6](02_STORAGE_ARCHITECTURE.md) (R4-L6) |
 | IF-13g | Orphan DB detection + cleanup | ✅ | INFRA | IF-3 | [02 §12D.7](02_STORAGE_ARCHITECTURE.md) (R4-L7) |
+| IF-13h | DB subtree split runbook — freeze-copy-cutover (V1/V2) | ✅ | V1 | IF-3, IF-13 | [02 §12N.4](02_STORAGE_ARCHITECTURE.md) (C2-D1/D2) |
+| IF-13i | `migrating` lifecycle state + `reality_migration_audit` | ✅ | V1 | IF-13h | [02 §12N.3](02_STORAGE_ARCHITECTURE.md) (C2-state) |
+| IF-13j | Pre/post-migration integrity verification (reuse R2-L4 logic) | ✅ | V1 | IF-9d, IF-13h | [02 §12N.4](02_STORAGE_ARCHITECTURE.md) step 8 |
+| IF-13k | Migration rollback (source untouched until success) | ✅ | V1 | IF-13h | [02 §12N.10](02_STORAGE_ARCHITECTURE.md) |
+| IF-13l | Logical-replication split (Tier 2, near-zero-downtime) | 📦 | V3+ | IF-13h | [02 §12N.5](02_STORAGE_ARCHITECTURE.md) (C2-D1 Tier 2) |
+| IF-13m | Subtree-split coordination (multi-reality parallel migration) | 📦 | V3+ | IF-13l | [02 §12N.6](02_STORAGE_ARCHITECTURE.md) |
+| IF-14 | Meta registry HA — Patroni + sync replica + async replica (C3 resolution) | ✅ | V1 | IF-4 | [02 §12O.3](02_STORAGE_ARCHITECTURE.md) (C3-D1/D2) |
+| IF-14a | Meta access library (shared Go, primary/replica routing) | ✅ | V1 | IF-14 | [02 §12O.5](02_STORAGE_ARCHITECTURE.md) (C3-arch) |
+| IF-14b | Redis cache for reality routing (30s TTL, xreality invalidation) | ✅ | V1 | IF-14, IF-4b | [02 §12O.6](02_STORAGE_ARCHITECTURE.md) (C3-D3) |
+| IF-14c | App-level failover retry + backoff | ✅ | V1 | IF-14 | [02 §12O.7](02_STORAGE_ARCHITECTURE.md) |
+| IF-14d | Degraded mode (cache-serve + buffered heartbeats/audit) | ✅ | V1 | IF-14b | [02 §12O.8](02_STORAGE_ARCHITECTURE.md) |
+| IF-14e | WAL archive + PITR (30d retention) | ✅ | V1 | IF-14 | [02 §12O.9](02_STORAGE_ARCHITECTURE.md) |
+| IF-14f | Meta HA monitoring + alerts | ✅ | V1 | IF-14 | [02 §12O.12](02_STORAGE_ARCHITECTURE.md) |
+| IF-14g | Cross-region DR (active-passive + automated DNS failover) | 📦 | V3+ | IF-14 | [02 §12O.9](02_STORAGE_ARCHITECTURE.md) (C3-D5) |
+| IF-14h | 2nd sync replica for multi-AZ tolerance | 📦 | V3+ | IF-14 | [02 §12O.3](02_STORAGE_ARCHITECTURE.md) |
+| IF-14i | Separate audit DB cluster | 📦 | V3+ | IF-14 | [02 §12O.10](02_STORAGE_ARCHITECTURE.md) (C3-D4 evaluate) |
+| IF-14j | Per-shard HA for reality DBs | 📦 | V3+ | IF-3 | [02 §12O.11](02_STORAGE_ARCHITECTURE.md) (C3-D6) |
+| IF-15 | L3 override reverse index (C4 resolution) | ✅ | V1 | IF-4, IF-4a | [02 §12P](02_STORAGE_ARCHITECTURE.md) (C4-D1..D4) |
+| IF-15a | Event-handler side-effect maintenance | ✅ | V1 | IF-15, IF-5c | [02 §12P.3](02_STORAGE_ARCHITECTURE.md) |
+| IF-15b | O(1) preview + force-propagate targeting queries | ✅ | V1 | IF-15 | [02 §12P.4](02_STORAGE_ARCHITECTURE.md) |
+| IF-15c | Index rebuild command (recovery) | ✅ | V1 | IF-15 | [02 §12P.6](02_STORAGE_ARCHITECTURE.md) |
+| IF-16 | Lifecycle transition CAS discipline (C5 resolution) | ✅ | V1 | IF-4 | [02 §12Q](02_STORAGE_ARCHITECTURE.md) (C5-D1..D6) |
+| IF-16a | `AttemptStateTransition()` helper in `contracts/meta/` | ✅ | V1 | IF-16 | [02 §12Q.3](02_STORAGE_ARCHITECTURE.md) |
+| IF-16b | `lifecycle_transition_audit` table | ✅ | V1 | IF-16 | [02 §12Q.4](02_STORAGE_ARCHITECTURE.md) |
+| IF-16c | Transition graph validation + mutual exclusion | ✅ | V1 | IF-16 | [02 §12Q.6-7](02_STORAGE_ARCHITECTURE.md) |
+| IF-16d | Lint rule enforcing helper usage | ✅ | V1 | IF-16 | [02 §12Q.8](02_STORAGE_ARCHITECTURE.md) |
 | IF-14 | Provider-registry integration (BYOK credential resolution) | ✅ | INFRA | — | Reuse [98_CHAT_SERVICE_DESIGN §5.4](../98_CHAT_SERVICE_DESIGN.md) |
 | IF-15 | LiteLLM multi-provider inference (with streaming) | ✅ | INFRA | IF-14 | Reuse [98_CHAT_SERVICE_DESIGN §6](../98_CHAT_SERVICE_DESIGN.md) |
 | IF-16 | Per-reality locale primitive | ✅ | INFRA | IF-3 | [03 §8.3](03_MULTIVERSE_MODEL.md) (MV5 primitive P1) |
@@ -292,6 +318,13 @@ When adding new features:
 | EM-10 | Dimensional rift narrative events | 📦 | V4+ | EM-8 | DF6 |
 | EM-11 | Reality "pin/protect" (prevent auto-freeze/archive) | 📦 | PLT | EM-5, EM-6 | Discussed but not locked |
 | EM-12 | Freeze/archive warning notifications | 📦 | V2 | EM-5 | Discussed but not locked |
+| EM-13 | Reality ancestry severance — orphan worlds (C1 resolution) | ✅ | V1 | EM-7 | [02 §12M](02_STORAGE_ARCHITECTURE.md) · [03 §9.9](03_MULTIVERSE_MODEL.md); C1-OW-1..5 locked 2026-04-24 |
+| EM-13a | Auto-severance at ancestor `frozen` transition | ✅ | V1 | EM-13 | [02 §12M.2](02_STORAGE_ARCHITECTURE.md) (C1-OW-1) |
+| EM-13b | Baseline snapshot + cascade-read severance logic | ✅ | V1 | EM-13 | [02 §12M.4](02_STORAGE_ARCHITECTURE.md) |
+| EM-13c | `reality.ancestry_severed` in-world narrative event | ✅ | V1 | EM-13, IF-5c | [02 §12M.6](02_STORAGE_ARCHITECTURE.md) (C1-OW-3) |
+| EM-13d | `ancestry_fragment_trail` lore display | ✅ | V2 | EM-13 | [02 §12M.7](02_STORAGE_ARCHITECTURE.md) (C1-OW-5) |
+| EM-13e | Player notification cascade pre-severance | ✅ | V2 | EM-13, CC-1 | [02 §12M.5](02_STORAGE_ARCHITECTURE.md) |
+| EM-14 | Vanish Reality Mystery System — pre-severance breadcrumbs for player discovery | 📦 | V3+ | EM-13 | **DF14** — [03 §9.9.6](03_MULTIVERSE_MODEL.md); short track registered 2026-04-24 |
 
 ## PLT — Platform / Business
 
@@ -357,7 +390,7 @@ Scoped for clarity. Everything here is `📦 Deferred` under DF1.
 
 | Category | ✅ Designed | 🟡 Partial | 📦 Deferred | ❓ Open | 🚫 OOS | Total |
 |---|---|---|---|---|---|---|
-| IF | 56 | 4 | 2 | 0 | 0 | 62 |
+| IF | 77 | 4 | 8 | 0 | 0 | 89 |
 | WA | 2 | 2 | 3 | 0 | 0 | 7 |
 | PO | 6 | 2 | 1 | 0 | 0 | 9 |
 | PL | 4 | 7 | 3 | 0 | 0 | 14 |
@@ -365,19 +398,21 @@ Scoped for clarity. Everything here is `📦 Deferred` under DF1.
 | PCS | 2 | 5 | 3 | 0 | 0 | 10 |
 | SOC | 0 | 0 | 8 | 0 | 2 | 10 |
 | NAR | 2 | 1 | 4 | 1 | 0 | 8 |
-| EM | 14 | 0 | 5 | 0 | 0 | 19 |
+| EM | 20 | 0 | 6 | 0 | 0 | 26 |
 | PLT | 1 | 2 | 4 | 1 | 0 | 8 |
 | CC | 0 | 5 | 3 | 1 | 0 | 9 |
 | DL | 0 | 0 | 5 | 1 | 0 | 6 |
-| **Total** | **93** | **38** | **43** | **3** | **2** | **179** |
+| **Total** | **120** | **38** | **50** | **3** | **2** | **213** |
 
 ### Interpretation
 
-- **93 Designed** (green): concrete decisions in locked docs — storage, fork, canon model, PC mechanics, R1 volume (6 layers), R2 rebuild (5 layers), R3 schema evolution (6 layers), R4 fleet ops (7 layers), R5 cross-instance (3 layers + anti-pattern), R6 publisher reliability (7 layers, resolves R12), R7 session concurrency + event handler (7 layers, reframed), R8 NPC memory aggregate split (7 layers, A1 foundation), R9 safe reality closure (8 layers, 6-state machine + 120d floor), R10 global ordering (ACCEPTED), R11 pgvector footprint (4 layers), R13 admin discipline (6 layers + governance policy), **WA-4 category heuristics (5 decisions, 2026-04-24)**.
+- **120 Designed** (green): concrete decisions in locked docs — storage, fork, canon model, PC mechanics, R1 volume (6 layers), R2 rebuild (5 layers), R3 schema evolution (6 layers), R4 fleet ops (7 layers), R5 cross-instance (3 layers + anti-pattern), R6 publisher reliability (7 layers, resolves R12), R7 session concurrency + event handler (7 layers, reframed), R8 NPC memory aggregate split (7 layers, A1 foundation), R9 safe reality closure (8 layers, 6-state machine + 120d floor), R10 global ordering (ACCEPTED), R11 pgvector footprint (4 layers), R13 admin discipline (6 layers + governance policy), WA-4 category heuristics (5 decisions, 2026-04-24), C1 orphan worlds / reality ancestry severance (5 decisions + gameplay reframe, 2026-04-24), C2 DB subtree split runbook (5 decisions + 2-tier approach, 2026-04-24), C3 Meta registry HA (7 layers + Patroni + Redis cache, 2026-04-24), **C4 L3 override reverse index (efficiency layer for M4 propagation, 2026-04-24)**, **C5 lifecycle transition CAS discipline (helper + audit + lint, 2026-04-24)**.
 
-**All 13 storage risks (R1–R13) resolved. Storage + multiverse design design-complete** (residual items external-data-dependent: A4 benchmark, D1 cost, E3 legal).
+**All 5 SA+DE Critical concerns (C1–C5) resolved.** Storage + multiverse design survives adversarial review.
+
+**All 13 storage risks (R1–R13) resolved + C1 from SA+DE adversarial review resolved via orphan-worlds reframe. Storage + multiverse design design-complete** (residual items external-data-dependent: A4 benchmark, D1 cost, E3 legal).
 - **38 Partial** (yellow): broad strokes designed, concrete detail pending (prompt assembly, retrieval quality, realtime).
-- **43 Deferred** (blue): explicitly pushed to DF1–DF13 (DF12 withdrawn) future design docs or platform mode. Known but not gating V1.
+- **44 Deferred** (blue): explicitly pushed to DF1–DF14 (DF12 withdrawn) future design docs or platform mode. Known but not gating V1.
 - **3 Open** (red): identified but no approach — NPC-4 (retrieval quality), NAR-8 (L1/L2 propagation), CC-6 (a11y). A1 moved to PARTIAL with R8 infrastructure resolution.
 - **2 Out of scope**: no parties (SOC-6), no global chat (SOC-7) — deliberate anti-MMO choices.
 

@@ -1424,7 +1424,7 @@ ops.shard.capacity_full_pct = 95
 
 At 80% → alert SRE to provision new shard. At 95% → new realities rejected from this shard (hard stop).
 
-**Shard rebalancing:** manual in V1 (rare). Automated V3+.
+**Shard rebalancing / subtree split:** see [§12N](#12n-database-subtree-split-runbook-c2-resolution) for the concrete runbook. V1/V2 uses freeze-copy-cutover (5-45 min freeze per reality); V3+ uses logical replication (~30s freeze). Manual trigger in V1/V2; threshold-driven automation V3+.
 
 ### 12D.7 Layer 7 — Orphan DB detection + cleanup
 
@@ -2550,7 +2550,7 @@ Replace single-step close with 6-state progression. **Minimum time from `active`
 
 **State durations:**
 - `pending_close`: 30 days (cooling, cancellable by owner)
-- `frozen`: hours to days (archive job)
+- `frozen`: hours to days (archive job). **⚠ Descendant severance fires at entry to this state — see [§12M](#12m-reality-ancestry-severance--orphan-worlds-c1-resolution).** Any live descendant reality that depends on this reality's events via cascade gets auto-snapshotted + marked `ancestry_status='severed'` before archive proceeds.
 - `archived`: hours (verification)
 - `archived_verified` → `soft_deleted`: prompt (DB rename)
 - `soft_deleted`: 90 days (hold, double-approval window)
@@ -3014,6 +3014,1133 @@ admin.audit.retention_days = 730     # 2 years minimum
 - **V1 + 30 days**: L5 (admin UI guardrails as DF9/DF11 mature)
 - **V1 + 60 days**: L6 (rollback/undo for reversible commands)
 - **V2+**: Command library grows organically; new ops add commands, not SQL
+
+## 12M. Reality Ancestry Severance — Orphan Worlds (C1 resolution)
+
+**Origin:** SA+DE adversarial review 2026-04-24 surfaced C1 — cascade read broken when ancestor reality is archived/dropped. User proposed reframing as **gameplay feature**: "orphan worlds" — realities whose ancestry has faded from memory. Elegant resolution: turn tech constraint into in-world mystery.
+
+### 12M.1 The problem C1 identified
+
+Snapshot-fork cascade (§6, §7) lets descendants inherit events from ancestors up to fork point. When an ancestor reality closes per R9 (§12I) and its DB is dropped:
+- Descendants' projection tables stay intact
+- BUT cascade read into ancestor events fails
+- Projection rebuild fails
+- Cold aggregate load fails
+
+The R9 120-day close floor doesn't help — descendants may live far longer than their ancestors.
+
+### 12M.2 The solution — auto-severance at freeze
+
+When an ancestor reality transitions `pending_close → frozen` in R9 state machine, **automatically sever all live descendants** before allowing ancestor to proceed to `archived`:
+
+```
+For each live descendant D where cascade_ancestors(D) contains frozen_reality_id:
+  1. Force snapshot all D's aggregates at current version
+     (ensures full state captured before ancestor vanishes)
+  2. Store snapshots as D's "ancestry_severance_baseline"
+  3. Update D's registry: ancestry_status='severed', severed_ancestor_reality_id,
+       ancestry_severance_baseline_event_id
+  4. Append to D's ancestry_fragment_trail (lore record)
+  5. Emit event: reality.ancestry_severed (scope='reality', propagates to all D's sessions)
+  6. Only after ALL descendants severed → ancestor proceeds to archived
+```
+
+Technically identical to MV9 auto-rebase but preserves descendant's reality_id + adds narrative framing.
+
+### 12M.3 Schema
+
+```sql
+ALTER TABLE reality_registry
+  ADD COLUMN ancestry_status TEXT NOT NULL DEFAULT 'intact',
+    -- 'intact' | 'severed' | 'genesis' (no ancestor by design)
+  ADD COLUMN ancestry_severed_at TIMESTAMPTZ,
+  ADD COLUMN severed_ancestor_reality_id UUID,
+  ADD COLUMN ancestry_severance_baseline_event_id BIGINT,
+  ADD COLUMN ancestry_fragment_trail JSONB;
+    -- Append-only. Array of severed ancestor references for lore display.
+    -- e.g., [
+    --   {"reality_id": "...", "severed_at": "2028-03-15",
+    --    "narrative_name": "The First Age", "baseline_event_id": 1234567}
+    -- ]
+```
+
+New event type: `reality.ancestry_severed`
+```json
+{
+  "scope": "reality",
+  "payload": {
+    "severed_ancestor_id": "uuid",
+    "severance_reason": "ancestor_closed",   // 'ancestor_closed' | 'user_requested'
+    "baseline_event_id": 1234567,
+    "narrative_text": "The Old Age has passed beyond memory..."
+  }
+}
+```
+
+### 12M.4 Cascade read — stops at severance
+
+```python
+def load_aggregate_state(aggregate_id, reality_id):
+    r = lookup_reality(reality_id)
+
+    if r.ancestry_status == 'severed':
+        # Load baseline snapshot captured at severance
+        base = load_baseline_snapshot(r.reality_id, r.ancestry_severance_baseline_event_id)
+        # Apply only own events after severance point
+        own_events = select_events(reality_id=r.reality_id,
+                                    aggregate_id=aggregate_id,
+                                    event_id__gt=r.ancestry_severance_baseline_event_id)
+        return fold(base, own_events)
+    else:
+        # Standard cascade, stopping at first severed ancestor
+        chain = walk_ancestors(r, stop_at_severance=True)
+        events = collect_events_along_chain(chain, aggregate_id)
+        return fold(events)
+```
+
+Severance is terminal — cascade never walks past a severed marker.
+
+### 12M.5 Player notification cascade (extends R9-L5)
+
+When ancestor enters `pending_close` (R9 state), notification fans out to descendant owners:
+
+| Timing | Message |
+|---|---|
+| T-30d (ancestor enters pending_close) | "Reality <A> is scheduled for closure on YYYY-MM-DD. Your reality <D> will have its ancestry severed — events before that date will become unreadable. Current state is preserved. [Export event log] [View lore summary]" |
+| T-7d | Reminder |
+| T-1d | Final reminder |
+| T=0 (ancestor reaches `frozen`, severance fires) | In-world narrative event in D: "The Old Age has passed beyond memory..." |
+
+Owners cannot prevent (ancestor owner's right). They can export/document anything they want to preserve externally.
+
+### 12M.6 Narrative framing — in-world event
+
+The `reality.ancestry_severed` event is **user-visible** via DF5 session stream. Example narrator copy (configurable, localized):
+
+- Short: "The Old Age has passed beyond memory."
+- Poetic: "A profound quiet settles over the world. Ancient memories, once whispered among the oldest, fade into myth. What came before... is no longer known."
+- Technical mode (admin/debug): "Reality <R_id> severed from ancestor <A_id> at event <E_id>."
+
+Session LLM can elaborate: NPCs may react ("something feels different... like a dream I can't recall"), historian NPCs lose references, artifacts become mysterious.
+
+### 12M.7 Discovery UI — ancestry fragment trail
+
+Reality's "lore page" shows severance history:
+
+```
+The history of this world:
+  🌀 The First Age    — severed 2028-03-15
+  🌀 The Forgotten Era — severed 2030-01-10
+  ⏳ The Current Age  — ongoing since 2030-01-10
+```
+
+Each entry has `narrative_name` (author-authored or LLM-generated). Clicking shows baseline snapshot fact summary but not event-level history (which is gone).
+
+Reality browser filter: "Show worlds with severed ancestry" for players who want that narrative tone.
+
+### 12M.8 Reversibility
+
+- **During ancestor R9 cooling period** (`pending_close`, T≤30d): ancestor cancel → severance never fires. Safe.
+- **After severance fired** (`frozen` state reached, descendants severed): **one-way operation.** Even if ancestor is restored via R9 emergency cancel, descendants remain severed.
+  - Rationale: narrative event already broadcast to players. Reversing creates continuity mess. Cheaper to accept severance is final.
+- Document as irreversible in DF9/DF11 admin UI.
+
+### 12M.9 Interaction with MV9 auto-rebase
+
+Both mechanisms produce similar technical state (flatten + detach). Difference:
+- **MV9 auto-rebase**: triggers at fork depth > 5; creates new reality_id; no narrative framing; silent
+- **12M severance**: triggers at ancestor close; preserves reality_id; narrative event + UX; gameplay layer
+
+MV9 is a pure ops mechanism; §12M is a product mechanism. Both coexist. If a reality hits MV9 rebase first, its ancestry_fragment_trail gets `severance_reason='auto_rebase'` entry.
+
+### 12M.10 Config
+
+```
+reality.severance.auto_trigger_on_ancestor_freeze = true
+reality.severance.notification_advance_days = 30
+reality.severance.narrative_event_enabled = true
+reality.severance.baseline_snapshot_required = true   # hard invariant
+reality.severance.narrative_text_mode = "poetic"      # 'short' | 'poetic' | 'technical'
+```
+
+### 12M.11 Implementation ordering
+
+- **V1 launch**: L1 trigger mechanism + L2 schema + L3 baseline snapshot on severance + L4 cascade-read-with-severance logic + L7 minimal ancestry_fragment_trail
+- **V1 + 30 days**: L5 player notification + L6 narrative event + UX
+- **V2+**: Discovery UI (L7), filter in reality browser, lore page polish
+- **V3+**: **DF14 Vanish Reality Mystery System** — pre-severance breadcrumb generation (see DF14)
+
+### 12M.12 What this resolves
+
+- **C1 cascade read into dropped ancestor**: MITIGATED. Cascade stops at severance.
+- **R9 ancestor close blocked by descendants**: RESOLVED. Severance unblocks.
+- **Cascade depth unbounded over time**: BOUNDED. Every severance truncates.
+- **Simplifies M5 fork-depth concerns** (§12 previous): natural upper bound via severance lifecycle.
+
+Gameplay bonus: "ancient worlds" become narratively richer. Mysteries naturally emerge (see DF14).
+
+## 12N. Database Subtree Split Runbook (C2 resolution)
+
+**Origin:** SA+DE adversarial review 2026-04-24 surfaced C2 — §12D.6 specifies split thresholds (50M events OR 500 concurrent players per subtree) but §12D.10 waves over the actual "how do you move a live reality DB from shard A to shard B" ops procedure. This section locks the concrete playbook.
+
+### 12N.1 When does split actually fire?
+
+| Scale | Split frequency | Impact |
+|---|---|---|
+| V1 (≤10 realities) | Never — threshold impossible to hit | Playbook is documented insurance |
+| V2 (≤100 realities) | Very rare | Admin-scheduled maintenance window OK |
+| V3 (1000+ realities) | Regular occurrence for popular realities | Near-zero-downtime required |
+
+Strategy: **document V1/V2 playbook now (may never execute); design V3 automation when scale demands.**
+
+### 12N.2 Two-tier approach
+
+**Tier 1 — V1/V2:** Maintenance-window freeze-copy-cutover. Slow (5-45 min freeze) but safe, uses only Postgres-native tools.
+
+**Tier 2 — V3+:** Logical replication + near-zero-downtime cutover (~30s freeze). Added when V1/V2 freeze becomes UX-unacceptable at scale.
+
+### 12N.3 New `migrating` lifecycle state
+
+```
+active ──admin-initiates-split──► migrating ──success──► active (on target shard)
+                                       │
+                                       └──rollback──► active (on source shard, unchanged)
+```
+
+`migrating` is **distinct from R9 `frozen`** (close flow). Mutual exclusion enforced via state machine.
+
+Schema:
+```sql
+-- Add 'migrating' to status enum
+ALTER TABLE reality_registry
+  ADD COLUMN migration_source_shard TEXT,
+  ADD COLUMN migration_target_shard TEXT,
+  ADD COLUMN migration_started_at TIMESTAMPTZ,
+  ADD COLUMN migration_method TEXT;
+    -- 'freeze_copy_cutover' | 'logical_replication'
+
+CREATE TABLE reality_migration_audit (
+  audit_id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  reality_id            UUID NOT NULL,
+  from_shard            TEXT NOT NULL,
+  to_shard              TEXT NOT NULL,
+  method                TEXT NOT NULL,
+  initiated_by          UUID NOT NULL,
+  started_at            TIMESTAMPTZ NOT NULL,
+  completed_at          TIMESTAMPTZ,
+  status                TEXT NOT NULL,
+    -- 'in_progress' | 'succeeded' | 'rolled_back' | 'failed'
+  freeze_duration_seconds INT,
+  rollback_reason       TEXT,
+  payload               JSONB
+);
+CREATE INDEX ON reality_migration_audit (reality_id, started_at DESC);
+```
+
+### 12N.4 Tier 1 playbook — freeze-copy-cutover (V1/V2)
+
+**Step-by-step runbook:**
+
+```
+Split reality R from shard_A to shard_B:
+
+1. ADMIN INITIATES
+   admin-cli shard-split --reality=R --target=shard_B --reason="..."
+   Triggers R13-L4 destructive confirmation + shard capacity pre-check.
+
+2. PRE-CHECK GATE
+   ✓ Target shard has capacity (R4-L6 thresholds respected)
+   ✓ Source shard healthy (no active ops / maintenance)
+   ✓ Reality status='active' (not in R9 close, not in MV9 rebase, not in §12M severance, not in another migration)
+   ✓ Target extensions available (pgvector, lz4, uuid-ossp)
+   ✓ Target has matching schema version (instance_schema_migrations current)
+   Abort on any failure.
+
+3. PLAYER NOTIFICATION CASCADE (reuse R9-L5 pattern)
+   T-30 min: in-app + email: "Reality will undergo brief maintenance (~5-15 min) at HH:MM"
+   T-5 min: final reminder in active sessions
+   T-0: freeze begins
+
+4. ENTER migrating STATE (atomic)
+   UPDATE reality_registry SET
+     status = 'migrating',
+     migration_source_shard = shard_A,
+     migration_target_shard = shard_B,
+     migration_started_at = now(),
+     migration_method = 'freeze_copy_cutover'
+   WHERE reality_id = R AND status = 'active';
+   -- 0 rows affected → concurrent modification, abort
+
+5. DRAIN IN-FLIGHT (timeout: 5 min hard)
+   Wait until events_outbox.unpublished_count = 0
+   Wait until publisher cursor caught up to head
+   Wait until event-handler cursor caught up
+   Wait until meta-worker cursor caught up
+   If timeout → rollback (step 14)
+
+6. SNAPSHOT SOURCE
+   pg_dump -Fc (custom format, compressed) source DB → staging location
+   Verify dump integrity (pg_restore --list)
+
+7. RESTORE TO TARGET
+   CREATE DATABASE loreweave_world_<reality_id>_new ON shard_B
+   pg_restore into target DB
+   Rebuild indexes (HNSW, standard btree)
+   Pre-warm buffer pool (SELECT from hot tables)
+
+8. TARGET INTEGRITY VERIFICATION (reuse R2-L4)
+   ✓ Row counts per table match source exactly
+   ✓ Sample 100 random aggregates: rebuild from events, diff vs projection → must match
+   ✓ HNSW index queryable (SELECT with ANN query)
+   ✓ Extensions all installed
+   ✓ Schema migrations marker matches
+   Abort + rollback on any failure.
+
+9. ATOMIC REGISTRY CUTOVER (single transaction)
+   BEGIN;
+     UPDATE reality_registry SET
+       db_host = shard_B,
+       db_name = loreweave_world_<reality_id>_new,
+       status = 'active',
+       status_transition_at = now(),
+       migration_source_shard = NULL,
+       migration_target_shard = NULL,
+       migration_started_at = NULL,
+       migration_method = NULL
+     WHERE reality_id = R AND status = 'migrating';
+     -- 0 rows affected → concurrent modification, abort
+
+     -- Update any cross-reality indexes (e.g., player_character_index already scoped)
+     INSERT INTO reality_migration_audit (...) VALUES (...);
+   COMMIT;
+
+10. UPDATE ROUTING TABLES
+    - pgbouncer: deregister source db entry, register target
+    - Prometheus: update scrape target
+    - Backup scheduler: re-register on target
+    - Meta-worker cursors: update to target (cursor position already in dump)
+
+11. RESUME CLIENT CONNECTIONS
+    WebSocket server emits RECONNECT signal to clients of reality R
+    Clients auto-reconnect via R6-L4 catchup protocol (transparent to user)
+
+12. SAFETY HOLD ON SOURCE
+    ALTER DATABASE source RENAME TO _split_<reality_id>_<YYYYMMDD>
+    Remains on shard_A for 7 days (config: shard.split.source_retention_days)
+    Allows emergency rollback if post-cutover corruption discovered
+
+13. LOG + NOTIFY
+    admin_action_audit (R13-L3): "shard-split succeeded for reality R"
+    reality_migration_audit: status='succeeded', freeze_duration_seconds=X
+    Player notification: "Maintenance complete. World restored."
+
+14. ROLLBACK PATH (any step 5-9 failure)
+    admin-cli shard-split-abort --reality=R
+    UPDATE reality_registry SET status='active' WHERE reality_id=R AND status='migrating'
+      -- Reality back on SOURCE (source unchanged throughout)
+    DROP target DB (cleanup)
+    reality_migration_audit: status='rolled_back', rollback_reason='...'
+    Admin investigates, fixes, retries
+
+15. FINAL DROP (T+7 days)
+    Verify no post-cutover issues reported
+    DROP DATABASE _split_<reality_id>_<YYYYMMDD> ON shard_A
+    reality_migration_audit: final_drop_at=now()
+```
+
+**Freeze duration estimates:**
+
+| Reality size | Events | Freeze time |
+|---|---|---|
+| Small | <1M events (~1GB) | ~5 minutes |
+| Medium | ~10M events (~10GB) | ~15 minutes |
+| Large | ~50M events (~50GB) | ~45 minutes |
+
+### 12N.5 Tier 2 playbook — logical replication (V3+)
+
+Planned extension. Reduces freeze from 5-45 min to ~30 seconds.
+
+```
+Split via logical replication:
+
+1-3. Same pre-check + player notification (shorter: T-5 min warning, not T-30 min)
+
+4. PREPARE TARGET
+   CREATE DATABASE on shard_B
+   Apply schema migrations (must match source version)
+   Enable extensions (pgvector, etc.)
+
+5. SET UP LOGICAL REPLICATION
+   On source: CREATE PUBLICATION for all reality tables
+   On target: CREATE SUBSCRIPTION from source
+   Initial data sync begins
+
+6. INITIAL SYNC + CATCHUP (may take hours for large DB)
+   Monitor pg_stat_replication lag on source
+   Target catches up; DDL changes prohibited during this window
+
+7. PRE-CUTOVER TASKS (while still catching up)
+   Rebuild HNSW indexes on target (BUILD in background)
+   Verify sample aggregates (sample_size configurable)
+   Pre-warm target buffer pool
+
+8. WHEN LAG < 5s, BRIEF FREEZE (~30s total)
+   Reject new writes on reality R
+   Wait for final replication drain (lag = 0)
+   Bump sequences on target (BIGSERIAL event_id — no auto-sync)
+   Atomic registry cutover (step 9 from Tier 1)
+   Unfreeze → writes go to target
+
+9. REPLICATION TEARDOWN
+   On target: DROP SUBSCRIPTION
+   On source: DROP PUBLICATION
+   Source DB renamed (same as Tier 1 step 12)
+
+10. SAFETY HOLD + eventual DROP (same as Tier 1)
+```
+
+**Postgres logical replication caveats:**
+- DDL not replicated → migrations must be on both servers pre-switchover
+- Sequences not auto-synced → explicit bump post-cutover
+- Some extensions partial (pgvector data replicates; HNSW index must rebuild on target)
+- Per-table PUBLICATION entries required
+
+**HNSW rebuild during step 7** (pre-cutover) minimizes freeze duration.
+
+### 12N.6 Subtree split (multi-reality coordination)
+
+R4-L6 threshold can trigger on subtree (reality + its children), not just single reality.
+
+**V1/V2:** Sequential splits (one reality at a time, coordinated via admin-cli subtree mode). Each reality independently follows step 1-15. Slow but simple.
+
+**V3+:** Parallel via logical replication. Single admin command `admin-cli subtree-split --root=R_root --target=shard_B` sets up N parallel replications. Coordinated cutover: all realities in subtree freeze simultaneously (brief), cutover atomically, unfreeze.
+
+Locking: subtree-level advisory lock prevents concurrent ops across the chain.
+
+### 12N.7 Interactions with other mechanisms
+
+| Mechanism | Interaction |
+|---|---|
+| **R9 close flow** | Can't close during migration; mutual exclusion via status check |
+| **R8 NPC memory aggregates** | All tables dumped together; atomic transfer |
+| **R6 outbox + publisher** | Cursor state preserved in dump; publisher re-binds to target post-cutover |
+| **R7 session queues** | `session_event_queue` dumped; sessions pause during freeze, resume after |
+| **§12M severance** | Can't migrate during severance; mutual exclusion |
+| **MV9 auto-rebase** | Can't migrate during rebase; mutual exclusion |
+| **DF11 admin ops** | Migration status surfaces in fleet dashboard |
+| **R5 meta registry cutover** | Single transaction for registry update (critical section) |
+| **R13 admin audit** | All migration actions logged via compensating-event pattern |
+
+### 12N.8 Configuration
+
+```
+shard.split.maintenance_window_required = true   # V1/V2: yes; V3+ with logical_replication: false
+shard.split.notification_advance_minutes = 30    # T-30m warning (Tier 1); T-5m (Tier 2)
+shard.split.freeze_timeout_minutes = 120         # hard stop before rollback
+shard.split.source_retention_days = 7            # hold before source drop
+shard.split.integrity_sample_size = 100          # aggregates verified post-restore
+shard.split.method_default = "freeze_copy_cutover"   # V3+: "logical_replication"
+shard.split.concurrent_per_platform_max = 2      # rate limit (ops review capacity)
+shard.split.tier1_staging_path = "/var/loreweave/split-staging"   # for pg_dump
+```
+
+### 12N.9 Accepted trade-offs
+
+| Cost | Justification |
+|---|---|
+| V1/V2 freeze duration (5-45 min) | Rare at scale; admin-scheduled; players notified 30 min in advance |
+| 7-day source retention (storage) | Safety net if post-cutover corruption found |
+| Reality unavailable during freeze | UX acceptable for rare event; R6-L4 catchup protocol restores transparent reconnect |
+| Migration audit log growth | Negligible (1 row per migration) |
+| V3 logical-replication complexity | Only activated when V1/V2 freeze becomes UX-unacceptable at scale |
+| Rate limit (2 concurrent per platform) | Ops safety — avoids overwhelming SRE |
+
+### 12N.10 Rollback safety
+
+At any failure in steps 5-9 of Tier 1:
+- Source DB **untouched throughout** (we only read from source)
+- Target DB can be dropped cleanly (nothing references it yet)
+- Registry reverts to `status='active'` on source (reality keeps running)
+- No data loss possible
+
+Post-cutover corruption (rare, detected in 7-day hold):
+- Source DB still exists (renamed)
+- Admin can emergency-rename source back to active name
+- Registry update to point back to source
+- Target dropped
+- 7-day window is the safety margin
+
+### 12N.11 Tooling (folded into DF11)
+
+Admin UX for migration:
+- Migration queue (pending, in-progress, completed per platform)
+- Per-migration timeline view (which step, elapsed, ETA, freeze duration)
+- Abort button (triggers rollback via step 14)
+- Post-migration verification status dashboard
+- Historical audit log viewer (`reality_migration_audit`)
+- Shard capacity advisor (suggest which realities to migrate based on R4-L6 metrics)
+- Subtree split planner (V3+)
+
+**DF11 scope expands to "Database Fleet + Reality Lifecycle + Migration Management"**. Natural fit with shard health + per-reality inspector + R9 closure controls.
+
+### 12N.12 Implementation ordering
+
+- **V1 launch**: playbook documented + `admin-cli shard-split` command + `migrating` state in lifecycle + `reality_migration_audit` table. Trigger remains manual.
+- **V1 + 90 days**: threshold monitoring (R4-L6 metrics alert when approaching)
+- **V2**: DF11 UI for migration workflow (still admin-initiated, no auto-trigger)
+- **V3+**: Tier 2 logical-replication mode; threshold-driven automation (within rate limits)
+
+### 12N.13 What this resolves
+
+- ✅ C2 concrete playbook — no more "waved over"
+- ✅ Rollback path explicit + safe
+- ✅ Integration with R6/R7/R8/R9/§12M/MV9 documented
+- ✅ Scaling path to V3 outlined
+- ✅ Admin tooling scope defined (DF11 expansion)
+- ✅ State machine updated (`migrating` state)
+- ✅ Subtree split coordination specified
+
+Remaining open (V3-scale, not blocking V1/V2):
+- Logical-replication implementation details (Postgres version requirements, tooling)
+- Automated threshold-driven trigger logic
+- Cross-subtree split coordination at scale
+
+## 12O. Meta Registry High Availability (C3 resolution)
+
+**Origin:** SA+DE adversarial review 2026-04-24 surfaced C3 — while reality DBs have DB-per-reality isolation (blast radius = 1 reality), the meta registry is a **platform-wide SPOF**. Meta outage breaks: reality routing, event propagation (meta-worker), publisher heartbeats, admin audit (R13), player dashboards, new reality spawn.
+
+### 12O.1 Why meta is different
+
+DB-per-reality gives blast radius containment at reality level. Meta registry is the opposite: it holds cross-cutting platform state that every service reads on every command.
+
+**Tables on meta DB:**
+- `reality_registry` — routing table (lookup on every command)
+- `player_character_index` — user-facing PC lookup
+- `publisher_heartbeats` — realtime pipeline health
+- `admin_action_audit` — R13 policy enforcement
+- `reality_close_audit`, `reality_migration_audit`, `archive_verification_log` — compliance
+- `canon_change_log` — M4 propagation source
+
+Meta outage = platform-wide service degradation, not just one-reality outage.
+
+### 12O.2 Workload profile — read-heavy
+
+At V3 scale:
+| Ops | Rate |
+|---|---|
+| Reality routing lookup (every command) | ~5K reads/sec |
+| Dashboard/discovery queries | ~100 reads/sec |
+| Heartbeat writes (publishers) | ~0.4 writes/sec |
+| Lifecycle transitions | rare (hours) |
+| Audit writes (admin activity peak) | 1-10 writes/sec |
+| PC index writes | rare |
+
+**Total: ~10K reads/sec, ~15 writes/sec.** Read-heavy → primary + replicas topology is optimal.
+
+### 12O.3 Layer 1 — Streaming replication + auto-failover
+
+**Topology:**
+- 1 primary (writes + strong-consistency reads)
+- Sync replica(s) — RPO = 0 for committed writes
+- Async replica(s) — read scaling
+
+**Scaling:**
+| Stage | Topology | AZ tolerance |
+|---|---|---|
+| V1/V2 | Primary + 1 sync + 1 async | Single AZ failure |
+| V3+ | Primary + 2 sync (diff AZs) + 1 async | Two AZ failure |
+
+**Postgres sync replication config:**
+```
+synchronous_commit = on
+synchronous_standby_names = 'ANY 1 (sync_replica_a, sync_replica_b)'
+```
+
+Primary waits for at least 1 sync replica ACK before confirming commit. Write latency +5-10ms (acceptable for meta's low write rate).
+
+**Failover orchestrator: Patroni** (etcd-based consensus, industry standard)
+- Auto-detects primary failure via etcd lease
+- Promotes healthiest sync replica
+- Updates VIP/DNS
+- RTO target: ~30 seconds
+
+### 12O.4 Layer 2 — Read replica offloading
+
+Additional async replicas serve read-only queries:
+- Dashboard/discovery queries (eventual consistency OK, ~100ms lag)
+- Audit log searches (rare, admin-only, compliance reads)
+- Player PC index lookups (stale-OK for dashboard)
+
+**Primary stays focused on:**
+- All writes (sync committed to replica)
+- Critical hot reads (heartbeat freshness check, lifecycle transition CAS)
+
+### 12O.5 Layer 3 — Meta access library (not standalone service)
+
+**Decision:** meta access is a **shared Go library** imported by all services, NOT a standalone microservice. Rationale:
+- Every service needs meta access on hot path (reality routing per command)
+- Extra network hop would add latency + new failure mode
+- Logic is simple CRUD + routing — doesn't justify service boundary
+
+```
+contracts/meta/
+  routing.go       -- primary-vs-replica query router
+  cache.go         -- Redis cache layer (L4)
+  fallback.go      -- degraded-mode logic (L5)
+  pool.go          -- connection pool per primary/replicas
+  health.go        -- health + readiness probes
+```
+
+Each service (world-service, roleplay-service, publisher, meta-worker, event-handler, migration-orchestrator) imports this library.
+
+**If V3 needs centralized meta coordination** (e.g., cross-service rate limits on writes) → extract to `meta-service` standalone service. Not V1/V2.
+
+### 12O.6 Layer 4 — Redis cache layer (hot reads)
+
+Reality routing is stable (realities rarely change shards). Cache aggressively:
+
+```
+Cache key: meta:reality:{reality_id} → {db_host, db_name, status, locale, ...}
+TTL: 30 seconds (configurable)
+```
+
+**Hit rate estimate:** 95%+ in steady state. 10K reads/sec × 95% cached = primary serves only 500 reads/sec. Primary stays idle most of the time.
+
+**Cache invalidation:**
+- Writes that change reality state invalidate cache key
+- Via `xreality.reality.stats` topic (R5 infrastructure) — all service caches receive invalidation events
+- No per-node cache; shared Redis keeps all services consistent
+
+**Cache warmup on startup:** service loads top-N active realities into cache on boot (configurable: e.g., top 1000 by last-active).
+
+**Bypass flag:** reads needing fresh data use `?fresh=true` → skip cache, hit replica/primary.
+
+### 12O.7 Layer 5 — App-level routing + retry during failover
+
+30-second failover window handled at app layer:
+
+```go
+for attempt := 1; attempt <= maxAttempts; attempt++ {
+  conn, err := metaClient.GetPrimary()
+  if isTransient(err) {
+    // 100ms, 500ms, 2s, 5s, 10s
+    sleepBackoff(attempt)
+    refreshConnectionPool()
+    continue
+  }
+  return conn.Exec(...)
+}
+// After max retries: return 503 Retry-After OR enter degraded mode (§12O.8)
+```
+
+DNS/VIP managed by Patroni — app just reconnects, gets new primary automatically.
+
+### 12O.8 Layer 6 — Degraded mode for full-meta outage
+
+If primary + all sync replicas unavailable (catastrophic, rare):
+
+**Reality routing:**
+- Redis cache continues serving warm realities
+- Cache miss → 503 with `Retry-After`
+- Users see "temporary unavailability for <specific reality>"
+
+**Heartbeats:**
+- Publisher/meta-worker/event-handler buffer heartbeats locally (bounded buffer, default 10K entries)
+- Flush to meta on recovery
+- Other services see stale heartbeat timestamps → alert fires but services continue
+
+**Admin audit (R13):**
+- Buffer locally (bounded, default 10K entries)
+- Flush on recovery
+- Buffer overflow → admin ops rate-limited at service level (safety)
+- **Admin commands that need fresh audit acknowledgment** (e.g., R9 close confirmations) → block until meta recovers
+
+**New reality spawn:**
+- Blocked fully (requires meta write)
+- Users see "reality creation temporarily unavailable"
+
+**Platform-wide alert:** page-level severity for SRE.
+
+**Config:**
+```
+meta.degraded_mode.audit_buffer_size = 10000
+meta.degraded_mode.write_queue_retries = 5
+meta.degraded_mode.retry_backoff_schedule = "100ms,500ms,2s,5s,10s"
+meta.degraded_mode.alert_after_seconds = 10
+```
+
+### 12O.9 Layer 7 — Disaster recovery (cross-region)
+
+Beyond HA — protects against single-region failure:
+
+**V1/V2 (single-region HA enough):**
+- WAL archive to MinIO (continuous, 60s ship interval)
+- PITR capability (30-day retention)
+- RPO: 60 seconds
+- Cross-region deferred
+
+**V3+ (cross-region active-passive):**
+- WAL + base backup replicated cross-region via MinIO replication
+- Standby cluster in target region, warm
+- Automated DNS failover on detected region-outage
+- RTO: 15-30 minutes
+- RPO: 5 minutes
+
+### 12O.10 Separate audit DB — deferred to V3+ evaluation
+
+Audit tables (`admin_action_audit`, close/migration audit, verification log) have different profile:
+- Higher write rate (1-10/sec peak) than rest of meta
+- Near-zero read rate (compliance/forensic only)
+- Long retention (2+ years, grows large)
+- Compliance-critical
+
+**V1/V2:** consolidated with meta (simplest). Meta write capacity has headroom.
+
+**V3 consideration:**
+- If audit write rate > 100/sec, split to dedicated audit DB cluster
+- If compliance mandates isolation
+- Separate HA setup for audit
+
+**Not committed for V1/V2.** Revisit at V3+ based on measured write rate.
+
+### 12O.11 Reality DB HA — separately, not in V1/V2
+
+Meta gets full HA (platform-wide blast radius).
+
+**Reality DB HA is different:**
+- Reality DB outage = 1 reality unavailable (bounded blast radius)
+- HA for 1000+ reality DBs = massive infrastructure cost
+- **V1/V2:** single reality DB per reality, accept short outage from shard failure
+- **V3+:** per-shard HA (shard = Postgres server hosting N reality DBs). Shard failover promotes standby. RTO ~30s per shard. Better than per-reality HA.
+
+Per-shard HA is cheaper than per-reality HA AND provides the same outcome (shard failover restores all N realities simultaneously).
+
+### 12O.12 Monitoring + alerts
+
+```
+lw_meta_primary_up{az}                               gauge
+lw_meta_replica_up{replica_id, az}                   gauge
+lw_meta_replication_lag_seconds{replica_id}          gauge
+lw_meta_failover_count_total                         counter
+lw_meta_write_latency_seconds                         histogram
+lw_meta_read_latency_seconds{target=primary|replica}  histogram
+lw_meta_cache_hit_rate                                gauge
+lw_meta_cache_size_bytes                              gauge
+lw_meta_degraded_mode_active                          gauge (0/1)
+lw_meta_degraded_buffer_size{service, buffer_type}    gauge
+```
+
+**Alerts:**
+- Replication lag > 5s → warn
+- Replication lag > 30s → page
+- Primary down → page immediately
+- Cache hit rate < 80% → investigate
+- Degraded mode active > 60s → page
+- Failover triggered → notification to all SRE
+- Audit buffer > 80% full → investigate (possible meta outage)
+
+### 12O.13 Configuration
+
+```
+meta.replication.mode = "streaming_sync_at_least_one"
+meta.replication.sync_replicas_required = 1          # V1/V2: 1; V3: 2
+meta.replication.async_replicas = 1
+meta.replication.failover_orchestrator = "patroni"
+meta.replication.rpo_target_seconds = 0              # sync replica
+meta.replication.rto_target_seconds = 30
+
+meta.cache.enabled = true
+meta.cache.ttl_seconds = 30
+meta.cache.warm_on_startup = true
+meta.cache.warm_top_n = 1000                         # V3: auto-tune
+meta.cache.redis_pool_size = 20
+
+meta.wal_archive.enabled = true
+meta.wal_archive.bucket = "lw-meta-wal-archive"
+meta.wal_archive.ship_interval_seconds = 60
+meta.pitr.retention_days = 30
+
+meta.cross_region.enabled = false                    # V1/V2: no; V3+: yes
+meta.cross_region.target_region = ""                 # activation V3+
+
+meta.degraded_mode.audit_buffer_size = 10000
+meta.degraded_mode.write_queue_retries = 5
+meta.degraded_mode.retry_backoff_schedule = "100ms,500ms,2s,5s,10s"
+meta.degraded_mode.alert_after_seconds = 10
+
+meta.audit_db.separated = false                      # V1/V2: no; V3 evaluate
+```
+
+### 12O.14 Accepted trade-offs
+
+| Cost | Justification |
+|---|---|
+| Sync replication +5-10ms write latency | Meta write rate low (~15/sec); RPO=0 worth it |
+| +1 Postgres server V1 (primary + sync replica) | Platform-wide SPOF avoidance non-negotiable |
+| +2 Postgres V3 (2 sync + 1 async) | Multi-AZ resilience |
+| 30s RTO during failover | Degraded mode (L5/L6) + cache absorbs it |
+| Redis cache eventual consistency (30s TTL) | Reality routing changes rarely; stale reads safe |
+| Degraded mode complexity | Isolated to rare outages |
+| Cross-region deferred V3+ | Single-region HA enough until scale demands |
+| Audit DB consolidation V1/V2 | Simplicity; split at V3+ if needed |
+| Reality DB HA deferred V3+ | Bounded blast radius; per-shard HA at V3 covers this cheaper |
+
+### 12O.15 Implementation ordering
+
+- **V1 launch**: Patroni + 1 sync replica + 1 async replica. Meta access library with primary/replica routing (L1-L3). Redis cache for reality routing (L4). App-level retry on failover (L7).
+- **V1 + 30 days**: WAL archive + PITR setup (L9 partial, single-region).
+- **V1 + 60 days**: Degraded mode handling (L8) — tested via chaos drill.
+- **V2**: Cache warmup auto-tuning, replication monitoring dashboard.
+- **V3+**: 2nd sync replica (multi-AZ), cross-region DR (L9 full), per-shard HA for reality DBs, evaluate audit DB split.
+
+### 12O.16 What this resolves
+
+- ✅ Platform-wide SPOF eliminated (sync replica + auto-failover)
+- ✅ Read scaling via async replicas + Redis cache
+- ✅ Failover window tolerated (app-level retry + degraded mode)
+- ✅ DR path to cross-region scaled to V3+
+- ✅ Clean separation: meta HA vs reality DB HA (different strategies)
+- ✅ Audit consolidation explicit with V3 evaluation trigger
+
+Remaining open items (V3+ scale):
+- Cross-region automated DNS failover tooling
+- Audit DB split criteria if/when activated
+- Per-shard HA for reality DBs (separate section when V3 approaches)
+
+## 12P. L3 Override Reverse Index (C4 resolution)
+
+**Origin:** SA+DE adversarial review 2026-04-24. M4 propagation (§9.8) works conceptually with passive read-through as default, BUT:
+- §9.8.1 preview ("M realities overridden this attribute") requires counting overrides
+- §9.8.3 force-propagate needs targeting query
+- Naive implementation: walk cascade of every reality, check L3 events for attribute. O(realities × cascade_depth × events_per_attr).
+
+At V3 (1000 realities × attribute pool × 20 overrides/reality avg), naive approach turns author edits into seconds-long UI blockers. Reverse index fixes this with O(1) lookup.
+
+### 12P.1 The index
+
+```sql
+-- In meta registry (not in individual reality DBs — this is platform-wide routing)
+CREATE TABLE l3_override_index (
+  book_id              UUID NOT NULL,
+  attribute_id         TEXT NOT NULL,          -- entity_id + ':' + attr_name, or canonical path
+  reality_id           UUID NOT NULL,
+  first_override_at    TIMESTAMPTZ NOT NULL,
+  latest_override_event_id BIGINT,              -- points into reality's event stream
+  PRIMARY KEY (book_id, attribute_id, reality_id)
+);
+
+CREATE INDEX l3_override_by_attribute
+  ON l3_override_index (book_id, attribute_id);
+
+CREATE INDEX l3_override_by_reality
+  ON l3_override_index (reality_id);
+```
+
+### 12P.2 Size estimate (sanity check)
+
+V3 scale:
+- 1000 active realities × avg 20 overrides per reality = 20K rows per book
+- Multiple books per platform (say 100 books on platform) = 2M rows total
+- At ~100 bytes per row (with index overhead) = ~200MB
+
+**Fits comfortably in meta Postgres.** Grows linearly with active overrides, not with total attributes.
+
+### 12P.3 Maintenance — event-handler side effect
+
+When reality R writes an L3 event that overrides attribute A (from book B):
+
+```
+event-handler processes L3 override event:
+  1. Commit the L3 event to R's DB (normal R7 flow)
+  2. Upsert into meta.l3_override_index:
+     INSERT INTO l3_override_index
+       (book_id, attribute_id, reality_id, first_override_at, latest_override_event_id)
+     VALUES (B, A, R, first_at_or_existing, new_event_id)
+     ON CONFLICT (book_id, attribute_id, reality_id) DO UPDATE
+       SET latest_override_event_id = EXCLUDED.latest_override_event_id;
+```
+
+**Tombstone on reality close/drop:** R9 close flow (`archived → soft_deleted`) removes that reality's rows from the index. Ancestor severance (§12M) does NOT remove overrides (child inherits them from baseline snapshot).
+
+**Compensating-event reverse:** if reality later writes an event that un-overrides (reverts to L2 default), emit `*.override_removed` event → delete from index row for (B, A, R).
+
+### 12P.4 Query patterns served
+
+**§9.8.1 preview count** (author about to edit attribute A in book B):
+```sql
+SELECT
+  COUNT(*) FILTER (WHERE reality_id IN (active_realities)) AS overridden_active,
+  COUNT(*) FILTER (WHERE reality_id IN (frozen_realities)) AS overridden_frozen,
+  ...
+FROM l3_override_index
+WHERE book_id = $B AND attribute_id = $A;
+```
+O(1) with index. Instant UI.
+
+**§9.8.3 force-propagate targeting** (author commits force edit):
+```sql
+-- Realities in book MINUS realities with override for this attribute
+SELECT reality_id FROM reality_registry WHERE book_id = $B AND status = 'active'
+EXCEPT
+SELECT reality_id FROM l3_override_index WHERE book_id = $B AND attribute_id = $A;
+```
+Fast. Gives exact propagation target set.
+
+**Per-reality drill-down** (§9.8.1):
+```sql
+SELECT reality_id, first_override_at, latest_override_event_id
+FROM l3_override_index
+WHERE book_id = $B AND attribute_id = $A;
+```
+
+### 12P.5 Consistency guarantees
+
+Index is **eventually consistent** with reality DBs' L3 events (lag = meta-worker processing time, typically <5s).
+
+Acceptable because:
+- M4 passive read-through (default) doesn't depend on index (each reality reads canon via cascade independently)
+- Preview shows approximate count — small lag doesn't mislead author
+- Force-propagate is slow-path anyway (consent gates, compensating writes) — small lag tolerable
+
+**If perfect consistency required** (rare): author preview can fall back to live per-reality query (slow but authoritative). Opt-in "sync refresh" button in preview UI.
+
+### 12P.6 Failure modes + recovery
+
+**Index corruption:** can be **rebuilt from events table** — walk all L3 events across all realities, re-populate index. Expensive (hours for V3 scale) but doable. Background job with progress metric.
+
+**Meta outage during write:** index update lives in meta (not in reality DB). On meta outage, buffer L3 events in event-handler local queue, apply to index on recovery. Reuses degraded-mode buffer pattern from C3/§12O.8.
+
+**Split-brain:** if multiple event-handler instances both update index for same (book, attr, reality), PRIMARY KEY + ON CONFLICT DO UPDATE is idempotent. Last-write-wins on `latest_override_event_id`.
+
+### 12P.7 Config
+
+```
+l3_override_index.enabled = true
+l3_override_index.rebuild_batch_size = 10000    # for admin rebuild command
+l3_override_index.stale_warn_seconds = 30       # meta-worker lag alert
+```
+
+### 12P.8 Admin tooling (folded into DF9)
+
+- Index health dashboard (size, recent writes, rebuild status)
+- Admin-cli command `rebuild-l3-override-index --book=X` for repair
+- Metric `lw_l3_override_index_size_rows` + `lw_l3_override_index_lag_seconds`
+
+### 12P.9 Implementation ordering
+
+- **V1 launch**: index table + event-handler side-effect maintenance + §9.8.1 preview using index
+- **V1 + 30 days**: rebuild command + health dashboard
+- **V2**: observability maturity + stale-query auto-refresh UI
+
+### 12P.10 What this resolves
+
+- ✅ §9.8.1 preview is O(1) not O(N) — instant UI
+- ✅ §9.8.3 force-propagate targeting exact + fast
+- ✅ Author edits scale to V3 without UI lag
+- ✅ Recovery path via rebuild exists
+
+Residual: compensating-event "un-override" semantics need DF3 design (when exactly does an L3 event count as removing an override vs modifying it). Deferred to DF3.
+
+## 12Q. Lifecycle Transition Discipline (C5 resolution)
+
+**Origin:** SA+DE adversarial review 2026-04-24. Reality lifecycle has ~6 state machines (R9 close, §12M severance, §12N migration, MV9 rebase, plus admin emergency actions). Multiple triggers (owner, admin, cron, automation) can race on same reality. Without explicit CAS (compare-and-swap) discipline, state may corrupt.
+
+### 12Q.1 The risk
+
+Example scenario:
+1. Owner clicks "cancel close" at T=29d23h59m (reality in `pending_close`)
+2. Cron fires 30d transition at T=30d
+3. Both issue UPDATE on `reality_registry.status`
+4. Whichever commits second silently overwrites the first
+
+Rare but catastrophic: reality drops while owner expected it to be active.
+
+### 12Q.2 Mandatory CAS pattern
+
+**Every state transition MUST be a conditional UPDATE** with expected current status. 0 rows affected = concurrent modification → abort + optionally retry.
+
+**Correct pattern:**
+```sql
+UPDATE reality_registry SET
+  status = 'frozen',
+  status_transition_at = now(),
+  close_initiated_by = $admin_id
+WHERE reality_id = $R
+  AND status = 'pending_close'              -- ← CAS: expected current status
+  AND status_transition_at = $expected_prev -- ← optional: fencing token for stricter check
+;
+-- If affected rows = 0: abort. Another transition already happened.
+```
+
+**Rejected pattern** (unconditional update):
+```sql
+UPDATE reality_registry SET status = 'frozen' WHERE reality_id = $R;
+-- No way to detect concurrent modification. Silent corruption possible.
+```
+
+### 12Q.3 Helper function — `attempt_state_transition()`
+
+All state transitions go through a single canonical helper in `contracts/meta/`:
+
+```go
+// Pseudocode
+func AttemptStateTransition(
+    realityID uuid.UUID,
+    fromStatus, toStatus string,
+    payload map[string]any,
+) (*TransitionResult, error) {
+    tx, _ := db.BeginTx(...)
+    defer tx.Rollback()
+
+    result, err := tx.Exec(`
+        UPDATE reality_registry SET
+          status = $2,
+          status_transition_at = now(),
+          -- additional fields from payload
+          close_initiated_by = COALESCE($3, close_initiated_by),
+          migration_source_shard = COALESCE($4, migration_source_shard),
+          ...
+        WHERE reality_id = $1 AND status = $5
+    `, realityID, toStatus, payload[...], ..., fromStatus)
+
+    rowsAffected, _ := result.RowsAffected()
+    if rowsAffected == 0 {
+        return nil, ErrConcurrentStateTransition
+    }
+
+    // Always log audit row in same transaction
+    _, _ = tx.Exec(`
+        INSERT INTO lifecycle_transition_audit
+          (reality_id, from_status, to_status, actor_id, payload, succeeded)
+        VALUES ($1, $2, $3, $4, $5, true)
+    `, realityID, fromStatus, toStatus, actor, payload)
+
+    return &TransitionResult{...}, tx.Commit()
+}
+```
+
+**Rule:** NO code directly UPDATEs `reality_registry.status`. Every transition uses this helper. Code review enforces.
+
+### 12Q.4 Transition audit log
+
+Captures every attempted transition (success or concurrency conflict):
+
+```sql
+CREATE TABLE lifecycle_transition_audit (
+  audit_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  reality_id     UUID NOT NULL,
+  from_status    TEXT NOT NULL,
+  to_status      TEXT NOT NULL,
+  actor_id       UUID NOT NULL,
+  actor_type     TEXT NOT NULL,         -- 'owner' | 'admin' | 'system' | 'cron'
+  succeeded      BOOLEAN NOT NULL,
+  failure_reason TEXT,                  -- 'concurrent_modification' | 'invalid_transition' | ...
+  payload        JSONB,
+  attempted_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX ON lifecycle_transition_audit (reality_id, attempted_at DESC);
+CREATE INDEX ON lifecycle_transition_audit (succeeded, attempted_at) WHERE succeeded = FALSE;
+```
+
+Failed transitions are **valuable signal**:
+- Frequent `concurrent_modification` on same reality → hot race condition to investigate
+- Invalid transitions → code bug
+
+### 12Q.5 Retry policy for concurrent conflicts
+
+For cron-type triggers (idempotent, can retry):
+```go
+for attempt := 1; attempt <= 3; attempt++ {
+    result, err := AttemptStateTransition(...)
+    if errors.Is(err, ErrConcurrentStateTransition) {
+        // Someone else made a transition; re-check current state
+        currentStatus := GetRealityStatus(realityID)
+        if currentStatus == desired_target {
+            return // another actor already did what we wanted
+        }
+        // Otherwise: bail out, log, alert
+        log.Warn("cron transition lost race", ...)
+        return
+    }
+    break
+}
+```
+
+For owner/admin-initiated transitions: **no retry** (they'd see the failure + current state, can decide again).
+
+### 12Q.6 Explicit state transition graph
+
+Valid transitions enforced at helper function level. Invalid transitions rejected regardless of CAS:
+
+```
+Valid transitions (enforced):
+  active         → pending_close, migrating, rebasing
+  pending_close  → active (cancel), frozen (cron auto)
+  frozen         → archived (archive job), active (emergency cancel)
+  archived       → archived_verified (verify OK), frozen (verify fail)
+  archived_verified → soft_deleted (rename)
+  soft_deleted   → dropped (double-approval + 90d), archived_verified (emergency restore)
+  migrating      → active (cutover success OR rollback)
+  rebasing       → active (new reality takes over)
+
+Invalid examples (rejected by helper):
+  active         → dropped     (must go through whole close flow)
+  soft_deleted   → active      (must go through archived_verified)
+  pending_close  → dropped     (skip states)
+```
+
+Helper maintains a transition map; rejects anything not in the map.
+
+### 12Q.7 Concurrent lifecycle ops — mutual exclusion
+
+Reality cannot be in multiple lifecycle ops simultaneously. Enforced via status check:
+
+- Can't close (`pending_close`) while migrating (`migrating`)
+- Can't migrate while severing (severance is transient, but status='migrating' check prevents race)
+- Can't rebase while closing
+- Admin emergency actions go through helper → mutual exclusion by CAS
+
+### 12Q.8 Governance
+
+New governance policy referenced from ADMIN_ACTION_POLICY.md:
+
+> **Lifecycle Transition Rule:** All state transitions on reality_registry.status MUST use `AttemptStateTransition()` helper from `contracts/meta/`. Direct UPDATE of status column is forbidden in production code. Code review MUST reject PRs that violate this rule. Lint rule (grep-based) detects direct UPDATE patterns in CI.
+
+Cross-linked from ADMIN_ACTION_POLICY §3.R2 (compensating events pattern) since state transitions that write additional compensating events follow same discipline.
+
+### 12Q.9 Monitoring
+
+```
+lw_lifecycle_transition_count{from, to, succeeded}       counter
+lw_lifecycle_transition_conflict_count{reality_id}       counter
+lw_lifecycle_transition_invalid_count{from, to}          counter
+```
+
+**Alerts:**
+- High conflict rate on a single reality → investigate (multiple admins? buggy cron?)
+- Any invalid transition attempt → page (code bug)
+
+### 12Q.10 Config
+
+No runtime config needed — discipline is code-enforced via helper + lint.
+
+### 12Q.11 Implementation ordering
+
+- **V1 launch**: `AttemptStateTransition()` helper + `lifecycle_transition_audit` table + all existing R9/§12M/§12N flows migrated to use helper + lint rule in CI
+- **V1 + 30 days**: audit dashboard in DF11 (conflict heatmap)
+- **V2+**: governance policy addendum if additional state machines emerge
+
+### 12Q.12 What this resolves
+
+- ✅ Race conditions on reality status eliminated by CAS
+- ✅ Invalid transitions rejected structurally
+- ✅ Full audit trail of every attempted transition (including failures)
+- ✅ Mutual exclusion between concurrent lifecycle ops explicit
+- ✅ Governance + lint enforces discipline
+
+Residual:
+- Helper covers reality_registry.status only. Other stateful objects (pc_projection.status, session status, etc.) may need similar discipline. Apply same pattern as they emerge.
 
 ## 13. Known risks (for separate discussion)
 

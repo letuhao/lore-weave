@@ -258,6 +258,10 @@ Reopen conditions for the OPEN/PARTIAL track specifically:
 | 2026-04-23 | R10 ACCEPTED, R11 pgvector managed, R13 admin discipline + governance policy |
 | 2026-04-23 | **Session end** — all R1–R13 resolved, handoff created |
 | 2026-04-24 | WA-4 category heuristics locked (5 decisions) — storage + multiverse design-complete; residual items all external-dependent |
+| 2026-04-24 | SA+DE adversarial review (21 concerns raised). C1 "cascade read on dropped ancestor" reframed as gameplay feature — **orphan worlds / reality ancestry severance**. 5 decisions locked (C1-OW-1..5) + DF14 "Vanish Reality Mystery System" registered (short track). §12M + §9.9 added. |
+| 2026-04-24 | C2 DB subtree split runbook locked — concrete 15-step playbook for V1/V2 freeze-copy-cutover + V3+ logical replication. 5 decisions (C2-D1..D5) + new `migrating` lifecycle state + `reality_migration_audit` table. §12N added. DF11 scope expands to "Fleet + Lifecycle + Migration Management". |
+| 2026-04-24 | C3 Meta registry HA locked — 7-layer strategy (Patroni streaming replication + 1 sync + 1 async replica + Redis cache + degraded mode + PITR). 6 decisions (C3-D1..D6). V1/V2: single-region HA only; V3+ adds cross-region DR, 2nd sync replica, per-shard HA for reality DBs, and audit DB evaluation. §12O added. Meta access is shared Go library (`contracts/meta/`), not standalone service. |
+| 2026-04-24 | **C4 + C5 locked in batch — all 5 SA+DE Critical concerns resolved.** C4: L3 override reverse index in meta (§12P, 4 decisions) makes §9.8.1 preview + §9.8.3 force-propagate queries O(1) at V3 scale. C5: lifecycle transition CAS discipline (§12Q, 6 decisions) — mandatory `AttemptStateTransition()` helper in `contracts/meta/`, `lifecycle_transition_audit` table, lint rule enforcement, governance policy addendum. Storage + multiverse design survives full SA+DE adversarial review. |
 
 ## 4. How to resume (for next session)
 
