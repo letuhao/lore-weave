@@ -113,15 +113,27 @@ def _setup_overrides(*, job=None, jobs_list=None, project=None, book_client=None
     return TestClient(app, raise_server_exceptions=False)
 
 
-def _setup_list_all_overrides(*, all_jobs=None, book_client=None):
-    """K19b.1 helper — wires list_all_for_user and returns both the
-    client and the mock so the test can inspect call kwargs."""
+def _setup_list_all_overrides(
+    *, all_jobs=None, next_cursor: str | None = None, book_client=None,
+    list_side_effect=None,
+):
+    """K19b.1 + C11 helper — wires list_all_for_user.
+
+    C11: the repo now returns a ``(rows, next_cursor)`` tuple. Tests
+    can override via ``next_cursor`` kwarg; default None represents a
+    last-page response. ``list_side_effect`` lets a test raise (e.g.,
+    ``CursorDecodeError`` for the malformed-cursor 422 test)."""
     from app.main import app
     from app.deps import get_book_client, get_extraction_jobs_repo
     from app.middleware.jwt_auth import get_current_user
 
     jobs_repo = AsyncMock()
-    jobs_repo.list_all_for_user = AsyncMock(return_value=all_jobs or [])
+    if list_side_effect is not None:
+        jobs_repo.list_all_for_user = AsyncMock(side_effect=list_side_effect)
+    else:
+        jobs_repo.list_all_for_user = AsyncMock(
+            return_value=(all_jobs or [], next_cursor),
+        )
 
     app.dependency_overrides[get_current_user] = lambda: _TEST_USER
     app.dependency_overrides[get_extraction_jobs_repo] = lambda: jobs_repo
@@ -217,10 +229,12 @@ def test_list_all_jobs_active_returns_200():
     client, repo = _setup_list_all_overrides(all_jobs=jobs)
     resp = client.get("/v1/knowledge/extraction/jobs?status_group=active")
     assert resp.status_code == 200
-    data = resp.json()
-    assert len(data) == 2
+    body = resp.json()
+    # C11: envelope shape.
+    assert len(body["items"]) == 2
+    assert body["next_cursor"] is None
     repo.list_all_for_user.assert_awaited_once_with(
-        _TEST_USER, status_group="active", limit=50
+        _TEST_USER, status_group="active", limit=50, cursor=None,
     )
 
 
@@ -229,9 +243,9 @@ def test_list_all_jobs_history_returns_200_with_custom_limit():
     client, repo = _setup_list_all_overrides(all_jobs=jobs)
     resp = client.get("/v1/knowledge/extraction/jobs?status_group=history&limit=25")
     assert resp.status_code == 200
-    assert len(resp.json()) == 1
+    assert len(resp.json()["items"]) == 1
     repo.list_all_for_user.assert_awaited_once_with(
-        _TEST_USER, status_group="history", limit=25
+        _TEST_USER, status_group="history", limit=25, cursor=None,
     )
 
 
@@ -261,11 +275,59 @@ def test_list_all_jobs_limit_out_of_range_returns_422():
     assert resp_too_small.status_code == 422
 
 
-def test_list_all_jobs_empty_returns_empty_array():
+def test_list_all_jobs_empty_returns_empty_envelope():
     client, _repo = _setup_list_all_overrides(all_jobs=[])
     resp = client.get("/v1/knowledge/extraction/jobs?status_group=history")
     assert resp.status_code == 200
-    assert resp.json() == []
+    assert resp.json() == {"items": [], "next_cursor": None}
+
+
+# ── C11 (D-K19b.1-01 + D-K19b.2-01) — cursor pagination ──────────
+
+
+def test_list_all_jobs_next_cursor_returned_when_full_page():
+    """C11: when the repo reports more rows are available (by
+    returning a next_cursor), the router passes it through in the
+    envelope so the FE can request the next page."""
+    jobs = [_job_stub(status="complete")]
+    client, _repo = _setup_list_all_overrides(
+        all_jobs=jobs, next_cursor="opaque-cursor-abc",
+    )
+    resp = client.get("/v1/knowledge/extraction/jobs?status_group=history")
+    assert resp.status_code == 200
+    assert resp.json()["next_cursor"] == "opaque-cursor-abc"
+
+
+def test_list_all_jobs_cursor_threaded_to_repo():
+    """C11: cursor Query param is forwarded to the repo verbatim —
+    the router does not decode or validate it itself."""
+    client, repo = _setup_list_all_overrides(all_jobs=[])
+    resp = client.get(
+        "/v1/knowledge/extraction/jobs?status_group=history"
+        "&cursor=some-opaque-payload"
+    )
+    assert resp.status_code == 200
+    repo.list_all_for_user.assert_awaited_once_with(
+        _TEST_USER,
+        status_group="history",
+        limit=50,
+        cursor="some-opaque-payload",
+    )
+
+
+def test_list_all_jobs_malformed_cursor_returns_422():
+    """C11: repo's CursorDecodeError surfaces as 422 so the FE gets
+    an explicit error instead of an empty page."""
+    from app.db.repositories.extraction_jobs import CursorDecodeError
+
+    client, _repo = _setup_list_all_overrides(
+        list_side_effect=CursorDecodeError("not base64"),
+    )
+    resp = client.get(
+        "/v1/knowledge/extraction/jobs?status_group=history&cursor=!@#broken"
+    )
+    assert resp.status_code == 422
+    assert "malformed cursor" in resp.json()["detail"]
 
 
 # ── C6 /review-impl L3 — router-level enricher integration ────────
@@ -324,10 +386,11 @@ def test_list_all_jobs_response_has_enriched_current_chapter_title():
     )
     resp = client.get("/v1/knowledge/extraction/jobs?status_group=active")
     assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert len(body) == 2
-    assert body[0]["current_chapter_title"] == "Chapter 1 — Opening"
-    assert body[1]["current_chapter_title"] == "Chapter 5 — Rising Action"
+    # C11: envelope shape — unwrap .items before indexing.
+    items = resp.json()["items"]
+    assert len(items) == 2
+    assert items[0]["current_chapter_title"] == "Chapter 1 — Opening"
+    assert items[1]["current_chapter_title"] == "Chapter 5 — Rising Action"
 
 
 def test_etag_includes_current_chapter_title_so_title_change_bumps():

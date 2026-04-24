@@ -51,7 +51,7 @@ Statuses: `[ ]` open · `[D]` DESIGN in flight · `[B]` BUILD in flight · `[V]`
 | **C8** | Drawer-search UX: source_type filter + in-card highlighting (+BE facet counts per user addendum) | D-K19e-γa-01, D-K19e-γb-01 | ~~M~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
 | **C9** | Entity concurrency + unlock | D-K19d-γa-01 (If-Match), D-K19d-γa-02 (unlock endpoint) | ~~M~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
 | **C10** | Timeline feature gaps | D-K19e-α-01 (entity_id), D-K19e-α-03 (chronological range) | ~~M~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
-| **C11** | Cursor pagination (jobs history + Complete list) | D-K19b.1-01, D-K19b.2-01 | M | `[ ]` | — |
+| **C11** | Cursor pagination (jobs history + Complete list) | D-K19b.1-01, D-K19b.2-01 | ~~M~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
 | **C12** | Scope + benchmark dialog UX | D-K19a.5-04 + D-K16.2-02b (paired), D-K19a.5-06, D-K19a.5-07 | L | `[ ]` | book-service `from_sort`/`to_sort` already shipped ✓ |
 | **C13** | Storybook dialogs via MSW | D-K19a.8-01 | M | `[ ]` | — |
 | **C14** | Resumable scheduler cursor state (Perf) | D-K11.9-01 partial, P-K15.10-01 partial | L | `[ ]` | needs `job_state` table design |
@@ -304,13 +304,40 @@ Cycles whose single-line description is unclear: the full text lives under the i
 
 ---
 
-### C11 — Cursor pagination (P3, M)
-**Files.**
-- `services/knowledge-service/app/db/repositories/extraction_jobs.py` — cursor kwarg on `list_history`.
-- `services/knowledge-service/app/routers/public/jobs.py` — `cursor` + `next_cursor` on response.
-- `frontend/src/features/knowledge/hooks/useExtractionJobs.ts` — infinite-query replacement for single-page; "Load more" on Complete section.
+### C11 — Cursor pagination (jobs history + Complete list) (P3, XL) ✅
+**Shipped.** Session 51 cycle 37. Reclassified M→XL at CLARIFY (15 files with tests + i18n + /review-impl 3 fixes).
 
-**Close:** D-K19b.1-01, D-K19b.2-01.
+**Files touched.**
+- BE repo [`extraction_jobs.py`](../../services/knowledge-service/app/db/repositories/extraction_jobs.py): NEW `CursorDecodeError` + `_encode_cursor`/`_decode_cursor` (base64-JSON of `{c: completed_at | null, r: created_at, j: job_id}`). `list_all_for_user` returns `(rows, next_cursor)` tuple + `cursor` kwarg. SQL row-value predicate for active (`(created_at, job_id) < ($cur_created, $cur_job)`) + 4-branch NULLS-LAST OR for history (both non-null completed_at: seek lower OR equal-with-tiebreak; row-null + cursor-nonnull: any; both null: tiebreak). `next_cursor` populated only when exactly `limit` rows returned.
+- BE router [`extraction.py`](../../services/knowledge-service/app/routers/public/extraction.py): NEW `ExtractionJobsPage` envelope `{items, next_cursor}` + `cursor: str | None` Query param (min/max len 1/500) + 422 on `CursorDecodeError`.
+- BE test [`test_extraction_job_status.py`](../../services/knowledge-service/tests/unit/test_extraction_job_status.py): updated 6 existing tests to read `body["items"]` + updated helper to return tuple; +3 new C11 tests (next_cursor threaded, cursor forwarded to repo, malformed 422).
+- BE test NEW [`test_extraction_jobs_cursor.py`](../../services/knowledge-service/tests/unit/test_extraction_jobs_cursor.py): 7 codec tests (roundtrip both groups + 5 decode-rejection paths).
+- BE integration test [`test_extraction_jobs_repo.py`](../../services/knowledge-service/tests/integration/db/test_extraction_jobs_repo.py) (/review-impl HIGH#1): unpacked 9 existing call sites to `(rows, _)` tuple — tests now compatible with new signature. +2 NEW integration tests (/review-impl LOW#3) exercising the cursor SQL: walk-7-rows-through-pages-of-3 + tied-completed_at-tiebreak — real coverage for the 4-branch OR.
+- FE api [`api.ts`](../../frontend/src/features/knowledge/api.ts): NEW `ExtractionJobsPageResponse` type + `listAllJobs` signature with `cursor?` param.
+- FE hook [`useExtractionJobs.ts`](../../frontend/src/features/knowledge/hooks/useExtractionJobs.ts): history switches to `useInfiniteQuery`; active stays `useQuery` with envelope `.items` unwrap. NEW `fetchMoreHistory` + `hasMoreHistory` + `isFetchingMoreHistory` fields. **/review-impl MED#2 fix**: conditional `refetchInterval` returns `HISTORY_POLL_MS` when `pages.length ≤ 1`, `false` otherwise — single-page users get 10s freshness back; power users who click Load more accept frozen view until next click (avoids N-page refetch storm per tick).
+- FE hook test [`useExtractionJobs.test.tsx`](../../frontend/src/features/knowledge/hooks/__tests__/useExtractionJobs.test.tsx): updated 4 existing tests to return envelope + 5 new C11 pagination tests (`hasMoreHistory` true/false, `fetchMoreHistory` threads cursor, append semantics, no-op when no more).
+- FE component [`ExtractionJobsTab.tsx`](../../frontend/src/features/knowledge/components/ExtractionJobsTab.tsx): dropped `COMPLETE_VISIBLE_LIMIT=10` slice (cap was meaningless once paginated) + NEW Load more button below history gated on `hasMoreHistory`; shows `jobs.loadingMore` during in-flight.
+- FE component test [`ExtractionJobsTab.test.tsx`](../../frontend/src/features/knowledge/components/__tests__/ExtractionJobsTab.test.tsx): updated old "caps at 10" test to lock removal + 4 new Load-more tests (hidden when false, visible when true, click fires mutation, disabled+loading-label while fetching). `setHookState` helper gains 3 new fields.
+- FE locale drift lock [`projectState.test.ts`](../../frontend/src/features/knowledge/types/__tests__/projectState.test.ts): JOBS_KEYS +2 paths.
+- i18n × 4 locales: 2 new keys (`jobs.loadMore`, `jobs.loadingMore`).
+
+**Design decisions locked at CLARIFY (6 user-approved defaults).**
+1. Cursor scoped to history only; active stays 2s-poll `useQuery`.
+2. Response envelope `{items, next_cursor}` applied to both groups for API consistency (active's `next_cursor` always null).
+3. base64-JSON opaque cursor encoding.
+4. Single Load more button below entire history (Complete + Failed share the same query).
+5. Drop `COMPLETE_VISIBLE_LIMIT=10` slice.
+6. Active polling preserved (2s).
+
+**/review-impl 3 fixes + 2 LOW accepted + 1 COSMETIC accepted.**
+- **HIGH#1** (fixed): 9 integration-test call sites treated return as list. Unpacked to `(rows, _)`.
+- **MED#2** (fixed): history polling removed → users missed new completes. Restored as function-form `refetchInterval` gated on `pages.length ≤ 1`.
+- **LOW#3** (fixed): added 2 integration tests exercising cursor SQL predicate end-to-end (walk 7 rows, tied tiebreak).
+- LOW#4 (accept): mutation invalidation refetches N pages — bounded by user click-rate.
+- LOW#5 (accept): `fetchMoreHistory` closure identity — single consumer.
+- COSMETIC#6 (accept): cursor `max_length=500` not tested — FastAPI's validation is trusted.
+
+**Close:** D-K19b.1-01, D-K19b.2-01. **P3 tier progress: 4/5 items / 2 cycles done (C10 ✅ + C11 ✅).**
 
 ---
 
@@ -433,12 +460,12 @@ Once text arrives:
 |---|---|---|---|
 | P1 (C1–C2) | 0 | **4 items / 2 cycles (C1 ✅ + C2 ✅)** | 0 |
 | P2 (C3–C9) | 0 items | **15 items / 7 cycles (C3 ✅ + C4 ✅ + C5 ✅ + C6 ✅ + C7 ✅ + C8 ✅ + C9 ✅)** | 0 |
-| P3 (C10–C13) | 5 items / 3 cycles | **2 items / 1 cycle (C10 ✅)** | 0 |
+| P3 (C10–C13) | 3 items / 2 cycles | **4 items / 2 cycles (C10 ✅ + C11 ✅)** | 0 |
 | P4 (C14–C15) | 3 items / 2 cycles | 0 | 0 |
 | P5 (C16–C18) | 3 items / 3 cycles | 0 | 0 DESIGN |
 | User-gated (C19–C20) | 2 items / 2 cycles | 0 | 2 ⏸ |
 
-**Total plan: 33 item-closures across 20 cycles. Completed: 21 items / 10 cycles. P1 tier done · P2 tier DONE (7/7) · P3 tier 2/7 opened (C10). Next: C11 (cursor pagination) or C12 (dialog UX).**
+**Total plan: 33 item-closures across 20 cycles. Completed: 23 items / 11 cycles. P1 tier done · P2 tier DONE (7/7) · P3 tier 4/7 done (C10 ✅ + C11 ✅). Remaining: C12 (dialog UX, L), C13 (Storybook dialogs, M), plus P4/P5/user-gated.**
 (Some cycles close > 1 item; some items appear in >1 cycle. Check the cycle table for authoritative count.)
 
 ---

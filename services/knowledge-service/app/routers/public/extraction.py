@@ -32,6 +32,7 @@ from app.db.repositories.benchmark_runs import BenchmarkRunsRepo
 from app.routers.internal_benchmark import BenchmarkStatusResponse
 from app.db.repositories.extraction_jobs import (
     LIST_ALL_MAX_LIMIT,
+    CursorDecodeError,
     ExtractionJob,
     ExtractionJobCreate,
     ExtractionJobsRepo,
@@ -1039,9 +1040,21 @@ def _etag(job: ExtractionJob) -> str:
     )
 
 
+class ExtractionJobsPage(BaseModel):
+    """C11 (D-K19b.1-01) envelope for ``GET /extraction/jobs``. Paired
+    with ``next_cursor`` so the FE can advance to more history pages
+    without a server-side offset."""
+
+    items: list[ExtractionJob]
+    # ``null`` when the last page was returned (fewer than ``limit``
+    # rows OR exactly ``limit`` rows but none remain). FE treats null
+    # as "hide Load more".
+    next_cursor: str | None
+
+
 @jobs_router.get(
     "/jobs",
-    response_model=list[ExtractionJob],
+    response_model=ExtractionJobsPage,
 )
 async def list_all_user_jobs(
     status_group: Literal["active", "history"] = Query(
@@ -1052,11 +1065,22 @@ async def list_all_user_jobs(
         ),
     ),
     limit: int = Query(50, ge=1, le=LIST_ALL_MAX_LIMIT),
+    cursor: str | None = Query(
+        None,
+        min_length=1,
+        max_length=500,
+        description=(
+            "C11 (D-K19b.1-01) opaque pagination cursor. Copy from the "
+            "previous response's ``next_cursor`` to fetch the next page. "
+            "Omit for the first page. 422 on malformed cursor."
+        ),
+    ),
     user_id: UUID = Depends(get_current_user),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
     book_client: BookClient = Depends(get_book_client),
-) -> list[ExtractionJob]:
-    """K19b.1 — user-scoped cross-project job list, grouped by status.
+) -> ExtractionJobsPage:
+    """K19b.1 + C11 — user-scoped cross-project job list, grouped by
+    status, with cursor pagination.
 
     Separate from the per-project ``/projects/{id}/extraction/jobs``:
     that one returns history for a single project, while this one
@@ -1064,13 +1088,25 @@ async def list_all_user_jobs(
     binary `status_group` maps 1:1 to K19b.2's layout sections
     (Running/Paused in active, Complete/Failed/Cancelled in history)
     so the FE can render without client-side filtering.
+
+    C11 (D-K19b.1-01 + D-K19b.2-01): ``cursor`` is an opaque
+    base64-JSON the FE copies from the previous response's
+    ``next_cursor``. Active group is typically small enough that its
+    ``next_cursor`` is always ``null`` in practice; the envelope is
+    still used for API consistency across both groups.
     """
-    jobs = await jobs_repo.list_all_for_user(
-        user_id, status_group=status_group, limit=limit
-    )
+    try:
+        jobs, next_cursor = await jobs_repo.list_all_for_user(
+            user_id, status_group=status_group, limit=limit, cursor=cursor,
+        )
+    except CursorDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"malformed cursor: {exc}",
+        )
     # C6 (D-K19b.3-01) — resolve current_cursor.last_chapter_id titles.
     await enrich_jobs_with_current_chapter_titles(jobs, book_client)
-    return jobs
+    return ExtractionJobsPage(items=jobs, next_cursor=next_cursor)
 
 
 @jobs_router.get(

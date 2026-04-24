@@ -272,6 +272,8 @@
   },
   "jobs": {
     "loading": "Đang tải tác vụ…",
+    "loadMore": "Tải thêm",
+    "loadingMore": "Đang tải thêm…",
     "error": {
       "active": "Không thể tải các tác vụ đang chạy.",
       "history": "Không thể tải lịch sử tác vụ."

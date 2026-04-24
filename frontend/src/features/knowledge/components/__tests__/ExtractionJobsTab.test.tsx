@@ -131,6 +131,11 @@ function setHookState(overrides: {
     error: activeError ?? historyError,
     activeError,
     historyError,
+    // C11 — default: no more pages. Individual tests opt in via
+    // setHookState({hasMoreHistory: true, ...}).
+    hasMoreHistory: overrides.hasMoreHistory ?? false,
+    fetchMoreHistory: overrides.fetchMoreHistory ?? vi.fn(),
+    isFetchingMoreHistory: overrides.isFetchingMoreHistory ?? false,
   });
 }
 
@@ -195,14 +200,18 @@ describe('ExtractionJobsTab', () => {
     expect(rows).toHaveLength(3);
   });
 
-  it('caps Complete section at 10 rows', () => {
+  it('shows every Complete row from loaded history pages (C11 — no client-side cap)', () => {
+    // C11 (D-K19b.2-01): before cursor pagination the FE capped the
+    // Complete section at 10 rows and silently hid the rest. With
+    // cursor pagination the cap is meaningless — the user pulls more
+    // via Load more. This test locks the removal: 15 rows all render.
     const complete = Array.from({ length: 15 }, (_, i) =>
       makeJob({ status: 'complete', job_id: `h${i}` }),
     );
     setHookState({ history: complete });
     renderTab();
     const rows = screen.getAllByTestId('job-row');
-    expect(rows.length).toBeLessThanOrEqual(10);
+    expect(rows.length).toBe(15);
   });
 
   it('renders loading placeholder when isLoading', () => {
@@ -355,5 +364,44 @@ describe('ExtractionJobsTab', () => {
     expect(dlg.getAttribute('data-project-id')).toBe('proj-retry');
     expect(dlg.getAttribute('data-scope')).toBe('chat');
     expect(dlg.getAttribute('data-llm')).toBe('claude-opus-4-7');
+  });
+
+  // ── C11 — Load more history pagination ────────────────────────
+
+  it('does not render Load more when hasMoreHistory is false', () => {
+    setHookState({ hasMoreHistory: false });
+    renderTab();
+    expect(
+      screen.queryByTestId('jobs-history-load-more'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders Load more when hasMoreHistory is true', () => {
+    setHookState({ hasMoreHistory: true });
+    renderTab();
+    expect(
+      screen.getByTestId('jobs-history-load-more'),
+    ).toBeInTheDocument();
+  });
+
+  it('clicking Load more calls fetchMoreHistory', () => {
+    const fetchMoreHistory = vi.fn();
+    setHookState({ hasMoreHistory: true, fetchMoreHistory });
+    renderTab();
+    fireEvent.click(screen.getByTestId('jobs-history-load-more'));
+    expect(fetchMoreHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it('Load more button is disabled and shows loading label while fetching', () => {
+    setHookState({
+      hasMoreHistory: true,
+      isFetchingMoreHistory: true,
+    });
+    renderTab();
+    const btn = screen.getByTestId(
+      'jobs-history-load-more',
+    ) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.textContent).toContain('jobs.loadingMore');
   });
 });

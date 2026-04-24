@@ -63,12 +63,19 @@ describe('useExtractionJobs', () => {
     listAllJobsMock.mockReset();
   });
 
+  // C11: shorthand to wrap a row list in the new envelope the BE
+  // returns. ``next_cursor`` defaults to null (last page).
+  const page = (
+    items: ExtractionJobWire[],
+    next_cursor: string | null = null,
+  ) => ({ items, next_cursor });
+
   it('returns active + history groups from separate API calls', async () => {
     const active = [makeJob({ job_id: 'a1', status: 'running' })];
     const history = [makeJob({ job_id: 'h1', status: 'complete' })];
     listAllJobsMock.mockImplementation(
       async (params: { statusGroup: 'active' | 'history' }) =>
-        params.statusGroup === 'active' ? active : history,
+        params.statusGroup === 'active' ? page(active) : page(history),
     );
 
     const { result } = renderHook(() => useExtractionJobs(), {
@@ -84,7 +91,7 @@ describe('useExtractionJobs', () => {
   });
 
   it('passes limit=50 to history, no limit to active (BE default 50)', async () => {
-    listAllJobsMock.mockResolvedValue([]);
+    listAllJobsMock.mockResolvedValue(page([]));
     renderHook(() => useExtractionJobs(), { wrapper: wrapper() });
 
     await waitFor(() => {
@@ -93,7 +100,9 @@ describe('useExtractionJobs', () => {
         'tok-test',
       );
       expect(listAllJobsMock).toHaveBeenCalledWith(
-        { statusGroup: 'history', limit: 50 },
+        // C11: history's first page also sends no cursor (undefined
+        // gets filtered out before hitting the URL builder).
+        { statusGroup: 'history', limit: 50, cursor: undefined },
         'tok-test',
       );
     });
@@ -104,7 +113,7 @@ describe('useExtractionJobs', () => {
     listAllJobsMock.mockImplementation(
       async (params: { statusGroup: 'active' | 'history' }) => {
         if (params.statusGroup === 'active') throw boom;
-        return [];
+        return page([]);
       },
     );
 
@@ -115,8 +124,6 @@ describe('useExtractionJobs', () => {
     await waitFor(() => {
       expect(result.current.error).toBe(boom);
     });
-    // review-impl L2: group-specific error is exposed so callers can
-    // target the failure without treating both sections as broken.
     expect(result.current.activeError).toBe(boom);
     expect(result.current.historyError).toBeNull();
   });
@@ -126,7 +133,7 @@ describe('useExtractionJobs', () => {
     listAllJobsMock.mockImplementation(
       async (params: { statusGroup: 'active' | 'history' }) => {
         if (params.statusGroup === 'history') throw historyBoom;
-        return [];
+        return page([]);
       },
     );
 
@@ -139,5 +146,96 @@ describe('useExtractionJobs', () => {
     });
     expect(result.current.activeError).toBeNull();
     expect(result.current.error).toBe(historyBoom);
+  });
+
+  // ── C11 — history pagination ──────────────────────────────────────
+
+  it('exposes hasMoreHistory=false when first page returns null next_cursor', async () => {
+    listAllJobsMock.mockImplementation(
+      async (params: { statusGroup: 'active' | 'history' }) =>
+        params.statusGroup === 'active'
+          ? page([])
+          : page([makeJob({ job_id: 'h1', status: 'complete' })], null),
+    );
+    const { result } = renderHook(() => useExtractionJobs(), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => {
+      expect(result.current.history).toHaveLength(1);
+    });
+    expect(result.current.hasMoreHistory).toBe(false);
+  });
+
+  it('exposes hasMoreHistory=true when next_cursor is populated', async () => {
+    listAllJobsMock.mockImplementation(
+      async (params: { statusGroup: 'active' | 'history' }) =>
+        params.statusGroup === 'active'
+          ? page([])
+          : page(
+              [makeJob({ job_id: 'h1', status: 'complete' })],
+              'cursor-abc',
+            ),
+    );
+    const { result } = renderHook(() => useExtractionJobs(), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => {
+      expect(result.current.hasMoreHistory).toBe(true);
+    });
+  });
+
+  it('fetchMoreHistory sends the next_cursor and appends the new page', async () => {
+    let historyCall = 0;
+    listAllJobsMock.mockImplementation(
+      async (params: {
+        statusGroup: 'active' | 'history';
+        cursor?: string;
+      }) => {
+        if (params.statusGroup === 'active') return page([]);
+        historyCall += 1;
+        if (historyCall === 1) {
+          return page(
+            [makeJob({ job_id: 'h1', status: 'complete' })],
+            'cursor-to-page-2',
+          );
+        }
+        // Subsequent call — must carry the cursor from page 1.
+        expect(params.cursor).toBe('cursor-to-page-2');
+        return page([makeJob({ job_id: 'h2', status: 'complete' })], null);
+      },
+    );
+    const { result } = renderHook(() => useExtractionJobs(), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => {
+      expect(result.current.history).toHaveLength(1);
+      expect(result.current.hasMoreHistory).toBe(true);
+    });
+    result.current.fetchMoreHistory();
+    await waitFor(() => {
+      expect(result.current.history).toHaveLength(2);
+      expect(result.current.hasMoreHistory).toBe(false);
+    });
+    expect(result.current.history.map((j) => j.job_id)).toEqual(['h1', 'h2']);
+  });
+
+  it('fetchMoreHistory is a no-op when hasMoreHistory is false', async () => {
+    listAllJobsMock.mockImplementation(
+      async (params: { statusGroup: 'active' | 'history' }) =>
+        params.statusGroup === 'active'
+          ? page([])
+          : page([makeJob({ job_id: 'h1', status: 'complete' })], null),
+    );
+    const { result } = renderHook(() => useExtractionJobs(), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => {
+      expect(result.current.hasMoreHistory).toBe(false);
+    });
+    const beforeCalls = listAllJobsMock.mock.calls.length;
+    result.current.fetchMoreHistory();
+    // Give react-query a tick; no new call should be made.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(listAllJobsMock.mock.calls.length).toBe(beforeCalls);
   });
 });

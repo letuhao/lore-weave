@@ -272,6 +272,8 @@
   },
   "jobs": {
     "loading": "Loading jobs…",
+    "loadMore": "Load more",
+    "loadingMore": "Loading more…",
     "error": {
       "active": "Couldn't load running jobs.",
       "history": "Couldn't load job history."

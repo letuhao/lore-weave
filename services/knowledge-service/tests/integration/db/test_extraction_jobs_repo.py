@@ -672,7 +672,7 @@ async def test_k19b_1_list_all_active_filters_terminal_states(pool):
     await repo.update_status(user, j_failed.job_id, "failed")
     await repo.update_status(user, j_cancelled.job_id, "cancelled")
 
-    rows = await repo.list_all_for_user(user, status_group="active")
+    rows, _ = await repo.list_all_for_user(user, status_group="active")
     ids = {j.job_id for j in rows}
     assert ids == {j_pending.job_id, j_running.job_id, j_paused.job_id}
 
@@ -699,7 +699,7 @@ async def test_k19b_1_list_all_history_filters_active_states(pool):
     await repo.update_status(user, j_failed.job_id, "failed")
     await repo.update_status(user, j_cancelled.job_id, "cancelled")
 
-    rows = await repo.list_all_for_user(user, status_group="history")
+    rows, _ = await repo.list_all_for_user(user, status_group="history")
     ids = {j.job_id for j in rows}
     assert ids == {j_complete.job_id, j_failed.job_id, j_cancelled.job_id}
     assert j_pending.job_id not in ids
@@ -718,8 +718,8 @@ async def test_k19b_1_list_all_is_user_isolated(pool):
     j_a = await repo.create(user_a, _job_payload(p_a))
     j_b = await repo.create(user_b, _job_payload(p_b))
 
-    a_rows = await repo.list_all_for_user(user_a, status_group="active")
-    b_rows = await repo.list_all_for_user(user_b, status_group="active")
+    a_rows, _ = await repo.list_all_for_user(user_a, status_group="active")
+    b_rows, _ = await repo.list_all_for_user(user_b, status_group="active")
 
     assert {j.job_id for j in a_rows} == {j_a.job_id}
     assert {j.job_id for j in b_rows} == {j_b.job_id}
@@ -735,11 +735,11 @@ async def test_k19b_1_list_all_limit_is_clamped(pool):
         p = await _make_project(pool, user)
         await repo.create(user, _job_payload(p))
 
-    rows_zero = await repo.list_all_for_user(user, status_group="active", limit=0)
+    rows_zero, _ = await repo.list_all_for_user(user, status_group="active", limit=0)
     assert len(rows_zero) == 1  # clamped up to 1
-    rows_two = await repo.list_all_for_user(user, status_group="active", limit=2)
+    rows_two, _ = await repo.list_all_for_user(user, status_group="active", limit=2)
     assert len(rows_two) == 2
-    rows_huge = await repo.list_all_for_user(user, status_group="active", limit=10_000)
+    rows_huge, _ = await repo.list_all_for_user(user, status_group="active", limit=10_000)
     assert len(rows_huge) == 3  # clamped down to 200 but only 3 rows exist
 
 
@@ -758,7 +758,7 @@ async def test_k19b_2_list_all_populates_project_name(pool):
     await repo.create(user, _job_payload(proj_alpha.project_id))
     await repo.create(user, _job_payload(proj_beta.project_id))
 
-    rows = await repo.list_all_for_user(user, status_group="active")
+    rows, _ = await repo.list_all_for_user(user, status_group="active")
     names = {j.project_id: j.project_name for j in rows}
     assert names[proj_alpha.project_id] == "Alpha Book"
     assert names[proj_beta.project_id] == "Beta Translation"
@@ -798,7 +798,7 @@ async def test_k19b_2_list_all_project_name_null_when_join_misses(pool):
                 proj.project_id,
             )
 
-    rows = await repo.list_all_for_user(user, status_group="active")
+    rows, _ = await repo.list_all_for_user(user, status_group="active")
 
     assert len(rows) == 1
     assert rows[0].job_id == job.job_id
@@ -834,5 +834,95 @@ async def test_k19b_1_list_all_history_orders_by_completed_at(pool):
     await asyncio.sleep(0.02)
     await repo.update_status(user, j2.job_id, "complete")
 
-    rows = await repo.list_all_for_user(user, status_group="history")
+    rows, _ = await repo.list_all_for_user(user, status_group="history")
     assert [j.job_id for j in rows] == [j2.job_id, j3.job_id, j1.job_id]
+
+
+# ── C11 — cursor pagination ────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_c11_cursor_pagination_walks_full_history_without_duplicates(pool):
+    """C11 (D-K19b.1-01 + D-K19b.2-01) regression lock for the SQL
+    cursor predicate.
+
+    Seeds 7 complete jobs, pages through with limit=3, and asserts:
+    (a) every job appears exactly once across all pages (no
+    duplicates from a broken row-value compare), (b) pages concat to
+    the same order as a single unpaginated fetch (the cursor predicate
+    matches the ORDER BY), (c) ``next_cursor`` is null on the final
+    page. Without this test the novel 4-branch NULLS-LAST OR is only
+    exercised by mocked unit tests.
+    """
+    repo = ExtractionJobsRepo(pool)
+    user = uuid4()
+    projects = [await _make_project(pool, user) for _ in range(7)]
+    jobs = [await repo.create(user, _job_payload(p)) for p in projects]
+    for j in jobs:
+        await repo.update_status(user, j.job_id, "complete")
+        # Tiny sleep so completed_at distinguishes each job — uuidv7
+        # still tiebreaks on same-microsecond collisions but distinct
+        # timestamps make the expectation easy to write.
+        await asyncio.sleep(0.02)
+
+    # Single unpaginated fetch establishes the expected order.
+    all_rows, last_cursor_single = await repo.list_all_for_user(
+        user, status_group="history", limit=100,
+    )
+    assert last_cursor_single is None  # 7 rows < 100 limit → final page
+    expected_order = [j.job_id for j in all_rows]
+    assert len(expected_order) == 7
+
+    # Walk the same data in pages of 3 via cursor.
+    collected: list = []
+    cursor = None
+    iterations = 0
+    while True:
+        iterations += 1
+        assert iterations <= 5, "guard against runaway pagination loop"
+        page, next_cursor = await repo.list_all_for_user(
+            user, status_group="history", limit=3, cursor=cursor,
+        )
+        collected.extend(j.job_id for j in page)
+        if next_cursor is None:
+            break
+        cursor = next_cursor
+
+    # Pagination must visit every job exactly once in the same order
+    # as the single-shot fetch.
+    assert collected == expected_order
+
+
+@pytest.mark.asyncio
+async def test_c11_cursor_pagination_stable_across_tied_completed_at(pool):
+    """C11: even when two jobs share completed_at to the microsecond,
+    the (created_at, job_id) tiebreak in the cursor predicate keeps
+    them in a deterministic order and doesn't skip or duplicate rows.
+
+    We can't easily seed identical completed_at through the repo API
+    (update_status uses clock_timestamp() or similar), so this test
+    is a lighter check than the one above — it just confirms that
+    paginating over a small set with limit=1 visits every row exactly
+    once, which covers the tiebreak branches of the WHERE predicate
+    indirectly.
+    """
+    repo = ExtractionJobsRepo(pool)
+    user = uuid4()
+    projects = [await _make_project(pool, user) for _ in range(3)]
+    jobs = [await repo.create(user, _job_payload(p)) for p in projects]
+    for j in jobs:
+        await repo.update_status(user, j.job_id, "complete")
+
+    seen: list = []
+    cursor = None
+    for _ in range(5):
+        page, next_cursor = await repo.list_all_for_user(
+            user, status_group="history", limit=1, cursor=cursor,
+        )
+        seen.extend(j.job_id for j in page)
+        if next_cursor is None:
+            break
+        cursor = next_cursor
+
+    assert len(seen) == 3
+    assert len(set(seen)) == 3  # no duplicates

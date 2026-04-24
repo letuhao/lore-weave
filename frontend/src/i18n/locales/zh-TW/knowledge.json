@@ -272,6 +272,8 @@
   },
   "jobs": {
     "loading": "載入作業中…",
+    "loadMore": "載入更多",
+    "loadingMore": "載入更多中…",
     "error": {
       "active": "無法載入執行中的作業。",
       "history": "無法載入作業歷史記錄。"

@@ -39,6 +39,8 @@ Design notes:
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 from dataclasses import dataclass
 from datetime import datetime
@@ -50,6 +52,7 @@ import asyncpg
 from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
+    "CursorDecodeError",
     "ExtractionJob",
     "ExtractionJobCreate",
     "ExtractionJobsRepo",
@@ -59,6 +62,73 @@ __all__ = [
     "TrySpendOutcome",
     "TrySpendResult",
 ]
+
+
+# C11 (D-K19b.1-01) — cursor pagination helpers. The cursor encodes
+# the 3-key sort tuple used by ``list_all_for_user``'s history
+# branch ``(completed_at, created_at, job_id)``. Active uses just
+# ``(created_at, job_id)``; we still encode a null ``completed_at`` so
+# one codec handles both groups.
+#
+# Opaque to the FE: base64(JSON) means the payload can evolve (e.g.,
+# adding a direction flag for ascending order) without a FE change.
+
+
+class CursorDecodeError(ValueError):
+    """Raised when ``_decode_cursor`` rejects a malformed input. The
+    router maps this to a 422 so the caller sees an explicit error
+    instead of a silent empty page."""
+
+
+def _encode_cursor(
+    *,
+    completed_at: datetime | None,
+    created_at: datetime,
+    job_id: UUID,
+) -> str:
+    payload = {
+        "c": completed_at.isoformat() if completed_at is not None else None,
+        "r": created_at.isoformat(),
+        "j": str(job_id),
+    }
+    return base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":")).encode("utf-8"),
+    ).decode("ascii")
+
+
+def _decode_cursor(
+    raw: str,
+) -> tuple[datetime | None, datetime, UUID]:
+    """Returns ``(completed_at, created_at, job_id)``. Raises
+    ``CursorDecodeError`` on any structural problem — the router maps
+    to 422."""
+    try:
+        decoded = base64.urlsafe_b64decode(raw.encode("ascii"))
+    except (binascii.Error, UnicodeEncodeError, ValueError) as exc:
+        raise CursorDecodeError(f"cursor is not valid base64: {exc}") from exc
+    try:
+        payload = json.loads(decoded)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        # UnicodeDecodeError: base64 succeeded on a lenient payload
+        # (e.g., invalid chars were silently skipped) but the bytes
+        # aren't valid UTF-8. Same user-facing outcome — garbage cursor.
+        raise CursorDecodeError(f"cursor payload is not JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise CursorDecodeError("cursor payload must be an object")
+    c_raw = payload.get("c")
+    r_raw = payload.get("r")
+    j_raw = payload.get("j")
+    if r_raw is None or j_raw is None:
+        raise CursorDecodeError("cursor missing required fields 'r' and 'j'")
+    try:
+        created_at = datetime.fromisoformat(r_raw)
+        completed_at = (
+            datetime.fromisoformat(c_raw) if c_raw is not None else None
+        )
+        job_id = UUID(j_raw)
+    except (TypeError, ValueError) as exc:
+        raise CursorDecodeError(f"cursor field shape invalid: {exc}") from exc
+    return completed_at, created_at, job_id
 
 # K19b.1 — shared upper bound for list_all_for_user / router pagination.
 # Router's Query(le=LIST_ALL_MAX_LIMIT) and the repo's min(limit, ...)
@@ -272,8 +342,10 @@ class ExtractionJobsRepo:
         *,
         status_group: Literal["active", "history"],
         limit: int = 50,
-    ) -> list[ExtractionJob]:
-        """K19b.1 — user-scoped cross-project list split by status group.
+        cursor: str | None = None,
+    ) -> tuple[list[ExtractionJob], str | None]:
+        """K19b.1 + C11 — user-scoped cross-project list split by status
+        group, with optional cursor pagination.
 
         active  → pending / running / paused   ORDER BY created_at DESC
         history → complete / failed / cancelled
@@ -290,6 +362,16 @@ class ExtractionJobsRepo:
         of dropping it silently — the FK constraint prevents this in
         production but we don't want a join to be the first line of
         defence.
+
+        C11 (D-K19b.1-01, D-K19b.2-01): ``cursor`` is an opaque
+        base64-JSON of ``{completed_at, created_at, job_id}`` encoding
+        the last row of the previous page. The predicate below uses
+        row-value-like comparisons to "seek after" that tuple under
+        the 3-key sort order, matching the ORDER BY so pagination is
+        stable even with concurrent inserts. ``None`` = first page.
+        Returns ``(rows, next_cursor)``: ``next_cursor`` is populated
+        only when exactly ``effective_limit`` rows were returned
+        (more may exist); otherwise ``None``.
         """
         effective_limit = max(1, min(limit, LIST_ALL_MAX_LIMIT))
         # job_id DESC tiebreaker: uuidv7 is time-ordered, so on a
@@ -308,25 +390,82 @@ class ExtractionJobsRepo:
           LEFT JOIN knowledge_projects p ON p.project_id = j.project_id
           WHERE j.user_id = $1
         """
+        params: list[Any] = [user_id]
+        cursor_tuple: tuple[datetime | None, datetime, UUID] | None = None
+        if cursor is not None:
+            cursor_tuple = _decode_cursor(cursor)
+
         if status_group == "active":
+            cursor_clause = ""
+            if cursor_tuple is not None:
+                # Active ordering is a simple 2-key tuple; Postgres's
+                # row-value comparison handles it natively.
+                _, cur_created_at, cur_job_id = cursor_tuple
+                params.extend([cur_created_at, cur_job_id])
+                cursor_clause = f"""
+                  AND (j.created_at, j.job_id) < (${len(params) - 1}, ${len(params)})
+                """
             query = f"""
             SELECT {common_select}
             {common_from}
               AND j.status IN ('pending','running','paused')
+              {cursor_clause}
             ORDER BY j.created_at DESC, j.job_id DESC
             LIMIT {effective_limit}
             """
         else:
+            cursor_clause = ""
+            if cursor_tuple is not None:
+                # History ordering: completed_at DESC NULLS LAST,
+                # created_at DESC, job_id DESC. Postgres's row-value
+                # comparison doesn't natively honour NULLS LAST, so
+                # the 4-branch OR explicitly encodes the post-cursor
+                # rows for every combination of null / non-null
+                # completed_at on both sides.
+                cur_completed_at, cur_created_at, cur_job_id = cursor_tuple
+                params.extend(
+                    [cur_completed_at, cur_created_at, cur_job_id],
+                )
+                cc_idx = len(params) - 2   # $N for cur_completed_at
+                cr_idx = len(params) - 1   # $N for cur_created_at
+                cj_idx = len(params)       # $N for cur_job_id
+                cursor_clause = f"""
+                  AND (
+                    -- cursor and row both non-null: seek lower completed_at
+                    -- or (equal AND lower tiebreak).
+                    (j.completed_at IS NOT NULL AND ${cc_idx} IS NOT NULL
+                      AND j.completed_at < ${cc_idx})
+                    OR (j.completed_at IS NOT NULL AND ${cc_idx} IS NOT NULL
+                      AND j.completed_at = ${cc_idx}
+                      AND (j.created_at, j.job_id) < (${cr_idx}, ${cj_idx}))
+                    -- cursor non-null, row null: null ranks after non-null
+                    -- under NULLS LAST so the null row is "after" the cursor.
+                    OR (j.completed_at IS NULL AND ${cc_idx} IS NOT NULL)
+                    -- both null: tiebreak by (created_at, job_id).
+                    OR (j.completed_at IS NULL AND ${cc_idx} IS NULL
+                      AND (j.created_at, j.job_id) < (${cr_idx}, ${cj_idx}))
+                  )
+                """
             query = f"""
             SELECT {common_select}
             {common_from}
               AND j.status IN ('complete','failed','cancelled')
+              {cursor_clause}
             ORDER BY j.completed_at DESC NULLS LAST, j.created_at DESC, j.job_id DESC
             LIMIT {effective_limit}
             """
         async with self._pool.acquire() as conn:
-            rows = await conn.fetch(query, user_id)
-        return [_row_to_job(r) for r in rows]
+            rows = await conn.fetch(query, *params)
+        jobs = [_row_to_job(r) for r in rows]
+        next_cursor: str | None = None
+        if len(jobs) == effective_limit and jobs:
+            last = jobs[-1]
+            next_cursor = _encode_cursor(
+                completed_at=last.completed_at,
+                created_at=last.created_at,
+                job_id=last.job_id,
+            )
+        return jobs, next_cursor
 
     # ─── state transitions ───────────────────────────────────────────
 

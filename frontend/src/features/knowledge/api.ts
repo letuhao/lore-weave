@@ -79,6 +79,16 @@ export interface ExtractionJobWire {
   current_chapter_title: string | null;
 }
 
+/**
+ * C11 (D-K19b.1-01) — envelope for ``GET /extraction/jobs``. Paired
+ * with ``next_cursor`` so the FE can advance to more history pages.
+ * ``next_cursor`` is ``null`` on the last page.
+ */
+export interface ExtractionJobsPageResponse {
+  items: ExtractionJobWire[];
+  next_cursor: string | null;
+}
+
 export interface GraphStatsResponse {
   project_id: string;
   entity_count: number;
@@ -743,16 +753,23 @@ export const knowledgeApi = {
     );
   },
 
-  // K19b.1 — user-scoped cross-project list, grouped by status.
+  // K19b.1 + C11 — user-scoped cross-project list, grouped by status,
+  // with cursor pagination.
   // Powers the Jobs tab (no per-project fanout). BE validates
-  // status_group (422 on missing/invalid) and clamps limit to [1, 200].
+  // status_group (422 on missing/invalid), clamps limit to [1, 200],
+  // and returns 422 on a malformed cursor.
   listAllJobs(
-    params: { statusGroup: 'active' | 'history'; limit?: number },
+    params: {
+      statusGroup: 'active' | 'history';
+      limit?: number;
+      cursor?: string;
+    },
     token: string,
-  ): Promise<ExtractionJobWire[]> {
+  ): Promise<ExtractionJobsPageResponse> {
     const qs = new URLSearchParams({ status_group: params.statusGroup });
     if (params.limit != null) qs.set('limit', String(params.limit));
-    return apiJson<ExtractionJobWire[]>(
+    if (params.cursor != null) qs.set('cursor', params.cursor);
+    return apiJson<ExtractionJobsPageResponse>(
       `${BASE}/extraction/jobs?${qs.toString()}`,
       { token },
     );

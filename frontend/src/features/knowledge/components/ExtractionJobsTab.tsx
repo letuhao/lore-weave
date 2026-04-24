@@ -26,7 +26,11 @@ import { CostSummary } from './CostSummary';
 // read-only status monitor, which matches what users need while
 // extraction is running in the background.
 
-const COMPLETE_VISIBLE_LIMIT = 10;
+// C11 (D-K19b.2-01) — ``COMPLETE_VISIBLE_LIMIT`` was removed. Before
+// cursor pagination, BE shipped up to 50 history rows and the FE cap
+// hid 40 of them because there was no way past the server cap. With
+// cursor pagination the cap is meaningless: the user scrolls + clicks
+// Load more to see as much history as they want.
 
 // review-impl L3: hoisted to module scope so JobRow doesn't allocate a
 // fresh formatter on every render. Matches the USD_FORMATTER pattern
@@ -196,8 +200,16 @@ function retryInitialsFromJob(job: ExtractionJobWire): BuildGraphInitialValues {
 export function ExtractionJobsTab() {
   const { t } = useTranslation('knowledge');
   const { accessToken } = useAuth();
-  const { active, history, isLoading, activeError, historyError } =
-    useExtractionJobs();
+  const {
+    active,
+    history,
+    isLoading,
+    activeError,
+    historyError,
+    hasMoreHistory,
+    fetchMoreHistory,
+    isFetchingMoreHistory,
+  } = useExtractionJobs();
 
   // K19b.3: which job is the detail panel looking at.
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -209,9 +221,8 @@ export function ExtractionJobsTab() {
     (j) => j.status === 'running' || j.status === 'pending',
   );
   const paused = active.filter((j) => j.status === 'paused');
-  const complete = history
-    .filter((j) => j.status === 'complete')
-    .slice(0, COMPLETE_VISIBLE_LIMIT);
+  // C11: no slice — all complete jobs from loaded pages are visible.
+  const complete = history.filter((j) => j.status === 'complete');
   const failed = history.filter(
     (j) => j.status === 'failed' || j.status === 'cancelled',
   );
@@ -318,6 +329,27 @@ export function ExtractionJobsTab() {
         onSelect={setSelectedJobId}
         highlightWhenNonEmpty
       />
+
+      {/* C11 (D-K19b.1-01 + D-K19b.2-01) — Load more below history.
+          Only rendered when BE has more pages. Both Complete and
+          Failed sections grow as new pages arrive; a separate button
+          per section would fragment the UX since they share the same
+          underlying history query. */}
+      {hasMoreHistory && (
+        <div className="mt-3 flex justify-center">
+          <button
+            type="button"
+            onClick={fetchMoreHistory}
+            disabled={isFetchingMoreHistory}
+            className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-[12px] transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+            data-testid="jobs-history-load-more"
+          >
+            {isFetchingMoreHistory
+              ? t('jobs.loadingMore')
+              : t('jobs.loadMore')}
+          </button>
+        </div>
+      )}
 
       <JobDetailPanel
         open={!!selectedJobId}

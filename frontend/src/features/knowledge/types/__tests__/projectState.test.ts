@@ -346,6 +346,9 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
   // K19b.2 + K19b.3/5 — Jobs tab strings (top-level `jobs.*` namespace).
   const JOBS_KEYS = [
     'loading',
+    // C11 — Load more pagination
+    'loadMore',
+    'loadingMore',
     'error.active',
     'error.history',
     'sections.running.title',
