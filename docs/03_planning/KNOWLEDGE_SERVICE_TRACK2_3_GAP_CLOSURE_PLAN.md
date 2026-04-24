@@ -48,7 +48,7 @@ Statuses: `[ ]` open · `[D]` DESIGN in flight · `[B]` BUILD in flight · `[V]`
 | **C5** | Mobile polish: EntitiesTable + PrivacyTab tap targets | D-K19d-β-01, D-K19f-ε-01 | M | `[x]` | — |
 | **C6** | Chapter-title resolution for Job + Timeline rows | D-K19b.3-01, D-K19e-β-01 (shared book-service edge) | L | `[x]` | — |
 | **C7** | Humanised ETA formatter + stale-offset self-heal | D-K19b.3-02, D-K19e-β-02 | ~~S~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
-| **C8** | Drawer-search UX: source_type filter + in-card highlighting | D-K19e-γa-01, D-K19e-γb-01 | M | `[ ]` | — |
+| **C8** | Drawer-search UX: source_type filter + in-card highlighting (+BE facet counts per user addendum) | D-K19e-γa-01, D-K19e-γb-01 | ~~M~~ **XL** (reclassified at CLARIFY) | `[x]` | — |
 | **C9** | Entity concurrency + unlock | D-K19d-γa-01 (If-Match), D-K19d-γa-02 (unlock endpoint) | M | `[ ]` | — |
 | **C10** | Timeline feature gaps | D-K19e-α-01 (entity_id), D-K19e-α-03 (chronological range) | M | `[ ]` | — |
 | **C11** | Cursor pagination (jobs history + Complete list) | D-K19b.1-01, D-K19b.2-01 | M | `[ ]` | — |
@@ -179,14 +179,41 @@ Cycles whose single-line description is unclear: the full text lives under the i
 
 ---
 
-### C8 — Drawer-search UX: source_type filter + highlighting (P2, M)
-**Files.**
-- `services/knowledge-service/app/db/neo4j_repos/passages.py` — extend `find_passages_by_vector` with optional `source_type: str | None` kwarg; add WHERE branch.
-- `services/knowledge-service/app/routers/public/drawers.py` — add `source_type` Query param.
-- `frontend/src/features/knowledge/components/drawers/DrawerSearchFilters.tsx` — new filter pill row (chapter / chat / glossary).
-- `frontend/src/features/knowledge/components/drawers/DrawerSearchResultCard.tsx` — lexical highlight via `<mark>` wrap on query-term substrings.
+### C8 — Drawer-search UX: source_type filter + highlighting + BE facet counts (P2, XL) ✅
+**Shipped.** Session 51 cycle 34. Reclassified M→XL at CLARIFY (14 files with locales + user-requested BE counts).
 
-**Close:** D-K19e-γa-01, D-K19e-γb-01.
+**Files touched.**
+- BE repo [`passages.py`](../../services/knowledge-service/app/db/neo4j_repos/passages.py): NEW `count_passages_by_source_type` helper + `KNOWN_SOURCE_TYPES: frozenset` single-source-of-truth constant. `find_passages_by_vector` gains `source_type: str | None = None` kwarg; Cypher WHERE extended with `AND ($source_type IS NULL OR node.source_type = $source_type)`. Helper pads every known type to 0 + logs warning on DB-side source_type drift (data mismatch with constant).
+- BE router [`drawers.py`](../../services/knowledge-service/app/routers/public/drawers.py): `DrawerSourceType = Literal['chapter','chat','glossary']` enum (FastAPI 422s unknowns); new `source_type` Query param; **new `source_type_counts: dict[str, int]` response field always padded** (user addendum — requested BE return facet counts); count-session runs after project lookup (for 404 safety) but before every early return branch so "not indexed yet" states still surface coverage.
+- BE test [`test_drawers_api.py`](../../services/knowledge-service/tests/unit/test_drawers_api.py): new autouse fixture patches `count_passages_by_source_type` + `neo4j_session` (both now reached in early-return branches); +6 C8 tests (counts in response, filter threads to repo, null-default passes None, enum rejects unknown, no-embedding branch runs counts, whitespace short-circuit returns zero-padded counts).
+- BE test **NEW** [`test_passages_count.py`](../../services/knowledge-service/tests/unit/test_passages_count.py) (/review-impl LOW#4): 4 tests — padding missing keys, unknown-type drift+warning, empty-result all-zeros, embedding_model forwarded to Cypher.
+- FE util **NEW** [`highlightTokens.ts`](../../frontend/src/lib/highlightTokens.ts) + test (+8 cases incl. regression-lock for leftmost-alternative OR-regex priority per /review-impl LOW#7): whitespace split, ≥2-char tokens (CJK 1-char limitation documented), case-insensitive OR regex with escaped specials, returns `ReactNode[]` with `<mark>` wraps.
+- FE api [`api.ts`](../../frontend/src/features/knowledge/api.ts) (/review-impl MED#2): NEW `DRAWER_SOURCE_TYPES` tuple — single source of truth. `DrawerSourceType` derived via `typeof`. `DrawerSearchParams.source_type?`, `DrawerSearchResponse.source_type_counts`, `searchDrawers` forwards query param.
+- FE hook [`useDrawerSearch.ts`](../../frontend/src/features/knowledge/hooks/useDrawerSearch.ts): `sourceTypeCounts` result field; `EMPTY_COUNTS` derived from `DRAWER_SOURCE_TYPES` tuple (not hardcoded); queryKey includes `source_type ?? null`. +4 hook tests (pass-through, queryKey invalidation on change, counts surface, zero-padded when disabled).
+- FE component **NEW** [`DrawerSearchFilters.tsx`](../../frontend/src/features/knowledge/components/DrawerSearchFilters.tsx): radiogroup-a11y via `<fieldset><input type="radio" class="peer sr-only">` + `<label peer-checked:...>` pills styled via Tailwind. OPTIONS derived from `DRAWER_SOURCE_TYPES` tuple. Counts on typed pills only ("Any" has none).
+- FE component test **NEW** [`DrawerSearchFilters.test.tsx`](../../frontend/src/features/knowledge/components/__tests__/DrawerSearchFilters.test.tsx) (/review-impl LOW#5+6): 7 tests — renders 4 pills, counts on 3 not Any, click typed pill, click Any after typed (split per browser "no refire on checked"), checked reflects value, disabled cascades, missing-key defense.
+- FE component [`RawDrawersTab.tsx`](../../frontend/src/features/knowledge/components/RawDrawersTab.tsx): wires `sourceType` state + pill row + resets filter to null on project change (/review-impl MED#3) + passes debouncedQuery to cards. +4 interaction tests + 1 regression for project-reset.
+- FE component [`DrawerResultCard.tsx`](../../frontend/src/features/knowledge/components/DrawerResultCard.tsx): optional `query?: string` prop; when set, `highlightTokens(textPreview(hit.text), query)` wraps matches.
+- i18n 4 locales: `drawers.filters.sourceType.{label,any,chapter,chat,glossary}`.
+- FE test [`projectState.test.ts`](../../frontend/src/features/knowledge/types/__tests__/projectState.test.ts) (/review-impl MED#1): added 5 new paths to DRAWERS_KEYS — cross-locale presence regression lock.
+
+**Design decisions locked at CLARIFY.**
+1. User addendum: BE returns `source_type_counts` — project-wide facet totals filtered by `project.embedding_model`, reflects "what the search can actually find". Pad to all known types (0 for absent) for stable pill layout.
+2. Single-select pill filter (Any + 3), not multi-select — simpler BE contract, matches plan phrasing.
+3. Enum validated via Literal at router — FastAPI 422s unknowns.
+4. Native `<input type="radio">` + `<fieldset>` for free keyboard a11y (arrow keys, tab, enter/space).
+5. Highlight util: whitespace-split, ≥2-char tokens (CJK 1-char documented as limitation), case-insensitive regex with escaped specials.
+
+**/review-impl fixes folded in (7 + 1 accept-lock).**
+- (MED#1) cross-locale placeholder presence test
+- (MED#2) `DRAWER_SOURCE_TYPES` tuple derivation kills drift between FE/BE enum
+- (MED#3) filter reset on project change
+- (LOW#4) count-helper drift + embedding_model forward test
+- (LOW#5+6) NEW DrawerSearchFilters.test.tsx (7 cases)
+- (LOW#7) OR-regex leftmost regression lock (accept+document pattern)
+- (COSMETIC#9) ternary parens for clarity
+
+**Close:** D-K19e-γa-01 (source_type filter), D-K19e-γb-01 (in-card highlight).
 
 ---
 
@@ -342,13 +369,13 @@ Once text arrives:
 | Tier | Open | Done | Blocked |
 |---|---|---|---|
 | P1 (C1–C2) | 0 | **4 items / 2 cycles (C1 ✅ + C2 ✅)** | 0 |
-| P2 (C3–C9) | 5 items / 3 cycles | **11 items / 5 cycles (C3 ✅ + C4 ✅ + C5 ✅ + C6 ✅ + C7 ✅)** | 0 |
+| P2 (C3–C9) | 3 items / 2 cycles | **13 items / 6 cycles (C3 ✅ + C4 ✅ + C5 ✅ + C6 ✅ + C7 ✅ + C8 ✅)** | 0 |
 | P3 (C10–C13) | 7 items / 4 cycles | 0 | 0 |
 | P4 (C14–C15) | 3 items / 2 cycles | 0 | 0 |
 | P5 (C16–C18) | 3 items / 3 cycles | 0 | 0 DESIGN |
 | User-gated (C19–C20) | 2 items / 2 cycles | 0 | 2 ⏸ |
 
-**Total plan: 33 item-closures across 20 cycles. Completed: 15 items / 7 cycles. P1 tier done · P2 tier 5/7 done.**
+**Total plan: 33 item-closures across 20 cycles. Completed: 17 items / 8 cycles. P1 tier done · P2 tier 6/7 done.**
 (Some cycles close > 1 item; some items appear in >1 cycle. Check the cycle table for authoritative count.)
 
 ---

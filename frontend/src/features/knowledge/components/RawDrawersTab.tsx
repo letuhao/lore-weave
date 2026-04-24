@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { Search, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/auth';
-import type { DrawerSearchHit } from '../api';
+import type { DrawerSearchHit, DrawerSourceType } from '../api';
 import { parseDrawersError } from '../api';
 import {
   DRAWER_SEARCH_MIN_QUERY_LENGTH,
@@ -12,6 +12,7 @@ import {
 import { useProjects } from '../hooks/useProjects';
 import { DrawerResultCard } from './DrawerResultCard';
 import { DrawerDetailPanel } from './DrawerDetailPanel';
+import { DrawerSearchFilters } from './DrawerSearchFilters';
 
 // K19e.4 — Raw drawers tab container. Owns:
 //   - projectFilter (required — BE rejects searches without project_id)
@@ -46,6 +47,7 @@ export function RawDrawersTab() {
   const queryClient = useQueryClient();
   const [projectFilter, setProjectFilter] = useState<string>('');
   const [searchInput, setSearchInput] = useState<string>('');
+  const [sourceType, setSourceType] = useState<DrawerSourceType | null>(null);
   const [selectedHit, setSelectedHit] = useState<DrawerSearchHit | null>(null);
 
   const debouncedQuery = useDebounced(searchInput, SEARCH_DEBOUNCE_MS);
@@ -54,6 +56,7 @@ export function RawDrawersTab() {
   const {
     hits,
     embeddingModel,
+    sourceTypeCounts,
     disabled,
     isLoading,
     isFetching,
@@ -62,6 +65,7 @@ export function RawDrawersTab() {
     project_id: projectFilter,
     query: debouncedQuery,
     limit: LIMIT,
+    source_type: sourceType ?? undefined,
   });
 
   const parsedError = error ? parseDrawersError(error) : null;
@@ -101,7 +105,13 @@ export function RawDrawersTab() {
           </span>
           <select
             value={projectFilter}
-            onChange={(e) => setProjectFilter(e.target.value)}
+            onChange={(e) => {
+              setProjectFilter(e.target.value);
+              // C8 /review-impl [MED#3]: reset source_type filter when
+              // project changes. Holding e.g. "Chapter" across projects
+              // hides hits from a project with only chat passages.
+              setSourceType(null);
+            }}
             className="rounded-md border bg-input px-2 py-1.5 text-xs outline-none focus:border-ring"
             data-testid="drawers-filter-project"
           >
@@ -133,6 +143,18 @@ export function RawDrawersTab() {
             />
           </div>
         </label>
+      </div>
+
+      {/* C8 — source_type filter pill row. Rendered even when project
+          isn't picked yet (counts stay zero-padded) so the layout
+          doesn't jump when the user selects a project. */}
+      <div className="mb-4">
+        <DrawerSearchFilters
+          value={sourceType}
+          counts={sourceTypeCounts}
+          onChange={setSourceType}
+          disabled={!projectFilter}
+        />
       </div>
 
       {showNoProject && (
@@ -243,6 +265,7 @@ export function RawDrawersTab() {
               <DrawerResultCard
                 key={hit.id}
                 hit={hit}
+                query={debouncedQuery}
                 onOpen={() => setSelectedHit(hit)}
               />
             ))}

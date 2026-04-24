@@ -642,6 +642,12 @@ describe('i18n keys cover every ProjectStateKind + every action + every card bod
     'unknownError',
     'filters.project',
     'filters.selectProject',
+    // C8 — source_type filter pill row keys.
+    'filters.sourceType.label',
+    'filters.sourceType.any',
+    'filters.sourceType.chapter',
+    'filters.sourceType.chat',
+    'filters.sourceType.glossary',
     'searchInput.label',
     'searchInput.placeholder',
     'card.sourcePrefix',

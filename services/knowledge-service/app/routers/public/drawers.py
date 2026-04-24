@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -26,9 +27,16 @@ from pydantic import BaseModel
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.passages import (
+    KNOWN_SOURCE_TYPES,
     SUPPORTED_PASSAGE_DIMS,
+    count_passages_by_source_type,
     find_passages_by_vector,
 )
+
+# C8 (D-K19e-γa-01) — enum for the source_type filter query param.
+# Mirrors KNOWN_SOURCE_TYPES (single source of truth in the repo); Literal
+# is the only form FastAPI can introspect for 422 validation.
+DrawerSourceType = Literal["chapter", "chat", "glossary"]
 from app.db.repositories.projects import ProjectsRepo
 from app.deps import get_embedding_client, get_projects_repo
 from app.middleware.jwt_auth import get_current_user
@@ -76,6 +84,13 @@ class DrawerSearchResponse(BaseModel):
     # and to distinguish the "not indexed" branch (null) from a
     # zero-hit live search.
     embedding_model: str | None
+    # C8 (D-K19e-γa-01): facet counts per source_type, always padded
+    # with the full KNOWN_SOURCE_TYPES key set (0 for absent) so the
+    # FE pill row stays layout-stable regardless of what the project
+    # actually contains. Counts reflect project-wide totals filtered
+    # to the project's current embedding_model (or all passages when
+    # no model is configured — useful "not indexed yet" coverage view).
+    source_type_counts: dict[str, int]
 
 
 @router.get("/drawers/search", response_model=DrawerSearchResponse)
@@ -94,6 +109,13 @@ async def search_drawers(
         description="Free-text semantic search query.",
     ),
     limit: int = Query(40, ge=1, le=DRAWERS_MAX_LIMIT),
+    source_type: DrawerSourceType | None = Query(
+        None,
+        description=(
+            "C8: filter hits to a single source_type. Omit for 'Any'. "
+            "FastAPI 422s anything outside the Literal enum."
+        ),
+    ),
     user_id: UUID = Depends(get_current_user),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     embedding_client: EmbeddingClient = Depends(get_embedding_client),
@@ -116,10 +138,15 @@ async def search_drawers(
         live embedding's length disagrees with the project's stored
         ``embedding_dimension`` (user changed model out-of-band).
     """
+    # C8: stable empty-facet map for early branches that skip the DB.
+    empty_counts: dict[str, int] = {st: 0 for st in KNOWN_SOURCE_TYPES}
+
     # Whitespace-only query is semantically empty. Short-circuit
-    # before burning a provider-registry call.
+    # before burning a provider-registry call OR a Neo4j session.
     if not query.strip():
-        return DrawerSearchResponse(hits=[], embedding_model=None)
+        return DrawerSearchResponse(
+            hits=[], embedding_model=None, source_type_counts=empty_counts,
+        )
 
     project = await projects_repo.get(user_id, project_id)
     if project is None:
@@ -128,11 +155,23 @@ async def search_drawers(
             detail="project not found",
         )
 
+    # C8: facet counts run once per request, BEFORE the early-return
+    # branches below so "not indexed yet" states still show coverage.
+    async with neo4j_session() as count_session:
+        counts = await count_passages_by_source_type(
+            count_session,
+            user_id=str(user_id),
+            project_id=str(project_id),
+            embedding_model=project.embedding_model,
+        )
+
     if (
         project.embedding_model is None
         or project.embedding_dimension is None
     ):
-        return DrawerSearchResponse(hits=[], embedding_model=None)
+        return DrawerSearchResponse(
+            hits=[], embedding_model=None, source_type_counts=counts,
+        )
 
     if project.embedding_dimension not in SUPPORTED_PASSAGE_DIMS:
         logger.warning(
@@ -142,6 +181,7 @@ async def search_drawers(
         )
         return DrawerSearchResponse(
             hits=[], embedding_model=project.embedding_model,
+            source_type_counts=counts,
         )
 
     try:
@@ -176,6 +216,7 @@ async def search_drawers(
         # dim_mismatch 502. Treat as empty search.
         return DrawerSearchResponse(
             hits=[], embedding_model=project.embedding_model,
+            source_type_counts=counts,
         )
     query_vector = embed_result.embeddings[0]
 
@@ -188,6 +229,7 @@ async def search_drawers(
                 query_vector=query_vector,
                 dim=project.embedding_dimension,
                 embedding_model=project.embedding_model,
+                source_type=source_type,
                 limit=limit,
                 include_vectors=False,
             )
@@ -226,4 +268,5 @@ async def search_drawers(
     ]
     return DrawerSearchResponse(
         hits=hits, embedding_model=project.embedding_model,
+        source_type_counts=counts,
     )

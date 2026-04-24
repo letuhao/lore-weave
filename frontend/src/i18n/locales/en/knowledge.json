@@ -96,7 +96,14 @@
     "unknownError": "Unknown error. Please try again.",
     "filters": {
       "project": "Project",
-      "selectProject": "Select a project"
+      "selectProject": "Select a project",
+      "sourceType": {
+        "label": "Source",
+        "any": "Any",
+        "chapter": "Chapter",
+        "chat": "Chat",
+        "glossary": "Glossary"
+      }
     },
     "searchInput": {
       "label": "Search",

@@ -27,11 +27,21 @@ __all__ = [
     "Passage",
     "PassageSearchHit",
     "SUPPORTED_PASSAGE_DIMS",
+    "KNOWN_SOURCE_TYPES",
     "passage_canonical_id",
     "upsert_passage",
     "delete_passages_for_source",
     "find_passages_by_vector",
+    "count_passages_by_source_type",
 ]
+
+# C8 (D-K19e-γa-01) — closed set of recognised source_type values on
+# :Passage nodes. Single source of truth consumed by:
+#   - drawers.py router (Literal validation + response padding)
+#   - count_passages_by_source_type (key padding so every type appears
+#     even at 0 count)
+# Add a member here first before writing a new source_type producer.
+KNOWN_SOURCE_TYPES: frozenset[str] = frozenset({"chapter", "chat", "glossary"})
 
 logger = logging.getLogger(__name__)
 
@@ -260,10 +270,64 @@ WITH node, score
 WHERE node.user_id = $user_id
   AND ($project_id IS NULL OR node.project_id = $project_id)
   AND ($embedding_model IS NULL OR node.embedding_model = $embedding_model)
+  AND ($source_type IS NULL OR node.source_type = $source_type)
 RETURN node AS p, score AS raw_score{vector_projection}
 ORDER BY raw_score DESC
 LIMIT $limit
 """
+
+
+_COUNT_BY_SOURCE_TYPE_CYPHER = """
+MATCH (p:Passage)
+WHERE p.user_id = $user_id
+  AND p.project_id = $project_id
+  AND ($embedding_model IS NULL OR p.embedding_model = $embedding_model)
+RETURN p.source_type AS source_type, count(*) AS n
+"""
+
+
+async def count_passages_by_source_type(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    embedding_model: str | None = None,
+) -> dict[str, int]:
+    """C8 (D-K19e-γa-01) — facet counts keyed by source_type.
+
+    Returns a dict with EVERY key in ``KNOWN_SOURCE_TYPES`` (padded to
+    0 when absent) so the FE can render a stable pill layout regardless
+    of which types the project actually contains yet.
+
+    ``embedding_model`` filter: pass the project's current model to
+    count only passages the vector search would reach. Pass None to
+    count everything (useful for the "not indexed yet" state where
+    coverage across models is the interesting signal).
+
+    Unknown source_type values from the DB (data drift — a new code
+    path added a source_type before this constant was updated) are
+    dropped from the result WITH a logged warning.
+    """
+    result = await run_read(
+        session,
+        _COUNT_BY_SOURCE_TYPE_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        embedding_model=embedding_model,
+    )
+    counts: dict[str, int] = {st: 0 for st in KNOWN_SOURCE_TYPES}
+    async for rec in result:
+        st = rec["source_type"]
+        n = int(rec["n"])
+        if st in KNOWN_SOURCE_TYPES:
+            counts[st] = n
+        else:
+            logger.warning(
+                "count_passages_by_source_type: unknown source_type=%r "
+                "(count=%d) in project %s — extend KNOWN_SOURCE_TYPES",
+                st, n, project_id,
+            )
+    return counts
 
 
 async def find_passages_by_vector(
@@ -274,6 +338,7 @@ async def find_passages_by_vector(
     query_vector: list[float],
     dim: int,
     embedding_model: str | None = None,
+    source_type: str | None = None,
     limit: int = 40,
     oversample_factor: int = 10,
     include_vectors: bool = False,
@@ -325,6 +390,7 @@ async def find_passages_by_vector(
         query_vector=query_vector,
         project_id=project_id,
         embedding_model=embedding_model,
+        source_type=source_type,
         limit=limit,
     )
     hits: list[PassageSearchHit] = []

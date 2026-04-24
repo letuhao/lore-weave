@@ -415,10 +415,21 @@ export interface DrawerSearchHit {
   raw_score: number;
 }
 
+/** C8 (D-K19e-γa-01): closed enum mirrored from the BE's
+ *  ``Literal['chapter','chat','glossary']``. Source of truth for the
+ *  FE is this tuple — ``DrawerSourceType`` is derived from it, and
+ *  consumers (filter pill row, pad helpers) iterate the tuple instead
+ *  of hardcoding the 3-key set. Extending with a 4th type is a single
+ *  edit here; BE Literal must be bumped in lockstep. */
+export const DRAWER_SOURCE_TYPES = ['chapter', 'chat', 'glossary'] as const;
+export type DrawerSourceType = (typeof DRAWER_SOURCE_TYPES)[number];
+
 export interface DrawerSearchParams {
   project_id: string;
   query: string;
   limit?: number;
+  /** C8: optional filter. Omit for "Any". */
+  source_type?: DrawerSourceType;
 }
 
 export interface DrawerSearchResponse {
@@ -427,6 +438,11 @@ export interface DrawerSearchResponse {
    *  (not-indexed-yet branch). ``string`` on any other outcome,
    *  including zero-hit live searches. */
   embedding_model: string | null;
+  /** C8 (D-K19e-γa-01): facet counts per source_type. Always includes
+   *  every key in the ``DrawerSourceType`` set (0 when absent) so the
+   *  FE pill row stays layout-stable. Reflects project-wide totals
+   *  filtered to the project's current embedding_model. */
+  source_type_counts: Record<string, number>;
 }
 
 export type DrawerSearchErrorCode =
@@ -992,6 +1008,7 @@ export const knowledgeApi = {
     qs.set('project_id', params.project_id);
     qs.set('query', params.query);
     if (params.limit != null) qs.set('limit', String(params.limit));
+    if (params.source_type != null) qs.set('source_type', params.source_type);
     return apiJson<DrawerSearchResponse>(
       `${BASE}/drawers/search?${qs.toString()}`,
       { token },

@@ -108,6 +108,84 @@ describe('useDrawerSearch', () => {
     );
   });
 
+  // ── C8 — source_type filter + facet counts ────────────────────────
+
+  it('passes source_type through to the API when the filter is set', async () => {
+    searchDrawersMock.mockResolvedValue({
+      hits: [],
+      embedding_model: 'bge-m3',
+      source_type_counts: { chapter: 0, chat: 0, glossary: 0 },
+    });
+    renderHook(
+      () =>
+        useDrawerSearch({
+          project_id: 'p-1',
+          query: 'bridge',
+          source_type: 'chapter',
+        }),
+      { wrapper: wrapper() },
+    );
+    await waitFor(() => {
+      expect(searchDrawersMock).toHaveBeenCalledWith(
+        { project_id: 'p-1', query: 'bridge', source_type: 'chapter' },
+        'tok-test',
+      );
+    });
+  });
+
+  it('changing source_type fires a new BE call (queryKey includes it)', async () => {
+    searchDrawersMock.mockResolvedValue({
+      hits: [],
+      embedding_model: 'bge-m3',
+      source_type_counts: { chapter: 10, chat: 5, glossary: 2 },
+    });
+    const { rerender } = renderHook(
+      ({ source_type }: { source_type?: 'chapter' | 'chat' | 'glossary' }) =>
+        useDrawerSearch({
+          project_id: 'p-1',
+          query: 'bridge',
+          source_type,
+        }),
+      { wrapper: wrapper(), initialProps: { source_type: undefined } },
+    );
+    await waitFor(() => {
+      expect(searchDrawersMock).toHaveBeenCalledTimes(1);
+    });
+    rerender({ source_type: 'chapter' });
+    await waitFor(() => {
+      expect(searchDrawersMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('surfaces sourceTypeCounts from BE response', async () => {
+    searchDrawersMock.mockResolvedValue({
+      hits: [HIT_STUB],
+      embedding_model: 'bge-m3',
+      source_type_counts: { chapter: 28, chat: 10, glossary: 2 },
+    });
+    const { result } = renderHook(
+      () => useDrawerSearch({ project_id: 'p-1', query: 'bridge' }),
+      { wrapper: wrapper() },
+    );
+    await waitFor(() => {
+      expect(result.current.hits).toHaveLength(1);
+    });
+    expect(result.current.sourceTypeCounts).toEqual({
+      chapter: 28, chat: 10, glossary: 2,
+    });
+  });
+
+  it('returns zero-padded sourceTypeCounts when disabled (no project yet)', () => {
+    const { result } = renderHook(
+      () => useDrawerSearch({ project_id: '', query: 'bridge' }),
+      { wrapper: wrapper() },
+    );
+    expect(result.current.disabled).toBe(true);
+    expect(result.current.sourceTypeCounts).toEqual({
+      chapter: 0, chat: 0, glossary: 0,
+    });
+  });
+
   it('scopes queryKey by userId so logout→login cannot leak cache (M1)', async () => {
     const qc = new QueryClient({
       defaultOptions: { queries: { retry: false } },

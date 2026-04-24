@@ -96,7 +96,14 @@
     "unknownError": "Lỗi không xác định. Vui lòng thử lại.",
     "filters": {
       "project": "Dự án",
-      "selectProject": "Chọn một dự án"
+      "selectProject": "Chọn một dự án",
+      "sourceType": {
+        "label": "Nguồn",
+        "any": "Tất cả",
+        "chapter": "Chương",
+        "chat": "Trò chuyện",
+        "glossary": "Thuật ngữ"
+      }
     },
     "searchInput": {
       "label": "Tìm kiếm",

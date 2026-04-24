@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { highlightTokens } from '@/lib/highlightTokens';
 import type { DrawerSearchHit } from '../api';
 
 // K19e.4 — presentational drawer result card. Rendered as a focusable
@@ -11,6 +12,10 @@ import type { DrawerSearchHit } from '../api';
 export interface DrawerResultCardProps {
   hit: DrawerSearchHit;
   onOpen: () => void;
+  /** C8 (D-K19e-γb-01): current search query; when provided, matching
+   *  tokens in the text preview are wrapped in <mark>. Undefined/empty
+   *  → no highlight. */
+  query?: string;
 }
 
 const TEXT_PREVIEW_MAX = 160;
@@ -37,7 +42,11 @@ function textPreview(text: string): string {
   return text.slice(0, TEXT_PREVIEW_MAX).trimEnd() + '…';
 }
 
-export function DrawerResultCard({ hit, onOpen }: DrawerResultCardProps) {
+export function DrawerResultCard({
+  hit,
+  onOpen,
+  query,
+}: DrawerResultCardProps) {
   const { t } = useTranslation('knowledge');
   const sourceClass =
     SOURCE_TYPE_CLASSES[hit.source_type] ??
@@ -103,7 +112,9 @@ export function DrawerResultCard({ hit, onOpen }: DrawerResultCardProps) {
             })}</span>
           </span>
           <span className="line-clamp-2 whitespace-pre-wrap break-words text-foreground">
-            {textPreview(hit.text)}
+            {query
+              ? highlightTokens(textPreview(hit.text), query)
+              : textPreview(hit.text)}
           </span>
         </span>
         <span

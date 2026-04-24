@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
 import {
+  DRAWER_SOURCE_TYPES,
   knowledgeApi,
   type DrawerSearchParams,
   type DrawerSearchResponse,
@@ -23,6 +24,10 @@ export const DRAWER_SEARCH_MIN_QUERY_LENGTH = 3;
 export interface UseDrawerSearchResult {
   hits: DrawerSearchResponse['hits'];
   embeddingModel: string | null;
+  /** C8: facet counts per source_type. Zero-padded when the hook is
+   *  disabled (no project yet) so the filter pill row can still render
+   *  a stable layout. */
+  sourceTypeCounts: Record<string, number>;
   /** True when the hook is actively disabled because the user hasn't
    *  supplied a project + meaningful query yet. The tab uses this to
    *  render a "pick a project / type a query" prompt instead of an
@@ -32,6 +37,13 @@ export interface UseDrawerSearchResult {
   isFetching: boolean;
   error: Error | null;
 }
+
+// C8 /review-impl [MED#2]: derived from DRAWER_SOURCE_TYPES so adding
+// a 4th source type is a single edit in api.ts — this fallback never
+// lags the BE Literal.
+const EMPTY_COUNTS: Record<string, number> = Object.fromEntries(
+  DRAWER_SOURCE_TYPES.map((t) => [t, 0]),
+);
 
 export function useDrawerSearch(
   params: DrawerSearchParams,
@@ -50,6 +62,7 @@ export function useDrawerSearch(
       params.project_id,
       params.query,
       params.limit ?? 40,
+      params.source_type ?? null,
     ] as const,
     queryFn: () => knowledgeApi.searchDrawers(params, accessToken!),
     enabled: !!accessToken && queryActive,
@@ -60,6 +73,7 @@ export function useDrawerSearch(
   return {
     hits: query.data?.hits ?? [],
     embeddingModel: query.data?.embedding_model ?? null,
+    sourceTypeCounts: query.data?.source_type_counts ?? EMPTY_COUNTS,
     disabled: !queryActive,
     // react-query already keeps isLoading=false when enabled=false, so
     // no additional queryActive guard is needed here.

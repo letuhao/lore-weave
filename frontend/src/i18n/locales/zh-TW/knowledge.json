@@ -96,7 +96,14 @@
     "unknownError": "未知錯誤。請再試一次。",
     "filters": {
       "project": "專案",
-      "selectProject": "選擇專案"
+      "selectProject": "選擇專案",
+      "sourceType": {
+        "label": "來源",
+        "any": "全部",
+        "chapter": "章節",
+        "chat": "聊天",
+        "glossary": "詞彙表"
+      }
     },
     "searchInput": {
       "label": "搜尋",

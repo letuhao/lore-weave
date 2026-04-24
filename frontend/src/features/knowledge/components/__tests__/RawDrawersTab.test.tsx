@@ -226,4 +226,131 @@ describe('RawDrawersTab', () => {
     await screen.findByTestId('drawers-error');
     expect(screen.queryByTestId('drawers-retry')).toBeNull();
   });
+
+  // ── C8 — source_type filter + facet counts + highlight ───────────
+
+  it('renders the source-type pill row (always, layout-stable)', async () => {
+    render(<RawDrawersTab />, { wrapper: Wrapper });
+    // Even before project pick, the radio group exists (disabled).
+    expect(screen.getByTestId('drawers-filter-source-type')).toBeInTheDocument();
+    expect(screen.getByTestId('drawers-filter-any')).toBeInTheDocument();
+    expect(screen.getByTestId('drawers-filter-chapter')).toBeInTheDocument();
+    expect(screen.getByTestId('drawers-filter-chat')).toBeInTheDocument();
+    expect(screen.getByTestId('drawers-filter-glossary')).toBeInTheDocument();
+  });
+
+  it('clicking a source-type pill fires a new BE call with the filter', async () => {
+    searchDrawersMock.mockResolvedValue({
+      hits: [],
+      embedding_model: 'bge-m3',
+      source_type_counts: { chapter: 28, chat: 10, glossary: 2 },
+    });
+    render(<RawDrawersTab />, { wrapper: Wrapper });
+    await selectProject('p-1');
+    fireEvent.change(screen.getByTestId('drawers-search-input'), {
+      target: { value: 'bridge' },
+    });
+    await waitFor(() => {
+      expect(searchDrawersMock).toHaveBeenCalledTimes(1);
+    });
+    // Initial call has no source_type.
+    expect(searchDrawersMock.mock.calls[0][0].source_type).toBeUndefined();
+
+    // Click Chapter pill.
+    fireEvent.click(screen.getByTestId('drawers-filter-chapter'));
+    await waitFor(() => {
+      expect(searchDrawersMock).toHaveBeenCalledTimes(2);
+    });
+    expect(searchDrawersMock.mock.calls[1][0].source_type).toBe('chapter');
+  });
+
+  it('renders BE-supplied facet counts on each pill', async () => {
+    searchDrawersMock.mockResolvedValue({
+      hits: [],
+      embedding_model: 'bge-m3',
+      source_type_counts: { chapter: 28, chat: 10, glossary: 2 },
+    });
+    render(<RawDrawersTab />, { wrapper: Wrapper });
+    await selectProject('p-1');
+    fireEvent.change(screen.getByTestId('drawers-search-input'), {
+      target: { value: 'bridge' },
+    });
+    // Counts render once data arrives.
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('drawers-filter-chapter-count').textContent,
+      ).toContain('28');
+    });
+    expect(
+      screen.getByTestId('drawers-filter-chat-count').textContent,
+    ).toContain('10');
+    expect(
+      screen.getByTestId('drawers-filter-glossary-count').textContent,
+    ).toContain('2');
+    // "Any" pill has no count badge.
+    expect(
+      screen.queryByTestId('drawers-filter-any-count'),
+    ).toBeNull();
+  });
+
+  it('resets source_type filter to Any when project changes (review-impl MED#3)', async () => {
+    // Holding e.g. "Chapter" across projects would surface 0 hits in
+    // a chat-only project while the pill claims "Chapter (0)".
+    listProjectsMock.mockResolvedValue({
+      items: [
+        { project_id: 'p-1', name: 'Crimson Echoes' },
+        { project_id: 'p-2', name: 'Indigo Archive' },
+      ],
+      next_cursor: null,
+    });
+    searchDrawersMock.mockResolvedValue({
+      hits: [],
+      embedding_model: 'bge-m3',
+      source_type_counts: { chapter: 28, chat: 10, glossary: 2 },
+    });
+    render(<RawDrawersTab />, { wrapper: Wrapper });
+    await selectProject('p-1');
+    fireEvent.change(screen.getByTestId('drawers-search-input'), {
+      target: { value: 'bridge' },
+    });
+    // Set filter to Chapter.
+    fireEvent.click(screen.getByTestId('drawers-filter-chapter'));
+    await waitFor(() => {
+      expect(
+        (screen.getByTestId('drawers-filter-chapter') as HTMLInputElement)
+          .checked,
+      ).toBe(true);
+    });
+    // Switch project → "Any" becomes active again.
+    fireEvent.change(screen.getByTestId('drawers-filter-project'), {
+      target: { value: 'p-2' },
+    });
+    await waitFor(() => {
+      expect(
+        (screen.getByTestId('drawers-filter-any') as HTMLInputElement).checked,
+      ).toBe(true);
+    });
+    expect(
+      (screen.getByTestId('drawers-filter-chapter') as HTMLInputElement).checked,
+    ).toBe(false);
+  });
+
+  it('highlights query-matching tokens in card text via <mark>', async () => {
+    searchDrawersMock.mockResolvedValue({
+      hits: [HIT_DUEL],
+      embedding_model: 'bge-m3',
+      source_type_counts: { chapter: 1, chat: 0, glossary: 0 },
+    });
+    render(<RawDrawersTab />, { wrapper: Wrapper });
+    await selectProject('p-1');
+    fireEvent.change(screen.getByTestId('drawers-search-input'), {
+      target: { value: 'bridge' },
+    });
+    const card = await screen.findByTestId('drawer-result-card');
+    const marks = card.querySelectorAll('mark');
+    expect(marks.length).toBeGreaterThanOrEqual(1);
+    expect([...marks].some((m) => /bridge/i.test(m.textContent ?? ''))).toBe(
+      true,
+    );
+  });
 });

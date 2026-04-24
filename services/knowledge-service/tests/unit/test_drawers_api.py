@@ -1,10 +1,13 @@
 """K19e.5 — unit tests for the public drawer (passage) search endpoint.
 
-Mocks ProjectsRepo, EmbeddingClient, and find_passages_by_vector.
+Mocks ProjectsRepo, EmbeddingClient, find_passages_by_vector, and
+count_passages_by_source_type (C8).
+
 Covers: happy path, cross-user 404, no-embedding-configured empty,
 unsupported-dim empty, whitespace query short-circuit, EmbeddingError
 → 502, empty-embedding short-circuit, dim-mismatch ValueError → 502,
-limit forwarding, query length validation.
+limit forwarding, query length validation, source_type enum validation,
+source_type_counts facet delivery.
 """
 
 from __future__ import annotations
@@ -89,6 +92,33 @@ def _clear_overrides():
     from app.main import app
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _mock_count_passages():
+    """C8: every test that exercises the router beyond the whitespace
+    short-circuit will call count_passages_by_source_type. Default to
+    empty-facet counts so existing tests can rely on the facet field
+    being present in responses without each adding its own patch.
+    Individual tests opt in to non-zero counts by overriding the mock.
+
+    Also patches ``neo4j_session`` used by the count path — early-return
+    branches (no_embedding, unsupported_dim, error_502) now reach the
+    count session before returning, so every test needs this stub.
+    Tests that also want to mock the vector-search session must patch
+    ``neo4j_session`` themselves (overrides this fixture's patch for
+    the duration of the test, which is fine — count + vector search
+    both get the same noop session anyway).
+    """
+    with patch(
+        "app.routers.public.drawers.count_passages_by_source_type",
+        new_callable=AsyncMock,
+    ) as m, patch(
+        "app.routers.public.drawers.neo4j_session",
+        new=lambda: _noop_session(),
+    ):
+        m.return_value = {"chapter": 0, "chat": 0, "glossary": 0}
+        yield m
 
 
 _SENTINEL_DEFAULT_PROJECT = object()
@@ -439,3 +469,121 @@ def test_drawers_bad_project_uuid_rejected():
         "/v1/knowledge/drawers/search?project_id=not-a-uuid&query=test"
     )
     assert resp.status_code == 422
+
+
+# ── C8 — source_type filter + facet counts ──────────────────────────
+
+
+@patch(
+    "app.routers.public.drawers.find_passages_by_vector",
+    new_callable=AsyncMock,
+)
+@patch(
+    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+)
+def test_drawers_source_type_counts_in_response(mock_find, _mock_count_passages):
+    """Happy path response carries source_type_counts with the 3 known
+    keys (chapter/chat/glossary), sourced from the count helper."""
+    mock_find.return_value = [_hit_stub(0, 0.9)]
+    _mock_count_passages.return_value = {
+        "chapter": 28,
+        "chat": 10,
+        "glossary": 2,
+    }
+    client, _, _ = _make_client()
+    resp = client.get(
+        f"/v1/knowledge/drawers/search?project_id={_PROJECT_ID}&query=test"
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["source_type_counts"] == {
+        "chapter": 28,
+        "chat": 10,
+        "glossary": 2,
+    }
+
+
+@patch(
+    "app.routers.public.drawers.find_passages_by_vector",
+    new_callable=AsyncMock,
+)
+@patch(
+    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+)
+def test_drawers_source_type_filter_threads_to_repo(mock_find, _mock_count_passages):
+    """source_type=chapter query param must reach the vector-search
+    kwarg so the Cypher WHERE branch is exercised."""
+    mock_find.return_value = []
+    client, _, _ = _make_client()
+    resp = client.get(
+        f"/v1/knowledge/drawers/search?project_id={_PROJECT_ID}"
+        f"&query=test&source_type=chapter"
+    )
+    assert resp.status_code == 200
+    call = mock_find.await_args.kwargs
+    assert call["source_type"] == "chapter"
+
+
+@patch(
+    "app.routers.public.drawers.find_passages_by_vector",
+    new_callable=AsyncMock,
+)
+@patch(
+    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+)
+def test_drawers_source_type_null_default_passes_none(mock_find, _mock_count_passages):
+    """Omitting source_type must pass None to the repo (not an empty
+    string), so the Cypher NULL-branch activates."""
+    mock_find.return_value = []
+    client, _, _ = _make_client()
+    resp = client.get(
+        f"/v1/knowledge/drawers/search?project_id={_PROJECT_ID}&query=test"
+    )
+    assert resp.status_code == 200
+    call = mock_find.await_args.kwargs
+    assert call["source_type"] is None
+
+
+def test_drawers_source_type_enum_rejects_unknown():
+    """Literal['chapter','chat','glossary'] — anything else is 422."""
+    client, _, _ = _make_client()
+    resp = client.get(
+        f"/v1/knowledge/drawers/search?project_id={_PROJECT_ID}"
+        f"&query=test&source_type=books"
+    )
+    assert resp.status_code == 422
+
+
+def test_drawers_source_type_counts_present_on_no_embedding_branch(_mock_count_passages):
+    """No-embedding early branch still surfaces facet counts so the FE
+    can render pill coverage even in the 'not indexed yet' state."""
+    _mock_count_passages.return_value = {
+        "chapter": 5, "chat": 0, "glossary": 0,
+    }
+    client, _, _ = _make_client(
+        project=_project_stub(embedding_model=None, embedding_dimension=None),
+    )
+    resp = client.get(
+        f"/v1/knowledge/drawers/search?project_id={_PROJECT_ID}&query=test"
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["source_type_counts"] == {
+        "chapter": 5, "chat": 0, "glossary": 0,
+    }
+
+
+def test_drawers_whitespace_short_circuit_returns_zero_counts(_mock_count_passages):
+    """Whitespace-only query skips DB entirely — counts are zero-padded
+    (FE still renders stable pill layout)."""
+    client, _, _ = _make_client()
+    resp = client.get(
+        f"/v1/knowledge/drawers/search?project_id={_PROJECT_ID}&query=%20"
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["source_type_counts"] == {
+        "chapter": 0, "chat": 0, "glossary": 0,
+    }
+    # Count helper NOT called — we short-circuited before project lookup.
+    _mock_count_passages.assert_not_awaited()
