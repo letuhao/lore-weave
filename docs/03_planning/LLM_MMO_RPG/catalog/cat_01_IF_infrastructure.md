@@ -338,4 +338,15 @@ generated_by: scripts/chunk_doc.py
 | IF-43h | Supply chain runbook library — 6 runbooks | ✅ | V1 | IF-36, IF-43 | [02_storage/SR10_supply_chain.md §12AM.9](../02_storage/SR10_supply_chain.md) (SR10-D8; SR3 27-gate → 39) |
 | IF-43i | Build reproducibility check (V1+30d 10% sample; V2+ blocks merge) | 📦 | V1+30d | IF-43 | [02_storage/SR10_supply_chain.md §12AM.10](../02_storage/SR10_supply_chain.md) (SR10-D9) |
 | IF-43j | `supply_chain_events` audit + `admin/cve-override` + `admin/supply-chain-freeze` CLI | ✅ | V1 | IF-43, IF-20 | [02_storage/SR10_supply_chain.md §12AM.10, §12AM.12](../02_storage/SR10_supply_chain.md) (SR10-D9, SR10-governance) |
+| IF-44 | Turn state machine library (`contracts/turn/state_machine.go`) | ✅ | V1 | — | [02_storage/SR11_turn_ux_reliability.md §12AN.2](../02_storage/SR11_turn_ux_reliability.md) (SR11-D1) |
+| IF-44a | `turn.status.update` WS message + per-state indicator UX | ✅ | V1 | IF-44, IF-32 | [02_storage/SR11_turn_ux_reliability.md §12AN.3](../02_storage/SR11_turn_ux_reliability.md) (SR11-D2) |
+| IF-44b | `PresenceState` enum + `session_participants` schema extension + debounced WS propagation | ✅ | V1 | IF-44 | [02_storage/SR11_turn_ux_reliability.md §12AN.4](../02_storage/SR11_turn_ux_reliability.md) (SR11-D3) |
+| IF-44c | Disconnect-handling 3-policy matrix + per-session/reality config | ✅ | V1 | IF-44, IF-44b | [02_storage/SR11_turn_ux_reliability.md §12AN.5](../02_storage/SR11_turn_ux_reliability.md) (SR11-D4) |
+| IF-44d | Optimistic UX framework + divergence rollback + toast notification | ✅ | V1 | IF-44a | [02_storage/SR11_turn_ux_reliability.md §12AN.6](../02_storage/SR11_turn_ux_reliability.md) (SR11-D5) |
+| IF-44e | Degraded-mode UX banner system per SR6-D5 | ✅ | V1 | IF-44a, IF-39e | [02_storage/SR11_turn_ux_reliability.md §12AN.7](../02_storage/SR11_turn_ux_reliability.md) (SR11-D6) |
+| IF-44f | FIFO + tier-bump queue + 30%-cap fairness Gini metric | ✅ | V1 | IF-44, IF-34 | [02_storage/SR11_turn_ux_reliability.md §12AN.8](../02_storage/SR11_turn_ux_reliability.md) (SR11-D7) |
+| IF-44g | `turn_outcomes` audit table (1y retention; 4 indexes) | ✅ | V1 | IF-44 | [02_storage/SR11_turn_ux_reliability.md §12AN.9](../02_storage/SR11_turn_ux_reliability.md) (SR11-D8) |
+| IF-44h | Registered error code library (`contracts/errors/user_errors.yaml`) with i18n + CI lint | ✅ | V1 | IF-44, IF-16 | [02_storage/SR11_turn_ux_reliability.md §12AN.10](../02_storage/SR11_turn_ux_reliability.md) (SR11-D9) |
+| IF-44i | V1 12-scenario launch gate (`v1-turn-ux-check.sh`) | ✅ | V1 | IF-44, IF-40b | [02_storage/SR11_turn_ux_reliability.md §12AN.11](../02_storage/SR11_turn_ux_reliability.md) (SR11-D10) |
+| IF-44j | `admin/session-unfreeze` + `admin/turn-abandon` + `admin/presence-reset` CLI | ✅ | V1 | IF-44, IF-20 | [02_storage/SR11_turn_ux_reliability.md §12AN.12](../02_storage/SR11_turn_ux_reliability.md) (SR11-governance) |
 

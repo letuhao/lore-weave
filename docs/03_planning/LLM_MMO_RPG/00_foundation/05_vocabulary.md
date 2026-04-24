@@ -155,6 +155,48 @@ Classifier runs at turn-input boundary in `roleplay-service`.
 
 ---
 
+## Turn states (8)
+
+From [02_storage/SR11_turn_ux_reliability.md](../02_storage/SR11_turn_ux_reliability.md) §12AN.2 — architect-approved 2026-04-24.
+
+Per-user-per-turn state machine at `contracts/turn/state_machine.go`.
+
+| State | Meaning | Retry-safe? |
+|---|---|---|
+| **drafting** | User typing; not yet submitted | N/A (no server state) |
+| **submitted** | Client sent; awaiting server ack | ⚠️ Dedup by idempotency key |
+| **queued** | Server accepted; not yet processing (R7 queue) | ✅ Safe |
+| **llm_processing** | Provider call in-flight | ❌ Double-charges S6 budget |
+| **streaming** | Response streaming back via WS | ❌ Partial response rendered |
+| **complete** | Turn done; state updated | N/A |
+| **failed_retryable** | Transient error (network / provider 5xx / circuit open) | ✅ User-initiated retry safe |
+| **failed_terminal** | Budget exhausted / reality archived mid-turn / 30-min abandon | ❌ Different action, not retry |
+
+**Allowed transitions:** see SR11-D1. State transitions audited via outbox (`turn.state_transition` event) + `turn_outcomes` table.
+
+**Idempotency:** `submitted → queued` keyed on client-generated UUID; duplicate submission returns existing `turn_id`. Prevents S6 double-charge from resend storms.
+
+---
+
+## Presence states (6)
+
+From [02_storage/SR11_turn_ux_reliability.md](../02_storage/SR11_turn_ux_reliability.md) §12AN.4 — architect-approved 2026-04-24.
+
+Per-session liveness at `contracts/lifecycle/presence.go`. **Distinct from `GoneState`** (entity existence vs session liveness). A GoneState=`active` PC can have PresenceState=`disconnected_ghost`.
+
+| State | Meaning |
+|---|---|
+| **active** | WS connected; recent activity |
+| **idle** | WS connected; no input 60s+ |
+| **typing** | WS connected; drafting turn |
+| **waiting_ai** | One of their turns in `llm_processing` / `streaming` |
+| **disconnected_brief** | WS dropped < 5 min (expected reconnect window) |
+| **disconnected_ghost** | WS dropped 5-30 min (awaiting cleanup to participant removal) |
+
+**Schema:** `session_participants` carries `presence_state` + `presence_changed_at` + `ws_connection_id` + `last_activity_at`. WS `session.presence.changed` event propagated to other participants, debounced 2s.
+
+---
+
 ## Prompt sections (8)
 
 The `AssemblePrompt()` output structure. See `04_kernel_api.md`.
