@@ -305,4 +305,15 @@ generated_by: scripts/chunk_doc.py
 | IF-40h | V1 launch gate CI check (`v1-launch-check.sh`) | ✅ | V1 | IF-40b | [02_storage/SR07_chaos_drills.md §12AJ.11](../02_storage/SR07_chaos_drills.md) (SR7-D10) |
 | IF-40i | SR3 runbook `last_verified` method = `chaos_drill` | ✅ | V1 | IF-36, IF-40b | [02_storage/SR07_chaos_drills.md §12AJ.10](../02_storage/SR07_chaos_drills.md) (SR7-D9, extends SR3-D4) |
 | IF-40j | Chaos-scheduler cron (V1 via admin-cli; dedicated service V2+) | ✅ | V1 | IF-40a | [02_storage/SR07_chaos_drills.md §12AJ.5](../02_storage/SR07_chaos_drills.md) (SR7-D4) |
+| IF-41 | Capacity budget registry (`contracts/capacity/budgets.yaml`) | ✅ | V1 | — | [02_storage/SR08_capacity_scaling.md §12AK.3](../02_storage/SR08_capacity_scaling.md) (SR8-D2) |
+| IF-41a | Service class taxonomy + bootstrap declaration | ✅ | V1 | IF-41 | [02_storage/SR08_capacity_scaling.md §12AK.2](../02_storage/SR08_capacity_scaling.md) (SR8-D1) |
+| IF-41b | Scaling signal library (`contracts/capacity/signals.go`) | ✅ | V1 | IF-41 | [02_storage/SR08_capacity_scaling.md §12AK.4](../02_storage/SR08_capacity_scaling.md) (SR8-D3) |
+| IF-41c | Per-reality capacity ceiling enforcer (in `world-service`) | ✅ | V1 | IF-41 | [02_storage/SR08_capacity_scaling.md §12AK.5](../02_storage/SR08_capacity_scaling.md) (SR8-D4) |
+| IF-41d | `shard_utilization` tracking table + shard dashboard | ✅ | V1 | IF-41 | [02_storage/SR08_capacity_scaling.md §12AK.6](../02_storage/SR08_capacity_scaling.md) (SR8-D5) |
+| IF-41e | Auto-scaling policy templates (HPA / KEDA / vertical) | ✅ | V1 | IF-41, IF-41b | [02_storage/SR08_capacity_scaling.md §12AK.7](../02_storage/SR08_capacity_scaling.md) (SR8-D6) |
+| IF-41f | `scaling_events` audit table (1y retention) | ✅ | V1 | IF-41 | [02_storage/SR08_capacity_scaling.md §12AK.11](../02_storage/SR08_capacity_scaling.md) (SR8-D10) |
+| IF-41g | Capacity metrics + alerts + DF11 panel | ✅ | V1 | IF-41, IF-34 | [02_storage/SR08_capacity_scaling.md §12AK.8](../02_storage/SR08_capacity_scaling.md) (SR8-D7) |
+| IF-41h | Load-test capacity gate (`capacity-gate-check.sh`) | 📦 | V1+30d | IF-41, G2-D4 | [02_storage/SR08_capacity_scaling.md §12AK.9](../02_storage/SR08_capacity_scaling.md) (SR8-D8; V1+30d automation) |
+| IF-41i | Pre-warmed replica pool manager | 📦 | V1+30d | IF-41e | [02_storage/SR08_capacity_scaling.md §12AK.7](../02_storage/SR08_capacity_scaling.md) (SR8-D6; V1+30d) |
+| IF-41j | `admin/capacity-override` + `admin/scaling-policy-update` + `admin/drain-shard` | ✅ | V1 | IF-41, IF-20 | [02_storage/SR08_capacity_scaling.md §12AK.10, §12AK.6](../02_storage/SR08_capacity_scaling.md) (SR8-D9, SR8-D5) |
 

@@ -10,7 +10,7 @@ generated_by: scripts/chunk_doc.py
 
 | Category | ✅ Designed | 🟡 Partial | 📦 Deferred | ❓ Open | 🚫 OOS | Total |
 |---|---|---|---|---|---|---|
-| IF | 269 | 4 | 22 | 0 | 0 | 295 |
+| IF | 278 | 4 | 24 | 0 | 0 | 306 |
 | WA | 2 | 2 | 3 | 0 | 0 | 7 |
 | PO | 6 | 2 | 1 | 0 | 0 | 9 |
 | PL | 4 | 7 | 3 | 0 | 0 | 14 |
@@ -22,13 +22,13 @@ generated_by: scripts/chunk_doc.py
 | PLT | 1 | 2 | 4 | 1 | 0 | 8 |
 | CC | 0 | 5 | 3 | 1 | 0 | 9 |
 | DL | 0 | 0 | 5 | 1 | 0 | 6 |
-| **Total** | **312** | **38** | **64** | **3** | **2** | **419** |
+| **Total** | **321** | **38** | **66** | **3** | **2** | **430** |
 
 ### Interpretation
 
 - **246 Designed** (green): concrete decisions in locked docs — storage, fork, canon model, PC mechanics, R1-R13, M1-M7, WA-4, C1-C5, H1-H6 + M-REV-1..6 + P1-P4, S1-S13, plus **SR1 SLOs + Error Budget Policy (2026-04-24) — 8 decisions, 7 user-journey SLIs (session-availability, turn-completion, event-delivery, realtime-freshness, auth-success, admin-action, cross-reality-propagation), tiered SLO targets (free/paid/premium), error budget policy with 4-tier burn-rate response including feature freeze at ≥90%, multi-tenant isolation SLO (noisy-neighbor + meta 99.99%), reliability review cadence (daily→annual), alert-to-SLO derivation with CI lint, public status page V2+, cardinality + retention cost controls**.
 
-**All 21 SA+DE adversarial + 13 Security (S1-S13) resolved.** Storage + multiverse design fully locked pending external-dependent V1 prototype data. **SRE / Incident Response review in progress (7/12 done)**: SR1 SLOs + SR2 Incident Classification + SR3 Runbook Library + SR4 Postmortem Process + SR5 Deploy Safety + Rollback + SR6 Dependency Failure Handling + **SR7 Chaos Drill Cadence (2026-04-24) — 12 decisions, chaos experiment registry at `contracts/chaos/experiments.yaml` with hypothesis-driven format + 7 categories (dep_failure/network/state_corruption/load/security/deploy/recovery), 5 cadence tiers (always-on/weekly/monthly/quarterly-game-day/yearly), environment scoping with 2-staging-cycles-before-prod gate, 7 safety mechanisms (abort criteria / blast radius / no-chaos-during-incident / no-chaos-during-deploy / kill-switch / dry-run / maintenance-mode coupling), `chaos-cli` tooling with 3 admin commands (Tier 1/2/3), `chaos_drills` audit table (3y retention), 48h post-drill review feeding SR3 runbooks + SR4 postmortems + SR6 matrix updates via deterministic mapping, **5-drill V1 launch gate** extending SR3 27-runbook bar to 32 (LLM failover + Redis outage + per-reality DB outage + deploy rollback + graceful drain); IF-39g placeholder activated, SR3-D4 verification method extended with `chaos_drill`** — SR8-SR12 pending.
+**All 21 SA+DE adversarial + 13 Security (S1-S13) resolved.** Storage + multiverse design fully locked pending external-dependent V1 prototype data. **SRE / Incident Response review in progress (8/12 done)**: SR1 SLOs + SR2 Incident Classification + SR3 Runbook Library + SR4 Postmortem Process + SR5 Deploy Safety + Rollback + SR6 Dependency Failure Handling + SR7 Chaos Drill Cadence + **SR8 Capacity Planning + Auto-Scaling (2026-04-24) — 11 decisions + 1 pending (SR8-D11 = proposed invariant I17 awaiting architect approval in POST-REVIEW), 4-class service taxonomy (web / worker / data-plane / llm-gateway + composite), capacity budget matrix at `contracts/capacity/budgets.yaml` with V1/V2/V3 tiers × 5 dimensions (CPU/memory/DB-pool/concurrent-LLM/network), per-class scaling signals + hysteresis + cool-down, 5 per-reality ceilings (players/WS-conn/event-rate/session-processor/NPC-count) enforcing ≥ MV6, `shard_utilization` tracking with 3-state lifecycle (healthy/approaching_cap/drain_required), HPA/KEDA/vertical policy templates, 7 metrics + 7 alerts + DF11 capacity panel, load-test gate at 4 points (Baseline/Target/Breakpoint/Degradation) via G2-D4 loadtest-service, budget governance + quarterly review + cost attribution via S6, SR6-D10 Drain-coupled scale-down + `scaling_events` audit (1y retention); 3 new admin commands (`admin/capacity-override` Tier 2 + `admin/scaling-policy-update` Tier 2 + `admin/drain-shard` Tier 1 reusing C2 migration protocol)** — SR9-SR12 pending.
 
 **All 13 storage risks (R1–R13) resolved + C1 from SA+DE adversarial review resolved via orphan-worlds reframe. Storage + multiverse design design-complete** (residual items external-data-dependent: A4 benchmark, D1 cost, E3 legal).
 - **38 Partial** (yellow): broad strokes designed, concrete detail pending (prompt assembly, retrieval quality, realtime).

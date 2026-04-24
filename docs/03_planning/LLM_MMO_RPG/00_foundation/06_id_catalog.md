@@ -16,8 +16,8 @@
 | `H1..H6` · `M-REV-1..6` · `P1..P4` | Adversarial review follow-ups | [`02_storage/HMP_followups.md`](../02_storage/HMP_followups.md) | next free per tier | H3-NEW-D1..D6 |
 | `S1..S13` | Security review concerns | [`02_storage/S01_03..S13_*.md`](../02_storage/_index.md) | S14+ if new | S9 = Prompt assembly |
 | `S*-D*`, `S*-NEW-D*` | Per-S decision numbers | same | next free per S | S9-D1..D10 |
-| `SR1..SR12` | SRE review concerns | [`02_storage/SR01..SR07_*.md`](../02_storage/_index.md) | SR8..SR12 not yet designed | SR7 = Chaos drill cadence (2026-04-24) |
-| `SR*-D*` | Per-SR decision numbers | same | next free per SR | SR7-D1..D10 |
+| `SR1..SR12` | SRE review concerns | [`02_storage/SR01..SR08_*.md`](../02_storage/_index.md) | SR9..SR12 not yet designed | SR8 = Capacity planning + auto-scaling (2026-04-24; I17 approved) |
+| `SR*-D*` | Per-SR decision numbers | same | next free per SR | SR8-D1..D11 |
 | `M1..M7` | Multiverse risks | [`01_problems/M_multiverse_specific.md`](../01_problems/M_multiverse_specific.md) + [`03_multiverse/08_multiverse_risks.md`](../03_multiverse/08_multiverse_risks.md) | none (M8 if new) | M7 = Concept complexity |
 | `M*-D*` | M-resolution decision numbers | [`03_multiverse/06_M_C_resolutions.md`](../03_multiverse/06_M_C_resolutions.md) | next free per M | M7-D1..D5 |
 | `MV1..MV11` | Multiverse primitives | [`03_multiverse/`](../03_multiverse/_index.md) (across chunks) + [`decisions/locked_decisions.md`](../decisions/locked_decisions.md) | none (MV12 if new) | MV8 = DB subtree split threshold |
@@ -32,7 +32,7 @@
 | `E1..E3` | Category E (Moderation/safety/legal) | [`01_problems/E_moderation_safety_legal.md`](../01_problems/E_moderation_safety_legal.md) | E4+ | E3 = IP ownership (OPEN) |
 | `F1..F5` | Category F (Content design) | [`01_problems/F_content_design.md`](../01_problems/F_content_design.md) | F6+ | F2 = AI GM (ACCEPTED) |
 | `G1..G3` | Category G (Testing/ops) | [`01_problems/G_testing_ops.md`](../01_problems/G_testing_ops.md) | G4+ | Designs in `05_qa/LLM_MMO_TESTING_STRATEGY.md` |
-| `IF-1..IF-40` (+ `-a..-j` sub-chains) | Infrastructure features | [`catalog/cat_01_IF_infrastructure.md`](../catalog/cat_01_IF_infrastructure.md) | IF-41+ | IF-31 = SVID (S11) · IF-32 = WebSocket (S12) · IF-39 = Dependency registry (SR6) · IF-40 = Chaos registry (SR7) |
+| `IF-1..IF-41` (+ `-a..-j` sub-chains) | Infrastructure features | [`catalog/cat_01_IF_infrastructure.md`](../catalog/cat_01_IF_infrastructure.md) | IF-42+ | IF-31 = SVID (S11) · IF-32 = WebSocket (S12) · IF-39 = Dependency registry (SR6) · IF-40 = Chaos registry (SR7) · IF-41 = Capacity budget registry (SR8) |
 | `WA-*` (features) | World Authoring features | [`catalog/cat_02_WA_world_authoring.md`](../catalog/cat_02_WA_world_authoring.md) | next free | |
 | `PO-*` | Player Onboarding | [`catalog/cat_03_PO_player_onboarding.md`](../catalog/cat_03_PO_player_onboarding.md) | next free | |
 | `PL-*` | Play Loop (core runtime) | [`catalog/cat_04_PL_play_loop.md`](../catalog/cat_04_PL_play_loop.md) | next free | |

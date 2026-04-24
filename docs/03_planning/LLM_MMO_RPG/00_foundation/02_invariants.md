@@ -116,6 +116,12 @@ No `context.Background()` for network calls. Sum of timeouts along a call chain 
 - **Enforced by:** CI lint `scripts/timeout-discipline-lint.sh` (flags `http.NewRequest` / `sql.Query` / `redis.Cmd` / `context.Background()` in call paths to registered deps) + dependency-registry-lint blocking new clients outside matrix.
 - **Source:** [02_storage/SR06_dependency_failure.md](../02_storage/SR06_dependency_failure.md) §12AI.3 — decision SR6-D2.
 
+### I17. Every service declares a capacity budget
+Every service declares its capacity budget in `contracts/capacity/budgets.yaml` — class (web / worker / data-plane / llm-gateway) + per-tier (V1/V2/V3) × 5 dimensions (`replicas_min`/`max` · `cpu_per_replica` · `memory_per_replica` · `db_pool_size` · `concurrent_llm_calls_per_replica` · `network_egress_mbps`). Deployment blocked for services absent from the registry. Scaling beyond `replicas_max` requires `admin/capacity-override` (S5 Tier 2; 24h-bounded).
+- **Why:** undeclared service = unlimited resource consumption = cascading exhaustion = SR1 SLO breach. Capacity must be a commitment backed by the load-test gate (SR8-D8), not a runtime suggestion.
+- **Enforced by:** CI lint `scripts/capacity-budget-lint.sh` blocks services missing from `budgets.yaml`; class declaration ↔ deployment kind validated (HPA for web/llm-gateway, KEDA for worker, vertical-only for data-plane); `admin/capacity-override` is the only bypass and is S5-audited with 24h auto-expire.
+- **Source:** [02_storage/SR08_capacity_scaling.md](../02_storage/SR08_capacity_scaling.md) §12AK.3 — decision SR8-D2 + SR8-D11 (architect-approved 2026-04-24 via POST-REVIEW per `00_foundation/02_invariants.md` "How invariants get added" process).
+
 ---
 
 ## How invariants get added

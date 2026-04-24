@@ -48,8 +48,9 @@
 | 35 | [99_known_risks_and_close.md](99_known_risks_and_close.md) | §13–§16 | 129 | Known risks · TBC decisions · references | LOCKED |
 | 36 | [SR06_dependency_failure.md](SR06_dependency_failure.md) | §12AI (new, direct-authored 2026-04-24) | 338 | SR6-D1..D10 · `dependency_events` · `contracts/resilience/` · `contracts/lifecycle/` · invariant I16 | LOCKED |
 | 37 | [SR07_chaos_drills.md](SR07_chaos_drills.md) | §12AJ (new, direct-authored 2026-04-24) | 323 | SR7-D1..D10 · `chaos_drills` · `contracts/chaos/experiments.yaml` · IF-40 · activates IF-39g | LOCKED |
+| 38 | [SR08_capacity_scaling.md](SR08_capacity_scaling.md) | §12AK (new, direct-authored 2026-04-24) | 383 | SR8-D1..D11 · `shard_utilization` · `scaling_events` · `contracts/capacity/` · IF-41 · **invariant I17** (capacity budget discipline, approved 2026-04-24) | LOCKED |
 
-**Totals:** 38 chunks (36 split-origin + 2 direct-authored) · 10 504 content lines. SR06 + SR07 are authored new content extending the SR series; they are not covered by `chunk_doc.py verify` against the archived monolith (the monolith predates them).
+**Totals:** 39 chunks (36 split-origin + 3 direct-authored) · 10 887 content lines. SR06 + SR07 + SR08 are authored new content extending the SR series; they are not covered by `chunk_doc.py verify` against the archived monolith (the monolith predates them).
 
 ---
 
@@ -59,9 +60,9 @@
 - **SA+DE Critical:** C1..C5 (plus C1-OW-1..5 orphan-worlds extension)
 - **Adversarial follow-ups:** H1..H6, M-REV-1..6, P1..P4
 - **Security:** S1..S13 (pre-spec for DF3 lives in S13)
-- **SRE:** SR1..SR7 (SR8..SR12 not yet designed — will extend this subfolder)
+- **SRE:** SR1..SR8 (SR9..SR12 not yet designed — will extend this subfolder)
 - **Schema tables:** all tables defined in §12 sections — see individual files
-- **Go packages:** `contracts/meta/`, `contracts/prompt/`, `contracts/pii/`, `contracts/ws/`, `contracts/service_acl/`, `contracts/entity_status/`, `contracts/resilience/` (SR6), `contracts/lifecycle/` (SR6), `contracts/dependencies/` (SR6), `contracts/chaos/` (SR7)
+- **Go packages:** `contracts/meta/`, `contracts/prompt/`, `contracts/pii/`, `contracts/ws/`, `contracts/service_acl/`, `contracts/entity_status/`, `contracts/resilience/` (SR6), `contracts/lifecycle/` (SR6), `contracts/dependencies/` (SR6), `contracts/chaos/` (SR7), `contracts/capacity/` (SR8)
 
 External docs link to these IDs, not to specific file paths.
 

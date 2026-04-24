@@ -108,6 +108,9 @@ Truly dangerous commands (bypass safety gates, manual DROP, bulk purges) MUST re
 - `chaos/start` (S5 Tier 2 Griefing — initiates a registered chaos experiment; reason + user-notification + abort-criteria enforcement; prod requires co-approver SVID — see [02_storage/SR07_chaos_drills.md](../03_planning/LLM_MMO_RPG/02_storage/SR07_chaos_drills.md) §12AJ.8)
 - `chaos/abort` (S5 Tier 3 Informational — stops a running drill; recovery action with no additional risk — see [02_storage/SR07_chaos_drills.md](../03_planning/LLM_MMO_RPG/02_storage/SR07_chaos_drills.md) §12AJ.8)
 - `chaos/kill-switch` (S5 Tier 1 Destructive — aborts ALL active experiments platform-wide + disables harness; dual-actor + 100+ char reason + 24h cooldown before tech-lead re-enable — see [02_storage/SR07_chaos_drills.md](../03_planning/LLM_MMO_RPG/02_storage/SR07_chaos_drills.md) §12AJ.7)
+- `admin/capacity-override` (S5 Tier 2 Griefing — scales a service beyond declared `replicas_max` budget; cost + user-visible impact; bounded 24h expiry; extension requires dual-actor; post-expire report to on-call — see [02_storage/SR08_capacity_scaling.md](../03_planning/LLM_MMO_RPG/02_storage/SR08_capacity_scaling.md) §12AK.10)
+- `admin/scaling-policy-update` (S5 Tier 2 Griefing — changes a service's auto-scaling policy at runtime; affects scaling responsiveness + cost — see [02_storage/SR08_capacity_scaling.md](../03_planning/LLM_MMO_RPG/02_storage/SR08_capacity_scaling.md) §12AK.7)
+- `admin/drain-shard` (S5 Tier 1 Destructive — blocks new-reality placement on target shard + migrates existing realities via `migration-orchestrator` reusing C2 DB-subtree-split protocol; user-visible per-reality `migrating` lifecycle state; hours-to-days duration; runbook required per SR3 — see [02_storage/SR08_capacity_scaling.md](../03_planning/LLM_MMO_RPG/02_storage/SR08_capacity_scaling.md) §12AK.6)
 - `admin/bypass-archive-verification`
 - `admin/manual-partition-drop`
 - Others added as needed
