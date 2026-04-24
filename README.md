@@ -333,7 +333,7 @@ Not a sketch — a locked design track. The complete work lives in [`docs/03_pla
 
 - **179 features** cataloged across 12 categories — 92 Designed, 39 Partial, 43 Deferred, 3 Open (all gated on prototype data)
 - **13 storage risks** identified and resolved across §12A–§12L (event volume, projection rebuild, schema evolution, fleet ops, cross-instance isolation, publisher failure, NPC memory scaling, safe reality closure, and more)
-- **~150 individual decisions** locked in [`OPEN_DECISIONS.md`](docs/03_planning/LLM_MMO_RPG/OPEN_DECISIONS.md) with reasoning preserved
+- **~150 individual decisions** locked in [`decisions/locked_decisions.md`](docs/03_planning/LLM_MMO_RPG/decisions/locked_decisions.md) with reasoning preserved
 - **12 deferred big features** (DF1–DF13) tracked in a registry — each promotes to its own implementation doc when work begins
 - **2 governance policies** (`CROSS_INSTANCE_DATA_ACCESS_POLICY`, `ADMIN_ACTION_POLICY`) already codified
 

@@ -124,12 +124,12 @@ Changes to the terminology map (§3) or phrasing patterns (§4) require:
 
 1. PR with justification (user research data, UX feedback, locale issue)
 2. Design Lead + Tech Lead sign-off
-3. Update corresponding §9.6 in [03_MULTIVERSE_MODEL.md](../03_planning/LLM_MMO_RPG/03_MULTIVERSE_MODEL.md) + OPEN_DECISIONS.md M7-D1/D4 rows
+3. Update corresponding §9.6 in [03_MULTIVERSE_MODEL.md](../03_planning/LLM_MMO_RPG/03_MULTIVERSE_MODEL.md) + [decisions/locked_decisions.md](../03_planning/LLM_MMO_RPG/decisions/locked_decisions.md) M7-D1/D4 rows
 4. Migration plan for any affected live strings (i18n key rename, deprecation schedule)
 
 ## 10. References
 
 - [03_MULTIVERSE_MODEL.md §9.6 — Progressive disclosure](../03_planning/LLM_MMO_RPG/03_MULTIVERSE_MODEL.md#96-progressive-disclosure--m7-resolution)
 - [01_OPEN_PROBLEMS.md §M7 — Concept complexity](../03_planning/LLM_MMO_RPG/01_OPEN_PROBLEMS.md#m7-concept-complexity-for-users--partial)
-- [OPEN_DECISIONS.md — M7-D1 through M7-D5](../03_planning/LLM_MMO_RPG/OPEN_DECISIONS.md)
+- [decisions/locked_decisions.md — M7-D1 through M7-D5](../03_planning/LLM_MMO_RPG/decisions/locked_decisions.md)
 - [ADMIN_ACTION_POLICY.md](ADMIN_ACTION_POLICY.md) — sibling governance doc pattern

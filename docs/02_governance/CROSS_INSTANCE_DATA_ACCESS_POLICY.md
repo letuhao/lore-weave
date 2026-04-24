@@ -2,7 +2,7 @@
 
 > **Status:** Policy — enforced at code review and architecture review
 > **Applies to:** All services that touch reality DBs (world-service, roleplay-service, meta-worker, api-gateway-bff, any future service)
-> **Source:** Derived from [docs/03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md §12E](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md)
+> **Source:** Derived from [§12E in 02_storage/R05_cross_instance.md](../03_planning/LLM_MMO_RPG/02_storage/R05_cross_instance.md)
 > **Created:** 2026-04-23
 > **Owner:** Tech Lead
 
@@ -136,7 +136,7 @@ No exceptions are currently active.
 
 ## 7. References
 
-- [docs/03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md §12E](../03_planning/LLM_MMO_RPG/02_STORAGE_ARCHITECTURE.md) — full R5 mitigation
-- [docs/03_planning/LLM_MMO_RPG/03_MULTIVERSE_MODEL.md](../03_planning/LLM_MMO_RPG/03_MULTIVERSE_MODEL.md) — reality isolation invariants
-- [docs/03_planning/LLM_MMO_RPG/OPEN_DECISIONS.md](../03_planning/LLM_MMO_RPG/OPEN_DECISIONS.md) — R5-* decision log
+- [02_storage/R05_cross_instance.md](../03_planning/LLM_MMO_RPG/02_storage/R05_cross_instance.md) — §12E full R5 mitigation
+- [03_MULTIVERSE_MODEL.md](../03_planning/LLM_MMO_RPG/03_MULTIVERSE_MODEL.md) — reality isolation invariants
+- [decisions/locked_decisions.md](../03_planning/LLM_MMO_RPG/decisions/locked_decisions.md) — R5-* decision log
 - World travel design (DF6, future) — the only sanctioned cross-reality feature
