@@ -1,19 +1,46 @@
-# Session Handoff — Session 51 (9 cycles shipped · Track 2/3 Gap Closure P2 DONE 7/7 + P3 9/9 done · session closed)
+# Session Handoff — Session 51 (10 cycles shipped · Track 2/3 Gap Closure P2 DONE 7/7 + P3 11/12 done · session closed)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-25 (session 51, closed at cycle 41 / C13)
-> **HEAD:** `5fabf87` (C13 Storybook dialogs via MSW FE; C12b-b @ `ff2363b`; C12b-a @ `5c36dfd`; C12a @ `2ea7481`; C11 @ `abb84ef`; C10 @ `ae5649b`; C9 @ `06b2063`; C8 @ `287e853`; C7 @ `a15a04b`; session 50 HEAD `eb26e83` — see session 50 block for earlier refs)
+> **Date:** 2026-04-26 (session 51, closed at cycle 42 / C12c-a)
+> **HEAD:** `5fd8a54` (C12c-a glossary_sync BE unblock FS; C13 @ `5fabf87`; C12b-b @ `ff2363b`; C12b-a @ `5c36dfd`; C12a @ `2ea7481`; C11 @ `abb84ef`; C10 @ `ae5649b`; C9 @ `06b2063`; C8 @ `287e853`; C7 @ `a15a04b`; session 50 HEAD `eb26e83` — see session 50 block for earlier refs)
 > **Branch:** `main` (ahead of origin by sessions 38–51 commits — user pushes manually)
 
-## Session 51 — 9 cycles shipped (all Track 2/3 Gap Closure: C7..C13) · **P2 DONE (7/7)** · **P3 9/9 done** · session closed
+## Session 51 — 10 cycles shipped (all Track 2/3 Gap Closure: C7..C12c-a) · **P2 DONE (7/7)** · **P3 11/12 done** · session closed
 
 **Highlights:**
 - **P2 tier closed at C9** (entity optimistic concurrency + unlock). All 7 P2 cycles shipped across sessions 50+51 (C3..C9).
-- **P3 tier DONE 9/9** — opened at C10, closed at C13. Only **C12c** remains in P3 backlog (blocked on glossary-service BE sync surface — not actionable).
-- **C12 split at CLARIFY** into C12a (picker+gate paired FS) + C12b (Run benchmark, further split BE/FE into C12b-a + C12b-b) + C12c (blocked). Honest sizing replaced plan's L bundle.
-- **C13 size reclassified** at CLARIFY from plan-said-M to workflow-gate-required-L (6 files / 4 logic / 1 side-effect). Real final file count: 13 + 1 gitignored lock.
-- Front-end test coverage: **474 pass** at session 51 end (unchanged over C12b-b — C13 stories are tsc-only, not in vitest scope).
-- Back-end test coverage: **1405 pass** at C12b-a adjacent baseline (unchanged — C13 is pure FE).
+- **P3 tier 11/12 done** — opened at C10, nearly closed after C12c-a. Only **C12c-b** (FE scope radio, S) remains in P3 backlog — strictly FE.
+- **C12 split saga** — C12a (paired FS) + C12b-a/b-b (BE/FE split) + C12c-a/c-b (BE/FE split). Plan's single "C12 L" row bloomed into 5 honest-sized cycles. Memory `feedback_scope_audit_before_batching` applied each time.
+- **C12c-a size reclassified** from plan-said-"S FE-only blocked" to workflow-gate-required FS L after audit caught: (a) no glossary-service list endpoint, (b) no worker branch handling scope='glossary_sync' (explicit TODO at runner.py:621 silently no-op'd), (c) scope='all' ALSO excluded glossary — user-approved flip makes the name honest.
+- Back-end test coverage: **1466/1466 knowledge-service** (+61 over session 50's 1405) + **23/23 worker-ai** (+6 from C13's 17) + **12/12 glossary-service Go** at session 51 end.
+- Front-end test coverage: **474/474** at session 51 end (unchanged since C12b-b — C13 stories are tsc-only, C12c-a is pure BE).
+
+### Cycle 42 — Track 2/3 Gap Closure C12c-a [FS L] — glossary_sync BE unblock
+
+3-service FS reclassified from plan-said "S FE-only blocked". Audit caught that **no glossary-service list endpoint existed**, **worker-ai had a TODO at runner.py:621 silently no-op'ing glossary_sync jobs**, and **scope='all' ALSO excluded glossary**. User approved flipping `all` to include glossary (making the name honest).
+
+**Block A — glossary-service Go**: NEW `GET /internal/books/{book_id}/entities?cursor&limit` paginated endpoint with peek-ahead cursor logic, `alive=true AND deleted_at IS NULL` filter, short_description joined via LEFT JOIN on attribute_definitions. 5 tests (4 unit no-DB + 1 DB-gated cursor walk).
+
+**Block B — worker-ai**: NEW `GlossaryClient` + `GlossaryEntity/Page` dataclasses with graceful-degrade → None. NEW `KnowledgeClient.glossary_sync_entity` + `GlossarySyncResult`. NEW `_enumerate_glossary_entities` returning `(list, complete: bool)` tuple + HARD_CAP=5000 + 200-page safety + UUID-ASC resume-skip. NEW `_GLOSSARY_SYNC_COST_PER_ITEM = 0.0` (through `_try_spend` for pause/cancel uniformity). NEW branch in `_process_job` for scope ∈ {glossary_sync, all} + book_id set. Bounded retry via `retry_glossary_<id>` cursor key mirroring chapters. `process_job`/`poll_and_run` sigs gain `glossary_client`.
+
+**Block C — knowledge-service**: NEW `POST /internal/extraction/glossary-sync-entity` thin handler wrapping K15.11 helper (previously dead code). K15.11 helper ON MATCH SET now updates `project_id` (latest-sync wins, fixes first-call-wins drift for users with 2 projects sharing a book). `start_extraction_job` 422 guard for `glossary_sync + null book_id`.
+
+**/review-impl caught 3 MED + 3 LOW + 1 COSMETIC; all 6 actionable findings fixed in-cycle:**
+- **MED#1** start endpoint glossary_sync+null-book guard (422 with `error_code: 'glossary_sync_requires_book'`)
+- **MED#2** K15.11 ON MATCH project_id drift (pre-existing; C12c-a activates helper)
+- **MED#3** glossary branch bounded retry
+- **LOW#4** opaque 502 boundary message
+- **LOW#5** items_total drift on partial enumeration (enumerator returns `complete: bool`)
+- **LOW#6** 5xx mid-enumeration test coverage
+- **COSMETIC#7** 200-page ceiling kept as defense-in-depth
+
+**Bonus:** during test Edit caught + restored a stray assertion in `test_start_job_active_job_exists_returns_409` (original test had 2 asserts; my first Edit only matched the first line, orphaning the second into a new test).
+
+**Closes** D-K19a.5-06 BE half. **P3 tier 11/12 done** after C12c-a. Only **C12c-b** (FE scope radio, S) remains in P3.
+
+**Files: 17** (14 code/test + 2 docs SESSION_PATCH/plan + 1 handoff). **Verify:** go test ok; worker-ai 23/23; knowledge-service 1466/1466.
+
+---
 
 ### Cycle 41 — Track 2/3 Gap Closure C13 [FE L] — Storybook dialog stories via MSW
 
@@ -128,13 +155,13 @@ Util pre-rounds to integer before branching so `59.6 → "1h"` (not naive `"0h 6
 
 **What's next — Session 52 default path:**
 
-Resume the **[Track 2/3 Gap Closure Plan](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md)**. P2 DONE (7/7); **P3 DONE 9/9** (C12c remains blocked, not actionable). Remaining actionable cycles: **P4 × 2** + **P5 × 3 DESIGN-first** + **User-gated × 2**. Next actionable default is **C14**.
+Resume the **[Track 2/3 Gap Closure Plan](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md)**. P2 DONE (7/7); **P3 11/12 done** (only C12c-b FE scope radio remains — strictly FE-only). Remaining actionable: **C12c-b (S)** + **P4 × 2** + **P5 × 3 DESIGN-first** + **User-gated × 2**. Next actionable default is **C12c-b** to finally close P3 completely.
 
-Next cycle — **C14 (P4, L)**: Resumable scheduler cursor state. Pair with D-K11.9-01 partial + P-K15.10-01 partial. Needs a new `sweeper_state` table (sweeper_name PK, last_user_id UUID, last_scope JSONB, updated_at) + cursor read/write + clear-on-complete threaded into `reconciler.py` + `quarantine_cleanup.py`. 2 integration tests (restart-resumes, completion-clears). Detail in [plan §4 C14](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md#c14--resumable-scheduler-cursor-state-p4-l). Expect L-size (migration + 2 scheduler modules + tests).
+Next cycle — **C12c-b (P3, S)**: add `glossary_sync` to `ALL_SCOPES` in `BuildGraphDialog.tsx`; gate on `!!project.book_id` in the existing `availableScopes` memo (mirroring the BE 422 guard shipped in C12c-a); 4 new i18n keys (`projects.buildDialog.scope.glossary_sync`) × 4 locales; drift-lock test. Optional Storybook peer for the new radio state. Closes D-K19a.5-06 completely. Expect S-size (~5 files: BuildGraphDialog + test + 4 locales + drift-lock).
 
-**If C14 isn't the right next step:**
-- **C12c** (glossary_sync) — UNBLOCK when glossary-service grows a BE sync surface. Currently: `JobScope` literal accepts `glossary_sync` (extraction.py:119) but no sync flow wired.
-- **C15 (P4, S)** — Neo4j fulltext index for entity search. Fire ONLY when any user crosses ~10k entities. Until then CONTAINS scan is acceptable. Not pressing.
+**If C12c-b is deferred, next candidates:**
+- **C14 (P4, L)** — Resumable scheduler cursor state. Pair with D-K11.9-01 partial + P-K15.10-01 partial. Needs `sweeper_state` table + cursor read/write + threaded into `reconciler.py` + `quarantine_cleanup.py`. 2 integration tests.
+- **C15 (P4, S)** — Neo4j fulltext index for entity search. Fire ONLY when any user crosses ~10k entities. Not pressing.
 - **P5 🏗 (C16–C18)** — 3 cycles, all DESIGN-first: budget attribution for global-scope regen (D-K20α-01 partial) · entity-merge canonical-alias mapping (D-K19d-γb-03 architectural) · event wall-clock date (D-K19e-α-02 needs KSA amendment + LLM prompt change). Produce signed-off ADR docs before any BUILD.
 - **User-gated ⏸** — multilingual fixtures (user provides text) + Gate-13 human walkthrough.
 
@@ -148,10 +175,10 @@ Next cycle — **C14 (P4, L)**: Resumable scheduler cursor state. Pair with D-K1
 - **CLARIFY honesty > plan commitment**. C7 plan-said-S shipped as XL; C12 plan-bundled-L shipped as 3 cycles (C12a + C12b-a + C12b-b + C12c-blocked). Honest sizing at CLARIFY is worth more than hitting an initial classification — the workflow-gate tolerates reclassification.
 
 **Starting-session boilerplate:**
-1. Read [SESSION_PATCH.md](SESSION_PATCH.md) session-51 entries (cycles 33–41) + the plan file's §3 cycle table
+1. Read [SESSION_PATCH.md](SESSION_PATCH.md) session-51 entries (cycles 33–42) + the plan file's §3 cycle table
 2. `./scripts/workflow-gate.sh status` to confirm previous cycle closed
-3. Start C14 with `./scripts/workflow-gate.sh size L 6 3 1` then `phase clarify` (L — new `sweeper_state` table migration + 2 scheduler module wiring + integration tests. 1 side-effect: new DB table)
-4. Infra: `docker ps --filter name=infra-` — C14 is BE + wants live Postgres for integration tests; bring up infra-postgres at minimum
+3. Start C12c-b with `./scripts/workflow-gate.sh size S 5 2 0` then `phase clarify` (S — pure FE: BuildGraphDialog scope radio + test + 4 locales + drift-lock; no BE, no side effects)
+4. Infra: `docker ps --filter name=infra-` — C12c-b is FE-only; services stay down
 5. For future BE integration tests: `TEST_KNOWLEDGE_DB_URL=postgres://loreweave:loreweave_dev@localhost:5555/loreweave_knowledge` (port 5555 on host; DB name `loreweave_knowledge` NOT `knowledge`)
 6. For Neo4j integration tests: `TEST_NEO4J_URI=bolt://localhost:7688 TEST_NEO4J_PASSWORD=loreweave_dev_neo4j`
 7. Test account: `claude-test@loreweave.dev / Claude@Test2026` (Playwright smoke tests)
