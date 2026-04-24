@@ -1,7 +1,7 @@
 # LLM MMO Testing Strategy
 
 > **Status:** Locked design — 16 decisions committed 2026-04-23. Testing + ops contract for the LLM MMO RPG track.
-> **Scope:** Resolves [G1 / G2 / G3](../03_planning/LLM_MMO_RPG/01_OPEN_PROBLEMS.md) from the open-problems list.
+> **Scope:** Resolves [G1 / G2 / G3](../03_planning/LLM_MMO_RPG/01_problems/G_testing_ops.md) from the open-problems list.
 > **Created:** 2026-04-23
 > **Owner:** QA Lead + Tech Lead
 
@@ -297,7 +297,7 @@ See [decisions/locked_decisions.md](../03_planning/LLM_MMO_RPG/decisions/locked_
 
 ## 9. References
 
-- [01_OPEN_PROBLEMS.md §G1/G2/G3](../03_planning/LLM_MMO_RPG/01_OPEN_PROBLEMS.md) — problem statements
+- [01_problems/G_testing_ops.md](../03_planning/LLM_MMO_RPG/01_problems/G_testing_ops.md) — §G1/G2/G3 problem statements
 - [05_LLM_SAFETY_LAYER.md](../03_planning/LLM_MMO_RPG/05_LLM_SAFETY_LAYER.md) — A3/A5/A6 resolutions that the testing strategy validates
 - [02_storage/R13_admin_discipline.md](../03_planning/LLM_MMO_RPG/02_storage/R13_admin_discipline.md) — §12L R13 admin policy; audit/auth patterns reused in G2-D5
 - [ADMIN_ACTION_POLICY.md](../02_governance/ADMIN_ACTION_POLICY.md) — admin-cli conventions

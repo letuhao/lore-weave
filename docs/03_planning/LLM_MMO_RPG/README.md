@@ -32,7 +32,7 @@ This folder exists to:
 | File | Purpose |
 |---|---|
 | `00_VISION.md` | The vision — four shapes of role-play, why Shape D (shared persistent world) is the dream, what LoreWeave uniquely brings, and a staged path that de-risks it |
-| `01_OPEN_PROBLEMS.md` | Honest list of problems that must be solved before implementation is credible. Categorized by difficulty and type. Includes multiverse-specific risks (§M). |
+| [`01_problems/`](01_problems/) | Honest list of problems that must be solved before implementation is credible. Categorized A..G + M (multiverse risks). **Split into 10 chunks on 2026-04-24**; start at [`01_problems/_index.md`](01_problems/_index.md). Monolith archived at `01_OPEN_PROBLEMS.ARCHIVED.md`. |
 | [`02_storage/`](02_storage/) | Storage engineering — full event sourcing + DB-per-reality. **Split into 36 chunks on 2026-04-24**; start at [`02_storage/_index.md`](02_storage/_index.md). Monolith archived at `02_STORAGE_ARCHITECTURE.ARCHIVED.md` until external refs migrated. |
 | [`03_multiverse/`](03_multiverse/) | Conceptual foundation — peer realities (no privileged root), snapshot fork, four-layer canon model. Sits above 02 and reframes several 01 problems. **Split into 10 chunks on 2026-04-24**; start at [`03_multiverse/_index.md`](03_multiverse/_index.md). Monolith archived at `03_MULTIVERSE_MODEL.ARCHIVED.md`. |
 | `04_PLAYER_CHARACTER_DESIGN.md` | PC semantics — identity layering (User/PC/Session), PC vs NPC rules, creation/lifecycle/social/canon decisions. Registers DF1–DF8 deferred big features. |
@@ -62,7 +62,7 @@ This folder exists to:
 2. **`SESSION_HANDOFF.md`** — current state, decision history, next steps (read FIRST when resuming)
 3. `00_VISION.md` — what is being dreamed about
 4. [`catalog/`](catalog/) — **menu of what the product includes**. Start at [`_index.md`](catalog/_index.md) then the "Status summary" in [`99_scope_and_refs.md`](catalog/99_scope_and_refs.md).
-5. `01_OPEN_PROBLEMS.md` — why it is hard
+5. [`01_problems/`](01_problems/) — why it is hard. Start at [`_index.md`](01_problems/_index.md) then the category files you care about (A..G + M).
 6. [`03_multiverse/`](03_multiverse/) — conceptual foundation (read before 02). Start at [`_index.md`](03_multiverse/_index.md) then `00_overview_philosophy.md` → `01_four_layer_canon.md` → `06_M_C_resolutions.md`.
 7. [`02_storage/`](02_storage/) — engineering detail. Start at [`_index.md`](02_storage/_index.md); R1–R13 are in `R01_*.md`..`R13_*.md`.
 8. `04_PLAYER_CHARACTER_DESIGN.md` — PC semantics + deferred big features registry

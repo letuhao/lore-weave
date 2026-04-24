@@ -16,7 +16,7 @@ PRs that add or modify user-facing strings MUST tick a **"copy reviewed against 
 
 ## 2. Why
 
-The LoreWeave multiverse model is sophisticated: peer realities, 4-layer canon, snapshot fork, event sourcing. Exposing these concepts unfiltered to casual readers causes immediate cognitive overload and churn — this was identified as risk **M7 (Concept complexity for users)** in [01_OPEN_PROBLEMS.md §M7](../03_planning/LLM_MMO_RPG/01_OPEN_PROBLEMS.md#m7-concept-complexity-for-users--partial).
+The LoreWeave multiverse model is sophisticated: peer realities, 4-layer canon, snapshot fork, event sourcing. Exposing these concepts unfiltered to casual readers causes immediate cognitive overload and churn — this was identified as risk **M7 (Concept complexity for users)** in [§M7 in 01_problems/M_multiverse_specific.md](../03_planning/LLM_MMO_RPG/01_problems/M_multiverse_specific.md).
 
 The mitigation is **progressive disclosure** — keep the complexity available to power users (authors, admins) while rendering it invisible to readers. This style guide is the copy-layer enforcement of that principle.
 
@@ -130,6 +130,6 @@ Changes to the terminology map (§3) or phrasing patterns (§4) require:
 ## 10. References
 
 - [03_multiverse/06_M_C_resolutions.md — §9.6 Progressive disclosure](../03_planning/LLM_MMO_RPG/03_multiverse/06_M_C_resolutions.md)
-- [01_OPEN_PROBLEMS.md §M7 — Concept complexity](../03_planning/LLM_MMO_RPG/01_OPEN_PROBLEMS.md#m7-concept-complexity-for-users--partial)
+- [01_problems/M_multiverse_specific.md — §M7 Concept complexity](../03_planning/LLM_MMO_RPG/01_problems/M_multiverse_specific.md)
 - [decisions/locked_decisions.md — M7-D1 through M7-D5](../03_planning/LLM_MMO_RPG/decisions/locked_decisions.md)
 - [ADMIN_ACTION_POLICY.md](ADMIN_ACTION_POLICY.md) — sibling governance doc pattern

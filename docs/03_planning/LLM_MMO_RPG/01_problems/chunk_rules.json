@@ -1,0 +1,17 @@
+{
+  "source": "../01_OPEN_PROBLEMS.ARCHIVED.md",
+  "output_dir": ".",
+  "preamble": "00_preamble.md",
+  "with_meta": true,
+  "boundaries": [
+    ["^## A\\. ",            "A_llm_reasoning.md"],
+    ["^## B\\. ",            "B_distributed_systems.md"],
+    ["^## C\\. ",            "C_product_ux.md"],
+    ["^## D\\. ",            "D_economics.md"],
+    ["^## E\\. ",            "E_moderation_safety_legal.md"],
+    ["^## F\\. ",            "F_content_design.md"],
+    ["^## G\\. ",            "G_testing_ops.md"],
+    ["^## M\\. ",            "M_multiverse_specific.md"],
+    ["^## Status summary\\b","99_status_and_readiness.md"]
+  ]
+}
