@@ -1,360 +1,216 @@
 # 04 — Producer Rules (EVT-P*)
 
-> **Status:** LOCKED Phase 2a (2026-04-25). Per [EVT-A4](02_invariants.md#evt-a4--producer-category-binding), each EVT-T* category has authorized producers gated by capability JWT (DP-K9). This file specifies them.
-> **Stable IDs:** EVT-P1..EVT-P11 (1-to-1 with EVT-T1..EVT-T11). Never renumber. Retired IDs use `_withdrawn` suffix.
+> **Status:** LOCKED Phase 2a thin-rewrite (Option C redesign 2026-04-25). Per [EVT-A4](02_invariants.md#evt-a4--producer-role-binding-reframed-2026-04-25) producer-ROLE binding, this file specifies the **role-level** producer contract for each active EVT-T* category. Specific service-name binding (which Rust service plays which role for V1) lives in [`../_boundaries/01_feature_ownership_matrix.md`](../_boundaries/01_feature_ownership_matrix.md), NOT here.
+> **Stable IDs:** EVT-P1..EVT-P11 reserved; **6 active** (P1, P3, P4, P5, P6, P8) + **5 retired** (P2, P7, P9, P10, P11 — `_withdrawn` per I15, mirroring EVT-T* retirements).
+> **Redesign note:** original Phase 2a (commit `25ef117`) named specific services (world-service / quest-service / pc-service / etc.) — that overreached into feature/architecture territory. This rewrite operates at role-class abstraction; service-binding is feature design.
 
 ---
 
 ## How to use this file
 
-When designing a feature that emits events, look up the EVT-T* category in [`03_event_taxonomy.md`](03_event_taxonomy.md), then read the matching EVT-P* row here. For each event your feature emits:
+When designing a feature that emits events:
 
-1. **Confirm your service is the authorized producer.** If not, the design is wrong — escalate.
-2. **Confirm the capability JWT claim** your service-account already carries (or request it from CP issuance).
-3. **Compose idempotency key** per the rule (uniform `(producer_service, client_request_id, target_channel)` shape per Phase 2 D2 decision).
-4. **Implement semantic rate-limit** per the rule (independent from DP transport rate-limit DP-R6).
-5. **Reject upstream emission** from forbidden producers — surface as `DpError::CapabilityDenied` or `EventModelError::ForbiddenProducer`.
+1. Identify the **producer role class** your service plays (EVT-A4 lists 6: Player-Actor / Orchestrator / Aggregate-Owner / Generator / LLM-Originator / Administrative / DP-Internal).
+2. For each EVT-T* category your service produces, find the matching EVT-P* row below and confirm:
+   - Your role is in the `Authorized producer roles` list
+   - Your service-account JWT carries the `produce: [EVT-T*]` claim per the role's capability pattern
+3. **Compose idempotency key** per the uniform shape `(producer_service, client_request_id, target)`.
+4. **Declare rate-limit defaults** in your feature design; CI lint enforces them at runtime.
+5. **Register your service↔role binding** in [`../_boundaries/01_feature_ownership_matrix.md`](../_boundaries/01_feature_ownership_matrix.md).
 
-The capability JWT shape (per Phase 2 D1 decision):
+Specific values like JWT claim shapes, rate-limit numbers, dead-letter topics — those are feature/operational design, not Event Model lock. This file specifies the **mechanism**, not the numbers.
 
-```json
-{
-  "iss": "control-plane",
-  "sub": "service:world-service",
-  "reality_id": "1256_thien_long_v1",
-  "exp": 1745627400,
-  "produce": ["PlayerTurn", "NPCTurn", "AggregateMutation", "CalibrationEvent"],
-  "can_advance_turn": ["cell"],
-  "can_register_aggregator": [],
-  "can_pause_channel": []
+---
+
+## Uniform idempotency key (all EVT-P*)
+
+Every event carries an `idempotency_key` of shape:
+
+```
+IdempotencyKey {
+  producer_service: String,      // service-account name from JWT `sub` claim
+  client_request_id: UUID,       // producer-generated; uniqueness within (producer, target) pair
+  target: TargetRef,             // category-specific: channel / aggregate-id / proposal-id
 }
 ```
 
-`produce: [...]` is a list claim (not per-category boolean). Multi-role services list multiple categories. Revocation = remove an entry + push a fresh JWT to the service. Standard DP-K9 capability rotation rules apply.
+Categories may add **narrower uniqueness** at commit (e.g., EVT-T1 Submitted enforces `(reality_id, session_id, turn_seq)` per R7 single-writer-per-session in addition to the uniform key). Commit primitive rejects duplicate keys with the existing event's `event_id` returned (idempotent retry).
 
 ---
 
-## EVT-P1 — PlayerTurn
+## Capability JWT shape (abstract)
 
-**Allowed producer:** **`world-service`** (Rust). Consumes EVT-T6 LLMProposal from the proposal bus, runs EVT-V* validator pipeline, then commits PlayerTurn via `dp::advance_turn`.
+Every producing service's JWT carries a `produce: [EVT-T*]` list claim per [EVT-A4](02_invariants.md#evt-a4--producer-role-binding-reframed-2026-04-25). Role-specific extensions:
 
-**Originator (informational, NOT producer):** PC submits text → gateway → roleplay-service (Python) emits LLMProposal. Roleplay-service is the **originator** of the proposal but NOT the producer of the committed PlayerTurn.
+| Role | Required claims |
+|---|---|
+| Player-Actor | (handled at gateway authentication; PCs don't have direct produce claim — gateway forwards to commit-service) |
+| Orchestrator | `produce: [Submitted]` + role-specific generation claims |
+| Aggregate-Owner | `produce: [Derived]` + DP-K9 `write: [{aggregate_type, tier, scope}]` per aggregate owned |
+| Generator | `produce: [Generated]` + DP-Ch25 `can_register_aggregator: [level]` for BubbleUp generators OR scheduler-specific claim for Scheduled generators |
+| LLM-Originator | `produce: [Proposal]` ONLY — never canonical categories (per [EVT-A7](02_invariants.md#evt-a7--untrusted-origin-events-require-pre-validation-lifecycle-reframed-2026-04-25)) |
+| Administrative | `produce: [Administrative]` + S5 admin command registry claims |
+| DP-Internal | N/A — DP itself; no service-level JWT |
 
-**Capability JWT (world-service service-account):**
-```json
-"produce": ["PlayerTurn", "NPCTurn", "AggregateMutation", "CalibrationEvent"],
-"can_advance_turn": ["cell"]
-```
-
-**Idempotency key:** `(producer_service="world-service", client_request_id=ProposalId, target_channel=cell_channel_id)`. ProposalId originates from roleplay-service's LLMProposal. World-service uses it to dedupe in case bus delivers duplicate proposals after retry.
-
-**Additional uniqueness constraint at commit:** per session-writer R7, the underlying turn allocation is also keyed on `(reality_id, session_id, turn_seq)` — duplicate `turn_seq` for the same session is rejected by Postgres UNIQUE constraint on `event_log`.
-
-**Semantic rate limit:**
-- **5 turns/second per session** at world-service consume layer (after roleplay-service rate-limits LLM calls).
-- **20 turns/second per reality** aggregate (handles ~100 active sessions × ~0.2/s typical = peak ~20).
-- Excess → `EventModelError::SemanticRateLimited { retry_after }`. Never silently drop.
-
-**Forbidden producers:**
-- `roleplay-service` (Python) — can ONLY emit LLMProposal per [DP-A6](../06_data_plane/02_invariants.md#dp-a6--python-is-event-producer-only-for-game-state) + [EVT-A7](02_invariants.md#evt-a7--llm-proposals-are-pre-validation-only-never-authoritative)
-- PC sessions directly — must submit via gateway → bus chain
-- `quest-service`, `world-rule-scheduler`, `admin-cli` — wrong category
-- Any service without `produce: [PlayerTurn]` claim — JWT denial at SDK layer
-
-**Why these constraints:** PlayerTurn is the gateway-validated PC action. Allowing roleplay-service direct commit would collapse A6 5-layer injection defense. Allowing PC sessions direct commit would bypass capability + intent classification + canon-drift validation.
+Concrete JWT shape (field names, encoding, signing key rotation) is owned by [DP-K9](../06_data_plane/04d_capability_and_lifecycle.md#dp-k9--capability-tokens). Event Model only specifies the `produce` claim and its enforcement.
 
 ---
 
-## EVT-P2 — NPCTurn
+## EVT-P1 — Submitted (EVT-T1)
 
-**Allowed producer:** **`world-service`** (same Rust process as PlayerTurn). Consumes EVT-T6 LLMProposal where `proposal_kind = NPCTurnProposal`, runs validator pipeline, commits via `dp::advance_turn`.
+**Authorized producer roles:** Player-Actor (via gateway-trusted commit-service) · Orchestrator (multi-NPC reactions, batch coordination) · future quest-engine (QuestOutcome sub-type).
 
-**Originator:** world-service orchestrator decides which NPC reacts (per scene + opinion graph) → calls roleplay-service for LLM-generated dialogue → roleplay-service emits LLMProposal → world-service consumes its own proposal.
+**Originator vs producer:** Originator may differ from producer. PC submission originates from gateway → roleplay-service (Python LLM may rewrite text); commit-service (Rust) is the **producer** that holds the `produce: [Submitted]` claim and commits the validated event. NPC reaction proposal originates from roleplay-service per Orchestrator's request; same commit-service is the producer. The originator → producer split is the realization of [EVT-A7](02_invariants.md#evt-a7--untrusted-origin-events-require-pre-validation-lifecycle-reframed-2026-04-25): untrusted originators emit Proposals; trusted producers commit Submitted.
 
-**Capability JWT:** same as PlayerTurn (`produce: [..., "NPCTurn", ...]`). World-service service-account covers both.
+**Idempotency key target:** typically `(channel_id, session_id)` for PCTurn; `(channel_id, npc_id)` for NPCTurn. Feature design declares.
 
-**Idempotency key:** `(producer_service="world-service", client_request_id=ProposalId, target_channel=cell_channel_id)`. Same shape as EVT-P1.
+**Rate-limit policy:** per-session + per-channel + per-reality semantic limits, **declared by feature, lint-checked at runtime**. No specific numbers locked here. Default guidance: per-session ≤ X turns/sec where X is feature-tuned (PL_001 may default to 2-5/sec; high-traffic features adjust). Excess → `EventModelError::SemanticRateLimited { retry_after }` (never silently drop).
 
-**Semantic rate limit:**
-- **15 NPC turns/second per cell** (handles SPIKE_01 obs#6 multi-NPC reaction patterns where 3+ NPCs react to one PlayerTurn).
-- **30 NPC turns/second per reality** aggregate.
-- Excess → `EventModelError::SemanticRateLimited { retry_after }`.
+**Forbidden producer roles:** LLM-Originator (cannot commit canonical Submitted directly; must propose) · Administrative (uses EVT-T8 Administrative for admin-initiated changes) · DP-Internal · Generator.
 
-**Forbidden producers:** same forbidden list as EVT-P1 minus world-service. Roleplay-service still cannot commit; it only proposes.
+**Service-binding (V1, see boundary matrix for current):** typically a single Rust commit-service plays the Player-Actor + Orchestrator roles for both PCTurn and NPCTurn sub-types (per `_boundaries/01_feature_ownership_matrix.md`).
 
-**Note on multi-NPC reactions (per SPIKE_01 obs#6):** when one PlayerTurn triggers multiple NPC reactions (e.g., 3 NPCs in a teahouse), world-service emits N NPCTurn events in deterministic ordering (per scene-NPC ordering rule, defined in PL_003 — feature-level, not EVT-P concern). Each NPCTurn carries causal-ref to the same triggering PlayerTurn.
+**Cross-ref:** [EVT-T1 Submitted](03_event_taxonomy.md#evt-t1--submitted), [EVT-A7 untrusted-origin proposal](02_invariants.md#evt-a7--untrusted-origin-events-require-pre-validation-lifecycle-reframed-2026-04-25), [`../_boundaries/01_feature_ownership_matrix.md`](../_boundaries/01_feature_ownership_matrix.md).
 
 ---
 
-## EVT-P3 — AggregateMutation
+## EVT-P2_withdrawn (was NPCTurn)
 
-**Allowed producers:** **multiple feature services**, each restricted to aggregates THEY own:
-- **`world-service`** — owns `fiction_clock`, `actor_binding`, `scene_state`, `participant_presence`, `npc_pc_relationship`
-- **`quest-service`** (future V1+) — owns `quest_state`, `quest_progress`
-- **`pc-service`** (future) — owns `pc_inventory`, `pc_stats`, `pc_currency`
-- **`world-rule-scheduler`** (V1+30d) — owns `world_tick_schedule`
-
-**Capability JWT (per service):**
-```json
-"produce": ["AggregateMutation"],
-"write": [
-  { "aggregate_type": "fiction_clock", "tier": "T2", "scope": "reality" },
-  { "aggregate_type": "actor_binding", "tier": "T2", "scope": "reality" },
-  ...
-]
-```
-
-The `write: [...]` claim is the existing DP-K9 capability per aggregate-type/tier/scope (not Event-Model-introduced; DP enforces at SDK layer). EVT-P3 adds the `produce: [AggregateMutation]` outer gate.
-
-**Idempotency key:** `(producer_service, client_request_id, target_aggregate_id)`. For RealityScoped aggregates, target uses `(reality_id, aggregate_id)`. For ChannelScoped, target uses `(reality_id, channel_id, aggregate_id)`.
-
-**Semantic rate limit (per tier × per scope):**
-- T1 (Volatile) — 1000/s per session (high churn allowed; presence updates).
-- T2 (Durable-async) — 100/s per aggregate-id (typical state delta rate).
-- T3 (Durable-sync) — 10/s per aggregate-id (canon-affecting writes are slow by design).
-- Excess → `EventModelError::SemanticRateLimited`.
-
-These are upper bounds; per-aggregate fine-tuning at design review for known-hot aggregates.
-
-**Forbidden producers:**
-- `roleplay-service` (Python) — DP-A6
-- `admin-cli` — admin uses EVT-T8 AdminAction (which itself may *trigger* AggregateMutation as a follow-up, but the AdminAction is the user-visible producer)
-- Any service writing an aggregate it doesn't own — DP-K9 capability denies
+**Reason:** EVT-T2 NPCTurn `_withdrawn` per Option C redesign — NPCTurn is a sub-type of EVT-T1 Submitted. Producer rule subsumed by EVT-P1.
 
 ---
 
-## EVT-P4 — SystemEvent
+## EVT-P3 — Derived (EVT-T3)
 
-**Allowed producer:** **DP itself** (Data Plane internal emission).
+**Authorized producer roles:** Aggregate-Owner per-feature. Each feature owns specific aggregate types listed in [`../_boundaries/01_feature_ownership_matrix.md`](../_boundaries/01_feature_ownership_matrix.md).
 
-**No service-level producer.** Capability JWT does not gate SystemEvent emission — DP is trusted by construction (per [EVT-A4 consequence note](02_invariants.md#evt-a4--producer-category-binding)).
+**Idempotency key target:** typically `(reality_id, aggregate_id)` for RealityScoped or `(reality_id, channel_id, aggregate_id)` for ChannelScoped.
 
-**Capability JWT:** N/A. SystemEvents emit as part of DP operation transactional commits (e.g., `bind_session` emits `MemberJoined`, `channel_pause` emits `ChannelPaused`, `advance_turn` emits `TurnBoundary` carrying the PlayerTurn/NPCTurn/etc. payload).
+**Rate-limit policy:** per tier × scope, feature-declared. T1 (Volatile) tolerates high-frequency per-session writes; T3 (Durable-sync) is design-time-bounded. Specific defaults locked in feature designs that own each aggregate type.
 
-**Idempotency key:** DP-internal — DP-Ch11 channel_event_id allocation handles uniqueness via the per-channel monotonic counter.
+**Forbidden producer roles:** LLM-Originator (per DP-A6 + EVT-A7) · Administrative (uses EVT-T8 with side-effects on aggregates derived through EVT-T3 by the same commit-service) · DP-Internal.
 
-**Semantic rate limit:** N/A — bounded by DP operation rate limits (DP-R6 transport rate limit applies; no separate semantic limit needed because feature services do not produce SystemEvents).
-
-**Forbidden producers:** **ALL feature services.** Reserved discriminators per DP-A18 / DP-Ch52: any feature attempt to commit a SystemEvent payload via `dp::t2_write` etc. is rejected by SDK type system at compile time. Runtime attempts (raw DB write) blocked by DP-R3 (no raw client imports).
-
-**Note on TurnBoundary payload routing:** when world-service calls `dp::advance_turn(turn_data=PlayerTurn{...})`, DP commits a `TurnBoundary` SystemEvent whose payload IS the PlayerTurn. The producer rule for the *payload* is EVT-P1 PlayerTurn; the producer rule for the *wire-format SystemEvent* is EVT-P4 (DP). Both apply: world-service must have `produce: [PlayerTurn]` to call `advance_turn`; DP transparently emits TurnBoundary as the wire format.
+**Cross-ref:** [EVT-T3 Derived](03_event_taxonomy.md#evt-t3--derived), [DP-K5 Write primitives](../06_data_plane/04b_read_write.md#dp-k5--write-primitives-tier-typed), aggregate ownership matrix.
 
 ---
 
-## EVT-P5 — BubbleUpEvent
+## EVT-P4 — System (EVT-T4)
 
-**Allowed producer:** registered `BubbleUpAggregator` instance, running on the **parent channel's writer node** per [DP-Ch26 runtime](../06_data_plane/16_bubble_up_aggregator.md#dp-ch26--aggregator-runtime-loop).
+**Authorized producer roles:** **DP-Internal only.** Cannot be emitted from any service.
 
-**Service that registers the aggregator:** typically the feature owner (e.g., gossip-service registers a `RumorBubble` aggregator at tavern level; reputation-service registers a `FactionReputationDrift` at country level). The registering service holds the JWT claim.
+**Capability JWT:** N/A — DP-internal. Reserved discriminators (per DP-A18 / DP-Ch52) reject feature emission attempts at SDK type system.
 
-**Capability JWT (registering service):**
-```json
-"produce": ["BubbleUpEvent"],
-"can_register_aggregator": ["tavern", "town", "country"]
-```
+**Idempotency:** DP-internal (DP-Ch11 channel_event_id allocation handles uniqueness via per-channel monotonic counter).
 
-`can_register_aggregator: [level_name]` is the existing DP-Ch25 claim. EVT-P5 adds the `produce: [BubbleUpEvent]` outer gate.
+**Rate-limit:** N/A — bounded by DP operation rates (DP-R6 transport rate-limit).
 
-**Idempotency key:** `(aggregator_id, source_event_refs_hash)` where `source_event_refs_hash = blake3(sorted(causal_refs))`. Multi-source aggregations hash all source `(channel_id, channel_event_id)` tuples to ensure replay produces same emit decision.
+**Forbidden producer roles:** **ALL feature roles.** This is a defense-in-depth axiom — even compromised services cannot forge System events.
 
-**Semantic rate limit:**
-- DP enforces structural limits per DP-Ch29: 1 emit/source-event/aggregator + 1MB state cap + 16-level cascade cap.
-- EVT-P5 adds: **max 5 emits per parent channel per source-event-window** (semantic limit; aggregator code that exceeds this is a design smell).
-- Aggregator's `EmitDecision::Throttle { until }` is the soft alternative.
-
-**Forbidden producers:**
-- Non-registered services — only the registered aggregator emits at its parent.
-- LLM-driven services (no LLMProposal → BubbleUp path) — bubble-up is feature-deterministic per DP-Ch27.
-- PC sessions, admin-cli — never.
-
-**Note on cascading bubble-up:** an aggregator at level L+1 may emit an event that triggers another aggregator at level L+2 (DP-Ch29 cascade). Each cascade level is a separate EVT-P5 emission with its own idempotency key. Cap at 16 levels.
+**Cross-ref:** [EVT-T4 System](03_event_taxonomy.md#evt-t4--system), [DP-A18](../06_data_plane/02_invariants.md#dp-a18--channel-lifecycle-state-machine--canonical-membership-events-phase-4-2026-04-25).
 
 ---
 
-## EVT-P6 — LLMProposal
+## EVT-P5 — Generated (EVT-T5)
 
-**Allowed producer:** **`roleplay-service`** (Python/FastAPI) and future LLM-driven services. **Never the committed-event services.**
+**Authorized producer roles:** Generator (Synthetic actor — registered aggregator instances per DP-Ch25; future scheduler instances; future probabilistic-RNG-based emitters).
 
-**Capability JWT (roleplay-service service-account):**
-```json
-"produce": ["LLMProposal"]
-```
+**Idempotency key target:** `(generator_id, source_event_refs_hash)` for BubbleUp aggregators; `(scheduler_id, fired_at_fiction_ts)` for Scheduled generators. Feature design declares.
 
-**Critically:** roleplay-service JWT does NOT carry `produce: [PlayerTurn]`, `produce: [NPCTurn]`, `produce: [AggregateMutation]`, or `can_advance_turn: [...]`. Even compromised roleplay-service code cannot directly commit canonical events — only propose.
+**Rate-limit policy:** structural limits enforced by DP-Ch29 (1 emit/source-event/aggregator + 1 MB state cap + 16-level cascade cap). Semantic limits feature-declared per Generator type.
 
-**Idempotency key:** `(producer_service="roleplay-service", proposal_id=UUIDv4, target_channel=cell_channel_id)`. Roleplay-service generates `proposal_id` per LLM-completion; world-service uses it to dedupe consume in case bus retries.
+**Critical constraint:** [EVT-A9 RNG determinism](02_invariants.md#evt-a9--probabilistic-generation-determinism-new-2026-04-25) — every Generator MUST use `dp::deterministic_rng(channel_id, channel_event_id)` (or equivalent SDK-provided seed). Wall-clock + non-deterministic sources forbidden at lint time. Replay tests verify.
 
-**Semantic rate limit:**
-- **5 proposals/second per session** (higher than PlayerTurn rate because (a) proposals fail validation often → retry, (b) NPC reactions multiplex per SPIKE_01 obs#6).
-- **20 proposals/second per reality** aggregate.
-- Excess → bus backpressure (proposals queue with retention timeout 60s) → eventually `Expired` lifecycle terminal state per [EVT-T6](03_event_taxonomy.md#evt-t6--llmproposal).
+**Forbidden producer roles:** Player-Actor (cannot self-generate as PC) · LLM-Originator (no LLM Proposal → Generated path; Generators are deterministic-feature-trusted) · DP-Internal.
 
-**Forbidden producers:**
-- `world-service` (Rust) — consumes/validates only, never produces proposals
-- `admin-cli` — wrong category (admin uses AdminAction)
-- `quest-service`, `pc-service`, `world-rule-scheduler` — wrong category
-- PC sessions directly — must submit via gateway → roleplay-service chain
-
-**Note on rejection lifecycle:** when a proposal is rejected by validator pipeline, world-service emits a separate audit event (NOT an EVT-T6 — it's an audit-log entry with reject reason). The original proposal is NOT promoted; the PC sees soft-fail UX per A5-D4 fallback ("Elena seems distracted").
+**Cross-ref:** [EVT-T5 Generated](03_event_taxonomy.md#evt-t5--generated), [EVT-A9 RNG determinism](02_invariants.md#evt-a9--probabilistic-generation-determinism-new-2026-04-25), [DP-Ch25..Ch30](../06_data_plane/16_bubble_up_aggregator.md), [`08_scheduled_events.md`](08_scheduled_events.md) (Phase 4).
 
 ---
 
-## EVT-P7 — CalibrationEvent
+## EVT-P6 — Proposal (EVT-T6)
 
-**Allowed producer:** **`world-service`** (per Phase 0 B4 decision — derives from FictionClock advance).
+**Authorized producer roles:** LLM-Originator (current V1: Python LLM-driven service; future: any untrusted-origin agentic/plugin service).
 
-**Capability JWT (world-service):** same as EVT-P1 — `produce: ["PlayerTurn", "NPCTurn", "AggregateMutation", "CalibrationEvent"]`. World-service service-account already covers Calibration.
+**Capability JWT:** `produce: [Proposal]` ONLY. **Critically:** no `produce: [Submitted | Derived | Generated | Administrative]`, no `can_advance_turn`, no `can_register_aggregator`. Even compromised LLM-Originator code cannot directly commit canonical events.
 
-**Idempotency key:** `(producer_service="world-service", reality_id, calibration_kind, fiction_ts_boundary)` where:
-- `calibration_kind ∈ { day_passes, month_passes, year_passes }`
-- `fiction_ts_boundary` is the exact crossed boundary (e.g., `1256-09-30 → 1256-10-01` for month boundary)
+**Idempotency key target:** `(producer_service, proposal_id, target_channel)`. Producer generates `proposal_id` per LLM-completion; trusted commit-service uses it to dedupe consume.
 
-This composite ensures exactly-once even if FictionClock T2 write retries cause re-evaluation.
+**Rate-limit policy:** per-session bus admission, feature-declared. Bus retention default 60s (proposal expires if validator doesn't consume). Excess → bus backpressure → producer-side backpressure to upstream (gateway → user toast "system busy, retry").
 
-**Semantic rate limit:** N/A — derived from FictionClock advance. Worst case: a `/travel 1 year` PlayerTurn emits ~365 day_passes + 12 month_passes = ~377 calibrations. SDK batches via idempotent commit (the `t2_write` for each is idempotent on the composite key; bulk emit fits within one transaction window).
+**Forbidden producer roles:** any role with `produce: [<canonical category>]` claim — they cannot also produce Proposals (would defeat the trust separation).
 
-**Forbidden producers:**
-- Any service other than world-service — only the writer of FictionClock can derive crossings
-- `quest-service` (observes calibrations as input to QuestBeat triggers, never emits them)
-- `world-rule-scheduler` (observes calibrations to fire WorldTick, never emits them)
-- `admin-cli` — never
+**Lifecycle terminals:** `Validated` (promoted to EVT-T1 Submitted; original proposal not retained as event) · `Rejected { reason }` (logged + dead-lettered; producer/originator sees soft-fail UX) · `Expired` (bus retention elapsed without validator consume).
 
-**Note on emission ordering:** when 23 day_passes + 1 month_passes fire in one FictionClock advance (SPIKE_01 turn 16), world-service emits them in **fiction-chronological order**. The exact transactional cluster pattern (atomic vs immediate-follow-up) is deferred to [EVT-Q4](99_open_questions.md#evt-q4--calibrationevent-producer-ordering) and Phase 4 [`08_scheduled_events.md`](08_scheduled_events.md). Default for design: immediate follow-ups in same channel writer's epoch.
+**Cross-ref:** [EVT-T6 Proposal](03_event_taxonomy.md#evt-t6--proposal), [EVT-A7 untrusted-origin lifecycle](02_invariants.md#evt-a7--untrusted-origin-events-require-pre-validation-lifecycle-reframed-2026-04-25), [DP-A6](../06_data_plane/02_invariants.md#dp-a6--python-is-event-producer-only-for-game-state), [`07_llm_proposal_bus.md`](07_llm_proposal_bus.md) (Phase 3).
 
 ---
 
-## EVT-P8 — AdminAction
+## EVT-P7_withdrawn (was CalibrationEvent)
 
-**Allowed producer:** **`admin-cli`** via S5 dispatch.
-
-**Capability JWT (admin-cli service-account):**
-```json
-"produce": ["AdminAction"],
-"can_pause_channel": ["*"],
-"can_dissolve_channel": ["*"],
-"can_override_world_rule": true
-```
-
-The admin-cli JWT carries **all** admin privileges; access control happens at S5 layer (actor authentication + impact-class gating + cooldowns + dual-actor for Tier 1).
-
-**Idempotency key:** `(producer="admin-cli", admin_command_id, target_id)` where:
-- `admin_command_id` = unique per S5-dispatched command (UUIDv4)
-- `target_id` = `channel_id` for channel-scoped commands (pause, dissolve), `reality_id` for reality-scoped (force-archive), `quest_id` for quest-scoped, etc.
-
-**Semantic rate limit:** N/A (admin actions are rare; S5 cooldowns enforce — Tier 1 has 24h cooldown per actor; Tier 2 has weekly review; Tier 3 standard auth).
-
-**Forbidden producers:** **ALL non-admin-cli services.** S5 dispatch is the single chokepoint for admin commands per ADMIN_ACTION_POLICY §R4. Service-to-service calls cannot forge AdminAction.
-
-**Note on side-effects:** AdminAction commits often trigger DP-emitted SystemEvent side-effects (e.g., `admin/pause-channel` emits an AdminAction event AND DP emits a ChannelPaused SystemEvent). The AdminAction is the operator-audit-grade record; the SystemEvent is the DP lifecycle record. Both committed; both reference each other via causal-refs.
+**Reason:** EVT-T7 CalibrationEvent `_withdrawn` per Option C redesign — calibration is an EVT-T3 Derived sub-type (DayPasses / MonthPasses / YearPasses are derived from FictionClock advance). Producer rule subsumed by EVT-P3.
 
 ---
 
-## EVT-P9 — QuestBeat (V1+, gated on quest engine)
+## EVT-P8 — Administrative (EVT-T8)
 
-**Allowed producer:** **`quest-service`** (feature service, future V1+).
+**Authorized producer roles:** Administrative (admin-cli via S5 dispatch).
 
-**Capability JWT (quest-service):**
-```json
-"produce": ["QuestBeat", "AggregateMutation"],
-"write": [
-  { "aggregate_type": "quest_state", "tier": "T2", "scope": "reality" },
-  { "aggregate_type": "quest_progress", "tier": "T2", "scope": "reality" }
-]
-```
+**Capability JWT:** `produce: [Administrative]` + S5 admin command registry claims (per ADMIN_ACTION_POLICY §R4).
 
-Quest-service produces both QuestBeat (this category) and AggregateMutation (state writes on quest aggregates).
+**Idempotency key target:** `(producer="admin-cli", admin_command_id, target_id)`.
 
-**Idempotency key:** `(producer="quest-service", quest_id, beat_id)`. `quest_id + beat_id` form a stable composite; replay-safe.
+**Rate-limit policy:** N/A semantic-rate; S5 cooldowns enforce per-actor (Tier 1: 24h cooldown; Tier 2: weekly review; Tier 3: standard auth).
 
-**Semantic rate limit:** **1 beat/second per quest instance** (quests are slow by design — typical beat advance is on PC turn cadence). Aggregate per reality bounded by active quest count × beat rate.
+**Forbidden producer roles:** **ALL non-admin-cli services.** S5 dispatch is the single chokepoint; service-to-service calls cannot forge Administrative events.
 
-**Forbidden producers:**
-- Any non-quest-service — quest engine is the single source of truth for quest progression
-- `world-service` (observes QuestBeat as causal-ref source for WorldTick triggers, never emits them directly)
-- `admin-cli` — admin overrides quests via AdminAction with sub-shape `QuestForceComplete`, not QuestBeat directly
-
-**V1 status:** **placeholder.** Quest engine not implemented in V1 minimum. Capability claim reserved; service unimplemented.
+**Cross-ref:** [EVT-T8 Administrative](03_event_taxonomy.md#evt-t8--administrative), S5 ADMIN_ACTION_POLICY, [`../_boundaries/02_extension_contracts.md`](../_boundaries/02_extension_contracts.md) §4 (sub-shape ownership).
 
 ---
 
-## EVT-P10 — NPCRoutine (V1+30d)
+## EVT-P9_withdrawn (was QuestBeat)
 
-**Allowed producer:** **`world-rule-scheduler`** (future V1+30d feature service).
-
-**Capability JWT:**
-```json
-"produce": ["NPCRoutine", "WorldTick"],
-"can_advance_turn": ["cell"]
-```
-
-Scheduler covers both NPCRoutine (this category) and WorldTick (EVT-P11). The `can_advance_turn: ["cell"]` claim is required because routines fire as TurnBoundary at cell channels per EVT-T10.
-
-**Idempotency key:** `(producer="world-rule-scheduler", schedule_id, fired_at_fiction_ts)` per [EVT-Q8](99_open_questions.md#evt-q8--idempotency-key-composition-for-worldtick--npcroutine-across-big-jumps) default. `schedule_id` is the routine declaration ID (per NPC sheet); `fired_at_fiction_ts` is the exact fiction-time crossing.
-
-**Semantic rate limit:**
-- **1 routine/NPC/fiction-day** default (per NPC routine declaration).
-- Per-NPC override allowed via NPC sheet field (e.g., a busy innkeeper might have 3 routines/day).
-- **Aggregate per reality** bounded by NPC count × routine density.
-
-**Forbidden producers:**
-- `roleplay-service` (Python — DP-A6 violation)
-- `world-service` orchestrator (only handles NPC-reacts-to-PC; routines are autonomous)
-- Any service without `produce: [NPCRoutine]` claim
-
-**V1 status:** **placeholder.** No NPCRoutine emission in V1 (V1 paused-when-solo per MV12-D4). V1+30d activation alongside scheduler service.
+**Reason:** EVT-T9 QuestBeat `_withdrawn` per Option C redesign — split into EVT-P1 (QuestOutcome → Submitted) + EVT-P3 (QuestAdvance → Derived) + EVT-P5 (QuestTrigger → Generated). Producer rule split across P1/P3/P5.
 
 ---
 
-## EVT-P11 — WorldTick (V1+30d)
+## EVT-P10_withdrawn (was NPCRoutine)
 
-**Allowed producer:** **`world-rule-scheduler`** (same service as NPCRoutine).
+**Reason:** EVT-T10 NPCRoutine `_withdrawn` per Option C redesign — NPCRoutine is an EVT-T5 Generated sub-type (Scheduled:NPCRoutine emitted by world-rule-scheduler). Producer rule subsumed by EVT-P5.
 
-**Capability JWT:** same as EVT-P10 plus `can_advance_turn: ["tavern", "town", "district", "country", "continent"]` — scheduler must be authorized to emit at non-cell levels for author-placed beats.
+---
 
-**Idempotency key:** `(producer="world-rule-scheduler", reality_id, world_tick_id)` per [EVT-Q8](99_open_questions.md#evt-q8--idempotency-key-composition-for-worldtick--npcroutine-across-big-jumps). `world_tick_id` is the author-declared beat ID (stable across schedule mutations because mutations create new world_tick_ids, not edit existing).
+## EVT-P11_withdrawn (was WorldTick)
 
-**Semantic rate limit:**
-- Author-placed beats are sparse. **Default 10 fires/fiction-day per reality.**
-- Big jumps may cross multiple thresholds in one FictionClock advance — each fires once via idempotency key.
-- Excess → audit-log warning, not rejection (operator may have intentionally placed dense beats for a finale arc).
-
-**Forbidden producers:**
-- Any non-scheduler service
-- `roleplay-service` — DP-A6
-- `admin-cli` — admin uses AdminAction sub-shape `ForceWorldTick`, not WorldTick directly
-
-**V1 status:** **placeholder.** No WorldTick emission in V1.
-
-**Recovery on scheduler downtime (per [EVT-Q8](99_open_questions.md)):** if scheduler is down for 6 hours wall-clock and FictionClock advanced past pending thresholds during that window, missed WorldTicks fire on scheduler restart in fiction-chronological order. No skip-on-restart. Idempotency key prevents duplicate fires when scheduler boots and re-evaluates.
+**Reason:** EVT-T11 WorldTick `_withdrawn` per Option C redesign — WorldTick is an EVT-T5 Generated sub-type (Scheduled:WorldTick emitted by world-rule-scheduler). Producer rule subsumed by EVT-P5.
 
 ---
 
 ## Locked-decision summary
 
-| ID | Category | Producer | JWT claim | Idempotency key |
-|---|---|---|---|---|
-| EVT-P1 | PlayerTurn | world-service | `produce: [PlayerTurn], can_advance_turn: [cell]` | `(world-service, ProposalId, cell_channel)` |
-| EVT-P2 | NPCTurn | world-service | same as P1 | `(world-service, ProposalId, cell_channel)` |
-| EVT-P3 | AggregateMutation | world-service / quest-service / pc-service / scheduler (per aggregate ownership) | `produce: [AggregateMutation], write: [...]` | `(producer, client_request_id, aggregate_id)` |
-| EVT-P4 | SystemEvent | DP itself | N/A — DP-internal | DP-Ch11 channel_event_id |
-| EVT-P5 | BubbleUpEvent | registered aggregator instance | `produce: [BubbleUpEvent], can_register_aggregator: [...]` | `(aggregator_id, source_event_refs_hash)` |
-| EVT-P6 | LLMProposal | roleplay-service (Python) | `produce: [LLMProposal]` ONLY | `(roleplay-service, proposal_id, cell_channel)` |
-| EVT-P7 | CalibrationEvent | world-service | same as P1 | `(world-service, reality_id, calibration_kind, fiction_ts_boundary)` |
-| EVT-P8 | AdminAction | admin-cli | `produce: [AdminAction], can_*` | `(admin-cli, admin_command_id, target_id)` |
-| EVT-P9 | QuestBeat (V1+) | quest-service | `produce: [QuestBeat, AggregateMutation]` | `(quest-service, quest_id, beat_id)` |
-| EVT-P10 | NPCRoutine (V1+30d) | world-rule-scheduler | `produce: [NPCRoutine, WorldTick], can_advance_turn: [cell]` | `(scheduler, schedule_id, fired_at_fiction_ts)` |
-| EVT-P11 | WorldTick (V1+30d) | world-rule-scheduler | same as P10 + `can_advance_turn: [tavern, town, ...]` | `(scheduler, reality_id, world_tick_id)` |
+| ID | Status | Producer role(s) | Forbidden roles |
+|---|---|---|---|
+| EVT-P1 (T1 Submitted) | active | Player-Actor / Orchestrator / future quest-engine | LLM-Originator / Administrative / DP-Internal / Generator |
+| EVT-P2 (was T2 NPCTurn) | `_withdrawn` | merged into P1 | — |
+| EVT-P3 (T3 Derived) | active | Aggregate-Owner per-feature | LLM-Originator / Administrative direct (uses T8 with side-effects) / DP-Internal |
+| EVT-P4 (T4 System) | active | DP-Internal only | ALL feature roles |
+| EVT-P5 (T5 Generated) | active | Generator (Synthetic actor variants) — MUST honor EVT-A9 | Player-Actor / LLM-Originator / DP-Internal |
+| EVT-P6 (T6 Proposal) | active | LLM-Originator (untrusted-origin) | any role with canonical-category produce claim |
+| EVT-P7 (was T7 CalibrationEvent) | `_withdrawn` | merged into P3 | — |
+| EVT-P8 (T8 Administrative) | active | Administrative (admin-cli via S5) | ALL non-admin-cli services |
+| EVT-P9 (was T9 QuestBeat) | `_withdrawn` | split across P1+P3+P5 | — |
+| EVT-P10 (was T10 NPCRoutine) | `_withdrawn` | merged into P5 | — |
+| EVT-P11 (was T11 WorldTick) | `_withdrawn` | merged into P5 | — |
 
 ---
 
 ## Cross-references
 
-- [EVT-A4 Producer-category binding](02_invariants.md#evt-a4--producer-category-binding) — invariant this file implements
-- [EVT-A7 LLM proposals pre-validation](02_invariants.md#evt-a7--llm-proposals-are-pre-validation-only-never-authoritative) — explains roleplay-service / world-service split
-- [`03_event_taxonomy.md`](03_event_taxonomy.md) — EVT-T1..T11 categories this file gates
-- [`06_per_category_contracts.md`](06_per_category_contracts.md) — required/optional fields per category (Phase 2b)
-- [DP-K9 Capability tokens](../06_data_plane/04d_capability_and_lifecycle.md#dp-k9--capability-tokens) — capability JWT shape
+- [EVT-A4 Producer-role binding](02_invariants.md#evt-a4--producer-role-binding-reframed-2026-04-25) — invariant this file implements
+- [EVT-A7 Untrusted-origin pre-validation](02_invariants.md#evt-a7--untrusted-origin-events-require-pre-validation-lifecycle-reframed-2026-04-25) — explains LLM-Originator vs canonical-producer split
+- [EVT-A9 RNG determinism](02_invariants.md#evt-a9--probabilistic-generation-determinism-new-2026-04-25) — applies to all Generator role
+- [EVT-A11 Sub-type ownership](02_invariants.md#evt-a11--sub-type-ownership-discipline-new-2026-04-25) — service-binding lives in `_boundaries/`
+- [`03_event_taxonomy.md`](03_event_taxonomy.md) — EVT-T* categories this file gates
+- [`06_per_category_contracts.md`](06_per_category_contracts.md) — envelope + per-category contracts
+- [`../_boundaries/01_feature_ownership_matrix.md`](../_boundaries/01_feature_ownership_matrix.md) — current service↔role bindings (SSOT)
+- [DP-K9 Capability tokens](../06_data_plane/04d_capability_and_lifecycle.md#dp-k9--capability-tokens) — JWT shape
 - [DP-A6 Python event-only](../06_data_plane/02_invariants.md#dp-a6--python-is-event-producer-only-for-game-state) — direction this file makes concrete
-- [02_storage R7 single-writer](../02_storage/R07_concurrency_cross_session.md) — additional commit-time uniqueness (turn_seq)
-- [05_llm_safety/](../05_llm_safety/) — A3/A5/A6 internals slot into validator pipeline (Phase 3)
-- [ADMIN_ACTION_POLICY](../../02_governance/ADMIN_ACTION_POLICY.md) §R4 — S5 admin command registry
+- ADMIN_ACTION_POLICY §R4 — S5 admin command registry
