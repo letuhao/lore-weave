@@ -211,15 +211,15 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 >
 > This section records the backlog. Items will be resolved one at a time in Phase 4 mini-sessions. Phase 1-3 axioms, tiers, rulebook, SLO anchors, kernel API, control plane spec, coherency protocol, and failure modes remain **LOCKED** as a baseline — changes must go through standard supersession procedure in [../decisions/](../decisions/).
 
-## Phase 4 severity summary
+## Phase 4 severity summary — FINAL
 
 - **🔴 Blockers (0):** all design blockers resolved 2026-04-25
-- **🟡 Significant gaps (2 remaining, 10 resolved):** Q20 (V1-data-deferred), Q29 (ops-tinted) + ~~Q17, Q18, Q19, Q21, Q22, Q28, Q30, Q31, Q32, Q34~~ ✅ resolved 2026-04-25
-- **🟢 Nits / operational (4):** Q23, Q24, Q25, Q33
+- **🟡 Significant gaps (1 remaining, 11 resolved):** Q20 LLM latency (V1-data-deferred, no design action available) + ~~Q17, Q18, Q19, Q21, Q22, Q28, Q29, Q30, Q31, Q32, Q34~~ ✅ resolved 2026-04-25
+- **🟢 Nits / operational (0 remaining, 4 resolved):** ~~Q23, Q24, Q25, Q33~~ ✅ resolved 2026-04-25 (consolidated into [20_operational_residuals.md](20_operational_residuals.md))
 
-**Resolved (14):** Q15, Q16, Q17, Q18, Q19, Q21, Q22, Q26, Q27, Q28, Q30, Q31, Q32, Q34 ✅
+**Resolved (19):** Q15, Q16, Q17, Q18, Q19, Q21, Q22, Q23, Q24, Q25, Q26, Q27, Q28, Q29, Q30, Q31, Q32, Q33, Q34 ✅
 
-**Phase 4 design phase complete + 7 follow-up gaps resolved.** Remaining 2 🟡 gaps: Q20 LLM latency (V1-data-deferred, no design action) + Q29 fan-out tuning (ops-doc territory). All non-blocking for feature design.
+**🎉 Phase 4 design + ops-residual cleanup is FUNCTIONALLY COMPLETE.** 19 of 20 Phase 4 questions resolved. Only Q20 (LLM latency) remains, deferred until V1 prototype data exists — no design action available now. **06_data_plane is locked baseline for feature design.** SDK implementation (Phase 2b proc-macros, clippy lints, dp/dp-derive crates) is the next phase of work, pursued when V1 game services begin coding.
 
 ---
 
@@ -332,27 +332,27 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ---
 
-## Q23 — Histogram bucket granularity (O1 from prior review)
+## Q23 — Histogram bucket granularity (O1 from prior review) ✅ RESOLVED (Phase 4, 2026-04-25)
 
-**What:** `dp.{op}.latency_ms{...}` default Prometheus buckets (5, 10, 25, 50, 75, 100, ...) have poor resolution in the 0–10 ms range where hot-path p99 targets live. Need exponential buckets around the SLO targets.
+**What:** Default Prometheus buckets are wrong-shape for DP's sub-100ms p99 targets.
 
-**Candidate resolution path:** Operational doc — specify bucket layout per metric. Not a design-doc change.
-
----
-
-## Q24 — Telemetry cardinality blow-up (O2 from prior review)
-
-**What:** 10 k realities × 50 aggregate types × 3 ops × several tags → millions of unique Prometheus series. Under channel model, add `channel_id` tag → orders of magnitude worse.
-
-**Candidate resolution path:** SDK-side roll-up; don't emit per-reality per-aggregate series; aggregate in-process and emit rate-per-service. Or sampling. Ops doc + DP-K8 update.
+**Resolution:** [20_operational_residuals.md DP-Ch46](20_operational_residuals.md#dp-ch46--histogram-bucket-layouts) — exponential bucket layouts specified per metric (T0/T1/T2/T3 read+write, fanout, causality wait, cold start). Cache hit rate kept as counter ratio (not histogram). CP admin CLI `set-histogram-buckets` for override.
 
 ---
 
-## Q25 — Capability signing key rotation window (S1 from prior review)
+## Q24 — Telemetry cardinality blow-up (O2 from prior review) ✅ RESOLVED (Phase 4, 2026-04-25)
 
-**What:** Quarterly rotation leaves a 90-day window where a stolen signing key is valid. For a hobby project this is a tradeoff; for a platform product at V3 this window is large.
+**What:** Naïve labeling produces millions of unique Prometheus series.
 
-**Candidate resolution path:** Monthly rotation + passport-style revocation signal broadcast on hot path. Or accept 90-day as project-appropriate. Decision deferred to platform-mode launch (separate track).
+**Resolution:** [20_operational_residuals.md DP-Ch47](20_operational_residuals.md#dp-ch47--telemetry-cardinality-control) — default low-cardinality labels (`service`, `tier`, `op`, `result` ≈600 series per metric); high-cardinality (reality_id, channel_id, aggregate_type, session_id) goes to structured logs + 1%-sampled traces. SDK-side aggregation across high-cardinality dimensions before Prometheus exposition. Bounded debug-trace flag for incident response.
+
+---
+
+## Q25 — Capability signing key rotation window (S1 from prior review) ✅ RESOLVED (Phase 4, 2026-04-25)
+
+**What:** 90-day rotation window is large for V3 platform-mode multi-tenant deployment.
+
+**Resolution:** [20_operational_residuals.md DP-Ch48](20_operational_residuals.md#dp-ch48--capability-signing-key-rotation-policy) — phased upgrade. V1/V2 keep current quarterly rotation per [DP-C8](05_control_plane_spec.md#dp-c8--capability-issuance--rotation) (acceptable for hobby-scale). V3 upgrade: monthly rotation + passport-style revocation broadcast on `dp:cap_revoked:{reality_id}` channel (5-min cadence) + KMS-backed signing keys. Migration path V2 → V3 specified.
 
 ---
 
@@ -400,11 +400,11 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ---
 
-## Q29 — Fan-out width at higher channels (NEW-4)
+## Q29 — Fan-out width at higher channels (NEW-4) ✅ RESOLVED (Phase 4, 2026-04-25)
 
-**What:** Country event → all 500 players in country see it. Wide but infrequent fan-out. Memory cost of per-player subscription to 6 channel levels × multiple realities (for spectators).
+**What:** Naïve per-player subscription scales to 60k Redis subscribers globally; reduce overhead.
 
-**Candidate resolution path:** Subscription batching by node — one subscriber per channel per game-node, fan-out to local session clients. Reduces Redis subscribers from O(players) to O(nodes). Ops-doc scope mostly.
+**Resolution:** [20_operational_residuals.md DP-Ch49](20_operational_residuals.md#dp-ch49--subscription-fan-out-batching) — subscription batching pattern: one Redis Stream subscriber per `(game-node, channel)`, with in-process fan-out to all local sessions interested in that channel. Reduces global subscriber count from O(players × levels) to O(nodes × active_channels). 30-s grace on last-listener disconnect prevents resubscribe churn. Memory bounds confirmed negligible.
 
 ---
 
@@ -447,11 +447,11 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ---
 
-## Q33 — Retention per channel level (NEW-8)
+## Q33 — Retention per channel level (NEW-8) ✅ RESOLVED (Phase 4, 2026-04-25)
 
-**What:** Cell events: high volume, short retention feasible (30 days). Country events: low volume, long retention (canon-level importance). Current [02_storage R1](../02_storage/R01_event_volume.md) retention is per-reality, flat.
+**What:** Cell events high-volume short retention vs country events low-volume long retention; flat per-reality retention is wasteful.
 
-**Candidate resolution path:** Per-channel-level retention config in CP tier_policy. Ops + 02_storage coordination.
+**Resolution:** [20_operational_residuals.md DP-Ch50](20_operational_residuals.md#dp-ch50--retention-per-channel-level) — default retention by level_name (cell 30d, tavern+ 1y matching reality default per [02_storage R1](../02_storage/R01_event_volume.md)). Per-channel override via `metadata.retention_days`. Cleanup batch query extended to honor channel-level retention. Aggregator snapshots follow channel retention on dissolve. CP admin CLI for runtime retention adjustment.
 
 ---
 

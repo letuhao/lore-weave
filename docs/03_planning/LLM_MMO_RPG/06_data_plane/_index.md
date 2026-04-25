@@ -51,8 +51,9 @@ User clarified on 2026-04-25 that the game uses a **hierarchical channel** model
 17. [17_channel_lifecycle.md](17_channel_lifecycle.md) — **DP-Ch31..Ch37** lifecycle state machine (Active/Dormant/Dissolved) + auto-dormant scheduler + dissolution + canonical MemberJoined/MemberLeft + channel_pause/resume + composition rules + idempotency (resolves Q19 + Q28 + Q31)
 18. [18_causality_and_routing.md](18_causality_and_routing.md) — **DP-Ch38..Ch42** `CausalityToken` opaque newtype attached to acks + `wait_for` parameter on read primitives + projection-apply checkpoint table + session-writer transparent routing extending DP-Ch14 pattern + error taxonomy + gateway contract (resolves Q21 + Q22)
 19. [19_privacy_redaction_policies.md](19_privacy_redaction_policies.md) — **DP-Ch43..Ch45** `RedactionPolicy` enum (Transparent / SkipPrivate / AnonymizeRefs / Custom) + `RedactionFilter` trait + application semantics in aggregator runtime loop + telemetry counters + per-channel visibility no-inheritance rule (resolves Q32)
+20. [20_operational_residuals.md](20_operational_residuals.md) — **DP-Ch46..Ch50** ops handoff: histogram bucket layouts (Q23) + telemetry cardinality control (Q24) + capability signing key rotation policy with V3 monthly + revocation broadcast (Q25) + subscription fan-out batching (Q29) + per-channel-level retention (Q33). Recommended defaults locked + configurable overrides documented.
 
-**🎉 Phase 4 design phase complete + 7 follow-up gaps resolved.** Remaining Phase 4 work is 2 🟡 gaps + 4 🟢 nits/ops items, all non-blocking. **Feature design (DF4 / DF5 / DF7) can now consume the locked DP contract.**
+**🎉🎉 Phase 4 design + ops-residual cleanup is FUNCTIONALLY COMPLETE.** 19 of 20 Phase 4 questions resolved (Q15-Q19, Q21-Q34 except Q20). Only Q20 LLM latency remains — V1-data-deferred with no design action available. **06_data_plane is locked baseline for feature design (DF4/DF5/DF7) and SDK implementation (Phase 2b dp/dp-derive/dp-clippy crates).**
 
 ---
 
@@ -78,7 +79,8 @@ User clarified on 2026-04-25 that the game uses a **hierarchical channel** model
 | 17 | [17_channel_lifecycle.md](17_channel_lifecycle.md) | LOCKED | DP-Ch31..Ch37 | 2026-04-25 |
 | 18 | [18_causality_and_routing.md](18_causality_and_routing.md) | LOCKED | DP-Ch38..Ch42 | 2026-04-25 |
 | 19 | [19_privacy_redaction_policies.md](19_privacy_redaction_policies.md) | LOCKED | DP-Ch43..Ch45 | 2026-04-25 |
-| 99 | [99_open_questions.md](99_open_questions.md) | OPEN + **Phase 4 design ✅ + 7 follow-ups resolved** | Phase 1-3 residuals (Q2/Q3/Q7/Q10/Q11/Q13) + **Phase 4 Q15..Q34** (14 resolved: Q15/Q16/Q17/Q18/Q19/Q21/Q22/Q26/Q27/Q28/Q30/Q31/Q32/Q34; 2 🟡 + 4 🟢 remaining, none blocking) | 2026-04-25 |
+| 20 | [20_operational_residuals.md](20_operational_residuals.md) | LOCKED | DP-Ch46..Ch50 | 2026-04-25 |
+| 99 | [99_open_questions.md](99_open_questions.md) | OPEN — **Phase 4 functionally COMPLETE** | Phase 1-3 residuals (Q2/Q3/Q7/Q10/Q11/Q13) + **Phase 4 Q15..Q34** (19 resolved; only Q20 LLM latency remains, V1-data-deferred) | 2026-04-25 |
 
 ---
 
@@ -104,6 +106,7 @@ Outside docs may cross-link unambiguously to:
 | `DP-Ch*` | Channel lifecycle + membership + pause (DP-Ch31..Ch37) | [17_channel_lifecycle.md](17_channel_lifecycle.md) |
 | `DP-Ch*` | Causality token + routing UX (DP-Ch38..Ch42) | [18_causality_and_routing.md](18_causality_and_routing.md) |
 | `DP-Ch*` | Privacy redaction policy templates (DP-Ch43..Ch45) | [19_privacy_redaction_policies.md](19_privacy_redaction_policies.md) |
+| `DP-Ch*` | Operational residuals (DP-Ch46..Ch50) | [20_operational_residuals.md](20_operational_residuals.md) |
 
 Retired IDs: (none yet). Retired IDs use `_withdrawn` suffix, never reused.
 

@@ -81,6 +81,81 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-04-25 (continued) — 06_data_plane Phase 4 🟢 NITS BATCH RESOLVED (Q23+Q24+Q25+Q29+Q33) — design + ops-residual COMPLETE
+
+### Session arc
+
+Tenth and final Phase 4 mini-session. Batched all 4 🟢 nits + Q29 (ops-tinted gap) into one consolidated ops-handoff file. With this batch landed, **Phase 4 design + ops-residual cleanup is functionally complete** — only Q20 (LLM latency, V1-data-deferred) remains and has no design action available now.
+
+CLARIFY phase: user approved 3 design decisions (M1a single consolidated file · M2c recommended defaults locked + configurable overrides · M3c phased key rotation V1/V2 quarterly → V3 monthly + revocation broadcast).
+
+BUILD phase: 1 new file (20_operational_residuals.md, 313 lines, DP-Ch46..Ch50). No new axiom (operational defaults, not invariants). No updates to other files needed beyond 99 + _index.
+
+### Files landed
+
+| File | Change | Lines |
+|---|---|---:|
+| **NEW** [`20_operational_residuals.md`](06_data_plane/20_operational_residuals.md) | LOCKED, DP-Ch46..Ch50 | 313 |
+| [`99_open_questions.md`](06_data_plane/99_open_questions.md) | Q23/Q24/Q25/Q29/Q33 ✅ resolved with cross-refs; Phase 4 severity summary marked FINAL (19 of 20 resolved; only Q20 deferred) | 482 → 487 |
+| [`_index.md`](06_data_plane/_index.md) | File 20 row + DP-Ch ninth range; Phase 4 final state announcement; status row reflects 19 Qs resolved | 128 → 131 |
+
+**Folder total after Phase 4 closure:** ~7350 lines across 21 files. **129 stable IDs** (no new axiom; +5 channel primitives Ch46..Ch50). 
+
+### Cluster decisions locked
+
+| Decision | Rationale |
+|---|---|
+| Single file consolidating 5 ops items | Coherent ops-handoff doc; design-residual-style content not worth fragmenting |
+| Exponential histogram buckets per metric (Q23) | Default Prometheus linear buckets useless at sub-100ms p99; specific layouts per metric type sized for SLO targets |
+| Low-cardinality default Prometheus labels (Q24) | High-cardinality (reality_id, channel_id, aggregate_type) → logs + 1%-sampled traces; SDK-side aggregation; debug-trace flag for incident response |
+| V1/V2 quarterly rotation; V3 monthly + revocation broadcast (Q25) | Phased per platform-mode launch — V1/V2 hobby-scale acceptable; V3 multi-tenant tightens; KMS-backed at V3 |
+| Subscription batching: one Redis subscriber per (node, channel) (Q29) | O(nodes × channels) instead of O(players × levels); ~12× reduction in global Redis subscriber count |
+| Per-channel-level retention default + per-channel override (Q33) | Cell 30d, tavern+ 1y; metadata.retention_days override; cleanup batch extended to honor channel-level retention |
+
+### Phase 4 — final state
+
+| Status | Count | Items |
+|---|---:|---|
+| ✅ Resolved | **19** | Q15, Q16, Q17, Q18, Q19, Q21, Q22, Q23, Q24, Q25, Q26, Q27, Q28, Q29, Q30, Q31, Q32, Q33, Q34 |
+| 🟡 Deferred (V1 data) | 1 | Q20 LLM latency |
+| **Total** | **20** | All Phase 4 questions accounted for |
+
+**🎉🎉 Phase 4 design + ops-residual cleanup is functionally complete.** Only Q20 remains, deferred until V1 prototype data exists. 06_data_plane is locked baseline for feature design and SDK implementation.
+
+### Session 2026-04-25 — overall summary
+
+10 mini-sessions in one calendar day. Started morning with Phase 1 foundation; ended evening with Phase 4 closure.
+
+| Session | Q resolved | Files |
+|---|---|---|
+| Phase 1 foundation | (axioms/tiers/SLO/rulebook) | 7 files |
+| Phase 2 contracts | (SDK/CP/coherency) | +3 files |
+| Phase 3 failure/recovery | (DP-F1..F10) | +1 file |
+| Phase 4 backlog recorded | (Q15..Q34 catalogued) | (no new files) |
+| Phase 4 Q26 | channel first-class | +1 file |
+| Phase 4 Q17+Q30+Q34 | ordering + writer | +1 file |
+| Phase 4 Q16 | durable subscribe | +1 file |
+| Phase 4 Q15 | turn boundary | +1 file |
+| Phase 4 Q27 | bubble-up — DESIGN PHASE COMPLETE | +1 file |
+| Phase 4 Q19+Q28+Q31 | lifecycle/membership/pause | +1 file |
+| Phase 4 Q18 | T1 reframe | (no new file) |
+| Phase 4 Q21+Q22 | causality + routing | +1 file |
+| Phase 4 Q32 | privacy redaction | +1 file |
+| Phase 4 🟢 batch (Q23+Q24+Q25+Q29+Q33) | ops residuals | +1 file |
+
+**Total Phase 4 contribution:** 9 new files, 7 new axioms (DP-A13..A19), 50 channel primitives (DP-Ch1..Ch50). Phase 1-3 baseline (Q1..Q14 era) untouched throughout.
+
+### Handoff notes for next agent / next session
+
+- `Active:` header cleared on [`06_data_plane/_index.md`](06_data_plane/_index.md).
+- All Phase 1-4 work is LOCKED baseline. Changes via supersession in [../decisions/](decisions/).
+- **04_kernel_api_contract.md is at 842 lines** — over 800 split threshold. Tentative split scheme per earlier handoffs: `04a_core_types_and_session.md` + `04b_read_write.md` + `04c_subscribe.md` + `04d_channel_primitives.md` + `04e_macros_and_client.md` (5 files, ~150-180 each). **Cleanup task** — pick up next session to keep file size manageable.
+- **Q20 LLM latency** stays deferred indefinitely until V1 prototype data exists.
+- **Feature design unblocked.** DF4 World Rules / DF5 Session+Group Chat / DF7 PC Stats can begin consuming the locked DP contract.
+- **SDK implementation (Phase 2b)** is the next phase of work for the data plane: `dp` crate (primitives), `dp-derive` proc-macros for `#[derive(Aggregate)]`, `dp-clippy` custom lints for R-3/R-4/R-6/R-8. Pursue when V1 game services begin coding.
+
+---
+
 ## Session 2026-04-25 (continued) — 06_data_plane Phase 4 Q32 RESOLVED (privacy redaction policy templates)
 
 ### Session arc
@@ -1080,6 +1155,7 @@ Reopen conditions for the OPEN/PARTIAL track specifically:
 | 2026-04-25 | **06_data_plane Phase 3 locked — design track COMPLETE.** `07_failure_and_recovery.md` (DP-F1..F10, 385 lines) closes Q6/Q12 and Q5 residual. Key locks: **consistency over availability** on split-brain (DP-F5, reject T3 writes rather than reconcile); **3 token-bucket backpressure** (per-reality-per-tier + per-service + per-session, DP-F7); schema migration rollback ≤5 min with dual-read pause + new-schema quarantine (DP-F8); CP-down cold-start fallback = 503 Retry-After rather than risk double-wake (DP-F8); chaos cadence weekly CP + node / bi-weekly Redis + inval drop / monthly freeze + partition + backpressure / quarterly migration rollback (DP-F10). Folder total: 2851 lines across 12 files, **74 stable IDs**. 7 Q-items fully resolved, 2 partial (ops residuals), 2 out of scope, 1 future implementation. Parallel tracks now unblocked: feature design (DF4/DF5/DF7) consuming DP contract, main SRE track continuation (SR6-SR12), SDK implementation, ops doc. |
 | 2026-04-25 | **06_data_plane Phase 4 backlog recorded (NOT resolved).** User clarified actual game model is turn-based event-linear with **hierarchical channels** (cell → tavern → town → district → country → continent) + probabilistic event bubble-up. Adversarial review identified **Phase 1-3 contracts remain valid baseline but need extension**. 20 open questions (Q15..Q34) appended to `99_open_questions.md`: **4 blockers** (Q15 per-channel turn primitive, Q16 durable subscribe with resume, Q26 channel as first-class concept, Q27 bubble-up primitive), **12 significant gaps**, **4 nits/ops**. 7 items are REAL-* issues from hot-path review reframed to channel scope; 9 are NEW issues surfaced by channel model; 4 carry forward as ops/security follow-ups. Resolution plan: foundation (Q26/Q17/Q30/Q34) → blockers → semantics → gaps → ops. One mini-session per Q cluster. Phase 1-3 files remain LOCKED as baseline; new file `12_channel_primitives.md` planned once foundation resolved. |
 | 2026-04-25 | **06_data_plane Phase 4 Q26 ✅ RESOLVED — channel hierarchy now first-class DP concept.** First Phase 4 mini-session. 6 design decisions approved (D1c tree + free-form level_name · D2a UUID + cached ancestor · D3b `RealityScoped`/`ChannelScoped` marker traits · D4b `r`/`c` scope prefix · D5 SessionContext extension · D6b per-reality-DB registry + CP cache). 2 new axioms **DP-A13** (channel tree first-class) + **DP-A14** (aggregate scope design-time marker). New file **12_channel_primitives.md** (447 lines, DP-Ch1..Ch10). Updates to 04 (`ChannelId`, scope traits, extended SessionContext, scope-typed reads, scope-dispatched `cache_key!`, channel CRUD primitives; file now 677 lines — over soft cap, user-approved as API-reference exception), 05 (CP channel tree cache + 3 new gRPC methods), 99 (Q26 marked resolved + severity updated). Folder: 3687 lines across 13 files, ~88 stable IDs. Phase 4 progress: 1/4 blockers resolved; Q17 + Q30 + Q34 next cluster (per-channel ordering + writer binding). |
+| 2026-04-25 | **🎉 06_data_plane Phase 4 🟢 nits batch ✅ RESOLVED (Q23+Q24+Q25+Q29+Q33) — DESIGN + OPS-RESIDUAL CLEANUP COMPLETE.** Tenth and final Phase 4 mini-session. 3 design decisions approved (M1a single consolidated file · M2c recommended defaults locked + configurable overrides · M3c phased key rotation). New file **20_operational_residuals.md** (313 lines, DP-Ch46..Ch50: histogram bucket layouts per metric · telemetry cardinality control with low-cardinality default labels + SDK-side aggregation + 1%-sampled traces · capability key rotation V1/V2 quarterly + V3 monthly with revocation broadcast + KMS-backed · subscription fan-out batching one-per-(node,channel) reducing 60k→5k subscribers · per-channel-level retention with metadata override). No new axiom (operational defaults, not invariants). Folder: ~7350 lines across 21 files, **129 stable IDs** (+5 channel primitives Ch46..Ch50). **Phase 4 final state: 19 of 20 Qs resolved (Q15-Q19, Q21-Q34 except Q20). Only Q20 LLM latency remains, V1-data-deferred.** 06_data_plane is locked baseline for feature design + SDK implementation. |
 | 2026-04-25 | **06_data_plane Phase 4 Q32 ✅ RESOLVED — privacy redaction policy templates.** Ninth Phase 4 mini-session. 5 design decisions approved (L1a per-aggregator policy at registration · L2 all 4 templates Transparent/SkipPrivate/AnonymizeRefs/Custom · L3c hybrid pre/post application · L4b counter for built-ins + selective audit for Custom · L5a per-channel visibility no inheritance) + skip new axiom (policy library implements existing DP-Ch30 + DP-A18). New file **19_privacy_redaction_policies.md** (275 lines, DP-Ch43..Ch45: RedactionPolicy enum + RedactionFilter trait with safe defaults · application semantics in runtime loop with hybrid pre-dispatch + post-decision filtering · cascade-redaction emergent property · telemetry counters + audit-stream entries reserved for Custom · per-channel visibility no inheritance + immutable post-creation). Updates: 04 (+redaction_policy: RedactionPolicy parameter on register_bubble_up_aggregator, 838→842), 16 (DP-Ch30 cross-ref + Q32 resolved row, 561→568), 99 (Q32 ✅), _index. Folder: 7026 lines across 20 files, **124 stable IDs** (no new axiom; +3 channel primitives Ch43..Ch45). Phase 4 progress: **14 of 20 Qs resolved**; 2 🟡 (Q20 V1-deferred / Q29 ops-tinted) + 4 🟢 nits remain. |
 | 2026-04-25 | **06_data_plane Phase 4 Q21+Q22 ✅ RESOLVED — causality token + session-writer routing UX.** Eighth Phase 4 mini-session. 7 design decisions approved (K1b dedicated CausalityToken newtype · K2a poll-with-checkpoint · K3a optional wait_for param · K4c default 5s + override · K5b SDK transparent session-writer routing extending DP-Ch14 · K6a 1 retry max · K7c gateway contract = best-effort hints, out of DP scope) + add DP-A19 axiom + accept file 04 → 838 lines (over 800 threshold, split queued post-Q32+nits). New axiom **DP-A19** (intra-session causality preservation via opaque token). New file **18_causality_and_routing.md** (434 lines, DP-Ch38..Ch42: CausalityToken opaque newtype with module-private constructor · attached to T2/T3/Multi/Pause/Turn acks · poll-with-fast-checkpoint algorithm via new projection_apply_state table · read primitives extended with wait_for + causality_timeout params · session-writer transparent routing extending DP-Ch14 with RouteSessionWrite gRPC + 300s session-route cache · error taxonomy + gateway contract via X-Dp-Session-Route-Hint header). Updates: 04 (+CausalityToken core type, +ack token field, +read params, +2 errors CausalityWaitTimeout/SessionNotFound, error variants 17→19, 791→838 lines), 05 (+session→node binding lookup responsibility note), 99 (Q21/Q22 ✅), _index. Folder: 6696 lines across 19 files, **121 stable IDs**. Phase 4 progress: **13 of 20 Qs resolved**; 3 🟡 (Q20 V1-deferred / Q29 ops-tinted / Q32 privacy formalization) + 4 🟢 nits remain. |
 | 2026-04-25 | **06_data_plane Phase 4 Q18 ✅ RESOLVED — T1 tier reframed for channel presence.** Seventh Phase 4 mini-session, smallest 🟡 gap. 4 design decisions approved (J1a replace MMO examples · J2b drop "≥1/s" rate threshold + use "high-churn or transient" criterion · J3a explicit DP-Ch34 complementarity note · J4a explicit ChannelScoped composition note). DP-T1 section in 03_tier_taxonomy revised — out went MMO-realtime examples (30Hz position, combat ticks); in came turn-based + channel-model examples (channel presence, typing indicator, hover/cursor, emote/animation, idle-since). Eligibility rule simplified. No new file, no new axioms (DP-T0..T3 enum stable per DP-A5). Folder: 6168 lines across 18 files, 116 stable IDs unchanged. Phase 4 progress: 11 of 20 Qs resolved (Q15/Q16/Q17/Q18/Q19/Q26/Q27/Q28/Q30/Q31/Q34); 5 🟡 + 4 🟢 remain. |
