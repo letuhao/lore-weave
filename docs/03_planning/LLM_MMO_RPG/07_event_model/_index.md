@@ -64,8 +64,8 @@ Without this folder, every feature has to relitigate event semantics. With it, f
 | 05 | [`05_validator_pipeline.md`](05_validator_pipeline.md) | LOCKED Phase 3a (Option C) — framework rules; cite `_boundaries/03_validator_pipeline_slots.md` for stage list SSOT | EVT-V1..V7; resolves MV12-D11 | 2026-04-25 |
 | 06 | [`06_per_category_contracts.md`](06_per_category_contracts.md) | LOCKED Phase 2b thin-rewrite (Option C) — envelope mechanism + extensibility framework only; sub-shape SSOT in `_boundaries/` + feature docs | — | 2026-04-25 |
 | 07 | [`07_llm_proposal_bus.md`](07_llm_proposal_bus.md) | LOCKED Phase 3b (Option C) — bus framework mechanism; specific config (topics, retention) operational | EVT-L1..L6; resolves DP-A6 framework | 2026-04-25 |
-| 08 | `08_scheduled_events.md` | PENDING Phase 4 | — | — |
-| 09 | `09_causal_references.md` | PENDING Phase 4 | EVT-L* | — |
+| 08 | [`08_scheduled_events.md`](08_scheduled_events.md) | LOCKED Phase 4a (Option C) | EVT-L7..L11; resolves EVT-Q4/Q8 + MV12-D10 | 2026-04-25 |
+| 09 | [`09_causal_references.md`](09_causal_references.md) | LOCKED Phase 4a (Option C) | EVT-L12..L15; resolves EVT-Q5 | 2026-04-25 |
 | 10 | `10_replay_semantics.md` | PENDING Phase 4 | EVT-L* | — |
 | 11 | `11_schema_versioning.md` | PENDING Phase 4 | EVT-S* | — |
 | 22 | `22_event_design_quickstart.md` | PENDING Phase 5 | — | — |
