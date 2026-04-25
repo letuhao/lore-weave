@@ -41,8 +41,13 @@ Return a single JSON object and nothing else.
 
 ## Rules
 
-1. **Both endpoints required.** Drop relations where either subject
-   or object is unnamed, pronoun-only, or merely implied.
+1. **Both endpoints required — OMIT, do not null.** Drop relations
+   where either subject or object is unnamed, pronoun-only, or
+   merely implied. **Do NOT emit `"object": null` or `"subject": null`.**
+   **Do NOT emit empty strings.** If you cannot identify a specific
+   named entity for either endpoint, do not include the relation in
+   the output at all. Intransitive verbs ("Tấm cries", "the monkey
+   bows") have no object — skip them entirely.
 2. **Predicate canonicalization.** Use snake_case verb phrases.
    Prefer the smallest set of predicates that still captures meaning:
    `knows`, `trusts`, `works_for`, `lives_in`, `owns`, `married_to`,

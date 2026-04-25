@@ -441,3 +441,124 @@ async def test_mixed_resolved_and_unresolved():
     unresolved = next(r for r in result if r.relation_id is None)
     assert resolved.subject == "Kai"
     assert unresolved.subject_id is None
+
+
+# ── C-LM-STUDIO-FIX: null-endpoint handling ────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_null_object_relation_is_filtered_not_rejected():
+    """C-LM-STUDIO-FIX scope expansion: when LLM emits null object
+    instead of dropping the relation (observed in qwen2.5-coder-14b,
+    phi-4, gemma-3-27b during C19 quality eval), the schema validation
+    must accept null + the postprocess filter must drop the bad
+    relation. The other relations in the batch are NOT lost — this
+    is the key contract: one bad LLM-emitted relation can't poison
+    the whole extraction."""
+    fake = FakeProviderClient()
+    fake.queue_response(json.dumps({
+        "relations": [
+            # Good relation — should survive postprocess.
+            _rel("Kai", "works_for", "Imperial Academy", 0.95),
+            # Null-object relation — LLM violation of prompt rule;
+            # must be silently dropped by postprocess.
+            {
+                "subject": "Tấm", "predicate": "cries", "object": None,
+                "polarity": "affirm", "modality": "asserted",
+                "confidence": 0.9,
+            },
+            # Another good relation — still survives.
+            _rel("Alice", "knows", "Bob", 0.85),
+        ],
+    }))
+    result = await extract_relations(
+        text="Some chapter text.",
+        entities=ENTITIES,
+        known_entities=[],
+        user_id="user-1",
+        project_id="project-1",
+        model_source="user_model",
+        model_ref="test-model",
+        client=_as_client(fake),
+    )
+    assert len(result) == 2  # null-object dropped, 2 good ones kept
+    subjects = {r.subject for r in result}
+    assert subjects == {"Kai", "Alice"}
+
+
+@pytest.mark.asyncio
+async def test_null_subject_relation_is_filtered():
+    """Symmetric: null subject also filtered."""
+    fake = FakeProviderClient()
+    fake.queue_response(json.dumps({
+        "relations": [
+            {
+                "subject": None, "predicate": "exists", "object": "Kai",
+                "polarity": "affirm", "modality": "asserted",
+                "confidence": 0.7,
+            },
+            _rel("Kai", "works_for", "Imperial Academy", 0.95),
+        ],
+    }))
+    result = await extract_relations(
+        text="x", entities=ENTITIES, known_entities=[],
+        user_id="user-1", project_id="project-1",
+        model_source="user_model", model_ref="test-model",
+        client=_as_client(fake),
+    )
+    assert len(result) == 1
+    assert result[0].subject == "Kai"
+
+
+@pytest.mark.asyncio
+async def test_omitted_subject_field_defaults_to_none_then_filtered():
+    """If LLM omits the subject field entirely (not just null), Pydantic
+    default kicks in (None) and postprocess filters. Same outcome as
+    explicit null."""
+    fake = FakeProviderClient()
+    fake.queue_response(json.dumps({
+        "relations": [
+            # Missing 'subject' key entirely.
+            {
+                "predicate": "loves", "object": "Bob",
+                "polarity": "affirm", "modality": "asserted",
+                "confidence": 0.6,
+            },
+            _rel("Kai", "trusts", "Zhao", 0.9),
+        ],
+    }))
+    result = await extract_relations(
+        text="x", entities=ENTITIES, known_entities=[],
+        user_id="user-1", project_id="project-1",
+        model_source="user_model", model_ref="test-model",
+        client=_as_client(fake),
+    )
+    assert len(result) == 1
+    assert result[0].subject == "Kai"
+
+
+@pytest.mark.asyncio
+async def test_all_null_relations_returns_empty():
+    """Edge case: every relation has null endpoint → empty list, no crash."""
+    fake = FakeProviderClient()
+    fake.queue_response(json.dumps({
+        "relations": [
+            {
+                "subject": "x", "predicate": "y", "object": None,
+                "polarity": "affirm", "modality": "asserted",
+                "confidence": 0.8,
+            },
+            {
+                "subject": None, "predicate": "z", "object": "w",
+                "polarity": "affirm", "modality": "asserted",
+                "confidence": 0.8,
+            },
+        ],
+    }))
+    result = await extract_relations(
+        text="x", entities=ENTITIES, known_entities=[],
+        user_id="user-1", project_id="project-1",
+        model_source="user_model", model_ref="test-model",
+        client=_as_client(fake),
+    )
+    assert result == []
