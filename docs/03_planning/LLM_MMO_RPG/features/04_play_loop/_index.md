@@ -13,7 +13,8 @@
 | ID | Conversational name | Title | Status | File | Commit |
 |---|---|---|---|---|---|
 | PL_001 | **Continuum** (CON) | Contract layer §1-§10: aggregates + tier table + DP primitives + capabilities + subscribe + patterns + failure UX + cross-service handoff | CANDIDATE-LOCK 2026-04-25 | [`PL_001_continuum.md`](PL_001_continuum.md) | b4ea611 + 1364487 + extension pending |
-| PL_001b | Continuum lifecycle (CON-L) | Lifecycle layer §11-§20: 5 sequences (normal/sleep/travel/reconnect/rejection) + bootstrap + 16 acceptance criteria | CANDIDATE-LOCK 2026-04-25 | [`PL_001b_continuum_lifecycle.md`](PL_001b_continuum_lifecycle.md) | extension pending |
+| PL_001b | Continuum lifecycle (CON-L) | Lifecycle layer §11-§20: 5 sequences (normal/sleep/travel/reconnect/rejection) + bootstrap + 16 acceptance criteria | CANDIDATE-LOCK 2026-04-25 | [`PL_001b_continuum_lifecycle.md`](PL_001b_continuum_lifecycle.md) | a4f2d26 |
+| PL_002 | **Grammar** (GR) | Command grammar (5 V1 commands: /verbatim /prose /sleep /travel /help) + intent classifier dispatch + tool-call allowlist + per-rule_id Vietnamese reject copy. Resolves MV12-D9. EVT-T* aligned. | DRAFT 2026-04-25 | [`PL_002_command_grammar.md`](PL_002_command_grammar.md) | uncommitted |
 
 ---
 
