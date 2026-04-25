@@ -1,0 +1,105 @@
+# C19 / K17.10-v2 — golden fixture: Sơn Tinh Thủy Tinh (Vietnamese folk tale)
+# Source: Vietnamese oral folk tradition (no individual author, dating to early
+# Vietnamese mythology). The retelling above is an original paraphrase composed
+# for test-fixture use — standard story beats present in every published version.
+# v2 annotation (illustrative) — re-verify before pinning as hard gate.
+
+source:
+  title: "Sơn Tinh Thủy Tinh"
+  author: "Truyện cổ tích Việt Nam (oral folk tradition)"
+  chapter: 1
+  license: "Public domain (Vietnamese folklore, no individual author; retelling original)"
+
+# Tests Vietnamese diacritic preservation through canonicalization.
+# `canonicalize_entity_name` lowercases + strips punctuation but PRESERVES
+# diacritics — "Sơn Tinh" should match "sơn tinh" but not "son tinh".
+entities:
+  # Review-impl F11: removed synthetic aliases ("thần Sơn Tinh",
+  # "Sơn Tinh Tản Viên", "thần Thủy Tinh") — none appear literally in
+  # the text. The two gods are referred to by their proper names only.
+  - name: Sơn Tinh
+    kind: person
+    aliases: []
+  - name: Thủy Tinh
+    kind: person
+    aliases: []
+  - name: Mỵ Nương
+    kind: person
+    aliases: []
+  # Review-impl F12: added bare "vua" alias (used in para 1: "vua có
+  # một người con gái...").
+  - name: Hùng Vương
+    kind: person
+    aliases: ["Vua Hùng", "vua cha", "vua", "Hùng Vương thứ mười tám"]
+  - name: núi Tản Viên
+    kind: location
+    aliases: ["Tản Viên"]
+  - name: đồng bằng Bắc Bộ
+    kind: location
+    aliases: []
+
+relations:
+  # Father-daughter relation anchors the conflict's stakes.
+  - subject: Hùng Vương
+    predicate: father_of
+    object: Mỵ Nương
+  # Both suitors compete for the same person.
+  - subject: Sơn Tinh
+    predicate: courts
+    object: Mỵ Nương
+  - subject: Thủy Tinh
+    predicate: courts
+    object: Mỵ Nương
+  # Review-impl F14: corrected "ruler_of" to "resides_at" — text says
+  # "vị thần ngự ở núi Tản Viên" (resides at). "Rules" is interpretation;
+  # "resides at" is what the text literally states.
+  - subject: Sơn Tinh
+    predicate: resides_at
+    object: núi Tản Viên
+  # Outcome: Sơn Tinh marries Mỵ Nương.
+  - subject: Sơn Tinh
+    predicate: marries
+    object: Mỵ Nương
+
+events:
+  - summary: "Hùng Vương ra điều kiện sính lễ để chọn rể giữa Sơn Tinh và Thủy Tinh"
+    participants: [Hùng Vương, Sơn Tinh, Thủy Tinh, Mỵ Nương]
+  - summary: "Sơn Tinh mang sính lễ đến trước và đón Mỵ Nương về núi Tản Viên"
+    participants: [Sơn Tinh, Mỵ Nương]
+  - summary: "Thủy Tinh nổi giận dâng nước đuổi đánh Sơn Tinh"
+    participants: [Thủy Tinh, Sơn Tinh]
+  # Review-impl F15: Sơn Tinh's defensive magic is a distinct beat
+  # from Thủy Tinh's attack ("Sơn Tinh hóa phép cho núi Tản Viên cao lên").
+  - summary: "Sơn Tinh hóa phép cho núi Tản Viên cao lên chống lại nước lũ"
+    participants: [Sơn Tinh, núi Tản Viên]
+  - summary: "Thủy Tinh hằng năm dâng nước đánh Sơn Tinh nhưng đều thua"
+    participants: [Thủy Tinh, Sơn Tinh]
+
+traps:
+  # Sính lễ items are CULTURAL OBJECTS, not first-class named entities.
+  - kind: entity
+    name: voi chín ngà
+    reason: "Wedding gift item, not a named entity"
+  - kind: entity
+    name: gà chín cựa
+    reason: "Wedding gift item, not a named entity"
+  - kind: entity
+    name: ngựa chín hồng mao
+    reason: "Wedding gift item, not a named entity"
+  - kind: entity
+    name: bánh chưng
+    reason: "Cultural food item, not a named entity"
+  # Review-impl F16: cơm nếp paired with bánh chưng in the bride-price list.
+  - kind: entity
+    name: cơm nếp
+    reason: "Wedding gift food item, not a named entity"
+  # Review-impl F13: vua cha previously double-listed as alias AND trap.
+  # Resolved as alias (folds into Hùng Vương) — removed from traps.
+  # The "people" who tell the story are narrative framing, not actors.
+  - kind: entity
+    name: Người dân
+    reason: "Narrative framing reference ('the people say...'), not a named entity"
+  # The "anti-event" — building the levee — is implied counterfactual.
+  - kind: event
+    summary: "Sơn Tinh và Thủy Tinh hòa giải"
+    reason: "The story ends with eternal conflict; reconciliation is the OPPOSITE of what happens"
