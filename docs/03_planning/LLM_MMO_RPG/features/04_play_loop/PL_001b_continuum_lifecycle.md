@@ -309,12 +309,15 @@ The book → reality pipeline (owned by knowledge-service, not PL_001) emits a `
 ```rust
 // Owned by knowledge-service / book-ingestion pipeline.
 // PL_001 only consumes this contract.
+// NOTE: shape grows over time per `_boundaries/02_extension_contracts.md` §2 — this snippet
+// shows PL_001-relevant fields; full extended shape includes WA/NPC/PF_001 contributions.
 pub struct RealityManifest {
     pub reality_id: RealityId,
     pub book_canon_ref: BookCanonRef,
     pub starting_fiction_time: FictionTimeTuple,        // e.g. (1256, Thu, 3, ThânSơ)
     pub root_channel_tree: RootChannelDecl,             // continent → country → district → town hierarchy
     pub canonical_actors: Vec<CanonicalActorDecl>,      // book-canon NPCs and their initial cells
+    pub places: Vec<PlaceDecl>,                         // PF_001 extension (added 2026-04-26): REQUIRED V1 — every cell-tier channel from root_channel_tree MUST have a corresponding PlaceDecl. See PF_001 §9 + §3.1.
     pub schema_version: u32,
 }
 
@@ -341,9 +344,15 @@ on RealityManifest received:
   ① t3_write_multi atomic:
        a. write fiction_clock SINGLETON with starting_fiction_time
        b. create_channel for every node in root_channel_tree (DFS, parents first)
-       c. write entity_binding for each canonical_actor (binding to the cell-path
+       c. write place row for each PlaceDecl in manifest.places   ← PF_001 (added 2026-04-26)
+          + canonically instantiate EnvObjects from fixture_seed (deterministic UUID v5;
+            entity_binding rows + EVT-T4 EntityBorn per EF_001 §13.1)
+          (validation: every cell-tier channel created in step b MUST have a place row from
+          step c; mismatch rejects activation with `place.missing_decl`)
+       d. write entity_binding for each canonical_actor (binding to the cell-path
           BEFORE that cell exists — entity_binding stores the path; cell row is
-          created lazily on first PC entry)
+          created lazily on first PC entry; place row already exists for declared cells
+          but lazy-created cells per §16.3 must also create a place row)
   ② emit ChannelEvent::RealityActivated on the reality root channel
   ③ subscribe ready: PCs may now `bind_session` and `move_session_to_channel`
 ```
@@ -361,6 +370,12 @@ on /travel to "tương_dương":
                           metadata={ place_canon_ref: leaf_path,
                                      created_for_actor: pc_id,
                                      created_from: "lazy_travel" })
+    // PF_001 invariant: every cell-tier channel must have a place row (added 2026-04-26)
+    place_row = derive_place_from_canon_ref(leaf_path, parent=resolved_path[-2])
+                  // PlaceType + canon_ref + initial_structural_state=Pristine + empty
+                  // narrative_drift + connections derived from book canon if available;
+                  // fixture_seed empty V1 (lazy-cells get no canonical fixtures unless author edits)
+    write place row for the new cell
   move_session_to_channel(cell)
 ```
 

@@ -6,6 +6,37 @@
 
 ---
 
+## 2026-04-26 — PF_001 Place Foundation feature registered (sibling of EF_001; closes spawn-empty-place gap)
+
+- **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — PF_001 Place Foundation DRAFT, Option C max scope per user direction "place foundation trước spawn PC/NPC"); commit (this turn) `[boundaries-lock-claim+release]`
+- **New folder + catalog created** (outside `_boundaries/`):
+  - `features/00_place/_index.md` (foundation tier folder index — sibling of `features/00_entity/`)
+  - `features/00_place/PF_001_place_foundation.md` (600 lines under 800 cap; 19 sections)
+  - `catalog/cat_00_PF_place_foundation.md` (PF-1..PF-24 catalog entries; owns `PF-*` namespace)
+- **Files modified within `_boundaries/`:**
+  - `01_feature_ownership_matrix.md`:
+    - **New aggregate:** `place` (T2 / Channel-cell scope) — semantic place identity 1:1 with cell channels. Owned by **PF_001 Place Foundation** (DRAFT 2026-04-26). 10-variant PlaceType + 5-variant ConnectionKind + 4-state StructuralState + 11-variant EnvObjectKind + fixture-seed deterministic instantiation. Cascades into EF_001 §6.1 on Destroyed transition.
+    - **Schema/envelope ownership new rows (2):**
+      - EVT-T4 System sub-type `PlaceBorn` owned by PF_001 (emitted at canonical bootstrap + V1+ runtime spawn)
+      - EVT-T8 Administrative sub-shape `Forge:EditPlace` owned by PF_001 (joins existing Charter*/Succession*/MortalityAdminKill registry)
+    - **RealityManifest ownership row updated:** PF_001 added as required-V1 contributor (`places: Vec<PlaceDecl>`)
+    - **RejectReason namespace prefix table:** added `place.*` → PF_001
+    - **Stable-ID prefix ownership:** new row for `PF-*` (foundation tier; PF-A* axioms / PF-D* deferrals / PF-Q* open questions) owned by cat_00_PF_place_foundation.md
+    - **Drift watchpoints:** added **PF-Q1** (validator slot ordering — extends EF-Q3) + **PF-Q4** (Place addressability: ExamineTarget discriminator vs EntityId variant — requires PL_005 closure-pass extension)
+  - `02_extension_contracts.md`:
+    - §2 RealityManifest current shape: added `places: Vec<PlaceDecl>` field with REQUIRED V1 invariant (every cell-tier channel must have a corresponding PlaceDecl; cells without decl reject `place.missing_decl`). Higher-tier channels MUST NOT have place rows V1.
+    - §1.4 RejectReason namespace prefix table: added `place.*` owned by PF_001 with 11 V1 rule_ids enumerated (missing_decl / duplicate_place / invalid_structural_transition / unknown_place / connection_target_unknown / connection_locked / connection_private / connection_hidden / no_reverse_connection / fixture_seed_uid_collision / invalid_place_type_for_channel_tier) + 3 V1+ reservations (scheduled_decay_collision / cross_reality_connection / procedural_generation_rejected).
+- **No `03_validator_pipeline_slots.md` changes** — EVT-V_place_structural slot tracked as PF-Q1 watchpoint (extends EF-Q3); physical slot ordering pending alignment review.
+- **Light PL_001 reopen** (folded into this commit per atomic discipline):
+  - `features/04_play_loop/PL_001_continuum.md` §3.2 scene_state: `notable_props` semantics clarified — V1 freeform strings still supported; V1+ may reference EnvObjectIds for addressable fixtures (PF_001 fixture-seed is the SEMANTIC source; notable_props is the RUNTIME ambient layer).
+  - `features/04_play_loop/PL_001b_continuum_lifecycle.md` §16.1 RealityManifest snippet: added `places: Vec<PlaceDecl>` field. §16.2 reality activation flow: added step ①c writing place rows + canonical EnvObject instantiation (deterministic UUID v5) + cell-to-place coverage validation. §16.3 lazy cell creation: added "every lazy cell must also create a place row derived from canon_ref" invariant.
+- **Reason:** user identified Place foundation as next V1 gap after Entity foundation. Three concrete gaps closed: (1) Spawn mechanically possible but narratively empty — PL_001 cells had only ambient state, no semantic identity for LLM scene narration when actors arrive; (2) EF_001 EnvObject variant orphaned — no feature owned the canonical seed entry point for EnvObjects, despite EF_001 declaring `EnvObject(EnvObjectId)` V1; (3) Time-lapse undefined — no feature owned "places evolve when fiction-time advances or in-fiction events propagate". User direction "đi sâu thiết kế từ đầu" → Option C max scope. 11 sub-decisions locked at CLARIFY phase before draft (PlaceType 10 V1 / ConnectionKind 5 V1 / StructuralState 4-state / EnvObjectKind 11 V1 / fixture-seed deterministic UUID v5 / RealityManifest required extension / etc.).
+- **Closes V1 spawn-readiness gap** for the foundation tier: PCS_001 (when designed) + NPC_001 + future Item + future EnvObject all build on locked PF_001 contract. PCS_001 brief at `features/06_pc_systems/00_AGENT_BRIEF.md` will be updated post-PF_001-LOCK to add §4.4d mandatory PF_001 reading.
+- **Drift watchpoints:** 9 → 11 active (PF-Q1 + PF-Q4 added).
+- **Lock release:** at end of this commit (`[boundaries-lock-claim+release]`)
+
+---
+
 ## 2026-04-26 — EF_001 Entity Foundation closure pass → CANDIDATE-LOCK
 
 - **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — EF_001 closure pass after Phase 3 cleanup commit 734dcd7); commit (this turn) `[boundaries-lock-claim+release]`

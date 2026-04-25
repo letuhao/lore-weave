@@ -83,7 +83,12 @@ pub struct AmbientState {
     pub weather: String,                          // "drizzle", "clear", ... (free-form, world-service interprets)
     pub time_of_day_qualifier: String,            // "dusk", "midnight", "dawn" — derived from FictionClock + lat/long
     pub crowd_density: u8,                        // 0..255 hint for LLM ambient generation
-    pub notable_props: Vec<PropRef>,              // tea pot, jian, scroll on table, ...
+    pub notable_props: Vec<PropRef>,              // V1 freeform string descriptors ("tea pot", "jian", "scroll on table");
+                                                  // V1+ extension (post-PF_001 2026-04-26): PropRef may reference an
+                                                  // EntityId::EnvObject for addressable fixtures. PF_001 §8 fixture-seed
+                                                  // declarations are the SEMANTIC source for canonical fixtures;
+                                                  // notable_props remains the RUNTIME ambient layer (e.g., NPC drops a
+                                                  // sword on the table → notable_props gets a transient entry).
 }
 ```
 
