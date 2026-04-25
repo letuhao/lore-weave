@@ -292,7 +292,7 @@ One automatic retry on writer-unreachable; further failures bubble to caller as 
 
 ---
 
-## DP-Ch15 — Causal references for bubble-up (preview, full design = Q27)
+## DP-Ch15 — Causal references for bubble-up (preview; full design in [16_bubble_up_aggregator.md](16_bubble_up_aggregator.md))
 
 Channel events carry an optional `causal_refs` field linking back to source events (typically at child channels) that triggered them. This is the foundation that the Q27 bubble-up aggregator consumes.
 

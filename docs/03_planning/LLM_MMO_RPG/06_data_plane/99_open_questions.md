@@ -213,11 +213,13 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ## Phase 4 severity summary
 
-- **🔴 Blockers (1 remaining, 3 resolved):** Q27 event bubble-up primitive · ~~Q15 turn boundary~~ ✅ resolved 2026-04-25 · ~~Q16 durable subscribe~~ ✅ resolved 2026-04-25 · ~~Q26 channel as first-class concept~~ ✅ resolved 2026-04-25
-- **🟡 Significant gaps (9 remaining, 3 resolved):** Q18, Q19, Q20, Q21, Q22, Q28, Q31, Q32 + ~~Q17, Q30, Q34~~ ✅ resolved 2026-04-25
-- **🟢 Nits / operational (4):** Q23–Q25, Q29, Q33
+- **🔴 Blockers (0 remaining, 4 resolved):** ~~Q15 turn boundary~~ ✅ · ~~Q16 durable subscribe~~ ✅ · ~~Q26 channel as first-class concept~~ ✅ · ~~Q27 event bubble-up primitive~~ ✅ — **all design blockers resolved 2026-04-25**
+- **🟡 Significant gaps (9 remaining, 3 resolved):** Q18, Q19, Q20, Q21, Q22, Q28, Q29, Q31, Q32 + ~~Q17, Q30, Q34~~ ✅
+- **🟢 Nits / operational (4):** Q23, Q24, Q25, Q33
 
-**Resolved (6):** Q15, Q16, Q17, Q26, Q30, Q34 ✅
+**Resolved (7):** Q15, Q16, Q17, Q26, Q27, Q30, Q34 ✅
+
+**Phase 4 design phase is functionally complete.** Feature design (DF4 / DF5 / DF7) can now consume the locked DP contract. Phase 4 cleanup of the remaining 🟡 gaps + 🟢 nits proceeds in parallel without blocking gameplay design.
 
 ---
 
@@ -349,13 +351,21 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 ---
 
-## Q27 — Event bubble-up primitive (NEW-2, blocker)
+## Q27 — Event bubble-up primitive (NEW-2, blocker) ✅ RESOLVED (Phase 4, 2026-04-25) — **last design blocker**
 
-**What:** Aggregator reads events at channel level L, probabilistically emits event at level L+1 (with random threshold). Who runs the aggregator? Per-channel actor? CP-owned? Feature-level? Random seed must be deterministic for event-log replay consistency.
+**What:** Aggregator reads events at channel level L, probabilistically emits at level L+1. Mechanism for state, RNG seed determinism, registration, restart, cascading, privacy.
 
-**Why blocker:** Bubble-up is a central canonical mechanic. Without a DP primitive, features can't express it consistently.
+**Resolution:** New file [16_bubble_up_aggregator.md](16_bubble_up_aggregator.md) DP-Ch25..Ch30:
+- **Ch25** `BubbleUpAggregator` trait (`AGGREGATOR_TYPE`, typed `State`, `source_filter`, pure `on_event` transition); `register_bubble_up_aggregator` + `unregister_bubble_up_aggregator` SDK primitives; `SourceFilter` shapes (LevelName / Specific / DirectChildren / AllDescendants / Any); `SourceEvent` + `EmitDecision` types; capability JWT `can_register_aggregator: Vec<level_name>`.
+- **Ch26** Event-sourced state with periodic snapshots (`bubble_up_aggregator_snapshot` table); SDK runtime loop on parent's writer node; failure handling for panic / timeout / dissolve / failover; 1 MB state cap, 16-level cascade cap, 1/s snapshot rate-limit.
+- **Ch27** `deterministic_rng(channel_id, channel_event_id)` returning blake3-seeded `StdRng`; replay-safe; aggregators MUST use this and MUST NOT use wall-clock time.
+- **Ch28** CP `bubble_up_aggregator` registry table; cache delta via channel-tree-update stream; writer-node restart restoration; 3 new CP gRPC methods (`Register`, `Unregister`, `List`); 30-day GC.
+- **Ch29** Cascading is natural (no special mode); loop prevention via tree-shape + filter validation; max cascade depth 16; rate decay (~10× per level) is feature-tuned via RNG thresholds.
+- **Ch30** Channel `visibility: Public/Private` exposed via `SourceEvent.source_visibility`; redaction is feature-level (skip / anonymize / transparent); DP capability-gates subscription on private channels but does NOT auto-redact emits — Q32 will provide policy templates.
 
-**Candidate resolution path:** **DP-K16** `register_bubble_up_aggregator(ctx, source_channel_id, target_channel_id, config) -> AggregatorHandle` + **DP-K17** `deterministic_rng_for_channel(ctx, channel_id, event_id) -> Rng` (seed = event_id for replay). Aggregator = SDK-owned actor running on the writer node of the target channel.
+6 design decisions all locked (H1a in-process trait + H2c event-sourced state + H3a channel_event_id RNG seed + H4c multiple aggregators per parent with source filter + H5a CP registry + H6b feature-decides-redact).
+
+**Phase 4 design phase complete after this resolution.** Remaining 🟡 gaps and 🟢 nits don't block feature design.
 
 ---
 

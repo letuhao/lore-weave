@@ -47,8 +47,9 @@ User clarified on 2026-04-25 that the game uses a **hierarchical channel** model
 13. [13_channel_ordering_and_writer.md](13_channel_ordering_and_writer.md) — **DP-Ch11..Ch15** per-channel `channel_event_id` allocation, writer assignment rules (cell vs non-cell), epoch fencing, cross-node write routing via gRPC, causal-ref schema for bubble-up (resolves Q17 + Q30 + Q34)
 14. [14_durable_subscribe.md](14_durable_subscribe.md) — **DP-Ch16..Ch20** durable per-channel subscribe with resume token, hybrid Redis Streams + Postgres catchup, monotonic gap-free delivery, multi-channel multiplex convenience, backpressure + reconnect (resolves Q16)
 15. [15_turn_boundary.md](15_turn_boundary.md) — **DP-Ch21..Ch24** turn boundary primitive: TurnBoundary event + advance_turn SDK API + per-event turn_number tagging + capability gating + composition with pause/bubble-up/move (resolves Q15)
+16. [16_bubble_up_aggregator.md](16_bubble_up_aggregator.md) — **DP-Ch25..Ch30** `BubbleUpAggregator` trait + register/unregister + event-sourced state + deterministic RNG + CP registry + cascading + privacy redaction patterns (resolves Q27 — **last design blocker**)
 
-Phase 4 blocker remaining: **Q27 (bubble-up primitive)** — last design blocker. All foundations now in place: Q16 (durable subscribe over descendants), Q34 (writer for emit), DP-Ch15 (causal refs), DP-A17 (turn boundary as natural aggregation window).
+**🎉 Phase 4 design phase complete.** All design blockers (Q15 / Q16 / Q26 / Q27) resolved. Remaining Phase 4 work is 9 🟡 significant gaps + 4 🟢 nits/ops items that don't block feature design. **Feature design (DF4 / DF5 / DF7) can now consume the locked DP contract.**
 
 ---
 
@@ -70,7 +71,8 @@ Phase 4 blocker remaining: **Q27 (bubble-up primitive)** — last design blocker
 | 13 | [13_channel_ordering_and_writer.md](13_channel_ordering_and_writer.md) | LOCKED | DP-Ch11..Ch15 | 2026-04-25 |
 | 14 | [14_durable_subscribe.md](14_durable_subscribe.md) | LOCKED | DP-Ch16..Ch20 | 2026-04-25 |
 | 15 | [15_turn_boundary.md](15_turn_boundary.md) | LOCKED | DP-Ch21..Ch24 | 2026-04-25 |
-| 99 | [99_open_questions.md](99_open_questions.md) | OPEN + **Phase 4 in progress** | Phase 1-3 residuals (Q2/Q3/Q7/Q10/Q11/Q13) + **Phase 4 Q15..Q34** (Q15/Q16/Q17/Q26/Q30/Q34 ✅ resolved 2026-04-25) | 2026-04-25 |
+| 16 | [16_bubble_up_aggregator.md](16_bubble_up_aggregator.md) | LOCKED | DP-Ch25..Ch30 | 2026-04-25 |
+| 99 | [99_open_questions.md](99_open_questions.md) | OPEN + **Phase 4 design phase ✅ complete** | Phase 1-3 residuals (Q2/Q3/Q7/Q10/Q11/Q13) + **Phase 4 Q15..Q34** (Q15/Q16/Q17/Q26/Q27/Q30/Q34 ✅ resolved 2026-04-25; remaining = 🟡 gaps + 🟢 nits, none blocking feature design) | 2026-04-25 |
 
 ---
 
@@ -92,6 +94,7 @@ Outside docs may cross-link unambiguously to:
 | `DP-Ch*` | Channel ordering + writer binding (DP-Ch11..Ch15) | [13_channel_ordering_and_writer.md](13_channel_ordering_and_writer.md) |
 | `DP-Ch*` | Durable per-channel subscribe (DP-Ch16..Ch20) | [14_durable_subscribe.md](14_durable_subscribe.md) |
 | `DP-Ch*` | Turn boundary primitive (DP-Ch21..Ch24) | [15_turn_boundary.md](15_turn_boundary.md) |
+| `DP-Ch*` | Bubble-up aggregator (DP-Ch25..Ch30) | [16_bubble_up_aggregator.md](16_bubble_up_aggregator.md) |
 
 Retired IDs: (none yet). Retired IDs use `_withdrawn` suffix, never reused.
 

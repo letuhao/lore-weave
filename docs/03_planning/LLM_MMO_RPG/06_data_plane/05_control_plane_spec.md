@@ -20,6 +20,7 @@ The control plane (CP) owns exactly these concerns. Anything not listed is expli
 | **Reality registry** | Maps `reality_id` → per-reality Postgres/Redis endpoints. Consumed at `DpClient::connect` and on reality open/freeze transitions. |
 | **Channel tree cache (Phase 4)** | Per-reality in-memory cache of the channel tree + ancestor-chain lookups. Consumed by SDKs at `bind_session` and updated via Redis Stream consumption. Authoritative source is per-reality DB, not CP. See [DP-Ch3](12_channel_primitives.md#dp-ch3--cp-channel-tree-cache--delta-stream). |
 | **Channel writer binding + handoff (Phase 4)** | One writer node per active channel; CP issues + revokes leases (epoch tokens), assigns writer at channel creation, coordinates cell handoff on creator-leave, reassigns on node death. Cached in same channel-tree structure. See [DP-A16](02_invariants.md#dp-a16--channel-writer-node-binding-phase-4-2026-04-25) + [13_channel_ordering_and_writer.md](13_channel_ordering_and_writer.md). |
+| **Bubble-up aggregator registry (Phase 4)** | Per-reality persistent registry of registered bubble-up aggregators. Restart-resilient: writer-node assignment loads aggregators + snapshots from per-reality DB. Delta updates flow on the channel-tree-update stream. See [DP-Ch28](16_bubble_up_aggregator.md#dp-ch28--cp-aggregator-registry--restart-restoration). |
 | **Degraded-mode signaling** | On CP outage or partition, signal data plane to enter degraded mode (DP-C9). |
 
 **NOT CP responsibilities:**
@@ -80,6 +81,11 @@ service DpControlPlane {
   rpc GetChannelWriter (GetChannelWriterRequest) returns (ChannelWriterLease);
   rpc RequestWriterHandoff (RequestWriterHandoffRequest) returns (Empty);
   rpc HeartbeatWriterLease (HeartbeatWriterLeaseRequest) returns (Empty);
+
+  // Bubble-up aggregator registry (Phase 4 DP-Ch28)
+  rpc RegisterBubbleUpAggregator (RegisterAggregatorRequest) returns (AggregatorHandle);
+  rpc UnregisterBubbleUpAggregator (UnregisterAggregatorRequest) returns (Empty);
+  rpc ListAggregatorsForChannel (ListAggregatorsRequest) returns (AggregatorList);
 
   // Session stickiness + NPC binding
   rpc GetSessionNode (GetSessionNodeRequest) returns (NodeAssignment);
@@ -298,7 +304,7 @@ Monthly failover drill triggered via admin CLI:
 |---|---|
 | DP-C1 | CP responsibilities enumerated; non-responsibilities explicit |
 | DP-C2 | 2-node active-passive, own Postgres, ≤60s failover |
-| DP-C3 | gRPC surface — 19 methods (13 Phase 2 + 3 Phase 4 channel-tree + 3 Phase 4 writer-binding), low-QPS |
+| DP-C3 | gRPC surface — 22 methods (13 Phase 2 + 3 Phase 4 channel-tree + 3 Phase 4 writer-binding + 3 Phase 4 aggregator-registry), low-QPS |
 | DP-C4 | Tier policy registry schema + registration flow |
 | DP-C5 | Expand / Migrate / Contract schema migration protocol |
 | DP-C6 | Invalidation broadcast through Redis pub/sub, CP off hot path |

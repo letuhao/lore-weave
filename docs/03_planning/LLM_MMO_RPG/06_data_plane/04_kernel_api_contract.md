@@ -627,6 +627,24 @@ impl DpClient {
         turn_data: serde_json::Value,
         causal_refs: Vec<EventRef>,
     ) -> Result<TurnAck, DpError>;
+
+    /// Phase 4 (DP-Ch25): register a bubble-up aggregator on a parent channel.
+    /// Aggregator persists in CP registry; SDK manages subscribe + dispatch +
+    /// snapshot + restart. Capability-gated by `can_register_aggregator` claim.
+    /// See 16_bubble_up_aggregator.md for full semantics.
+    pub async fn register_bubble_up_aggregator<A: BubbleUpAggregator>(
+        &self,
+        ctx: &SessionContext,
+        parent_channel: ChannelId,
+        aggregator: A,
+        config: AggregatorConfig,
+    ) -> Result<AggregatorHandle, DpError>;
+
+    pub async fn unregister_bubble_up_aggregator(
+        &self,
+        ctx: &SessionContext,
+        handle: &AggregatorHandle,
+    ) -> Result<(), DpError>;
 }
 
 pub struct TurnAck {
@@ -634,6 +652,12 @@ pub struct TurnAck {
     pub turn_number: u64,
     pub applied_at: Timestamp,
 }
+
+/// Phase 4 (DP-Ch27): deterministic RNG seeded by a channel event id.
+/// Used by bubble-up aggregators to make probabilistic decisions that
+/// reproduce on replay. Aggregators MUST use this and MUST NOT use
+/// wall-clock time for randomness.
+pub fn deterministic_rng(channel_id: &ChannelId, channel_event_id: u64) -> Rng;
 ```
 
 ---
@@ -696,10 +720,11 @@ const FORBIDDEN_IMPORTS_IN_FEATURE_CRATES: &[&str] = &[
 | Subscription | 4 | `subscribe_invalidation` (pub/sub) · `subscribe_broadcast<T1>` (pub/sub) · `subscribe_channel_events_durable<S>` (Streams + DB catchup, Phase 4) · `subscribe_session_channels<S>` (multiplex, Phase 4) |
 | Macros | 2 | `cache_key!` (scope-dispatched), `instrumented!` |
 | Client | 2 | `DpClient::connect`, `DpClient::verify_reality` |
-| Channel | 4 | `DpClient::move_session_to_channel`, `create_channel`, `dissolve_channel`, `advance_turn` (Phase 4) |
-| **Total SDK primitives** | **~34** | Feature repos compose these into domain APIs. Channel primitives + durable subscribe + turn boundary (Phase 4) are additive; earlier scope APIs subsumed into the scope-typed reads. |
+| Channel | 6 | `DpClient::move_session_to_channel`, `create_channel`, `dissolve_channel`, `advance_turn`, `register_bubble_up_aggregator`, `unregister_bubble_up_aggregator` (Phase 4) |
+| Aggregator | 1 | `deterministic_rng` (Phase 4) |
+| **Total SDK primitives** | **~37** | Feature repos compose these into domain APIs. Channel + durable subscribe + turn boundary + bubble-up aggregator (Phase 4) are additive; earlier scope APIs subsumed into the scope-typed reads. |
 
-~34 primitives vs. a god-interface of hundreds — the Federated Repo pattern ([DP-A10](02_invariants.md#dp-a10--federated-feature-repos-dp-owns-primitives-not-domain-queries)) keeps DP small by design, even with channel support + durable subscribe + turn boundary added in Phase 4.
+~37 primitives vs. a god-interface of hundreds — the Federated Repo pattern ([DP-A10](02_invariants.md#dp-a10--federated-feature-repos-dp-owns-primitives-not-domain-queries)) keeps DP small by design, even with full channel + ordering + subscribe + turn + bubble-up support added in Phase 4.
 
 ---
 
