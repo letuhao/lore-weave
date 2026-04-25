@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -742,3 +743,154 @@ async def test_regenerate_project_happy_path_passes_regen_edit_source():
     kwargs = repo.upsert_project_scoped.await_args.kwargs
     assert kwargs["edit_source"] == "regen"
     assert kwargs["expected_version"] == 2
+
+
+# ── C16-BUILD: budget pre-check + post-success spend recorder ────────
+
+
+@pytest.mark.asyncio
+async def test_regenerate_global_blocked_when_budget_exceeded(monkeypatch):
+    """C16-BUILD pre-check (D-K20α-01 closer): when the user is over
+    their monthly AI cap, the helper must short-circuit with status
+    ``no_op_budget_exceeded`` BEFORE the LLM call so we don't burn $
+    on a regen the user can't pay for. Gated on
+    ``summary_spending_repo is not None`` — the repo doubles as the
+    DI sentinel for the new feature."""
+    from app.jobs.budget import BudgetCheck
+
+    async def _fake_check(*args, **kwargs):
+        return BudgetCheck(
+            allowed=False,
+            reason="cap reached",
+            monthly_spent=Decimal("100"),
+            monthly_budget=Decimal("100"),
+        )
+
+    monkeypatch.setattr(
+        "app.jobs.regenerate_summaries.check_user_monthly_budget",
+        _fake_check,
+    )
+    repo = _mock_summaries_repo(current=_summary_stub())
+    provider = _mock_provider_client("unused")
+    spending_repo = MagicMock()
+    spending_repo.record = AsyncMock()
+    result = await regenerate_global_summary(
+        user_id=_USER_ID,
+        model_source="user_model",
+        model_ref="gpt-4o-mini",
+        pool=_mock_pool(recent_manual_edit=False),
+        session_factory=_make_session_factory(["passage"]),
+        provider_client=provider,
+        summaries_repo=repo,
+        summary_spending_repo=spending_repo,
+    )
+    assert result.status == "no_op_budget_exceeded"
+    assert "cap reached" in (result.skipped_reason or "")
+    # LLM never called — the whole point of a pre-check.
+    provider.chat_completion.assert_not_awaited()
+    # Recorder never called — no spend to record.
+    spending_repo.record.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_regenerate_global_records_summary_spend_on_success(monkeypatch):
+    """C16-BUILD post-success recorder (global branch): on a happy
+    regen, the cost must land in ``knowledge_summary_spending`` via
+    ``SummarySpendingRepo.record(user_id, 'global', cost_usd)``. The
+    project branch uses the existing K16.11 path; the global branch
+    is the entire reason for the new repo."""
+    from app.jobs.budget import BudgetCheck
+
+    async def _fake_check(*args, **kwargs):
+        return BudgetCheck(
+            allowed=True, reason="within cap", monthly_spent=Decimal("0"),
+        )
+
+    monkeypatch.setattr(
+        "app.jobs.regenerate_summaries.check_user_monthly_budget",
+        _fake_check,
+    )
+    current = _summary_stub(content="Old bio", version=1)
+    new_summary = _summary_stub(content="Fresh new content here.", version=2)
+    repo = _mock_summaries_repo(current=current, upsert_returns=new_summary)
+    spending_repo = MagicMock()
+    spending_repo.record = AsyncMock()
+    result = await regenerate_global_summary(
+        user_id=_USER_ID,
+        model_source="user_model",
+        model_ref="gpt-4o-mini",
+        pool=_mock_pool(recent_manual_edit=False),
+        session_factory=_make_session_factory(["passage"]),
+        provider_client=_mock_provider_client(
+            new_summary.content, prompt_tokens=1000, completion_tokens=500,
+        ),
+        summaries_repo=repo,
+        summary_spending_repo=spending_repo,
+    )
+    assert result.status == "regenerated"
+    spending_repo.record.assert_awaited_once()
+    args = spending_repo.record.await_args.args
+    # (user_id, 'global', cost_usd) — gpt-4o-mini @ 3e-7 × 1500 toks.
+    assert args[0] == _USER_ID
+    assert args[1] == "global"
+    assert args[2] == Decimal(1500) * Decimal("0.00000030")
+
+
+@pytest.mark.asyncio
+async def test_regenerate_project_records_via_k16_path_on_success(monkeypatch):
+    """C16-BUILD post-success recorder (project branch): project
+    regen routes spend through the existing K16.11 ``record_spending``
+    helper rather than the new repo, because we already have a
+    ``project_id`` and ``knowledge_projects.current_month_spent_usd``
+    is the canonical project ledger. The new repo's ``record`` MUST
+    NOT be called for project scope — locks the branch dispatch.
+    """
+    from app.jobs.budget import BudgetCheck
+
+    async def _fake_check(*args, **kwargs):
+        return BudgetCheck(
+            allowed=True, reason="within cap", monthly_spent=Decimal("0"),
+        )
+
+    monkeypatch.setattr(
+        "app.jobs.regenerate_summaries.check_user_monthly_budget",
+        _fake_check,
+    )
+    record_spending_mock = AsyncMock()
+    monkeypatch.setattr(
+        "app.jobs.regenerate_summaries.record_spending",
+        record_spending_mock,
+    )
+    current = _summary_stub(
+        content="Old project notes", version=1,
+        scope_type="project", scope_id=str(_PROJECT_ID),
+    )
+    new_summary = _summary_stub(
+        content="Fresh project notes content.", version=2,
+        scope_type="project", scope_id=str(_PROJECT_ID),
+    )
+    repo = _mock_summaries_repo(current=current, project_upsert_returns=new_summary)
+    spending_repo = MagicMock()
+    spending_repo.record = AsyncMock()
+    result = await regenerate_project_summary(
+        user_id=_USER_ID,
+        project_id=_PROJECT_ID,
+        model_source="user_model",
+        model_ref="gpt-4o-mini",
+        pool=_mock_pool(recent_manual_edit=False, owns_project=True),
+        session_factory=_make_session_factory(["passage"]),
+        provider_client=_mock_provider_client(
+            new_summary.content, prompt_tokens=1000, completion_tokens=500,
+        ),
+        summaries_repo=repo,
+        summary_spending_repo=spending_repo,
+    )
+    assert result.status == "regenerated"
+    # K16.11 path called with (pool, user_id, project_id, cost).
+    record_spending_mock.assert_awaited_once()
+    rs_args = record_spending_mock.await_args.args
+    assert rs_args[1] == _USER_ID
+    assert rs_args[2] == _PROJECT_ID
+    assert rs_args[3] == Decimal(1500) * Decimal("0.00000030")
+    # New repo NOT called for project scope — branch dispatch lock.
+    spending_repo.record.assert_not_awaited()

@@ -464,6 +464,42 @@ CREATE TABLE IF NOT EXISTS sweeper_state (
   last_scope    JSONB NOT NULL DEFAULT '{}'::jsonb,
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ═══════════════════════════════════════════════════════════════
+-- C16 — knowledge_summary_spending: per-user-per-scope monthly spend.
+-- Closes D-K20α-01: global L0 regen has no project_id and so can't
+-- be recorded against knowledge_projects.current_month_spent_usd.
+-- This table is the authoritative ledger for non-project-attributable
+-- AI spend.
+--
+-- scope_type CHECK is currently restricted to 'global' only — project-
+-- scope regen records via the existing K16.11 record_spending path
+-- (uses project_id we already have). When a future cycle introduces
+-- another non-project-attributable scope, expand the CHECK enum + the
+-- Pydantic Literal in summary_spending.py in one coordinated PR.
+--
+-- Each (user_id, scope_type, month_key) is a single row. Inserted on
+-- first spend of the month; updated atomically on subsequent. Month
+-- rollover is in-place via PK shape (a new month creates a new row,
+-- no manual reset) — same pattern as sweeper_state.
+--
+-- check_user_monthly_budget aggregates this table's matching-month
+-- rows alongside knowledge_projects.current_month_spent_usd to
+-- enforce the user-wide cap.
+--
+-- No FK on user_id (cross-DB convention).
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS knowledge_summary_spending (
+  user_id      UUID NOT NULL,
+  scope_type   TEXT NOT NULL CHECK (scope_type IN ('global')),
+  month_key    TEXT NOT NULL,
+  spent_usd    NUMERIC(10,4) NOT NULL DEFAULT 0,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, scope_type, month_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_summary_spending_user_month
+  ON knowledge_summary_spending(user_id, month_key);
 """
 
 

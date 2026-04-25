@@ -28,12 +28,22 @@ from app.db.repositories.extraction_pending import ExtractionPendingRepo
 from app.db.repositories.job_logs import JobLogsRepo
 from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.summaries import SummariesRepo
+from app.db.repositories.summary_spending import SummarySpendingRepo
 from app.db.repositories.user_budgets import UserBudgetsRepo
 from app.db.repositories.user_data import UserDataRepo
 
 
 async def get_summaries_repo() -> SummariesRepo:
     return SummariesRepo(get_knowledge_pool())
+
+
+async def get_summary_spending_repo() -> SummarySpendingRepo:
+    """C16-BUILD: D-K20α-01 closer. Wires the user-wide non-project-
+    attributable spend ledger into router DI so manual regen via the
+    public + internal endpoints picks up the same budget pre-check +
+    post-success recorder that the K20.3 scheduler loops use.
+    Without this dep, manual regens silently bypass the cap."""
+    return SummarySpendingRepo(get_knowledge_pool())
 
 
 async def get_projects_repo() -> ProjectsRepo:

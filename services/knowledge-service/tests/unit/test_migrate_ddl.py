@@ -241,3 +241,57 @@ def test_sweeper_state_no_cross_db_fk():
         "sweeper_state must not declare an FK to users "
         "(cross-DB forbidden)"
     )
+
+
+# ── C16-BUILD — knowledge_summary_spending table ───────────────────
+
+
+def test_summary_spending_table_present():
+    """C16 closes D-K20α-01 BUILD-blocker. Regression-lock against
+    a future migration that drops the table."""
+    assert "CREATE TABLE IF NOT EXISTS knowledge_summary_spending" in DDL
+
+
+def test_summary_spending_check_constraint_global_only():
+    """C16-BUILD CLARIFY decision Q1/Option α — `scope_type` restricted
+    to 'global' only (project-scope regen reuses K16.11). Adding new
+    scope values requires migrating both the CHECK and
+    summary_spending.py's ScopeType Literal in one PR."""
+    assert "scope_type   TEXT NOT NULL CHECK (scope_type IN ('global'))" in DDL
+
+
+def test_summary_spending_pk_includes_month_key():
+    """PK shape (user_id, scope_type, month_key) — month rollover is
+    in-place via new-row insert (a new month_key creates a new row,
+    no UPDATE chain). Same pattern as sweeper_state."""
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS knowledge_summary_spending\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None, "knowledge_summary_spending table body not found"
+    body = m.group(1)
+    assert "PRIMARY KEY (user_id, scope_type, month_key)" in body
+
+
+def test_summary_spending_no_cross_db_fk():
+    """No FK on user_id — users live in auth-service (cross-DB
+    forbidden convention shared across all knowledge-service tables)."""
+    import re
+    m = re.search(
+        r"CREATE TABLE IF NOT EXISTS knowledge_summary_spending\s*\((.*?)\);",
+        DDL, re.DOTALL,
+    )
+    assert m is not None
+    body = m.group(1)
+    assert "REFERENCES" not in body, (
+        "knowledge_summary_spending must not declare an FK to users "
+        "(cross-DB forbidden)"
+    )
+
+
+def test_summary_spending_user_month_index():
+    """check_user_monthly_budget hot path: SUM(spent_usd) WHERE
+    user_id=$1 AND month_key=$2. Composite index covers it."""
+    assert "idx_summary_spending_user_month" in DDL
+    assert "ON knowledge_summary_spending(user_id, month_key)" in DDL

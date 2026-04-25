@@ -53,12 +53,18 @@ def _make_client(*, cooldown=None) -> TestClient:
     """
     from app.main import app
     from app.middleware.jwt_auth import get_current_user
-    from app.deps import get_provider_client, get_summaries_repo
+    from app.deps import (
+        get_provider_client,
+        get_summaries_repo,
+        get_summary_spending_repo,
+    )
     from app.routers.public.summaries import get_cooldown_client
 
     app.dependency_overrides[get_current_user] = lambda: _TEST_USER
     app.dependency_overrides[get_provider_client] = lambda: MagicMock()
     app.dependency_overrides[get_summaries_repo] = lambda: MagicMock()
+    # C16-BUILD: stub the spending repo so get_knowledge_pool() isn't hit.
+    app.dependency_overrides[get_summary_spending_repo] = lambda: MagicMock()
     app.dependency_overrides[get_cooldown_client] = lambda: cooldown
     return TestClient(app, raise_server_exceptions=False)
 
@@ -210,6 +216,67 @@ def test_regenerate_project_passes_project_id(mock_regen):
     assert resp.status_code == 200, resp.json()
     assert mock_regen.await_args.kwargs["project_id"] == _PROJECT_ID
     assert mock_regen.await_args.kwargs["user_id"] == _TEST_USER
+
+
+# ── C16-BUILD: spending repo wire-through (review-impl HIGH-1) ──────
+
+
+@patch(
+    "app.routers.public.summaries.get_knowledge_pool",
+    new=MagicMock(return_value=MagicMock()),
+)
+@patch("app.routers.public.summaries.regenerate_global_summary", new_callable=AsyncMock)
+def test_regenerate_global_forwards_spending_repo_to_helper(mock_regen):
+    """C16-BUILD review-impl regression lock: the public global regen
+    endpoint MUST pass ``summary_spending_repo`` to the helper so the
+    budget pre-check + post-success recorder are not silently bypassed
+    on manual regen (the most common trigger path). A regression that
+    drops the kwarg would re-open D-K20α-01 — the user could blow
+    through their cap by spamming the regenerate button. Locks the
+    DI plumbing that the 25-test cascade exposed during review-impl."""
+    sentinel = MagicMock(name="SummarySpendingRepoSentinel")
+    from app.deps import get_summary_spending_repo
+    from app.main import app
+
+    mock_regen.return_value = RegenerationResult(
+        status="regenerated", summary=_summary_stub(),
+    )
+    client = _make_client()
+    # Override AFTER _make_client — it sets a default stub for the same
+    # key, and dict assignment is last-write-wins.
+    app.dependency_overrides[get_summary_spending_repo] = lambda: sentinel
+    resp = client.post(
+        "/v1/knowledge/me/summary/regenerate",
+        json={"model_source": "user_model", "model_ref": "gpt-4o-mini"},
+    )
+    assert resp.status_code == 200, resp.json()
+    assert mock_regen.await_args.kwargs["summary_spending_repo"] is sentinel
+
+
+@patch(
+    "app.routers.public.summaries.get_knowledge_pool",
+    new=MagicMock(return_value=MagicMock()),
+)
+@patch("app.routers.public.summaries.regenerate_project_summary", new_callable=AsyncMock)
+def test_regenerate_project_forwards_spending_repo_to_helper(mock_regen):
+    """Same regression lock for the project-scope public endpoint —
+    pre-check applies even though project regen records via the K16.11
+    path; without the kwarg the pre-check is gated off entirely."""
+    sentinel = MagicMock(name="SummarySpendingRepoSentinel")
+    from app.deps import get_summary_spending_repo
+    from app.main import app
+
+    mock_regen.return_value = RegenerationResult(
+        status="regenerated", summary=_summary_stub(scope_type="project"),
+    )
+    client = _make_client()
+    app.dependency_overrides[get_summary_spending_repo] = lambda: sentinel
+    resp = client.post(
+        f"/v1/knowledge/projects/{_PROJECT_ID}/summary/regenerate",
+        json={"model_source": "user_model", "model_ref": "gpt-4o-mini"},
+    )
+    assert resp.status_code == 200, resp.json()
+    assert mock_regen.await_args.kwargs["summary_spending_repo"] is sentinel
 
 
 # ── C2 — cooldown (D-K20α-02) ────────────────────────────────────────

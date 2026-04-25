@@ -50,6 +50,8 @@ from app.db.models import Summary
 from app.db.neo4j_helpers import CypherSession, run_read
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.summaries import SummariesRepo
+from app.db.repositories.summary_spending import SummarySpendingRepo
+from app.jobs.budget import check_user_monthly_budget, record_spending
 from app.extraction.injection_defense import neutralize_injection
 from app.metrics import (
     summary_regen_cost_usd_total,
@@ -125,6 +127,13 @@ RegenerationStatus = Literal[
     "no_op_guardrail",
     "user_edit_lock",
     "regen_concurrent_edit",
+    # C16-BUILD — pre-check rejected the regen because the user's
+    # projected monthly spend would exceed their budget cap. Same
+    # advisory semantic as K16.11's can_start_job: returned BEFORE
+    # the LLM call fires, no money spent. Caller can surface the
+    # `skipped_reason` (which echoes the BudgetCheck.reason) in the
+    # Regenerate dialog.
+    "no_op_budget_exceeded",
 ]
 
 
@@ -314,12 +323,20 @@ def _guardrail_reject_reason(text: str) -> str | None:
 @dataclass
 class _RegenContext:
     """Bundle of runtime deps. Passed explicitly so tests can swap any
-    piece without monkey-patching modules."""
+    piece without monkey-patching modules.
+
+    C16-BUILD: ``summary_spending_repo`` optional — None disables the
+    budget pre-check + global-spend recorder (back-compat for the ~20
+    test sites that don't yet pass it). Production callers
+    (``run_global_regen_loop`` / ``run_project_regen_loop``) pass a
+    real repo so D-K20α-01 is enforced.
+    """
 
     pool: asyncpg.Pool
     session_factory: Any  # called as `session_factory()` → async CM
     provider_client: ProviderClient
     summaries_repo: SummariesRepo
+    summary_spending_repo: "SummarySpendingRepo | None" = None
 
 
 async def _owns_project(pool: asyncpg.Pool, user_id: UUID, project_id: UUID) -> bool:
@@ -443,6 +460,35 @@ async def _regenerate_core_inner(
                 "first, then try again."
             ),
         )
+
+    # 3.5. C16-BUILD — budget pre-check (D-K20α-01 closer). Both global
+    #      and project regen consume real provider $ via the LLM call
+    #      below; without this gate a runaway cron would burn through
+    #      the user's ai_monthly_budget_usd cap (project regen also
+    #      bypasses K10.4's atomic try_spend pattern since regen is
+    #      one LLM call, not per-item iteration). check_user_monthly_budget
+    #      already aggregates project + summary spend post-C16; passing
+    #      estimated_cost=0 turns it into "would I be over cap right
+    #      now even before this regen?" — accept slight over-cap if
+    #      the actual cost exceeds prediction (matches K16.11's pre-
+    #      check semantic for extraction).
+    #
+    #      Gated on `summary_spending_repo is not None` for DI
+    #      consistency: the same flag also disables the post-success
+    #      recorder. Test sites that don't wire the new repo skip the
+    #      pre-check entirely (~20 existing test sites).
+    if ctx.summary_spending_repo is not None:
+        budget_check = await check_user_monthly_budget(
+            ctx.pool, user_id, estimated_cost=Decimal("0"),
+        )
+        if not budget_check.allowed:
+            return RegenerationResult(
+                status="no_op_budget_exceeded",
+                skipped_reason=(
+                    f"User monthly AI budget cap reached: {budget_check.reason}. "
+                    "Raise the cap in Settings or wait for the month to roll over."
+                ),
+            )
 
     # 4. LLM call via BYOK proxy.
     messages = _build_messages(scope=scope_type, passages=passages)
@@ -571,6 +617,28 @@ async def _regenerate_core_inner(
         summary_regen_cost_usd_total.labels(scope_type=scope_type).inc(
             float(cost_usd)
         )
+        # C16-BUILD — record cost AFTER provider success but BEFORE
+        # downstream consumers see the regen result. The provider has
+        # already billed the user regardless of any further guardrails
+        # (none below this point — this is the last step before the
+        # successful return). Recording-order rationale + recovery via
+        # Prometheus/ledger divergence alert: see ADR §5.4.
+        #
+        # Branch on scope:
+        #   - 'global' → SummarySpendingRepo.record (no project_id available)
+        #   - 'project' → existing K16.11 record_spending path
+        # ctx.summary_spending_repo=None disables both branches —
+        # back-compat for tests that haven't been updated yet.
+        if ctx.summary_spending_repo is not None:
+            if scope_type == "global":
+                await ctx.summary_spending_repo.record(
+                    user_id, "global", cost_usd,
+                )
+            elif scope_type == "project":
+                assert scope_id is not None
+                await record_spending(
+                    ctx.pool, user_id, scope_id, cost_usd,
+                )
 
     return RegenerationResult(status="regenerated", summary=new_summary)
 
@@ -584,6 +652,7 @@ async def regenerate_global_summary(
     session_factory: Any,
     provider_client: ProviderClient,
     summaries_repo: SummariesRepo,
+    summary_spending_repo: SummarySpendingRepo | None = None,
     trigger: RegenTrigger = "manual",
 ) -> RegenerationResult:
     """K20.2 — regenerate the user's L0 global bio.
@@ -592,12 +661,18 @@ async def regenerate_global_summary(
     the user's BYOK model with the L0 system prompt, runs drift +
     quality guardrails, and writes the result as a new `global`-scope
     summary version on success.
+
+    C16-BUILD: ``summary_spending_repo`` enables D-K20α-01's budget
+    pre-check + post-success spend recorder. ``None`` (back-compat
+    default) disables both — tests that don't yet wire it work
+    unchanged. Production call site in ``main.py`` passes a real repo.
     """
     ctx = _RegenContext(
         pool=pool,
         session_factory=session_factory,
         provider_client=provider_client,
         summaries_repo=summaries_repo,
+        summary_spending_repo=summary_spending_repo,
     )
     return await _regenerate_core(
         ctx,
@@ -621,6 +696,7 @@ async def regenerate_project_summary(
     session_factory: Any,
     provider_client: ProviderClient,
     summaries_repo: SummariesRepo,
+    summary_spending_repo: SummarySpendingRepo | None = None,
     trigger: RegenTrigger = "manual",
 ) -> RegenerationResult:
     """K20.1 — regenerate a project's L1 summary.
@@ -629,12 +705,20 @@ async def regenerate_project_summary(
     user's BYOK model with the L1 system prompt, runs drift + quality
     guardrails, and writes the result via `upsert_project_scoped`
     (which carries its own ownership check).
+
+    C16-BUILD: ``summary_spending_repo`` enables D-K20α-01's budget
+    pre-check. Project-scope spend records via the existing K16.11
+    ``record_spending`` path (uses project_id we already have); the
+    summary_spending_repo arg is required only to ungate the
+    ``summary_spending_repo is not None`` branch. ``None`` (back-compat
+    default) disables both pre-check and recorder.
     """
     ctx = _RegenContext(
         pool=pool,
         session_factory=session_factory,
         provider_client=provider_client,
         summaries_repo=summaries_repo,
+        summary_spending_repo=summary_spending_repo,
     )
     return await _regenerate_core(
         ctx,

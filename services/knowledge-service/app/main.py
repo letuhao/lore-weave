@@ -176,6 +176,7 @@ async def lifespan(app: FastAPI):
         try:
             from app.db.neo4j import neo4j_session
             from app.db.repositories.summaries import SummariesRepo
+            from app.db.repositories.summary_spending import SummarySpendingRepo
             from app.jobs.summary_regen_scheduler import (
                 run_global_regen_loop,
                 run_project_regen_loop,
@@ -184,6 +185,12 @@ async def lifespan(app: FastAPI):
             def _summary_session_factory():
                 return neo4j_session()
 
+            # C16-BUILD — single SummarySpendingRepo instance shared
+            # across both regen loops. Wires D-K20α-01 budget pre-check
+            # + global spend recorder. Project loop also uses it to
+            # ungate K16.11 record_spending in the project regen path.
+            _summary_spending_repo = SummarySpendingRepo(get_knowledge_pool())
+
             # K20.3 α — project-scope (L1) regen, daily cadence.
             summary_regen_task = asyncio.create_task(
                 run_project_regen_loop(
@@ -191,6 +198,7 @@ async def lifespan(app: FastAPI):
                     _summary_session_factory,
                     get_provider_client(),
                     SummariesRepo(get_knowledge_pool()),
+                    summary_spending_repo=_summary_spending_repo,
                 )
             )
             logger.info(
@@ -206,6 +214,7 @@ async def lifespan(app: FastAPI):
                     _summary_session_factory,
                     get_provider_client(),
                     SummariesRepo(get_knowledge_pool()),
+                    summary_spending_repo=_summary_spending_repo,
                 )
             )
             logger.info(
