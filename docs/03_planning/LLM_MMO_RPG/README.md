@@ -31,6 +31,7 @@ This folder exists to:
 
 | File | Purpose |
 |---|---|
+| [`_boundaries/`](_boundaries/) | **Single-writer feature-boundary discipline** (created 2026-04-25 post-WA_006 over-extension review). Lock-gated folder: ONE agent may write at a time. Owns the master ownership matrix (who owns each aggregate / schema / namespace), extension contracts for shared schemas (TurnEvent envelope, RealityManifest, capability JWT, EVT-T8 sub-shapes), validator pipeline slot ordering, and the boundary-changes changelog. Read FIRST before designing a new feature. Reads unrestricted; writes require lock claim per [`_boundaries/_LOCK.md`](_boundaries/_LOCK.md). |
 | [`00_foundation/`](00_foundation/) | **Start here for parallel feature-design work.** Compressed contract layer — 7 files (~30 KB) distilling invariants, service boundaries, kernel APIs, vocabulary, and the ID catalog so agents don't have to load the full kernel. Storage + multiverse are the kernel; foundation is the cheat sheet. |
 | [`features/`](features/) | **Active feature-design workspace** (started 2026-04-25 after kernel-design phase closed at SR12). 12 category subfolders (02_world_authoring..12_daily_life) + `DF/` for big deferred features + `_spikes/` for cross-category exploration. Feature docs ~150-250 lines each; kernel extensions on-demand only. |
 | `00_VISION.md` | The vision — four shapes of role-play, why Shape D (shared persistent world) is the dream, what LoreWeave uniquely brings, and a staged path that de-risks it |
