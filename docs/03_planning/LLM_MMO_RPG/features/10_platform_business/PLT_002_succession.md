@@ -2,8 +2,9 @@
 
 > **Conversational name:** "Succession" (SUC). The formal handover of RealityOwner role from current owner to an existing Co-Author. High-stakes; multi-stage state machine with recipient consent + admin oversight + cooldown. Closes the V1 gap where RealityOwner could not self-resign without admin S5 intervention.
 >
-> **Category:** PLT — Platform / Business (relocated 2026-04-25 from `02_world_authoring/`; original PLT_002 ID retired per foundation I15)
-> **Status:** DRAFT 2026-04-25 (originally drafted as WA_005; relocated 2026-04-25 to `10_platform_business/` because account ownership lifecycle is platform/account territory, not "validate rules of reality" which is WA's original intent)
+> **Category:** PLT — Platform / Business (relocated 2026-04-25 from `02_world_authoring/`; original WA_005 ID retired per foundation I15)
+> **Status:** **CANDIDATE-LOCK 2026-04-25** (originally DRAFT as WA_005; relocated 2026-04-25 to `10_platform_business/` because account ownership lifecycle is platform/account territory; closure pass 2026-04-25 split into root + lifecycle to honor 800-line cap; §14 acceptance criteria added in PLT_002b — 10 scenarios; Option C terminology applied EVT-T8 AdminAction → Administrative). LOCK granted after the 10 §14 acceptance scenarios have passing integration tests.
+> **Companion file:** [`PLT_002b_succession_lifecycle.md`](PLT_002b_succession_lifecycle.md) — sequences (§11-§13), acceptance criteria (§14), deferrals (§15), cross-references (§16), readiness checklist (§17).
 > **Stable ID rename:** WA_005 → PLT_002. Old ID `WA_005` MUST NOT be reused for a different feature (foundation I15).
 > **Catalog refs:** PLT-*. Resolves [PLT_001 CHR-D1](PLT_001_charter.md) (ownership transfer feature).
 > **Builds on:** [PLT_001 Charter](PLT_001_charter.md) (recipients must be existing Co-Authors V1), [WA_003 Forge](../02_world_authoring/WA_003_forge.md) (UI surface; reuses ImpactClass / EditOutcome pattern), [02_storage C03 reality_registry](../../02_storage/) (owner ground-truth that gets mutated)
@@ -34,7 +35,7 @@ Tâm-Anh (RealityOwner of `R-tdd-h-2026-04`) decides to step back. Hoài-Linh ha
     - `reality_registry.owner_id = Hoài-Linh`
     - Tâm-Anh's grant becomes `Co-Author` (per her post-transfer choice)
     - JWT version bumped for both
-    - EVT-T8 AdminAction emitted
+    - EVT-T8 Administrative emitted
 15. Both users see in-app confirmation. Reality continues running normally.
 
 Total time T0 → finalize: minimum 7 days (cooldown floor); typically 7-14 days.
@@ -63,7 +64,7 @@ Admin reviewing the transfer notices Tâm-Anh's account had a recent password re
 
 ---
 
-## §2.5 Event-model mapping (per 07_event_model EVT-T1..T11)
+## §2.5 Event-model mapping (per 07_event_model EVT-T1..T11; Option C redesign 2026-04-25)
 
 Succession operations are AdminAction-class (per WA_003 / PLT_001 pattern).
 
@@ -554,7 +555,7 @@ world-service:
     │
     ▼
     t2_write OwnershipTransfer { state: Pending, ... }
-    advance_turn EVT-T8 AdminAction SuccessionInitiate ✓
+    advance_turn EVT-T8 Administrative SuccessionInitiate ✓
     t2_write ForgeAuditEntry ✓
     write meta_user_offered_transfers entry for hoai_linh ✓
     enqueue admin review queue (out-of-band)
@@ -575,7 +576,7 @@ world-service:
     if admin_approved already true:
         state advances to Cooldown { entered_at: now }
         background sweeper will check at now+7d
-    advance_turn EVT-T8 AdminAction SuccessionRecipientAccept ✓
+    advance_turn EVT-T8 Administrative SuccessionRecipientAccept ✓
     t2_write ForgeAuditEntry ✓
     │
     ▼
@@ -600,7 +601,7 @@ world-service:
     t2_write OwnershipTransfer { admin_approved: true, admin_approver_chain: [op_A, op_B], admin_approved_at: now }
     if recipient_accepted already true:
         state advances to Cooldown { entered_at: now }
-    advance_turn EVT-T8 AdminAction SuccessionAdminApprove ✓
+    advance_turn EVT-T8 Administrative SuccessionAdminApprove ✓
     t2_write ForgeAuditEntry ✓
 ```
 
@@ -628,155 +629,20 @@ Sweeper task (every 1 hour):
 
 ---
 
-## §11 Sequence: full happy-path (Scenario A end-to-end)
+## §11..§17 — Continued in PLT_002b
 
-Compressed timeline; total 8 days.
+End of contract layer. The dynamic layer (sequences, acceptance criteria, deferrals, cross-references, readiness) is in the companion file:
 
-```text
-T0:    Tâm-Anh initiates transfer via Forge
-       state = Pending { recipient: false, admin: false }
-       expires_at = T0+14d
+→ **[`PLT_002b_succession_lifecycle.md`](PLT_002b_succession_lifecycle.md)**
 
-T0+30min:  Hoài-Linh sees banner, accepts
-           state = Pending { recipient: true, admin: false }
+Sections:
 
-T1d:   admin op_A reviews transfer, hits Approve
-       op_B reviews + concurs (within 5min)
-       state advances: Pending { recipient: true, admin: true }
-       → IMMEDIATELY transitions to Cooldown { entered_at: T1d+5min }
+- §11 Sequence: full happy-path (8-day timeline T0 → T+8d Finalize)
+- §12 Sequence: owner cancels during cooldown (Scenario B)
+- §13 Sequence: admin rejects during Pending (Scenario C)
+- §14 Acceptance criteria (10 scenarios — AC-SUC-1..10 across happy-path / failure-path / boundary)
+- §15 Open questions deferred (SUC-D1..D12 + HER-D8 inherited)
+- §16 Cross-references
+- §17 Implementation readiness checklist (combined PLT_002 + PLT_002b)
 
-T1d+5min:  Cooldown begins. UI shows countdown to both parties
-           "Transfer finalizes in 7 days unless cancelled."
-           (Tâm-Anh has 7 days to change her mind.)
-
-T8d+5min:  Background sweeper at T8d+5min finds the cooldown elapsed
-           t3_write_multi atomic:
-             OwnershipTransfer.Finalized
-             reality_registry.owner_id = hoai_linh
-             coauthor_grant for tam_anh CREATED (BecomesCoAuthor)
-             coauthor_grant for hoai_linh DELETED (no longer Co-Author; she's Owner)
-           advance_turn EVT-T8 SuccessionFinalize ✓
-           ForgeAuditEntry ✓
-           bump forge_roles_version for both ✓
-
-T8d+5min+1s:  Both UIs show: "✓ Reality ownership transferred. Hoài-Linh is now RealityOwner."
-              Forge tab updates on next view-load.
-
-T8d+5min+~4min:  Both JWT auto-refreshes pick up new roles.
-                 Tâm-Anh's Forge UI: now shows Co-Author capabilities only
-                 Hoài-Linh's Forge UI: now shows RealityOwner capabilities
-```
-
----
-
-## §12 Sequence: owner cancels during cooldown (Scenario B)
-
-```text
-T0:    Initiate (as §11)
-T1d:   Both approvals → Cooldown begins
-
-T4d:   Tâm-Anh changes mind. Forge → "Active transfer" → "Cancel"
-       Confirmation: "Are you sure? This will abort the transfer to Hoài-Linh."
-       Confirms.
-       │
-       POST /v1/forge/.../succession/{T1}/owner-cancel
-       state = Aborted { reason: CooldownCancelled, by: tam_anh }
-       advance_turn EVT-T8 SuccessionOwnerCancel ✓
-       ForgeAuditEntry ✓
-       │
-       ▼
-T4d+1s:  Both UIs show: "Transfer cancelled by RealityOwner. Reality ownership unchanged."
-         Hoài-Linh's grant remains as Co-Author.
-         Tâm-Anh remains as RealityOwner.
-```
-
-(Identical mechanism if Hoài-Linh withdraws via `RecipientWithdraw` — sub-shape SuccessionRecipientWithdraw and reason=CooldownCancelled.)
-
----
-
-## §13 Sequence: admin rejects during Pending (Scenario C)
-
-```text
-T0:    Initiate
-T0+30min:  Hoài-Linh accepts → state = Pending { recipient: true, admin: false }
-
-T2h:   Admin op_X reviews. Notices: Tâm-Anh's account had a password reset 3 days ago.
-       Possible account-recovery suspicion. Admin rejects:
-       │
-       POST /v1/admin/.../succession/{T1}/reject
-       body: { reason: "Account security review needed; please contact support to verify identity. Refer to ticket #12345." }
-       (Single admin OK for reject — easier escape per §7.5)
-       │
-       state = Aborted { reason: AdminRejected, by: op_X, note: "Account security review..." }
-       advance_turn EVT-T8 SuccessionAdminReject ✓
-       ForgeAuditEntry ✓
-       │
-       ▼
-T2h+1s:  Both UIs notified:
-         Tâm-Anh: "Transfer rejected by admin: Account security review needed..."
-         Hoài-Linh: "Transfer rejected by admin. Tâm-Anh remains RealityOwner."
-
-         If false-positive, support resolves; Tâm-Anh re-initiates after verification.
-```
-
----
-
-## §14 Open questions deferred
-
-| ID | Question | Defer to |
-|---|---|---|
-| SUC-D1 | Transfer to non-Co-Author (skip the Charter step; recipient is fresh user with extra verification) | V2+ — needs identity verification challenges |
-| SUC-D2 | Configurable cooldown per reality (V1 fixed 7d; V2+ range 1d-30d) | V2+ ops |
-| SUC-D3 | PostTransferFate options beyond BecomesCoAuthor / Removed (e.g., BecomesReadOnly, RetainAdminEscape) | V2+ |
-| SUC-D4 | Allow transfer during Catastrophic / Shattered stages with admin override | V2+ + WA_002 stage policy |
-| SUC-D5 | V2+ pre-approval bypass for long-tenure Co-Authors (>6 months) skipping admin step | V2+ ops |
-| SUC-D6 | Multi-recipient transfer (transfer to a co-owner pair) | V3+ — needs new "co-ownership" data model |
-| SUC-D7 | Reality forking on transfer (recipient gets a fork, original owner keeps original) | V3+ — depends on DF8 canon-fork |
-| SUC-D8 | Account-deletion automatic transfer (if owner deletes account, what happens?) | V2+ + auth-service policy |
-| SUC-D9 | Notification protocol beyond in-app banner (email, push) | V2+ ops |
-| SUC-D10 | Owner-impersonation defense (multi-factor auth at Initiate time) | V2+ security |
-| SUC-D11 | Admin approval queue UI / workflow tooling | V2+ frontend (admin console) |
-| SUC-D12 | Audit retention policy for transfer history (V1 keeps everything; V2+ may archive after 90d) | V2+ ops + S5 retention |
-
----
-
-## §15 Cross-references
-
-- [PLT_001 Charter](PLT_001_charter.md) — Co-Author lifecycle; Succession requires recipient to be Co-Author at initiate
-- [WA_003 Forge](../02_world_authoring/WA_003_forge.md) — UI surface; Succession UX lives in Forge
-- [WA_002 Heresy](../02_world_authoring/WA_002_heresy.md) — `world_stability` consulted at initiate (block during Catastrophic/Shattered)
-- [02_storage C03 reality_registry] — owner_id ground-truth; mutated atomically at Finalize
-- [02_storage S05 admin classification] — S5 dual-actor for admin approve
-- [auth-service] — UserId resolution; account-status checks
-- [07_event_model/03_event_taxonomy.md](../../07_event_model/03_event_taxonomy.md) — EVT-T8 AdminAction sub-shapes Succession*
-- [decisions/deferred_DF01_DF15.md](../../decisions/deferred_DF01_DF15.md) — DF4 World Rules umbrella
-
----
-
-## §16 Implementation readiness checklist
-
-- [x] **§2** Domain concepts (OwnershipTransfer, TransferState, PostTransferFate, AbortRecord, AbortReason)
-- [x] **§2.5** EVT-T* mapping (EVT-T8 AdminAction with 7 new Succession* sub-shapes)
-- [x] **§3** Aggregate inventory (1 new: `ownership_transfer`; references reality_registry + coauthor_grant + forge_audit_log)
-- [x] **§3.1.1** Singleton-active invariant
-- [x] **§4** Tier+scope table (T2 for state updates; T3 for Finalize atomicity)
-- [x] **§5** DP primitives by name (incl. Finalize t3_write_multi shape)
-- [x] **§6** State machine (Pending TTL 14d → Cooldown 7d → Finalized OR Aborted)
-- [x] **§7** 7 V1 TransferActions + 4 read views
-- [x] **§8** Pattern choices (recipient must be Co-Author, V1 always admin-approved, fixed 7d cooldown, anti-misclick typed name, blocked during world Catastrophic/Shattered)
-- [x] **§9** Failure-mode UX (9 failure cases)
-- [x] **§10** Cross-service handoff (initiate, recipient accept, admin approve dual-actor, finalize sweeper)
-- [x] **§11** Sequence: full happy-path (8-day timeline)
-- [x] **§12** Sequence: owner cancels during cooldown
-- [x] **§13** Sequence: admin rejects during Pending
-- [x] **§14** Deferrals (SUC-D1..D12)
-
-**Deferred:** acceptance criteria (intentionally not in V1 of this doc).
-
-**Resolves:** PLT_001 CHR-D1 ✓ (in-product ownership transfer feature).
-
-**Status:** DRAFT 2026-04-25.
-
-**Drift watchpoint:** §10.4 Finalize emission — V2+ EVT-T11 WorldTick (OwnershipChanged) at reality root vs V1 EVT-T8 AdminAction-only. Mirrors HER-D8.
-
-**Next** (when this doc locks): gateway-bff exposes `/v1/forge/.../succession/...` REST + `/v1/admin/.../succession/...` admin REST; world-service implements transfer state machine + Finalize sweeper task; admin console (downstream feature) implements the admin review queue UI. Vertical-slice target: full Tâm-Anh→Hoài-Linh transfer reproduces deterministically across all happy-path + cancel + admin-reject scenarios.
+PLT_002b is required reading before implementing the world-service Succession state machine.

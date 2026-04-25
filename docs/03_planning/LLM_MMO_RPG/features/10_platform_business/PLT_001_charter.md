@@ -2,12 +2,12 @@
 
 > **Conversational name:** "Charter" (CHR). The formal grant of co-authoring rights — RealityOwner invites another LoreWeave user as Co-Author, with explicit invitation lifecycle, audit log, and revocation flow. Pairs with WA_003 Forge: Forge is the WHERE (the console); Charter is the WHO (the people allowed to use it).
 >
-> **Category:** PLT — Platform / Business (relocated 2026-04-25 from `02_world_authoring/`; original PLT_001 ID retired per foundation I15)
-> **Status:** DRAFT 2026-04-25 (originally drafted as WA_004; relocated 2026-04-25 to `10_platform_business/` because identity / co-author management is platform/account territory, not "validate rules of reality" which is WA's original intent)
+> **Category:** PLT — Platform / Business (relocated 2026-04-25 from `02_world_authoring/`; original WA_004 ID retired per foundation I15)
+> **Status:** **CANDIDATE-LOCK 2026-04-25** (originally DRAFT as WA_004; relocated 2026-04-25 to `10_platform_business/` because identity / co-author management is platform/account territory; closure pass 2026-04-25 added §14 acceptance criteria + applied Option C terminology EVT-T8 AdminAction → Administrative). LOCK granted after the 10 §14 acceptance scenarios have passing integration tests.
 > **Stable ID rename:** WA_004 → PLT_001. Old ID `WA_004` MUST NOT be reused for a different feature (foundation I15).
 > **Catalog refs:** PLT-* (this feature is the first PLT entry). Resolves [WA_003 FRG-D5](../02_world_authoring/WA_003_forge.md) (Co-Author invitation flow).
 > **Builds on:** [WA_003 Forge](../02_world_authoring/WA_003_forge.md) (consumes its RBAC roles + EditOutcome pattern), [WA_001 Lex](../02_world_authoring/WA_001_lex.md) + [WA_002 Heresy](../02_world_authoring/WA_002_heresy.md) (no direct interaction; Charter just gates who can call into them via Forge), [02_storage C03 reality_registry](../../02_storage/) (ownership ground-truth)
-> **Defers to:** auth-service for `UserId` newtype + user lookup; companion **PLT_002 Succession** (formerly PLT_002) for ownership transfer + Co-Author tier system.
+> **Defers to:** auth-service for `UserId` newtype + user lookup; companion **PLT_002 Succession** (formerly WA_005) for ownership transfer + Co-Author tier system.
 
 ---
 
@@ -28,7 +28,7 @@ Tâm-Anh owns reality `R-tdd-h-2026-04`. She wants Hoài-Linh (a friend) to help
 9. Hoài-Linh receives in-app notification (V1; email V2+)
 10. Hoài-Linh logs in, opens Forge → sees pending invitation banner
 11. Reviews details (reality name, inviter, role, note) → clicks "Accept"
-12. Backend creates `coauthor_grant` row + deletes invitation + emits EVT-T8 AdminAction
+12. Backend creates `coauthor_grant` row + deletes invitation + emits EVT-T8 Administrative
 13. Hoài-Linh's JWT is refreshed with `forge.roles: { R-tdd-h-2026-04: Co-Author }` on next session bind
 14. Tâm-Anh's UI updates (next view-load): grant list now shows Hoài-Linh
 
@@ -38,7 +38,7 @@ Some weeks later, Tâm-Anh decides to revoke Hoài-Linh's access. She:
 
 1. Opens Forge → "Co-Authors" → Hoài-Linh's row → "Revoke"
 2. Confirmation dialog: "Revoke Hoài-Linh's Co-Author access? They will lose edit rights immediately."
-3. She confirms. Backend deletes the grant + emits EVT-T8 AdminAction.
+3. She confirms. Backend deletes the grant + emits EVT-T8 Administrative.
 4. Hoài-Linh's next request to Forge fails with `CapabilityDenied` (her JWT is stale; she sees "Bạn đã không còn quyền chỉnh sửa thực tại này.")
 5. Audit log records the revocation with reason (optional)
 
@@ -48,7 +48,7 @@ Alternate flow. Hoài-Linh decides to step down:
 
 1. She opens Forge → "Co-Authors" → her own row → "Resign" (self-revoke button)
 2. Confirmation: "Resign as Co-Author? You will lose edit rights immediately."
-3. Confirms. Backend deletes the grant + emits EVT-T8 AdminAction with `resigned_by_self: true`.
+3. Confirms. Backend deletes the grant + emits EVT-T8 Administrative with `resigned_by_self: true`.
 4. Tâm-Anh sees notification: "Hoài-Linh has resigned as Co-Author."
 
 **Scenario D — Owner abandonment (V1 escape hatch via admin):**
@@ -71,9 +71,9 @@ If Tâm-Anh's account is deleted or she abandons the reality, Co-Authors are STU
 
 ---
 
-## §2.5 Event-model mapping (per 07_event_model EVT-T1..T11)
+## §2.5 Event-model mapping (per 07_event_model EVT-T1..T11; Option C redesign 2026-04-25)
 
-Charter operations are AdminAction-class privileged writes (per WA_003 §2.5 pattern).
+Charter operations are EVT-T8 Administrative-class privileged writes (per WA_003 §2.5 pattern; T8 renamed AdminAction → Administrative in event-model Option C redesign 2026-04-25).
 
 | Charter action | EVT-T* | Producer | Notes |
 |---|---|---|---|
@@ -207,7 +207,7 @@ dp::t2_write::<CoAuthorGrant>(ctx, grant_id, GrantDelta::Delete).await?;
 // Audit (always after a grant-affecting operation; reuses forge_audit_log)
 dp::t2_write::<ForgeAuditEntry>(ctx, entry_id, AuditDelta::Append { ... }).await?;
 
-// Emit EVT-T8 AdminAction at reality root
+// Emit EVT-T8 Administrative at reality root
 dp::advance_turn(ctx, &ChannelId::reality_root(reality_id), TurnEvent::AdminAction { sub_shape: Charter*, ... }, causal_refs=[]).await?;
 ```
 
@@ -452,7 +452,7 @@ world-service:
         - no existing pending invitation for (R, invitee) ✓
     ▼
     t2_write CoAuthorInvitation { create row with TTL 7d }
-    advance_turn at reality root with EVT-T8 AdminAction { CharterInvite { ... } }
+    advance_turn at reality root with EVT-T8 Administrative { CharterInvite { ... } }
     t2_write ForgeAuditEntry
     (V1) write meta_user_pending_invitations entry for invitee
     ▼
@@ -485,7 +485,7 @@ world-service:
     t3_write_multi atomic:
         T3WriteOp CoAuthorGrant::Create { ... }
         T3WriteOp CoAuthorInvitation::Delete
-    advance_turn at reality root with EVT-T8 AdminAction { CharterAccept { ... } }
+    advance_turn at reality root with EVT-T8 Administrative { CharterAccept { ... } }
     t2_write ForgeAuditEntry
     bump Hoài-Linh's forge.roles_version
     delete meta_user_pending_invitations entry
@@ -509,7 +509,7 @@ gateway-bff → world-service:
         - grant.user_id != Tâm-Anh ✓ (cannot self-revoke ownership)
     ▼
     t2_write CoAuthorGrant::Delete
-    advance_turn EVT-T8 AdminAction { CharterRevoke { ... } }
+    advance_turn EVT-T8 Administrative { CharterRevoke { ... } }
     t2_write ForgeAuditEntry
     bump Hoài-Linh's forge.roles_version
     ▼
@@ -639,7 +639,40 @@ Tâm-Anh's UI on next check (V1: passive; V2+: push):
 
 ---
 
-## §14 Open questions deferred
+## §14 Acceptance criteria (LOCK gate)
+
+The design is implementation-ready when gateway-bff + world-service + auth-service can pass these scenarios. Each is one row in the integration test suite. LOCK granted after all 10 pass.
+
+### 14.1 Happy-path scenarios
+
+| ID | Scenario | Pass criteria |
+|---|---|---|
+| **AC-CHR-1 INVITE → ACCEPT** | Tâm-Anh invites Hoài-Linh as Co-Author of `R-tdd-h-2026-04`; Hoài-Linh logs in, accepts. | Invitation row created with 7d TTL; auth-service resolves Hoài-Linh's email → UserId; on accept, atomic `t3_write_multi` commits new `coauthor_grant` + deletes `coauthor_invitation`; EVT-T8 Administrative `CharterAccept` emitted with approval_chain=[invitee_only]; Hoài-Linh's `forge.roles_version` bumps; next JWT refresh shows `Co-Author` for that reality. ForgeAuditEntry logged in shared `forge_audit_log`. |
+| **AC-CHR-2 INVITE → DECLINE** | Hoài-Linh declines a pending invitation. | Invitation deleted; no `coauthor_grant` created; EVT-T8 Administrative `CharterDecline` emitted; ForgeAuditEntry logged with outcome=Declined. Hoài-Linh's role unchanged (still no access). |
+| **AC-CHR-3 CANCEL BY OWNER** | Tâm-Anh sends invitation; before Hoài-Linh responds, Tâm-Anh cancels via Forge. | Invitation deleted; no grant; EVT-T8 Administrative `CharterCancel` emitted; audit logs cancel with reason. Hoài-Linh's "My Pending Invitations" view no longer shows the invitation on next reload. |
+| **AC-CHR-4 EXPIRED INVITATION** | 7-day TTL elapses without invitee response. | Background sweeper checks every 1h; finds invitation past TTL; deletes invitation row; emits `CharterExpired` audit-only event (V1: may be captured as ForgeAuditEntry without EVT-T8); audit log includes outcome=Expired. Inviter and invitee both notified on next session. |
+
+### 14.2 Failure-path scenarios
+
+| ID | Scenario | Pass criteria |
+|---|---|---|
+| **AC-CHR-5 INVITE NON-USER** | Inviter enters email that doesn't resolve to any LoreWeave account. | gateway-bff calls auth-service `resolve_email`; lookup fails; returns `UserNotFound` to frontend; UI toast: "Không tìm thấy người dùng. Kiểm tra email hoặc tên đăng nhập."; no invitation created; no audit entry. |
+| **AC-CHR-6 ALREADY-GRANTED INVITE** | Inviter tries to invite a user who is already an active Co-Author of this reality. | Pre-check finds existing `coauthor_grant` for `(reality, invitee)`; reject with `AlreadyHasGrant`; UI toast: "Người này đã là Co-Author của thực tại này."; no new invitation created. |
+| **AC-CHR-7 PENDING-INVITE COLLISION** | Inviter tries to send a second invitation while a first is still in `Pending` state for the same `(reality, invitee)`. | Pre-check finds existing `coauthor_invitation` row not yet expired; reject with `PendingInvitationExists`; UI toast: "Đã có lời mời chờ phản hồi. Hủy nó trước khi gửi lời mời mới."; original invitation unchanged. |
+| **AC-CHR-8 STALE-JWT REVOKE DEFENSE** | Tâm-Anh revokes Co-Author Hoài-Linh; Hoài-Linh's open session has stale JWT (still says Co-Author for the next 4 minutes until DP-K10 refresh). Hoài-Linh attempts a Forge edit during that window. | Despite stale JWT showing `Co-Author` role, world-service's grant-existence pre-check (per §6.4 defense-in-depth) reads `coauthor_grant`, finds row absent, rejects with `CapabilityDenied { reason: "grant revoked" }`. UI toast surfaces; PC's session redirects to home; PC must request new invitation if needed. |
+
+### 14.3 Boundary scenarios
+
+| ID | Scenario | Pass criteria |
+|---|---|---|
+| **AC-CHR-9 CO-AUTHOR SELF-RESIGN** | Hoài-Linh decides to step down voluntarily; clicks "Resign" in Forge. | RBAC check: `grant.user_id == requester` ✓; `requester is NOT RealityOwner` ✓ (per §6.3 CannotResignOwner); `t2_write CoAuthorGrant::Delete` commits; EVT-T8 Administrative `CharterResign` emitted with `resigned_by_self: true`; ForgeAuditEntry logged. Hoài-Linh's UI: "Bạn đã rời khỏi vai trò Co-Author."; redirect to home. RealityOwner Tâm-Anh's UI shows "Hoài-Linh has resigned" notification on next view-load. |
+| **AC-CHR-10 CROSS-REALITY VIEW** | Hoài-Linh has 3 pending invitations across realities R-A, R-B, R-C. On login, UI fetches "My Pending Invitations". | Cross-reality query against denormalized `meta_user_pending_invitations` table (per CHR-D9) returns all 3 invitation summaries keyed by `Hoài-Linh's user_id`; UI shows "3 pending invitations" banner. Each invitation shows the reality name + inviter + role + note. Acceptance/decline of one invitation only affects that one (others unchanged). |
+
+**Lock criterion:** all 10 scenarios have a corresponding integration test that passes. Until then, status is `CANDIDATE-LOCK` (post-acceptance criteria) → `LOCKED` (after tests).
+
+---
+
+## §15 Open questions deferred
 
 | ID | Question | Defer to |
 |---|---|---|
@@ -651,30 +684,30 @@ Tâm-Anh's UI on next check (V1: passive; V2+: push):
 | CHR-D6 | In-place role change (promote / demote without revoke + re-invite) | V2+ — depends on CHR-D2 tier system |
 | CHR-D7 | Bulk operations (invite multiple users at once) | V2+ |
 | CHR-D8 | Audit log retention policy (V1 keeps everything; V2+ may archive) | V2+ ops + S5 retention config |
-| CHR-D9 | Cross-reality leak: meta_user_pending_invitations is a global denormalized table. V2+ may revise to a different model (e.g., per-user platform DB). | V2+ infrastructure |
+| CHR-D9 | Cross-reality leak: meta_user_pending_invitations is a global denormalized table. V2+ may revise to a different model (e.g., per-user platform DB). | **Tracked in [`_boundaries/01_feature_ownership_matrix.md`](../../_boundaries/01_feature_ownership_matrix.md)** drift-watchpoints table. The boundary folder is the single source of truth; this row is audit-trail. Resolution lands when platform infrastructure team confirms the denormalized-table model or proposes alternative (e.g., per-user platform DB lookup at gateway). |
 | CHR-D10 | Force-immediate JWT invalidation for high-security revoke (e.g., admin emergency revoke) | V2+ security ops |
 | CHR-D11 | Co-Author can-resign-then-be-re-invited cooldown (prevent yo-yo abuse) | V2+ ops |
 | CHR-D12 | Author identity verification (account ownership challenge before invite acceptance) | V2+ security |
 
 ---
 
-## §15 Cross-references
+## §16 Cross-references
 
 - [WA_001 Lex](../02_world_authoring/WA_001_lex.md) — gated by Charter (Co-Authors who can edit Lex)
 - [WA_002 Heresy](../02_world_authoring/WA_002_heresy.md) — gated by Charter
 - [WA_003 Forge](../02_world_authoring/WA_003_forge.md) — Charter's UX lives in Forge's "Co-Authors" tab; reuses `forge_audit_log`; reuses `EditAction` + EVT-T8 sub-shape pattern
 - [02_storage C03 reality_registry] — RealityOwner ground-truth for authorization checks
 - [auth-service] — UserId resolution from email/username (out of PLT_001 scope)
-- [07_event_model/03_event_taxonomy.md](../../07_event_model/03_event_taxonomy.md) — EVT-T8 AdminAction with new sub-shapes Charter*
+- [07_event_model/03_event_taxonomy.md](../../07_event_model/03_event_taxonomy.md) — EVT-T8 Administrative with new sub-shapes Charter*
 - [decisions/deferred_DF01_DF15.md](../../decisions/deferred_DF01_DF15.md) — DF4 World Rules umbrella
 - (Future) **PLT_002** — ownership transfer (CHR-D1)
 
 ---
 
-## §16 Implementation readiness checklist
+## §17 Implementation readiness checklist
 
 - [x] **§2** Domain concepts (CoAuthorGrant, CoAuthorInvitation, InvitationOutcome, GrantAction, JWT-Refresh)
-- [x] **§2.5** EVT-T* mapping (EVT-T8 AdminAction with 6 new sub-shapes Charter*)
+- [x] **§2.5** EVT-T* mapping (EVT-T8 Administrative with 6 new sub-shapes Charter*)
 - [x] **§3** Aggregate inventory (2 new: `coauthor_grant`, `coauthor_invitation`; reuses `forge_audit_log` from WA_003)
 - [x] **§4** Tier+scope table (DP-R2)
 - [x] **§5** DP primitives by name
@@ -686,13 +719,12 @@ Tâm-Anh's UI on next check (V1: passive; V2+: push):
 - [x] **§11** Sequence: invite + accept end-to-end
 - [x] **§12** Sequence: revoke (Tâm-Anh removes Hoài-Linh)
 - [x] **§13** Sequence: resign (Hoài-Linh leaves voluntarily)
-- [x] **§14** Deferrals (CHR-D1..D12)
-
-**Deferred:** acceptance criteria (intentionally not in V1 of this doc).
+- [x] **§14** Acceptance criteria (10 scenarios across happy-path / failure-path / boundary)
+- [x] **§15** Deferrals (CHR-D1..D12); CHR-D9 hybrid-tracked in `_boundaries/01_feature_ownership_matrix.md`
 
 **Resolves:** WA_003 FRG-D5 ✓ (Co-Author invitation flow).
 
-**Status:** DRAFT 2026-04-25.
+**Status transition:** DRAFT (2026-04-25 first commit `301472f` then relocate `4be727d`) → **CANDIDATE-LOCK** (2026-04-25 closure pass: §14 acceptance criteria added; Option C terminology applied EVT-T8 AdminAction → Administrative).
 
 **Drift watchpoint:** §8.4 cross-reality `meta_user_pending_invitations` is the only intentional cross-reality leak in this design. Reconcile with platform infrastructure team if they prefer a per-user platform-DB model instead. CHR-D9 captures.
 

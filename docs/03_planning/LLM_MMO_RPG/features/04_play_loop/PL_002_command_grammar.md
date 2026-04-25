@@ -3,7 +3,7 @@
 > **Conversational name:** "Grammar" (GR). The closed-set vocabulary of typed commands a PC can issue and an LLM can propose. Sits on top of [Continuum (PL_001)](PL_001_continuum.md) as the input layer that turns user text into a typed `TurnEvent`.
 >
 > **Category:** PL — Play Loop (core runtime)
-> **Status:** DRAFT 2026-04-25
+> **Status:** **CANDIDATE-LOCK 2026-04-25** (DRAFT → CANDIDATE-LOCK after §13 acceptance criteria added 2026-04-25 closure pass; Option C event-model terminology already applied by event-model agent in §2.5)
 > **Catalog refs:** PL-2 (command grammar), PL-6 (LLM tool-call allowlist), PL-15 (3-intent classifier). Resolves [MV12-D9](../../decisions/locked_decisions.md) (`command_args` schema scope).
 > **Builds on:** [PL_001 Continuum](PL_001_continuum.md) (`TurnEvent`, `RejectReason`, idempotency_key, capability JWT)
 > **Cross-cuts:** [05_llm_safety/](../../05_llm_safety/) A5 intent classifier + A6 injection defense are the validators inside this feature's dispatch pipeline.
@@ -557,7 +557,40 @@ PL_001 §15 already locked the contract for the t2_write-not-advance_turn path. 
 
 ---
 
-## §13 Open questions deferred + their landing point
+## §13 Acceptance criteria (LOCK gate)
+
+The design is implementation-ready when gateway-bff + roleplay-service + world-service can pass these scenarios. Each is one row in the integration test suite. LOCK granted after all 10 pass.
+
+### 13.1 Happy-path scenarios
+
+| ID | Scenario | Pass criteria |
+|---|---|---|
+| **AC-GR-1 FREE NARRATIVE** | PC types "Lý Minh nâng chén trà, nhìn ra ngoài cửa sổ" (no leading `/`). | gateway routes to A5 classifier → `Intent::FreeNarrative, confidence ≥ 0.9`; roleplay-service emits **EVT-T6 Proposal** (sub-type=PCTurnProposal); world-service validator chain accepts; commits **EVT-T1 Submitted/PCTurn::Speak** with `command_kind=None`, `narrator_text=<LLM output>`. fiction_clock advances per fiction_duration_proposed. |
+| **AC-GR-2 /VERBATIM** | PC types "/verbatim Tôi đến từ tương lai". | gateway regex parses → `ParsedCommand { kind: Verbatim, args: VerbatimArgs { raw_text: "Tôi đến từ tương lai" } }`; dispatch=WorldServiceDirect (no LLM call); commits **EVT-T1 Submitted/PCTurn::Speak** with `narrator_text=raw_text` (exact, no paraphrase) + `command_kind=Verbatim` + `fiction_duration=5s`. A6 sanitize runs on raw_text only. |
+| **AC-GR-3 /SLEEP UNTIL DAWN** | PC types "/sleep until dawn" at fiction-time 1256-thu-day3-Tý-sơ. | gateway regex → `SleepArgs { until: TimeSpec::Dawn }`; world-service: world-rule check (in_private_safe ✓, not in_combat ✓, no canon event blocks) → resolves dawn=Mão-sơ next-day → fiction_duration=6h → commits **EVT-T1 Submitted/PCTurn::FastForward** with `command_kind=Sleep`; emits derived **EVT-T3 Derived** mutations (FictionClockAdvance + DayPasses calibration sub-shape per §12 PL_001b). |
+| **AC-GR-4 /TRAVEL TO TƯƠNG DƯƠNG** | PC at `cell:yen_vu_lau` types "/travel to Tương Dương". | gateway regex → `TravelArgs { destination: PlaceRef::CanonicalRef("tương_dương_west_gate"), mode: Walking }`; world-service executes PL_001 §13 5-op chain → commits **EVT-T1 Submitted/PCTurn::FastForward** + **EVT-T3 Derived** (FictionClockAdvance + ActorBindingDelta + SceneStateInit + 23×DayPasses calibration) + **EVT-T4 System** (MemberLeft + MemberJoined). UI's post-travel reads with `wait_for=T5` succeed within 20s. |
+
+### 13.2 Failure-path scenarios
+
+| ID | Scenario | Pass criteria |
+|---|---|---|
+| **AC-GR-5 PARSE ERROR — UNKNOWN COMMAND** | PC types "/foo blabla" (leading `/` but no matching command in V1 closed set). | gateway regex finds `/` prefix but no command match; rejects immediately with `parse.unknown_command`; UI toast: "Lệnh không tồn tại. Có sẵn: /verbatim /prose /sleep /travel /help"; no roleplay-service call, no world-service call, no event committed. |
+| **AC-GR-6 SOFT-CONFIRM AMBIGUOUS** | PC types "em mệt rồi, đi nghỉ thôi" (no leading `/`; intent ambiguous). | A5 returns `Intent::Command, confidence: 0.78` (in `[0.7, 0.9)` zone per §7.2); gateway returns `200 OK { outcome: ConfirmRequired, candidate_command: Sleep, candidate_text_render: "/sleep until next_day", free_narrative_fallback: "...", idempotency_key: K }`; UI shows dialog; user picks branch; second POST `/v1/turn/confirm` with same key + chosen branch → commits accordingly. Idempotency log preserves the confirm step. |
+| **AC-GR-7 REJECTION DURING COMBAT** | PC types "/sleep until dawn" while active combat scene (per WA_002 / world-rule check). | world-rule validator detects `pc.in_combat=true`; rejects with `world_rule.no_sleep_during_combat`; commits **EVT-T1 Submitted/PCTurn::FastForward** with `outcome=Rejected { rule_id: "world_rule.no_sleep_during_combat", detail }` via `t2_write` per PL_001 §15 (NOT advance_turn — see GR-D8 watchpoint); turn_number UNCHANGED; fiction_clock UNCHANGED; UI shows reject copy. |
+| **AC-GR-8 TOOL-CALL DENIED** | Free narrative LLM proposes a `damage` tool-call (FORBIDDEN per §7.4 V1 allowlist). | Validator pipeline: LLM emits Proposal with tool_calls=[damage]; allowlist enforcement detects `damage NOT in allowed_calls` for `actor_type=PC`; rejects with `world_rule.tool_call_not_allowed`; soft-retry once (re-prompt without the tool); on second failure, fall through to terse turn (commit Speak with narrator_text only, no state mutations). |
+
+### 13.3 Boundary scenarios
+
+| ID | Scenario | Pass criteria |
+|---|---|---|
+| **AC-GR-9 /HELP META** | PC types "/help" or "/help sleep". | gateway regex → `HelpArgs { topic: None | Some("sleep") }`; dispatch=GatewayLocal; returns `200 OK { help_text: <canned> }`; **NO LLMProposal**, **NO TurnEvent committed**, **NO turn_number advance**, **NO turn-slot claim**. Audit-only log entry (V1 may even skip audit per §6.5). |
+| **AC-GR-10 FACT QUESTION** | PC types "ai là Hoàng Dược Sư?" (no `/` prefix; A5 classifies FactQuestion). | A5 returns `Intent::FactQuestion, confidence ≥ 0.9`; gateway routes to oracle-service (PL-16); oracle returns canon-grounded answer with timeline-cutoff filter per PL-18; UI renders answer in chat; **NO TurnEvent committed**; **NO turn_number advance**; **NO turn-slot claim**. |
+
+**Lock criterion:** all 10 scenarios have a corresponding integration test that passes. Until then, status is `CANDIDATE-LOCK` (post-acceptance criteria) → `LOCKED` (after tests).
+
+---
+
+## §14 Open questions deferred + their landing point
 
 | ID | Question | Defer to |
 |---|---|---|
@@ -568,11 +601,11 @@ PL_001 §15 already locked the contract for the t2_write-not-advance_turn path. 
 | GR-D5 | Per-actor-type allowlist for NPC_Routine (NPCs acting on schedule with no PC present) | DL_001 (NPC routine foundations) |
 | GR-D6 | Soft-confirm threshold tuning per command kind (sleep maybe stricter than emote) | Phase 5 ops — adjust based on prod misclassification rate |
 | GR-D7 | Streaming partial parse — UI hints "looks like a sleep command" as user types | UI polish (V2) |
-| GR-D8 | **Drift watchpoint with EVT-T1 spec.** Rejected turns (PL_001 §15 + PL_002 §6.3 / §6.4 reject cases) commit via plain `dp::t2_write::<TurnEvent>` so `turn_number` stays at N — but EVT-T1 PlayerTurn's commit-mechanism spec in `07_event_model/03_event_taxonomy.md` says `dp::advance_turn` unconditionally. PL_001/PL_002 honor MV12-D11 (`fiction_clock` and `turn_number` advance only on accepted turns); EVT-T1 spec needs to absorb the per-outcome distinction. | event-model agent Phase 2 (per-category contracts, `06_per_category_contracts.md`) — to add: "EVT-T1 commit primitive: `dp::advance_turn` for `outcome=Accepted`; `dp::t2_write` for `outcome=Rejected`". Until then, treat `outcome=Rejected` as the canonical PL_001/PL_002 contract; revisit if event-model agent disagrees. |
+| GR-D8 | **Drift watchpoint with EVT-T1 spec.** Rejected turns (PL_001 §15 + PL_002 §6.3 / §6.4 reject cases) commit via plain `dp::t2_write::<TurnEvent>` so `turn_number` stays at N — but old EVT-T1 PlayerTurn spec said `dp::advance_turn` unconditionally. PL_001/PL_002 honor MV12-D11 (advance only on accepted). | **Tracked in [`_boundaries/01_feature_ownership_matrix.md`](../../_boundaries/01_feature_ownership_matrix.md)** — Option C redesign 2026-04-25 reframed EVT-T1 to "Submitted" mechanism category (sub-types feature-owned per EVT-A11). The per-outcome commit primitive distinction may be resolved by event-model agent's Phase 2 per-category contracts. The boundary folder is the single source of truth; this row is audit-trail. PL_001/PL_002's `t2_write` interpretation stands as feature-side contract until reconciled. |
 
 ---
 
-## §14 Cross-references
+## §15 Cross-references
 
 - [PL_001 Continuum](PL_001_continuum.md) — TurnEvent shape, RejectReason, idempotency, capability claims
 - [PL_001b Continuum lifecycle](PL_001b_continuum_lifecycle.md) — §14 reconnect+idempotency flow that GR-002's confirm step rides on
@@ -585,7 +618,7 @@ PL_001 §15 already locked the contract for the t2_write-not-advance_turn path. 
 
 ---
 
-## §15 Implementation readiness checklist
+## §16 Implementation readiness checklist
 
 - [x] **§2.5** EVT-T* mapping (every dispatch path mapped; closed-set proven)
 - [x] **§3** Aggregate inventory (1 new: `tool_call_allowlist`; 4 PL_001 references)
@@ -598,8 +631,9 @@ PL_001 §15 already locked the contract for the t2_write-not-advance_turn path. 
 - [x] **§10** Cross-service handoff for 5 dispatch paths (free narrative, /sleep, /travel, fact question, /help)
 - [x] **§11** Soft-confirm sequence
 - [x] **§12** Rejection sequence (cross-references PL_001 §15)
-- [x] **§13** Deferrals (GR-D1..D7)
+- [x] **§13** Acceptance criteria (10 scenarios across happy-path / failure-path / boundary)
+- [x] **§14** Deferrals (GR-D1..D8); GR-D8 hybrid-tracked in `_boundaries/01_feature_ownership_matrix.md`
 
-**Status:** DRAFT 2026-04-25. Promote to CANDIDATE-LOCK after acceptance criteria added (TBD next pass; intentionally not in V1 of this doc — keep doc under 500 lines and add §16 acceptance criteria in a future extension or in PL_002b if needed).
+**Status transition:** DRAFT (2026-04-25 first commit `f89aa48`; Option C terminology applied by event-model agent) → **CANDIDATE-LOCK** (2026-04-25 closure pass: §13 acceptance criteria added). LOCK granted after the 10 §13 acceptance scenarios have passing integration tests.
 
 **Next** (when this doc locks): gateway adds command regex parser; roleplay-service adds A5 classifier endpoint + soft-confirm response shape; world-service adds the 5 command dispatchers wired to PL_001's primitives. Vertical-slice target: SPIKE_01 turns 5, 11, 16 (the three /verbatim, /sleep, /travel uses) all execute end-to-end.
