@@ -41,6 +41,7 @@ Before designing a new feature: search this matrix for the aggregates / concepts
 | `mortality_config` | T2 / Reality singleton | **WA_006 Mortality** (CANDIDATE-LOCK 2026-04-25) | Per-reality death-mode config. WA_006 thin-rewritten 2026-04-25 closure pass (730 → 403 lines); only legitimate WA scope kept. §12 acceptance: 6 scenarios. |
 | `pc_mortality_state` | T2 / Reality | **PCS_001** (when designed) | Mechanics handed off from WA_006 in closure pass — over-extended sections removed from WA_006 entirely; future PCS_001 owner has clean slate. |
 | `meta_user_pending_invitations` | global meta-DB table | **PLT_001 Charter** (CANDIDATE-LOCK 2026-04-25; formerly WA_004) | Cross-reality denormalized; CHR-D9 watchpoint. |
+| `actor_status` | T2 / Reality | **PL_006 Status Effects** (DRAFT 2026-04-26) | Cross-actor (PC + NPC) status foundation. Per-(reality, actor_id) row holds `Vec<StatusInstance>`. Owns **StatusFlag closed-set enum** (V1: Drunk / Exhausted / Wounded / Frightened); V1+ kinds reserved (Stunned/Bleeding/Poisoned/Charmed/Encumbered/Buffed/Tired/Hungry/Restrained). Apply/Dispel via PL_005 Interaction OutputDecl with `aggregate_type=actor_status`. V1+30d auto-expire via Scheduled:StatusExpire Generator (EVT-T5). PCS_001 + future NPC_003 reference this enum (no drift). §15 acceptance: 7 V1-testable scenarios. |
 
 ---
 

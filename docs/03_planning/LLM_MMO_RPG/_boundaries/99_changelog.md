@@ -6,6 +6,20 @@
 
 ---
 
+## 2026-04-26 — PL_006 Status Effects feature registered (status foundation)
+
+- **Lock claim:** main session (PL_006 Status Effects feature design — status foundation per user direction "status foundation?") at 2026-04-26 (after closure-pass agent released); commit `a39d880` `[boundaries-lock-claim]`
+- **Files modified:**
+  - `01_feature_ownership_matrix.md` "Aggregate ownership" section: added `actor_status` row owned by **PL_006 Status Effects** (T2/Reality; cross-actor PC+NPC; per-(reality, actor_id) row holds `Vec<StatusInstance>`; owns `StatusFlag` closed-set enum V1=4 kinds Drunk/Exhausted/Wounded/Frightened; V1+ kinds reserved; Apply/Dispel via PL_005 Interaction OutputDecl with `aggregate_type=actor_status`; V1+30d auto-expire via Scheduled:StatusExpire Generator).
+  - `02_extension_contracts.md` §1.4 RejectReason namespace prefix table: added `status.*` owned by PL_006 Status Effects.
+- **Reason:** user direction prioritized "status foundation" as Option A among 3 V1 gap candidates (PL_006 Status Effects vs PO_001 PC Creation vs Knowledge Accrual). Foundation discipline rationale: PCS_001 brief §S5 has `pc_stats_v1_stub.status_flags: Vec<StatusFlag>` but never defines enum; without PL_006, PCS_001 + future NPC_003 would each invent ad-hoc enums (drift trap WA_006 originally hit before thin-rewrite). PL_006 owns enum + lifecycle ONCE; consumers reference. **Cross-actor uniformity** (D6 sub-decision): single `actor_status` aggregate covers PC + NPC. **Stack policies per flag** (D8.3 in feature doc): Drunk=Sum / Exhausted=ReplaceIfHigher / Wounded=Sum / Frightened=ReplaceIfHigher. **V1 simplification** (D5 sub-decision): Apply + Dispel manual only; auto-expire deferred to V1+30d scheduler.
+- **PL_006 deliverable:** new `features/04_play_loop/PL_006_status_effects.md` (462 lines under 500-line soft cap), 18 sections covering Domain concepts (StatusFlag closed enum + StatusInstance + StatusSource + Stack policies) + Event-model mapping (no new EVT-T*; T3 apply/dispel + T5 V1+30d auto-expire) + 1 new aggregate + DP primitives + Capability + Subscribe pattern (UI invalidation + Chorus SceneRoster context) + Pattern choices + Failure UX (`status.*` namespace) + Cross-service handoff (inherits PL_005 §10 pattern) + 4 sequences (Apply Drunk / Apply Exhausted / Dispel via /sleep / V1+30d auto-expire deferred) + 7 V1-testable acceptance scenarios + 8 deferrals (STA-D1..D8) + cross-references + readiness.
+- **Closes V1 vertical-slice gap:** Use:wine outcome locked (AC-STA-1); Strike intents Stun/Restrain unblocked V1+; PCS_001 + NPC_003 reference shared StatusFlag enum without drift.
+- **Drift watchpoints unchanged** (8 still active; no new boundary review items)
+- **Lock release:** at end of PL_006 commit (this turn)
+
+---
+
 ## 2026-04-26 — Closure-pass status promotions: PL_002 + NPC + PLT folders
 
 - **Lock claim:** main session 2026-04-26 (Claude Opus 4.7, this conversation — closure pass continuation) at 2026-04-26 (after PL_005 agent released); commit `[boundaries-lock-claim+release]` (this turn)
