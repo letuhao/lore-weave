@@ -1,20 +1,41 @@
-# Session Handoff — Session 51 (13 cycles shipped · Track 2/3 Gap Closure P2 DONE + **P3 DONE 12/12** + **P4 C14 DONE** · session closed)
+# Session Handoff — Session 51 (14 cycles shipped · Track 2/3 Gap Closure P2 DONE + **P3 DONE 12/12** + **P4 C14 DONE** + **P5 🏗 1/3 DESIGN-signed-off** · session closed)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session. Do NOT create `_V*.md` variants.
-> **Date:** 2026-04-29 (session 51, closed at cycle 45 / C14b)
-> **HEAD:** `b2ccc0f` (C14b resumable cursor state BE; C14a @ `c2acf18`; C12c-b @ `7f31931`; C12c-a @ `5fd8a54`; C13 @ `5fabf87`; C12b-b @ `ff2363b`; C12b-a @ `5c36dfd`; C12a @ `2ea7481`; C11 @ `abb84ef`; C10 @ `ae5649b`; C9 @ `06b2063`; C8 @ `287e853`; C7 @ `a15a04b`; session 50 HEAD `eb26e83` — see session 50 block for earlier refs)
+> **Date:** 2026-04-30 (session 51, closed at cycle 46 / C16 🏗 DESIGN)
+> **HEAD:** `953d331` (C16 ADR for budget-attribution global-scope regen DESIGN-first; C14b @ `b2ccc0f`; C14a @ `c2acf18`; C12c-b @ `7f31931`; C12c-a @ `5fd8a54`; C13 @ `5fabf87`; C12b-b @ `ff2363b`; C12b-a @ `5c36dfd`; C12a @ `2ea7481`; C11 @ `abb84ef`; C10 @ `ae5649b`; C9 @ `06b2063`; C8 @ `287e853`; C7 @ `a15a04b`; session 50 HEAD `eb26e83` — see session 50 block for earlier refs)
 > **Branch:** `main` (ahead of origin by sessions 38–51 commits — user pushes manually)
 
-## Session 51 — 13 cycles shipped (all Track 2/3 Gap Closure: C7..C14b) · **P2 DONE (7/7)** · **P3 DONE (12/12)** · **P4 C14 DONE** · session closed
+## Session 51 — 14 cycles shipped (all Track 2/3 Gap Closure: C7..C16) · **P2 DONE (7/7)** · **P3 DONE (12/12)** · **P4 C14 DONE** · **P5 🏗 1/3 DESIGN-signed-off** · session closed
 
 **Highlights:**
 - **P2 tier closed at C9** (entity optimistic concurrency + unlock). All 7 P2 cycles shipped across sessions 50+51 (C3..C9).
 - **🎉 P3 tier DONE 12/12** — opened at C10, fully closed at C12c-b. All Track 2/3 Gap Closure Priority 3 work shipped across 8 cycles (C10 + C11 + C12a + C12b-a + C12b-b + C13 + C12c-a + C12c-b).
 - **🚀 P4 C14 fully shipped** in two cycles (C14a schedulers + C14b cursor state). User override of the P4 trigger criterion at C14b CLARIFY — plan-completion mindset. First session 51 cycle where "honest audit caught the plan understating scope" was applied BEFORE committing to size — saved a potential XL overrun.
+- **🏗 P5 opened with C16** — first DESIGN-first cycle in plan history shipped clean. ADR for budget-attribution global-scope regen. Decision: Option B (`knowledge_summary_spending` table). Implementation sketch shovel-ready for next BUILD cycle. C15 honestly deferred per "fire when profiling shows pain" P4 trigger — opposite stance from C14b's user-override.
 - **C12 split saga** — C12a (paired FS) + C12b-a/b-b (BE/FE split) + C12c-a/c-b (BE/FE split). Plan's single "C12 L" row bloomed into 5 honest-sized cycles. Memory `feedback_scope_audit_before_batching` applied each time.
 - **C12c-a size reclassified** from plan-said-"S FE-only blocked" to workflow-gate-required FS L after audit caught: (a) no glossary-service list endpoint, (b) no worker branch handling scope='glossary_sync' (explicit TODO at runner.py:621 silently no-op'd), (c) scope='all' ALSO excluded glossary — user-approved flip makes the name honest.
 - Back-end test coverage: **1466/1466 knowledge-service** (+61 over session 50's 1405) + **23/23 worker-ai** (+6 from C13's 17) + **12/12 glossary-service Go** at session 51 end.
 - Front-end test coverage: **474/474** at session 51 end (unchanged since C12b-b — C13 stories are tsc-only, C12c-a is pure BE).
+
+### Cycle 46 — Track 2/3 Gap Closure C16 🏗 [XL DESIGN-first] — budget-attribution ADR
+
+**First P5 🏗 DESIGN-first cycle.** Shipped 280-line ADR
+([`KNOWLEDGE_SERVICE_BUDGET_GLOBAL_SCOPE_ADR.md`](../03_planning/KNOWLEDGE_SERVICE_BUDGET_GLOBAL_SCOPE_ADR.md))
+choosing **Option B** (`knowledge_summary_spending` table) over Option A (phantom-project pollution) and Option C (unified ledger XL refactor). Closes D-K20α-01's BUILD-blocker; the deferral itself stays partial until a BUILD cycle ships the implementation per §5/§7 checklist.
+
+**Audit + decision rationale:** global L0 regen (`scope_type='global'`) bypasses the K16.11/K16.12 budget gate today because `record_spending` requires a `project_id`. Plan offered A vs B; audit + greenfield context (no production data) eliminated Option A's migration concerns and established C as overkill for the immediate problem.
+
+**Implementation sketch covers:** DDL with composite PK + CHECK constraint + idx; `SummarySpendingRepo` (record + current_month_total); `check_user_monthly_budget` extension; `regenerate_global_summary` wire-in next to existing Prometheus increment; recording-order semantic (record AFTER provider success BEFORE guardrails); 15 enumerated test cases; DDL regression locks.
+
+**4 open questions** explicitly deferred to BUILD-cycle CLARIFY: (1) project regen audit (does it ALSO bypass the gate?); (2) sanity caps; (3) FE wire shape; (4) auto-pause semantics.
+
+**Closing checklist (§7)** gates D-K20α-01 fully-cleared: BUILD cycle ships migration + repo + budget extension + scheduler wire + DDL regression tests + 8 unit + 3 budget integration + 3 scheduler integration tests + plan row [x] AND `/review-impl` 0 unresolved HIGH/MED.
+
+**Stage 2 self-fix:** added §5.4 recording-order paragraph clarifying record-after-provider-success rationale + recovery path via Prometheus/ledger divergence alert.
+
+**Files: 3** (1 NEW ADR + SESSION_PATCH + plan row update). **Verify:** No code → no tsc/pytest. ADR doc-complete: 7 numbered sections, 5 subsections in §5, 4 explicit open questions, 9-item closing checklist.
+
+---
 
 ### Cycle 45 — Track 2/3 Gap Closure C14b [BE L] — resumable scheduler cursor state
 
@@ -221,9 +242,9 @@ Util pre-rounds to integer before branching so `59.6 → "1h"` (not naive `"0h 6
 
 **What's next — Session 52 default path:**
 
-🎉 **P1+P2+P3 all DONE + P4 C14 fully shipped (C14a + C14b)**. Remaining actionable: **P5 × 3 DESIGN-first** + **C15 (P4 S, trigger-gated)** + **User-gated × 2**. Next actionable default is **P5 🏗 C16** (first DESIGN-first ADR).
+🎉 **P1+P2+P3 all DONE + P4 C14 fully shipped + P5 C16 ADR signed off**. Remaining actionable: **C16-BUILD** (the implementation cycle for the ADR just shipped) OR **C17 + C18 DESIGN-first** ADRs. Next actionable default is **C16-BUILD** while ADR context is fresh.
 
-Next cycle — **C16 🏗 (P5, XL DESIGN-first)**: Budget attribution for global-scope regen. D-K20α-01 partial. Produces `docs/03_planning/KNOWLEDGE_SERVICE_BUDGET_GLOBAL_SCOPE_ADR.md` choosing between Option A (phantom project row for per-user AI spend not tied to a real project) vs Option B (new `knowledge_summary_spending` table keyed on user_id + scope_type + month). Trade-offs: A reuses existing code paths + budget-helper; B is cleaner schema + needs new helper. **Not in scope of BUILD until ADR signed off.** Detail in [plan §4 C16](../03_planning/KNOWLEDGE_SERVICE_TRACK2_3_GAP_CLOSURE_PLAN.md). Expect DESIGN-only cycle (no code, no tests — just ADR doc + user review).
+Next cycle — **C16-BUILD (L)**: implement Option B per [the ADR](../03_planning/KNOWLEDGE_SERVICE_BUDGET_GLOBAL_SCOPE_ADR.md). Files: migrate.py DDL append + NEW `SummarySpendingRepo` + budget.py extension + regenerate_summaries.py wire-in + 8 repo unit + 3 budget integration + 3 scheduler integration tests + DDL regression tests. CLARIFY MUST resolve §6's 4 open questions (especially #1: re-audit project regen budget path). Expect L-size; closing checklist in ADR §7 gates D-K20α-01 fully-cleared.
 
 **Alternative next-cycle candidates:**
 - **C17 🏗 (P5, XL DESIGN-first)** — Entity-merge canonical-alias mapping. KSA §3.4.E amendment + backfill story.
@@ -231,7 +252,7 @@ Next cycle — **C16 🏗 (P5, XL DESIGN-first)**: Budget attribution for global
 - **C15 (P4, S TRIGGER-GATED)** — Neo4j fulltext index. Fire ONLY when any user crosses ~10k entities.
 - **User-gated ⏸** — C19 multilingual fixtures + C20 Gate-13 walkthrough.
 
-**Session-51 stats**: 13 cycles shipped (C7→C14b). Plan progress: 35 items / 23 cycles total; 33 items / 19 cycles done. **P1+P2+P3 tiers fully closed; P4 C14 DONE.** First session in LoreWeave history to close three plan tiers + fully ship a fourth's primary cycle in one continuous session.
+**Session-51 stats**: 14 cycles shipped (C7→C16). Plan progress: 35 items / 23 cycles total; 33 items / 19 cycles done + 1 DESIGN-signed-off (C16 🏗). **P1+P2+P3 tiers fully closed; P4 C14 DONE; P5 opened with C16 ADR.** First session in LoreWeave history to close three plan tiers + fully ship a fourth's primary cycle + open the fifth via DESIGN-first in one continuous session.
 
 **Session 51 aftermath — things to keep in mind:**
 
@@ -243,10 +264,10 @@ Next cycle — **C16 🏗 (P5, XL DESIGN-first)**: Budget attribution for global
 - **CLARIFY honesty > plan commitment**. C7 plan-said-S shipped as XL; C12 plan-bundled-L shipped as 3 cycles (C12a + C12b-a + C12b-b + C12c-blocked). Honest sizing at CLARIFY is worth more than hitting an initial classification — the workflow-gate tolerates reclassification.
 
 **Starting-session boilerplate:**
-1. Read [SESSION_PATCH.md](SESSION_PATCH.md) session-51 entries (cycles 33–45) + the plan file's §3 cycle table
+1. Read [SESSION_PATCH.md](SESSION_PATCH.md) session-51 entries (cycles 33–46) + the plan file's §3 cycle table + the [C16 ADR](../03_planning/KNOWLEDGE_SERVICE_BUDGET_GLOBAL_SCOPE_ADR.md) §5–§7
 2. `./scripts/workflow-gate.sh status` to confirm previous cycle closed
-3. Start C16 🏗 with `./scripts/workflow-gate.sh size XL 1 0 0` then `phase clarify` (XL DESIGN-first — single ADR doc, 0 code changes, 0 tests this cycle. BUILD is blocked until user signs off on the ADR). C16's CLARIFY should canvass the budget-attribution trade-offs with the user early since this is decision-driven, not code-driven.
-4. Infra: no services needed — ADR is pure documentation work
+3. Start C16-BUILD with `./scripts/workflow-gate.sh size L 8 4 1` then `phase clarify` (L — DDL append + NEW repo + budget extension + scheduler wire + ~3 NEW + 2 MOD test files; 1 side-effect = new DB table). CLARIFY MUST resolve ADR §6's 4 open questions, especially #1 (re-audit project regen budget path).
+4. Infra: `docker ps --filter name=infra-` — C16-BUILD wants live Postgres for integration tests; bring up infra-postgres at minimum
 5. For future BE integration tests: `TEST_KNOWLEDGE_DB_URL=postgres://loreweave:loreweave_dev@localhost:5555/loreweave_knowledge` (port 5555 on host; DB name `loreweave_knowledge` NOT `knowledge`)
 6. For Neo4j integration tests: `TEST_NEO4J_URI=bolt://localhost:7688 TEST_NEO4J_PASSWORD=loreweave_dev_neo4j`
 7. Test account: `claude-test@loreweave.dev / Claude@Test2026` (Playwright smoke tests)
