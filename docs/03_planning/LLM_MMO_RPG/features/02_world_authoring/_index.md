@@ -12,9 +12,8 @@
 
 | ID | Conversational name | Title | Status | File | Commit |
 |---|---|---|---|---|---|
-| WA_001 | **Lex** (LX) | Per-reality World Rules — physics + ability + energy axioms (DF4 sub-feature: physics/ability/energy only). Closed-set AxiomKind (17 entries + Other), Permissive V1 default, deterministic `classify_action` dictionary, validator slot in EVT-V*. | DRAFT 2026-04-25 | [`WA_001_lex.md`](WA_001_lex.md) | uncommitted |
-
-**Companion (not yet drafted):** WA_002 Forbidden Knowledge & Cross-Reality Contamination — adds AllowedWithBudget axiom variant + contamination tracking + cascade-consequence model on top of Lex.
+| WA_001 | **Lex** (LX) | Per-reality World Rules — physics + ability + energy axioms (DF4 sub-feature: physics/ability/energy only). Closed-set AxiomKind (17 entries + Other), Permissive V1 default, deterministic `classify_action` dictionary, validator slot in EVT-V*. | DRAFT 2026-04-25 | [`WA_001_lex.md`](WA_001_lex.md) | e752519 |
+| WA_002 | **Heresy** (HER) | Forbidden Knowledge & Cross-Reality Contamination. Extends LexSchema v1→v2 (`Axiom.allowance: Allowance` enum); per-actor `ContaminationDecl` + budget tracking + EnergySubstrate; WorldStability 5-stage state machine (Stable/Strained/Cracking{1..3}/Catastrophic/Shattered) with admin-driven V1 transitions. Resolves the user's "transmigrator-brings-magic-into-no-magic-world" concern. Resolves LX-D1/D2/D3. | DRAFT 2026-04-25 | [`WA_002_heresy.md`](WA_002_heresy.md) | uncommitted |
 
 **Sibling DF4 sub-features (separate future WA_* docs):** death model (PC-B1), PvP consent (PC-D2), voice mode lock (C1-D3), session caps (H3-NEW-D1), queue policy (S7-D6), disconnect policy (SR11-D4), turn fairness (SR11-D7), time model mode (MV12-D6).
 
