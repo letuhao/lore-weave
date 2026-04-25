@@ -4,9 +4,9 @@
 > **Catalog reference:** [`catalog/cat_00_PF_place_foundation.md`](../../catalog/cat_00_PF_place_foundation.md) (owns `PF-*` stable-ID namespace)
 > **Purpose:** Defines what counts as a meaningful in-fiction location. Owns the `place` aggregate (T2/Channel-cell), `PlaceType` closed enum (10 V1 kinds), connection graph (DP-hierarchy implicit + explicit horizontal edges), 4-state StructuralState machine for in-fiction degradation, fixture-seed declarations for canonical EnvObjects, and time-lapse evolution hooks (author-edit + in-fiction event V1; scheduled decay V1+30d).
 
-**Active:** PF_001 — **Place Foundation** (DRAFT 2026-04-26 — Option C max scope)
+**Active:** none (folder closure pass 2026-04-26 — PF_001 at CANDIDATE-LOCK)
 
-**Folder closure status:** Open — DRAFT 2026-04-26. CANDIDATE-LOCK pending Phase 3 review cleanup + closure pass + downstream updates (PCS_001 brief §4.4d / PL_005 ExamineTarget extension confirm).
+**Folder closure status:** **CLOSED for V1 design 2026-04-26.** PF_001 at CANDIDATE-LOCK with §15 acceptance criteria walked (10 scenarios; 4 precision-tightened post Phase-3) + Phase 3 review cleanup applied (Severity 1+2+3, 14 fixes) + downstream-impact tracked (PCS_001 brief §4.4d update at next agent spawn; PL_005 ExamineTarget extension at PL_005 closure pass). LOCK pending integration tests. No further design work in PF folder until V2+ extensions (multi-place per cell PF-D4 / scheduled decay PF-D3 / procedural place generation PF-D7) or new sibling PF features open new design threads.
 
 ---
 
@@ -14,7 +14,7 @@
 
 | ID | Conversational name | Title | Status | File | Commit |
 |---|---|---|---|---|---|
-| PF_001 | **Place Foundation** (PF) | Semantic place substrate: `place` aggregate (T2/Channel-cell, 1:1 with cell channels) + 10-variant PlaceType closed enum + 5-variant ConnectionKind + Vec<ConnectionDecl> hybrid connection graph + 4-state StructuralState machine + 11-variant EnvObjectKind closed enum + fixture-seed deterministic instantiation + RealityManifest `places: Vec<PlaceDecl>` extension + author-edit/in-fiction-event/V1+30d-scheduler time-lapse hooks. Owns `place.*` RejectReason namespace (11 V1 rule_ids + 3 V1+ reservations). 10 V1-testable acceptance scenarios (AC-PF-1..10) + 11 deferrals (PF-D1..D11) + 5 open questions (PF-Q1..Q5). | DRAFT 2026-04-26 | [`PF_001_place_foundation.md`](PF_001_place_foundation.md) | (this commit) |
+| PF_001 | **Place Foundation** (PF) | Semantic place substrate: `place` aggregate (T2/Channel-cell, 1:1 with cell channels; PlaceId newtype with From/Into ChannelId) + 10-variant PlaceType closed enum + 5-variant ConnectionKind + Vec<ConnectionDecl> hybrid connection graph (bidirectional hint-only V1) + 4-state StructuralState machine with cascade-only-on-Destroyed rule + 4-step cascade ordering (place delta → PlaceDestroyed signal → consumer cascades → cell-resident cascade) + 11-variant EnvObjectKind closed enum + fixture-seed split (author-declared EnvObjectSeedDecl vs materialized EnvObjectSeed; world-service computes seed_uid) + RealityManifest `places: Vec<PlaceDecl>` REQUIRED extension + author-edit/in-fiction-event/V1+30d-scheduler time-lapse hooks. Owns `place.*` RejectReason namespace (12 V1 rule_ids + 4 V1+ reservations) + dedicated EVT-T3 `PlaceDestroyed` cascade-trigger sub-shape. 10 V1-testable acceptance scenarios (AC-PF-1..10; 4 precision-tightened post Phase-3) + 14 deferrals (PF-D1..D14) + 5 open questions (PF-Q1..Q5). | **CANDIDATE-LOCK 2026-04-26** | [`PF_001_place_foundation.md`](PF_001_place_foundation.md) | 0a967bb → eec8d5b → closure (this commit) |
 
 ---
 

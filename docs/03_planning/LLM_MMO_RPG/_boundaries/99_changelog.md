@@ -6,6 +6,39 @@
 
 ---
 
+## 2026-04-26 — PF_001 Place Foundation closure pass → CANDIDATE-LOCK
+
+- **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — PF_001 closure pass after Phase 3 cleanup commit eec8d5b); commit (this turn) `[boundaries-lock-claim+release]`
+- **Files modified within `_boundaries/`:**
+  - `01_feature_ownership_matrix.md`:
+    - `place` row: status DRAFT → **CANDIDATE-LOCK 2026-04-26**; notes updated to reflect Phase 3 + closure-pass refinements (bidirectional hint-only V1 / cascade-only-on-Destroyed / 4-step cascade ordering / fixture-seed author-declared-vs-materialized split / §15 AC precision-tightening on AC-PF-7/8/9/10)
+    - `EVT-T4 PlaceBorn` sub-type row: status note CANDIDATE-LOCK 2026-04-26
+    - `EVT-T8 Forge:EditPlace` sub-shape row: status note CANDIDATE-LOCK 2026-04-26 + AC-PF-8 atomicity-test reference
+- **No `02_extension_contracts.md` changes** — `place.*` namespace already at 12 V1 + 4 V1+ from Phase 3; closure-pass had 0 rule_id mismatches (Phase 3 caught those proactively).
+- **No `03_validator_pipeline_slots.md` changes** — EVT-V_place_structural slot still tracked as PF-Q1 watchpoint.
+- **Files modified outside `_boundaries/`** (recorded here for closure-pass auditability):
+  - `features/00_place/PF_001_place_foundation.md`:
+    - Header status DRAFT → **CANDIDATE-LOCK 2026-04-26**
+    - §15 acceptance criteria: AC-PF-7 / AC-PF-8 / AC-PF-9 / AC-PF-10 precision-tightened with explicit references to Phase 3 contract changes (cascade 4-step ordering with PlaceDestroyed signal in step 2 / 3-write-transaction atomicity scope / PL_005 ExamineTarget cross-feature blocker explicit / seed_uid computed-not-declared model with 2-clone determinism test)
+    - §18 readiness checklist: closure-pass walk-through line added; CANDIDATE-LOCK box ticked
+  - `features/00_place/_index.md`: Active cleared, folder closure status → **CLOSED for V1 design 2026-04-26**, PF_001 row updated to CANDIDATE-LOCK with full feature description reflecting Phase 3 + closure-pass state
+- **Reason:** §15 acceptance walk-through (per closure-pass discipline established for WA / NPC / PLT / EF folders) verified all 10 ACs against §9 V1 namespace. Unlike EF_001 closure pass (which discovered 3 missing rule_ids), Phase 3 cleanup proactively caught all rule_id additions — closure pass had ZERO rule_id mismatches. However, 4 ACs needed precision tightening because Phase 3 contract changes (cascade 4-step ordering / PlaceDestroyed signal / 3-write-transaction atomicity / computed-vs-declared seed_uid) hadn't propagated into AC text. Tightening done; closure pass complete.
+- **Closure-pass coverage analysis** (recorded for future reference):
+  - 10 ACs map to V1-testable scenarios; 4 needed Phase-3-induced tightening (AC-PF-7 / 8 / 9 / 10)
+  - 6 V1 rule_ids not standalone-AC'd (`duplicate_place` / `unknown_place` / `connection_private` / `connection_hidden` / `no_reverse_connection` / `fixture_seed_uid_collision` / `self_referential_connection`) — covered implicitly via integration tests (same pattern as EF_001 closure pass; not every rule_id needs its own AC)
+  - Cross-feature blockers explicitly tracked: AC-PF-9 cannot run V1 until PL_005 closure pass adds `ExamineTarget` extension (PF-Q4 watchpoint)
+- **Closes V1 place foundation design.** Downstream impact:
+  - **PCS_001** (when designed): brief `features/06_pc_systems/00_AGENT_BRIEF.md` will gain §4.4d mandatory PF_001 reading at next agent spawn (deferred to PCS_001 design start)
+  - **PL_005 Interaction** (DRAFT): closure pass will fold in `ExamineTarget = Entity(EntityId) | Place(PlaceId)` discriminator (PF-Q4)
+  - **PL_005c integration** (DRAFT): §V1-scope Strike Destructive cascade extends to call PF_001 cascade trigger
+  - **NPC_001 Cast** (CANDIDATE-LOCK): `npc.current_region_id` cell-tier channel cross-references PlaceId 1:1 V1
+  - **WA_003 Forge** (CANDIDATE-LOCK): `Forge:EditPlace` sub-shape now part of registry; Forge UI may extend in future
+- **Drift watchpoints unchanged** (11 active; PF-Q1 + PF-Q4 still tracked).
+- **Total at CANDIDATE-LOCK after this pass:** 15 features across 6 closed folders (EF: 1 · **PF: 1** · WA: 5 · PL: 3 · NPC: 2 · PLT: 3) — foundation tier (EF + PF) now complete + 4 domain folders.
+- **Lock release:** at end of this commit (`[boundaries-lock-claim+release]`)
+
+---
+
 ## 2026-04-26 — PF_001 Phase 3 review cleanup (Severity 1 + 2 + 3) + PlaceDestroyed sub-shape + CLOSED-ENUM-EXEMPT unification
 
 - **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — PF_001 Phase 3 review cleanup, Severity 1+2+3 per user direction "A"); commit (this turn) `[boundaries-lock-claim+release]`
