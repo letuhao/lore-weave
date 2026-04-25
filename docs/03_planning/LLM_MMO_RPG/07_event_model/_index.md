@@ -68,7 +68,7 @@ Without this folder, every feature has to relitigate event semantics. With it, f
 | 09 | [`09_causal_references.md`](09_causal_references.md) | LOCKED Phase 4a (Option C) | EVT-L12..L15; resolves EVT-Q5 | 2026-04-25 |
 | 10 | [`10_replay_semantics.md`](10_replay_semantics.md) | LOCKED Phase 4b (Option C) | EVT-L16..L19; resolves EVT-Q6/Q10 | 2026-04-25 |
 | 11 | [`11_schema_versioning.md`](11_schema_versioning.md) | LOCKED Phase 4b (Option C); resolves DP Q5 + EVT-Q7/Q9 | EVT-S1..S6 | 2026-04-25 |
-| 22 | `22_event_design_quickstart.md` | PENDING Phase 5 | — | — |
+| 22 | [`22_event_design_quickstart.md`](22_event_design_quickstart.md) | LOCKED Phase 5 (Option C closure) | — (bridging doc) | 2026-04-25 |
 | 99 | [`99_open_questions.md`](99_open_questions.md) | OPEN — Phase 1 seed (EVT-Q1..Q10 + MV12-D8..D11 cross-refs) | EVT-Q* | 2026-04-25 |
 
 ---
