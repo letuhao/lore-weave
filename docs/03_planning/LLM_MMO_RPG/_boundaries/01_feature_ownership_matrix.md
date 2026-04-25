@@ -34,12 +34,12 @@ Before designing a new feature: search this matrix for the aggregates / concepts
 | `actor_contamination_decl` | T2 / Reality | **WA_002 Heresy** | Per-(actor, kind) contamination exception. |
 | `actor_contamination_state` | T2 / Reality | **WA_002 Heresy** | Per-(actor, kind) runtime budget tracking. |
 | `world_stability` | T3 / Reality singleton | **WA_002 Heresy** | 5-stage state machine. |
-| `forge_audit_log` | T2 / Reality | **WA_003 Forge** (PROVISIONAL) | Append-only audit; ALSO USED by PLT_001 + PLT_002 + WA_006 with their own AuditAction sub-shapes. WA_003 marked PROVISIONAL 2026-04-25 — generic patterns may extract to a future cross-cutting feature. |
+| `forge_audit_log` | T2 / Reality | **WA_003 Forge** (CANDIDATE-LOCK) | Append-only audit; ALSO USED by PLT_001 + PLT_002 + WA_006 with their own AuditAction sub-shapes. WA_003 closure-reframed 2026-04-25 — patterns extractable to future CC_NNN are V1-essential here, V2+ optimization not boundary fix. §14 acceptance: 10 scenarios. |
 | `coauthor_grant` | T2 / Reality | **PLT_001 Charter** (formerly WA_004; relocated 2026-04-25) | Active Co-Author grants. |
 | `coauthor_invitation` | T2 / Reality | **PLT_001 Charter** | Pending invitations with TTL. |
 | `ownership_transfer` | T2 (T3 at Finalize) / Reality | **PLT_002 Succession** (formerly WA_005; relocated 2026-04-25) | Multi-stage state machine. |
-| `mortality_config` | T2 / Reality singleton | **WA_006 Mortality** ⚠ | Per-reality death-mode config. **Only legitimate WA_006 aggregate.** |
-| `pc_mortality_state` | T2 / Reality | ⚠ **PROVISIONAL** in WA_006; should be **PCS_001** (when designed) | See WA_006 over-extension notice. |
+| `mortality_config` | T2 / Reality singleton | **WA_006 Mortality** (CANDIDATE-LOCK) | Per-reality death-mode config. WA_006 thin-rewritten 2026-04-25 closure pass (730 → 403 lines); only legitimate WA scope kept. §12 acceptance: 6 scenarios. |
+| `pc_mortality_state` | T2 / Reality | **PCS_001** (when designed) | Mechanics handed off from WA_006 in closure pass — over-extended sections removed from WA_006 entirely; future PCS_001 owner has clean slate. |
 | `meta_user_pending_invitations` | global meta-DB table | **PLT_001 Charter** (formerly WA_004) | Cross-reality denormalized; CHR-D9 watchpoint. |
 
 ---
