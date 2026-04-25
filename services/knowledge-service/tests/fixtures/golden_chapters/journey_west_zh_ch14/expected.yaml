@@ -52,16 +52,21 @@ entities:
 
 relations:
   # Master-disciple anchor relation. THIS is the core event of Ch. 14.
+  # C-PRED-ALIGN: renamed becomes_disciple_of → disciple_of (canonical
+  # kinship/mentorship vocab); names_disciple → mentor_of (canonical
+  # inverse direction).
   - subject: 孫悟空
-    predicate: becomes_disciple_of
+    predicate: disciple_of
     object: 三藏
   - subject: 三藏
-    predicate: names_disciple
+    predicate: mentor_of
     object: 孫悟空
   # Past relation: Wukong was imprisoned by the Buddha 500 years prior.
-  - subject: 佛祖
-    predicate: imprisoned
-    object: 孫悟空
+  # C-PRED-ALIGN: flipped subject/object + renamed to imprisoned_by
+  # (passive direction, prisoner is subject — matches prompt rule).
+  - subject: 孫悟空
+    predicate: imprisoned_by
+    object: 佛祖
   # Past relation: Guanyin sought a scripture-fetcher from the East.
   - subject: 觀音菩薩
     predicate: instructs

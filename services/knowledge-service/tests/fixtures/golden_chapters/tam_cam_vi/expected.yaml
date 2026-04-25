@@ -47,22 +47,27 @@ entities:
 
 relations:
   # Family structure anchors the antagonism.
+  # C-PRED-ALIGN: renamed stepsister_of → stepsibling_of (canonical
+  # kinship vocab, gender-neutral).
   - subject: Tấm
-    predicate: stepsister_of
+    predicate: stepsibling_of
     object: Cám
-  - subject: dì ghẻ
-    predicate: mother_of
-    object: Cám
-  - subject: dì ghẻ
-    predicate: stepmother_of
-    object: Tấm
+  # C-PRED-ALIGN: flipped + renamed mother_of → child_of and
+  # stepmother_of → stepchild_of (kid→parent direction).
+  - subject: Cám
+    predicate: child_of
+    object: dì ghẻ
+  - subject: Tấm
+    predicate: stepchild_of
+    object: dì ghẻ
   # Helper-supernatural relation.
   - subject: Bụt
     predicate: helps
     object: Tấm
   # Outcome: vua marries Tấm.
+  # C-PRED-ALIGN: renamed marries → married_to (canonical).
   - subject: vua
-    predicate: marries
+    predicate: married_to
     object: Tấm
 
 events:

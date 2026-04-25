@@ -23,8 +23,10 @@ entities:
     aliases: []
 
 relations:
+  # C-PRED-ALIGN: renamed lived_with → lives_with (present tense,
+  # canonical spatial vocab).
   - subject: Watson
-    predicate: lived_with
+    predicate: lives_with
     object: Sherlock Holmes
   - subject: Sherlock Holmes
     predicate: resides_at

@@ -26,9 +26,10 @@ relations:
   - subject: Bingley
     predicate: rents
     object: Netherfield Park
-  - subject: Mrs. Bennet
-    predicate: wants_to_marry_daughters_to
-    object: Bingley
+  # C-PRED-ALIGN: dropped (Mrs. Bennet, wants_to_marry_daughters_to,
+  # Bingley) — pure intent/wish, not a factual relation stated in
+  # the text. Per updated prompt rule, LLMs should skip intent
+  # predicates.
 
 events:
   - summary: "Mrs. Bennet tells Mr. Bennet that Netherfield Park has been rented by a wealthy single man named Bingley"

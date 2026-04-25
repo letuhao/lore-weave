@@ -40,9 +40,11 @@ entities:
 
 relations:
   # Father-daughter relation anchors the conflict's stakes.
-  - subject: Hùng Vương
-    predicate: father_of
-    object: Mỵ Nương
+  # C-PRED-ALIGN: flipped subject/object + renamed father_of → child_of
+  # (kinship canonical kid→parent direction).
+  - subject: Mỵ Nương
+    predicate: child_of
+    object: Hùng Vương
   # Both suitors compete for the same person.
   - subject: Sơn Tinh
     predicate: courts
@@ -57,8 +59,9 @@ relations:
     predicate: resides_at
     object: núi Tản Viên
   # Outcome: Sơn Tinh marries Mỵ Nương.
+  # C-PRED-ALIGN: renamed marries → married_to (canonical kinship vocab).
   - subject: Sơn Tinh
-    predicate: marries
+    predicate: married_to
     object: Mỵ Nương
 
 events:

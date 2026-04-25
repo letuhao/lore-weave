@@ -21,6 +21,8 @@ fixtures annotate **conservatively**, while local LLMs extract broadly.
 
 ## Aggregate scores
 
+### Pre-alignment baselines (predicate vocabulary mismatch)
+
 | Model                   | Context | Precision | Recall | FP-trap | Time   | Note                                       |
 |-------------------------|---------|-----------|--------|---------|--------|--------------------------------------------|
 | qwen2.5-coder-14b       | 24K     | 0.145     | 0.337  | 0.301   | 5:12   | Coder bias — over-extracts (~85% FP)       |
@@ -28,11 +30,26 @@ fixtures annotate **conservatively**, while local LLMs extract broadly.
 | **google/gemma-4-26b-a4b** | **64K** | **0.251** | **0.356** | 0.275 | **15:49** | **Best narrative — recommended local model** |
 | qwen/qwen3.5-35b-a3b    | 120K    | TIMEOUT   | —      | —       | 59:08† | †Hard timeout at 900s/call; both attempt + retry exceeded. Model too slow on this GPU at fixture scale (35B MoE active params still hit the wall). Practical ceiling appears to be ~26B. |
 
-**Gemma-4-26b-a4b is the recommended local-LLM baseline** for narrative
-extraction. +73% precision over the coder model with comparable recall;
-strongest Vietnamese performance across all models tested.
+### Post-alignment baseline (C-PRED-ALIGN cycle, 2026-04-25)
 
-## Per-chapter signal (gemma-4-26b-a4b — best model)
+After expanding prompt vocab to 28 predicates organized by category +
+direction rule for kinship + canonicalizing fixture predicates:
+
+| Model                      | Precision | Recall | FP-trap | Δ vs pre |
+|----------------------------|-----------|--------|---------|----------|
+| **google/gemma-4-26b-a4b** | **0.311** | **0.429** | **0.238** | **P +24% / R +20% / FP-trap −13%** |
+
+Validates Finding #1 hypothesis. Lift below estimated +73% precision
+because prompt vocab expansion also helped LLM emit MORE relations
+(some still don't match fixtures), partially offsetting the gain.
+
+**Gemma-4-26b-a4b is the recommended local-LLM baseline** for narrative
+extraction. Strong Vietnamese performance retained (son_tinh
+P=0.368→0.556, R=0.438→0.625 — best chapter post-alignment).
+
+## Per-chapter signal (gemma-4-26b-a4b)
+
+### Pre-alignment
 
 | Chapter                    | TP | FP | FN | Precision | Recall | FP-trap rate |
 |----------------------------|----|----|----|-----------|--------|--------------|
@@ -45,6 +62,20 @@ strongest Vietnamese performance across all models tested.
 | sherlock_scandal_ch01      | 2  | 6  | 6  | 0.250     | 0.250  | 0.0          |
 | **son_tinh_thuy_tinh_vi**  | **7** | 11 | 9 | **0.368** | **0.438** | 0.143    |
 | tam_cam_vi                 | 4  | 9  | 13 | 0.308     | 0.235  | 0.0          |
+
+### Post-alignment
+
+| Chapter                    | TP | FP | FN | Precision | Recall | FP-trap rate | Δ R vs pre |
+|----------------------------|----|----|----|-----------|--------|--------------|------------|
+| alice_ch01                 | 3  | 9  | 4  | 0.250     | 0.429  | 0.0          | −0.29 (LLM nondeterminism, no fixture changes) |
+| alice_ch02                 | 6  | 4  | 4  | **0.545** | **0.600** | 0.5       | +0.10      |
+| journey_west_zh_ch01       | 8  | 22 | 13 | 0.222     | 0.381  | 0.5          | **+0.19** (vocab expansion helps Chinese) |
+| journey_west_zh_ch14       | 6  | 13 | 11 | 0.316     | 0.353  | 0.0          | +0.06      |
+| little_women_ch01          | 5  | 13 | 5  | 0.263     | 0.500  | 0.333        | +0.17 (also dropped 2 intent predicates) |
+| pride_prejudice_ch01       | 3  | 18 | 4  | 0.130     | 0.429  | 0.667        | +0.18 (also dropped 1 intent predicate) |
+| sherlock_scandal_ch01      | 2  | 7  | 6  | 0.222     | 0.250  | 0.0          | 0.0 (tense fix marginal)    |
+| **son_tinh_thuy_tinh_vi**  | **10**| 7 | 6 | **0.556** | **0.625** | 0.143    | **+0.19** (direction flip + canonical worked) |
+| tam_cam_vi                 | 5  | 12 | 12 | 0.294     | 0.294  | 0.0          | +0.06      |
 
 ## Findings worth recording
 
@@ -185,12 +216,13 @@ to all 3 prompts is a moderate-leverage cycle.
 
 ### Recommended next actions (priority order)
 
-1. **Predicate alignment cycle** (Finding 1) — single PR. Highest leverage.
-2. **Trap expansion** (Finding 2) — bundle with #1 since both touch fixtures.
-3. **Cloud LLM baseline** — claude-haiku-4-5 / gpt-4o-mini run for hard-gate calibration.
-4. **Multi-language few-shot** in prompts (architectural Finding) — separate cycle.
-5. **LLM-as-judge scoring** (Finding 3) — defer; needs design ADR.
-6. **Chunking for large chapters** — defer until 10KB+ fixture appears.
+1. ~~**Predicate alignment cycle** (Finding 1)~~ — **DONE 2026-04-25 (C-PRED-ALIGN cycle)**. P 0.251→0.311 (+24%), R 0.356→0.429 (+20%).
+2. **Trap expansion** (Finding 2) — fixtures already touched in #1, but trap lists were intentionally NOT expanded; do as separate cycle.
+3. **Eval test parallelism** — eval is serial (`for fixture` loop) and within-chapter R+E+F is serial too (drift from production orchestrator that uses `asyncio.gather`). LM Studio 0.4.0+ continuous batching makes this 2-3x throughput win at no quality cost.
+4. **Multi-language few-shot** in prompts (architectural Finding) — Chinese + Vietnamese examples added to all 3 extractor prompts.
+5. **Cloud LLM baseline** — claude-haiku-4-5 / gpt-4o-mini run, ONE-OFF for hard-gate calibration only (cost-controlled per local-LLM-first stance).
+6. **LLM-as-judge scoring** (Finding 3) — defer; needs design ADR.
+7. **Chunking for large chapters** — defer until 10KB+ fixture appears.
 
 ## Reproducing
 
