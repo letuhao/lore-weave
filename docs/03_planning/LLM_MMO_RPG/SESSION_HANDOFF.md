@@ -81,6 +81,154 @@ The OPEN/PARTIAL problem table is mostly closed, but **V1 shipping requires 3 de
 
 ---
 
+## Session 2026-04-25 → 2026-04-26 — Feature design wave + boundary discipline + event-model Option C + parallel-agent pattern
+
+### Session arc
+
+After 06_data_plane Phase 4 closure (DP contract LOCKED), the design track shifted from kernel work to feature work. ~38 commits over ~36 hours produced the V1 feature surface across 4 folders, with three coordinated agents working in parallel on overlapping concerns. Three discipline mechanisms emerged from the work:
+
+1. **Boundary folder + single-writer mutex** (after WA_006 over-extension review caught 5 sections belonging to PCS / 05_llm_safety / PL): `_boundaries/_LOCK.md` 4-hour-TTL claim with `[boundaries-lock-claim]` / `[boundaries-lock-release]` commit prefixes. Ownership matrix + extension contracts + validator slot table + append-only changelog.
+2. **800-line hard cap forcing split pattern** (PL_001 → PL_001b / WA_002 → WA_002b / PLT_002 → PLT_002b): when a feature design grows past 800 lines, lifecycle/sequence content splits to a `<FEATURE>b_<feature>_lifecycle.md` sibling. Stable IDs preserved across split.
+3. **Sequential closure pass cycles** (Q1 → Q2 → ... → "approve" at each turn): every folder went through a structured "any open boundary issue?" review with §13/§14 acceptance criteria added BEFORE CANDIDATE-LOCK promotion. ~10 scenarios per feature spanning happy-path / failure-path / boundary.
+
+A fourth pattern emerged late: **parallel agent commission via brief**. PCS_001 PC substrate was about to be inline-designed in main session when user caught the boundary violation ("vi phạm boundary, nó nên có session riêng?"). Resolution: brief seeded at `features/06_pc_systems/00_AGENT_BRIEF.md` for parallel agent — same pattern that event-model agent (Option C redesign) and PL_005 Interaction agent already followed.
+
+### Multi-agent coordination
+
+Three agents worked the design surface concurrently. Lock arbitration via `_boundaries/_LOCK.md`:
+
+| Agent | Scope | Status | Key output |
+|---|---|---|---|
+| **Main session** (this conversation) | PL_001/001b/002, WA_001..006, NPC_001/002, PLT_001/002/002b, boundary folder, closure passes | active across whole window | 13 features at CANDIDATE-LOCK + boundary discipline framework |
+| **07_event_model agent** (parallel) | EVT-A1..A12 axioms + EVT-T*/P*/V*/L*/S*/G* taxonomy + Option C mechanism-level reframe + Generator framework | LOCKED Phase 1-6 + Option C complete (commits 66ce219 → cdaf5c3) | 11 numbered files in `07_event_model/`, 12_generation_framework.md added Phase 6 |
+| **PL_005 Interaction agent** (parallel) | Core gameplay primitive — 4-role pattern + 5 V1 InteractionKinds (Speak/Strike/Give/Examine/Use) + ProposedOutputs/ActualOutputs split | DRAFT (commits 990eea3 → 61d911c) | PL_005 + PL_005b + PL_005c (3 files, full design surface) |
+| **PCS_001 PC substrate agent** (commissioned, not yet started) | PC substrate: PcId variant, persona, body-memory xuyên không, mortality state, stats stub, social map | brief seeded `features/06_pc_systems/00_AGENT_BRIEF.md` (commit 6ff13b3) | — |
+
+Lock contention happened twice: (a) main session blocked while event-model agent held lock for Option C reattribution of PL_002/NPC_001/NPC_002 EVT-T2 references; (b) PL_005 agent claimed lock to register `interaction.*` rule_id namespace + EVT-T1 sub-types. Both released cleanly within TTL.
+
+### Feature design surface (13 at CANDIDATE-LOCK + 3 DRAFT)
+
+**04_play_loop/** (folder open)
+| ID | Name | Status | Lines | Acceptance |
+|---|---|---|---:|---|
+| PL_001 | Continuum (CON) | CANDIDATE-LOCK 2026-04-25 (boundary-tightened) | ~700 | Path A tightening: TurnEvent envelope ownership + thin RejectReason + actor-removal hook |
+| PL_001b | Continuum lifecycle (CON-L) | CANDIDATE-LOCK 2026-04-25 (boundary-tightened) | ~500 | 5 sequences + bootstrap + 16 acceptance criteria |
+| PL_002 | Grammar (GR) | CANDIDATE-LOCK 2026-04-25 | 639 | §13: 10 scenarios AC-GR-1..10 |
+| PL_005 | Interaction (INT) | DRAFT 2026-04-26 | 491 | 6 acceptance scenarios + 9 deferrals (parallel agent) |
+| PL_005b | Interaction contracts (INT-C) | DRAFT 2026-04-26 | ~600 | 16 expanded scenarios + 8 Phase 2 deferrals |
+| PL_005c | Interaction integration (INT-I) | DRAFT 2026-04-26 | ~700 | V1 vertical slice: 13 of 22 scenarios + 8 Phase 3 deferrals |
+
+**02_world_authoring/** (folder CLOSED 2026-04-25)
+| ID | Name | Status | Lines | Acceptance |
+|---|---|---|---:|---|
+| WA_001 | Lex (LX) | CANDIDATE-LOCK 2026-04-25 | 656 | §14: 10 scenarios |
+| WA_002 | Heresy (HER) | CANDIDATE-LOCK 2026-04-25 | 597 | (root) |
+| WA_002b | Heresy lifecycle (HER-L) | CANDIDATE-LOCK 2026-04-25 | 277 | §14: 10 scenarios |
+| WA_003 | Forge (FRG) | CANDIDATE-LOCK 2026-04-25 (PATTERNS-FOR-FUTURE-EXTRACTION reframed) | 798 | §14: 10 scenarios |
+| WA_006 | Mortality (MOR) | CANDIDATE-LOCK 2026-04-25 (thin-rewrite 730 → 403 lines) | 403 | §12: 6 scenarios |
+
+**05_npc_systems/** (folder CLOSED 2026-04-26)
+| ID | Name | Status | Lines | Acceptance |
+|---|---|---|---:|---|
+| NPC_001 | Cast (CST) | CANDIDATE-LOCK 2026-04-26 | 636 | §14: 10 scenarios AC-CST-1..10 |
+| NPC_002 | Chorus (CHO) | CANDIDATE-LOCK 2026-04-26 | 620 | §14: 10 scenarios AC-CHO-1..10 (incl. SPIKE_01 turn 5 reproducibility) |
+
+**10_platform_business/** (folder CLOSED 2026-04-25)
+| ID | Name | Status | Lines | Acceptance |
+|---|---|---|---:|---|
+| PLT_001 | Charter (CHR) | CANDIDATE-LOCK 2026-04-25 | 731 | §14: 10 scenarios AC-CHR-1..10 |
+| PLT_002 | Succession (SUC) | CANDIDATE-LOCK 2026-04-25 | 647 | (root) |
+| PLT_002b | Succession lifecycle (SUC-L) | CANDIDATE-LOCK 2026-04-25 | 212 | §14: 10 scenarios AC-SUC-1..10 |
+
+**06_pc_systems/** (folder seeded — awaits parallel agent)
+| Status | Detail |
+|---|---|
+| Brief seeded 2026-04-25 | `features/06_pc_systems/00_AGENT_BRIEF.md` (547 lines) — §0 Identity + §1 Why + §2 IN scope (S1-S7) + §3 OUT of scope + §4 Required reading (9 docs) + §5 Phase plan + §6 Stable IDs (PCS-D*) + §7 Process discipline + §8 Coordination + §9 Success criteria + §10 First-session deliverable + Appendix A SPIKE_01 obs#5 grounding + Appendix B file template |
+| Aggregates pre-allocated | `pc_mortality_state` (formerly WA_006 over-extended; cleanly handed off in WA closure pass) |
+
+### Event-model Option C redesign (parallel agent landed)
+
+Reframed taxonomy from feature-specific (T1 PlayerTurn / T2 NPCTurn / T7 Calibration / T9 QuestBeat / T10 NPCRoutine / T11 WorldTick) to **mechanism-level** (T1 Submitted / T3 Derived / T4 System / T5 Generated / T6 Proposal / T8 Administrative). EVT-T2/T7/T9/T10/T11 marked `_withdrawn` per foundation I15. New axioms: A9 probabilistic generation determinism · A10 event as universal source of truth · A11 sub-type ownership discipline · A12 extensibility framework. Phase 6 added Generator Framework (EVT-G1..G6 + Coordinator service spec).
+
+Impact on closure-pass folders: PL_002 / NPC_001 / NPC_002 design docs §2.5 EVT-T2 references redirected to EVT-T1 sub-type=NPCTurn (as part of agent's commit, not closure pass). EVT-T8 AdminAction renamed → EVT-T8 Administrative; PL_005 Interaction added 5 V1 sub-types under EVT-T1 Submitted.
+
+### Boundary folder state (after closure-pass status promotions)
+
+| File | Status |
+|---|---|
+| `_LOCK.md` | Released (no current owner) |
+| `00_README.md` | seed 2026-04-25 (unchanged) |
+| `01_feature_ownership_matrix.md` | 13 aggregates + 9 schema rows + 16 stable-ID prefix rows + 8 drift watchpoints + closure-pass date stamps |
+| `02_extension_contracts.md` | §1 TurnEvent · §2 RealityManifest (unowned ⚠ → IF_001 deferred) · §3 capability JWT · §4 EVT-T8 Administrative · `interaction.*` namespace added 2026-04-26 |
+| `03_validator_pipeline_slots.md` | proposed EVT-V* ordering (pending event-model Phase 3 lock — now landed; alignment check deferred) |
+| `99_changelog.md` | 7 entries: seeded 2026-04-25 · WA shrink 2026-04-25 (afternoon) · WA closure 2026-04-25 (evening) · Option C 2026-04-25 (late evening) · EVT Phase 6 Generator framework 2026-04-25 (late evening) · PL_005 Interaction 2026-04-26 · closure-pass status promotions 2026-04-26 (this commit) |
+
+### Drift watchpoints (8 active)
+
+| ID | Owner-flagger | Drift |
+|---|---|---|
+| GR-D8 | PL_002 | Rejected-turn commit primitive (`t2_write` per PL_001 §15 vs `advance_turn` per EVT-T1 spec) — event-model Phase 2 to absorb per-outcome sub-spec |
+| CST-D1 | NPC_001 | `npc.current_session_id` semantic (R8 wording vs OOS-1 in DP) — reconcile with 02_storage agent |
+| LX-D5 | WA_001 | Lex slot ordering in EVT-V* — event-model Phase 3 alignment check |
+| HER-D8 | WA_002 | EVT-T11 WorldTick V1+30d activation (now T5 Scheduled:WorldTick under Option C) |
+| HER-D9 | WA_002 | LexSchema v1→v2 migration sequencing — implementation-phase ops |
+| CHR-D9 | PLT_001 | Cross-reality `meta_user_pending_invitations` table — auth-service alignment pending |
+| WA_006 over-extension | boundary review | RESOLVED by thin-rewrite (730 → 403 lines closure pass) |
+| B2 RealityManifest envelope | boundary review 2026-04-25 | No single owner — propose `IF_001_reality_manifest.md` (deferred) |
+
+### Decisions locked across the wave
+
+- **Continuum naming** (English primary per project convention): "Continuum" for PL_001 (place+time+reality scaffold).
+- **WA scope boundary** (post-shrink): WA validates rules of reality + detects paradox + allows controlled bypass. Identity/account concerns → PLT folder. Mechanics → PCS / NPC / 05_llm_safety. Cross-cutting patterns → future CC_NNN extraction (V2+, not V1 boundary fix).
+- **PL_003 → NPC_002 relocation** (catalog NPC-7 is the correct domain for multi-NPC turn arbitration).
+- **PCS over WA for character storage** — user explicitly: "tôi không muốn lưu trong WA, lại bị vi phạm boundary".
+- **800-line cap forcing split pattern** vs. inline-everything — PL_001b / WA_002b / PLT_002b precedent.
+- **Sequential closure pass with user "approve" gate** (Q1 → Q2 → ... per folder) vs. one-shot — user direction "hãy làm tuần tự".
+- **Parallel agent commission via brief** for cross-cutting features (event-model + PL_005 Interaction + PCS_001 commissioned this way).
+- **Approach C closure deliverable** approved for WA: `02_world_authoring/_extension_pattern_guide.md` (extracted patterns documented in-folder; future CC extraction non-blocking).
+- **Option C event-model terminology** (mechanism-level) approved by user; landed in commits 66ce219 → cdaf5c3 by parallel agent.
+
+### Files landed (new in this wave)
+
+- 16 feature docs across 4 folders (`02_world_authoring/` + `04_play_loop/` + `05_npc_systems/` + `10_platform_business/`)
+- 1 PCS brief at `features/06_pc_systems/00_AGENT_BRIEF.md`
+- 6 boundary-folder files (`_boundaries/_LOCK.md` + `00_README.md` + `01_feature_ownership_matrix.md` + `02_extension_contracts.md` + `03_validator_pipeline_slots.md` + `99_changelog.md`)
+- 1 WA extension pattern guide (`_extension_pattern_guide.md`)
+- 11 event-model files (parallel agent — Phases 1-6 LOCKED + Option C)
+- 0 storage / data-plane changes (kernel stayed LOCKED throughout)
+
+### Handoff notes for next agent / next session
+
+**Active:** none in main session. Three parallel agents idle (event-model agent CLOSED post-Phase 6; PL_005 agent finished DRAFT phase; PCS_001 agent has not been spawned).
+
+**Next-step recommendations** (priority order):
+
+1. **Spawn PCS_001 parallel agent** using the seeded brief at `features/06_pc_systems/00_AGENT_BRIEF.md`. PCS_001 unblocks PL_005c integration scenarios that reference `pc_mortality_state` and is the last V1-critical feature without a design.
+2. **Close PL folder** once PL_005/005b/005c reach CANDIDATE-LOCK (sequential closure pass mirroring WA/NPC/PLT pattern; should add §14 acceptance criteria expanding the 22-total scenario count to per-doc 10 scenarios).
+3. **05_llm_safety folder** — A1..A6 axioms touched by many features (oracle, intent classifier, injection defense, canon drift) but no feature folder yet. Likely ~5-7 features at ~600 lines each.
+4. **EVT-V* ordering alignment check** — `_boundaries/03_validator_pipeline_slots.md` proposed slots vs. event-model agent's Phase 3 actual slot lock. Should be a quick reconcile-or-edit pass.
+5. **IF_001 RealityManifest envelope feature** — drift watchpoint B2; multiple features extend the manifest with no single owner. Low urgency (additive contracts work for now) but blocks `features/01_infrastructure/` folder creation.
+6. **Option C terminology audit** — main-session-authored feature docs cite EVT-T2 NPCTurn in places. Event-model agent updated 3 files (PL_002 / NPC_001 / NPC_002 §2.5). Spot-check whether PL_001 / WA / PLT files still reference old IDs and need refresh.
+
+**Process discipline reminders for next agent:**
+
+- Boundary folder is lock-gated. Read `_LOCK.md` first; check TTL; commit `[boundaries-lock-claim]` then `[boundaries-lock-release]` (or combined `[boundaries-lock-claim+release]` for short edits).
+- 800-line hard cap forces split. Stable IDs preserved across split.
+- Closure pass adds §14 acceptance (~10 scenarios) BEFORE CANDIDATE-LOCK promotion.
+- Cross-cutting / boundary-spanning features → spawn parallel agent via brief in `<folder>/00_AGENT_BRIEF.md` rather than inline-design.
+- Event-model uses mechanism-level taxonomy (T1 Submitted / T3 Derived / T4 System / T5 Generated / T6 Proposal / T8 Administrative). T2/T7/T9/T10/T11 are `_withdrawn` per I15.
+
+### Raw count
+
+- **Commits:** ~38 across the wave (f89aa48 through e2065fd; ~36-hour window)
+- **Features designed:** 16 (13 at CANDIDATE-LOCK + 3 DRAFT)
+- **Features commissioned for parallel agent:** 1 (PCS_001 brief)
+- **Boundary lock claims:** 7 (4 main session + 2 event-model agent + 1 PL_005 agent)
+- **Folders closed for V1:** 3 (WA + NPC + PLT) — full V1 design surface in those domains
+- **Drift watchpoints:** 8 active, 1 resolved (WA_006 over-extension)
+
+---
+
 ## Session 2026-04-25 (continued) — 06_data_plane file 04 split into 04a/b/c/d (cleanup task)
 
 ### Session arc
