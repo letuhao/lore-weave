@@ -4,16 +4,15 @@
 > **Catalog reference:** [`catalog/cat_05_NPC_systems.md`](../../catalog/cat_05_NPC_systems.md) (owns `NPC-*` stable-ID namespace)
 > **Purpose:** NPC design — persona templates, schedules, memory, dialogue, reactions, LLM persona generation. Feeds into DF1 (daily life) + DF8 (persona from PC history).
 
-**Active:** (empty — no agent currently editing)
+**Active:** NPC_001 Cast (DRAFT 2026-04-25)
 
 ---
 
 ## Feature list
 
-| ID | Title | Status | File | Commit |
-|---|---|---|---|---|
-
-(No features designed yet. First feature will live at `NPC_001_<name>.md`.)
+| ID | Conversational name | Title | Status | File | Commit |
+|---|---|---|---|---|---|
+| NPC_001 | **Cast** (CST) | NPC foundation: ActorId variant model + R8-aggregate import + persona assembly + owner-node binding + cross-node handoff (resolves PL_001 §3.6 defer) + opinion stub realization (resolves PL_003 §3 stub) + EVT-T2 NPCTurn producer JWT shape | DRAFT 2026-04-25 | [`NPC_001_cast.md`](NPC_001_cast.md) | uncommitted |
 
 ---
 
