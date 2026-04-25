@@ -442,6 +442,40 @@ async def vector_search_entities(project_id: str, query_text: str, limit: int = 
 projects use different embedding models — vector spaces are model-specific.
 Memory queries always run within one project's model.
 
+#### B-bis. Event wall-clock date (C18 amendment, 2026-04-25)
+
+`(:Event)` carries TWO orthogonal time axes for narrative fiction:
+
+- `event_order: Int` (existing) — the order events appear in the text (the read order). Stable across the project's life.
+- `chronological_order: Int` (existing, optional) — in-story sequence accounting for flashbacks. Set by the LLM when the order can be inferred from context.
+
+Neither expresses **wall-clock dates**. Fiction set in 1880 vs the Third Age vs a contemporary thriller all share the same `event_order` axis but want different filter UX. C18 adds a third optional axis:
+
+```cypher
+(:Event {
+  ...
+  event_date_iso: String,  // nullable; ISO with optional truncation:
+                           //   "1880" (year-only)
+                           //   "1880-06" (year-month)
+                           //   "1880-06-15" (full ISO date)
+                           // String NOT date — preserves precision
+                           // ("summer 1880" → "1880-06" carries the
+                           // "I don't actually know the day" signal,
+                           // which a strict date('1880-06-15') loses).
+                           // Sort-stable lexicographically because ISO.
+})
+```
+
+**Source of truth**: the K17.6 LLM event extractor. The prompt (see §5.1) emits `event_date` ONLY when TEXT contains an explicit calendar date or year. Vague hints ("the next morning", "in his youth") and fictional eras ("TA 3019", "Year of the Dragon") stay in the existing `time_cue` free-text field for narrative display.
+
+**Backfill**: a one-shot Python parser walks existing `:Event` nodes, parsing the existing `time_cue` string for explicit dates and writing `event_date_iso` where parseable. Idempotent (skips rows with non-null `event_date_iso`). Best-effort — LLM re-extraction is the gold standard but $$$.
+
+**Filter exposure** (timeline endpoint): `event_date_from` + `event_date_to` Query params accept ISO truncated strings; reversed range (`from > to`) → 422. Events with `event_date_iso = NULL` are EXCLUDED when either filter is active (no-date events have no business answering "what happened in 1880?").
+
+**Out of scope for v1**: fictional-era prefixes ("TA 3019"). String-sort breaks across non-numeric prefixes; per-project calendar systems are a meatier design needing user opt-in. Fictional eras stay as `time_cue` free text only.
+
+See [`KNOWLEDGE_SERVICE_EVENT_WALL_CLOCK_DATE_ADR.md`](./KNOWLEDGE_SERVICE_EVENT_WALL_CLOCK_DATE_ADR.md) for the full design rationale + rejected alternatives.
+
 #### C. Provenance Edges (for partial extraction operations)
 
 Every extracted entity/fact must know its source(s) so that partial re-extraction,

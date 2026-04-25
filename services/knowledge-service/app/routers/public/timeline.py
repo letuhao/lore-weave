@@ -97,6 +97,30 @@ async def list_timeline_events(
             "existence leak)."
         ),
     ),
+    event_date_from: str | None = Query(
+        default=None,
+        # C18 REVIEW-DESIGN catch — structural calendar validation:
+        # 4-digit year + optional 2-digit month [01-12] + optional
+        # 2-digit day [01-31]. Doesn't catch Feb 30 (would need
+        # calendar awareness) but catches the dominant typo class.
+        pattern=r"^\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?$",
+        description=(
+            "C18 (D-K19e-α-02): inclusive lower bound on "
+            "``e.event_date_iso``. ISO truncated: ``YYYY``, "
+            "``YYYY-MM``, or ``YYYY-MM-DD``. Events with NULL "
+            "``event_date_iso`` are EXCLUDED when set."
+        ),
+    ),
+    event_date_to: str | None = Query(
+        default=None,
+        pattern=r"^\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?$",
+        description=(
+            "C18 (D-K19e-α-02): inclusive upper bound on "
+            "``e.event_date_iso``. ISO truncated: ``YYYY``, "
+            "``YYYY-MM``, or ``YYYY-MM-DD``. Events with NULL "
+            "``event_date_iso`` are EXCLUDED when set."
+        ),
+    ),
     limit: int = Query(50, ge=1, le=EVENTS_MAX_LIMIT),
     offset: int = Query(0, ge=0),
     user_id: UUID = Depends(get_current_user),
@@ -111,9 +135,18 @@ async def list_timeline_events(
     cross-user entity_id collapses to an empty candidate list.
 
     422 on reversed range (``after_order >= before_order`` OR
-    ``after_chronological >= before_chronological``) so the FE sees an
-    explicit error rather than an empty result that looks like
-    "no events in range".
+    ``after_chronological >= before_chronological`` OR
+    ``event_date_from > event_date_to``) so the FE sees an explicit
+    error rather than an empty result that looks like "no events
+    in range".
+
+    C18: ``event_date_from`` / ``event_date_to`` are INCLUSIVE both
+    ends (vs the EXCLUSIVE ``after_order`` / ``before_order``); the
+    reversed-range check uses strict ``>`` not ``>=`` so
+    ``from == to`` is valid (selects events with that exact date).
+    Events with NULL ``event_date_iso`` are EXCLUDED when either
+    filter is active — no-date events have no business answering
+    "what happened in 1880?".
     """
     if (
         after_order is not None
@@ -137,6 +170,18 @@ async def list_timeline_events(
             detail=(
                 f"after_chronological ({after_chronological}) must "
                 f"be < before_chronological ({before_chronological})"
+            ),
+        )
+    if (
+        event_date_from is not None
+        and event_date_to is not None
+        and event_date_from > event_date_to
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                f"event_date_from ({event_date_from!r}) must be "
+                f"<= event_date_to ({event_date_to!r})"
             ),
         )
     async with neo4j_session() as session:
@@ -173,6 +218,8 @@ async def list_timeline_events(
             before_order=before_order,
             after_chronological=after_chronological,
             before_chronological=before_chronological,
+            event_date_from=event_date_from,
+            event_date_to=event_date_to,
             participant_candidates=participant_candidates,
             limit=limit,
             offset=offset,

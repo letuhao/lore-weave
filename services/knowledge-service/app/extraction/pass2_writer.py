@@ -221,12 +221,15 @@ async def write_pass2_extraction(
         # dropped here — K11.7 ``merge_event`` does not yet accept
         # these parameters. Tracked for K18+. See K17.9 negative
         # assertion test pinning this behavior.
+        # C18: ``evt.event_date`` IS threaded — it's the structured
+        # filter axis for the timeline endpoint's date-range Query.
         event = await merge_event(
             session,
             user_id=user_id,
             project_id=project_id,
             title=name_clean,
             summary=summary_clean or None,
+            event_date_iso=evt.event_date,
             participants=[
                 _sanitize(p, project_id) for p in evt.participants
             ],
