@@ -72,21 +72,28 @@ One aggregate owned by PF_001:
 
 ```rust
 #[derive(Aggregate)]
-#[dp(type_name = "place", tier = "T2", scope = "channel")]  // bound to cell channel via PlaceId = ChannelId
+#[dp(type_name = "place", tier = "T2", scope = "channel")]  // bound to cell channel via PlaceId.0 ChannelId
 pub struct Place {
     pub place_id: PlaceId,                            // V1: PlaceId(ChannelId) — 1:1 with cell channel
     pub place_type: PlaceType,                        // closed enum (§4)
-    pub canon_ref: BookCanonRef,                      // book-grounded source; AuthorCreated for runtime-created
-    pub display_name: LocalizedName,                  // multi-locale per LX (vi V1; en V1+)
+    pub canon_ref: BookCanonRef,                      // book-grounded source; AuthorCreated for runtime-created (see PF-D12)
+    pub display_name: LocalizedName,                  // multi-locale (vi V1; en V1+); see PF-Q3
     pub structural_state: StructuralState,            // closed enum 4-state (§7)
-    pub narrative_drift: serde_json::Value,           // freeform per-reality drift
+    pub narrative_drift: serde_json::Value,           // freeform per-reality drift; see "Schema policy V1" below
     pub connections: Vec<ConnectionDecl>,             // explicit horizontal edges (§6)
-    pub fixture_seed: Vec<EnvObjectSeedDecl>,         // canonical EnvObjects at this place (§8)
+    pub fixture_seed: Vec<EnvObjectSeed>,             // canonical EnvObjects at this place (§8) — materialized form
     pub last_structural_change_fiction_time: FictionTime,
     pub last_narrative_drift_fiction_time: FictionTime,
 }
 
-pub struct PlaceId(pub ChannelId);                    // V1 invariant: PlaceId.0 IS the cell channel id
+// PlaceId newtype with infallible bidirectional conversion to ChannelId for ergonomic
+// hot-path use (Travel resolver / scene-roster / LLM AssemblePrompt avoid `.0` peppering).
+// V1+ multi-place-per-cell (PF-D4) would break the strict 1:1; conversion impls would
+// be removed at that point.
+pub struct PlaceId(pub ChannelId);
+impl From<ChannelId> for PlaceId { fn from(c: ChannelId) -> Self { Self(c) } }
+impl From<PlaceId> for ChannelId { fn from(p: PlaceId) -> Self { p.0 } }
+impl AsRef<ChannelId> for PlaceId { fn as_ref(&self) -> &ChannelId { &self.0 } }
 
 pub struct LocalizedName {
     pub vi: String,                                   // required V1 (project primary locale)
@@ -96,28 +103,51 @@ pub struct LocalizedName {
 pub struct ConnectionDecl {
     pub to_place: PlaceId,
     pub kind: ConnectionKind,                         // §6
-    pub bidirectional: bool,                          // false → reverse connection must be declared on to_place separately
-    pub canon_ref: Option<BookCanonRef>,              // book-grounded path; None for author-added
-    pub gate_seed_uid: Option<SeedUid>,               // for Locked: which fixture (door/keyhole) gates this connection — references fixture_seed[].seed_uid
+    pub bidirectional: bool,                          // V1 hint-only (see §6 traversal rules); does NOT mirror-write the reverse declaration
+    pub canon_ref: Option<BookCanonRef>,              // book-grounded path; None for author-added (narrator falls back per §14.2 footnote)
+    pub gate_slot_id: Option<String>,                 // for Locked: which fixture-seed slot (e.g., "front_door_keyhole") gates this connection;
+                                                      // resolves at write-time to the fixture's computed seed_uid + entity_id
 }
 
+// Author-declared shape (lives in PlaceDecl for RealityManifest + Forge edits).
+// `slot_id` is the stable position descriptor; `seed_uid` is COMPUTED at materialization
+// time (UUID v5 from (reality_id, place_id, slot_id)) — authors never write seed_uids.
 pub struct EnvObjectSeedDecl {
-    pub seed_uid: SeedUid,                            // deterministic ID stable across reality clones (UUID v5 from place_id + slot_id)
     pub envobject_kind: EnvObjectKind,                // closed enum (§2)
     pub slot_id: String,                              // stable position descriptor ("front_door", "main_counter", "fireplace_north_wall")
     pub default_affordances: AffordanceSet,           // EF_001 AffordanceFlag bitset; future EnvObject feature uses for entity_binding override
     pub initial_state: serde_json::Value,             // future EnvObject feature interprets per-kind state schema
 }
+
+// Materialized form (lives on the place aggregate). Adds the computed seed_uid alongside
+// the author-declared fields. Stored in `place.fixture_seed[]`. Used as the anchor for
+// gate_slot_id resolution + entity_id derivation.
+pub struct EnvObjectSeed {
+    pub seed_uid: SeedUid,                            // computed: UUID v5 from (reality_id, place_id, slot_id) — replay-safe per EVT-A9
+    pub envobject_kind: EnvObjectKind,
+    pub slot_id: String,
+    pub default_affordances: AffordanceSet,
+    pub initial_state: serde_json::Value,
+}
+
+pub struct SeedUid(pub Uuid);                         // computed; never author-declared
 ```
 
 **Rules:**
 - One row per `place_id` (= one row per cell channel V1). Primary key conflict = `place.duplicate_place`.
 - Every cell channel MUST have a `place` row at bootstrap. Cells without place reject runtime ops with `place.missing_decl` (validated at first-use, not at channel creation — channel can exist briefly during bootstrap before place lands).
 - Higher-tier channels (continent/country/district/town) MUST NOT have place rows V1. Validated by `place_id.0` resolving to a cell-tier channel per DP channel-tree query.
-- `canon_ref` is REQUIRED. Author-created places use `BookCanonRef::AuthorCreated { reality_id, fiction_time }`.
+- `canon_ref` is REQUIRED. Author-created places use `BookCanonRef::AuthorCreated { reality_id, fiction_time, reason }` (PF-D12 watchpoint: BookCanonRef is a shared schema; ownership/registration deferred to future boundary cleanup).
 - `connections[].to_place` MUST resolve to existing place row (validated at write); orphan connections reject `place.connection_target_unknown`.
-- `fixture_seed[].seed_uid` MUST be unique within the place's seed list; duplicate uids reject `place.fixture_seed_uid_collision`.
+- `connections[].to_place` MUST NOT equal the place's own `place_id` (no self-loops); rejects `place.self_referential_connection`.
+- `fixture_seed[].slot_id` MUST be unique within the place's seed list; duplicate slot_ids reject `place.fixture_seed_uid_collision` (rule_id name preserved for namespace stability — collision detected via slot_id since seed_uid is derived).
 - `structural_state` transitions follow §7 state machine; forbidden transitions reject `place.invalid_structural_transition`.
+
+**Schema policy V1 — `narrative_drift` freeform JSON:**
+- V1 NO server-side schema validation. Authors write whatever JSON; LLM consumes via AssemblePrompt as opaque flavor input.
+- V1 NO `narrative_drift_schema_version` field. Migration cost zero (Postgres `JSONB` column accepts any shape).
+- V1+30d: per-PlaceType opinionated schemas if profiling shows authors creating unstructured drift that hurts queryability. Versioning per I14 (additive only). Tracked as PF-D12 sibling deferral.
+- Consumer guidance V1: features SHOULD treat `narrative_drift` as opaque to LLM; do NOT extract structured fields server-side V1.
 
 ---
 
@@ -145,7 +175,7 @@ pub enum PlaceType {
 | PlaceType | Default ambient cues | Default fixture-kinds expected | LLM scene-prompt anchor |
 |---|---|---|---|
 | Residence | Quiet; private; sparse | Door · Bed · Table · Window | "interior of a private dwelling" |
-| Tavern | Lively; smell of food/drink; chatter | Door · Table · Counter (sign as Door subtype if signage) · Fireplace (Wall) | "interior of a tavern; patrons + staff" |
+| Tavern | Lively; smell of food/drink; chatter | Door · Sign (tavern signage) · Table · Wall (for fireplace area) | "interior of a tavern; patrons + staff" |
 | Marketplace | Bustling; merchants calling; multi-stall | Sign · Table (stall) · Door (gate) | "open-air market; stalls and traders" |
 | Temple | Reverent; incense/candles; quiet voices | Altar · Statue · Door · Window | "religious sanctuary; devotional fixtures" |
 | Workshop | Tools clinking; smoke/heat; concentration | Table (workbench) · Wall (tool rack) · Door · Chest | "production workshop; tools and materials" |
@@ -203,13 +233,39 @@ pub enum ConnectionKind {
 }
 ```
 
-**Bidirectional flag:** if `bidirectional: true`, connection is added at both ends automatically by DP-internal validator. `bidirectional: false` requires explicit reverse declaration on `to_place` (e.g., OneWay connections, asymmetric private/public access).
+**Bidirectional flag — HINT-ONLY V1** (Phase 3 cleanup 2026-04-26 — picks one of two prior-ambiguous interpretations):
 
-**Travel resolution V1** (consumed by PL_001 §13 travel sequence):
+`bidirectional: true` is a HINT for traversal: when resolving "can I travel A→B?", consumer code reads BOTH `place(A).connections[]` AND `place(B).connections[]` and treats a `bidirectional: true` ConnectionDecl on either side as evidence of a usable edge. **NO mirror declaration is written** at the reverse end at write-time. Trade-off: 2 reads at hot-path Travel resolution (acceptable per DP-K6 cache); zero mirror-sync invariant to maintain (mirror would risk drift).
+
+`bidirectional: false` requires an explicit reverse declaration on `to_place.connections[]` IF reverse traversal is intended. Used for OneWay portals (no reverse decl exists; reverse Travel rejects `place.no_reverse_connection`) or asymmetric Private (gated one direction).
+
+V1+ optimization (deferred): if profiling shows hot-path read cost is excessive, switch to write-time mirror declaration with explicit invariant maintenance. Tracked at PF-D-Q5 close.
+
+**Travel resolution V1** — entry-point helper consumed by PL_001 §13 travel sequence:
+
+```rust
+/// PF_001 connection resolver. PL_001 §13 step ④ calls this to decide whether
+/// Travel from current cell to requested destination is permitted, and to recover
+/// the canonical narrator hint (canon_ref) for the prose layer.
+pub async fn resolve_travel_connection(
+    ctx: &SessionContext,
+    from_place: PlaceId,
+    to_place: PlaceId,
+) -> Result<ConnectionDecl, PlaceError>;
+```
+
+Resolution algorithm:
 1. PC issues `/travel destination=cell:tay_thi_quan` (PL_002 Grammar)
-2. PL_001 §13 calls PF_001 connection-resolution helper: is current_cell connected to destination via Public / accessible Private / unlocked Locked / discovered Hidden / non-OneWay-reverse?
-3. If yes → Travel proceeds. If no → reject with appropriate `place.*` rule_id (`connection_locked` / `connection_private` / `connection_hidden` / `no_reverse_connection`)
-4. ConnectionDecl `canon_ref` propagates into Travel narrator text ("you walk down the cobbled main street described in chapter 4")
+2. PL_001 §13 calls `resolve_travel_connection(ctx, current_place, destination)`
+3. Resolver reads `place(current_place).connections[]` for any decl with `to_place == destination`
+4. If found AND `kind = Public` → return that ConnectionDecl
+5. If found AND `kind = OneWay` (forward) → return ConnectionDecl
+6. If found AND `kind = Private` → check residency (V1: canonical_actors[i].initial_cell_path includes current OR destination) → if yes return; else reject `place.connection_private`
+7. If found AND `kind = Locked` → V1 always reject `place.connection_locked` (V1+ key-matching deferred per PF-D11)
+8. If found AND `kind = Hidden` → V1: visible-to-all, treat as Public; V1+ check per-PC discovered_connections (PF-D10)
+9. If NOT found in `from.connections[]`: read `place(destination).connections[]`; for any decl with `to_place == from_place AND bidirectional == true` → treat as reverse-usable per the `bidirectional` HINT; resolve via same kind-matrix (Step 4-8 logic with kind from the FOUND decl)
+10. If still not found → reject `place.connection_target_unknown` (no edge in either direction)
+11. On accept: ConnectionDecl returned; PL_001 §13 propagates `canon_ref` into Travel narrator text. **If `canon_ref` is None** (author-added connection without book grounding), narrator falls back to `(PlaceType_default_transition_phrase + ConnectionKind_default_phrase)` — e.g., Public + Crossroads → "you walk to the crossroads"; Locked + Cave → not applicable (already rejected). LLM AssemblePrompt receives both endpoint Place contexts so prose can interpolate without canon hint.
 
 **Why explicit V1:** book canon often specifies non-obvious connections (secret tunnel, magical portal). Implicit-only-hierarchy connections would force every Travel through parent-channel routing which is artificial. Explicit Vec<ConnectionDecl> lets author declare canonical paths.
 
@@ -261,11 +317,30 @@ pub enum ConnectionKind {
 - `Destroyed` → `Damaged` (can't partially un-destroy)
 - `Restored` → `Pristine` (Restored is a distinct state; degrades to Damaged or Destroyed only)
 
-**Cascade into EF_001 §6.1** (when `Existing → Destroyed` for the place):
-- All EnvObjects with `entity_binding.location ∈ { InCell { cell_id: place_id.0 }, Embedded { parent: <any envobject in this cell> } }` cascade `Existing → Destroyed` with `reason_kind = HolderCascade` per EF_001 §3.2 (EntityLifecycleLog reason kind added in Phase 3 cleanup)
-- All Items with `location.InCell { cell_id: place_id.0 }` cascade `Existing → Destroyed` (canonical destruction semantics; Items don't survive a place-destruction event V1)
-- PCs/NPCs at the cell at destruction-time face mortality cascade per PCS_001 / NPC_001 rules (out of PF_001 scope)
-- Cascade emitted as a single atomic batch with the place state transition
+**Cascade scope (Phase 3 cleanup 2026-04-26 — explicit):**
+
+Cascade fires **ONLY on transitions ending in `Destroyed`** (i.e., `Pristine → Destroyed`, `Damaged → Destroyed`, `Restored → Destroyed`). Other transitions (`Pristine ↔ Damaged`, `Damaged → Pristine`, `Destroyed → Restored`, `Restored → Damaged`) do NOT auto-propagate to fixtures or cell-resident entities. Each fixture has independent EF_001 lifecycle; if a Pristine tavern transitions to Damaged because of cumulative wall damage, only the wall's lifecycle changed (PL_005 Strike Destructive on the wall) — other fixtures and Items remain unaffected.
+
+This composability rule is intentional: state machines compose at the same severity tier (place-Damaged + fixture-Pristine is a valid joint state representing "tavern has structural issues but fixtures fine"). Coupling damage propagation would create non-local effects that surprise authors.
+
+**Cascade order on `→ Destroyed` (Phase 3 cleanup; replay-determinism per EVT-A9):**
+
+A Place transitioning to `Destroyed` emits the cascade as a **single atomic batch** with deterministic internal step ordering. Atomicity = all steps commit-or-rollback together (Postgres transaction); ordering = events within the batch fire in this fixed sequence:
+
+1. **Place state delta:** EVT-T3 Derived `aggregate_type=place` { structural_state: Destroyed, last_structural_change_fiction_time: now }
+2. **PlaceDestroyed cascade-trigger event** (NEW dedicated EVT-T3 sub-shape; see §9 + §2.5 register): EVT-T3 Derived `PlaceDestroyed { place_id, occupants: Vec<EntityId> }` — `occupants` enumerates ALL entities at the cell at trigger-time (PCs / NPCs / Items / EnvObjects), in deterministic sort order by `(entity_type_discriminator_u8, entity_id_uuid_bytes)` for replay-determinism
+3. **Consumer cascades fire in occupant-list order:**
+    - For each PC occupant: PCS_001 mortality cascade per `mortality_config.unsurvivable_environment` policy (V1 default: `Permadeath` → PC `Existing → Destroyed`)
+    - For each NPC occupant: NPC_001 mortality cascade (V1 placeholder: NPC `Existing → Destroyed`; full NPC-mortality V1+30d)
+    - Each consumer cascade emits its own EVT-T3 Derived `aggregate_type=entity_binding` deltas with `reason_kind = HolderCascade` per EF_001 §3.2; held items follow EF_001 §6.1 standard "drop to ground" → location InCell(now-destroyed cell)
+4. **PF cell-resident cascade:** all EnvObjects with `entity_binding.location ∈ { InCell { cell_id: place_id.0 }, Embedded { parent: <any envobject in this cell> } }` cascade `Existing → Destroyed` (`reason_kind = HolderCascade`); all Items with `location.InCell { cell_id: place_id.0 }` cascade `Existing → Destroyed` (this includes items just-dropped by step 3 PCs/NPCs — captures the surface state at end of step 3)
+
+**Why this order:**
+- Step 1+2 (Place + trigger event) MUST come first so consumers can react with full context
+- Step 3 (PC/NPC mortality) before step 4 (cell items) so dropped items from dying PCs are captured by the cell-resident cascade — matches "the corpse and everything it dropped are buried under the rubble" intuition
+- Deterministic occupant ordering ensures multi-PC scenes destroy PCs in the same order on replay (per EVT-A9)
+
+PCs/NPCs / mortality consumers are NOT silently triggered — they subscribe to the dedicated `PlaceDestroyed` sub-shape. Out-of-scope-for-PF_001 mortality MECHANICS (which damage values trigger PC death etc.) stay with PCS_001 / NPC_001; PF_001 owns only the SIGNAL contract.
 
 **V1+ deferral PF-D3:** scheduled time-decay (forest regrows after fire over fiction-time months; market crowd density cycles diurnally) — Generator framework EVT-G* ready; awaiting feature design.
 
@@ -275,18 +350,29 @@ pub enum ConnectionKind {
 
 Place declares its canonical EnvObjects at bootstrap. RealityBootstrapper instantiates EnvObject entities deterministically from the seeds; future EnvObject feature owns the body.
 
-**EnvObjectSeedDecl repeated from §3.1 for clarity:**
+**EnvObjectSeedDecl** (author-declared; lives in PlaceDecl + Forge edit payloads):
 
 ```rust
 pub struct EnvObjectSeedDecl {
-    pub seed_uid: SeedUid,                  // deterministic ID stable across reality clones
     pub envobject_kind: EnvObjectKind,      // closed enum (Door/Wall/Table/Statue/...)
-    pub slot_id: String,                    // stable position descriptor
+    pub slot_id: String,                    // stable position descriptor — author choice; e.g., "front_door", "main_counter"
     pub default_affordances: AffordanceSet, // EF_001 AffordanceFlag bitset
     pub initial_state: serde_json::Value,   // future EnvObject feature interprets
 }
+```
 
-pub struct SeedUid(pub Uuid);  // deterministic — UUID v5 from (place_id, slot_id)
+**EnvObjectSeed** (materialized; lives on `place.fixture_seed[]` post-write):
+
+```rust
+pub struct EnvObjectSeed {
+    pub seed_uid: SeedUid,                  // COMPUTED by world-service: UUID v5 from (reality_id, place_id, slot_id)
+    pub envobject_kind: EnvObjectKind,
+    pub slot_id: String,
+    pub default_affordances: AffordanceSet,
+    pub initial_state: serde_json::Value,
+}
+
+pub struct SeedUid(pub Uuid);  // never author-declared
 
 pub enum EnvObjectKind {
     Door,       // gateway between cells; can be Locked
@@ -304,11 +390,14 @@ pub enum EnvObjectKind {
 ```
 
 **Canonical instantiation flow (at RealityManifest bootstrap):**
-1. For each place, iterate `fixture_seed[]`
-2. For each seed: deterministic EnvObjectId = UUID v5 `(reality_id, place_id.0, seed_uid)` — same reality clone produces same EnvObjectIds (replay-safe per EVT-A9)
-3. Write `entity_binding` row per EF_001 §3.1: `{ entity_id: EnvObject(...), entity_type: EnvObject, location: InCell { cell_id: place_id.0 }, lifecycle_state: Existing, affordance_overrides: Some(seed.default_affordances), ... }`
-4. Future EnvObject feature owns body row (deferred V1; binding alone covers Examine + connection-gating V1)
-5. Emit EVT-T4 System `EntityBorn { entity_id, entity_type: EnvObject, cell_id, reason_kind: CanonicalSeed }` per EF_001 §13.1 sequence
+1. For each place, iterate author-declared `fixture_seed: Vec<EnvObjectSeedDecl>` from PlaceDecl
+2. For each EnvObjectSeedDecl: world-service **computes** `seed_uid = UUID v5(reality_id, place_id, slot_id)` and materializes `EnvObjectSeed` (SeedDecl + computed seed_uid) into `place.fixture_seed[]`
+3. For each materialized seed: deterministic EnvObjectId = UUID v5 `(reality_id, place_id, seed_uid)` — same reality clone produces same EnvObjectIds (replay-safe per EVT-A9; double-hash because seed_uid is itself UUID v5)
+4. Write `entity_binding` row per EF_001 §3.1: `{ entity_id: EnvObject(...), entity_type: EnvObject, location: InCell { cell_id: place_id.0 }, lifecycle_state: Existing, affordance_overrides: Some(seed.default_affordances), ... }`
+5. Future EnvObject feature owns body row (deferred V1; binding alone covers Examine + connection-gating V1)
+6. Emit EVT-T4 System `EntityBorn { entity_id, entity_type: EnvObject, cell_id, reason_kind: CanonicalSeed }` per EF_001 §13.1 sequence
+
+**Connection gate resolution** (when ConnectionDecl has `gate_slot_id: Some(...)`): at write-time, world-service resolves `gate_slot_id` against `place.fixture_seed[]` to find matching `EnvObjectSeed.slot_id`; the matched seed's `seed_uid` + derived `entity_id` becomes the gate fixture reference. Failure to match → `place.connection_gate_unresolved` (V1+ rule_id reservation; V1 trips `place.connection_target_unknown` since gate_slot_id is part of connection validation).
 
 **Affordance defaults by EnvObjectKind** (V1; future EnvObject feature may extend):
 
@@ -350,7 +439,30 @@ pub struct PlaceDecl {
     pub initial_structural_state: StructuralState,  // typically Pristine; book-canonical override possible
     pub initial_narrative_drift: serde_json::Value, // typically {} at canonical seed
     pub connections: Vec<ConnectionDecl>,
-    pub fixture_seed: Vec<EnvObjectSeedDecl>,
+    pub fixture_seed: Vec<EnvObjectSeedDecl>,       // author-declared form (no seed_uid; world-service computes)
+}
+```
+
+**EVT-T3 Derived sub-shape `PlaceDestroyed`** (Phase 3 cleanup 2026-04-26 — dedicated cascade-trigger event):
+
+```rust
+// Emitted by PF_001 immediately after a place's structural-state delta when transitioning
+// to Destroyed (per §7 cascade order step 2). Subscribers (PCS_001 / NPC_001 / Items / future
+// quest-engine) react by triggering their own per-entity cascades. Out-of-scope-for-PF_001
+// mortality MECHANICS stay with consumer features; PF_001 owns only the SIGNAL contract.
+pub struct PlaceDestroyed {
+    pub place_id: PlaceId,
+    pub occupants: Vec<EntityId>,         // ALL entities at cell at trigger time, sorted deterministically
+                                          // by (entity_type_discriminator_u8, entity_id_uuid_bytes) for replay-determinism
+    pub trigger_reason: PlaceDestructionReason,
+    pub fiction_time: FictionTime,
+}
+
+pub enum PlaceDestructionReason {
+    InteractionDestructive,               // PL_005 Strike Destructive cumulative damage
+    AdminEdit,                            // WA_003 Forge:EditPlace setting structural_state = Destroyed
+    ScheduledCatastrophe,                 // V1+30d scheduled decay event
+    NarrativeCanonization,                // V1+ canon-update changes place state
 }
 ```
 
@@ -367,13 +479,15 @@ pub struct PlaceDecl {
 | `place.connection_private` | Travel attempt through Private connection without canonical residency match | "Lối đi riêng tư, không được phép." | No |
 | `place.connection_hidden` | Travel attempt through undiscovered Hidden connection (V1: visible to all so does not fire; V1+30d when discovery flags land) | "Không nhìn thấy lối đi nào ở đây." | Yes (Examine-the-area can hint per V1+ discovery feature) |
 | `place.no_reverse_connection` | Travel attempt to reverse a OneWay connection | "Không thể quay lại đường này." | No |
-| `place.fixture_seed_uid_collision` | duplicate `seed_uid` in same place's fixture_seed list | "Trùng định danh thiết bị nội thất." | No (bootstrap invariant) |
+| `place.fixture_seed_uid_collision` | duplicate `slot_id` in same place's fixture_seed list (rule_id name preserved for namespace stability; collision detected via slot_id since seed_uid is computed) | "Trùng định danh thiết bị nội thất." | No (bootstrap invariant) |
 | `place.invalid_place_type_for_channel_tier` | place row attempted on non-cell-tier channel (continent/country/district/town) | "Loại kênh không hợp lệ cho vị trí." | No (V1 cell-only invariant) |
+| `place.self_referential_connection` | ConnectionDecl `to_place == place.place_id` (self-loop); validated at write-time | "Kết nối không thể trỏ về chính nó." | No (write-time invariant) |
 
 **V1+ rule_id reservations** (additive per I14):
 - `place.scheduled_decay_collision` — V1+30d scheduler conflict on same place
 - `place.cross_reality_connection` — V1+ multiverse portal connection between realities (PF-D6)
 - `place.procedural_generation_rejected` — V1+ Forge author-review rejects LLM-proposed place (PF-D7)
+- `place.connection_gate_unresolved` — V1+ stricter gate validation: gate_slot_id matches no fixture_seed entry at the place; V1 collapses into `place.connection_target_unknown` since gate is part of connection validation
 
 ---
 
@@ -514,7 +628,7 @@ LLM next-turn AssemblePrompt sees updated drift; players in cell observe changed
 
 1. **AC-PF-1 — RealityManifest places extension required:** RealityManifest with `places: []` (empty) but cell-tier channels declared in `root_channel_tree` rejects bootstrap with `place.missing_decl { offending_channels: [...] }`. Tests §5 invariant + §9 bootstrap order.
 2. **AC-PF-2 — Cell-tier 1:1 invariant:** RealityManifest with `places[i].place_id = town:hangzhou` (non-cell-tier channel) rejects bootstrap with `place.invalid_place_type_for_channel_tier`. Tests §5.
-3. **AC-PF-3 — PlaceType variant exhaustiveness (compile-time):** Rust unit test that uses `match place_type` without arms for all 10 V1 variants fails to compile with `error[E0004]: non-exhaustive patterns`. CI lint (mirroring AC-EF-1 pattern) flags `_ =>` arms outside designated catch-all sites with `// PF-EXHAUSTIVE-EXEMPT: <reason>` annotation.
+3. **AC-PF-3 — PlaceType variant exhaustiveness (compile-time):** Rust unit test that uses `match place_type` without arms for all 10 V1 variants fails to compile with `error[E0004]: non-exhaustive patterns`. CI lint (unified across all closed-enum exhaustiveness ACs — see EF_001 AC-EF-1 + future closed-enum features) flags `_ =>` arms outside designated catch-all sites with `// CLOSED-ENUM-EXEMPT: <reason>` annotation. Annotation namespace is repo-wide (NOT feature-prefixed) since multiple closed enums share the same exhaustiveness discipline; per-feature prefixes would fragment the convention as new closed enums are added (StatusFlag / RoleKind / LexConfigKind / etc.).
 4. **AC-PF-4 — Forbidden StructuralState transitions reject:** attempting `Destroyed → Pristine` (or `Destroyed → Damaged` or `Restored → Pristine`) rejects `place.invalid_structural_transition`. Tests §7.
 5. **AC-PF-5 — Connection target validation:** writing place row with `connections[i].to_place` pointing to non-existent PlaceId rejects `place.connection_target_unknown`. Bootstrap-time validation; runtime author-edit also validates.
 6. **AC-PF-6 — Locked connection blocks Travel V1:** PC at place A attempts /travel to place B via ConnectionKind::Locked → reject `place.connection_locked` (V1 always; V1+ key-matching deferred).
@@ -540,6 +654,9 @@ LLM next-turn AssemblePrompt sees updated drift; players in cell observe changed
 | **PF-D9** | Place-level economy (Marketplace pricing, Workshop crafting tables) | V1: places have type + state but no economic semantics | V1+ economy feature |
 | **PF-D10** | Hidden connection discovery flags (per-PC discovered_connections set) | V1: Hidden connections visible to all (effectively Public). V1+ per-PC progress + discovery via Examine | V1+30d quest/exploration |
 | **PF-D11** | V1+ container EnvObject affordance (BeContainedIn) cross-reference | requires EF_001 EF-D3; PF_001 declares EnvObjectKind::Chest with placeholder affordance V1 | Future Item + EnvObject features |
+| **PF-D12** | `BookCanonRef` shared-schema registration in `_boundaries/02_extension_contracts.md` | `BookCanonRef::AuthorCreated` variant used by PF_001 + PCS_001 (when designed) + WA_003 Forge + NPC_001 author-NPCs; envelope owner unspecified; should land alongside future IF_001 RealityManifest infrastructure feature | Future boundary cleanup pass / IF_001 design |
+| **PF-D13** | `narrative_drift` per-PlaceType opinionated schemas with versioning | V1 freeform JSONB; profile V1+30d; if authors create unstructured drift hurting LLM context coherency or operator queryability, introduce per-type schemas with monotonic versioning per I14 | V1+30d profiling + author UX review |
+| **PF-D14** | Bidirectional flag write-time mirror declaration optimization | V1 hint-only (2 reads at Travel hot-path); V1+ if profiling shows pain, switch to write-time mirror with maintained invariant | V1+30d profiling |
 
 ---
 
@@ -566,25 +683,25 @@ LLM next-turn AssemblePrompt sees updated drift; players in cell observe changed
 
 ## §18 Readiness checklist
 
-- [x] Domain concepts table covers PlaceId / PlaceType / StructuralState / NarrativeDrift / ConnectionDecl / ConnectionKind / EnvObjectSeedDecl / EnvObjectKind / PlaceDecl
-- [x] Aggregate inventory: 1 aggregate (`place` primary; T2/Channel-cell scope)
+- [x] Domain concepts table covers PlaceId / PlaceType / StructuralState / NarrativeDrift / ConnectionDecl / ConnectionKind / EnvObjectSeedDecl + EnvObjectSeed (split: author-declared vs materialized) / EnvObjectKind / PlaceDecl / PlaceDestroyed cascade-trigger
+- [x] Aggregate inventory: 1 aggregate (`place` primary; T2/Channel-cell scope); PlaceId newtype with From/Into ChannelId for ergonomic conversion (Phase 3 cleanup)
 - [x] PlaceType 10 V1 closed enum + per-type ambient cue + fixture-kind hints
 - [x] Place ↔ Channel 1:1 invariant explicit (cell-tier only)
-- [x] Connection graph: hybrid (DP hierarchy implicit + Vec<ConnectionDecl> explicit horizontal); 5 V1 ConnectionKinds
-- [x] StructuralState 4-state machine with allowed/forbidden transitions; cascade into EF_001 §6.1
-- [x] Fixture seed model: deterministic UUID v5 instantiation; 11 V1 EnvObjectKinds + per-kind affordance defaults
+- [x] Connection graph: hybrid (DP hierarchy implicit + Vec<ConnectionDecl> explicit horizontal); 5 V1 ConnectionKinds; bidirectional flag HINT-ONLY V1 (Phase 3 cleanup); travel-connection-resolver helper signature explicit
+- [x] StructuralState 4-state machine with allowed/forbidden transitions; cascade into EF_001 §6.1 — cascade-only-on-Destroyed scope explicit (Phase 3 cleanup); cascade order specified (Place delta → PlaceDestroyed signal → consumer cascades → cell-resident cascade)
+- [x] Fixture seed model: deterministic UUID v5 instantiation (computed by world-service); 11 V1 EnvObjectKinds + per-kind affordance defaults; author-declared form vs materialized form split (Phase 3 cleanup)
 - [x] RealityManifest extension `places: Vec<PlaceDecl>` (registered in `_boundaries/02_extension_contracts.md` §2)
-- [x] Reference safety policy: 11 V1 rule_ids in `place.*` namespace + 3 V1+ reservations
-- [x] Event-model mapping: EVT-T3 Derived (`aggregate_type=place`) + EVT-T4 System (`PlaceBorn`) + EVT-T8 Administrative (`Forge:EditPlace`); no new EVT-T*
+- [x] Reference safety policy: **12 V1 rule_ids** in `place.*` namespace (Phase 3 cleanup added `place.self_referential_connection`) + 4 V1+ reservations (added `place.connection_gate_unresolved`)
+- [x] Event-model mapping: EVT-T3 Derived (`aggregate_type=place` + dedicated `PlaceDestroyed` cascade-trigger sub-shape Phase 3 cleanup) + EVT-T4 System (`PlaceBorn`) + EVT-T8 Administrative (`Forge:EditPlace`); no new EVT-T*
 - [x] DP primitives: existing surface only (no new DP-K*)
 - [x] Capability JWT: existing claims (no new top-level)
-- [x] Subscribe pattern: 5 subscribers V1 (Frontend / LLM AssemblePrompt / PL_005c / WA_003 / future quest-engine)
+- [x] Subscribe pattern: 5 subscribers V1 (Frontend / LLM AssemblePrompt / PL_005c / WA_003 / future quest-engine); cascade-trigger consumers (PCS_001 / NPC_001) subscribe to dedicated `PlaceDestroyed` sub-shape
 - [x] Cross-service handoff: PlaceId JSON shape (newtype over ChannelId)
 - [x] 5 representative sequences
-- [x] 10 V1-testable acceptance scenarios (AC-PF-1..10)
-- [x] 11 deferrals (PF-D1..D11) with target phases
+- [x] 10 V1-testable acceptance scenarios (AC-PF-1..10); CLOSED-ENUM-EXEMPT annotation unified with EF_001 (Phase 3 cleanup)
+- [x] 14 deferrals (PF-D1..D14) with target phases — added PF-D12 BookCanonRef shared-schema registration · PF-D13 narrative_drift schema versioning · PF-D14 bidirectional mirror optimization
 - [x] Cross-references to all 13 affected features + foundation docs
-- [ ] Phase 3 review cleanup pending
+- [x] Phase 3 review cleanup applied 2026-04-26 (Severity 1 + 2 + 3 — PlaceId From/Into ergonomics; SeedUid computed-vs-declared split + author EnvObjectSeedDecl drops seed_uid; gate_seed_uid → gate_slot_id author-friendly; cascade-only-on-Destroyed rule explicit; bidirectional hint-only V1; lazy-cell derivation policy explicit (PL_001b §16.3); place.self_referential_connection added; PlaceDestroyed dedicated EVT-T3 sub-shape with occupants list; cascade ordering specified; Sign-as-Door typo fix; narrative_drift schema policy V1 documented; CLOSED-ENUM-EXEMPT unified annotation; travel-connection-resolver helper signature; canon_ref None narrator fallback)
 - [ ] CANDIDATE-LOCK pending closure pass + downstream updates (PCS_001 brief §4.4d / PL_005 ExamineTarget extension confirm)
 
 ---

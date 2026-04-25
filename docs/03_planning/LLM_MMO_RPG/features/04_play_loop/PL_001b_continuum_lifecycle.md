@@ -370,11 +370,41 @@ on /travel to "tương_dương":
                           metadata={ place_canon_ref: leaf_path,
                                      created_for_actor: pc_id,
                                      created_from: "lazy_travel" })
-    // PF_001 invariant: every cell-tier channel must have a place row (added 2026-04-26)
-    place_row = derive_place_from_canon_ref(leaf_path, parent=resolved_path[-2])
-                  // PlaceType + canon_ref + initial_structural_state=Pristine + empty
-                  // narrative_drift + connections derived from book canon if available;
-                  // fixture_seed empty V1 (lazy-cells get no canonical fixtures unless author edits)
+    // PF_001 invariant: every cell-tier channel must have a place row (added 2026-04-26;
+    // derivation policy clarified Phase 3 cleanup 2026-04-26)
+    place_row = derive_lazy_place(
+                  cell_id          = cell.id,
+                  parent_channel   = resolved_path[-2],
+                  source_cell      = pc.current_cell_before_travel,
+                  reality_id       = ctx.reality_id,
+                  fiction_time     = now,
+                )
+                // Derivation defaults V1:
+                //   place_type:                Wilderness (most permissive; author can edit
+                //                              via Forge:EditPlace.ChangePlaceType post-creation)
+                //   canon_ref:                 if knowledge-service has BookCanonRef for the
+                //                              leaf_path → use it; else
+                //                              BookCanonRef::AuthorCreated {
+                //                                  reality_id, fiction_time,
+                //                                  reason: LazyCellExpansion,
+                //                              }
+                //   display_name:              LocalizedName { vi: prettify_path(leaf_path),
+                //                                              en: None }
+                //                              (e.g., "tương_dương_west_gate" → "Tương Dương — West Gate")
+                //   initial_structural_state:  Pristine
+                //   initial_narrative_drift:   {}
+                //   connections:               EXACTLY ONE auto-added back-reference to source_cell:
+                //                              ConnectionDecl {
+                //                                  to_place: source_cell,
+                //                                  kind: Public,
+                //                                  bidirectional: true,
+                //                                  canon_ref: None,
+                //                                  gate_slot_id: None,
+                //                              }
+                //                              — guarantees PC can return; any other connections
+                //                              must be added via Forge later
+                //   fixture_seed:              [] (no canonical fixtures for lazy cells;
+                //                              author may seed via Forge:EditPlace.UpdateFixtureSeed)
     write place row for the new cell
   move_session_to_channel(cell)
 ```

@@ -10,7 +10,7 @@
 - **Claimed at:** —
 - **Expected work:** —
 - **Expires at:** —
-- _Last released:_ 2026-04-26 by main session (PF_001 Place Foundation DRAFT + RealityManifest places extension + light PL_001 reopen) at end of single-atomic commit. See [99_changelog.md](99_changelog.md) for details.
+- _Last released:_ 2026-04-26 by main session (PF_001 Phase 3 review cleanup S1+S2+S3 + PlaceDestroyed sub-shape register + CLOSED-ENUM-EXEMPT unification across EF_001 + PF_001) at end of single-atomic commit. See [99_changelog.md](99_changelog.md) for details.
 
 ---
 
