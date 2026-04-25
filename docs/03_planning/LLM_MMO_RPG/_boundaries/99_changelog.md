@@ -6,6 +6,35 @@
 
 ---
 
+## 2026-04-26 — EF_001 Entity Foundation closure pass → CANDIDATE-LOCK
+
+- **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — EF_001 closure pass after Phase 3 cleanup commit 734dcd7); commit (this turn) `[boundaries-lock-claim+release]`
+- **Files modified within `_boundaries/`:**
+  - `01_feature_ownership_matrix.md`:
+    - `entity_binding` row: status DRAFT → **CANDIDATE-LOCK 2026-04-26**; §14 acceptance: 10 scenarios AC-EF-1..10 noted
+    - `entity_lifecycle_log` row: status DRAFT → **CANDIDATE-LOCK 2026-04-26**; LifecycleReasonKind enum updated (split AdminRestore → AutoRestoreOnCellLoad + AdminRestoreFromRemoved + new HolderCascade); EF-D10 archiving deferral noted
+    - `EntityKind trait` schema row: updated to reflect Phase 3 trait shape split (4 body-only methods + new EntityBindingExt with 2 binding-side methods); status note CANDIDATE-LOCK 2026-04-26
+    - `EVT-T4 EntityBorn` row: status note CANDIDATE-LOCK 2026-04-26
+  - `02_extension_contracts.md` §1.4 RejectReason namespace: `entity.*` rule-id list expanded 7 V1 → **10 V1 + 2 V1+ reservations**. Added 2026-04-26 closure pass: `duplicate_binding` (primary-key violation; AC-EF-2) · `entity_type_mismatch` (denorm field doesn't match variant tag; AC-EF-3) · `lifecycle_log_immutable` (DP append_only enforcement wrapped in entity.* namespace; AC-EF-9). V1+ reservations: `cyclic_holder_graph` (when container/embedded enforcement lands EF-D3/D4) · `cross_reality_reference` (when multiverse portals land EF-D6).
+- **No `03_validator_pipeline_slots.md` changes** — EVT-V_entity_affordance slot still tracked as EF-Q3 watchpoint; physical slot ordering pending alignment review.
+- **Files modified outside `_boundaries/`** (recorded here for closure-pass auditability; full edits within EF_001 ownership):
+  - `features/00_entity/EF_001_entity_foundation.md`:
+    - Header status DRAFT → **CANDIDATE-LOCK 2026-04-26**
+    - §8 RejectReason policy table: 7 V1 rule_ids expanded to 10 V1 with full Vietnamese reject copy + 2 V1+ reservation row
+    - §14 acceptance criteria: 3 ACs (AC-EF-1 / AC-EF-8 / AC-EF-10) precision-tightened with explicit § grounding citations and atomicity scope clarifications; 3 ACs (AC-EF-2 / AC-EF-3 / AC-EF-9) rule_ids resolved against expanded §8 namespace
+    - §17 readiness checklist: CANDIDATE-LOCK box ticked; closure-pass walk-through line added
+  - `features/00_entity/_index.md`: Active cleared, folder closure status → **CLOSED for V1 design 2026-04-26**, EF_001 row updated to CANDIDATE-LOCK
+- **Reason:** §14 acceptance walk-through (per closure-pass discipline established for WA / NPC / PLT folders) caught 3 AC rule_id mismatches (entity.duplicate_binding / entity.entity_type_mismatch / entity.lifecycle_log_immutable not in §8 V1 namespace) + 3 ACs needed precision tightening (AC-EF-1 lint specificity / AC-EF-8 timing scope / AC-EF-10 atomicity scope). All resolved by §8 namespace expansion + AC text tightening. Foundation tier now ready for downstream consumption.
+- **Closes V1 entity foundation design** for the 4 EntityType variants (Pc/Npc/Item/EnvObject). Downstream impact:
+  - **PL_005 Interaction**: Item refs gap CLOSED — PL_005 V1 implementable against EF_001 contracts (entity_binding for Item locations + AffordanceFlag enforcement + entity.* RejectReason namespace). PL_005 closure pass can now proceed.
+  - **PCS_001** (when designed): brief at `features/06_pc_systems/00_AGENT_BRIEF.md` §4.4b mandatory EF_001 reading already in place; PCS_001 agent (when spawned) builds on locked EF_001 contracts including EntityKind for Pc with full 6-affordance V1 default set.
+  - **NPC_001 Cast** (CANDIDATE-LOCK): mechanical rename to entity_binding completed in commit 04607ea; ActorId stays in NPC_001 §2 as canonical actor-context type per EF_001 §5.1 sibling-types relationship.
+  - **PL_006 Status Effects**: `actor_status` keying on ActorId clarified as NOT a drift trap per EF_001 §5.1; stays as designed.
+- **Drift watchpoints unchanged** (9 active; EF-Q3 still pending validator slot alignment).
+- **Lock release:** at end of this commit (`[boundaries-lock-claim+release]`)
+
+---
+
 ## 2026-04-26 — EF_001 Entity Foundation feature registered (object foundation; actor_binding → entity_binding transfer)
 
 - **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — EF_001 Entity Foundation DRAFT, Option C max scope per user direction "object foundation trước PC/NPC/Item") at 2026-04-26 (after PL_006 Status Effects agent released); commit (this turn) `[boundaries-lock-claim+release]`

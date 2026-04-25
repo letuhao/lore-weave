@@ -110,7 +110,7 @@ Each feature owns a prefix in the `rule_id` string namespace:
 | `succession.*` | PLT_002 Succession |
 | `interaction.*` | PL_005 Interaction (added 2026-04-26) |
 | `status.*` | PL_006 Status Effects (added 2026-04-26) |
-| `entity.*` | EF_001 Entity Foundation (added 2026-04-26; 7 V1 rule_ids — entity_destroyed / entity_removed / entity_suspended / affordance_missing / invalid_entity_type / invalid_lifecycle_transition / unknown_entity) |
+| `entity.*` | EF_001 Entity Foundation (added 2026-04-26 DRAFT; expanded 2026-04-26 closure pass to 10 V1 rule_ids — entity_destroyed / entity_removed / entity_suspended / affordance_missing / invalid_entity_type / invalid_lifecycle_transition / unknown_entity / **duplicate_binding** / **entity_type_mismatch** / **lifecycle_log_immutable**; +2 V1+ reservations: cyclic_holder_graph / cross_reality_reference) |
 
 Continuum DOES NOT enumerate every variant. Each feature's design doc owns its prefix's rule_ids and the corresponding Vietnamese reject copy.
 

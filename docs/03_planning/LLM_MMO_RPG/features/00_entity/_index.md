@@ -4,9 +4,9 @@
 > **Catalog reference:** [`catalog/cat_00_EF_entity_foundation.md`](../../catalog/cat_00_EF_entity_foundation.md) (owns `EF-*` stable-ID namespace)
 > **Purpose:** Defines what counts as an addressable thing in the world. Owns the unified `EntityId` taxonomy (Pc / Npc / Item / EnvObject), spatial presence (`entity_binding`, transferred from PL_001 actor_binding), lifecycle state machine, affordance enum, and the `EntityKind` trait. Every aggregate body that consumers (PCS_001 / NPC_001 / future Item / future EnvObject) want addressable as an Entity MUST implement EntityKind.
 
-**Active:** EF_001 — **Entity Foundation** (DRAFT 2026-04-26 — Option C max scope)
+**Active:** none (folder closure pass 2026-04-26 — EF_001 at CANDIDATE-LOCK)
 
-**Folder closure status:** Open — DRAFT 2026-04-26. CANDIDATE-LOCK pending §15 acceptance verification + downstream rename completion + PCS_001 brief update.
+**Folder closure status:** **CLOSED for V1 design 2026-04-26.** EF_001 at CANDIDATE-LOCK with §14 acceptance criteria walked (10 scenarios) + Phase 3 review cleanup applied (Severity 1+2+3) + downstream rename completed (10 files, 42 occurrences) + PCS_001 brief updated. LOCK pending integration tests. No further design work in EF folder until V2+ extensions (full ECS / V1+ EntityId variants like Vehicle/Spirit/Building/Quest) or new sibling EF features open new design threads.
 
 ---
 
@@ -14,7 +14,7 @@
 
 | ID | Conversational name | Title | Status | File | Commit |
 |---|---|---|---|---|---|
-| EF_001 | **Entity Foundation** (EF) | Unified entity substrate: `EntityId` 4-variant sum type (Pc/Npc/Item/EnvObject) + `entity_binding` aggregate (transferred from PL_001 §3.6) + `entity_lifecycle_log` append-only audit + 4-state LifecycleState machine + 6 V1 AffordanceFlag closed enum + EntityKind trait spec + hard-reject + per-kind soft-override reference safety. Owns `entity.*` RejectReason namespace. 10 acceptance scenarios + 9 deferrals (EF-D1..D9). | DRAFT 2026-04-26 | [`EF_001_entity_foundation.md`](EF_001_entity_foundation.md) | (this commit) |
+| EF_001 | **Entity Foundation** (EF) | Unified entity substrate: `EntityId` 4-variant sum type (Pc/Npc/Item/EnvObject) + `entity_binding` aggregate (transferred from PL_001 §3.6) + `entity_lifecycle_log` append-only audit + 4-state LifecycleState machine + cascade rules (§6.1 holder→held propagation) + 6 V1 AffordanceFlag closed enum + EntityKind trait spec (body-only) + EntityBindingExt extension trait + ActorId/EntityId relationship documented (§5.1) + hard-reject + per-kind soft-override reference safety. Owns `entity.*` RejectReason namespace (10 V1 rule_ids + 2 V1+ reservations). 10 V1-testable acceptance scenarios AC-EF-1..10 (Phase 3 cleanup + closure-pass tightening) + 10 deferrals (EF-D1..D10). | **CANDIDATE-LOCK 2026-04-26** | [`EF_001_entity_foundation.md`](EF_001_entity_foundation.md) | 04607ea → 734dcd7 → closure (this commit) |
 
 ---
 

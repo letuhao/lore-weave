@@ -3,7 +3,7 @@
 > **Conversational name:** "Entity Foundation" (EF). The substrate that defines what counts as an addressable thing in the world — a unified `EntityId` taxonomy, spatial presence (`entity_binding`), lifecycle state machine, affordance enum, and the `EntityKind` trait that PC / NPC / Item / EnvObject aggregates implement.
 >
 > **Category:** EF — Entity Foundation (foundation tier; precedes feature folders)
-> **Status:** **DRAFT 2026-04-26** (Option C max scope per user direction "object foundation trước PC/NPC/Item")
+> **Status:** **CANDIDATE-LOCK 2026-04-26** (DRAFT 2026-04-26 → Phase 3 review cleanup 2026-04-26 → CANDIDATE-LOCK 2026-04-26 closure pass: §14 acceptance criteria walked + 3 rule_id mismatches resolved by §8 namespace expansion 7 → 10 V1 + 1 V1+ reservations + 3 ACs precision-tightened. Option C max scope per user direction "object foundation trước PC/NPC/Item")
 > **Catalog refs:** [`cat_00_EF_entity_foundation.md`](../../catalog/cat_00_EF_entity_foundation.md) — owns `EF-*` namespace (`EF-A*` axioms · `EF-D*` deferrals · `EF-Q*` open questions)
 > **Builds on:** [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) §3.6 (transfers `actor_binding` → `entity_binding` with extended scope), [DP-A1..A19](../../06_data_plane/02_invariants.md) (T2/Reality scope contract), [07_event_model](../../07_event_model/) Option C taxonomy (T3 Derived for entity_binding deltas; T4 System for entity-lifecycle DP-emitted)
 > **Resolves:** B2-derived "entity addressability" gap (PL_005 Item deferred-V1 footgun) · ActorId scope-creep (NPC_001 §2 ActorId only covered PC+NPC; Items + EnvObjects unaddressable) · per-feature ad-hoc lifecycle invention (drift trap — WA_006 originally hit) · per-feature ad-hoc reference-safety handling
@@ -392,9 +392,19 @@ EF_001 owns the **`entity.*` RejectReason namespace** in PL_001 envelope.
 | `entity.entity_removed` | reference targets `EntityId` with `lifecycle_state = Removed` | "Đối tượng đó không tồn tại trong thực tại này." | No (admin removal is out-of-fiction; no Examine fallback — narrator must not acknowledge it ever existed) |
 | `entity.entity_suspended` | reference targets `EntityId` with `lifecycle_state = Suspended` and current cell ≠ entity's cell | "Đối tượng đó hiện không có mặt ở nơi này." | Maybe (Speak rejects; Examine could narrate "not here" ambiguously) |
 | `entity.affordance_missing` | InteractionKind required affordance NOT in target's effective AffordanceSet | "Hành động này không áp dụng được với đối tượng đó." | No (mechanical refusal) |
-| `entity.invalid_entity_type` | location_kind requires specific entity_type and target violates (e.g., HeldBy targets EnvObject) | "Cấu trúc vị trí không hợp lệ cho đối tượng đó." | No (write-time validator) |
+| `entity.invalid_entity_type` | location_kind requires specific entity_type and target violates (e.g., HeldBy targets EnvObject — holder must be Pc/Npc) | "Cấu trúc vị trí không hợp lệ cho đối tượng đó." | No (write-time validator) |
 | `entity.invalid_lifecycle_transition` | aggregate-owner attempts forbidden transition (§6) | "Chuyển đổi trạng thái không hợp lệ." | No (write-time validator) |
 | `entity.unknown_entity` | `EntityId` resolves to no `entity_binding` row | "Không tìm thấy đối tượng." | No (always reject; helps debug) |
+| `entity.duplicate_binding` | second write attempt for an `entity_id` that already has an `entity_binding` row (primary-key violation; only `EntityBorn` may CREATE a row) | "Đối tượng này đã được đăng ký." | No (write-time invariant) |
+| `entity.entity_type_mismatch` | denormalized `entity_type` field doesn't match the variant tag of `entity_id` (e.g., `entity_id: Pc(...)` with `entity_type: Npc`) | "Loại đối tượng không khớp với định danh." | No (write-time validator; distinct from `invalid_entity_type` which is about location_kind constraints) |
+| `entity.lifecycle_log_immutable` | attempted in-place mutation or removal of a previously-appended `LifecycleEvent` in `entity_lifecycle_log.events` (DP-A12 append-only contract; rejection bubbles up from DP layer wrapped in `entity.*` namespace for failure UX consistency) | "Nhật ký lịch sử đối tượng không thể sửa." | No (DP append_only enforcement) |
+
+**V1+ rule_id reservations** (additive per I14, declared here for namespace stability):
+
+| rule_id | Trigger | Activation |
+|---|---|---|
+| `entity.cyclic_holder_graph` | proposed `EntityLocation` change would create a cycle in the holder/container/parent graph (e.g., Item A `HeldBy` B and B `HeldBy` A) | V1+ when container/embedded enforcement lands (EF-D3 / EF-D4); V1 holder graph is shallow (Item `HeldBy` PC/NPC only) so cycle is structurally impossible |
+| `entity.cross_reality_reference` | reference targets `EntityId` from a different reality | V1+ when multiverse portals land (EF-D6) |
 
 **Soft-override mechanism:** PL_005 InteractionKind declares per-kind tolerance flags in its kind_spec:
 ```rust
@@ -547,18 +557,18 @@ Future EVT-T1 Submitted referencing Pc(ly_minh) as agent reject with `entity.ent
 
 ## §14 Acceptance criteria
 
-10 V1-testable scenarios (AC-EF-1..10):
+10 V1-testable scenarios (AC-EF-1..10). Each names the §-rule it tests + the rule_id (for reject scenarios) so closure-pass auditors can verify rule existence.
 
-1. **AC-EF-1 — EntityId variant exhaustiveness:** Rust compile fails if a match on `EntityId` omits any of `Pc/Npc/Item/EnvObject` variants without `_` arm. CI grep for unsafe match patterns.
-2. **AC-EF-2 — entity_binding primary-key unique:** attempting to write two rows for same `entity_id` returns invariant violation `entity.duplicate_binding`.
-3. **AC-EF-3 — entity_type matches variant:** writing `entity_binding { entity_id: Pc(...), entity_type: Npc, ... }` rejects `entity.entity_type_mismatch`.
-4. **AC-EF-4 — Lifecycle forbidden transitions reject:** attempting `Removed → Suspended` rejects `entity.invalid_lifecycle_transition`.
-5. **AC-EF-5 — Affordance hard-reject:** Speak target an Item (no `be_spoken_to`) rejects `entity.affordance_missing { required: BeSpokenTo }`.
-6. **AC-EF-6 — Affordance soft-override Examine on Destroyed:** Examine of Destroyed entity returns success with narrator text "[còn lại tàn tích]" (or similar), NOT `entity.entity_destroyed` reject.
-7. **AC-EF-7 — Reference to Removed always rejects:** any InteractionKind targeting `Removed` entity rejects `entity.entity_removed` (no soft-override, even Examine).
-8. **AC-EF-8 — Suspended NPC re-load on cell entry:** Suspended NPC at cell, PC enters cell → NPC transitions Suspended → Existing within same turn-tick; NPC appears in participant_presence.
-9. **AC-EF-9 — entity_lifecycle_log append-only:** attempting to mutate a previously-appended event in lifecycle_log fails `entity.lifecycle_log_immutable`.
-10. **AC-EF-10 — Cross-entity Give updates location atomically:** PC Gives Item to NPC → entity_binding row for Item flips from `HeldBy(Pc)` → `HeldBy(Npc)` atomically with the EVT-T1 Submitted commit; no intermediate state observable.
+1. **AC-EF-1 — EntityId variant exhaustiveness (compile-time + lint):** (a) Rust unit test that uses `match entity_id` without a default arm covering all 4 variants compiles; (b) Rust unit test that omits `Item` arm fails to compile with `error[E0004]: non-exhaustive patterns`; (c) CI lint rule (clippy custom or codebase grep) flags any `match … { _ => … }` on `EntityId` outside the 3 designated catch-all sites (logging / serialization / debug-print) — flagged matches block merge until annotated `// EF-EXHAUSTIVE-EXEMPT: <reason>`. Tests rule from §5 "Why sum type over generic ID."
+2. **AC-EF-2 — entity_binding primary-key unique:** attempting to `t2_write` a second row for an `entity_id` that already has a row returns reject `entity.duplicate_binding`. Tests §3.1 rule "One row per entity_id" + §8 namespace.
+3. **AC-EF-3 — entity_type matches variant:** writing `entity_binding { entity_id: Pc(...), entity_type: Npc, ... }` rejects `entity.entity_type_mismatch`. Tests §3.1 denormalization invariant + §8 namespace.
+4. **AC-EF-4 — Lifecycle forbidden transitions reject:** attempting `Removed → Suspended` (or `Destroyed → Suspended` or `Removed → Destroyed`) rejects `entity.invalid_lifecycle_transition`. Tests §6 forbidden-transitions table + §8 namespace.
+5. **AC-EF-5 — Affordance hard-reject:** Speak target an Item with default-only AffordanceSet (no `BeSpokenTo`) rejects `entity.affordance_missing { entity_id, required_flag: BeSpokenTo }`. Tests §4 implementation matrix (Item default lacks BeSpokenTo) + §7 enforcement mapping + §8 namespace.
+6. **AC-EF-6 — Affordance soft-override Examine on Destroyed:** Examine InteractionKind (which has `tolerates_destroyed=true` per PL_005 InteractionKindSpec implementing §8 contract) targeting a Destroyed entity returns success with narrator text "[còn lại tàn tích]" (or similar Vietnamese soft-text per PL_005), NOT `entity.entity_destroyed` reject. Cross-feature dependency: PL_005 must declare `tolerates_destroyed: true` for Examine kind (DRAFT-stage now). Tests §8 soft-override mechanism.
+7. **AC-EF-7 — Reference to Removed always rejects:** any InteractionKind targeting `Removed` entity rejects `entity.entity_removed` regardless of `tolerates_destroyed` flag (no soft-override available for Removed, even Examine). Tests §8 namespace row "Soft-override eligible: No".
+8. **AC-EF-8 — Suspended NPC re-load atomically with cell-load:** Suspended NPC at cell C, PC enters cell C → within the SAME `move_entity_to_cell` write transaction (atomic; before turn-validators see the post-move state): (a) NPC transitions `Suspended → Existing` with `reason_kind=AutoRestoreOnCellLoad`; (b) DP emits `MemberJoined` for NPC on cell C; (c) participant_presence row for NPC on cell C is `Active`. PC sees NPC in scene roster on first read after PC's move turn commits. Tests §6 transition + §13.4 sequence; "atomically" = same single write transaction at writer-node, not eventual consistency.
+9. **AC-EF-9 — entity_lifecycle_log append-only:** attempting to UPDATE or DELETE a previously-appended `LifecycleEvent` in `events` Vec rejects `entity.lifecycle_log_immutable`. Append-only is enforced at DP-A12 layer (`#[dp(append_only)]` on the aggregate); the rejection wraps DP-emitted error with EF_001's `entity.*` namespace for failure-UX consistency. Tests §3.2 contract + §8 namespace.
+10. **AC-EF-10 — Cross-entity Give updates location atomically (single write tx):** PC Gives Item to NPC → exactly ONE `entity_binding` row update for the Item (`HeldBy(Pc) → HeldBy(Npc)`) within the EVT-T1 Submitted commit transaction. No additional row updates required (PC and NPC bodies are NOT touched — Item's new holder is encoded in Item's binding only; "PC's inventory" / "NPC's inventory" are read-views over `entity_binding WHERE location.HeldBy = pc_id` etc., not stored aggregates). Atomicity scope: Postgres transaction guarantees; no intermediate state observable to readers in the same reality (DP-A19 ≤1s projection lag still applies for cross-reality readers but per §5 cross-reality refs not V1). Tests §13.3 sequence + §3.1 atomic-location rule.
 
 ---
 
@@ -604,7 +614,7 @@ Future EVT-T1 Submitted referencing Pc(ly_minh) as agent reject with `entity.ent
 - [x] EntityKind trait specified — body-only methods (id / type / type_default_affordances / display_name); lifecycle + affordance-effective live on `EntityBinding` via `EntityBindingExt`; per-type default-affordance matrix
 - [x] LifecycleState 4-state machine with allowed/forbidden transitions; cascade rules for HeldBy/InContainer/Embedded propagation (§6.1)
 - [x] AffordanceFlag 6 V1 flags + V1+ reservations + per-kind enforcement mapping; bitflag repr explicit (`enumflags2::BitFlags<AffordanceFlag>` over u8 V1, u16 V1+)
-- [x] Reference safety policy: hard-reject + per-kind soft-override; 7 rule_ids in `entity.*` namespace
+- [x] Reference safety policy: hard-reject + per-kind soft-override; **10 V1 rule_ids** in `entity.*` namespace (entity_destroyed / entity_removed / entity_suspended / affordance_missing / invalid_entity_type / invalid_lifecycle_transition / unknown_entity / duplicate_binding / entity_type_mismatch / lifecycle_log_immutable) + 2 V1+ reservations (cyclic_holder_graph / cross_reality_reference)
 - [x] Event-model mapping: EVT-T3 Derived + EVT-T4 System + EVT-T6 Proposal (V1+); no new EVT-T*
 - [x] DP primitives: existing surface only (no new DP-K*)
 - [x] Capability JWT: existing claims (no new top-level)
@@ -616,7 +626,8 @@ Future EVT-T1 Submitted referencing Pc(ly_minh) as agent reject with `entity.ent
 - [x] 10 deferrals (EF-D1..D10) with target phases
 - [x] Cross-references to all 11 affected features + foundation docs
 - [x] Phase 3 review cleanup applied 2026-04-26 (Severity 1 + 2 + 3 — Rust correctness on `type_default_affordances` `&self` + `enumflags2` syntax; EntityKind trait shape split; cascade rules; AdminRestore split into AutoRestoreOnCellLoad + AdminRestoreFromRemoved + HolderCascade; ActorId/EntityId relationship; participant_presence reconciliation rule; entity_type denorm justification; EF-D10 archiving deferral)
-- [ ] CANDIDATE-LOCK — pending closure pass + downstream rename verification + PCS_001 brief update
+- [x] Closure-pass walk-through 2026-04-26 — §14 acceptance criteria walked AC-EF-1..10; 3 rule_id mismatches resolved by expanding §8 namespace 7 → 10 V1 + 2 V1+ reservations; 3 ACs (1, 8, 10) precision-tightened with explicit grounding citations
+- [x] **CANDIDATE-LOCK 2026-04-26** — downstream rename verification ✓ (10 files, 42 occurrences, mechanical sweep in commit 04607ea); PCS_001 brief update ✓ (§4.4b mandatory EF_001 reading section added 2026-04-26 in commit 04607ea); boundary matrix transfer recorded ✓; extension contracts §1.4 entity.* namespace updated ✓; changelog appended ✓
 
 ---
 
