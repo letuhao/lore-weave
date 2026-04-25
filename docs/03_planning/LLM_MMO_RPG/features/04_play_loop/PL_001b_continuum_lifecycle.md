@@ -441,6 +441,12 @@ The design is implementation-ready when world-service + roleplay-service + gatew
 | MV12-D11 | Drift tolerance: does `fiction_clock` advance even when world-rule rejects the turn? | PL_002 (rejection path) — current answer in PL_001/PL_001b: NO, advance only on accepted advance_turn. |
 | Cell auto-dormant policy | What inactivity window (DP-Ch32 default 30min) is right for our cells? | Operational tuning (Phase 5 ops) |
 | Cross-reality clock | Multiverse extensions — does fiction_clock vary per-reality independently? Yes per DP-A14 reality-scope. Cross-reality time queries via R5. | DF12 cross-reality (already withdrawn) |
+| **Boundary-review G1: cell dissolution cleanup** (added 2026-04-25) | What happens to `scene_state` and `participant_presence` rows when a cell is dissolved (DP-A18 terminal state)? V1 leaves them in Postgres; long-running realities may accumulate dead rows. | V2 ops: archive + retention policy per dissolved cells |
+| **Boundary-review G3: multi-clock realities** (added 2026-04-25) | What if author wants per-region time (different cells advancing at different rates within one reality)? Current `fiction_clock` is reality-singleton. | V2+ — needs new aggregate `region_fiction_clock` (RealityScoped × per-region) + scope-typed advance_turn |
+| **Boundary-review G4: reality-level performance limits** (added 2026-04-25) | DP-S* gives transport SLOs but Continuum-specific limits (max channels per reality, max events per channel, max simultaneously-active cells) only partial in §3.7 | V2 ops tuning + DP-S* extension if needed |
+| **Boundary-review G5: bootstrap recovery** (added 2026-04-25) | §16.5 says "operator-driven retry" but doesn't spec: what state is reality in if bootstrap fails partway? Can players bind? Recovery sequence? | Phase 5 ops + future IF_001 RealityManifest doc |
+| **Boundary-review B2: RealityManifest envelope ownership** (added 2026-04-25) | RealityManifest is extended by 5+ features (PL_001 + WA_001/002/006 + NPC_001) with no single envelope owner | Propose `IF_001_reality_manifest.md` infrastructure feature; until then `_boundaries/02_extension_contracts.md §2` is the contract |
+| **Boundary-review B3: turn_idempotency_log relocation** (added 2026-04-25) | §14.3 `turn_idempotency_log` is currently in Continuum but is really a turn-submission concern, not a place+time concern | Relocate to PL_004 Session Lifecycle when designed |
 
 ---
 

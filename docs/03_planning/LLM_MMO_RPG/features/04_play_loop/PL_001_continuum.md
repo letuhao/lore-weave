@@ -3,8 +3,9 @@
 > **Conversational name:** "Continuum" (CON). The fabric of place + time + reality that all play sits on. PC at any moment is at one cell channel + one fiction-time tuple within one reality — that joint state is "PC's continuum position". Use "Continuum" in conversation; the file ID `PL_001` is the stable referenceable ID.
 >
 > **Category:** PL — Play Loop (core runtime)
-> **Status:** CANDIDATE-LOCK 2026-04-25 (extended from DRAFT, then split — root holds contract layer §1-§10; lifecycle layer §11-§20 in [`PL_001b_continuum_lifecycle.md`](PL_001b_continuum_lifecycle.md). Awaiting integration tests for LOCK.)
+> **Status:** CANDIDATE-LOCK 2026-04-25 (extended from DRAFT, then split, then **boundary-review tightened 2026-04-25** — applied O1 thin-RejectReason, B1 envelope-ownership rule, G2 actor-removal hook; see PL_001b §18 for B2/B3 cross-cutting deferrals). Awaiting integration tests for LOCK.
 > **Companion file:** [`PL_001b_continuum_lifecycle.md`](PL_001b_continuum_lifecycle.md) — sequences (normal / sleep / travel / reconnect / rejection), bootstrap, acceptance criteria, deferrals, readiness.
+> **Boundary contract:** TurnEvent envelope owned by Continuum per [`_boundaries/02_extension_contracts.md` §1](../../_boundaries/02_extension_contracts.md). Features extend additively per foundation I14.
 > **Catalog refs:** PL-1 (session lifecycle), PL-3 (turn submission), PL-7 (event emission). Foundation layer beneath all PL-2..PL-25.
 > **Validates:** [MV12-D1..D7](../../decisions/locked_decisions.md) (page-turn fiction-time)
 > **Grounded in:** [SPIKE_01](../_spikes/SPIKE_01_two_sessions_reality_time.md) (Yên Vũ Lâu, 17 turns across 2 sessions, /sleep + /travel validated)
@@ -132,39 +133,70 @@ Bounded-catchup-window for a cell ≤ 1 second wall-clock at typical cell cardin
 
 **Feature reads them via durable subscribe** (DP-K6 `subscribe_channel_events_durable`) to (a) drive the live `participant_presence` T1 view, (b) recover that view after node failover, (c) feed bubble-up aggregators at tavern/town levels.
 
-### 3.5 `turn_envelope` — NOT an aggregate
+### 3.5 `turn_envelope` — NOT an aggregate (Continuum-owned envelope schema)
 
 The turn payload IS a channel event. There is no separate aggregate. SSOT = channel event log entry tagged with `turn_number`. Read via `subscribe_channel_events_durable` or `query_scoped_channel<TurnEvent>`.
 
+**Envelope ownership:** Continuum owns the `TurnEvent` struct ENVELOPE; other features extend it ADDITIVELY per foundation I14. See [`_boundaries/02_extension_contracts.md` §1](../../_boundaries/02_extension_contracts.md) for the contract that governs how features add fields. Schema version `TurnEventSchema = 1` (2026-04-25); bump on additive extensions.
+
 ```rust
-// Event shape (committed via dp.advance_turn(turn_data=...))
+// TurnEventSchema = 1 (Continuum-owned envelope; features add fields per
+// _boundaries/02_extension_contracts.md §1).
 pub struct TurnEvent {
+    // ─── Continuum-owned core (MUST exist) ───
     pub actor: ActorId,
-    pub intent: TurnIntent,                       // Speak | Action | MetaCommand | FastForward
+    pub intent: TurnIntent,                       // closed enum below; Continuum-owned
     pub fiction_duration_proposed: FictionDuration,
-    pub narrator_text: Option<String>,            // LLM-generated narration (post-validation; None on Rejected outcome)
-    pub command_kind: Option<CommandKind>,        // None for free narrative; Some(Sleep|Travel|Verbatim|...) for commands
-    pub command_args: Option<serde_json::Value>,
-    pub canon_drift_flags: Vec<DriftFlag>,        // populated by world-rule validator (PL-15..PL-21)
-    pub outcome: TurnOutcome,                     // Accepted | Rejected { reason: RejectReason }   — see §15
-    pub idempotency_key: Uuid,                    // client-issued at submit; server caches 60 s   — see §14
+    pub narrator_text: Option<String>,            // LLM-generated narration (post-validation; None on Rejected)
+    pub canon_drift_flags: Vec<DriftFlag>,        // populated by 05_llm_safety A6 validator
+    pub outcome: TurnOutcome,                     // closed enum below; Continuum-owned
+    pub idempotency_key: Uuid,                    // client-issued at submit; server caches 60s — see §14
+    pub causal_refs: Vec<CausalRef>,              // EVT-A6 typed causal-refs
+
+    // ─── Feature-extended (additive per I14) ───
+    pub command_kind: Option<CommandKind>,        // PL_002 Grammar owns CommandKind enum closed set
+    pub command_args: Option<serde_json::Value>,  // PL_002 owns per-command schemas
+    pub reaction_intent: Option<ReactionIntent>,  // NPC_002 Chorus owns ReactionIntent enum
+    pub aside_target: Option<ActorId>,            // NPC_002
+    pub action_kind: Option<ActionKind>,          // NPC_002 owns ActionKind + GestureKind closed sets
+    // future feature fields per the extension contract
 }
 
-pub enum TurnOutcome {
+pub enum TurnIntent {                             // Continuum-owned closed set
+    Speak,
+    Action,
+    MetaCommand,
+    FastForward,
+    Narration,
+}
+
+pub enum TurnOutcome {                            // Continuum-owned closed set
     Accepted,                                     // turn_number was advanced; fiction_clock advanced (if intent demanded)
     Rejected { reason: RejectReason },            // turn_number NOT advanced; fiction_clock NOT advanced (MV12-D11)
 }
 
-pub enum RejectReason {
-    WorldRuleViolation { rule_id: String, detail: String },   // e.g. "cannot sleep during active combat"
-    CanonDrift { flags: Vec<DriftFlag> },                      // A6 layer caught violation
-    OracleContradiction { fact_id: String },                   // A3 World Oracle disagreed
-    CapabilityDenied,                                          // late-stage capability fail
-    Other { code: String, detail: String },
+pub struct RejectReason {                         // Continuum-owned envelope shape;
+                                                  // rule_id namespaces are feature-owned
+    pub rule_id: String,                          // namespaced; see below
+    pub detail: serde_json::Value,                // feature-defined per rule_id namespace
 }
 ```
 
-**Why `outcome` is on the event (not absence-of-event):** rejected turns DO get committed as channel events for audit (Q1 decision = option (b)) — operator can debug "why is PC bouncing?" with `query_scoped_channel<TurnEvent>(... predicate=field_eq(outcome, Rejected))`. But because they tag with the *previous* `turn_number` (no advance per DP-A17 §c — `advance_turn` only increments on Accepted), rejected events sit at `turn_number = N` alongside the previous Accepted turn `N` — distinguishable by `outcome`.
+**RejectReason `rule_id` namespace ownership** (per [`_boundaries/02_extension_contracts.md` §1.4](../../_boundaries/02_extension_contracts.md)):
+- `lex.*` → WA_001 Lex
+- `heresy.*` → WA_002 Heresy
+- `mortality.*` → WA_006 Mortality (provisional)
+- `world_rule.*` → cross-cutting (any feature may use)
+- `oracle.*` → 05_llm_safety A3
+- `canon_drift.*` → 05_llm_safety A6
+- `capability.*` → DP-K9 / 05_llm_safety
+- `parse.*` → PL_002 Grammar
+- `chorus.*` → NPC_002 Chorus
+- `forge.*` / `charter.*` / `succession.*` → WA_003 / WA_004 / WA_005
+
+Continuum DOES NOT enumerate every variant. Each feature's design doc owns its prefix's rule_ids and the corresponding Vietnamese reject copy.
+
+**Why `outcome` is on the event (not absence-of-event):** rejected turns DO get committed as channel events for audit — operator can debug "why is PC bouncing?" with `query_scoped_channel<TurnEvent>(... predicate=field_eq(outcome, Rejected))`. But because they tag with the *previous* `turn_number` (no advance per DP-A17 §c — `advance_turn` only increments on Accepted), rejected events sit at `turn_number = N` alongside the previous Accepted turn `N` — distinguishable by `outcome`.
 
 **Why `idempotency_key`:** prevents duplicate-turn commits when client retries after disconnect (§14). Server-side cache at gateway: `(session_id, idempotency_key) → response` for 60 seconds; second submit with same key returns the cached response without re-running the LLM/validator chain.
 
@@ -186,6 +218,17 @@ pub struct ActorBinding {
 - Required because cells can host actors who don't have an SDK session (NPCs without active LLM interaction). Channel `MemberJoined`/`MemberLeft` covers session-bound presence; `actor_binding` covers everyone else.
 
 **NPC handoff — explicitly DEFERRED to NPC_001:** when an NPC physically moves between cells whose writer nodes differ (e.g., NPC walks from tavern T1 to tavern T2 in another district owned by node B), the handoff protocol — old-node releases, new-node binds, intermediate state during transit — is NOT designed in PL_001. PL_001 only locks the read-side contract: `actor_binding` is the SSOT for "where is X". The write side for cross-node NPC moves is NPC_001's responsibility. V1 mitigation: NPCs are statically bound to a single cell at reality-bootstrap and do not migrate; only PC `/travel` triggers cross-cell moves, and PCs are session-sticky to their own node (DP-A11) which simplifies the protocol to a single `move_session_to_channel` call.
+
+**Actor removal hook (resolves boundary-review G2):** when an actor is REMOVED from the reality (PC enters Permadeath state per WA_006 Mortality, account deleted, NPC dissolved), `actor_binding(actor_id)` MUST be cleaned up. The cleanup itself is PCS_001 / NPC_001 territory (per-actor lifecycle); PL_001 provides only the cleanup HOOK contract:
+
+```rust
+// PCS_001 / NPC_001 calls this when an actor is permanently removed
+pub async fn remove_actor_binding(ctx: &SessionContext, actor: ActorId) -> Result<(), DpError>;
+// world-service deletes the actor_binding row + emits a corresponding
+// MemberLeft event on the actor's current cell (for audit + bubble-up)
+```
+
+V1 implementation: deletion is a hard delete (history preserved in event log via the MemberLeft canonical event). V2+ may add a "tombstone" pattern if cross-feature lookups need to know "this actor used to exist".
 
 ### 3.7 Hard limits (V1)
 
