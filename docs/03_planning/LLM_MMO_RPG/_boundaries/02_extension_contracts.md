@@ -112,6 +112,7 @@ Each feature owns a prefix in the `rule_id` string namespace:
 | `status.*` | PL_006 Status Effects (added 2026-04-26) |
 | `entity.*` | EF_001 Entity Foundation (added 2026-04-26 DRAFT; expanded 2026-04-26 closure pass to 10 V1 rule_ids — entity_destroyed / entity_removed / entity_suspended / affordance_missing / invalid_entity_type / invalid_lifecycle_transition / unknown_entity / **duplicate_binding** / **entity_type_mismatch** / **lifecycle_log_immutable**; +2 V1+ reservations: cyclic_holder_graph / cross_reality_reference) |
 | `place.*` | PF_001 Place Foundation (added 2026-04-26 DRAFT; expanded 2026-04-26 Phase 3 cleanup to 12 V1 rule_ids — missing_decl / duplicate_place / invalid_structural_transition / unknown_place / connection_target_unknown / connection_locked / connection_private / connection_hidden / no_reverse_connection / fixture_seed_uid_collision / invalid_place_type_for_channel_tier / **self_referential_connection**; +4 V1+ reservations: scheduled_decay_collision / cross_reality_connection / procedural_generation_rejected / **connection_gate_unresolved**) |
+| `map.*` | MAP_001 Map Foundation (added 2026-04-26 DRAFT; 10 V1 rule_ids — missing_layout_decl / duplicate_layout / position_out_of_bounds / connection_target_unknown / cross_tier_connection_disallowed / invalid_tier_metadata / asset_ref_unresolved / asset_review_pending / connection_distance_invalid / self_referential_connection; +3 V1+ reservations: cross_reality_layout / layout_too_dense / connection_method_unsupported) |
 
 Continuum DOES NOT enumerate every variant. Each feature's design doc owns its prefix's rule_ids and the corresponding Vietnamese reject copy.
 
@@ -157,6 +158,14 @@ pub struct RealityManifest {
     // PlaceDecl; cells without decl reject bootstrap with `place.missing_decl`.
     // Higher-tier channels (continent/country/district/town) MUST NOT have place rows V1.
     pub places: Vec<PlaceDecl>,                    // see PF_001 §9 for PlaceDecl shape
+
+    // ─── MAP_001 Map Foundation extension (added 2026-04-26 DRAFT) ───
+    // REQUIRED V1: every channel (continent/country/district/town/cell) from root_channel_tree
+    // MUST have a corresponding MapLayoutDecl; channels without decl reject bootstrap with
+    // `map.missing_layout_decl`. Cell-tier MapLayoutDecl has tier_metadata=None + connections=[]
+    // (PF_001 supplies cell semantic + cell ConnectionDecl); non-cell MapLayoutDecl has full schema.
+    pub map_layout: Vec<MapLayoutDecl>,            // see MAP_001 §9 for MapLayoutDecl shape
+    pub travel_defaults: TravelDefaults,           // V1 cell-to-cell fallback duration; see MAP_001 §8 + §9
 
     // ─── Future feature extensions ───
 }

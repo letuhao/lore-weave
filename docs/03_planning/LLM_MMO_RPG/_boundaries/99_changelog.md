@@ -6,6 +6,36 @@
 
 ---
 
+## 2026-04-26 — MAP_001 Map Foundation feature registered (sibling of EF_001 + PF_001; closes map UI + Travel cost gaps)
+
+- **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — MAP_001 Map Foundation DRAFT, Option C max scope per user direction "design now"); commit (this turn) `[boundaries-lock-claim+release]`
+- **New folder + catalog created** (outside `_boundaries/`):
+  - `features/00_map/_index.md` (foundation tier folder index — sibling of `features/00_entity/` + `features/00_place/`)
+  - `features/00_map/MAP_001_map_foundation.md` (586 lines under 800 cap; 19 sections)
+  - `catalog/cat_00_MAP_map_foundation.md` (MAP-1..MAP-26 catalog entries; owns `MAP-*` namespace)
+- **Files modified within `_boundaries/`:**
+  - `01_feature_ownership_matrix.md`:
+    - **New aggregate:** `map_layout` (T2 / Channel scope; covers all tiers continent through cell). Owned by **MAP_001 Map Foundation** (DRAFT 2026-04-26). 5-variant ChannelTier closed enum + author-positioned absolute u32 (0..=1000) per-tier viewport + Option<TierMetadata> conditional + 5-variant MapConnectionKind matching PF_001 + distance_units + default_fiction_duration + 3 image asset slots V1 schema-only + 4-variant AssetSource + 3-variant AssetReviewState. Composes with PF_001 at cell tier.
+    - **Schema/envelope ownership new rows (2):**
+      - EVT-T4 System sub-type `LayoutBorn` owned by MAP_001 (emitted at canonical bootstrap; runs after PF_001 PlaceBorn at cell tier per PL_001 §16.2 step ordering)
+      - EVT-T8 Administrative sub-shape `Forge:EditMapLayout` owned by MAP_001 (joins existing Charter*/Succession*/MortalityAdminKill/Forge:EditPlace registry)
+    - **RealityManifest ownership row updated:** MAP_001 added as required-V1 contributor (`map_layout: Vec<MapLayoutDecl>` + `travel_defaults: TravelDefaults`)
+    - **RejectReason namespace prefix table:** added `map.*` → MAP_001
+    - **Stable-ID prefix ownership:** new row for `MAP-*` (foundation tier)
+    - **Drift watchpoints:** added **MAP-Q1** (validator slot ordering — extends EF-Q3 + PF-Q1) + **MAP-Q3** (Examine of non-cell-tier map node — extends PF-Q4 PL_005 ExamineTarget extension)
+  - `02_extension_contracts.md`:
+    - §2 RealityManifest current shape: added `map_layout: Vec<MapLayoutDecl>` + `travel_defaults: TravelDefaults` REQUIRED V1 fields with invariant note (every channel must have layout decl; cell-tier has tier_metadata=None + connections=[]; non-cell has full schema)
+    - §1.4 RejectReason namespace prefix table: added `map.*` owned by MAP_001 with 10 V1 rule_ids enumerated (missing_layout_decl / duplicate_layout / position_out_of_bounds / connection_target_unknown / cross_tier_connection_disallowed / invalid_tier_metadata / asset_ref_unresolved / asset_review_pending / connection_distance_invalid / self_referential_connection) + 3 V1+ reservations (cross_reality_layout / layout_too_dense / connection_method_unsupported)
+- **No `03_validator_pipeline_slots.md` changes** — EVT-V_map_layout slot tracked as MAP-Q1 watchpoint (joins EF-Q3 + PF-Q1 in single alignment review).
+- **Light PL_001b §16.2 reopen** (folded into this commit):
+  - Reality activation flow: added step ①d writing map_layout rows from `manifest.map_layout` + EVT-T4 LayoutBorn emission per channel + cell-to-layout coverage validation; step ①e writing travel_defaults; step ①f (former step d) entity_binding now references both place + map_layout rows. Lazy-cell path (§16.3) must also create map_layout row alongside place row.
+- **Reason:** user identified map UI as next gap after EF + PF foundation. Pattern: web game with node-link graph (Tiên Nghịch / EVE Online / Stellaris drill-down). User explicitly chose Option C (new sibling foundation feature; not extending PF_001) to avoid reopening just-locked PF_001. Demo at `_ui_drafts/MAP_GUI_v1.html` (commit before this) validated approach. Space-game pattern (distance + canonical Travel duration on each edge) approved Q11-a + Q12-a + Q14-a + Q15-b — removes ambiguity on PC's freely-proposed `fiction_duration_proposed`. Image asset architecture approved Q5-a + Q6-a — V1 schema reservations with V1+ MAP_002 phased pipeline (AuthorUploaded V1+30d, PlayerUploaded V1+60d, LlmGenerated V2+).
+- **Closes V1 spawn-readiness gap** for the foundation tier: 3 foundation features now complete (EF_001 + PF_001 + MAP_001). PCS_001 (when designed) + future Item + future EnvObject + future TVL_001 + future MAP_002 all build on locked foundation.
+- **Drift watchpoints:** 11 → 13 active (MAP-Q1 + MAP-Q3 added; MAP-Q4 inherited from PF §6 hint-only; MAP-Q5 internal to MAP_001).
+- **Lock release:** at end of this commit (`[boundaries-lock-claim+release]`)
+
+---
+
 ## 2026-04-26 — PF_001 Place Foundation closure pass → CANDIDATE-LOCK
 
 - **Lock claim:** main session 2026-04-26 (Claude Opus 4.7 — PF_001 closure pass after Phase 3 cleanup commit eec8d5b); commit (this turn) `[boundaries-lock-claim+release]`

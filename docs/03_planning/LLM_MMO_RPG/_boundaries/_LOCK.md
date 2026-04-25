@@ -10,7 +10,7 @@
 - **Claimed at:** —
 - **Expected work:** —
 - **Expires at:** —
-- _Last released:_ 2026-04-26 by main session (PF_001 closure pass to CANDIDATE-LOCK; 4 ACs precision-tightened post Phase-3) at end of single-atomic commit. See [99_changelog.md](99_changelog.md) for details.
+- _Last released:_ 2026-04-26 by main session (MAP_001 Map Foundation DRAFT + RealityManifest map_layout + travel_defaults extensions + light PL_001b §16.2 reopen) at end of single-atomic commit. See [99_changelog.md](99_changelog.md) for details.
 
 ---
 

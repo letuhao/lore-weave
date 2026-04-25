@@ -349,10 +349,19 @@ on RealityManifest received:
             entity_binding rows + EVT-T4 EntityBorn per EF_001 §13.1)
           (validation: every cell-tier channel created in step b MUST have a place row from
           step c; mismatch rejects activation with `place.missing_decl`)
-       d. write entity_binding for each canonical_actor (binding to the cell-path
+       d. write map_layout row for each MapLayoutDecl in manifest.map_layout   ← MAP_001 (added 2026-04-26)
+          (validation: every channel created in step b MUST have a map_layout row from
+          step d; mismatch rejects activation with `map.missing_layout_decl`. Cell-tier
+          map_layout has tier_metadata=None + connections=[] (PF_001 supplies cell
+          semantic + cell ConnectionDecl); non-cell map_layout has full schema with
+          distance_units + default_fiction_duration on connections.)
+          + emit EVT-T4 LayoutBorn per channel
+       e. write travel_defaults from manifest.travel_defaults   ← MAP_001
+          (V1 cell-to-cell fallback duration; default 1 hour)
+       f. write entity_binding for each canonical_actor (binding to the cell-path
           BEFORE that cell exists — entity_binding stores the path; cell row is
-          created lazily on first PC entry; place row already exists for declared cells
-          but lazy-created cells per §16.3 must also create a place row)
+          created lazily on first PC entry; place + map_layout rows already exist for
+          declared cells but lazy-created cells per §16.3 must also create both)
   ② emit ChannelEvent::RealityActivated on the reality root channel
   ③ subscribe ready: PCs may now `bind_session` and `move_session_to_channel`
 ```
