@@ -12,7 +12,8 @@
 
 | ID | Conversational name | Title | Status | File | Commit |
 |---|---|---|---|---|---|
-| NPC_001 | **Cast** (CST) | NPC foundation: ActorId variant model + R8-aggregate import + persona assembly + owner-node binding + cross-node handoff (resolves PL_001 §3.6 defer) + opinion stub realization (resolves PL_003 §3 stub) + EVT-T2 NPCTurn producer JWT shape | DRAFT 2026-04-25 | [`NPC_001_cast.md`](NPC_001_cast.md) | uncommitted |
+| NPC_001 | **Cast** (CST) | NPC foundation: ActorId variant model + R8-aggregate import + persona assembly + owner-node binding + cross-node handoff (resolves PL_001 §3.6 defer) + opinion stub realization (resolves NPC_002 §3 stub) + EVT-T2 NPCTurn producer JWT shape | DRAFT 2026-04-25 | [`NPC_001_cast.md`](NPC_001_cast.md) | 46f60d7 |
+| NPC_002 | **Chorus** (CHO) | Multi-NPC turn ordering. Batched orchestrator + 4-tier priority + V1 cap=3, cascade=1, sequential LLM calls. Resolves MV12-D8 (no new sub-shapes; metadata-rich Speak/Action). Catalog NPC-7. | DRAFT 2026-04-25 (relocated from 04_play_loop/) | [`NPC_002_chorus.md`](NPC_002_chorus.md) | d11dea0 (original drafted as PL_003) → relocate pending |
 
 ---
 

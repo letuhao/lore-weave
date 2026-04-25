@@ -1,12 +1,12 @@
-# PL_003 — Chorus (Multi-NPC Turn Ordering)
+# NPC_002 — Chorus (Multi-NPC Turn Ordering)
 
 > **Conversational name:** "Chorus" (CHO). Multiple NPCs in a cell reacting to a PlayerTurn — like a Greek chorus, ordered, deterministic, capped. Resolves how SPIKE_01 turn 5 (PC literacy slip observed by Du sĩ + Tiểu Thúy + Lão Ngũ) becomes a sequence of EVT-T2 NPCTurn events without violating Continuum's Strict turn-slot.
 >
-> **Category:** PL — Play Loop (core runtime)
-> **Status:** DRAFT 2026-04-25
-> **Catalog refs:** PL-9 (realtime broadcast — touches multi-actor delivery). Resolves [MV12-D8](../../decisions/locked_decisions.md) (narration taxonomy / NPC turn sub-shapes).
-> **Builds on:** [PL_001 Continuum](PL_001_continuum.md) (turn-slot Strict, channel ordering, causal_refs), [PL_002 Grammar](PL_002_command_grammar.md) (PlayerTurn sub-shapes), [07_event_model EVT-T2](../../07_event_model/03_event_taxonomy.md) (NPCTurn category — already mandates "deterministic order, defined by feature in PL_003")
-> **Defers to:** [NPC_001](../05_npc_systems/) (not yet designed) for NPC state model, opinion/relationship aggregates, NPC body-memory. PL_003 references those abstractly via interface, does NOT design them.
+> **Category:** NPC — NPC Systems
+> **Status:** DRAFT 2026-04-25 (originally drafted 2026-04-25 as `PL_003_chorus.md` in `04_play_loop/`; relocated 2026-04-25 to `05_npc_systems/` because catalog NPC-7 "Multi-NPC conversation turn arbitration" is the correct domain — multi-NPC reaction is NPC behavior, not place/time scaffold)
+> **Catalog refs:** NPC-7 (multi-NPC turn arbitration). Resolves [MV12-D8](../../decisions/locked_decisions.md) (narration taxonomy / NPC turn sub-shapes).
+> **Builds on:** [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) (turn-slot Strict, channel ordering, causal_refs), [PL_002 Grammar](../04_play_loop/PL_002_command_grammar.md) (PlayerTurn sub-shapes), [NPC_001 Cast](NPC_001_cast.md) (NPC identity, persona assembly, ActorId variants, owner-node binding, NpcOpinion::for_pc realization), [07_event_model EVT-T2](../../07_event_model/03_event_taxonomy.md) (NPCTurn category — already mandates "deterministic order, defined by feature in PL_003" — that note in 03_event_taxonomy.md predates this rename and refers to this file)
+> **Stable ID rename:** PL_003 → NPC_002. Old ID `PL_003` MUST NOT be reused for a different feature (foundation I15 stable-ID rule); references in event-model agent's files (`07_event_model/03_event_taxonomy.md`, `04_producer_rules.md`) and SPIKE_01 graduation map will be reconciled when those files next update.
 
 ---
 
@@ -20,7 +20,7 @@ PC `Lý Minh` says (turn 5, in `cell:yen_vu_lau`): "Tiểu nhị, vĩnh ngộ t�
 
 The PlayerTurn commits one EVT-T1 with `outcome=Accepted, command_kind=None` (free narrative Speak with implicit literacy hint). Then Chorus orchestrator decides: how many NPCs react, in what order, with what reaction kind. Each reaction commits a separate EVT-T2 NPCTurn with `causal_refs=[player_turn_event_id]`.
 
-**Key tension:** PL_001 §8.1 Strict turn-slot says one actor at a time per cell. Three NPCs reacting in sequence means three turn-slot claim/release cycles OR one batched orchestrator-held slot covering all three reactions. PL_003 locks: **batched** (orchestrator holds slot across the entire reaction batch; releases only after all reactions commit). The PC's submission ack returns AFTER the full batch commits, so UI sees PC turn + all 3 NPC reactions together in the multiplex stream.
+**Key tension:** PL_001 §8.1 Strict turn-slot says one actor at a time per cell. Three NPCs reacting in sequence means three turn-slot claim/release cycles OR one batched orchestrator-held slot covering all three reactions. NPC_002 locks: **batched** (orchestrator holds slot across the entire reaction batch; releases only after all reactions commit). The PC's submission ack returns AFTER the full batch commits, so UI sees PC turn + all 3 NPC reactions together in the multiplex stream.
 
 After this lock: world-service can implement the orchestrator; NPCs in SPIKE_01 turns 1-17 react with deterministic ordering; MV12-D8 narration taxonomy resolved (no new sub-shapes; metadata-rich Speak/Action covers all reaction kinds).
 
@@ -41,14 +41,14 @@ After this lock: world-service can implement the orchestrator; NPCs in SPIKE_01 
 
 ## §2.5 Event-model mapping (per 07_event_model EVT-T1..T11)
 
-PL_003 emits / consumes events that all map to existing categories — no new EVT-T* row needed.
+NPC_002 emits / consumes events that all map to existing categories — no new EVT-T* row needed.
 
-| PL_003 path | EVT-T* | Producer | Notes |
+| NPC_002 path | EVT-T* | Producer | Notes |
 |---|---|---|---|
 | Trigger consumption (PlayerTurn) | **EVT-T1** PlayerTurn (consumed) | gateway → roleplay → world-service (per PL_001/PL_002) | Read-only consumption via durable subscribe |
 | Reaction emission (one per reacting NPC) | **EVT-T2** NPCTurn | world-service orchestrator | Sub-shapes Speak / Action / Narration; **REQUIRED** causal_refs to Trigger per EVT-T2 spec |
 | Batched LLM proposals (one per reacting NPC) | **EVT-T6** LLMProposal | roleplay-service per orchestrator-coordinated call | Each promoted to EVT-T2 after validator chain |
-| Opinion / relationship update (V2 — defer to NPC_001) | **EVT-T3** AggregateMutation | NPC_001 owns the aggregate | PL_003 only triggers; aggregate definition belongs to NPC_001 |
+| Opinion / relationship update (V2 — defer to NPC_001) | **EVT-T3** AggregateMutation | NPC_001 owns the aggregate | NPC_002 only triggers; aggregate definition belongs to NPC_001 |
 | Cascade event (V2+ — out of scope) | **EVT-T2** NPCTurn cascade | same orchestrator | Cascade depth >1 V2+; V1 caps at 1 |
 
 **Closed-set proof:** every Chorus-emitted event is EVT-T2 NPCTurn (or EVT-T6 → EVT-T2). All triggers are existing EVT-T1/T2 events. No new EVT-T*.
@@ -57,7 +57,7 @@ PL_003 emits / consumes events that all map to existing categories — no new EV
 
 ## §3 Aggregate inventory
 
-Two new aggregates. Both reference NPC concepts that NPC_001 will own — PL_003 declares only the priority-related state.
+Two new aggregates. Both reference NPC concepts that NPC_001 will own — NPC_002 declares only the priority-related state.
 
 ### 3.1 `npc_reaction_priority`
 
@@ -113,12 +113,12 @@ pub enum AbortReason {
 
 ### 3.3 References
 
-PL_003 reads/writes the following aggregates without redefining them:
+NPC_002 reads/writes the following aggregates without redefining them:
 
 - **`participant_presence`** (PL_001 §3.3) — to find NPCs in scene
 - **`actor_binding`** (PL_001 §3.6) — to confirm NPC location
 - **`scene_state`** (PL_001 §3.2) — to read scene metadata for context (combat? private?)
-- **NPC opinion / relationship aggregates** — owned by **NPC_001** (not yet designed); PL_003 reads via abstract trait `NpcOpinion::for_pc(npc_id, pc_id) → OpinionScore`. V1 stub returns neutral.
+- **NPC opinion / relationship aggregates** — owned by **NPC_001** (not yet designed); NPC_002 reads via abstract trait `NpcOpinion::for_pc(npc_id, pc_id) → OpinionScore`. V1 stub returns neutral.
 - **`tool_call_allowlist`** (PL_002 §3.1) — for actor_type=NPC_Reactive when each NPC's reaction goes to LLM
 
 ---
@@ -283,7 +283,7 @@ Across SPIKE_01's 17 turns, expected reaction-budget is ~10-15 EVT-T2 events, no
 
 ### 8.5 MV12-D8 narration taxonomy (resolved here)
 
-MV12-D8 asked: "what kinds of TurnEvent payloads exist beyond Speak/Action/MetaCommand/FastForward?" PL_003's answer: **no new sub-shapes; metadata-rich Speak/Action carries the granularity.**
+MV12-D8 asked: "what kinds of TurnEvent payloads exist beyond Speak/Action/MetaCommand/FastForward?" NPC_002's answer: **no new sub-shapes; metadata-rich Speak/Action carries the granularity.**
 
 Closed set (V1, locked):
 - **EVT-T1 PlayerTurn sub-shapes:** Speak, Action, MetaCommand, FastForward, Narration (flavor, post-FastForward) — locked by PL_001 §3.5 + EVT-T1 spec
@@ -550,12 +550,12 @@ The trade-off: less reactive scenes; more predictable cost. Acceptable for V1.
 
 ## §15 Cross-references
 
-- [PL_001 Continuum](PL_001_continuum.md) — turn-slot Strict, channel ordering, causal_refs
-- [PL_001b Continuum lifecycle](PL_001b_continuum_lifecycle.md) — sequence patterns this feature mirrors
-- [PL_002 Grammar](PL_002_command_grammar.md) — tool-call allowlist for actor_type=NPC_Reactive
+- [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) — turn-slot Strict, channel ordering, causal_refs
+- [PL_001b Continuum lifecycle](../04_play_loop/PL_001b_continuum_lifecycle.md) — sequence patterns this feature mirrors
+- [PL_002 Grammar](../04_play_loop/PL_002_command_grammar.md) — tool-call allowlist for actor_type=NPC_Reactive
+- [NPC_001 Cast](NPC_001_cast.md) — NPC foundation; provides ActorId variants, NpcOpinion::for_pc realization, persona assembly used by §6 priority + §10 cross-service handoff
 - [07_event_model/02_invariants.md](../../07_event_model/02_invariants.md) — EVT-A1..A8 (esp. EVT-A4 producer binding, EVT-A6 typed causal-refs, EVT-A7 LLM proposal)
 - [07_event_model/03_event_taxonomy.md](../../07_event_model/03_event_taxonomy.md) — EVT-T2 NPCTurn (this feature's primary emission category); EVT-T6 LLMProposal (input)
-- [05_npc_systems/](../05_npc_systems/) — NPC_001 (when designed) for opinion/relationship aggregates referenced in §6
 - [decisions/locked_decisions.md](../../decisions/locked_decisions.md) — MV12-D8 resolved here (no new sub-shapes; metadata-rich Speak/Action)
 - [features/_spikes/SPIKE_01_two_sessions_reality_time.md](../_spikes/SPIKE_01_two_sessions_reality_time.md) — turn 5 obs#6 grounding
 
@@ -577,7 +577,7 @@ The trade-off: less reactive scenes; more predictable cost. Acceptable for V1.
 - [x] **§13** Cascade-rejection sequence (V1 boundary)
 - [x] **§14** Deferrals (CHO-D1..D8)
 
-**Deferred:** acceptance criteria (intentionally not in V1 of this doc). Promote to CANDIDATE-LOCK after acceptance criteria added in PL_003b or extension. NPC_001 dependency (opinion/relationship aggregates) blocks full implementation; PL_003 contracts the interface.
+**Deferred:** acceptance criteria (intentionally not in V1 of this doc). Promote to CANDIDATE-LOCK after acceptance criteria added in NPC_002b or extension. NPC_001 dependency (opinion/relationship aggregates) blocks full implementation; NPC_002 contracts the interface.
 
 **Status:** DRAFT 2026-04-25.
 

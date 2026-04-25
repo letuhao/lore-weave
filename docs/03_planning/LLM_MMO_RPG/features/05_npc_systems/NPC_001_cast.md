@@ -1,12 +1,12 @@
 # NPC_001 — Cast (NPC Foundation)
 
-> **Conversational name:** "Cast" (CST). The cast of NPCs in a reality — their identity, persona, owner-node binding, handoff protocol, opinion-with-PC stub, and the EVT-T2 NPCTurn producer contract. Pairs with PL_003 Chorus (which orchestrates multiple NPCs reacting): Cast designs the actors; Chorus directs them.
+> **Conversational name:** "Cast" (CST). The cast of NPCs in a reality — their identity, persona, owner-node binding, handoff protocol, opinion-with-PC stub, and the EVT-T2 NPCTurn producer contract. Pairs with NPC_002 Chorus (which orchestrates multiple NPCs reacting): Cast designs the actors; Chorus directs them.
 >
 > **Category:** NPC — NPC Systems
 > **Status:** DRAFT 2026-04-25
 > **Catalog refs:** NPC-1 (proxy derivation), NPC-2 (persona assembly), NPC-10 (tool calling). NPC-3a/b/c/e/f (R8 storage) consumed unchanged.
-> **Builds on:** [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) §3.6 actor_binding (resolves NPC handoff defer), [PL_003 Chorus](../04_play_loop/PL_003_chorus.md) (consumer of `npc_reaction_priority` + `NpcOpinion::for_pc` stub), [02_storage R8](../../02_storage/R08_npc_memory_split.md) (locks `npc` core + `npc_session_memory` + `npc_pc_relationship_projection`)
-> **Resolves:** PL_001 §3.6 NPC handoff defer; PL_003 §3 NPC_001 dependency stub; OOS-1 NPC↔SessionContext mapping (the part Event Model said belongs to features); ActorId variant model (used by PL_003 §11)
+> **Builds on:** [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) §3.6 actor_binding (resolves NPC handoff defer), [NPC_002 Chorus](NPC_002_chorus.md) (consumer of `npc_reaction_priority` + `NpcOpinion::for_pc` stub), [02_storage R8](../../02_storage/R08_npc_memory_split.md) (locks `npc` core + `npc_session_memory` + `npc_pc_relationship_projection`)
+> **Resolves:** PL_001 §3.6 NPC handoff defer; NPC_002 §3 NPC_001 dependency stub; OOS-1 NPC↔SessionContext mapping (the part Event Model said belongs to features); ActorId variant model (used by NPC_002 §11)
 > **Defers to:** [PCS_001](../06_pc_systems/) (not yet designed) for `PcId` newtype + xuyên không soul-body model — Cast references `PcId` abstractly. [DL_001](../12_daily_life/) (not yet) for NPC routine scenes (NPC-8 → DF1).
 
 ---
@@ -19,11 +19,11 @@ A reality is born from Thần Điêu Đại Hiệp. RealityManifest declares 3 a
 2. **Tiểu Thúy** — 16, illiterate orphan waitress. core_beliefs: kind, observant, indebted to Lão Ngũ for shelter. flexible_state: nervous around armed strangers. knowledge_tags: {"servant_gossip", "yen_vu_lau_layout"}. greeting_obligation: true (her job).
 3. **Du sĩ** — 40s, traveling scholar. core_beliefs: classical scholar, judges by literacy. flexible_state: mid-journey, reading 《Đạo Đức Kinh chú》. knowledge_tags: {"daoist_text", "wuxia_lore", "scholar_canon"}. greeting_obligation: false (transient).
 
-When PC `Lý Minh` arrives (turn 1) and quotes meta-knowledge (turn 5), all three should react per their persona — Du sĩ sharply observant (knowledge match), Lão Ngũ silently noting (Tier 4 ambient), Tiểu Thúy filtered out (PL_003 §11). Their reactions feed back into per-(NPC, PC) opinion via the `npc_pc_relationship_projection` (R8-locked).
+When PC `Lý Minh` arrives (turn 1) and quotes meta-knowledge (turn 5), all three should react per their persona — Du sĩ sharply observant (knowledge match), Lão Ngũ silently noting (Tier 4 ambient), Tiểu Thúy filtered out (NPC_002 §11). Their reactions feed back into per-(NPC, PC) opinion via the `npc_pc_relationship_projection` (R8-locked).
 
-**This feature design specifies:** how each NPC has identity (NpcId, ActorId variant); where their persona lives (R8 aggregate references + new persona-assembly contract); which game-node owns the NPC's writes (refinement of PL_001 §3.6); how an NPC moves between cells across writer-node boundaries (resolves §3.6 defer); how PL_003's `NpcOpinion::for_pc` stub becomes a real read; what JWT claims world-service needs to commit EVT-T2 NPCTurn on each NPC's behalf.
+**This feature design specifies:** how each NPC has identity (NpcId, ActorId variant); where their persona lives (R8 aggregate references + new persona-assembly contract); which game-node owns the NPC's writes (refinement of PL_001 §3.6); how an NPC moves between cells across writer-node boundaries (resolves §3.6 defer); how NPC_002's `NpcOpinion::for_pc` stub becomes a real read; what JWT claims world-service needs to commit EVT-T2 NPCTurn on each NPC's behalf.
 
-After this lock: world-service can implement NPC orchestration; PL_003 Chorus can resolve Tier 2 (high-relationship) candidates from real opinion data; NPC reactions in SPIKE_01 are reproducible with deterministic ordering; cross-cell NPC moves work without breaking writer-node binding.
+After this lock: world-service can implement NPC orchestration; NPC_002 Chorus can resolve Tier 2 (high-relationship) candidates from real opinion data; NPC reactions in SPIKE_01 are reproducible with deterministic ordering; cross-cell NPC moves work without breaking writer-node binding.
 
 ---
 
@@ -32,11 +32,11 @@ After this lock: world-service can implement NPC orchestration; PL_003 Chorus ca
 | Concept | Maps to | Notes |
 |---|---|---|
 | **NpcId** | Newtype `pub struct NpcId(pub Uuid)` | Distinct from `PcId` (owned by PCS_001) and `glossary_entity_id` (book-side). Derived deterministically from `(reality_id, glossary_entity_id)` for canonical NPCs (NPC-1 catalog: "NPC proxy derivation from glossary entity"). Author-created NPCs get fresh UUIDs. |
-| **ActorId (closed enum)** | `pub enum ActorId { Pc(PcId), Npc(NpcId), Synthetic { kind: SyntheticActorKind }, Admin(AdminId) }` | Locked here. `Pc`/`PcId` deferred to PCS_001. `Synthetic` covers ChorusOrchestrator (PL_003), BubbleUpAggregator, scheduler. `Admin` covers S5 actors. |
+| **ActorId (closed enum)** | `pub enum ActorId { Pc(PcId), Npc(NpcId), Synthetic { kind: SyntheticActorKind }, Admin(AdminId) }` | Locked here. `Pc`/`PcId` deferred to PCS_001. `Synthetic` covers ChorusOrchestrator (NPC_002), BubbleUpAggregator, scheduler. `Admin` covers S5 actors. |
 | **SyntheticActorKind** | Closed enum: `ChorusOrchestrator \| BubbleUpAggregator \| Scheduler \| RealityBootstrapper` | V1; V2+ adds. |
 | **NpcOwnerNode** | Mapping `NpcId → NodeId` resolving who writes the NPC's events | Refines PL_001 §3.6 `BindingKind::NPC_OwnerNode_<node_id>`. V1: deterministic `hash(npc_id) mod cluster_size`. Failover: re-hash on cluster membership change with explicit handoff. |
 | **NpcPersona** | Read-side projection assembled per LLM call | NOT a separate aggregate — derived from `npc.core_beliefs` + `npc.flexible_state` + `npc_session_memory` + `npc_pc_relationship_projection` per request. See §6. |
-| **NpcOpinion** | Read view backed by `npc_pc_relationship_projection` (R8-locked) | Trait `NpcOpinion::for_pc(npc_id, pc_id) → OpinionScore` — implementation queries the projection. PL_003 stub becomes real here. |
+| **NpcOpinion** | Read view backed by `npc_pc_relationship_projection` (R8-locked) | Trait `NpcOpinion::for_pc(npc_id, pc_id) → OpinionScore` — implementation queries the projection. NPC_002 stub becomes real here. |
 | **NpcCategory** | Closed enum: `Reactive \| Routine \| Ambient` | V1: `Reactive` only. `Routine` (V1+30d per EVT-T10) and `Ambient` (no LLM, decorative-only) are scaffolded but not active. |
 
 ---
@@ -45,7 +45,7 @@ After this lock: world-service can implement NPC orchestration; PL_003 Chorus ca
 
 | Cast-relevant event | EVT-T* | Producer | Notes |
 |---|---|---|---|
-| NPC speaks/acts (reaction or routine) | **EVT-T2** NPCTurn | world-service orchestrator | Cast supplies persona context for AssemblePrompt; PL_003 Chorus orchestrates ordering |
+| NPC speaks/acts (reaction or routine) | **EVT-T2** NPCTurn | world-service orchestrator | Cast supplies persona context for AssemblePrompt; NPC_002 Chorus orchestrates ordering |
 | NPC opinion update | **EVT-T3** AggregateMutation on `npc_pc_relationship_projection` | world-service post-validate | Causal-ref to triggering NPCTurn |
 | NPC LLM proposal (pre-validate) | **EVT-T6** LLMProposal | roleplay-service per Cast persona prompt | Promoted to EVT-T2 on validate |
 | Canonical NPC bootstrap (RealityManifest seed) | **EVT-T4** SystemEvent (`MemberJoined { joined_via: CanonicalSeed }`) | DP-internal | Per PL_001 §16.4 |
@@ -118,7 +118,7 @@ pub struct NpcPcRelationshipProjection {
 
 - T2 + RealityScoped.
 - Derived from `npc_session_memory` at session-end (per R8 §12H.2) — Cast does NOT directly write; world-service derives + writes per-pair.
-- Read by PL_003 Chorus Tier-2 priority. **This is the realization of PL_003's `NpcOpinion::for_pc` stub.**
+- Read by NPC_002 Chorus Tier-2 priority. **This is the realization of NPC_002's `NpcOpinion::for_pc` stub.**
 
 ### 3.4 `npc_node_binding` (NEW, owned by Cast)
 
@@ -139,12 +139,12 @@ pub struct NpcNodeBinding {
 - **Refines** PL_001 §3.6 `BindingKind::NPC_OwnerNode_<node_id>` from a string discriminator into an explicit aggregate. Reason: BindingKind was an `enum` in PL_001 (immutable until rewrite); Cast needs a dynamic owner that may handoff at runtime, requiring a real aggregate with epoch fencing.
 - `owner_node` derivation: V1 = `hash(npc_id) mod live_node_count` snapshot at reality bootstrap; mutated only by explicit handoff (§12).
 
-### 3.5 `npc_reaction_priority` — REFERENCE (PL_003-owned)
+### 3.5 `npc_reaction_priority` — REFERENCE (NPC_002-owned)
 
-PL_003 §3.1 defined this aggregate. Cast does NOT redefine. NPC_001 only:
+NPC_002 §3.1 defined this aggregate. Cast does NOT redefine. NPC_001 only:
 
 - Documents that `NpcReactionPriority.knowledge_tags` is **populated at NPC bootstrap** from `Npc.core_beliefs` (R8 aggregate's canon reference) — book canon declares which knowledge tags each canonical NPC has. Author UI may edit.
-- `NpcReactionPriority.base_priority_tier` is a hint, NOT authoritative. Final tier is computed live by PL_003 §6 algorithm using the data freshly read from `Npc` + `npc_pc_relationship_projection`.
+- `NpcReactionPriority.base_priority_tier` is a hint, NOT authoritative. Final tier is computed live by NPC_002 §6 algorithm using the data freshly read from `Npc` + `npc_pc_relationship_projection`.
 
 ---
 
@@ -156,7 +156,7 @@ PL_003 §3.1 defined this aggregate. Cast does NOT redefine. NPC_001 only:
 | `npc_session_memory` | T2 | T2 | Reality | ~1/NPC/turn during Chorus | ~1/NPC/turn (interaction logged) | R8-L1 locked. |
 | `npc_pc_relationship_projection` | T2 | T2 | Reality | ~1/NPC/Chorus-batch | derived per session-end (R8 §12H.2) | R8-L1 locked. |
 | `npc_node_binding` | T2 | T2 | Reality | ~1/NPC at orchestrator pickup | ~0 (only on handoff) | New; needed for cross-node writes. |
-| (PL_003 `npc_reaction_priority`) | (PL_003 §4) | | | | | |
+| (NPC_002 `npc_reaction_priority`) | (NPC_002 §4) | | | | | |
 
 No T0, no T1, no T3 in this feature. Justification: NPC state must persist (no T0/T1); no cross-aggregate atomicity needed (no T3 — relationship + memory writes are independent commits with causal_refs).
 
@@ -218,8 +218,8 @@ pub struct PersonaAssemblyInputs {
     pub opinion:   NpcPcRelationshipProjection, // trust, familiarity, stance_tags
     pub scene:     SceneState,                  // ambient context (PL_001 §3.2)
     pub trigger:   TurnEvent,                   // what we're reacting to
-    pub prev_reactions: Vec<TurnEvent>,         // earlier reactions in this Chorus batch (§PL_003 §10)
-    pub reaction_intent: ReactionIntent,        // PL_003 §6.4 assigned intent
+    pub prev_reactions: Vec<TurnEvent>,         // earlier reactions in this Chorus batch (§NPC_002 §10)
+    pub reaction_intent: ReactionIntent,        // NPC_002 §6.4 assigned intent
     pub fiction_time: FictionTimeTuple,         // for "is it night? am I sleepy?" tone shifts
 }
 ```
@@ -356,7 +356,7 @@ Locked: assemble fresh per LLM call. NOT cached because:
 
 Locked per R8 §12H.2: `npc_pc_relationship_projection` is **derived at session-end** from accumulated `npc_session_memory.facts`. Not updated per-turn.
 
-Why: per-turn projection updates are O(turns × NPCs × PCs) write-amplification; session-end derivation is O(NPCs × PCs)-once. PL_003 Chorus reads the projection at start of each batch — gets the LAST-SESSION-END snapshot, NOT real-time. This is ACCEPTABLE because opinion shifts are slow (days of fiction-time) and intra-session reads are rare.
+Why: per-turn projection updates are O(turns × NPCs × PCs) write-amplification; session-end derivation is O(NPCs × PCs)-once. NPC_002 Chorus reads the projection at start of each batch — gets the LAST-SESSION-END snapshot, NOT real-time. This is ACCEPTABLE because opinion shifts are slow (days of fiction-time) and intra-session reads are rare.
 
 V2+ may add: `npc_pc_relationship_projection.preview` — real-time derived view computed on read, used for high-stakes scenes (combat, romance) where intra-session opinion shift matters.
 
@@ -373,7 +373,7 @@ V1 supports only `NpcCategory::Reactive` — NPCs that wait for a Trigger (Playe
 | `NpcNodeBinding` read miss (NPC orphaned) | Cluster membership changed; binding stale | SDK rejects write with `WrongChannelWriter`; orchestrator skips this NPC for current Chorus batch; retry next turn after CP re-syncs | Background reconciliation re-derives binding from `hash(npc_id) mod current_cluster`. |
 | Persona assembly combiner missing data | `npc_session_memory` for new (npc, session) pair doesn't exist yet | Lazy-create empty memory row; combiner falls back to "no prior knowledge of this PC" | First-encounter NPCs get a clean slate. Expected and not surfaced as failure. |
 | Persona prompt exceeds LLM context window | Memory summary + recent facts + scene + trigger > token budget | World-service truncates LRU facts (last 3 facts only) + shortens summary preview; logs warning | NPC-3g catalog: V1 prototype measures + iterates. |
-| Opinion read from stale projection | Projection-applier behind by >1 session | PL_003 Chorus uses what it gets; UI shows narrative-stale reactions | Acceptable per §8.3. V2+ preview view if pain materializes. |
+| Opinion read from stale projection | Projection-applier behind by >1 session | NPC_002 Chorus uses what it gets; UI shows narrative-stale reactions | Acceptable per §8.3. V2+ preview view if pain materializes. |
 | NPC handoff race (two nodes claim same NPC) | Concurrent failover detection | Loser's writes rejected by epoch fencing per §12 | Loser observes the rejection, drops state, lets the winner proceed. No duplicate commits. |
 | Canonical NPC has no glossary entity | RealityManifest declares a CanonicalActorDecl whose glossary_entity_id doesn't exist | Bootstrap rejects with `BootstrapError::OrphanedActor` | Operator fixes manifest before retry. PL_001 §16.5 idempotent bootstrap. |
 
@@ -384,7 +384,7 @@ V1 supports only `NpcCategory::Reactive` — NPCs that wait for a Trigger (Playe
 ```text
 [Trigger event] PlayerTurn N committed at cell C
     │
-PL_003 Chorus orchestrator (this cell's writer node):
+NPC_002 Chorus orchestrator (this cell's writer node):
     select reaction candidates including npc=du_si
     │
 For each candidate (sequential):
@@ -404,7 +404,7 @@ For each candidate (sequential):
        validator chain (schema → capability → A5 → A6 → world-rule → canon-drift → causal-ref)
        on Accept: dp.advance_turn(NPCTurn { actor: ActorId::Npc(du_si), ... })
                                   → channel_event_id = N+i+1
-       on Reject: skip (PL_003 §9)
+       on Reject: skip (NPC_002 §9)
     ⑤ Cast: post-turn writes (in causality)
        dp.t2_write::<Npc>(npc_id, NpcDelta::MoodShift { ... })
        dp.t2_write::<NpcSessionMemory>(memory_id, MemoryDelta::Interaction { ... })
@@ -415,7 +415,7 @@ After all candidates:
     UI multiplex stream delivers events
 ```
 
-Wall-clock per NPC: ~20ms reads + ~500ms persona + LLM (3-5s) + ~50ms commits + ~50ms post-writes ≈ 4-6s. PL_003 cap=3 sequential ≈ 12-18s for full batch.
+Wall-clock per NPC: ~20ms reads + ~500ms persona + LLM (3-5s) + ~50ms commits + ~50ms post-writes ≈ 4-6s. NPC_002 cap=3 sequential ≈ 12-18s for full batch.
 
 ---
 
@@ -434,9 +434,9 @@ pub struct CanonicalActorDecl {
     pub category: NpcCategory,                   // V1: Reactive
     pub core_beliefs_ref: CanonRef,              // L1 canon link
     pub flexible_state_init: FlexibleState,      // initial drift (mood, voice_register, ...)
-    pub knowledge_tags: Vec<KnowledgeTag>,       // for PL_003 Tier-3 priority
-    pub greeting_obligation: bool,               // PL_003 §12 membership trigger
-    pub priority_tier_hint: Option<u8>,          // PL_003 §3.1 base hint
+    pub knowledge_tags: Vec<KnowledgeTag>,       // for NPC_002 Tier-3 priority
+    pub greeting_obligation: bool,               // NPC_002 §12 membership trigger
+    pub priority_tier_hint: Option<u8>,          // NPC_002 §3.1 base hint
 }
 ```
 
@@ -446,7 +446,7 @@ Bootstrap sequence (within PL_001 §16.2 `t3_write_multi`):
 For each CanonicalActorDecl:
   ① t2_write::<Npc> { npc_id, glossary_entity_id, core_beliefs: CanonRef, flexible_state, mood: Neutral, current_region_id: <to-be-resolved>, current_session_id: None }
   ② t2_write::<NpcNodeBinding> { npc_id, owner_node: hash(npc_id) % live_nodes, current_cell: <path-resolved>, epoch: 0 }
-  ③ t2_write::<NpcReactionPriority> { ... } at the cell channel (PL_003 §3.1)
+  ③ t2_write::<NpcReactionPriority> { ... } at the cell channel (NPC_002 §3.1)
   ④ t2_write::<actor_binding> { actor: ActorId::Npc(npc_id), current_channel: cell, ... }
 
   (npc_session_memory NOT created here — lazy on first session bind)
@@ -565,7 +565,7 @@ On session-end signal (PC closes browser, idle timeout, /signoff):
 - [PL_001 Continuum](../04_play_loop/PL_001_continuum.md) — §3.6 actor_binding (NPC handoff defer resolved here)
 - [PL_001b Continuum lifecycle](../04_play_loop/PL_001b_continuum_lifecycle.md) — §16 bootstrap which Cast extends
 - [PL_002 Grammar](../04_play_loop/PL_002_command_grammar.md) — tool-call allowlist for actor_type=NPC_Reactive
-- [PL_003 Chorus](../04_play_loop/PL_003_chorus.md) — primary consumer; resolves §3 NPC_001 dependency stub + §6 NpcOpinion::for_pc trait
+- [NPC_002 Chorus](NPC_002_chorus.md) — primary consumer; resolves §3 NPC_001 dependency stub + §6 NpcOpinion::for_pc trait
 - [02_storage R08](../../02_storage/R08_npc_memory_split.md) — locked aggregate shapes Cast imports unchanged
 - [07_event_model/02_invariants.md](../../07_event_model/02_invariants.md) — EVT-A4 producer binding (Cast adds `produce: NPCTurn` claim)
 - [07_event_model/03_event_taxonomy.md](../../07_event_model/03_event_taxonomy.md) — EVT-T2 NPCTurn (this feature's primary emission category)
@@ -593,8 +593,8 @@ On session-end signal (PC closes browser, idle timeout, /signoff):
 
 **Deferred:** acceptance criteria (intentionally not in V1 of this doc). Promote to CANDIDATE-LOCK after acceptance criteria added (in a future extension or NPC_001b if needed).
 
-**Unblocks:** PL_003 Chorus's `NpcOpinion::for_pc` stub becomes real. PL_001 §3.6 NPC handoff defer resolved. EVT-T2 producer JWT claim shape locked. ActorId variant closed-set locked (Pc deferred to PCS_001 for the PcId newtype itself).
+**Unblocks:** NPC_002 Chorus's `NpcOpinion::for_pc` stub becomes real. PL_001 §3.6 NPC handoff defer resolved. EVT-T2 producer JWT claim shape locked. ActorId variant closed-set locked (Pc deferred to PCS_001 for the PcId newtype itself).
 
 **Status:** DRAFT 2026-04-25.
 
-**Next** (when this doc locks): world-service adds Cast persona-assembly module; book-ingestion pipeline (knowledge-service) extends RealityManifest with Cast's CanonicalActorDecl fields; CP gains NPC node-binding registry (Phase 5 ops). Vertical-slice target: SPIKE_01 turn 5 with real (not stub) opinion data feeding PL_003 Chorus Tier-2 selection.
+**Next** (when this doc locks): world-service adds Cast persona-assembly module; book-ingestion pipeline (knowledge-service) extends RealityManifest with Cast's CanonicalActorDecl fields; CP gains NPC node-binding registry (Phase 5 ops). Vertical-slice target: SPIKE_01 turn 5 with real (not stub) opinion data feeding NPC_002 Chorus Tier-2 selection.

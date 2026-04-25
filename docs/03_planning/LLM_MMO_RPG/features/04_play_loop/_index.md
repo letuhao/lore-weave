@@ -15,7 +15,7 @@
 | PL_001 | **Continuum** (CON) | Contract layer §1-§10: aggregates + tier table + DP primitives + capabilities + subscribe + patterns + failure UX + cross-service handoff | CANDIDATE-LOCK 2026-04-25 | [`PL_001_continuum.md`](PL_001_continuum.md) | b4ea611 + 1364487 + extension pending |
 | PL_001b | Continuum lifecycle (CON-L) | Lifecycle layer §11-§20: 5 sequences (normal/sleep/travel/reconnect/rejection) + bootstrap + 16 acceptance criteria | CANDIDATE-LOCK 2026-04-25 | [`PL_001b_continuum_lifecycle.md`](PL_001b_continuum_lifecycle.md) | a4f2d26 |
 | PL_002 | **Grammar** (GR) | Command grammar (5 V1 commands: /verbatim /prose /sleep /travel /help) + intent classifier dispatch + tool-call allowlist + per-rule_id Vietnamese reject copy. Resolves MV12-D9. EVT-T* aligned. | DRAFT 2026-04-25 | [`PL_002_command_grammar.md`](PL_002_command_grammar.md) | f89aa48 |
-| PL_003 | **Chorus** (CHO) | Multi-NPC turn ordering. Batched orchestrator pattern + 4-tier priority algorithm + V1 cap=3, cascade=1, sequential LLM calls. Resolves MV12-D8 (no new sub-shapes; metadata-rich Speak/Action). | DRAFT 2026-04-25 | [`PL_003_chorus.md`](PL_003_chorus.md) | uncommitted |
+| ~~PL_003~~ → **NPC_002** | (relocated) | Multi-NPC turn ordering — was originally drafted here as PL_003 Chorus, then relocated to `05_npc_systems/` because catalog NPC-7 ("Multi-NPC conversation turn arbitration") is the correct domain. See [`../05_npc_systems/NPC_002_chorus.md`](../05_npc_systems/NPC_002_chorus.md). | RELOCATED 2026-04-25 | (moved) | d11dea0 (original) → relocate pending |
 
 ---
 
