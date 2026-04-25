@@ -6,10 +6,8 @@
 
 ## Current owner
 
-- **Owner:** event-model agent (07_event_model Phase 6 — Generator Framework + Coordinator service spec)
-- **Claimed at:** 2026-04-25 (late evening, post-folder-closure reopening)
-- **Expected work:** add EVT-G* prefix to stable-ID prefix table; register Generator Registry as new ownership row; reflect in changelog. Phase 6 introduces `12_generation_framework.md` covering EVT-G1..G6 (registry + trigger taxonomy + cycle detection + capacity governance + coordinator spec + extension procedure).
-- **Expires at:** 2026-04-26 02:00 (4h TTL from claim)
+- **Owner:** **None** (folder unlocked; any agent may claim)
+- _Last released:_ 2026-04-25 (late evening) by event-model agent (Phase 6 Generator Framework) after Phase 6 commit. See [99_changelog.md](99_changelog.md) for details.
 
 ---
 

@@ -6,6 +6,22 @@
 
 ---
 
+## 2026-04-25 (late evening, post-closure) — 07_event_model Phase 6 Generation Framework
+
+- **Lock claim:** event-model agent (Phase 6 Generator Framework + Coordinator service spec) at 2026-04-25 (late evening, post-folder-closure reopening); commit `03560eb` `[boundaries-lock-claim]`
+- **Files modified:**
+  - `01_feature_ownership_matrix.md`:
+    - Stable-ID prefix table EVT-* row extended: added `EVT-P1`/`P3`/`P4`/`P5`/`P6`/`P8` active markers + `EVT-P2`/`P7`/`P9`/`P10`/`P11` `_withdrawn` markers (catching up from Option C earlier this session); added `EVT-V1..V7` / `EVT-L1..L19` / `EVT-S1..S6` numeric ranges as Phase 3-4 reflection; **added new `EVT-G1..G6` namespace** for Phase 6 Generation Framework
+    - Schema/envelope ownership table: added new **Generator Registry** row (Phase 6 EVT-G1) — declares ownership pattern: 07_event_model owns the registry framework; per-feature owns specific generators with composite `logical_id` + blake3 `registry_uuid`; Coordinator runs in-process per channel-writer (no new service binary V1)
+- **No other boundary files modified** — `02_extension_contracts.md` unchanged (extension contracts are about cross-feature schemas; Generator Registry is its own concept); `03_validator_pipeline_slots.md` unchanged (validators are distinct from generators)
+- **Reason:** user identified post-Option-C systematic-management gap for event generation. Original Phase 1-5 had axiom-level coverage (EVT-A9 RNG determinism + EVT-A12 (f) extensibility) but lacked operational framework. User picked Option C ("đi sâu vào thiết kế cái này để nếu có sai thì chưa cháy kịp thời ngay từ bây giờ") — full framework + Coordinator service design at design phase to fail-fast before V1+30d implementation. 5 sub-decisions D6.1-D6.5 approved (in-process per channel-writer / composite+UUID ID / both static+runtime cycle detection / tiered capacity / new EVT-G* prefix).
+- **Phase 6 deliverable:** new `07_event_model/12_generation_framework.md` (343 lines, 6 sections covering EVT-G1 Registry + EVT-G2 5-source typed taxonomy + EVT-G3 cycle detection + EVT-G4 capacity governance + EVT-G5 Coordinator spec + EVT-G6 extension procedure). Deployment: in-process per channel-writer (zero new service binary V1; matches DP-Ch26 pattern). 6 failure modes that fragmented per-feature generation would hit are explicitly addressed.
+- **Closes original-goal #4** ("generate event theo điều kiện + xác suất") at systematic level. EVT-A12 extension point (f) "new generation rule" operationalized with 6-step procedure.
+- **Drift watchpoints unchanged** (8 still active; no new boundary review items)
+- **Lock release:** at end of Phase 6 commit (this turn)
+
+---
+
 ## 2026-04-25 (late evening) — 07_event_model Option C redesign Phase 1
 
 - **Lock claim:** event-model agent (07_event_model Option C redesign) at 2026-04-25 (late evening); commit `66ce219` `[boundaries-lock-claim]`

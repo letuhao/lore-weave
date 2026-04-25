@@ -2,7 +2,7 @@
 
 > **Purpose:** Domain-shaped layer above the Data Plane. Owns event TAXONOMY, PRODUCER rules, VALIDATOR pipeline, per-category CONTRACTS, LIFECYCLE (proposal → validation → commit → fan-out), and SCHEMA VERSIONING. Sits on top of [`../06_data_plane/`](../06_data_plane/) (LOCKED) which owns transport (ordering, durability, fan-out, channel hierarchy).
 >
-> **Status:** **Phase 1 LOCKED 2026-04-25 + Option C redesign 2026-04-25.** Foundation: **12 axioms** (EVT-A1..A12 — A4/A7/A8 reframed mechanism-level; A9/A10/A11/A12 added) + **6 active mechanism-level categories** (EVT-T1 Submitted / T3 Derived / T4 System / T5 Generated / T6 Proposal / T8 Administrative) + 5 retired (T2/T7/T9/T10/T11 `_withdrawn` per I15). Closed-set proof against PL_001 / PL_002 / NPC_001 / NPC_002 / SPIKE_01 holds under redesigned taxonomy. Feature authors MAY cite EVT-A* / EVT-T* IDs. Phase 2 (producers + contracts) thin-rewrite pending; Phase 3 (validators + LLM bus), Phase 4 (scheduling + causal + replay + versioning), Phase 5 (quickstart) pending.
+> **Status:** **Phases 1-6 LOCKED 2026-04-25.** Foundation: **12 axioms** (EVT-A1..A12) + **6 active categories** (T1/T3/T4/T5/T6/T8) + EVT-P1..P11 (6 active) + EVT-V1..V7 + EVT-L1..L19 + EVT-S1..S6 + **EVT-G1..G6** (Phase 6 Generator Framework + Coordinator spec, late evening). 5 retired (T2/T7/T9/T10/T11 + matching P*) per I15. Closed-set proof holds under redesigned taxonomy. **All Phase deferrals + original-goal #4 (generate event theo điều kiện + xác suất) RESOLVED at systematic level.** Folder closed for design (re-opened briefly for Phase 6 fail-fast pass; closed again post-Phase-6).
 >
 > **Relationship to DP:** DP is "TCP/IP for game state". Event Model is "HTTP semantic for game state". DP guarantees a totally-ordered durable event stream per channel; Event Model defines what TYPES of events exist, who produces them, how they're validated, and how their schemas evolve.
 
@@ -68,6 +68,7 @@ Without this folder, every feature has to relitigate event semantics. With it, f
 | 09 | [`09_causal_references.md`](09_causal_references.md) | LOCKED Phase 4a (Option C) | EVT-L12..L15; resolves EVT-Q5 | 2026-04-25 |
 | 10 | [`10_replay_semantics.md`](10_replay_semantics.md) | LOCKED Phase 4b (Option C) | EVT-L16..L19; resolves EVT-Q6/Q10 | 2026-04-25 |
 | 11 | [`11_schema_versioning.md`](11_schema_versioning.md) | LOCKED Phase 4b (Option C); resolves DP Q5 + EVT-Q7/Q9 | EVT-S1..S6 | 2026-04-25 |
+| 12 | [`12_generation_framework.md`](12_generation_framework.md) | LOCKED Phase 6 (post-Option-C, fail-fast design) | EVT-G1..G6; closes original-goal #4 (generate event theo điều kiện + xác suất) at systematic level | 2026-04-25 (late evening) |
 | 22 | [`22_event_design_quickstart.md`](22_event_design_quickstart.md) | LOCKED Phase 5 (Option C closure) | — (bridging doc) | 2026-04-25 |
 | 99 | [`99_open_questions.md`](99_open_questions.md) | OPEN — Phase 1 seed (EVT-Q1..Q10 + MV12-D8..D11 cross-refs) | EVT-Q* | 2026-04-25 |
 
