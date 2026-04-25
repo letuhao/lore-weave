@@ -1,5 +1,7 @@
-# PL_001 — Place + Time Foundation
+# PL_001 — Continuum (Place + Time + Reality Foundation)
 
+> **Conversational name:** "Continuum" (CON). The fabric of place + time + reality that all play sits on. PC at any moment is at one cell channel + one fiction-time tuple within one reality — that joint state is "PC's continuum position". Use "Continuum" in conversation; the file ID `PL_001` is the stable referenceable ID.
+>
 > **Category:** PL — Play Loop (core runtime)
 > **Status:** DRAFT 2026-04-25 (first implementation-ready feature design after kernel-design-CLOSED at SR12 + DP Phase 4 LOCK)
 > **Catalog refs:** PL-1 (session lifecycle), PL-3 (turn submission), PL-7 (event emission). Foundation layer beneath all PL-2..PL-25.

@@ -4,15 +4,15 @@
 > **Catalog reference:** [`catalog/cat_04_PL_play_loop.md`](../../catalog/cat_04_PL_play_loop.md) (owns `PL-*` stable-ID namespace)
 > **Purpose:** The moment-to-moment core gameplay — turn submission, response, session-tick, time-advancement, scene transitions. High-touch with hot-path SDK (being designed by another agent).
 
-**Active:** PL_001 (DRAFT 2026-04-25 — first concrete implementation-ready feature design after DP Phase 4 LOCK)
+**Active:** PL_001 — **Continuum** (DRAFT 2026-04-25 — first concrete implementation-ready feature design after DP Phase 4 LOCK)
 
 ---
 
 ## Feature list
 
-| ID | Title | Status | File | Commit |
-|---|---|---|---|---|
-| PL_001 | Place + Time Foundation (channels, fiction_clock, scene_state, turn-slot, CausalityToken chain) | DRAFT 2026-04-25 | [`PL_001_place_time_foundation.md`](PL_001_place_time_foundation.md) | (uncommitted) |
+| ID | Conversational name | Title | Status | File | Commit |
+|---|---|---|---|---|---|
+| PL_001 | **Continuum** (CON) | Place + Time + Reality Foundation (channels, fiction_clock, scene_state, turn-slot, CausalityToken chain) | DRAFT 2026-04-25 | [`PL_001_continuum.md`](PL_001_continuum.md) | b4ea611 (rename pending) |
 
 ---
 
