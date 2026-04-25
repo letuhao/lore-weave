@@ -3,7 +3,8 @@
 > **Conversational name:** "Continuum" (CON). The fabric of place + time + reality that all play sits on. PC at any moment is at one cell channel + one fiction-time tuple within one reality — that joint state is "PC's continuum position". Use "Continuum" in conversation; the file ID `PL_001` is the stable referenceable ID.
 >
 > **Category:** PL — Play Loop (core runtime)
-> **Status:** DRAFT 2026-04-25 (first implementation-ready feature design after kernel-design-CLOSED at SR12 + DP Phase 4 LOCK)
+> **Status:** CANDIDATE-LOCK 2026-04-25 (extended from DRAFT, then split — root holds contract layer §1-§10; lifecycle layer §11-§20 in [`PL_001b_continuum_lifecycle.md`](PL_001b_continuum_lifecycle.md). Awaiting integration tests for LOCK.)
+> **Companion file:** [`PL_001b_continuum_lifecycle.md`](PL_001b_continuum_lifecycle.md) — sequences (normal / sleep / travel / reconnect / rejection), bootstrap, acceptance criteria, deferrals, readiness.
 > **Catalog refs:** PL-1 (session lifecycle), PL-3 (turn submission), PL-7 (event emission). Foundation layer beneath all PL-2..PL-25.
 > **Validates:** [MV12-D1..D7](../../decisions/locked_decisions.md) (page-turn fiction-time)
 > **Grounded in:** [SPIKE_01](../_spikes/SPIKE_01_two_sessions_reality_time.md) (Yên Vũ Lâu, 17 turns across 2 sessions, /sleep + /travel validated)
@@ -106,6 +107,21 @@ pub struct ParticipantPresence {
 - One row per `(channel_id, actor)` pair.
 - Snapshot interval: default 10s (DP-T1 default). Acceptable because cell cardinality is small (typically 2–5 actors).
 
+**Rebuild algorithm (after T1 loss / writer-node failover):**
+
+```text
+seed_set = {}
+stream = subscribe_channel_events_durable::<MembershipEvent>(ctx, cell, from_event_id=0)
+WHILE stream.next() returns within bounded-catchup-window:
+  evt = stream.next()
+  MATCH evt:
+    MemberJoined { actor, .. } → seed_set.insert(actor, PresenceState::Active, idle_since=evt.turn_number)
+    MemberLeft   { actor, .. } → seed_set.remove(actor)
+write seed_set as bulk T1 via t1_write_batch (one call per actor)
+```
+
+Bounded-catchup-window for a cell ≤ 1 second wall-clock at typical cell cardinality (≤500 cumulative join/leave events over a cell's lifetime). For long-lived cells exceeding that, world-service maintains a daily T2 snapshot of the seed_set and rebuilds from latest snapshot + tail catchup.
+
 ### 3.4 Canonical membership events (DP-emitted, NOT a feature aggregate)
 
 `MemberJoined` / `MemberLeft` channel events are emitted by DP itself per DP-A18 §c when:
@@ -126,12 +142,31 @@ pub struct TurnEvent {
     pub actor: ActorId,
     pub intent: TurnIntent,                       // Speak | Action | MetaCommand | FastForward
     pub fiction_duration_proposed: FictionDuration,
-    pub narrator_text: Option<String>,            // LLM-generated narration (post-validation)
+    pub narrator_text: Option<String>,            // LLM-generated narration (post-validation; None on Rejected outcome)
     pub command_kind: Option<CommandKind>,        // None for free narrative; Some(Sleep|Travel|Verbatim|...) for commands
     pub command_args: Option<serde_json::Value>,
     pub canon_drift_flags: Vec<DriftFlag>,        // populated by world-rule validator (PL-15..PL-21)
+    pub outcome: TurnOutcome,                     // Accepted | Rejected { reason: RejectReason }   — see §15
+    pub idempotency_key: Uuid,                    // client-issued at submit; server caches 60 s   — see §14
+}
+
+pub enum TurnOutcome {
+    Accepted,                                     // turn_number was advanced; fiction_clock advanced (if intent demanded)
+    Rejected { reason: RejectReason },            // turn_number NOT advanced; fiction_clock NOT advanced (MV12-D11)
+}
+
+pub enum RejectReason {
+    WorldRuleViolation { rule_id: String, detail: String },   // e.g. "cannot sleep during active combat"
+    CanonDrift { flags: Vec<DriftFlag> },                      // A6 layer caught violation
+    OracleContradiction { fact_id: String },                   // A3 World Oracle disagreed
+    CapabilityDenied,                                          // late-stage capability fail
+    Other { code: String, detail: String },
 }
 ```
+
+**Why `outcome` is on the event (not absence-of-event):** rejected turns DO get committed as channel events for audit (Q1 decision = option (b)) — operator can debug "why is PC bouncing?" with `query_scoped_channel<TurnEvent>(... predicate=field_eq(outcome, Rejected))`. But because they tag with the *previous* `turn_number` (no advance per DP-A17 §c — `advance_turn` only increments on Accepted), rejected events sit at `turn_number = N` alongside the previous Accepted turn `N` — distinguishable by `outcome`.
+
+**Why `idempotency_key`:** prevents duplicate-turn commits when client retries after disconnect (§14). Server-side cache at gateway: `(session_id, idempotency_key) → response` for 60 seconds; second submit with same key returns the cached response without re-running the LLM/validator chain.
 
 ### 3.6 `actor_binding`
 
@@ -149,6 +184,24 @@ pub struct ActorBinding {
 - T2 + RealityScoped: every actor in a reality has exactly one current location at any time. Querying "where is Tiểu Thúy?" = `read_projection_reality<ActorBinding>(ctx, actor_id)`.
 - Updated whenever `move_actor_to_cell` is invoked (which is itself a feature method that wraps `move_session_to_channel` for PCs and an internal NPC handoff for NPCs).
 - Required because cells can host actors who don't have an SDK session (NPCs without active LLM interaction). Channel `MemberJoined`/`MemberLeft` covers session-bound presence; `actor_binding` covers everyone else.
+
+**NPC handoff — explicitly DEFERRED to NPC_001:** when an NPC physically moves between cells whose writer nodes differ (e.g., NPC walks from tavern T1 to tavern T2 in another district owned by node B), the handoff protocol — old-node releases, new-node binds, intermediate state during transit — is NOT designed in PL_001. PL_001 only locks the read-side contract: `actor_binding` is the SSOT for "where is X". The write side for cross-node NPC moves is NPC_001's responsibility. V1 mitigation: NPCs are statically bound to a single cell at reality-bootstrap and do not migrate; only PC `/travel` triggers cross-cell moves, and PCs are session-sticky to their own node (DP-A11) which simplifies the protocol to a single `move_session_to_channel` call.
+
+### 3.7 Hard limits (V1)
+
+Locked to keep the design analyzable. Any value crossed at runtime → `WorldRuleViolation` reject; not a panic.
+
+| Limit | Value | Why | Enforcement point |
+|---|---|---|---|
+| Max channel tree depth | 16 | Per DP-Ch1 invariant. | DP — `create_channel` rejects deeper trees. |
+| Max actors per cell | 32 | Cell is a "scene"; >32 actors degrades narrative coherence and LLM context-window usability. Tavern-or-bigger channels host crowds via bubble-up summaries, not full presence. | world-service before `move_actor_to_cell`; rejects with `RejectReason::WorldRuleViolation { rule_id: "cell_capacity" }`. |
+| Max active turn-slots per writer node | 64 | Memory bound on outstanding LLM streams. Exceeded → new claims get `RateLimited`. | DP-A11 writer node. |
+| Max `fiction_duration` per single turn | 30 days fiction-time | Prevents accidental "/sleep for 1000 years" wedging the world. `/travel` caps at 30 days; longer journeys split across multiple turns or use a dedicated `/long_journey` command (V2). | world-service validator. |
+| Max idempotency-key TTL | 60 seconds wall-clock | §14 reconnect window. Beyond TTL, retry is treated as a new turn. | gateway in-memory cache. |
+| Max `narrator_text` size | 8 KB | LLM output filter; bigger outputs are rejected as `WorldRuleViolation { rule_id: "narrator_size" }` before commit. | output-filter (PL-20). |
+| Max ambient `notable_props` per scene | 16 | Scene complexity ceiling for LLM context. | world-service on `t2_write::<SceneState>`. |
+
+These are V1 caps. Tuning happens in Phase 5 ops — but any change is a design event, not a config flip (per DP-A9 spirit: tier and limits are design-time choices).
 
 ---
 
@@ -381,120 +434,23 @@ V1 can simplify by passing T2 to UI (since T3 is reality-scoped and T2 is also r
 
 ---
 
-## §11 Sequence: one normal turn (Session 1, Turn 4 — PC says "Tiểu nhị, lấy cho ta một bình trà")
+## §11..§20 — Continued in PL_001b
 
-```text
-UI: type text + send → gateway POST /v1/turn
+End of contract layer. The dynamic layer (sequences, bootstrap, acceptance criteria) is in the companion file:
 
-gateway → roleplay-service:
-  intent = FreeNarrative (Speak)
-  PL-4 prompt assembly with NPC=Tiểu Thúy + scene from SceneState read
-  PL-5 LLM stream → narrator_text "Tiểu Thúy mỉm cười, gật đầu rồi quay đi pha trà..."
-  PL-19/PL-20 sanitize/filter passes
-  emit proposal: TurnProposal { actor: pc_id, intent: Speak, narrator_text, fiction_duration: 30s }
+→ **[`PL_001b_continuum_lifecycle.md`](PL_001b_continuum_lifecycle.md)**
 
-world-service (consumer):
-  PL-15 classify (cross-check): Speak ✓
-  PL-16 oracle: tea-pot exists in scene props ✓
-  PL-21 retrieval-isolation: ok ✓
-  claim_turn_slot
-  advance_turn(turn_data=TurnEvent::Speak { ... })           → T1
-  t2_write FictionClock += 30s                                → T2
-  release_turn_slot
-  return T2 to gateway
+Sections:
 
-UI: subscribe-stream delivers TurnEvent → render narrator_text + advance clock display
+- §11 Sequence: normal turn
+- §12 Sequence: /sleep (fast-forward across day boundary)
+- §13 Sequence: /travel (5-op chain, ASCII flow, edge cases)
+- §14 Reconnect/resume + idempotency (UUID key, 60s gateway cache + world-service `turn_idempotency_log`)
+- §15 Rejection path (Q1=option-b: `TurnEvent { outcome: Rejected }` committed via plain `t2_write`, NOT `advance_turn`; `turn_number` stays at N, MV12-D11 honored)
+- §16 Bootstrap (Q2=hybrid: book manifest declares root tree + fiction_clock; cells lazy-create)
+- §17 Acceptance criteria (16 scenarios — AC-1..AC-16)
+- §18 Open questions deferred + landing point
+- §19 Cross-references
+- §20 Implementation readiness checklist (combined PL_001 + PL_001b)
 
-NPC react (next turn, automatic):
-  world-service schedules NPC turn for Tiểu Thúy
-  emit NPC proposal via internal LLM call
-  → same flow, ending with another advance_turn
-```
-
-Wall-clock budget per turn (DP latency budgets): claim_turn_slot ≤10ms + advance_turn ≤50ms (T2 ack) + t2_write ≤5ms + release ≤5ms = **~70ms DP overhead**. The dominant cost is LLM streaming (1-10s, NOT in DP scope).
-
----
-
-## §12 Sequence: `/sleep until dawn` (Session 2, Turn 11 — 8h fast-forward, day-boundary crossed)
-
-```text
-PC turn 10 ends at 1256-thu-day3-Tý-sơ (~23h00). PC types "/sleep until dawn".
-
-gateway → roleplay-service:
-  intent = MetaCommand → Sleep
-  args = { until: "dawn" }
-
-world-service:
-  resolve dawn = next Mão-sơ from current FictionClock = ~5h00 of day4
-  fiction_duration = 6h (Tý-sơ → Mão-sơ across day boundary)
-  validate world-rule: PC is in a rented room (scene metadata.private_safe=true) ✓
-  validate canon: nothing canonical happens to Lý Minh between 23h-5h that night ✓
-  (if siege starts here — see SPIKE_01 obs#15 — world-rule rejects sleep, returns CommandRejected)
-
-  claim_turn_slot
-  advance_turn(turn_data = FastForward { fiction_duration: 6h })  → T1 (turn_number incremented by 1)
-  t2_write FictionClock += 6h                                       → T2 (day boundary crossed; day=4, sub_day=Mão-sơ)
-  release_turn_slot
-  return T2
-
-LLM-narration step (decoupled):
-  roleplay-service polls for FictionClock projection with wait_for=T2, generates wake-up narration
-  emit a follow-up TurnEvent::Narration via internal command (NOT a new turn — same turn_number)
-
-UI: clock advances visually; narrator_text "Lý Minh tỉnh giấc khi gà gáy lần đầu..."
-```
-
-**MV12-D5 validation (date-boundary):** SPIKE_01 observed that day boundary is "atomic" — no events occur between 23h and 5h that PC sees, because the only writer (PC's own cell) is in fast-forward mode. Other realities at the parent tavern level may have events, but bubble-up is filtered by `paused_until`-equivalent semantic at the cell (cell is in fast-forward = effectively unsubscribed from ambient).
-
-V1 implementation: cell does NOT pause on fast-forward; instead, world-service's bubble-up consumer drops events with `arrived_at_cell_after_fast_forward_completes` flag set. Detail in PL_002 (gossip aggregator).
-
----
-
-## §13 Open questions deferred + their landing point
-
-| ID | Question | Defer to |
-|---|---|---|
-| MV12-D8 | Narration taxonomy — what kinds of TurnEvent payloads exist beyond Speak/Action/MetaCommand/FastForward? | PL_003 (multi-NPC turn) |
-| MV12-D9 | Scope of `command_args` schema per command kind (sleep, travel, verbatim, prose, ...) | PL_002 (command grammar) — already cataloged as PL-2 |
-| MV12-D10 | NPC-only routine scenes happening in the cell while PC is asleep — do they emit TurnEvents tagged with future turn_numbers? | DL_001 (NPC routine foundations) |
-| MV12-D11 | Drift tolerance: does `fiction_clock` advance even when world-rule rejects the turn? | PL_002 (rejection path) — current answer in this doc: NO, advance only on accepted advance_turn. |
-| Cell auto-dormant policy | What inactivity window (DP-Ch32 default 30min) is right for our cells? | Operational tuning (Phase 5 ops) |
-| Cross-reality clock | Multiverse extensions — does fiction_clock vary per-reality independently? Yes per DP-A14 reality-scope. Cross-reality time queries via R5. | DF12 cross-reality (already withdrawn) |
-
----
-
-## §14 Cross-references
-
-- [00_foundation/02_invariants.md](../../00_foundation/02_invariants.md) — I1..I19 invariants
-- [00_foundation/05_vocabulary.md](../../00_foundation/05_vocabulary.md) — TurnState 8-state, PresenceState 6-state, fiction-time vocab
-- [03_multiverse/01_four_layer_canon.md](../../03_multiverse/) — canon layer this feature respects
-- [05_llm_safety/](../../05_llm_safety/) — A3 World Oracle, A5 intent classifier, A6 injection defense — all run BEFORE world-service writes
-- [06_data_plane/02_invariants.md](../../06_data_plane/02_invariants.md) DP-A1..A19
-- [06_data_plane/03_tier_taxonomy.md](../../06_data_plane/03_tier_taxonomy.md) DP-T0..T3
-- [06_data_plane/11_access_pattern_rules.md](../../06_data_plane/11_access_pattern_rules.md) DP-R1..R8
-- [06_data_plane/04a..04d_*.md](../../06_data_plane/) DP-K1..K12 SDK surface
-- [06_data_plane/12_channel_primitives.md](../../06_data_plane/12_channel_primitives.md) DP-Ch1..Ch10 channel CRUD
-- [06_data_plane/15_turn_boundary.md](../../06_data_plane/15_turn_boundary.md) DP-Ch21..Ch24 advance_turn
-- [06_data_plane/18_causality_and_routing.md](../../06_data_plane/18_causality_and_routing.md) DP-Ch38..Ch40 CausalityToken
-- [06_data_plane/21_llm_turn_slot.md](../../06_data_plane/21_llm_turn_slot.md) DP-Ch51..Ch53 turn-slot patterns
-- [06_data_plane/22_feature_design_quickstart.md](../../06_data_plane/22_feature_design_quickstart.md) — design template this doc follows
-- [features/_spikes/SPIKE_01_two_sessions_reality_time.md](../_spikes/SPIKE_01_two_sessions_reality_time.md) — narrative validation source
-
----
-
-## §15 Implementation readiness checklist
-
-This doc satisfies every required item per DP-R2 + 22_feature_design_quickstart.md §"Required feature doc contents":
-
-- [x] **§3** Aggregate inventory with `#[derive(Aggregate)]` declarations
-- [x] **§4** Tier+scope table per aggregate (DP-R2)
-- [x] **§5** DP primitives by name
-- [x] **§6** Capability JWT claim requirements
-- [x] **§7** Subscribe pattern
-- [x] **§8** Pattern choices (turn-slot Strict, redaction Transparent, causality timeout 5s/20s)
-- [x] **§9** Failure-mode UX (every DpError variant has user copy)
-- [x] **§10** Cross-service handoff with CausalityToken chain
-- [x] **§11/§12** End-to-end sequences for normal turn + fast-forward
-- [x] **§13** Deferrals named with landing point
-
-**Next** (when this doc locks): world-service + roleplay-service can be scaffolded against this contract. The first vertical-slice implementation target is the SPIKE_01 turn 1-4 path (PC enters Yên Vũ Lâu → orders tea → Tiểu Thúy responds), wall-clock target ≤2s end-to-end excluding LLM streaming.
+PL_001b is required reading before implementing world-service handlers.
